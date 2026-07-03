@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Prong 1 (artifact 06 §4): harvest self-contained programs from a local checkout of
+# MRI's bootstraptest/ suite. Each `assert_equal '<expected>', '<program>'` yields one
+# corpus program (the second arg) plus its expected value (saved to manifest.json for
+# the obs-normalizer cross-check).
+#
+# Usage:
+#   bin/harvest_bootstraptest /path/to/ruby/bootstraptest
+#
+# bootstraptest is NOT part of an installed Ruby; clone it from the source tree:
+#   git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby \
+#     && (cd /tmp/ruby && git sparse-checkout set bootstraptest)
+#   bin/harvest_bootstraptest /tmp/ruby/bootstraptest
+require "prism"
+require "json"
+require "fileutils"
+
+src_dir = ARGV[0]
+unless src_dir && File.directory?(src_dir)
+  warn <<~MSG
+    usage: bin/harvest_bootstraptest /path/to/ruby/bootstraptest
+
+    bootstraptest ships in the ruby/ruby source tree, not in an installed Ruby. To fetch:
+      git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby
+      (cd /tmp/ruby && git sparse-checkout set bootstraptest)
+      bin/harvest_bootstraptest /tmp/ruby/bootstraptest
+  MSG
+  exit 2
+end
+
+out_dir = File.expand_path("../corpus/bootstraptest", __dir__)
+FileUtils.mkdir_p(out_dir)
+
+ASSERTS = %w[assert_equal assert_normal_exit assert_finish assert_not_equal].freeze
+# out-of-fragment / non-deterministic markers to skip (artifact 06 §4, PROJECT_PLAN §4)
+SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|rand|Time|Signal|trap|at_exit|ENV|sleep)\b/.freeze
+
+# Extract a string literal argument's content, if it is a plain string literal.
+def string_lit(node)
+  return node.unescaped if node.is_a?(Prism::StringNode)
+  # bootstraptest often uses %q{...} which still parses as a StringNode
+  nil
+end
+
+manifest = []
+kept = 0
+skipped = 0
+
+Dir.glob(File.join(src_dir, "test_*.rb")).sort.each do |file|
+  base = File.basename(file, ".rb")
+  result = Prism.parse_file(file)
+  next unless result.success?
+
+  idx = 0
+  # walk all call nodes
+  queue = [result.value]
+  until queue.empty?
+    node = queue.shift
+    queue.concat(node.compact_child_nodes)
+    next unless node.is_a?(Prism::CallNode) && ASSERTS.include?(node.name.to_s)
+    next unless node.arguments
+
+    args = node.arguments.arguments
+    # assert_equal(expected, program[, message]); others: (program[, message])
+    if node.name.to_s == "assert_equal" || node.name.to_s == "assert_not_equal"
+      expected = string_lit(args[0])
+      program  = string_lit(args[1])
+    else
+      expected = nil
+      program  = string_lit(args[0])
+    end
+    next if program.nil?
+
+    idx += 1
+    if program =~ SKIP
+      skipped += 1
+      next
+    end
+
+    fname = format("%s_%03d.rb", base, idx)
+    File.write(File.join(out_dir, fname), program.end_with?("\n") ? program : program + "\n")
+    manifest << { file: fname, source: File.basename(file), assert: node.name.to_s, expected: expected }
+    kept += 1
+  end
+end
+
+File.write(File.join(out_dir, "manifest.json"), JSON.pretty_generate(manifest))
+puts "harvested #{kept} programs (skipped #{skipped} out-of-fragment/non-deterministic) into #{out_dir}"
+puts "manifest: #{File.join(out_dir, 'manifest.json')}  (expected values for obs cross-check)"

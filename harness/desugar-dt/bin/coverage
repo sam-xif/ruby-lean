@@ -1,0 +1,132 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Fragment-coverage measurement + ratchet (fragment-expansion-strategy.md §2).
+#
+# Runs the desugar GATE only (no CRuby subprocesses — fast) over a corpus and reports:
+#   - fragment coverage  = in-fragment / (parseable - explicitly-excluded)
+#   - blocker histogram   = per unsupported Prism node type, #programs it blocks
+#     (--full walks the AST for the complete per-program blocker set, not just the
+#      first node desugar trips on)
+#   - ratchet: compares in-fragment count against coverage-baseline.json; nonzero exit
+#     on regression. `--save` writes the current numbers as the new baseline.
+#
+# Usage:
+#   bin/coverage [PATH]        # default PATH = corpus/bootstraptest
+#   bin/coverage --full [PATH] # full per-program blocker profile
+#   bin/coverage --save [PATH] # update the ratchet baseline
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require "desugar"
+require "json"
+require "set"
+
+full = ARGV.delete("--full")
+save = ARGV.delete("--save")
+path = ARGV.first || File.expand_path("../corpus/bootstraptest", __dir__)
+files = File.directory?(path) ? Dir.glob(File.join(path, "**", "*.rb")).sort : [path]
+
+if files.empty?
+  warn "no .rb files under #{path} (harvest bootstraptest first: bin/harvest_bootstraptest ...)"
+  exit 2
+end
+
+# Node types desugar handles (kept in sync manually; only used for --full profiling).
+SUPPORTED = %i[
+  program_node statements_node parentheses_node integer_node float_node string_node symbol_node
+  range_node rational_node imaginary_node
+  true_node false_node nil_node self_node
+  local_variable_read_node local_variable_write_node instance_variable_read_node
+  instance_variable_write_node class_variable_read_node class_variable_write_node
+  global_variable_read_node global_variable_write_node constant_read_node constant_write_node
+  call_node and_node or_node if_node unless_node while_node until_node def_node
+  local_variable_or_write_node local_variable_and_write_node
+  instance_variable_or_write_node instance_variable_and_write_node
+  global_variable_or_write_node global_variable_and_write_node
+  local_variable_operator_write_node instance_variable_operator_write_node
+  class_variable_operator_write_node global_variable_operator_write_node
+  constant_operator_write_node interpolated_string_node
+  array_node hash_node assoc_node splat_node return_node break_node next_node multi_write_node
+  block_node block_parameters_node parameters_node required_parameter_node rest_parameter_node
+  embedded_statements_node else_node arguments_node block_argument_node
+  local_variable_target_node instance_variable_target_node global_variable_target_node
+  class_variable_target_node constant_target_node
+  class_node module_node singleton_class_node begin_node rescue_node rescue_modifier_node
+  ensure_node retry_node super_node forwarding_super_node
+].to_set
+
+require "prism"
+
+total = 0
+parseable = 0
+in_fragment = 0
+first_blocker = Hash.new(0)
+full_blocker = Hash.new(0)
+
+files.each do |f|
+  total += 1
+  src = File.read(f)
+  result = Prism.parse(src)
+  unless result.success?
+    first_blocker["<parse-error>"] += 1
+    next
+  end
+  parseable += 1
+
+  begin
+    Desugar.program(src)
+    in_fragment += 1
+  rescue Desugar::Unsupported => e
+    key = e.message.sub(/node type :/, "node:").sub(/ \(.*\)/, "")
+    first_blocker[key] += 1
+  rescue StandardError => e
+    first_blocker["<error:#{e.class}>"] += 1
+  end
+
+  next unless full
+
+  seen = Set.new
+  queue = [result.value]
+  until queue.empty?
+    n = queue.shift
+    queue.concat(n.compact_child_nodes)
+    unless SUPPORTED.include?(n.type) || seen.include?(n.type)
+      full_blocker[n.type] += 1
+      seen.add(n.type)
+    end
+  end
+end
+
+pct = parseable.zero? ? 0.0 : (100.0 * in_fragment / parseable)
+puts "corpus: #{path}"
+puts "programs: #{total}  parseable: #{parseable}  in-fragment: #{in_fragment}  " \
+     "coverage: #{pct.round(1)}% (of parseable)"
+puts
+
+hist = full ? full_blocker : first_blocker
+label = full ? "full per-program blocker profile" : "first-blocker histogram"
+puts "--- #{label} (top 25) ---"
+hist.sort_by { |_, v| -v }.first(25).each { |k, v| printf "%5d  %s\n", v, k }
+
+# --- ratchet ---
+baseline_path = File.expand_path("../coverage-baseline.json", __dir__)
+current = { "in_fragment" => in_fragment, "parseable" => parseable, "corpus" => File.basename(path) }
+
+if save
+  File.write(baseline_path, JSON.pretty_generate(current) + "\n")
+  puts "\nbaseline saved: #{current.inspect}"
+  exit 0
+end
+
+if File.exist?(baseline_path)
+  base = JSON.parse(File.read(baseline_path))
+  puts "\nratchet: baseline in-fragment=#{base['in_fragment']} (of #{base['parseable']})  " \
+       "current=#{in_fragment} (of #{parseable})"
+  if in_fragment < base["in_fragment"] && parseable >= base["parseable"]
+    warn "REGRESSION: in-fragment dropped from #{base['in_fragment']} to #{in_fragment}"
+    exit 1
+  end
+  puts "up #{in_fragment - base['in_fragment']} since baseline" if in_fragment > base["in_fragment"]
+else
+  puts "\n(no baseline yet; run with --save to create coverage-baseline.json)"
+end

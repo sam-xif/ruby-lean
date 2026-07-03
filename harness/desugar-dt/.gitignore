@@ -1,0 +1,7 @@
+# Harvested from the ruby/ruby source tree (prong 1); regenerate with
+# bin/harvest_bootstraptest. Not vendored to keep the repo small and avoid
+# committing third-party sources.
+corpus/bootstraptest/
+
+# Illustrative desugar dumps (some derived from bootstraptest); regenerate with bin/desugar
+samples/

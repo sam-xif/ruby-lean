@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Inspect the desugaring of a program: prints the source, the desugaring rules fired, the
+# RubyCore rendered back to Ruby, and the RubyCore AST. Reads file args (or stdin).
+#
+#   bin/desugar FILE...          # inspect each file
+#   bin/desugar < prog.rb        # inspect stdin
+#   bin/desugar --no-ast FILE    # skip the AST dump
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require "desugar"
+require "render"
+require "pp"
+
+show_ast = !ARGV.delete("--no-ast")
+inputs =
+  if ARGV.empty?
+    [["<stdin>", $stdin.read]]
+  else
+    ARGV.map { |f| [f, File.read(f)] }
+  end
+
+inputs.each_with_index do |(name, src), idx|
+  puts "═" * 78 if idx.positive?
+  puts "── source (#{name}) " + "─" * 40
+  puts src.strip
+  puts
+
+  begin
+    core, cov = Desugar.program(src)
+  rescue Desugar::Unsupported => e
+    puts "!! OUT OF FRAGMENT: #{e.message}"
+    next
+  rescue StandardError => e
+    puts "!! ERROR: #{e.class}: #{e.message}"
+    next
+  end
+
+  puts "── desugaring rules fired (#{cov.size}) " + "─" * 20
+  puts "   " + cov.map { |r| ":#{r}" }.join("  ")
+  puts
+  puts "── RubyCore, rendered back to Ruby " + "─" * 20
+  puts Render.core(core)
+  next unless show_ast
+
+  puts
+  puts "── RubyCore AST " + "─" * 40
+  PP.pp(core, $stdout, 96)
+end

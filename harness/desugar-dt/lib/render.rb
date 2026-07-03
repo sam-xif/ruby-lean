@@ -1,0 +1,113 @@
+# frozen_string_literal: true
+
+require_relative "rubycore"
+
+# render_core : RubyCore -> Ruby source.
+#
+# Deliberately over-parenthesized so that the emitted text re-parses to the same
+# structure regardless of precedence (implementation-choices.md C2/C9). Output is not
+# meant to be pretty — only to be behavior-faithful and re-parseable.
+module Render
+  module_function
+
+  def core(node)
+    raise "not a node: #{node.inspect}" unless node.is_a?(Array)
+
+    case node[0]
+    when :int   then node[1].to_s
+    when :flt   then node[1].inspect            # finite float literal -> re-parseable
+    when :str   then node[1].inspect            # produces a quoted, escaped literal
+    when :sym   then ":#{node[1]}"
+    when :true  then "true"
+    when :false then "false"
+    when :nil   then "nil"
+    when :self  then "self"
+    when :var   then node[2]                    # name already carries its sigil (@ / @@ / $)
+    when :vasgn then "(#{node[2]} = #{core(node[3])})"
+    when :const then node[1]
+    when :casgn then "(#{node[1]} = #{core(node[2])})"
+    when :send  then send_str(node)
+    when :block then block_str(node)
+    when :if
+      _, c, t, e = node
+      # omit else when absent (nil) so the text re-parses to else=nil, not else=[:nil]
+      if e
+        "(if #{core(c)} then #{core(t)} else #{core(e)} end)"
+      else
+        "(if #{core(c)} then #{core(t)} end)"
+      end
+    when :while
+      _, c, b = node
+      "(while #{core(c)} do #{core(b)} end)"
+    when :def
+      _, name, params, body = node
+      "(def #{name}(#{params.join(', ')}); #{core(body)}; end)"
+    when :array
+      "[" + node[1].map { |n| core(n) }.join(", ") + "]"
+    when :hash
+      "{" + node[1].map { |k, v| "(#{core(k)}) => (#{core(v)})" }.join(", ") + "}"
+    when :splat then node[1] ? "*(#{core(node[1])})" : "*"
+    when :return then node[1] ? "return (#{core(node[1])})" : "return"
+    when :break  then node[1] ? "break (#{core(node[1])})" : "break"
+    when :next   then node[1] ? "next (#{core(node[1])})" : "next"
+    when :retry  then "retry"
+    when :class
+      _, name, sup, body = node
+      hdr = sup ? "class #{name} < (#{core(sup)})" : "class #{name}"
+      "(#{hdr}; #{core(body)}; end)"
+    when :module then "(module #{node[1]}; #{core(node[2])}; end)"
+    when :sclass then "(class << (#{core(node[1])}); #{core(node[2])}; end)"
+    when :defs
+      _, recv, name, params, body = node
+      "(def (#{core(recv)}).#{name}(#{params.join(', ')}); #{core(body)}; end)"
+    when :begin  then begin_str(node)
+    when :super
+      _, args, blk = node
+      base = "super(#{args.map { |a| core(a) }.join(', ')})"
+      blk ? "#{base} #{block_str(blk)}" : base
+    when :zsuper then node[1] ? "super #{block_str(node[1])}" : "super"
+    when :seq
+      "(" + node[1..].map { |n| core(n) }.join("; ") + ")"
+    else
+      raise "cannot render head :#{node[0]}"
+    end
+  end
+
+  # (begin; body; rescue E1, E2 => e; h; ...; else; el; ensure; en; end)
+  def begin_str(node)
+    _, body, rescues, els, ens = node
+    s = +"(begin; #{core(body)}"
+    rescues.each do |excs, ref, handler|
+      s << "; rescue"
+      s << " " << excs.map { |e| "(#{core(e)})" }.join(", ") unless excs.empty?
+      s << " => #{ref[1]}" if ref            # ref[1] carries any sigil (@ / @@ / $)
+      s << "; #{core(handler)}"
+    end
+    s << "; else; #{core(els)}" if els
+    s << "; ensure; #{core(ens)}" if ens
+    s << "; end)"
+    s
+  end
+
+  def send_str(node)
+    _, recv, mname, args, blk = node
+    argstr = args.map { |a| core(a) }.join(", ")
+    base =
+      if recv
+        "(#{core(recv)}).#{mname}(#{argstr})"
+      else
+        # nil receiver = implicit-self call; the () keeps it a method call, not a local
+        "#{mname}(#{argstr})"
+      end
+    blk ? "#{base} #{block_str(blk)}" : base
+  end
+
+  def block_str(node)
+    _, params, body = node
+    if params.empty?
+      "{ #{core(body)} }"
+    else
+      "{ |#{params.join(', ')}| #{core(body)} }"
+    end
+  end
+end

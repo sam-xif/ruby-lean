@@ -138,7 +138,7 @@ Division of labor: **unary safety (confinement) → unbounded inductive proofs,
 adversary-supplied; relational properties (obs-equivalence of diffs) → certified bounded
 search** as the automatic floor. Same relation, same checker, two effort levels.
 
-Adequacy (interpreter ↔ relation, PROJECT_PLAN §5.1) is load-bearing here: differential
+Adequacy (interpreter ↔ relation, ruby/PROJECT_PLAN.md §5.1) is load-bearing here: differential
 testing earns trust for the *interpreter*; proofs live on the *relation*; the adequacy
 theorem transfers the empirical trust across. Without it we would test one artifact and
 prove things about another.

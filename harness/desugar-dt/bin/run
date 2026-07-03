@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Driver: run the desugar round-trip over a corpus and report agreement, coverage, and
+# triaged disagreements. Usage:
+#   bin/run [PATH ...]         # default PATH = corpus/
+#   bin/run --bug [PATH ...]   # inject the naive &&/|| desugaring to demo trace-catching
+#   bin/run --verbose ...      # print rendered core for every case
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require "roundtrip"
+
+inject_bug = false
+verbose = false
+paths = []
+ARGV.each do |a|
+  case a
+  when "--bug"     then inject_bug = true
+  when "--verbose" then verbose = true
+  else paths << a
+  end
+end
+paths << File.expand_path("../corpus", __dir__) if paths.empty?
+
+files = paths.flat_map do |p|
+  File.directory?(p) ? Dir.glob(File.join(p, "**", "*.rb")).sort : [p]
+end
+
+tally = Hash.new(0)
+buckets = Hash.new(0)
+covered = []
+disagreements = []
+normal_form_fails = []
+
+puts "desugar round-trip  (oracle: #{Observe::ORACLE})#{inject_bug ? '  [DESUGAR_BUG injected]' : ''}"
+puts "=" * 72
+
+files.each do |file|
+  src = File.read(file)
+  name = file.sub(%r{\A.*/corpus/}, "")
+  r = Roundtrip.check(src, inject_bug: inject_bug)
+  tally[r.status] += 1
+  covered |= (r.coverage || [])
+
+  mark =
+    case r.status
+    when :agree           then r.normal_form == false ? "ok*" : "ok "
+    when :disagree        then buckets[r.bucket] += 1; disagreements << [name, r]; "XX "
+    when :out_of_fragment then "-- "
+    when :parse_error     then "?? "
+    when :harness_error   then "!! "
+    end
+  normal_form_fails << name if r.status == :agree && r.normal_form == false
+
+  line = "[#{mark}] #{name}"
+  line += "   (#{r.reason})" if %i[out_of_fragment parse_error harness_error].include?(r.status)
+  puts line
+  if verbose && r.rendered
+    puts "        render: #{r.rendered}"
+  end
+end
+
+puts "=" * 72
+puts "agree: #{tally[:agree]}  disagree: #{tally[:disagree]}  " \
+     "out-of-fragment: #{tally[:out_of_fragment]}  parse-error: #{tally[:parse_error]}  " \
+     "harness-error: #{tally[:harness_error]}"
+puts "  * = agreed but normal-form unstable (#{normal_form_fails.size}): #{normal_form_fails.join(', ')}" unless normal_form_fails.empty?
+
+unless disagreements.empty?
+  puts "\nDISAGREEMENTS (triaged, artifact 06 §6):"
+  disagreements.each do |name, r|
+    puts "  #{name}  [#{r.bucket}]"
+    puts "      #{r.reason}"
+  end
+end
+
+# Coverage report (artifact 06 §5)
+missing = Desugar::RULES - covered
+puts "\ndesugaring-rule coverage: #{covered.size}/#{Desugar::RULES.size}"
+puts "  uncovered: #{missing.map { |m| ":#{m}" }.join(', ')}" unless missing.empty?
+
+# Exit non-zero if any real disagreement (harness/parse errors are also failures).
+failed = tally[:disagree] + tally[:harness_error] + tally[:parse_error]
+exit(failed.zero? ? 0 : 1)
