@@ -5,3 +5,8 @@ corpus/bootstraptest/
 
 # Illustrative desugar dumps (some derived from bootstraptest); regenerate with bin/desugar
 samples/
+
+# Ad-hoc scratch from manual bin/desugar experiments (never meant to be committed)
+zzz*.rb
+/a/
+/b/
