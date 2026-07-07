@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "namespaces",
+  "description": "Locals shadow same-named methods for bare references while parens force method dispatch, and defined? distinguishes them.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnooS1BFXvX6jLyAf5vD"
+}

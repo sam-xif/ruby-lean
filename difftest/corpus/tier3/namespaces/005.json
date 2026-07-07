@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "namespaces",
+  "description": "Nested modules each define their own lexically-scoped constant with the innermost lexical scope winning.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnooS1BFXvX6jLyAf5vD"
+}

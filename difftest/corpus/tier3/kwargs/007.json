@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "Keyword parameters must be bound and visible in an ensure clause even when the method body raises before completing.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

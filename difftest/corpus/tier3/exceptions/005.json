@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "exceptions",
+  "description": "A bare raise inside rescue re-raises the current exception with its original message.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011Ccnon6wgAwgafEi6ENr8j"
+}

@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Tests define_singleton_method invoked before a raise remaining callable inside the ensure block despite the exception.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnovHMDpMtBfR7aPhoBr"
+}

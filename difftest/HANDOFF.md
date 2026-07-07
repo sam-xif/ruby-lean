@@ -27,11 +27,23 @@
   - SUTs: `stub` (Lean placeholder), `identity` (smoke), `desugar` (adapter
     over `../harness/desugar-dt/`; `--inject-bug` = detection self-test).
   - Evidence: identity 200/200 agree; healthy desugar 150/150 agree (all
-    in-fragment); injected `&&` bug found and minimized; tier-3 `eval-order`
-    batch 5/5 through the gate (vs desugar: 3 agree, 2 cleanly gated
-    out-of-fragment). 23 pytest tests green.
-- **Stubs:** tier 0 (AI-translated conformance suites) and tier 2 (mutation of
-  scraped Ruby) are documented generator slots with no code.
+    in-fragment); injected `&&` bug found and minimized; tier-3 corpus (68
+    cases, all 7 categories) replays 68/68 agree vs identity and 31 agree /
+    37 gated / 0 disagree vs desugar. 38 pytest tests green.
+  - **Tier 0** (conformance corpora): `sources.py` loads the harvested
+    bootstraptest corpus (`run --tier 0`; N1–N5 in `implementation-notes.md`).
+    Full-corpus baseline vs desugar: 751 agree / 544 unsupported / 9 excluded
+    with reasons / **0 disagree** (`reports/tier0-desugar-full/`) — an
+    independent cross-check of the harness's own 752/1299.
+  - **Mixed campaigns** (`run --mix tier1=0.9,tier0=0.05,tier3=0.05`): built
+    as HANDOFF resolution **(b)** — the campaign stays one Hypothesis property,
+    arms chosen by a weighted integer draw (`campaign.py`, which subsumed
+    `tiers/tier1/campaign.py`; N6–N8).
+- **Stubs:** tier 2 (mutation of scraped Ruby) is a documented generator slot
+  with no code. 2026-07-07 refocus decision: corpora that cover the language's
+  real distribution (tier 0) and adversarial tail (tier 3, seeded by AI) come
+  first; Superion-style subtree splicing is deferred and will use those
+  corpora as its seed pool when built.
 
 ## Load-bearing design decisions (don't silently change)
 
@@ -53,43 +65,24 @@
 6. **Hypothesis is the tier-1 engine specifically for its shrinker** — any
    redesign of the campaign loop must keep a path to minimized reproducers.
 
-## Requested next feature: mixed-tier campaigns
+## Mixed-tier campaigns: built (resolution b, as recommended)
 
-Sam wants campaigns that sample across tiers with configurable weights — e.g.
-each case drawn 99/100 from tier 1, 1/100 from tier 3 (`--mix
-tier1=0.99,tier3=0.01`). Design sketch:
-
-- Introduce a `CaseSource` abstraction: something that yields the *next*
-  `TestCase` on demand. Tier 3's source samples the persisted corpus
-  (uniformly, or weighted toward never-yet-disagreeing cases); tier 1's source
-  draws a fresh program from the strategies.
-- The mixed campaign is then an ordinary iterator loop (like `replay`): seed a
-  `random.Random`, pick a source per step by weight, run, record. Provenance
-  already carries the tier per case, so reporting works unchanged.
-- **The tension is shrinking.** The current tier-1 campaign gets minimization
-  by living *inside* a Hypothesis property; an iterator-style mixed loop
-  can't. Two viable resolutions (pick during implementation, record the choice
-  in this file):
-  a. **Post-hoc shrink pass:** when the mixed loop hits a tier-1 disagreement,
-     re-enter a dedicated Hypothesis property seeded to regenerate that case
-     (reuse the recorded seed + draw index) and shrink from there.
-     Con: re-finding the case via seed replay needs care.
-  b. **Hypothesis-hosted mix:** keep the campaign a Hypothesis property whose
-     strategy is `st.one_of` weighted between `programs()` and
-     `st.sampled_from(corpus_cases)` (weights via `st.integers(0,99)`
-     threshold). Shrinking keeps working for tier-1 draws for free;
-     corpus draws shrink only across corpus choice, which is fine.
-     **This is the recommended shape** — it's ~30 lines in
-     `tiers/tier1/campaign.py` generalized to `campaign.py`.
-- Tier-3 cases found disagreeing don't need shrinking (they're small and
-  hand-inspectable), but consider a follow-up "delta-debug via CRuby" pass
-  later (05-differential-testing §5).
+`run --mix tier1=0.9,tier0=0.05,tier3=0.05` — implemented 2026-07-07 as the
+Hypothesis-hosted mix: `campaign.py::run_generative_campaign` (which subsumed
+`tiers/tier1/campaign.py`; `--tier 1` is the `mix={"tier1": 1.0}` special
+case). Arm choice is a weighted `st.integers(0,999)` threshold draw
+(implementation-notes N6–N8). Tier-1 disagreements shrink exactly as before;
+a disagreeing corpus draw is reported as `campaign.disagreeing_corpus_case`.
+Still open from the original sketch: a "delta-debug via CRuby" pass for
+corpus-case disagreements (05-differential-testing §5), and weighting corpus
+sampling toward never-yet-disagreeing cases (currently uniform).
 
 ## Other enhancement ideas (roughly ordered by value)
 
-1. **Tier-3 coverage:** generate batches for the six remaining categories
-   (`gen3 --category all -n 10`); inspect rejects — the reject rate per
-   category is itself signal about the prompts.
+1. ~~**Tier-3 coverage**~~ **done 2026-07-07:** all seven categories populated
+   (68 cases, ~10 each); only 2 rejects total, both `namespaces` programs
+   probing dynamic constant assignment (a parse-time SyntaxError) — prompts
+   look healthy.
 2. **Grow the tier-1 vocabulary** toward the semantics core: method calls with
    splats, kwargs (mind the Ruby-3 separation trap — see
    `../harness/desugar-dt/M2-params-yield-plan.md`), classes + ivars +
@@ -102,9 +95,9 @@ tier1=0.99,tier3=0.01`). Design sketch:
    subtree splicing nearly free *for generated programs* (prong2-design §2
    option B); mutating *scraped* Ruby needs a Prism→surface-AST importer —
    bigger, design first.
-5. **Tier 0 (translated conformance suites):** pick a source suite (e.g.
-   test262-style single-file cases), AI-translate to Ruby, validation-gate
-   like tier 3. Needs a provenance/licensing think first.
+5. **More tier-0 sources:** bootstraptest is in (see above); next candidates
+   are `ruby/spec` (convert per-example assertions to prints) and AI-translated
+   foreign suites (needs a provenance/licensing think first).
 6. **Coverage-guided steering:** feed which AST-kind pairs have appeared in
    agreeing runs back into strategy weights (05 §7, "rule-pair coverage").
 7. **Parallel oracle execution** (`ProcessPoolExecutor` around `run_case`) —

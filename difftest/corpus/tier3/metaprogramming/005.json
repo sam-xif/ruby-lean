@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Tests Module.new with a block creating methods, then including it so instances resolve through the module in the ancestor chain.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnovHMDpMtBfR7aPhoBr"
+}

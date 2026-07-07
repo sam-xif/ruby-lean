@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "namespaces",
+  "description": "Locals assigned in a rescue clause remain visible in ensure and after the block, interleaved with constant defined? checks.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnooS1BFXvX6jLyAf5vD"
+}

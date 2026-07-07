@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes runtime method redefinition affecting later dispatch while a previously bound Method object retains the old definition.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnogUCgs7D5MD6T35nax"
+}

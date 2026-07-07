@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "blocks-jumps",
+  "description": "Probes that `return` in a lambda returns from the lambda while `return` in a Proc created outside its defining method raises LocalJumpError.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnojiWziL4vzYsHtEtiC"
+}

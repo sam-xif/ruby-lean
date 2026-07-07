@@ -98,15 +98,20 @@ non-critical decision (C1–C11) — **committed on each change for rollback**.
 ### `difftest/` — the multi-tier differential test engine (Python, runnable)
 Standing engine that generates Ruby programs and compares **CRuby (control)** against an
 arbitrary **SUT** (`Observation | Unsupported` protocol — the future Lean interpreter plugs
-in here; deliberately decoupled from any modeling approach). Built: **tier 1** (Hypothesis
-scope-aware AST fuzzing with automatic shrinking of disagreements → `corpus/regressions/`)
-and **tier 3** (Anthropic-API-generated adversarial programs per semantic category,
-validation-gated into the committed `corpus/tier3/`). Tiers 0 (translated conformance
-suites) and 2 (mutating scraped Ruby) are stub slots. Built-in SUTs: `stub`, `identity`
-(smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is the
-detection self-test). See [`difftest/README.md`](difftest/README.md) to run it and
+in here; deliberately decoupled from any modeling approach). Built: **tier 0**
+(conformance corpora — harvested bootstraptest replay; full-corpus baseline vs desugar:
+751 agree / 0 disagree), **tier 1** (Hypothesis scope-aware AST fuzzing with automatic
+shrinking of disagreements → `corpus/regressions/`), **tier 3** (Anthropic-API-generated
+adversarial programs, all 7 semantic categories, validation-gated into the committed
+`corpus/tier3/`), and **mixed campaigns** (`run --mix tier1=0.9,tier0=0.05,tier3=0.05`,
+Hypothesis-hosted so shrinking survives). Tier 2 (mutating scraped Ruby) is a stub slot,
+deliberately deferred until the corpora exist to seed it. Built-in SUTs: `stub`,
+`identity` (smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is
+the detection self-test). See [`difftest/README.md`](difftest/README.md) to run it,
 [`difftest/HANDOFF.md`](difftest/HANDOFF.md) for the fresh-context hand-off (state,
-load-bearing invariants, the planned mixed-tier sampling campaign, enhancement queue).
+load-bearing invariants, enhancement queue), and
+[`difftest/implementation-notes.md`](difftest/implementation-notes.md) for non-critical
+implementation choices (N1–N8, committed for rollback).
 
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`

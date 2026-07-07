@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "Blocks with keyword parameters must bind yielded keyword arguments correctly, including defaults and ** rest capture inside the block body.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

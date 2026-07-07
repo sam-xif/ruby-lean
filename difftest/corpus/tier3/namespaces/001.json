@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "namespaces",
+  "description": "Constant lookup uses lexical nesting scope rather than the receiver's ancestor chain, and defined? reports constant presence.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnooS1BFXvX6jLyAf5vD"
+}

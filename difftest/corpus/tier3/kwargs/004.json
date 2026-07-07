@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "Required-keyword arity is checked independently of positional arity, so a missing positional must raise ArgumentError even when the keyword is supplied.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

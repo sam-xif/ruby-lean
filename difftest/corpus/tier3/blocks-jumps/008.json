@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "blocks-jumps",
+  "description": "Probes lambda `return` as local exit, block/proc destructuring of array args, and splat parameter distribution in procs vs lambdas.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnojiWziL4vzYsHtEtiC"
+}

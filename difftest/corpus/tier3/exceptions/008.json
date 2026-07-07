@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "exceptions",
+  "description": "Ensure runs during unwinding when the local rescue does not match, before the exception propagates to the caller.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011Ccnon6wgAwgafEi6ENr8j"
+}

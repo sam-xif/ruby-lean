@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "An empty ** splat passes no argument (yielding the default), whereas a non-empty ** splat to a keyword-less method becomes a trailing positional hash in Ruby 3.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

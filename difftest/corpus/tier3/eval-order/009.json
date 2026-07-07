@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "eval-order",
+  "description": "Probes an adversarial interaction: left-to-right string-interpolation ordering combined with `h[i] += e` op-assign single-evaluation on a default-valued hash.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnowqCASjHJM6X5z1Bim"
+}

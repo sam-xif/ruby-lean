@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Tests instance_eval setting self, defining a singleton method, and mutating instance variables on the receiver.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnovHMDpMtBfR7aPhoBr"
+}

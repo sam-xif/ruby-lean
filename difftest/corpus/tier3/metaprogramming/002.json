@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Tests that define_method blocks close over an outer local shared across all instances of an anonymous class.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnovHMDpMtBfR7aPhoBr"
+}

@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "Optional positional defaults must be evaluated left-to-right with later defaults observing already-bound earlier parameter values.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes coordination of `method_missing`, `respond_to_missing?`, and the `super` fallthrough to NoMethodError.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnogUCgs7D5MD6T35nax"
+}

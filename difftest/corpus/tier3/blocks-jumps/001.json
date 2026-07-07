@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "blocks-jumps",
+  "description": "Probes non-local `return` from a Proc returning through its defining method, and a block whose last expression becomes the yield value.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnojiWziL4vzYsHtEtiC"
+}

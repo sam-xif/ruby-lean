@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Tests defining a method on the singleton class that calls super into the original class method, affecting only one instance.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnovHMDpMtBfR7aPhoBr"
+}

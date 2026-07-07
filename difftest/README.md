@@ -21,6 +21,8 @@ uv sync                 # Python 3.12+, hypothesis, anthropic
 ```sh
 uv run python -m difftest run --tier 1 -n 200 --sut identity --seed 42
 uv run python -m difftest run --tier 1 -n 300 --sut desugar --inject-bug   # detection self-test
+uv run python -m difftest run --tier 0 --sut desugar                       # bootstraptest corpus (all; -n samples)
+uv run python -m difftest run --mix tier1=0.9,tier0=0.05,tier3=0.05 -n 200 --sut desugar
 uv run python -m difftest gen3 --category eval-order -n 5                  # costs API tokens
 uv run python -m difftest replay corpus/tier3 --sut identity
 uv run pytest
@@ -34,10 +36,16 @@ Reports land in `reports/<timestamp>-<label>/` (gitignored): `cases.jsonl`
 
 | Tier | Source | Status |
 |---|---|---|
-| 0 | conformance suites from other languages, AI-translated to Ruby | **stub** — future generator slot |
+| 0 | conformance corpora — first source: MRI's `bootstraptest`, harvested by the desugar harness (`difftest/sources.py`) | built |
 | 1 | Hypothesis AST fuzzing (`difftest/tiers/tier1/`) | built |
 | 2 | mutation of scraped real-world Ruby | **stub** — future generator slot |
 | 3 | Anthropic-API-generated adversarial programs (`difftest/tiers/tier3/`) | built |
+
+**Tier 0** replays MRI's own `bootstraptest` suite — ~1300 self-contained
+single-file programs harvested by `../harness/desugar-dt/bin/harvest_bootstraptest`
+(the corpus is not vendored; the source errors with the harvest recipe when it
+is missing). No pre-filter: the run-time control gate excludes unusable cases
+with reasons. This is the quick-initial-confidence corpus a new SUT meets first.
 
 **Tier 1** generates a *surface* AST under scope-aware strategies (an
 environment of bound locals/defined methods threads through generation, so
@@ -53,6 +61,14 @@ eval-order, exceptions, namespaces, kwargs, metaprogramming — see
 terminates, deterministic under a double run) before entering
 `corpus/tier3/<category>/NNN.rb` with a `.json` sidecar; rejects are logged
 with reasons. The corpus is committed and replayed for free thereafter.
+
+**Mixed campaigns** (`run --mix tier1=0.9,tier0=0.05,tier3=0.05`) sample each
+case from a weighted arm: fresh tier-1 generation or a persisted corpus. The
+campaign remains a single Hypothesis property, so tier-1 disagreements still
+shrink to minimal reproducers; a disagreeing corpus draw is reported by its
+corpus id instead (it is already small and persisted). Non-critical
+implementation choices are recorded in
+[`implementation-notes.md`](implementation-notes.md).
 
 ## What is compared (`Observation`)
 

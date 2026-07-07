@@ -91,14 +91,19 @@ class CRubyRunner:
             f.write(wrapped)
             path = f.name
         try:
+            # each run gets a fresh scratch cwd: programs that create files
+            # (bootstraptest does) can't litter the repo or leak state into
+            # the determinism double-run / other cases
             try:
-                proc = subprocess.run(
-                    [self.ruby, path],
-                    capture_output=True,
-                    text=True,
-                    timeout=self.timeout,
-                    env={**os.environ, "RUBY_HASH_SEED": "0"},
-                )
+                with tempfile.TemporaryDirectory(prefix="difftest-cwd-") as cwd:
+                    proc = subprocess.run(
+                        [self.ruby, path],
+                        capture_output=True,
+                        text=True,
+                        timeout=self.timeout,
+                        cwd=cwd,
+                        env={**os.environ, "RUBY_HASH_SEED": "0"},
+                    )
             except subprocess.TimeoutExpired:
                 return Observation(stdout="", result_repr=None, exception=None, timed_out=True)
             if SENTINEL not in proc.stdout:

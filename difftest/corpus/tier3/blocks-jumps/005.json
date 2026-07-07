@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "blocks-jumps",
+  "description": "Probes that `break` from an inner block only exits its own yield-loop and its value replaces the whole enclosing call's result.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnojiWziL4vzYsHtEtiC"
+}

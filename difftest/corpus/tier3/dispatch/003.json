@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes that a singleton method exists only on the specific receiver's eigenclass and not on siblings of the same class.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnogUCgs7D5MD6T35nax"
+}

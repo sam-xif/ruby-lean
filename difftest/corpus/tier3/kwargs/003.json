@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "kwargs",
+  "description": "A **kwargs parameter in Ruby 3 must accept non-Symbol keys via ** splat and return an empty hash for an empty splat, with no coercion error.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnoqPShTGbbDnsohnj2a"
+}

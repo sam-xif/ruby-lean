@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "blocks-jumps",
+  "description": "Probes enumerator creation via block_given?, `return` from within each escaping a method, and `break` overriding inject's accumulated result.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnojiWziL4vzYsHtEtiC"
+}

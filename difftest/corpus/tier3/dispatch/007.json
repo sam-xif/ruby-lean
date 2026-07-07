@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes that `super` works correctly when invoked from inside a block and inside a begin/ensure within an overriding method.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnogUCgs7D5MD6T35nax"
+}

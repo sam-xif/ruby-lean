@@ -2,6 +2,7 @@
 
     python -m difftest run --tier 1 -n 200 --sut identity --seed 42
     python -m difftest run --tier 1 -n 100 --sut desugar --inject-bug
+    python -m difftest run --tier 0 --sut desugar          # bootstraptest corpus
     python -m difftest gen3 --category eval-order -n 5
     python -m difftest replay corpus/tier3 --sut identity
 """
@@ -12,14 +13,15 @@ import argparse
 import datetime
 import json
 import os
+import random
 import sys
 from pathlib import Path
 
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
+from .sources import load_bootstraptest, load_corpus_cases
 from .sut import make_sut
-from .testcase import TestCase
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 
@@ -52,25 +54,57 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
     print(f"\nreport: {out_dir / 'report.md'}")
 
 
+CORPUS_ARMS = ("tier0", "tier3")  # mix arms backed by persisted corpora
+
+
+def _load_corpus_arm(name: str, args) -> list:
+    if name == "tier0":
+        return load_bootstraptest(Path(args.corpus) if args.corpus else None)
+    return load_corpus_cases(BASE / "corpus" / "tier3", default_tier=3)
+
+
 def cmd_run(args) -> int:
+    from .campaign import parse_mix, run_generative_campaign
+
     control = CRubyRunner(timeout=args.timeout)
     sut = make_sut(args.sut, inject_bug=args.inject_bug)
-    out_dir = _out_dir(args.out, f"tier{args.tier}-{sut.name}")
+    label = "mix" if args.mix else f"tier{args.tier}"
+    out_dir = _out_dir(args.out, f"{label}-{sut.name}")
     reporter = Reporter(out_dir)
 
-    if args.tier == 1:
-        from .tiers.tier1.campaign import run_tier1_campaign
-
-        extra = run_tier1_campaign(
-            control,
-            sut,
-            reporter,
-            n=args.n,
+    if args.mix:
+        mix = parse_mix(args.mix)
+        unknown = set(mix) - {"tier1", *CORPUS_ARMS}
+        if unknown:
+            print(f"unknown mix arms: {sorted(unknown)}; known: tier1, {', '.join(CORPUS_ARMS)}",
+                  file=sys.stderr)
+            return 2
+        corpus_cases = {name: _load_corpus_arm(name, args) for name in mix if name != "tier1"}
+        extra = run_generative_campaign(
+            control, sut, reporter,
+            n=args.n if args.n is not None else 100,
+            seed=args.seed,
+            mix=mix,
+            corpus_cases=corpus_cases,
+            regressions_dir=BASE / "corpus" / "regressions",
+        )
+    elif args.tier == 0:
+        cases = load_bootstraptest(Path(args.corpus) if args.corpus else None)
+        total = len(cases)
+        if args.n is not None and args.n < total:
+            picked = random.Random(args.seed).sample(cases, args.n)
+            cases = sorted(picked, key=lambda c: c.id)
+        run_campaign(cases, control, sut, on_result=reporter.record)
+        extra = {"tier0": {"available": total, "ran": len(cases), "seed": args.seed}}
+    elif args.tier == 1:
+        extra = run_generative_campaign(
+            control, sut, reporter,
+            n=args.n if args.n is not None else 100,
             seed=args.seed,
             regressions_dir=BASE / "corpus" / "regressions",
         )
     else:
-        print(f"tier {args.tier} is not implemented yet (tiers 0 and 2 are stubs)", file=sys.stderr)
+        print(f"tier {args.tier} is not implemented yet (tier 2 is a stub)", file=sys.stderr)
         return 2
     summary = reporter.finalize(sut.name, extra=extra)
     _print_summary(summary, out_dir)
@@ -104,24 +138,14 @@ def cmd_replay(args) -> int:
     control = CRubyRunner(timeout=args.timeout)
     sut = make_sut(args.sut, inject_bug=args.inject_bug)
     corpus = Path(args.corpus)
-    files = sorted(corpus.rglob("*.rb"))
-    if not files:
+    cases = load_corpus_cases(corpus)
+    if not cases:
         print(f"no .rb files under {corpus}", file=sys.stderr)
         return 2
 
-    def to_case(path: Path) -> TestCase:
-        meta_path = path.with_suffix(".json")
-        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-        return TestCase(
-            id=str(path.relative_to(corpus)),
-            source=path.read_text(),
-            tier=meta.get("tier", -1),
-            provenance={**meta, "path": str(path)},
-        )
-
     out_dir = _out_dir(args.out, f"replay-{sut.name}")
     reporter = Reporter(out_dir)
-    run_campaign((to_case(f) for f in files), control, sut, on_result=reporter.record)
+    run_campaign(cases, control, sut, on_result=reporter.record)
     summary = reporter.finalize(sut.name)
     _print_summary(summary, out_dir)
     return 1 if summary["verdicts"].get("disagree") else 0
@@ -137,10 +161,17 @@ def main(argv=None) -> int:
         p.add_argument("--timeout", type=float, default=10.0)
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")
 
-    p_run = sub.add_parser("run", help="run a generation-tier campaign")
+    p_run = sub.add_parser("run", help="run a generation-tier or mixed campaign")
     p_run.add_argument("--tier", type=int, default=1, choices=[0, 1, 2, 3])
-    p_run.add_argument("-n", type=int, default=100, help="number of generated cases")
+    p_run.add_argument(
+        "--mix",
+        help='weighted mixed campaign, e.g. "tier1=0.9,tier0=0.05,tier3=0.05" (overrides --tier)',
+    )
+    p_run.add_argument(
+        "-n", type=int, help="number of cases (tier 1/mix default: 100; tier 0 default: all)"
+    )
     p_run.add_argument("--seed", type=int, help="generator seed for reproducibility")
+    p_run.add_argument("--corpus", help="tier0 corpus dir (default: harvested bootstraptest)")
     common(p_run)
     p_run.set_defaults(func=cmd_run)
 

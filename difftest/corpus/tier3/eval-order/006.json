@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "eval-order",
+  "description": "Probes `||=`/`&&=` short-circuit obligations: the RHS must not evaluate when the operation is skipped and must evaluate exactly once otherwise.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnowqCASjHJM6X5z1Bim"
+}

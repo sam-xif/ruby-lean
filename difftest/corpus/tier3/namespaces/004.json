@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "namespaces",
+  "description": "Reading an undefined instance variable yields nil but defined? returns nil, while a local declared in dead code still exists as nil.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnooS1BFXvX6jLyAf5vD"
+}

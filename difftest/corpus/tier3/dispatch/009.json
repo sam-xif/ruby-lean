@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "dispatch",
+  "description": "Probes that a prepended module's method_missing runs first and its `super` chains to the class's own method_missing.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnogUCgs7D5MD6T35nax"
+}
