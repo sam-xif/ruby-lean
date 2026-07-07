@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "eval-order",
+  "description": "Probes left-to-right argument evaluation for method calls and hash literal key-then-value ordering.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnVCUYtw55ZiDEpHezz6"
+}

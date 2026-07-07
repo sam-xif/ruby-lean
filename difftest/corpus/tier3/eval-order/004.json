@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "eval-order",
+  "description": "Probes interpolation left-to-right order and once-only RHS evaluation of `||=` inside an ensure that runs during exception unwinding, plus block-driven ordering.",
+  "model": "claude-opus-4-8",
+  "response_id": "msg_011CcnVCUYtw55ZiDEpHezz6"
+}

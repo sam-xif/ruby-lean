@@ -95,6 +95,17 @@ non-critical decision (C1–C11) — **committed on each change for rollback**.
 | `bin/harvest_bootstraptest` | prong-1 corpus harvester (output gitignored) |
 | `corpus/seeds/`   | self-contained seeds incl. eval-order adversarial cases |
 
+### `difftest/` — the multi-tier differential test engine (Python, runnable)
+Standing engine that generates Ruby programs and compares **CRuby (control)** against an
+arbitrary **SUT** (`Observation | Unsupported` protocol — the future Lean interpreter plugs
+in here; deliberately decoupled from any modeling approach). Built: **tier 1** (Hypothesis
+scope-aware AST fuzzing with automatic shrinking of disagreements → `corpus/regressions/`)
+and **tier 3** (Anthropic-API-generated adversarial programs per semantic category,
+validation-gated into the committed `corpus/tier3/`). Tiers 0 (translated conformance
+suites) and 2 (mutating scraped Ruby) are stub slots. Built-in SUTs: `stub`, `identity`
+(smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is the
+detection self-test). See [`difftest/README.md`](difftest/README.md) to run it.
+
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`
 (Furr et al., DLS'09 — RIL/desugaring reference), `csmith.pdf` (PLDI'11 — differential
@@ -146,9 +157,12 @@ root `README.md`/`.gitignore` are the base repo.
   (the central call: migrate the `def`/`block`/`defs` param slot from a flat `[String]` to a
   structured param-node list; `yield` as a head; the Ruby-3 keyword/positional-hash
   separation trap; eval-order adversarial seeds for lazy defaults; land in two commits).
-- Prong 2: a Superion-style generator that drops `.rb` into `corpus/` (driver already
-  consumes any corpus dir). Design/feasibility written up in
-  [`harness/desugar-dt/prong2-design.md`](harness/desugar-dt/prong2-design.md) — not yet built.
+- Prong 2/3 are now realized as the standing **`difftest/` engine** (Python; tier 1 =
+  Hypothesis scope-aware fuzzing per [`harness/desugar-dt/prong2-design.md`](harness/desugar-dt/prong2-design.md),
+  tier 3 = AI-generated adversarial corpus). Grow it: more tier-1 vocabulary (classes,
+  splats, kwargs), tier-3 corpus across all categories, tiers 0/2, and eventually the Lean
+  interpreter as a SUT. Verified end-to-end: identity SUT 200/200 agree; desugar SUT with
+  `DESUGAR_BUG=1` yields a shrunk minimal disagreement.
 - Begin the Lean model (artifacts 01–02 → `inductive Step` + fuel interpreter) once the
   desugar exit criterion (artifact 06 §7) is met.
 - Draft artifacts 07–10.
