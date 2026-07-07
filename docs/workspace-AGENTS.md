@@ -104,7 +104,9 @@ and **tier 3** (Anthropic-API-generated adversarial programs per semantic catego
 validation-gated into the committed `corpus/tier3/`). Tiers 0 (translated conformance
 suites) and 2 (mutating scraped Ruby) are stub slots. Built-in SUTs: `stub`, `identity`
 (smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is the
-detection self-test). See [`difftest/README.md`](difftest/README.md) to run it.
+detection self-test). See [`difftest/README.md`](difftest/README.md) to run it and
+[`difftest/HANDOFF.md`](difftest/HANDOFF.md) for the fresh-context hand-off (state,
+load-bearing invariants, the planned mixed-tier sampling campaign, enhancement queue).
 
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`

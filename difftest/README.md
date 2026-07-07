@@ -5,6 +5,7 @@ A multi-tier engine that generates Ruby test programs, runs each under **CRuby
 in-Lean semantics — and reports where they differ. Methodology per
 [`../docs/semantics/05-differential-testing.md`](../docs/semantics/05-differential-testing.md);
 tier-1 design realizes [`../harness/desugar-dt/prong2-design.md`](../harness/desugar-dt/prong2-design.md).
+Picking this up fresh? Read [`HANDOFF.md`](HANDOFF.md).
 
 ## Setup
 
