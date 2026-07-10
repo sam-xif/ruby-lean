@@ -22,6 +22,7 @@ uv sync                 # Python 3.12+, hypothesis, anthropic
 uv run python -m difftest run --tier 1 -n 200 --sut identity --seed 42
 uv run python -m difftest run --tier 1 -n 300 --sut desugar --inject-bug   # detection self-test
 uv run python -m difftest run --tier 0 --sut desugar                       # bootstraptest corpus (all; -n samples)
+uv run python -m difftest run --tier 1.5 -n 300 --sut desugar               # eval-order probes (recv/arg sequencing)
 uv run python -m difftest run --mix tier1=0.9,tier0=0.05,tier3=0.05 -n 200 --sut desugar
 uv run python -m difftest gen3 --category eval-order -n 5                  # costs API tokens
 uv run python -m difftest replay corpus/tier3 --sut identity

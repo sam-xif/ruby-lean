@@ -70,11 +70,15 @@ def _thresholds(mix: dict[str, float]) -> list[tuple[str, int]]:
 
 
 @st.composite
-def _mixed_draws(draw, mix: dict[str, float], corpus_cases: dict[str, list[TestCase]]):
+def _mixed_draws(draw, mix: dict[str, float], corpus_cases: dict[str, list[TestCase]],
+                 eval_order: bool = False):
     """Draw (arm, payload): payload is a tier-1 AST for the "tier1" arm and a
-    corpus TestCase for corpus arms."""
+    corpus TestCase for corpus arms. `eval_order` selects the tier-"1.5" variant of
+    the tier-1 generator (probe-wrapped operands); it applies only to pure tier-1
+    campaigns, not to mix arms."""
     if list(mix) == ["tier1"]:
-        return "tier1", draw(programs())  # pure tier 1: no arm-choice draw to shrink over
+        # pure tier 1: no arm-choice draw to shrink over
+        return "tier1", draw(programs(eval_order=eval_order))
     r = draw(st.integers(0, WEIGHT_RESOLUTION - 1))
     for name, threshold in _thresholds(mix):
         if r < threshold:
@@ -99,6 +103,7 @@ def run_generative_campaign(
     mix: dict[str, float] | None = None,
     corpus_cases: dict[str, list[TestCase]] | None = None,
     regressions_dir: Path | None = None,
+    eval_order: bool = False,
 ) -> dict:
     mix = mix or {"tier1": 1.0}
     corpus_cases = corpus_cases or {}
@@ -124,7 +129,7 @@ def run_generative_campaign(
                 source=render_program(payload),
                 tier=1,
                 provenance={"generator": "hypothesis", "arm": arm, "seed": seed,
-                            "phase": phase},
+                            "phase": phase, "eval_order": eval_order},
             )
         else:
             case = dataclasses.replace(
@@ -139,7 +144,7 @@ def run_generative_campaign(
             found_disagreement = True
             raise _Disagreement(result)
 
-    wrapped = given(_mixed_draws(mix, corpus_cases))(prop)
+    wrapped = given(_mixed_draws(mix, corpus_cases, eval_order))(prop)
     wrapped = hyp_settings(
         max_examples=n,
         deadline=None,
@@ -166,7 +171,7 @@ def run_generative_campaign(
             raise
 
     extra: dict = {"campaign": {"mix": mix, "requested_examples": n, "seed": seed,
-                                "arm_counts": arm_counts,
+                                "arm_counts": arm_counts, "eval_order": eval_order,
                                 "stopped_early_on_disagreement": minimal is not None}}
     if minimal is not None:
         minimal.minimized = True

@@ -88,7 +88,7 @@ def cmd_run(args) -> int:
             corpus_cases=corpus_cases,
             regressions_dir=BASE / "corpus" / "regressions",
         )
-    elif args.tier == 0:
+    elif args.tier == "0":
         cases = load_bootstraptest(Path(args.corpus) if args.corpus else None)
         total = len(cases)
         if args.n is not None and args.n < total:
@@ -96,12 +96,13 @@ def cmd_run(args) -> int:
             cases = sorted(picked, key=lambda c: c.id)
         run_campaign(cases, control, sut, on_result=reporter.record)
         extra = {"tier0": {"available": total, "ran": len(cases), "seed": args.seed}}
-    elif args.tier == 1:
+    elif args.tier in ("1", "1.5"):
         extra = run_generative_campaign(
             control, sut, reporter,
             n=args.n if args.n is not None else 100,
             seed=args.seed,
             regressions_dir=BASE / "corpus" / "regressions",
+            eval_order=(args.tier == "1.5"),
         )
     else:
         print(f"tier {args.tier} is not implemented yet (tier 2 is a stub)", file=sys.stderr)
@@ -162,7 +163,9 @@ def main(argv=None) -> int:
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")
 
     p_run = sub.add_parser("run", help="run a generation-tier or mixed campaign")
-    p_run.add_argument("--tier", type=int, default=1, choices=[0, 1, 2, 3])
+    # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
+    # flag; a distinct tier id keeps selection uniform).
+    p_run.add_argument("--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3"])
     p_run.add_argument(
         "--mix",
         help='weighted mixed campaign, e.g. "tier1=0.9,tier0=0.05,tier3=0.05" (overrides --tier)',

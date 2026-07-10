@@ -90,3 +90,31 @@ filesystem state leak between the determinism double-run and across cases.
 `tempfile.TemporaryDirectory`. The desugar SUT's *desugar* subprocess still
 inherits the engine cwd (it only parses/rewrites, never runs the program);
 the rendered program itself goes through `CRubyRunner.run` and is isolated.
+
+## N11 — Tier "1.5": tier-1 generator + eval-order probes (a tier id, not a flag)
+
+Eval-order conformance is exposed as a distinct **tier id** (`--tier 1.5`) rather
+than a per-tier flag, so tier selection stays uniform (`--tier` is now a string:
+`0`/`1`/`1.5`/`2`/`3`). Tier 1.5 is exactly the tier-1 scope-aware generator with
+one addition: in eval-order mode, every **leaf operand** (literal / local read)
+produced by `_expr` is wrapped in a probe call `__t(label, leaf)`, where the
+prelude `def __t(l, v); puts(l); v; end` prints the label and returns the leaf.
+The label is a per-program counter baked into the source both control and SUT run,
+so the stdout trace records the exact left-to-right evaluation order of
+subexpressions — a reordering (or double-evaluation) between control and SUT shows
+up as a trace difference, and can never be a false positive (identical source →
+identical labels). State is a module global in `strategies.py` reset at the top of
+each `programs()` draw (Hypothesis runs examples sequentially; no nested/parallel
+`programs()`), which avoids threading a counter through every composite.
+
+Applies to **pure tier-1 campaigns only**, not mix arms. Validated: `--tier 1.5
+--sut identity` and `--sut desugar` are all-agree (desugar preserves order);
+`--tier 1.5 --sut desugar --inject-bug` reliably finds and shrinks a disagreement
+(the naive `&&`/`||` double-evaluation prints a probe label twice) — i.e. the probe
+has teeth. **Known gap (follow-up):** the tier-1 grammar has no writer-calls
+(`a[i] = v`, `a.attr = v`) or side-effecting receiver/index — `Assign`/`OpAssign`
+are locals-only and `Index` reads a literal array at a literal index. So tier 1.5
+currently exercises operand order for calls/binops/logical/array/hash/interp, but
+not the recv→index→rhs ordering of assignment-calls (covered for now only by
+hand-written seed 27 and tier-3 eval-order/010). Adding writer-call AST nodes is
+the high-value next increment.
