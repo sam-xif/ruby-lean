@@ -29,6 +29,7 @@ module RubyCore
     array: "[:array, [elems]]",
     hash:  "[:hash, [[key, val], ...]]",
     splat: "[:splat, expr_or_nil]",     # only valid as a send-arg / array element (`*e`)
+    blockpass: "[:blockpass, expr_or_nil]",  # only valid in a send/super block slot (`&e`); nil = anonymous `&`
     return: "[:return, expr_or_nil]",   # primitive non-local control
     break:  "[:break, expr_or_nil]",
     next:   "[:next, expr_or_nil]",
@@ -169,6 +170,8 @@ module RubyCore
     when :zsuper
       node[1] && !is_core?(node[1]) ? explain(node[1]) : nil
     when :splat
+      node[1].nil? ? nil : explain(node[1])
+    when :blockpass
       node[1].nil? ? nil : explain(node[1])
     when :seq
       body = node[1..]

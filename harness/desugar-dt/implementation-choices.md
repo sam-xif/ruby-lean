@@ -520,3 +520,36 @@ fire `:block-capture`). Anonymous `&` (`p.block.name == nil`) → `"&"`.
 This is **commit 1** of L1b; the call-site block-pass `foo(&expr)`
 (`[:blockpass, expr]` marker) is commit 2. Ratchet: **792 → 826** in-fragment
 bootstraptest, 0 disagree / 0 harness-error; seed `corpus/seeds/28_block_capture.rb`.
+
+## C24 — Call-site block-pass `foo(&expr)` as a `[:blockpass, expr]` slot marker (L1b, commit 2)
+
+**Decision.** Admit block-pass arguments `foo(&e)` / `super(&e)` (and `&:sym`,
+`&nil`, anonymous `&`) with a new head `[:blockpass, expr_or_nil]` that occupies
+the **existing send/super block slot** — the same slot a literal `[:block,…]`
+uses. The two are mutually exclusive in Ruby (both parse into Prism's `.block`),
+so no new field is needed; `nil` expr = anonymous `&` (forward the enclosing `&`).
+
+**Representation & consumers.**
+- `desugar.rb`: one `call_block` helper dispatches `.block` on type
+  (`:block_node` → `block_node`; `:block_argument_node` → `[:blockpass, …]`),
+  routed from `send`/`super`/`zsuper`. Fires `:blockpass`.
+- `rubycore.rb`: `blockpass` head; `explain` mirrors `:splat` (structurally valid
+  anywhere, but only *produced* in a block slot). Slot checks unchanged (they
+  already recurse via `is_core?`).
+- `render.rb`: a block-pass is an **argument** — rendered `&(e)` (or bare `&`)
+  *inside* the call parens as the last arg, NOT a trailing brace block. `send_str`
+  and the super/zsuper renders branch on `blk[0]`.
+- `linearize.rb`: the block-pass `e` is an **operand evaluated last**, so it joins
+  the `hoist` operand list (after args) — `foo(&(return))` aborts the call
+  correctly. `blk_of` is now slot-type-aware; a literal block's body stays a
+  deferred (non-operand) position. `blk_operand` splices the linearized expr into
+  the hoist sequence.
+
+**Interface.** New head on the Lean JSON interface → `Export::VERSION` 2→3.
+`--sut lean` stays red until the model decodes it (block-capture strings need no
+encoding change; `blockpass` is a new node).
+
+Ratchet: **826 → 852** in-fragment bootstraptest, 0 disagree / 0 harness-error /
+0 AST-idempotence failures. Seed `corpus/seeds/29_block_pass.rb` covers `&Proc`,
+`&:sym` (`to_proc`), `&nil`, forwarding `def f(&b); g(&b); end`, and the
+eval-order obligation (args before the `&`-operand's evaluation/coercion).

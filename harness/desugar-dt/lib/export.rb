@@ -13,10 +13,13 @@ require "json"
 # is harmless.
 module Export
   # v2 (2026-07-10): `block` gained a block-locals slot
-  # (`[:block, params, locals, body]`) and a `yield` head was added. The Lean
+  # (`[:block, params, locals, body]`) and a `yield` head was added.
+  # v3 (2026-07-10): block passing (L1b) — block-capture params ride in the flat
+  # param list as "&blk"/"&" strings (no encoding change), and the new `blockpass`
+  # head (`[:blockpass, expr_or_nil]`) may occupy a send/super block slot. The Lean
   # decoder (`ruby/lean/RubyCore/Syntax.lean`) must be updated to match before
-  # `--sut lean` works again (L1 blocks, model side).
-  VERSION = 2
+  # `--sut lean` works again (L1 blocks + L1b block passing, model side).
+  VERSION = 3
 
   module_function
 

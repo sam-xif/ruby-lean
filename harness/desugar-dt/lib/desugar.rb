@@ -18,7 +18,7 @@ class Desugar
     splat if while return break next and->if or->if unless->if until->while
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
-    yield lambda->send block-capture
+    yield lambda->send block-capture blockpass
   ].freeze
 
   attr_reader :coverage
@@ -162,7 +162,7 @@ class Desugar
     fire(:send)
     recv  = n.receiver ? node(n.receiver) : nil
     args  = n.arguments ? n.arguments.arguments.map { |a| arg_node(a) } : []
-    block = n.block ? block_node(n.block) : nil
+    block = call_block(n.block)
     [:send, recv, n.name.to_s, args, block]
   end
 
@@ -187,6 +187,21 @@ class Desugar
       [:splat, a.expression ? node(a.expression) : nil]
     else
       node(a)
+    end
+  end
+
+  # A send/super block slot: either a literal block `{…}`/`do…end` (:block_node) or a
+  # block-pass argument `&expr` (:block_argument_node). The two are mutually exclusive in
+  # Ruby (both parse into `.block`). A block-pass becomes [:blockpass, expr_or_nil]; the
+  # expression is nil for an anonymous `&` (forwarding the enclosing method's `&`).
+  def call_block(b)
+    return nil if b.nil?
+    case b.type
+    when :block_node then block_node(b)
+    when :block_argument_node
+      fire(:blockpass)
+      [:blockpass, b.expression ? node(b.expression) : nil]
+    else raise Unsupported, "call block type :#{b.type}"
     end
   end
 
@@ -351,13 +366,13 @@ class Desugar
   def desugar_super(n)
     fire(:super)
     args = n.arguments ? n.arguments.arguments.map { |a| arg_node(a) } : []
-    block = n.block ? block_node(n.block) : nil
+    block = call_block(n.block)
     [:super, args, block]
   end
 
   def desugar_zsuper(n)
     fire(:zsuper)
-    [:zsuper, n.block ? block_node(n.block) : nil]
+    [:zsuper, call_block(n.block)]
   end
 
   # while/until. The `begin … end while C` / `… until C` *modifier* form (Prism's

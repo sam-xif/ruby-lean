@@ -29,10 +29,23 @@ module Linearize
   end
 
   # Rewrite so no unconditional jump sits in operand position. Identity on jump-free trees.
-  # Reconstruct a block `[:block, params, locals, body]` with its body linearized
-  # (params/locals are binding positions, not operands — nothing to hoist there).
+  # Reconstruct a send/super block slot with its operands linearized. A literal block's
+  # body is a *deferred* position (called later, not an operand), so we only recurse into it;
+  # params/locals are binding positions. A block-pass `&e` holds an *operand* (evaluated at
+  # the call, last) — we linearize `e` here, and the caller also feeds it to `hoist` so an
+  # unconditional jump inside `&e` aborts the call correctly.
   def blk_of(b)
-    b ? [:block, b[1], b[2], run(b[3])] : nil
+    return nil if b.nil?
+    case b[0]
+    when :block     then [:block, b[1], b[2], run(b[3])]
+    when :blockpass then [:blockpass, b[1] && run(b[1])]
+    end
+  end
+
+  # The linearized block-pass operand (if any), as a 1-element list to splice into `hoist`'s
+  # operand sequence in eval-order position (after all args). Empty for a literal block / nil.
+  def blk_operand(blk)
+    blk && blk[0] == :blockpass && blk[1] ? [blk[1]] : []
   end
 
   def run(node)
@@ -49,7 +62,8 @@ module Linearize
     when :send
       recv = node[1] ? run(node[1]) : nil
       args = node[3].map { |a| run(a) }
-      hoist((recv ? [recv] : []) + args) || [:send, recv, node[2], args, blk_of(node[4])]
+      blk  = blk_of(node[4])
+      hoist((recv ? [recv] : []) + args + blk_operand(blk)) || [:send, recv, node[2], args, blk]
     when :yield
       args = node[1].map { |a| run(a) }
       hoist(args) || [:yield, args]
@@ -83,7 +97,8 @@ module Linearize
       [:begin, run(body), rs, els && run(els), ens && run(ens)]
     when :super
       args = node[1].map { |a| run(a) }
-      hoist(args) || [:super, args, blk_of(node[2])]
+      blk  = blk_of(node[2])
+      hoist(args + blk_operand(blk)) || [:super, args, blk]
     when :zsuper then [:zsuper, blk_of(node[1])]
     else node
     end

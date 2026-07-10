@@ -64,9 +64,16 @@ module Render
     when :begin  then begin_str(node)
     when :super
       _, args, blk = node
-      base = "super(#{args.map { |a| core(a) }.join(', ')})"
-      blk ? "#{base} #{block_str(blk)}" : base
-    when :zsuper then node[1] ? "super #{block_str(node[1])}" : "super"
+      argstrs = args.map { |a| core(a) }
+      argstrs << blockpass_str(blk) if blk && blk[0] == :blockpass
+      base = "super(#{argstrs.join(', ')})"
+      blk && blk[0] == :block ? "#{base} #{block_str(blk)}" : base
+    when :zsuper
+      blk = node[1]
+      if blk.nil? then "super"
+      elsif blk[0] == :blockpass then "super(#{blockpass_str(blk)})"
+      else "super #{block_str(blk)}"
+      end
     when :seq
       "(" + node[1..].map { |n| core(n) }.join("; ") + ")"
     else
@@ -92,15 +99,23 @@ module Render
 
   def send_str(node)
     _, recv, mname, args, blk = node
-    argstr = args.map { |a| core(a) }.join(", ")
+    # A block-pass `&e` is an argument (rendered inside the parens, last); a literal block
+    # `{…}` is a trailing brace block. The two are mutually exclusive (rubycore C23/blockpass).
+    argstrs = args.map { |a| core(a) }
+    argstrs << blockpass_str(blk) if blk && blk[0] == :blockpass
     base =
       if recv
-        "(#{core(recv)}).#{mname}(#{argstr})"
+        "(#{core(recv)}).#{mname}(#{argstrs.join(', ')})"
       else
         # nil receiver = implicit-self call; the () keeps it a method call, not a local
-        "#{mname}(#{argstr})"
+        "#{mname}(#{argstrs.join(', ')})"
       end
-    blk ? "#{base} #{block_str(blk)}" : base
+    blk && blk[0] == :block ? "#{base} #{block_str(blk)}" : base
+  end
+
+  # `&(e)` block-pass argument, or bare `&` for an anonymous forward.
+  def blockpass_str(blk)
+    blk[1] ? "&(#{core(blk[1])})" : "&"
   end
 
   def block_str(node)
