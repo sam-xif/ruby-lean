@@ -156,7 +156,7 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--sut", default="stub", choices=["stub", "identity", "desugar"])
+        p.add_argument("--sut", default="stub", choices=["stub", "identity", "desugar", "lean"])
         p.add_argument("--inject-bug", action="store_true", help="desugar SUT: enable DESUGAR_BUG")
         p.add_argument("--timeout", type=float, default=10.0)
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")

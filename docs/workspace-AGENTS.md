@@ -44,8 +44,20 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   (baseline 752). Deferred: single-RHS massign (to_ary), `const`/`@@x` `||=` (need
   `defined?`), indexed/attr **op**-assign, double-splat `**`/kwargs, block-pass `&blk`,
   `...` forwarding, constant paths `A::B`, do-while, `super` arg-forwarding subtleties.
-- **Not started:** the Lean model itself; prong-2 fuzzing; prong-3 agent generation at
-  scale; artifacts 07–10 (param binding, core library, metaprogramming, Rails slice).
+- **Lean model: L0 implemented and difftesting** ([`lean/`](lean/README.md), per the
+  sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
+  small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
+  repr/error-message layer, oracle-generated CRuby name tables for dispatch fidelity
+  (unmodeled builtins gate as `Unsupported` instead of mis-dispatching), and the SUT
+  executable wired into the difftest engine as `--sut lean` (source → desugar →
+  RubyCore JSON → Lean → Observation). **Baseline (2026-07-07): full bootstraptest
+  295/1304 agree, 0 disagree** (rest gated Unsupported: 544 upstream desugar, then
+  class defs L2 / blocks L1 / unmodeled methods+constants); tier-1 fuzzing already
+  caught and fixed one real bug (coercion-error messages use inspect for special
+  constants, class name otherwise). The `inductive Step` relation (definition of
+  record) is not yet authored — interpreter came first to meet the engine on day one.
+- **Not started:** the `Step` relation + adequacy theorems; artifacts 07–10 (param
+  binding, core library, metaprogramming, Rails slice).
 
 ## Directory index
 
@@ -113,6 +125,18 @@ load-bearing invariants, enhancement queue), and
 [`difftest/implementation-notes.md`](difftest/implementation-notes.md) for non-critical
 implementation choices (N1–N8, committed for rollback).
 
+### `lean/` — the Lean 4 model (runnable SUT)
+The mechanization of artifacts 00–04 begun from the sketch. See
+[`lean/README.md`](lean/README.md) for layout, build (`lake build`, toolchain pinned),
+the L0 fragment inventory, and the two fidelity policies (three-way lookup-miss split;
+`reprPure` gating); [`lean/HANDOFF.md`](lean/HANDOFF.md) for the fresh-context hand-off
+(state, coverage assessment — 22/29 heads, 295/760 in-desugar-fragment bootstraptest
+cases, 0 disagree — and the ordered next steps: desugar M2 → L1 blocks → L2 classes →
+`inductive Step`); [`lean/implementation-notes.md`](lean/implementation-notes.md) for
+revertable decisions (L1–L12). `RubyCore/CRubyNames.lean` is **generated** by
+`lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
+is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
+
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`
 (Furr et al., DLS'09 — RIL/desugaring reference), `csmith.pdf` (PLDI'11 — differential
@@ -170,6 +194,11 @@ root `README.md`/`.gitignore` are the base repo.
   splats, kwargs), tier-3 corpus across all categories, tiers 0/2, and eventually the Lean
   interpreter as a SUT. Verified end-to-end: identity SUT 200/200 agree; desugar SUT with
   `DESUGAR_BUG=1` yields a shrunk minimal disagreement.
-- Begin the Lean model (artifacts 01–02 → `inductive Step` + fuel interpreter) once the
-  desugar exit criterion (artifact 06 §7) is met.
+- **Lean model (begun; `lean/`):** grow the L0 fragment along the difftest
+  `Unsupported`-reason histogram (same ratchet discipline as the desugar: 0 disagree,
+  agreement only goes up — baseline 295). Ordered plan in
+  [`lean/HANDOFF.md`](lean/HANDOFF.md): desugar M2 (biggest lever, 544 cases gate
+  upstream) → L1 blocks/`yield` → L2 class forms → `inductive Step` + adequacy
+  theorems (PROJECT_PLAN §7); opportunistic: float shortest-roundtrip formatting,
+  histogram-driven builtins, the sketch §5 export cross-check.
 - Draft artifacts 07–10.

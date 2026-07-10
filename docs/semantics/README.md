@@ -16,6 +16,18 @@ not yet Lean code.
 | 05 | [Differential-testing methodology](05-differential-testing.md) | oracle harness, `obs` normalization, test sources, generation, metamorphic testing, disagreement triage, rule-coverage metric |
 | 06 | [`desugar` and testing it first](06-desugaring-and-its-testing.md) | round-trip oracle (no RubyCore semantics needed), evaluation-order trace, three-pronged corpus (bootstraptest + fuzzing + AI agent), desugaring-rule coverage, exit criterion |
 
+**Mechanization:** [Lean model sketch](lean-model-sketch.md) — the bridge from artifacts
+00–06 to Lean 4, written from a close read of the two anchor papers: what we adopt from
+Essence-of-Ruby (generative jump targets → `FrameId`s; the variable store → a frame
+store unifying shared mutable locals *and* jump generativity; oracle-composition as a
+module boundary) and from RIL (pipeline split, eval-order obligations as step-relation
+seeds), what we reject (big-step, meta-level exceptions, maximal linearization), the
+`Config`/`Step`/fuel-interpreter skeleton, and the L0–L3 fragment ladder that plugs into
+the difftest engine as a SUT from day one. **Implementation begun:** the machine, fuel
+interpreter, and SUT executable live in [`../../lean/`](../../lean/README.md) (L0
+fragment, running as `--sut lean` in the difftest engine); the `inductive Step` relation
+is still to be authored against it.
+
 **Process:** [Procedure for authoring artifacts](PROCEDURE-authoring-semantics.md) — the
 repeatable agent playbook for producing/extending these docs against a Ruby oracle.
 

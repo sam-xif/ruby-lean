@@ -1,0 +1,26 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Desugar Ruby source (stdin or file arg) and print the RubyCore AST as JSON.
+# This is the harness↔Lean interface (lean-model-sketch.md §2.1).
+#
+#   bin/export-json < prog.rb
+#   bin/export-json prog.rb
+#
+# Exit codes: 0 = ok (JSON on stdout); 3 = out of desugar fragment (reason on
+# stderr) — the difftest SUT contract's clean Unsupported gate.
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require "desugar"
+require "export"
+
+src = ARGV.empty? ? $stdin.read : File.read(ARGV[0])
+
+begin
+  core, = Desugar.program(src)
+rescue Desugar::Unsupported => e
+  warn e.message
+  exit 3
+end
+
+puts Export.json(core)

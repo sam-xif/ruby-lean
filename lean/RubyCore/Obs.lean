@@ -1,0 +1,54 @@
+/-
+The observation function (artifact 00 §2 / difftest observation.py):
+obs = (stdout, result_repr = inspect(final value), exception = (class, msg)),
+heap projection deferred exactly as the engine's v1 does.
+-/
+import RubyCore.Interp
+import Lean.Data.Json
+
+namespace RubyCore
+
+open Lean (Json)
+
+inductive ObsResult where
+  /-- A comparable observation (JSON matching Observation.to_json). -/
+  | obs (j : Json)
+  /-- Out of the modeled fragment, with a reason (SUT exit 3). -/
+  | unsupported (reason : String)
+  /-- The model itself is broken (stuck state) — a harness error, never
+      silently mapped to Unsupported-by-design. Still exits 3 but the
+      reason is prefixed so triage can spot it. -/
+  | stuck (msg : String)
+
+def obsJson (stdout : String) (result : Option String)
+    (exc : Option (String × String)) : Json :=
+  Json.mkObj [
+    ("stdout", Json.str stdout),
+    ("result_repr", match result with
+      | some r => Json.str r
+      | none => Json.null),
+    ("exception", match exc with
+      | some (c, msg) => Json.arr #[Json.str c, Json.str msg]
+      | none => Json.null),
+    ("timed_out", Json.bool false)
+  ]
+
+def observe (r : Interp.RunResult) : ObsResult :=
+  match r with
+  | .value v m =>
+    match Builtins.inspectP m v with
+    | .ok repr => .obs (obsJson m.out (some repr) none)
+    | .error e => .unsupported s!"final-value inspect: {e}"
+  | .uncaught exc m =>
+    let cls := className m.heap (classOf m.heap exc)
+    let msg := match exc with
+      | .ref o => match (m.heap.get o).payload with
+        | .exc s => s
+        | _ => ""
+      | _ => ""
+    .obs (obsJson m.out none (some (cls, msg)))
+  | .unsupported reason _ => .unsupported reason
+  | .outOfFuel _ => .unsupported "out of fuel"
+  | .stuck msg _ => .stuck msg
+
+end RubyCore

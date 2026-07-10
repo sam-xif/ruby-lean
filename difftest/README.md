@@ -93,11 +93,16 @@ class SystemUnderTest(Protocol):
 `Unsupported(reason)` is the fragment gate — a SUT that models a subset
 declares out-of-fragment programs instead of failing on them. Built-in SUTs:
 
-- `stub` — supports nothing; placeholder until the Lean interpreter exists.
+- `stub` — supports nothing; the original placeholder.
 - `identity` — CRuby again; pipeline smoke test (must be 100% AGREE).
 - `desugar` — adapter over `../harness/desugar-dt/` (desugar → render → CRuby);
   with `--inject-bug` its known-buggy `&&`/`||` desugar produces real
   disagreements, which is the engine's end-to-end detection self-test.
+- `lean` — **the Lean model** (`../lean/`): desugar → RubyCore JSON →
+  `rubycore` binary (build it first: `cd ../lean && lake build`). Composes
+  two fragment gates (desugar's and the model's L0); binary exit 3 =
+  Unsupported, exit 1 = model bug (surfaced as `MODEL-BUG:` reasons, never
+  silently).
 
 ## Deferred (deliberately)
 

@@ -117,6 +117,80 @@ class DesugarRoundtripSUT:
         return self.runner.run(proc.stdout)
 
 
+# Ruby snippet: desugar stdin and print the RubyCore AST as JSON (the
+# harness↔Lean interface, lib/export.rb). Exit 3 = out of desugar fragment.
+_EXPORT_SNIPPET = """\
+$LOAD_PATH.unshift(ARGV[0])
+require "desugar"
+require "export"
+src = $stdin.read
+begin
+  core, = Desugar.program(src)
+rescue Desugar::Unsupported => e
+  $stderr.puts(e.message)
+  exit 3
+end
+print Export.json(core)
+"""
+
+
+class LeanSUT:
+    """The Lean model: desugar -> RubyCore JSON -> `rubycore` executable.
+
+    Two fragment gates compose: the desugar's (exit 3 from the export
+    snippet) and the Lean model's own L0 gate (exit 3 from the binary).
+    Exit 1 from the binary is a harness/model bug and is surfaced loudly as
+    Unsupported with a MODEL-BUG prefix so it is never mistaken for a
+    by-design gap.
+    """
+
+    name = "lean"
+
+    def __init__(
+        self,
+        harness_lib: Path | None = None,
+        lean_bin: Path | None = None,
+        runner: CRubyRunner | None = None,
+    ):
+        root = Path(__file__).resolve().parents[2]
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.runner = runner or CRubyRunner()
+
+    def run(self, source: str) -> Observation | Unsupported:
+        proc = subprocess.run(
+            [self.runner.ruby, "-e", _EXPORT_SNIPPET, str(self.harness_lib)],
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=self.runner.timeout,
+        )
+        if proc.returncode == 3:
+            return Unsupported(f"out of desugar fragment: {proc.stderr.strip()}")
+        if proc.returncode != 0:
+            return Unsupported(f"desugar failed: {proc.stderr.strip()[:300]}")
+        try:
+            lean = subprocess.run(
+                [str(self.lean_bin)],
+                input=proc.stdout,
+                capture_output=True,
+                text=True,
+                timeout=self.runner.timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return Observation(stdout="", result_repr=None, exception=None, timed_out=True)
+        if lean.returncode == 3:
+            return Unsupported(f"out of Lean fragment: {lean.stderr.strip()[:300]}")
+        if lean.returncode != 0:
+            return Unsupported(f"MODEL-BUG: rubycore exit {lean.returncode}: {lean.stderr.strip()[:300]}")
+        import json as _json
+
+        try:
+            return Observation.from_json(_json.loads(lean.stdout))
+        except (ValueError, KeyError) as e:
+            return Unsupported(f"MODEL-BUG: unparseable observation: {e}")
+
+
 def make_sut(kind: str, inject_bug: bool = False) -> SystemUnderTest:
     if kind == "stub":
         return StubSUT()
@@ -124,4 +198,6 @@ def make_sut(kind: str, inject_bug: bool = False) -> SystemUnderTest:
         return IdentityCRubySUT()
     if kind == "desugar":
         return DesugarRoundtripSUT(inject_bug=inject_bug)
+    if kind == "lean":
+        return LeanSUT()
     raise ValueError(f"unknown SUT kind: {kind}")

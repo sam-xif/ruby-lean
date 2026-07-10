@@ -1,0 +1,10 @@
+name = "rubycore"
+version = "0.1.0"
+defaultTargets = ["rubycore"]
+
+[[lean_lib]]
+name = "RubyCore"
+
+[[lean_exe]]
+name = "rubycore"
+root = "Main"
