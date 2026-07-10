@@ -1,0 +1,6 @@
+{
+  "tier": 3,
+  "category": "eval-order",
+  "description": "Plain writer-calls `recv[idx] = rhs` and `recv.attr = rhs` with a side-effecting receiver, index, and RHS: evaluation must be receiver-then-index-then-RHS (RHS last), each exactly once, and the expression value is the RHS, not the setter's return. Complements 000 (which covers `[]+=`) and desugar seed 23 (which uses a plain-local receiver).",
+  "source": "hand-authored"
+}
