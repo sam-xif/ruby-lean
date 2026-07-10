@@ -441,3 +441,57 @@ with a defect. The reorder is strictly safe: a real desugar bug perturbs stdout/
 produces an asymmetric failure, which still surfaces as disagreement/harness-error. This is a
 narrow, documented harness limitation in the spirit of C6 (hash-seed) — the C7 in-process
 wrapper cannot observe programs that monkeypatch its own dependencies.
+
+## C21 — L1 block/proc front-end: `yield` head, block-locals slot, `->`→`lambda` send
+
+**Decision.** Bring blocks fully into the desugared fragment (model side is L1, separate):
+1. Add a **`yield`** head `[:yield, [args]]` (Prism `yield_node`); args reuse `arg_node`
+   (splat-capable) and linearize like call args (hoist a jump out of operand position).
+2. Extend **`block`** from `[:block, params, body]` to `[:block, params, locals, body]`,
+   un-gating block-local variables (`{ |x; t| … }`, Prism `parameters.locals`). Renders as
+   `{ |params; locals| body }`. This is the lexical block-local set the L1 model needs to
+   resolve free variables up the captured-frame chain (artifact 03 §2).
+3. Desugar **`->(params){body}`** (Prism `lambda_node`) to `[:send, nil, "lambda", [],
+   [:block, params, locals, body]]` — behavior-identical to `lambda { … }`, so **no new
+   head**, and lambda-ness stays a property the callee confers on the block (artifact 04
+   §1). `proc`/`Proc.new`/`lambda` need no desugar change — already ordinary sends-with-block.
+
+Consumers updated in lockstep: `rubycore.rb` (HEADS + `is_core?`), `desugar.rb`
+(`block_params` helper, `desugar_yield`, `desugar_lambda`, RULES `yield`/`lambda->send`),
+`render.rb`, and — the one easy-to-miss consumer — **`linearize.rb`**, which reconstructs
+`:block` in four places (send/standalone/super/zsuper) and needed a `:yield` case; folded
+into a `blk_of` helper. Round-trip: **818 agree / 0 disagree**, in-fragment ratchet
+**752 → 792**, rule coverage 48/48 (seeds 24–26).
+
+**Why / caveat.** The `block` shape change is not backward compatible, so `Export::VERSION`
+is bumped **1 → 2**. The Lean SUT decoder (`ruby/lean/RubyCore/Syntax.lean`) still expects
+v1 and will reject v2 with an "unsupported version" error until the L1 model lands — i.e.
+`--sut lean` is intentionally red between this desugar milestone and the model milestone.
+The round-trip harness (`bin/run`/`bin/coverage`) does not use the export and is fully green.
+
+## C22 — Two idempotence checks: AST-space (critical) vs render round-trip (benign)
+
+**Decision.** Split the single normal-form check (C9) into two, so a rendering
+artifact can be told apart from a real desugaring bug:
+- **`normal_form`** (C9, unchanged): `desugar(parse(render(core))) == core`. Goes
+  *out* to surface and back, so it also trips on `parse ∘ render ≠ id` artifacts
+  that are not desugar bugs — e.g. a `[:send, _, "name=", _]` writer send whose
+  rendered `.name=(…)` re-parses as an attribute assignment and re-lowers (C21).
+  Reported as `ok*`, still a benign warning, does **not** fail the run.
+- **`ast_idempotent`** (new, critical): `Linearize.run(core) == core`, with **no
+  render/parse in the loop** — pure RubyCore→RubyCore. A failure is a genuine
+  non-idempotence of our own AST transformation. Reported as `AST` and **fails the
+  run** (nonzero exit), alongside disagreements.
+
+**Why.** The Prism→RubyCore step cannot be self-composed (its input is a Prism
+AST, not RubyCore), so the only bridge back into it is `render` — and that bridge
+is exactly what injects the `name=`/ATTRASGN re-lowering. Testing idempotence
+*through* render therefore conflates "our desugaring isn't a fixpoint" (a bug)
+with "surface syntax can't round-trip this core node" (cosmetic, unavoidable —
+there is no call-position spelling of a `name=` setter; the lexer splits it into
+`name` + `=`). The render-free `ast_idempotent` check isolates the former: across
+the corpus it is **0 failures / 818 in-fragment cores**, and every one of the 10
+`normal_form` warnings is `ast_idempotent = true` — proving they are all
+render↔parse artifacts, not desugar defects. As we add RubyCore→RubyCore passes
+beyond `Linearize`, fold them into this check so AST-space idempotence stays a
+hard invariant.

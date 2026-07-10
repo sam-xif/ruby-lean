@@ -21,7 +21,8 @@ module RubyCore
     const: "[:const, name]",
     casgn: "[:casgn, name, expr]",
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
-    block: "[:block, [param_names], body]",
+    block: "[:block, [param_names], [block_locals], body]",  # {|params; locals| body}
+    yield: "[:yield, [args]]",                               # yield to the current block
     if:    "[:if, cond, then, else_or_nil]",
     while: "[:while, cond, body]",
     def:   "[:def, name, [param_names], body]",
@@ -87,9 +88,15 @@ module RubyCore
       args.each { |a| e = explain(a); return "send arg: #{e}" if e }
       blk && !is_core?(blk) ? explain(blk) : nil
     when :block
-      _, params, body = node
+      _, params, locals, body = node
       return "block params not Array of String" unless params.is_a?(Array) && params.all? { |p| p.is_a?(String) }
+      return "block locals not Array of String" unless locals.is_a?(Array) && locals.all? { |p| p.is_a?(String) }
       explain(body)
+    when :yield
+      args = node[1]
+      return "yield args not Array" unless args.is_a?(Array)
+      args.each { |a| x = explain(a); return "yield arg: #{x}" if x }
+      nil
     when :if
       _, c, t, e = node
       [c, t, (e || [:nil])].each { |n| x = explain(n); return "if child: #{x}" if x }

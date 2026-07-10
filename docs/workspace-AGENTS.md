@@ -39,9 +39,12 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   `begin`/`rescue`/`else`/`ensure`, `retry`, `super`/bare-`super` — kept as keyword-rendered
   heads (not desugared to `Class.new`, which would change the lexical cref/self). Admitting
   these also surfaced + fixed three latent bugs (interp uses `String(e)` not `to_s`;
-  assignment-call `a[i]=v` value is the RHS; do-while `begin…end while` gated) → **752/1299
-  bootstraptest agree, 0 disagree, 0 harness-error**. `bin/coverage` tracks a ratchet
-  (baseline 752). Deferred: single-RHS massign (to_ary), `const`/`@@x` `||=` (need
+  assignment-call `a[i]=v` value is the RHS; do-while `begin…end while` gated) → 752/1299.
+  **L1 block front-end done (C21):** `yield` head, `block` extended to `[:block, params,
+  locals, body]` (block-locals un-gated), `->` desugared to a `lambda` send → **792/1299
+  bootstraptest agree, 0 disagree, 0 harness-error** (`Export::VERSION` bumped 1→2, so
+  `--sut lean` is red until the L1 model catches up). `bin/coverage` tracks a ratchet
+  (baseline 792). Deferred: single-RHS massign (to_ary), `const`/`@@x` `||=` (need
   `defined?`), indexed/attr **op**-assign, double-splat `**`/kwargs, block-pass `&blk`,
   `...` forwarding, constant paths `A::B`, do-while, `super` arg-forwarding subtleties.
 - **Lean model: L0 implemented and difftesting** ([`lean/`](lean/README.md), per the
@@ -176,18 +179,18 @@ root `README.md`/`.gitignore` are the base repo.
 
 - Grow the desugar fragment toward full bootstraptest coverage per the data-driven plan
   in [`harness/desugar-dt/fragment-expansion-strategy.md`](harness/desugar-dt/fragment-expansion-strategy.md)
-  (batches M1–M5). **Current: 752/1299 bootstraptest agree, 0 disagree** (M1 + splat + M3
-  object-model core done — see implementation-choices C12–C20; the M3 plan
+  (batches M1–M5). **Current: 792/1299 bootstraptest agree, 0 disagree** (M1 + splat + M3
+  object-model core + L1 block front-end done — see implementation-choices C12–C21; the M3 plan
   [`harness/desugar-dt/M3-classes-plan.md`](harness/desugar-dt/M3-classes-plan.md) is now
-  largely realized). **Next: M2 params + `yield`** — the fresh `bin/coverage --full`
-  next-blocker histogram is unambiguous: `optional_parameter_node` (106),
-  `block_parameter_node` (95), keyword params, and `yield_node` (73) now dominate, since
-  admitting classes exposed the method bodies inside them. Then `case`/`when` (30),
-  constant paths `A::B` (41), `defined?` (38). A detailed fresh-context hand-off plan for M2
-  is in [`harness/desugar-dt/M2-params-yield-plan.md`](harness/desugar-dt/M2-params-yield-plan.md)
+  largely realized). **L1 block front-end (C21) done:** `yield` head, `block` +
+  block-locals, `->`→`lambda` send (`Export::VERSION` 1→2). **Next: M2 params** — the fresh
+  `bin/coverage --full` next-blocker histogram now shows `case_node` (30),
+  `forwarding_arguments_node` (27), keyword params, `regular_expression_node` (21), and
+  `redo_node` (11); optional/keyword params dominate the param work. A detailed fresh-context
+  hand-off plan for M2 is in [`harness/desugar-dt/M2-params-yield-plan.md`](harness/desugar-dt/M2-params-yield-plan.md)
   (the central call: migrate the `def`/`block`/`defs` param slot from a flat `[String]` to a
-  structured param-node list; `yield` as a head; the Ruby-3 keyword/positional-hash
-  separation trap; eval-order adversarial seeds for lazy defaults; land in two commits).
+  structured param-node list — note `yield` is now already landed; the Ruby-3
+  keyword/positional-hash separation trap; eval-order adversarial seeds for lazy defaults).
 - Prong 2/3 are now realized as the standing **`difftest/` engine** (Python; tier 1 =
   Hypothesis scope-aware fuzzing per [`harness/desugar-dt/prong2-design.md`](harness/desugar-dt/prong2-design.md),
   tier 3 = AI-generated adversarial corpus). Grow it: more tier-1 vocabulary (classes,

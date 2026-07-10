@@ -12,11 +12,15 @@ require "json"
 # pass through. Decoding is positional per head, so string-vs-symbol ambiguity
 # is harmless.
 module Export
-  VERSION = 1
+  # v2 (2026-07-10): `block` gained a block-locals slot
+  # (`[:block, params, locals, body]`) and a `yield` head was added. The Lean
+  # decoder (`ruby/lean/RubyCore/Syntax.lean`) must be updated to match before
+  # `--sut lean` works again (L1 blocks, model side).
+  VERSION = 2
 
   module_function
 
-  # Full export document: { "v": 1, "ast": <node> } as a JSON string.
+  # Full export document: { "v": 2, "ast": <node> } as a JSON string.
   def json(core)
     JSON.generate({ "v" => VERSION, "ast" => jsonable(core) })
   end

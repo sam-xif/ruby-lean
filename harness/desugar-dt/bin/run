@@ -31,6 +31,7 @@ buckets = Hash.new(0)
 covered = []
 disagreements = []
 normal_form_fails = []
+ast_fails = []
 
 puts "desugar round-trip  (oracle: #{Observe::ORACLE})#{inject_bug ? '  [DESUGAR_BUG injected]' : ''}"
 puts "=" * 72
@@ -44,13 +45,19 @@ files.each do |file|
 
   mark =
     case r.status
-    when :agree           then r.normal_form == false ? "ok*" : "ok "
+    when :agree
+      if r.ast_idempotent == false then "AST"        # critical: real non-idempotence
+      elsif r.normal_form == false then "ok*"        # benign render↔parse artifact
+      else "ok "
+      end
     when :disagree        then buckets[r.bucket] += 1; disagreements << [name, r]; "XX "
     when :out_of_fragment then "-- "
     when :parse_error     then "?? "
     when :harness_error   then "!! "
     end
-  normal_form_fails << name if r.status == :agree && r.normal_form == false
+  ast_fails << name if r.status == :agree && r.ast_idempotent == false
+  # "render-only" = render round-trip perturbs it but AST-space is a fixpoint
+  normal_form_fails << name if r.status == :agree && r.normal_form == false && r.ast_idempotent != false
 
   line = "[#{mark}] #{name}"
   line += "   (#{r.reason})" if %i[out_of_fragment parse_error harness_error].include?(r.status)
@@ -64,7 +71,8 @@ puts "=" * 72
 puts "agree: #{tally[:agree]}  disagree: #{tally[:disagree]}  " \
      "out-of-fragment: #{tally[:out_of_fragment]}  parse-error: #{tally[:parse_error]}  " \
      "harness-error: #{tally[:harness_error]}"
-puts "  * = agreed but normal-form unstable (#{normal_form_fails.size}): #{normal_form_fails.join(', ')}" unless normal_form_fails.empty?
+puts "  * = agreed but render round-trip unstable — render↔parse artifact, AST-space idempotent, benign (#{normal_form_fails.size}): #{normal_form_fails.join(', ')}" unless normal_form_fails.empty?
+puts "  AST = agreed but AST-space desugar NON-IDEMPOTENT — real bug (#{ast_fails.size}): #{ast_fails.join(', ')}" unless ast_fails.empty?
 
 unless disagreements.empty?
   puts "\nDISAGREEMENTS (triaged, artifact 06 §6):"
@@ -80,5 +88,6 @@ puts "\ndesugaring-rule coverage: #{covered.size}/#{Desugar::RULES.size}"
 puts "  uncovered: #{missing.map { |m| ":#{m}" }.join(', ')}" unless missing.empty?
 
 # Exit non-zero if any real disagreement (harness/parse errors are also failures).
-failed = tally[:disagree] + tally[:harness_error] + tally[:parse_error]
+# AST-space non-idempotence is a real bug (unlike the benign render-only `*`).
+failed = tally[:disagree] + tally[:harness_error] + tally[:parse_error] + ast_fails.size
 exit(failed.zero? ? 0 : 1)

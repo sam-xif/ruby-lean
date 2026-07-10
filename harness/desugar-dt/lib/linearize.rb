@@ -29,6 +29,12 @@ module Linearize
   end
 
   # Rewrite so no unconditional jump sits in operand position. Identity on jump-free trees.
+  # Reconstruct a block `[:block, params, locals, body]` with its body linearized
+  # (params/locals are binding positions, not operands — nothing to hoist there).
+  def blk_of(b)
+    b ? [:block, b[1], b[2], run(b[3])] : nil
+  end
+
   def run(node)
     case node[0]
     when :int, :flt, :str, :sym, :true, :false, :nil, :self, :var, :const
@@ -43,8 +49,10 @@ module Linearize
     when :send
       recv = node[1] ? run(node[1]) : nil
       args = node[3].map { |a| run(a) }
-      blk  = node[4] ? [:block, node[4][1], run(node[4][2])] : nil
-      hoist((recv ? [recv] : []) + args) || [:send, recv, node[2], args, blk]
+      hoist((recv ? [recv] : []) + args) || [:send, recv, node[2], args, blk_of(node[4])]
+    when :yield
+      args = node[1].map { |a| run(a) }
+      hoist(args) || [:yield, args]
     when :array
       elems = node[1].map { |e| run(e) }
       hoist(elems) || [:array, elems]
@@ -61,7 +69,7 @@ module Linearize
       [:while, c, run(node[2])]
     when :def   then [:def, node[1], node[2], run(node[3])]
     when :defs  then [:defs, run(node[1]), node[2], node[3], run(node[4])]
-    when :block then [:block, node[1], run(node[2])]
+    when :block then blk_of(node)
     when :seq   then [:seq, *node[1..].map { |n| run(n) }]
     when :splat then node[1] ? [:splat, run(node[1])] : node
     # Structural heads: bodies are statement positions (no hoisting needed there), but we
@@ -75,9 +83,8 @@ module Linearize
       [:begin, run(body), rs, els && run(els), ens && run(ens)]
     when :super
       args = node[1].map { |a| run(a) }
-      blk  = node[2] ? [:block, node[2][1], run(node[2][2])] : nil
-      hoist(args) || [:super, args, blk]
-    when :zsuper then [:zsuper, node[1] ? [:block, node[1][1], run(node[1][2])] : nil]
+      hoist(args) || [:super, args, blk_of(node[2])]
+    when :zsuper then [:zsuper, blk_of(node[1])]
     else node
     end
   end

@@ -18,6 +18,7 @@ class Desugar
     splat if while return break next and->if or->if unless->if until->while
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
+    yield lambda->send
   ].freeze
 
   attr_reader :coverage
@@ -110,6 +111,8 @@ class Desugar
     when :retry_node              then fire(:retry); [:retry]
     when :super_node              then desugar_super(n)
     when :forwarding_super_node   then desugar_zsuper(n)
+    when :yield_node              then desugar_yield(n)
+    when :lambda_node             then desugar_lambda(n)
     else
       raise Unsupported, "node type :#{n.type}"
     end
@@ -190,14 +193,34 @@ class Desugar
   def block_node(b)
     raise Unsupported, "block type :#{b.type}" unless b.type == :block_node
 
-    params = []
-    if b.parameters
-      raise Unsupported, "block param type :#{b.parameters.type}" unless b.parameters.type == :block_parameters_node
-      raise Unsupported, "block-local variables" unless b.parameters.locals.empty?
-      params = param_names(b.parameters.parameters)
-    end
+    params, locals = block_params(b.parameters)
     fire(:block)
-    [:block, params, stmts(b.body)]
+    [:block, params, locals, stmts(b.body)]
+  end
+
+  # Positional params + block-local names (`|params; locals|`) from a
+  # BlockParametersNode (block or lambda), or [[], []] when absent.
+  def block_params(bp)
+    return [[], []] if bp.nil?
+    raise Unsupported, "block param type :#{bp.type}" unless bp.type == :block_parameters_node
+    [param_names(bp.parameters), bp.locals.map { |l| l.name.to_s }]
+  end
+
+  # `yield args` — invoke the current method frame's block (artifact 04 §2).
+  def desugar_yield(n)
+    args = n.arguments ? n.arguments.arguments.map { |a| arg_node(a) } : []
+    fire(:yield)
+    [:yield, args]
+  end
+
+  # `->(params){body}` is a lambda. It is behavior-identical to `lambda { |params|
+  # body }`, so we desugar to that send-with-block — no new head, and lambda-ness
+  # stays a property the callee (`lambda`) confers on the block (artifact 04 §1).
+  def desugar_lambda(n)
+    params, locals = block_params(n.parameters)
+    fire(:block)
+    fire(:"lambda->send")
+    [:send, nil, "lambda", [], [:block, params, locals, stmts(n.body)]]
   end
 
   # Positional parameter names for a def/block, as strings. Required params are plain

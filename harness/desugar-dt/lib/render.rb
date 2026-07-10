@@ -28,6 +28,7 @@ module Render
     when :casgn then "(#{node[1]} = #{core(node[2])})"
     when :send  then send_str(node)
     when :block then block_str(node)
+    when :yield then "yield(#{node[1].map { |a| core(a) }.join(', ')})"
     when :if
       _, c, t, e = node
       # omit else when absent (nil) so the text re-parses to else=nil, not else=[:nil]
@@ -103,11 +104,13 @@ module Render
   end
 
   def block_str(node)
-    _, params, body = node
-    if params.empty?
+    _, params, locals, body = node
+    if params.empty? && locals.empty?
       "{ #{core(body)} }"
     else
-      "{ |#{params.join(', ')}| #{core(body)} }"
+      bar = params.join(", ")
+      bar += "; #{locals.join(', ')}" unless locals.empty?
+      "{ |#{bar}| #{core(body)} }"
     end
   end
 end
