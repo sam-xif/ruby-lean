@@ -18,7 +18,7 @@ class Desugar
     splat if while return break next and->if or->if unless->if until->while
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
-    yield lambda->send
+    yield lambda->send block-capture
   ].freeze
 
   attr_reader :coverage
@@ -225,21 +225,28 @@ class Desugar
 
   # Positional parameter names for a def/block, as strings. Required params are plain
   # names; a rest param `*a` is stored verbatim as the string "*a" (or "*" if anonymous),
-  # which renders directly. Post-rest required params (`a, *b, c`) are supported. Optional,
-  # keyword, keyword-rest, and block (&) params are deferred.
+  # and a block-capture param `&blk` as "&blk" (or "&" if anonymous) — both sigil-prefixed
+  # strings that render directly (same losslessness trick as `*`, C23). A block param has no
+  # attached expression, so nothing for linearize to hoist. Post-rest required params
+  # (`a, *b, c`) are supported. Optional, keyword, and keyword-rest params are deferred.
   def param_names(p)
     return [] if p.nil?
     raise Unsupported, "optional param" unless p.optionals.empty?
     raise Unsupported, "keyword param" unless p.keywords.empty?
     raise Unsupported, "keyword-rest param" if p.keyword_rest
-    raise Unsupported, "block (&) param" if p.block
 
     names = p.requireds.map { |r| simple_param(r) }
     if p.rest
       raise Unsupported, "rest param :#{p.rest.type}" unless p.rest.type == :rest_parameter_node
       names << "*#{p.rest.name}"     # p.rest.name may be nil (anonymous `*`) -> "*"
     end
-    names + p.posts.map { |r| simple_param(r) }
+    names += p.posts.map { |r| simple_param(r) }
+    if p.block
+      raise Unsupported, "block param :#{p.block.type}" unless p.block.type == :block_parameter_node
+      fire(:"block-capture")
+      names << "&#{p.block.name}"    # p.block.name may be nil (anonymous `&`) -> "&"
+    end
+    names
   end
 
   def simple_param(r)

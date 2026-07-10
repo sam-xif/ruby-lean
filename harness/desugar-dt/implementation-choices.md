@@ -495,3 +495,28 @@ the corpus it is **0 failures / 818 in-fragment cores**, and every one of the 10
 render↔parse artifacts, not desugar defects. As we add RubyCore→RubyCore passes
 beyond `Linearize`, fold them into this check so AST-space idempotence stays a
 hard invariant.
+
+## C23 — Block-capture param `&blk` as a sigil-prefixed flat string (L1b, commit 1)
+
+**Decision.** Admit the block-capture parameter `def m(&blk)` / `{ |&blk| }` by
+carrying it in the existing **flat `[String]`** param slot as the verbatim string
+`"&blk"` (or `"&"` for an anonymous `&`), exactly mirroring the `*rest` → `"*a"`
+convention (C17). No new head, no structured-param migration.
+
+**Why here, not in M2.** The full structured-param migration (flat `[String]` →
+`[:preq]`/`[:popt]`/… nodes) exists to carry **optional defaults**, which are
+arbitrary *expressions* evaluated lazily in the callee scope — a string cannot
+hold them and `linearize` must recurse into them. A block-capture param has **no
+attached expression**: it is fully described by a name + the `&` sigil, so the
+string trick is lossless and there is nothing for `linearize` to hoist. This lets
+block passing land as its own small batch (L1b) while the structured-param
+migration stays deferred to M2.
+
+**Scope.** Consumers are untouched by design: `is_core?` still checks
+`params.all? { String }` (`"&blk"` is a String); `render` emits it via
+`params.join(', ')`; `linearize` passes the param list through. The only edit is
+`param_names` in `desugar.rb` (drop the `raise`, append `"&#{p.block.name}"`,
+fire `:block-capture`). Anonymous `&` (`p.block.name == nil`) → `"&"`.
+This is **commit 1** of L1b; the call-site block-pass `foo(&expr)`
+(`[:blockpass, expr]` marker) is commit 2. Ratchet: **792 → 826** in-fragment
+bootstraptest, 0 disagree / 0 harness-error; seed `corpus/seeds/28_block_capture.rb`.
