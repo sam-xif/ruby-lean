@@ -53,3 +53,45 @@ decisions live in the sketch and README, not here.
 - **L12 — zero-arg builtin arity list** (`zeroArgBids`): extra args to
   zero-arg builtins raise `ArgumentError … expected 0` (test_yjit_090);
   optional-arg builtins instead gate their with-arg forms individually.
+- **L13 — metatheory PoC lives under `RubyCore/Proof/`, off the default
+  target.** `Step.lean` (relation + `Step.sound`/`Step.deterministic`),
+  `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`),
+  `Demo.lean` (`example`s: non-vacuity, a concrete 5-step reduction of `1;2`
+  to the value `2`, adequacy on a real `init`). They are part of the
+  `RubyCore` lib glob but *not* imported by `Main`, so `lake build` (the
+  `rubycore` exe) never touches them; build with
+  `lake build RubyCore.Proof.Adequacy RubyCore.Proof.Demo`. Rationale for the
+  separation: this is a **proof of concept** — first evidence the interpreter-
+  first architecture admits real theorems — and is expected to be reworked (or
+  scrapped and re-derived) when L1/L2 change the machine shape, so it is kept
+  physically apart from the SUT. Deps audited via `#print axioms`: only
+  `propext`/`Classical.choice`/`Quot.sound` (no `sorryAx`, no `native_decide`).
+- **L14 — fragment is an effect-light *control core*, not full L0.** `Step`
+  covers literals, `var`/`vasgn` (local/ivar/global — ivar with a `ref` self,
+  always true at toplevel), `seq`, `if`, `while`, `break`/`next`, and jump
+  propagation past neutral konts. Deliberately excluded (each is "no `Step`
+  exists", matching `stepFn` → `.unsupported`/`.stuck`/`.done`): `send`/
+  dispatch, `return` (needs a method frame from a send), `begin`/`rescue`/
+  `ensure`, `class`/`module`/`def`, `const`/`casgn`, arrays/hashes, class
+  variables, and the frozen-immediate `@x=` path. This is a proof-technique
+  PoC, so fragment *membership* (`InFrag`) is narrow by design; the theorems
+  quantify over all configs in it, not over whole real programs. Next
+  extension is `send`: fold `invoke` (and `Builtins.run`) into the relation as
+  a trusted oracle — `Step` gets a constructor `invoke … = .next m' → Step …`
+  — so the dispatch machinery is proved adequate without re-proving the
+  axiomatized builtin library. `return`/frames and `begin` unwinding follow.
+- **L15 — proof-tactic choices** (revertable). *Soundness* is one uniform
+  `cases h <;> simp_all […]` with a **full-unfold** simp set (`stepFn`,
+  `evalExpr`, `applyKont`, `unwind`, `withCtl`/`withKont`, `pop`, the frame
+  setters, `currentFrame`, `bindIvar`, `allocStr`/`Heap.alloc`): each
+  constructor's image is *definitionally* what `stepFn` returns, so every case
+  closes by reduction. Partial unfold desyncs the two sides (one keeps
+  `pop m rest` folded while the other expands and rewrites `m.ctl` via the
+  hypothesis) — unfold `pop` too or nothing. *`strLit`* inlines the
+  `objs.push` allocation in the constructor rather than carrying a
+  `allocStr m s = (v, m')` Prod equation, which `simp` handles far more
+  cleanly. *Determinism* is a 3-line corollary of soundness + `.next`
+  injectivity (`stepFn` is a function). *Completeness* uses the `realize`
+  helper: name the constructor whose shape matches, and soundness + injectivity
+  force its target to equal the executable's `m'` — so each case is
+  `exact realize hs (.someCtor …)` after a structural `cases`.

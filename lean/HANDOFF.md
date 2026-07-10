@@ -86,7 +86,20 @@ disagreement — preserve them as the fragment grows.
    (PROJECT_PLAN §7). Author it against `stepFn` (the helpers are
    deliberately non-mutual single transitions, so rule extraction is
    mechanical), then `step_deterministic` and `stepFn` soundness/completeness.
-   Best done after L1 lands so the rule set doesn't churn mid-proof.
+   **A proof-of-concept slice of this is now done** (`RubyCore/Proof/`, off the
+   default target; README §Metatheory, implementation-notes L13–L15): an
+   inductive `Step` over an effect-light control-core fragment with
+   `Step.sound`, `Step.complete`, `Step.adequacy` (function–relation adequacy
+   on the fragment), `Step.deterministic`, and a `Step.heap_monotone`
+   preservation invariant — all axiom-clean (`#print axioms` shows only
+   propext/Classical.choice/Quot.sound). It validates that the
+   interpreter-first design admits real theorems and that rule extraction is
+   mechanical (soundness = one uniform `cases`+`simp`). Remaining for the full
+   metatheory: extend the fragment to `send` (fold `invoke`/`Builtins.run` as a
+   trusted oracle), then `return`/frames and `begin`; the PoC will likely be
+   reworked when L1/L2 change the machine shape. The prior guidance still
+   holds — the *complete* metatheory is best finished after L1 so the rule set
+   doesn't churn mid-proof.
 5. **Opportunistic, any time:** Float shortest-roundtrip formatting (contained;
    unlocks ~5 tier-0 cases and all float observations); more builtins driven
    by the `Unsupported` histogram (`Rational`/`Complex` are the top names);
