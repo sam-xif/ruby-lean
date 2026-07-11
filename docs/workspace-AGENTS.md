@@ -41,12 +41,17 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   these also surfaced + fixed three latent bugs (interp uses `String(e)` not `to_s`;
   assignment-call `a[i]=v` value is the RHS; do-while `begin…end while` gated) → 752/1299.
   **L1 block front-end done (C21):** `yield` head, `block` extended to `[:block, params,
-  locals, body]` (block-locals un-gated), `->` desugared to a `lambda` send → **792/1299
-  bootstraptest agree, 0 disagree, 0 harness-error** (`Export::VERSION` bumped 1→2, so
-  `--sut lean` is red until the L1 model catches up). `bin/coverage` tracks a ratchet
-  (baseline 792). Deferred: single-RHS massign (to_ary), `const`/`@@x` `||=` (need
-  `defined?`), indexed/attr **op**-assign, double-splat `**`/kwargs, block-pass `&blk`,
-  `...` forwarding, constant paths `A::B`, do-while, `super` arg-forwarding subtleties.
+  locals, body]` (block-locals un-gated), `->` desugared to a `lambda` send → 792/1299.
+  **L1b block passing done (C23–C24):** block-capture param `&blk` (carried as a `"&blk"`
+  flat-string, mirroring `*rest` — no structured-param migration) + call-site block-pass
+  `foo(&expr)` (new `[:blockpass, expr_or_nil]` head sharing the send/super block slot;
+  covers `&:sym`/`to_proc`, `&nil`, anonymous `&`, forwarding, and the `&`-operand
+  eval-order obligation via linearize) → **852/1299 bootstraptest agree, 0 disagree,
+  0 harness-error** (`Export::VERSION` bumped 2→3, so `--sut lean` is red until the L1/L1b
+  model catches up). `bin/coverage` tracks a ratchet (baseline 852). Deferred: single-RHS
+  massign (to_ary), `const`/`@@x` `||=` (need `defined?`), indexed/attr **op**-assign,
+  optional/keyword params + double-splat `**`/kwargs (M2), `...` forwarding, constant paths
+  `A::B`, do-while, `super` arg-forwarding subtleties.
 - **Lean model: L0 implemented and difftesting** ([`lean/`](lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
@@ -89,6 +94,7 @@ Start at [`docs/semantics/README.md`](docs/semantics/README.md) (reading order +
 | `PROCEDURE-authoring-semantics.md` | **agent playbook** for authoring/extending these artifacts against a Ruby oracle |
 | `linearization.md` | worked example of nontrivial desugaring: hoisting control-flow jumps out of operand position (`"#{next}"`) |
 | `co-semantics.md` | **framing (early draft, to grow):** Ruby + Rails as a *pair* of semantics at two altitudes joined by a refinement/bisimulation correspondence — structural `α` where macros define methods, observational `α` where `method_missing` does not; correspondences testable via `obs⁺` before the Lean model exists. §5: proof-goal shape (coupling invariant `Inv`, stuttering forward simulation — same machinery as `relating-language-and-substrate.md` — `escape` event for invariant-breaking programs, miniRails not real Rails in the proof). §6: everything hinges on `Inv` — clause taxonomy + validate it as an executable heap predicate against CRuby first |
+| `types-and-preservation.md` | **research artifact (to grow):** (A) formalization-oriented deep dive on **Sorbet** (type grammar, flow-sensitive narrowing, unsound-by-design stance + escape hatches, `# typed:` strictness levels, runtime `sig` enforcement as the gradual boundary via `T.untyped`); (B) broad survey of how **type preservation/soundness** is proved (Wright–Felleisen, Featherweight Java + "stupid casts", TypeScript/Safe-TypeScript + store typing `Σ`, DRuby/PRuby, Typed Racket occurrence typing, gradual-typing safety + blame theorem + gradual guarantee, Lean/Coq/Isabelle mechanization); (C) maps onto our `Step` — recommends a *runtime* three-outcome safety statement, reuses `Step.heap_monotone` as store typing, treats a sig-violating heap mutation as a type `escape` (cf. `co-semantics.md` §5.3); two cheapest steps (`obs⁺` gradual-guarantee probe, `srb`/`T.reveal_type` typing oracle) need no Lean. Verified via adversarial research pass; two refuted claims recorded as corrections (`T.cast` *is* runtime-checked; `T.let` isn't the only dual-checked assertion) |
 
 Evidence tags used throughout: **[V]** verified against CRuby, **[D]** from docs/ISO 30170,
 **[?]** open question for differential testing.
@@ -179,14 +185,18 @@ root `README.md`/`.gitignore` are the base repo.
 
 - Grow the desugar fragment toward full bootstraptest coverage per the data-driven plan
   in [`harness/desugar-dt/fragment-expansion-strategy.md`](harness/desugar-dt/fragment-expansion-strategy.md)
-  (batches M1–M5). **Current: 792/1299 bootstraptest agree, 0 disagree** (M1 + splat + M3
-  object-model core + L1 block front-end done — see implementation-choices C12–C21; the M3 plan
+  (batches M1–M5). **Current: 852/1299 bootstraptest agree, 0 disagree** (M1 + splat + M3
+  object-model core + L1 block front-end + L1b block passing done — see implementation-choices
+  C12–C24; the M3 plan
   [`harness/desugar-dt/M3-classes-plan.md`](harness/desugar-dt/M3-classes-plan.md) is now
   largely realized). **L1 block front-end (C21) done:** `yield` head, `block` +
-  block-locals, `->`→`lambda` send (`Export::VERSION` 1→2). **Next: M2 params** — the fresh
-  `bin/coverage --full` next-blocker histogram now shows `case_node` (30),
-  `forwarding_arguments_node` (27), keyword params, `regular_expression_node` (21), and
-  `redo_node` (11); optional/keyword params dominate the param work. A detailed fresh-context
+  block-locals, `->`→`lambda` send. **L1b block passing (C23–C24) done:** block-capture
+  `&blk` (flat-string, no structured-param migration) + call-site block-pass `foo(&expr)`
+  (`[:blockpass]` head; `&:sym`/`&nil`/anon `&`/forwarding/eval-order) (`Export::VERSION`
+  3). **Next: M2 params** — the fresh
+  `bin/coverage --full` next-blocker histogram is now led by `optional param` (105),
+  keyword/keyword-rest params, `defined?` (34), `case_node` (30); optional/keyword params
+  dominate and force the structured-param migration. A detailed fresh-context
   hand-off plan for M2 is in [`harness/desugar-dt/M2-params-yield-plan.md`](harness/desugar-dt/M2-params-yield-plan.md)
   (the central call: migrate the `def`/`block`/`defs` param slot from a flat `[String]` to a
   structured param-node list — note `yield` is now already landed; the Ruby-3
