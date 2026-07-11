@@ -26,7 +26,26 @@ FOLD = {
   "Symbol" => [Symbol, Comparable],
   "Array" => [Array, Enumerable],
   "Hash" => [Hash, Enumerable],
+  "Proc" => [Proc],
   "Exception" => [Exception],
+  # Exception subclasses in the bootstrap heap: each may add its own methods
+  # (e.g. NameError#receiver, NoMethodError#args) that dispatch must know
+  # exist so an unmodeled one gates instead of mis-raising NoMethodError.
+  "StandardError" => [StandardError],
+  "RuntimeError" => [RuntimeError],
+  "ArgumentError" => [ArgumentError],
+  "TypeError" => [TypeError],
+  "NameError" => [NameError],
+  "NoMethodError" => [NoMethodError],
+  "ZeroDivisionError" => [ZeroDivisionError],
+  "LocalJumpError" => [LocalJumpError],
+  "FrozenError" => [FrozenError],
+  "IndexError" => [IndexError],
+  "KeyError" => [KeyError],
+  "RangeError" => [RangeError],
+  "StopIteration" => [StopIteration],
+  "NotImplementedError" => [NotImplementedError],
+  "ScriptError" => [ScriptError],
 }.freeze
 
 # A lambda, not a toplevel def — a def here would land on Object and leak

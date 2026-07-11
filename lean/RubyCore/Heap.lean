@@ -66,6 +66,23 @@ structure ClassPayload where
   isModule : Bool := false
 deriving Inhabited
 
+/-- A block/proc/lambda closure (artifact 04 §1). Frame identity supplies
+    Essence's generative jump targets (sketch §1.1):
+    - `captured` is the FrameId of the defining frame — free variables resolve
+      up its chain and `self`/`defmod`/method-block are inherited from it.
+    - `home` is the method activation that a non-lambda `return` unwinds to.
+    - `lam` selects lambda semantics (strict arity, local `return`/`break`).
+    FrameId = Nat (defined in Machine); kept as Nat here to avoid an import
+    cycle. -/
+structure Closure where
+  params : List String
+  locals : List String
+  body : Expr
+  captured : Nat
+  home : Nat
+  lam : Bool := false
+deriving Inhabited
+
 inductive Payload where
   | none
   | str (s : String)
@@ -74,6 +91,8 @@ inductive Payload where
   | cls (c : ClassPayload)
   /-- Exception instance: just the message for L0. -/
   | exc (msg : String)
+  /-- A Proc (block/proc/lambda), artifact 04 §1. -/
+  | proc (c : Closure)
 deriving Inhabited
 
 structure Object where
@@ -148,8 +167,9 @@ def rangeErrorId : ObjId := 25
 def stopIterationId : ObjId := 26
 def notImplementedErrorId : ObjId := 27
 def scriptErrorId : ObjId := 28
+def procId : ObjId := 29
 /-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 29
+def mainId : ObjId := 30
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -181,7 +201,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (rangeErrorId, "RangeError", some standardErrorId),
   (stopIterationId, "StopIteration", some indexErrorId),
   (notImplementedErrorId, "NotImplementedError", some scriptErrorId),
-  (scriptErrorId, "ScriptError", some exceptionId)
+  (scriptErrorId, "ScriptError", some exceptionId),
+  (procId, "Proc", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -218,7 +239,11 @@ def builtinMethods : List (ObjId × List String) := [
             "inspect", "to_s", "dup"]),
   (exceptionId, ["message", "to_s", "inspect"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors"]),
-  (classId, ["new"])
+  (classId, ["new"]),
+  -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
+  -- frame, which a pure builtin cannot); only the pure introspectors are
+  -- registered here.
+  (procId, ["lambda?", "to_proc"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=

@@ -42,6 +42,7 @@ partial def pureOk (h : Heap) (reprPure : Bool) : Value → Bool
     | .arr xs => xs.all (pureOk h reprPure)
     | .hsh xs => xs.all fun (k, v) => pureOk h reprPure k && pureOk h reprPure v
     | .none => reprPure && (h.get o).ivars.all (fun (_, v) => pureOk h reprPure v)
+    | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => true
   | _ => true
 
@@ -178,7 +179,8 @@ def zeroArgBids : List String :=
    "Hash#length", "Hash#size", "Hash#empty?", "Hash#keys", "Hash#values",
    "Hash#inspect", "Hash#to_s", "Hash#dup",
    "Exception#message", "Exception#to_s", "Exception#inspect",
-   "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors"]
+   "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
+   "Proc#lambda?", "Proc#to_proc"]
 
 /-- Run builtin `bid` ("Owner#name"). `implicitSelf` is whether the send had
     no explicit receiver (needed by nothing yet; visibility is deferred). -/
@@ -249,7 +251,10 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
       else .err Boot.typeErrorId "class or module required" m
     | [_] => .err Boot.typeErrorId "class or module required" m
     | _ => .unsupported "instance_of?/arity"
-  | "Object#block_given?" => .ok (.bool false) m  -- no blocks in L0
+  | "Object#block_given?" =>
+    -- true iff the enclosing method activation received a block (the block
+    -- is propagated onto block frames, so the current frame's blk answers) [V]
+    .ok (.bool m.currentFrame.blk.isSome) m
   /- ─── Kernel I/O ─── -/
   | "Object#puts" => putsImpl m args
   | "Object#print" =>
@@ -541,7 +546,26 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
   | "Symbol#==" =>
     binArg m args fun b => .ok (.bool (recv.identEq b)) m
   | "Symbol#to_sym" => .ok recv m
-  | "Symbol#to_proc" => .unsupported "Symbol#to_proc (blocks are L1)"
+  | "Symbol#to_proc" =>
+    match recv with
+    | .sym s =>
+      -- `:m.to_proc` ≈ `->(x, *a){ x.m(*a) }` — lambda-like (no auto-splat).
+      let cl : Closure :=
+        { params := ["__recv", "*__rest"], locals := [],
+          body := .send (some (.var .lvar "__recv")) s
+                    [.splat (some (.var .lvar "__rest"))] none,
+          captured := 0, home := 0, lam := true }
+      let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
+      .ok (.ref o) { m with heap := h }
+    | _ => .unsupported "to_proc"
+  /- ─── Proc ─── -/
+  | "Proc#lambda?" =>
+    match recv with
+    | .ref o => match (h.get o).payload with
+      | .proc c => .ok (.bool c.lam) m
+      | _ => .unsupported "lambda?"
+    | _ => .unsupported "lambda?"
+  | "Proc#to_proc" => .ok recv m
   /- ─── Array ─── -/
   | "Array#==" | "Array#eql?" =>
     binArg m args fun b =>

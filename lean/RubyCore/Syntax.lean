@@ -37,8 +37,14 @@ inductive Expr where
   | casgn (name : String) (e : Expr)
   /-- `recv = none` is an implicit-self send (private methods admissible). -/
   | send (recv : Option Expr) (m : String) (args : List Expr) (blk : Option Expr)
-  /-- Only occurs as a send's `blk` child. -/
-  | block (params : List String) (body : Expr)
+  /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
+      block-locals (fresh, shadowing outer names). -/
+  | block (params : List String) (locals : List String) (body : Expr)
+  /-- `yield args` — invoke the enclosing method's block (artifact 04 §2). -/
+  | yield' (args : List Expr)
+  /-- Block-pass `&e` — only occurs as a send/super `blk` child. `none` is an
+      anonymous `&` forward of the enclosing method's block. -/
+  | blockpass (e : Option Expr)
   | if' (c t : Expr) (e : Option Expr)
   | while' (c body : Expr)
   | def' (name : String) (params : List String) (body : Expr)
@@ -158,7 +164,10 @@ partial def expr (j : Json) : M Expr := do
   | "casgn", #[_, n, e] => return .casgn (← asStr n) (← expr e)
   | "send",  #[_, recv, m, args, blk] =>
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
-  | "block", #[_, ps, body] => return .block (← params ps) (← expr body)
+  | "block", #[_, ps, ls, body] =>
+      return .block (← params ps) (← params ls) (← expr body)
+  | "yield", #[_, args] => .yield' <$> exprs (← asArr args)
+  | "blockpass", #[_, e] => .blockpass <$> opt e
   | "if",    #[_, c, t, e] => return .if' (← expr c) (← expr t) (← opt e)
   | "while", #[_, c, b] => return .while' (← expr c) (← expr b)
   | "def",   #[_, n, ps, body] =>
@@ -189,10 +198,11 @@ partial def expr (j : Json) : M Expr := do
 
 end
 
-/-- Decode the full export document `{ "v": 1, "ast": ... }`. -/
+/-- Decode the full export document `{ "v": 3, "ast": ... }` (export.rb v3:
+    block-locals slot, `yield`/`blockpass` heads, `&blk` capture params). -/
 def program (j : Json) : M Expr := do
   let v := (j.getObjVal? "v").toOption
-  unless v == some (.num 1) do
+  unless v == some (.num 3) do
     .error s!"unsupported rubycore export version: {v.map (·.compress)}"
   match j.getObjVal? "ast" with
   | .ok ast => expr ast

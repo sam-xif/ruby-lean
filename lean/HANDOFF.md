@@ -15,10 +15,20 @@ and the model's); binary exit 3 = Unsupported, exit 1 = model bug
 (`MODEL-BUG:` prefix in the engine — never silently absorbed).
 
 Corpus status at hand-off, all with **0 disagreements**:
-- **tier 0 (full bootstraptest): 295/1304 agree** (544 gate at desugar, 457 at
-  the model, 7 control-invalid, 1 pre-existing control-side harness error)
+- **tier 0 (full bootstraptest): 372/1304 agree** (up from 295 after L1
+  blocks; rest gate at desugar/model, 7 control-invalid, 1 pre-existing
+  control-side harness error `test_syntax_115`)
 - tier 1 fuzzing (n=300, seed 11): 214 agree / 86 unsupported
-- regression + tier-3 replay: clean
+- regression + tier-3 replay: clean (incl. `blocks-jumps/000`)
+
+**L1 (blocks/procs/lambdas) is now implemented in the executable stepper**
+(export v3; `impl-notes L16`): literal blocks + `yield`, `block_given?`,
+`&blk` capture, block-pass `&e`/`&:sym`, `proc`/`lambda`/`->`/`Proc.new`,
+`Proc#call`, and non-local control (`next`/`break`/`return`) with the
+proc-vs-lambda `return` distinction and shared-scope locals — all validated
+above. The `Step` relation/proofs were **not** touched (still the L0
+control-core PoC). Builtins that *yield* (`Array#each`/`map`, `times`,
+`Hash.new{}`) stay `Unsupported` — a pure builtin cannot push a block frame.
 
 Bugs already caught and fixed by the loop (each was a real semantics error):
 `$!` visibility during ensure-of-unmatched-region; unmodeled `String#getbyte`
@@ -33,11 +43,11 @@ messages — special constants by inspect, everything else by class name.
 
 ## Coverage assessment (what "L0" cashes out as)
 
-**By node head** — 22 of the 29 RubyCore heads evaluate:
+**By node head** — most RubyCore heads evaluate:
 - Handled: `int flt str sym true false nil self const casgn send if while def
-  array hash splat return break next retry begin seq`, and `var`/`vasgn` for
-  local/ivar/gvar.
-- Gated: `block` (L1), `class module sclass defs super zsuper` (L2), `cvar`.
+  array hash splat return break next retry begin seq`, `var`/`vasgn` for
+  local/ivar/gvar, and (L1) `block yield blockpass` + `&blk` capture params.
+- Gated: `class module sclass defs super zsuper` (L2), `cvar`.
 
 **Partial gates inside handled heads:** hash-splat and anonymous-splat
 operands; Float *rendering* (arithmetic works — Ruby needs shortest-roundtrip
@@ -45,10 +55,11 @@ output, Lean's `Float.toString` is `%f`-style); the vcall/fcall NameError
 ambiguity (RubyCore conflates them, their error classes differ); and the
 builtin library surface itself — a slice of each core class.
 
-**By throughput:** of the 760 bootstraptest cases that survive the desugar,
-the model fully executes 295 (~39%). The model-side gates break down roughly:
-class/module/singleton definitions ~171, unmodeled methods/constants ~166,
-blocks 85, tail of specific builtins (~35: `Array#[]` slices, Float
+**By throughput:** of the bootstraptest cases that survive the desugar, the
+model now fully executes 372 (up from 295 after L1 blocks). The model-side
+gates break down roughly: class/module/singleton definitions (L2), unmodeled
+methods/constants, iterating builtins that yield, tail of specific builtins
+(`Array#[]` slices, Float
 formatting, `Rational`/`Complex` constructors, …).
 
 **The load-bearing fidelity mechanism** (understand this before growing the
@@ -71,12 +82,14 @@ disagreement — preserve them as the fragment grows.
    `[String]` param slot to structured param nodes). The Lean `parseParams`
    ("*"-prefix convention) must migrate in lockstep — the export is
    versioned (`Export::VERSION`), so bump it when the shape changes.
-2. **L1: blocks + `yield` + proc/lambda jumps** — the sketch's §1.1/§1.2
-   payoff (generative jump targets = frame identity; `captured` chains in the
-   frame store). Machinery is already shaped for it: `Frame.captured`,
-   `Frame.blk`, `brkJ`/`nxtJ` jumps, and the kont-marker unwinding all exist;
-   blocks add block frames and make `frameK`-crossing jumps meaningful
-   (today they gate). Essence-of-Ruby's §7 test battery becomes seeds.
+2. **L1: blocks + `yield` + proc/lambda jumps — DONE** (`impl-notes L16`;
+   executable stepper only, `Step` untouched). The sketch's §1.1/§1.2 payoff
+   realized: generative jump targets = frame identity, `captured` chains in the
+   frame store, targeted `retJ`. Remaining L1 tails (opportunistic): block
+   frames for iterating *builtins* (`Array#each`/`map`, `times`) — needs a way
+   for a builtin to request a block-frame push (or model them as RubyCore
+   methods); `redo`; multi-arg `Symbol#to_proc` edge cases; `Proc#curry`/
+   `arity`/`===` (currently gate).
 3. **L2: object-model definition forms** (`class`/`module`/`sclass`/`defs`,
    `super`, eigenclasses) — ~171 gated cases. Classes as ordinary heap
    objects is already the heap's shape; these heads are "push a class-body
@@ -108,4 +121,4 @@ disagreement — preserve them as the fragment grows.
 
 Ratchet discipline carries over from the desugar: after any change, tier-0
 full + tier-1 + regression replay must stay **0 disagree**, and agreement may
-only go up (baseline 295).
+only go up (baseline now 372, was 295 pre-L1).

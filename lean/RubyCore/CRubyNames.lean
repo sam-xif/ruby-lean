@@ -156,9 +156,59 @@ def crubyMethodNames : List (String × List String) := [
     "to_h", "to_hash", "to_proc", "to_s", "to_set", "transform_keys", "transform_keys!", "transform_values",
     "transform_values!", "uniq", "update", "value?", "values", "values_at", "zip"
   ]),
+  ("Proc", [
+    "<<", "==", "===", ">>", "[]", "arity", "binding", "call",
+    "clone", "curry", "dup", "eql?", "hash", "inspect", "lambda?", "parameters",
+    "ruby2_keywords", "source_location", "to_proc", "to_s", "yield"
+  ]),
   ("Exception", [
     "==", "backtrace", "backtrace_locations", "cause", "detailed_message", "exception", "full_message", "initialize",
     "inspect", "message", "method_missing", "respond_to?", "respond_to_missing?", "set_backtrace", "to_s"
+  ]),
+  ("StandardError", [
+
+  ]),
+  ("RuntimeError", [
+
+  ]),
+  ("ArgumentError", [
+
+  ]),
+  ("TypeError", [
+
+  ]),
+  ("NameError", [
+    "initialize", "local_variables", "name", "receiver"
+  ]),
+  ("NoMethodError", [
+    "args", "initialize", "private_call?"
+  ]),
+  ("ZeroDivisionError", [
+
+  ]),
+  ("LocalJumpError", [
+    "exit_value", "reason"
+  ]),
+  ("FrozenError", [
+    "initialize", "receiver"
+  ]),
+  ("IndexError", [
+
+  ]),
+  ("KeyError", [
+    "initialize", "key", "receiver"
+  ]),
+  ("RangeError", [
+
+  ]),
+  ("StopIteration", [
+    "result"
+  ]),
+  ("NotImplementedError", [
+
+  ]),
+  ("ScriptError", [
+
   ])
 ]
 
@@ -205,8 +255,56 @@ def crubySingletonNames : List (String × List String) := [
   ("Hash", [
     "[]", "ruby2_keywords_hash", "ruby2_keywords_hash?", "try_convert"
   ]),
+  ("Proc", [
+    "new"
+  ]),
   ("Exception", [
     "exception", "to_tty?"
+  ]),
+  ("StandardError", [
+
+  ]),
+  ("RuntimeError", [
+
+  ]),
+  ("ArgumentError", [
+
+  ]),
+  ("TypeError", [
+
+  ]),
+  ("NameError", [
+
+  ]),
+  ("NoMethodError", [
+
+  ]),
+  ("ZeroDivisionError", [
+
+  ]),
+  ("LocalJumpError", [
+
+  ]),
+  ("FrozenError", [
+
+  ]),
+  ("IndexError", [
+
+  ]),
+  ("KeyError", [
+
+  ]),
+  ("RangeError", [
+
+  ]),
+  ("StopIteration", [
+
+  ]),
+  ("NotImplementedError", [
+
+  ]),
+  ("ScriptError", [
+
   ])
 ]
 

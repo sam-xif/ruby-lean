@@ -95,3 +95,41 @@ decisions live in the sketch and README, not here.
   helper: name the constructor whose shape matches, and soundness + injectivity
   force its target to equal the executable's `m'` — so each case is
   `exact realize hs (.someCtor …)` after a structural `cases`.
+
+- **L16 — L1: blocks/procs/lambdas (executable stepper only).** Consumes
+  export **v3** (block-locals slot, `yield`/`blockpass` heads, `&blk` capture
+  params). Design (artifact 04, sketch §1.1/§1.2):
+  - **A Proc is a heap object** (`Payload.proc (Closure)`, new bootstrap class
+    `Proc`, `Boot.procId := 29`, `mainId → 30`). `Closure` holds `params`,
+    `locals`, `body`, `captured` (defining FrameId), `home` (the return-scope),
+    and `lam`. Its `inspect`/`to_s` are address-based ⇒ gated (`pureOk` false).
+  - **Frame identity = generativity.** `Frame` gains `captured`/`home`/`lam`.
+    `getLocal`/`setLocal` walk the `captured` chain, so a block mutates
+    enclosing locals by reference (shared-scope semantics) and its own
+    params/block-locals shadow. Block frames are `FrameKind.block`.
+  - **Non-local control is targeted.** `Jump.retJ` carries a target FrameId;
+    `frameK`/`blkFrameK` consume it only on a match, else pop and propagate —
+    so a non-lambda block `return` reaches its `home` method (not the yielder),
+    a lambda returns from itself, `break` becomes a return from the method the
+    block was passed to (`brk` target on `blkFrameK`; `none` ⇒ detached-proc
+    `LocalJumpError`), and `next` ends the block. `home`/return-target =
+    `returnTarget` at the *defining* frame, so a `proc { return }` created
+    inside a lambda returns from that lambda [V test_proc_024].
+  - **`doReturn` checks target liveness at the return site**: a detached-proc
+    return whose home already exited raises `LocalJumpError "unexpected
+    return"` *there* (rescuable), not after unwinding past the handler
+    [V tier3 blocks-jumps/000].
+  - **Binding:** lenient for blocks/procs (pad nil, drop extras, auto-splat a
+    single Array across ≥2 positionals), strict for lambdas (arity error).
+    `Symbol#to_proc` / `&:sym` build a lambda-like closure `->(x,*a){x.m(*a)}`
+    so it does **not** auto-splat an Array receiver.
+  - **Dispatch:** `proc`/`lambda` (implicit) and `Proc.new` with a literal
+    block *capture* (don't call); `Proc#call/()/[]` are intercepted in
+    `invoke` (a pure builtin cannot push a frame); `Class#new` with a block
+    gates (block would be silently dropped). Iterating builtins that yield
+    (`Array#each`/`map`, `Integer#times`, `Hash.new{}`) stay `Unsupported`.
+  - `CRubyNames.lean` **regenerated** with `Proc` + every bootstrap exception
+    subclass added to the gen script's `FOLD`, so unmodeled `Proc#curry`,
+    `NameError#receiver`, … gate instead of mis-raising `NoMethodError`.
+  - Result: tier-0 bootstraptest **295 → 372 agree, 0 disagree**; tier-1
+    (n=300) 214/0; regressions + tier-3 replay clean.

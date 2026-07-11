@@ -17,7 +17,7 @@ namespace RubyCore
 abbrev FrameId := Nat
 
 inductive FrameKind where
-  | toplevel | method
+  | toplevel | method | block
 deriving Repr, DecidableEq, Inhabited
 
 structure Frame where
@@ -28,15 +28,35 @@ structure Frame where
   defmod : ObjId
   blk : Option Value := none
   kind : FrameKind
+  /-- Block frames: the defining frame's id. Free-variable reads/writes walk
+      this chain into the enclosing scope (sketch §1.2, artifact 03 §2). -/
+  captured : Option FrameId := none
+  /-- Block frames: the method activation a non-lambda `return` unwinds to. -/
+  home : FrameId := 0
+  /-- Block frames: lambda semantics (strict arity, local return/break). -/
+  lam : Bool := false
 deriving Inhabited
 
-/-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants). -/
+/-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
+    `retJ` carries its target frame id — a method-body return targets the
+    current method frame, a non-lambda block `return` its closure's `home`,
+    a lambda its own frame (sketch §1.1: generativity = frame identity). -/
 inductive Jump where
   | raiseJ (exc : Value)
-  | retJ (v : Value)
+  | retJ (v : Value) (target : FrameId)
   | brkJ (v : Value)
   | nxtJ (v : Value)
   | retryJ
+deriving Inhabited
+
+/-- A send's block child, carried through arg evaluation. A literal block is
+    reified (capturing the caller frame) only once args are in; a `&e`
+    block-pass is evaluated last (eval order) then coerced via `to_proc`. -/
+inductive PendingBlk where
+  | none
+  | lit (params : List String) (locals : List String) (body : Expr)
+  | passExpr (e : Expr)
+  | passAnon
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -74,14 +94,20 @@ inductive Kont where
   | whileCondK (c body : Expr)
   /-- Value is the while body's result (discarded). Loop marker. -/
   | whileBodyK (c body : Expr)
-  /-- Got the receiver; evaluate args next. -/
-  | recvK (m : String) (args : List Expr) (implicit : Bool)
+  /-- Got the receiver; evaluate args next. `blk` rides along to the dispatch. -/
+  | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : Bool)
   /-- Evaluating args left to right. -/
   | argsK (recv : Value) (implicit : Bool) (m : String)
-      (acc : List Value) (rest : List Expr)
+      (acc : List Value) (rest : List Expr) (blk : PendingBlk)
   /-- Value in flight is a `*e` splat operand of a send: spread it. -/
   | argsSplatK (recv : Value) (implicit : Bool) (m : String)
-      (acc : List Value) (rest : List Expr)
+      (acc : List Value) (rest : List Expr) (blk : PendingBlk)
+  /-- Value in flight is a `&e` block-pass operand: coerce via to_proc, then
+      dispatch (args already evaluated). -/
+  | blkCoerceK (recv : Value) (implicit : Bool) (m : String) (acc : List Value)
+  /-- Evaluating `yield` args left to right. -/
+  | yieldArgK (acc : List Value) (rest : List Expr)
+  | yieldSplatK (acc : List Value) (rest : List Expr)
   | arrK (acc : List Value) (rest : List Expr)
   /-- Value in flight is a `*e` splat operand of an array literal. -/
   | arrSplatK (acc : List Value) (rest : List Expr)
@@ -94,6 +120,11 @@ inductive Kont where
   /-- Method-activation boundary (generative jump target = frame identity,
       sketch §1.1). Pops `stack` on normal or unwinding passage. -/
   | frameK (fid : FrameId)
+  /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
+      `brk` = the method activation a `break` returns from (`none` for a
+      detached proc `.call`, where `break` is a LocalJumpError). Consumes
+      `next` (block value) and a lambda-targeted `return`/`break`. -/
+  | blkFrameK (fid : FrameId) (lam : Bool) (brk : Option FrameId)
   /-- Begin body executing: rescues are live, node kept for retry/ensure. -/
   | beginBodyK (node : BeginNode)
   /-- Rescue-clause matching: evaluating candidate class exprs one at a
@@ -143,15 +174,37 @@ def setCurrentFrame (m : Machine) (f : Frame) : Machine :=
   | fid :: _ => { m with frames := m.frames.set! fid f }
   | [] => m
 
+/-- Read `x`, walking the block-frame `captured` chain into enclosing scopes
+    (sketch §1.2). Own locals (params, block-locals) shadow outer ones. -/
 def getLocal (m : Machine) (x : String) : Value :=
-  match (m.currentFrame.locals.find? (·.1 == x)) with
-  | some (_, v) => v
-  | none => .nil
+  let rec go : FrameId → Nat → Value
+    | _, 0 => .nil
+    | fid, fuel + 1 =>
+      let f := m.frames.getD fid default
+      match f.locals.find? (·.1 == x) with
+      | some (_, v) => v
+      | none => match f.captured with
+        | some p => go p fuel
+        | none => .nil
+  go (m.stack.headD 0) (m.frames.size + 1)
 
+/-- Assign `x`. If some enclosing frame on the captured chain already binds it,
+    mutate *there* (shared locals, artifact 03 §2); otherwise it is a new local
+    in the current frame. -/
 def setLocal (m : Machine) (x : String) (v : Value) : Machine :=
-  let f := m.currentFrame
-  m.setCurrentFrame
-    { f with locals := (x, v) :: f.locals.filter (·.1 != x) }
+  let start := m.stack.headD 0
+  let rec owner : FrameId → Nat → FrameId
+    | _, 0 => start
+    | fid, fuel + 1 =>
+      let f := m.frames.getD fid default
+      if f.locals.any (·.1 == x) then fid
+      else match f.captured with
+        | some p => owner p fuel
+        | none => start
+  let target := owner start (m.frames.size + 1)
+  let f := m.frames.getD target default
+  let f' := { f with locals := (x, v) :: f.locals.filter (·.1 != x) }
+  { m with frames := m.frames.set! target f' }
 
 def getGlobal (m : Machine) (x : String) : Value :=
   if x == "$!" then m.currentExc.getD .nil

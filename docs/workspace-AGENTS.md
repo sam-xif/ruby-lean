@@ -47,20 +47,25 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   `foo(&expr)` (new `[:blockpass, expr_or_nil]` head sharing the send/super block slot;
   covers `&:sym`/`to_proc`, `&nil`, anonymous `&`, forwarding, and the `&`-operand
   eval-order obligation via linearize) → **852/1299 bootstraptest agree, 0 disagree,
-  0 harness-error** (`Export::VERSION` bumped 2→3, so `--sut lean` is red until the L1/L1b
-  model catches up). `bin/coverage` tracks a ratchet (baseline 852). Deferred: single-RHS
+  0 harness-error** (`Export::VERSION` bumped 2→3; the **Lean model now consumes v3** — see
+  below — so `--sut lean` is green again). `bin/coverage` tracks a ratchet (baseline 852). Deferred: single-RHS
   massign (to_ary), `const`/`@@x` `||=` (need `defined?`), indexed/attr **op**-assign,
   optional/keyword params + double-splat `**`/kwargs (M2), `...` forwarding, constant paths
   `A::B`, do-while, `super` arg-forwarding subtleties.
-- **Lean model: L0 implemented and difftesting** ([`lean/`](lean/README.md), per the
+- **Lean model: L0 + L1 implemented and difftesting** ([`lean/`](lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
   repr/error-message layer, oracle-generated CRuby name tables for dispatch fidelity
   (unmodeled builtins gate as `Unsupported` instead of mis-dispatching), and the SUT
   executable wired into the difftest engine as `--sut lean` (source → desugar →
-  RubyCore JSON → Lean → Observation). **Baseline (2026-07-07): full bootstraptest
-  295/1304 agree, 0 disagree** (rest gated Unsupported: 544 upstream desugar, then
-  class defs L2 / blocks L1 / unmodeled methods+constants); tier-1 fuzzing already
+  RubyCore JSON → Lean → Observation). **L1 blocks/procs/lambdas now in the executable
+  stepper** (export v3; `lean/implementation-notes.md` L16): Proc as a heap object,
+  frame-identity generative jump targets (`captured`/`home`/targeted `retJ`), `yield`/
+  `block_given?`/`&blk`/block-pass/`&:sym`/`proc`/`lambda`/`->`/`Proc.new`/`Proc#call`,
+  and proc-vs-lambda `next`/`break`/`return` with shared-scope locals. **Baseline: full
+  bootstraptest 372/1304 agree, 0 disagree** (up from 295 pre-L1; rest gated Unsupported:
+  upstream desugar, class defs L2, iterating-builtins-that-yield, unmodeled
+  methods+constants); tier-1 fuzzing already
   caught and fixed one real bug (coercion-error messages use inspect for special
   constants, class name otherwise). The `inductive Step` relation (definition of
   record) is not yet authored — interpreter came first to meet the engine on day one.
@@ -139,10 +144,10 @@ The mechanization of artifacts 00–04 begun from the sketch. See
 [`lean/README.md`](lean/README.md) for layout, build (`lake build`, toolchain pinned),
 the L0 fragment inventory, and the two fidelity policies (three-way lookup-miss split;
 `reprPure` gating); [`lean/HANDOFF.md`](lean/HANDOFF.md) for the fresh-context hand-off
-(state, coverage assessment — 22/29 heads, 295/760 in-desugar-fragment bootstraptest
-cases, 0 disagree — and the ordered next steps: desugar M2 → L1 blocks → L2 classes →
+(state, coverage assessment — 372/1304 bootstraptest
+cases, 0 disagree — and the ordered next steps: L1 blocks done, next L2 classes then
 `inductive Step`); [`lean/implementation-notes.md`](lean/implementation-notes.md) for
-revertable decisions (L1–L12). `RubyCore/CRubyNames.lean` is **generated** by
+revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
 `lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
 
@@ -209,9 +214,9 @@ root `README.md`/`.gitignore` are the base repo.
   `DESUGAR_BUG=1` yields a shrunk minimal disagreement.
 - **Lean model (begun; `lean/`):** grow the L0 fragment along the difftest
   `Unsupported`-reason histogram (same ratchet discipline as the desugar: 0 disagree,
-  agreement only goes up — baseline 295). Ordered plan in
+  agreement only goes up; baseline 372, was 295 pre-L1). Ordered plan in
   [`lean/HANDOFF.md`](lean/HANDOFF.md): desugar M2 (biggest lever, 544 cases gate
-  upstream) → L1 blocks/`yield` → L2 class forms → `inductive Step` + adequacy
+  upstream) → L1 blocks/`yield` (done) → L2 class forms → `inductive Step` + adequacy
   theorems (PROJECT_PLAN §7); opportunistic: float shortest-roundtrip formatting,
   histogram-driven builtins, the sketch §5 export cross-check.
 - Draft artifacts 07–10.

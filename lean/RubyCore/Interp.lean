@@ -133,13 +133,20 @@ def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option Str
     | _ => none
   | _ => none
 
-/-- Split a desugared param list: `"*name"` marks the rest param (post-rest
-    required params are allowed: `a, *b, c`). -/
-def parseParams (ps : List String) : List String × Option String × List String :=
+/-- Split a desugared param list into `(pre, rest?, post, block?)`: `"*name"`
+    marks the rest param (post-rest required params are allowed: `a, *b, c`),
+    a trailing `"&name"` the block-capture param (C23; `"&"` anonymous). -/
+def parseParams (ps0 : List String) :
+    List String × Option String × List String × Option String :=
+  let (ps, blockP) := match ps0.reverse with
+    | b :: more =>
+      if b.startsWith "&" then (more.reverse, some (b.drop 1 |>.toString))
+      else (ps0, none)
+    | [] => (ps0, none)
   match ps.findIdx? (·.startsWith "*") with
-  | none => (ps, none, [])
+  | none => (ps, none, [], blockP)
   | some i =>
-    (ps.take i, some ((ps[i]!).drop 1 |>.toString), ps.drop (i + 1))
+    (ps.take i, some ((ps[i]!).drop 1 |>.toString), ps.drop (i + 1), blockP)
 
 /-- Spread a splat operand [V]: array splices, nil vanishes, anything else
     (without to_a) is itself. Hash's pair-conversion is gated for now. -/
@@ -153,9 +160,138 @@ def spread (m : Machine) (v : Value) : Except String (List Value) :=
   | .nil => .ok []
   | _ => .ok [v]
 
-/-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). -/
+/-- The method activation governing the current frame (itself if a
+    method/toplevel frame; its `home` if a block frame). -/
+def methodFrameOf (m : Machine) : FrameId :=
+  let fid := m.stack.headD 0
+  match (m.frames.getD fid default).kind with
+  | .block => (m.frames.getD fid default).home
+  | _ => fid
+
+/-- Target frame of a `return` evaluated in the current frame (artifact 04 §4):
+    the method itself; a lambda block returns from itself; a non-lambda block
+    from its closure's `home` method. -/
+def returnTarget (m : Machine) : FrameId :=
+  let fid := m.stack.headD 0
+  let f := m.frames.getD fid default
+  match f.kind with
+  | .block => if f.lam then fid else f.home
+  | _ => fid
+
+/-- Perform a `return`: if the target return-scope is still on the stack, jump
+    to it; otherwise the home method already exited (a detached non-lambda
+    proc) — raise `LocalJumpError` *here*, at the call site, so an enclosing
+    `rescue` can catch it (artifact 04 §4) [V]. -/
+def doReturn (m : Machine) (v : Value) : StepResult :=
+  let target := returnTarget m
+  if m.stack.contains target then
+    .next (withCtl m (.jump (.retJ v target)))
+  else
+    .next (raiseErr m Boot.localJumpErrorId "unexpected return")
+
+/-- Reify a literal block into a Proc, capturing the current (caller) frame
+    (artifact 04 §1; sketch §1.1/§1.2). -/
+def reifyBlock (m : Machine) (params locals : List String) (body : Expr)
+    (lam : Bool) : Value × Machine :=
+  let cur := m.stack.headD 0
+  -- `home` = the enclosing return-scope of the *definition* point: a method,
+  -- or a lambda (lambdas are return-scopes), else walk out of plain blocks.
+  -- This is exactly `returnTarget` evaluated at the defining frame — so a
+  -- `proc { return }` created inside a lambda returns from that lambda [V].
+  let home := returnTarget m
+  let cl : Closure := { params, locals, body, captured := cur, home, lam }
+  let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
+  (.ref o, { m with heap := h })
+
+/-- Coerce a `&e` block-pass operand: a Proc is used directly, `nil` means no
+    block, a Symbol builds `:m.to_proc`; anything else gates (`to_proc`
+    dispatch is out of L1). -/
+def coerceToProc (m : Machine) (v : Value) : Except String (Option Value × Machine) :=
+  match v with
+  | .nil => .ok (none, m)
+  | .ref o =>
+    match (m.heap.get o).payload with
+    | .proc _ => .ok (some v, m)
+    | _ => .error "block-pass of a non-Proc (to_proc dispatch is L2)"
+  | .sym s =>
+    -- `:m.to_proc` ≈ `->(x, *a){ x.m(*a) }` — lambda-like so it does NOT
+    -- auto-splat an Array receiver (`[[1,2]].map(&:first)` → `[1,2].first`).
+    let cl : Closure :=
+      { params := ["__recv", "*__rest"], locals := [],
+        body := .send (some (.var .lvar "__recv")) s
+                  [.splat (some (.var .lvar "__rest"))] none,
+        captured := 0, home := 0, lam := true }
+    let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
+    .ok (some (.ref o), { m with heap := h })
+  | _ => .error "block-pass of a non-Proc"
+
+/-- Invoke a closure: push a block frame parented at `captured`, bind params
+    (lenient for blocks/procs — pad nil, drop extras, auto-splat a single
+    Array across ≥2 positionals; strict for lambdas), evaluate the body under
+    a `blkFrameK` marker (artifact 04 §2). `brk` is the method a `break`
+    returns from. -/
+def callClosure (m : Machine) (cl : Closure) (args : List Value)
+    (brk : Option FrameId) : StepResult :=
+  let (pre, rest?, post, _bp) := parseParams cl.params
+  let required := pre.length + post.length
+  let args :=
+    if !cl.lam && args.length == 1 && (required ≥ 2 || (rest?.isSome && required ≥ 1)) then
+      match args.head? with
+      | some (.ref o) => match (m.heap.get o).payload with
+        | .arr xs => xs.toList
+        | _ => args
+      | _ => args
+    else args
+  let arityOk :=
+    if cl.lam then
+      match rest? with | some _ => args.length ≥ required | none => args.length == required
+    else true
+  if !arityOk then
+    let expected := match rest? with | some _ => s!"{required}+" | none => toString required
+    .next (raiseErr m Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected {expected})")
+  else
+    let (locals, m) :=
+      match rest? with
+      | none =>
+        let vals := (List.range pre.length).map (fun i => args.getD i .nil)
+        (pre.zip vals, m)
+      | some rname =>
+        let preVals := (List.range pre.length).map (fun i => args.getD i .nil)
+        let afterPre := args.drop pre.length
+        let midCount := max 0 (afterPre.length - post.length)
+        let midArgs := afterPre.take midCount
+        let postSrc := afterPre.drop midCount
+        let postVals := (List.range post.length).map (fun i => postSrc.getD i .nil)
+        let (rv, m) := Builtins.allocArr m midArgs.toArray
+        (pre.zip preVals ++ [(rname, rv)] ++ post.zip postVals, m)
+    let locals := locals ++ cl.locals.map (fun n => (n, Value.nil))
+    let capF := m.frames.getD cl.captured default
+    let frame : Frame :=
+      { self := capF.self, defmod := capF.defmod, blk := capF.blk,
+        locals, kind := .block, captured := some cl.captured,
+        home := cl.home, lam := cl.lam }
+    let fid := m.frames.size
+    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+    .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk))
+
+/-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
+    receiver called via call/()/[]/yield runs its closure directly (a builtin
+    cannot push a frame). -/
 def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
-    (args : List Value) : StepResult :=
+    (args : List Value) (blk : Option Value) : StepResult :=
+  match recv with
+  | .ref o =>
+    match (m.heap.get o).payload with
+    | .proc cl =>
+      if mname == "call" || mname == "()" || mname == "[]" || mname == "yield" then
+        callClosure m cl args none
+      else invokeDispatch m recv implicit mname args blk
+    | _ => invokeDispatch m recv implicit mname args blk
+  | _ => invokeDispatch m recv implicit mname args blk
+where
+  invokeDispatch (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+      (args : List Value) (blk : Option Value) : StepResult :=
   let chain := ancestors m.heap (classOf m.heap recv)
   match lookup m.heap recv mname with
   | some (owner, md) =>
@@ -178,8 +314,9 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
         match crubySingletonShadow m.heap recv mname with
         | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
         | none =>
-          -- a RubyCore-defined method: required + rest binding (L0+splat)
-          let (pre, rest?, post) := parseParams md.params
+          -- a RubyCore-defined method: required + rest binding (L0+splat),
+          -- plus a block-capture param `&blk` bound to the passed block
+          let (pre, rest?, post, blockP) := parseParams md.params
           let required := pre.length + post.length
           let arityOk := match rest? with
             | some _ => args.length ≥ required
@@ -199,8 +336,11 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
               | some rname =>
                 let (rv, m) := Builtins.allocArr m midArgs.toArray
                 (pre.zip preArgs ++ [(rname, rv)] ++ post.zip postArgs, m)
+            let locals := match blockP with
+              | some bn => locals ++ [(bn, blk.getD .nil)]
+              | none => locals
             let frame : Frame :=
-              { self := recv, locals, defmod := md.owner, kind := .method }
+              { self := recv, locals, defmod := md.owner, kind := .method, blk }
             let fid := m.frames.size
             let m := { m with frames := m.frames.push frame,
                               stack := fid :: m.stack }
@@ -223,17 +363,62 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
         .next (raiseErr m Boot.noMethodErrorId
           s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
 
+/-- All args in → resolve the pending block and dispatch. A literal block is
+    reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
+    a block capture rather than call; a `&e` block-pass evaluates `e` last
+    (eval order) then coerces. -/
+def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+    (args : List Value) (pblk : PendingBlk) : StepResult :=
+  match pblk with
+  | .passExpr e => .next (withKont m (.eval e) (.blkCoerceK recv implicit mname args))
+  | .lit ps ls body =>
+    let mkLam := implicit && mname == "lambda"
+    let (v, m) := reifyBlock m ps ls body mkLam
+    if implicit && (mname == "lambda" || mname == "proc") then
+      .next (withCtl m (.value v))
+    else if mname == "new" && (match recv with | .ref k => k == Boot.procId | _ => false) then
+      .next (withCtl m (.value v))
+    else if mname == "new" then
+      -- Class#new with a block (initialize block / Hash default proc) — the
+      -- block affects behaviour and we don't model it, so gate rather than
+      -- silently drop it.
+      .unsupported "Class#new with a block"
+    else invoke m recv implicit mname args (some v)
+  | .passAnon => invoke m recv implicit mname args m.currentFrame.blk
+  | .none => invoke m recv implicit mname args none
+
 /-- Evaluate the next pending argument, or dispatch if none remain. -/
 def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
-    (acc : List Value) (rest : List Expr) : StepResult :=
+    (acc : List Value) (rest : List Expr) (pblk : PendingBlk) : StepResult :=
   match rest with
-  | [] => invoke m recv implicit mname acc
+  | [] => finishSend m recv implicit mname acc pblk
   | e :: rest' =>
     match e with
     | .splat (some e) =>
-      .next (withKont m (.eval e) (.argsSplatK recv implicit mname acc rest'))
+      .next (withKont m (.eval e) (.argsSplatK recv implicit mname acc rest' pblk))
     | .splat none => .unsupported "anonymous splat forwarding"
-    | _ => .next (withKont m (.eval e) (.argsK recv implicit mname acc rest'))
+    | _ => .next (withKont m (.eval e) (.argsK recv implicit mname acc rest' pblk))
+
+/-- Call the enclosing method's block with `args` (artifact 04 §2 YIELD). A
+    `break` inside the yielded block returns from that method. -/
+def doYield (m : Machine) (args : List Value) : StepResult :=
+  match m.currentFrame.blk with
+  | none => .next (raiseErr m Boot.localJumpErrorId "no block given (yield)")
+  | some (.ref o) =>
+    match (m.heap.get o).payload with
+    | .proc cl => callClosure m cl args (some (methodFrameOf m))
+    | _ => .stuck "method block is not a Proc"
+  | some _ => .stuck "method block is not a Proc"
+
+/-- Evaluate `yield` args left to right, then yield. -/
+def startYield (m : Machine) (acc : List Value) (rest : List Expr) : StepResult :=
+  match rest with
+  | [] => doYield m acc
+  | e :: rest' =>
+    match e with
+    | .splat (some e) => .next (withKont m (.eval e) (.yieldSplatK acc rest'))
+    | .splat none => .unsupported "anonymous splat in yield"
+    | _ => .next (withKont m (.eval e) (.yieldArgK acc rest'))
 
 /-- Evaluate the next pending array-literal element, or allocate. -/
 def continueArray (m : Machine) (acc : List Value) (rest : List Expr) : StepResult :=
@@ -285,13 +470,22 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       else .next (withCtl m (.value .nil))
     | .whileBodyK c body =>
       .next (withKont m (.eval c) (.whileCondK c body))
-    | .recvK mname args implicit =>
-      startArgs m v implicit mname [] args
-    | .argsK recv implicit mname acc rest =>
-      startArgs m recv implicit mname (acc ++ [v]) rest
-    | .argsSplatK recv implicit mname acc rest =>
+    | .recvK mname args pblk implicit =>
+      startArgs m v implicit mname [] args pblk
+    | .argsK recv implicit mname acc rest pblk =>
+      startArgs m recv implicit mname (acc ++ [v]) rest pblk
+    | .argsSplatK recv implicit mname acc rest pblk =>
       match spread m v with
-      | .ok vs => startArgs m recv implicit mname (acc ++ vs) rest
+      | .ok vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
+      | .error e => .unsupported e
+    | .blkCoerceK recv implicit mname acc =>
+      match coerceToProc m v with
+      | .ok (blkV, m) => invoke m recv implicit mname acc blkV
+      | .error e => .unsupported e
+    | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
+    | .yieldSplatK acc rest =>
+      match spread m v with
+      | .ok vs => startYield m (acc ++ vs) rest
       | .error e => .unsupported e
     | .arrK acc rest => continueArray m (acc ++ [v]) rest
     | .arrSplatK acc rest =>
@@ -312,13 +506,15 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | (kE, vE) :: rest' =>
         .next (withKont m (.eval kE) (.hshKeyK acc vE rest'))
     | .jumpValK kind =>
-      let j := match kind with
-        | .retK => Jump.retJ v
-        | .brkK => Jump.brkJ v
-        | .nxtK => Jump.nxtJ v
-      .next (withCtl m (.jump j))
+      match kind with
+      | .retK => doReturn m v
+      | .brkK => .next (withCtl m (.jump (.brkJ v)))
+      | .nxtK => .next (withCtl m (.jump (.nxtJ v)))
     | .frameK _ =>
       -- normal completion of a method body: pop the activation
+      .next (withCtl { m with stack := m.stack.tail } (.value v))
+    | .blkFrameK _ _ _ =>
+      -- normal completion of a block body: pop the block frame
       .next (withCtl { m with stack := m.stack.tail } (.value v))
     | .beginBodyK node =>
       match node.els with
@@ -363,7 +559,10 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
   | [] =>
     match j with
     | .raiseJ exc => .uncaught exc m
-    | _ => .stuck "jump escaped the program (return/break/next/retry at toplevel)"
+    | .retJ _ _ =>
+      -- a non-lambda block `return` whose home method already exited [V]
+      .next (raiseErr m Boot.localJumpErrorId "unexpected return")
+    | _ => .stuck "jump escaped the program (break/next/retry at toplevel)"
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
@@ -372,12 +571,37 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       | .brkJ v => .next (withCtl m (.value v))
       | .nxtJ _ => .next (withKont m (.eval c) (.whileCondK c body))
       | _ => .next (withCtl m (.jump j))
-    | .frameK _ =>
+    | .frameK fid =>
       match j with
-      | .retJ v => .next (withCtl { m with stack := m.stack.tail } (.value v))
+      | .retJ v target =>
+        if target == fid then
+          .next (withCtl { m with stack := m.stack.tail } (.value v))
+        else  -- return targets an outer method: pop and keep unwinding
+          .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .brkJ _ | .nxtJ _ => .unsupported "break/next crossing a method boundary"
       | .retryJ => .unsupported "retry crossing a method boundary"
+    | .blkFrameK fid lam brk =>
+      match j with
+      | .nxtJ v =>
+        -- `next` ends this block invocation with value v (artifact 04 §4)
+        .next (withCtl { m with stack := m.stack.tail } (.value v))
+      | .brkJ v =>
+        if lam then  -- `break` in a lambda returns from the lambda
+          .next (withCtl { m with stack := m.stack.tail } (.value v))
+        else match brk with
+          | some t =>  -- return v from the method the block was passed to
+            .next (withCtl { m with stack := m.stack.tail } (.jump (.retJ v t)))
+          | none =>
+            .next (raiseErr { m with stack := m.stack.tail }
+              Boot.localJumpErrorId "break from proc-closure")
+      | .retJ v target =>
+        if lam && target == fid then  -- lambda's own return
+          .next (withCtl { m with stack := m.stack.tail } (.value v))
+        else  -- non-lambda return heads to its home method: pop and propagate
+          .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .retryJ => .unsupported "retry crossing a block boundary"
     | .beginBodyK node =>
       match j with
       | .raiseJ exc =>
@@ -449,12 +673,18 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {n}")
   | .casgn n rhs => .next (withKont m (.eval rhs) (.casgnK n))
   | .send recv mname args blk =>
-    if blk.isSome then .unsupported "block argument (L1)"
-    else
-      match recv with
-      | some r => .next (withKont m (.eval r) (.recvK mname args false))
-      | none => startArgs m m.currentFrame.self true mname [] args
+    let pblk : PendingBlk := match blk with
+      | none => .none
+      | some (.block ps ls body) => .lit ps ls body
+      | some (.blockpass (some e)) => .passExpr e
+      | some (.blockpass none) => .passAnon
+      | some _ => .none  -- desugar guarantees blk ∈ {block, blockpass}; unreachable
+    match recv with
+    | some r => .next (withKont m (.eval r) (.recvK mname args pblk false))
+    | none => startArgs m m.currentFrame.self true mname [] args pblk
   | .block .. => .stuck "bare block node outside send"
+  | .yield' args => startYield m [] args
+  | .blockpass .. => .stuck "bare blockpass node outside send"
   | .if' c t e => .next (withKont m (.eval c) (.ifK t e))
   | .while' c body => .next (withKont m (.eval c) (.whileCondK c body))
   | .def' name params body =>
@@ -476,7 +706,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     -- only meaningful inside a method (the desugar gates toplevel return)
     match e with
     | some e => .next (withKont m (.eval e) (.jumpValK .retK))
-    | none => .next (withCtl m (.jump (.retJ .nil)))
+    | none => doReturn m .nil
   | .brk e =>
     match e with
     | some e => .next (withKont m (.eval e) (.jumpValK .brkK))

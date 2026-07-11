@@ -45,8 +45,13 @@ Modeled: literals, locals/ivars/gvars, sends, `if`/`while` (+`break`/`next`),
 `def`/call with required params, `begin`/`rescue`/`else`/`ensure`/`retry`,
 `return`, arrays/hashes/strings as mutable heap payloads, `raise`, `$!`
 save/restore semantics, and the builtin slices listed in `Boot.builtinMethods`.
+**L1 (blocks/procs/lambdas):** literal blocks + `yield`, `block_given?`,
+`&blk` capture params, block-pass `&e`/`&:sym`, `proc`/`lambda`/`->`/`Proc.new`,
+`Proc#call`, and the non-local control (`next`/`break`/`return`) with
+proc-vs-lambda semantics and shared-scope locals (`impl-notes L16`).
 
-Gated (`Unsupported`, exit 3): blocks/`yield` (L1), classes/modules/`super`
+Gated (`Unsupported`, exit 3): iterating builtins that yield (`Array#each`/
+`map`, `Integer#times`, `Hash.new{}`), classes/modules/`super`
 (L2), splat/kwargs, class variables, `Float` **formatting** (Ruby needs
 shortest-roundtrip; float arithmetic works), `Integer#hash` (seeded),
 vcall-vs-fcall `NameError` ambiguity, and anything CRuby defines that the
