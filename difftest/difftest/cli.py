@@ -21,6 +21,7 @@ from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
 from .sources import load_bootstraptest, load_corpus_cases
+from .tiers import GENERATIVE_ARMS
 from .sut import make_sut
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
@@ -74,12 +75,14 @@ def cmd_run(args) -> int:
 
     if args.mix:
         mix = parse_mix(args.mix)
-        unknown = set(mix) - {"tier1", *CORPUS_ARMS}
+        known = set(GENERATIVE_ARMS) | set(CORPUS_ARMS)
+        unknown = set(mix) - known
         if unknown:
-            print(f"unknown mix arms: {sorted(unknown)}; known: tier1, {', '.join(CORPUS_ARMS)}",
+            print(f"unknown mix arms: {sorted(unknown)}; known: {', '.join(sorted(known))}",
                   file=sys.stderr)
             return 2
-        corpus_cases = {name: _load_corpus_arm(name, args) for name in mix if name != "tier1"}
+        corpus_cases = {name: _load_corpus_arm(name, args)
+                        for name in mix if name not in GENERATIVE_ARMS}
         extra = run_generative_campaign(
             control, sut, reporter,
             n=args.n if args.n is not None else 100,
@@ -101,8 +104,8 @@ def cmd_run(args) -> int:
             control, sut, reporter,
             n=args.n if args.n is not None else 100,
             seed=args.seed,
+            mix={f"tier{args.tier}": 1.0},
             regressions_dir=BASE / "corpus" / "regressions",
-            eval_order=(args.tier == "1.5"),
         )
     else:
         print(f"tier {args.tier} is not implemented yet (tier 2 is a stub)", file=sys.stderr)
@@ -168,7 +171,8 @@ def main(argv=None) -> int:
     p_run.add_argument("--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3"])
     p_run.add_argument(
         "--mix",
-        help='weighted mixed campaign, e.g. "tier1=0.9,tier0=0.05,tier3=0.05" (overrides --tier)',
+        help='weighted mixed campaign over generative (tier1, tier1.5) and corpus '
+             '(tier0, tier3) arms, e.g. "tier1.5=0.9,tier0=0.05,tier3=0.05" (overrides --tier)',
     )
     p_run.add_argument(
         "-n", type=int, help="number of cases (tier 1/mix default: 100; tier 0 default: all)"

@@ -31,8 +31,8 @@ from .report import Reporter
 from .runner import run_case
 from .sut import SystemUnderTest
 from .testcase import TestCase
+from .tiers import GENERATIVE_ARMS
 from .tiers.tier1.render import render_program
-from .tiers.tier1.strategies import programs
 
 WEIGHT_RESOLUTION = 1000  # arm weights are quantized to thousandths
 
@@ -71,21 +71,23 @@ def _thresholds(mix: dict[str, float]) -> list[tuple[str, int]]:
 
 @st.composite
 def _mixed_draws(draw, mix: dict[str, float], corpus_cases: dict[str, list[TestCase]],
-                 eval_order: bool = False):
-    """Draw (arm, payload): payload is a tier-1 AST for the "tier1" arm and a
-    corpus TestCase for corpus arms. `eval_order` selects the tier-"1.5" variant of
-    the tier-1 generator (probe-wrapped operands); it applies only to pure tier-1
-    campaigns, not to mix arms."""
-    if list(mix) == ["tier1"]:
-        # pure tier 1: no arm-choice draw to shrink over
-        return "tier1", draw(programs(eval_order=eval_order))
+                 gen_strategies: dict):
+    """Draw (arm, payload): for a *generative* arm (a key of `gen_strategies`, e.g.
+    "tier1"/"tier1.5") the payload is a freshly-generated tier-1 AST; for a corpus
+    arm (tier0/tier3) it is a sampled TestCase."""
+    def draw_arm(name):
+        if name in gen_strategies:
+            return name, draw(gen_strategies[name]())
+        return name, draw(st.sampled_from(corpus_cases[name]))
+
+    if len(mix) == 1:
+        # single arm: no arm-choice draw to shrink over
+        return draw_arm(next(iter(mix)))
     r = draw(st.integers(0, WEIGHT_RESOLUTION - 1))
     for name, threshold in _thresholds(mix):
         if r < threshold:
             break
-    if name == "tier1":
-        return name, draw(programs())
-    return name, draw(st.sampled_from(corpus_cases[name]))
+    return draw_arm(name)
 
 
 class _Disagreement(Exception):
@@ -103,18 +105,19 @@ def run_generative_campaign(
     mix: dict[str, float] | None = None,
     corpus_cases: dict[str, list[TestCase]] | None = None,
     regressions_dir: Path | None = None,
-    eval_order: bool = False,
+    gen_strategies: dict | None = None,
 ) -> dict:
     mix = mix or {"tier1": 1.0}
+    gen_strategies = gen_strategies if gen_strategies is not None else GENERATIVE_ARMS
     corpus_cases = corpus_cases or {}
     for name in mix:
-        if name != "tier1" and not corpus_cases.get(name):
+        if name not in gen_strategies and not corpus_cases.get(name):
             raise ValueError(f"mix arm {name!r} has no corpus cases loaded")
 
     counter = itertools.count()
     arm_counts: dict[str, int] = {}
     found_disagreement = False
-    pure_tier1 = list(mix) == ["tier1"]
+    pure = len(mix) == 1
 
     def prop(drawn):
         nonlocal found_disagreement
@@ -123,13 +126,13 @@ def run_generative_campaign(
         phase = "shrink-search" if found_disagreement else "generate"
         if not found_disagreement:
             arm_counts[arm] = arm_counts.get(arm, 0) + 1
-        if arm == "tier1":
+        if arm in gen_strategies:
             case = TestCase(
-                id=f"tier1-{i:05d}" if pure_tier1 else f"mix-{i:05d}",
+                id=f"{arm}-{i:05d}" if pure else f"mix-{i:05d}",
                 source=render_program(payload),
                 tier=1,
                 provenance={"generator": "hypothesis", "arm": arm, "seed": seed,
-                            "phase": phase, "eval_order": eval_order},
+                            "phase": phase},
             )
         else:
             case = dataclasses.replace(
@@ -144,7 +147,7 @@ def run_generative_campaign(
             found_disagreement = True
             raise _Disagreement(result)
 
-    wrapped = given(_mixed_draws(mix, corpus_cases, eval_order))(prop)
+    wrapped = given(_mixed_draws(mix, corpus_cases, gen_strategies))(prop)
     wrapped = hyp_settings(
         max_examples=n,
         deadline=None,
@@ -171,18 +174,20 @@ def run_generative_campaign(
             raise
 
     extra: dict = {"campaign": {"mix": mix, "requested_examples": n, "seed": seed,
-                                "arm_counts": arm_counts, "eval_order": eval_order,
+                                "arm_counts": arm_counts,
                                 "stopped_early_on_disagreement": minimal is not None}}
     if minimal is not None:
         minimal.minimized = True
         reporter.record(minimal)
         origin = minimal.case.provenance.get("arm", "tier1")
-        if origin == "tier1" and regressions_dir is not None:
-            regressions_dir.mkdir(parents=True, exist_ok=True)
-            path = regressions_dir / f"{minimal.case.id}-minimized.rb"
-            path.write_text(minimal.case.source)
-            extra["campaign"]["minimized_reproducer"] = str(path)
-        elif origin != "tier1":
+        if origin in gen_strategies:
+            # a generated (tier1/tier1.5/…) case: persist the shrunk reproducer
+            if regressions_dir is not None:
+                regressions_dir.mkdir(parents=True, exist_ok=True)
+                path = regressions_dir / f"{minimal.case.id}-minimized.rb"
+                path.write_text(minimal.case.source)
+                extra["campaign"]["minimized_reproducer"] = str(path)
+        else:
             # corpus cases are already persisted and small; point at the original
             extra["campaign"]["disagreeing_corpus_case"] = minimal.case.provenance["corpus_id"]
     return extra

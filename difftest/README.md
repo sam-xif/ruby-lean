@@ -64,7 +64,9 @@ terminates, deterministic under a double run) before entering
 with reasons. The corpus is committed and replayed for free thereafter.
 
 **Mixed campaigns** (`run --mix tier1=0.9,tier0=0.05,tier3=0.05`) sample each
-case from a weighted arm: fresh tier-1 generation or a persisted corpus. The
+case from a weighted arm: fresh generation from a **generative arm** (`tier1`, or
+`tier1.5` for eval-order probes — e.g. `--mix tier1.5=0.9,tier0=0.1`) or a
+persisted **corpus arm** (`tier0`/`tier3`). The
 campaign remains a single Hypothesis property, so tier-1 disagreements still
 shrink to minimal reproducers; a disagreeing corpus draw is reported by its
 corpus id instead (it is already small and persisted). Non-critical

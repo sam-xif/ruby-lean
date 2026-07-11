@@ -16,33 +16,6 @@ from hypothesis import strategies as st
 
 from . import ast as A
 
-# Eval-order mode (tier "1.5"): when on, leaf operands are wrapped in a probe call
-# `__t(label, leaf)` — `__t` prints the label and returns the leaf — so the stdout
-# trace records the exact left-to-right evaluation order of subexpressions. The
-# label is baked into the (identical) source both control and SUT run, so it can
-# only surface a *reordering* between them, never a false disagreement. State is a
-# module global reset at the top of each `programs()` draw (Hypothesis runs examples
-# sequentially; there is no nested/parallel `programs()`), which avoids threading a
-# counter through every composite.
-_EO = {"on": False, "n": 0}
-
-
-def _probe(node: A.Node) -> A.Node:
-    """Wrap a leaf in `__t("N", node)` when eval-order mode is on; else identity."""
-    if not _EO["on"]:
-        return node
-    label = str(_EO["n"])
-    _EO["n"] += 1
-    return A.Call("__t", (A.StrLit(label), node))
-
-
-def _probe_helper_def() -> A.Node:
-    """`def __t(l, v); puts(l); v; end` — the eval-order probe, prepended to the
-    program. Not registered in the Env, so the random generator never calls it
-    directly; it is used only by `_probe`."""
-    return A.MethodDef("__t", ("l", "v"), (A.Puts((A.LocalRead("l"),)), A.LocalRead("v")))
-
-
 LOCAL_POOL = ("a", "b", "c", "d")
 LOOP_POOL = ("i", "j")
 PARAM_POOL = ("x", "y")
@@ -103,9 +76,9 @@ def _expr(draw, env: Env, depth: int) -> A.Node:
     sub = lambda: draw(_expr(env, depth - 1))  # noqa: E731
 
     if kind == "lit":
-        return _probe(draw(_literal()))
+        return draw(_literal())
     if kind == "local":
-        return _probe(A.LocalRead(draw(st.sampled_from(env.locals))))
+        return A.LocalRead(draw(st.sampled_from(env.locals)))
     if kind == "call":
         name, arity = draw(st.sampled_from(env.methods))
         return A.Call(name, tuple(draw(_expr(env, depth - 1)) for _ in range(arity)))
@@ -198,13 +171,9 @@ def _stmt_seq(draw, env: Env, depth: int, min_n: int, max_n: int) -> tuple[tuple
 
 
 @st.composite
-def programs(draw, eval_order: bool = False) -> A.Program:
-    _EO["on"] = eval_order
-    _EO["n"] = 0
+def programs(draw) -> A.Program:
     env = Env()
     stmts: list[A.Node] = []
-    if eval_order:
-        stmts.append(_probe_helper_def())   # `def __t(l, v); puts(l); v; end`
     n_defs = draw(st.integers(0, 2))
     for k in range(n_defs):
         name = METHOD_POOL[k]

@@ -91,30 +91,50 @@ filesystem state leak between the determinism double-run and across cases.
 inherits the engine cwd (it only parses/rewrites, never runs the program);
 the rendered program itself goes through `CRubyRunner.run` and is isolated.
 
-## N11 — Tier "1.5": tier-1 generator + eval-order probes (a tier id, not a flag)
+## N11 — Tier "1.5": eval-order probes as a separate tier over the shared grammar
 
-Eval-order conformance is exposed as a distinct **tier id** (`--tier 1.5`) rather
-than a per-tier flag, so tier selection stays uniform (`--tier` is now a string:
-`0`/`1`/`1.5`/`2`/`3`). Tier 1.5 is exactly the tier-1 scope-aware generator with
-one addition: in eval-order mode, every **leaf operand** (literal / local read)
-produced by `_expr` is wrapped in a probe call `__t(label, leaf)`, where the
-prelude `def __t(l, v); puts(l); v; end` prints the label and returns the leaf.
-The label is a per-program counter baked into the source both control and SUT run,
-so the stdout trace records the exact left-to-right evaluation order of
-subexpressions — a reordering (or double-evaluation) between control and SUT shows
-up as a trace difference, and can never be a false positive (identical source →
-identical labels). State is a module global in `strategies.py` reset at the top of
-each `programs()` draw (Hypothesis runs examples sequentially; no nested/parallel
-`programs()`), which avoids threading a counter through every composite.
+Eval-order conformance is a distinct **tier id** (`--tier 1.5`), not a per-tier
+flag, so tier selection stays uniform (`--tier` is a string: `0`/`1`/`1.5`/`2`/`3`).
+It is **structurally separate** from tier 1 and shares the grammar by *reuse, not
+duplication*:
 
-Applies to **pure tier-1 campaigns only**, not mix arms. Validated: `--tier 1.5
---sut identity` and `--sut desugar` are all-agree (desugar preserves order);
-`--tier 1.5 --sut desugar --inject-bug` reliably finds and shrinks a disagreement
-(the naive `&&`/`||` double-evaluation prints a probe label twice) — i.e. the probe
-has teeth. **Known gap (follow-up):** the tier-1 grammar has no writer-calls
+- `tiers/tier1/strategies.py` — the shared scope-aware generator, unchanged and
+  probe-agnostic.
+- `tiers/tier1_5/probe.py` — a pure **AST→AST transform** `add_eval_order_probes`
+  that walks the tier-1 AST generically (`dataclasses.fields`) and wraps every
+  leaf value-node (`IntLit`/`StrLit`/`SymLit`/`BoolLit`/`NilLit`/`LocalRead`) in a
+  probe call `__t("<n>", leaf)`, prepending the prelude `def __t(l, v); puts(l);
+  v; end`. The label counter is **local to the transform** (`itertools.count()`
+  per program) — no module global, no flag threading.
+- `tiers/tier1_5/strategies.py` — `programs()` = `tier1.programs().map(
+  add_eval_order_probes)`. `Strategy.map` keeps shrinking intact (Hypothesis
+  shrinks the underlying tier-1 AST and re-applies the pure transform).
+
+The campaign is generic over a **registry of generative arms** (`tiers/__init__.py`
+`GENERATIVE_ARMS = {"tier1": …, "tier1.5": …}`, arm-name → program-strategy
+factory). `run_generative_campaign(gen_strategies=…)` treats any mix key in that
+registry as generative (generate + `render_program`, id `{arm}-NNNN` when pure,
+`mix-NNNN` in a mix) and anything else as a corpus arm. Both pure `--tier` runs
+(`--tier 1.5` is just `mix={"tier1.5": 1.0}`) and `--mix` campaigns share this one
+path, so **tier 1.5 is a first-class `--mix` arm** — e.g.
+`--mix "tier1.5=0.9,tier0=0.1"`, or even `tier1=0.5,tier1.5=0.5` to run plain and
+probed side by side. Adding a future generative tier is a one-line registry entry;
+the CLI validates mix arms against `GENERATIVE_ARMS ∪ CORPUS_ARMS`.
+
+`__t` prints the label and returns the leaf, so the stdout trace records the exact
+left-to-right evaluation order of subexpressions. Labels are baked into the source
+both control and SUT run, so a reorder/double-eval between them shows as a trace
+difference and can never be a false positive (identical source → identical labels).
+Because the walk is generic it wraps leaves the earlier in-generation approach
+missed — notably **hash keys** and **index positions** — strictly broader coverage.
+
+Validated: `--tier 1.5 --sut identity`/`--sut desugar` all-agree (desugar preserves
+order); `--tier 1.5 --sut desugar --inject-bug` reliably finds and shrinks a
+disagreement (naive `&&`/`||` double-evaluation prints a probe label twice) — the
+probe has teeth. **Known gap (follow-up):** the tier-1 grammar has no writer-calls
 (`a[i] = v`, `a.attr = v`) or side-effecting receiver/index — `Assign`/`OpAssign`
 are locals-only and `Index` reads a literal array at a literal index. So tier 1.5
-currently exercises operand order for calls/binops/logical/array/hash/interp, but
-not the recv→index→rhs ordering of assignment-calls (covered for now only by
-hand-written seed 27 and tier-3 eval-order/010). Adding writer-call AST nodes is
-the high-value next increment.
+exercises operand order for calls/binops/logical/array/hash/interp/index, but not
+the recv→index→rhs ordering of assignment-calls (covered for now only by seed 27
+and tier-3 eval-order/010). Adding writer-call AST nodes to the shared grammar is
+the high-value next increment — and both tiers would then benefit automatically.
