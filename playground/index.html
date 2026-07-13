@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruby-in-Lean stepper</title>
+<style>
+  :root {
+    --bg:#14171c; --panel:#1c2027; --panel2:#232833; --edge:#2e3542;
+    --fg:#e5e9f0; --dim:#8b95a7; --accent:#7aa2f7; --good:#9ece6a;
+    --warn:#e0af68; --bad:#f7768e; --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--edge);
+    display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header .hint { color:var(--dim); font-size:12px; }
+  .wrap { display:grid; grid-template-columns:minmax(320px,2fr) 3fr; gap:0;
+    height:calc(100vh - 47px); }
+  .left, .right { padding:14px 16px; overflow:auto; }
+  .right { border-left:1px solid var(--edge); }
+  textarea { width:100%; height:230px; background:var(--panel); color:var(--fg);
+    border:1px solid var(--edge); border-radius:8px; padding:10px;
+    font-family:var(--mono); font-size:13px; resize:vertical; }
+  button { background:var(--accent); color:#0b0e14; border:0; border-radius:6px;
+    padding:7px 14px; font-weight:600; cursor:pointer; font-size:13px; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.ghost { background:var(--panel2); color:var(--fg); border:1px solid var(--edge); }
+  .row { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+  .status { font-family:var(--mono); font-size:12px; padding:3px 8px; border-radius:5px; }
+  .status.done { color:var(--good); } .status.uncaught,.status.stuck { color:var(--bad); }
+  .status.unsupported,.status.step-cap { color:var(--warn); }
+  .stepbar input[type=range] { flex:1; accent-color:var(--accent); }
+  .counter { font-family:var(--mono); color:var(--dim); min-width:96px; }
+  .ctl { font-family:var(--mono); font-size:15px; background:var(--panel2);
+    border:1px solid var(--edge); border-left:3px solid var(--accent);
+    border-radius:6px; padding:10px 12px; margin:6px 0 14px; word-break:break-word; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--dim); margin:16px 0 6px; }
+  pre.out { background:#0e1116; border:1px solid var(--edge); border-radius:6px;
+    padding:10px; font-family:var(--mono); font-size:13px; white-space:pre-wrap;
+    min-height:20px; margin:0; color:#cdd6e6; }
+  pre.sexpr { max-height:260px; overflow:auto; white-space:pre; color:#a9b6d0; }
+  pre.sexpr .hd { color:var(--accent); } pre.sexpr .at { color:var(--warn); }
+  .frame { background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+    padding:8px 10px; margin-bottom:8px; }
+  .frame.top { border-color:var(--accent); }
+  .frame .fh { display:flex; gap:8px; align-items:center; font-family:var(--mono);
+    font-size:12px; margin-bottom:4px; }
+  .badge { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--panel2);
+    color:var(--dim); }
+  .badge.method { color:var(--accent); } .badge.block { color:var(--good); }
+  .locals { display:grid; grid-template-columns:auto 1fr; gap:2px 12px;
+    font-family:var(--mono); font-size:12px; }
+  .locals .k { color:var(--warn); } .locals .v { color:var(--fg); word-break:break-word; }
+  .empty { color:var(--dim); font-style:italic; font-size:12px; }
+  ol.konts { margin:0; padding-left:20px; font-family:var(--mono); font-size:12px;
+    color:var(--dim); }
+  ol.konts li:first-child { color:var(--fg); }
+  .err { color:var(--bad); font-family:var(--mono); font-size:13px; white-space:pre-wrap;
+    background:#1e1418; border:1px solid #4a2530; border-radius:6px; padding:10px; }
+  .detail { font-family:var(--mono); font-size:12px; color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ruby → Lean stepper</h1>
+  <span class="hint">write Ruby · Run · step with ← → · desugar + L0/L1 model</span>
+</header>
+<div class="wrap">
+  <div class="left">
+    <textarea id="src" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run">Run ▶</button>
+      <span id="msg" class="detail"></span>
+    </div>
+    <div id="errbox"></div>
+    <h2>Desugared RubyCore (s-expression)</h2>
+    <pre class="out sexpr" id="sexpr"></pre>
+    <h2>Standard output</h2>
+    <pre class="out" id="out"></pre>
+  </div>
+  <div class="right">
+    <div class="row stepbar">
+      <button class="ghost" id="first">⏮</button>
+      <button class="ghost" id="prev">◀</button>
+      <input type="range" id="slider" min="0" max="0" value="0">
+      <button class="ghost" id="next">▶</button>
+      <button class="ghost" id="last">⏭</button>
+      <span class="counter" id="counter">—</span>
+      <span id="status" class="status"></span>
+    </div>
+    <h2>Control — next thing the machine does</h2>
+    <div class="ctl" id="ctl">Run a program to begin.</div>
+    <div id="excbox"></div>
+    <h2>Call stack (top frame first)</h2>
+    <div id="frames"></div>
+    <h2>Continuations (what happens after)</h2>
+    <ol class="konts" id="konts"></ol>
+    <div class="detail" id="detail"></div>
+  </div>
+</div>
+<script>
+const SAMPLE = `x = 2
+def square(n)
+  n * n
+end
+
+def each_pair(a, b)
+  yield a
+  yield b
+end
+
+total = 0
+each_pair(square(x), 10) { |v| total = total + v }
+puts "total=#{total}"
+total`;
+
+const $ = id => document.getElementById(id);
+let trace = null, i = 0;
+
+function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// Plain-text inline form of a RubyCore node (JSON-array s-expr) — used only to
+// decide inline vs. multiline layout.
+function itext(n){
+  if (n === null) return 'nil';
+  if (Array.isArray(n)) return '(' + n.map(itext).join(' ') + ')';
+  return String(n);
+}
+// Pretty-print the desugared AST as an s-expression (HTML: head + atoms tinted).
+function fmtSexpr(n){
+  if (n === null) return '<span class="at">nil</span>';
+  if (typeof n === 'number') return `<span class="at">${n}</span>`;
+  if (!Array.isArray(n)) return esc(String(n));            // strings: plain
+  const headHTML = c => (typeof c === 'string')
+    ? `<span class="hd">${esc(c)}</span>` : fmtSexpr(c);
+  if (itext(n).length <= 54)                               // fits on one line
+    return '(' + n.map((c, i) => i === 0 ? headHTML(c) : fmtSexpr(c)).join(' ') + ')';
+  const head = headHTML(n[0]);                             // else break children
+  const rest = n.slice(1).map(c =>
+    fmtSexpr(c).split('\n').map(l => '  ' + l).join('\n'));
+  return '(' + head + '\n' + rest.join('\n') + ')';
+}
+
+async function run() {
+  $('run').disabled = true; $('msg').textContent = 'running…';
+  $('errbox').innerHTML = '';
+  try {
+    const r = await fetch('/trace', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    $('sexpr').innerHTML = d.ast ? fmtSexpr(d.ast)
+      : '<span class="empty">— (desugar gated: nothing to run)</span>';
+    if (d.error) {
+      trace = null;
+      $('errbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
+      $('msg').textContent = '';
+      render();
+      return;
+    }
+    trace = d; i = 0;
+    $('slider').max = Math.max(0, d.steps.length - 1);
+    $('msg').textContent = `${d.steps.length} steps`;
+    render();
+  } catch(e) {
+    $('errbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
+  } finally { $('run').disabled = false; }
+}
+
+function render() {
+  if (!trace) { $('ctl').textContent = '—'; $('frames').innerHTML=''; $('konts').innerHTML='';
+    $('out').textContent=''; $('counter').textContent='—'; $('status').textContent='';
+    $('detail').textContent=''; $('excbox').innerHTML=''; return; }
+  const steps = trace.steps;
+  i = Math.max(0, Math.min(i, steps.length - 1));
+  const s = steps[i] || {ctl:'',out:'',frames:[],konts:[],exc:''};
+  $('slider').value = i;
+  $('counter').textContent = `step ${i} / ${steps.length - 1}`;
+  $('ctl').textContent = s.ctl;
+  $('out').textContent = s.out;
+  $('excbox').innerHTML = s.exc ? `<h2>\$! (current exception)</h2><div class="ctl" style="border-left-color:var(--bad)">${esc(s.exc)}</div>` : '';
+
+  $('frames').innerHTML = (s.frames||[]).map((f, idx) => {
+    const locals = (f.locals||[]).length
+      ? `<div class="locals">` + f.locals.map(l =>
+          `<span class="k">${esc(l.name)}</span><span class="v">${esc(l.val)}</span>`).join('') + `</div>`
+      : `<div class="empty">no locals</div>`;
+    const badges = [`<span class="badge ${f.kind}">${f.kind} #${f.id}</span>`,
+      f.blk ? `<span class="badge">${esc(f.blk)}</span>`:'',
+      f.lam ? `<span class="badge">${esc(f.lam)}</span>`:''].join('');
+    return `<div class="frame ${idx===0?'top':''}">
+      <div class="fh">${badges}<span class="badge">self ${esc(f.self)}</span></div>${locals}</div>`;
+  }).join('') || '<div class="empty">no frames</div>';
+
+  $('konts').innerHTML = (s.konts||[]).map(k => `<li>${esc(k)}</li>`).join('')
+    || '<li class="empty">empty — program will finish</li>';
+
+  const last = i === steps.length - 1;
+  $('status').className = 'status ' + (last ? (trace.status||'') : '');
+  $('status').textContent = last ? trace.status : '';
+  $('detail').textContent = last && trace.detail ? `result: ${trace.detail}` : '';
+}
+
+function go(n){ if(!trace) return; i = n; render(); }
+$('run').onclick = run;
+$('first').onclick = () => go(0);
+$('prev').onclick = () => go(i-1);
+$('next').onclick = () => go(i+1);
+$('last').onclick = () => go(trace ? trace.steps.length-1 : 0);
+$('slider').oninput = e => go(+e.target.value);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft') { go(i-1); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { go(i+1); e.preventDefault(); }
+});
+$('src').value = SAMPLE;
+run();
+</script>
+</body>
+</html>

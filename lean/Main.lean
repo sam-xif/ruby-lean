@@ -8,10 +8,12 @@ Exit codes (mirroring the desugar SUT adapter contract):
   1 — harness error (bad input, stuck machine); message on stderr
 -/
 import RubyCore.Obs
+import RubyCore.Trace
 
 open RubyCore
 
 def fuelDefault : Nat := 5_000_000
+def traceStepsDefault : Nat := 3000
 
 def main (args : List String) : IO UInt32 := do
   let stdin ← IO.getStdin
@@ -19,6 +21,12 @@ def main (args : List String) : IO UInt32 := do
   let fuel := match args with
     | ["--fuel", n] => n.toNat?.getD fuelDefault
     | _ => fuelDefault
+  -- `--trace [N]`: emit the step-by-step config trace (playground) instead of
+  -- a single Observation. Decode errors still exit 1; a trace always exits 0
+  -- (unsupported/stuck are reported inside the JSON `status`).
+  let traceSteps : Option Nat := match args with
+    | "--trace" :: rest => some (rest.head?.bind (·.toNat?) |>.getD traceStepsDefault)
+    | _ => none
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -29,6 +37,9 @@ def main (args : List String) : IO UInt32 := do
       IO.eprintln s!"undecodable RubyCore: {e}"
       return 1
     | .ok prog =>
+      if let some maxSteps := traceSteps then
+        IO.println (Trace.traceJson maxSteps (Machine.init prog)).compress
+        return 0
       let result := Interp.run fuel (Machine.init prog)
       match observe result with
       | .obs obs =>

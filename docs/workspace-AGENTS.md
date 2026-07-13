@@ -151,6 +151,15 @@ revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
 `lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
 
+### `playground/` — visual step-through of the Lean stepper (runnable)
+A browser playground to write Ruby and step through its execution **in the Lean
+model** one `stepFn` transition at a time (control state, frame stack + live
+locals, continuation stack, stdout). Zero-dependency Python stdlib server
+(`server.py`) over the existing pipeline + a Lean `--trace` mode
+(`lean/RubyCore/Trace.lean`, a lossy non-gating tooling view). Run: `cd
+lean && lake build`, then `python3 playground/server.py`. See
+[`playground/README.md`](playground/README.md).
+
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`
 (Furr et al., DLS'09 — RIL/desugaring reference), `csmith.pdf` (PLDI'11 — differential
