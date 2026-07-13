@@ -3,7 +3,8 @@
 Write a Ruby program in the browser and step through its execution **in the
 Lean model**, one `stepFn` transition at a time — watching the control state,
 the call/block-frame stack with live locals, the continuation stack, and
-accumulating stdout.
+accumulating stdout. **Run in CRuby ▶** executes the same source in real Ruby
+so you can compare the model's stdout against the oracle's.
 
 It's glue over pieces that already exist: the desugar harness and the Lean
 `rubycore` binary. The only model addition is a `--trace` mode

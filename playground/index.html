@@ -62,6 +62,7 @@
   .err { color:var(--bad); font-family:var(--mono); font-size:13px; white-space:pre-wrap;
     background:#1e1418; border:1px solid #4a2530; border-radius:6px; padding:10px; }
   .detail { font-family:var(--mono); font-size:12px; color:var(--dim); }
+  .err-inline { color:var(--bad); }
 </style>
 </head>
 <body>
@@ -73,14 +74,17 @@
   <div class="left">
     <textarea id="src" spellcheck="false"></textarea>
     <div class="row">
-      <button id="run">Run ▶</button>
+      <button id="run">Step in Lean ▶</button>
+      <button class="ghost" id="runruby">Run in CRuby ▶</button>
       <span id="msg" class="detail"></span>
     </div>
     <div id="errbox"></div>
     <h2>Desugared RubyCore (s-expression)</h2>
     <pre class="out sexpr" id="sexpr"></pre>
-    <h2>Standard output</h2>
+    <h2>Model stdout (Lean stepper, at current step)</h2>
     <pre class="out" id="out"></pre>
+    <h2>CRuby stdout (real Ruby)</h2>
+    <pre class="out" id="rubyout"><span class="empty">— press “Run in CRuby”</span></pre>
   </div>
   <div class="right">
     <div class="row stepbar">
@@ -203,8 +207,25 @@ function render() {
   $('detail').textContent = last && trace.detail ? `result: ${trace.detail}` : '';
 }
 
+async function runRuby() {
+  $('runruby').disabled = true;
+  $('rubyout').innerHTML = '<span class="empty">running in CRuby…</span>';
+  try {
+    const r = await fetch('/run', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    if (d.error) { $('rubyout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`; return; }
+    let html = d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>';
+    if (d.stderr) html += `\n<span class="err-inline">${esc(d.stderr)}</span>`;
+    if (d.returncode) html += `\n<span class="empty">exit ${d.returncode}</span>`;
+    $('rubyout').innerHTML = html;
+  } catch(e) {
+    $('rubyout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
+  } finally { $('runruby').disabled = false; }
+}
+
 function go(n){ if(!trace) return; i = n; render(); }
 $('run').onclick = run;
+$('runruby').onclick = runRuby;
 $('first').onclick = () => go(0);
 $('prev').onclick = () => go(i-1);
 $('next').onclick = () => go(i+1);

@@ -78,6 +78,17 @@ def trace(source: str) -> dict:
     return result
 
 
+def run_ruby(source: str) -> dict:
+    """Execute the source in real CRuby and capture stdout/stderr."""
+    try:
+        p = subprocess.run(
+            [RUBY], input=source, capture_output=True, text=True, timeout=TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "message": f"ruby timed out after {TIMEOUT}s"}
+    return {"stdout": p.stdout, "stderr": p.stderr, "returncode": p.returncode}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):  # quiet
         pass
@@ -96,12 +107,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path != "/trace":
+        if self.path not in ("/trace", "/run"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
         source = self.rfile.read(n).decode("utf-8")
-        result = trace(source)
+        result = trace(source) if self.path == "/trace" else run_ruby(source)
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
 
 
