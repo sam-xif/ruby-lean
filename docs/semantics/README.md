@@ -44,6 +44,19 @@ precise proof-goal shape (coupling invariant `Inv` + stuttering forward simulati
 argues everything hinges on constructing `Inv` and lays out its clause taxonomy plus the
 executable-`Inv` validation path (assert it on live CRuby heaps first).
 
+**Types:** [Sorbet's type system & a preservation roadmap](types-and-preservation.md) — a
+research artifact (to grow): Part A is a formalization-oriented deep dive on **Sorbet**
+(type grammar, flow-sensitive narrowing, the unsound-by-design stance + escape hatches,
+strictness levels, and runtime `sig` enforcement as the gradual boundary); Part B is a
+broad survey of how **type preservation / soundness** is proved (Wright–Felleisen syntactic
+method, Featherweight Java, the TypeScript formalizations + store typing, DRuby/PRuby,
+Typed Racket occurrence typing, gradual-typing soundness + the blame theorem + the gradual
+guarantee, and mechanization techniques); Part C maps both onto our `Step` relation —
+recommending a *runtime* three-outcome safety statement, reusing the already-proven monotone
+heap as store typing `Σ`, and treating a sig-violating heap mutation as a type `escape`
+(same device as `co-semantics.md` §5.3). Two cheapest steps (gradual-guarantee `obs⁺` probe;
+`srb`/`T.reveal_type` as a typing oracle) need no Lean.
+
 ## Conventions
 
 - **[V]** behavior verified against a real interpreter (CRuby 4.0.5, installed via
