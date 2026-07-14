@@ -37,7 +37,7 @@ module Linearize
   def blk_of(b)
     return nil if b.nil?
     case b[0]
-    when :block     then [:block, b[1], b[2], run(b[3])]
+    when :block     then [:block, run_params(b[1]), b[2], run(b[3])]
     when :blockpass then [:blockpass, b[1] && run(b[1])]
     end
   end
@@ -46,6 +46,28 @@ module Linearize
   # operand sequence in eval-order position (after all args). Empty for a literal block / nil.
   def blk_operand(blk)
     blk && blk[0] == :blockpass && blk[1] ? [blk[1]] : []
+  end
+
+  # Linearize the default-value expressions inside a param list (:popt / :pkey). Defaults
+  # are evaluated lazily in the callee scope, so they are recursed into (nested operand
+  # jumps hoisted) but never hoisted *out* of the param list.
+  def run_params(params)
+    params.map do |p|
+      case p[0]
+      when :popt then [:popt, p[1], run(p[2])]
+      when :pkey then p[2] ? [:pkey, p[1], run(p[2])] : p
+      else p
+      end
+    end
+  end
+
+  # Linearize the value (and key) expressions inside a `[:kwargs, …]` marker.
+  def run_kwargs(node)
+    [:kwargs, node[1].map { |el| el[0] == :kwsplat ? [:kwsplat, el[1] && run(el[1])] : [run(el[0]), run(el[1])] }]
+  end
+
+  def run_arg(a)
+    a[0] == :kwargs ? run_kwargs(a) : run(a)
   end
 
   def run(node)
@@ -61,14 +83,14 @@ module Linearize
       v = run(node[1]); definitely_jumps?(v) ? v : [node[0], v]
     when :send
       recv = node[1] ? run(node[1]) : nil
-      args = node[3].map { |a| run(a) }
+      args = node[3].map { |a| run_arg(a) }
       blk  = blk_of(node[4])
       hoist((recv ? [recv] : []) + args + blk_operand(blk)) || [:send, recv, node[2], args, blk]
     when :yield
-      args = node[1].map { |a| run(a) }
+      args = node[1].map { |a| run_arg(a) }
       hoist(args) || [:yield, args]
     when :array
-      elems = node[1].map { |e| run(e) }
+      elems = node[1].map { |e| run_arg(e) }
       hoist(elems) || [:array, elems]
     when :hash
       flat = node[1].flatten(1).map { |e| run(e) }
@@ -81,8 +103,8 @@ module Linearize
       c = run(node[1])
       return c if definitely_jumps?(c)
       [:while, c, run(node[2])]
-    when :def   then [:def, node[1], node[2], run(node[3])]
-    when :defs  then [:defs, run(node[1]), node[2], node[3], run(node[4])]
+    when :def   then [:def, node[1], run_params(node[2]), run(node[3])]
+    when :defs  then [:defs, run(node[1]), node[2], run_params(node[3]), run(node[4])]
     when :block then blk_of(node)
     when :seq   then [:seq, *node[1..].map { |n| run(n) }]
     when :splat then node[1] ? [:splat, run(node[1])] : node
@@ -96,7 +118,7 @@ module Linearize
       rs = rescues.map { |excs, ref, h| [excs.map { |e| run(e) }, ref, run(h)] }
       [:begin, run(body), rs, els && run(els), ens && run(ens)]
     when :super
-      args = node[1].map { |a| run(a) }
+      args = node[1].map { |a| run_arg(a) }
       blk  = blk_of(node[2])
       hoist(args + blk_operand(blk)) || [:super, args, blk]
     when :zsuper then [:zsuper, blk_of(node[1])]

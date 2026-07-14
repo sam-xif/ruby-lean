@@ -19,6 +19,7 @@ class Desugar
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
+    opt-param kw-param kwrest-param kwargs
   ].freeze
 
   attr_reader :coverage
@@ -180,14 +181,34 @@ class Desugar
     [:seq, [:send, recv, n.name.to_s, idx + [[:vasgn, :local, t, rhs]], nil], [:var, :local, t]]
   end
 
-  # An element of an argument list or array literal — may be a splat (`*e`).
+  # An element of an argument list or array literal — may be a splat (`*e`) or a trailing
+  # keyword-hash (`a: 1, **h`). A keyword-hash is kept as a `[:kwargs, …]` marker rather
+  # than desugared to a positional hash, because Ruby 3 separates keyword args from a
+  # positional hash (a positional-hash literal uses braces; the marker renders brace-less).
   def arg_node(a)
-    if a.type == :splat_node
+    case a.type
+    when :splat_node
       fire(:splat)
       [:splat, a.expression ? node(a.expression) : nil]
+    when :keyword_hash_node
+      kwargs_node(a)
     else
       node(a)
     end
+  end
+
+  # foo(a: 1, "b" => 2, **h) — a brace-less keyword hash. elem = [k, v] (assoc) or
+  # [:kwsplat, e_or_nil] (`**h` / anonymous `**`). Keys may be non-symbol (`"b" => 2`).
+  def kwargs_node(kh)
+    fire(:kwargs)
+    elems = kh.elements.map do |el|
+      case el.type
+      when :assoc_node       then [node(el.key), node(el.value)]
+      when :assoc_splat_node then [:kwsplat, el.value ? node(el.value) : nil]
+      else raise Unsupported, "kwargs elem :#{el.type}"
+      end
+    end
+    [:kwargs, elems]
   end
 
   # A send/super block slot: either a literal block `{…}`/`do…end` (:block_node) or a
@@ -218,7 +239,7 @@ class Desugar
   def block_params(bp)
     return [[], []] if bp.nil?
     raise Unsupported, "block param type :#{bp.type}" unless bp.type == :block_parameters_node
-    [param_names(bp.parameters), bp.locals.map { |l| l.name.to_s }]
+    [build_params(bp.parameters), bp.locals.map { |l| l.name.to_s }]
   end
 
   # `yield args` — invoke the current method frame's block (artifact 04 §2).
@@ -238,35 +259,49 @@ class Desugar
     [:send, nil, "lambda", [], [:block, params, locals, stmts(n.body)]]
   end
 
-  # Positional parameter names for a def/block, as strings. Required params are plain
-  # names; a rest param `*a` is stored verbatim as the string "*a" (or "*" if anonymous),
-  # and a block-capture param `&blk` as "&blk" (or "&" if anonymous) — both sigil-prefixed
-  # strings that render directly (same losslessness trick as `*`, C23). A block param has no
-  # attached expression, so nothing for linearize to hoist. Post-rest required params
-  # (`a, *b, c`) are supported. Optional, keyword, and keyword-rest params are deferred.
-  def param_names(p)
+  # A def/block/lambda parameter list, as a structured list of param nodes (see
+  # RubyCore::PARAM_HEADS), built in Ruby's canonical order: requireds, optionals, rest,
+  # post-rest requireds, keywords, keyword-rest, block. An optional default (`a = E`) and
+  # an optional-keyword default (`a: E`) are arbitrary expressions evaluated lazily in the
+  # callee scope at call time — carried as a real desugared node (a flat string couldn't
+  # hold them; that is why the slot is structured, not [String], C25). Anonymous `*`/`**`/`&`
+  # and destructuring block params (`|(a,b)|`) — nil / deferred respectively.
+  def build_params(p)
     return [] if p.nil?
-    raise Unsupported, "optional param" unless p.optionals.empty?
-    raise Unsupported, "keyword param" unless p.keywords.empty?
-    raise Unsupported, "keyword-rest param" if p.keyword_rest
-
-    names = p.requireds.map { |r| simple_param(r) }
+    params = p.requireds.map { |r| req_param(r) }
+    p.optionals.each do |o|
+      fire(:"opt-param")
+      params << [:popt, o.name.to_s, node(o.value)]
+    end
     if p.rest
       raise Unsupported, "rest param :#{p.rest.type}" unless p.rest.type == :rest_parameter_node
-      names << "*#{p.rest.name}"     # p.rest.name may be nil (anonymous `*`) -> "*"
+      params << [:prest, p.rest.name&.to_s]   # nil name = anonymous `*`
     end
-    names += p.posts.map { |r| simple_param(r) }
+    params += p.posts.map { |r| req_param(r) }
+    p.keywords.each do |k|
+      fire(:"kw-param")
+      case k.type
+      when :required_keyword_parameter_node then params << [:pkey, k.name.to_s, nil]
+      when :optional_keyword_parameter_node then params << [:pkey, k.name.to_s, node(k.value)]
+      else raise Unsupported, "keyword param :#{k.type}"
+      end
+    end
+    if p.keyword_rest
+      raise Unsupported, "keyword-rest :#{p.keyword_rest.type}" unless p.keyword_rest.type == :keyword_rest_parameter_node
+      fire(:"kwrest-param")
+      params << [:pkwrest, p.keyword_rest.name&.to_s]  # nil name = bare `**`
+    end
     if p.block
       raise Unsupported, "block param :#{p.block.type}" unless p.block.type == :block_parameter_node
       fire(:"block-capture")
-      names << "&#{p.block.name}"    # p.block.name may be nil (anonymous `&`) -> "&"
+      params << [:pblock, p.block.name&.to_s]          # nil name = anonymous `&`
     end
-    names
+    params
   end
 
-  def simple_param(r)
+  def req_param(r)
     raise Unsupported, "non-simple param :#{r.type}" unless r.type == :required_parameter_node
-    r.name.to_s
+    [:preq, r.name.to_s]
   end
 
   def andor(n, and_kind:)
@@ -286,7 +321,7 @@ class Desugar
   end
 
   def desugar_def(n)
-    params = param_names(n.parameters)
+    params = build_params(n.parameters)
     recv = n.receiver ? node(n.receiver) : nil
     fire(recv ? :defs : :def)
     @fn_depth += 1

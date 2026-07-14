@@ -42,12 +42,13 @@ module Render
       "(while #{core(c)} do #{core(b)} end)"
     when :def
       _, name, params, body = node
-      "(def #{name}(#{params.join(', ')}); #{core(body)}; end)"
+      "(def #{name}(#{render_params(params)}); #{core(body)}; end)"
     when :array
       "[" + node[1].map { |n| core(n) }.join(", ") + "]"
     when :hash
       "{" + node[1].map { |k, v| "(#{core(k)}) => (#{core(v)})" }.join(", ") + "}"
     when :splat then node[1] ? "*(#{core(node[1])})" : "*"
+    when :kwargs then kwargs_str(node)
     when :return then node[1] ? "return (#{core(node[1])})" : "return"
     when :break  then node[1] ? "break (#{core(node[1])})" : "break"
     when :next   then node[1] ? "next (#{core(node[1])})" : "next"
@@ -60,7 +61,7 @@ module Render
     when :sclass then "(class << (#{core(node[1])}); #{core(node[2])}; end)"
     when :defs
       _, recv, name, params, body = node
-      "(def (#{core(recv)}).#{name}(#{params.join(', ')}); #{core(body)}; end)"
+      "(def (#{core(recv)}).#{name}(#{render_params(params)}); #{core(body)}; end)"
     when :begin  then begin_str(node)
     when :super
       _, args, blk = node
@@ -123,9 +124,39 @@ module Render
     if params.empty? && locals.empty?
       "{ #{core(body)} }"
     else
-      bar = params.join(", ")
+      bar = render_params(params)
       bar += "; #{locals.join(', ')}" unless locals.empty?
       "{ |#{bar}| #{core(body)} }"
     end
+  end
+
+  # Render a structured param list (see RubyCore::PARAM_HEADS) back to Ruby.
+  def render_params(params)
+    params.map { |p| param_str(p) }.join(", ")
+  end
+
+  def param_str(p)
+    case p[0]
+    when :preq    then p[1]
+    when :popt    then "#{p[1]} = (#{core(p[2])})"
+    when :prest   then p[1] ? "*#{p[1]}" : "*"
+    when :pkey    then p[2] ? "#{p[1]}: (#{core(p[2])})" : "#{p[1]}:"
+    when :pkwrest then p[1] ? "**#{p[1]}" : "**"
+    when :pblock  then p[1] ? "&#{p[1]}" : "&"
+    else raise "cannot render param :#{p[0]}"
+    end
+  end
+
+  # Keyword arguments at a call site, rendered *without* braces (bare `k: v` / `**e`) so
+  # they re-parse as a keyword hash — NOT a positional hash literal (Ruby-3 separation).
+  # Uses `=>` for any key so no valid-label check is needed; `k: v` is sugar for `:k => v`.
+  def kwargs_str(node)
+    node[1].map do |el|
+      if el[0] == :kwsplat
+        el[1] ? "**(#{core(el[1])})" : "**"
+      else
+        "(#{core(el[0])}) => (#{core(el[1])})"
+      end
+    end.join(", ")
   end
 end

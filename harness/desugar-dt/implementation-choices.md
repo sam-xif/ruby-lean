@@ -553,3 +553,64 @@ Ratchet: **826 → 852** in-fragment bootstraptest, 0 disagree / 0 harness-error
 0 AST-idempotence failures. Seed `corpus/seeds/29_block_pass.rb` covers `&Proc`,
 `&:sym` (`to_proc`), `&nil`, forwarding `def f(&b); g(&b); end`, and the
 eval-order obligation (args before the `&`-operand's evaluation/coercion).
+
+## C25 — M2: structured parameter list + keyword call args (optional/keyword/kwrest params, `foo(a: 1, **h)`)
+
+**Decision.** Migrate the `def`/`defs`/`block`/lambda **parameter slot from a flat
+`[String]` to a structured list of param nodes**, and admit keyword arguments at a
+call site as a `[:kwargs, elems]` marker. This unblocks the whole M2 family (optional,
+keyword, keyword-rest, block-capture params, and brace-less keyword args), which
+dominated the post-M3 first-blocker histogram once class bodies exposed method signatures.
+
+**Why the migration (not the flat-string trick).** Required params, `*rest`, and `&blk`
+were carried as sigil-prefixed strings (C17/C23) because they are fully described by a
+name. An **optional default** (`a = E`) and an **optional-keyword default** (`a: E`) are
+not: `E` is an arbitrary expression evaluated *lazily, left-to-right, in the callee scope,
+at call time, only for omitted args* (`def f(a, b = a + 1)`), so it must be carried as a
+real desugared node — and `linearize` must recurse into it. A string cannot hold that.
+So the param slot becomes a list of param nodes (a sub-grammar of the object-model
+primitives, **not** a new top-level head — C12 category d):
+
+| Param node | Surface | Renders |
+|------------|---------|---------|
+| `[:preq, name]` | `a` (incl. post-rest) | `a` |
+| `[:popt, name, default]` | `a = E` | `a = (E)` |
+| `[:prest, name_or_nil]` | `*a` / `*` | `*a` / `*` |
+| `[:pkey, name, default_or_nil]` | `a: E` / `a:` (required) | `a: (E)` / `a:` |
+| `[:pkwrest, name_or_nil]` | `**o` / `**` | `**o` / `**` |
+| `[:pblock, name_or_nil]` | `&b` / `&` | `&b` / `&` |
+
+`nil` default on `:pkey` = a *required* keyword. Order is Ruby's canonical
+requireds→optionals→rest→posts→keywords→kwrest→block. Consumers migrated in lockstep:
+`rubycore.rb` gains `PARAM_HEADS` + a `params_error` validator (replacing the three
+`params.all? { String }` checks); `render.rb` gains `render_params`/`param_str`;
+`desugar.rb` replaces `param_names`→`build_params` (+`req_param`); `linearize.rb` gains
+`run_params` (recurses into `:popt`/`:pkey` defaults — a default is an operand position,
+but is never hoisted *out* of the list).
+
+**Keyword call args — the Ruby-3 separation (like "don't rewrite class to Class.new").**
+`foo(a: 1, **h)` is a brace-less trailing keyword hash (Prism `keyword_hash_node`). It is
+**not** desugared to a positional hash `foo({a: 1})`: since Ruby 3.0 keyword and
+positional-hash args are separated (a positional hash uses braces; keyword args bind to
+keyword params). So it is kept as `[:kwargs, elems]` (elem = `[k, v]` assoc or
+`[:kwsplat, e_or_nil]`) rendered **brace-less** with `=>` for every key (`(k) => (v)`,
+`**（e)`) — verified `[V]` behavior-identical to `k:`/`**` and, in an array literal
+`[a: 1]`, to the trailing-hash form. `arg_node` produces it (shared by call/array/yield
+args); `linearize` gets `run_arg`/`run_kwargs` to recurse into the values.
+
+**Deferred (enumerated):** argument/param forwarding `...` (`forwarding_parameter_node`,
+now the top param blocker at 31), destructuring block params `|(a, b)|`
+(`multi_target_node`), numbered params `_1`/`it` (`numbered_parameters_node`), implicit
+rest `a, = x`, `**nil` (`no_keywords_parameter_node`).
+
+**Interface.** Breaking change to the Lean JSON export (param-slot shape + `kwargs` head)
+→ `Export::VERSION` 3→4. `--sut lean` stays red until the model migrates its param
+decoder and adds `kwargs`. The round-trip harness (`bin/run`/`bin/coverage`) does not use
+the export and is fully green.
+
+**Result (measured).** in-fragment **852 → 1006** (+154), 65.6% → **77.4%** of parseable,
+**0 disagree / 0 harness-error / 0 AST-idempotence failures**; rule coverage 54/54 (seeds
+`30_params`, `31_param_defaults_eval_order` — the lazy-default eval-order adversarial
+seed — `32_kwargs` — the Ruby-3 separation seed, both directions). The fresh first-blocker
+histogram now names the next batches: `defined?` (34), `case`/`when` (30), `alias_method`
+(15), single-RHS massign (15), constant paths `A::B` (13+9+5).

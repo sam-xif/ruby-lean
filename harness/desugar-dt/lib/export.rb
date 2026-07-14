@@ -19,7 +19,13 @@ module Export
   # head (`[:blockpass, expr_or_nil]`) may occupy a send/super block slot. The Lean
   # decoder (`ruby/lean/RubyCore/Syntax.lean`) must be updated to match before
   # `--sut lean` works again (L1 blocks + L1b block passing, model side).
-  VERSION = 3
+  # v4 (2026-07-14): M2 params (C25) — the `def`/`defs`/`block` param slot is no longer a
+  # flat [String]; it is a structured list of param nodes ([:preq,…], [:popt,name,default],
+  # [:prest,name?], [:pkey,name,default?], [:pkwrest,name?], [:pblock,name?]). A new
+  # `[:kwargs, elems]` marker may occupy the last send/super arg slot (elem = [k,v] assoc
+  # or [:kwsplat, e?]). The Lean decoder must migrate the param slot + add kwargs before
+  # `--sut lean` works again.
+  VERSION = 4
 
   module_function
 

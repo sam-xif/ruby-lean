@@ -52,7 +52,9 @@ SUPPORTED = %i[
   local_variable_target_node instance_variable_target_node global_variable_target_node
   class_variable_target_node constant_target_node
   class_node module_node singleton_class_node begin_node rescue_node rescue_modifier_node
-  ensure_node retry_node super_node forwarding_super_node
+  ensure_node retry_node super_node forwarding_super_node yield_node lambda_node
+  optional_parameter_node keyword_hash_node assoc_splat_node block_parameter_node
+  required_keyword_parameter_node optional_keyword_parameter_node keyword_rest_parameter_node
 ].to_set
 
 require "prism"

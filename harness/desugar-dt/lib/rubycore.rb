@@ -21,14 +21,15 @@ module RubyCore
     const: "[:const, name]",
     casgn: "[:casgn, name, expr]",
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
-    block: "[:block, [param_names], [block_locals], body]",  # {|params; locals| body}
+    block: "[:block, [params], [block_locals], body]",  # {|params; locals| body}; params are param-nodes
     yield: "[:yield, [args]]",                               # yield to the current block
     if:    "[:if, cond, then, else_or_nil]",
     while: "[:while, cond, body]",
-    def:   "[:def, name, [param_names], body]",
+    def:   "[:def, name, [params], body]",              # params are param-nodes (see PARAM_HEADS)
     array: "[:array, [elems]]",
     hash:  "[:hash, [[key, val], ...]]",
     splat: "[:splat, expr_or_nil]",     # only valid as a send-arg / array element (`*e`)
+    kwargs: "[:kwargs, [elems]]",       # only valid as the last send/super arg; elem = [k,v] (assoc) | [:kwsplat, e_or_nil]
     blockpass: "[:blockpass, expr_or_nil]",  # only valid in a send/super block slot (`&e`); nil = anonymous `&`
     return: "[:return, expr_or_nil]",   # primitive non-local control
     break:  "[:break, expr_or_nil]",
@@ -50,7 +51,39 @@ module RubyCore
   # not a node; these are the valid kinds. Reused by the begin well-formedness check.
   TARGET_KINDS = %i[local ivar cvar gvar const].freeze
 
+  # Parameter nodes — a sub-grammar of def/defs/block param slots, NOT top-level heads
+  # (they only appear inside a param list). Ordered as Ruby requires: preq, popt, prest,
+  # preq (post-rest), pkey, pkwrest, pblock. A `name_or_nil` nil = anonymous (`*`/`**`/`&`);
+  # a `default_or_nil` nil for :pkey = a *required* keyword (`f:`).
+  #   [:preq, name]                 required positional          a
+  #   [:popt, name, default_expr]   optional positional          a = E
+  #   [:prest, name_or_nil]         rest                         *a / *
+  #   [:pkey, name, default_or_nil] keyword (req if default nil)  a: / a: E
+  #   [:pkwrest, name_or_nil]       keyword-rest                 **o / **
+  #   [:pblock, name_or_nil]        block-capture                &b / &
+  PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock].freeze
+
   module_function
+
+  # nil if the param list is well-formed, else a short error string.
+  def params_error(params)
+    return "params not Array" unless params.is_a?(Array)
+    params.each do |p|
+      return "param not array: #{p.inspect}" unless p.is_a?(Array) && p[0].is_a?(Symbol)
+      return "unknown param head :#{p[0]}" unless PARAM_HEADS.include?(p[0])
+      case p[0]
+      when :preq, :pkey
+        return "#{p[0]} name not String" unless p[1].is_a?(String)
+        return "popt/pkey default: #{explain(p[2])}" if p[0] == :pkey && p[2] && !is_core?(p[2])
+      when :popt
+        return "popt name not String" unless p[1].is_a?(String)
+        x = explain(p[2]); return "popt default: #{x}" if x
+      when :prest, :pkwrest, :pblock
+        return "#{p[0]} name not String/nil" unless p[1].nil? || p[1].is_a?(String)
+      end
+    end
+    nil
+  end
 
   # Structural well-formedness: every node's head is in the fragment and children
   # recursively check out. Returns true/false; use `explain` for the first offending node.
@@ -90,7 +123,7 @@ module RubyCore
       blk && !is_core?(blk) ? explain(blk) : nil
     when :block
       _, params, locals, body = node
-      return "block params not Array of String" unless params.is_a?(Array) && params.all? { |p| p.is_a?(String) }
+      return "block params: #{params_error(params)}" if params_error(params)
       return "block locals not Array of String" unless locals.is_a?(Array) && locals.all? { |p| p.is_a?(String) }
       explain(body)
     when :yield
@@ -108,7 +141,7 @@ module RubyCore
     when :def
       _, name, params, body = node
       return "def name not String" unless name.is_a?(String)
-      return "def params not Array of String" unless params.is_a?(Array) && params.all? { |p| p.is_a?(String) }
+      return "def params: #{params_error(params)}" if params_error(params)
       explain(body)
     when :array
       elems = node[1]
@@ -143,7 +176,7 @@ module RubyCore
       _, recv, name, params, body = node
       return "defs recv: #{explain(recv)}" if !is_core?(recv)
       return "defs name not String" unless name.is_a?(String)
-      return "defs params not Array of String" unless params.is_a?(Array) && params.all? { |p| p.is_a?(String) }
+      return "defs params: #{params_error(params)}" if params_error(params)
       explain(body)
     when :begin
       _, body, rescues, els, ens = node
@@ -171,6 +204,20 @@ module RubyCore
       node[1] && !is_core?(node[1]) ? explain(node[1]) : nil
     when :splat
       node[1].nil? ? nil : explain(node[1])
+    when :kwargs
+      elems = node[1]
+      return "kwargs payload not Array" unless elems.is_a?(Array)
+      elems.each do |el|
+        return "kwargs elem not Array" unless el.is_a?(Array)
+        if el[0] == :kwsplat
+          return "kwsplat expr: #{explain(el[1])}" if el[1] && !is_core?(el[1])
+        else
+          return "kwargs assoc not [k,v]" unless el.length == 2
+          x = explain(el[0]); return "kwargs key: #{x}" if x
+          y = explain(el[1]); return "kwargs val: #{y}" if y
+        end
+      end
+      nil
     when :blockpass
       node[1].nil? ? nil : explain(node[1])
     when :seq

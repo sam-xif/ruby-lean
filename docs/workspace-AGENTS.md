@@ -52,6 +52,14 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   massign (to_ary), `const`/`@@x` `||=` (need `defined?`), indexed/attr **op**-assign,
   optional/keyword params + double-splat `**`/kwargs (M2), `...` forwarding, constant paths
   `A::B`, do-while, `super` arg-forwarding subtleties.
+  **M2 params done (C25): 1006/1299 bootstraptest agree, 0 disagree, 0 harness-error** —
+  the `def`/`defs`/`block` param slot migrated from flat `[String]` to structured param
+  nodes (`:preq`/`:popt`/`:prest`/`:pkey`/`:pkwrest`/`:pblock`), admitting optional,
+  keyword (req + optional), keyword-rest, and block-capture params; keyword call args
+  land as a brace-less `[:kwargs,…]` marker (Ruby-3 separation, not a positional hash).
+  `Export::VERSION` 3→4 (breaking param-slot + `kwargs` change; `--sut lean` red until the
+  model migrates). Deferred: `...` forwarding (now top param blocker), destructuring block
+  params `|(a,b)|`, numbered params `_1`/`it`, `**nil`.
 - **Lean model: L0 + L1 + L2 (object model) implemented and difftesting** ([`lean/`](lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
