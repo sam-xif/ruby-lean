@@ -63,7 +63,9 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   frame-identity generative jump targets (`captured`/`home`/targeted `retJ`), `yield`/
   `block_given?`/`&blk`/block-pass/`&:sym`/`proc`/`lambda`/`->`/`Proc.new`/`Proc#call`,
   and proc-vs-lambda `next`/`break`/`return` with shared-scope locals. **Baseline: full
-  bootstraptest 372/1304 agree, 0 disagree** (up from 295 pre-L1; rest gated Unsupported:
+  bootstraptest 428/1304 agree, 0 disagree** (372 pre-L2a; **L2a done** — `class`/`module`
+  definitions, `Class#new`+`initialize`, cref-scoped constants, `method_missing`, frozen-`@x=`,
+  `impl-notes L17`; rest gated Unsupported:
   upstream desugar, class defs L2, iterating-builtins-that-yield, unmodeled
   methods+constants); tier-1 fuzzing already
   caught and fixed one real bug (coercion-error messages use inspect for special

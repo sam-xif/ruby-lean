@@ -133,3 +133,65 @@ decisions live in the sketch and README, not here.
     `NameError#receiver`, … gate instead of mis-raising `NoMethodError`.
   - Result: tier-0 bootstraptest **295 → 372 agree, 0 disagree**; tier-1
     (n=300) 214/0; regressions + tier-3 replay clean.
+
+- **L17 — L2a: the object model — `class`/`module` definitions + `Class#new`.**
+  Executable stepper only; the `class`/`module` heads no longer gate. Design
+  draws on Essence-of-Ruby's object calculus (classes are ordinary heap objects;
+  a class body is *evaluation in a frame whose self and cref are the class*) but
+  stays desugar-first: no new evaluation machinery beyond a frame kind + two
+  konts, everything else is heap mutation (the central bet).
+  - **A class body is a frame** (`FrameKind.classBody`, new): `enterClassBody`
+    opens (or creates) the named class object and runs the body with
+    `self = defmod = the class`, under an ordinary `frameK` boundary, so a `def`
+    inside installs on the class via the existing `defmod` path and the class
+    definition's value is the body's last expression [V]. Creation allocates a
+    `.cls` object (`klass` = Class, or Module for `module`); reopening checks
+    class/module agreement (`"{name} is not a {class|module}"`) and, for a
+    `class` with an explicit superclass, superclass match (`"superclass mismatch
+    for class {name}"`) — all byte-exact [V]. The superclass expression
+    evaluates first under a new **`classDefK`** kont; a non-Class value raises
+    `"superclass must be an instance of Class (given an instance of {C})"` [V]
+    (nil/true/false superclass gates — CRuby phrases those as "given nil").
+  - **`Class#new` with a user `initialize`** can't be a pure builtin (it must
+    push a frame), so it is intercepted in `invoke` (like `Proc#call`): allocate
+    the instance, then run `initialize` under a new **`newK inst`** kont that
+    discards `initialize`'s result and yields the instance (`new` = allocate ∘
+    initialize ∘ return self). `enterUserMethod` was factored out of dispatch so
+    `new` reuses the exact param-binding/frame-push path. A class with *no* user
+    init falls to the `Class#new` builtin (unchanged); extra args there now hit
+    the default `BasicObject#initialize` arity error [V]. Subclasses of a
+    payload-core class (String/Array/…/Exception) inherit an allocator we don't
+    model → **gate** (`payloadCoreClasses` in Builtins), never a wrong-payload
+    object.
+  - **Constants are cref-scoped** (artifact 03's *inheritance* phase):
+    `constSetIn`/`constLookupFrom` write/read on the current `defmod` and walk
+    its ancestors (bottoming out at Object = the toplevel namespace). So
+    `class C; K = 2; end` no longer clobbers a toplevel `K` [V
+    test_constant_cache_003]. The *lexical* phase (cref nesting) is not modeled
+    at L0; `defmod` is the innermost enclosing class. `casgn` and class-name
+    registration both route through `defmod`.
+  - **`method_missing`** (artifact 02 §4): a genuine total miss (after the
+    CRuby-shadow gates) dispatches a *user* `method_missing` with `(:name,
+    *args)` + the block; the default (none modeled) is the existing byte-exact
+    `NoMethodError`. Factored the default into `missNoMethod`.
+  - **Frozen `@x=`**: assigning an ivar on a frozen `ref` self now raises
+    `FrozenError "can't modify frozen {C}: {inspect}"` [V test_yjit_068]
+    (previously mutated silently). The object-`inspect` embeds a fake address,
+    but the obs layer normalizes `0x…`, so it agrees.
+  - **Equality-dependent builtins gate on a user `==`**: `Array#include?`/`index`
+    lean on default value-equality, which a pure builtin can't override, so they
+    gate when an operand's class defines a user `==` (`Builtins.hasUserEq`)
+    [V test_yjit_138]. Same shape as the `reprPure` gate, for equality.
+  - **Still gated (L2b/L2c):** `super`/`zsuper`, `defs` (`def self.m`/`def o.m`),
+    `sclass` (singleton class), eigenclasses, class variables (`@@x`), and
+    `Class#new` with a *block*.
+  - **Metatheory PoC kept green** (off-target; L13). Two pre-existing L1 rots
+    surfaced and were fixed: `setLocal_heap` (setLocal was rewritten for the
+    captured-chain walk and no longer routes through `setCurrentFrame`). The new
+    frozen-`@x=` split is reflected by a second ivar-assign rule
+    `asgnKIvarFrozen` (fires only when `inspect` is pure; the impure subcase
+    gates, so completeness closes it by contradiction) + `raiseErr_heapSize` for
+    `heap_monotone`. Still axiom-clean (`#print axioms`:
+    propext/Classical.choice/Quot.sound only).
+  - Result: tier-0 bootstraptest **372 → 428 agree, 0 disagree**; tier-1 (n=300,
+    seed 11) 214/0; regressions (7) + tier-3 (16) replay clean.

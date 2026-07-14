@@ -18,6 +18,9 @@ abbrev FrameId := Nat
 
 inductive FrameKind where
   | toplevel | method | block
+  /-- A `class`/`module` body (artifact 01 §5): `self` and the `def`-target
+      (`defmod`) are the class object; not a method activation. -/
+  | classBody
 deriving Repr, DecidableEq, Inhabited
 
 structure Frame where
@@ -89,6 +92,13 @@ inductive Kont where
   | seqK (rest : List Expr)
   | asgnK (k : VarKind) (name : String)
   | casgnK (name : String)
+  /-- Value in flight is a `class C < S` superclass expression: with `S`
+      resolved, open (or create) the class and run its body (artifact 01 §5). -/
+  | classDefK (name : String) (body : Expr)
+  /-- `Class#new` when the class has a user `initialize`: the in-flight value
+      is `initialize`'s (discarded) result; yield the fresh instance instead
+      (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
+  | newK (inst : Value)
   | ifK (t : Expr) (e : Option Expr)
   /-- Value is the while condition's result. Loop marker for brk/nxt. -/
   | whileCondK (c body : Expr)

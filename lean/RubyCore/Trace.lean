@@ -76,6 +76,8 @@ def kontLabel : Kont → String
   | .seqK rest => s!"seq (+{rest.length} more)"
   | .asgnK _ x => s!"then {x} = ▢"
   | .casgnK n => s!"then {n} = ▢"
+  | .classDefK name _ => s!"then open class {name} < ▢"
+  | .newK _ => "then yield new instance"
   | .ifK .. => "then pick if-branch"
   | .whileCondK .. => "while: test ▢"
   | .whileBodyK .. => "while: after body"
@@ -100,6 +102,7 @@ def kontLabel : Kont → String
 
 def frameKindStr : FrameKind → String
   | .toplevel => "toplevel" | .method => "method" | .block => "block"
+  | .classBody => "class-body"
 
 /-- Snapshot of one machine configuration. -/
 def snapshot (m : Machine) : Json :=

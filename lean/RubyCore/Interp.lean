@@ -275,6 +275,104 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk))
 
+/-- First module in `ancestors k` defining `m` directly, with its owner — like
+    `lookup` but keyed on a class ObjId rather than a receiver value (used to
+    inspect a class before any instance of it exists, e.g. for `initialize`). -/
+def methodOn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
+  (ancestors h k).firstM fun c =>
+    match h.classPayload? c with
+    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
+    | none => none
+
+/-- The user-defined `initialize` an instance of class `k` would run, if any
+    (a builtin `initialize` — none is modeled — does not count). `Class#new`
+    intercepts only when this is `some`; otherwise dispatch falls to the
+    `Class#new` builtin (artifact 02 §3). -/
+def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
+  match methodOn h k "initialize" with
+  | some (_, md) => if md.builtin.isNone then some md else none
+  | none => none
+
+/-- Enter a RubyCore-defined method activation: bind params (required + rest +
+    post; block-capture `&blk`), push the method frame, evaluate the body under
+    a `frameK` boundary (artifact 02 §3). Factored out of dispatch so `Class#new`
+    can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
+def enterUserMethod (m : Machine) (recv : Value) (md : MethodDef)
+    (args : List Value) (blk : Option Value) : StepResult :=
+  let (pre, rest?, post, blockP) := parseParams md.params
+  let required := pre.length + post.length
+  let arityOk := match rest? with
+    | some _ => args.length ≥ required
+    | none => args.length == required
+  if !arityOk then
+    let expected := match rest? with | some _ => s!"{required}+" | none => toString required
+    .next (raiseErr m Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected {expected})")
+  else
+    let preArgs := args.take pre.length
+    let postArgs := args.drop (args.length - post.length)
+    let midArgs := (args.drop pre.length).take (args.length - required)
+    let (locals, m) := match rest? with
+      | none => (pre.zip preArgs ++ post.zip postArgs, m)
+      | some rname =>
+        let (rv, m) := Builtins.allocArr m midArgs.toArray
+        (pre.zip preArgs ++ [(rname, rv)] ++ post.zip postArgs, m)
+    let locals := match blockP with
+      | some bn => locals ++ [(bn, blk.getD .nil)]
+      | none => locals
+    let frame : Frame :=
+      { self := recv, locals, defmod := md.owner, kind := .method, blk }
+    let fid := m.frames.size
+    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+    .next (withKont m (.eval md.body) (.frameK fid))
+
+/-- Open (or create) a class/module named `name` and run its `body` in a fresh
+    class-body frame with `self` = `defmod` = the class object (artifact 01 §5).
+    Reopening checks class/module agreement and, for `class`, superclass match
+    [V]. `sup?` is the resolved superclass (classes default to Object). -/
+def enterClassBody (m : Machine) (name : String) (isMod : Bool)
+    (sup? : Option ObjId) (body : Expr) : StepResult :=
+  let kindWord := if isMod then "module" else "class"
+  let pushFrame (m : Machine) (k : ObjId) : StepResult :=
+    let frame : Frame :=
+      { self := .ref k, defmod := k, kind := .classBody }
+    let fid := m.frames.size
+    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+    .next (withKont m (.eval body) (.frameK fid))
+  match constLookup m.heap name with
+  | some (.ref k) =>
+    match m.heap.classPayload? k with
+    | some c =>
+      if c.isModule != isMod then
+        .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
+      else match sup? with
+        | some s =>
+          if c.superclass == some s then pushFrame m k
+          else .next (raiseErr m Boot.typeErrorId s!"superclass mismatch for class {name}")
+        | none => pushFrame m k
+    | none => .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
+  | some _ => .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
+  | none =>
+    let superclass := if isMod then none else some (sup?.getD Boot.objectId)
+    let obj : Object :=
+      { klass := (if isMod then Boot.moduleId else Boot.classId),
+        payload := .cls { superclass, name, isModule := isMod } }
+    let (k, h) := m.heap.alloc obj
+    -- register the class name in the *enclosing* namespace (Object at toplevel)
+    let h := constSetIn h m.currentFrame.defmod name (.ref k)
+    pushFrame { m with heap := h } k
+
+/-- Default `method_missing` (artifact 02 §4): the bare implicit-self zero-arg
+    send is ambiguous (vcall `NameError` vs fcall `NoMethodError`; RubyCore
+    conflates them) — gate; otherwise the byte-exact `NoMethodError`. -/
+def missNoMethod (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+    (args : List Value) : StepResult :=
+  if implicit && args.isEmpty then
+    .unsupported s!"vcall/fcall NameError ambiguity: {mname}"
+  else
+    .next (raiseErr m Boot.noMethodErrorId
+      s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
+
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
@@ -286,6 +384,24 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     | .proc cl =>
       if mname == "call" || mname == "()" || mname == "[]" || mname == "yield" then
         callClosure m cl args none
+      else invokeDispatch m recv implicit mname args blk
+    | .cls c =>
+      -- `Class#new` on a class with a user `initialize` must allocate then run
+      -- `initialize` (a frame the builtin cannot push); yield the instance via
+      -- `newK`. Special-payload subclasses (String/Array/Exception/…) need
+      -- allocation we don't model → gate. No user init ⇒ fall to the builtin.
+      if mname == "new" && !c.isModule then
+        match userInit? m.heap o with
+        | some md =>
+          if (ancestors m.heap o).any (fun a =>
+              Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) then
+            .unsupported "Class#new with user initialize on a special-payload subclass"
+          else
+            let (io, h) := m.heap.alloc { klass := o }
+            let inst := Value.ref io
+            let m := { m with heap := h, kont := .newK inst :: m.kont }
+            enterUserMethod m inst md args blk
+        | none => invokeDispatch m recv implicit mname args blk
       else invokeDispatch m recv implicit mname args blk
     | _ => invokeDispatch m recv implicit mname args blk
   | _ => invokeDispatch m recv implicit mname args blk
@@ -314,37 +430,8 @@ where
         match crubySingletonShadow m.heap recv mname with
         | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
         | none =>
-          -- a RubyCore-defined method: required + rest binding (L0+splat),
-          -- plus a block-capture param `&blk` bound to the passed block
-          let (pre, rest?, post, blockP) := parseParams md.params
-          let required := pre.length + post.length
-          let arityOk := match rest? with
-            | some _ => args.length ≥ required
-            | none => args.length == required
-          if !arityOk then
-            let expected := match rest? with
-              | some _ => s!"{required}+"
-              | none => toString required
-            .next (raiseErr m Boot.argumentErrorId
-              s!"wrong number of arguments (given {args.length}, expected {expected})")
-          else
-            let preArgs := args.take pre.length
-            let postArgs := args.drop (args.length - post.length)
-            let midArgs := (args.drop pre.length).take (args.length - required)
-            let (locals, m) := match rest? with
-              | none => (pre.zip preArgs ++ post.zip postArgs, m)
-              | some rname =>
-                let (rv, m) := Builtins.allocArr m midArgs.toArray
-                (pre.zip preArgs ++ [(rname, rv)] ++ post.zip postArgs, m)
-            let locals := match blockP with
-              | some bn => locals ++ [(bn, blk.getD .nil)]
-              | none => locals
-            let frame : Frame :=
-              { self := recv, locals, defmod := md.owner, kind := .method, blk }
-            let fid := m.frames.size
-            let m := { m with frames := m.frames.push frame,
-                              stack := fid :: m.stack }
-            .next (withKont m (.eval md.body) (.frameK fid))
+          -- a RubyCore-defined method: bind params + push the activation
+          enterUserMethod m recv md args blk
   | none =>
     match crubySingletonShadow m.heap recv mname with
     | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
@@ -354,14 +441,14 @@ where
       -- exists in CRuby, not in the model — the fragment gate
       .unsupported s!"unmodeled method {cname}#{mname}"
     | none =>
-      -- total miss: CRuby wouldn't find it either. A bare implicit-self
-      -- zero-arg send is ambiguous (vcall → NameError with a different
-      -- message vs fcall → NoMethodError; RubyCore conflates them) — gate.
-      if implicit && args.isEmpty then
-        .unsupported s!"vcall/fcall NameError ambiguity: {mname}"
-      else
-        .next (raiseErr m Boot.noMethodErrorId
-          s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
+      -- Total miss in both. CRuby routes to `method_missing` (artifact 02 §4):
+      -- a user override runs with `(:name, *args)`; the default raises
+      -- `NoMethodError`, which we model directly below.
+      match methodOn m.heap (classOf m.heap recv) "method_missing" with
+      | some (_, mm) =>
+        if mm.builtin.isNone then enterUserMethod m recv mm (.sym mname :: args) blk
+        else missNoMethod m recv implicit mname args
+      | none => missNoMethod m recv implicit mname args
 
 /-- All args in → resolve the pending block and dispatch. A literal block is
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
@@ -449,7 +536,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .gvar => .next (withCtl (m.setGlobal x v) (.value v))
       | .ivar =>
         match m.currentFrame.self with
-        | .ref _ => .next (withCtl (bindIvar m x v) (.value v))
+        | .ref o =>
+          if (m.heap.get o).frozen then
+            match Builtins.inspectP m (.ref o) with
+            | .ok r => .next (raiseErr m Boot.frozenErrorId
+                s!"can't modify frozen {className m.heap (m.heap.get o).klass}: {r}")
+            | .error e => .unsupported e
+          else .next (withCtl (bindIvar m x v) (.value v))
         | selfV =>
           -- immediates are frozen: @x= with Integer self → FrozenError [V]
           match Builtins.inspectP m selfV with
@@ -458,7 +551,31 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           | .error e => .unsupported e
       | .cvar => .unsupported "class variables"
     | .casgnK n =>
-      .next (withCtl { m with heap := constSet m.heap n v } (.value v))
+      .next (withCtl
+        { m with heap := constSetIn m.heap m.currentFrame.defmod n v } (.value v))
+    | .classDefK name body =>
+      -- v is the resolved superclass: it must be a non-module Class object [V]
+      match v with
+      | .ref k =>
+        match m.heap.classPayload? k with
+        | some c =>
+          if c.isModule then
+            .next (raiseErr m Boot.typeErrorId
+              s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+          else enterClassBody m name false (some k) body
+        | none =>
+          .next (raiseErr m Boot.typeErrorId
+            s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+      | .nil | .bool _ =>
+        -- CRuby phrases these as "given nil"/"given false" — gate rather than
+        -- emit the "an instance of …" form.
+        .unsupported "superclass is nil/true/false"
+      | _ =>
+        .next (raiseErr m Boot.typeErrorId
+          s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+    | .newK inst =>
+      -- `initialize` returned; its value is discarded, `new` yields the instance
+      .next (withCtl m (.value inst))
     | .ifK t e =>
       if v.truthy then .next (withCtl m (.eval t))
       else
@@ -662,7 +779,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | .cvar => .unsupported "class variables"
     | _ => .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
-    match constLookup m.heap n with
+    match constLookupFrom m.heap m.currentFrame.defmod n with
     | some v => .next (withCtl m (.value v))
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
@@ -724,8 +841,11 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     else
       let node : BeginNode := { body, rescues, els, ens }
       .next (withKont m (.eval body) (.beginBodyK node))
-  | .class' .. => .unsupported "class definition (L2)"
-  | .module' .. => .unsupported "module definition (L2)"
+  | .class' name sup body =>
+    match sup with
+    | some supExpr => .next (withKont m (.eval supExpr) (.classDefK name body))
+    | none => enterClassBody m name false none body
+  | .module' name body => enterClassBody m name true none body
   | .sclass .. => .unsupported "singleton class (L2)"
   | .defs .. => .unsupported "singleton def (L2)"
   | .super' .. | .zsuper .. => .unsupported "super (L2)"

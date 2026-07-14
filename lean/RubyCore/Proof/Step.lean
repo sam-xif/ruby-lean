@@ -38,6 +38,11 @@ abbrev pop (m : Machine) (rest : List Kont) : Machine := { m with kont := rest }
 @[simp] theorem pop_currentFrame (m : Machine) (rest : List Kont) :
     (pop m rest).currentFrame = m.currentFrame := rfl
 
+/-- Popping a kont leaves the heap unchanged (needed by the frozen-`@x=` rule,
+    whose guard reads `(pop m rest).heap`). -/
+@[simp] theorem pop_heap (m : Machine) (rest : List Kont) :
+    (pop m rest).heap = m.heap := rfl
+
 /-- One transition of the control-core fragment, authored to mirror `stepFn`.
     Every constructor's image is syntactically the value `stepFn` produces. -/
 inductive Step : Machine → Machine → Prop where
@@ -120,8 +125,18 @@ inductive Step : Machine → Machine → Prop where
       Step m (withCtl ((pop m rest).setGlobal x v) (.value v))
   | asgnKIvar {m v x o rest} :
       m.ctl = .value v → m.kont = .asgnK .ivar x :: rest →
-      m.currentFrame.self = .ref o →
+      m.currentFrame.self = .ref o → (m.heap.get o).frozen = false →
       Step m (withCtl (bindIvar (pop m rest) x v) (.value v))
+  /-- `@x = v` with a *frozen* `ref` self raises `FrozenError` (L2); the
+      message embeds the receiver's `inspect`, so this fires only when that
+      `inspect` is pure (`= .ok r`) — otherwise `stepFn` gates (`.unsupported`,
+      no `Step`). -/
+  | asgnKIvarFrozen {m v x o rest r} :
+      m.ctl = .value v → m.kont = .asgnK .ivar x :: rest →
+      m.currentFrame.self = .ref o → (m.heap.get o).frozen = true →
+      Builtins.inspectP (pop m rest) (.ref o) = .ok r →
+      Step m (raiseErr (pop m rest) Boot.frozenErrorId
+        s!"can't modify frozen {className (pop m rest).heap ((pop m rest).heap.get o).klass}: {r}")
   | ifKTrue {m v t e rest} :
       m.ctl = .value v → m.kont = .ifK t e :: rest → v.truthy = true →
       Step m (withCtl (pop m rest) (.eval t))

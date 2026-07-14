@@ -26,7 +26,7 @@ open Interp
   unfold Machine.setCurrentFrame; split <;> rfl
 
 @[simp] theorem setLocal_heap (m : Machine) (x : String) (v : Value) :
-    (m.setLocal x v).heap = m.heap := setCurrentFrame_heap _ _
+    (m.setLocal x v).heap = m.heap := by unfold Machine.setLocal; rfl
 
 @[simp] theorem setGlobal_heap (m : Machine) (x : String) (v : Value) :
     (m.setGlobal x v).heap = m.heap := rfl
@@ -37,6 +37,11 @@ open Interp
   unfold bindIvar; split
   · simp [Heap.set, Heap.get]
   · rfl
+
+/-- `raiseErr` allocates one exception object, so the heap grows by one. -/
+@[simp] theorem raiseErr_heapSize (m : Machine) (cls : ObjId) (msg : String) :
+    (raiseErr m cls msg).heap.objs.size = m.heap.objs.size + 1 := by
+  simp [raiseErr, Builtins.allocExc, Heap.alloc]
 
 /-- The heap never shrinks across a step (ObjIds are never reused). -/
 theorem Step.heap_monotone {m m' : Machine} (h : Step m m') :
@@ -148,7 +153,16 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
       | asgnK kind x => cases kind with
         | lvar => exact realize hs (.asgnKLvar hcc hk)
         | gvar => exact realize hs (.asgnKGvar hcc hk)
-        | ivar => exact realize hs (.asgnKIvar hcc hk hself)
+        | ivar =>
+          -- L2 split on the frozen check `stepFn` now performs for `@x=`
+          cases hfr : (m.heap.get o).frozen with
+          | false => exact realize hs (.asgnKIvar hcc hk hself hfr)
+          | true =>
+            cases hins : Builtins.inspectP (pop m rest) (.ref o) with
+            | ok r => exact realize hs (.asgnKIvarFrozen hcc hk hself hfr hins)
+            | error e =>
+              -- impure inspect ⇒ `stepFn` gates (`.unsupported`), so `hs` is absurd
+              simp_all [stepFn, applyKont, hins, Machine.currentFrame, pop]
         | cvar => simp [FragKont] at hfk
       | ifK t e => cases hb : v.truthy with
         | true => exact realize hs (.ifKTrue hcc hk hb)

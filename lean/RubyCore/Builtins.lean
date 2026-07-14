@@ -84,6 +84,23 @@ def arrPayload? (h : Heap) : Value → Option (Array Value)
     | _ => none
   | _ => none
 
+/-- Core classes whose instances carry a non-`.none` payload (String, Array,
+    Hash, Proc, and the immediates). A user subclass of one inherits an
+    allocator we don't model, so `Class#new` for such a subclass gates rather
+    than build a wrong-payload object. Exception is handled separately (it has
+    its own `allocExc` path in `newImpl`). -/
+def payloadCoreClasses : List ObjId :=
+  [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
+   Boot.floatId, Boot.symbolId]
+
+/-- Does `v`'s class resolve `==` to a *user* (non-builtin) method? Builtins
+    that lean on default value-equality (`Array#include?`/`index`, …) must gate
+    when an operand overrides `==`, since a pure comparison can't dispatch it. -/
+def hasUserEq (h : Heap) (v : Value) : Bool :=
+  match lookup h v "==" with
+  | some (_, md) => md.builtin.isNone
+  | none => false
+
 def allocStr (m : Machine) (s : String) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s }
   (.ref o, { m with heap := h })
@@ -651,13 +668,18 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
   | "Array#include?" =>
     binArg m args fun b =>
       match arrPayload? h recv with
-      | some xs => .ok (.bool (xs.any (valueEq h · b))) m
+      | some xs =>
+        if hasUserEq h b || xs.any (hasUserEq h) then
+          .unsupported "Array#include? with a user-defined =="
+        else .ok (.bool (xs.any (valueEq h · b))) m
       | none => .unsupported "include?"
   | "Array#index" =>
     binArg m args fun b =>
       match arrPayload? h recv with
       | some xs =>
-        match xs.toList.findIdx? (valueEq h · b) with
+        if hasUserEq h b || xs.any (hasUserEq h) then
+          .unsupported "Array#index with a user-defined =="
+        else match xs.toList.findIdx? (valueEq h · b) with
         | some i => .ok (.int i) m
         | none => .ok .nil m
       | none => .unsupported "index"
@@ -995,14 +1017,19 @@ where
                  Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                  Boot.falseClassId].contains k then
           .unsupported s!"{className m.heap k}.new"
+        else if (ancestors m.heap k).any payloadCoreClasses.contains then
+          -- a subclass of String/Array/… inherits an unmodeled allocator
+          .unsupported s!"{className m.heap k}.new (payload-core subclass)"
         else
-          -- plain object; `initialize` is a user method → but user classes
-          -- are out of the L0 fragment, so only argless Object.new arrives
+          -- Plain object. A user `initialize` is intercepted in `invoke`
+          -- (it must push a frame), so any class reaching here has none —
+          -- extra args hit the default `BasicObject#initialize` arity [V].
           match args with
           | [] =>
             let (o, h) := m.heap.alloc { klass := k }
             .ok (.ref o) { m with heap := h }
-          | _ => .unsupported "new with args (initialize dispatch is L2)"
+          | _ => .err Boot.argumentErrorId
+              s!"wrong number of arguments (given {args.length}, expected 0)" m
     | _ => .unsupported "new"
   joinImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
     let sep := match args with

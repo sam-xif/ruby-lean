@@ -352,6 +352,25 @@ def constSet (h : Heap) (name : String) (v : Value) : Heap :=
       { c with consts := (name, v) :: c.consts.filter (·.1 != name) }
   | Option.none => h
 
+/-- Set constant `name` on class object `cls` (its own namespace, artifact 03).
+    A `casgn` inside `class C … end` writes to `C`, not the flat toplevel. -/
+def constSetIn (h : Heap) (cls : ObjId) (name : String) (v : Value) : Heap :=
+  match h.classPayload? cls with
+  | some c =>
+    h.setClassPayload cls
+      { c with consts := (name, v) :: c.consts.filter (·.1 != name) }
+  | Option.none => h
+
+/-- Constant lookup from cref `cls`: the *inheritance* phase of artifact 03's
+    two-phase rule — walk `cls`'s ancestors (which bottoms out at Object, the
+    toplevel namespace). The lexical phase (cref nesting) is not modeled at L0;
+    `cls` is the innermost enclosing class (`defmod`). -/
+def constLookupFrom (h : Heap) (cls : ObjId) (name : String) : Option Value :=
+  (ancestors h cls).firstM fun k =>
+    match h.classPayload? k with
+    | some c => (c.consts.find? (·.1 == name)).map (·.2)
+    | Option.none => Option.none
+
 /-- Install a method (def'). Returns the updated heap. -/
 def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Heap :=
   match h.classPayload? cls with
