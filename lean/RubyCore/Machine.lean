@@ -31,6 +31,9 @@ structure Frame where
   defmod : ObjId
   blk : Option Value := none
   kind : FrameKind
+  /-- Name of the method this activation is running (`""` for toplevel/class
+      bodies/blocks) — the target `super`/`zsuper` re-dispatch (artifact 02 §2). -/
+  meth : String := ""
   /-- Block frames: the defining frame's id. Free-variable reads/writes walk
       this chain into the enclosing scope (sketch §1.2, artifact 03 §2). -/
   captured : Option FrameId := none
@@ -118,6 +121,10 @@ inductive Kont where
   /-- Evaluating `yield` args left to right. -/
   | yieldArgK (acc : List Value) (rest : List Expr)
   | yieldSplatK (acc : List Value) (rest : List Expr)
+  /-- Evaluating explicit `super(args)` left to right; `blk` is the block super
+      forwards/passes (artifact 02 §2). -/
+  | superArgK (acc : List Value) (rest : List Expr) (blk : Option Value)
+  | superSplatK (acc : List Value) (rest : List Expr) (blk : Option Value)
   | arrK (acc : List Value) (rest : List Expr)
   /-- Value in flight is a `*e` splat operand of an array literal. -/
   | arrSplatK (acc : List Value) (rest : List Expr)

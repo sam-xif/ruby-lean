@@ -195,3 +195,30 @@ decisions live in the sketch and README, not here.
     propext/Classical.choice/Quot.sound only).
   - Result: tier-0 bootstraptest **372 → 428 agree, 0 disagree**; tier-1 (n=300,
     seed 11) 214/0; regressions (7) + tier-3 (16) replay clean.
+
+- **L18 — L2b: `super`/`zsuper`.** Executable stepper only; the `super`/`zsuper`
+  heads no longer gate. Two additions carry it (artifact 02 §2):
+  - **The frame remembers its method name** (`Frame.meth`, new; set by
+    `enterUserMethod`, which now takes `mname` — also `"initialize"` for
+    `new`-dispatch and `"method_missing"`). `doSuper` reads the *enclosing method
+    activation* (`methodFrameOf`, so `super` works from inside a block too): it
+    re-dispatches `f.meth` starting **strictly after `f.defmod`** in
+    `self`'s ancestor chain (`ancestors …|>.dropWhile (· != defmod)|>.drop 1`),
+    keeping the same `self`. A user hit re-enters via `enterUserMethod` (so
+    `super` chains); a builtin hit runs `Builtins.run`; a miss raises the
+    byte-exact `NoMethodError "super: no superclass method '{m}' for {recv}"`
+    [V] (`receiverDesc` form).
+  - **`zsuper` (bare `super`) forwards the *current* parameter values**, not the
+    original args: `zsuperArgs` re-reads the enclosing method's formal params
+    from the method frame's locals (a `*rest` param spreads its array), matching
+    CRuby [V: `def m(x); x=x+1; super; end` forwards the reassigned value].
+    Explicit `super(args)` evaluates its args left-to-right under new
+    `superArgK`/`superSplatK` konts. Both forms forward the method's block
+    (`methodBlk`) unless a literal block is written on `super` itself.
+  - **Gated (L2b tails):** `super`/`zsuper` with a `&`-block-pass or explicit
+    block, and `zsuper` under a param shape beyond L2b (kwargs — not yet admitted
+    upstream anyway).
+  - **Still gated (L2c):** `defs` (`def self.m`/`def o.m`), `sclass`, eigenclasses,
+    `@@cvar`.
+  - Result: tier-0 bootstraptest **428 → 447 agree, 0 disagree**; tier-1 (n=300,
+    seed 11) 214/0; regressions (7) + tier-3 (17) replay clean.

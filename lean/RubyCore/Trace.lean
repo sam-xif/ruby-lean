@@ -87,6 +87,8 @@ def kontLabel : Kont → String
   | .blkCoerceK _ _ m _ => s!"coerce &block for .{m}"
   | .yieldArgK .. => "collect yield args"
   | .yieldSplatK .. => "splat yield args"
+  | .superArgK .. => "collect super args"
+  | .superSplatK .. => "splat super args"
   | .arrK .. => "array: next element"
   | .arrSplatK .. => "array: splat element"
   | .hshKeyK .. => "hash: value for key ▢"

@@ -1,10 +1,11 @@
 # Lean model — hand-off (2026-07-13)
 
-> **Update 2026-07-13 (L2a):** `class`/`module` definitions, `Class#new` +
-> `initialize`, cref-scoped constants, `method_missing`, and frozen-`@x=` are
-> implemented in the executable stepper (`impl-notes L17`). **tier-0 baseline
-> 372 → 428 agree, 0 disagree** (ratchet moved). Still gated: `super`/`zsuper`,
-> `defs`/`sclass`/eigenclasses (L2b/c), `cvar`. Numbers below predate this.
+> **Update 2026-07-13 (L2a+L2b):** `class`/`module` definitions, `Class#new` +
+> `initialize`, cref-scoped constants, `method_missing`, frozen-`@x=`
+> (`impl-notes L17`), and `super`/`zsuper` (`impl-notes L18`) are implemented in
+> the executable stepper. **tier-0 baseline 372 → 447 agree, 0 disagree**
+> (ratchet moved). Still gated: `defs`/`sclass`/eigenclasses (L2c), `@@cvar`.
+> Numbers below predate this.
 
 
 Fresh-context hand-off for the Lean interpreter work begun 2026-07-07 (mirrors

@@ -297,7 +297,7 @@ def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
     post; block-capture `&blk`), push the method frame, evaluate the body under
     a `frameK` boundary (artifact 02 §3). Factored out of dispatch so `Class#new`
     can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
-def enterUserMethod (m : Machine) (recv : Value) (md : MethodDef)
+def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
     (args : List Value) (blk : Option Value) : StepResult :=
   let (pre, rest?, post, blockP) := parseParams md.params
   let required := pre.length + post.length
@@ -321,7 +321,7 @@ def enterUserMethod (m : Machine) (recv : Value) (md : MethodDef)
       | some bn => locals ++ [(bn, blk.getD .nil)]
       | none => locals
     let frame : Frame :=
-      { self := recv, locals, defmod := md.owner, kind := .method, blk }
+      { self := recv, locals, defmod := md.owner, kind := .method, blk, meth := mname }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval md.body) (.frameK fid))
@@ -400,7 +400,7 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
             let (io, h) := m.heap.alloc { klass := o }
             let inst := Value.ref io
             let m := { m with heap := h, kont := .newK inst :: m.kont }
-            enterUserMethod m inst md args blk
+            enterUserMethod m inst "initialize" md args blk
         | none => invokeDispatch m recv implicit mname args blk
       else invokeDispatch m recv implicit mname args blk
     | _ => invokeDispatch m recv implicit mname args blk
@@ -431,7 +431,7 @@ where
         | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
         | none =>
           -- a RubyCore-defined method: bind params + push the activation
-          enterUserMethod m recv md args blk
+          enterUserMethod m recv mname md args blk
   | none =>
     match crubySingletonShadow m.heap recv mname with
     | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
@@ -446,9 +446,77 @@ where
       -- `NoMethodError`, which we model directly below.
       match methodOn m.heap (classOf m.heap recv) "method_missing" with
       | some (_, mm) =>
-        if mm.builtin.isNone then enterUserMethod m recv mm (.sym mname :: args) blk
+        if mm.builtin.isNone then
+          enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
         else missNoMethod m recv implicit mname args
       | none => missNoMethod m recv implicit mname args
+
+/-- Super-dispatch (artifact 02 §2): re-run the current method name starting
+    *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
+    forwarding/passing `blk`. A miss raises `NoMethodError "super: no superclass
+    method '{m}' for {recv}"` [V]. `super` is evaluated in the enclosing method
+    activation (`methodFrameOf`), so it works from inside a block too. -/
+def doSuper (m : Machine) (args : List Value) (blk : Option Value) : StepResult :=
+  let f := m.frames.getD (methodFrameOf m) default
+  if f.meth == "" then .unsupported "super outside a method"
+  else
+    let self := f.self
+    let after := (ancestors m.heap (classOf m.heap self)).dropWhile (· != f.defmod) |>.drop 1
+    let found : Option (ObjId × MethodDef) := after.firstM fun c =>
+      match m.heap.classPayload? c with
+      | some cp => (cp.methods.find? (·.1 == f.meth)).map (fun (_, md) => (c, md))
+      | none => none
+    match found with
+    | some (_, md) =>
+      match md.builtin with
+      | some bid =>
+        match Builtins.run bid self args m with
+        | .ok v m => .next (withCtl m (.value v))
+        | .err cls msg m => .next (raiseErr m cls msg)
+        | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+        | .unsupported r => .unsupported r
+      | none => enterUserMethod m self f.meth md args blk
+    | none =>
+      .next (raiseErr m Boot.noMethodErrorId
+        s!"super: no superclass method '{f.meth}' for {receiverDesc m.heap self}")
+
+/-- Args that bare `super` forwards: the *current* values of the enclosing
+    method's formal parameters — read from the method frame's locals, a splat
+    param spreading its array (artifact 02 §2) [V: `x=x+1; super` forwards the
+    reassigned value]. `none` if the param shape is beyond L2b. -/
+def zsuperArgs (m : Machine) : Option (List Value) :=
+  let f := m.frames.getD (methodFrameOf m) default
+  match methodOn m.heap f.defmod f.meth with
+  | some (_, md) =>
+    let (pre, rest?, post, _) := parseParams md.params
+    let readL (n : String) : Value := (f.locals.find? (·.1 == n)).map (·.2) |>.getD .nil
+    let preV := pre.map readL
+    let postV := post.map readL
+    match rest? with
+    | none => some (preV ++ postV)
+    | some rname =>
+      match f.locals.find? (·.1 == rname) with
+      | some (_, .ref o) =>
+        match (m.heap.get o).payload with
+        | .arr xs => some (preV ++ xs.toList ++ postV)
+        | _ => none
+      | _ => none
+  | none => none
+
+/-- The block bare `super`/`super(args)` forwards: the enclosing method's. -/
+def methodBlk (m : Machine) : Option Value :=
+  (m.frames.getD (methodFrameOf m) default).blk
+
+/-- Evaluate an explicit `super(args)` left to right, then dispatch. -/
+def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
+    (blk : Option Value) : StepResult :=
+  match rest with
+  | [] => doSuper m acc blk
+  | e :: rest' =>
+    match e with
+    | .splat (some e) => .next (withKont m (.eval e) (.superSplatK acc rest' blk))
+    | .splat none => .unsupported "anonymous splat in super"
+    | _ => .next (withKont m (.eval e) (.superArgK acc rest' blk))
 
 /-- All args in → resolve the pending block and dispatch. A literal block is
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
@@ -598,6 +666,11 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .blkCoerceK recv implicit mname acc =>
       match coerceToProc m v with
       | .ok (blkV, m) => invoke m recv implicit mname acc blkV
+      | .error e => .unsupported e
+    | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
+    | .superSplatK acc rest blk =>
+      match spread m v with
+      | .ok vs => startSuperArgs m (acc ++ vs) rest blk
       | .error e => .unsupported e
     | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
     | .yieldSplatK acc rest =>
@@ -848,7 +921,23 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   | .module' name body => enterClassBody m name true none body
   | .sclass .. => .unsupported "singleton class (L2)"
   | .defs .. => .unsupported "singleton def (L2)"
-  | .super' .. | .zsuper .. => .unsupported "super (L2)"
+  | .super' args blk =>
+    -- explicit `super(args)`; forward the method's block unless a literal one
+    -- is given here (block-pass on super is beyond L2b)
+    match blk with
+    | none => startSuperArgs m [] args (methodBlk m)
+    | some (.block ps ls body) =>
+      let (v, m) := reifyBlock m ps ls body false
+      startSuperArgs m [] args (some v)
+    | some _ => .unsupported "super with a block-pass / anonymous block"
+  | .zsuper blk =>
+    -- bare `super`: forward the current param values + the method's block
+    match blk with
+    | none =>
+      match zsuperArgs m with
+      | some args => doSuper m args (methodBlk m)
+      | none => .unsupported "zsuper param reconstruction (unsupported param shape)"
+    | some _ => .unsupported "zsuper with an explicit block"
   | .seq es =>
     match es with
     | [] => .next (withCtl m (.value .nil))
