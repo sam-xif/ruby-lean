@@ -19,11 +19,41 @@ from . import ast as A
 LOCAL_POOL = ("a", "b", "c", "d")
 LOOP_POOL = ("i", "j")
 PARAM_POOL = ("x", "y")
-METHOD_POOL = ("m0", "m1", "m2")
+BLOCK_PARAM_POOL = ("bx", "by")  # block/lambda params; disjoint from everything else
+METHOD_POOL = ("m0", "m1", "m2", "m3")
+CLASS_POOL = ("C0", "C1", "C2")
+MODULE_POOL = ("M0", "M1")
+IMETHOD_POOL = ("im0", "im1")
+MMETHOD_POOL = ("mm0", "mm1")  # module instance methods; disjoint from IMETHOD_POOL
+SMETHOD_POOL = ("sm0", "sm1")  # class/self methods
+DMETHOD_POOL = ("dm0", "dm1")  # define_method'd instance methods
+DSM_POOL = ("ds0", "ds1")  # define_singleton_method'd class methods
+ROPEN_POOL = ("rm0", "rm1")  # methods added by reopening a class
+IVAR_POOL = ("@x", "@y")
+INSTANCE_POOL = ("o", "p", "q")  # locals that hold instances; disjoint from LOCAL/LOOP/PARAM
+PROC_POOL = ("f", "g", "h")  # locals that hold procs/lambdas; disjoint too
+INDEXABLE_POOL = ("ix0", "ix1", "ix2")  # locals that hold arrays/hashes; disjoint too
 STR_POOL = ("hi", "ok", "zap", "a b", "")
 SYM_POOL = ("k", "v", "s")
+# unary methods every object answers → safe as `&:sym` block-pass and deterministic
+SAFE_UNARY_SYMS = ("to_s", "inspect", "itself", "class", "freeze")
 
 MAX_EXPR_DEPTH = 3
+
+
+@dataclass(frozen=True)
+class ClassInfo:
+    name: str
+    ctor_arity: int  # arity of `.new` (own or inherited `initialize`)
+    imethods: tuple[tuple[str, int], ...]  # effective instance methods: own + inherited + mixed
+    smethods: tuple[tuple[str, int], ...] = ()  # class/self methods
+    attr_writers: tuple[str, ...] = ()  # ivar base names with a writer (attr_accessor/writer)
+
+
+@dataclass(frozen=True)
+class ModuleInfo:
+    name: str
+    methods: tuple[tuple[str, int], ...]  # instance methods mixed in on include/prepend
 
 
 @dataclass(frozen=True)
@@ -33,6 +63,33 @@ class Env:
     # names that must not be (re)assigned — loop counters, whose progress
     # guarantees termination; they stay readable
     frozen: tuple[str, ...] = ()
+    # defined classes (strict DAG: a class's methods see only *prior* classes,
+    # and each ctor is pure ivar-assignment, so `.new` cannot recurse)
+    classes: tuple[ClassInfo, ...] = ()
+    # defined modules (mixed into classes via include/prepend)
+    modules: tuple[ModuleInfo, ...] = ()
+    # arity to forward when the current override body may call `super`, else None
+    can_super: "int | None" = None
+    # locals known to hold an instance: (local_name, class_name). Kept out of
+    # `locals` on purpose — they are only ever used as method-call receivers.
+    instances: tuple[tuple[str, str], ...] = ()
+    # instance vars readable in the current method body (@x, @y)
+    ivars: tuple[str, ...] = ()
+    # locals holding an array/hash: (local_name, "array" | "hash"). Also in
+    # `locals`; tracked here so index-assignment targets a real container.
+    indexables: tuple[tuple[str, str], ...] = ()
+    # locals known to hold a proc/lambda: (local_name, arity, strict). Kept out
+    # of `locals` — only ever used as `.call` receivers or `&`-passed. `strict`
+    # marks lambdas (arity-checked); only non-strict procs are `&`-passed as
+    # blocks, so a yield-arity mismatch can never raise ArgumentError.
+    procs: tuple[tuple[str, int, bool], ...] = ()
+    # methods that `yield` (kept OUT of `methods` so a plain call never targets
+    # them without a block → no LocalJumpError): (name, arg_arity, yield_arity)
+    yielders: tuple[tuple[str, int, int], ...] = ()
+    # yield arity of the enclosing method body, or None if it may not `yield`
+    can_yield: "int | None" = None
+    in_block: bool = False  # inside a block body → `next`/`break` are legal
+    in_method: bool = False  # inside a method body → `return` is legal
 
     def with_local(self, name: str) -> "Env":
         return self if name in self.locals else replace(self, locals=self.locals + (name,))
@@ -43,9 +100,62 @@ class Env:
     def with_method(self, name: str, arity: int) -> "Env":
         return replace(self, methods=self.methods + ((name, arity),))
 
+    def with_class(self, ci: ClassInfo) -> "Env":
+        return replace(self, classes=self.classes + (ci,))
+
+    def with_module(self, mi: ModuleInfo) -> "Env":
+        return replace(self, modules=self.modules + (mi,))
+
+    def update_class(self, name: str, new_ci: ClassInfo) -> "Env":
+        return replace(self, classes=tuple(new_ci if c.name == name else c for c in self.classes))
+
+    def with_indexable(self, name: str, kind: str) -> "Env":
+        # readable (in locals) but frozen (never reassigned to a scalar), so the
+        # index-assign target always still holds a container
+        e = self.with_frozen(name)
+        ix = tuple((n, k) for (n, k) in e.indexables if n != name) + ((name, kind),)
+        return replace(e, indexables=ix)
+
+    @property
+    def instances_with_writers(self) -> tuple[tuple[str, str, tuple], ...]:
+        """(inst_name, class_name, writer_names) for instances whose class has attr writers."""
+        out = []
+        for n, c in self.instances:
+            ci = self.class_info(c)
+            if ci and ci.attr_writers:
+                out.append((n, c, ci.attr_writers))
+        return tuple(out)
+
+    def with_instance(self, name: str, class_name: str) -> "Env":
+        insts = tuple((n, c) for (n, c) in self.instances if n != name) + ((name, class_name),)
+        return replace(self, instances=insts)
+
+    def with_proc(self, name: str, arity: int, strict: bool) -> "Env":
+        ps = tuple(p for p in self.procs if p[0] != name) + ((name, arity, strict),)
+        return replace(self, procs=ps)
+
+    def with_yielder(self, name: str, arg_arity: int, yield_arity: int) -> "Env":
+        return replace(self, yielders=self.yielders + ((name, arg_arity, yield_arity),))
+
+    def class_info(self, name: str) -> "ClassInfo | None":
+        return next((ci for ci in self.classes if ci.name == name), None)
+
     @property
     def assignable(self) -> tuple[str, ...]:
         return tuple(n for n in self.locals if n not in self.frozen)
+
+    @property
+    def callable_instances(self) -> tuple[tuple[str, str], ...]:
+        """Instances whose class has at least one callable instance method."""
+        return tuple(
+            (n, c)
+            for (n, c) in self.instances
+            if (self.class_info(c) or ClassInfo(c, 0, ())).imethods
+        )
+
+    @property
+    def classes_with_smethods(self) -> tuple[ClassInfo, ...]:
+        return tuple(ci for ci in self.classes if ci.smethods)
 
 
 @st.composite
@@ -67,21 +177,88 @@ def _expr(draw, env: Env, depth: int) -> A.Node:
     kinds = ["lit", "lit"]
     if env.locals:
         kinds += ["local", "local", "local"]
+    if env.ivars:
+        kinds += ["ivar", "ivar"]
     if env.methods:
         kinds += ["call", "call"]
+    if env.procs:
+        kinds += ["proccall", "proccall"]
+    if env.can_yield is not None:
+        kinds += ["yield", "blockgiven"]
+    if env.can_super is not None:
+        kinds += ["super"] * 5
+    callable_instances = env.callable_instances
+    classes_with_smethods = env.classes_with_smethods
     if depth > 0:
-        kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash"]
+        kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash", "range"]
+        if env.classes:
+            kinds += ["new"]
+        if callable_instances:
+            kinds += ["mcall", "mcall", "send"]
+        if classes_with_smethods:
+            kinds += ["smcall"]
+        if env.instances:
+            kinds += ["respondto", "ivarget", "ivarset"]
     kind = draw(st.sampled_from(kinds))
 
     sub = lambda: draw(_expr(env, depth - 1))  # noqa: E731
 
     if kind == "lit":
         return draw(_literal())
+    if kind == "proccall":
+        name, arity, _strict = draw(st.sampled_from(env.procs))
+        return A.ProcCall(A.LocalRead(name), tuple(sub() for _ in range(arity)))
+    if kind == "yield":
+        return A.Yield(tuple(sub() for _ in range(env.can_yield)))
+    if kind == "blockgiven":
+        return A.BlockGiven()
+    if kind == "super":
+        # bare `super` (zsuper — forwards the method's args) or `super(args)`
+        if draw(st.booleans()):
+            return A.Super(None)
+        return A.Super(tuple(sub() for _ in range(env.can_super)))
+    if kind == "smcall":
+        ci = draw(st.sampled_from(classes_with_smethods))
+        sname, arity = draw(st.sampled_from(ci.smethods))
+        return A.MethodCall(A.ConstRead(ci.name), sname, tuple(sub() for _ in range(arity)))
+    if kind == "send":
+        inst_name, class_name = draw(st.sampled_from(callable_instances))
+        mname, arity = draw(st.sampled_from(env.class_info(class_name).imethods))
+        return A.SendCall(
+            A.LocalRead(inst_name), mname, tuple(sub() for _ in range(arity)), draw(st.booleans())
+        )
+    if kind == "respondto":
+        inst_name, class_name = draw(st.sampled_from(env.instances))
+        ci = env.class_info(class_name)
+        # a real method name (→ true) or an arbitrary one (→ false)
+        pool = tuple(m for m, _ in ci.imethods) + SYM_POOL if ci and ci.imethods else SYM_POOL
+        return A.RespondTo(A.LocalRead(inst_name), draw(st.sampled_from(pool)))
+    if kind == "ivarget":
+        inst_name, _ = draw(st.sampled_from(env.instances))
+        return A.IvarGetCall(A.LocalRead(inst_name), draw(st.sampled_from(IVAR_POOL)))
+    if kind == "ivarset":
+        inst_name, _ = draw(st.sampled_from(env.instances))
+        return A.IvarSetCall(A.LocalRead(inst_name), draw(st.sampled_from(IVAR_POOL)), sub())
+    if kind == "range":
+        lo = draw(st.integers(0, 3))
+        return A.RangeLit(A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans()))
     if kind == "local":
         return A.LocalRead(draw(st.sampled_from(env.locals)))
+    if kind == "ivar":
+        return A.IvarRead(draw(st.sampled_from(env.ivars)))
     if kind == "call":
         name, arity = draw(st.sampled_from(env.methods))
         return A.Call(name, tuple(draw(_expr(env, depth - 1)) for _ in range(arity)))
+    if kind == "new":
+        ci = draw(st.sampled_from(env.classes))
+        return A.New(ci.name, tuple(draw(_expr(env, depth - 1)) for _ in range(ci.ctor_arity)))
+    if kind == "mcall":
+        inst_name, class_name = draw(st.sampled_from(callable_instances))
+        ci = env.class_info(class_name)
+        mname, arity = draw(st.sampled_from(ci.imethods))
+        return A.MethodCall(
+            A.LocalRead(inst_name), mname, tuple(draw(_expr(env, depth - 1)) for _ in range(arity))
+        )
     if kind == "binop":
         op = draw(st.sampled_from(["+", "+", "-", "*", "%", "==", "<", ">", "<=", ">="]))
         return A.BinOp(op, sub(), sub())
@@ -111,13 +288,95 @@ def _expr(draw, env: Env, depth: int) -> A.Node:
 
 
 @st.composite
+def _lambda(draw, env: Env, depth: int) -> A.Lambda:
+    kind = draw(st.sampled_from(["->", "proc", "lambda"]))
+    arity = draw(st.integers(0, len(BLOCK_PARAM_POOL)))
+    params = BLOCK_PARAM_POOL[:arity]
+    # A lambda/proc body is a plain closure over the current locals + its params.
+    # `return`/`next`/`break` are NOT emitted here (their proc-vs-lambda semantics
+    # are subtle — left to tier 3); the body just computes a value.
+    body_env = replace(
+        env,
+        locals=env.locals + params,
+        can_yield=None,
+        can_super=None,
+        in_block=False,
+        in_method=False,
+    )
+    body, _ = draw(_stmt_seq(body_env, max(depth - 1, 0), 1, 2))
+    final = draw(_expr(body_env, 1))
+    return A.Lambda(kind, params, body + (final,))
+
+
+@st.composite
+def _block_body(draw, env: Env, depth: int, params: tuple) -> A.Block:
+    # A literal block: its params bind as locals; `next`/`break` are legal here,
+    # and `return` too when the block is lexically inside a method.
+    body_env = replace(env, locals=env.locals + params, in_block=True, can_yield=None)
+    body, _ = draw(_stmt_seq(body_env, max(depth - 1, 0), 1, 2))
+    final = draw(_expr(body_env, 1))
+    return A.Block(params, body + (final,))
+
+
+@st.composite
+def _block_arg(draw, env: Env, depth: int, recv_kind: str) -> A.Node:
+    """Draw the trailing block: a literal block, `&proc`, or a safe `&:sym`."""
+    lenient_procs = tuple(p for p in env.procs if not p[2])
+    choices = ["literal", "literal", "sym"]
+    if lenient_procs:
+        choices += ["proc"]
+    choice = draw(st.sampled_from(choices))
+    if choice == "proc":
+        name, _arity, _strict = draw(st.sampled_from(lenient_procs))
+        return A.BlockPass(A.LocalRead(name))
+    if choice == "sym":
+        return A.BlockPass(A.SymLit(draw(st.sampled_from(SAFE_UNARY_SYMS))))
+    bparams = BLOCK_PARAM_POOL[: draw(st.integers(0, 2 if recv_kind == "each_index" else 1))]
+    return draw(_block_body(env, depth, bparams))
+
+
+@st.composite
+def _block_call(draw, env: Env, depth: int) -> A.BlockCall:
+    forms = ["array", "range"]
+    if env.yielders:
+        forms += ["yielder", "yielder"]
+    form = draw(st.sampled_from(forms))
+    if form == "yielder":
+        name, arg_arity, _ = draw(st.sampled_from(env.yielders))
+        args = tuple(draw(_expr(env, 1)) for _ in range(arg_arity))
+        return A.BlockCall(None, name, args, draw(_block_arg(env, depth, "yielder")))
+    if form == "range":
+        lo = draw(st.integers(0, 3))
+        recv = A.RangeLit(A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans()))
+        method = draw(st.sampled_from(["each", "map", "select"]))
+        return A.BlockCall(recv, method, (), draw(_block_arg(env, depth, method)))
+    # array: a bounded literal array, so iteration count is bounded
+    recv = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(0, 3)))))
+    method = draw(st.sampled_from(["each", "map", "select", "reject", "each_with_index"]))
+    rk = "each_index" if method == "each_with_index" else method
+    return A.BlockCall(recv, method, (), draw(_block_arg(env, depth, rk)))
+
+
+@st.composite
 def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
     kinds = ["assign", "assign", "puts", "puts", "puts"]
     if env.assignable:
         kinds += ["opassign"]
+    if env.classes:
+        kinds += ["new_inst", "new_inst"]
+    if env.in_block:
+        kinds += ["next", "break"]  # legal only inside a block body
+    if env.in_method:
+        kinds += ["return"]  # legal only inside a method body
+    kinds += ["make_indexable", "massign"]
+    if env.indexables:
+        kinds += ["index_assign", "index_assign"]
+    writer_insts = env.instances_with_writers
+    if writer_insts:
+        kinds += ["attr_assign", "attr_assign"]
     free_loop_vars = tuple(v for v in LOOP_POOL if v not in env.frozen)
     if depth > 0:
-        kinds += ["if", "begin"]
+        kinds += ["if", "begin", "proc_def", "block_iter"]
         if free_loop_vars:
             kinds += ["while", "times"]
     kind = draw(st.sampled_from(kinds))
@@ -125,10 +384,70 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
     if kind == "assign":
         name = draw(st.sampled_from(LOCAL_POOL))  # disjoint from LOOP_POOL, so never frozen
         return A.Assign(name, draw(_expr(env, MAX_EXPR_DEPTH - 1))), env.with_local(name)
+    if kind == "new_inst":
+        ci = draw(st.sampled_from(env.classes))
+        var = draw(st.sampled_from(INSTANCE_POOL))  # disjoint from value-local pools
+        args = tuple(draw(_expr(env, MAX_EXPR_DEPTH - 1)) for _ in range(ci.ctor_arity))
+        # An Assign node that records the binding as an instance (not a plain
+        # local), so it is only ever reached as a method-call receiver.
+        return A.Assign(var, A.New(ci.name, args)), env.with_instance(var, ci.name)
     if kind == "opassign":
         name = draw(st.sampled_from(env.assignable))
         op = draw(st.sampled_from(["+=", "-=", "*=", "||="]))
         return A.OpAssign(name, op, draw(_expr(env, 1))), env
+    if kind == "proc_def":
+        var = draw(st.sampled_from(PROC_POOL))
+        lam = draw(_lambda(env, depth))
+        strict = lam.kind in ("->", "lambda")
+        return A.Assign(var, lam), env.with_proc(var, len(lam.params), strict)
+    if kind == "block_iter":
+        bc = draw(_block_call(env, depth))
+        if draw(st.booleans()):
+            name = draw(st.sampled_from(LOCAL_POOL))
+            return A.Assign(name, bc), env.with_local(name)
+        return bc, env
+    if kind == "make_indexable":
+        name = draw(st.sampled_from(INDEXABLE_POOL))
+        if draw(st.booleans()):
+            lit = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(0, 3)))))
+            kindk = "array"
+        else:
+            n = draw(st.integers(1, 2))
+            lit = A.HashLit(tuple((A.SymLit(SYM_POOL[k]), draw(_literal())) for k in range(n)))
+            kindk = "hash"
+        return A.Assign(name, lit), env.with_indexable(name, kindk)
+    if kind == "index_assign":
+        name, ik = draw(st.sampled_from(env.indexables))
+        index = A.SymLit(draw(st.sampled_from(SYM_POOL))) if ik == "hash" else A.IntLit(
+            draw(st.integers(0, 3))
+        )
+        if draw(st.booleans()):
+            return A.IndexAssign(A.LocalRead(name), index, draw(_expr(env, 1))), env
+        # `||=` is safe whatever the current element holds (once-only obligation intact)
+        return A.IndexOpAssign(A.LocalRead(name), index, "||=", draw(_expr(env, 1))), env
+    if kind == "attr_assign":
+        # plain writer send only: `obj.x ||= v` would need a reader too (accessor),
+        # and the once-only read-modify-write obligation is already covered by
+        # `a[i] ||= v` above — so keep this to the pure writer-call.
+        inst_name, _cls, writers = draw(st.sampled_from(writer_insts))
+        attr = draw(st.sampled_from(writers))
+        return A.AttrAssign(A.LocalRead(inst_name), attr, draw(_expr(env, 1))), env
+    if kind == "massign":
+        n = draw(st.integers(2, 3))
+        targets = tuple(LOCAL_POOL[:n])
+        splat_index = draw(st.one_of(st.none(), st.integers(0, n - 1)))
+        nvals = draw(st.integers(n, n + 1))
+        values = tuple(draw(_expr(env, 1)) for _ in range(nvals))
+        env2 = env
+        for t in targets:
+            env2 = env2.with_local(t)
+        return A.MultiAssign(targets, splat_index, values), env2
+    if kind == "next":
+        return A.Next(draw(st.one_of(st.none(), _expr(env, 1)))), env
+    if kind == "break":
+        return A.Break(draw(st.one_of(st.none(), _expr(env, 1)))), env
+    if kind == "return":
+        return A.Return(draw(st.one_of(st.none(), _expr(env, 1)))), env
     if kind == "puts":
         n = draw(st.integers(1, 2))
         return A.Puts(tuple(draw(_expr(env, 2)) for _ in range(n))), env
@@ -142,12 +461,17 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         return A.If(cond, then, orelse[0] if orelse else None), env
     if kind == "while":
         var = draw(st.sampled_from(free_loop_vars))
-        body_env = env.with_frozen(var)  # readable, but never reassigned in the body
+        # `next`/`break` would target *this* loop and skip the manual `+= 1`
+        # increment the renderer appends → infinite loop. Disable them in the
+        # body (a nested block/times re-enables them, targeting itself, safely).
+        body_env = replace(env.with_frozen(var), in_block=False)
         body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         return A.WhileCounter(var, draw(st.integers(0, 3)), body), env.with_local(var)
     if kind == "times":
         var = draw(st.sampled_from(free_loop_vars))
-        body, _ = draw(_stmt_seq(env.with_local(var), depth - 1, 1, 2))
+        # a `times` block is self-counting, so `next`/`break` are safe here
+        body_env = replace(env.with_local(var), in_block=True)
+        body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         return A.TimesBlock(draw(st.integers(0, 3)), var, body), env
     if kind == "begin":
         body, _ = draw(_stmt_seq(env, depth - 1, 1, 2))
@@ -170,22 +494,189 @@ def _stmt_seq(draw, env: Env, depth: int, min_n: int, max_n: int) -> tuple[tuple
     return tuple(stmts), env
 
 
+def _merge(base: tuple, add: tuple) -> tuple:
+    """Union method (name, arity) lists; entries in `add` override same-named ones."""
+    names = {n for n, _ in add}
+    return tuple((n, a) for (n, a) in base if n not in names) + add
+
+
+@st.composite
+def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super):
+    """A `MethodDef` whose body may self-send `callable_methods`, read `ivars`,
+    instantiate `classes`, and (when `can_super` is set) call `super`."""
+    params = PARAM_POOL[:arity]
+    body_env = Env(
+        locals=params,
+        methods=callable_methods,
+        ivars=ivars,
+        classes=classes,
+        modules=modules,
+        in_method=True,
+        can_super=can_super,
+    )
+    body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
+    final = draw(_expr(body_env, 2))
+    return A.MethodDef(name, params, body + (final,))
+
+
+@st.composite
+def _module_def(draw, env: Env, name: str) -> tuple[A.ModuleDef, Env]:
+    methods: list[A.MethodDef] = []
+    minfos: list[tuple[str, int]] = []
+    for k in range(draw(st.integers(1, len(MMETHOD_POOL)))):
+        arity = draw(st.integers(0, len(PARAM_POOL)))
+        # module-method bodies carry no ivars (an includer may lack them) and see
+        # earlier module methods (bare self-sends once mixed in) + prior classes
+        m = draw(
+            _method_body(
+                MMETHOD_POOL[k], arity, env.methods + tuple(minfos), (), env.classes, (), None
+            )
+        )
+        methods.append(m)
+        minfos.append((MMETHOD_POOL[k], arity))
+    return A.ModuleDef(name, tuple(methods)), env.with_module(ModuleInfo(name, tuple(minfos)))
+
+
+@st.composite
+def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
+    # superclass: a prior class, or none (< Object); mixins: prior modules
+    sup = draw(st.sampled_from((None,) + tuple(ci.name for ci in env.classes)))
+    sup_ci = env.class_info(sup) if sup else None
+    mixins: list[tuple[str, str]] = []
+    mixed: tuple = ()
+    for mi in env.modules:
+        if draw(st.booleans()):
+            mixins.append((mi.name, draw(st.sampled_from(["include", "prepend"]))))
+            mixed = _merge(mixed, mi.methods)
+
+    # a subclass inherits its parent's `initialize` (ivars=()); base class owns ivars
+    if sup_ci is not None:
+        ivars: tuple = ()
+        ctor_arity = sup_ci.ctor_arity
+        inherited = sup_ci.imethods
+    else:
+        ivars = IVAR_POOL[: draw(st.integers(0, len(IVAR_POOL)))]
+        ctor_arity = len(ivars)
+        inherited = ()
+    effective = _merge(inherited, mixed)  # methods visible on instances so far
+    eff_ivars = IVAR_POOL[:ctor_arity]  # ivars are always a prefix of IVAR_POOL
+
+    # class/self methods (self is the class; call as `C.sm(args)`)
+    self_methods: list[A.MethodDef] = []
+    sinfos: list[tuple[str, int]] = []
+    for k in range(draw(st.integers(0, len(SMETHOD_POOL)))):
+        arity = draw(st.integers(0, len(PARAM_POOL)))
+        self_methods.append(
+            draw(_method_body(SMETHOD_POOL[k], arity, env.methods, (), env.classes, (), None))
+        )
+        sinfos.append((SMETHOD_POOL[k], arity))
+
+    # ---- metaprogramming class-body decls (registered so later methods can call them)
+    decls: list[A.Node] = []
+    attr_writers: tuple = ()
+    base_names = tuple(iv[1:] for iv in eff_ivars)  # attr only over ivars the class has
+    if base_names and draw(st.booleans()):
+        kind = draw(st.sampled_from(["accessor", "reader", "writer"]))
+        names = tuple(n for n in base_names if draw(st.booleans())) or base_names[:1]
+        decls.append(A.AttrDecl(kind, names))
+        if kind in ("accessor", "reader"):
+            effective = _merge(effective, tuple((n, 0) for n in names))
+        if kind in ("accessor", "writer"):
+            attr_writers = names
+    for k in range(draw(st.integers(0, len(DMETHOD_POOL)))):  # define_method → instance method
+        arity = draw(st.integers(0, len(PARAM_POOL)))
+        callable_methods = tuple(e for e in _merge(env.methods, effective) if e[0] != DMETHOD_POOL[k])
+        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None))
+        decls.append(A.DefineMethod(DMETHOD_POOL[k], m.params, m.body, False))
+        effective = _merge(effective, ((DMETHOD_POOL[k], arity),))
+    for k in range(draw(st.integers(0, len(DSM_POOL)))):  # define_singleton_method → class method
+        arity = draw(st.integers(0, len(PARAM_POOL)))
+        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None))
+        decls.append(A.DefineMethod(DSM_POOL[k], m.params, m.body, True))
+        sinfos.append((DSM_POOL[k], arity))
+
+    # instance methods: fresh im-names, or overrides of an inherited im-method (+ super)
+    methods: list[A.MethodDef] = []
+    own: tuple = ()
+    overridable = tuple(m for m in inherited if m[0] in IMETHOD_POOL)
+    for k in range(draw(st.integers(0, len(IMETHOD_POOL)))):
+        if overridable and draw(st.booleans()):
+            mname, arity = draw(st.sampled_from(overridable))
+            can_super = arity  # `super` reaches the parent's version
+        else:
+            mname, arity, can_super = IMETHOD_POOL[k], draw(st.integers(0, len(PARAM_POOL))), None
+        # bare-callable from the body = top-level + effective + earlier own, minus
+        # this method's own name (so an override never self-recurses)
+        callable_methods = tuple(
+            e for e in _merge(_merge(env.methods, effective), own) if e[0] != mname
+        )
+        methods.append(
+            draw(
+                _method_body(
+                    mname, arity, callable_methods, eff_ivars, env.classes, env.modules, can_super
+                )
+            )
+        )
+        own = _merge(own, ((mname, arity),))
+
+    effective = _merge(effective, own)
+    ci = ClassInfo(name, ctor_arity, effective, tuple(sinfos), attr_writers)
+    node = A.ClassDef(
+        name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls)
+    )
+    return node, env.with_class(ci)
+
+
+@st.composite
+def _reopen(draw, env: Env, ci: ClassInfo) -> tuple[A.ClassDef, Env]:
+    """`class C; def rm0(...) ... end; end` reopening an existing class."""
+    k = draw(st.integers(0, len(ROPEN_POOL) - 1))
+    arity = draw(st.integers(0, len(PARAM_POOL)))
+    callable_methods = tuple(e for e in _merge(env.methods, ci.imethods) if e[0] != ROPEN_POOL[k])
+    m = draw(
+        _method_body(
+            ROPEN_POOL[k], arity, callable_methods, IVAR_POOL[: ci.ctor_arity], env.classes, (), None
+        )
+    )
+    node = A.ClassDef(ci.name, None, (), (), (), (m,))
+    new_ci = replace(ci, imethods=_merge(ci.imethods, ((ROPEN_POOL[k], arity),)))
+    return node, env.update_class(ci.name, new_ci)
+
+
 @st.composite
 def programs(draw) -> A.Program:
     env = Env()
     stmts: list[A.Node] = []
-    n_defs = draw(st.integers(0, 2))
+    n_defs = draw(st.integers(0, 3))
     for k in range(n_defs):
         name = METHOD_POOL[k]
         arity = draw(st.integers(0, len(PARAM_POOL)))
         params = PARAM_POOL[:arity]
+        # some methods `yield` — they go in `env.yielders` (not `methods`), so
+        # they are only ever invoked with a block (via `_block_call`)
+        yields = arity >= 1 and draw(st.booleans())
         # method bodies see their params as locals and may call earlier methods
-        body_env = Env(locals=params, methods=env.methods)
+        body_env = Env(
+            locals=params, methods=env.methods, in_method=True, can_yield=1 if yields else None
+        )
         body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
         # make the return value depend on the params when there are any
         final = draw(_expr(body_env, 2))
         stmts.append(A.MethodDef(name, params, body + (final,)))
-        env = env.with_method(name, arity)
+        env = env.with_yielder(name, arity, 1) if yields else env.with_method(name, arity)
+    n_modules = draw(st.integers(0, len(MODULE_POOL)))
+    for c in range(n_modules):
+        mod_node, env = draw(_module_def(env, MODULE_POOL[c]))
+        stmts.append(mod_node)
+    n_classes = draw(st.integers(0, len(CLASS_POOL)))
+    for c in range(n_classes):
+        cls_node, env = draw(_class_def(env, CLASS_POOL[c]))
+        stmts.append(cls_node)
+    # reopen a few existing classes to add methods (heap mutation of the class object)
+    for ci in list(env.classes):
+        if draw(st.booleans()):
+            reopen_node, env = draw(_reopen(env, ci))
+            stmts.append(reopen_node)
     main, env = draw(_stmt_seq(env, 3, 1, 6))
     stmts.extend(main)
     stmts.append(A.Puts((draw(_expr(env, 2)),)))  # always end with observable output

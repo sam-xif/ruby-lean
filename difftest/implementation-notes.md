@@ -138,3 +138,88 @@ exercises operand order for calls/binops/logical/array/hash/interp/index, but no
 the recv→index→rhs ordering of assignment-calls (covered for now only by seed 27
 and tier-3 eval-order/010). Adding writer-call AST nodes to the shared grammar is
 the high-value next increment — and both tiers would then benefit automatically.
+
+## N12 — Classes/instances added to the shared tier-1 grammar (tier 1.5 inherits)
+
+The tier-1 grammar previously had only top-level `def`/bare-call, so the whole
+object model (the desugar M3 core and the Lean L2 fragment) went unexercised by
+fuzzing. Added three AST nodes to the *shared* `tiers/tier1` grammar so both tier 1
+and tier 1.5 (which is `tier1.programs().map(probe)` — N11) get them for free:
+`ClassDef` (name + ivars + instance methods), `New` (`C.new(...)`), `MethodCall`
+(`recv.m(...)`), plus `IvarRead` (`@x`). Scope-awareness (prong2-design §3) is
+preserved by extending `Env` with `classes`/`instances`/`ivars` so `.new`
+arg-counts and receiver methods resolve and dispatch actually fires.
+
+Termination-by-construction (HANDOFF invariant 4) is kept by two deliberate
+constraints, mirroring the existing method-DAG discipline:
+- **`initialize` is synthesized, pure** — one param per ivar, each stored straight
+  into its slot; `.new` never runs arbitrary generated code, so it cannot recurse
+  or livelock.
+- **Strict class DAG** — a class's instance-method bodies see only *prior* classes
+  (`classes=env.classes` at def time) and earlier same-class methods + top-level
+  methods as bare self-sends; a class cannot instantiate or self-send into itself.
+  Combined with pure ctors, the call/instantiation graph is acyclic and bounded.
+
+Instance-holding locals use a dedicated pool (`o`/`p`/`q`, disjoint from the
+value-local/loop/param pools) and are tracked in `Env.instances` **outside**
+`Env.locals` — so they are only ever emitted as method-call receivers, never
+op-assigned or read as bare values (which would leave a stale type or halt on
+`NoMethodError`). Default `#<C0:0x...>` inspect output (incl. nested ivar objects)
+is already address-normalized (`observation.py` `_ADDR_RE`), so instance output is
+deterministic. Validated: 38 pytest green (parse+determinism properties now cover
+the class grammar); `--tier 1 --sut identity` 150/150 agree; `--tier 1`/`--tier
+1.5 --sut desugar` **150/150 · 100/100 agree, 0 unsupported, 0 disagree** (class
+programs round-trip fully in-fragment through the harness).
+
+## N13 — Blocks, inheritance, metaprogramming, writer-calls added to the shared grammar
+
+Closed the four biggest generative-coverage gaps (tier 1 owns the grammar; tier 1.5
+inherits every node via `.map(probe)` — N11). All additions preserve the two
+load-bearing invariants: **termination-by-construction** (HANDOFF invariant 4) and
+**scope-awareness** (prong2-design §3, so dispatch fires instead of dying on
+NameError). New pure-leaf nodes were registered in the tier-1.5 probe `_LEAVES`
+(`BlockGiven`, `ConstRead`); every other new node is handled by the probe's generic
+dataclass walk.
+
+- **Blocks/procs/lambdas.** `yield`/`block_given?` in generated methods (yielders
+  live in `Env.yielders`, kept OUT of `methods` so a plain call never hits them
+  without a block → no `LocalJumpError`); block-carrying sends over bounded
+  collections (`each`/`map`/`select`/… on literal arrays/ranges) and yielders;
+  `->`/`proc`/`lambda` literals + `.call`; `&proc`/`&:sym` block-pass (only
+  **non-strict** procs are `&`-passed — a strict lambda with a yield-arity mismatch
+  would raise `ArgumentError`, so `procs` carries a `strict` flag; `&:sym` uses
+  only universally-safe unary methods `to_s`/`inspect`/`itself`/`class`/`freeze`);
+  and `next`/`break`/`return` jumps. Proc-vs-lambda jump divergence is left to tier
+  3. Also lands `RangeLit` as a bonus.
+- **Inheritance/super/modules/self-methods.** `class C < D`, `module M` +
+  `include`/`prepend`, `def self.m` (called `C.m(...)`), and `super`/zsuper in
+  overrides. `ClassInfo` now tracks *effective* instance methods (own + inherited +
+  mixed) and `ctor_arity` (a subclass inherits its parent's `initialize`), so
+  dispatch/`.new` arities stay correct. Strict DAG extended: superclass/modules are
+  always *prior*; an override's body excludes its own name from bare-callables (so
+  it never self-recurses — `super` reaches the parent instead).
+- **Metaprogramming (heap mutation).** `send`/`public_send`, `respond_to?`,
+  `instance_variable_get`/`set`, `attr_accessor`/`reader`/`writer`, `define_method`
+  (→ instance method, registered), `define_singleton_method` (→ class method), and
+  class reopening (`Env.update_class`). All resolve against the class `Env`, so the
+  dynamic calls actually dispatch. Deferred (→ tier 3): string `eval`,
+  `instance_eval`/`class_eval`, `alias`, `const_get/set`, per-instance singletons.
+- **Writer-calls + multiple assignment.** `a[i] = v`, `a[i] ||= v` (containers held
+  in a disjoint frozen pool `ix0..ix2`, so the target never gets reassigned to a
+  scalar), `obj.attr = v` (paired with `attr_writers` from the accessor decls), and
+  `a, b = …` / `a, *b = …`. Directly feeds the tier-1.5 eval-order probe's
+  documented top gap (writer-call once-only obligations, N11).
+
+**Termination bug found + fixed in the process:** `next`/`break` inside a
+`WhileCounter` body target *that* loop and skip the renderer's manual `+= 1`
+increment → infinite loop (surfaced as one `control_invalid: timeout` in a 500-case
+run). Fix: a `while` body sets `in_block=False` (no `next`/`break` emitted there);
+`times`/literal-block bodies are self-counting so they set `in_block=True` (safe,
+and nested blocks re-enable jumps targeting themselves). `if`/`begin` are
+transparent and inherit the flag correctly.
+
+Validated: **38 pytest green**; 1000+-program parse+determinism sweeps per item
+(0 parse-fail, 0 timeout, 0 nondeterministic); and per-item `--tier 1`/`--tier 1.5
+--sut desugar` at 300–500 cases each — **0 disagree throughout** (unsupported rises
+as expected where new surface outruns the desugar fragment: massign single-RHS,
+kwargs, `define_method`, etc.).

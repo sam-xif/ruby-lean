@@ -49,11 +49,21 @@ is missing). No pre-filter: the run-time control gate excludes unusable cases
 with reasons. This is the quick-initial-confidence corpus a new SUT meets first.
 
 **Tier 1** generates a *surface* AST under scope-aware strategies (an
-environment of bound locals/defined methods threads through generation, so
-names resolve and dispatch fires; loops are bounded counters, so programs
-terminate by construction). The campaign is a Hypothesis property asserting
-agreement — any disagreement is **automatically shrunk** and the minimal
-reproducer saved to `corpus/regressions/`.
+environment of bound locals/methods/**classes**/**modules**/**instances**/
+**procs** threads through generation, so names resolve and dispatch fires). The
+vocabulary covers scalars/arrays/hashes/**ranges**, control flow, first-order
+methods, the **object model** (`class`/ivars, inheritance `< Super` + `super`,
+`module` + `include`/`prepend`, `def self.m`, `C.new`, instance/class-method
+sends), **blocks/procs/lambdas** (`yield`/`block_given?`, `each`/`map`/`select`,
+`->`/`proc`/`lambda` + `.call`, `&blk`/`&:sym`, `next`/`break`/`return`),
+**metaprogramming as heap mutation** (`send`/`public_send`, `respond_to?`,
+`instance_variable_get`/`set`, `attr_accessor`, `define_method`/
+`define_singleton_method`, class reopening), and **writer-calls + multiple
+assignment** (`a[i] = v`, `a[i] ||= v`, `obj.attr = v`, `a, *b = …`).
+Termination is by construction (bounded loops/collections, pure constructors, a
+strict class/method DAG); see implementation-notes N12–N13. The campaign is a
+Hypothesis property asserting agreement — any disagreement is **automatically
+shrunk** and the minimal reproducer saved to `corpus/regressions/`.
 
 **Tier 3** prompts Claude (default `claude-opus-4-8`, structured JSON output)
 for adversarial programs per semantic category (dispatch, blocks/jumps,

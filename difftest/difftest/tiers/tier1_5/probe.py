@@ -26,7 +26,17 @@ from ..tier1 import ast as A
 # valid (same value, plus an observable print). Raw ints/strings elsewhere in the
 # AST (loop counts, raise messages, param/var names) are not `Node`s, so the
 # generic walk leaves them untouched.
-_LEAVES = (A.IntLit, A.StrLit, A.SymLit, A.BoolLit, A.NilLit, A.LocalRead)
+_LEAVES = (
+    A.IntLit,
+    A.StrLit,
+    A.SymLit,
+    A.BoolLit,
+    A.NilLit,
+    A.LocalRead,
+    A.IvarRead,
+    A.BlockGiven,
+    A.ConstRead,
+)
 
 
 def _probe_def() -> A.Node:
