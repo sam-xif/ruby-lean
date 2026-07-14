@@ -19,7 +19,7 @@ class Desugar
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
-    opt-param kw-param kwrest-param kwargs case->if defined
+    opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
   ].freeze
 
   attr_reader :coverage
@@ -116,6 +116,8 @@ class Desugar
     when :lambda_node             then desugar_lambda(n)
     when :case_node               then desugar_case(n)
     when :defined_node            then desugar_defined(n)
+    when :constant_path_node      then desugar_cpath(n)
+    when :constant_path_write_node then desugar_cpath_write(n)
     else
       raise Unsupported, "node type :#{n.type}"
     end
@@ -314,6 +316,22 @@ class Desugar
     [:defined, node(n.value)]
   end
 
+  # A::B / ::B / expr::B — a constant path read. `parent` (the namespace) is nil for a
+  # top-level `::B`, else an arbitrary expression node (usually a constant). Irreducible
+  # (lexical/relative constant lookup, artifact 03 §5) → a head.
+  def desugar_cpath(n)
+    fire(:cpath)
+    [:cpath, n.parent ? node(n.parent) : nil, n.name.to_s]
+  end
+
+  # A::B = v — constant-path assignment. Value of the expression is the RHS (assignment
+  # yields RHS natively, so no temp is needed); eval order is parent, then RHS.
+  def desugar_cpath_write(n)
+    fire(:"cpath-asgn")
+    tgt = n.target
+    [:cpath_asgn, tgt.parent ? node(tgt.parent) : nil, tgt.name.to_s, node(n.value)]
+  end
+
   # A def/block/lambda parameter list, as a structured list of param nodes (see
   # RubyCore::PARAM_HEADS), built in Ruby's canonical order: requireds, optionals, rest,
   # post-rest requireds, keywords, keyword-rest, block. An optional default (`a = E`) and
@@ -388,13 +406,16 @@ class Desugar
     recv ? [:defs, recv, n.name.to_s, params, body] : [:def, n.name.to_s, params, body]
   end
 
-  # A constant name in *definition* position (class/module name). Only simple names are
-  # in-fragment; a constant *path* (`class A::B`) is a distinct primitive (lexical vs.
-  # relative nesting, artifact 03 §5) and is deferred — clean gate. Constant-path *reads*
-  # (namespaced superclass `< A::B`) are likewise deferred for now (C19).
+  # A constant name in *definition* position (class/module name): either a simple constant
+  # (a String, `class Foo`) or a constant-path node (`class A::B` — a [:cpath, base, name],
+  # defining `B` inside the namespace `A`; base nil for `class ::B`). Same head as a cpath
+  # read (C27).
   def const_def_name(cpath)
-    raise Unsupported, "constant-path name :#{cpath.type}" unless cpath.type == :constant_read_node
-    cpath.name.to_s
+    case cpath.type
+    when :constant_read_node then cpath.name.to_s
+    when :constant_path_node then desugar_cpath(cpath)
+    else raise Unsupported, "constant-path name :#{cpath.type}"
+    end
   end
 
   # class Foo < Super; body; end. Keep as a core head rendered to the keyword form — do NOT

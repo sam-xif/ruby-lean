@@ -78,6 +78,13 @@ module Linearize
       v = run(node[3]); definitely_jumps?(v) ? v : [:vasgn, node[1], node[2], v]
     when :casgn
       v = run(node[2]); definitely_jumps?(v) ? v : [:casgn, node[1], v]
+    when :cpath
+      base = node[1] && run(node[1])
+      base && definitely_jumps?(base) ? base : [:cpath, base, node[2]]
+    when :cpath_asgn
+      base = node[1] && run(node[1])
+      v = run(node[3])
+      hoist((base ? [base] : []) + [v]) || [:cpath_asgn, base, node[2], v]
     when :return, :break, :next
       return node if node[1].nil?
       v = run(node[1]); definitely_jumps?(v) ? v : [node[0], v]

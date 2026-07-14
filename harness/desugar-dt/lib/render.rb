@@ -26,6 +26,8 @@ module Render
     when :vasgn then "(#{node[2]} = #{core(node[3])})"
     when :const then node[1]
     when :casgn then "(#{node[1]} = #{core(node[2])})"
+    when :cpath then cpath_str(node[1], node[2])
+    when :cpath_asgn then "(#{cpath_str(node[1], node[2])} = #{core(node[3])})"
     when :send  then send_str(node)
     when :block then block_str(node)
     when :yield then "yield(#{node[1].map { |a| core(a) }.join(', ')})"
@@ -55,9 +57,9 @@ module Render
     when :retry  then "retry"
     when :class
       _, name, sup, body = node
-      hdr = sup ? "class #{name} < (#{core(sup)})" : "class #{name}"
+      hdr = sup ? "class #{const_name_str(name)} < (#{core(sup)})" : "class #{const_name_str(name)}"
       "(#{hdr}; #{core(body)}; end)"
-    when :module then "(module #{node[1]}; #{core(node[2])}; end)"
+    when :module then "(module #{const_name_str(node[1])}; #{core(node[2])}; end)"
     when :sclass then "(class << (#{core(node[1])}); #{core(node[2])}; end)"
     when :defs
       _, recv, name, params, body = node
@@ -113,6 +115,18 @@ module Render
         "#{mname}(#{argstrs.join(', ')})"
       end
     blk && blk[0] == :block ? "#{base} #{block_str(blk)}" : base
+  end
+
+  # `A::B` (base a node) or `::B` (base nil = top-level). Base is parenthesized so any
+  # expression re-parses; `(A)::B` is behavior-identical to `A::B` and valid in definition
+  # position too (`class (A)::B`).
+  def cpath_str(base, name)
+    base ? "(#{core(base)})::#{name}" : "::#{name}"
+  end
+
+  # A class/module name is a String (simple constant) or a [:cpath,…] node (`A::B`).
+  def const_name_str(name)
+    name.is_a?(String) ? name : core(name)
   end
 
   # `&(e)` block-pass argument, or bare `&` for an anonymous forward.

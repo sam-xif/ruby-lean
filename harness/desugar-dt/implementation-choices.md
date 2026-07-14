@@ -646,3 +646,34 @@ not call `boom`).
 `defined` head is auto-encoded — `Export::VERSION` stays 4, but the Lean decoder must add
 `defined` when it migrates). Next blockers: `...` forwarding (31), constant paths `A::B`
 (19+13+5), regex (16), `alias_method` (15), single-RHS massign (15), `redo` (11).
+
+## C27 — M5: constant paths `A::B` (read, write, and definition-position names)
+
+**Decision.** Admit constant paths with **one head `[:cpath, base_or_nil, name]`** (read)
+plus **`[:cpath_asgn, base_or_nil, name, expr]`** (write). `base` is `nil` for a top-level
+`::B`, else an arbitrary expression node (usually a constant, but `expr::B` is legal). This
+retires the M3/C19 deferral of namespaced superclasses and definition-position paths.
+
+**Representation & consumers.**
+- `desugar.rb`: `desugar_cpath` / `desugar_cpath_write`; `const_def_name` (class/module
+  name) now returns a String *or* a `[:cpath,…]` node (`class A::B`, `class ::B`).
+- `rubycore.rb`: `cpath`/`cpath_asgn` heads; `const_name_error` lets a class/module name
+  be a String or a cpath node.
+- `render.rb`: `cpath_str` renders `(base)::Name` / `::Name`; the base is **parenthesized**
+  so any expression re-parses — `[V]` `(A)::B` is behavior-identical to `A::B` and valid in
+  definition position (`class (A)::B`), so read and definition share one renderer.
+- `linearize.rb`: the base and the assignment RHS are operand positions (a jump in either
+  hoists via `hoist`).
+
+**Value & eval order.** `A::B = v` yields the RHS natively (assignment result), so no temp
+is needed; eval order is base-then-RHS, matching CRuby `[V]`.
+
+**Deferred:** `A::B ||= v` / `A::B += v` (`constant_path_or_write_node` /
+`constant_path_operator_write_node`) — need `defined?`-style guards; their own step.
+
+**Result (measured).** in-fragment **1048 → 1085** (+37), 80.7% → **83.5%** of parseable,
+**0 disagree / 0 harness-error / 0 AST-idempotence failures**; seed `35_constant_path`
+(relative/nested/top-level reads, definition-position reopen, path assignment eval-order,
+non-constant base). Export: two auto-encoded heads (`Export::VERSION` stays 4; Lean decoder
+adds them on migration). Next: `...` forwarding (31), regex (16), single-RHS massign (15),
+`alias_method` (15), `redo` (11), interpolated symbol (6), `undef` (6), `for` (6).

@@ -55,6 +55,7 @@ SUPPORTED = %i[
   ensure_node retry_node super_node forwarding_super_node yield_node lambda_node
   optional_parameter_node keyword_hash_node assoc_splat_node block_parameter_node
   required_keyword_parameter_node optional_keyword_parameter_node keyword_rest_parameter_node
+  case_node when_node defined_node constant_path_node constant_path_write_node
 ].to_set
 
 require "prism"

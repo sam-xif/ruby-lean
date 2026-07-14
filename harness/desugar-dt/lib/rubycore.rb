@@ -20,6 +20,8 @@ module RubyCore
     vasgn: "[:vasgn, kind, name, expr]",
     const: "[:const, name]",
     casgn: "[:casgn, name, expr]",
+    cpath: "[:cpath, base_or_nil, name]",         # A::B (base a node) / ::B (base nil, top-level)
+    cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]",  # A::B = expr
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
     block: "[:block, [params], [block_locals], body]",  # {|params; locals| body}; params are param-nodes
     yield: "[:yield, [args]]",                               # yield to the current block
@@ -65,6 +67,14 @@ module RubyCore
   PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock].freeze
 
   module_function
+
+  # A class/module definition name is either a simple constant (String) or a constant-path
+  # node ([:cpath, base, name], e.g. `class A::B`). nil if valid, else an error string.
+  def const_name_error(name)
+    return nil if name.is_a?(String)
+    return "name must be String or cpath" unless name.is_a?(Array) && name[0] == :cpath
+    explain(name)
+  end
 
   # nil if the param list is well-formed, else a short error string.
   def params_error(params)
@@ -115,6 +125,15 @@ module RubyCore
       explain(e)
     when :const  then node[1].is_a?(String) ? nil : "const name not String"
     when :casgn  then node[1].is_a?(String) ? explain(node[2]) : "casgn name not String"
+    when :cpath
+      _, base, name = node
+      return "cpath name not String" unless name.is_a?(String)
+      base && !is_core?(base) ? "cpath base: #{explain(base)}" : nil
+    when :cpath_asgn
+      _, base, name, e = node
+      return "cpath_asgn name not String" unless name.is_a?(String)
+      return "cpath_asgn base: #{explain(base)}" if base && !is_core?(base)
+      explain(e)
     when :send
       _, recv, mname, args, blk = node
       return "send mname not String" unless mname.is_a?(String)
@@ -164,12 +183,13 @@ module RubyCore
       node.length == 1 ? nil : ":retry takes no children"
     when :class
       _, name, sup, body = node
-      return "class name not String" unless name.is_a?(String)
+      return "class name: #{const_name_error(name)}" if const_name_error(name)
       return "class super: #{explain(sup)}" if sup && !is_core?(sup)
       explain(body)
     when :module
       _, name, body = node
-      name.is_a?(String) ? explain(body) : "module name not String"
+      return "module name: #{const_name_error(name)}" if const_name_error(name)
+      explain(body)
     when :sclass
       _, obj, body = node
       (x = explain(obj)) ? "sclass obj: #{x}" : explain(body)
