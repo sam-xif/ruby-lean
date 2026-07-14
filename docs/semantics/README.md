@@ -55,7 +55,16 @@ guarantee, and mechanization techniques); Part C maps both onto our `Step` relat
 recommending a *runtime* three-outcome safety statement, reusing the already-proven monotone
 heap as store typing `Σ`, and treating a sig-violating heap mutation as a type `escape`
 (same device as `co-semantics.md` §5.3). Two cheapest steps (gradual-guarantee `obs⁺` probe;
-`srb`/`T.reveal_type` as a typing oracle) need no Lean.
+`srb`/`T.reveal_type` as a typing oracle) need no Lean. Its §C.5 records the *discipline*
+decision (extrinsic typing + store typing `Σ` over the machine) and the Lean shape.
+
+**Types (spec):** [Type judgments](type-judgments.md) — the implementation catalog for the
+typing layer: every judgment form (`Ty`, `Sub`, `Consistent`/`≲`, `Join`, `mtype`, `narrow`,
+`HasType`, `KontOk`/`ConfigTy`, `StoreOk`), the inference rules for the in-scope fragment
+(one per `Expr` head, `send` being the whole game), the config/heap typing needed for a
+machine-level preservation theorem, and a staging plan (T1 = the exact fragment already
+proven in `Proof/Step.lean` → T2 send → T3 gradual boundary → T4 flow-sensitivity → T5+
+generics). Companion to `types-and-preservation.md` (rationale) — this is the reference spec.
 
 ## Conventions
 

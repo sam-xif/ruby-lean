@@ -499,6 +499,89 @@ Our central bet reshapes the proof:
 - **[?]** Whether to pursue semantic soundness (§B.1) for the reflective core long-term, or
   stay syntactic and quarantine reflection behind `T.untyped` (the DRuby/PRuby move, §B.4).
 
+### C.5 Which typing discipline — extrinsic, with store typing over the machine
+
+> The full catalog of judgments and rules to implement is a separate artifact,
+> [`type-judgments.md`](type-judgments.md). This subsection records the *decision* and the
+> *shape*; that artifact is the *reference spec*.
+
+**The fork.** There are two ways to introduce types (see the survey for who does which):
+
+1. **Extrinsic (Curry-style):** terms/values stay untyped; a *separate* relation
+   `Δ; Γ ⊢ e : τ` assigns types over the existing syntax, and preservation is a **theorem**.
+2. **Intrinsic (Church-style):** only well-typed terms exist as objects (`Expr τ` indexed by
+   type); preservation is true *by construction*. This is the "encode values with type info
+   and evolve types over execution" reading.
+
+A third axis — **runtime type information (RTTI) / cast-carrying values** (Safe TypeScript
+§B.3, blame calculus §B.5, transient §B.5) — threads type info through *execution*, but only
+as an *enforcement* mechanism, with the metatheory still extrinsic.
+
+**Decision: extrinsic, layered over the existing untyped `Step`.** Every real-language work
+surveyed in Part B is extrinsic; intrinsic type-indexed syntax appears only in mechanization
+*tutorials*, never for a language with subtyping + mutation + gradual boundaries. It is
+essentially forced here:
+
+- **The interpreter must stay untyped — it is the difftest SUT.** The fuel interpreter is
+  validated against CRuby, which runs untyped Ruby (`T.untyped`, no-sig methods, reflection).
+  An `Expr τ` interpreter can't run gradual code and would fork the model from the SUT,
+  destroying the trust architecture. The type layer must be *purely additive* — it changes
+  nothing that runs.
+- **Sorbet is gradual + unsound-by-design + runtime-enforced (§A.3, §A.5).** The interesting
+  theorem is the *runtime* three-outcome statement (§C.1 option 2), which inherently relates
+  two separate things (the type discipline and the untyped execution) — i.e. extrinsic.
+- **Classes are heap objects that mutate (central bet).** A method table's type changes as
+  the program runs (`define_method`, open classes) — there is no stable index to hang an
+  intrinsic type on. Extrinsic **store typing `Δ` (≙ `Σ`)** handles this: `Δ` grows
+  monotonically and re-typing after a mutation is a proof obligation, not a type error.
+
+The Option-2 instinct is not wrong — it just belongs to the **runtime sig-enforcement
+layer**: a `sig` is heap mutation installing a boundary check whose failure is the observable
+`TypeError`. That is the RTTI axis (transient/guarded), and it is tied back to the static
+discipline by a **forward simulation** — the same machinery already chosen for the
+Rails/POSIX vertical relations (`co-semantics.md` §5).
+
+**The shape.** Because `Step` is an *abstract machine* (`Ctl` + kont stack + heap), not a
+reduction relation, preservation is over **configurations**, so we type the whole machine
+state, and store typing `Δ` extends the monotone-heap fact we already proved
+(`Step.heap_monotone`):
+
+```lean
+inductive Ty | cls (c : ObjId) | untyped | uni (ts : List Ty) | inter (ts : List Ty)
+             | proc (params : List Ty) (ret : Ty) | selfTy   -- §A.1 grammar
+
+Sub        (Δ : StoreTy) : Ty → Ty → Prop      -- static subtyping (transitive)
+Consistent (Δ : StoreTy) : Ty → Ty → Prop      -- gradual boundary (`~`, NOT transitive)
+StoreTy    -- Δ ≙ Σ: typeOf : ObjId → Option Ty ; classOf : ObjId → Option ClassTy (sigs)
+StoreTy.mtype  (Δ) (recv : Ty) (m : String) : Option MethSig   -- mirror of Heap.lookup
+
+HasType  (Δ : StoreTy) : TyEnv → Expr → Ty → Prop    -- the engine, one rule per Expr head
+KontOk   (Δ : StoreTy) : List Kont → Ty → Ty → Prop  -- kont stack : hole ⇒ answer
+ConfigTy (Δ) (m : Machine) (ans : Ty) : Prop         -- CtlOk ∧ KontOk over m.ctl / m.kont
+StoreOk  (Δ) (h : Heap) : Prop                        -- Δ ⊨ H (heap realizes Δ)
+
+theorem preservation :                               -- FJ §B.2 + Understanding-TS §B.3 shape
+  StoreOk Δ m.heap → ConfigTy Δ m ans → Step m m' →
+  ∃ Δ', Δ.extends Δ' ∧ StoreOk Δ' m'.heap ∧ ConfigTy Δ' m' ans
+```
+
+**Two load-bearing design commitments** (the reason this is smaller than a from-scratch OO
+calculus):
+
+- **Nominal subtyping *is* the existing ancestors walk.** `Sub Δ (.cls a) (.cls b)` iff `b`
+  is an ancestor of `a` — subtyping is a *view of the class heap* (`Heap.ancestors`), not new
+  machinery.
+- **`send` typing needs `mtype` = a store-typing mirror of `Heap.lookup`.** Static and
+  dynamic method resolution walk the same ancestry; that parallel is exactly what makes the
+  `send` case of preservation go through. Since everything is a send, `send` is the one
+  interesting typing rule and the one interesting preservation case.
+
+And the running theme of §B–§C made concrete: **it is not just subtyping.** `Sub` (transitive,
+static) and `Consistent` (non-transitive, the `T.untyped` boundary) are *separate* relations;
+`join`/`⊔` (typing an `if`) and `narrow` (flow-sensitivity, §A.2) are *separate*
+lattice/dataflow ingredients the typing rules call. See [`type-judgments.md`](type-judgments.md)
+for the complete rule set and the implementation staging.
+
 ---
 
 ## D. Sources
