@@ -614,3 +614,35 @@ the export and is fully green.
 seed — `32_kwargs` — the Ruby-3 separation seed, both directions). The fresh first-blocker
 histogram now names the next batches: `defined?` (34), `case`/`when` (30), `alias_method`
 (15), single-RHS massign (15), constant paths `A::B` (13+9+5).
+
+## C26 — M4: `case`/`when` → if-chain over `===`, and `defined?` as a primitive head
+
+**Decision.** Admit `case`/`when` by **desugaring to a temp + if/elsif chain over `===`**
+(no head — C12), and `defined?` as a new **`[:defined, expr]` head** (irreducible).
+
+**`case`/`when`.** The subject is evaluated **once** into a fresh temp `t`; each `when`
+value becomes a `(value === t)` test, and a `when` with multiple values ORs them with
+short-circuit (`[:if, test1, [:true], test2]`, so only truthiness reaches the enclosing
+`if` and a later value isn't evaluated once an earlier one matches). A **subjectless**
+`case` (`case; when cond; …`) truth-tests each condition directly (no `===`). `[V]`
+verified against the oracle: subject-once, then when-values left-to-right until a match.
+A **splat `when *arr`** tests whether any element matches — desugared to
+`[*arr].any? { |w| w === t }`; the `[*arr]` array-splat (already in-fragment) reproduces
+Ruby's non-array coercion (`when *5` ≡ `when 5`), which a bare `arr.any?` would get wrong
+(`5.any?` raises). Deferred: splat in a *subjectless* `when` (8 cases), and `case x in pat`
+pattern matching (distinct `case_match_node`).
+
+**`defined?`.** `defined?(expr)` inspects its *syntactic* argument (mostly **without
+evaluating** it) and returns a describing String or `nil`. There is no send it reduces to,
+so it is a head; the inner expr is desugared normally and rendered back inside
+`defined?(…)`. Because it does not evaluate, `linearize` leaves it in the passthrough (no
+jump-hoisting). `[V]` seed pins `local-variable`/`instance-variable`/`constant`/`method`/
+`expression`/`self`/`nil` results and the no-side-effect property (`defined?(boom)` does
+not call `boom`).
+
+**Result (measured).** in-fragment **1006 → 1048** (+42), 77.4% → **80.7%** of parseable,
+**0 disagree / 0 harness-error / 0 AST-idempotence failures**; seeds `33_case_when`
+(incl. splat-when + eval-order) and `34_defined`. No export change (`case` desugars away;
+`defined` head is auto-encoded — `Export::VERSION` stays 4, but the Lean decoder must add
+`defined` when it migrates). Next blockers: `...` forwarding (31), constant paths `A::B`
+(19+13+5), regex (16), `alias_method` (15), single-RHS massign (15), `redo` (11).

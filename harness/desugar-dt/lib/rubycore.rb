@@ -44,6 +44,7 @@ module RubyCore
     begin:  "[:begin, body, [rescues], else_or_nil, ensure_or_nil]",  # rescue = [[exc_nodes], ref_or_nil, handler]
     super:  "[:super, [args], block_or_nil]",       # explicit super(...) (incl. super() = empty args)
     zsuper: "[:zsuper, block_or_nil]",              # bare super (forwards enclosing args)
+    defined: "[:defined, expr]",                    # defined?(expr) — inspects, returns String|nil
     seq:   "[:seq, *nodes]"
   }.freeze
 
@@ -202,6 +203,8 @@ module RubyCore
       blk && !is_core?(blk) ? explain(blk) : nil
     when :zsuper
       node[1] && !is_core?(node[1]) ? explain(node[1]) : nil
+    when :defined
+      explain(node[1])
     when :splat
       node[1].nil? ? nil : explain(node[1])
     when :kwargs

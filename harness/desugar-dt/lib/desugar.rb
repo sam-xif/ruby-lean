@@ -19,7 +19,7 @@ class Desugar
     or-write and-write op-write range->send rational->send imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
-    opt-param kw-param kwrest-param kwargs
+    opt-param kw-param kwrest-param kwargs case->if defined
   ].freeze
 
   attr_reader :coverage
@@ -114,6 +114,8 @@ class Desugar
     when :forwarding_super_node   then desugar_zsuper(n)
     when :yield_node              then desugar_yield(n)
     when :lambda_node             then desugar_lambda(n)
+    when :case_node               then desugar_case(n)
+    when :defined_node            then desugar_defined(n)
     else
       raise Unsupported, "node type :#{n.type}"
     end
@@ -257,6 +259,59 @@ class Desugar
     fire(:block)
     fire(:"lambda->send")
     [:send, nil, "lambda", [], [:block, params, locals, stmts(n.body)]]
+  end
+
+  # case/when → temp + if/elsif chain over `===`. The subject is evaluated ONCE (bound to a
+  # temp), then each `when` value is `pattern === subject`-tested in source order with
+  # short-circuit within a multi-value `when` ([V] eval-order verified). A *subjectless*
+  # `case` (`case; when cond; …`) truth-tests each `when` condition directly (no `===`).
+  # `case x in pat` (pattern matching) is a distinct node (`case_match_node`) — deferred.
+  def desugar_case(n)
+    fire(:"case->if")
+    els = n.else_clause ? stmts(n.else_clause.statements) : nil
+    if n.predicate
+      t = fresh
+      tv = [:var, :local, t]
+      chain = when_chain(n.conditions, tv, els)
+      [:seq, [:vasgn, :local, t, node(n.predicate)], chain]
+    else
+      when_chain(n.conditions, nil, els)
+    end
+  end
+
+  def when_chain(whens, tv, els)
+    return els || [:nil] if whens.empty?
+    w = whens.first
+    [:if, when_cond(w.conditions, tv), stmts(w.statements), when_chain(whens[1..], tv, els)]
+  end
+
+  # OR of the per-condition tests, short-circuit; only truthiness reaches the enclosing if.
+  # With a subject each test is `(cond === subject)`; subjectless, the condition itself.
+  # A splat `when *arr` tests whether ANY element matches — desugared to
+  # `[*arr].any? { |w| w === subject }`, where the `[*arr]` array-splat reproduces Ruby's
+  # non-array coercion (`when *5` ≡ `when 5`). Splat in a subjectless `when` is deferred.
+  def when_cond(conds, tv)
+    tests = conds.map do |c|
+      if c.type == :splat_node
+        raise Unsupported, "splat in subjectless when" unless tv
+        w = fresh
+        blk = [:block, [[:preq, w]], [], [:send, [:var, :local, w], "===", [tv], nil]]
+        [:send, [:array, [[:splat, c.expression ? node(c.expression) : nil]]], "any?", [], blk]
+      elsif tv
+        [:send, node(c), "===", [tv], nil]
+      else
+        node(c)
+      end
+    end
+    tests[0..-2].reverse.reduce(tests[-1]) { |acc, t| [:if, t, [:true], acc] }
+  end
+
+  # defined?(expr) — a primitive that inspects the *syntactic* argument (mostly without
+  # evaluating it) and returns a describing String or nil. Irreducible, so a head; the
+  # inner expr is desugared normally and rendered back inside `defined?(…)`.
+  def desugar_defined(n)
+    fire(:defined)
+    [:defined, node(n.value)]
   end
 
   # A def/block/lambda parameter list, as a structured list of param nodes (see

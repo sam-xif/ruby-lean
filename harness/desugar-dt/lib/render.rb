@@ -75,6 +75,7 @@ module Render
       elsif blk[0] == :blockpass then "super(#{blockpass_str(blk)})"
       else "super #{block_str(blk)}"
       end
+    when :defined then "defined?(#{core(node[1])})"
     when :seq
       "(" + node[1..].map { |n| core(n) }.join("; ") + ")"
     else
