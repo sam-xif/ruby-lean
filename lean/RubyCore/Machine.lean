@@ -102,6 +102,12 @@ inductive Kont where
       is `initialize`'s (discarded) result; yield the fresh instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- `def RECV.name … end`: the in-flight value is the evaluated `RECV`; install
+      the method on its eigenclass (artifact 01 §5, 02 §1). -/
+  | defsK (name : String) (params : List String) (body : Expr)
+  /-- `class << OBJ … end`: the in-flight value is `OBJ`; run the body with
+      `self`/cref = its eigenclass (artifact 01 §5). -/
+  | sclassK (body : Expr)
   | ifK (t : Expr) (e : Option Expr)
   /-- Value is the while condition's result. Loop marker for brk/nxt. -/
   | whileCondK (c body : Expr)

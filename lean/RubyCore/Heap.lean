@@ -299,6 +299,12 @@ def classOf (h : Heap) : Value → ObjId
   | .bool false => Boot.falseClassId
   | .nil => Boot.nilClassId
 
+/-- The *real* class of a value — skips the eigenclass (what `Object#class` and
+    `instance_of?` report, unlike dispatch's `classOf`). -/
+def realClassOf (h : Heap) : Value → ObjId
+  | .ref o => (h.get o).klass
+  | v => classOf h v
+
 /-- Ancestor chain = superclass walk (no mixins at L0). Fuel-bounded against
     cyclic heaps (unreachable from H₀, but stepFn must be total). -/
 def ancestors (h : Heap) (k : ObjId) : List ObjId :=

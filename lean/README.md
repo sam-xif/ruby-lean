@@ -51,9 +51,10 @@ save/restore semantics, and the builtin slices listed in `Boot.builtinMethods`.
 proc-vs-lambda semantics and shared-scope locals (`impl-notes L16`).
 
 Gated (`Unsupported`, exit 3): iterating builtins that yield (`Array#each`/
-`map`, `Integer#times`, `Hash.new{}`), singleton methods (`def self.m`)/eigenclasses
-(L2c; `class`/`module` bodies + `Class#new`/`initialize` + `method_missing` +
-`super`/`zsuper` are done, L2a/b `impl-notes L17`–`L18`), splat/kwargs, class variables, `Float` **formatting** (Ruby needs
+`map`, `Integer#times`, `Hash.new{}`), mixins (`include`/`prepend`), class
+macros (`attr_reader`/`define_method`); **L2 object model done** — `class`/`module`
+bodies, `Class#new`/`initialize`, `method_missing`, `super`/`zsuper`, singleton
+methods + eigenclasses (`impl-notes L17`–`L19`), splat/kwargs, class variables, `Float` **formatting** (Ruby needs
 shortest-roundtrip; float arithmetic works), `Integer#hash` (seeded),
 vcall-vs-fcall `NameError` ambiguity, and anything CRuby defines that the
 model doesn't (via `CRubyNames`).

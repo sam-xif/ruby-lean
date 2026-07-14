@@ -156,7 +156,12 @@ def spread (m : Machine) (v : Value) : Except String (List Value) :=
     match (m.heap.get o).payload with
     | .arr xs => .ok xs.toList
     | .hsh _ => .error "splat of a Hash (to_a pairs)"
-    | _ => .ok [v]
+    | _ =>
+      -- CRuby splats a non-Array via `to_a` if it responds; a *user* `to_a`
+      -- is a side-effecting dispatch a pure spread can't run → gate.
+      match lookup m.heap v "to_a" with
+      | some (_, md) => if md.builtin.isNone then .error "splat via user to_a (dispatch)" else .ok [v]
+      | none => .ok [v]
   | .nil => .ok []
   | _ => .ok [v]
 
@@ -326,6 +331,37 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval md.body) (.frameK fid))
 
+/-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
+    superclass realizes the metaclass chain so dispatch through `classOf` finds
+    both singleton methods and inherited ones:
+    - a regular object's eigenclass superclasses its real class (so ordinary
+      methods still resolve);
+    - a class/module's metaclass superclasses the metaclass of *its* superclass
+      (so class methods are inherited: `B < A ⇒ B.classmethod` finds `A`'s),
+      bottoming out at `Class` (so `new`/`name`/… still resolve).
+    Fuel-bounded on the (finite, strictly-decreasing) superclass chain. -/
+def eigenclassOf (m : Machine) (o : ObjId) : ObjId × Machine :=
+  go m o (m.heap.objs.size + 1)
+where
+  go (m : Machine) (o : ObjId) : Nat → ObjId × Machine
+  | 0 => (Boot.classId, m)   -- unreachable from H₀; keep the function total
+  | fuel + 1 =>
+    match (m.heap.get o).eigen with
+    | some e => (e, m)
+    | none =>
+      let obj := m.heap.get o
+      let (supr, m) := match obj.payload with
+        | .cls c => match c.superclass with
+          | some s => go m s fuel
+          | none => (Boot.classId, m)   -- top of the metaclass chain
+        | _ => (obj.klass, m)
+      let ename := s!"#<Class:{className m.heap o}>"
+      let (e, h) := m.heap.alloc
+        { klass := Boot.classId,
+          payload := .cls { superclass := some supr, name := ename, isModule := false } }
+      let h := h.set o { h.get o with eigen := some e }
+      (e, { m with heap := h })
+
 /-- Open (or create) a class/module named `name` and run its `body` in a fresh
     class-body frame with `self` = `defmod` = the class object (artifact 01 §5).
     Reopening checks class/module agreement and, for `class`, superclass match
@@ -360,7 +396,10 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     let (k, h) := m.heap.alloc obj
     -- register the class name in the *enclosing* namespace (Object at toplevel)
     let h := constSetIn h m.currentFrame.defmod name (.ref k)
-    pushFrame { m with heap := h } k
+    -- eagerly realize the metaclass chain so inherited class methods resolve
+    -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) even before any `def self.`
+    let (_, m) := eigenclassOf { m with heap := h } k
+    pushFrame m k
 
 /-- Default `method_missing` (artifact 02 §4): the bare implicit-self zero-arg
     send is ambiguous (vcall `NameError` vs fcall `NoMethodError`; RubyCore
@@ -644,6 +683,28 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .defsK name params body =>
+      -- `def RECV.name`: install on RECV's eigenclass (v = the evaluated RECV)
+      match v with
+      | .ref o =>
+        let (e, m) := eigenclassOf m o
+        let md : MethodDef := { params, body, owner := e }
+        let m := { m with heap := defineMethod m.heap e name md }
+        let m := if reprSensitive.contains name then { m with reprPure := false } else m
+        .next (withCtl m (.value (.sym name)))
+      | _ =>
+        -- singleton def on an immediate (`def 1.m`) — TypeError; message-gate
+        .unsupported "singleton def on an immediate"
+    | .sclassK body =>
+      -- `class << OBJ`: run body with self/cref = OBJ's eigenclass
+      match v with
+      | .ref o =>
+        let (e, m) := eigenclassOf m o
+        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody }
+        let fid := m.frames.size
+        let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+        .next (withKont m (.eval body) (.frameK fid))
+      | _ => .unsupported "singleton class of an immediate"
     | .ifK t e =>
       if v.truthy then .next (withCtl m (.eval t))
       else
@@ -919,8 +980,9 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | some supExpr => .next (withKont m (.eval supExpr) (.classDefK name body))
     | none => enterClassBody m name false none body
   | .module' name body => enterClassBody m name true none body
-  | .sclass .. => .unsupported "singleton class (L2)"
-  | .defs .. => .unsupported "singleton def (L2)"
+  | .sclass obj body => .next (withKont m (.eval obj) (.sclassK body))
+  | .defs recv name params body =>
+    .next (withKont m (.eval recv) (.defsK name params body))
   | .super' args blk =>
     -- explicit `super(args)`; forward the method's block unless a literal one
     -- is given here (block-pass on super is beyond L2b)

@@ -222,3 +222,34 @@ decisions live in the sketch and README, not here.
     `@@cvar`.
   - Result: tier-0 bootstraptest **428 → 447 agree, 0 disagree**; tier-1 (n=300,
     seed 11) 214/0; regressions (7) + tier-3 (17) replay clean.
+
+- **L19 — L2c: singleton methods + eigenclasses.** Executable stepper only;
+  `defs` (`def self.m`/`def o.m`) and `sclass` (`class << o`) no longer gate.
+  The heap already carried an `eigen : Option ObjId` slot and `classOf` already
+  consulted it — L2c fills it in (artifact 01 §5).
+  - **`eigenclassOf` (lazy, fuel-bounded)** gets/creates an object's eigenclass
+    and wires its superclass to realize the metaclass chain: a regular object's
+    eigenclass superclasses its real class (ordinary methods still resolve); a
+    class/module's *metaclass* superclasses the metaclass of its superclass, so
+    **class methods are inherited** (`B < A ⇒ B.cm` finds `A`'s), bottoming out
+    at `Class` so `new`/`name`/… still resolve. Because `classOf` (used for
+    dispatch) reads `eigen` but can't allocate, `enterClassBody` **eagerly**
+    builds the chain when a class is created — otherwise `classOf(B)` would fall
+    back to `Class` and miss inherited class methods [V test_method_216-family].
+  - **`def RECV.name`** (`defsK` kont): eval RECV, then install the method on its
+    eigenclass; **`class << OBJ`** (`sclassK`): eval OBJ, then run the body in a
+    `classBody` frame whose self/cref is the eigenclass (so `def m` inside is a
+    singleton method, and `def self.` / `class << self` inside a class body both
+    reach the class's metaclass). Both flip `reprPure` on a repr-sensitive name.
+    A singleton on an immediate (`def 1.m`) gates.
+  - **`Object#class`/`instance_of?` skip the eigenclass** via a new
+    `realClassOf` (dispatch keeps using `classOf`) — `o.class` is the real class,
+    not `#<Class:o>` [V].
+  - **Splat now gates on a user `to_a`**: `*obj` for a non-Array whose class
+    defines a user `to_a` is a side-effecting dispatch a pure `spread` can't run
+    → gate (previously masked because `def obj.to_a` itself gated at L2b) [V
+    test_method_216]. Same shape as the `hasUserEq` / `reprPure` gates.
+  - **Still gated:** `@@cvar`, `include`/`prepend`/mixins (MRO), `alias`,
+    class macros (`attr_reader`/`define_method` — metaprogramming, deferred).
+  - Result: tier-0 bootstraptest **447 → 468 agree, 0 disagree**; tier-1 (n=300,
+    seed 11) 214/0; regressions (7) + tier-3 (17) replay clean.

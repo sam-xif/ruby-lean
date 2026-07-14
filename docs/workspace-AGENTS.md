@@ -52,7 +52,7 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   massign (to_ary), `const`/`@@x` `||=` (need `defined?`), indexed/attr **op**-assign,
   optional/keyword params + double-splat `**`/kwargs (M2), `...` forwarding, constant paths
   `A::B`, do-while, `super` arg-forwarding subtleties.
-- **Lean model: L0 + L1 implemented and difftesting** ([`lean/`](lean/README.md), per the
+- **Lean model: L0 + L1 + L2 (object model) implemented and difftesting** ([`lean/`](lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
   repr/error-message layer, oracle-generated CRuby name tables for dispatch fidelity
@@ -63,11 +63,12 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   frame-identity generative jump targets (`captured`/`home`/targeted `retJ`), `yield`/
   `block_given?`/`&blk`/block-pass/`&:sym`/`proc`/`lambda`/`->`/`Proc.new`/`Proc#call`,
   and proc-vs-lambda `next`/`break`/`return` with shared-scope locals. **Baseline: full
-  bootstraptest 447/1304 agree, 0 disagree** (372 pre-L2; **L2a+L2b done** — `class`/`module`
+  bootstraptest 468/1304 agree, 0 disagree** (372 pre-L2; **L2a+b+c done** — `class`/`module`
   definitions, `Class#new`+`initialize`, cref-scoped constants, `method_missing`, frozen-`@x=`
-  (`impl-notes L17`), `super`/`zsuper` (`L18`); L2c `defs`/`sclass`/eigenclasses still gated; rest gated Unsupported:
-  upstream desugar, class defs L2, iterating-builtins-that-yield, unmodeled
-  methods+constants); tier-1 fuzzing already
+  (`impl-notes L17`), `super`/`zsuper` (`L18`), singleton methods/eigenclasses
+  `def self.m`/`class << o` (`L19`); rest gated Unsupported: upstream desugar
+  (optional/kw params), iterating-builtins-that-yield, mixins/`@@cvar`/class-macros,
+  unmodeled methods+constants); tier-1 fuzzing already
   caught and fixed one real bug (coercion-error messages use inspect for special
   constants, class name otherwise). The `inductive Step` relation (definition of
   record) is not yet authored — interpreter came first to meet the engine on day one.

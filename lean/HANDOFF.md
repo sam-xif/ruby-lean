@@ -1,11 +1,13 @@
 # Lean model — hand-off (2026-07-13)
 
-> **Update 2026-07-13 (L2a+L2b):** `class`/`module` definitions, `Class#new` +
-> `initialize`, cref-scoped constants, `method_missing`, frozen-`@x=`
-> (`impl-notes L17`), and `super`/`zsuper` (`impl-notes L18`) are implemented in
-> the executable stepper. **tier-0 baseline 372 → 447 agree, 0 disagree**
-> (ratchet moved). Still gated: `defs`/`sclass`/eigenclasses (L2c), `@@cvar`.
-> Numbers below predate this.
+> **Update 2026-07-13 (L2 object model, a+b+c):** `class`/`module` definitions,
+> `Class#new` + `initialize`, cref-scoped constants, `method_missing`,
+> frozen-`@x=` (`impl-notes L17`), `super`/`zsuper` (`L18`), and singleton
+> methods + eigenclasses `def self.m`/`def o.m`/`class << o` (`L19`) are
+> implemented in the executable stepper. **tier-0 baseline 372 → 468 agree,
+> 0 disagree** (ratchet moved). Still gated: mixins (`include`/`prepend`/MRO),
+> `@@cvar`, `alias`, class macros (`attr_reader`/`define_method`). Numbers below
+> predate this — next object-model lever is mixins + `@@cvar`.
 
 
 Fresh-context hand-off for the Lean interpreter work begun 2026-07-07 (mirrors

@@ -237,7 +237,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     | _ => .unsupported "!=/arity"
   | "Object#nil?" | "NilClass#nil?" =>
     .ok (.bool (match recv with | .nil => true | _ => false)) m
-  | "Object#class" => .ok (.ref (classOf h recv)) m
+  | "Object#class" => .ok (.ref (realClassOf h recv)) m
   | "Object#inspect" =>
     match inspectP m recv with
     | .ok s => okStr m s
@@ -264,7 +264,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
   | "Object#instance_of?" =>
     match args with
     | [.ref k] =>
-      if (h.classPayload? k).isSome then .ok (.bool (classOf h recv == k)) m
+      if (h.classPayload? k).isSome then .ok (.bool (realClassOf h recv == k)) m
       else .err Boot.typeErrorId "class or module required" m
     | [_] => .err Boot.typeErrorId "class or module required" m
     | _ => .unsupported "instance_of?/arity"

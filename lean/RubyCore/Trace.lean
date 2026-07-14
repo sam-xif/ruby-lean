@@ -78,6 +78,8 @@ def kontLabel : Kont → String
   | .casgnK n => s!"then {n} = ▢"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"
+  | .defsK name .. => s!"then def ▢.{name}"
+  | .sclassK _ => "then open singleton class of ▢"
   | .ifK .. => "then pick if-branch"
   | .whileCondK .. => "while: test ▢"
   | .whileBodyK .. => "while: after body"
