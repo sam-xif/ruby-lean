@@ -21,6 +21,7 @@ class Desugar
     yield lambda->send block-capture blockpass
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
     redo undef alias for regex isym massign-to_ary fwd-arg fwd-param when-splat
+    index-opwrite attr-opwrite numbered-params dowhile destructure-param
   ].freeze
 
   attr_reader :coverage
@@ -126,6 +127,23 @@ class Desugar
     when :for_node                then desugar_for(n)
     when :regular_expression_node, :interpolated_regular_expression_node then desugar_regex(n)
     when :interpolated_symbol_node then desugar_isym(n)
+    when :index_operator_write_node then desugar_index_write(n, :op)
+    when :index_or_write_node       then desugar_index_write(n, :or)
+    when :index_and_write_node      then desugar_index_write(n, :and)
+    when :call_operator_write_node  then desugar_attr_write(n, :op)
+    when :call_or_write_node        then desugar_attr_write(n, :or)
+    when :call_and_write_node       then desugar_attr_write(n, :and)
+    # Regex match globals — read-only thread-local match state; render back verbatim as
+    # gvar reads (`$1`, `$&`). `$~`/`$`'`/etc. already arrive as global_variable_read_node.
+    when :numbered_reference_read_node then fire(:var); [:var, :gvar, "$#{n.number}"]
+    when :back_reference_read_node     then fire(:var); [:var, :gvar, n.name.to_s]
+    # Out of scope (documented, self-describing gate reasons):
+    when :source_line_node, :source_file_node
+      raise Unsupported, "__LINE__/__FILE__ (source-location reflection — changes under re-render)"
+    when :x_string_node, :interpolated_x_string_node
+      raise Unsupported, "backtick x-string (spawns an external process — out of scope, cf. eval)"
+    when :flip_flop_node
+      raise Unsupported, "flip-flop operator (stateful per-instance control — deferred)"
     else
       raise Unsupported, "node type :#{n.type}"
     end
@@ -253,6 +271,12 @@ class Desugar
   # BlockParametersNode (block or lambda), or [[], []] when absent.
   def block_params(bp)
     return [[], []] if bp.nil?
+    # Numbered params (`{ _1 + _2 }`): the body's `_1`… reads render verbatim and Ruby
+    # re-detects them, so no param list is needed. C29.
+    if bp.type == :numbered_parameters_node
+      fire(:"numbered-params")
+      return [[], []]
+    end
     raise Unsupported, "block param type :#{bp.type}" unless bp.type == :block_parameters_node
     [build_params(bp.parameters), bp.locals.map { |l| l.name.to_s }]
   end
@@ -409,8 +433,11 @@ class Desugar
       params << [:popt, o.name.to_s, node(o.value)]
     end
     if p.rest
-      raise Unsupported, "rest param :#{p.rest.type}" unless p.rest.type == :rest_parameter_node
-      params << [:prest, p.rest.name&.to_s]   # nil name = anonymous `*`
+      case p.rest.type
+      when :rest_parameter_node then params << [:prest, p.rest.name&.to_s]  # nil = anonymous `*`
+      when :implicit_rest_node  then params << [:prest, nil]  # `{ |a,| }` — discard tail (≡ `*`)
+      else raise Unsupported, "rest param :#{p.rest.type}"
+      end
     end
     params += p.posts.map { |r| req_param(r) }
     p.keywords.each do |k|
@@ -441,8 +468,25 @@ class Desugar
   end
 
   def req_param(r)
-    raise Unsupported, "non-simple param :#{r.type}" unless r.type == :required_parameter_node
-    [:preq, r.name.to_s]
+    case r.type
+    when :required_parameter_node then [:preq, r.name.to_s]
+    when :multi_target_node       then destr_param(r)   # `|(a, b)|` destructuring
+    else raise Unsupported, "non-simple param :#{r.type}"
+    end
+  end
+
+  # A destructuring block param `|(a, b)|` → [:pdestr, [sub-params]]. Sub-elements are
+  # required params, a nested destructure, or a rest (`|(a, *b)|`). Rendered back as
+  # `(a, b)`, so the block still auto-splats a single array argument. C29.
+  def destr_param(mt)
+    fire(:"destructure-param")
+    subs = mt.lefts.map { |t| req_param(t) }
+    if mt.rest
+      raise Unsupported, "destructure rest :#{mt.rest.type}" unless mt.rest.type == :splat_node
+      subs << [:prest, mt.rest.expression&.name&.to_s]
+    end
+    subs += mt.rights.map { |t| req_param(t) }
+    [:pdestr, subs]
   end
 
   def andor(n, and_kind:)
@@ -524,7 +568,7 @@ class Desugar
     rescues = []
     rc = n.rescue_clause
     while rc
-      excs = rc.exceptions.map { |e| node(e) }
+      excs = rc.exceptions.map { |e| arg_node(e) }   # `rescue *classes` — splat allowed
       ref = rc.reference ? massign_target(rc.reference) : nil
       rescues << [excs, ref, stmts(rc.statements)]
       rc = rc.subsequent
@@ -558,11 +602,21 @@ class Desugar
   # `begin_modifier?`) is a do-while: the body runs ONCE before the first condition test.
   # A [:while] head has no such flag, and desugaring by duplicating the body is wrong
   # (a `next`/`break` in the first copy wouldn't be in a loop) — so it is deferred.
+  # while/until. The `begin … end while C` / `… until C` *modifier* form (Prism's
+  # `begin_modifier?`) is a do-while: the body runs ONCE before the first condition test.
+  # It gets its own head `[:dowhile, body, cond]` (a plain `[:while]` has no run-once flag,
+  # and duplicating the body would break a `next`/`break` in the first copy). `until` is
+  # rendered by negating the condition (do-while always renders as `while`). C29.
   def desugar_while(n, negate:)
-    raise Unsupported, "do-while (begin-modifier loop)" if n.begin_modifier?
     pred = negate ? negate(node(n.predicate)) : node(n.predicate)
-    fire(negate ? :"until->while" : :while)
-    [:while, pred, stmts(n.statements)]
+    body = stmts(n.statements)
+    if n.begin_modifier?
+      fire(:dowhile)
+      [:dowhile, body, pred]
+    else
+      fire(negate ? :"until->while" : :while)
+      [:while, pred, body]
+    end
   end
 
   def desugar_hash(n)
@@ -602,62 +656,83 @@ class Desugar
     fire(:massign)
     t = fresh
     tv = [:var, :local, t]
-    lefts = n.lefts.map { |x| massign_target(x) }
-    rights = n.rights.map { |x| massign_target(x) }
-    ln = lefts.length
-    rn = rights.length
-
     arr_expr, result = massign_rhs_array(n.value, tv)
     stmts = [[:vasgn, :local, t, arr_expr]]
-    # lefts: front-indexed (nil if underflowing).
-    lefts.each_with_index { |(k, nm), i| stmts << target_write(k, nm, index_get(tv, i)) }
+    distribute(n.lefts, n.rest, n.rights, tv, stmts)
+    [:seq, *stmts, result]
+  end
 
-    if n.rest
-      raise Unsupported, "massign rest :#{n.rest.type}" unless n.rest.type == :splat_node
-      # rest_len = [t.length - #lefts - #rights, 0].max ; rest = (t[ln, rest_len]).to_a
-      # Post-rest targets are filled front-to-back starting after the rest's share — this
-      # matches Ruby's underflow rule (`*a,b,c = [0]` => a=[], b=0, c=nil), which negative
-      # indexing gets wrong. So we need the runtime length.
+  # Distribute a temp array `tv` across left targets (front-indexed), an optional rest, and
+  # post-rest right targets. Post-rest rights are filled front-to-back after the rest's
+  # runtime share — matching Ruby's underflow rule (`*a,b,c = [0]` => a=[], b=0, c=nil),
+  # which negative indexing gets wrong. Any target may itself be a nested destructure
+  # (`(a,b),c = …`), handled recursively by `assign_target`.
+  def distribute(lefts, rest, rights, tv, stmts)
+    ln = lefts.length
+    rn = rights.length
+    lefts.each_with_index { |tn, i| assign_target(tn, index_get(tv, i), stmts) }
+
+    if rest
+      # `a, = x` uses an implicit_rest_node (a nameless rest that discards) — treat like an
+      # anonymous `*` (assigns nothing). A real `*rest` is a splat_node.
+      unless %i[splat_node implicit_rest_node].include?(rest.type)
+        raise Unsupported, "massign rest :#{rest.type}"
+      end
       rl = fresh
       len_minus = sub(sub([:send, tv, "length", [], nil], [:int, ln]), [:int, rn])
       stmts << [:vasgn, :local, rl, [:send, [:array, [len_minus, [:int, 0]]], "max", [], nil]]
-      if n.rest.expression   # named rest; anonymous `*` assigns nothing
-        rk, rnm = massign_target(n.rest.expression)
+      if rest.type == :splat_node && rest.expression   # named rest; `*`/`a,=` assign nothing
         slice = [:send, tv, "[]", [[:int, ln], [:var, :local, rl]], nil]
-        stmts << target_write(rk, rnm, [:send, slice, "to_a", [], nil]) # nil-slice -> []
+        assign_target(rest.expression, [:send, slice, "to_a", [], nil], stmts) # nil-slice -> []
       end
-      rights.each_with_index do |(k, nm), j|
+      rights.each_with_index do |tn, j|
         idx = add(add([:var, :local, rl], [:int, ln]), [:int, j]) # rest_len + #lefts + j
-        stmts << target_write(k, nm, [:send, tv, "[]", [idx], nil])
+        assign_target(tn, [:send, tv, "[]", [idx], nil], stmts)
       end
     else
       # No rest: any rights are just further front-indexed targets.
-      rights.each_with_index { |(k, nm), j| stmts << target_write(k, nm, index_get(tv, ln + j)) }
+      rights.each_with_index { |tn, j| assign_target(tn, index_get(tv, ln + j), stmts) }
     end
+  end
 
-    [:seq, *stmts, result]
+  # Assign a (desugared) value expression to one massign target, appending statements. A
+  # nested target `(a, b)` recursively coerces the value to an array (same to_ary-or-wrap as
+  # a single-RHS massign) and distributes into its sub-targets.
+  def assign_target(tnode, val, stmts)
+    if tnode.type == :multi_target_node
+      st = fresh
+      stmts << [:vasgn, :local, st, coerce_core_to_array(val)]
+      distribute(tnode.lefts, tnode.rest, tnode.rights, [:var, :local, st], stmts)
+    else
+      k, nm = massign_target(tnode)
+      stmts << target_write(k, nm, val)
+    end
   end
 
   # Returns [array_expr, result_value] for a massign RHS. `array_expr` is bound to the temp
   # array that targets distribute from; `result_value` is the value of the whole massign
   # expression (the RHS as written). For an explicit value list (`a, b = 1, *r`) both are
   # the array literal (result = the temp `tv`). For a *single* RHS (`a, b = x`) the array is
-  # `Array.try_convert(x) || [x]` (Ruby's to_ary-or-wrap coercion, [V] verified; x bound to
-  # a temp so try_convert fires once) but the result value is the *raw* x — hence the
-  # coerce expression assigns x to a temp `r` as a side effect and result = that `r`.
+  # `Array.try_convert(x) || [x]` (Ruby's to_ary-or-wrap coercion, [V] verified) but the
+  # result value is the *raw* x — so x is bound to a temp `r` and result = that `r`.
   def massign_rhs_array(value, tv)
     return [[:array, value.elements.map { |v| arg_node(v) }], tv] if value.type == :array_node
 
     fire(:"massign-to_ary")
     r = fresh
-    tc = fresh
     rv = [:var, :local, r]
+    [[:seq, [:vasgn, :local, r, node(value)], coerce_core_to_array(rv)], rv]
+  end
+
+  # Coerce a core value expression to an Array the way Ruby massign does — use it (or its
+  # to_ary) if array-convertible, else wrap `[x]`. The value is expected to be side-effect-
+  # free here (a temp read or an index get); try_convert is bound to a temp regardless.
+  def coerce_core_to_array(v)
+    tc = fresh
     tcv = [:var, :local, tc]
-    arr = [:seq,
-           [:vasgn, :local, r, node(value)],
-           [:vasgn, :local, tc, [:send, [:const, "Array"], "try_convert", [rv], nil]],
-           [:if, tcv, tcv, [:array, [rv]]]]
-    [arr, rv]
+    [:seq,
+     [:vasgn, :local, tc, [:send, [:const, "Array"], "try_convert", [v], nil]],
+     [:if, tcv, tcv, [:array, [v]]]]
   end
 
   def index_get(tv, i)
@@ -819,5 +894,63 @@ class Desugar
   def desugar_isym(n)
     fire(:isym)
     [:send, interp_concat(n.parts), "to_sym", [], nil]
+  end
+
+  # Indexed op-assign — a[i] += v / a[i] ||= v / a[i] &&= v. The receiver and every index
+  # are evaluated ONCE (cached in temps), preserving eval order and avoiding double side
+  # effects. Value of the expression is the new element value (for ||=/&&=, the short-circuit
+  # result). C29.
+  def desugar_index_write(n, mode)
+    fire(:"index-opwrite")
+    tr = fresh
+    trv = [:var, :local, tr]
+    pre = [[:vasgn, :local, tr, node(n.receiver)]]
+    idx_vars = (n.arguments ? n.arguments.arguments : []).map do |a|
+      ti = fresh
+      if a.type == :splat_node
+        # cache the splatted array once, re-splat the temp (`a[*idx]` — binding `*idx` to a
+        # temp would wrap it into an array and index by the wrong value, C29 harness-caught).
+        fire(:splat)
+        pre << [:vasgn, :local, ti, a.expression ? node(a.expression) : [:nil]]
+        [:splat, [:var, :local, ti]]
+      else
+        pre << [:vasgn, :local, ti, node(a)]
+        [:var, :local, ti]
+      end
+    end
+    read  = [:send, trv, "[]", idx_vars, nil]
+    write = ->(val) { [:send, trv, "[]=", idx_vars + [val], nil] }
+    [:seq, *pre, *opwrite_body(read, write, mode, n)]
+  end
+
+  # Attribute op-assign — a.b += v / a.b ||= v / a.b &&= v. Receiver evaluated once. Safe
+  # navigation (`a&.b += v`) is deferred. C29.
+  def desugar_attr_write(n, mode)
+    raise Unsupported, "safe-navigation op-assign" if n.safe_navigation?
+    fire(:"attr-opwrite")
+    tr = fresh
+    trv = [:var, :local, tr]
+    pre = [[:vasgn, :local, tr, node(n.receiver)]]
+    read  = [:send, trv, n.read_name.to_s, [], nil]
+    write = ->(val) { [:send, trv, n.write_name.to_s, [val], nil] }
+    [:seq, *pre, *opwrite_body(read, write, mode, n)]
+  end
+
+  # Shared read/write body for op-assign, given a `read` node and a `write` builder. `:op`
+  # is `write(read <op> v)`; `:or`/`:and` short-circuit on a cached read. The trailing node
+  # of the seq is the expression's value.
+  def opwrite_body(read, write, mode, n)
+    if mode == :op
+      nv = fresh
+      nvv = [:var, :local, nv]
+      [[:vasgn, :local, nv, [:send, read, n.binary_operator.to_s, [node(n.value)], nil]],
+       write.call(nvv), nvv]
+    else
+      tval = fresh
+      tvv = [:var, :local, tval]
+      wr = write.call(node(n.value))
+      cond = mode == :or ? [:if, tvv, tvv, wr] : [:if, tvv, wr, tvv]
+      [[:vasgn, :local, tval, read], cond]
+    end
   end
 end

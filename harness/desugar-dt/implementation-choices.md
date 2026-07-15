@@ -719,3 +719,51 @@ out-of-scope forms (string `eval`/`class_eval`/`instance_eval` ≈56, top-level 
 un-parseable 5) plus a small tail (indexed/attr op-assign, destructuring params/targets,
 numbered params `_1`, `__LINE__`, do-while, flip-flop, backtick x-strings, dynamic
 alias/undef names) picked up in C29.
+
+## C29 — M7: the final mop-up (op-assign, destructuring, do-while, `$1`) + documented out-of-scope gates
+
+**Decision.** Clear the remaining cleanly-modelable tail and give every genuinely
+out-of-scope form an explicit, self-describing gate. **All desugarings below use existing
+heads except do-while.**
+
+- **Indexed/attr op-assign** — `a[i] += v`, `a[i] ||= v`/`&&=`, `a.b += v`, `a.b ||= v`/
+  `&&=` (6 Prism nodes). The receiver and every index are cached in temps (evaluated once,
+  eval order preserved); the value is the new element/attr value (short-circuit result for
+  `||=`/`&&=`). Retires the C14/C19 indexed-op-assign deferral. **Harness-caught bug:** a
+  *splat index* `a[*a] += 1` — binding `*a` to a temp wraps it into an array and indexes by
+  the wrong value; fixed by caching the splatted array and re-splatting the temp
+  (`test_syntax_108`).
+- **Numbered block params** `{ _1 + _2 }` — the body's `_1`… reads render verbatim and Ruby
+  re-detects them, so the param list is just emptied (no representation needed).
+- **do-while** `begin … end while C` — a new `[:dowhile, body, cond]` head (run-once, a
+  plain `[:while]` can't express it; `until` negates the cond). Retires the C19 deferral.
+- **Single-target / nested destructuring** — the massign distribution was refactored into a
+  recursive `distribute`/`assign_target`: a nested target `(a, b), c = …` recursively
+  coerces its slice (to_ary-or-wrap) and distributes into sub-targets; an implicit-rest
+  `a, = x` / `{ |a,| }` is treated as an anonymous discard-rest. Destructuring **block
+  params** `|(a, b)|` become a `[:pdestr, [sub-params]]` param node rendered back as
+  `(a, b)` (so the block still auto-splats).
+- **`rescue *classes`** — a splat in the rescue exception list (`arg_node` + bare `*(x)`
+  render).
+- **`$1`/`$&`** (numbered/back reference) → gvar reads rendered verbatim (`$~` etc. already
+  arrive as ordinary gvar reads).
+
+**Explicitly gated (documented, not silently unhandled).** `__LINE__`/`__FILE__`
+(source-location reflection — the value changes when the program is re-rendered onto
+different lines), backtick x-strings (spawn an external process — out of scope, cf. the
+`eval` gate C10), and the flip-flop operator (stateful per-instance control — deferred).
+The gate reasons now surface directly in the `bin/coverage` histogram.
+
+**Still deferred (enumerated):** `case x in pat` pattern matching (`case_match_node` /
+`match_predicate_node` — a large sublanguage, its own project), dynamic
+`alias`/`undef` names (`alias :"a#{x}" b`), and `A::B ||=`/`+=` (constant-path op-assign,
+needs `defined?` guards).
+
+**Result (measured).** in-fragment **1198 → 1227** (+29), 92.2% → **94.5%** of parseable,
+**0 disagree / 0 harness-error / 0 AST-idempotence failures**; seeds `39_opassign_misc`
+(incl. the splat-index regression), `40_destructuring`, `$1`/`$&` in `37`. All new heads
+(`dowhile`) + param node (`pdestr`) are additive to the v4 export. **The remaining 72
+non-in-fragment programs are the genuinely-unsupportable / deferred set** — string
+`eval`-family (52), top-level `return` that bypasses the observation wrapper (6),
+un-parseable (5), plus the small documented-gate tail above (≈9). This is the practical
+coverage ceiling of the round-trip harness on bootstraptest.

@@ -52,6 +52,7 @@ module RubyCore
     undef: "[:undef, [names]]",                     # undef foo, bar  (names carry any sigil)
     alias: "[:alias, new, old]",                    # alias new old   (method or $global names)
     for:   "[:for, [[kind, name], ...], coll, body]",  # for x in coll; body; end (index leaks)
+    dowhile: "[:dowhile, body, cond]",              # begin; body; end while cond (run-once)
     seq:   "[:seq, *nodes]"
   }.freeze
 
@@ -70,7 +71,8 @@ module RubyCore
   #   [:pkwrest, name_or_nil]       keyword-rest                 **o / **
   #   [:pblock, name_or_nil]        block-capture                &b / &
   #   [:pfwd]                       argument forwarding          ...
-  PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock pfwd].freeze
+  #   [:pdestr, [sub-params]]       destructuring block param    (a, b)
+  PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock pfwd pdestr].freeze
 
   module_function
 
@@ -99,6 +101,8 @@ module RubyCore
         return "#{p[0]} name not String/nil" unless p[1].nil? || p[1].is_a?(String)
       when :pfwd
         return ":pfwd takes no fields" unless p.length == 1
+      when :pdestr
+        return "pdestr subs: #{params_error(p[1])}" if params_error(p[1])
       end
     end
     nil
@@ -250,6 +254,9 @@ module RubyCore
       end
       return "for coll: #{explain(coll)}" unless is_core?(coll)
       explain(body)
+    when :dowhile
+      _, body, cond = node
+      (x = explain(body)) ? "dowhile body: #{x}" : explain(cond)
     when :splat
       node[1].nil? ? nil : explain(node[1])
     when :fwd

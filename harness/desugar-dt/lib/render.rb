@@ -85,6 +85,9 @@ module Render
     when :for
       _, targets, coll, body = node
       "(for #{targets.map { |_k, nm| nm }.join(', ')} in (#{core(coll)}); #{core(body)}; end)"
+    when :dowhile
+      _, body, cond = node
+      "(begin; #{core(body)}; end while (#{core(cond)}))"
     when :seq
       "(" + node[1..].map { |n| core(n) }.join("; ") + ")"
     else
@@ -98,7 +101,8 @@ module Render
     s = +"(begin; #{core(body)}"
     rescues.each do |excs, ref, handler|
       s << "; rescue"
-      s << " " << excs.map { |e| "(#{core(e)})" }.join(", ") unless excs.empty?
+      # a splat exc (`rescue *classes`) renders bare (`*(x)`); others are parenthesized.
+      s << " " << excs.map { |e| e[0] == :splat ? core(e) : "(#{core(e)})" }.join(", ") unless excs.empty?
       s << " => #{ref[1]}" if ref            # ref[1] carries any sigil (@ / @@ / $)
       s << "; #{core(handler)}"
     end
@@ -166,6 +170,7 @@ module Render
     when :pkwrest then p[1] ? "**#{p[1]}" : "**"
     when :pblock  then p[1] ? "&#{p[1]}" : "&"
     when :pfwd    then "..."
+    when :pdestr  then "(#{render_params(p[1])})"
     else raise "cannot render param :#{p[0]}"
     end
   end

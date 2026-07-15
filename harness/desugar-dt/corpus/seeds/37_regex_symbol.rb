@@ -10,6 +10,11 @@ print("interp=#{('world' =~ r).inspect};")
 opt = /a.b/m                                        # multiline flag
 print("opts=#{opt.options};")
 
+# Regex match globals: $1..$9 (numbered ref), $& (whole match) — read-only, render verbatim.
+if "2026-07" =~ /(\d+)-(\d+)/
+  print("g1=#{$1};g2=#{$2};whole=#{$&};")
+end
+
 # Interpolated (dynamic) symbol.
 n = 5
 print("isym=#{:"item_#{n}".inspect};")

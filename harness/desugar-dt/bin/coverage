@@ -59,6 +59,9 @@ SUPPORTED = %i[
   redo_node undef_node alias_method_node alias_global_variable_node for_node multi_target_node
   regular_expression_node interpolated_regular_expression_node interpolated_symbol_node
   forwarding_parameter_node forwarding_arguments_node embedded_variable_node
+  index_operator_write_node index_or_write_node index_and_write_node
+  call_operator_write_node call_or_write_node call_and_write_node
+  numbered_parameters_node implicit_rest_node
 ].to_set
 
 require "prism"
