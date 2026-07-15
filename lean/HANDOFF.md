@@ -1,5 +1,11 @@
 # Lean model — hand-off (2026-07-13)
 
+> **⚠️ Update 2026-07-15 — `--sut lean` is RED (export v3→v4).** The desugar side was driven
+> to 1227/1299 bootstraptest (C25–C29) and bumped `export.rb` to v4, which the decoder
+> rejects. This is an interface + new-forms migration, **not** a semantic invalidation. The
+> ordered plan to get green again lives in **[`v4-migration-handoff.md`](v4-migration-handoff.md)**
+> — start there. Everything below predates v4.
+
 > **Update 2026-07-13 (L2 object model, a+b+c):** `class`/`module` definitions,
 > `Class#new` + `initialize`, cref-scoped constants, `method_missing`,
 > frozen-`@x=` (`impl-notes L17`), `super`/`zsuper` (`L18`), and singleton
