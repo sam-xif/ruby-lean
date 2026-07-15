@@ -34,8 +34,15 @@ def main (args : List String) : IO UInt32 := do
   | .ok j =>
     match Decode.program j with
     | .error e =>
-      IO.eprintln s!"undecodable RubyCore: {e}"
-      return 1
+      -- A deliberate decode-time fragment gate (`UNSUPPORTED: …`, e.g. a v4
+      -- param kind or additive head the stepper doesn't model yet) is engine
+      -- Unsupported (exit 3), not a model bug. Genuine malformations stay 1.
+      if "UNSUPPORTED: ".isPrefixOf e then
+        IO.eprintln e
+        return 3
+      else
+        IO.eprintln s!"undecodable RubyCore: {e}"
+        return 1
     | .ok prog =>
       if let some maxSteps := traceSteps then
         IO.println (Trace.traceJson maxSteps (Machine.init prog)).compress

@@ -77,6 +77,13 @@ abbrev M := Except String
 def fail {α} (msg : String) (j : Json) : M α :=
   .error s!"{msg}: {j.compress.take 200}"
 
+/-- Deliberate out-of-fragment gate at decode time (v4 forms the stepper does
+    not model yet: five new param kinds + additive heads). The `UNSUPPORTED: `
+    prefix is recognized by `Main` and mapped to engine exit 3 (Unsupported),
+    distinct from a genuine malformation, which stays a `fail` → exit 1. -/
+def unsupported {α} (msg : String) : M α :=
+  .error s!"UNSUPPORTED: {msg}"
+
 def asArr (j : Json) : M (Array Json) :=
   match j with
   | .arr a => .ok a
@@ -112,8 +119,32 @@ def targetKind : String → M TargetKind
   | "const" => .ok .const
   | k => .error s!"bad target kind {k}"
 
+/-- v4 param nodes (rubycore.rb `PARAM_HEADS`). Phase 0 lowers the three
+    already-modeled kinds back to the legacy sigil-string convention the
+    stepper's `parseParams` consumes (`a` / `*a` / `*` / `&b` / `&`), and gates
+    the five genuinely-new binding kinds as Unsupported. Non-mutual with
+    `expr`: gated kinds don't recurse into their default sub-expressions. -/
+def param (j : Json) : M String := do
+  let a ← asArr j
+  let some hd := a[0]? | fail "empty param node" j
+  let head ← asStr hd
+  match head, a with
+  | "preq",   #[_, n] => asStr n
+  | "prest",  #[_, n] => match n with
+      | .null => .ok "*"
+      | _ => ("*" ++ ·) <$> asStr n
+  | "pblock", #[_, n] => match n with
+      | .null => .ok "&"
+      | _ => ("&" ++ ·) <$> asStr n
+  | "popt",    _ => unsupported "optional param (popt)"
+  | "pkey",    _ => unsupported "keyword param (pkey)"
+  | "pkwrest", _ => unsupported "keyword-rest param (pkwrest)"
+  | "pfwd",    _ => unsupported "argument-forwarding param (pfwd)"
+  | "pdestr",  _ => unsupported "destructuring param (pdestr)"
+  | _, _ => fail s!"unknown or malformed param head :{head}" j
+
 def params (j : Json) : M (List String) := do
-  (← asArr j).toList.mapM asStr
+  (← asArr j).toList.mapM param
 
 mutual
 
@@ -194,15 +225,29 @@ partial def expr (j : Json) : M Expr := do
   | "seq", _ =>
       if a.size ≥ 2 then .seq <$> exprs (a.extract 1 a.size)
       else fail "empty seq" j
+  -- v4 additive heads not yet modeled by the stepper: gate as Unsupported
+  -- (exit 3) rather than a hard decode failure. Some appear as arg markers
+  -- (`kwargs`/`fwd`), the rest as statements.
+  | "kwargs",     _ => unsupported "keyword args (kwargs)"
+  | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
+  | "cpath",      _ => unsupported "scoped constant (cpath)"
+  | "cpath_asgn", _ => unsupported "scoped constant assignment (cpath_asgn)"
+  | "defined",    _ => unsupported "defined?"
+  | "redo",       _ => unsupported "redo"
+  | "undef",      _ => unsupported "undef"
+  | "alias",      _ => unsupported "alias"
+  | "for",        _ => unsupported "for loop"
+  | "dowhile",    _ => unsupported "do-while (dowhile)"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 
 end
 
-/-- Decode the full export document `{ "v": 3, "ast": ... }` (export.rb v3:
-    block-locals slot, `yield`/`blockpass` heads, `&blk` capture params). -/
+/-- Decode the full export document `{ "v": 4, "ast": ... }` (export.rb v4:
+    structured param nodes + additive heads; see `param` and the `unsupported`
+    gates for the forms the Phase-0 stepper does not model yet). -/
 def program (j : Json) : M Expr := do
   let v := (j.getObjVal? "v").toOption
-  unless v == some (.num 3) do
+  unless v == some (.num 4) do
     .error s!"unsupported rubycore export version: {v.map (·.compress)}"
   match j.getObjVal? "ast" with
   | .ok ast => expr ast

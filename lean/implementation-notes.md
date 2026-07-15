@@ -253,3 +253,36 @@ decisions live in the sketch and README, not here.
     class macros (`attr_reader`/`define_method` — metaprogramming, deferred).
   - Result: tier-0 bootstraptest **447 → 468 agree, 0 disagree**; tier-1 (n=300,
     seed 11) 214/0; regressions (7) + tier-3 (17) replay clean.
+
+- **L20 — export v4 decoder unblock via legacy param lowering (Phase 0).**
+  The desugar side bumped `Export::VERSION` 3→4 (structured param nodes +
+  additive heads; `../harness/desugar-dt/implementation-choices.md` C25–C29),
+  which the v3-gated decoder rejected outright — `--sut lean` was fully red.
+  This entry restores the SUT with **zero new stepper semantics**, so it can't
+  regress the modeled fragment; the real param-binding work is Phase 2.
+  - **Version gate** (`Syntax.lean` `program`): accept `v == 4`. A mismatch
+    (e.g. a future v5) stays a plain decode `fail` → exit 1.
+  - **Param slot: decode the node array, lower the three modeled kinds to the
+    legacy sigil-string convention** `parseParams` already consumes
+    (`preq name → name`, `prest name → "*"++name` / null → `"*"`,
+    `pblock name → "&"++name` / null → `"&"`). The five genuinely-new binding
+    kinds (`popt`/`pkey`/`pkwrest`/`pfwd`/`pdestr`) decode to an `unsupported`
+    error. `Expr.def'/block/defs`, `MethodDef.params`/`Closure.params`,
+    `parseParams`, and the synthetic `["__recv","*__rest"]` builtin params are
+    **untouched** — the lowering is invisible below the decoder.
+  - **`unsupported` helper** (`Syntax.lean`): a decode-time fragment gate that
+    emits `.error "UNSUPPORTED: …"`. `Main` maps that prefix to engine exit 3
+    (Unsupported, out of fragment), distinct from a genuine malformation, which
+    stays a `fail` → exit 1 (`MODEL-BUG`). This is the first time gating happens
+    at *decode* rather than *step* time — prior versions decoded every head and
+    gated in `stepFn`.
+  - **Additive heads gated** (explicit arms before the catch-all, so a truly
+    unknown head is still a hard `fail`/exit 1): `kwargs`, `fwd`, `cpath`,
+    `cpath_asgn`, `defined`, `redo`, `undef`, `alias`, `for`, `dowhile`.
+    `case`/`when`, regex, and interpolated symbols desugar away (no new head)
+    but emit sends the model gates via `CRubyNames` — 0 disagree preserved,
+    coverage just doesn't grow there.
+  - Result: tier-0 bootstraptest **468 → 493 agree, 0 disagree** (ratchet
+    re-baselined to 493; the rise over the old 468 is desugar in-fragment
+    growth 852→1227 landing in the already-modeled slice). `harness_error:1`
+    (control-side `test_syntax_115`) and `control_invalid:7` are pre-existing.
