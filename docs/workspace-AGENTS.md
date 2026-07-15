@@ -52,14 +52,26 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   massign (to_ary), `const`/`@@x` `||=` (need `defined?`), indexed/attr **op**-assign,
   optional/keyword params + double-splat `**`/kwargs (M2), `...` forwarding, constant paths
   `A::B`, do-while, `super` arg-forwarding subtleties.
-  **M2 params done (C25): 1006/1299 bootstraptest agree, 0 disagree, 0 harness-error** —
-  the `def`/`defs`/`block` param slot migrated from flat `[String]` to structured param
-  nodes (`:preq`/`:popt`/`:prest`/`:pkey`/`:pkwrest`/`:pblock`), admitting optional,
-  keyword (req + optional), keyword-rest, and block-capture params; keyword call args
-  land as a brace-less `[:kwargs,…]` marker (Ruby-3 separation, not a positional hash).
-  `Export::VERSION` 3→4 (breaking param-slot + `kwargs` change; `--sut lean` red until the
-  model migrates). Deferred: `...` forwarding (now top param blocker), destructuring block
-  params `|(a,b)|`, numbered params `_1`/`it`, `**nil`.
+  **Desugar driven to full practical coverage: 1227/1299 bootstraptest agree, 0 disagree,
+  0 harness-error, 0 AST-idempotence** (M2–M7, C25–C29; round-trip **1267 agree** incl. 40
+  seeds, rule coverage 73/73). Landed across five ratcheted batches:
+  - **M2 (C25):** `def`/`defs`/`block` param slot migrated flat `[String]` → structured
+    param nodes (`:preq`/`:popt`/`:prest`/`:pkey`/`:pkwrest`/`:pblock`/`:pfwd`/`:pdestr`);
+    keyword call args as a brace-less `[:kwargs,…]` marker (Ruby-3 separation). `852→1006`.
+  - **M4 (C26):** `case`/`when` → if-chain over `===` (subject once; splat-when); `defined?`
+    head. `1006→1048`.
+  - **M5 (C27):** constant paths `A::B` — `[:cpath]`/`[:cpath_asgn]`, definition-position
+    path names. `1048→1085`.
+  - **M6 (C28):** `for`/`redo`/`undef`/`alias` heads, regex → `Regexp.new`, interpolated
+    symbol, `...` forwarding, single-RHS massign (`to_ary`). `1085→1198`.
+  - **M7 (C29):** indexed/attr op-assign, numbered params, do-while, nested + block-param
+    destructuring, `$1`/`$&`, `rescue *classes`. `1198→1227`.
+  `Export::VERSION` 3→4 (breaking param-slot + `kwargs`, then additive heads; `--sut lean`
+  red until the Lean decoder migrates its param slot + adds the new heads). The remaining
+  72 non-in-fragment programs are the unsupportable/deferred set: string `eval`-family (52),
+  top-level `return` that bypasses the observation wrapper (6), un-parseable (5), plus
+  documented gates (`__LINE__`/`__FILE__` reflection, backtick x-strings, flip-flop) and
+  deferred `case/in` pattern matching + dynamic alias/undef names.
 - **Lean model: L0 + L1 + L2 (object model) implemented and difftesting** ([`lean/`](lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
@@ -209,24 +221,16 @@ root `README.md`/`.gitignore` are the base repo.
 
 ## Open threads / next steps
 
-- Grow the desugar fragment toward full bootstraptest coverage per the data-driven plan
-  in [`harness/desugar-dt/fragment-expansion-strategy.md`](harness/desugar-dt/fragment-expansion-strategy.md)
-  (batches M1–M5). **Current: 852/1299 bootstraptest agree, 0 disagree** (M1 + splat + M3
-  object-model core + L1 block front-end + L1b block passing done — see implementation-choices
-  C12–C24; the M3 plan
-  [`harness/desugar-dt/M3-classes-plan.md`](harness/desugar-dt/M3-classes-plan.md) is now
-  largely realized). **L1 block front-end (C21) done:** `yield` head, `block` +
-  block-locals, `->`→`lambda` send. **L1b block passing (C23–C24) done:** block-capture
-  `&blk` (flat-string, no structured-param migration) + call-site block-pass `foo(&expr)`
-  (`[:blockpass]` head; `&:sym`/`&nil`/anon `&`/forwarding/eval-order) (`Export::VERSION`
-  3). **Next: M2 params** — the fresh
-  `bin/coverage --full` next-blocker histogram is now led by `optional param` (105),
-  keyword/keyword-rest params, `defined?` (34), `case_node` (30); optional/keyword params
-  dominate and force the structured-param migration. A detailed fresh-context
-  hand-off plan for M2 is in [`harness/desugar-dt/M2-params-yield-plan.md`](harness/desugar-dt/M2-params-yield-plan.md)
-  (the central call: migrate the `def`/`block`/`defs` param slot from a flat `[String]` to a
-  structured param-node list — note `yield` is now already landed; the Ruby-3
-  keyword/positional-hash separation trap; eval-order adversarial seeds for lazy defaults).
+- **Desugar fragment driven to full practical coverage: 1227/1299 bootstraptest agree, 0
+  disagree, 0 harness-error** (M1 → M7, implementation-choices C12–C29; round-trip 1267
+  agree incl. seeds, rule coverage 73/73). M2 (structured params + kwargs), M4
+  (`case`/`defined?`), M5 (constant paths), M6 (`for`/`redo`/`undef`/`alias`/regex/`...`/
+  single-RHS massign), M7 (op-assign/destructuring/do-while/`$1`) all landed with per-batch
+  ratchets. The remaining 72 are the unsupportable/deferred set (string `eval`-family 52,
+  top-level `return` 6, un-parseable 5, + documented gates for `__LINE__`/`__FILE__`,
+  backtick x-strings, flip-flop, and deferred `case/in` pattern matching + dynamic
+  alias/undef names). Remaining desugar work is small and mostly out-of-scope; the next
+  lever is the **Lean model** consuming export v4 (below).
 - Prong 2/3 are now realized as the standing **`difftest/` engine** (Python; tier 1 =
   Hypothesis scope-aware fuzzing per [`harness/desugar-dt/prong2-design.md`](harness/desugar-dt/prong2-design.md),
   tier 3 = AI-generated adversarial corpus). Grow it: more tier-1 vocabulary (classes,
