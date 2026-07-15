@@ -20,6 +20,7 @@ class Desugar
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
+    redo undef alias for regex isym massign-to_ary fwd-arg fwd-param when-splat
   ].freeze
 
   attr_reader :coverage
@@ -118,6 +119,13 @@ class Desugar
     when :defined_node            then desugar_defined(n)
     when :constant_path_node      then desugar_cpath(n)
     when :constant_path_write_node then desugar_cpath_write(n)
+    when :redo_node               then fire(:redo); [:redo]
+    when :undef_node              then desugar_undef(n)
+    when :alias_method_node       then desugar_alias(n.new_name, n.old_name)
+    when :alias_global_variable_node then desugar_alias(n.new_name, n.old_name)
+    when :for_node                then desugar_for(n)
+    when :regular_expression_node, :interpolated_regular_expression_node then desugar_regex(n)
+    when :interpolated_symbol_node then desugar_isym(n)
     else
       raise Unsupported, "node type :#{n.type}"
     end
@@ -196,6 +204,9 @@ class Desugar
       [:splat, a.expression ? node(a.expression) : nil]
     when :keyword_hash_node
       kwargs_node(a)
+    when :forwarding_arguments_node
+      fire(:"fwd-arg")
+      [:fwd]                       # `...` — forward the enclosing method's forwarded args
     else
       node(a)
     end
@@ -295,10 +306,17 @@ class Desugar
   def when_cond(conds, tv)
     tests = conds.map do |c|
       if c.type == :splat_node
-        raise Unsupported, "splat in subjectless when" unless tv
-        w = fresh
-        blk = [:block, [[:preq, w]], [], [:send, [:var, :local, w], "===", [tv], nil]]
-        [:send, [:array, [[:splat, c.expression ? node(c.expression) : nil]]], "any?", [], blk]
+        fire(:"when-splat")
+        arr = [:array, [[:splat, c.expression ? node(c.expression) : nil]]]
+        if tv
+          # subject present: any element === subject
+          w = fresh
+          blk = [:block, [[:preq, w]], [], [:send, [:var, :local, w], "===", [tv], nil]]
+          [:send, arr, "any?", [], blk]
+        else
+          # subjectless: any element truthy ([*arr].any? with no block)
+          [:send, arr, "any?", [], nil]
+        end
       elsif tv
         [:send, node(c), "===", [tv], nil]
       else
@@ -314,6 +332,50 @@ class Desugar
   def desugar_defined(n)
     fire(:defined)
     [:defined, node(n.value)]
+  end
+
+  # undef foo, bar — remove method definitions. Names are (usually static) symbols; a
+  # dynamic-symbol name (`undef :"a#{x}"`) is deferred. `[:undef, [names]]` head.
+  def desugar_undef(n)
+    fire(:undef)
+    names = n.names.map do |nm|
+      raise Unsupported, "dynamic undef name :#{nm.type}" unless nm.type == :symbol_node
+      nm.unescaped
+    end
+    [:undef, names]
+  end
+
+  # alias new old — a method or $global alias. Both keyword forms (alias_method_node for
+  # method names, alias_global_variable_node for $globals) land here. Static names only.
+  def desugar_alias(new_n, old_n)
+    fire(:alias)
+    [:alias, alias_name(new_n), alias_name(old_n)]
+  end
+
+  def alias_name(nm)
+    case nm.type
+    when :symbol_node                 then nm.unescaped
+    when :global_variable_read_node   then nm.name.to_s   # carries the $ sigil
+    else raise Unsupported, "alias name :#{nm.type}"
+    end
+  end
+
+  # for x in coll; body; end — iterate, binding the index in the ENCLOSING scope (the index
+  # leaks, unlike a block param). Kept as a primitive head rendered back to `for` (a
+  # `coll.each { |x| … }` desugaring would wrongly make x block-local). Multi-target
+  # (`for a, b in`) supported for simple targets; a rest target is deferred.
+  def desugar_for(n)
+    fire(:for)
+    [:for, for_targets(n.index), node(n.collection), stmts(n.statements)]
+  end
+
+  def for_targets(idx)
+    if idx.type == :multi_target_node
+      raise Unsupported, "for multi-target with rest" if idx.rest || !idx.rights.empty?
+      idx.lefts.map { |t| massign_target(t) }
+    else
+      [massign_target(idx)]
+    end
   end
 
   # A::B / ::B / expr::B — a constant path read. `parent` (the namespace) is nil for a
@@ -360,9 +422,15 @@ class Desugar
       end
     end
     if p.keyword_rest
-      raise Unsupported, "keyword-rest :#{p.keyword_rest.type}" unless p.keyword_rest.type == :keyword_rest_parameter_node
-      fire(:"kwrest-param")
-      params << [:pkwrest, p.keyword_rest.name&.to_s]  # nil name = bare `**`
+      case p.keyword_rest.type
+      when :keyword_rest_parameter_node
+        fire(:"kwrest-param")
+        params << [:pkwrest, p.keyword_rest.name&.to_s]  # nil name = bare `**`
+      when :forwarding_parameter_node
+        fire(:"fwd-param")
+        params << [:pfwd]                                # `...` — forwards all args + block
+      else raise Unsupported, "keyword-rest :#{p.keyword_rest.type}"
+      end
     end
     if p.block
       raise Unsupported, "block param :#{p.block.type}" unless p.block.type == :block_parameter_node
@@ -522,28 +590,25 @@ class Desugar
     [kind, val]
   end
 
-  # Multiple assignment — correct *subset* only: RHS is an explicit value list
-  # (array literal from `= e1, e2, ...`), no rest/splat target, no splat in the RHS, and
-  # all targets are simple variable/constant targets. Deferred cases (single-RHS to_ary
-  # coercion, splat) raise Unsupported. Desugars to: evaluate RHS once into a temp array,
-  # then index-assign each target (order-preserving; value of the massign is the array).
-  # Multiple assignment. RHS must be an explicit value list (single-RHS `a,b = x` still
-  # needs to_ary coercion — deferred). Splat in the RHS list is fine now (array supports
-  # it). A rest target `a, *b, c = …` is supported via array slicing. Evaluate RHS once
-  # into a temp array, then distribute by index (positive for lefts, a range for the rest,
-  # negative for post-rest rights). Value of the massign is the array.
+  # Multiple assignment. Evaluate the RHS once into a temp array, then distribute by index
+  # (positive for lefts, a runtime-length range for the rest, and front-to-back for
+  # post-rest rights to match Ruby's underflow rule). The RHS is either an explicit value
+  # list (`a, b = 1, *r`, splat-capable) or a single value (`a, b = x`) coerced via
+  # `Array.try_convert(x) || [x]` (C28). **The value of the whole massign is the RHS as
+  # written** — the array *literal* for a value list, or the *raw* single RHS (`(* = 1)` is
+  # `1`, not `[1]`) — NOT the distributed/coerced array; `massign_rhs_array` returns both
+  # the temp-array expression and that result value.
   def desugar_massign(n)
-    raise Unsupported, "massign single RHS (needs to_ary coercion)" unless n.value.type == :array_node
     fire(:massign)
     t = fresh
     tv = [:var, :local, t]
-    vals = n.value.elements.map { |v| arg_node(v) }
     lefts = n.lefts.map { |x| massign_target(x) }
     rights = n.rights.map { |x| massign_target(x) }
     ln = lefts.length
     rn = rights.length
 
-    stmts = [[:vasgn, :local, t, [:array, vals]]]
+    arr_expr, result = massign_rhs_array(n.value, tv)
+    stmts = [[:vasgn, :local, t, arr_expr]]
     # lefts: front-indexed (nil if underflowing).
     lefts.each_with_index { |(k, nm), i| stmts << target_write(k, nm, index_get(tv, i)) }
 
@@ -570,7 +635,29 @@ class Desugar
       rights.each_with_index { |(k, nm), j| stmts << target_write(k, nm, index_get(tv, ln + j)) }
     end
 
-    [:seq, *stmts, tv]
+    [:seq, *stmts, result]
+  end
+
+  # Returns [array_expr, result_value] for a massign RHS. `array_expr` is bound to the temp
+  # array that targets distribute from; `result_value` is the value of the whole massign
+  # expression (the RHS as written). For an explicit value list (`a, b = 1, *r`) both are
+  # the array literal (result = the temp `tv`). For a *single* RHS (`a, b = x`) the array is
+  # `Array.try_convert(x) || [x]` (Ruby's to_ary-or-wrap coercion, [V] verified; x bound to
+  # a temp so try_convert fires once) but the result value is the *raw* x — hence the
+  # coerce expression assigns x to a temp `r` as a side effect and result = that `r`.
+  def massign_rhs_array(value, tv)
+    return [[:array, value.elements.map { |v| arg_node(v) }], tv] if value.type == :array_node
+
+    fire(:"massign-to_ary")
+    r = fresh
+    tc = fresh
+    rv = [:var, :local, r]
+    tcv = [:var, :local, tc]
+    arr = [:seq,
+           [:vasgn, :local, r, node(value)],
+           [:vasgn, :local, tc, [:send, [:const, "Array"], "try_convert", [rv], nil]],
+           [:if, tcv, tcv, [:array, [rv]]]]
+    [arr, rv]
   end
 
   def index_get(tv, i)
@@ -680,10 +767,16 @@ class Desugar
     [:array, n.elements.map { |el| arg_node(el) }]
   end
 
-  # "a#{e}b"  =>  (("a") + (e).to_s) + ("b")   (left-to-right, to_s dispatched)
+  # "a#{e}b"  =>  (("a") + String(e)) + ("b")   (left-to-right, rb_obj_as_string)
   def interp(n)
     fire(:interp)
-    parts = n.parts.map do |part|
+    interp_concat(n.parts)
+  end
+
+  # Shared string-interpolation concatenation for interpolated strings, symbols, and regex
+  # sources. Each part becomes a String and is `+`-chained left to right.
+  def interp_concat(parts)
+    pieces = parts.map do |part|
       case part.type
       when :string_node
         [:str, part.unescaped]
@@ -695,12 +788,36 @@ class Desugar
         # control-flow jump inside #{...} fires before the string is built; the Linearize
         # pass hoists any unconditional jump out of this operand position.
         [:send, nil, "String", [stmts(part.statements)], nil]
+      when :embedded_variable_node
+        # "#@x" / "#$g" — an ivar/gvar interpolation (no braces).
+        [:send, nil, "String", [node(part.variable)], nil]
+      when :interpolated_string_node
+        # Adjacent implicit concatenation ("a" "b#{c}") nests an interpolated string.
+        interp_concat(part.parts)
       else
         raise Unsupported, "interp part :#{part.type}"
       end
     end
-    return [:str, ""] if parts.empty?
+    return [:str, ""] if pieces.empty?
 
-    parts.reduce { |acc, p| [:send, acc, "+", [p], nil] }
+    pieces.reduce { |acc, p| [:send, acc, "+", [p], nil] }
+  end
+
+  # /pat/imx => Regexp.new(source, opts). The source is a literal String (plain) or the
+  # interpolated concatenation (`/a#{e}b/`); opts is the packed flag integer (IGNORECASE=1,
+  # EXTENDED=2, MULTILINE=4). [V] Regexp.new(unescaped, opts) reproduces .source + .options
+  # exactly. (The literal-regex-on-LHS-of-`=~` named-capture-to-local magic is not modeled;
+  # the round-trip flags any program that relies on it.)
+  def desugar_regex(n)
+    fire(:regex)
+    src = n.type == :regular_expression_node ? [:str, n.unescaped] : interp_concat(n.parts)
+    opts = (n.ignore_case? ? 1 : 0) | (n.extended? ? 2 : 0) | (n.multi_line? ? 4 : 0)
+    [:send, [:const, "Regexp"], "new", [src, [:int, opts]], nil]
+  end
+
+  # :"a#{e}b" => (interp string).to_sym — behavior-identical dynamic symbol.
+  def desugar_isym(n)
+    fire(:isym)
+    [:send, interp_concat(n.parts), "to_sym", [], nil]
   end
 end

@@ -24,7 +24,10 @@ module Export
   # [:prest,name?], [:pkey,name,default?], [:pkwrest,name?], [:pblock,name?]). A new
   # `[:kwargs, elems]` marker may occupy the last send/super arg slot (elem = [k,v] assoc
   # or [:kwsplat, e?]). The Lean decoder must migrate the param slot + add kwargs before
-  # `--sut lean` works again.
+  # `--sut lean` works again. v4 also folds in the additive heads added while driving the
+  # desugar to full coverage (no further format break, so no bump): `defined`, `cpath`/
+  # `cpath_asgn`, `redo`/`undef`/`alias`/`for`, the `fwd` arg + `pfwd` param (`...`
+  # forwarding); `case`/`when` and regex/interpolated-symbol desugar away (no new head).
   VERSION = 4
 
   module_function

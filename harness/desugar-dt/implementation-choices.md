@@ -677,3 +677,45 @@ is needed; eval order is base-then-RHS, matching CRuby `[V]`.
 non-constant base). Export: two auto-encoded heads (`Export::VERSION` stays 4; Lean decoder
 adds them on migration). Next: `...` forwarding (31), regex (16), single-RHS massign (15),
 `alias_method` (15), `redo` (11), interpolated symbol (6), `undef` (6), `for` (6).
+
+## C28 — M6: the long tail (keyword heads, regex/symbol, `...` forwarding, single-RHS massign)
+
+**Decision.** Clear the remaining non-`eval` histogram in one batch, mixing new heads (only
+where irreducible) with desugarings:
+
+- **`redo`/`undef`/`alias`/`for`** — four small keyword heads. `redo` joins the
+  `definitely_jumps?` set. `undef foo, bar` → `[:undef, [names]]`; `alias new old` →
+  `[:alias, new, old]` (both `alias_method_node` for methods and
+  `alias_global_variable_node` for `$g`; static names). `for x in coll` → **`[:for, targets,
+  coll, body]` kept as a head rendered back to `for`** — a `coll.each { |x| … }` desugaring
+  would wrongly make `x` block-local, but the `for` index **leaks** to the enclosing scope
+  (`[V]`); the head sidesteps that. Multi-target `for a, b in` supported (simple targets).
+- **regex** → `Regexp.new(source, opts)` (**no head**): plain source is a literal String
+  (`[V]` `Regexp.new(unescaped, opts)` reproduces `.source` + `.options` exactly for `/`,
+  metachars, `\d`, flags); interpolated `/a#{e}/` reuses the string-interp concatenation;
+  `opts` packs IGNORECASE=1/EXTENDED=2/MULTILINE=4. The literal-regex-`=~` named-capture-to-
+  local magic is not modeled (the round-trip flags any reliant program — none did).
+- **interpolated symbol** `:"a#{e}"` → `(interp string).to_sym` (**no head**). The interp
+  concatenation was factored into a shared `interp_concat` (now also handles
+  `embedded_variable_node` `#@x`/`#$g` and nested `interpolated_string_node` from adjacent
+  literal concatenation).
+- **`...` forwarding** — `[:pfwd]` param node + `[:fwd]` arg marker, both rendered `...`
+  (`def f(...); g(...); end`, incl. a leading required `def f(a, ...)`).
+- **single-RHS massign** `a, b = x` → the temp array is `Array.try_convert(x) || [x]`
+  (`[V]` exactly matches Ruby's `to_ary`-or-wrap coercion; `x` bound to a temp so
+  `try_convert` fires once), retiring the C15/C17 single-RHS deferral. This shares the
+  existing lefts/rest/rights distribution.
+- **subjectless splat `when *arr`** → `[*arr].any?` (truthiness; the array-splat coercion),
+  completing `case` (C26 left this one deferred).
+
+**Interface.** All new heads (`redo`/`undef`/`alias`/`for`/`fwd` + the `pfwd` param) are
+additive to the v4 export format (no further break); `Export::VERSION` stays 4 with an
+expanded comment. `--sut lean` remains red until the model adopts v4.
+
+**Result (measured).** in-fragment **1085 → 1198** (+113), 83.5% → **92.2%** of parseable,
+**0 disagree / 0 harness-error / 0 AST-idempotence failures**; seeds `36_keywords`,
+`37_regex_symbol`, `38_forwarding_massign`. What remains is dominated by the intentionally
+out-of-scope forms (string `eval`/`class_eval`/`instance_eval` ≈56, top-level `return` 6,
+un-parseable 5) plus a small tail (indexed/attr op-assign, destructuring params/targets,
+numbered params `_1`, `__LINE__`, do-while, flip-flop, backtick x-strings, dynamic
+alias/undef names) picked up in C29.

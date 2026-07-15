@@ -31,6 +31,7 @@ module RubyCore
     array: "[:array, [elems]]",
     hash:  "[:hash, [[key, val], ...]]",
     splat: "[:splat, expr_or_nil]",     # only valid as a send-arg / array element (`*e`)
+    fwd:   "[:fwd]",                    # `...` argument forwarding — only valid as a send arg
     kwargs: "[:kwargs, [elems]]",       # only valid as the last send/super arg; elem = [k,v] (assoc) | [:kwsplat, e_or_nil]
     blockpass: "[:blockpass, expr_or_nil]",  # only valid in a send/super block slot (`&e`); nil = anonymous `&`
     return: "[:return, expr_or_nil]",   # primitive non-local control
@@ -47,6 +48,10 @@ module RubyCore
     super:  "[:super, [args], block_or_nil]",       # explicit super(...) (incl. super() = empty args)
     zsuper: "[:zsuper, block_or_nil]",              # bare super (forwards enclosing args)
     defined: "[:defined, expr]",                    # defined?(expr) — inspects, returns String|nil
+    redo:  "[:redo]",                               # re-run the current loop iteration
+    undef: "[:undef, [names]]",                     # undef foo, bar  (names carry any sigil)
+    alias: "[:alias, new, old]",                    # alias new old   (method or $global names)
+    for:   "[:for, [[kind, name], ...], coll, body]",  # for x in coll; body; end (index leaks)
     seq:   "[:seq, *nodes]"
   }.freeze
 
@@ -64,7 +69,8 @@ module RubyCore
   #   [:pkey, name, default_or_nil] keyword (req if default nil)  a: / a: E
   #   [:pkwrest, name_or_nil]       keyword-rest                 **o / **
   #   [:pblock, name_or_nil]        block-capture                &b / &
-  PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock].freeze
+  #   [:pfwd]                       argument forwarding          ...
+  PARAM_HEADS = %i[preq popt prest pkey pkwrest pblock pfwd].freeze
 
   module_function
 
@@ -91,6 +97,8 @@ module RubyCore
         x = explain(p[2]); return "popt default: #{x}" if x
       when :prest, :pkwrest, :pblock
         return "#{p[0]} name not String/nil" unless p[1].nil? || p[1].is_a?(String)
+      when :pfwd
+        return ":pfwd takes no fields" unless p.length == 1
       end
     end
     nil
@@ -225,8 +233,27 @@ module RubyCore
       node[1] && !is_core?(node[1]) ? explain(node[1]) : nil
     when :defined
       explain(node[1])
+    when :redo
+      node.length == 1 ? nil : ":redo takes no children"
+    when :undef
+      names = node[1]
+      return "undef names not Array of String" unless names.is_a?(Array) && names.all? { |x| x.is_a?(String) }
+      nil
+    when :alias
+      node[1].is_a?(String) && node[2].is_a?(String) ? nil : "alias names not String"
+    when :for
+      _, targets, coll, body = node
+      return "for targets not Array" unless targets.is_a?(Array) && !targets.empty?
+      targets.each do |kn|
+        return "for target not [kind, name]" unless kn.is_a?(Array) && kn.length == 2 && kn[1].is_a?(String)
+        return "for target kind invalid: #{kn[0].inspect}" unless TARGET_KINDS.include?(kn[0])
+      end
+      return "for coll: #{explain(coll)}" unless is_core?(coll)
+      explain(body)
     when :splat
       node[1].nil? ? nil : explain(node[1])
+    when :fwd
+      node.length == 1 ? nil : ":fwd takes no children"
     when :kwargs
       elems = node[1]
       return "kwargs payload not Array" unless elems.is_a?(Array)

@@ -50,6 +50,7 @@ module Render
     when :hash
       "{" + node[1].map { |k, v| "(#{core(k)}) => (#{core(v)})" }.join(", ") + "}"
     when :splat then node[1] ? "*(#{core(node[1])})" : "*"
+    when :fwd   then "..."
     when :kwargs then kwargs_str(node)
     when :return then node[1] ? "return (#{core(node[1])})" : "return"
     when :break  then node[1] ? "break (#{core(node[1])})" : "break"
@@ -78,6 +79,12 @@ module Render
       else "super #{block_str(blk)}"
       end
     when :defined then "defined?(#{core(node[1])})"
+    when :redo  then "redo"
+    when :undef then "undef #{node[1].join(', ')}"
+    when :alias then "alias #{node[1]} #{node[2]}"
+    when :for
+      _, targets, coll, body = node
+      "(for #{targets.map { |_k, nm| nm }.join(', ')} in (#{core(coll)}); #{core(body)}; end)"
     when :seq
       "(" + node[1..].map { |n| core(n) }.join("; ") + ")"
     else
@@ -158,6 +165,7 @@ module Render
     when :pkey    then p[2] ? "#{p[1]}: (#{core(p[2])})" : "#{p[1]}:"
     when :pkwrest then p[1] ? "**#{p[1]}" : "**"
     when :pblock  then p[1] ? "&#{p[1]}" : "&"
+    when :pfwd    then "..."
     else raise "cannot render param :#{p[0]}"
     end
   end

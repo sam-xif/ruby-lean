@@ -19,7 +19,7 @@ module Linearize
   # Does evaluating `node` always transfer control (never fall through with a value)?
   def definitely_jumps?(node)
     case node[0]
-    when :return, :break, :next, :retry then true
+    when :return, :break, :next, :retry, :redo then true
     when :seq  then node[1..].any? { |n| definitely_jumps?(n) }
     when :if
       c, t, e = node[1], node[2], node[3]
@@ -110,6 +110,10 @@ module Linearize
       c = run(node[1])
       return c if definitely_jumps?(c)
       [:while, c, run(node[2])]
+    when :for
+      coll = run(node[2])
+      return coll if definitely_jumps?(coll)
+      [:for, node[1], coll, run(node[3])]
     when :def   then [:def, node[1], run_params(node[2]), run(node[3])]
     when :defs  then [:defs, run(node[1]), node[2], run_params(node[3]), run(node[4])]
     when :block then blk_of(node)
