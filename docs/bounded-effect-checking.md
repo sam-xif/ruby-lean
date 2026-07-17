@@ -10,6 +10,11 @@ Status: design only — nothing here is built. It consumes artifacts we do have 
 front end, the `obs⁺` harness) and ones we plan (the Lean step relation + fuel
 interpreter, a POSIX-layer effect model).
 
+**Sibling checker:** [`type-safety-by-reachability.md`](type-safety-by-reachability.md)
+reuses this exact engine with the bad-state predicate swapped from "effect violates the
+manifest" to "configuration is type-stuck" — evidence that the product is one checker with a
+pluggable bad-state predicate, not a family of tools.
+
 ---
 
 ## 1. The property: a policy manifest, checked where effects surface
