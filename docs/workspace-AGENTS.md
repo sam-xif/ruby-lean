@@ -204,8 +204,21 @@ root `README.md`/`.gitignore` are the base repo.
 - **When extending `desugar`:** add a rule + track it in `Desugar::RULES`, add a seed that
   exercises it (and an eval-order adversarial seed if it has a once-only/ordering
   obligation), keep the round-trip green (`bin/run`).
-- **Decisions:** record non-critical harness choices in `implementation-choices.md` and
-  **commit that file** so any decision is revertable.
+- **When extending the Lean model (`lean/`):** work the same way as the desugar.
+  - **Ratchet discipline (load-bearing):** after every change re-run `--sut lean` on tier-0
+    (`cd difftest && uv run python -m difftest run --tier 0 --sut lean`), plus tier-1 fuzzing
+    + regression replay at batch boundaries. **0 disagreements at every commit**, agreement
+    only ever goes up; a new feature that would disagree must instead **gate `Unsupported`**
+    (exit 3) — a partial model declares what it doesn't cover rather than guessing. `MODEL-BUG`
+    (exit 1) is never acceptable in a commit. Verify new behavior against the CRuby oracle
+    (`harness/desugar-dt/bin/export-json <file> | lean/.lake/build/bin/rubycore`) with minimal
+    discriminating snippets before trusting it (`[V]`).
+  - **Commit in small, logical increments** — one head / one coherent feature per commit,
+    each with its own ratchet number in the message (`NNN->MMM, 0 disagree`), so any
+    regression is bisectable. Do **not** batch unrelated features into one monolithic commit.
+- **Decisions:** record non-critical harness choices in `implementation-choices.md` (desugar)
+  or `implementation-notes.md` (Lean model, difftest engine), **committed** so any decision
+  is revertable. Note *every* non-trivial implementation decision, not just surprising ones.
 
 ## Environment
 
