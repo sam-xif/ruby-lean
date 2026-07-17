@@ -1,13 +1,24 @@
 # Lean model — export-v4 migration hand-off (get `--sut lean` green again)
 
-> **STATUS 2026-07-16 — Phase 0 and Phase 1 DONE.** `--sut lean` green at
-> **532/1304 agree, 0 disagree** (Phase 0 468→493; Phase-1 heads 493→532 across
-> commits `a43748e` dowhile/undef/alias/cpath+scoped-defs, `9af74e0` for,
-> `131d963` redo — see `implementation-notes.md` L21–L26). **Remaining: Phase 2**
-> — native param binding (`popt`/`pkey`/`pkwrest`/`pfwd`/`pdestr`), the biggest
-> lever (`popt` alone gates ~103 tier-0 cases). `defined?`, `kwargs`, and `fwd`
-> are still gated at decode and pair with Phase 2. Everything below is the
-> original plan; §Phase 1 is now history.
+> **STATUS 2026-07-16 — Phases 0, 1, 2 DONE.** `--sut lean` green at **617/1304
+> agree, 0 disagree** (tier-0), tier-1 fuzzing clean.
+> - **Phase 0** (468→493): decoder v3→v4 (`d05e423`).
+> - **Phase 1 heads** (493→532): dowhile/undef/alias/cpath+scoped-defs (`a43748e`),
+>   for (`9af74e0`), redo (`131d963`) — `implementation-notes.md` L21–L26.
+> - **Phase 2 native param binding** (532→617): `Param` inductive groundwork
+>   (`bc99751`, L27), popt optional defaults (`240c92a`, L28), keyword params +
+>   `kwargs` call-site (`df0fe36`, L29), `...` forwarding (`078a347`, L30),
+>   destructuring params (`654a01b`, L31). **Method params now never gate on
+>   shape.**
+>
+> **Remaining levers** (post-Phase-2 `Unsupported` histogram, biggest first):
+> iterating builtins that yield (`Integer#times` ~62, `Array#each`/`map`/`any?` —
+> a *builtin-block* mechanism, not a param issue), `Range` (~42) + `Rational`/
+> `Complex`/`Regexp`/`Struct` constants, `defined?` (~36, still gated — needs a
+> real evaluator that inspects the syntactic arg), `Array#[]` slices (~28),
+> `zsuper` param reconstruction with opt/kw (~27, `zsuperArgs` still on
+> `classifySimple`), and **block destructuring** (`callClosure` still on
+> `classifySimple`). Everything below is the original plan; Phases 1–2 are history.
 
 > Fresh-context hand-off written 2026-07-15. Read `README.md` (layout/build),
 > `HANDOFF.md` (model state before this — L0+L1+L2, **468/1304 agree, 0 disagree** on
