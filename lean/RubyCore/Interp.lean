@@ -169,16 +169,20 @@ structure FullParams where
   opt : List (String × Expr)
   rest? : Option String
   post : List String
+  keys : List (String × Option Expr)   -- keyword params (name, default?)
+  kwrest? : Option (Option String)     -- `**o` present? outer some, inner name
   block? : Option String
 
 def classifyFull (ps0 : List Param) : Option FullParams :=
   let (ps, block?) := match ps0.reverse with
     | (.block n) :: more => (more.reverse, some (n.getD ""))
     | _ => (ps0, none)
-  if ps.any (fun p => match p with | .req _ | .opt _ _ | .rest _ => false | _ => true) then none
+  -- only fwd/destr are unhandled here now (keyword kinds are captured below)
+  if ps.any (fun p => match p with | .fwd | .destr _ => true | _ => false) then none
   else
     let isReq : Param → Bool := fun p => match p with | .req _ => true | _ => false
     let isOpt : Param → Bool := fun p => match p with | .opt _ _ => true | _ => false
+    let isKey : Param → Bool := fun p => match p with | .key _ _ => true | _ => false
     let pre := ps.takeWhile isReq
     let a1 := ps.dropWhile isReq
     let optPs := a1.takeWhile isOpt
@@ -188,13 +192,36 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
       | _ => (none, a2)
     let post := a3.takeWhile isReq
     let a4 := a3.dropWhile isReq
-    if !a4.isEmpty then none  -- non-canonical order (e.g. opt after post) → gate
+    let keyPs := a4.takeWhile isKey
+    let a5 := a4.dropWhile isKey
+    let (kwrest?, a6) := match a5 with
+      | (.kwrest n) :: t => (some n, t)
+      | _ => (none, a5)
+    if !a6.isEmpty then none  -- non-canonical order → gate
     else some {
       pre := pre.filterMap (fun p => match p with | .req n => some n | _ => none),
       opt := optPs.filterMap (fun p => match p with | .opt n d => some (n, d) | _ => none),
       rest?,
       post := post.filterMap (fun p => match p with | .req n => some n | _ => none),
-      block? }
+      keys := keyPs.filterMap (fun p => match p with | .key n d => some (n, d) | _ => none),
+      kwrest?, block? }
+
+/-- Ruby-3 keyword→positional collapse: when the callee has no keyword params, a
+    trailing keyword bundle becomes one positional `Hash` argument (an *empty*
+    bundle vanishes) [V]. Also used to feed builtins / method_missing, which
+    receive keywords positionally in the model. -/
+def appendKwHash (m : Machine) (args : List Value)
+    (kw : List (Value × Value)) : List Value × Machine :=
+  if kw.isEmpty then (args, m)
+  else let (hv, m) := Builtins.allocHsh m kw.toArray; (args ++ [hv], m)
+
+/-- Lookup a keyword by name among evaluated `(Symbol, Value)` pairs. -/
+def kwLookup (kw : List (Value × Value)) (name : String) : Option Value :=
+  (kw.find? (fun p => match p.1 with | .sym s => s == name | _ => false)).map (·.2)
+
+/-- Render a `:a, :b` symbol list for missing/unknown-keyword `ArgumentError`s. -/
+def kwNameList (names : List String) : String :=
+  String.intercalate ", " (names.map (fun n => ":" ++ n))
 
 /-- Spread a splat operand [V]: array splices, nil vanishes, anything else
     (without to_a) is itself. Hash's pair-conversion is gated for now. -/
@@ -356,12 +383,16 @@ def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
     a `frameK` boundary (artifact 02 §3). Factored out of dispatch so `Class#new`
     can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
 def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
-    (args : List Value) (blk : Option Value) : StepResult :=
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   let fp? := classifyFull md.params
   if fp?.isNone then
-    .unsupported "unmodeled param kind (keyword/kwrest/forwarding/destructuring)"
+    .unsupported "unmodeled param kind (forwarding/destructuring)"
   else
-  let fp := fp?.getD ⟨[], [], none, [], none⟩
+  let fp := fp?.getD ⟨[], [], none, [], [], none, none⟩
+  let hasKw := !fp.keys.isEmpty || fp.kwrest?.isSome
+  -- Ruby-3 separation: a callee without keyword params receives a keyword bundle
+  -- as one trailing positional Hash (empty vanishes) [V].
+  let (args, m) := if hasKw then (args, m) else appendKwHash m args kw
   let np := fp.pre.length; let nopt := fp.opt.length; let npost := fp.post.length
   let n := args.length
   let required := np + npost
@@ -375,6 +406,19 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     .next (raiseErr m Boot.argumentErrorId
       s!"wrong number of arguments (given {n}, expected {expected})")
   else
+    -- keyword validation (missing required / unknown, byte-exact ArgumentError [V]).
+    let missing := fp.keys.filterMap (fun (kn, d?) =>
+      if (kwLookup kw kn).isNone && d?.isNone then some kn else none)
+    let keyNames := fp.keys.map (·.1)
+    let leftover := kw.filter (fun p => match p.1 with | .sym s => !keyNames.contains s | _ => true)
+    if hasKw && !missing.isEmpty then
+      .next (raiseErr m Boot.argumentErrorId
+        s!"missing keyword{if missing.length == 1 then "" else "s"}: {kwNameList missing}")
+    else if hasKw && fp.kwrest?.isNone && !leftover.isEmpty then
+      let names := leftover.filterMap (fun p => match p.1 with | .sym s => some s | _ => none)
+      .next (raiseErr m Boot.argumentErrorId
+        s!"unknown keyword{if names.length == 1 then "" else "s"}: {kwNameList names}")
+    else
     -- positional distribution: pre from the front, post from the back, optionals
     -- fill the leftmost middle args, a `*rest` absorbs the surplus (artifact 02 §3).
     let preVals := args.take np
@@ -384,20 +428,28 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let optFilled := ((fp.opt.take filled).map (·.1)).zip (middle.take filled)
     let optOmitted := fp.opt.drop filled           -- (name, default-expr), eval in-frame
     let restVals := middle.drop filled
-    -- Phase A: pre + filled optionals are visible to omitted-opt defaults.
-    let localsA := fp.pre.zip preVals ++ optFilled
-    -- Phase B (bound AFTER defaults [V]): rest, post, block.
+    -- keyword partition: provided bind directly; omitted-with-default via optDefK.
+    let kwProvided := fp.keys.filterMap (fun (kn, _) => (kwLookup kw kn).map (fun v => (kn, v)))
+    let kwOmitted := fp.keys.filterMap (fun (kn, d?) =>
+      if (kwLookup kw kn).isNone then d?.map (fun d => (kn, d)) else none)
+    -- Phase A: pre + filled optionals + provided keywords (visible to defaults).
+    let localsA := fp.pre.zip preVals ++ optFilled ++ kwProvided
+    -- Phase B (bound AFTER defaults [V]): rest, post, block, kwrest.
     let (restBinding, m) := match fp.rest? with
       | some r => let (rv, m) := Builtins.allocArr m restVals.toArray; ([(r, rv)], m)
       | none => ([], m)
+    let (kwrestBinding, m) := match fp.kwrest? with
+      | some (some kr) => let (hv, m) := Builtins.allocHsh m leftover.toArray; ([(kr, hv)], m)
+      | _ => ([], m)
     let localsB := restBinding ++ fp.post.zip postVals ++
-      (match fp.block? with | some b => [(b, blk.getD .nil)] | none => [])
+      (match fp.block? with | some b => [(b, blk.getD .nil)] | none => []) ++ kwrestBinding
     let frame : Frame :=
       { self := recv, locals := localsA, defmod := md.owner, kind := .method, blk, meth := mname }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     let m := { m with kont := .frameK fid :: m.kont }
-    match optOmitted with
+    -- positional-opt defaults first, then keyword defaults (Ruby order [V]).
+    match optOmitted ++ kwOmitted with
     | [] =>
       let m := localsB.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
       .next (withCtl m (.eval md.body))
@@ -560,14 +612,15 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
 def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
-    (args : List Value) (blk : Option Value) : StepResult :=
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   match recv with
   | .ref o =>
     match (m.heap.get o).payload with
     | .proc cl =>
       if mname == "call" || mname == "()" || mname == "[]" || mname == "yield" then
-        callClosure m cl args none
-      else invokeDispatch m recv implicit mname args blk
+        if kw.isEmpty then callClosure m cl args none
+        else .unsupported "keyword arguments to a Proc call"
+      else invokeDispatch m recv implicit mname args blk kw
     | .cls c =>
       -- `Class#new` on a class with a user `initialize` must allocate then run
       -- `initialize` (a frame the builtin cannot push); yield the instance via
@@ -583,19 +636,20 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
             let (io, h) := m.heap.alloc { klass := o }
             let inst := Value.ref io
             let m := { m with heap := h, kont := .newK inst :: m.kont }
-            enterUserMethod m inst "initialize" md args blk
-        | none => invokeDispatch m recv implicit mname args blk
-      else invokeDispatch m recv implicit mname args blk
-    | _ => invokeDispatch m recv implicit mname args blk
-  | _ => invokeDispatch m recv implicit mname args blk
+            enterUserMethod m inst "initialize" md args blk kw
+        | none => invokeDispatch m recv implicit mname args blk kw
+      else invokeDispatch m recv implicit mname args blk kw
+    | _ => invokeDispatch m recv implicit mname args blk kw
+  | _ => invokeDispatch m recv implicit mname args blk kw
 where
   invokeDispatch (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
-      (args : List Value) (blk : Option Value) : StepResult :=
+      (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   let chain := ancestors m.heap (classOf m.heap recv)
   match lookup m.heap recv mname with
   | some (owner, md) =>
     if md.undefined then
       -- `undef` tombstone: the walk stopped here, dispatch as a miss.
+      let (args, m) := appendKwHash m args kw
       dispatchMiss m recv implicit mname args blk
     else
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
@@ -608,6 +662,9 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        -- builtins have no keyword params in the model: keywords collapse to a
+        -- trailing positional Hash (Ruby-3 [V]).
+        let (args, m) := appendKwHash m args kw
         match Builtins.run bid recv args m with
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
@@ -618,8 +675,10 @@ where
         | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
         | none =>
           -- a RubyCore-defined method: bind params + push the activation
-          enterUserMethod m recv mname md args blk
-  | none => dispatchMiss m recv implicit mname args blk
+          enterUserMethod m recv mname md args blk kw
+  | none =>
+    let (args, m) := appendKwHash m args kw
+    dispatchMiss m recv implicit mname args blk
 
 /-- Super-dispatch (artifact 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
@@ -689,6 +748,7 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     match e with
     | .splat (some e) => .next (withKont m (.eval e) (.superSplatK acc rest' blk))
     | .splat none => .unsupported "anonymous splat in super"
+    | .kwargs _ => .unsupported "keyword arguments to super"
     | _ => .next (withKont m (.eval e) (.superArgK acc rest' blk))
 
 /-- All args in → resolve the pending block and dispatch. A literal block is
@@ -696,9 +756,9 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     a block capture rather than call; a `&e` block-pass evaluates `e` last
     (eval order) then coerces. -/
 def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
-    (args : List Value) (pblk : PendingBlk) : StepResult :=
+    (args : List Value) (pblk : PendingBlk) (kw : List (Value × Value) := []) : StepResult :=
   match pblk with
-  | .passExpr e => .next (withKont m (.eval e) (.blkCoerceK recv implicit mname args))
+  | .passExpr e => .next (withKont m (.eval e) (.blkCoerceK recv implicit mname args kw))
   | .lit ps ls body =>
     let mkLam := implicit && mname == "lambda"
     let (v, m) := reifyBlock m ps ls body mkLam
@@ -711,11 +771,31 @@ def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
       -- block affects behaviour and we don't model it, so gate rather than
       -- silently drop it.
       .unsupported "Class#new with a block"
-    else invoke m recv implicit mname args (some v)
-  | .passAnon => invoke m recv implicit mname args m.currentFrame.blk
-  | .none => invoke m recv implicit mname args none
+    else invoke m recv implicit mname args (some v) kw
+  | .passAnon => invoke m recv implicit mname args m.currentFrame.blk kw
+  | .none => invoke m recv implicit mname args none kw
 
-/-- Evaluate the next pending argument, or dispatch if none remain. -/
+/-- Evaluate the pending call-site `kwargs` entries (values left to right,
+    `**h` splats expanded), then dispatch. Duplicate keys keep first position,
+    last value (as hash literals do [V]). -/
+def startKwargs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+    (posArgs : List Value) (kwacc : List (Value × Value)) (entries : List KwEntry)
+    (pblk : PendingBlk) : StepResult :=
+  match entries with
+  | [] => finishSend m recv implicit mname posArgs pblk kwacc
+  | .pair k valE :: rest =>
+    .next (withKont m (.eval valE) (.kwPairK k rest kwacc recv implicit mname posArgs pblk))
+  | .splat e :: rest =>
+    .next (withKont m (.eval e) (.kwSplatK rest kwacc recv implicit mname posArgs pblk))
+
+/-- Add a `(Symbol, Value)` keyword pair, keeping first position / last value. -/
+def kwAdd (kwacc : List (Value × Value)) (key val : Value) : List (Value × Value) :=
+  match kwacc.findIdx? (fun p => p.1.identEq key) with
+  | some i => kwacc.set i (key, val)
+  | none => kwacc ++ [(key, val)]
+
+/-- Evaluate the next pending argument, or dispatch if none remain. A trailing
+    `kwargs` marker switches to keyword evaluation. -/
 def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (acc : List Value) (rest : List Expr) (pblk : PendingBlk) : StepResult :=
   match rest with
@@ -725,6 +805,7 @@ def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     | .splat (some e) =>
       .next (withKont m (.eval e) (.argsSplatK recv implicit mname acc rest' pblk))
     | .splat none => .unsupported "anonymous splat forwarding"
+    | .kwargs entries => startKwargs m recv implicit mname acc [] entries pblk
     | _ => .next (withKont m (.eval e) (.argsK recv implicit mname acc rest' pblk))
 
 /-- Call the enclosing method's block with `args` (artifact 04 §2 YIELD). A
@@ -746,6 +827,7 @@ def startYield (m : Machine) (acc : List Value) (rest : List Expr) : StepResult 
     match e with
     | .splat (some e) => .next (withKont m (.eval e) (.yieldSplatK acc rest'))
     | .splat none => .unsupported "anonymous splat in yield"
+    | .kwargs _ => .unsupported "keyword arguments to yield"
     | _ => .next (withKont m (.eval e) (.yieldArgK acc rest'))
 
 /-- Evaluate the next pending array-literal element, or allocate. -/
@@ -922,10 +1004,21 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match spread m v with
       | .ok vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
       | .error e => .unsupported e
-    | .blkCoerceK recv implicit mname acc =>
+    | .blkCoerceK recv implicit mname acc kw =>
       match coerceToProc m v with
-      | .ok (blkV, m) => invoke m recv implicit mname acc blkV
+      | .ok (blkV, m) => invoke m recv implicit mname acc blkV kw
       | .error e => .unsupported e
+    | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
+      startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
+    | .kwSplatK rest kwacc recv implicit mname posArgs pblk =>
+      match v with
+      | .ref o =>
+        match (m.heap.get o).payload with
+        | .hsh pairs =>
+          let kwacc := pairs.foldl (fun acc (p : Value × Value) => kwAdd acc p.1 p.2) kwacc
+          startKwargs m recv implicit mname posArgs kwacc rest pblk
+        | _ => .unsupported "** of a non-Hash"
+      | _ => .unsupported "** of a non-Hash"
     | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
     | .superSplatK acc rest blk =>
       match spread m v with
@@ -1203,6 +1296,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | some r => .next (withKont m (.eval r) (.recvK mname args pblk false))
     | none => startArgs m m.currentFrame.self true mname [] args pblk
   | .block .. => .stuck "bare block node outside send"
+  | .kwargs .. => .stuck "bare kwargs node outside call position"
   | .yield' args => startYield m [] args
   | .blockpass .. => .stuck "bare blockpass node outside send"
   | .if' c t e => .next (withKont m (.eval c) (.ifK t e))

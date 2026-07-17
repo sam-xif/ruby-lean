@@ -142,8 +142,15 @@ inductive Kont where
   | argsSplatK (recv : Value) (implicit : Bool) (m : String)
       (acc : List Value) (rest : List Expr) (blk : PendingBlk)
   /-- Value in flight is a `&e` block-pass operand: coerce via to_proc, then
-      dispatch (args already evaluated). -/
+      dispatch (args + keywords already evaluated). -/
   | blkCoerceK (recv : Value) (implicit : Bool) (m : String) (acc : List Value)
+      (kw : List (Value × Value))
+  /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
+  | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
+      (recv : Value) (implicit : Bool) (m : String) (posArgs : List Value) (pblk : PendingBlk)
+  /-- Evaluating a call-site `**h` double-splat; then continue the kwargs. -/
+  | kwSplatK (rest : List KwEntry) (kwacc : List (Value × Value))
+      (recv : Value) (implicit : Bool) (m : String) (posArgs : List Value) (pblk : PendingBlk)
   /-- Evaluating `yield` args left to right. -/
   | yieldArgK (acc : List Value) (rest : List Expr)
   | yieldSplatK (acc : List Value) (rest : List Expr)

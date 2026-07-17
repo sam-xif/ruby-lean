@@ -42,6 +42,9 @@ inductive Expr where
   | cpathAsgn (base : Option Expr) (name : String) (e : Expr)
   /-- `recv = none` is an implicit-self send (private methods admissible). -/
   | send (recv : Option Expr) (m : String) (args : List Expr) (blk : Option Expr)
+  /-- Brace-less keyword arguments at a call site (`f(k: 1, **h)`) — only occurs
+      as the last element of a send/super `args` list (Ruby-3 separation). -/
+  | kwargs (entries : List KwEntry)
   /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
       block-locals (fresh, shadowing outer names). -/
   | block (params : List Param) (locals : List String) (body : Expr)
@@ -107,9 +110,15 @@ inductive Param where
   | fwd
   /-- `(a, b)` (destructuring; nests, may hold a rest). -/
   | destr (subs : List Param)
+
+/-- One entry of a call-site `kwargs` marker: a `k: v` pair (static symbol key)
+    or a `**h` double-splat. -/
+inductive KwEntry where
+  | pair (key : String) (val : Expr)
+  | splat (e : Expr)
 end
 
-deriving instance Repr for Expr, Param
+deriving instance Repr for Expr, Param, KwEntry
 deriving instance Inhabited for Expr, Param
 
 namespace Decode
@@ -201,6 +210,22 @@ partial def param (j : Json) : M Param := do
 partial def params (j : Json) : M (List Param) := do
   (← asArr j).toList.mapM param
 
+/-- One call-site keyword entry: `[[sym, k], v]` (static-symbol key) or
+    `["kwsplat", e]`. A non-symbol (dynamic) key gates Unsupported. -/
+partial def kwEntry (j : Json) : M KwEntry := do
+  match ← asArr j with
+  | #[a, b] =>
+    match a with
+    | .str "kwsplat" => .splat <$> expr b
+    | _ =>
+      match ← asArr a with
+      | #[hd, nm] =>
+        match ← asStr hd with
+        | "sym" => return .pair (← asStr nm) (← expr b)
+        | _ => unsupported "dynamic (non-symbol) keyword key"
+      | _ => fail "kwargs key node" a
+  | _ => fail "kwargs entry" j
+
 partial def exprs (js : Array Json) : M (List Expr) :=
   js.toList.mapM expr
 
@@ -253,6 +278,8 @@ partial def expr (j : Json) : M Expr := do
       return .cpathAsgn (← opt base) (← asStr nm) (← expr e)
   | "send",  #[_, recv, m, args, blk] =>
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
+  | "kwargs", #[_, entries] =>
+      .kwargs <$> (← asArr entries).toList.mapM kwEntry
   | "block", #[_, ps, ls, body] =>
       return .block (← params ps) (← strList ls) (← expr body)
   | "yield", #[_, args] => .yield' <$> exprs (← asArr args)
@@ -308,7 +335,6 @@ partial def expr (j : Json) : M Expr := do
   -- v4 additive heads not yet modeled by the stepper: gate as Unsupported
   -- (exit 3) rather than a hard decode failure. Some appear as arg markers
   -- (`kwargs`/`fwd`), the rest as statements.
-  | "kwargs",     _ => unsupported "keyword args (kwargs)"
   | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
   | "defined",    _ => unsupported "defined?"
   | _, _ => fail s!"unknown or malformed head :{head}" j

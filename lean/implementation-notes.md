@@ -447,3 +447,28 @@ ratchet.
   *later* (post/rest/block) param reads an unbound local (→ `nil`) rather than
   raising CRuby's `NameError`; not observed in corpus/fuzzing, revisit if it
   surfaces.
+
+- **L29 — `pkey`/`pkwrest` keyword params + the `kwargs` call-site marker.**
+  Full keyword arguments, spanning call site, a threaded keyword channel, and
+  callee binding with Ruby-3 separation.
+  - **Call site:** new `Expr.kwargs (List KwEntry)` (`KwEntry.pair key val` /
+    `KwEntry.splat e`; mutual with `Expr`/`Param`); a dynamic (non-symbol) key
+    gates at decode. It only occurs as the last send/super/yield arg. `startArgs`
+    detects it and runs `startKwargs`, evaluating pair values (and `**h`
+    splats — hash entries merged, first-position/last-value dedup via `kwAdd`)
+    left to right (`kwPairK`/`kwSplatK` konts), producing a `List (Value × Value)`
+    keyword bundle that rides a new `kw` channel through `finishSend`/`invoke`/
+    `invokeDispatch`/`blkCoerceK`/`enterUserMethod` (default `[]`).
+  - **Ruby-3 separation** `[V]`: a callee with **no** keyword params receives the
+    bundle as one trailing positional `Hash` (empty bundle vanishes) —
+    `appendKwHash`; used for builtins, `method_missing`, and no-kw user methods.
+    A callee **with** keyword params consumes the bundle as keywords.
+  - **Callee binding (`enterUserMethod`, `classifyFull` extended with
+    `keys`/`kwrest?`):** provided keywords bind directly (visible to defaults);
+    missing required → `ArgumentError "missing keyword(s): :a[, :b]"`; unknown
+    (no matching `pkey`, no `**kwrest`) → `"unknown keyword(s): …"` (both
+    singular/plural byte-exact `[V]`); `**kwrest` collects leftovers into a Hash;
+    keyword defaults are lazy, in-frame, left-to-right, **after** positional-opt
+    defaults, reusing the `optDefK` chain.
+  - **Gated:** keyword args to a `Proc#call`, to `super` / `yield`, and any
+    block/`zsuper` with keyword params (those still go through `classifySimple`).
