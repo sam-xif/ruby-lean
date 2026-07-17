@@ -302,3 +302,13 @@ disagree); vs **lean** seed 7 197→**222**/500 agree (0 disagree). All param fo
 in a 400-sample scan (optional 118, rest 110, kwarg-at-call 106, keyword 83, kwrest 73,
 destructuring ~98, `...` 4). Smoke tests `test_varied_params`/`test_fwd_forwarding`/
 `test_destructuring_block` pin the semantics.
+
+## N17 — `for` loops (index leaks to the enclosing scope)
+
+Added `for var in coll; …; end` (`A.ForLoop`). Unlike a block param, the loop var
+**leaks** to the enclosing scope (Ruby `for` semantics) — so it is registered as a
+local *after* the loop, from a disjoint `FOR_POOL` (`fi`/`fj`). The collection is a
+bounded literal array or small range, so iteration terminates by construction;
+`next`/`break` are legal in the body (self-bounded). Exercises Lean's Phase-1 `for`
+rule (the scope-leak). `--tier 1`: desugar 300/300 (seeds 7/456), lean 139/400,
+0 disagree.

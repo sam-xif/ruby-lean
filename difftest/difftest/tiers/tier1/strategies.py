@@ -18,6 +18,7 @@ from . import ast as A
 
 LOCAL_POOL = ("a", "b", "c", "d")
 LOOP_POOL = ("i", "j")
+FOR_POOL = ("fi", "fj")  # `for` loop vars — leak to the enclosing scope
 PARAM_POOL = ("x", "y")
 BLOCK_PARAM_POOL = ("bx", "by")  # block/lambda params; disjoint from everything else
 METHOD_POOL = ("m0", "m1", "m2", "m3")
@@ -526,7 +527,7 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         kinds += ["attr_assign", "attr_assign"]
     free_loop_vars = tuple(v for v in LOOP_POOL if v not in env.frozen)
     if depth > 0:
-        kinds += ["if", "begin", "proc_def", "block_iter"]
+        kinds += ["if", "begin", "proc_def", "block_iter", "for"]
         if free_loop_vars:
             kinds += ["while", "times"]
     kind = draw(st.sampled_from(kinds))
@@ -623,6 +624,18 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         body_env = replace(env.with_local(var), in_block=True)
         body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         return A.TimesBlock(draw(st.integers(0, 3)), var, body), env
+    if kind == "for":
+        var = draw(st.sampled_from(FOR_POOL))
+        # a bounded array or range → iteration terminates; `next`/`break` are safe
+        if draw(st.booleans()):
+            coll = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(0, 3)))))
+        else:
+            lo = draw(st.integers(0, 3))
+            coll = A.RangeLit(A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans()))
+        body_env = replace(env.with_local(var), in_block=True)
+        body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
+        # the loop var leaks to the enclosing scope (Ruby `for` semantics)
+        return A.ForLoop(var, coll, body), env.with_local(var)
     if kind == "begin":
         body, _ = draw(_stmt_seq(env, depth - 1, 1, 2))
         if draw(st.booleans()):

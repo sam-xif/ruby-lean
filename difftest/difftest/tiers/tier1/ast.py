@@ -126,6 +126,16 @@ class TimesBlock(Node):
     body: tuple
 
 
+@dataclass(frozen=True)
+class ForLoop(Node):
+    """`for var in coll; body; end` — `var` *leaks* to the enclosing scope (unlike a
+    block param). `coll` is a bounded array/range so iteration terminates."""
+
+    var: str
+    coll: Node
+    body: tuple
+
+
 # ---- parameters -------------------------------------------------------------
 # A `def`/block/lambda param list is a tuple whose elements are either a plain
 # `str` (a required positional, back-compat) or one of these `Param` nodes. A

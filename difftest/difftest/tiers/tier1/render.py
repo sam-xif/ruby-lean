@@ -75,6 +75,8 @@ def _stmt(node, depth: int) -> list[str]:
             )
         case A.TimesBlock(count, var, body):
             return [pad + f"{count}.times do |{var}|"] + _stmts(body, depth + 1) + [pad + "end"]
+        case A.ForLoop(var, coll, body):
+            return [pad + f"for {var} in {expr(coll)}"] + _stmts(body, depth + 1) + [pad + "end"]
         case A.MethodDef(name, params, body):
             header = pad + f"def {name}" + render_params(params)
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
