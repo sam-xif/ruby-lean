@@ -28,6 +28,8 @@ MODULE_POOL = ("M0", "M1")
 IMETHOD_POOL = ("im0", "im1")
 MMETHOD_POOL = ("mm0", "mm1")  # module instance methods; disjoint from IMETHOD_POOL
 SMETHOD_POOL = ("sm0", "sm1")  # class/self methods
+ESM_POOL = ("esm0", "esm1")  # class methods defined via `class << self`
+MM_GHOST_POOL = ("ghost0", "ghost1")  # names never defined → route to method_missing
 DMETHOD_POOL = ("dm0", "dm1")  # define_method'd instance methods
 DSM_POOL = ("ds0", "ds1")  # define_singleton_method'd class methods
 ROPEN_POOL = ("rm0", "rm1")  # methods added by reopening a class
@@ -84,6 +86,7 @@ class ClassInfo:
     smethods: tuple[tuple[str, int], ...] = ()  # class/self methods
     attr_writers: tuple[str, ...] = ()  # ivar base names with a writer (attr_accessor/writer)
     consts: tuple[str, ...] = ()  # constants readable as `Name::const` (cpath)
+    has_mm: bool = False  # defines method_missing → a missing send routes there
 
 
 @dataclass(frozen=True)
@@ -211,6 +214,11 @@ class Env:
     def classes_with_consts(self) -> tuple[ClassInfo, ...]:
         return tuple(ci for ci in self.classes if ci.consts)
 
+    @property
+    def mm_instances(self) -> tuple[tuple[str, str], ...]:
+        """Instances whose class defines method_missing (a missing send routes there)."""
+        return tuple((n, c) for (n, c) in self.instances if (self.class_info(c) or ClassInfo(c, 0, ())).has_mm)
+
 
 @st.composite
 def _literal(draw) -> A.Node:
@@ -330,6 +338,8 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
             kinds += ["smcall"]
         if classes_with_consts:
             kinds += ["cpath"]
+        if env.mm_instances:
+            kinds += ["mm_call", "mm_call", "mm_call"]
         if env.instances:
             kinds += ["respondto", "ivarget", "ivarset"]
     kind = draw(st.sampled_from(kinds))
@@ -353,6 +363,13 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
     if kind == "cpath":
         ci = draw(st.sampled_from(classes_with_consts))
         return A.ConstPath(ci.name, draw(st.sampled_from(ci.consts)))
+    if kind == "mm_call":
+        inst_name, _cls = draw(st.sampled_from(env.mm_instances))
+        # a name never defined on the class → dispatch falls through to method_missing
+        ghost = draw(st.sampled_from(MM_GHOST_POOL))
+        return A.MethodCall(
+            A.LocalRead(inst_name), ghost, tuple(sub() for _ in range(draw(st.integers(0, 2))))
+        )
     if kind == "smcall":
         ci = draw(st.sampled_from(classes_with_smethods))
         sname, arity = draw(st.sampled_from(ci.smethods))
@@ -878,6 +895,11 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None, is_def=False, sigs=env.sigs))
         decls.append(A.DefineMethod(DSM_POOL[k], m.params, m.body, True))
         sinfos.append((DSM_POOL[k], arity))
+    if draw(st.booleans()):  # `class << self; def esm; end; end` → class method (sclass)
+        arity = draw(st.integers(0, len(PARAM_POOL)))
+        em = draw(_method_body(ESM_POOL[0], arity, env.methods, (), env.classes, (), None, sigs=env.sigs))
+        decls.append(A.EigenClass((em,)))
+        sinfos.append((ESM_POOL[0], arity))
 
     # instance methods: fresh im-names, or overrides of an inherited im-method (+ super)
     methods: list[A.MethodDef] = []
@@ -906,6 +928,19 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
 
     effective = _merge(effective, own)
 
+    # method_missing: a `MethodCall` to a never-defined name (`ghost0`) on an instance
+    # of this class routes here (see `_expr` `mm_call`). Returns a deterministic string;
+    # kept OUT of `effective` so it is only reached via missing dispatch, never directly.
+    has_mm = draw(st.booleans())
+    if has_mm:
+        methods.append(
+            A.MethodDef(
+                "method_missing",
+                ("name", A.PRest("args")),
+                (A.StrInterp(("mm-", A.LocalRead("name"))),),
+            )
+        )
+
     # ---- tail decls: alias/undef (method-table heap mutation), rendered *after* the
     # instance methods so the referenced method is already defined in the class body
     tail_decls: list[A.Node] = []
@@ -919,7 +954,9 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         methods.append(A.MethodDef(ud, (), (A.NilLit(),)))
         tail_decls.append(A.Undef(ud))
 
-    ci = ClassInfo(name, ctor_arity, effective, tuple(sinfos), attr_writers, tuple(const_names))
+    ci = ClassInfo(
+        name, ctor_arity, effective, tuple(sinfos), attr_writers, tuple(const_names), has_mm
+    )
     node = A.ClassDef(
         name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls),
         tuple(tail_decls),

@@ -184,6 +184,11 @@ def _stmt(node, depth: int) -> list[str]:
             return [pad + f"{name} = {expr(value)}"]
         case A.ConstPathAssign(base, name, value):
             return [pad + f"{base}::{name} = {expr(value)}"]
+        case A.EigenClass(methods):
+            lines = [pad + "class << self"]
+            for m in methods:
+                lines.extend(_stmt(m, depth + 1))
+            return lines + [pad + "end"]
         case A.DefineMethod(name, params, body, singleton):
             fn = "define_singleton_method" if singleton else "define_method"
             header = pad + f"{fn}(:{name}) do" + (f" |{', '.join(_param(p) for p in params)}|" if params else "")

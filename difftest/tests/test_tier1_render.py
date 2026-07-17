@@ -196,5 +196,30 @@ def test_retry_terminates_smoke():
     assert runner.run(render_program(prog)).stdout == "3\n"
 
 
+def test_method_missing_smoke():
+    from difftest.tiers.tier1 import ast as A
+
+    # class C0; def method_missing(name, *args); "mm-#{name}"; end; end
+    # puts(C0.new.ghost0(1, 2))  →  mm-ghost0
+    mm = A.MethodDef(
+        "method_missing", ("name", A.PRest("args")),
+        (A.StrInterp(("mm-", A.LocalRead("name"))),),
+    )
+    c0 = A.ClassDef("C0", None, (), (), (), (mm,))
+    call = A.MethodCall(A.New("C0", ()), "ghost0", (A.IntLit(1), A.IntLit(2)))
+    assert runner.run(render_program(A.Program((c0, A.Puts((call,)))))).stdout == "mm-ghost0\n"
+
+
+def test_eigenclass_smoke():
+    from difftest.tiers.tier1 import ast as A
+
+    # class C0; class << self; def esm0; 42; end; end; end ; puts(C0.esm0)  →  42
+    eigen = A.EigenClass((A.MethodDef("esm0", (), (A.IntLit(42),)),))
+    c0 = A.ClassDef("C0", None, (), (), (), (), (eigen,))
+    prog = A.Program((c0, A.Puts((A.MethodCall(A.ConstRead("C0"), "esm0", ()),)))
+    )
+    assert runner.run(render_program(prog)).stdout == "42\n"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

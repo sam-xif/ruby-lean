@@ -382,3 +382,24 @@ inside a `proc` — is what surfaced the need for `const_asgn_ok`).
   succeeds after `limit`+1 attempts. No random body stmts (they might raise and make
   `retry` spin). A 400-example CRuby run of every retry/ensure/typed-rescue program:
   **0 timeouts**. `--tier 1`: desugar 300/300 (seeds 7/456/999), lean 114/400, 0 disagree.
+
+## N22 — method_missing + `class << self` eigenclass
+
+The last two object-model rules with no generative coverage:
+
+- **method_missing** (A6): a class optionally defines `method_missing(name, *args)`
+  returning a deterministic `"mm-#{name}"` (kept OUT of the callable set, reached only via
+  missing dispatch). An `_expr` `mm_call` kind then sends a **never-defined** name
+  (`MM_GHOST_POOL` = `ghost0`/`ghost1`) to an instance of such a class → dispatch falls
+  through to method_missing. `ClassInfo.has_mm` + `Env.mm_instances` gate it to instances
+  whose class actually defines it (else it'd be a NoMethodError). Coverage is modest
+  (~1–2% of programs — an mm-instance must be in scope where an expr is drawn) but nonzero
+  where it was previously **zero**.
+- **`class << self` eigenclass** (A7): `A.EigenClass` renders `class << self; def esm0; …;
+  end; end` inside a class body; the method becomes a class method (registered in
+  `sinfos`, called as `C.esm0`). Exercises the `sclass` head (Lean L2c), distinct from the
+  already-covered `def self.m`/`define_singleton_method`. Per-instance `class << obj` is
+  left for later (class-level singleton methods are already covered three ways).
+
+`--tier 1`: desugar 300/300 (seeds 7/456/999/2024), lean 120/400, 0 disagree. 14 render
+smoke tests pass.

@@ -276,6 +276,14 @@ class Undef(Node):
 
 
 @dataclass(frozen=True)
+class EigenClass(Node):
+    """`class << self; def m; …; end; end` inside a class body — the methods become
+    singleton (class) methods, callable as `C.m`. Exercises the `sclass` head."""
+
+    methods: tuple  # (MethodDef, ...)
+
+
+@dataclass(frozen=True)
 class ModuleDef(Node):
     name: str
     methods: tuple  # (MethodDef, ...) instance methods, mixed in via include/prepend
