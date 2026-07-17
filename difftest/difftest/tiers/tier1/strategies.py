@@ -31,6 +31,8 @@ SMETHOD_POOL = ("sm0", "sm1")  # class/self methods
 DMETHOD_POOL = ("dm0", "dm1")  # define_method'd instance methods
 DSM_POOL = ("ds0", "ds1")  # define_singleton_method'd class methods
 ROPEN_POOL = ("rm0", "rm1")  # methods added by reopening a class
+ALIAS_POOL = ("al0", "al1")  # fresh names introduced by alias/alias_method
+UNDEF_POOL = ("ud0",)  # throwaway method defined only to be `undef`'d
 IVAR_POOL = ("@x", "@y")
 INSTANCE_POOL = ("o", "p", "q")  # locals that hold instances; disjoint from LOCAL/LOOP/PARAM
 PROC_POOL = ("f", "g", "h")  # locals that hold procs/lambdas; disjoint too
@@ -812,9 +814,24 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         own = _merge(own, ((mname, arity),))
 
     effective = _merge(effective, own)
+
+    # ---- tail decls: alias/undef (method-table heap mutation), rendered *after* the
+    # instance methods so the referenced method is already defined in the class body
+    tail_decls: list[A.Node] = []
+    if effective and draw(st.booleans()):  # alias an existing method to a fresh name
+        old, oarity = draw(st.sampled_from(effective))
+        new = draw(st.sampled_from(ALIAS_POOL))
+        tail_decls.append(A.Alias(new, old, draw(st.booleans())))
+        effective = _merge(effective, ((new, oarity),))
+    if draw(st.booleans()):  # define a throwaway method and undef it (never called)
+        ud = UNDEF_POOL[0]
+        methods.append(A.MethodDef(ud, (), (A.NilLit(),)))
+        tail_decls.append(A.Undef(ud))
+
     ci = ClassInfo(name, ctor_arity, effective, tuple(sinfos), attr_writers)
     node = A.ClassDef(
-        name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls)
+        name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls),
+        tuple(tail_decls),
     )
     return node, env.with_class(ci)
 

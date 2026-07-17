@@ -259,6 +259,20 @@ class ClassDef(Node):
     self_methods: tuple  # (MethodDef, ...) rendered as `def self.<name>`
     methods: tuple  # (MethodDef, ...) instance methods (excludes initialize)
     decls: tuple = ()  # metaprogramming class-body decls (AttrDecl/DefineMethod/...)
+    tail_decls: tuple = ()  # decls rendered *after* methods (Alias/Undef — need the
+    # referenced method already defined in the class body above them)
+
+
+@dataclass(frozen=True)
+class Alias(Node):
+    new_name: str
+    old_name: str
+    method_form: bool  # True → `alias_method :new, :old`; False → `alias new old`
+
+
+@dataclass(frozen=True)
+class Undef(Node):
+    name: str
 
 
 @dataclass(frozen=True)
@@ -270,6 +284,25 @@ class ModuleDef(Node):
 @dataclass(frozen=True)
 class ConstRead(Node):
     name: str  # a class/module constant, e.g. "C0"
+
+
+@dataclass(frozen=True)
+class ConstAssign(Node):
+    name: str  # a constant defined in a class/module body, e.g. "K0 = 5"
+    value: Node
+
+
+@dataclass(frozen=True)
+class ConstPath(Node):
+    base: str  # a class/module name; reads `Base::name`
+    name: str
+
+
+@dataclass(frozen=True)
+class ConstPathAssign(Node):
+    base: str  # assigns `Base::name = value` (external constant assignment)
+    name: str
+    value: Node
 
 
 @dataclass(frozen=True)

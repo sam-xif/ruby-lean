@@ -111,6 +111,8 @@ def _stmt(node, depth: int) -> list[str]:
                 lines.extend(_self_method(m, depth + 1))
             for m in node.methods:
                 lines.extend(_stmt(m, depth + 1))
+            for d in node.tail_decls:
+                lines.extend(_stmt(d, depth + 1))
             return lines + [pad + "end"]
         case A.ModuleDef(name, methods):
             lines = [pad + f"module {name}"]
@@ -150,6 +152,16 @@ def _stmt(node, depth: int) -> list[str]:
             return [pad + f"{lhs} = {rhs}"]
         case A.AttrDecl(kind, names):
             return [pad + f"attr_{kind} " + ", ".join(f":{n}" for n in names)]
+        case A.Alias(new_name, old_name, method_form):
+            if method_form:
+                return [pad + f"alias_method :{new_name}, :{old_name}"]
+            return [pad + f"alias {new_name} {old_name}"]
+        case A.Undef(name):
+            return [pad + f"undef {name}"]
+        case A.ConstAssign(name, value):
+            return [pad + f"{name} = {expr(value)}"]
+        case A.ConstPathAssign(base, name, value):
+            return [pad + f"{base}::{name} = {expr(value)}"]
         case A.DefineMethod(name, params, body, singleton):
             fn = "define_singleton_method" if singleton else "define_method"
             header = pad + f"{fn}(:{name}) do" + (f" |{', '.join(_param(p) for p in params)}|" if params else "")
@@ -254,6 +266,8 @@ def expr(node) -> str:
             return name
         case A.ConstRead(name):
             return name
+        case A.ConstPath(base, name):
+            return f"{base}::{name}"
         case A.SendCall(recv, method_name, args, public):
             fn = "public_send" if public else "send"
             parts = [f":{method_name}"] + [expr(a) for a in args]

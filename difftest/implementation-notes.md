@@ -330,3 +330,18 @@ Two Phase-1 loop forms, both engineered to terminate by construction:
   program produced **0 timeouts**.
 
 `--tier 1`: desugar 300/300 (seeds 7/456/999), lean 141/400, 0 disagree.
+
+## N19 — `alias`/`alias_method` + `undef` (method-table heap mutation)
+
+Class-body method-table mutation, exercising Lean's Phase-1 `alias`/`undef` rules.
+Rendered as **tail decls** (new `ClassDef.tail_decls`, emitted *after* the instance
+methods) so the referenced method is already defined in the class body above them:
+
+- **alias**: aliases an existing effective instance method to a fresh `ALIAS_POOL`
+  name (registered as callable, same arity), randomly as the `alias new old` keyword
+  or `alias_method :new, :old`.
+- **undef**: defines a dedicated throwaway method (`UNDEF_POOL` = `ud0`) that is
+  **never registered as callable**, then `undef`s it — so no body or main code ever
+  invokes it (no NoMethodError risk); the mutation is a clean no-op observationally.
+
+`--tier 1`: desugar 300/300 (seeds 7/456/999), lean 118/400, 0 disagree.
