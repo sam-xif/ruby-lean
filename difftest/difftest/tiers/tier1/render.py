@@ -77,6 +77,20 @@ def _stmt(node, depth: int) -> list[str]:
             return [pad + f"{count}.times do |{var}|"] + _stmts(body, depth + 1) + [pad + "end"]
         case A.ForLoop(var, coll, body):
             return [pad + f"for {var} in {expr(coll)}"] + _stmts(body, depth + 1) + [pad + "end"]
+        case A.DoWhile(var, limit, body):
+            return (
+                [pad + f"{var} = 0", pad + "begin"]
+                + _stmts(body, depth + 1)
+                + [pad + f"{_INDENT}{var} += 1", pad + f"end while {var} < {limit}"]
+            )
+        case A.Redo():
+            return [pad + "redo"]
+        case A.RedoLoop(guard, coll, blockvar, body):
+            return (
+                [pad + f"{guard} = 0", pad + f"{expr(coll)}.each do |{blockvar}|"]
+                + _stmts(body, depth + 1)
+                + [pad + "end"]
+            )
         case A.MethodDef(name, params, body):
             header = pad + f"def {name}" + render_params(params)
             return [header] + _stmts(body, depth + 1) + [pad + "end"]

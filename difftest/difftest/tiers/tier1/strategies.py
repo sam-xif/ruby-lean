@@ -19,6 +19,7 @@ from . import ast as A
 LOCAL_POOL = ("a", "b", "c", "d")
 LOOP_POOL = ("i", "j")
 FOR_POOL = ("fi", "fj")  # `for` loop vars — leak to the enclosing scope
+REDO_POOL = ("rg0", "rg1")  # monotonic guard counters bounding `redo`
 PARAM_POOL = ("x", "y")
 BLOCK_PARAM_POOL = ("bx", "by")  # block/lambda params; disjoint from everything else
 METHOD_POOL = ("m0", "m1", "m2", "m3")
@@ -527,9 +528,9 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         kinds += ["attr_assign", "attr_assign"]
     free_loop_vars = tuple(v for v in LOOP_POOL if v not in env.frozen)
     if depth > 0:
-        kinds += ["if", "begin", "proc_def", "block_iter", "for"]
+        kinds += ["if", "begin", "proc_def", "block_iter", "for", "redo_loop"]
         if free_loop_vars:
-            kinds += ["while", "times"]
+            kinds += ["while", "times", "dowhile"]
     kind = draw(st.sampled_from(kinds))
 
     if kind == "assign":
@@ -636,6 +637,27 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         # the loop var leaks to the enclosing scope (Ruby `for` semantics)
         return A.ForLoop(var, coll, body), env.with_local(var)
+    if kind == "dowhile":
+        var = draw(st.sampled_from(free_loop_vars))
+        # like `while`: `next`/`break` would skip the manual `+= 1` the renderer
+        # appends → infinite loop, so disable them in the body
+        body_env = replace(env.with_frozen(var), in_block=False)
+        body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
+        return A.DoWhile(var, draw(st.integers(0, 3)), body), env.with_local(var)
+    if kind == "redo_loop":
+        guard = draw(st.sampled_from(REDO_POOL))
+        limit = draw(st.integers(1, 3))
+        # a non-empty bounded array so the block runs and `redo` has an iteration
+        coll = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(1, 3)))))
+        blockvar = BLOCK_PARAM_POOL[0]
+        inner_env = replace(env.with_frozen(guard).with_local(blockvar), in_block=True)
+        extra, _ = draw(_stmt_seq(inner_env, max(depth - 2, 0), 1, 1))
+        # guard += 1 on every (re)entry, then redo only while guard < limit → bounded
+        block_body = (
+            A.OpAssign(guard, "+=", A.IntLit(1)),
+            A.If(A.BinOp("<", A.LocalRead(guard), A.IntLit(limit)), (A.Redo(),), None),
+        ) + extra + (A.NilLit(),)
+        return A.RedoLoop(guard, coll, blockvar, block_body), env.with_frozen(guard)
     if kind == "begin":
         body, _ = draw(_stmt_seq(env, depth - 1, 1, 2))
         if draw(st.booleans()):

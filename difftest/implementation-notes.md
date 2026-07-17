@@ -312,3 +312,21 @@ bounded literal array or small range, so iteration terminates by construction;
 `next`/`break` are legal in the body (self-bounded). Exercises Lean's Phase-1 `for`
 rule (the scope-leak). `--tier 1`: desugar 300/300 (seeds 7/456), lean 139/400,
 0 disagree.
+
+## N18 — `redo` + do-while (bounded so they terminate)
+
+Two Phase-1 loop forms, both engineered to terminate by construction:
+
+- **do-while** (`A.DoWhile`): `var = 0; begin; body; var += 1; end while var < limit`
+  — runs the body at least once, bounded by the same counter discipline as
+  `WhileCounter`. `next`/`break` disabled in the body (they'd skip the appended
+  `+= 1` → infinite loop), matching the `while` treatment.
+- **`redo`** (`A.RedoLoop` + `A.Redo`): a self-contained gadget
+  `guard = 0; coll.each do |bx| guard += 1; redo if guard < limit; …body end`.
+  The guard increments on every (re)entry and never resets, so total entries ≤
+  `limit + len(coll)` — `redo` provably cannot spin forever. `redo` is emitted
+  *only* inside this gadget (never as a free statement), and `guard` is frozen so
+  random code can't clobber it. A 250-example CRuby run of every redo/do-while
+  program produced **0 timeouts**.
+
+`--tier 1`: desugar 300/300 (seeds 7/456/999), lean 141/400, 0 disagree.

@@ -127,6 +127,40 @@ class TimesBlock(Node):
 
 
 @dataclass(frozen=True)
+class DoWhile(Node):
+    """`var = 0; begin; body; var += 1; end while var < limit` — runs the body at
+    least once (do-while), bounded by the same counter discipline as WhileCounter."""
+
+    var: str
+    limit: int
+    body: tuple
+
+
+@dataclass(frozen=True)
+class Redo(Node):
+    """`redo` — restart the current loop iteration. Only ever emitted inside a
+    `RedoLoop`, guarded by a monotonic counter so it fires a bounded number of times."""
+
+
+@dataclass(frozen=True)
+class RedoLoop(Node):
+    """A self-contained, guaranteed-terminating `redo` gadget:
+        guard = 0
+        coll.each do |blockvar|
+          guard += 1
+          redo if guard < limit   # (rendered via an If(Redo))
+          ...body
+        end
+    `guard` increments on every (re)entry and never resets, so total entries ≤
+    limit + len(coll) — `redo` cannot spin forever."""
+
+    guard: str
+    coll: Node
+    blockvar: str
+    body: tuple
+
+
+@dataclass(frozen=True)
 class ForLoop(Node):
     """`for var in coll; body; end` — `var` *leaks* to the enclosing scope (unlike a
     block param). `coll` is a bounded array/range so iteration terminates."""
