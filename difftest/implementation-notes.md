@@ -422,3 +422,31 @@ classes out of **value-position `new`** (the only way an mm-object could reach
 interpolation), preserving method_missing coverage via receiver-only instances while
 staying 0-disagree. Recorded here as a genuine differential-testing find (the point of
 the exercise), not swept under the rug.
+
+## N23 — Two latent generator bugs found by the broad-seed sweep (termination + inheritance)
+
+A 17-seed robustness sweep (not just the 4 seeds used per-feature) surfaced two
+pre-existing generator defects that the expanded vocabulary made reachable:
+
+1. **`method_missing` is inherited** — `ClassInfo.has_mm` was a per-class coin flip, so a
+   subclass `C2 < C0` (C0 defines method_missing) had `has_mm=False` and slipped a
+   `C2.new` into value position (a massign RHS → local → interpolation → the N22-addendum
+   `String()`/`to_str` divergence). Fix: `has_mm = own_mm or sup_ci.has_mm`.
+2. **Unbounded mutual recursion via virtual dispatch** — instance-method bodies could
+   self-call each other, and inheritance/override/shadowing let a low-rank inherited
+   method call a name that dynamically dispatches to a high-rank subclass body that calls
+   back up (e.g. `C2#im0` shadow → `dm0` → `im1` → virtual `im0`), giving `SystemStackError`
+   (a disagreement, since the two runs blow the stack at different points). This was
+   latent since the N13 object-model work. Fix: a **global name-rank invariant** —
+   recursion-capable instance methods (`im`/`dm`/`rm`) are totally ordered (`_CALL_ORDER`)
+   and a body may self-call only strictly-lower-ranked names (`_callable_ok`); module/attr/
+   method_missing methods are sinks (never call back), always allowed. Because virtual
+   dispatch preserves the *name*, every call chain strictly descends in rank → the
+   per-object call graph is acyclic for any receiver, across inheritance/override/shadow.
+   Replaces an earlier, insufficient "neuter only the override branch" attempt (it missed
+   fresh-named methods that shadow an inherited method).
+
+Validation: 17 seeds × 250 (incl. the failing 271) all 0-disagree/0-control_invalid;
+400-example CRuby termination sweep 0 timeouts; 14 render smoke tests pass. Lesson
+recorded: per-feature 3–4-seed checks are insufficient for termination/inheritance
+interactions — run a broad-seed sweep before declaring green.

@@ -52,6 +52,30 @@ SAFE_UNARY_SYMS = ("to_s", "inspect", "itself", "class", "freeze")
 
 MAX_EXPR_DEPTH = 3
 
+# Recursion-capable instance-method names (bodies that may self-send other instance
+# methods), in a fixed global order. A body may self-call only STRICTLY-LOWER-ranked
+# names in this order; module/attr/method_missing methods are sinks (never call
+# im/dm/rm), so they carry no rank and are always callable. Because virtual dispatch
+# preserves the *name*, "every body calls only lower names" makes any call chain
+# strictly descend → the per-object call graph is acyclic for *any* receiver class,
+# even across inheritance/override/shadowing (which is how mutual recursion would
+# otherwise arise: a low-rank inherited method calling a name that dispatches to a
+# high-rank subclass override that calls back up).
+_CALL_ORDER = ("im0", "im1", "dm0", "dm1", "rm0", "rm1")
+_CALL_RANK = {n: i for i, n in enumerate(_CALL_ORDER)}
+
+
+def _callable_ok(callee: str, current: str) -> bool:
+    """May a method named `current` self-call a method named `callee` without risking
+    an unbounded virtual-dispatch cycle?"""
+    kr = _CALL_RANK.get(callee)
+    if kr is None:
+        return True  # callee is a sink (module/attr/method_missing) — cannot cycle back
+    cr = _CALL_RANK.get(current)
+    if cr is None:
+        return True  # a sink body doesn't reach here in practice
+    return kr < cr
+
 # disjoint pools for varied top-level-method params (see Sig / _method_param_spec)
 OPT_POOL = ("o1", "o2")  # optional positional param names
 REST_POOL = ("r1",)  # *rest param name
@@ -894,7 +918,9 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
             attr_writers = names
     for k in range(draw(st.integers(0, len(DMETHOD_POOL)))):  # define_method → instance method
         arity = draw(st.integers(0, len(PARAM_POOL)))
-        callable_methods = tuple(e for e in _merge(env.methods, effective) if e[0] != DMETHOD_POOL[k])
+        callable_methods = tuple(env.methods) + tuple(
+            e for e in effective if _callable_ok(e[0], DMETHOD_POOL[k])
+        )
         m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None, is_def=False, sigs=env.sigs))
         decls.append(A.DefineMethod(DMETHOD_POOL[k], m.params, m.body, False))
         effective = _merge(effective, ((DMETHOD_POOL[k], arity),))
@@ -919,10 +945,12 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
             can_super = arity  # `super` reaches the parent's version
         else:
             mname, arity, can_super = IMETHOD_POOL[k], draw(st.integers(0, len(PARAM_POOL))), None
-        # bare-callable from the body = top-level + effective + earlier own, minus
-        # this method's own name (so an override never self-recurses)
-        callable_methods = tuple(
-            e for e in _merge(_merge(env.methods, effective), own) if e[0] != mname
+        # bare-callable = top-level (always) + instance methods of strictly-lower
+        # global rank (`_callable_ok`) — the acyclicity invariant that survives
+        # inheritance/override/shadowing (a shadowing subclass method has the same
+        # *name*, hence the same rank, so it still only calls lower names → no cycle).
+        callable_methods = tuple(env.methods) + tuple(
+            e for e in _merge(effective, own) if _callable_ok(e[0], mname)
         )
         methods.append(
             draw(
@@ -939,8 +967,7 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
     # method_missing: a `MethodCall` to a never-defined name (`ghost0`) on an instance
     # of this class routes here (see `_expr` `mm_call`). Returns a deterministic string;
     # kept OUT of `effective` so it is only reached via missing dispatch, never directly.
-    has_mm = draw(st.booleans())
-    if has_mm:
+    if draw(st.booleans()):
         methods.append(
             A.MethodDef(
                 "method_missing",
@@ -948,6 +975,13 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
                 (A.StrInterp(("mm-", A.LocalRead("name"))),),
             )
         )
+        own_mm = True
+    else:
+        own_mm = False
+    # method_missing is INHERITED: a subclass of an mm-class is itself an mm-class even
+    # if it doesn't define method_missing. Must be inheritance-aware or the `new`-gate
+    # (and value-flow avoidance) leaks a subclass instance into interpolation.
+    has_mm = own_mm or (sup_ci is not None and sup_ci.has_mm)
 
     # ---- tail decls: alias/undef (method-table heap mutation), rendered *after* the
     # instance methods so the referenced method is already defined in the class body
@@ -977,7 +1011,9 @@ def _reopen(draw, env: Env, ci: ClassInfo) -> tuple[A.ClassDef, Env]:
     """`class C; def rm0(...) ... end; end` reopening an existing class."""
     k = draw(st.integers(0, len(ROPEN_POOL) - 1))
     arity = draw(st.integers(0, len(PARAM_POOL)))
-    callable_methods = tuple(e for e in _merge(env.methods, ci.imethods) if e[0] != ROPEN_POOL[k])
+    callable_methods = tuple(env.methods) + tuple(
+        e for e in ci.imethods if _callable_ok(e[0], ROPEN_POOL[k])
+    )
     m = draw(
         _method_body(
             ROPEN_POOL[k], arity, callable_methods, IVAR_POOL[: ci.ctor_arity], env.classes, (), None,
