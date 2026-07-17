@@ -68,6 +68,9 @@ structure ClassPayload where
   consts : List (String × Value) := []
   name : String
   isModule : Bool := false
+  /-- Modules mixed in via `include` (most-recently-included **last**); inserted
+      into the ancestor chain just above this class, most-recent first (MRO). -/
+  includes : List ObjId := []
 deriving Inhabited
 
 /-- A block/proc/lambda closure (artifact 04 §1). Frame identity supplies
@@ -309,19 +312,31 @@ def realClassOf (h : Heap) : Value → ObjId
   | .ref o => (h.get o).klass
   | v => classOf h v
 
-/-- Ancestor chain = superclass walk (no mixins at L0). Fuel-bounded against
-    cyclic heaps (unreachable from H₀, but stepFn must be total). -/
+/-- A module's own ancestor list: itself, then its `include`d modules
+    (most-recent first), recursively. Fuel-bounded on the (finite) heap. -/
+partial def modAncestors (h : Heap) (m : ObjId) : List ObjId :=
+  m :: (match h.classPayload? m with
+    | some c => c.includes.reverse.flatMap (modAncestors h)
+    | Option.none => [])
+
+/-- Ancestor chain (MRO): the superclass walk, with each class's `include`d
+    modules spliced in just above it (most-recent-first, modules-of-modules
+    expanded), then de-duplicated keeping the first (highest-priority)
+    occurrence. With no mixins this is exactly the old superclass walk, so it is
+    behaviour-preserving on the mixin-free fragment. Fuel-bounded for totality. -/
 def ancestors (h : Heap) (k : ObjId) : List ObjId :=
-  go k (h.objs.size + 1)
+  (go k (h.objs.size + 1)).foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
 where
   go (k : ObjId) : Nat → List ObjId
     | 0 => []
     | fuel + 1 =>
       match h.classPayload? k with
       | Option.none => [k]
-      | some c => k :: (match c.superclass with
-        | some s => go s fuel
-        | Option.none => [])
+      | some c =>
+        (k :: c.includes.reverse.flatMap (modAncestors h)) ++
+        (match c.superclass with
+          | some s => go s fuel
+          | Option.none => [])
 
 /-- LOOKUP: first module in `ancestors (classOf v)` defining `m` directly,
     returned with its owner (needed for `super`, artifact 02 §2). -/

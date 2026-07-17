@@ -113,6 +113,9 @@ inductive Kont where
       is `initialize`'s (discarded) result; yield the fresh instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- `include M` when `M` defines `self.included`: the in-flight value is the
+      hook's (discarded) result; `include` evaluates to the receiver instead. -/
+  | includeK (recv : Value)
   /-- `def RECV.name … end`: the in-flight value is the evaluated `RECV`; install
       the method on its eigenclass (artifact 01 §5, 02 §1). -/
   | defsK (name : String) (params : List Param) (body : Expr)

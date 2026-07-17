@@ -750,6 +750,48 @@ def mixinShadow (m : Machine) (recv : Value) (mname : String) : Option String :=
     | some (.ref mo) => if (methodOn m.heap mo mname).isSome then some modName else none
     | _ => none
 
+/-- The user-defined `self.included`/`self.extended` hook of module `mo`, if any
+    (a singleton method on its eigenclass). -/
+def moduleHook (m : Machine) (mo : ObjId) (name : String) : Option MethodDef :=
+  match (m.heap.get mo).eigen with
+  | some e => (methodOn m.heap e name).map (·.2)
+  | none => none
+
+/-- `include`/`extend` (artifact 02 §1). `include M` (single module, on a class/
+    module receiver) appends `M` to the receiver's `includes` (MRO) and fires
+    `M.included(recv)` if defined. `obj.extend(M)` mixes `M` into `obj`'s
+    eigenclass (so `M`'s instance methods become singleton methods). Returns
+    `some` if handled; `none` falls through to the normal miss path. -/
+def tryMixin (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) : Option StepResult :=
+  match mname, recv, args with
+  | "include", .ref o, [.ref mo] =>
+    match m.heap.classPayload? o, m.heap.classPayload? mo with
+    | some c, some _ =>
+      let m := { m with heap := m.heap.setClassPayload o { c with includes := c.includes ++ [mo] } }
+      match moduleHook m mo "included" with
+      | some hook =>
+        let m := { m with kont := .includeK recv :: m.kont }
+        some (enterUserMethod m (.ref mo) "included" hook [recv] none)
+      | none => some (.next (withCtl m (.value recv)))
+    | _, _ => none
+  | "extend", .ref o, [.ref mo] =>
+    match m.heap.classPayload? mo with
+    | some _ =>
+      -- `extend` = include the module into the receiver's eigenclass; the
+      -- `extended` hook is unmodeled → gate if present.
+      match moduleHook m mo "extended" with
+      | some _ => some (.unsupported "extend with an `extended` hook")
+      | none =>
+        let (e, m) := eigenclassOf m o
+        match m.heap.classPayload? e with
+        | some ec =>
+          let m := { m with heap := m.heap.setClassPayload e { ec with includes := ec.includes ++ [mo] } }
+          some (.next (withCtl m (.value recv)))
+        | none => none
+    | none => none
+  | _, _, _ => none
+
 /-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact
     `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
@@ -757,6 +799,9 @@ def mixinShadow (m : Machine) (recv : Value) (mname : String) : Option String :=
 def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) : StepResult :=
   match tryIterator m recv mname args blk with
+  | some sr => sr
+  | none =>
+  match tryMixin m recv mname args with
   | some sr => sr
   | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
@@ -1119,6 +1164,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .includeK recv =>
+      -- `included` hook returned; its value is discarded, `include` yields recv
+      .next (withCtl m (.value recv))
     | .defsK name params body =>
       -- `def RECV.name`: install on RECV's eigenclass (v = the evaluated RECV)
       match v with

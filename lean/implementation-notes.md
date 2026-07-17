@@ -548,3 +548,21 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   entry (block `|k,v|` auto-splats, `|pair|` gets the array). `tryIterator` gained
   the call `args` (for `inject`'s seed). Block form only — `inject(:sym)` (no
   block) is not intercepted and gates as before.
+
+## Mixins (L34–…)
+
+- **L34 — `include` (MRO) + `self.included` hook + `extend`.** `ClassPayload`
+  gains `includes : List ObjId` (most-recent-included last). `ancestors` now
+  splices each class's `include`d modules in just above it (most-recent-first,
+  modules-of-modules expanded via `modAncestors`), de-duped keeping the first
+  occurrence — **identical to the old superclass walk when `includes` is empty**,
+  so behaviour-preserving on the mixin-free fragment. `tryMixin` (in
+  `dispatchMiss`, miss path so a user override wins): `include M` (single module,
+  class/module receiver) appends `M` to `includes` and fires `M.included(recv)`
+  if defined (via `enterUserMethod` under a new `includeK` kont that yields the
+  receiver); `obj.extend(M)` mixes `M` into `obj`'s eigenclass (its instance
+  methods become singleton methods). Both return the receiver. **Known limitation
+  (not include's fault):** a mixin method that references a *nested* constant
+  (`P::CM`, e.g. `Parameterizable`'s `base.extend(ClassMethods)`) needs
+  lexical-cref constant lookup, which L0 approximates by `defmod` — so such a
+  reference still misses. `extend` with an `extended` hook gates.
