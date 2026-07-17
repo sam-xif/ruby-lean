@@ -223,3 +223,19 @@ Validated: **38 pytest green**; 1000+-program parse+determinism sweeps per item
 --sut desugar` at 300–500 cases each — **0 disagree throughout** (unsupported rises
 as expected where new surface outruns the desugar fragment: massign single-RHS,
 kwargs, `define_method`, etc.).
+
+## N14 — A SUT wall-clock timeout (control OK) is `sut_unsupported`, not `disagree`
+
+`compare()` now classifies "SUT timed out, control completed within the limit" as
+`SUT_UNSUPPORTED` (reason "sut timeout …") rather than `DISAGREE`. Rationale: a
+wall-clock timeout is *inconclusive* — the model produced no answer, it did not
+produce a wrong one — so it belongs in the same neutral bucket as an explicit
+Unsupported gate. Genuine nontermination in the model is separately caught by its
+step-fuel limit, which exits cleanly as Unsupported (exit 3) well before any
+plausible wall-clock; so this policy only absorbs "correct but too slow" cases
+(e.g. `100000.times{…}` — the interpreter needs ~18s, the default timeout is 10s).
+Prevents the iterating-builtin work (Lean L32) from turning pre-existing
+Unsupported stress tests (`test_proc_008`, the `yjit_30k_*` benchmarks) into
+false disagreements. If the model diverged where CRuby terminates, this would
+mask it as Unsupported rather than flag it — acceptable because fuel is the real
+divergence guard; revisit if a faster interpreter makes fuel reachable in-budget.

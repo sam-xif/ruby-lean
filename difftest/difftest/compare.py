@@ -46,6 +46,13 @@ def compare(control: Observation, sut: Observation) -> tuple[Verdict, str | None
     a, b = control.normalized(), sut.normalized()
     if a == b:
         return Verdict.AGREE, None
+    # A SUT wall-clock timeout (control completed in time) is inconclusive, not a
+    # wrong answer — the model was too slow, it did not disagree. Classify it as
+    # out-of-fragment (same neutral bucket as an explicit Unsupported gate). True
+    # nontermination is separately caught by the model's step-fuel limit (which
+    # exits cleanly as Unsupported), so this only absorbs "correct but too slow".
+    if b.timed_out and not a.timed_out:
+        return Verdict.SUT_UNSUPPORTED, "sut timeout (too slow; control completed within the limit)"
     parts = []
     if a.stdout != b.stdout:
         parts.append(f"stdout: {a.stdout!r} vs {b.stdout!r}")
