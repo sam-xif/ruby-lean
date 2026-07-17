@@ -367,3 +367,18 @@ coverage and desugaring targets, not the machine shape. Ratchet discipline:
   not-found path now consults `crubyShadow` and gates Unsupported rather than
   raising a spurious `NameError` (same split dispatch uses). `harness_error:1`
   (`test_syntax_115`) and `control_invalid:7` are pre-existing.
+
+- **L25 — `for … in … do … end` iterating an `Array` natively.** `for tgts in
+  coll; body; end` (`[:for, [[kind,name],…], coll, body]`). The loop variable(s)
+  bind in the **enclosing** frame — `for` pushes no block frame, so `setLocal`
+  leaks naturally (`for x in […]; end; x` is the last element `[V]`). Because
+  the model gates `Array#each` (a pure builtin can't push a block frame), `for`
+  cannot desugar to `.each`; instead the stepper iterates an `Array` payload
+  directly (`forStartK` snapshots the element list; `forBodyK` is a loop marker
+  in `unwind` — `break v` → `for`'s value is `v`, `next` → next element). `for`
+  evaluates to its **collection** on normal exit `[V]`. Multiple targets
+  destructure each element array-wise (an `Array` positionally; a scalar into
+  the first target, rest `nil` — massign semantics `[V]`). Gated: a non-`Array`
+  collection (`Range`, still unmodeled — the `(1..n)` cases gate here now
+  instead of at decode) and any non-local target. New konts `forStartK`,
+  `forBodyK`; helpers `forBind`/`forStep`.

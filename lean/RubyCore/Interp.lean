@@ -684,6 +684,36 @@ def continueArray (m : Machine) (acc : List Value) (rest : List Expr) : StepResu
     | .splat none => .unsupported "anonymous splat in array literal"
     | _ => .next (withKont m (.eval e) (.arrK acc rest'))
 
+/-- Bind one `for` element to the loop targets in the *enclosing* frame (the
+    leak, artifact 04 [V]). A single target takes the whole element; multiple
+    targets destructure it array-wise (an `Array` positionally, a scalar into
+    the first target with the rest `nil` — massign semantics [V]). Only local
+    targets are modeled; a non-local target returns `none` → gate. -/
+def forBind (m : Machine) (targets : List (TargetKind × String))
+    (elem : Value) : Option Machine :=
+  if !targets.all (fun (k, _) => k == .lvar) then none
+  else match targets with
+    | [(_, name)] => some (m.setLocal name elem)
+    | _ =>
+      let vals := match elem with
+        | .ref o => match (m.heap.get o).payload with
+            | .arr xs => xs.toList
+            | _ => [elem]
+        | _ => [elem]
+      some ((targets.zipIdx).foldl
+        (fun m (t, i) => m.setLocal t.2 (vals.getD i .nil)) m)
+
+/-- Advance a `for` loop: bind the next element and run the body, or finish with
+    the collection value when exhausted (`for` evaluates to its collection [V]). -/
+def forStep (m : Machine) (targets : List (TargetKind × String)) (body : Expr)
+    (rest : List Value) (coll : Value) : StepResult :=
+  match rest with
+  | [] => .next (withCtl m (.value coll))
+  | elem :: tail =>
+    match forBind m targets elem with
+    | none => .unsupported "for with a non-local loop target"
+    | some m => .next (withKont m (.eval body) (.forBodyK targets body tail coll))
+
 /-- Deliver a value to the top continuation. -/
 def applyKont (m : Machine) (v : Value) : StepResult :=
   match m.kont with
@@ -797,6 +827,17 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       else .next (withCtl m (.value .nil))
     | .whileBodyK c body =>
       .next (withKont m (.eval c) (.whileCondK c body))
+    | .forStartK targets body =>
+      -- v is the collection: iterate an Array natively (the model gates
+      -- Array#each, so `for` cannot desugar to it). Others gate.
+      match v with
+      | .ref o =>
+        match (m.heap.get o).payload with
+        | .arr xs => forStep m targets body xs.toList v
+        | _ => .unsupported "for over a non-Array collection"
+      | _ => .unsupported "for over a non-Array collection"
+    | .forBodyK targets body rest coll =>
+      forStep m targets body rest coll
     | .recvK mname args pblk implicit =>
       startArgs m v implicit mname [] args pblk
     | .argsK recv implicit mname acc rest pblk =>
@@ -902,6 +943,14 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       match j with
       | .brkJ v => .next (withCtl m (.value v))
       | .nxtJ _ => .next (withKont m (.eval c) (.whileCondK c body))
+      | _ => .next (withCtl m (.jump j))
+    | .forStartK .. =>
+      -- a jump raised while evaluating the collection is not the loop's: pass on
+      .next (withCtl m (.jump j))
+    | .forBodyK targets body rest coll =>
+      match j with
+      | .brkJ v => .next (withCtl m (.value v))           -- break value is for's value [V]
+      | .nxtJ _ => forStep m targets body rest coll        -- next → next element
       | _ => .next (withCtl m (.jump j))
     | .frameK fid =>
       match j with
@@ -1071,6 +1120,8 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     -- sequences "after body → eval cond (whileCondK) → loop", and `unwind`
     -- already routes break/next through it [V].
     .next (withKont m (.eval body) (.whileBodyK cond body))
+  | .for' targets coll body =>
+    .next (withKont m (.eval coll) (.forStartK targets body))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
     let md : MethodDef := { params, body, owner := defmod }

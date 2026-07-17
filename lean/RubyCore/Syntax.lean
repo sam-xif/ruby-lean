@@ -54,6 +54,9 @@ inductive Expr where
   /-- `begin body end while cond` — body runs once, then loops while `cond`
       (M6/M7 `dowhile`). Distinct head so the run-once flag survives. -/
   | dowhile (body cond : Expr)
+  /-- `for tgts in coll; body; end` — `tgts` bind in the *enclosing* scope (no
+      block frame; the loop variable leaks) [V]. -/
+  | for' (targets : List (TargetKind × String)) (coll body : Expr)
   | def' (name : String) (params : List String) (body : Expr)
   | array (elems : List Expr)
   | hash (pairs : List (Expr × Expr))
@@ -227,6 +230,12 @@ partial def expr (j : Json) : M Expr := do
   | "if",    #[_, c, t, e] => return .if' (← expr c) (← expr t) (← opt e)
   | "while", #[_, c, b] => return .while' (← expr c) (← expr b)
   | "dowhile", #[_, body, cond] => return .dowhile (← expr body) (← expr cond)
+  | "for", #[_, tgts, coll, body] =>
+      let targets ← (← asArr tgts).toList.mapM fun t => do
+        match ← asArr t with
+        | #[k, n] => return (← targetKind (← asStr k), ← asStr n)
+        | _ => fail "for target" t
+      return .for' targets (← expr coll) (← expr body)
   | "def",   #[_, n, ps, body] =>
       return .def' (← asStr n) (← params ps) (← expr body)
   | "array", #[_, elems] => .array <$> exprs (← asArr elems)
@@ -272,7 +281,6 @@ partial def expr (j : Json) : M Expr := do
   | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
   | "defined",    _ => unsupported "defined?"
   | "redo",       _ => unsupported "redo"
-  | "for",        _ => unsupported "for loop"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 
 end

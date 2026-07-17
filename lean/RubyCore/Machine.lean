@@ -123,6 +123,13 @@ inductive Kont where
   | whileCondK (c body : Expr)
   /-- Value is the while body's result (discarded). Loop marker. -/
   | whileBodyK (c body : Expr)
+  /-- `for` collection evaluated: the in-flight value is the collection; begin
+      iterating it (artifact 04). -/
+  | forStartK (targets : List (TargetKind × String)) (body : Expr)
+  /-- `for` body finished for one element (value discarded). Loop marker for
+      brk/nxt; `rest` are the not-yet-visited elements, `coll` the loop value. -/
+  | forBodyK (targets : List (TargetKind × String)) (body : Expr)
+      (rest : List Value) (coll : Value)
   /-- Got the receiver; evaluate args next. `blk` rides along to the dispatch. -/
   | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : Bool)
   /-- Evaluating args left to right. -/
