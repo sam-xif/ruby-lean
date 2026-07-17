@@ -133,20 +133,32 @@ def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option Str
     | _ => none
   | _ => none
 
-/-- Split a desugared param list into `(pre, rest?, post, block?)`: `"*name"`
-    marks the rest param (post-rest required params are allowed: `a, *b, c`),
-    a trailing `"&name"` the block-capture param (C23; `"&"` anonymous). -/
-def parseParams (ps0 : List String) :
-    List String × Option String × List String × Option String :=
-  let (ps, blockP) := match ps0.reverse with
-    | b :: more =>
-      if b.startsWith "&" then (more.reverse, some (b.drop 1 |>.toString))
-      else (ps0, none)
-    | [] => (ps0, none)
-  match ps.findIdx? (·.startsWith "*") with
-  | none => (ps, none, [], blockP)
-  | some i =>
-    (ps.take i, some ((ps[i]!).drop 1 |>.toString), ps.drop (i + 1), blockP)
+/-- The legacy `(pre, rest?, post, block?)` binding shape for a param list that
+    uses only `req`/`rest`/`block` kinds. -/
+structure SimpleParams where
+  pre : List String
+  rest? : Option String
+  post : List String
+  block? : Option String
+
+/-- Phase-2 increment-1 lowering: reduce a `List Param` to `SimpleParams` when it
+    uses only the three already-modeled kinds (`req`/`rest`/`block`); any
+    `opt`/`key`/`kwrest`/`fwd`/`destr` present returns `none`, so the caller
+    gates Unsupported. Anonymous `*`/`&` lower to the name `""` (parity with the
+    old sigil convention: `"*".drop 1 = ""`). Later increments replace this with
+    native per-kind binding. -/
+def classifySimple (ps0 : List Param) : Option SimpleParams :=
+  let reqName : Param → Option String := fun p => match p with | .req n => some n | _ => none
+  let (ps, block?) := match ps0.reverse with
+    | (.block n) :: more => (more.reverse, some (n.getD ""))
+    | _ => (ps0, none)
+  if ps.any (fun p => match p with | .req _ | .rest _ => false | _ => true) then none
+  else match ps.findIdx? (fun p => match p with | .rest _ => true | _ => false) with
+    | none => some { pre := ps.filterMap reqName, rest? := none, post := [], block? }
+    | some i =>
+      let restName := match ps[i]! with | .rest n => n.getD "" | _ => ""
+      some { pre := (ps.take i).filterMap reqName, rest? := some restName,
+             post := (ps.drop (i + 1)).filterMap reqName, block? }
 
 /-- Spread a splat operand [V]: array splices, nil vanishes, anything else
     (without to_a) is itself. Hash's pair-conversion is gated for now. -/
@@ -196,7 +208,7 @@ def doReturn (m : Machine) (v : Value) : StepResult :=
 
 /-- Reify a literal block into a Proc, capturing the current (caller) frame
     (artifact 04 §1; sketch §1.1/§1.2). -/
-def reifyBlock (m : Machine) (params locals : List String) (body : Expr)
+def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body : Expr)
     (lam : Bool) : Value × Machine :=
   let cur := m.stack.headD 0
   -- `home` = the enclosing return-scope of the *definition* point: a method,
@@ -222,7 +234,7 @@ def coerceToProc (m : Machine) (v : Value) : Except String (Option Value × Mach
     -- `:m.to_proc` ≈ `->(x, *a){ x.m(*a) }` — lambda-like so it does NOT
     -- auto-splat an Array receiver (`[[1,2]].map(&:first)` → `[1,2].first`).
     let cl : Closure :=
-      { params := ["__recv", "*__rest"], locals := [],
+      { params := [.req "__recv", .rest (some "__rest")], locals := [],
         body := .send (some (.var .lvar "__recv")) s
                   [.splat (some (.var .lvar "__rest"))] none,
         captured := 0, home := 0, lam := true }
@@ -237,7 +249,12 @@ def coerceToProc (m : Machine) (v : Value) : Except String (Option Value × Mach
     returns from. -/
 def callClosure (m : Machine) (cl : Closure) (args : List Value)
     (brk : Option FrameId) : StepResult :=
-  let (pre, rest?, post, _bp) := parseParams cl.params
+  let sp? := classifySimple cl.params
+  if sp?.isNone then
+    .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
+  else
+  let sp := sp?.getD ⟨[], none, [], none⟩
+  let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
   let required := pre.length + post.length
   let args :=
     if !cl.lam && args.length == 1 && (required ≥ 2 || (rest?.isSome && required ≥ 1)) then
@@ -304,7 +321,12 @@ def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
     can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
 def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
     (args : List Value) (blk : Option Value) : StepResult :=
-  let (pre, rest?, post, blockP) := parseParams md.params
+  let sp? := classifySimple md.params
+  if sp?.isNone then
+    .unsupported "unmodeled param kind (optional/keyword/forwarding/destructuring)"
+  else
+  let sp := sp?.getD ⟨[], none, [], none⟩
+  let pre := sp.pre; let rest? := sp.rest?; let post := sp.post; let blockP := sp.block?
   let required := pre.length + post.length
   let arityOk := match rest? with
     | some _ => args.length ≥ required
@@ -585,7 +607,10 @@ def zsuperArgs (m : Machine) : Option (List Value) :=
   let f := m.frames.getD (methodFrameOf m) default
   match methodOn m.heap f.defmod f.meth with
   | some (_, md) =>
-    let (pre, rest?, post, _) := parseParams md.params
+    match classifySimple md.params with
+    | none => none
+    | some sp =>
+    let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
     let readL (n : String) : Value := (f.locals.find? (·.1 == n)).map (·.2) |>.getD .nil
     let preV := pre.map readL
     let postV := post.map readL

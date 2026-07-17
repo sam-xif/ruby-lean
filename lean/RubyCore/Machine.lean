@@ -63,7 +63,7 @@ deriving Inhabited
     block-pass is evaluated last (eval order) then coerced via `to_proc`. -/
 inductive PendingBlk where
   | none
-  | lit (params : List String) (locals : List String) (body : Expr)
+  | lit (params : List Param) (locals : List String) (body : Expr)
   | passExpr (e : Expr)
   | passAnon
 deriving Inhabited
@@ -107,7 +107,7 @@ inductive Kont where
   | newK (inst : Value)
   /-- `def RECV.name … end`: the in-flight value is the evaluated `RECV`; install
       the method on its eigenclass (artifact 01 §5, 02 §1). -/
-  | defsK (name : String) (params : List String) (body : Expr)
+  | defsK (name : String) (params : List Param) (body : Expr)
   /-- `class << OBJ … end`: the in-flight value is `OBJ`; run the body with
       `self`/cref = its eigenclass (artifact 01 §5). -/
   | sclassK (body : Expr)

@@ -49,7 +49,7 @@ def Value.truthy : Value → Bool
   | _ => true
 
 structure MethodDef where
-  params : List String
+  params : List Param
   body : Expr
   owner : ObjId
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
@@ -79,7 +79,7 @@ deriving Inhabited
     FrameId = Nat (defined in Machine); kept as Nat here to avoid an import
     cycle. -/
 structure Closure where
-  params : List String
+  params : List Param
   locals : List String
   body : Expr
   captured : Nat

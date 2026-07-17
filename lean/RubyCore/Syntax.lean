@@ -22,6 +22,7 @@ inductive TargetKind where
   | lvar | ivar | cvar | gvar | const
 deriving Repr, DecidableEq, Inhabited
 
+mutual
 inductive Expr where
   | int (n : Int)
   | flt (x : Float)
@@ -43,7 +44,7 @@ inductive Expr where
   | send (recv : Option Expr) (m : String) (args : List Expr) (blk : Option Expr)
   /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
       block-locals (fresh, shadowing outer names). -/
-  | block (params : List String) (locals : List String) (body : Expr)
+  | block (params : List Param) (locals : List String) (body : Expr)
   /-- `yield args` — invoke the enclosing method's block (artifact 04 §2). -/
   | yield' (args : List Expr)
   /-- Block-pass `&e` — only occurs as a send/super `blk` child. `none` is an
@@ -57,7 +58,7 @@ inductive Expr where
   /-- `for tgts in coll; body; end` — `tgts` bind in the *enclosing* scope (no
       block frame; the loop variable leaks) [V]. -/
   | for' (targets : List (TargetKind × String)) (coll body : Expr)
-  | def' (name : String) (params : List String) (body : Expr)
+  | def' (name : String) (params : List Param) (body : Expr)
   | array (elems : List Expr)
   | hash (pairs : List (Expr × Expr))
   /-- Only valid as a send-arg / array element. -/
@@ -75,7 +76,7 @@ inductive Expr where
   | scopedClass (base : Option Expr) (name : String) (body : Expr)
   | scopedModule (base : Option Expr) (name : String) (body : Expr)
   | sclass (obj : Expr) (body : Expr)
-  | defs (recv : Expr) (name : String) (params : List String) (body : Expr)
+  | defs (recv : Expr) (name : String) (params : List Param) (body : Expr)
   | begin' (body : Expr)
       (rescues : List (List Expr × Option (TargetKind × String) × Expr))
       (els : Option Expr) (ens : Option Expr)
@@ -86,7 +87,30 @@ inductive Expr where
   /-- `alias new old` — bind `new` to the current definition of `old`. -/
   | alias' (newName oldName : String)
   | seq (es : List Expr)
-deriving Repr, Inhabited
+
+/-- Method/block/lambda formal parameters (rubycore.rb `PARAM_HEADS`; mutual
+    with `Expr` because `popt`/`pkey` carry default expressions). -/
+inductive Param where
+  /-- `a` (required; includes post-rest required params). -/
+  | req (name : String)
+  /-- `a = E` (optional; default evaluated lazily in the callee frame). -/
+  | opt (name : String) (dflt : Expr)
+  /-- `*a` / `*` (rest; `none` = anonymous). -/
+  | rest (name : Option String)
+  /-- `k:` (required keyword, `dflt = none`) / `k: E` (default). -/
+  | key (name : String) (dflt : Option Expr)
+  /-- `**o` / `**` (keyword-rest; `none` = anonymous). -/
+  | kwrest (name : Option String)
+  /-- `&b` / `&` (block capture; `none` = anonymous). -/
+  | block (name : Option String)
+  /-- `...` (argument forwarding). -/
+  | fwd
+  /-- `(a, b)` (destructuring; nests, may hold a rest). -/
+  | destr (subs : List Param)
+end
+
+deriving instance Repr for Expr, Param
+deriving instance Inhabited for Expr, Param
 
 namespace Decode
 
@@ -139,32 +163,9 @@ def targetKind : String → M TargetKind
   | "const" => .ok .const
   | k => .error s!"bad target kind {k}"
 
-/-- v4 param nodes (rubycore.rb `PARAM_HEADS`). Phase 0 lowers the three
-    already-modeled kinds back to the legacy sigil-string convention the
-    stepper's `parseParams` consumes (`a` / `*a` / `*` / `&b` / `&`), and gates
-    the five genuinely-new binding kinds as Unsupported. Non-mutual with
-    `expr`: gated kinds don't recurse into their default sub-expressions. -/
-def param (j : Json) : M String := do
-  let a ← asArr j
-  let some hd := a[0]? | fail "empty param node" j
-  let head ← asStr hd
-  match head, a with
-  | "preq",   #[_, n] => asStr n
-  | "prest",  #[_, n] => match n with
-      | .null => .ok "*"
-      | _ => ("*" ++ ·) <$> asStr n
-  | "pblock", #[_, n] => match n with
-      | .null => .ok "&"
-      | _ => ("&" ++ ·) <$> asStr n
-  | "popt",    _ => unsupported "optional param (popt)"
-  | "pkey",    _ => unsupported "keyword param (pkey)"
-  | "pkwrest", _ => unsupported "keyword-rest param (pkwrest)"
-  | "pfwd",    _ => unsupported "argument-forwarding param (pfwd)"
-  | "pdestr",  _ => unsupported "destructuring param (pdestr)"
-  | _, _ => fail s!"unknown or malformed param head :{head}" j
-
-def params (j : Json) : M (List String) := do
-  (← asArr j).toList.mapM param
+/-- A JSON array of plain strings (block-locals `|…; x, y|`, `undef` names). -/
+def strList (j : Json) : M (List String) := do
+  (← asArr j).toList.mapM asStr
 
 mutual
 
@@ -172,6 +173,33 @@ partial def opt (j : Json) : M (Option Expr) :=
   match j with
   | .null => .ok none
   | _ => .some <$> expr j
+
+/-- Optional name slot: a JSON string, or `null` (anonymous `*`/`**`/`&`). -/
+partial def nameOpt (j : Json) : M (Option String) :=
+  match j with
+  | .null => .ok none
+  | _ => .some <$> asStr j
+
+/-- Decode one v4 param node (rubycore.rb `PARAM_HEADS`) into a `Param`.
+    Mutual with `expr` (`popt`/`pkey` carry default expressions) and with
+    `params` (`pdestr` nests). -/
+partial def param (j : Json) : M Param := do
+  let a ← asArr j
+  let some hd := a[0]? | fail "empty param node" j
+  let head ← asStr hd
+  match head, a with
+  | "preq",    #[_, n] => .req <$> asStr n
+  | "popt",    #[_, n, d] => return .opt (← asStr n) (← expr d)
+  | "prest",   #[_, n] => .rest <$> nameOpt n
+  | "pkey",    #[_, n, d] => return .key (← asStr n) (← opt d)
+  | "pkwrest", #[_, n] => .kwrest <$> nameOpt n
+  | "pblock",  #[_, n] => .block <$> nameOpt n
+  | "pfwd",    #[_] => return .fwd
+  | "pdestr",  #[_, subs] => .destr <$> params subs
+  | _, _ => fail s!"unknown or malformed param head :{head}" j
+
+partial def params (j : Json) : M (List Param) := do
+  (← asArr j).toList.mapM param
 
 partial def exprs (js : Array Json) : M (List Expr) :=
   js.toList.mapM expr
@@ -226,7 +254,7 @@ partial def expr (j : Json) : M Expr := do
   | "send",  #[_, recv, m, args, blk] =>
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
   | "block", #[_, ps, ls, body] =>
-      return .block (← params ps) (← params ls) (← expr body)
+      return .block (← params ps) (← strList ls) (← expr body)
   | "yield", #[_, args] => .yield' <$> exprs (← asArr args)
   | "blockpass", #[_, e] => .blockpass <$> opt e
   | "if",    #[_, c, t, e] => return .if' (← expr c) (← expr t) (← opt e)

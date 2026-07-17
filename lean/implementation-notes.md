@@ -395,3 +395,29 @@ coverage and desugaring targets, not the machine shape. Ratchet discipline:
   invocation is driven by `callClosure`; the `1.times{…redo}` / `m{…redo}` cases
   stay Unsupported) and `redo` crossing a method boundary. `frameK`/`blkFrameK`
   gained explicit `redoJ` arms.
+
+## Phase 2 — native param binding (L27–…)
+
+The v4 handoff's Phase 2: replace the Phase-0 sigil-string param lowering with a
+proper `Param` inductive and per-kind binding. Landed incrementally, each its own
+ratchet.
+
+- **L27 — `Param` inductive groundwork (no semantic change).** `def`/`block`/
+  `defs`/lambda params are now `List Param` (mutual with `Expr`, since `popt`/
+  `pkey` carry default expressions) instead of the sigil-string `List String`.
+  - **Decoder:** `param` decodes all eight `PARAM_HEADS` into `Param`
+    (`req`/`opt`/`rest`/`key`/`kwrest`/`block`/`fwd`/`destr`); no more decode-time
+    gating of the five new kinds. Block-**locals** stay plain strings (`strList`)
+    — only params became nodes. `Expr`/`Param` derive `Repr`/`Inhabited` via
+    `deriving instance` after the `mutual` block.
+  - **Threading:** `MethodDef.params`, `Closure.params`, `Kont.defsK.params`,
+    `PendingBlk.lit.params`, and `reifyBlock` all carry `List Param`; the two
+    synthetic builtin methods use `[.req "__recv", .rest (some "__rest")]`.
+  - **Binding unchanged for now:** `parseParams` (the sigil splitter) is replaced
+    by `classifySimple : List Param → Option SimpleParams`, which lowers a list
+    using only `req`/`rest`/`block` to the legacy `(pre, rest?, post, block?)`
+    shape and returns `none` if any `opt`/`key`/`kwrest`/`fwd`/`destr` is present.
+    `enterUserMethod`/`callClosure`/`zsuperArgs` gate Unsupported on `none`
+    (bind-time, vs. the old decode-time gate) — so **agreement is unchanged**;
+    this commit is a pure refactor that unlocks per-kind binding in L28+.
+    Anonymous `*`/`&` lower to name `""` (parity with `"*".drop 1`).

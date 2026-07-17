@@ -568,7 +568,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     | .sym s =>
       -- `:m.to_proc` ≈ `->(x, *a){ x.m(*a) }` — lambda-like (no auto-splat).
       let cl : Closure :=
-        { params := ["__recv", "*__rest"], locals := [],
+        { params := [.req "__recv", .rest (some "__rest")], locals := [],
           body := .send (some (.var .lvar "__recv")) s
                     [.splat (some (.var .lvar "__rest"))] none,
           captured := 0, home := 0, lam := true }
