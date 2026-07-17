@@ -566,3 +566,27 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   (`P::CM`, e.g. `Parameterizable`'s `base.extend(ClassMethods)`) needs
   lexical-cref constant lookup, which L0 approximates by `defmod` — so such a
   reference still misses. `extend` with an `extended` hook gates.
+
+- **L35 — class macros + reflection: `attr_*`, `method_defined?`, `send`,
+  `respond_to?`.** All via `tryReflect` (dispatchMiss miss path, user override
+  wins) except `send` (in `invoke`, needs re-dispatch):
+  - `attr_reader`/`attr_writer`/`attr_accessor` synthesize getter (`@x`) / setter
+    (`x=`, body `@x = __v`) `MethodDef`s on the class and return the defined names
+    as symbols (`[:x, :x=, …]`, Ruby-3 [V]).
+  - `method_defined?(:m)` — instance-method presence on the class (own/inherited
+    user method, or a CRuby builtin via `crubyShadow`); `respond_to?(:m)` — same
+    on a receiver (`lookup` or `crubyShadow`); both take a Symbol or String.
+  - `send`/`public_send`/`__send__` re-dispatch the first arg (Symbol/String) on
+    the receiver with the rest — handled in `invoke` (now `partial`, since it
+    self-calls; `StepResult` derives `Inhabited`), gated behind a `send` user
+    override check. The `public_send("#{k}=", v) if respond_to?("#{k}=")` pattern
+    (Parameterizable#set_parameters) now runs [V].
+
+  Ratchet caught three MX2 bugs, fixed before commit: (1) accessor bodies must use
+  the `@`-prefixed ivar name (`@x`, not `x`) — the desugar stores ivars with `@`;
+  (2) `respond_to?`/`method_defined?` must also count methods on user-reopened
+  standard mixins (`Kernel` universally, `Enumerable`/`Comparable` per class —
+  `mixinDefines`/`stdMixins`, `Kernel` added to `stdMixins`); (3) `respond_to?`
+  gates when the method isn't found and the receiver has a user
+  `respond_to_missing?` (which can run arbitrary code) rather than guessing
+  `false`.

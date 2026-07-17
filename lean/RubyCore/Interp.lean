@@ -23,6 +23,7 @@ inductive StepResult where
   | uncaught (exc : Value) (m : Machine)
   | unsupported (reason : String)
   | stuck (msg : String)
+deriving Inhabited
 
 namespace Interp
 
@@ -737,13 +738,24 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
     monkey-patched onto `Enumerable` and called on an `Array`). Superseded once
     `include`/MRO lands (MX1). -/
 def stdMixins (cls : ObjId) : List String :=
-  if cls == Boot.arrayId || cls == Boot.hashId then ["Enumerable"]
-  else if cls == Boot.integerId || cls == Boot.floatId || cls == Boot.stringId then ["Comparable"]
-  else []
+  -- `Kernel` is a universal ancestor (every Object includes it); the rest are
+  -- per core class. Only matters when the user has reopened one of these.
+  "Kernel" :: (
+    if cls == Boot.arrayId || cls == Boot.hashId then ["Enumerable"]
+    else if cls == Boot.integerId || cls == Boot.floatId || cls == Boot.stringId then ["Comparable"]
+    else [])
 
-/-- Would CRuby resolve `mname` on `recv` via a standard mixin (Enumerable/
-    Comparable) the model doesn't model in ancestors? Only fires when such a
-    module actually exists (user-defined/reopened) and defines `mname`. -/
+/-- Does a standard mixin of `cls` (user-reopened `Kernel`/`Enumerable`/…) define
+    `name`? Used both to gate a dispatch miss and to answer `respond_to?`/
+    `method_defined?` for methods the model can't reach via its ancestor chain. -/
+def mixinDefines (m : Machine) (cls : ObjId) (name : String) : Bool :=
+  (stdMixins cls).any fun modName =>
+    match constLookup m.heap modName with
+    | some (.ref mo) => (methodOn m.heap mo name).isSome
+    | _ => false
+
+/-- Would CRuby resolve `mname` on `recv` via a standard mixin the model doesn't
+    put in the ancestor chain? Returns the module name for the gate message. -/
 def mixinShadow (m : Machine) (recv : Value) (mname : String) : Option String :=
   (stdMixins (classOf m.heap recv)).firstM fun modName =>
     match constLookup m.heap modName with
@@ -792,6 +804,83 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
     | none => none
   | _, _, _ => none
 
+/-- A method-name argument: a Symbol or a String (`send`/`respond_to?`/… accept
+    both). -/
+def symOrStr (m : Machine) (v : Value) : Option String :=
+  match v with
+  | .sym s => some s
+  | .ref o => match (m.heap.get o).payload with | .str s => some s | _ => none
+  | _ => none
+
+/-- `attr_reader`/`attr_writer`/`attr_accessor` install `@x` getter / `x=` setter
+    methods (bodies synthesized as ordinary RubyCore) on `cls`, returning the
+    defined method names as symbols (Ruby-3 [V]). -/
+def defineAttr (m : Machine) (cls : ObjId) (mname : String)
+    (args : List Value) : Machine × List Value :=
+  args.foldl (fun (m, names) arg =>
+    match arg with
+    | .sym s =>
+      -- accessor methods are named `s`/`s=`, but the backing ivar is `@s` [V].
+      let iv := "@" ++ s
+      let getter : MethodDef := { params := [], body := .var .ivar iv, owner := cls }
+      let setter : MethodDef :=
+        { params := [.req "__v"], body := .vasgn .ivar iv (.var .lvar "__v"), owner := cls }
+      let m := if mname != "attr_writer" then { m with heap := defineMethod m.heap cls s getter } else m
+      let m := if mname != "attr_reader" then { m with heap := defineMethod m.heap cls (s ++ "=") setter } else m
+      let names := names
+        ++ (if mname != "attr_writer" then [Value.sym s] else [])
+        ++ (if mname != "attr_reader" then [Value.sym (s ++ "=")] else [])
+      (m, names)
+    | _ => (m, names)) (m, [])
+
+/-- Class macros + reflection (artifact 02): `attr_*` (define accessors),
+    `method_defined?` (instance-method presence on a class), `respond_to?`
+    (method presence on a receiver — user or modeled/CRuby builtin). Only reached
+    on a lookup miss, so a user override wins. -/
+def tryReflect (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) : Option StepResult :=
+  match mname with
+  | "attr_reader" | "attr_writer" | "attr_accessor" =>
+    match recv with
+    | .ref o => match m.heap.classPayload? o with
+      | some _ =>
+        let (m, names) := defineAttr m o mname args
+        let (arr, m) := Builtins.allocArr m names.toArray
+        some (.next (withCtl m (.value arr)))
+      | none => none
+    | _ => none
+  | "method_defined?" =>
+    match recv, args with
+    | .ref o, [nameArg] =>
+      match symOrStr m nameArg, m.heap.classPayload? o with
+      | some name, some _ =>
+        let found := (match methodOn m.heap o name with | some (_, md) => !md.undefined | none => false)
+          || (crubyShadow m.heap (ancestors m.heap o) name).isSome
+          || mixinDefines m o name
+        some (.next (withCtl m (.value (.bool found))))
+      | _, _ => none
+    | _, _ => none
+  | "respond_to?" =>
+    match args with
+    | nameArg :: _ =>   -- ignore the optional include_private flag
+      match symOrStr m nameArg with
+      | some name =>
+        let found := (match lookup m.heap recv name with | some (_, md) => !md.undefined | none => false)
+          || (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
+          || mixinDefines m (classOf m.heap recv) name
+        if found then some (.next (withCtl m (.value (.bool true))))
+        else
+          -- not a real method; CRuby then consults a user `respond_to_missing?`,
+          -- which can run arbitrary code — gate rather than guess `false`.
+          match methodOn m.heap (classOf m.heap recv) "respond_to_missing?" with
+          | some (_, md) =>
+            if md.builtin.isNone then some (.unsupported "respond_to? with user respond_to_missing?")
+            else some (.next (withCtl m (.value (.bool false))))
+          | none => some (.next (withCtl m (.value (.bool false))))
+      | none => none
+    | _ => none
+  | _ => none
+
 /-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact
     `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
@@ -802,6 +891,9 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
   | some sr => sr
   | none =>
   match tryMixin m recv mname args with
+  | some sr => sr
+  | none =>
+  match tryReflect m recv mname args with
   | some sr => sr
   | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
@@ -824,8 +916,19 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
-def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
+  -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
+  -- `recv` with the rest. Only when unshadowed by a user `send` (rare) [V].
+  if (mname == "send" || mname == "public_send" || mname == "__send__")
+      && (lookup m.heap recv mname).isNone then
+    match args with
+    | nameArg :: rest =>
+      match symOrStr m nameArg with
+      | some m2 => invoke m recv false m2 rest blk kw
+      | none => invokeDispatch m recv implicit mname args blk kw
+    | [] => invokeDispatch m recv implicit mname args blk kw
+  else
   match recv with
   | .ref o =>
     match (m.heap.get o).payload with
