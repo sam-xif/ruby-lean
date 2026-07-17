@@ -40,6 +40,31 @@ SAFE_UNARY_SYMS = ("to_s", "inspect", "itself", "class", "freeze")
 
 MAX_EXPR_DEPTH = 3
 
+# disjoint pools for varied top-level-method params (see Sig / _method_param_spec)
+OPT_POOL = ("o1", "o2")  # optional positional param names
+REST_POOL = ("r1",)  # *rest param name
+KEY_POOL = ("k1", "k2")  # keyword param names
+KWREST_POOL = ("o9",)  # **kwrest param name
+KW_CALL_POOL = ("k1", "k2", "k3")  # arbitrary keyword names for **kwrest / ... call sites
+DESTR_POOL = ("da", "db")  # destructuring block sub-param names
+
+
+@dataclass(frozen=True)
+class Sig:
+    """A callable's parameter shape, used to generate a *compatible* call. Only
+    top-level methods carry a non-trivial Sig (registered in `Env.sigs`); instance/
+    class/module methods stay plain-required (`reqpos` only, no Sig → plain call).
+    Required keywords (`req_keys`) are safe because every call site consults
+    `Env.sig_for` — the same enriched generator runs everywhere `env` reaches."""
+
+    reqpos: int = 0
+    nopt: int = 0  # optional positional params (each rendered with a default)
+    rest: bool = False  # has `*rest`
+    req_keys: tuple = ()  # required keyword names (`k:`)
+    opt_keys: tuple = ()  # optional keyword names (`k: default`)
+    kwrest: bool = False  # has `**kwrest`
+    fwd: bool = False  # `...` — accepts and forwards arbitrary args (to a **-sink)
+
 
 @dataclass(frozen=True)
 class ClassInfo:
@@ -90,6 +115,16 @@ class Env:
     can_yield: "int | None" = None
     in_block: bool = False  # inside a block body → `next`/`break` are legal
     in_method: bool = False  # inside a method body → `return` is legal
+    # richer signatures for names in `methods` (top-level methods only); a name
+    # absent here is a plain-required method. Threaded everywhere `env` reaches so
+    # every call site (incl. method bodies) generates a compatible call.
+    sigs: tuple[tuple[str, Sig], ...] = ()
+
+    def sig_for(self, name: str) -> "Sig | None":
+        return next((s for (n, s) in self.sigs if n == name), None)
+
+    def with_sig(self, name: str, sig: Sig) -> "Env":
+        return replace(self, sigs=self.sigs + ((name, sig),))
 
     def with_local(self, name: str) -> "Env":
         return self if name in self.locals else replace(self, locals=self.locals + (name,))
@@ -170,6 +205,76 @@ def _literal(draw) -> A.Node:
     if kind == "bool":
         return A.BoolLit(draw(st.booleans()))
     return A.NilLit()
+
+
+@st.composite
+def _gen_call(draw, env: "Env", sig: Sig, depth: int):
+    """Positional args + kwargs compatible with `sig` (never raises ArgumentError).
+    Optional positionals are filled as a *prefix* (Ruby has no positional skipping);
+    required keywords are always supplied; `**kwrest`/`...` may take extra names."""
+    d = max(depth - 1, 0)
+    if sig.fwd:
+        npos = draw(st.integers(0, 3))
+        req_keys, opt_keys, kwrest = (), (), True
+    else:
+        npos = sig.reqpos + draw(st.integers(0, sig.nopt))
+        if sig.rest:
+            npos += draw(st.integers(0, 2))
+        req_keys, opt_keys, kwrest = sig.req_keys, sig.opt_keys, sig.kwrest
+    args = tuple(draw(_expr(env, d)) for _ in range(npos))
+    keys = list(req_keys)
+    for k in opt_keys:
+        if draw(st.booleans()):
+            keys.append(k)
+    if kwrest:
+        declared = set(req_keys) | set(opt_keys)
+        for kk in KW_CALL_POOL:
+            if kk not in keys and kk not in declared and draw(st.booleans()):
+                keys.append(kk)
+    kwargs = tuple((k, draw(_expr(env, d))) for k in keys)
+    return args, kwargs
+
+
+@st.composite
+def _method_param_spec(draw, depth: int):
+    """A varied top-level-method param list → (params, Sig, bound_names). Order is
+    Ruby-legal: required, optional (with defaults), `*rest`, keywords, `**kwrest`."""
+    params: list = []
+    bound: list[str] = []
+    reqpos = draw(st.integers(0, len(PARAM_POOL)))
+    for nm in PARAM_POOL[:reqpos]:
+        params.append(nm)
+        bound.append(nm)
+    nopt = draw(st.integers(0, len(OPT_POOL)))
+    for nm in OPT_POOL[:nopt]:
+        # default reads an earlier param (exercises lazy left-to-right eval in the
+        # callee frame — the popt obligation) or a literal
+        if bound and draw(st.booleans()):
+            default = A.LocalRead(draw(st.sampled_from(tuple(bound))))
+        else:
+            default = draw(_literal())
+        params.append(A.POpt(nm, default))
+        bound.append(nm)
+    rest = draw(st.booleans())
+    if rest:
+        params.append(A.PRest(REST_POOL[0]))
+        bound.append(REST_POOL[0])
+    req_keys: list[str] = []
+    opt_keys: list[str] = []
+    for nm in KEY_POOL[: draw(st.integers(0, len(KEY_POOL)))]:
+        if draw(st.booleans()):
+            params.append(A.PKey(nm, None))
+            req_keys.append(nm)
+        else:
+            params.append(A.PKey(nm, draw(_literal())))
+            opt_keys.append(nm)
+        bound.append(nm)
+    kwrest = draw(st.booleans())
+    if kwrest:
+        params.append(A.PKwRest(KWREST_POOL[0]))
+        bound.append(KWREST_POOL[0])
+    sig = Sig(reqpos, nopt, rest, tuple(req_keys), tuple(opt_keys), kwrest)
+    return tuple(params), sig, tuple(bound)
 
 
 @st.composite
@@ -254,6 +359,10 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
         return A.IvarRead(draw(st.sampled_from(env.ivars)))
     if kind == "call":
         name, arity = draw(st.sampled_from(env.methods))
+        sig = env.sig_for(name)
+        if sig is not None:
+            args, kwargs = draw(_gen_call(env, sig, depth))
+            return A.Call(name, args, kwargs)
         return A.Call(name, tuple(draw(_expr(env, depth - 1)) for _ in range(arity)))
     if kind == "new":
         ci = draw(st.sampled_from(env.classes))
@@ -269,10 +378,17 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
         op = draw(st.sampled_from(["+", "+", "-", "*", "%", "==", "<", ">", "<=", ">="]))
         return A.BinOp(op, sub(), sub())
     if kind == "and":
-        return A.And(sub(), sub())
+        # conditional context propagates through &&/||: a range under a condition's
+        # &&/|| is still a flip-flop, so forward `no_range_head` to the operands
+        return A.And(
+            draw(_expr(env, depth - 1, no_range_head)), draw(_expr(env, depth - 1, no_range_head))
+        )
     if kind == "or":
-        return A.Or(sub(), sub())
+        return A.Or(
+            draw(_expr(env, depth - 1, no_range_head)), draw(_expr(env, depth - 1, no_range_head))
+        )
     if kind == "not":
+        # `!range` is a flip-flop regardless of surrounding context
         return A.Not(draw(_expr(env, depth - 1, no_range_head=True)))
     if kind == "interp":
         n = draw(st.integers(1, 2))
@@ -314,11 +430,25 @@ def _lambda(draw, env: Env, depth: int) -> A.Lambda:
     return A.Lambda(kind, params, body + (final,))
 
 
+def _bound_of(params: tuple) -> tuple:
+    """Flatten a block/lambda param list to the local names it binds (a `PDestr`
+    contributes its sub-names; a named `*rest` contributes its name)."""
+    out: list[str] = []
+    for p in params:
+        if isinstance(p, str):
+            out.append(p)
+        elif isinstance(p, A.PDestr):
+            out.extend(_bound_of(p.subparams))
+        elif isinstance(p, A.PRest) and p.name:
+            out.append(p.name)
+    return tuple(out)
+
+
 @st.composite
 def _block_body(draw, env: Env, depth: int, params: tuple) -> A.Block:
     # A literal block: its params bind as locals; `next`/`break` are legal here,
     # and `return` too when the block is lexically inside a method.
-    body_env = replace(env, locals=env.locals + params, in_block=True, can_yield=None)
+    body_env = replace(env, locals=env.locals + _bound_of(params), in_block=True, can_yield=None)
     body, _ = draw(_stmt_seq(body_env, max(depth - 1, 0), 1, 2))
     final = draw(_expr(body_env, 1))
     return A.Block(params, body + (final,))
@@ -328,7 +458,7 @@ def _block_body(draw, env: Env, depth: int, params: tuple) -> A.Block:
 def _block_arg(draw, env: Env, depth: int, recv_kind: str) -> A.Node:
     """Draw the trailing block: a literal block, `&proc`, or a safe `&:sym`."""
     lenient_procs = tuple(p for p in env.procs if not p[2])
-    choices = ["literal", "literal", "sym"]
+    choices = ["literal", "literal", "sym", "destr"]
     if lenient_procs:
         choices += ["proc"]
     choice = draw(st.sampled_from(choices))
@@ -337,13 +467,17 @@ def _block_arg(draw, env: Env, depth: int, recv_kind: str) -> A.Node:
         return A.BlockPass(A.LocalRead(name))
     if choice == "sym":
         return A.BlockPass(A.SymLit(draw(st.sampled_from(SAFE_UNARY_SYMS))))
+    if choice == "destr":
+        # a single destructuring param `|(da, db)|` — lenient over scalars (db→nil)
+        # and real over arrays of arrays (the `pairs` receiver in `_block_call`)
+        return draw(_block_body(env, depth, (A.PDestr((DESTR_POOL[0], DESTR_POOL[1])),)))
     bparams = BLOCK_PARAM_POOL[: draw(st.integers(0, 2 if recv_kind == "each_index" else 1))]
     return draw(_block_body(env, depth, bparams))
 
 
 @st.composite
 def _block_call(draw, env: Env, depth: int) -> A.BlockCall:
-    forms = ["array", "range"]
+    forms = ["array", "range", "pairs"]
     if env.yielders:
         forms += ["yielder", "yielder"]
     form = draw(st.sampled_from(forms))
@@ -351,6 +485,16 @@ def _block_call(draw, env: Env, depth: int) -> A.BlockCall:
         name, arg_arity, _ = draw(st.sampled_from(env.yielders))
         args = tuple(draw(_expr(env, 1)) for _ in range(arg_arity))
         return A.BlockCall(None, name, args, draw(_block_arg(env, depth, "yielder")))
+    if form == "pairs":
+        # an array of 2-element arrays → a destructuring block param `|(da, db)|`
+        # binds each pair's elements (real array destructuring, not the lenient path)
+        n = draw(st.integers(0, 3))
+        recv = A.ArrayLit(
+            tuple(A.ArrayLit((draw(_literal()), draw(_literal()))) for _ in range(n))
+        )
+        method = draw(st.sampled_from(["each", "map"]))
+        destr = A.PDestr((DESTR_POOL[0], DESTR_POOL[1]))
+        return A.BlockCall(recv, method, (), draw(_block_body(env, depth, (destr,))))
     if form == "range":
         lo = draw(st.integers(0, 3))
         recv = A.RangeLit(A.IntLit(lo), A.IntLit(lo + draw(st.integers(0, 3))), draw(st.booleans()))
@@ -507,7 +651,7 @@ def _merge(base: tuple, add: tuple) -> tuple:
 
 
 @st.composite
-def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super, is_def=True):
+def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super, is_def=True, sigs=()):
     """A `MethodDef` whose body may self-send `callable_methods`, read `ivars`,
     instantiate `classes`, and (when `can_super` is set) call `super`.
 
@@ -523,6 +667,7 @@ def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, c
         modules=modules,
         in_method=is_def,
         can_super=can_super,
+        sigs=sigs,
     )
     body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
     final = draw(_expr(body_env, 2))
@@ -539,7 +684,8 @@ def _module_def(draw, env: Env, name: str) -> tuple[A.ModuleDef, Env]:
         # earlier module methods (bare self-sends once mixed in) + prior classes
         m = draw(
             _method_body(
-                MMETHOD_POOL[k], arity, env.methods + tuple(minfos), (), env.classes, (), None
+                MMETHOD_POOL[k], arity, env.methods + tuple(minfos), (), env.classes, (), None,
+                sigs=env.sigs,
             )
         )
         methods.append(m)
@@ -577,7 +723,7 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
     for k in range(draw(st.integers(0, len(SMETHOD_POOL)))):
         arity = draw(st.integers(0, len(PARAM_POOL)))
         self_methods.append(
-            draw(_method_body(SMETHOD_POOL[k], arity, env.methods, (), env.classes, (), None))
+            draw(_method_body(SMETHOD_POOL[k], arity, env.methods, (), env.classes, (), None, sigs=env.sigs))
         )
         sinfos.append((SMETHOD_POOL[k], arity))
 
@@ -596,12 +742,12 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
     for k in range(draw(st.integers(0, len(DMETHOD_POOL)))):  # define_method → instance method
         arity = draw(st.integers(0, len(PARAM_POOL)))
         callable_methods = tuple(e for e in _merge(env.methods, effective) if e[0] != DMETHOD_POOL[k])
-        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None, is_def=False))
+        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None, is_def=False, sigs=env.sigs))
         decls.append(A.DefineMethod(DMETHOD_POOL[k], m.params, m.body, False))
         effective = _merge(effective, ((DMETHOD_POOL[k], arity),))
     for k in range(draw(st.integers(0, len(DSM_POOL)))):  # define_singleton_method → class method
         arity = draw(st.integers(0, len(PARAM_POOL)))
-        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None, is_def=False))
+        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None, is_def=False, sigs=env.sigs))
         decls.append(A.DefineMethod(DSM_POOL[k], m.params, m.body, True))
         sinfos.append((DSM_POOL[k], arity))
 
@@ -623,7 +769,8 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         methods.append(
             draw(
                 _method_body(
-                    mname, arity, callable_methods, eff_ivars, env.classes, env.modules, can_super
+                    mname, arity, callable_methods, eff_ivars, env.classes, env.modules, can_super,
+                    sigs=env.sigs,
                 )
             )
         )
@@ -645,7 +792,8 @@ def _reopen(draw, env: Env, ci: ClassInfo) -> tuple[A.ClassDef, Env]:
     callable_methods = tuple(e for e in _merge(env.methods, ci.imethods) if e[0] != ROPEN_POOL[k])
     m = draw(
         _method_body(
-            ROPEN_POOL[k], arity, callable_methods, IVAR_POOL[: ci.ctor_arity], env.classes, (), None
+            ROPEN_POOL[k], arity, callable_methods, IVAR_POOL[: ci.ctor_arity], env.classes, (), None,
+            sigs=env.sigs,
         )
     )
     node = A.ClassDef(ci.name, None, (), (), (), (m,))
@@ -660,14 +808,38 @@ def programs(draw) -> A.Program:
     n_defs = draw(st.integers(0, 3))
     for k in range(n_defs):
         name = METHOD_POOL[k]
+        # method flavors: `plain`, `varied` (optional/keyword/rest/kwrest params),
+        # `fwd` (`def m(...); sink(...); end` — needs a prior `*rest`+`**kwrest`
+        # sink to absorb anything), or `yielder` (yields, invoked only with a block).
+        sink_names = [n for (n, s) in env.sigs if s.rest and s.kwrest and not s.fwd]
+        flavor_pool = ["plain", "varied", "varied", "yielder", "yielder"]
+        if sink_names:
+            flavor_pool += ["fwd"]
+        flavor = draw(st.sampled_from(flavor_pool))
+
+        if flavor == "fwd":
+            sink = draw(st.sampled_from(sink_names))
+            stmts.append(A.MethodDef(name, (A.PFwd(),), (A.Call(sink, (A.FwdArg(),)),)))
+            env = env.with_method(name, 0).with_sig(name, Sig(fwd=True))
+            continue
+
+        if flavor == "varied":
+            params, sig, bound = draw(_method_param_spec(2))
+            body_env = Env(locals=bound, methods=env.methods, in_method=True, sigs=env.sigs)
+            body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
+            final = draw(_expr(body_env, 2))
+            stmts.append(A.MethodDef(name, params, body + (final,)))
+            env = env.with_method(name, sig.reqpos).with_sig(name, sig)
+            continue
+
         arity = draw(st.integers(0, len(PARAM_POOL)))
         params = PARAM_POOL[:arity]
-        # some methods `yield` — they go in `env.yielders` (not `methods`), so
-        # they are only ever invoked with a block (via `_block_call`)
-        yields = arity >= 1 and draw(st.booleans())
-        # method bodies see their params as locals and may call earlier methods
+        # yielders go in `env.yielders` (not `methods`), so they are only ever
+        # invoked with a block (via `_block_call`) — never a blockless LocalJumpError
+        yields = flavor == "yielder" and arity >= 1
         body_env = Env(
-            locals=params, methods=env.methods, in_method=True, can_yield=1 if yields else None
+            locals=params, methods=env.methods, in_method=True,
+            can_yield=1 if yields else None, sigs=env.sigs,
         )
         body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
         # make the return value depend on the params when there are any

@@ -267,3 +267,38 @@ are its own unmodeled levers — `define_method`/`include`/`Range`/`attr_*`/`tim
 not desugar defects). 0 disagree throughout. These were fuzzer-fidelity bugs (the
 flip-flops meant the generator was silently testing a *different* construct than
 intended), not desugar/lean limitations.
+
+## N16 — Param variety: optional/keyword/rest/kwrest/`...`-forwarding/destructuring (Lean Phase-2 coverage)
+
+The audit's headline gap: the generator emitted only fixed positional required params,
+so **none** of Lean's Phase-2 native param binding (optional defaults, keyword params,
+`...` forwarding, destructuring) got any generative differential testing. Added:
+
+- **Structured `Param` AST** (`ast.py`): `POpt`/`PRest`/`PKey`/`PKwRest`/`PBlock`/`PFwd`/
+  `PDestr`, mirroring the RubyCore `PARAM_HEADS`. A `Param` is deliberately **not** a
+  `Node`, so the tier-1.5 probe walk skips params (and any default expr they carry). A
+  param-list element is `str | Param` (plain required stays a bare string — back-compat).
+  `Call`/`MethodCall` gained a `kwargs: tuple[(name, Node)]` slot; `FwdArg` renders `...`.
+- **Sig-aware call generation** (`strategies.py`): a `Sig` (reqpos/nopt/rest/req_keys/
+  opt_keys/kwrest/fwd) describes a callable's shape; `_gen_call` produces a *compatible*
+  call that never raises ArgumentError (optionals as a prefix, all required keywords
+  supplied, `**kwrest`/`...` may take extra names). Sigs live in a **parallel `Env.sigs`
+  registry** keyed by name — `env.methods` still stores `(name, reqpos)` as plain ints, so
+  no existing merge/ClassInfo path changed type. Every call site consults `env.sig_for`,
+  and `sigs` is threaded into `_method_body`, so method bodies also call varied methods
+  compatibly. **Scope: top-level methods only** (`programs()` `varied`/`fwd` flavors);
+  instance/class/module methods stay plain-required (their call paths are untouched).
+- **popt defaults** read an earlier param when possible — exercises the lazy
+  left-to-right callee-frame default-eval obligation (the desugar's seed-31 property).
+- **`...` forwarding**: a `fwd` method forwards to a prior `*rest`+`**kwrest` **sink**
+  (which absorbs any positional+keyword mix cleanly — no positional-hash degradation
+  ambiguity), so forwarding is always well-typed.
+- **`pdestr`**: a destructuring block param `|(da, db)|` via a new `destr` block-arg
+  choice (lenient over scalars) + a `pairs` receiver (`[[..],[..]].each/map`) for real
+  array destructuring. `_bound_of` flattens a param list to its bound locals.
+
+Effect (`--tier 1`): vs **desugar** 300/300 across seeds 7/123/456/999 (0 unsup, 0
+disagree); vs **lean** seed 7 197→**222**/500 agree (0 disagree). All param forms present
+in a 400-sample scan (optional 118, rest 110, kwarg-at-call 106, keyword 83, kwrest 73,
+destructuring ~98, `...` 4). Smoke tests `test_varied_params`/`test_fwd_forwarding`/
+`test_destructuring_block` pin the semantics.

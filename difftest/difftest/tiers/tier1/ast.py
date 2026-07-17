@@ -126,17 +126,71 @@ class TimesBlock(Node):
     body: tuple
 
 
+# ---- parameters -------------------------------------------------------------
+# A `def`/block/lambda param list is a tuple whose elements are either a plain
+# `str` (a required positional, back-compat) or one of these `Param` nodes. A
+# `Param` is deliberately NOT a `Node`: the tier-1.5 probe walk only wraps `Node`
+# leaves, so params (and any default expression they carry) are left untouched.
+
+
+class Param:
+    pass
+
+
+@dataclass(frozen=True)
+class POpt(Param):
+    name: str
+    default: Node  # evaluated lazily in the callee frame when the arg is omitted
+
+
+@dataclass(frozen=True)
+class PRest(Param):
+    name: str | None  # `*a` / `*` (anonymous)
+
+
+@dataclass(frozen=True)
+class PKey(Param):
+    name: str
+    default: Node | None  # `k:` (required, None) / `k: E`
+
+
+@dataclass(frozen=True)
+class PKwRest(Param):
+    name: str | None  # `**o` / `**` (anonymous)
+
+
+@dataclass(frozen=True)
+class PBlock(Param):
+    name: str  # `&b`
+
+
+@dataclass(frozen=True)
+class PFwd(Param):
+    """`...` — forwards all positional + keyword + block args to a callee."""
+
+
+@dataclass(frozen=True)
+class PDestr(Param):
+    subparams: tuple  # (str | Param, ...) — `(a, b)` destructures one array arg
+
+
 @dataclass(frozen=True)
 class MethodDef(Node):
     name: str
-    params: tuple  # (str, ...)
+    params: tuple  # (str | Param, ...)
     body: tuple  # statements; last is the return value
+
+
+@dataclass(frozen=True)
+class FwdArg(Node):
+    """`...` in argument position — forwards the enclosing `def(...)`'s args."""
 
 
 @dataclass(frozen=True)
 class Call(Node):
     name: str
     args: tuple
+    kwargs: tuple = ()  # ((keyword_name, value Node), ...)
 
 
 @dataclass(frozen=True)
@@ -190,6 +244,7 @@ class MethodCall(Node):
     recv: Node
     name: str
     args: tuple
+    kwargs: tuple = ()  # ((keyword_name, value Node), ...)
 
 
 @dataclass(frozen=True)

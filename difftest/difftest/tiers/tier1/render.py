@@ -12,6 +12,40 @@ from . import ast as A
 _INDENT = "  "
 
 
+def _param(p) -> str:
+    """Render one param, which is a plain `str` (required positional) or a `Param`."""
+    if isinstance(p, str):
+        return p
+    match p:
+        case A.POpt(name, default):
+            return f"{name} = {expr(default)}"
+        case A.PRest(name):
+            return "*" + name if name else "*"
+        case A.PKey(name, default):
+            return f"{name}:" if default is None else f"{name}: {expr(default)}"
+        case A.PKwRest(name):
+            return "**" + name if name else "**"
+        case A.PBlock(name):
+            return "&" + name
+        case A.PFwd():
+            return "..."
+        case A.PDestr(subparams):
+            return "(" + ", ".join(_param(s) for s in subparams) + ")"
+        case _:
+            raise ValueError(f"bad param: {p!r}")
+
+
+def render_params(params: tuple) -> str:
+    """The `(...)` header for a param list, or "" when empty."""
+    return f"({', '.join(_param(p) for p in params)})" if params else ""
+
+
+def _call_args(args: tuple, kwargs: tuple = ()) -> str:
+    """`a, b, k: v` — positional args then keyword args, comma-joined."""
+    parts = [expr(a) for a in args] + [f"{k}: {expr(v)}" for k, v in kwargs]
+    return ", ".join(parts)
+
+
 def render_program(prog: A.Program) -> str:
     return "\n".join(_stmts(prog.stmts, 0)) + "\n"
 
@@ -42,7 +76,7 @@ def _stmt(node, depth: int) -> list[str]:
         case A.TimesBlock(count, var, body):
             return [pad + f"{count}.times do |{var}|"] + _stmts(body, depth + 1) + [pad + "end"]
         case A.MethodDef(name, params, body):
-            header = pad + f"def {name}" + (f"({', '.join(params)})" if params else "")
+            header = pad + f"def {name}" + render_params(params)
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
         case A.ClassDef():
             header = pad + f"class {node.name}" + (f" < {node.superclass}" if node.superclass else "")
@@ -102,7 +136,7 @@ def _stmt(node, depth: int) -> list[str]:
             return [pad + f"attr_{kind} " + ", ".join(f":{n}" for n in names)]
         case A.DefineMethod(name, params, body, singleton):
             fn = "define_singleton_method" if singleton else "define_method"
-            header = pad + f"{fn}(:{name}) do" + (f" |{', '.join(params)}|" if params else "")
+            header = pad + f"{fn}(:{name}) do" + (f" |{', '.join(_param(p) for p in params)}|" if params else "")
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
         case _:
             return [pad + expr(node)]
@@ -110,9 +144,7 @@ def _stmt(node, depth: int) -> list[str]:
 
 def _self_method(node, depth: int) -> list[str]:
     pad = _INDENT * depth
-    header = pad + f"def self.{node.name}" + (
-        f"({', '.join(node.params)})" if node.params else ""
-    )
+    header = pad + f"def self.{node.name}" + render_params(node.params)
     return [header] + _stmts(node.body, depth + 1) + [pad + "end"]
 
 
@@ -126,7 +158,7 @@ def _block_call(node, depth: int) -> list[str]:
         case A.Block(params, body):
             header = pad + f"{recv}{node.method}(" + ", ".join(expr(a) for a in node.args) + ") do"
             if params:
-                header += f" |{', '.join(params)}|"
+                header += f" |{', '.join(_param(p) for p in params)}|"
             return [header] + _stmts(body, depth + 1) + [pad + "end"]
         case _:
             raise ValueError(f"bad block: {node.block!r}")
@@ -172,8 +204,10 @@ def expr(node) -> str:
             return f"{expr(recv)}[{expr(index)}]"
         case A.HashLit(pairs):
             return "{" + ", ".join(f"{expr(k)} => {expr(v)}" for k, v in pairs) + "}"
-        case A.Call(name, args):
-            return f"{name}(" + ", ".join(expr(a) for a in args) + ")"
+        case A.FwdArg():
+            return "..."
+        case A.Call(name, args, kwargs):
+            return f"{name}(" + _call_args(args, kwargs) + ")"
         case A.RangeLit(low, high, exclusive):
             return f"({expr(low)}{'...' if exclusive else '..'}{expr(high)})"
         case A.Yield(args):
@@ -185,7 +219,7 @@ def expr(node) -> str:
         case A.Lambda(kind, params, body):
             block = _braces_block(params, body, brace_params=(kind != "->"))
             if kind == "->":
-                head = "->(" + ", ".join(params) + ")" if params else "->"
+                head = "->(" + ", ".join(_param(p) for p in params) + ")" if params else "->"
                 return f"({head} {block})"
             return f"({kind} {block})"
         case A.BlockCall():
@@ -218,8 +252,8 @@ def expr(node) -> str:
             return "super" if args is None else "super(" + ", ".join(expr(a) for a in args) + ")"
         case A.New(class_name, args):
             return f"{class_name}.new(" + ", ".join(expr(a) for a in args) + ")"
-        case A.MethodCall(recv, name, args):
-            return f"{expr(recv)}.{name}(" + ", ".join(expr(a) for a in args) + ")"
+        case A.MethodCall(recv, name, args, kwargs):
+            return f"{expr(recv)}.{name}(" + _call_args(args, kwargs) + ")"
         case _:
             raise ValueError(f"cannot render as expression: {node!r}")
 
@@ -227,7 +261,7 @@ def expr(node) -> str:
 def _braces_block(params: tuple, body: tuple, brace_params: bool) -> str:
     inner = "\n".join(_stmts(body, 0))
     if brace_params and params:
-        return "{ |" + ", ".join(params) + "|\n" + inner + "\n}"
+        return "{ |" + ", ".join(_param(p) for p in params) + "|\n" + inner + "\n}"
     return "{\n" + inner + "\n}"
 
 
