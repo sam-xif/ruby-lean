@@ -239,3 +239,31 @@ Unsupported stress tests (`test_proc_008`, the `yjit_30k_*` benchmarks) into
 false disagreements. If the model diverged where CRuby terminates, this would
 mask it as Unsupported rather than flag it — acceptable because fuel is the real
 divergence guard; revisit if a faster interpreter makes fuel reachable in-budget.
+
+## N15 — Tier-1 generation defects: flip-flop ranges and top-level `return` (yield fix)
+
+An audit of tier-1 yield against the Lean SUT found ~⅓ of every run gated at the
+**desugar** stage (before any semantics), from two generation defects:
+
+- **Flip-flop.** A range literal that is the *direct* condition of `if`/operand of
+  `!`/predicate of a ternary is parsed by Ruby as a stateful **flip-flop operator**,
+  not a range (verified via Prism; `&&`/`||`/`==`/args/array/assignment positions
+  are all safe). The generator drew `range` as a general `_expr` kind, so it landed
+  as `if (1..3)` / `!(1..3)` → desugar gate `flip-flop operator`. Fix: a
+  `no_range_head` flag on `_expr` drops the `range` kind at *that* level only
+  (children recurse unrestricted — matches Prism's rule exactly), passed at the two
+  risk sites (`If.cond`, `Not.expr`).
+- **Top-level `return`.** The desugar's `@fn_depth` gate counts only real `def`/`defs`
+  bodies, *not* `define_method`/`define_singleton_method` blocks. `_method_body` set
+  `in_method=True` unconditionally, so it emitted `return` inside those blocks →
+  desugar gate `top-level return`. Fix: `is_def` param on `_method_body`
+  (`in_method=is_def`); the two `DefineMethod` call sites pass `is_def=False`, so a
+  `define_method` body computes values without a lexical `return` (a nested block
+  inside it still can't, since `in_method` stays False).
+
+Effect (`--tier 1`, seed 7): vs **desugar** 166 agree/84 unsup → **250/250, 0 unsup**;
+vs **lean** 124 agree/276 unsup → **143 agree**, 0 disagree (the residual lean gates
+are its own unmodeled levers — `define_method`/`include`/`Range`/`attr_*`/`times` —
+not desugar defects). 0 disagree throughout. These were fuzzer-fidelity bugs (the
+flip-flops meant the generator was silently testing a *different* construct than
+intended), not desugar/lean limitations.

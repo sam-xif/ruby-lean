@@ -173,7 +173,11 @@ def _literal(draw) -> A.Node:
 
 
 @st.composite
-def _expr(draw, env: Env, depth: int) -> A.Node:
+def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
+    # `no_range_head` forbids a range at *this* level only (children recurse
+    # unrestricted). A range literal that is the direct condition of `if`/the
+    # direct operand of `!`/a ternary predicate is parsed by Ruby as a *flip-flop*,
+    # not a range (verified via Prism); `&&`/`||`/`==`/args/assignment are safe.
     kinds = ["lit", "lit"]
     if env.locals:
         kinds += ["local", "local", "local"]
@@ -190,7 +194,9 @@ def _expr(draw, env: Env, depth: int) -> A.Node:
     callable_instances = env.callable_instances
     classes_with_smethods = env.classes_with_smethods
     if depth > 0:
-        kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash", "range"]
+        kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash"]
+        if not no_range_head:
+            kinds += ["range"]
         if env.classes:
             kinds += ["new"]
         if callable_instances:
@@ -267,7 +273,7 @@ def _expr(draw, env: Env, depth: int) -> A.Node:
     if kind == "or":
         return A.Or(sub(), sub())
     if kind == "not":
-        return A.Not(sub())
+        return A.Not(draw(_expr(env, depth - 1, no_range_head=True)))
     if kind == "interp":
         n = draw(st.integers(1, 2))
         parts: list = []
@@ -452,7 +458,7 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         n = draw(st.integers(1, 2))
         return A.Puts(tuple(draw(_expr(env, 2)) for _ in range(n))), env
     if kind == "if":
-        cond = draw(_expr(env, 2))
+        cond = draw(_expr(env, 2, no_range_head=True))
         then, _ = draw(_stmt_seq(env, depth - 1, 1, 3))
         orelse = draw(st.one_of(st.none(), _stmt_seq(env, depth - 1, 1, 2)))
         # conservative scoping: locals introduced inside branches are not
@@ -501,9 +507,13 @@ def _merge(base: tuple, add: tuple) -> tuple:
 
 
 @st.composite
-def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super):
+def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, can_super, is_def=True):
     """A `MethodDef` whose body may self-send `callable_methods`, read `ivars`,
-    instantiate `classes`, and (when `can_super` is set) call `super`."""
+    instantiate `classes`, and (when `can_super` is set) call `super`.
+
+    `is_def=False` for a `define_method`/`define_singleton_method` body: that is a
+    *block*, not a `def`, so a lexical `return` there is a top-level return (the
+    desugar's `@fn_depth` gate only counts real `def` bodies) — suppress it."""
     params = PARAM_POOL[:arity]
     body_env = Env(
         locals=params,
@@ -511,7 +521,7 @@ def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, c
         ivars=ivars,
         classes=classes,
         modules=modules,
-        in_method=True,
+        in_method=is_def,
         can_super=can_super,
     )
     body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
@@ -586,12 +596,12 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
     for k in range(draw(st.integers(0, len(DMETHOD_POOL)))):  # define_method → instance method
         arity = draw(st.integers(0, len(PARAM_POOL)))
         callable_methods = tuple(e for e in _merge(env.methods, effective) if e[0] != DMETHOD_POOL[k])
-        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None))
+        m = draw(_method_body(DMETHOD_POOL[k], arity, callable_methods, eff_ivars, env.classes, env.modules, None, is_def=False))
         decls.append(A.DefineMethod(DMETHOD_POOL[k], m.params, m.body, False))
         effective = _merge(effective, ((DMETHOD_POOL[k], arity),))
     for k in range(draw(st.integers(0, len(DSM_POOL)))):  # define_singleton_method → class method
         arity = draw(st.integers(0, len(PARAM_POOL)))
-        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None))
+        m = draw(_method_body(DSM_POOL[k], arity, env.methods, (), env.classes, (), None, is_def=False))
         decls.append(A.DefineMethod(DSM_POOL[k], m.params, m.body, True))
         sinfos.append((DSM_POOL[k], arity))
 
