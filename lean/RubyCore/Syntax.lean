@@ -35,6 +35,10 @@ inductive Expr where
   | vasgn (k : VarKind) (name : String) (e : Expr)
   | const (name : String)
   | casgn (name : String) (e : Expr)
+  /-- `A::B` (base `some A`) or `::B` (base `none`, absolute toplevel). -/
+  | cpath (base : Option Expr) (name : String)
+  /-- `A::B = e` / `::B = e`. -/
+  | cpathAsgn (base : Option Expr) (name : String) (e : Expr)
   /-- `recv = none` is an implicit-self send (private methods admissible). -/
   | send (recv : Option Expr) (m : String) (args : List Expr) (blk : Option Expr)
   /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
@@ -47,6 +51,9 @@ inductive Expr where
   | blockpass (e : Option Expr)
   | if' (c t : Expr) (e : Option Expr)
   | while' (c body : Expr)
+  /-- `begin body end while cond` — body runs once, then loops while `cond`
+      (M6/M7 `dowhile`). Distinct head so the run-once flag survives. -/
+  | dowhile (body cond : Expr)
   | def' (name : String) (params : List String) (body : Expr)
   | array (elems : List Expr)
   | hash (pairs : List (Expr × Expr))
@@ -58,6 +65,10 @@ inductive Expr where
   | retry'
   | class' (name : String) (sup : Option Expr) (body : Expr)
   | module' (name : String) (body : Expr)
+  /-- `class A::B … end` — `base` is the namespace (`none` = absolute `::B`).
+      Scoped defs with an explicit superclass gate at decode (rare). -/
+  | scopedClass (base : Option Expr) (name : String) (body : Expr)
+  | scopedModule (base : Option Expr) (name : String) (body : Expr)
   | sclass (obj : Expr) (body : Expr)
   | defs (recv : Expr) (name : String) (params : List String) (body : Expr)
   | begin' (body : Expr)
@@ -65,6 +76,10 @@ inductive Expr where
       (els : Option Expr) (ens : Option Expr)
   | super' (args : List Expr) (blk : Option Expr)
   | zsuper (blk : Option Expr)
+  /-- `undef n₁, n₂, …` — remove methods from the current definee. -/
+  | undef (names : List String)
+  /-- `alias new old` — bind `new` to the current definition of `old`. -/
+  | alias' (newName oldName : String)
   | seq (es : List Expr)
 deriving Repr, Inhabited
 
@@ -161,6 +176,13 @@ partial def pair (j : Json) : M (Expr × Expr) := do
   | #[k, v] => return (← expr k, ← expr v)
   | _ => fail "hash pair" j
 
+/-- Decode a `["cpath", base_or_null, name]` node into `(base?, name)` (used
+    both as an expression and as a scoped class/module definition name). -/
+partial def cpathParts (j : Json) : M (Option Expr × String) := do
+  match ← asArr j with
+  | #[_, base, nm] => return (← opt base, ← asStr nm)
+  | _ => fail "cpath node" j
+
 partial def rescueClause (j : Json) :
     M (List Expr × Option (TargetKind × String) × Expr) := do
   match ← asArr j with
@@ -193,6 +215,9 @@ partial def expr (j : Json) : M Expr := do
       return .vasgn (← varKind (← asStr k)) (← asStr n) (← expr e)
   | "const", #[_, n] => .const <$> asStr n
   | "casgn", #[_, n, e] => return .casgn (← asStr n) (← expr e)
+  | "cpath", #[_, base, nm] => return .cpath (← opt base) (← asStr nm)
+  | "cpath_asgn", #[_, base, nm, e] =>
+      return .cpathAsgn (← opt base) (← asStr nm) (← expr e)
   | "send",  #[_, recv, m, args, blk] =>
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
   | "block", #[_, ps, ls, body] =>
@@ -201,6 +226,7 @@ partial def expr (j : Json) : M Expr := do
   | "blockpass", #[_, e] => .blockpass <$> opt e
   | "if",    #[_, c, t, e] => return .if' (← expr c) (← expr t) (← opt e)
   | "while", #[_, c, b] => return .while' (← expr c) (← expr b)
+  | "dowhile", #[_, body, cond] => return .dowhile (← expr body) (← expr cond)
   | "def",   #[_, n, ps, body] =>
       return .def' (← asStr n) (← params ps) (← expr body)
   | "array", #[_, elems] => .array <$> exprs (← asArr elems)
@@ -211,8 +237,20 @@ partial def expr (j : Json) : M Expr := do
   | "next",  #[_, e] => .nxt <$> opt e
   | "retry", #[_] => return .retry'
   | "class", #[_, n, sup, body] =>
-      return .class' (← asStr n) (← opt sup) (← expr body)
-  | "module", #[_, n, body] => return .module' (← asStr n) (← expr body)
+      match n with
+      | .str s => return .class' s (← opt sup) (← expr body)
+      | _ =>
+        match sup with
+        | .null =>
+          let (base, nm) ← cpathParts n
+          return .scopedClass base nm (← expr body)
+        | _ => unsupported "scoped class definition with explicit superclass"
+  | "module", #[_, n, body] =>
+      match n with
+      | .str s => return .module' s (← expr body)
+      | _ =>
+        let (base, nm) ← cpathParts n
+        return .scopedModule base nm (← expr body)
   | "sclass", #[_, obj, body] => return .sclass (← expr obj) (← expr body)
   | "defs",  #[_, recv, n, ps, body] =>
       return .defs (← expr recv) (← asStr n) (← params ps) (← expr body)
@@ -222,6 +260,8 @@ partial def expr (j : Json) : M Expr := do
   | "super", #[_, args, blk] =>
       return .super' (← exprs (← asArr args)) (← opt blk)
   | "zsuper", #[_, blk] => .zsuper <$> opt blk
+  | "undef", #[_, names] => .undef <$> (← asArr names).toList.mapM asStr
+  | "alias", #[_, n, o] => return .alias' (← asStr n) (← asStr o)
   | "seq", _ =>
       if a.size ≥ 2 then .seq <$> exprs (a.extract 1 a.size)
       else fail "empty seq" j
@@ -230,14 +270,9 @@ partial def expr (j : Json) : M Expr := do
   -- (`kwargs`/`fwd`), the rest as statements.
   | "kwargs",     _ => unsupported "keyword args (kwargs)"
   | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
-  | "cpath",      _ => unsupported "scoped constant (cpath)"
-  | "cpath_asgn", _ => unsupported "scoped constant assignment (cpath_asgn)"
   | "defined",    _ => unsupported "defined?"
   | "redo",       _ => unsupported "redo"
-  | "undef",      _ => unsupported "undef"
-  | "alias",      _ => unsupported "alias"
   | "for",        _ => unsupported "for loop"
-  | "dowhile",    _ => unsupported "do-while (dowhile)"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 
 end

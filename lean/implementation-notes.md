@@ -286,3 +286,84 @@ decisions live in the sketch and README, not here.
     re-baselined to 493; the rise over the old 468 is desugar in-fragment
     growth 852→1227 landing in the already-modeled slice). `harness_error:1`
     (control-side `test_syntax_115`) and `control_invalid:7` are pre-existing.
+
+## Milestone A — Phase 1 new heads (L21–…)
+
+Grinding the v4-migration Phase 1: cheap additive heads that were gated
+Unsupported in Phase 0, each a heap-mutation or a small stepper rule (project
+bet: prefer heap mutation over new evaluation rules). Small-step throughout —
+we do **not** adopt the big-step style of *Essence of Ruby* (APLAS'14) or the
+desugaring-then-big-step of RIL (DLS'09); those papers inform the surface
+coverage and desugaring targets, not the machine shape. Ratchet discipline:
+0 disagree at every commit, agreement only up (baseline 493).
+
+- **L21 — `class`/`module` scoped name (`class A::B`) gated at decode, not a
+  hard fail.** The `class`/`module` decoder read its name via `asStr`; M5 now
+  emits a `class A::B` name as a `["cpath", base, name]` node, so `asStr`
+  hard-failed → exit 1 `MODEL-BUG` on 13 tier-0 cases (`class A::B; end`).
+  These were surfaced (never silently absorbed) but wrongly classed as a model
+  bug — the stepper simply does not model scoped *definition* names yet. New
+  `defName` helper: bare-string name → `.ok`, anything else →
+  `unsupported "scoped definition name (cpath in class/module)"` (exit 3, out
+  of fragment). Non-mutual with `expr` (does not recurse into the cpath base).
+  Removes 13 spurious MODEL-BUGs; scoped definitions become honest Unsupported
+  until `cpath`/`cpath_asgn` land (L2x below). No agreement change expected
+  (these programs were already not agreeing). **Superseded by L24** — the
+  `defName` gate was removed once scoped definitions gained real support; the
+  only remaining gate is `class A::B < Sup` (scoped def *with* an explicit
+  superclass, rare, gated at decode).
+
+- **L22 — `dowhile` reuses the existing `while` konts.** `begin body end while
+  cond` (M6/M7 `[:dowhile, body, cond]`) evaluates `body` under the existing
+  `whileBodyK cond body` continuation, which already sequences "after body →
+  eval cond (`whileCondK`) → loop" and whose `unwind` arm already routes
+  `break`→loop-exit and `next`→re-test-cond. So the run-once loop needed **no**
+  new kont and no new `unwind` case — one `Expr.dowhile` head + one `evalExpr`
+  arm. Verified `[V]` against CRuby incl. `next`/`break`/`false`-cond.
+
+- **L23 — `undef`/`alias` as method-table heap mutation, with an `undef`
+  tombstone.** `alias new old` copies the *current* resolved `MethodDef` for
+  `old` (via `methodOn`, walking ancestors) under `new` on the current definee —
+  an independent copy, so a later redefinition/undef of `old` does not affect
+  `new` `[V]`. `undef n₁,…` installs a **tombstone** (`MethodDef.undefined`, new
+  field defaulting false) per name: the entry exists so the ancestor walk stops
+  there — blocking an *inherited* definition — but dispatch treats it as a miss.
+  A plain delete would be wrong: `undef` of an inherited method (bootstraptest
+  `test_method_109/110`) must raise `NoMethodError`, which a delete-from-own-
+  table can't achieve. Dispatch (`invokeDispatch`) checks `md.undefined` on a
+  hit and routes to the new shared `dispatchMiss` helper (extracted from the
+  old `| none =>` branch — CRuby-shadow gating → `method_missing` → byte-exact
+  `NoMethodError`); the genuine-miss branch now calls the same helper.
+  `undef`/`alias` of a *non-existent* target raises `NameError` "undefined
+  method '…' for class 'C'" / "for module 'M'" (byte-exact `[V]`); an
+  eigenclass definee (address-dependent name) gates Unsupported. Both evaluate
+  to `nil` `[V]`. A tombstone is treated as "not defined" by a subsequent
+  `undef`/`alias` of the same name (→ `NameError`).
+
+- **L24 — `cpath`/`cpath_asgn` + scoped `class`/`module` definitions.** Full
+  scoped-constant support (artifact 03 §5), superseding L21's gate:
+  - **Read `A::B`** (`Expr.cpath (base : Option Expr) name`): evaluate `base`
+    (its own expr, so `A::B::C` nests for free), require it be a class/module
+    (`cpathContainer`; else `TypeError "<inspect> is not a class/module"`),
+    then `constLookupFrom` its namespace (ancestors). Miss → `NameError
+    "uninitialized constant A::B"` (base's `className` + name). `base = none`
+    (`::B`) reads the flat toplevel (Object), mirroring the plain-`const`
+    unmodeled-vs-miss split.
+  - **Assign `A::B = e`** (`Expr.cpathAsgn`): eval base **then** rhs (`[V]`
+    order), `constSetIn` the base namespace, yields rhs. `::B = e` writes Object.
+  - **Scoped defs** `class/module A::B … end` (`Expr.scopedClass`/`scopedModule`,
+    base `Option Expr`): decode branches on whether the name node is a string
+    (→ plain `class'`/`module'`) or a `cpath` node (→ scoped). Eval base →
+    `enterScopedClassBody` opens/creates `name` inside that namespace, with the
+    class name the full path `A::B` (so `A::B.name == "A::B"` `[V]`) and a new
+    class superclassing `Object`. `class A::B < Sup` (explicit superclass) and
+    absolute `class ::B` gate Unsupported (rare, not in corpus).
+  - New konts: `cpathK`, `cpathAsgnK`, `cpathAsgnValK`, `scopedClassDefK`.
+
+  **Ratchet (L21–L24, Phase-1 heads):** tier-0 bootstraptest **493 → 522 agree,
+  0 disagree, 0 MODEL-BUG** (re-baselined to 522). One fidelity bug caught by
+  the ratchet and fixed before commit: `alias some_method binding`
+  (`test_yjit_352`) aliases the real-but-unmodeled `Kernel#binding`; the
+  not-found path now consults `crubyShadow` and gates Unsupported rather than
+  raising a spurious `NameError` (same split dispatch uses). `harness_error:1`
+  (`test_syntax_115`) and `control_invalid:7` are pre-existing.

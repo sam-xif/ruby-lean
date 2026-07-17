@@ -108,6 +108,16 @@ inductive Kont where
   /-- `class << OBJ … end`: the in-flight value is `OBJ`; run the body with
       `self`/cref = its eigenclass (artifact 01 §5). -/
   | sclassK (body : Expr)
+  /-- `A::name` read: the in-flight value is the evaluated base `A`; resolve
+      constant `name` in its namespace (artifact 03 §5). -/
+  | cpathK (name : String)
+  /-- `A::name = rhs`: the in-flight value is base `A`; evaluate `rhs` next. -/
+  | cpathAsgnK (name : String) (rhs : Expr)
+  /-- `A::name = rhs`: the in-flight value is `rhs`; assign into base's consts. -/
+  | cpathAsgnValK (name : String) (base : ObjId)
+  /-- `class/module A::name … end`: the in-flight value is base `A`; open (or
+      create) `name` in its namespace and run the body. -/
+  | scopedClassDefK (name : String) (isMod : Bool) (body : Expr)
   | ifK (t : Expr) (e : Option Expr)
   /-- Value is the while condition's result. Loop marker for brk/nxt. -/
   | whileCondK (c body : Expr)

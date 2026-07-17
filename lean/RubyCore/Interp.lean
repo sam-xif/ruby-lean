@@ -401,6 +401,57 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     let (_, m) := eigenclassOf { m with heap := h } k
     pushFrame m k
 
+/-- `class/module A::name … end` (artifact 03 §5): open (or create) `name`
+    inside the already-resolved namespace object `container`, then run the body.
+    Like `enterClassBody` but the lookup/registration namespace is `container`
+    (not the flat toplevel) and the class name is the full path `Container::name`
+    (so `A::B.name` is `"A::B"` [V]). Scoped defs carry no explicit superclass
+    (gated at decode), so a new class superclasses `Object`. -/
+def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
+    (isMod : Bool) (body : Expr) : StepResult :=
+  let kindWord := if isMod then "module" else "class"
+  let fullName := s!"{className m.heap container}::{name}"
+  let pushFrame (m : Machine) (k : ObjId) : StepResult :=
+    let frame : Frame := { self := .ref k, defmod := k, kind := .classBody }
+    let fid := m.frames.size
+    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+    .next (withKont m (.eval body) (.frameK fid))
+  let existing : Option Value := (m.heap.classPayload? container).bind fun c =>
+    (c.consts.find? (·.1 == name)).map (·.2)
+  match existing with
+  | some (.ref k) =>
+    match m.heap.classPayload? k with
+    | some c =>
+      if c.isModule != isMod then
+        .next (raiseErr m Boot.typeErrorId s!"{fullName} is not a {kindWord}")
+      else pushFrame m k
+    | none => .next (raiseErr m Boot.typeErrorId s!"{fullName} is not a {kindWord}")
+  | some _ => .next (raiseErr m Boot.typeErrorId s!"{fullName} is not a {kindWord}")
+  | none =>
+    let superclass := if isMod then none else some Boot.objectId
+    let obj : Object :=
+      { klass := (if isMod then Boot.moduleId else Boot.classId),
+        payload := .cls { superclass, name := fullName, isModule := isMod } }
+    let (k, h) := m.heap.alloc obj
+    let h := constSetIn h container name (.ref k)
+    let (_, m) := eigenclassOf { m with heap := h } k
+    pushFrame m k
+
+/-- Resolve a `cpath` base value to a namespace `ObjId`, or a `TypeError`
+    result if it is not a class/module ("`<inspect>` is not a class/module"). -/
+def cpathContainer (m : Machine) (base : Value) : Except StepResult ObjId :=
+  match base with
+  | .ref o =>
+    if (m.heap.classPayload? o).isSome then .ok o
+    else
+      match Builtins.inspectP m base with
+      | .ok r => .error (.next (raiseErr m Boot.typeErrorId s!"{r} is not a class/module"))
+      | .error e => .error (.unsupported e)
+  | _ =>
+    match Builtins.inspectP m base with
+    | .ok r => .error (.next (raiseErr m Boot.typeErrorId s!"{r} is not a class/module"))
+    | .error e => .error (.unsupported e)
+
 /-- Default `method_missing` (artifact 02 §4): the bare implicit-self zero-arg
     send is ambiguous (vcall `NameError` vs fcall `NoMethodError`; RubyCore
     conflates them) — gate; otherwise the byte-exact `NoMethodError`. -/
@@ -411,6 +462,26 @@ def missNoMethod (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
   else
     .next (raiseErr m Boot.noMethodErrorId
       s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
+
+/-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
+    names, else route to `method_missing` (user override) or the byte-exact
+    `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
+    tombstone-hit dispatch paths. -/
+def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+    (args : List Value) (blk : Option Value) : StepResult :=
+  let chain := ancestors m.heap (classOf m.heap recv)
+  match crubySingletonShadow m.heap recv mname with
+  | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
+  | none =>
+  match crubyShadow m.heap chain mname with
+  | some cname => .unsupported s!"unmodeled method {cname}#{mname}"
+  | none =>
+    match methodOn m.heap (classOf m.heap recv) "method_missing" with
+    | some (_, mm) =>
+      if mm.builtin.isNone then
+        enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
+      else missNoMethod m recv implicit mname args
+    | none => missNoMethod m recv implicit mname args
 
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
@@ -450,6 +521,10 @@ where
   let chain := ancestors m.heap (classOf m.heap recv)
   match lookup m.heap recv mname with
   | some (owner, md) =>
+    if md.undefined then
+      -- `undef` tombstone: the walk stopped here, dispatch as a miss.
+      dispatchMiss m recv implicit mname args blk
+    else
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
     -- receiver's class and our resolved owner, CRuby would dispatch there —
     -- we'd be running the wrong method. Gate. (Builtins are exempt only
@@ -471,24 +546,7 @@ where
         | none =>
           -- a RubyCore-defined method: bind params + push the activation
           enterUserMethod m recv mname md args blk
-  | none =>
-    match crubySingletonShadow m.heap recv mname with
-    | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
-    | none =>
-    match crubyShadow m.heap chain mname with
-    | some cname =>
-      -- exists in CRuby, not in the model — the fragment gate
-      .unsupported s!"unmodeled method {cname}#{mname}"
-    | none =>
-      -- Total miss in both. CRuby routes to `method_missing` (artifact 02 §4):
-      -- a user override runs with `(:name, *args)`; the default raises
-      -- `NoMethodError`, which we model directly below.
-      match methodOn m.heap (classOf m.heap recv) "method_missing" with
-      | some (_, mm) =>
-        if mm.builtin.isNone then
-          enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
-        else missNoMethod m recv implicit mname args
-      | none => missNoMethod m recv implicit mname args
+  | none => dispatchMiss m recv implicit mname args blk
 
 /-- Super-dispatch (artifact 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
@@ -705,6 +763,29 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
         .next (withKont m (.eval body) (.frameK fid))
       | _ => .unsupported "singleton class of an immediate"
+    | .cpathK name =>
+      -- v is the evaluated base `A`; resolve constant `name` in its namespace.
+      match cpathContainer m v with
+      | .error sr => sr
+      | .ok o =>
+        match constLookupFrom m.heap o name with
+        | some cv => .next (withCtl m (.value cv))
+        | none =>
+          .next (raiseErr m Boot.nameErrorId
+            s!"uninitialized constant {className m.heap o}::{name}")
+    | .cpathAsgnK name rhs =>
+      -- v is base `A`; evaluate `rhs`, then assign (base then rhs order [V]).
+      match cpathContainer m v with
+      | .error sr => sr
+      | .ok o => .next (withKont m (.eval rhs) (.cpathAsgnValK name o))
+    | .cpathAsgnValK name base =>
+      -- v is the rhs; write it into base's namespace; assignment yields rhs [V].
+      .next (withCtl { m with heap := constSetIn m.heap base name v } (.value v))
+    | .scopedClassDefK name isMod body =>
+      -- v is base `A`; open (or create) `name` inside it.
+      match cpathContainer m v with
+      | .error sr => sr
+      | .ok o => enterScopedClassBody m o name isMod body
     | .ifK t e =>
       if v.truthy then .next (withCtl m (.eval t))
       else
@@ -883,6 +964,38 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       .next (withCtl m (.jump j))
     | _ => .next (withCtl m (.jump j))
 
+/-- The `NameError` `undef`/`alias` raise when the target method is not defined
+    on the current definee (artifact 02). CRuby names the definee `class 'C'` /
+    `module 'M'`; an eigenclass definee has an address-dependent name we cannot
+    reproduce byte-exactly → gate. A method CRuby *does* define on the chain but
+    the model doesn't (`Kernel#binding`, …) gates Unsupported rather than raising
+    a spurious `NameError` — the same fidelity split dispatch uses. -/
+def undefAliasMiss (m : Machine) (name : String) : StepResult :=
+  match crubyShadow m.heap (ancestors m.heap m.currentFrame.defmod) name with
+  | some cname => .unsupported s!"undef/alias of unmodeled method {cname}#{name}"
+  | none =>
+  match m.heap.classPayload? m.currentFrame.defmod with
+  | some c =>
+    if c.name.startsWith "#<" then
+      .unsupported "undef/alias of a missing method in a singleton class"
+    else
+      let kind := if c.isModule then "module" else "class"
+      .next (raiseErr m Boot.nameErrorId
+        s!"undefined method '{name}' for {kind} '{c.name}'")
+  | none => .unsupported "undef/alias outside a class/module body"
+
+/-- `undef n₁, n₂, …` (artifact 02): install a tombstone per name on the current
+    definee, left to right. Each name must currently resolve (including
+    inherited, excluding an existing tombstone) else `NameError` [V]. -/
+def undefNames (m : Machine) (defmod : ObjId) : List String → StepResult
+  | [] => .next (withCtl m (.value .nil))  -- `undef` evaluates to nil [V]
+  | n :: rest =>
+    match methodOn m.heap defmod n with
+    | some (_, md) =>
+      if md.undefined then undefAliasMiss m n
+      else undefNames { m with heap := undefMethod m.heap defmod n } defmod rest
+    | none => undefAliasMiss m n
+
 /-- Evaluate one expression head. -/
 def evalExpr (m : Machine) (e : Expr) : StepResult :=
   match e with
@@ -923,6 +1036,21 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       else
         .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {n}")
   | .casgn n rhs => .next (withKont m (.eval rhs) (.casgnK n))
+  | .cpath base name =>
+    match base with
+    | none =>
+      -- `::name` — absolute toplevel (Object namespace)
+      match constLookup m.heap name with
+      | some v => .next (withCtl m (.value v))
+      | none =>
+        if crubyToplevelConstants.contains name then .unsupported s!"unmodeled constant {name}"
+        else .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {name}")
+    | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathK name))
+  | .cpathAsgn base name rhs =>
+    -- eval order: base then rhs [V]. `::name = rhs` sets on Object.
+    match base with
+    | none => .next (withKont m (.eval rhs) (.cpathAsgnValK name Boot.objectId))
+    | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathAsgnK name rhs))
   | .send recv mname args blk =>
     let pblk : PendingBlk := match blk with
       | none => .none
@@ -938,12 +1066,32 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   | .blockpass .. => .stuck "bare blockpass node outside send"
   | .if' c t e => .next (withKont m (.eval c) (.ifK t e))
   | .while' c body => .next (withKont m (.eval c) (.whileCondK c body))
+  | .dowhile body cond =>
+    -- run body once, then behave as `while cond`: `whileBodyK` already
+    -- sequences "after body → eval cond (whileCondK) → loop", and `unwind`
+    -- already routes break/next through it [V].
+    .next (withKont m (.eval body) (.whileBodyK cond body))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
     let md : MethodDef := { params, body, owner := defmod }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))
+  | .undef names => undefNames m m.currentFrame.defmod names
+  | .alias' newN oldN =>
+    -- `alias` captures the current definition of `oldN` (walking ancestors) and
+    -- installs an independent copy under `newN` on the current definee; a later
+    -- redefinition of `oldN` does not affect `newN` [V]. A tombstone or a
+    -- genuine miss raises `NameError`. Returns nil.
+    let defmod := m.currentFrame.defmod
+    match methodOn m.heap defmod oldN with
+    | some (_, md) =>
+      if md.undefined then undefAliasMiss m oldN
+      else
+        let m := { m with heap := defineMethod m.heap defmod newN md }
+        let m := if reprSensitive.contains newN then { m with reprPure := false } else m
+        .next (withCtl m (.value .nil))
+    | none => undefAliasMiss m oldN
   | .array elems => continueArray m [] elems
   | .hash pairs =>
     match pairs with
@@ -980,6 +1128,14 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | some supExpr => .next (withKont m (.eval supExpr) (.classDefK name body))
     | none => enterClassBody m name false none body
   | .module' name body => enterClassBody m name true none body
+  | .scopedClass base name body =>
+    match base with
+    | some baseExpr => .next (withKont m (.eval baseExpr) (.scopedClassDefK name false body))
+    | none => .unsupported "absolute-scoped class definition (::Name)"
+  | .scopedModule base name body =>
+    match base with
+    | some baseExpr => .next (withKont m (.eval baseExpr) (.scopedClassDefK name true body))
+    | none => .unsupported "absolute-scoped module definition (::Name)"
   | .sclass obj body => .next (withKont m (.eval obj) (.sclassK body))
   | .defs recv name params body =>
     .next (withKont m (.eval recv) (.defsK name params body))

@@ -56,6 +56,10 @@ structure MethodDef where
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   private' : Bool := false
+  /-- `undef name` tombstone (artifact 02): the entry exists so the ancestor
+      walk stops here (blocking any inherited definition), but dispatch treats
+      it as a miss → `NoMethodError`/`method_missing`. -/
+  undefined : Bool := false
 deriving Inhabited
 
 structure ClassPayload where
@@ -384,5 +388,10 @@ def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Hea
     h.setClassPayload cls
       { c with methods := (name, md) :: c.methods.filter (·.1 != name) }
   | Option.none => h
+
+/-- `undef name` on `cls`: install an `undefined` tombstone (artifact 02) so the
+    ancestor walk stops here even if a superclass defines `name`. -/
+def undefMethod (h : Heap) (cls : ObjId) (name : String) : Heap :=
+  defineMethod h cls name { params := [], body := .nil, owner := cls, undefined := true }
 
 end RubyCore
