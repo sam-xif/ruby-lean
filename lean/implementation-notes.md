@@ -472,3 +472,13 @@ ratchet.
     defaults, reusing the `optDefK` chain.
   - **Gated:** keyword args to a `Proc#call`, to `super` / `yield`, and any
     block/`zsuper` with keyword params (those still go through `classifySimple`).
+
+- **L30 — `...` argument forwarding (`def m(...); g(...); end`).** Reuses the
+  P3 keyword/rest/block machinery instead of a bespoke bundle. `classifyFull`
+  expands a `Param.fwd` to a synthetic `*__fwd_rest, **__fwd_kw, &__fwd_blk`
+  (three reserved locals), so a `(...)`-method captures all positional args, all
+  keywords, and the block on entry via the existing binding. New `Expr.fwd` (the
+  `["fwd"]` call-site marker): `startArgs` reads those three locals directly (no
+  evaluation — `forwardBundle`) and dispatches `acc ++ __fwd_rest` positionals
+  with the `__fwd_kw` keyword bundle and `__fwd_blk` block via `invoke`. `g(1,
+  ...)` prepends the leading args. Gated: `...` to `super`/`yield` (rare).

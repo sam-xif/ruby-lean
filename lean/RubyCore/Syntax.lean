@@ -45,6 +45,9 @@ inductive Expr where
   /-- Brace-less keyword arguments at a call site (`f(k: 1, **h)`) — only occurs
       as the last element of a send/super `args` list (Ruby-3 separation). -/
   | kwargs (entries : List KwEntry)
+  /-- `...` argument-forwarding marker at a call site (`g(...)`) — expands the
+      enclosing `(...)`-method's captured positional/keyword/block args. -/
+  | fwd
   /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
       block-locals (fresh, shadowing outer names). -/
   | block (params : List Param) (locals : List String) (body : Expr)
@@ -280,6 +283,7 @@ partial def expr (j : Json) : M Expr := do
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
   | "kwargs", #[_, entries] =>
       .kwargs <$> (← asArr entries).toList.mapM kwEntry
+  | "fwd",   #[_] => return .fwd
   | "block", #[_, ps, ls, body] =>
       return .block (← params ps) (← strList ls) (← expr body)
   | "yield", #[_, args] => .yield' <$> exprs (← asArr args)
@@ -335,7 +339,6 @@ partial def expr (j : Json) : M Expr := do
   -- v4 additive heads not yet modeled by the stepper: gate as Unsupported
   -- (exit 3) rather than a hard decode failure. Some appear as arg markers
   -- (`kwargs`/`fwd`), the rest as statements.
-  | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
   | "defined",    _ => unsupported "defined?"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 

@@ -47,7 +47,7 @@ def exprBrief : Expr → String
   | .casgn n _ => s!"{n} = …"
   | .cpath _ n => s!"…::{n}" | .cpathAsgn _ n _ => s!"…::{n} = …"
   | .send _ m _ _ => s!"send .{m}(…)"
-  | .kwargs _ => "kwargs(…)"
+  | .kwargs _ => "kwargs(…)" | .fwd => "..."
   | .block .. => "block { … }"
   | .yield' _ => "yield"
   | .blockpass _ => "&block"

@@ -173,12 +173,23 @@ structure FullParams where
   kwrest? : Option (Option String)     -- `**o` present? outer some, inner name
   block? : Option String
 
+/-- Reserved local names for `...` argument forwarding (`def m(...)`). -/
+def fwdRest := "__fwd_rest"
+def fwdKw := "__fwd_kw"
+def fwdBlk := "__fwd_blk"
+
 def classifyFull (ps0 : List Param) : Option FullParams :=
+  -- `...` (pfwd) captures all remaining positional + keyword + block args:
+  -- expand it to a synthetic `*__fwd_rest, **__fwd_kw, &__fwd_blk` (reuses the
+  -- rest/kwrest/block machinery; `g(...)` re-expands from these locals).
+  let ps0 := ps0.flatMap fun p => match p with
+    | .fwd => [.rest (some fwdRest), .kwrest (some fwdKw), .block (some fwdBlk)]
+    | _ => [p]
   let (ps, block?) := match ps0.reverse with
     | (.block n) :: more => (more.reverse, some (n.getD ""))
     | _ => (ps0, none)
-  -- only fwd/destr are unhandled here now (keyword kinds are captured below)
-  if ps.any (fun p => match p with | .fwd | .destr _ => true | _ => false) then none
+  -- only destr is unhandled here now (fwd expanded above, keywords captured below)
+  if ps.any (fun p => match p with | .destr _ => true | _ => false) then none
   else
     let isReq : Param → Bool := fun p => match p with | .req _ => true | _ => false
     let isOpt : Param → Bool := fun p => match p with | .opt _ _ => true | _ => false
@@ -749,6 +760,7 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     | .splat (some e) => .next (withKont m (.eval e) (.superSplatK acc rest' blk))
     | .splat none => .unsupported "anonymous splat in super"
     | .kwargs _ => .unsupported "keyword arguments to super"
+    | .fwd => .unsupported "... forwarding to super"
     | _ => .next (withKont m (.eval e) (.superArgK acc rest' blk))
 
 /-- All args in → resolve the pending block and dispatch. A literal block is
@@ -794,8 +806,22 @@ def kwAdd (kwacc : List (Value × Value)) (key val : Value) : List (Value × Val
   | some i => kwacc.set i (key, val)
   | none => kwacc ++ [(key, val)]
 
+/-- Read the hidden `...`-forwarding bundle (`*__fwd_rest, **__fwd_kw,
+    &__fwd_blk`) bound by a `(...)`-forwarding method: the positional args, the
+    keyword pairs, and the block (no evaluation — a direct local read). -/
+def forwardBundle (m : Machine) : List Value × List (Value × Value) × Option Value :=
+  let restVals := match m.getLocal fwdRest with
+    | .ref o => match (m.heap.get o).payload with | .arr xs => xs.toList | _ => []
+    | _ => []
+  let kw := match m.getLocal fwdKw with
+    | .ref o => match (m.heap.get o).payload with | .hsh ps => ps.toList | _ => []
+    | _ => []
+  let blk := match m.getLocal fwdBlk with | .nil => none | v => some v
+  (restVals, kw, blk)
+
 /-- Evaluate the next pending argument, or dispatch if none remain. A trailing
-    `kwargs` marker switches to keyword evaluation. -/
+    `kwargs` marker switches to keyword evaluation; a `fwd` marker (`g(...)`)
+    expands the enclosing method's forwarding bundle. -/
 def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (acc : List Value) (rest : List Expr) (pblk : PendingBlk) : StepResult :=
   match rest with
@@ -806,6 +832,12 @@ def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
       .next (withKont m (.eval e) (.argsSplatK recv implicit mname acc rest' pblk))
     | .splat none => .unsupported "anonymous splat forwarding"
     | .kwargs entries => startKwargs m recv implicit mname acc [] entries pblk
+    | .fwd =>
+      -- `...` is always last; expand the forwarding bundle and dispatch. The
+      -- block rides in the bundle (no explicit block with `...`), so `pblk` is
+      -- `.none` here and `invoke` is called directly.
+      let (restVals, kw, blk) := forwardBundle m
+      invoke m recv implicit mname (acc ++ restVals) blk kw
     | _ => .next (withKont m (.eval e) (.argsK recv implicit mname acc rest' pblk))
 
 /-- Call the enclosing method's block with `args` (artifact 04 §2 YIELD). A
@@ -828,6 +860,7 @@ def startYield (m : Machine) (acc : List Value) (rest : List Expr) : StepResult 
     | .splat (some e) => .next (withKont m (.eval e) (.yieldSplatK acc rest'))
     | .splat none => .unsupported "anonymous splat in yield"
     | .kwargs _ => .unsupported "keyword arguments to yield"
+    | .fwd => .unsupported "... forwarding to yield"
     | _ => .next (withKont m (.eval e) (.yieldArgK acc rest'))
 
 /-- Evaluate the next pending array-literal element, or allocate. -/
@@ -1297,6 +1330,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | none => startArgs m m.currentFrame.self true mname [] args pblk
   | .block .. => .stuck "bare block node outside send"
   | .kwargs .. => .stuck "bare kwargs node outside call position"
+  | .fwd => .stuck "bare fwd (...) node outside call position"
   | .yield' args => startYield m [] args
   | .blockpass .. => .stuck "bare blockpass node outside send"
   | .if' c t e => .next (withKont m (.eval c) (.ifK t e))
