@@ -121,8 +121,9 @@ def _stmt(node, depth: int) -> list[str]:
             return lines + [pad + "end"]
         case A.Puts(args):
             return [pad + "puts(" + ", ".join(expr(a) for a in args) + ")"]
-        case A.Raise(message):
-            return [pad + f"raise({message!r})"]
+        case A.Raise(message, exc_class):
+            arg = f"{message!r}" if exc_class is None else f"{exc_class}, {message!r}"
+            return [pad + f"raise({arg})"]
         case A.BeginRescue(body, rescue_var, rescue_body):
             return (
                 [pad + "begin"]
@@ -130,6 +131,27 @@ def _stmt(node, depth: int) -> list[str]:
                 + [pad + f"rescue => {rescue_var}"]
                 + _stmts(rescue_body, depth + 1)
                 + [pad + "end"]
+            )
+        case A.BeginResc(body, rescues, else_body, ensure_body):
+            lines = [pad + "begin"] + _stmts(body, depth + 1)
+            for exc_classes, var, rbody in rescues:
+                head = "rescue"
+                if exc_classes:
+                    head += " " + ", ".join(exc_classes)
+                head += f" => {var}"
+                lines += [pad + head] + _stmts(rbody, depth + 1)
+            if else_body is not None:
+                lines += [pad + "else"] + _stmts(else_body, depth + 1)
+            if ensure_body is not None:
+                lines += [pad + "ensure"] + _stmts(ensure_body, depth + 1)
+            return lines + [pad + "end"]
+        case A.RetryBegin(guard, limit, body, rescue_var, rescue_body):
+            return (
+                [pad + f"{guard} = 0", pad + "begin"]
+                + _stmts(body, depth + 1)
+                + [pad + f"rescue => {rescue_var}"]
+                + _stmts(rescue_body, depth + 1)
+                + [pad + f"{_INDENT}retry", pad + "end"]
             )
         case A.Next(e):
             return [pad + ("next " + expr(e) if e is not None else "next")]

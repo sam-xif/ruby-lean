@@ -345,3 +345,40 @@ methods) so the referenced method is already defined in the class body above the
   invokes it (no NoMethodError risk); the mutation is a clean no-op observationally.
 
 `--tier 1`: desugar 300/300 (seeds 7/456/999), lean 118/400, 0 disagree.
+
+## N20 — Constant paths `A::B` (cpath read + cpath_asgn)
+
+Exercises Lean's Phase-1 `cpath`/`cpath_asgn` heads and two-phase constant lookup:
+- **class-body constants** (`ConstAssign`, `K0 = <literal>` in `decls`, tracked in
+  `ClassInfo.consts`), read as `Cls::K0` via the new `_expr` `cpath` kind.
+- **external assignment** (`ConstPathAssign`, `Cls::E0 = v`) — a `cpath_asgn` statement
+  assigning a *fresh* external-const slot (`EXT_CONST_POOL`), registered on the class so
+  later reads resolve, and each slot used once (no "already initialized" reinit).
+
+Load-bearing gate: constant assignment is a **syntax error inside any block or method**
+("dynamic constant assignment"). `in_block` is insufficient (a `proc`/`lambda`/`times`
+body sets `in_block=False`/`True` inconsistently and is still a closure), so a dedicated
+`Env.const_asgn_ok` flag is set False on entering *any* method/block/lambda/proc/`times`
+body and left True only at static positions (top-level, class body, `if`/`while`/`for`/
+`begin` — not closures). `cpath_asgn` is gated on it. `--tier 1`: desugar 300/300 (seeds
+7/456/999/2024), lean 175/400, 0 disagree, 0 control_invalid (an early miss — cpath_asgn
+inside a `proc` — is what surfaced the need for `const_asgn_ok`).
+
+## N21 — Rich exceptions: typed/multiple rescue, else, ensure, `retry`, `raise Klass,msg`
+
+`A.BeginResc` replaces the single-clause `begin/rescue` for generated code:
+- **typed + multiple rescue clauses** over mutually-non-ancestor `EXC_CLASSES`
+  (`RuntimeError`/`TypeError`/`ArgumentError`/`ZeroDivisionError`): an optional leading
+  *non-matching* typed clause (skipped at runtime), an optional *matching* typed clause
+  (single- or multi-class), and **always a final bare catch-all** so nothing propagates
+  (any stray deterministic error from the body is caught) — which keeps `else`'s "ran
+  iff no exception" observation clean.
+- **`raise Klass, msg`** (`Raise.exc_class`) so a typed clause has something to match.
+- **`else`** (runs iff no exception) and **`ensure`** (always) clauses, each with an
+  observable marker line.
+- **`retry`** (`A.RetryBegin`): a self-contained bounded gadget — `guard = 0; begin;
+  guard += 1; raise if guard <= limit; …; rescue => e; …; retry; end`. The guard
+  increments each attempt and the raise stops once `guard > limit`, so the begin
+  succeeds after `limit`+1 attempts. No random body stmts (they might raise and make
+  `retry` spin). A 400-example CRuby run of every retry/ensure/typed-rescue program:
+  **0 timeouts**. `--tier 1`: desugar 300/300 (seeds 7/456/999), lean 114/400, 0 disagree.

@@ -33,6 +33,12 @@ DSM_POOL = ("ds0", "ds1")  # define_singleton_method'd class methods
 ROPEN_POOL = ("rm0", "rm1")  # methods added by reopening a class
 ALIAS_POOL = ("al0", "al1")  # fresh names introduced by alias/alias_method
 UNDEF_POOL = ("ud0",)  # throwaway method defined only to be `undef`'d
+CONST_POOL = ("K0", "K1")  # constants defined in a class/module body
+EXT_CONST_POOL = ("E0", "E1")  # constants assigned externally via `Cls::E0 = …`
+RETRY_POOL = ("rt0", "rt1")  # monotonic guard counters bounding `retry`
+# StandardError subclasses, mutually non-ancestor → a `rescue X` catches iff X is the
+# raised class (or a bare `rescue`); safe for typed/non-matching clause construction
+EXC_CLASSES = ("RuntimeError", "TypeError", "ArgumentError", "ZeroDivisionError")
 IVAR_POOL = ("@x", "@y")
 INSTANCE_POOL = ("o", "p", "q")  # locals that hold instances; disjoint from LOCAL/LOOP/PARAM
 PROC_POOL = ("f", "g", "h")  # locals that hold procs/lambdas; disjoint too
@@ -77,6 +83,7 @@ class ClassInfo:
     imethods: tuple[tuple[str, int], ...]  # effective instance methods: own + inherited + mixed
     smethods: tuple[tuple[str, int], ...] = ()  # class/self methods
     attr_writers: tuple[str, ...] = ()  # ivar base names with a writer (attr_accessor/writer)
+    consts: tuple[str, ...] = ()  # constants readable as `Name::const` (cpath)
 
 
 @dataclass(frozen=True)
@@ -119,6 +126,10 @@ class Env:
     can_yield: "int | None" = None
     in_block: bool = False  # inside a block body → `next`/`break` are legal
     in_method: bool = False  # inside a method body → `return` is legal
+    # constant assignment (`X =`, `A::X =`) is a syntax error inside any *block*
+    # or *method* ("dynamic constant assignment"); True only at a static position
+    # (top-level / class body / `if`/`while`/`for`/`begin`, which are not closures)
+    const_asgn_ok: bool = True
     # richer signatures for names in `methods` (top-level methods only); a name
     # absent here is a plain-required method. Threaded everywhere `env` reaches so
     # every call site (incl. method bodies) generates a compatible call.
@@ -195,6 +206,10 @@ class Env:
     @property
     def classes_with_smethods(self) -> tuple[ClassInfo, ...]:
         return tuple(ci for ci in self.classes if ci.smethods)
+
+    @property
+    def classes_with_consts(self) -> tuple[ClassInfo, ...]:
+        return tuple(ci for ci in self.classes if ci.consts)
 
 
 @st.composite
@@ -302,6 +317,7 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
         kinds += ["super"] * 5
     callable_instances = env.callable_instances
     classes_with_smethods = env.classes_with_smethods
+    classes_with_consts = env.classes_with_consts
     if depth > 0:
         kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash"]
         if not no_range_head:
@@ -312,6 +328,8 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
             kinds += ["mcall", "mcall", "send"]
         if classes_with_smethods:
             kinds += ["smcall"]
+        if classes_with_consts:
+            kinds += ["cpath"]
         if env.instances:
             kinds += ["respondto", "ivarget", "ivarset"]
     kind = draw(st.sampled_from(kinds))
@@ -332,6 +350,9 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
         if draw(st.booleans()):
             return A.Super(None)
         return A.Super(tuple(sub() for _ in range(env.can_super)))
+    if kind == "cpath":
+        ci = draw(st.sampled_from(classes_with_consts))
+        return A.ConstPath(ci.name, draw(st.sampled_from(ci.consts)))
     if kind == "smcall":
         ci = draw(st.sampled_from(classes_with_smethods))
         sname, arity = draw(st.sampled_from(ci.smethods))
@@ -428,6 +449,7 @@ def _lambda(draw, env: Env, depth: int) -> A.Lambda:
         can_super=None,
         in_block=False,
         in_method=False,
+        const_asgn_ok=False,
     )
     body, _ = draw(_stmt_seq(body_env, max(depth - 1, 0), 1, 2))
     final = draw(_expr(body_env, 1))
@@ -452,7 +474,10 @@ def _bound_of(params: tuple) -> tuple:
 def _block_body(draw, env: Env, depth: int, params: tuple) -> A.Block:
     # A literal block: its params bind as locals; `next`/`break` are legal here,
     # and `return` too when the block is lexically inside a method.
-    body_env = replace(env, locals=env.locals + _bound_of(params), in_block=True, can_yield=None)
+    body_env = replace(
+        env, locals=env.locals + _bound_of(params), in_block=True, can_yield=None,
+        const_asgn_ok=False,
+    )
     body, _ = draw(_stmt_seq(body_env, max(depth - 1, 0), 1, 2))
     final = draw(_expr(body_env, 1))
     return A.Block(params, body + (final,))
@@ -518,6 +543,14 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         kinds += ["opassign"]
     if env.classes:
         kinds += ["new_inst", "new_inst"]
+    # a class with an unused external-constant slot → `Cls::E0 = v` (cpath_asgn).
+    # Constant assignment is a syntax error inside a method/block body ("dynamic
+    # constant assignment"), so only at a static position (top-level / conditional).
+    cpath_asgn_targets = tuple(
+        ci for ci in env.classes if any(e not in ci.consts for e in EXT_CONST_POOL)
+    )
+    if cpath_asgn_targets and env.const_asgn_ok:
+        kinds += ["cpath_asgn"]
     if env.in_block:
         kinds += ["next", "break"]  # legal only inside a block body
     if env.in_method:
@@ -530,7 +563,7 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         kinds += ["attr_assign", "attr_assign"]
     free_loop_vars = tuple(v for v in LOOP_POOL if v not in env.frozen)
     if depth > 0:
-        kinds += ["if", "begin", "proc_def", "block_iter", "for", "redo_loop"]
+        kinds += ["if", "begin", "begin", "retry_begin", "proc_def", "block_iter", "for", "redo_loop"]
         if free_loop_vars:
             kinds += ["while", "times", "dowhile"]
     kind = draw(st.sampled_from(kinds))
@@ -545,6 +578,12 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         # An Assign node that records the binding as an instance (not a plain
         # local), so it is only ever reached as a method-call receiver.
         return A.Assign(var, A.New(ci.name, args)), env.with_instance(var, ci.name)
+    if kind == "cpath_asgn":
+        ci = draw(st.sampled_from(cpath_asgn_targets))
+        # a fresh (unused) external constant slot → no "already initialized" reinit
+        name = draw(st.sampled_from(tuple(e for e in EXT_CONST_POOL if e not in ci.consts)))
+        new_ci = replace(ci, consts=ci.consts + (name,))
+        return A.ConstPathAssign(ci.name, name, draw(_expr(env, 1))), env.update_class(ci.name, new_ci)
     if kind == "opassign":
         name = draw(st.sampled_from(env.assignable))
         op = draw(st.sampled_from(["+=", "-=", "*=", "||="]))
@@ -624,7 +663,7 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
     if kind == "times":
         var = draw(st.sampled_from(free_loop_vars))
         # a `times` block is self-counting, so `next`/`break` are safe here
-        body_env = replace(env.with_local(var), in_block=True)
+        body_env = replace(env.with_local(var), in_block=True, const_asgn_ok=False)
         body, _ = draw(_stmt_seq(body_env, depth - 1, 1, 2))
         return A.TimesBlock(draw(st.integers(0, 3)), var, body), env
     if kind == "for":
@@ -652,7 +691,9 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         # a non-empty bounded array so the block runs and `redo` has an iteration
         coll = A.ArrayLit(tuple(draw(_literal()) for _ in range(draw(st.integers(1, 3)))))
         blockvar = BLOCK_PARAM_POOL[0]
-        inner_env = replace(env.with_frozen(guard).with_local(blockvar), in_block=True)
+        inner_env = replace(
+            env.with_frozen(guard).with_local(blockvar), in_block=True, const_asgn_ok=False
+        )
         extra, _ = draw(_stmt_seq(inner_env, max(depth - 2, 0), 1, 1))
         # guard += 1 on every (re)entry, then redo only while guard < limit → bounded
         block_body = (
@@ -662,12 +703,57 @@ def _stmt(draw, env: Env, depth: int) -> tuple[A.Node, Env]:
         return A.RedoLoop(guard, coll, blockvar, block_body), env.with_frozen(guard)
     if kind == "begin":
         body, _ = draw(_stmt_seq(env, depth - 1, 1, 2))
+        # optionally raise; track the class so a typed clause can match it
+        raised = None
         if draw(st.booleans()):
-            body = body + (A.Raise(draw(st.sampled_from(["boom", "bad"]))),)
-        rescue_env = env.with_local("e")
-        rescue_body, _ = draw(_stmt_seq(rescue_env, 0, 1, 1))
-        rescue_body = (A.Puts((A.StrInterp(("err:", A.LocalRead("e"))),)),) + rescue_body
-        return A.BeginRescue(body, "e", rescue_body), env
+            msg = draw(st.sampled_from(["boom", "bad"]))
+            if draw(st.booleans()):
+                raised = draw(st.sampled_from(EXC_CLASSES))
+                body = body + (A.Raise(msg, raised),)
+            else:
+                raised = "RuntimeError"  # bare `raise(msg)` raises RuntimeError
+                body = body + (A.Raise(msg),)
+        renv = env.with_local("e")
+
+        def _rbody():
+            rb, _ = draw(_stmt_seq(renv, 0, 1, 1))
+            return (A.Puts((A.StrInterp(("err:", A.LocalRead("e"))),)),) + rb
+
+        rescues: list = []
+        # a leading typed clause that does NOT match the raised class (skipped at runtime)
+        if raised and draw(st.booleans()):
+            nonmatch = draw(st.sampled_from(tuple(c for c in EXC_CLASSES if c != raised)))
+            rescues.append(((nonmatch,), "e", _rbody()))
+        # a typed clause that DOES match (exercises typed rescue)
+        if raised and draw(st.booleans()):
+            others = tuple(c for c in EXC_CLASSES if c != raised)
+            classes = (raised,) if draw(st.booleans()) else (draw(st.sampled_from(others)), raised)
+            rescues.append((classes, "e", _rbody()))
+        # a final bare catch-all → nothing ever propagates (any stray deterministic
+        # error from the body is caught here too), so `else` runs iff no exception
+        rescues.append(((), "e", _rbody()))
+        else_body = None
+        if draw(st.booleans()):
+            eb, _ = draw(_stmt_seq(env, 0, 1, 1))
+            else_body = (A.Puts((A.StrLit("else-ran"),)),) + eb
+        ensure_body = None
+        if draw(st.booleans()):
+            enb, _ = draw(_stmt_seq(env, 0, 1, 1))
+            ensure_body = (A.Puts((A.StrLit("ensure-ran"),)),) + enb
+        return A.BeginResc(body, tuple(rescues), else_body, ensure_body), env
+    if kind == "retry_begin":
+        guard = draw(st.sampled_from(RETRY_POOL))
+        limit = draw(st.integers(1, 3))
+        # guard increments each attempt; the raise stops once guard > limit, so the
+        # begin succeeds after limit+1 attempts. No random body stmts (they might
+        # raise and make `retry` spin) — just the guarded raise.
+        body = (
+            A.OpAssign(guard, "+=", A.IntLit(1)),
+            A.If(A.BinOp("<=", A.LocalRead(guard), A.IntLit(limit)), (A.Raise("boom"),), None),
+            A.NilLit(),
+        )
+        rescue_body = (A.Puts((A.StrInterp(("retry:", A.LocalRead("e"))),)),)
+        return A.RetryBegin(guard, limit, body, "e", rescue_body), env.with_frozen(guard)
     raise AssertionError(kind)
 
 
@@ -705,6 +791,7 @@ def _method_body(draw, name, arity, callable_methods, ivars, classes, modules, c
         in_method=is_def,
         can_super=can_super,
         sigs=sigs,
+        const_asgn_ok=False,
     )
     body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
     final = draw(_expr(body_env, 2))
@@ -766,6 +853,10 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
 
     # ---- metaprogramming class-body decls (registered so later methods can call them)
     decls: list[A.Node] = []
+    const_names: list[str] = []
+    for cn in CONST_POOL[: draw(st.integers(0, len(CONST_POOL)))]:
+        decls.append(A.ConstAssign(cn, draw(_literal())))  # readable as `Name::cn`
+        const_names.append(cn)
     attr_writers: tuple = ()
     base_names = tuple(iv[1:] for iv in eff_ivars)  # attr only over ivars the class has
     if base_names and draw(st.booleans()):
@@ -828,7 +919,7 @@ def _class_def(draw, env: Env, name: str) -> tuple[A.ClassDef, Env]:
         methods.append(A.MethodDef(ud, (), (A.NilLit(),)))
         tail_decls.append(A.Undef(ud))
 
-    ci = ClassInfo(name, ctor_arity, effective, tuple(sinfos), attr_writers)
+    ci = ClassInfo(name, ctor_arity, effective, tuple(sinfos), attr_writers, tuple(const_names))
     node = A.ClassDef(
         name, sup, tuple(mixins), ivars, tuple(self_methods), tuple(methods), tuple(decls),
         tuple(tail_decls),
@@ -877,7 +968,10 @@ def programs(draw) -> A.Program:
 
         if flavor == "varied":
             params, sig, bound = draw(_method_param_spec(2))
-            body_env = Env(locals=bound, methods=env.methods, in_method=True, sigs=env.sigs)
+            body_env = Env(
+                locals=bound, methods=env.methods, in_method=True, sigs=env.sigs,
+                const_asgn_ok=False,
+            )
             body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
             final = draw(_expr(body_env, 2))
             stmts.append(A.MethodDef(name, params, body + (final,)))
@@ -891,7 +985,7 @@ def programs(draw) -> A.Program:
         yields = flavor == "yielder" and arity >= 1
         body_env = Env(
             locals=params, methods=env.methods, in_method=True,
-            can_yield=1 if yields else None, sigs=env.sigs,
+            can_yield=1 if yields else None, sigs=env.sigs, const_asgn_ok=False,
         )
         body, _ = draw(_stmt_seq(body_env, 1, 1, 3))
         # make the return value depend on the params when there are any

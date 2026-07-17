@@ -332,10 +332,48 @@ class Puts(Node):
 @dataclass(frozen=True)
 class Raise(Node):
     message: str
+    exc_class: str | None = None  # `raise(Klass, msg)` when set, else `raise(msg)`
 
 
 @dataclass(frozen=True)
 class BeginRescue(Node):
+    body: tuple
+    rescue_var: str
+    rescue_body: tuple
+
+
+@dataclass(frozen=True)
+class BeginResc(Node):
+    """Rich exception form: typed/multiple `rescue` clauses + optional `else`/`ensure`.
+
+    `rescues` is a tuple of `(exc_classes, var, body)` where `exc_classes` is a tuple
+    of class-name strings (empty → a bare `rescue` catching StandardError). `else_body`
+    runs iff no exception; `ensure_body` always runs. (Kept as plain tuples, not nodes,
+    so the tier-1.5 probe walks the clause bodies for free.)"""
+
+    body: tuple
+    rescues: tuple  # ((exc_classes, var, body), ...)
+    else_body: tuple | None
+    ensure_body: tuple | None
+
+
+@dataclass(frozen=True)
+class RetryBegin(Node):
+    """A self-contained, guaranteed-terminating `retry` gadget:
+        guard = 0
+        begin
+          guard += 1
+          raise("boom") if guard <= limit
+          ...body
+        rescue => var
+          ...rescue_body
+          retry
+        end
+    The guard increments each attempt and the raise stops once guard > limit, so the
+    begin succeeds after `limit`+1 attempts — `retry` cannot loop forever."""
+
+    guard: str
+    limit: int
     body: tuple
     rescue_var: str
     rescue_body: tuple

@@ -152,5 +152,49 @@ def test_destructuring_block_smoke():
     assert runner.run(render_program(prog)).stdout == "[3, 7]\n"
 
 
+def test_const_path_smoke():
+    from difftest.tiers.tier1 import ast as A
+
+    # class C0; K0 = 7; end ; C0::E0 = 5 ; puts(C0::K0 + C0::E0)  →  12
+    c0 = A.ClassDef("C0", None, (), (), (), (), (A.ConstAssign("K0", A.IntLit(7)),))
+    prog = A.Program(
+        (
+            c0,
+            A.ConstPathAssign("C0", "E0", A.IntLit(5)),
+            A.Puts((A.BinOp("+", A.ConstPath("C0", "K0"), A.ConstPath("C0", "E0")),)),
+        )
+    )
+    assert runner.run(render_program(prog)).stdout == "12\n"
+
+
+def test_rich_rescue_smoke():
+    from difftest.tiers.tier1 import ast as A
+
+    # begin; raise TypeError, "x"; rescue ArgumentError => e; ...; rescue TypeError => e;
+    #   puts("caught"); else; puts("no"); ensure; puts("ens"); end  →  caught / ens
+    body = (A.Raise("x", "TypeError"),)
+    rescues = (
+        (("ArgumentError",), "e", (A.Puts((A.StrLit("wrong"),)),)),
+        (("TypeError",), "e", (A.Puts((A.StrLit("caught"),)),)),
+    )
+    node = A.BeginResc(body, rescues, (A.Puts((A.StrLit("no"),)),), (A.Puts((A.StrLit("ens"),)),))
+    assert runner.run(render_program(A.Program((node,)))).stdout == "caught\nens\n"
+
+
+def test_retry_terminates_smoke():
+    from difftest.tiers.tier1 import ast as A
+
+    # rt0 = 0; begin; rt0 += 1; raise("boom") if rt0 <= 2; nil; rescue => e; retry; end
+    # then puts(rt0)  →  3 (2 retries then success)
+    body = (
+        A.OpAssign("rt0", "+=", A.IntLit(1)),
+        A.If(A.BinOp("<=", A.LocalRead("rt0"), A.IntLit(2)), (A.Raise("boom"),), None),
+        A.NilLit(),
+    )
+    node = A.RetryBegin("rt0", 2, body, "e", (A.NilLit(),))
+    prog = A.Program((node, A.Puts((A.LocalRead("rt0"),))))
+    assert runner.run(render_program(prog)).stdout == "3\n"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
