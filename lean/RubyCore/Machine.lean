@@ -160,6 +160,13 @@ inductive Kont where
       (rest : List (Expr × Expr))
   /-- Value feeds `return`/`break`/`next`. -/
   | jumpValK (kind : JumpKind)
+  /-- Evaluating an omitted optional param's default in the callee frame
+      (artifact 02 §3). The in-flight value is the default for `name`; bind it,
+      then evaluate the next omitted default (`rest`), and once all defaults are
+      bound, install the post/rest/block bindings (`post`) and run `body`.
+      (Post/rest/block bind *after* defaults — a default cannot see them [V].) -/
+  | optDefK (name : String) (rest : List (String × Expr))
+      (post : List (String × Value)) (body : Expr)
   /-- Method-activation boundary (generative jump target = frame identity,
       sketch §1.1). Pops `stack` on normal or unwinding passage. -/
   | frameK (fid : FrameId)

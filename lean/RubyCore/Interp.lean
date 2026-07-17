@@ -160,6 +160,42 @@ def classifySimple (ps0 : List Param) : Option SimpleParams :=
       some { pre := (ps.take i).filterMap reqName, rest? := some restName,
              post := (ps.drop (i + 1)).filterMap reqName, block? }
 
+/-- Positional param structure including optionals (`req` / `opt` / `rest` /
+    trailing `req` / `block`). Returns `none` if any keyword/`kwrest`/`fwd`/
+    `destr` kind is present (still gated at this increment). Canonical Ruby
+    order: leading required, optionals, `*rest`, trailing required, `&block`. -/
+structure FullParams where
+  pre : List String
+  opt : List (String × Expr)
+  rest? : Option String
+  post : List String
+  block? : Option String
+
+def classifyFull (ps0 : List Param) : Option FullParams :=
+  let (ps, block?) := match ps0.reverse with
+    | (.block n) :: more => (more.reverse, some (n.getD ""))
+    | _ => (ps0, none)
+  if ps.any (fun p => match p with | .req _ | .opt _ _ | .rest _ => false | _ => true) then none
+  else
+    let isReq : Param → Bool := fun p => match p with | .req _ => true | _ => false
+    let isOpt : Param → Bool := fun p => match p with | .opt _ _ => true | _ => false
+    let pre := ps.takeWhile isReq
+    let a1 := ps.dropWhile isReq
+    let optPs := a1.takeWhile isOpt
+    let a2 := a1.dropWhile isOpt
+    let (rest?, a3) := match a2 with
+      | (.rest n) :: t => (some (n.getD ""), t)
+      | _ => (none, a2)
+    let post := a3.takeWhile isReq
+    let a4 := a3.dropWhile isReq
+    if !a4.isEmpty then none  -- non-canonical order (e.g. opt after post) → gate
+    else some {
+      pre := pre.filterMap (fun p => match p with | .req n => some n | _ => none),
+      opt := optPs.filterMap (fun p => match p with | .opt n d => some (n, d) | _ => none),
+      rest?,
+      post := post.filterMap (fun p => match p with | .req n => some n | _ => none),
+      block? }
+
 /-- Spread a splat operand [V]: array splices, nil vanishes, anything else
     (without to_a) is itself. Hash's pair-conversion is gated for now. -/
 def spread (m : Machine) (v : Value) : Except String (List Value) :=
@@ -321,37 +357,52 @@ def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
     can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
 def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
     (args : List Value) (blk : Option Value) : StepResult :=
-  let sp? := classifySimple md.params
-  if sp?.isNone then
-    .unsupported "unmodeled param kind (optional/keyword/forwarding/destructuring)"
+  let fp? := classifyFull md.params
+  if fp?.isNone then
+    .unsupported "unmodeled param kind (keyword/kwrest/forwarding/destructuring)"
   else
-  let sp := sp?.getD ⟨[], none, [], none⟩
-  let pre := sp.pre; let rest? := sp.rest?; let post := sp.post; let blockP := sp.block?
-  let required := pre.length + post.length
-  let arityOk := match rest? with
-    | some _ => args.length ≥ required
-    | none => args.length == required
+  let fp := fp?.getD ⟨[], [], none, [], none⟩
+  let np := fp.pre.length; let nopt := fp.opt.length; let npost := fp.post.length
+  let n := args.length
+  let required := np + npost
+  let arityOk := match fp.rest? with
+    | some _ => n ≥ required
+    | none => n ≥ required && n ≤ required + nopt
   if !arityOk then
-    let expected := match rest? with | some _ => s!"{required}+" | none => toString required
+    let expected := match fp.rest? with
+      | some _ => s!"{required}+"
+      | none => if nopt == 0 then toString required else s!"{required}..{required + nopt}"
     .next (raiseErr m Boot.argumentErrorId
-      s!"wrong number of arguments (given {args.length}, expected {expected})")
+      s!"wrong number of arguments (given {n}, expected {expected})")
   else
-    let preArgs := args.take pre.length
-    let postArgs := args.drop (args.length - post.length)
-    let midArgs := (args.drop pre.length).take (args.length - required)
-    let (locals, m) := match rest? with
-      | none => (pre.zip preArgs ++ post.zip postArgs, m)
-      | some rname =>
-        let (rv, m) := Builtins.allocArr m midArgs.toArray
-        (pre.zip preArgs ++ [(rname, rv)] ++ post.zip postArgs, m)
-    let locals := match blockP with
-      | some bn => locals ++ [(bn, blk.getD .nil)]
-      | none => locals
+    -- positional distribution: pre from the front, post from the back, optionals
+    -- fill the leftmost middle args, a `*rest` absorbs the surplus (artifact 02 §3).
+    let preVals := args.take np
+    let postVals := args.drop (n - npost)
+    let middle := (args.drop np).take (n - npost - np)
+    let filled := min nopt middle.length
+    let optFilled := ((fp.opt.take filled).map (·.1)).zip (middle.take filled)
+    let optOmitted := fp.opt.drop filled           -- (name, default-expr), eval in-frame
+    let restVals := middle.drop filled
+    -- Phase A: pre + filled optionals are visible to omitted-opt defaults.
+    let localsA := fp.pre.zip preVals ++ optFilled
+    -- Phase B (bound AFTER defaults [V]): rest, post, block.
+    let (restBinding, m) := match fp.rest? with
+      | some r => let (rv, m) := Builtins.allocArr m restVals.toArray; ([(r, rv)], m)
+      | none => ([], m)
+    let localsB := restBinding ++ fp.post.zip postVals ++
+      (match fp.block? with | some b => [(b, blk.getD .nil)] | none => [])
     let frame : Frame :=
-      { self := recv, locals, defmod := md.owner, kind := .method, blk, meth := mname }
+      { self := recv, locals := localsA, defmod := md.owner, kind := .method, blk, meth := mname }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    .next (withKont m (.eval md.body) (.frameK fid))
+    let m := { m with kont := .frameK fid :: m.kont }
+    match optOmitted with
+    | [] =>
+      let m := localsB.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
+      .next (withCtl m (.eval md.body))
+    | (n0, d0) :: more =>
+      .next (withKont m (.eval d0) (.optDefK n0 more localsB md.body))
 
 /-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
     superclass realizes the metaclass chain so dispatch through `classOf` finds
@@ -908,6 +959,15 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .retK => doReturn m v
       | .brkK => .next (withCtl m (.jump (.brkJ v)))
       | .nxtK => .next (withCtl m (.jump (.nxtJ v)))
+    | .optDefK name rest post body =>
+      -- v is the default value for `name`; bind it, then the next default, or
+      -- (all defaults done) install post/rest/block and run the body.
+      let m := m.setLocal name v
+      match rest with
+      | [] =>
+        let m := post.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
+        .next (withCtl m (.eval body))
+      | (n0, d0) :: more => .next (withKont m (.eval d0) (.optDefK n0 more post body))
     | .frameK _ =>
       -- normal completion of a method body: pop the activation
       .next (withCtl { m with stack := m.stack.tail } (.value v))

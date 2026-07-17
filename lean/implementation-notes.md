@@ -421,3 +421,29 @@ ratchet.
     (bind-time, vs. the old decode-time gate) — so **agreement is unchanged**;
     this commit is a pure refactor that unlocks per-kind binding in L28+.
     Anonymous `*`/`&` lower to name `""` (parity with `"*".drop 1`).
+
+- **L28 — `popt` optional param defaults (native binding in `enterUserMethod`).**
+  New `classifyFull : List Param → Option FullParams` (`pre`/`opt`/`rest?`/`post`/
+  `block?`; still gates keyword/`kwrest`/`fwd`/`destr`). `enterUserMethod` now:
+  - **Arity** `[V]`: with `*rest`, `n ≥ required`; else `required ≤ n ≤ required +
+    nopt`. Expected string: `"{required}+"` with rest, `"{required}..{required+nopt}"`
+    with optionals, plain `"{required}"` otherwise (byte-exact `ArgumentError`).
+  - **Distribution** `[V]`: `pre` from the front, `post` from the back, the middle
+    `args[np : n-npost]` fills the **leftmost** optionals (`filled =
+    min nopt middle.length`); a `*rest` absorbs the surplus; the remaining
+    (rightmost) optionals are omitted and take defaults.
+  - **Default evaluation** `[V]`: omitted defaults are evaluated **lazily,
+    left-to-right, in the callee frame, only for omitted params**, via a
+    `optDefK` kont chain pushed above the method's `frameK`. Each default is
+    bound (`setLocal`) before the next is evaluated, so a later default sees an
+    earlier one (`b = a+1, c = b*2`). Only `pre` + already-filled optionals are
+    in the frame while defaults run; **rest/post/block bind *after* all defaults**
+    (carried in `optDefK.post`), because a Ruby default cannot see a trailing
+    required / rest / block param (referencing one raises `NameError`).
+  The no-optional path reduces to the previous binding exactly (parity), so this
+  only adds coverage. Blocks (`callClosure`) and `zsuper` still use
+  `classifySimple` — a block/zsuper with optionals gates for now (later
+  increment). **Residual gap (noted):** a pathological default that references a
+  *later* (post/rest/block) param reads an unbound local (→ `nil`) rather than
+  raising CRuby's `NameError`; not observed in corpus/fuzzing, revisit if it
+  surfaces.

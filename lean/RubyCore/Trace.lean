@@ -95,6 +95,7 @@ def kontLabel : Kont → String
   | .whileBodyK .. => "while: after body"
   | .forStartK .. => "for: start ▢"
   | .forBodyK .. => "for: after body"
+  | .optDefK n .. => s!"then bind opt {n} = ▢"
   | .recvK m .. => s!"then send .{m}"
   | .argsK _ _ m .. => s!"collect args for .{m}"
   | .argsSplatK _ _ m .. => s!"splat args for .{m}"
