@@ -66,6 +66,8 @@ inductive Expr where
   | brk (e : Option Expr)
   | nxt (e : Option Expr)
   | retry'
+  /-- `redo` — restart the current loop iteration (artifact 04). -/
+  | redo'
   | class' (name : String) (sup : Option Expr) (body : Expr)
   | module' (name : String) (body : Expr)
   /-- `class A::B … end` — `base` is the namespace (`none` = absolute `::B`).
@@ -245,6 +247,7 @@ partial def expr (j : Json) : M Expr := do
   | "break", #[_, e] => .brk <$> opt e
   | "next",  #[_, e] => .nxt <$> opt e
   | "retry", #[_] => return .retry'
+  | "redo",  #[_] => return .redo'
   | "class", #[_, n, sup, body] =>
       match n with
       | .str s => return .class' s (← opt sup) (← expr body)
@@ -280,7 +283,6 @@ partial def expr (j : Json) : M Expr := do
   | "kwargs",     _ => unsupported "keyword args (kwargs)"
   | "fwd",        _ => unsupported "argument-forwarding marker (fwd)"
   | "defined",    _ => unsupported "defined?"
-  | "redo",       _ => unsupported "redo"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 
 end

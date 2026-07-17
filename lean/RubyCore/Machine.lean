@@ -53,6 +53,9 @@ inductive Jump where
   | brkJ (v : Value)
   | nxtJ (v : Value)
   | retryJ
+  /-- `redo` — re-run the current loop body/iteration without re-testing the
+      condition or advancing (artifact 04). -/
+  | redoJ
 deriving Inhabited
 
 /-- A send's block child, carried through arg evaluation. A literal block is

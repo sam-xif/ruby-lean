@@ -943,6 +943,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       match j with
       | .brkJ v => .next (withCtl m (.value v))
       | .nxtJ _ => .next (withKont m (.eval c) (.whileCondK c body))
+      | .redoJ => .next (withKont m (.eval body) (.whileBodyK c body))  -- re-run body, skip cond [V]
       | _ => .next (withCtl m (.jump j))
     | .forStartK .. =>
       -- a jump raised while evaluating the collection is not the loop's: pass on
@@ -951,6 +952,8 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       match j with
       | .brkJ v => .next (withCtl m (.value v))           -- break value is for's value [V]
       | .nxtJ _ => forStep m targets body rest coll        -- next → next element
+      | .redoJ =>                                          -- re-run body for the same element [V]
+        .next (withKont m (.eval body) (.forBodyK targets body rest coll))
       | _ => .next (withCtl m (.jump j))
     | .frameK fid =>
       match j with
@@ -962,6 +965,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .brkJ _ | .nxtJ _ => .unsupported "break/next crossing a method boundary"
       | .retryJ => .unsupported "retry crossing a method boundary"
+      | .redoJ => .unsupported "redo crossing a method boundary"
     | .blkFrameK fid lam brk =>
       match j with
       | .nxtJ v =>
@@ -983,6 +987,9 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
           .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .retryJ => .unsupported "retry crossing a block boundary"
+      -- `redo` re-runs the block body, but blkFrameK does not carry the body
+      -- expr (block invocation is driven by callClosure) → gate.
+      | .redoJ => .unsupported "redo in a block"
     | .beginBodyK node =>
       match j with
       | .raiseJ exc =>
@@ -1166,6 +1173,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | some e => .next (withKont m (.eval e) (.jumpValK .nxtK))
     | none => .next (withCtl m (.jump (.nxtJ .nil)))
   | .retry' => .next (withCtl m (.jump .retryJ))
+  | .redo' => .next (withCtl m (.jump .redoJ))
   | .begin' body rescues els ens =>
     -- gate rescue targets we can't bind yet
     if rescues.any (fun (_, ref, _) => match ref with

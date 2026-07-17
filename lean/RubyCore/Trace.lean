@@ -56,6 +56,7 @@ def exprBrief : Expr → String
   | .array _ => "array [ … ]" | .hash _ => "hash { … }"
   | .splat _ => "splat *"
   | .ret _ => "return" | .brk _ => "break" | .nxt _ => "next" | .retry' => "retry"
+  | .redo' => "redo"
   | .class' n _ _ => s!"class {n}" | .module' n _ => s!"module {n}"
   | .scopedClass _ n _ => s!"class …::{n}" | .scopedModule _ n _ => s!"module …::{n}"
   | .sclass .. => "class << …" | .defs _ n _ _ => s!"def self.{n}"
@@ -69,6 +70,7 @@ def jumpBrief (h : Heap) : Jump → String
   | .brkJ v => s!"break {valBrief h 3 v}"
   | .nxtJ v => s!"next {valBrief h 3 v}"
   | .retryJ => "retry"
+  | .redoJ => "redo"
 
 def ctlBrief (h : Heap) : Ctl → String
   | .eval e => "eval  " ++ exprBrief e

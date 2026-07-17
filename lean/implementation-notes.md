@@ -382,3 +382,16 @@ coverage and desugaring targets, not the machine shape. Ratchet discipline:
   collection (`Range`, still unmodeled — the `(1..n)` cases gate here now
   instead of at decode) and any non-local target. New konts `forStartK`,
   `forBodyK`; helpers `forBind`/`forStep`.
+
+- **L26 — `redo` in `while`/`dowhile`/`for` loops.** New `Jump.redoJ` (argless,
+  like `retryJ`); `Expr.redo'` emits it. In `unwind`, a loop marker re-runs its
+  **body** without re-testing the condition or advancing: `whileCondK`/
+  `whileBodyK` → eval `body` under a fresh `whileBodyK`; `forBodyK` → eval `body`
+  under the same `forBodyK` (same element still bound in the frame). `redoJ`
+  propagates through `begin` regions via the existing `beginBodyK`/`ensureK`
+  catch-alls, so `redo` inside nested `begin…ensure` correctly runs the ensures
+  before restarting (bootstraptest `test_flow_043`: `[:ok, :ok2, :last]` [V]).
+  **Gated:** `redo` in a **block** (`blkFrameK` carries no body expr — block
+  invocation is driven by `callClosure`; the `1.times{…redo}` / `m{…redo}` cases
+  stay Unsupported) and `redo` crossing a method boundary. `frameK`/`blkFrameK`
+  gained explicit `redoJ` arms.
