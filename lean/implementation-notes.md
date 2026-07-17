@@ -498,3 +498,42 @@ ratchet.
   shape** any more. **Gated (follow-up):** block/`{|(a,b)|}` destructuring —
   `callClosure` still uses `classifySimple` (lenient block arity + auto-splat is a
   separate binding path); block destructuring stays Unsupported for now.
+
+## Iterating builtins that yield (L32–…)
+
+The top remaining lever: builtins like `Array#each` / `Integer#times` that *call a
+block* per element. A pure `Builtins.run` cannot push a block frame, so these were
+gated. The fix is a stepper-level mechanism, not a builtin.
+
+- **L32 — native block-iteration mechanism + `Array#each` + `Integer#times`.**
+  Mirrors `enterUserMethod` (push a `break`/return-target frame) + the `for` loop
+  (a per-element continuation), reusing `callClosure`/`blkFrameK`/`frameK`/
+  `unwind` wholesale:
+  - `startIter` pushes an activation `Frame` (the iterator call itself) under a
+    `frameK fid`, then runs `iterStep`.
+  - `iterStep` (non-recursive; the loop is driven by the `iterK` kont) either
+    delivers the final value (`.value` flows into `frameK fid`, popping the
+    iterator frame) or pushes an `iterK` and `callClosure`s the block for the next
+    element with `brk = fid`.
+  - `iterK` folds the block's result per `IterKind` (`ignore`/`collect`/`fold` —
+    L33 uses the latter two) and calls `iterStep` for the next element.
+  - Control-flow falls out for free: `break v` in the block → `blkFrameK`
+    converts it to `retJ v fid` → propagates past `iterK` (unwind catch-all) →
+    `frameK fid` returns `v` from the iterator call; `next v` → block value for
+    that element; `return` → still targets the block's home method (past `fid`).
+  - **Dispatch hook:** `tryIterator` runs only on a lookup **miss** (in
+    `dispatchMiss`, before the CRuby-shadow gate) and only when a **block** is
+    present — so a user override wins, and a blockless `each` stays gated (it would
+    be an Enumerator). `each` on any `.arr` payload (incl. inherited), `times` on
+    an `Integer`. `retVal` (ignore-kind) is the receiver [V].
+
+  Two latent gaps that `each`/`times` *exposed* (they were masked while the loop
+  gated) are now gated cleanly rather than disagreeing:
+  - **`const_missing`** — `A::FOO` on a base defining `self.const_missing` invokes
+    the hook in CRuby; `cpathK` now gates ("const_missing hook") instead of
+    raising a spurious `NameError` (`test_class_046`).
+  - **standard mixins not in the ancestor chain** — a user method monkey-patched
+    onto `Enumerable`/`Comparable` and called on an `Array`/`Hash`/`Integer`/… is
+    resolvable in CRuby (those classes include the module) but not in the L0 heap
+    (no MRO). `mixinShadow`/`stdMixins` gate such a miss ("method via unmodeled
+    mixin …") instead of `NoMethodError` (`test_jump_011`). Superseded by MX1.

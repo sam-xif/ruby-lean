@@ -649,18 +649,104 @@ def missNoMethod (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     .next (raiseErr m Boot.noMethodErrorId
       s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
 
+/-- Advance a native block-iterator: deliver the block's next call, or its final
+    value once the per-iteration arg lists are exhausted. Reuses `callClosure`
+    (a fresh block frame per element) with `brk` = the iterator's own activation
+    frame, so `break` inside the block returns from the iterator call, `next`
+    supplies that iteration's value, and `return` still targets the block's home
+    method. Non-recursive: the loop is driven by the `iterK` continuation. -/
+def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Value))
+    (kind : IterKind) (acc : List Value) (retVal : Value) : StepResult :=
+  match rest with
+  | [] =>
+    let (finalV, m) := match kind with
+      | .ignore => (retVal, m)
+      | .collect => let (a, m) := Builtins.allocArr m acc.toArray; (a, m)
+      | .fold => (acc.headD .nil, m)
+    .next (withCtl m (.value finalV))   -- `frameK brk` pops the iterator frame
+  | a :: rest' =>
+    let callArgs := match kind with | .fold => acc ++ a | _ => a
+    let m := { m with kont := .iterK cl brk rest' kind acc retVal :: m.kont }
+    callClosure m cl callArgs (some brk)
+
+/-- Begin a native block-iterator: push an activation frame (the `break`/return
+    target) under a `frameK`, then start the block-call loop. -/
+def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
+    (elemArgs : List (List Value)) (kind : IterKind) (initAcc : List Value)
+    (retVal : Value) : StepResult :=
+  let frame : Frame :=
+    { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname }
+  let fid := m.frames.size
+  let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+  let m := { m with kont := .frameK fid :: m.kont }
+  iterStep m cl fid elemArgs kind initAcc retVal
+
+/-- If `(recv, mname)` is a native block-iterator invoked *with* a block, run it
+    (returns `some`); otherwise `none` (fall through to the normal miss path — a
+    blockless `each` etc. would be an Enumerator, still gated). Only reached on a
+    lookup miss, so a user override of the method takes precedence. -/
+def tryIterator (m : Machine) (recv : Value) (mname : String)
+    (blk : Option Value) : Option StepResult :=
+  match blk with
+  | some (.ref bo) =>
+    match (m.heap.get bo).payload with
+    | .proc cl =>
+      match recv with
+      | .ref o =>
+        match (m.heap.get o).payload with
+        | .arr xs =>
+          match mname with
+          | "each" =>
+            some (startIter m recv mname cl (xs.toList.map (fun e => [e])) .ignore [] recv)
+          | _ => none
+        | _ => none
+      | .int n =>
+        match mname with
+        | "times" =>
+          some (startIter m recv mname cl
+            ((List.range n.toNat).map (fun i => [Value.int (Int.ofNat i)])) .ignore [] recv)
+        | _ => none
+      | _ => none
+    | _ => none
+  | _ => none
+
+/-- Standard library modules a core class includes in real CRuby but which the
+    L0 heap does not put in its ancestor chain yet (no MRO/mixins). Used to gate
+    a miss that CRuby would resolve through one of these (e.g. a user method
+    monkey-patched onto `Enumerable` and called on an `Array`). Superseded once
+    `include`/MRO lands (MX1). -/
+def stdMixins (cls : ObjId) : List String :=
+  if cls == Boot.arrayId || cls == Boot.hashId then ["Enumerable"]
+  else if cls == Boot.integerId || cls == Boot.floatId || cls == Boot.stringId then ["Comparable"]
+  else []
+
+/-- Would CRuby resolve `mname` on `recv` via a standard mixin (Enumerable/
+    Comparable) the model doesn't model in ancestors? Only fires when such a
+    module actually exists (user-defined/reopened) and defines `mname`. -/
+def mixinShadow (m : Machine) (recv : Value) (mname : String) : Option String :=
+  (stdMixins (classOf m.heap recv)).firstM fun modName =>
+    match constLookup m.heap modName with
+    | some (.ref mo) => if (methodOn m.heap mo mname).isSome then some modName else none
+    | _ => none
+
 /-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact
     `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
     tombstone-hit dispatch paths. -/
 def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) : StepResult :=
+  match tryIterator m recv mname blk with
+  | some sr => sr
+  | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
   match crubySingletonShadow m.heap recv mname with
   | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
   | none =>
   match crubyShadow m.heap chain mname with
   | some cname => .unsupported s!"unmodeled method {cname}#{mname}"
+  | none =>
+  match mixinShadow m recv mname with
+  | some modName => .unsupported s!"method via unmodeled mixin {modName}#{mname}"
   | none =>
     match methodOn m.heap (classOf m.heap recv) "method_missing" with
     | some (_, mm) =>
@@ -1042,7 +1128,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         match constLookupFrom m.heap o name with
         | some cv => .next (withCtl m (.value cv))
         | none =>
-          .next (raiseErr m Boot.nameErrorId
+          -- CRuby invokes `const_missing` before raising; if the base defines it
+          -- (a singleton method), gate rather than emit a spurious NameError.
+          let hasCM := match (m.heap.get o).eigen with
+            | some e => (methodOn m.heap e "const_missing").isSome
+            | none => false
+          if hasCM then .unsupported "const_missing hook"
+          else .next (raiseErr m Boot.nameErrorId
             s!"uninitialized constant {className m.heap o}::{name}")
     | .cpathAsgnK name rhs =>
       -- v is base `A`; evaluate `rhs`, then assign (base then rhs order [V]).
@@ -1079,6 +1171,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "for over a non-Array collection"
     | .forBodyK targets body rest coll =>
       forStep m targets body rest coll
+    | .iterK cl brk rest kind acc retVal =>
+      -- v is the block's result for the current element; fold it, then continue.
+      let acc := match kind with
+        | .ignore => acc
+        | .collect => acc ++ [v]
+        | .fold => [v]
+      iterStep m cl brk rest kind acc retVal
     | .recvK mname args pblk implicit =>
       startArgs m v implicit mname [] args pblk
     | .argsK recv implicit mname acc rest pblk =>

@@ -93,6 +93,14 @@ structure BeginNode where
   ens : Option Expr
 deriving Inhabited
 
+/-- How a native block-iterator (`each`/`map`/`inject`/…) treats each block
+    result and computes its final value. -/
+inductive IterKind where
+  | ignore    -- each / times / each_with_index: discard result, return `retVal`
+  | collect   -- map / collect: gather results into a new Array
+  | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)
+deriving Repr, Inhabited
+
 inductive Kont where
   /-- Remaining statements of a `seq`; the in-flight value is discarded. -/
   | seqK (rest : List Expr)
@@ -133,6 +141,14 @@ inductive Kont where
       brk/nxt; `rest` are the not-yet-visited elements, `coll` the loop value. -/
   | forBodyK (targets : List (TargetKind × String)) (body : Expr)
       (rest : List Value) (coll : Value)
+  /-- A native block-iterator finished one block call. The in-flight value is the
+      block's result; handle it per `kind`, then call the block for the next
+      element (`rest` = remaining per-iteration arg lists) or deliver the final
+      value. `cl` is the block, `brk` the iterator's activation frame (a `break`
+      returns from it), `acc` the collect/fold accumulator, `retVal` the
+      ignore-kind result. -/
+  | iterK (cl : Closure) (brk : FrameId) (rest : List (List Value))
+      (kind : IterKind) (acc : List Value) (retVal : Value)
   /-- Got the receiver; evaluate args next. `blk` rides along to the dispatch. -/
   | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : Bool)
   /-- Evaluating args left to right. -/
