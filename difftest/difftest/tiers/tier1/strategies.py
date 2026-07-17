@@ -326,11 +326,19 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
     callable_instances = env.callable_instances
     classes_with_smethods = env.classes_with_smethods
     classes_with_consts = env.classes_with_consts
+    # `new` in *expression* position yields a value that may flow into string
+    # interpolation. The desugar lowers `"#{e}"` to `Kernel#String(e)`, which calls
+    # `to_str` (→ `method_missing`) whereas real interpolation (`rb_obj_as_string`)
+    # calls only `to_s` — so `String(o) != "#{o}"` for a method_missing object (a real
+    # desugar bug, see implementation-notes N22). Keep method_missing classes out of
+    # value-position `new`; they are still instantiated via the `new_inst` *statement*
+    # (bound to a receiver-only instance var, never interpolated) for ghost-call coverage.
+    new_classes = tuple(ci for ci in env.classes if not ci.has_mm)
     if depth > 0:
         kinds += ["binop", "binop", "and", "or", "not", "interp", "array", "index", "hash"]
         if not no_range_head:
             kinds += ["range"]
-        if env.classes:
+        if new_classes:
             kinds += ["new"]
         if callable_instances:
             kinds += ["mcall", "mcall", "send"]
@@ -407,7 +415,7 @@ def _expr(draw, env: Env, depth: int, no_range_head: bool = False) -> A.Node:
             return A.Call(name, args, kwargs)
         return A.Call(name, tuple(draw(_expr(env, depth - 1)) for _ in range(arity)))
     if kind == "new":
-        ci = draw(st.sampled_from(env.classes))
+        ci = draw(st.sampled_from(new_classes))
         return A.New(ci.name, tuple(draw(_expr(env, depth - 1)) for _ in range(ci.ctor_arity)))
     if kind == "mcall":
         inst_name, class_name = draw(st.sampled_from(callable_instances))

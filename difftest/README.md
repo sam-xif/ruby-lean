@@ -52,17 +52,22 @@ with reasons. This is the quick-initial-confidence corpus a new SUT meets first.
 environment of bound locals/methods/**classes**/**modules**/**instances**/
 **procs** threads through generation, so names resolve and dispatch fires). The
 vocabulary covers scalars/arrays/hashes/**ranges**, control flow, first-order
-methods, the **object model** (`class`/ivars, inheritance `< Super` + `super`,
-`module` + `include`/`prepend`, `def self.m`, `C.new`, instance/class-method
-sends), **blocks/procs/lambdas** (`yield`/`block_given?`, `each`/`map`/`select`,
-`->`/`proc`/`lambda` + `.call`, `&blk`/`&:sym`, `next`/`break`/`return`),
-**metaprogramming as heap mutation** (`send`/`public_send`, `respond_to?`,
-`instance_variable_get`/`set`, `attr_accessor`, `define_method`/
-`define_singleton_method`, class reopening), and **writer-calls + multiple
-assignment** (`a[i] = v`, `a[i] ||= v`, `obj.attr = v`, `a, *b = …`).
-Termination is by construction (bounded loops/collections, pure constructors, a
-strict class/method DAG); see implementation-notes N12–N13. The campaign is a
-Hypothesis property asserting agreement — any disagreement is **automatically
+methods, **method parameters in full variety** (required, **optional defaults**,
+**keyword** `k:`/`k: v`, `*rest`, `**kwrest`, **`...` forwarding**, **destructuring**
+`|(a, b)|`, with call sites generated compatibly), **control flow** (`if`, `while`,
+`times`, **`for`** (scope-leaking index), **do-while**, **`redo`**, bounded),
+the **object model** (`class`/ivars, inheritance `< Super` + `super`,
+`module` + `include`/`prepend`, `def self.m`, **`class << self`**, `C.new`,
+instance/class-method sends, **`method_missing`**), **constant paths** (`A::B`
+read + assign), **metaprogramming as heap mutation** (`send`/`public_send`,
+`respond_to?`, `instance_variable_get`/`set`, `attr_accessor`, `define_method`/
+`define_singleton_method`, `alias`/`alias_method`, `undef`, class reopening),
+**writer-calls + multiple assignment** (`a[i] = v`, `a[i] ||= v`, `obj.attr = v`,
+`a, *b = …`), and **rich exceptions** (typed/multiple `rescue`, `else`, `ensure`,
+bounded **`retry`**, `raise Klass, msg`). Termination is by construction (bounded
+loops/collections, pure constructors, a strict class/method DAG, monotonic-guard
+`redo`/`retry` gadgets); see implementation-notes N12–N13, N15–N22. The campaign is
+a Hypothesis property asserting agreement — any disagreement is **automatically
 shrunk** and the minimal reproducer saved to `corpus/regressions/`.
 
 **Tier 3** prompts Claude (default `claude-opus-4-8`, structured JSON output)

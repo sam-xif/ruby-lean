@@ -403,3 +403,22 @@ The last two object-model rules with no generative coverage:
 
 `--tier 1`: desugar 300/300 (seeds 7/456/999/2024), lean 120/400, 0 disagree. 14 render
 smoke tests pass.
+
+### N22 addendum — a real desugar bug found by method_missing (interpolation ≠ `String()`)
+
+Generating method_missing surfaced a genuine **desugar** disagreement (tier-1 seed 314):
+the desugar lowers string interpolation `"#{e}"` to `Kernel#String(e)`, but the two are
+**not** equivalent. `String(o)` coerces via `rb_check_convert_type(:to_str)` — which
+dispatches through `method_missing` — then falls back to `to_s`; real interpolation
+(`rb_obj_as_string`) calls **only** `to_s`. So for an object defining `method_missing`
+(or a real `to_str`), `String(o)` → `mm-to_str` while `"#{o}"` → `#<C:0x…>`. Minimal
+repro: `class C; def method_missing(n,*a); "mm-#{n}"; end; end; puts("v=#{C.new}")`
+(verified: CRuby interpolation and `String()` diverge, `respond_to?(:to_str)` is false).
+
+This is a desugar-harness bug (interpolation should not lower to `String()`); a faithful
+fix (`String === v ? v : v.to_s`, evaluating `v` once) belongs on the desugar side with
+its own round-trip re-validation. Until then, the tier-1 generator keeps method_missing
+classes out of **value-position `new`** (the only way an mm-object could reach
+interpolation), preserving method_missing coverage via receiver-only instances while
+staying 0-disagree. Recorded here as a genuine differential-testing find (the point of
+the exercise), not swept under the rug.
