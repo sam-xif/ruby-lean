@@ -537,3 +537,14 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     resolvable in CRuby (those classes include the module) but not in the L0 heap
     (no MRO). `mixinShadow`/`stdMixins` gate such a miss ("method via unmodeled
     mixin …") instead of `NoMethodError` (`test_jump_011`). Superseded by MX1.
+
+- **L33 — `map`/`collect`, `each_with_index`, `inject`/`reduce`, `Hash#each`.**
+  All reuse the L32 mechanism via `IterKind`: `map`/`collect` = `collect` (gather
+  block results into a new Array); `each_with_index` = `ignore` with two-element
+  per-iteration arg lists `[e, i]`; `inject`/`reduce` = `fold` (block gets
+  `acc :: [e]`, result becomes the next `acc`) — `inject{}` seeds with the first
+  element and folds the rest, `inject(seed){}` folds all, empty+no-seed → `nil`;
+  `Hash#each`/`each_pair` = `ignore`, yielding one allocated `[k, v]` array per
+  entry (block `|k,v|` auto-splats, `|pair|` gets the array). `tryIterator` gained
+  the call `args` (for `inject`'s seed). Block form only — `inject(:sym)` (no
+  block) is not intercepted and gates as before.

@@ -685,7 +685,7 @@ def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
     (returns `some`); otherwise `none` (fall through to the normal miss path — a
     blockless `each` etc. would be an Enumerator, still gated). Only reached on a
     lookup miss, so a user override of the method takes precedence. -/
-def tryIterator (m : Machine) (recv : Value) (mname : String)
+def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value)
     (blk : Option Value) : Option StepResult :=
   match blk with
   | some (.ref bo) =>
@@ -695,9 +695,30 @@ def tryIterator (m : Machine) (recv : Value) (mname : String)
       | .ref o =>
         match (m.heap.get o).payload with
         | .arr xs =>
+          let each1 := xs.toList.map (fun e => [e])
           match mname with
-          | "each" =>
-            some (startIter m recv mname cl (xs.toList.map (fun e => [e])) .ignore [] recv)
+          | "each" => some (startIter m recv mname cl each1 .ignore [] recv)
+          | "map" | "collect" => some (startIter m recv mname cl each1 .collect [] .nil)
+          | "each_with_index" =>
+            let ei := xs.toList.zipIdx.map (fun (e, i) => [e, Value.int (Int.ofNat i)])
+            some (startIter m recv mname cl ei .ignore [] recv)
+          | "inject" | "reduce" =>
+            -- block form only; `inject(:sym)` has no block ⇒ not reached here.
+            match args with
+            | [] => match xs.toList with
+              | [] => some (.next (withCtl m (.value .nil)))   -- empty, no seed → nil
+              | h :: t => some (startIter m recv mname cl (t.map (fun e => [e])) .fold [h] .nil)
+            | [seed] => some (startIter m recv mname cl each1 .fold [seed] .nil)
+            | _ => none
+          | _ => none
+        | .hsh pairs =>
+          match mname with
+          | "each" | "each_pair" =>
+            -- Hash#each yields one `[k, v]` array per entry (block `|k,v|`
+            -- auto-splats it; `|pair|` gets the whole array).
+            let (elemArgs, m) := pairs.toList.foldl (fun (acc, m) (kv : Value × Value) =>
+              let (pa, m) := Builtins.allocArr m #[kv.1, kv.2]; (acc ++ [[pa]], m)) ([], m)
+            some (startIter m recv mname cl elemArgs .ignore [] recv)
           | _ => none
         | _ => none
       | .int n =>
@@ -735,7 +756,7 @@ def mixinShadow (m : Machine) (recv : Value) (mname : String) : Option String :=
     tombstone-hit dispatch paths. -/
 def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) : StepResult :=
-  match tryIterator m recv mname blk with
+  match tryIterator m recv mname args blk with
   | some sr => sr
   | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
