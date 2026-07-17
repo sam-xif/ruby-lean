@@ -482,3 +482,19 @@ ratchet.
   evaluation — `forwardBundle`) and dispatches `acc ++ __fwd_rest` positionals
   with the `__fwd_kw` keyword bundle and `__fwd_blk` block via `invoke`. `g(1,
   ...)` prepends the leading args. Gated: `...` to `super`/`yield` (rare).
+
+- **L31 — `pdestr` destructuring params (method params).** `def m((a, *b),
+  c)` — a destructuring param occupies one positional slot and array-destructures
+  its arg. `classifyFull` replaces each `Param.destr` with a synthetic
+  `__destr_k` required name (so the pre/opt/rest/post scan is unchanged) and
+  records `(name, subs)` obligations in `FullParams.destrs`. After positional
+  binding, `enterUserMethod` reads each synthetic slot's value and expands it via
+  `destructureBind` (recursive, `partial`): coerce to an array (elements if an
+  `Array`, else wrap `[v]`), bind leading positionals from the front, `*rest` the
+  middle, trailing from the back, nested `(…)` recurse — massign semantics `[V]`
+  (short array → `nil` fill; scalar → wrap). Expanded bindings join Phase A
+  (visible to defaults); synthetic names are dropped. With this,
+  `classifyFull` handles all eight `PARAM_HEADS`, so **method params never gate on
+  shape** any more. **Gated (follow-up):** block/`{|(a,b)|}` destructuring —
+  `callClosure` still uses `classifySimple` (lenient block arity + auto-splat is a
+  separate binding path); block destructuring stays Unsupported for now.

@@ -172,6 +172,9 @@ structure FullParams where
   keys : List (String × Option Expr)   -- keyword params (name, default?)
   kwrest? : Option (Option String)     -- `**o` present? outer some, inner name
   block? : Option String
+  -- destructuring params `(a, b)` carried as synthetic positional names paired
+  -- with their sub-params; expanded after positional binding (P5).
+  destrs : List (String × List Param) := []
 
 /-- Reserved local names for `...` argument forwarding (`def m(...)`). -/
 def fwdRest := "__fwd_rest"
@@ -185,11 +188,17 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
   let ps0 := ps0.flatMap fun p => match p with
     | .fwd => [.rest (some fwdRest), .kwrest (some fwdKw), .block (some fwdBlk)]
     | _ => [p]
+  -- destructuring params `(a,b)` occupy one positional slot each: replace with a
+  -- synthetic required name and record the obligation, expanded post-binding (P5).
+  let destrs := (ps0.zipIdx).filterMap fun (p, i) =>
+    match p with | .destr subs => some (s!"__destr_{i}", subs) | _ => none
+  let ps0 := (ps0.zipIdx).map fun (p, i) =>
+    match p with | .destr _ => Param.req s!"__destr_{i}" | _ => p
   let (ps, block?) := match ps0.reverse with
     | (.block n) :: more => (more.reverse, some (n.getD ""))
     | _ => (ps0, none)
-  -- only destr is unhandled here now (fwd expanded above, keywords captured below)
-  if ps.any (fun p => match p with | .destr _ => true | _ => false) then none
+  -- fwd expanded, destr synthesized, keywords captured below: nothing left to gate
+  if false then none
   else
     let isReq : Param → Bool := fun p => match p with | .req _ => true | _ => false
     let isOpt : Param → Bool := fun p => match p with | .opt _ _ => true | _ => false
@@ -215,7 +224,38 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
       rest?,
       post := post.filterMap (fun p => match p with | .req n => some n | _ => none),
       keys := keyPs.filterMap (fun p => match p with | .key n d => some (n, d) | _ => none),
-      kwrest?, block? }
+      kwrest?, block?, destrs }
+
+/-- Destructure `v` into a param list (`(a, *b, (c,d))`, massign-style): coerce
+    `v` to an array (its elements if an Array, else wrap as `[v]`), bind leading
+    positionals from the front, a `*rest` the middle, trailing positionals from
+    the back; nested `(…)` recurse. Only req/rest/destr sub-params occur (P5). -/
+partial def destructureBind (m : Machine) (subs : List Param) (v : Value)
+    : List (String × Value) × Machine :=
+  let vals := match v with
+    | .ref o => match (m.heap.get o).payload with | .arr xs => xs.toList | _ => [v]
+    | _ => [v]
+  let isPos : Param → Bool := fun p => match p with | .rest _ => false | _ => true
+  let preP := subs.takeWhile isPos
+  let a1 := subs.dropWhile isPos
+  let (rest?, postP) := match a1 with
+    | (.rest n) :: t => (some n, t)
+    | _ => (none, a1)
+  let np := preP.length; let npost := postP.length; let n := vals.length
+  let bindPos : List (String × Value) × Machine → Param × Value →
+      List (String × Value) × Machine := fun (acc, m) (p, val) =>
+    match p with
+    | .req nm => (acc ++ [(nm, val)], m)
+    | .destr subs' => let (bs, m) := destructureBind m subs' val; (acc ++ bs, m)
+    | _ => (acc, m)
+  let (preB, m) := (preP.zip (vals.take np)).foldl bindPos ([], m)
+  let (restB, m) := match rest? with
+    | some (some rn) =>
+      let mid := (vals.drop np).take (n - npost - np)
+      let (rv, m) := Builtins.allocArr m mid.toArray; ([(rn, rv)], m)
+    | _ => ([], m)
+  let (postB, m) := (postP.zip (vals.drop (n - npost))).foldl bindPos ([], m)
+  (preB ++ restB ++ postB, m)
 
 /-- Ruby-3 keyword→positional collapse: when the callee has no keyword params, a
     trailing keyword bundle becomes one positional `Hash` argument (an *empty*
@@ -399,7 +439,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
   if fp?.isNone then
     .unsupported "unmodeled param kind (forwarding/destructuring)"
   else
-  let fp := fp?.getD ⟨[], [], none, [], [], none, none⟩
+  let fp := fp?.getD ⟨[], [], none, [], [], none, none, []⟩
   let hasKw := !fp.keys.isEmpty || fp.kwrest?.isSome
   -- Ruby-3 separation: a callee without keyword params receives a keyword bundle
   -- as one trailing positional Hash (empty vanishes) [V].
@@ -454,6 +494,16 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
       | _ => ([], m)
     let localsB := restBinding ++ fp.post.zip postVals ++
       (match fp.block? with | some b => [(b, blk.getD .nil)] | none => []) ++ kwrestBinding
+    -- P5: expand destructuring params — the synthetic `__destr_k` slots hold the
+    -- raw arg; destructure each into its sub-names (added to Phase A so they are
+    -- visible to defaults), and drop the synthetic names.
+    let (destrB, m) := fp.destrs.foldl (fun (acc, m) (sn, subs) =>
+      let dv := ((localsA ++ localsB).find? (·.1 == sn)).map (·.2) |>.getD .nil
+      let (bs, m) := destructureBind m subs dv
+      (acc ++ bs, m)) ([], m)
+    let notSynth : (String × Value) → Bool := fun b => !(fp.destrs.any (·.1 == b.1))
+    let localsA := localsA.filter notSynth ++ destrB
+    let localsB := localsB.filter notSynth
     let frame : Frame :=
       { self := recv, locals := localsA, defmod := md.owner, kind := .method, blk, meth := mname }
     let fid := m.frames.size
