@@ -1,5 +1,14 @@
 # Lean model — export-v4 migration hand-off (get `--sut lean` green again)
 
+> **STATUS 2026-07-16 — Phase 0 and Phase 1 DONE.** `--sut lean` green at
+> **532/1304 agree, 0 disagree** (Phase 0 468→493; Phase-1 heads 493→532 across
+> commits `a43748e` dowhile/undef/alias/cpath+scoped-defs, `9af74e0` for,
+> `131d963` redo — see `implementation-notes.md` L21–L26). **Remaining: Phase 2**
+> — native param binding (`popt`/`pkey`/`pkwrest`/`pfwd`/`pdestr`), the biggest
+> lever (`popt` alone gates ~103 tier-0 cases). `defined?`, `kwargs`, and `fwd`
+> are still gated at decode and pair with Phase 2. Everything below is the
+> original plan; §Phase 1 is now history.
+
 > Fresh-context hand-off written 2026-07-15. Read `README.md` (layout/build),
 > `HANDOFF.md` (model state before this — L0+L1+L2, **468/1304 agree, 0 disagree** on
 > export **v3**), and `implementation-notes.md` (L1–L19) first. This doc is the single
