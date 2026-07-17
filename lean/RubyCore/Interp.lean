@@ -407,7 +407,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let frame : Frame :=
       { self := capF.self, defmod := capF.defmod, blk := capF.blk,
         locals, kind := .block, captured := some cl.captured,
-        home := cl.home, lam := cl.lam }
+        home := cl.home, lam := cl.lam, cref := capF.cref }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk))
@@ -506,7 +506,8 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let localsA := localsA.filter notSynth ++ destrB
     let localsB := localsB.filter notSynth
     let frame : Frame :=
-      { self := recv, locals := localsA, defmod := md.owner, kind := .method, blk, meth := mname }
+      { self := recv, locals := localsA, defmod := md.owner, kind := .method, blk, meth := mname,
+        cref := md.cref }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     let m := { m with kont := .frameK fid :: m.kont }
@@ -558,7 +559,7 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
   let kindWord := if isMod then "module" else "class"
   let pushFrame (m : Machine) (k : ObjId) : StepResult :=
     let frame : Frame :=
-      { self := .ref k, defmod := k, kind := .classBody }
+      { self := .ref k, defmod := k, kind := .classBody, cref := k :: m.currentFrame.cref }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval body) (.frameK fid))
@@ -1275,7 +1276,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match v with
       | .ref o =>
         let (e, m) := eigenclassOf m o
-        let md : MethodDef := { params, body, owner := e }
+        -- `def self.m` in a module keeps that module's lexical cref for constant
+        -- lookup even though its dispatch owner is the eigenclass (artifact 03).
+        let md : MethodDef := { params, body, owner := e, cref := m.currentFrame.cref }
         let m := { m with heap := defineMethod m.heap e name md }
         let m := if reprSensitive.contains name then { m with reprPure := false } else m
         .next (withCtl m (.value (.sym name)))
@@ -1287,7 +1290,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match v with
       | .ref o =>
         let (e, m) := eigenclassOf m o
-        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody }
+        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody, cref := e :: m.currentFrame.cref }
         let fid := m.frames.size
         let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
         .next (withKont m (.eval body) (.frameK fid))
@@ -1614,7 +1617,10 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | .cvar => .unsupported "class variables"
     | _ => .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
-    match constLookupFrom m.heap m.currentFrame.defmod n with
+    -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
+    -- first), then inheritance phase (ancestors of the innermost class/defmod).
+    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
+    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
     | some v => .next (withCtl m (.value v))
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
@@ -1665,7 +1671,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     .next (withKont m (.eval coll) (.forStartK targets body))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
-    let md : MethodDef := { params, body, owner := defmod }
+    let md : MethodDef := { params, body, owner := defmod, cref := m.currentFrame.cref }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))

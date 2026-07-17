@@ -590,3 +590,21 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   gates when the method isn't found and the receiver has a user
   `respond_to_missing?` (which can run arbitrary code) rather than guessing
   `false`.
+
+## Lexical constants (L36)
+
+- **L36 — cref-scoped constant lookup (artifact 03 §4).** Constant resolution was
+  `constLookupFrom defmod` (inheritance phase only, keyed on the dispatch owner),
+  which loses the lexical scope for `def self.m` in a module (owner = eigenclass,
+  not the module). Now `Frame` and `MethodDef` carry a `cref : List ObjId` (the
+  enclosing class/module bodies, innermost first): the toplevel is `[Object]`; a
+  class/module body pushes `k :: enclosing.cref`; `def`/`defs` capture
+  `currentFrame.cref` (so a singleton method keeps its lexical module even though
+  its owner is the eigenclass); method/block frames inherit it (blocks via the
+  captured frame). `const` lookup is now two-phase: the **lexical** phase
+  (`constOwn` on each cref scope, innermost first) then the **inheritance** phase
+  (`constLookupFrom defmod`, ancestors) then the toplevel/unmodeled split. A
+  superset of the old lookup ⇒ behaviour-preserving on tier-0 (flat agreement),
+  while resolving nested constants like `Parameterizable::ClassMethods` — which
+  unblocked the ai4r q_learning/SOM drivers past the `included`→`base.extend(
+  ClassMethods)` `NameError` (they now reach the next real gate, `Hash#merge`).

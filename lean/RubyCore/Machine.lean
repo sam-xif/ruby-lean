@@ -29,6 +29,11 @@ structure Frame where
   /-- Module the enclosing `def` targets / `super` searches from (unused
       until L2 but load-bearing in the frame shape). -/
   defmod : ObjId
+  /-- Lexical constant scope (cref): the enclosing class/module bodies at this
+      point, innermost first (artifact 03 §4). Constant lookup checks each's own
+      consts before the ancestor phase. A method carries the cref of where it was
+      *defined* (not its dispatch owner — matters for `def self.m` in a module). -/
+  cref : List ObjId := []
   blk : Option Value := none
   kind : FrameKind
   /-- Name of the method this activation is running (`""` for toplevel/class
@@ -299,7 +304,8 @@ def emit (m : Machine) (s : String) : Machine :=
 def init (program : Expr) : Machine :=
   let heap := Boot.initHeap
   let top : Frame :=
-    { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel }
+    { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel,
+      cref := [Boot.objectId] }
   { ctl := .eval program,
     stack := [0],
     frames := #[top],

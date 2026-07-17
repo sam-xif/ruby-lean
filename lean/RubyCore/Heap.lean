@@ -52,6 +52,10 @@ structure MethodDef where
   params : List Param
   body : Expr
   owner : ObjId
+  /-- Lexical constant scope captured at definition (innermost enclosing
+      class/module first), threaded to the activation frame for cref-scoped
+      constant lookup (artifact 03 §4). Empty = toplevel/`[Object]`. -/
+  cref : List ObjId := []
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
@@ -385,6 +389,11 @@ def constSetIn (h : Heap) (cls : ObjId) (name : String) (v : Value) : Heap :=
     h.setClassPayload cls
       { c with consts := (name, v) :: c.consts.filter (·.1 != name) }
   | Option.none => h
+
+/-- A class/module's *own* constants (no ancestor walk) — the lexical phase of
+    artifact 03's two-phase constant lookup. -/
+def constOwn (h : Heap) (cls : ObjId) (name : String) : Option Value :=
+  (h.classPayload? cls).bind fun c => (c.consts.find? (·.1 == name)).map (·.2)
 
 /-- Constant lookup from cref `cls`: the *inheritance* phase of artifact 03's
     two-phase rule — walk `cls`'s ancestors (which bottoms out at Object, the
