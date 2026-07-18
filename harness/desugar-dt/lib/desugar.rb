@@ -848,6 +848,20 @@ class Desugar
     interp_concat(n.parts)
   end
 
+  # `rb_obj_as_string(e)` as RubyCore: a value that is *already* a String (or subclass)
+  # is used **verbatim** — a redefined `String#to_s` is NOT called — otherwise `to_s` is
+  # called. `Kernel#String(e)` is NOT equivalent: it coerces via `to_str` first (which
+  # dispatches through `method_missing` / a user `to_str`), so `String(o) != "#{o}"` for
+  # such objects [V] (found by tier-1 fuzzing; see difftest N22/N23). Model it exactly as
+  # `t = e; String === t ? t : t.to_s` (t bound once; `String ===` is a C-level type check,
+  # no method dispatch). Uses only seq/if/vasgn/var/send/const — Lean-supported heads.
+  def as_string(e)
+    t = fresh
+    check = [:send, [:const, "String"], "===", [[:var, :local, t]], nil]
+    [:seq, [:vasgn, :local, t, e],
+           [:if, check, [:var, :local, t], [:send, [:var, :local, t], "to_s", [], nil]]]
+  end
+
   # Shared string-interpolation concatenation for interpolated strings, symbols, and regex
   # sources. Each part becomes a String and is `+`-chained left to right.
   def interp_concat(parts)
@@ -856,16 +870,12 @@ class Desugar
       when :string_node
         [:str, part.unescaped]
       when :embedded_statements_node
-        # Interpolation uses `rb_obj_as_string`, NOT `to_s`: a value that is *already* a
-        # String is used verbatim (a redefined `String#to_s` is NOT called) — [V] verified
-        # against CRuby (test_yjit_112/114). `Kernel#String(e)` matches this exactly: it
-        # passes Strings through (via to_str) and calls to_s only on non-Strings. A
-        # control-flow jump inside #{...} fires before the string is built; the Linearize
-        # pass hoists any unconditional jump out of this operand position.
-        [:send, nil, "String", [stmts(part.statements)], nil]
+        # A control-flow jump inside #{...} fires before the string is built; the
+        # Linearize pass hoists any unconditional jump out of this operand position.
+        as_string(stmts(part.statements))
       when :embedded_variable_node
         # "#@x" / "#$g" — an ivar/gvar interpolation (no braces).
-        [:send, nil, "String", [node(part.variable)], nil]
+        as_string(node(part.variable))
       when :interpolated_string_node
         # Adjacent implicit concatenation ("a" "b#{c}") nests an interpolated string.
         interp_concat(part.parts)

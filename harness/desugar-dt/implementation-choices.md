@@ -767,3 +767,27 @@ non-in-fragment programs are the genuinely-unsupportable / deferred set** — st
 `eval`-family (52), top-level `return` that bypasses the observation wrapper (6),
 un-parseable (5), plus the small documented-gate tail above (≈9). This is the practical
 coverage ceiling of the round-trip harness on bootstraptest.
+
+## C30 — String interpolation lowers to `rb_obj_as_string`, not `Kernel#String` (bugfix)
+
+Interpolation `"#{e}"` (and `"#@x"`, dynamic symbols, regex sources) was lowered to
+`[:send, nil, "String", [e], nil]` (`Kernel#String`), on the claim that `String(e)`
+matches CRuby's `rb_obj_as_string`. It does **not**: `Kernel#String` coerces via
+`to_str` *first* (`rb_check_convert_type`), which dispatches through `method_missing` or
+a user-defined `to_str`, whereas interpolation uses `rb_obj_as_string` = "a String (or
+subclass) verbatim — a redefined `String#to_s` is NOT called — else `to_s`", and never
+touches `to_str`. So `String(o) != "#{o}"` for an object with `method_missing`/`to_str`.
+
+[V] `class C; def method_missing(n,*a); "mm-#{n}"; end; end; puts("#{C.new}")` →
+CRuby `#<C:…>` (to_s) but the old desugar `mm-to_str`. Also `class S<String; def to_s;
+"X"; end; end; "#{S.new("hi")}"` → `hi` verbatim (to_s not called). Found by tier-1
+fuzzing once `method_missing` generation landed (difftest N22/N23).
+
+Fix: new `as_string(e)` helper lowers to `t = e; String === t ? t : t.to_s` (`t` a
+`fresh` temp bound once; `String ===` is a C-level `Module#===` type check, no user
+dispatch) — matching `rb_obj_as_string` on all three cases. Uses only
+seq/if/vasgn/var/send/const, so the Lean model consumes it unchanged (`Module#===`
+already modeled for `case/when`). No `Export::VERSION` bump (same heads, different
+shape). Round-trip: **1267 agree, 0 disagree, 73/73** (unchanged; a few more cases join
+the benign `[ok*]` render-unstable-but-AST-idempotent set). difftest: tier-0 vs desugar
+**1227 agree, 0 disagree**; tier-0 vs lean **686 agree, 0 disagree**.
