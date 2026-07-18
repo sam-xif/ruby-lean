@@ -132,6 +132,18 @@ class CRubyRunner:
         a = self.run(source)
         if a.timed_out:
             return None, "timeout"
+        # A stack overflow is CRuby's resource-limited approximation of a
+        # non-terminating (unbounded-recursion) program: the language semantics
+        # say "recurses forever," so there is no well-defined final observation.
+        # The stdout printed *before* the overflow depends on the C stack size
+        # and frames-per-call, so any implementation that adds frames (the
+        # desugar roundtrip wraps each call) overflows at a different depth and
+        # prints a different prefix. That prefix is not a stable semantic
+        # observable, so exclude with a reason rather than report a false
+        # disagreement (same class as `timeout` above; termination-by-construction
+        # in tier 1 covers loops but not mutual recursion).
+        if a.exception and a.exception[0] == "SystemStackError":
+            return None, "SystemStackError (non-terminating recursion; pre-overflow stdout is stack-depth-dependent, not a stable observable)"
         b = self.run(source)
         if a.normalized() != b.normalized():
             return None, "nondeterministic (two control runs differ)"

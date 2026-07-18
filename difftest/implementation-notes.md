@@ -423,6 +423,9 @@ interpolation), preserving method_missing coverage via receiver-only instances w
 staying 0-disagree. Recorded here as a genuine differential-testing find (the point of
 the exercise), not swept under the rug.
 
+**Resolved** by desugar C30 (interpolation → `rb_obj_as_string`, not `Kernel#String`); the
+value-position `new` workaround is reverted in N25.
+
 ## N23 — Two latent generator bugs found by the broad-seed sweep (termination + inheritance)
 
 A 17-seed robustness sweep (not just the 4 seeds used per-feature) surfaced two
@@ -450,3 +453,34 @@ Validation: 17 seeds × 250 (incl. the failing 271) all 0-disagree/0-control_inv
 400-example CRuby termination sweep 0 timeouts; 14 render smoke tests pass. Lesson
 recorded: per-feature 3–4-seed checks are insufficient for termination/inheritance
 interactions — run a broad-seed sweep before declaring green.
+
+## N24 — `SystemStackError` is control-invalid (the oracle-side dual of the N23 fix)
+
+N23 fixed the **generator** so it stops *emitting* unbounded mutual recursion. But a
+non-terminating program that was already saved to `corpus/regressions` (or that slips any
+future generator hole) still **false-disagrees on replay**: CRuby approximates
+non-termination by overflowing its C stack (`SystemStackError`), and the stdout printed
+*before* the overflow is stack-depth-dependent. Any SUT that adds a frame per call — the
+desugar roundtrip wraps each call — overflows at a different depth and prints a different
+prefix (observed: control 8733 lines vs desugar 6895 on the tier1-01274 family). The
+exceptions *agree* (`SystemStackError` both sides); only the truncated prefix differs.
+
+That prefix is not a stable semantic observable — the semantics say the program recurses
+forever, so it has no well-defined final observation, exactly like a `timeout`. Fix:
+`CRubyRunner.run_deterministic` now excludes a control run whose exception is
+`SystemStackError` as `control_invalid` with a reason (the oracle-side dual of the N23
+generator fix; single choke point, so both campaign and `replay` inherit it). Guarded by
+`tests/test_control.py::test_stack_overflow_excluded`. The four bulky N23-family
+reproducers were dropped from `corpus/regressions` (no longer disagreements; the unit test
+is the cheaper, minimal guard).
+
+## N25 — method_missing objects back in value-position `new` (N22-addendum resolved by desugar C30)
+
+The N22 addendum kept method_missing classes out of value-position `new` as a *workaround*
+for the interpolation ≠ `String()` desugar bug. Desugar **C30** fixed the root cause
+(interpolation now lowers to `rb_obj_as_string` → `to_s`, not `Kernel#String` → `to_str` →
+`method_missing`), so an mm-object flowing into `"#{…}"` agrees again. The workaround is
+reverted: `_expr` draws `new` from all `env.classes` (not the `has_mm`-filtered subset).
+Validation: 6-seed sweep (seed 1 × 400 + seeds 2–6 × 300 = 1900 examples) all
+0-disagree/0-control_invalid vs desugar; the three C30 reproducers (tier1-01039/01173/01430)
+replay as agree.
