@@ -721,6 +721,12 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
             let (elemArgs, m) := pairs.toList.foldl (fun (acc, m) (kv : Value × Value) =>
               let (pa, m) := Builtins.allocArr m #[kv.1, kv.2]; (acc ++ [[pa]], m)) ([], m)
             some (startIter m recv mname cl elemArgs .ignore [] recv)
+          | "each_key" =>
+            -- yields the key alone per entry; returns the hash.
+            some (startIter m recv mname cl (pairs.toList.map (fun kv => [kv.1])) .ignore [] recv)
+          | "each_value" =>
+            -- yields the value alone per entry; returns the hash.
+            some (startIter m recv mname cl (pairs.toList.map (fun kv => [kv.2])) .ignore [] recv)
           | _ => none
         | _ => none
       | .int n =>

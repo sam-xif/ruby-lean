@@ -624,3 +624,10 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   block form; the drivers never use it. A non-Hash argument gates (`Unsupported`)
   rather than risk emitting a wrong `TypeError` message. Registered in the `hashId`
   boot table (`Heap.lean`).
+
+- **L38 — `Hash#each_key` / `Hash#each_value` iterators.** Added to the `.hsh`
+  branch of `tryIterator` (Interp.lean) next to `each`/`each_pair`: `each_key`
+  yields the key alone per entry, `each_value` the value alone, both returning
+  the hash. Block-driven like the other native iterators (a blockless form would
+  be an Enumerator, still gated). Gated q_learning + both SOM drivers via
+  `parameterizable.rb`'s `get_parameters_info.each_key { … }`.
