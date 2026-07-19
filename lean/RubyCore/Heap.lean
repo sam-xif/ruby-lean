@@ -106,12 +106,22 @@ inductive Payload where
   | proc (c : Closure)
 deriving Inhabited
 
+/-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
+    `Hash.new { |h,k| … }` stores a default_proc `prc p` (the Proc's ObjId), called
+    on a `[]` miss. `none` (the field default) means a miss returns `nil`. -/
+inductive HashDefault where
+  | val (v : Value)
+  | prc (p : ObjId)
+deriving Inhabited
+
 structure Object where
   klass : ObjId
   ivars : List (String × Value) := []
   frozen : Bool := false
   eigen : Option ObjId := none
   payload : Payload := .none
+  /-- Present only on Hash objects created with a default (value or proc). -/
+  hashDflt : Option HashDefault := none
 deriving Inhabited
 
 /-- ObjId = index; allocation appends (ids never reused, artifact 01 §2). -/

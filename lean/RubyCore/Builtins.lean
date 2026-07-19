@@ -796,7 +796,15 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
         | .hsh xs =>
           match xs.find? (fun (k, _) => valueEql h k b) with
           | some (_, v) => .ok v m
-          | none => .ok .nil m
+          | none =>
+            -- Miss: consult the hash's default. A static `val` is returned as-is;
+            -- a `prc` default_proc must call a closure (push a frame), which a pure
+            -- builtin cannot do — it is intercepted in `invoke` (L42), so reaching
+            -- it here means the interception missed → gate rather than answer wrong.
+            match (h.get o).hashDflt with
+            | some (.val d) => .ok d m
+            | some (.prc _) => .unsupported "Hash#[] default_proc"
+            | none => .ok .nil m
         | _ => .unsupported "[]"
       | _ => .unsupported "[]"
   | "Hash#[]=" =>
@@ -866,9 +874,16 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     | .ok s => okStr m s
     | .error e => .unsupported e
   | "Hash#dup" =>
-    match hshPayload? h recv with
-    | some xs => let (v, m) := allocHsh m xs; .ok v m
-    | none => .unsupported "dup"
+    match recv with
+    | .ref o =>
+      match (h.get o).payload with
+      | .hsh xs =>
+        -- dup copies the default (value or proc), per CRuby.
+        let (o2, h) := h.alloc { klass := Boot.hashId, payload := .hsh xs,
+                                 hashDflt := (h.get o).hashDflt }
+        .ok (.ref o2) { m with heap := h }
+      | _ => .unsupported "dup"
+    | _ => .unsupported "dup"
   | "Hash#merge" =>
     -- Non-mutating merge: start from self's entries, fold each Hash arg in with
     -- later keys overriding — an existing key keeps its position but takes the
@@ -1033,7 +1048,14 @@ where
         else if k == Boot.hashId then
           match args with
           | [] => let (v, m) := allocHsh m #[]; .ok v m
-          | _ => .unsupported "Hash.new with args"
+          | [dflt] =>
+            -- `Hash.new(default)`: a static default value for missing keys.
+            -- (The `Hash.new { |h,k| … }` default_proc form carries a block, so it
+            -- is intercepted in `invoke` before this pure builtin — see L42.)
+            let (o, h) := m.heap.alloc
+              { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.val dflt) }
+            .ok (.ref o) { m with heap := h }
+          | _ => .unsupported "Hash.new arity > 1"
         else if [Boot.classId, Boot.moduleId, Boot.integerId, Boot.floatId,
                  Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                  Boot.falseClassId].contains k then

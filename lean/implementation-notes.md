@@ -661,3 +661,13 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   in this suffix (no leading `:`), unlike the standalone `missing keyword: :a`
   message. Singular `keyword`/plural `keywords` per count. Fixed the three tier-3
   kwargs disagreements surfaced by the L39 ratchet.
+
+- **L41 — `Hash.new(default)` (static default value).** Added a `hashDflt :
+  Option HashDefault` field to `Object` (`HashDefault := val Value | prc ObjId`);
+  a field with a default, so no existing `.hsh` match site changes. `Hash.new(v)`
+  allocates an empty hash with `hashDflt := val v`; `Hash#[]` on a miss returns the
+  default value instead of `nil`; `Hash#dup` copies the default. The `prc`
+  (default_proc) variant is created/consulted in L42 — reaching a `prc` default in
+  the pure `Hash#[]` builtin gates (the proc call needs a frame). Unblocks the
+  inner `Hash.new(0.0)` q-table of the q_learning driver (final rendering still
+  gates on Float#inspect).
