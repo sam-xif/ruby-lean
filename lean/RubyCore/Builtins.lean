@@ -163,6 +163,19 @@ def numCmp (recvCls : String) (m : Machine) (a b : Value)
 def ordValue : Ordering → Value
   | .lt => .int (-1) | .eq => .int 0 | .gt => .int 1
 
+/-- Pure numeric comparison of two values (Int/Float, mixed promoted to Float);
+    `none` if either is non-numeric — the caller then gates (a full `<=>` dispatch
+    over arbitrary objects is not modeled, cf. `sort`/`min`/`max`). Used by the
+    `max_by`/`min_by` iterator to compare block values. -/
+def numOrd? (a b : Value) : Option Ordering :=
+  match num? a, num? b with
+  | some (.i x), some (.i y) => some (compare x y)
+  | some x, some y =>
+    let fx := match x with | .i n => Float.ofInt n | .f v => v
+    let fy := match y with | .i n => Float.ofInt n | .f v => v
+    some (if fx < fy then .lt else if fx == fy then .eq else .gt)
+  | _, _ => none
+
 /-! ### String ordering (byte order over UTF-8, which Lean's String compare
     matches for the ASCII-ish corpus; non-ASCII edge cases ride on Lean's
     lexicographic Char order = codepoint order = UTF-8 byte order). -/

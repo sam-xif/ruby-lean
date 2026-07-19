@@ -104,6 +104,8 @@ inductive IterKind where
   | ignore    -- each / times / each_with_index: discard result, return `retVal`
   | collect   -- map / collect: gather results into a new Array
   | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)
+  | maxBy     -- max_by: keep the element whose block value is greatest
+  | minBy     -- min_by: keep the element whose block value is least
 deriving Repr, Inhabited
 
 inductive Kont where
@@ -156,7 +158,7 @@ inductive Kont where
       returns from it), `acc` the collect/fold accumulator, `retVal` the
       ignore-kind result. -/
   | iterK (cl : Closure) (brk : FrameId) (rest : List (List Value))
-      (kind : IterKind) (acc : List Value) (retVal : Value)
+      (kind : IterKind) (acc : List Value) (retVal : Value) (cur : Value)
   /-- Got the receiver; evaluate args next. `blk` rides along to the dispatch. -/
   | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : Bool)
   /-- Evaluating args left to right. -/

@@ -688,10 +688,15 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
       | .ignore => (retVal, m)
       | .collect => let (a, m) := Builtins.allocArr m acc.toArray; (a, m)
       | .fold => (acc.headD .nil, m)
+      -- max_by/min_by: `acc` is `[bestElem, bestKey]` (or `[]` if the receiver was
+      -- empty, in which case both return `nil`); the result is the winning element.
+      | .maxBy | .minBy => (acc.headD .nil, m)
     .next (withCtl m (.value finalV))   -- `frameK brk` pops the iterator frame
   | a :: rest' =>
     let callArgs := match kind with | .fold => acc ++ a | _ => a
-    let m := { m with kont := .iterK cl brk rest' kind acc retVal :: m.kont }
+    -- `cur` = the element being yielded (for max_by/min_by, the value the winner
+    -- is chosen from); the block's single arg, so `a.head`.
+    let m := { m with kont := .iterK cl brk rest' kind acc retVal (a.headD .nil) :: m.kont }
     callClosure m cl callArgs (some brk)
 
 /-- Begin a native block-iterator: push an activation frame (the `break`/return
@@ -735,6 +740,10 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
               | h :: t => some (startIter m recv mname cl (t.map (fun e => [e])) .fold [h] .nil)
             | [seed] => some (startIter m recv mname cl each1 .fold [seed] .nil)
             | _ => none
+          | "max_by" | "min_by" =>
+            -- yields each element; returns the element with the extreme block value.
+            let kind := if mname == "max_by" then IterKind.maxBy else IterKind.minBy
+            some (startIter m recv mname cl each1 kind [] .nil)
           | _ => none
         | .hsh pairs =>
           match mname with
@@ -750,6 +759,13 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
           | "each_value" =>
             -- yields the value alone per entry; returns the hash.
             some (startIter m recv mname cl (pairs.toList.map (fun kv => [kv.2])) .ignore [] recv)
+          | "max_by" | "min_by" =>
+            -- yields each `[k, v]` pair; returns the pair with the extreme block
+            -- value (e.g. `h.max_by { |_, v| v }.first`).
+            let (elemArgs, m) := pairs.toList.foldl (fun (acc, m) (kv : Value × Value) =>
+              let (pa, m) := Builtins.allocArr m #[kv.1, kv.2]; (acc ++ [[pa]], m)) ([], m)
+            let kind := if mname == "max_by" then IterKind.maxBy else IterKind.minBy
+            some (startIter m recv mname cl elemArgs kind [] .nil)
           | _ => none
         | _ => none
       | .int n =>
@@ -1398,13 +1414,28 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "for over a non-Array collection"
     | .forBodyK targets body rest coll =>
       forStep m targets body rest coll
-    | .iterK cl brk rest kind acc retVal =>
+    | .iterK cl brk rest kind acc retVal cur =>
       -- v is the block's result for the current element; fold it, then continue.
-      let acc := match kind with
-        | .ignore => acc
-        | .collect => acc ++ [v]
-        | .fold => [v]
-      iterStep m cl brk rest kind acc retVal
+      match kind with
+      | .ignore => iterStep m cl brk rest kind acc retVal
+      | .collect => iterStep m cl brk rest kind (acc ++ [v]) retVal
+      | .fold => iterStep m cl brk rest kind [v] retVal
+      | .maxBy | .minBy =>
+        -- keep [bestElem, bestKey]; replace only on a *strict* improvement so ties
+        -- keep the earliest element (CRuby's max_by/min_by tie-break).
+        match acc with
+        | [] => iterStep m cl brk rest kind [cur, v] retVal
+        | _ :: bestKey :: _ =>
+          match Builtins.numOrd? v bestKey with
+          | none => .unsupported "max_by/min_by: non-numeric block value (needs <=> dispatch)"
+          | some ord =>
+            -- replace only on a strict improvement (ties keep the earliest element).
+            let newAcc := match kind, ord with
+              | .maxBy, .gt => [cur, v]
+              | .minBy, .lt => [cur, v]
+              | _, _ => acc
+            iterStep m cl brk rest kind newAcc retVal
+        | _ => iterStep m cl brk rest kind acc retVal
     | .recvK mname args pblk implicit =>
       startArgs m v implicit mname [] args pblk
     | .argsK recv implicit mname acc rest pblk =>

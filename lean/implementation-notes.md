@@ -696,3 +696,15 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   runs deterministically via a seed cannot silently diverge from this placeholder;
   it stops at a clean `Unsupported` instead. If seeded determinism is ever needed,
   it requires a faithful CRuby-compatible Mersenne Twister, not this stub.
+
+- **L44 — `max_by` / `min_by` iterators (Array + Hash).** Two new `IterKind`s
+  (`maxBy`/`minBy`) that keep the element whose block value is extreme. The block
+  result comes back to `iterK` without its source element, so `iterK` gained a `cur`
+  field (the element currently yielded, `= a.head`); the accumulator holds
+  `[bestElem, bestKey]`. Comparison is numeric only (`Builtins.numOrd?`); a
+  non-numeric block value gates (a general `<=>` dispatch over objects isn't
+  modeled, as with `sort`/`min`/`max`). Ties keep the earliest element (strict
+  improvement replaces), matching CRuby. Wired into `tryIterator` for arrays
+  (`each1` elements) and hashes (`[k,v]` pairs). Completes the q_learning driver:
+  `@q[state].max_by { |_, v| v }.first` now runs — **q_learning agrees byte-exact
+  with CRuby** (`Best action from s1: b`), the 4th of 7 ai4r drivers to pass.
