@@ -671,3 +671,14 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   the pure `Hash#[]` builtin gates (the proc call needs a frame). Unblocks the
   inner `Hash.new(0.0)` q-table of the q_learning driver (final rendering still
   gates on Float#inspect).
+
+- **L42 — `Hash.new { |h,k| … }` default_proc.** The block form of the L41 default:
+  `Hash.new { block }` stores `hashDflt := prc <blockObj>` (created at the
+  `Class#new`-with-block site in `finishSend`, which otherwise gates). On a `[]`
+  *miss*, `invoke` now intercepts a hash receiver whose default is a `prc` and calls
+  the proc with `(h, key)` via `callClosure` — its result is the value of `h[key]`,
+  and the proc may mutate `h` (e.g. the auto-vivifying `h[k] = Hash.new(0)`). A
+  present key, or a `val`/absent default, falls through to the ordinary builtin. This
+  is the closure-on-miss mechanism a pure builtin can't provide (mirrors how
+  `tryIterator` drives blocks). Unblocks q_learning's `Hash.new { |h,k| h[k] =
+  Hash.new(0.0) }` q-table.

@@ -967,6 +967,20 @@ partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : Strin
         if kw.isEmpty then callClosure m cl args none
         else .unsupported "keyword arguments to a Proc call"
       else invokeDispatch m recv implicit mname args blk kw
+    | .hsh xs =>
+      -- Hash default_proc (L42): on `h[k]` with a *missing* key, call the proc
+      -- with `(h, k)` and use its result as the value of `h[k]` (the proc may also
+      -- mutate `h`, e.g. `h[k] = …`). Only for a `prc` default; a present key or a
+      -- `val`/absent default falls to the normal builtin dispatch.
+      match mname, args, (m.heap.get o).hashDflt with
+      | "[]", [key], some (.prc bo) =>
+        if xs.any (fun (k, _) => valueEql m.heap k key) then
+          invokeDispatch m recv implicit mname args blk kw
+        else
+          match (m.heap.get bo).payload with
+          | .proc cl => callClosure m cl [recv, key] none
+          | _ => invokeDispatch m recv implicit mname args blk kw
+      | _, _, _ => invokeDispatch m recv implicit mname args blk kw
     | .cls c =>
       -- `Class#new` on a class with a user `initialize` must allocate then run
       -- `initialize` (a frame the builtin cannot push); yield the instance via
@@ -1113,10 +1127,19 @@ def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
       .next (withCtl m (.value v))
     else if mname == "new" && (match recv with | .ref k => k == Boot.procId | _ => false) then
       .next (withCtl m (.value v))
+    else if mname == "new" && args.isEmpty
+        && (match recv with | .ref k => k == Boot.hashId | _ => false) then
+      -- `Hash.new { |h,k| … }`: the block becomes the hash's default_proc (L42),
+      -- consulted on a `[]` miss in `invoke`. `v` is the reified block (a Proc).
+      match v with
+      | .ref bo =>
+        let (o, h) := m.heap.alloc
+          { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.prc bo) }
+        .next (withCtl { m with heap := h } (.value (.ref o)))
+      | _ => .unsupported "Hash.new block not a proc"
     else if mname == "new" then
-      -- Class#new with a block (initialize block / Hash default proc) — the
-      -- block affects behaviour and we don't model it, so gate rather than
-      -- silently drop it.
+      -- Class#new with a block (initialize block) — the block affects behaviour
+      -- and we don't model it, so gate rather than silently drop it.
       .unsupported "Class#new with a block"
     else invoke m recv implicit mname args (some v) kw
   | .passAnon => invoke m recv implicit mname args m.currentFrame.blk kw
