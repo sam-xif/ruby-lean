@@ -272,6 +272,22 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- true iff the enclosing method activation received a block (the block
     -- is propagated onto block frames, so the current frame's blk answers) [V]
     .ok (.bool m.currentFrame.blk.isSome) m
+  | "Object#rand" =>
+    -- Deterministic placeholder for CRuby's *unseeded* Kernel#rand. Its value is
+    -- observationally irrelevant to any program CRuby runs deterministically: an
+    -- output that depends on unseeded `rand` is nondeterministic under CRuby's
+    -- double-run and excluded as `control_invalid`, so a fixed value here can
+    -- never cause a recorded disagreement — while output-*independent* uses run
+    -- (q_learning's `rand < exploration` with exploration 0 always takes the
+    -- exploit branch since 0.0 < 0.0 is false, matching CRuby's rand ∈ [0,1)).
+    -- Seeded RNG (`srand`, `Random.new(seed)`) stays UNMODELED (gates), so a
+    -- deterministic seeded program cannot silently diverge here. See notes L43.
+    match args with
+    | [] => .ok (.flt 0.0) m                           -- rand → Float in [0,1)
+    | [.int n] =>
+      if n > 0 then .ok (.int 0) m                     -- rand(n) → Integer in [0,n)
+      else .unsupported "rand(n <= 0)"                  -- rand(0) is Float [0,1): rare, gate
+    | _ => .unsupported "rand (float/range arg)"
   /- ─── Kernel I/O ─── -/
   | "Object#puts" => putsImpl m args
   | "Object#print" =>

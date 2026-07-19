@@ -682,3 +682,17 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   is the closure-on-miss mechanism a pure builtin can't provide (mirrors how
   `tryIterator` drives blocks). Unblocks q_learning's `Hash.new { |h,k| h[k] =
   Hash.new(0.0) }` q-table.
+
+- **L43 — `Kernel#rand` as a deterministic placeholder for the *unseeded* RNG.**
+  `rand` → `0.0` (Float in [0,1)); `rand(n)` (n>0) → `0` (Integer in [0,n)); other
+  forms gate. This is sound for the differential tester precisely because CRuby's
+  unseeded `rand` is itself nondeterministic: any program whose *output* depends on
+  `rand`'s value differs between CRuby's two determinism runs → `control_invalid`
+  (excluded), so a fixed value can never produce a recorded disagreement. Meanwhile
+  output-*independent* uses execute correctly — q_learning's `rand < @exploration`
+  with `exploration: 0.0` always takes the exploit branch (`0.0 < 0.0` is false, as
+  is CRuby's `rand < 0.0`). Load-bearing invariant: **seeded** RNG (`srand`,
+  `Random.new(seed)`) stays UNMODELED and therefore *gates* — so a program CRuby
+  runs deterministically via a seed cannot silently diverge from this placeholder;
+  it stops at a clean `Unsupported` instead. If seeded determinism is ever needed,
+  it requires a faithful CRuby-compatible Mersenne Twister, not this stub.

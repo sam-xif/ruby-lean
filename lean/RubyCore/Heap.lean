@@ -234,7 +234,7 @@ def builtinMethods : List (ObjId × List String) := [
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "!=", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
-              "puts", "print", "p", "raise", "String", "block_given?"]),
+              "puts", "print", "p", "raise", "String", "block_given?", "rand"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|"]),
   (trueClassId, ["to_s", "inspect", "&", "|"]),
   (falseClassId, ["to_s", "inspect", "&", "|"]),
