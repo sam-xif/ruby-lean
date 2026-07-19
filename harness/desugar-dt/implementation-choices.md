@@ -791,3 +791,16 @@ already modeled for `case/when`). No `Export::VERSION` bump (same heads, differe
 shape). Round-trip: **1267 agree, 0 disagree, 73/73** (unchanged; a few more cases join
 the benign `[ok*]` render-unstable-but-AST-idempotent set). difftest: tier-0 vs desugar
 **1227 agree, 0 disagree**; tier-0 vs lean **686 agree, 0 disagree**.
+
+## C31 — a `-0.0` literal desugars to `-@(0.0)`, not `[:flt, -0.0]`
+
+The RubyCore JSON export encodes floats as JSON numbers, and JSON / Lean's
+`JsonNumber` cannot carry a negative zero (its mantissa is a signless `Int 0`), so
+`[:flt, -0.0]` would reach the Lean model as `+0.0` and `(-0.0).inspect` would
+wrongly print `0.0` (a disagreement, once Float rendering exists — L45). Fix
+(`desugar.rb`, `float_lit`): a negative-zero float literal is emitted as
+`[:send, [:flt, 0.0], "-@", [], nil]`, which round-trips through the model's
+(correct) `Float#-@`. Semantically transparent (`-0.0` = `-(0.0)`); the desugar
+round-trip renders it back to a `-0.0`-valued expression, so the desugar difftest
+is unaffected. Only negative zero is special-cased; all other float literals stay
+`[:flt, v]`.

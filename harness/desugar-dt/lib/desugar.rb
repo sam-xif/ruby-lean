@@ -60,7 +60,7 @@ class Desugar
     when :statements_node         then stmts(n)
     when :parentheses_node        then n.body ? stmts(n.body) : [:nil]
     when :integer_node            then fire(:int);  [:int, n.value]
-    when :float_node              then fire(:flt);  [:flt, n.value]
+    when :float_node              then fire(:flt);  float_lit(n.value)
     when :range_node              then desugar_range(n)
     when :rational_node           then desugar_rational(n)
     when :imaginary_node          then desugar_imaginary(n)
@@ -150,6 +150,19 @@ class Desugar
   end
 
   private
+
+  # A `-0.0` literal must not become a bare `[:flt, -0.0]`: the RubyCore JSON export
+  # encodes floats as JSON numbers, and JSON/Lean's `JsonNumber` cannot carry a
+  # negative zero (mantissa is a signless `Int 0`), so the sign would be lost and
+  # `(-0.0).inspect` would wrongly print `0.0`. Emit it as `-@` of `+0.0` instead,
+  # which round-trips through the model's (correct) `Float#-@`. (desugar choice C31.)
+  def float_lit(v)
+    if v == 0.0 && (1.0 / v).negative?
+      [:send, [:flt, 0.0], "-@", [], nil]
+    else
+      [:flt, v]
+    end
+  end
 
   def stmts(statements_node)
     return [:nil] if statements_node.nil?
