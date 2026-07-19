@@ -474,6 +474,16 @@ generator fix; single choke point, so both campaign and `replay` inherit it). Gu
 reproducers were dropped from `corpus/regressions` (no longer disagreements; the unit test
 is the cheaper, minimal guard).
 
+**SUT-side dual** (`compare.py`): the gate above fires when the *control* overflows (and
+`run_case` then skips the SUT entirely). The remaining corner is a program the control runs
+to completion but the *SUT* overflows — the desugar roundtrip / model adds a frame per call,
+so a deep-but-bounded recursion can tip over only on the SUT side. `compare` now maps that
+(SUT `SystemStackError`, control did not) to `sut_unsupported` — a resource-limit artifact
+of the extra frames, not a wrong answer; same neutral bucket as a `sut timeout`. Together
+with the two-sided wall-clock timeout (which catches genuine hangs that grow no stack), this
+gives an "either side" failsafe for both flavors of non-termination. Guarded by
+`tests/test_compare.py::test_sut_stack_overflow_is_unsupported`.
+
 ## N25 — method_missing objects back in value-position `new` (N22-addendum resolved by desugar C30)
 
 The N22 addendum kept method_missing classes out of value-position `new` as a *workaround*

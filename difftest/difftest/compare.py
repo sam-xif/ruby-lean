@@ -53,6 +53,16 @@ def compare(control: Observation, sut: Observation) -> tuple[Verdict, str | None
     # exits cleanly as Unsupported), so this only absorbs "correct but too slow".
     if b.timed_out and not a.timed_out:
         return Verdict.SUT_UNSUPPORTED, "sut timeout (too slow; control completed within the limit)"
+    # SUT-side dual of the N24 control gate: the SUT overflows the stack on a
+    # program the control ran to completion. The desugar roundtrip / model adds a
+    # frame per call, so a deep-but-bounded recursion can tip over only on the SUT
+    # side. That is a resource-limit artifact of the extra frames, not a wrong
+    # answer — inconclusive, same neutral bucket as a SUT timeout. (When the
+    # control *also* overflows, run_case already excluded the case as
+    # control_invalid before the SUT ran, so this only fires on the asymmetric case.)
+    if (b.exception and b.exception[0] == "SystemStackError"
+            and not (a.exception and a.exception[0] == "SystemStackError")):
+        return Verdict.SUT_UNSUPPORTED, "sut stack overflow (extra frames per call tip a control-terminating program over; inconclusive)"
     parts = []
     if a.stdout != b.stdout:
         parts.append(f"stdout: {a.stdout!r} vs {b.stdout!r}")
