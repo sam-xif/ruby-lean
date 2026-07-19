@@ -869,6 +869,27 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     match hshPayload? h recv with
     | some xs => let (v, m) := allocHsh m xs; .ok v m
     | none => .unsupported "dup"
+  | "Hash#merge" =>
+    -- Non-mutating merge: start from self's entries, fold each Hash arg in with
+    -- later keys overriding — an existing key keeps its position but takes the
+    -- new value, a new key is appended (CRuby's order semantics, mirroring the
+    -- `Hash#[]=` update-or-append above). The conflict-resolution *block* form is
+    -- not modeled (a pure builtin sees no block; cf. `Hash#fetch`), and a non-Hash
+    -- argument gates rather than risk a wrong `TypeError` message.
+    match hshPayload? h recv with
+    | none => .unsupported "merge"
+    | some base =>
+      if args.all (fun a => (hshPayload? h a).isSome) then
+        let acc := args.foldl (init := base) fun cur a =>
+          match hshPayload? h a with
+          | none => cur                       -- unreachable given the `all` guard
+          | some other =>
+            other.foldl (init := cur) fun cur (k, v) =>
+              match cur.toList.findIdx? (fun (k', _) => valueEql h k' k) with
+              | some i => cur.set! i (k, v)
+              | none => cur.push (k, v)
+        let (v, m) := allocHsh m acc; .ok v m
+      else .unsupported "merge: non-Hash arg"
   /- ─── Exception ─── -/
   | "Exception#message" | "Exception#to_s" =>
     match recv with

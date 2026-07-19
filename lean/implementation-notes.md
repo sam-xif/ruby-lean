@@ -608,3 +608,19 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   while resolving nested constants like `Parameterizable::ClassMethods` — which
   unblocked the ai4r q_learning/SOM drivers past the `included`→`base.extend(
   ClassMethods)` `NameError` (they now reach the next real gate, `Hash#merge`).
+
+## Core-library tail for the ai4r drivers (L37+)
+
+- **L37 — `Hash#merge` (non-mutating, variadic, blockless).** The first builtin
+  in the demand-driven core-library tail that `bin/lift ai4r` gates on (blocks
+  q_learning + both multi-node/single SOM drivers via
+  `parameterizable.rb`'s `get_parameters_info.merge(...)` and `som.rb`'s
+  `@init_weight_options.merge(distance_metric:, rng:)`). Folds each Hash argument
+  into a copy of self, later keys overriding: an existing key keeps its position
+  but takes the new value, a new key is appended — CRuby's order semantics,
+  reusing the `Hash#[]=` update-or-append rule. **Not modeled:** the
+  conflict-resolution *block* form (`merge(o){|k,old,new| …}`) — a pure builtin
+  in `run` never receives the block, the same known limitation as `Hash#fetch`'s
+  block form; the drivers never use it. A non-Hash argument gates (`Unsupported`)
+  rather than risk emitting a wrong `TypeError` message. Registered in the `hashId`
+  boot table (`Heap.lean`).

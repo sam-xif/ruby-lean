@@ -247,7 +247,7 @@ def builtinMethods : List (ObjId × List String) := [
              "frozen?", "sort", "min", "max", "sum"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
             "include?", "member?", "keys", "values", "delete", "fetch",
-            "inspect", "to_s", "dup"]),
+            "inspect", "to_s", "dup", "merge"]),
   (exceptionId, ["message", "to_s", "inspect"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors"]),
   (classId, ["new"]),
