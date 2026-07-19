@@ -1,4 +1,5 @@
 import RubyCore.Syntax
+import RubyCore.MT
 import RubyCore.Heap
 import RubyCore.FloatFmt
 import RubyCore.Repr

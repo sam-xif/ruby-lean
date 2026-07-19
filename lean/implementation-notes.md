@@ -726,3 +726,24 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   (0 mismatches). Unblocks **som_data** (byte-exact) and is the prerequisite float
   layer for the SOM training drivers. Depends on desugar **C31** (see below) so a
   `-0.0` literal reaches the model as a real negative zero.
+
+- **L46 — `Random.new(seed)` + `Random#rand`: CRuby-compatible MT19937.** New
+  `RubyCore/MT.lean` ports MT19937 exactly (validated against the classic
+  `init_by_array` test vector `1067595299` and CRuby `Random.new(42).rand` =
+  `0.3745401188473625…`). Ruby seeds a 32-bit-fitting integer with
+  `init_genrand(seed)` (NOT `init_by_array`, which is only for bignum seeds — a
+  subtlety found empirically), and `rand` with no argument draws a 53-bit double
+  `((a>>5)*2^26 + (b>>6)) / 2^53` from two tempered outputs. A `Random` boot class
+  (`randomId := 30`, `mainId` → 31) holds its MT state in a new `Payload.rng`
+  variant; `Random.new(int)` (in `newImpl`) seeds it, `Random#rand` (no arg) draws
+  and writes the mutated state back to the heap. **Unseeded** `Random.new` and
+  `rand(n)` gate (the former is nondeterministic — cf. L43; the latter is Ruby's
+  separate bounded-draw algorithm, unused by the drivers). This is the RNG the
+  seeded SOM driver variants need so their weights match CRuby bit-for-bit.
+
+- **L47 — `Kernel#require` / `require_relative` are no-ops returning `true`.** In a
+  linked program the internal `require_relative`s are already inlined; a residual
+  `require "benchmark"`/`require "yaml"` (stdlib) just needs to not gate. Returns
+  `true` (CRuby's first-load result); the value is essentially never observed. A
+  library actually *used* after such a require still gates on its own methods, so
+  this cannot manufacture a wrong answer for modeled code.

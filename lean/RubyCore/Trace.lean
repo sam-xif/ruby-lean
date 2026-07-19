@@ -30,6 +30,7 @@ partial def valBrief (h : Heap) : Nat → Value → String
       let cn := className h (h.get o).klass
       if msg.isEmpty then cn else s!"#<{cn}: {msg}>"
     | .proc c => if c.lam then "#<Proc (lambda)>" else "#<Proc>"
+    | .rng _ => "#<Random>"
     | .none =>
       if o == Boot.mainId then "main"
       else s!"#<{className h (h.get o).klass}##{o}>"

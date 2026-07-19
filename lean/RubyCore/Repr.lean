@@ -160,6 +160,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       let cname := className h (h.get o).klass
       if msg.isEmpty then return cname else return s!"#<{cname}: {msg}>"
     | .proc _ => throw "Proc#inspect (address non-deterministic)"
+    | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .none =>
       let cname := className h (h.get o).klass
       let ivars := (h.get o).ivars.reverse
@@ -186,6 +187,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     | .cls c => return c.name
     | .exc msg => return msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
+    | .rng _ => throw "Random#to_s (state/address non-deterministic)"
     | .none =>
       let cname := className h (h.get o).klass
       return s!"#<{cname}:{fakeAddr o}>"

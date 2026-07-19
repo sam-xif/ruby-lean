@@ -16,6 +16,7 @@ L0 representation notes (implementation-notes to be recorded harness-side):
   private-call cases the desugar admits that we support; revisit at L2).
 -/
 import RubyCore.Syntax
+import RubyCore.MT
 
 namespace RubyCore
 
@@ -104,6 +105,8 @@ inductive Payload where
   | exc (msg : String)
   /-- A Proc (block/proc/lambda), artifact 04 §1. -/
   | proc (c : Closure)
+  /-- A `Random` instance's MT19937 state (mutated in place by `#rand`). -/
+  | rng (s : MT.State)
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
@@ -189,8 +192,9 @@ def stopIterationId : ObjId := 26
 def notImplementedErrorId : ObjId := 27
 def scriptErrorId : ObjId := 28
 def procId : ObjId := 29
+def randomId : ObjId := 30
 /-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 30
+def mainId : ObjId := 31
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -223,7 +227,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (stopIterationId, "StopIteration", some indexErrorId),
   (notImplementedErrorId, "NotImplementedError", some scriptErrorId),
   (scriptErrorId, "ScriptError", some exceptionId),
-  (procId, "Proc", some objectId)
+  (procId, "Proc", some objectId),
+  (randomId, "Random", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -234,7 +239,8 @@ def builtinMethods : List (ObjId × List String) := [
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "!=", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
-              "puts", "print", "p", "raise", "String", "block_given?", "rand"]),
+              "puts", "print", "p", "raise", "String", "block_given?", "rand",
+              "require", "require_relative"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|"]),
   (trueClassId, ["to_s", "inspect", "&", "|"]),
   (falseClassId, ["to_s", "inspect", "&", "|"]),
@@ -264,7 +270,8 @@ def builtinMethods : List (ObjId × List String) := [
   -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
   -- frame, which a pure builtin cannot); only the pure introspectors are
   -- registered here.
-  (procId, ["lambda?", "to_proc"])
+  (procId, ["lambda?", "to_proc"]),
+  (randomId, ["rand"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=

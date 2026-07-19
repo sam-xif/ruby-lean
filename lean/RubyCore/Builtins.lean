@@ -285,6 +285,23 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- true iff the enclosing method activation received a block (the block
     -- is propagated onto block frames, so the current frame's blk answers) [V]
     .ok (.bool m.currentFrame.blk.isSome) m
+  | "Object#require" | "Object#require_relative" =>
+    -- Linked programs have their internal deps inlined; a residual `require` of a
+    -- stdlib (e.g. `benchmark`/`yaml`) is a no-op that returns true (as CRuby's
+    -- first load does). The result is essentially never observed.
+    .ok (.bool true) m
+  | "Random#rand" =>
+    match recv with
+    | .ref o =>
+      match (h.get o).payload with
+      | .rng st =>
+        match args with
+        | [] =>   -- Random#rand → Float in [0,1); mutate the object's MT state
+          let (r, st') := MT.nextReal st
+          .ok (.flt r) { m with heap := h.set o { h.get o with payload := .rng st' } }
+        | _ => .unsupported "Random#rand(n) (bounded draw not modeled)"
+      | _ => .unsupported "rand on non-Random receiver"
+    | _ => .unsupported "Random#rand"
   | "Object#rand" =>
     -- Deterministic placeholder for CRuby's *unseeded* Kernel#rand. Its value is
     -- observationally irrelevant to any program CRuby runs deterministically: an
@@ -1085,6 +1102,18 @@ where
               { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.val dflt) }
             .ok (.ref o) { m with heap := h }
           | _ => .unsupported "Hash.new arity > 1"
+        else if k == Boot.randomId then
+          -- `Random.new(seed)`: seed a CRuby-compatible MT19937. An *unseeded*
+          -- `Random.new` is nondeterministic (like `Kernel#rand`, L43), so it gates.
+          match args with
+          | [.int seed] =>
+            if seed < 0 then .unsupported "Random.new negative seed"
+            else
+              let (o, h) := m.heap.alloc
+                { klass := Boot.randomId, payload := .rng (MT.seeded seed.toNat) }
+              .ok (.ref o) { m with heap := h }
+          | [] => .unsupported "Random.new (unseeded — nondeterministic)"
+          | _ => .unsupported "Random.new arity"
         else if [Boot.classId, Boot.moduleId, Boot.integerId, Boot.floatId,
                  Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                  Boot.falseClassId].contains k then
