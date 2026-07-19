@@ -12,6 +12,7 @@ Errors (`Except String`) are Unsupported reasons, e.g. float formatting
 (Ruby requires shortest-roundtrip which Lean's Float.toString is not).
 -/
 import RubyCore.Heap
+import RubyCore.FloatFmt
 
 namespace RubyCore
 
@@ -130,7 +131,7 @@ mutual
 partial def inspect (h : Heap) (v : Value) : Except String String := do
   match v with
   | .int n => return toString n
-  | .flt _ => throw "Float#inspect (shortest-roundtrip formatting unimplemented)"
+  | .flt x => return rubyFloatRepr x
   | .sym s => return symInspect s
   | .bool b => return toString b
   | .nil => return "nil"
@@ -172,7 +173,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
 partial def toS (h : Heap) (v : Value) : Except String String := do
   match v with
   | .int n => return toString n
-  | .flt _ => throw "Float#to_s (shortest-roundtrip formatting unimplemented)"
+  | .flt x => return rubyFloatRepr x
   | .sym s => return s
   | .bool b => return toString b
   | .nil => return ""

@@ -708,3 +708,21 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   (`each1` elements) and hashes (`[k,v]` pairs). Completes the q_learning driver:
   `@q[state].max_by { |_, v| v }.first` now runs — **q_learning agrees byte-exact
   with CRuby** (`Best action from s1: b`), the 4th of 7 ai4r drivers to pass.
+
+- **L45 — `Float#to_s`/`#inspect`: shortest round-tripping decimal (supersedes the
+  L8 gate).** New `RubyCore/FloatFmt.lean`: Burger–Dubois free-format Dragon4 over
+  the raw IEEE-754 bits (`Float.toBits`) with exact `Nat`/`Int` bignum arithmetic —
+  Lean's `Float.toString` is lossy fixed 6-digit `%f`, unusable. Produces the
+  shortest decimal that round-trips, with round-half-to-even boundary inclusivity
+  and carry propagation on a rounding overflow. `layoutFloat` then applies CRuby's
+  `flo_to_s` layout, whose fixed-vs-scientific rule was derived empirically (not the
+  folklore `decpt ≤ 15`): for `decpt > 0`, fixed iff `decpt ≤ max 15 (ndigits-1)`
+  (so `decpt = 16` is fixed only with a genuine fractional digit, e.g.
+  `1364804082905693.5`, else scientific like `1.0e+15`); for `decpt ≤ 0`, fixed
+  while `decpt > -4`. Specials: `Infinity`/`-Infinity`/`NaN`, `0.0`/`-0.0`, always a
+  fractional digit, sci exponent `decpt-1` zero-padded to ≥2. Wired into both `.flt`
+  arms of `Repr` (inspect + to_s), so `puts`/`p`/interpolation/final-result/direct
+  sends all format correctly. Validated against CRuby over 2037 random+edge doubles
+  (0 mismatches). Unblocks **som_data** (byte-exact) and is the prerequisite float
+  layer for the SOM training drivers. Depends on desugar **C31** (see below) so a
+  `-0.0` literal reaches the model as a real negative zero.
