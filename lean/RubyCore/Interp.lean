@@ -455,8 +455,17 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let expected := match fp.rest? with
       | some _ => s!"{required}+"
       | none => if nopt == 0 then toString required else s!"{required}..{required + nopt}"
+    -- CRuby appends *all* required keywords (those without a default) to the arity
+    -- error, e.g. `(given 1, expected 0; required keywords: a, b)` — even ones the
+    -- caller supplied, since the positional-arity check fires before keywords are
+    -- bound (kwargs/004: `c:` is listed though `c: 3` was passed). Names are *bare*
+    -- here (no leading `:`), unlike the standalone "missing keyword: :a" message.
+    let reqKeys := fp.keys.filterMap (fun (kn, d?) => if d?.isNone then some kn else none)
+    let kwSuffix := if reqKeys.isEmpty then ""
+      else s!"; required keyword{if reqKeys.length == 1 then "" else "s"}: " ++
+           String.intercalate ", " reqKeys
     .next (raiseErr m Boot.argumentErrorId
-      s!"wrong number of arguments (given {n}, expected {expected})")
+      s!"wrong number of arguments (given {n}, expected {expected}{kwSuffix})")
   else
     -- keyword validation (missing required / unknown, byte-exact ArgumentError [V]).
     let missing := fp.keys.filterMap (fun (kn, d?) =>

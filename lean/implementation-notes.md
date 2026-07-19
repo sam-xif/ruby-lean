@@ -651,3 +651,13 @@ gated. The fix is a stepper-level mechanism, not a builtin.
      `A::B::TwoPhaseLayer`). Fix: qualify with the enclosing namespace
      (`{className defmod}::{name}`) unless `defmod` is Object. Mirrors
      `enterScopedClassBody`'s `fullName`.
+
+- **L40 — arity `ArgumentError` lists required keywords.** CRuby's wrong-number-of-
+  arguments error names the method's required keywords when it has any, e.g.
+  `wrong number of arguments (given 1, expected 0; required keywords: a, b)`. The
+  suffix lists **all** keyword params without a default — *even ones the caller
+  supplied* — because the positional-arity check fires before keywords are bound
+  (tier-3 `kwargs/004`: `c:` is listed though `c: 3` was passed). Names are **bare**
+  in this suffix (no leading `:`), unlike the standalone `missing keyword: :a`
+  message. Singular `keyword`/plural `keywords` per count. Fixed the three tier-3
+  kwargs disagreements surfaced by the L39 ratchet.
