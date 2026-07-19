@@ -563,7 +563,15 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval body) (.frameK fid))
-  match constLookup m.heap name with
+  -- Reopen detection looks up `name` in the *current innermost namespace only*
+  -- (`defmod`), NOT a flat toplevel lookup and NOT the full lexical cref chain.
+  -- So `module B` inside a reopened `module A` finds the existing `A::B` (A's own
+  -- constant) and reuses that object instead of allocating a duplicate and
+  -- clobbering `A::B`. Crucially it is *not* the cref-walk used for constant
+  -- *reads*: `class Foo` nested in `M` must create `M::Foo`, it does NOT reopen a
+  -- lexically-visible `::Foo` (verified against CRuby). At the toplevel `defmod`
+  -- is `Object`, so this coincides with the old flat lookup.
+  match constOwn m.heap m.currentFrame.defmod name with
   | some (.ref k) =>
     match m.heap.classPayload? k with
     | some c =>
@@ -578,9 +586,15 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
   | some _ => .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
   | none =>
     let superclass := if isMod then none else some (sup?.getD Boot.objectId)
+    -- A nested definition (`module B` inside `A`) takes the qualified constant
+    -- path `A::B` as its `name` (CRuby derives the name from where the constant
+    -- is bound); a toplevel definition (`defmod` = Object) keeps the bare name.
+    let defmod := m.currentFrame.defmod
+    let qualName := if defmod == Boot.objectId then name
+                    else s!"{className m.heap defmod}::{name}"
     let obj : Object :=
       { klass := (if isMod then Boot.moduleId else Boot.classId),
-        payload := .cls { superclass, name, isModule := isMod } }
+        payload := .cls { superclass, name := qualName, isModule := isMod } }
     let (k, h) := m.heap.alloc obj
     -- register the class name in the *enclosing* namespace (Object at toplevel)
     let h := constSetIn h m.currentFrame.defmod name (.ref k)

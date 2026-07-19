@@ -631,3 +631,23 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   the hash. Block-driven like the other native iterators (a blockless form would
   be an Enumerator, still gated). Gated q_learning + both SOM drivers via
   `parameterizable.rb`'s `get_parameters_info.each_key { … }`.
+
+- **L39 — module/class reopening reuses the existing object; nested names are
+  qualified.** Two coupled bugs in `enterClassBody` (unscoped `class`/`module
+  NAME`), both surfaced once the SOM drivers reached `Ai4r::Som` after L38:
+  1. **Reopening allocated a fresh object.** Reopen detection used
+     `constLookup name` (flat *toplevel* only), so `module B` inside a reopened
+     `module A` never found the existing `A::B` — it created a duplicate and
+     `constSetIn`-clobbered `A::B`, so `first.equal?(A::B)` was `false` (CRuby:
+     `true`) and `class TwoPhaseLayer < Layer` in a reopened `Ai4r::Som` raised a
+     spurious `NameError: uninitialized constant Layer`. Fix: look up `name` in the
+     **current innermost namespace only** — `constOwn defmod name`. This is
+     deliberately *not* the lexical cref walk used for constant *reads* (L36):
+     verified against CRuby, `class Foo` nested in `M` creates `M::Foo` and does
+     **not** reopen a lexically-visible `::Foo`. At the toplevel `defmod` is
+     `Object`, so it coincides with the old flat lookup (behaviour-preserving there).
+  2. **Nested classes got a bare `name`.** A newly-created nested class/module took
+     `name` unqualified, so `A::B::TwoPhaseLayer.to_s` was `TwoPhaseLayer` (CRuby:
+     `A::B::TwoPhaseLayer`). Fix: qualify with the enclosing namespace
+     (`{className defmod}::{name}`) unless `defmod` is Object. Mirrors
+     `enterScopedClassBody`'s `fullName`.
