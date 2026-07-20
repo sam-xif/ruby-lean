@@ -20,7 +20,7 @@ against it and the adequacy theorems proved after.
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
-| `RubyCore/Proof/` | **metatheory PoC** (off the default build target): `Step.lean` (inductive `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `Demo.lean` (worked reductions). See §Metatheory. |
+| `RubyCore/Proof/` | **metatheory** (off the default build target): `Step.lean` (inductive control-core `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `TypeSafety.lean` (`invariant_sound` type-safety-by-reachability + Direction-A certificate), `Demo.lean` (worked reductions + type-safety demos). See §Metatheory. |
 
 ## Build & run
 
@@ -81,21 +81,31 @@ Rerun against the pinned oracle when the CRuby version bumps. It folds
 modules the L0 ancestor chain omits (Kernel→Object, Comparable/Numeric→
 numerics/strings, Enumerable→Array/Hash).
 
-## Metatheory (proof of concept)
+## Metatheory
 
 The sketch and PROJECT_PLAN §7 name the **inductive `Step` relation** the
 definition of record, with `stepFn` its executable witness. `RubyCore/Proof/`
-is a first, self-contained realization of that programme — evidence the
-interpreter-first architecture admits real theorems — over an effect-light
-**control-core** fragment (literals, local/ivar/global var + assign, `seq`,
-`if`, `while`, `break`/`next`; see `implementation-notes.md` L13–L15 for scope
-and the excluded heads). It is **not** on the default build target and is
-expected to be reworked when L1/L2 change the machine shape.
+realizes that programme in two layers (both off the default build target,
+axiom-clean; see `implementation-notes.md` L13–L15, L51):
+
+1. **The inductive control-core `Step`** (`Step.lean`/`Adequacy.lean`) — an
+   effect-light fragment (literals, local/ivar/global var + assign, `seq`, `if`,
+   `while`, `dowhile`, `break`/`next`/`redo`) with soundness, completeness,
+   adequacy, determinism, and a heap-monotonicity preservation invariant. The
+   idiomatic relational view; bridged to the full relation by
+   `Step.subset_smallStep`.
+2. **Type safety as reachability** (`TypeSafety.lean`) — the `invariant_sound`
+   progress/preservation metatheorem of `type-safety-by-reachability.md` §4,
+   proved over the *full* transition relation `SmallStep m m' := stepFn m =
+   .next m'` (so it covers dispatch/classes/blocks — real programs, not just the
+   control core), plus the Direction-A execution certificate
+   (`run_value_type_safe`) and a worked Direction-B invariant demo in
+   `Demo.lean`.
 
 Build and check:
 
 ```sh
-lake build RubyCore.Proof.Adequacy RubyCore.Proof.Demo
+lake build RubyCore.Proof.TypeSafety RubyCore.Proof.Demo
 ```
 
 Theorems (all resting only on `propext`/`Classical.choice`/`Quot.sound` — no
@@ -108,8 +118,12 @@ Theorems (all resting only on `propext`/`Classical.choice`/`Quot.sound` — no
 | `Step.adequacy` | `InFrag m → (Step m m' ↔ stepFn m = .next m')` — function–relation adequacy on the fragment |
 | `Step.deterministic` | `Step m a → Step m b → a = b` |
 | `Step.heap_monotone` | `Step m m' → m.heap.objs.size ≤ m'.heap.objs.size` — a preservation invariant proved by induction on the step relation (ObjIds never reused; the shape the eventual machine↔SOS fresh-allocation argument needs) |
+| `invariant_sound` | `I (init p) → (∀ m m', I m → SmallStep m m' → I m') → (∀ m, I m → ¬ aboutToTypeStick m) → ∀ r, ReachableResult (init p) r → ¬ typeStuck r` — any inductive invariant (init/preservation/progress) proves no reachable outcome is a type-family `uncaught`, all inputs / unbounded fuel |
+| `run_value_type_safe` | a run terminating in a value reaches a non-type-stuck outcome — the Direction-A execution certificate (the `q_learning` coverage story) |
 
 `Demo.lean` exhibits the relation firing, a concrete 5-step reduction of `1; 2`
-to the value `2`, and adequacy on a real initial config. The intended next
-extension is `send` (fold `invoke`/`Builtins.run` in as a trusted oracle), then
-`return`/frames and `begin` unwinding.
+to the value `2`, adequacy on a real initial config, and the type-safety
+pipeline: the Direction-A certificate on `1; 2`, and `while true do nil end`
+proved type-safe via a hand-supplied inductive invariant. A relational dispatch
+`Step` (folding `invoke` as a trusted oracle) is the next extension, but
+`invariant_sound` does not depend on it (it ranges over `stepFn`).

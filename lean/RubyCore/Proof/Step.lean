@@ -10,7 +10,8 @@ head, or scrap at L1):
 
   literals (int/flt/str/sym/true/false/nil/self), var + vasgn for
   local/ivar/global (ivar with a `ref` self — always true at toplevel), seq,
-  if, while, break/next, and jump propagation past neutral konts.
+  if, while, dowhile, break/next/redo (the three loop jumps), and jump
+  propagation past neutral konts.
 
 Deliberately EXCLUDED — each is simply "no `Step` exists", which matches
 `stepFn` returning `.unsupported`/`.stuck`/`.done`: send/dispatch, `return`
@@ -92,6 +93,9 @@ inductive Step : Machine → Machine → Prop where
   | whileEval {m c body} :
       m.ctl = .eval (.while' c body) →
       Step m (withKont m (.eval c) (.whileCondK c body))
+  | dowhileEval {m body cond} :
+      m.ctl = .eval (.dowhile body cond) →
+      Step m (withKont m (.eval body) (.whileBodyK cond body))
   | brkSome {m e} :
       m.ctl = .eval (.brk (some e)) →
       Step m (withKont m (.eval e) (.jumpValK .brkK))
@@ -102,6 +106,8 @@ inductive Step : Machine → Machine → Prop where
       Step m (withKont m (.eval e) (.jumpValK .nxtK))
   | nxtNone {m} :
       m.ctl = .eval (.nxt none) → Step m (withCtl m (.jump (.nxtJ .nil)))
+  | redoEval {m} :
+      m.ctl = .eval .redo' → Step m (withCtl m (.jump .redoJ))
   /- ── seq eval ── -/
   | seqNil {m} :
       m.ctl = .eval (.seq []) → Step m (withCtl m (.value .nil))
@@ -174,6 +180,14 @@ inductive Step : Machine → Machine → Prop where
   | unwindWhileBodyNxt {m v c body rest} :
       m.ctl = .jump (.nxtJ v) → m.kont = .whileBodyK c body :: rest →
       Step m (withKont (pop m rest) (.eval c) (.whileCondK c body))
+  /- `redo` re-runs the loop body without re-testing the condition (artifact 04);
+     both while markers route it to `eval body` under `whileBodyK` [V]. -/
+  | unwindWhileCondRedo {m c body rest} :
+      m.ctl = .jump .redoJ → m.kont = .whileCondK c body :: rest →
+      Step m (withKont (pop m rest) (.eval body) (.whileBodyK c body))
+  | unwindWhileBodyRedo {m c body rest} :
+      m.ctl = .jump .redoJ → m.kont = .whileBodyK c body :: rest →
+      Step m (withKont (pop m rest) (.eval body) (.whileBodyK c body))
   /- ── jump propagation past neutral konts (the `_` arm of `unwind`) ── -/
   | unwindPropSeqK {m j es rest} :
       m.ctl = .jump j → m.kont = .seqK es :: rest →
@@ -192,7 +206,7 @@ inductive Step : Machine → Machine → Prop where
 theorem Step.sound {m m' : Machine} (h : Step m m') : stepFn m = .next m' := by
   cases h <;>
     simp_all [stepFn, evalExpr, applyKont, unwind, withCtl, withKont, pop,
-              Machine.setLocal, Machine.setGlobal, Machine.setCurrentFrame,
+              Machine.setLocal, Machine.setGlobal,
               Machine.currentFrame, bindIvar, Builtins.allocStr, Heap.alloc]
 
 /-- **Determinism** — immediate from soundness + `.next` injectivity, because

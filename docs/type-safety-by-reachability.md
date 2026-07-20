@@ -6,12 +6,20 @@ counterexample (input + trace) when one exists, and treat any declared type anno
 a *separate, secondary* conformance check. No new type system — the semantics *is* the
 specification, and "typed" means "the bad-state set is unreachable."
 
-Status: **design only, deliberately deferred.** This is parked until the Lean model is more
-complete (L1 block model consuming export v3+, dispatch/object-model rules landed as an
-inductive `Step`, metatheory PoC grown past the control core). It reuses machinery this
-workspace already sketches — it is the [`bounded-effect-checking.md`](bounded-effect-checking.md)
-engine with **the bad-state predicate swapped** from "effect violates the manifest" to
-"configuration is type-stuck." Read that doc first; this one only records the deltas.
+Status: **core metatheorem landed (2026-07-19); the checker engine is future work.**
+The Direction-B metatheorem of §4 (`invariant_sound`) and the Direction-A execution
+certificate of §3 are now proved in Lean — see `ruby/lean/RubyCore/Proof/TypeSafety.lean`
+(and `implementation-notes.md` L51). The key implementation decision: they are formulated
+over the **full executable transition relation** `SmallStep m m' := stepFn m = .next m'`,
+not the partial control-core inductive `Step` — a subset relation reaches fewer states, so
+safety over it would not transfer, and formulating over `stepFn` is why the theorem already
+applies to real programs (dispatch/classes/blocks), including the `q_learning_extended`
+demo. What remains is the **untrusted search engine** that discovers an invariant `I` per
+program (§4, §7) and the type-annotation conformance check (§5) — those are still design.
+It reuses machinery this workspace already sketches — it is the
+[`bounded-effect-checking.md`](bounded-effect-checking.md) engine with **the bad-state
+predicate swapped** from "effect violates the manifest" to "configuration is type-stuck."
+Read that doc first; this one only records the deltas.
 
 Origin: a 2026-07-16 design conversation. Written to be picked up cold later.
 
@@ -151,17 +159,24 @@ engine correct — we prove the rule that makes its output trustworthy, once, an
 engine to untrusted.** Finding `I` is the hard, undecidable, heuristic part (outside);
 checking `I` is decidable and local (inside).
 
-### What the existing PoC already buys
+### What is now proved (2026-07-19)
 
-`RubyCore/Proof/Step.lean` already authors an inductive `Step` mirroring `stepFn` over the
-control-core fragment, with `Step.sound` (`Step m m' → stepFn m = .next m'`) and
-`Step.deterministic`; `RubyCore/Proof/Adequacy.lean` carries the adequacy/determinism/
-preservation line. So the substrate for `invariant_sound` — an inductive `Step`, its
-soundness against `stepFn`, and RT-closure reasoning — **partially exists**. What's missing
-is exactly the fragment that matters for type errors: `send`/dispatch, arity, `return`/
-method frames, begin/rescue (needed to model *catch*), class/module/def (needed to model
-the method tables `I` must track). This is why the doc is deferred: the invariant is about
-dispatch, and dispatch is the part of `Step` not yet authored.
+`RubyCore/Proof/TypeSafety.lean` proves `invariant_sound` exactly as stated above, plus the
+Direction-A execution certificate (`run_value_type_safe`). Crucially it is formulated over
+the **full** relation `SmallStep m m' := stepFn m = .next m'` — so *no separate inductive
+dispatch `Step` is required* for the metatheorem, and it already covers `send`/dispatch,
+classes, blocks, begin/rescue: everything `stepFn` models. The earlier framing ("deferred
+until dispatch `Step` is authored") assumed the theorem would range over the inductive
+`Step`; ranging over `stepFn` instead is both sound (a subset relation would be unsound for
+a *safety* claim) and immediately general. `RubyCore/Proof/Step.lean` (the inductive control
+core, refreshed for `redo`/`dowhile`) and its `Step.sound` remain the idiomatic relational
+"definition of record," bridged in by `Step.subset_smallStep`.
+
+What is *still* missing is not the theorem but its **consumer**: an (untrusted) engine that,
+per program, discovers a concrete inductive invariant `I` whose Consecution is dischargeable
+— the abstract domain must track method tables (§4.2), and that is where dispatch, arity,
+and `method_missing` (§7) make the *inference* hard. The trusted validator + `invariant_sound`
+are done; finding `I` is the open, undecidable, heuristic part.
 
 ### The checkability constraint shapes the abstract domain
 
@@ -226,15 +241,20 @@ Two effort levels, one checker, one `invariant_sound`.
 
 ## 8. Sequencing — what must exist before picking this up
 
-Prerequisites, in order (revisit when the Ruby AGENTS status shows these green):
+Prerequisites — **all three now done** (2026-07-19, `RubyCore/Proof/TypeSafety.lean`),
+which reorders the original plan: #3 did *not* have to wait on #1, because ranging the
+metatheorem over `stepFn` (rather than the inductive `Step`) makes it dispatch-complete for
+free.
 
-1. **Dispatch/object-model rules authored as inductive `Step`** with a `Step.sound` against
-   `stepFn`, extending `RubyCore/Proof/Step.lean` past the control core — the gating item.
-2. **`typeStuck` predicate** defined over `StepResult` with the type-error class family
-   (and the `NameError`/`NoMethodError` ambiguity currently gated to `unsupported`
-   resolved, so genuine misses are visible, not hidden in the frontier).
-3. **`invariant_sound` metatheorem** proved over RT-closure of `Step` (builds directly on
-   the `Adequacy.lean` line).
+1. ~~Dispatch/object-model rules authored as inductive `Step`~~ — **not required for
+   `invariant_sound`** after all; it ranges over `stepFn` (which already dispatches). Still
+   worthwhile as the relational "definition of record" (`Step.subset_smallStep` bridges it),
+   and needed if you want to reason about dispatch *relationally* rather than via `stepFn`.
+2. **`typeStuck` predicate** — done (`typeStuck`/`isTypeError`/`typeErrorFamily`,
+   NoMethodError ∪ ArgumentError ∪ TypeError closed under `isA`). The `NameError`/
+   `NoMethodError` `unsupported` gate is unchanged upstream; a bare `NameError` is simply
+   not in the family, so genuine `NoMethodError` misses are visible.
+3. **`invariant_sound` metatheorem** — done, over the RT-closure `Reaches` of `SmallStep`.
 
 Cheap de-risking runnable *before* all that:
 

@@ -4,6 +4,7 @@ non-vacuous, it *computes*, and adequacy applies to real initial configs. These
 `example`s double as regression tests that the constructors actually fire.
 -/
 import RubyCore.Proof.Adequacy
+import RubyCore.Proof.TypeSafety
 
 namespace RubyCore
 namespace Proof
@@ -51,6 +52,62 @@ example : ∃ mf, Steps (Machine.init (.seq [.int 1, .int 2])) mf
     .head (.seqKNil rfl rfl)    <|  -- value 2     → value 2, []
     .refl
   exact ⟨_, chain, rfl, rfl⟩
+
+/-! ## Type-safety demonstrations (`type-safety-by-reachability.md` §3–4)
+
+    The metatheory of `TypeSafety.lean` applied end-to-end. -/
+
+/-- **Direction A (execution certificate, §3).** A concrete terminating run *is*
+    the type-safety proof for that input: `1; 2` runs to the value `2`, a `done`
+    outcome, which `done_not_typeStuck` shows is not type-stuck. No invariant.
+    This is the shape of the certificate `bin/demo-qlearning --extended` produces
+    for `q_learning_extended.rb` (whose run the model executes to completion,
+    matching CRuby) — the general lemma is `run_value_type_safe`. -/
+example :
+    ∃ r, ReachableResult (Machine.init (.seq [.int 1, .int 2])) r ∧ ¬ typeStuck r :=
+  run_value_type_safe (fuel := 6) (by rfl)
+
+/-! ### Direction B (verification, §4): an inductive invariant, proved end-to-end
+
+    `while true do nil end` — an *infinite* loop, so no fuel bound and no input
+    can make it terminate, let alone type-stick. We prove it type-safe for
+    **unbounded fuel and all inputs** by exhibiting a five-state inductive
+    invariant and discharging Initiation / Consecution (preservation) / Safety
+    (progress) — then `invariant_sound` does the rest. This is the whole
+    Direction-B pipeline in miniature; for real programs the (untrusted) engine
+    supplies the invariant and the trusted validator re-checks these three. -/
+
+/-- The looping program's reachable configs, as constraints on `(ctl, kont)`
+    (the heap/frames never change here). Five shapes; the last four cycle. -/
+def loopInv (m : Machine) : Prop :=
+  (m.ctl = .eval (.while' .tru .nil) ∧ m.kont = []) ∨
+  (m.ctl = .eval .tru ∧ m.kont = [.whileCondK .tru .nil]) ∨
+  (m.ctl = .value (.bool true) ∧ m.kont = [.whileCondK .tru .nil]) ∨
+  (m.ctl = .eval .nil ∧ m.kont = [.whileBodyK .tru .nil]) ∨
+  (m.ctl = .value .nil ∧ m.kont = [.whileBodyK .tru .nil])
+
+theorem loop_init : loopInv (Machine.init (.while' .tru .nil)) := Or.inl ⟨rfl, rfl⟩
+
+theorem loop_cons : ∀ m m', loopInv m → SmallStep m m' → loopInv m' := by
+  intro m m' hI hstep
+  rcases hI with ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ <;>
+    simp [SmallStep, stepFn, hc, hk, evalExpr, applyKont, withKont, withCtl,
+          Value.truthy] at hstep <;>
+    subst hstep <;>
+    simp [loopInv]
+
+theorem loop_safe : ∀ m, loopInv m → ¬ aboutToTypeStick m := by
+  intro m hI
+  rcases hI with ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ | ⟨hc, hk⟩ <;>
+    simp [aboutToTypeStick, typeStuck, stepFn, hc, hk, evalExpr, applyKont, withKont,
+          withCtl, Value.truthy]
+
+/-- **`while true do nil end` is type-safe** — no reachable outcome is
+    type-stuck, for unbounded fuel and all inputs. The payoff of `invariant_sound`
+    applied to a hand-supplied inductive invariant. -/
+theorem loop_type_safe :
+    ∀ r, ReachableResult (Machine.init (.while' .tru .nil)) r → ¬ typeStuck r :=
+  invariant_sound loopInv loop_init loop_cons loop_safe
 
 end Proof
 end RubyCore

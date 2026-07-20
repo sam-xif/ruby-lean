@@ -123,12 +123,19 @@ disagreement — preserve them as the fragment grows.
    preservation invariant — all axiom-clean (`#print axioms` shows only
    propext/Classical.choice/Quot.sound). It validates that the
    interpreter-first design admits real theorems and that rule extraction is
-   mechanical (soundness = one uniform `cases`+`simp`). Remaining for the full
-   metatheory: extend the fragment to `send` (fold `invoke`/`Builtins.run` as a
-   trusted oracle), then `return`/frames and `begin`; the PoC will likely be
-   reworked when L1/L2 change the machine shape. The prior guidance still
-   holds — the *complete* metatheory is best finished after L1 so the rule set
-   doesn't churn mid-proof.
+   mechanical (soundness = one uniform `cases`+`simp`). Refreshed against the
+   current stepper (control core now covers `redo`/`dowhile`; L13).
+   **Type-safety metatheory landed** (`RubyCore/Proof/TypeSafety.lean`; L51):
+   the `invariant_sound` progress/preservation theorem of
+   `type-safety-by-reachability.md` §4, proved over the *full* transition
+   relation `SmallStep m m' := stepFn m = .next m'` (so it applies to real
+   programs — dispatch/classes/blocks — not just the control core), plus the
+   Direction-A execution certificate (`run_value_type_safe`, the `q_learning`
+   coverage story) and a fully-discharged Direction-B invariant demo. Remaining
+   for a *relational* dispatch metatheory: extend the inductive `Step` to `send`
+   (fold `invoke`/`Builtins.run` as a trusted oracle), then `return`/frames and
+   `begin` — but note `invariant_sound` already does NOT need this, since it is
+   formulated over `stepFn` directly.
 5. **Opportunistic, any time:** Float shortest-roundtrip formatting (contained;
    unlocks ~5 tier-0 cases and all float observations); more builtins driven
    by the `Unsupported` histogram (`Rational`/`Complex` are the top names);

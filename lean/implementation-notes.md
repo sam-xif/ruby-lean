@@ -53,19 +53,23 @@ decisions live in the sketch and README, not here.
 - **L12 — zero-arg builtin arity list** (`zeroArgBids`): extra args to
   zero-arg builtins raise `ArgumentError … expected 0` (test_yjit_090);
   optional-arg builtins instead gate their with-arg forms individually.
-- **L13 — metatheory PoC lives under `RubyCore/Proof/`, off the default
-  target.** `Step.lean` (relation + `Step.sound`/`Step.deterministic`),
+- **L13 — metatheory lives under `RubyCore/Proof/`, off the default target.**
+  `Step.lean` (control-core inductive `Step` + `Step.sound`/`Step.deterministic`),
   `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`),
-  `Demo.lean` (`example`s: non-vacuity, a concrete 5-step reduction of `1;2`
-  to the value `2`, adequacy on a real `init`). They are part of the
+  `TypeSafety.lean` (the type-safety-as-reachability metatheory — see L51),
+  `Demo.lean` (`example`s: non-vacuity, a 5-step reduction of `1;2`, adequacy on
+  a real `init`, and the type-safety demonstrations of L51). They are part of the
   `RubyCore` lib glob but *not* imported by `Main`, so `lake build` (the
   `rubycore` exe) never touches them; build with
-  `lake build RubyCore.Proof.Adequacy RubyCore.Proof.Demo`. Rationale for the
-  separation: this is a **proof of concept** — first evidence the interpreter-
-  first architecture admits real theorems — and is expected to be reworked (or
-  scrapped and re-derived) when L1/L2 change the machine shape, so it is kept
-  physically apart from the SUT. Deps audited via `#print axioms`: only
-  `propext`/`Classical.choice`/`Quot.sound` (no `sorryAx`, no `native_decide`).
+  `lake build RubyCore.Proof.TypeSafety RubyCore.Proof.Demo`. Rationale for the
+  separation: kept physically apart from the SUT so a machine-shape change never
+  reddens the difftest binary. **Refreshed against the current stepper** (was
+  written pre-L2; the `Jump` type gained `redoJ`): the control core now also
+  covers `redo`/`dowhile` (the third loop jump + do-while), `Step.complete`'s
+  `cases j`/`FragJump`/`FragExpr` updated accordingly. Soundness is definitional,
+  so the pre-existing rules stayed faithful without change. Deps audited via
+  `#print axioms`: only `propext`/`Classical.choice`/`Quot.sound` (no `sorryAx`,
+  no `native_decide`).
 - **L14 — fragment is an effect-light *control core*, not full L0.** `Step`
   covers literals, `var`/`vasgn` (local/ivar/global — ivar with a `ref` self,
   always true at toplevel), `seq`, `if`, `while`, `break`/`next`, and jump
@@ -793,3 +797,58 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   internal self-sends still run — and (b) an interpreter-throughput fix. Deterministic
   seeded/no-Benchmark example variants are a local recipe under the *gitignored* fetched
   `vendor/ai4r/examples/som/`, not committed.
+
+- **L51 — type safety as reachability, proved over the full stepper**
+  (`RubyCore/Proof/TypeSafety.lean`; realizes `type-safety-by-reachability.md`
+  §3–4). The stretch result: a program is "type-safe" iff the **type-stuck
+  outcomes are unreachable** from `Machine.init` — no new type system.
+  - **Bad-state predicate.** `typeStuck : StepResult → Prop` fires only on the
+    *terminal* `uncaught exc` whose class `isA` a member of `typeErrorFamily`
+    (`NoMethodError`/`ArgumentError`/`TypeError`, closed under subclassing via
+    `isA`). Load-bearing faithfulness: a rescued `NoMethodError` is a transient
+    `raiseJ`, never an `uncaught` outcome, so `respond_to?`-fallback/duck-typing
+    idioms are type-safe (more precise than a type system). A bare `NameError`
+    is deliberately *not* in the family (its ancestors miss all three).
+  - **Transition relation choice (the key decision).** Reachability ranges over
+    `SmallStep m m' := stepFn m = .next m'` — the **full** executable relation,
+    NOT the partial control-core inductive `Step`. A subset relation reaches
+    *fewer* states, so safety over it would not transfer; formulating over
+    `stepFn` is both the sound choice and why the metatheorem applies to real
+    programs (dispatch/classes/blocks) including `q_learning_extended`. The
+    inductive `Step` is bridged in by `Step.subset_smallStep` (= `Step.sound`).
+  - **The metatheorem.** `invariant_sound` (progress/preservation): any `I` with
+    Initiation `I (init p)`, Consecution `∀ m m', I m → SmallStep m m' → I m'`
+    (preservation), Safety `∀ m, I m → ¬ aboutToTypeStick m` (progress) proves
+    *no reachable outcome is type-stuck*, all inputs / unbounded fuel. Proved
+    once (short induction on the `Reaches` RT-closure); per program an untrusted
+    engine supplies `I` and the trusted validator re-checks the three locals.
+  - **Direction A (execution certificate).** `run_value_type_safe`:
+    a run terminating in a value reaches a `done` outcome, never type-stuck — a
+    self-certifying witness for that input (`run_value_reaches_done` connects the
+    fuel iterator to `Reaches`). This is the certificate `bin/demo-qlearning
+    --extended` produces for `q_learning_extended` (the interpreter executes it
+    to a value, byte-exact with CRuby). Note: dispatch is `partial def invoke`,
+    which doesn't reduce definitionally, so a real program's certificate comes
+    from *executing* the trusted stepper, not an in-kernel `rfl`.
+  - **Direction B demo (`Demo.lean`).** `while true do nil end` proved type-safe
+    for unbounded fuel + all inputs via a hand-supplied five-state inductive
+    invariant (`loopInv`) discharging init/cons/safe — the whole Direction-B
+    pipeline in miniature. (Control-core programs can only raise `FrozenError`,
+    which is outside the type family, so the fragment itself never type-sticks;
+    the loop demo shows the machinery on an unbounded run.)
+  - Axiom audit: `propext`/`Classical.choice`/`Quot.sound` only.
+  - **Concrete q_learning proof (`QLearningTypeSafe.lean`, opt-in, NOT
+    axiom-clean).** Answers "prove the *actual* q_learning_extended type-safe via
+    the run-to-value lemma." Dispatch runs through `partial def invoke`, which the
+    kernel treats as opaque, so `rfl`/`decide` cannot reduce `run` (verified: the
+    `rfl` fails). The only in-proof way to evaluate a dispatching run is
+    `native_decide` (compiles + runs the interpreter), which adds
+    `Lean.ofReduceBool` + the compiler to the TCB — the single
+    `..._native.native_decide.ax_1_1` axiom. Kept in its own file, OUT of the
+    axiom-clean core. The bridge `runsToValue_type_safe` (runs-to-value ⇒
+    type-safe, via `run_value_type_safe`) is itself axiom-clean; only the
+    concrete `qlearning_runs_to_value`/`qlearning_type_safe` carry the
+    native-decide axiom. The 8 KB linked AST is embedded as a JSON string literal
+    (byte-identical to `bin/demo-qlearning --extended`'s input). The axiom-clean
+    alternative is to de-`partial` the dispatch helpers (fuel-structural `def`s)
+    so the kernel can reduce `run`, then `decide` — a model refactor, not done.

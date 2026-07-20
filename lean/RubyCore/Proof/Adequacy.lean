@@ -50,10 +50,12 @@ theorem Step.heap_monotone {m m' : Machine} (h : Step m m') :
 
 /-! ## Completeness: the fragment -/
 
-/-- Jumps the fragment handles (break/next; return/raise/retry are L1/L2). -/
+/-- Jumps the fragment handles (break/next/redo — the loop jumps; return/raise/
+    retry are L1/L2). -/
 def FragJump : Jump → Prop
   | .brkJ _ => True
   | .nxtJ _ => True
+  | .redoJ => True
   | _ => False
 
 /-- Konts the fragment has rules for. -/
@@ -77,8 +79,10 @@ def FragExpr : Expr → Prop
   | .vasgn _ _ _ => True
   | .if' _ _ _ => True
   | .while' _ _ => True
+  | .dowhile _ _ => True
   | .brk _ => True
   | .nxt _ => True
+  | .redo' => True
   | .seq _ => True
   | _ => False
 
@@ -129,12 +133,14 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
       | cvar => simp [FragExpr] at hfe
     | if' c t e => exact realize hs (.ifEval hcc)
     | while' c b => exact realize hs (.whileEval hcc)
+    | dowhile b c => exact realize hs (.dowhileEval hcc)
     | brk e => cases e with
       | some e => exact realize hs (.brkSome hcc)
       | none => exact realize hs (.brkNone hcc)
     | nxt e => cases e with
       | some e => exact realize hs (.nxtSome hcc)
       | none => exact realize hs (.nxtNone hcc)
+    | redo' => exact realize hs (.redoEval hcc)
     | seq es => cases es with
       | nil => exact realize hs (.seqNil hcc)
       | cons e rest => cases rest with
@@ -162,7 +168,7 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
             | ok r => exact realize hs (.asgnKIvarFrozen hcc hk hself hfr hins)
             | error e =>
               -- impure inspect ⇒ `stepFn` gates (`.unsupported`), so `hs` is absurd
-              simp_all [stepFn, applyKont, hins, Machine.currentFrame, pop]
+              simp_all [stepFn, applyKont, Machine.currentFrame, pop]
         | cvar => simp [FragKont] at hfk
       | ifK t e => cases hb : v.truthy with
         | true => exact realize hs (.ifKTrue hcc hk hb)
@@ -206,6 +212,19 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
         | jumpValK kind => exact realize hs (.unwindPropJumpValK hcc hk)
         | whileCondK c body => exact realize hs (.unwindWhileCondNxt hcc hk)
         | whileBodyK c body => exact realize hs (.unwindWhileBodyNxt hcc hk)
+        | _ => simp [FragKont] at hfk
+    | redoJ =>
+      cases hk : m.kont with
+      | nil => simp [stepFn, hcc, unwind, hk] at hs
+      | cons k rest =>
+        have hfk : FragKont k := hkont k (by rw [hk]; simp)
+        cases k with
+        | seqK es => exact realize hs (.unwindPropSeqK hcc hk)
+        | asgnK kind x => exact realize hs (.unwindPropAsgnK hcc hk)
+        | ifK t e => exact realize hs (.unwindPropIfK hcc hk)
+        | jumpValK kind => exact realize hs (.unwindPropJumpValK hcc hk)
+        | whileCondK c body => exact realize hs (.unwindWhileCondRedo hcc hk)
+        | whileBodyK c body => exact realize hs (.unwindWhileBodyRedo hcc hk)
         | _ => simp [FragKont] at hfk
     | retJ v => simp [FragJump] at hfj
     | raiseJ v => simp [FragJump] at hfj
