@@ -890,3 +890,25 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   `cons` via `dispatch_progress`) + an isolated `native_decide` discharge of the
   boot-heap facts for a concrete program — keeps the invariant reasoning
   axiom-clean, only the finite lookups touch the compiler.
+
+- **L54 — concrete T5 programs + Direction-A verdicts (`RunCert.lean`,
+  `T5Concrete.lean`, `type-safety-demos/`).** Two runnable T5 sources: `t5_safe.rb`
+  (base + `Dog`/`Cat` subclasses, all respond to `speak`, receiver from a mixed
+  array) and `t5_buggy.rb` (`Rock` lacks `speak`). Both reproduce CRuby
+  byte-for-byte in the model (safe → prints + `nil`; buggy → `NoMethodError:
+  undefined method 'speak' for an instance of Rock`, after printing `woof`).
+  Because both terminate, Direction A (§3) gives immediate verdicts by execution:
+  - `RunCert.lean` (**axiom-clean**): `runsToValueB`/`runsToTypeErrorB` (parse +
+    decode + run, classify the outcome) and the bridges `runsToValueB_type_safe`
+    (value ⇒ type-safe) / `runsToTypeErrorB_unsafe` (uncaught type-family ⇒ a
+    type-stuck outcome is reachable, the run is the counterexample), plus
+    `isTypeErrorB` (decidable mirror of `isTypeError`). `TypeSafety.lean` gains
+    `run_uncaught_reaches`/`run_typeError_unsafe` (the disprove-direction duals of
+    `run_value_reaches_done`/`run_value_type_safe`).
+  - `T5Concrete.lean` (**opt-in, native_decide**): `t5_safe_type_safe` (proved)
+    and `t5_buggy_unsafe` (disproved) — the booleans are discharged by
+    `native_decide` (boot heap not kernel-reducible, L53), each adding one
+    isolated `ofReduceBool` axiom; the bridges stay axiom-clean.
+  This is the prove-AND-disprove milestone for concrete T5 by execution. The
+  Direction-B *invariant* proof of the unbounded loop (which does not run the
+  program; object-model core = `T5.dispatch_progress`) is the separate next step.

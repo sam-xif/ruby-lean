@@ -204,5 +204,38 @@ theorem run_value_type_safe {program : Expr} {fuel : Nat} {v : Value} {mf : Mach
     ∃ r, ReachableResult (Machine.init program) r ∧ ¬ typeStuck r :=
   ⟨.done v mf, run_value_reaches_done h, done_not_typeStuck⟩
 
+/-! ### Disprove direction: an execution that ends in an uncaught exception -/
+
+/-- Dual of `run_value_reaches_done` for the `uncaught` outcome: a run that ends
+    with an uncaught exception reaches that `.uncaught` StepResult. -/
+theorem run_uncaught_reaches {m₀ : Machine} {fuel : Nat} {exc : Value} {mf : Machine}
+    (h : run fuel m₀ = .uncaught exc mf) :
+    ReachableResult m₀ (.uncaught exc mf) := by
+  induction fuel generalizing m₀ with
+  | zero => simp [run] at h
+  | succ n ih =>
+    rw [run] at h
+    cases hs : stepFn m₀ with
+    | next m' =>
+      rw [hs] at h
+      obtain ⟨m, hr, hstep⟩ := ih h
+      exact ⟨m, Reaches.head hs hr, hstep⟩
+    | done v' m' => rw [hs] at h; exact absurd h (by simp)
+    | uncaught e m' => rw [hs] at h; injection h with he hm; subst he; subst hm
+                       exact ⟨m₀, .refl, hs⟩
+    | unsupported r => rw [hs] at h; exact absurd h (by simp)
+    | stuck msg => rw [hs] at h; exact absurd h (by simp)
+
+/-- **Counterexample certificate (disprove direction).**  If a program's run
+    ends in an uncaught *type-family* exception, the program is NOT type-safe:
+    a type-stuck outcome is reachable.  The run trace is the counterexample
+    (Direction A, §3 — "the certificate is the trace"), witnessing the negation
+    of the safety property `∀ r, ReachableResult … → ¬ typeStuck r`. -/
+theorem run_typeError_unsafe {program : Expr} {fuel : Nat} {exc : Value} {mf : Machine}
+    (h : run fuel (Machine.init program) = .uncaught exc mf)
+    (hte : isTypeError mf.heap exc) :
+    ∃ r, ReachableResult (Machine.init program) r ∧ typeStuck r :=
+  ⟨.uncaught exc mf, run_uncaught_reaches h, hte⟩
+
 end Proof
 end RubyCore
