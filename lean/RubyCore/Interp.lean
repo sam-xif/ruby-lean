@@ -974,7 +974,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
-partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
   -- `recv` with the rest. Only when unshadowed by a user `send` (rare) [V].
@@ -1037,6 +1037,11 @@ partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : Strin
       else invokeMaybeNew m recv o c implicit mname args blk kw
     | _ => invokeDispatch m recv implicit mname args blk kw
   | _ => invokeDispatch m recv implicit mname args blk kw
+termination_by args.length
+decreasing_by
+  -- the ONLY self-recursion is `send`/`public_send`/`__send__` unwrapping, which
+  -- strips the (name) head arg: `args = nameArg :: rest`, so `rest.length` drops.
+  simp_wf
 where
   invokeMaybeNew (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
       (implicit : Bool) (mname : String) (args : List Value) (blk : Option Value)

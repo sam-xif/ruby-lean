@@ -7,9 +7,12 @@ reaches a non-type-stuck outcome.  We discharge its hypothesis
 `run fuel (Machine.init e) = .value v m` for the *actual* linked q_learning
 program by running the interpreter inside the proof.
 
-⚠ TRUST NOTE — this file is DELIBERATELY NOT axiom-clean.  Dispatch runs through
-`partial def invoke`, which the kernel treats as opaque, so `rfl`/`decide` cannot
-reduce `run` (see the failed `rfl` in the session notes).  The only way to
+⚠ TRUST NOTE — this file is DELIBERATELY NOT axiom-clean.  `run` is iterated
+`stepFn`, whose dispatch bottoms out in `invoke` — now a *well-founded* `def`
+(L52), so it is symbolically reasoning-amenable (that is what unblocks the
+Direction-B/T5 proofs).  But well-founded recursion compiles to `Acc.rec`, which
+the kernel's whnf does NOT reduce, so `rfl`/`decide` still cannot *evaluate* a
+concrete dispatching run (verified: the `rfl` still fails).  The only way to
 evaluate a dispatching run *inside a proof* is `native_decide`, which compiles
 and runs the interpreter and adds `Lean.ofReduceBool` (+ the compiler) to the
 trust base — the `..._native.native_decide.ax_N` axiom below.  That is exactly

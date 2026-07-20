@@ -839,16 +839,35 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   - Axiom audit: `propext`/`Classical.choice`/`Quot.sound` only.
   - **Concrete q_learning proof (`QLearningTypeSafe.lean`, opt-in, NOT
     axiom-clean).** Answers "prove the *actual* q_learning_extended type-safe via
-    the run-to-value lemma." Dispatch runs through `partial def invoke`, which the
-    kernel treats as opaque, so `rfl`/`decide` cannot reduce `run` (verified: the
-    `rfl` fails). The only in-proof way to evaluate a dispatching run is
-    `native_decide` (compiles + runs the interpreter), which adds
-    `Lean.ofReduceBool` + the compiler to the TCB — the single
-    `..._native.native_decide.ax_1_1` axiom. Kept in its own file, OUT of the
-    axiom-clean core. The bridge `runsToValue_type_safe` (runs-to-value ⇒
+    the run-to-value lemma." `run` iterates `stepFn`, whose dispatch bottoms out
+    in `invoke` — now a well-founded `def` (L52), so it *reasons* symbolically but
+    compiles to `Acc.rec`, which the kernel's whnf does not reduce; so `rfl`/
+    `decide` still cannot *evaluate* a concrete dispatching run (verified). The
+    only in-proof way to evaluate one is `native_decide` (compiles + runs the
+    interpreter), which adds `Lean.ofReduceBool` + the compiler to the TCB — the
+    single `..._native.native_decide.ax_1_1` axiom. Kept in its own file, OUT of
+    the axiom-clean core. The bridge `runsToValue_type_safe` (runs-to-value ⇒
     type-safe, via `run_value_type_safe`) is itself axiom-clean; only the
     concrete `qlearning_runs_to_value`/`qlearning_type_safe` carry the
     native-decide axiom. The 8 KB linked AST is embedded as a JSON string literal
-    (byte-identical to `bin/demo-qlearning --extended`'s input). The axiom-clean
-    alternative is to de-`partial` the dispatch helpers (fuel-structural `def`s)
-    so the kernel can reduce `run`, then `decide` — a model refactor, not done.
+    (byte-identical to `bin/demo-qlearning --extended`'s input).
+
+- **L52 — `invoke` de-`partial`ized to a well-founded `def` (enables Direction-B
+  dispatch proofs).** A `partial def` is *opaque in proofs* (no equational
+  lemmas; `unfold`/`simp` fail — verified), so symbolic reasoning about ANY
+  dispatch step was impossible, blocking the type-safety invariant approach
+  (`type-safety-by-reachability.md` §4) for every real program. `invoke`'s ONLY
+  self-recursion is the `send`/`public_send`/`__send__` unwrapping
+  (`args = nameArg :: rest`, recurse on `rest`), so it is well-founded on
+  `args.length`; `invokeDispatch`/`invokeMaybeNew` (its `where` helpers) and
+  `enterUserMethod`/`callClosure`/`Builtins.run` never recurse back into it.
+  Changed `partial def invoke` → `def invoke` + `termination_by args.length` /
+  `decreasing_by simp_wf`. **Behavior-preserving** (same logic, same compiled
+  code): tier-0 `--sut lean` stayed **722 agree, 0 disagree** after the change.
+  Now `invoke.eq_def`/`invoke.eq_1` exist and dispatch steps can be reasoned
+  about — the prerequisite for the T5 object-model invariant proof. (Note: WF
+  recursion compiles to `Acc.rec`, so this does NOT make `rfl`/`decide` evaluate
+  concrete runs — L51's native_decide caveat stands; the win is *symbolic*
+  reasoning, not kernel evaluation.) `destructureBind`/`modAncestors`/`Repr.*`
+  stay `partial`, but are off the T5 path (no destructuring params, mixin-free
+  classes, no `puts`/`==`/`to_s` in the proof-relevant fragment).

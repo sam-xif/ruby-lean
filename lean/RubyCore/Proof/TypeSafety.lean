@@ -39,10 +39,11 @@ This file authors, over the semantics itself:
      machine-level proof of type-safety of that concrete run.  For
      `q_learning_extended` the witness is produced by *running* the interpreter
      (`bin/demo-qlearning --extended` — the model executes it to a value,
-     byte-for-byte with CRuby): note dispatch goes through `partial def invoke`,
-     which does not reduce definitionally, so the certificate for a real program
-     is obtained by execution of the trusted stepper (the whole point of
-     Direction A: "the certificate is the trace"), not by an in-kernel `rfl`.
+     byte-for-byte with CRuby): dispatch bottoms out in `invoke`, a well-founded
+     `def` (`Acc.rec`) that the kernel's whnf does not reduce, so the certificate
+     for a real program is obtained by execution of the trusted stepper (the
+     whole point of Direction A: "the certificate is the trace"), not by an
+     in-kernel `rfl` (see `QLearningTypeSafe.lean`).
 
 Axiom audit target (see `implementation-notes.md` L13): `propext` /
 `Classical.choice` / `Quot.sound` only — no `sorryAx`, no `native_decide`.
