@@ -871,3 +871,22 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   reasoning, not kernel evaluation.) `destructureBind`/`modAncestors`/`Repr.*`
   stay `partial`, but are off the T5 path (no destructuring params, mixin-free
   classes, no `puts`/`==`/`to_s` in the proof-relevant fragment).
+
+- **L53 — T5 object-model dispatch-progress core (`RubyCore/Proof/T5.lean`).**
+  First increment of the T5 (`class_hierarchy`) calibration toy
+  (`type-safety-by-reachability.md` §9.1). `dispatch_progress`: a config poised
+  to dispatch `recv.m` (zero-arg, `recvK`) takes a step *to the method
+  activation* — not `dispatchMiss`/`NoMethodError` — provided the heap's method
+  table resolves `m` on `recv` (hypotheses `hlook`/`hb`/`hu`/`hbtw`/`hsing`,
+  simple params). `dispatch_not_typestick`: hence `¬ aboutToTypeStick`. This is
+  the "receiver responds to `m`" store-typing clause (§4.2), proved over the real
+  `stepFn`/`invoke` (`rw [invoke.eq_def]` then drive `invoke.invokeDispatch`) —
+  the first proof to exploit L52. **Axiom-clean** (parameterized over the heap
+  facts, not a concrete heap). Deliberate: `Boot.initHeap` uses `Array.qsort` + a
+  monadic build loop and is **NOT kernel-reducible** (verified: `lookup
+  Boot.initHeap (.int 1) "succ"` fails to reduce under `rfl`/`decide`), so
+  concrete boot-heap resolution facts can only be discharged by `native_decide`.
+  Planned increment 3: a conditional `invariant_sound` loop assembly (axiom-clean,
+  `cons` via `dispatch_progress`) + an isolated `native_decide` discharge of the
+  boot-heap facts for a concrete program — keeps the invariant reasoning
+  axiom-clean, only the finite lookups touch the compiler.
