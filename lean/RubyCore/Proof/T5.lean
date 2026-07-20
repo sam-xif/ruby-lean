@@ -18,24 +18,26 @@ WHY THIS IS THE HARD PART, AND WHAT IT UNBLOCKS
   first proof to exercise that: `rw [invoke.eq_def]` then drive
   `invoke.invokeDispatch` with the resolution hypotheses.
 - The lemma is **parameterized over the heap** via resolution hypotheses
-  (`hlook`/`hbtw`/`hsing`/…) rather than a concrete heap. That is deliberate and
-  load-bearing: `Boot.initHeap` is built with `Array.qsort` + a monadic build
-  loop and is therefore **not kernel-reducible** — `rfl`/`decide` get stuck on
-  any concrete fact about it (verified: `lookup Boot.initHeap (.int 1) "succ"`
-  does not reduce). So the object-model *facts about the concrete boot heap* can
-  only be discharged by `native_decide`, whereas the *reasoning* stays
-  axiom-clean and abstract here.
+  (`hlook`/`hbtw`/`hsing`/…) rather than a concrete heap — useful when the heap
+  is abstract (mid-program loop entry). NOTE (L55): `Boot.initHeap` is now
+  *kernel-reducible* (its `Array.qsort` + monadic build loop were replaced by a
+  structural insertion sort + `List.foldl`), so concrete boot-heap resolution
+  facts (`lookup Boot.initHeap … = some …`, `crubyShadow … = none`, …) are now
+  dischargeable by **`decide`, axiom-clean** — no `native_decide`. What still
+  needs `native_decide` is *running* the program (`invoke`'s well-founded
+  recursion compiles to `Acc.rec`, which the kernel won't evaluate); that is
+  Direction A, not the invariant reasoning.
 
 RESULTING ARCHITECTURE for a full closed-program T5 (increment 3)
-  1. axiom-clean: a conditional `invariant_sound` assembly whose `cons` uses
-     `dispatch_progress` at the dispatch shapes, `safe` reads off the "no
-     type-family raise in flight" clause; the theorem is "IF [the program's
-     sends resolve in the reachable heaps] THEN type-safe."
-  2. isolated `native_decide` (à la `QLearningTypeSafe`): discharge those finite
-     resolution facts for the concrete `Machine.init program`, yielding the
-     unconditional result.
-This keeps the object-model invariant reasoning (the calibration target) fully
-axiom-clean; only the finite boot-heap lookups touch the compiler.
+  A conditional `invariant_sound` assembly whose `cons` uses `dispatch_progress`
+  at the dispatch shapes and `safe` reads off the "no type-family raise in
+  flight" clause. Its resolution hypotheses are now discharged **axiom-clean by
+  `decide`** over the (reducible) reachable heaps — so the whole Direction-B
+  proof, including the concrete `Machine.init program` instantiation, can be
+  axiom-clean. (A builtin-dispatch loop like `while true; 1.succ; end` is the
+  simplest instance: heap stays `initHeap`, no frame growth, resolution by
+  `decide`.) `native_decide` is reserved for the separate Direction-A execution
+  certificates (`T5Concrete`/`QLearningTypeSafe`).
 -/
 import RubyCore.Proof.TypeSafety
 
@@ -95,6 +97,14 @@ theorem dispatch_not_typestick
   unfold aboutToTypeStick typeStuck
   rw [hnext]
   exact not_false
+
+/- Boot-heap resolution facts are now **`decide`-able, axiom-clean** — since
+   `initHeap` reduces (L55). The hypotheses `dispatch_progress` takes are of
+   exactly this decidable shape, so a full Direction-B proof over concrete
+   (reducible) reachable heaps needs no `native_decide`. Demonstration: the boot
+   object model resolves `Integer#succ`. -/
+set_option maxRecDepth 4000 in
+example : (lookup Boot.initHeap (.int 1) "succ").isSome = true := by decide
 
 end T5
 end Proof

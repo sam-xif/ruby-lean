@@ -295,28 +295,39 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
             builtin := some s!"{cname}#{n}" : MethodDef }) :: ms
     h.setClassPayload cls { c with methods }
 
+/-- Reducible insertion sort by id (`.1`), replacing `Array.qsort` in `initHeap`.
+    `qsort` is opaque to the kernel, so any `decide`/`rfl` over `initHeap` got
+    stuck; a structural `def` reduces (metatheory needs concrete boot-heap facts,
+    L55). Ids are distinct, so this yields the same strictly-ascending order. -/
+def insertById (x : ObjId × String × Option ObjId) :
+    List (ObjId × String × Option ObjId) → List (ObjId × String × Option ObjId)
+  | [] => [x]
+  | y :: ys => if Nat.ble x.1 y.1 then x :: y :: ys else y :: insertById x ys
+
+def sortById :
+    List (ObjId × String × Option ObjId) → List (ObjId × String × Option ObjId)
+  | [] => []
+  | x :: xs => insertById x (sortById xs)
+
 /-- H₀: bootstrap classes at their fixed ids, builtins installed, every class
-    registered as a constant on Object, `main` allocated last. -/
-def initHeap : Heap := Id.run do
-  -- classTable is in id order except ScriptError; build by sorted id.
-  let sorted := classTable.toArray.qsort (fun a b => a.1 < b.1)
-  let mut h : Heap := ⟨#[]⟩
-  for (_, name, sup) in sorted do
-    let (_, h') := h.alloc (mkClassObj name sup)
-    h := h'
-  -- main object
-  let (_, h') := h.alloc { klass := objectId }
-  h := h'
+    registered as a constant on Object, `main` allocated last.
+    Written as pure `List.foldl` (no `Id.run do`/`for`/`qsort`) so the whole
+    heap reduces in the kernel — see `insertById`/L55. -/
+def initHeap : Heap :=
+  -- classes allocated in ascending-id order ⇒ alloc index = id.
+  let hClasses := (sortById classTable).foldl
+    (fun h (e : ObjId × String × Option ObjId) => (h.alloc (mkClassObj e.2.1 e.2.2)).2)
+    (⟨#[]⟩ : Heap)
+  -- main object (allocated last, after all classes)
+  let hMain := (hClasses.alloc { klass := objectId }).2
   -- install builtins
-  for (cls, names) in builtinMethods do
-    h := install h cls names
-  -- register constants on Object
-  match h.classPayload? objectId with
+  let hBuiltins := builtinMethods.foldl (fun h (e : ObjId × List String) => install h e.1 e.2) hMain
+  -- register every class name as a constant on Object
+  match hBuiltins.classPayload? objectId with
   | some c =>
-    let consts := classTable.map (fun (o, name, _) => (name, Value.ref o))
-    h := h.setClassPayload objectId { c with consts }
-  | Option.none => pure ()
-  return h
+    hBuiltins.setClassPayload objectId
+      { c with consts := classTable.map (fun (o, name, _) => (name, Value.ref o)) }
+  | Option.none => hBuiltins
 
 end Boot
 

@@ -882,14 +882,14 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   the "receiver responds to `m`" store-typing clause (§4.2), proved over the real
   `stepFn`/`invoke` (`rw [invoke.eq_def]` then drive `invoke.invokeDispatch`) —
   the first proof to exploit L52. **Axiom-clean** (parameterized over the heap
-  facts, not a concrete heap). Deliberate: `Boot.initHeap` uses `Array.qsort` + a
-  monadic build loop and is **NOT kernel-reducible** (verified: `lookup
-  Boot.initHeap (.int 1) "succ"` fails to reduce under `rfl`/`decide`), so
-  concrete boot-heap resolution facts can only be discharged by `native_decide`.
-  Planned increment 3: a conditional `invariant_sound` loop assembly (axiom-clean,
-  `cons` via `dispatch_progress`) + an isolated `native_decide` discharge of the
-  boot-heap facts for a concrete program — keeps the invariant reasoning
-  axiom-clean, only the finite lookups touch the compiler.
+  facts). The hypotheses have the shape of `lookup`/`crubyShadow` results, which
+  — after L55 made `Boot.initHeap` kernel-reducible — are now discharge-able by
+  **`decide`, axiom-clean** (no `native_decide`). Planned increment 3: a
+  conditional `invariant_sound` loop assembly (`cons` via `dispatch_progress`,
+  `safe` off the "no type-family raise in flight" clause), its resolution
+  hypotheses discharged by `decide` over the reducible reachable heaps — a fully
+  axiom-clean Direction-B proof (a builtin-dispatch loop `while true; 1.succ; end`
+  is the simplest instance: heap stays `initHeap`, no frame growth).
 
 - **L54 — concrete T5 programs + Direction-A verdicts (`RunCert.lean`,
   `T5Concrete.lean`, `type-safety-demos/`).** Two runnable T5 sources: `t5_safe.rb`
@@ -907,8 +907,31 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     `run_value_reaches_done`/`run_value_type_safe`).
   - `T5Concrete.lean` (**opt-in, native_decide**): `t5_safe_type_safe` (proved)
     and `t5_buggy_unsafe` (disproved) — the booleans are discharged by
-    `native_decide` (boot heap not kernel-reducible, L53), each adding one
-    isolated `ofReduceBool` axiom; the bridges stay axiom-clean.
+    `native_decide` because *running* the program is not kernel-reducible
+    (`invoke`'s `Acc.rec`, L55 — NOT the boot heap, which now reduces), each
+    adding one isolated `ofReduceBool` axiom; the bridges stay axiom-clean.
   This is the prove-AND-disprove milestone for concrete T5 by execution. The
   Direction-B *invariant* proof of the unbounded loop (which does not run the
   program; object-model core = `T5.dispatch_progress`) is the separate next step.
+
+- **L55 — `Boot.initHeap` made kernel-reducible (unblocks axiom-clean Direction
+  B).** The boot heap used `classTable.toArray.qsort` + an `Id.run do … for …`
+  build loop; `Array.qsort` is opaque to the kernel, so `rfl`/`decide` got stuck
+  on ANY concrete boot-heap fact (`lookup Boot.initHeap (.int 1) "succ"` did not
+  reduce), forcing `native_decide` for the object-model facts a Direction-B
+  invariant proof must discharge. Replaced with a **structural insertion sort**
+  (`Heap.sortById`/`insertById`, reducible) + pure **`List.foldl`** construction
+  (no `Id.run`/`for`). **Behavior-preserving** — ids are distinct so the sort
+  order is identical; tier-0 `--sut lean` stayed **722 agree, 0 disagree**. Now
+  `lookup`/`ancestors`/`classOf`/`crubyShadow` over `initHeap` reduce, so
+  boot-heap resolution facts are **`decide`-able, axiom-clean** (verified:
+  `(lookup Boot.initHeap (.int 1) "succ").isSome = true` closes by `decide` in
+  ~0.2 s; example in `T5.lean`). This removes the boot-heap blocker for a full
+  Direction-B `invariant_sound` proof from `Machine.init` (resolution hypotheses
+  discharged by `decide`, no `native_decide`). What still needs `native_decide`
+  is *running* a program: `invoke` is a well-founded `def` compiling to `Acc.rec`,
+  which the kernel's whnf will not evaluate (verified: `run 50 (init (1+2))`
+  still won't `decide`). So: **invariant reasoning = axiom-clean; execution =
+  native_decide** — a clean and permanent split. (Making `invoke` structurally
+  recursive on a fuel param would let runs reduce too, but is not needed for
+  Direction B and would re-touch the SUT; deferred.)
