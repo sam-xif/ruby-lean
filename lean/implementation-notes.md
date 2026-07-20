@@ -747,3 +747,31 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   `true` (CRuby's first-load result); the value is essentially never observed. A
   library actually *used* after such a require still gates on its own methods, so
   this cannot manufacture a wrong answer for modeled code.
+
+- **L48 — `Math` module (`sqrt`/`exp`/`log`) + `Range` class.** `Math` is a boot
+  constant (`mathId`); its functions are special-cased in `invoke` on the receiver
+  id (they are singleton fns; no eigenclass machinery at boot) and map to
+  `Float.sqrt`/`exp`/`log`, coercing Int→Float and gating domain errors
+  (`sqrt`/`log` of ≤0). `Range` is a boot class (`rangeId`) with a new
+  `Payload.range lo hi excl`; range literals already desugar to
+  `Range.new(lo, hi, excl)` (`newImpl` builds the object). Modeled methods:
+  `first`/`begin`, `last`/`end`, `exclude_end?`; `inspect`/`to_s` render
+  `lo..hi`/`lo...hi`. Needed for SOM's `Math.sqrt` distances and `range: 0..1`
+  weight bounds.
+
+- **L49 — numeric + array builtins for the SOM path.** `Integer#to_f`/`Float#to_f`
+  (identity), `Float#to_s`/`#inspect` now route through the L45 formatter (the
+  Builtins arm had still gated — direct/interpolation `.to_s` bypassed the Repr
+  wiring), `Float#to_i`/`#to_int`/`#truncate` (exact truncation toward zero via the
+  IEEE bits, no lossy Float→Int), `Float#**` (`Float.pow`, Int/Float exponent),
+  `Float#%` and mixed `Integer#% Float` (float modulo `x - y*(x/y).floor`, sign of
+  divisor). `Array.new(n)`/`Array.new(n, default)` (the block form gates),
+  `Array#each_index`, `Array#[]` with a **Range** slice (endless `a[1..]`, bounded,
+  exclusive, negative indices), and splat of an integer Range (`[*(1..5)]` → `spread`
+  expands it). `Module#private`/`protected`/`public` are **not** modeled — they gate
+  (visibility enforcement is out of L0, and bootstraptest checks it, so a no-op would
+  produce wrong answers). To keep the miss trichotomy honest for the new modeled
+  classes, `scripts/gen_cruby_names.rb` now includes `Range` (+ `Enumerable`) and
+  `Random`, so an unmodeled Range/Enumerable method (`map`/`each`/`to_a`/…) gates as
+  `Unsupported` rather than mis-raising `NoMethodError`.
+

@@ -27,6 +27,8 @@ FOLD = {
   "Array" => [Array, Enumerable],
   "Hash" => [Hash, Enumerable],
   "Proc" => [Proc],
+  "Range" => [Range, Enumerable],
+  "Random" => [Random],
   "Exception" => [Exception],
   # Exception subclasses in the bootstrap heap: each may add its own methods
   # (e.g. NameError#receiver, NoMethodError#args) that dispatch must know

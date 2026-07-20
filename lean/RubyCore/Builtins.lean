@@ -193,10 +193,10 @@ def zeroArgBids : List String :=
    "Object#frozen?", "Object#freeze", "Object#block_given?",
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",
-   "Integer#inspect", "Integer#to_i", "Integer#abs", "Integer#succ",
+   "Integer#inspect", "Integer#to_i", "Integer#to_f", "Integer#abs", "Integer#succ",
    "Integer#pred", "Integer#zero?", "Integer#positive?", "Integer#negative?",
    "Integer#even?", "Integer#odd?", "Integer#-@",
-   "Float#to_s", "Float#inspect", "Float#-@", "Float#abs", "Float#zero?",
+   "Float#to_s", "Float#inspect", "Float#to_f", "Float#-@", "Float#abs", "Float#zero?",
    "Float#nan?", "Float#to_i",
    "String#to_s", "String#to_str", "String#inspect", "String#length",
    "String#size", "String#empty?", "String#reverse", "String#upcase",
@@ -290,6 +290,24 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- stdlib (e.g. `benchmark`/`yaml`) is a no-op that returns true (as CRuby's
     -- first load does). The result is essentially never observed.
     .ok (.bool true) m
+  | "Range#first" | "Range#begin" =>
+    match recv with
+    | .ref o => match (h.get o).payload with
+      | .range lo _ _ => .ok lo m
+      | _ => .unsupported "Range#first"
+    | _ => .unsupported "Range#first"
+  | "Range#last" | "Range#end" =>
+    match recv with
+    | .ref o => match (h.get o).payload with
+      | .range _ hi _ => .ok hi m
+      | _ => .unsupported "Range#last"
+    | _ => .unsupported "Range#last"
+  | "Range#exclude_end?" =>
+    match recv with
+    | .ref o => match (h.get o).payload with
+      | .range _ _ e => .ok (.bool e) m
+      | _ => .unsupported "Range#exclude_end?"
+    | _ => .unsupported "Range#exclude_end?"
   | "Random#rand" =>
     match recv with
     | .ref o =>
@@ -386,13 +404,16 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
           if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else .ok (.int (Int.fdiv x y)) m)  -- Ruby / is floor division [V]
         (fun x y => .ok (.flt (x / y)) m)
-  | "Integer#%" =>
+  | "Integer#%" | "Float#%" =>
     binArg m args fun b =>
-      numBin "Integer" m recv b
+      numBin (owner bid) m recv b
         (fun x y =>
           if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else .ok (.int (Int.fmod x y)) m)  -- sign follows divisor [V]
-        (fun _ _ => .unsupported "Float modulo")
+        (fun x y =>
+          -- Float modulo: `x - y * (x/y).floor`, sign follows the divisor (Ruby).
+          if y == 0 then .unsupported "Float modulo by zero"
+          else .ok (.flt (x - y * (x / y).floor)) m)
   | "Integer#**" =>
     binArg m args fun b =>
       match recv, b with
@@ -400,6 +421,13 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
         if y ≥ 0 then .ok (.int (x ^ y.toNat)) m
         else .unsupported "Integer ** negative (Rational result)"
       | _, _ => .unsupported "** with non-integer"
+  | "Float#**" =>
+    binArg m args fun b =>
+      match recv, num? b with
+      | .flt x, some nb =>
+        let y := match nb with | .i n => Float.ofInt n | .f v => v
+        .ok (.flt (Float.pow x y)) m
+      | _, _ => .unsupported "Float#** non-numeric"
   | "Integer#-@" =>
     match recv with
     | .int n => .ok (.int (-n)) m
@@ -433,6 +461,9 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     | .int n, [] => okStr m (toString n)
     | _, _ => .unsupported "Integer#to_s with base"
   | "Integer#to_i" => .ok recv m
+  | "Integer#to_f" =>
+    match recv with | .int n => .ok (.flt (Float.ofInt n)) m | _ => .unsupported "to_f"
+  | "Float#to_f" => .ok recv m
   | "Integer#abs" =>
     match recv with
     | .int n => .ok (.int n.natAbs) m
@@ -455,13 +486,23 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     binArg m args fun b => .ok (.bool (valueEql h recv b)) m
   | "Integer#hash" => .unsupported "Integer#hash (seeded)"
   | "Float#to_s" | "Float#inspect" =>
-    .unsupported "Float formatting (shortest-roundtrip unimplemented)"
-  | "Float#to_i" =>
+    match recv with
+    | .flt x => okStr m (rubyFloatRepr x)     -- L45 shortest round-trip
+    | _ => .unsupported "Float#to_s"
+  | "Float#to_i" | "Float#to_int" | "Float#truncate" =>
     match recv with
     | .flt x =>
-      if x.isNaN || x.isInf then
-        .err Boot.rangeErrorId "float out of range of integer" m  -- FloatDomainError actually; unsupported instead
-      else .unsupported "Float#to_i"  -- needs exact trunc; defer
+      if x.isNaN || x.isInf then .unsupported "Float#to_i of Infinity/NaN (FloatDomainError)"
+      else
+        -- Exact truncation toward zero via the IEEE bits (no lossy Float→Int).
+        let bits := x.toBits
+        let neg := (bits >>> 63) == 1
+        let expo := ((bits >>> 52) &&& 0x7FF).toNat
+        let frac := (bits &&& 0xFFFFFFFFFFFFF).toNat
+        let (mant, e) := if expo == 0 then (frac, (-1074 : Int))
+                         else (frac + 0x10000000000000, (expo : Int) - 1075)
+        let intAbs : Nat := if e ≥ 0 then mant <<< e.toNat else mant >>> (-e).toNat
+        .ok (.int (if neg then -(Int.ofNat intAbs) else Int.ofNat intAbs)) m
     | _ => .unsupported "to_i"
   | "Float#abs" =>
     match recv with | .flt x => .ok (.flt x.abs) m | _ => .unsupported "abs"
@@ -644,8 +685,35 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
       let idx := if i < 0 then i + xs.size else i
       if idx < 0 || idx ≥ xs.size then .ok .nil m
       else .ok xs[idx.toNat]! m
-    | some _, [_] => .unsupported "Array#[] non-int index"
-    | some _, _ => .unsupported "Array#[] slice"
+    | some xs, [.ref ro] =>
+      match (h.get ro).payload with
+      | .range lo hi excl =>
+        -- Array slice by Range: normalize endpoints (nil begin → 0, nil end → to
+        -- last; negative → +size), then take start..(excl ? end-1 : end).
+        let n : Int := xs.size
+        let startI? : Option Int := match lo with
+          | .nil => some 0
+          | .int i => some (if i < 0 then i + n else i)
+          | _ => none
+        match startI? with
+        | none => .unsupported "Array#[] range non-int begin"
+        | some s =>
+          if s < 0 || s > n then .ok .nil m
+          else
+            let lastI? : Option Int := match hi with
+              | .nil => some (n - 1)
+              | .int i => let e := if i < 0 then i + n else i; some (if excl then e - 1 else e)
+              | _ => none
+            match lastI? with
+            | none => .unsupported "Array#[] range non-int end"
+            | some lastRaw =>
+              let lastI := min lastRaw (n - 1)
+              if lastI < s then let (v, m) := allocArr m #[]; .ok v m
+              else
+                let sub := ((xs.toList.drop s.toNat).take (lastI.toNat - s.toNat + 1)).toArray
+                let (v, m) := allocArr m sub; .ok v m
+      | _ => .unsupported "Array#[] non-int index"
+    | some _, _ => .unsupported "Array#[] slice (start,len)"
     | _, _ => .unsupported "[]"
   | "Array#[]=" =>
     match recv, arrPayload? h recv, args with
@@ -1090,7 +1158,15 @@ where
         else if k == Boot.arrayId then
           match args with
           | [] => let (v, m) := allocArr m #[]; .ok v m
-          | _ => .unsupported "Array.new with args"
+          | [.int n] =>
+            if n < 0 then .err Boot.argumentErrorId "negative array size" m
+            else let (v, m) := allocArr m (Array.replicate n.toNat .nil); .ok v m
+          | [.int n, dflt] =>
+            -- Array.new(n, default): n references to the *same* default object
+            -- (Ruby semantics; matters only for mutable defaults, unused here).
+            if n < 0 then .err Boot.argumentErrorId "negative array size" m
+            else let (v, m) := allocArr m (Array.replicate n.toNat dflt); .ok v m
+          | _ => .unsupported "Array.new (block form / non-int size)"
         else if k == Boot.hashId then
           match args with
           | [] => let (v, m) := allocHsh m #[]; .ok v m
@@ -1114,6 +1190,16 @@ where
               .ok (.ref o) { m with heap := h }
           | [] => .unsupported "Random.new (unseeded — nondeterministic)"
           | _ => .unsupported "Random.new arity"
+        else if k == Boot.rangeId then
+          -- `Range.new(lo, hi[, excl])` (range literals `a..b`/`a...b` desugar here).
+          let mk (lo hi : Value) (excl : Bool) : BRes :=
+            let (o, h) := m.heap.alloc { klass := Boot.rangeId, payload := .range lo hi excl }
+            .ok (.ref o) { m with heap := h }
+          match args with
+          | [lo, hi] => mk lo hi false
+          | [lo, hi, .bool e] => mk lo hi e
+          | [lo, hi, .nil] => mk lo hi false
+          | _ => .unsupported "Range.new arity"
         else if [Boot.classId, Boot.moduleId, Boot.integerId, Boot.floatId,
                  Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                  Boot.falseClassId].contains k then

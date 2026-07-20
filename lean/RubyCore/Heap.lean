@@ -107,6 +107,8 @@ inductive Payload where
   | proc (c : Closure)
   /-- A `Random` instance's MT19937 state (mutated in place by `#rand`). -/
   | rng (s : MT.State)
+  /-- A `Range` (`lo..hi` / `lo...hi`): endpoints and exclusivity. -/
+  | range (lo hi : Value) (excl : Bool)
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
@@ -193,8 +195,10 @@ def notImplementedErrorId : ObjId := 27
 def scriptErrorId : ObjId := 28
 def procId : ObjId := 29
 def randomId : ObjId := 30
+def mathId : ObjId := 31
+def rangeId : ObjId := 32
 /-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 31
+def mainId : ObjId := 33
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -228,7 +232,9 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (notImplementedErrorId, "NotImplementedError", some scriptErrorId),
   (scriptErrorId, "ScriptError", some exceptionId),
   (procId, "Proc", some objectId),
-  (randomId, "Random", some objectId)
+  (randomId, "Random", some objectId),
+  (mathId, "Math", some objectId),   -- modeled as a constant with singleton fns
+  (rangeId, "Range", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -245,11 +251,11 @@ def builtinMethods : List (ObjId × List String) := [
   (trueClassId, ["to_s", "inspect", "&", "|"]),
   (falseClassId, ["to_s", "inspect", "&", "|"]),
   (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "!=", "<", ">",
-               "<=", ">=", "<=>", "to_s", "inspect", "to_i", "abs", "succ",
+               "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?",
                "eql?", "hash"]),
-  (floatId, ["+", "-", "*", "/", "-@", "==", "<", ">", "<=", ">=", "<=>",
-             "to_s", "inspect", "to_i", "abs", "zero?", "nan?", "eql?"]),
+  (floatId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
+             "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?"]),
   (stringId, ["+", "*", "==", "!=", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
@@ -271,7 +277,8 @@ def builtinMethods : List (ObjId × List String) := [
   -- frame, which a pure builtin cannot); only the pure introspectors are
   -- registered here.
   (procId, ["lambda?", "to_proc"]),
-  (randomId, ["rand"])
+  (randomId, ["rand"]),
+  (rangeId, ["first", "last", "begin", "end", "exclude_end?"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=

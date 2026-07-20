@@ -283,6 +283,15 @@ def spread (m : Machine) (v : Value) : Except String (List Value) :=
     match (m.heap.get o).payload with
     | .arr xs => .ok xs.toList
     | .hsh _ => .error "splat of a Hash (to_a pairs)"
+    | .range lo hi excl =>
+      -- `[*a..b]` / `m(*a..b)`: expand an integer range to its elements (CRuby
+      -- calls Range#to_a). Non-integer / endless ranges aren't enumerable here → gate.
+      match lo, hi with
+      | .int a, .int b =>
+        let last := if excl then b - 1 else b
+        if last < a then .ok []
+        else .ok ((List.range (last - a + 1).toNat).map (fun i => Value.int (a + Int.ofNat i)))
+      | _, _ => .error "splat of a non-integer Range"
     | _ =>
       -- CRuby splats a non-Array via `to_a` if it responds; a *user* `to_a`
       -- is a side-effecting dispatch a pure spread can't run → gate.
@@ -732,6 +741,9 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
           | "each_with_index" =>
             let ei := xs.toList.zipIdx.map (fun (e, i) => [e, Value.int (Int.ofNat i)])
             some (startIter m recv mname cl ei .ignore [] recv)
+          | "each_index" =>
+            let idxs := (List.range xs.size).map (fun i => [Value.int (Int.ofNat i)])
+            some (startIter m recv mname cl idxs .ignore [] recv)
           | "inject" | "reduce" =>
             -- block form only; `inject(:sym)` has no block ⇒ not reached here.
             match args with
@@ -998,6 +1010,37 @@ partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : Strin
           | _ => invokeDispatch m recv implicit mname args blk kw
       | _, _, _ => invokeDispatch m recv implicit mname args blk kw
     | .cls c =>
+      -- `Math` module functions (`Math.sqrt`/`exp`/`log`): a real double transform,
+      -- special-cased on the receiver id since they are singleton methods of the
+      -- `Math` constant (no eigenclass machinery at boot). Args coerce Int→Float.
+      if o == Boot.mathId then
+        let f? := fun (v : Value) => match v with
+          | .int n => some (Float.ofInt n) | .flt x => some x | _ => none
+        match mname, args with
+        | "sqrt", [x] => match f? x with
+          | some d => if d < 0 then .unsupported "Math.sqrt of negative (DomainError)"
+                      else .next (withCtl m (.value (.flt d.sqrt)))
+          | none => .unsupported "Math.sqrt non-numeric"
+        | "exp", [x] => match f? x with
+          | some d => .next (withCtl m (.value (.flt d.exp)))
+          | none => .unsupported "Math.exp non-numeric"
+        | "log", [x] => match f? x with
+          | some d => if d ≤ 0 then .unsupported "Math.log of non-positive (DomainError)"
+                      else .next (withCtl m (.value (.flt d.log)))
+          | none => .unsupported "Math.log non-numeric"
+        | "log", [x, b] => match f? x, f? b with
+          | some d, some bb =>
+            if d ≤ 0 || bb ≤ 0 then .unsupported "Math.log of non-positive"
+            else .next (withCtl m (.value (.flt (d.log / bb.log))))
+          | _, _ => .unsupported "Math.log non-numeric"
+        | _, _ => invokeDispatch m recv implicit mname args blk kw
+      else invokeMaybeNew m recv o c implicit mname args blk kw
+    | _ => invokeDispatch m recv implicit mname args blk kw
+  | _ => invokeDispatch m recv implicit mname args blk kw
+where
+  invokeMaybeNew (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
+      (implicit : Bool) (mname : String) (args : List Value) (blk : Option Value)
+      (kw : List (Value × Value)) : StepResult :=
       -- `Class#new` on a class with a user `initialize` must allocate then run
       -- `initialize` (a frame the builtin cannot push); yield the instance via
       -- `newK`. Special-payload subclasses (String/Array/Exception/…) need
@@ -1015,9 +1058,6 @@ partial def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : Strin
             enterUserMethod m inst "initialize" md args blk kw
         | none => invokeDispatch m recv implicit mname args blk kw
       else invokeDispatch m recv implicit mname args blk kw
-    | _ => invokeDispatch m recv implicit mname args blk kw
-  | _ => invokeDispatch m recv implicit mname args blk kw
-where
   invokeDispatch (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
       (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   let chain := ancestors m.heap (classOf m.heap recv)

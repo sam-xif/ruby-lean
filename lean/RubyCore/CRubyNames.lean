@@ -161,6 +161,21 @@ def crubyMethodNames : List (String × List String) := [
     "clone", "curry", "dup", "eql?", "hash", "inspect", "lambda?", "parameters",
     "ruby2_keywords", "source_location", "to_proc", "to_s", "yield"
   ]),
+  ("Range", [
+    "%", "==", "===", "all?", "any?", "begin", "bsearch", "chain",
+    "chunk", "chunk_while", "collect", "collect_concat", "compact", "count", "cover?", "cycle",
+    "detect", "drop", "drop_while", "each", "each_cons", "each_entry", "each_slice", "each_with_index",
+    "each_with_object", "end", "entries", "eql?", "exclude_end?", "filter", "filter_map", "find",
+    "find_all", "find_index", "first", "flat_map", "grep", "grep_v", "group_by", "hash",
+    "include?", "initialize", "initialize_copy", "inject", "inspect", "last", "lazy", "map",
+    "max", "max_by", "member?", "min", "min_by", "minmax", "minmax_by", "none?",
+    "one?", "overlap?", "partition", "reduce", "reject", "reverse_each", "select", "size",
+    "slice_after", "slice_before", "slice_when", "sort", "sort_by", "step", "sum", "take",
+    "take_while", "tally", "to_a", "to_h", "to_s", "to_set", "uniq", "zip"
+  ]),
+  ("Random", [
+    "==", "initialize_copy", "left", "marshal_dump", "marshal_load", "state"
+  ]),
   ("Exception", [
     "==", "backtrace", "backtrace_locations", "cause", "detailed_message", "exception", "full_message", "initialize",
     "inspect", "message", "method_missing", "respond_to?", "respond_to_missing?", "set_backtrace", "to_s"
@@ -257,6 +272,12 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("Proc", [
     "new"
+  ]),
+  ("Range", [
+
+  ]),
+  ("Random", [
+    "bytes", "left", "new_seed", "rand", "seed", "srand", "state", "urandom"
   ]),
   ("Exception", [
     "exception", "to_tty?"
