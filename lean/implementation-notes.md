@@ -775,3 +775,21 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   `Random`, so an unmodeled Range/Enumerable method (`map`/`each`/`to_a`/…) gates as
   `Unsupported` rather than mis-raising `NoMethodError`.
 
+
+
+- **L50 — the SOM *training* drivers stay gated (visibility, then a fuel wall).** SOM
+  now has every *value-level* feature it needs: the seeded MT19937 RNG (L46, validated
+  against CRuby reference draws), `Math`/`Range` (L48), and the float pipeline (L45/L49)
+  were confirmed correct on a small seeded SOM (`initiate_map` + `global_error`) that
+  agreed byte-exact with CRuby *while visibility was a no-op*. But `som.rb` runs a bare
+  `private` at class-definition time, and visibility is deliberately **not** modeled at
+  L0 (L49: a `private` no-op gives wrong answers on bootstraptest's enforcement checks,
+  so `private` gates). So every SOM program now stops at `Unsupported "Module#private"`.
+  Even past that, `som_single`/`som_multi_node` train ~250 epochs — hundreds of millions
+  of small-step transitions the functional interpreter can't finish in any practical
+  budget (5M steps alone >2 min). Both blockers are neutral gates, **not** disagreements
+  (the 0-disagree invariant holds). Unblocking SOM execution needs (a) real visibility
+  enforcement — mark `private`d methods, raise only on an *external* call, so SOM's
+  internal self-sends still run — and (b) an interpreter-throughput fix. Deterministic
+  seeded/no-Benchmark example variants are a local recipe under the *gitignored* fetched
+  `vendor/ai4r/examples/som/`, not committed.
