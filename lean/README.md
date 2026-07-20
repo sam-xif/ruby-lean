@@ -120,6 +120,8 @@ Theorems (all resting only on `propext`/`Classical.choice`/`Quot.sound` — no
 | `Step.heap_monotone` | `Step m m' → m.heap.objs.size ≤ m'.heap.objs.size` — a preservation invariant proved by induction on the step relation (ObjIds never reused; the shape the eventual machine↔SOS fresh-allocation argument needs) |
 | `invariant_sound` | `I (init p) → (∀ m m', I m → SmallStep m m' → I m') → (∀ m, I m → ¬ aboutToTypeStick m) → ∀ r, ReachableResult (init p) r → ¬ typeStuck r` — any inductive invariant (init/preservation/progress) proves no reachable outcome is a type-family `uncaught`, all inputs / unbounded fuel |
 | `run_value_type_safe` | a run terminating in a value reaches a non-type-stuck outcome — the Direction-A execution certificate (the `q_learning` coverage story) |
+| `T5.dispatch_progress` | a resolvable-method dispatch steps to the method activation (not `NoMethodError`) — the object-model invariant clause (§4.2) over the real `invoke` |
+| `DispatchLoop.loop_type_safe` | **`while true do 1.succ end` is type-safe** (unbounded fuel) by an inductive object-model invariant — the first axiom-clean Direction-B proof of a dispatching program, without running it |
 
 `Demo.lean` exhibits the relation firing, a concrete 5-step reduction of `1; 2`
 to the value `2`, adequacy on a real initial config, and the type-safety

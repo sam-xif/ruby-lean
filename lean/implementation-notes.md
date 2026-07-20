@@ -935,3 +935,22 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   native_decide** — a clean and permanent split. (Making `invoke` structurally
   recursive on a fuel param would let runs reduce too, but is not needed for
   Direction B and would re-touch the SUT; deferred.)
+
+- **L56 — first axiom-clean Direction-B proof: an unbounded dispatch loop is
+  type-safe (`RubyCore/Proof/DispatchLoop.lean`).** `while true do 1.succ end` —
+  diverges, dispatching `Integer#succ` every iteration — proved to never reach a
+  type-family `uncaught`, for unbounded fuel, by `invariant_sound` over a
+  seven-shape inductive invariant. Does NOT run the program (contrast the
+  Direction-A `native_decide` certificates); it is the object-model invariant
+  reasoning the design doc (§4) calls the substantive obligation, over the real
+  interpreter, and it is **axiom-clean** (`propext`/`Classical.choice`/`Quot.sound`
+  — no `native_decide`), which is exactly what L52 (`invoke` reasoning-amenable)
+  + L55 (`initHeap` reducible) unlocked. The machine is constant except
+  `(ctl, kont)` (succ allocates nothing / pushes no frame), so the six control
+  transitions close by `rfl` and the one dispatch transition (`step_F`) by
+  unfolding `invoke.eq_def` then `rfl` (the `Integer#succ` lookup reduces over the
+  now-reducible `initHeap`). `set_option maxRecDepth 100000` (deep reduction over
+  `initHeap`). Scaling to the user-class T5 loop reuses this assembly + adds
+  method-frame shapes (frame store grows across calls → the invariant loosens to
+  "`frames[0]` fixed, active frame characterized") and swaps `step_F` for a
+  `T5.dispatch_progress`-style step; no new blockers.
