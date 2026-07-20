@@ -122,6 +122,7 @@ Theorems (all resting only on `propext`/`Classical.choice`/`Quot.sound` — no
 | `run_value_type_safe` | a run terminating in a value reaches a non-type-stuck outcome — the Direction-A execution certificate (the `q_learning` coverage story) |
 | `T5.dispatch_progress` | a resolvable-method dispatch steps to the method activation (not `NoMethodError`) — the object-model invariant clause (§4.2) over the real `invoke` |
 | `DispatchLoop.loop_type_safe` | **`while true do 1.succ end` is type-safe** (unbounded fuel) by an inductive object-model invariant — the first axiom-clean Direction-B proof of a dispatching program, without running it |
+| `T5Loop.t5_loop_type_safe` | **the actual T5: `while true do x.m end` (user class `A`, method `m`) is type-safe** (unbounded fuel) by an inductive object-model invariant handling frame-store growth — axiom-clean, without running it |
 
 `Demo.lean` exhibits the relation firing, a concrete 5-step reduction of `1; 2`
 to the value `2`, adequacy on a real initial config, and the type-safety

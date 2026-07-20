@@ -143,14 +143,23 @@ theorem invariant_reaches {I : Machine → Prop}
     Because `SmallStep`/`Reaches` range over the *full* `stepFn` relation, the
     statement is meaningful for arbitrary real programs (dispatch, classes,
     blocks, …), not only the control-core fragment of `Step.lean`. -/
+theorem invariant_sound_from {m₀ : Machine} (I : Machine → Prop)
+    (init : I m₀)
+    (cons : ∀ m m', I m → SmallStep m m' → I m')
+    (safe : ∀ m, I m → ¬ aboutToTypeStick m) :
+    ∀ r, ReachableResult m₀ r → ¬ typeStuck r := by
+  rintro r ⟨m, hr, hstep⟩ hts
+  have hIm : I m := invariant_reaches cons init hr
+  exact safe m hIm (by unfold aboutToTypeStick; rw [hstep]; exact hts)
+
+/-- `invariant_sound` from the program's initial config — the special case of
+    `invariant_sound_from` at `m₀ = Machine.init program`. -/
 theorem invariant_sound {program : Expr} (I : Machine → Prop)
     (init : I (Machine.init program))
     (cons : ∀ m m', I m → SmallStep m m' → I m')
     (safe : ∀ m, I m → ¬ aboutToTypeStick m) :
-    ∀ r, ReachableResult (Machine.init program) r → ¬ typeStuck r := by
-  rintro r ⟨m, hr, hstep⟩ hts
-  have hIm : I m := invariant_reaches cons init hr
-  exact safe m hIm (by unfold aboutToTypeStick; rw [hstep]; exact hts)
+    ∀ r, ReachableResult (Machine.init program) r → ¬ typeStuck r :=
+  invariant_sound_from I init cons safe
 
 /-! ## 4. The bridge to the inductive control-core `Step` -/
 

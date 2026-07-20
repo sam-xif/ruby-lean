@@ -954,3 +954,30 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   method-frame shapes (frame store grows across calls → the invariant loosens to
   "`frames[0]` fixed, active frame characterized") and swaps `step_F` for a
   `T5.dispatch_progress`-style step; no new blockers.
+
+- **L57 — the actual T5 (`class_hierarchy`) loop proved type-safe, Direction B,
+  axiom-clean (`RubyCore/Proof/T5Loop.lean`).** `while true do x.m end`, entered
+  with a **user class `A`** defined (method `m ↦ 0`) and `x` an `A`-instance,
+  proved to never reach a type-family `uncaught`, for unbounded fuel, by
+  `invariant_sound_from` over a nine-shape inductive invariant `J`. The
+  user-class analogue of `DispatchLoop` (L56); the genuinely new ingredient is
+  **frame-store growth** — each `x.m` pushes a method activation frame that
+  `frameK` never reclaims (it pops the activation *stack*, not the frame
+  *store*), so `frames` grows unboundedly. `J` therefore does NOT pin `frames`:
+  it keeps `0 < frames.size ∧ frames.getD 0 = F0` (frame 0, holding `x`, is
+  stable — `getD0_push` carries it across a push) plus an existential frame id in
+  the two mid-method shapes. All object-model facts are over a concrete
+  class-bearing heap `Hstar` (`initHeap` + class `A` + instance, built by
+  reducible `alloc`s), so resolution closes by `rfl`/`decide` — **axiom-clean**
+  (`propext`/`Classical.choice`/`Quot.sound`, no `native_decide`), thanks to L52
+  (`invoke` reasoning-amenable) + L55 (`initHeap` reducible). Key sub-lemmas:
+  `dispatch_step` (the `x.m` step: `rw [invoke.eq_def]; rfl`, resolving `A#m` in
+  `Hstar` and pushing the activation), `getLocal_x` (reads `x` from frame 0 over
+  abstract/grown `frames`), `getD0_push`. Consecution + safety both fall out of a
+  single `stepJ` (progress+preservation). `invariant_sound` was generalized to
+  `invariant_sound_from` (any start config) so the proof starts at the loop head,
+  isolating the object-model reasoning from the boot phase (class/`new` setup —
+  finite/Direction-A territory, orthogonal). Gotchas logged: multi-line record
+  `{x with …}` updates trip the parser (single-line them); use `abbrev` not `def`
+  for the syntactic shapes (`bodyE`/konts/`prog`) so they unfold uniformly under
+  `simp`/`rfl`; `getD 0 = F0` needs `rfl` not `decide` (no `DecidableEq Frame`).
