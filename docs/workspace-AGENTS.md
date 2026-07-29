@@ -175,6 +175,17 @@ revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
 `lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
 
+### `concolic/` — finding type errors by concolic execution (runnable)
+Phase 2 of the Direction-A witness finder: a **toy concolic executor** (Python + z3)
+that *solves for* inputs driving a program to a **type-stuck** outcome, then confirms
+each witness against the real Lean model **and** CRuby. Finds `n == 123456789`
+behind a narrow guard in 2 iterations — the case Phase 1's random search
+(`lean/RubyCore/Search/Random.lean`) provably misses even at a 20x budget. The
+engine and its toy interpreter are **untrusted** (they only propose inputs);
+the verdict comes from replay. See [`concolic/README.md`](concolic/README.md) to
+run it and [`concolic/implementation-notes.md`](concolic/implementation-notes.md)
+for revertable decisions (K1–K8).
+
 ### `playground/` — visual step-through of the Lean stepper (runnable)
 A browser playground to write Ruby and step through its execution **in the Lean
 model** one `stepFn` transition at a time (control state, frame stack + live
