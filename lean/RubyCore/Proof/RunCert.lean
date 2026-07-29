@@ -29,6 +29,32 @@ theorem isTypeErrorB_iff (h : Heap) (exc : Value) :
   unfold isTypeErrorB isTypeError
   simp [List.any_eq_true]
 
+/-! ### Expr-level run classification (used by the search harnesses)
+
+    `runTypeStuck` is the decidable bad-state test a *witness finder* evaluates
+    (random search in `RubyCore/Search/Random.lean`, concolic later);
+    `runTypeStuck_unsafe` is the axiom-clean bridge turning any witness it finds
+    into the reachability statement "this program is NOT type-safe". Search is
+    untrusted; the certificate is this bridge applied to a replayed run. -/
+
+/-- Bool mirror of `typeStuck` at the level of a finished `run`: the run ended in
+    an uncaught *type-family* exception. -/
+def runTypeStuck (r : RunResult) : Bool :=
+  match r with
+  | .uncaught exc m => isTypeErrorB m.heap exc
+  | _ => false
+
+/-- **Witness bridge.** A run that ends type-stuck disproves type safety of that
+    program: a type-stuck outcome is reachable, and the run is the counterexample. -/
+theorem runTypeStuck_unsafe {program : Expr} {fuel : Nat}
+    (h : runTypeStuck (run fuel (Machine.init program)) = true) :
+    ∃ r, ReachableResult (Machine.init program) r ∧ typeStuck r := by
+  unfold runTypeStuck at h
+  split at h
+  · rename_i exc m heq
+    exact run_typeError_unsafe heq ((isTypeErrorB_iff m.heap exc).mp h)
+  · simp at h
+
 /-- Parse + decode + run, reporting whether the run terminates in a value. -/
 def runsToValueB (js : String) (fuel : Nat) : Bool :=
   match Json.parse js with

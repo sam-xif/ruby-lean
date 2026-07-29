@@ -981,3 +981,40 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   `{x with …}` updates trip the parser (single-line them); use `abbrev` not `def`
   for the syntactic shapes (`bodyE`/konts/`prog`) so they unfold uniformly under
   `simp`/`rfl`; `getD 0 = F0` needs `rfl` not `decide` (no `DecidableEq Frame`).
+
+- **L58 — Phase-1 witness finder: random (Plausible) search for type errors
+  (`RubyCore/Search/Random.lean`).** Realizes the first de-risking step of
+  `type-safety-by-reachability.md` §8 — *find* counterexamples that refute
+  `typeSafe?` by running the semantics on generated inputs. **It works:**
+  `nilDispatch` (T2 `nil_dispatch`: `def f(x); x<5 ? 1 : nil; end; f(N).succ`)
+  yields `failed [n := 7]` at seed 42 (witness set is all `n ≥ 5`); the control
+  `alwaysSafe` (`N.succ`) reports `success` — no false positive.
+  - **New dep:** `plausible` @ `v4.31.0` (matches `lean-toolchain`) in
+    `lakefile.toml`. Dev-only and **cleanly separated**: neither `RubyCore.lean`
+    (the lib root) nor `Main` imports `Search/`, so `lake build`/the `rubycore`
+    exe never touch it; verified the tier-0 ratchet is unchanged (**722 agree, 0
+    disagree**). Revertable: drop the `[[require]]` + the `Search/` dir.
+  - **Search is UNTRUSTED; the verdict is certified.** A reported witness is
+    replayed through the trusted `run`/`stepFn` (`native_decide`, since runs are
+    not kernel-reducible — L55) and fed to the new axiom-clean bridge
+    `Proof.runTypeStuck_unsafe` (`RunCert.lean`: `runTypeStuck (run …) = true →
+    ∃ r, ReachableResult … ∧ typeStuck r`), giving real theorems
+    `nilDispatch_unsafe` / `narrowNeedle_unsafe`. A bogus witness dies at replay,
+    so the search needs no soundness argument ("the certificate is the trace",
+    §3). Only the replay carries `ofReduceBool`; the bridge is axiom-clean.
+  - **Honest limitation, demonstrated (motivates Phase 2):** `narrowNeedle`
+    (type-stuck only at `n = 123456789`) is **NOT found**, even at a 20× budget
+    (`numInst := 2000, maxSize := 10000`) — undirected sampling can't hit a
+    needle behind a narrow guard. A concolic engine solves
+    `pathCondition ∧ n = 123456789` and derives the input directly. Recorded so
+    a `success` verdict is never misread as safety: it means "no witness within
+    these bounds" (the `VERIFIED(k)`/UNKNOWN split of
+    `bounded-effect-checking.md` §3); *proving* safety is Direction B (L56/L57).
+  - `outcomeAt` keeps the **frontier** visible (`unsupported`/`outOfFuel` are "we
+    could not say", not evidence of safety). Searches run at elaboration via
+    `#eval` (informational — they never fail the build) and are seeded
+    (`randomSeed := some 42`) for reproducibility. API gotcha: `Testable.checkIO`
+    needs the goal wrapped as `NamedBinder "n" (∀ n : Int, …)` — the `plausible`
+    *tactic* adds those decorations automatically, the programmatic API does not.
+  - [V] CRuby agrees on the demo: `undefined method 'succ' for nil
+    (NoMethodError)`.

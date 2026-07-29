@@ -21,6 +21,7 @@ against it and the adequacy theorems proved after.
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
 | `RubyCore/Proof/` | **metatheory** (off the default build target): `Step.lean` (inductive control-core `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `TypeSafety.lean` (`invariant_sound` type-safety-by-reachability + Direction-A certificate), `Demo.lean` (worked reductions + type-safety demos). See §Metatheory. |
+| `RubyCore/Search/` | **witness finders** for type errors (off the default build target, dev-only `plausible` dep): `Random.lean` — Phase-1 random property-based search that *finds* counterexamples refuting `typeSafe?`, each certified via `Proof.runTypeStuck_unsafe`. See §Finding type errors. |
 
 ## Build & run
 
@@ -130,3 +131,38 @@ pipeline: the Direction-A certificate on `1; 2`, and `while true do nil end`
 proved type-safe via a hand-supplied inductive invariant. A relational dispatch
 `Step` (folding `invoke` as a trusted oracle) is the next extension, but
 `invariant_sound` does not depend on it (it ranges over `stepFn`).
+
+## Finding type errors (Direction A — witness search)
+
+The metatheory above *proves* safety; this is the complementary direction —
+**finding counterexamples** that refute it. `RubyCore/Search/` hosts the
+witness finders (off the default build target; `plausible` is a dev-only
+dependency the lib root and exe never import — `implementation-notes.md` L58).
+
+```sh
+lake build RubyCore.Search.Random     # runs the searches, prints verdicts
+```
+
+**Phase 1 — random (property-based) search** (`Random.lean`). Generates inputs,
+runs the semantics, and reports any input whose run ends in an uncaught
+type-family exception. Verified working:
+
+| Program | Result |
+|---|---|
+| `nilDispatch` (`def f(x); x<5 ? 1 : nil; end; f(N).succ`) | `failed [n := 7]` — **witness found**, refutes `typeSafe?` |
+| `alwaysSafe` (`N.succ`) | `success` — no false positive |
+| `narrowNeedle` (stuck only at `N = 123456789`) | `success` — **missed**, even at 20× budget |
+
+The search is **untrusted**: a reported witness is replayed through the trusted
+`run`/`stepFn` and fed to the axiom-clean bridge `Proof.runTypeStuck_unsafe`,
+producing a real theorem (`nilDispatch_unsafe`). A bogus witness dies at replay,
+so the search needs no soundness argument — *the certificate is the trace*.
+
+Two honest caveats, both first-class in the design:
+
+- A `success` verdict is **not** a safety proof — it means "no witness within
+  these bounds" (the `VERIFIED(k)`/UNKNOWN split of
+  `../../bounded-effect-checking.md` §3). Proving safety is Direction B.
+- Random search is **undirected**: `narrowNeedle` shows it cannot find a needle
+  behind a narrow guard. That is exactly the gap **Phase 2** (concolic execution:
+  concrete run + path condition + solver-flip) closes.

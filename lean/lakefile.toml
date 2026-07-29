@@ -2,6 +2,16 @@ name = "rubycore"
 version = "0.1.0"
 defaultTargets = ["rubycore"]
 
+# Property-based testing (QuickCheck-style, the SlimCheck successor), pinned to
+# the same toolchain as `lean-toolchain`. Used ONLY by the off-default-target
+# witness-finding harness `RubyCore/Search/Random.lean` (Phase 1 of the
+# Direction-A checker); the `RubyCore` lib and the `rubycore` exe never import
+# it, so the SUT is unaffected. See implementation-notes L58.
+[[require]]
+name = "plausible"
+git = "https://github.com/leanprover-community/plausible"
+rev = "v4.31.0"
+
 [[lean_lib]]
 name = "RubyCore"
 
