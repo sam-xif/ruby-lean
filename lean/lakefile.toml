@@ -18,3 +18,10 @@ name = "RubyCore"
 [[lean_exe]]
 name = "rubycore"
 root = "Main"
+
+# Concolic trace executable (Direction-A search support): emits branch decisions
+# + the authoritative outcome classification from the real `stepFn`. Off the
+# default target, so `lake build` / the `rubycore` SUT are unaffected.
+[[lean_exe]]
+name = "rubycore-concolic"
+root = "ConcolicMain"

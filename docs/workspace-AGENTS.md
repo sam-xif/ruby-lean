@@ -176,13 +176,17 @@ revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
 
 ### `concolic/` — finding type errors by concolic execution (runnable)
-Phase 2 of the Direction-A witness finder: a **toy concolic executor** (Python + z3)
-that *solves for* inputs driving a program to a **type-stuck** outcome, then confirms
-each witness against the real Lean model **and** CRuby. Finds `n == 123456789`
-behind a narrow guard in 2 iterations — the case Phase 1's random search
-(`lean/RubyCore/Search/Random.lean`) provably misses even at a 20x budget. The
-engine and its toy interpreter are **untrusted** (they only propose inputs);
-the verdict comes from replay. See [`concolic/README.md`](concolic/README.md) to
+Phase 2 of the Direction-A witness finder: a **concolic search engine** (Python + z3)
+that *solves for* inputs driving a program to a **type-stuck** outcome. Finds
+`n == 123456789` behind a narrow guard in 2 iterations — the case Phase 1's random
+search (`lean/RubyCore/Search/Random.lean`) provably misses even at a 20x budget.
+**The Lean semantics is the executor**: the `rubycore-concolic` exe
+(`lean/ConcolicMain.lean`) runs the real `stepFn` and supplies both the branch
+decisions and the authoritative outcome, so the engine holds no method tables and
+no error classification of its own and cannot drift from the model (branch
+decisions are observable at the configuration level, so `stepFn` is untouched).
+The search loop is still **untrusted** — it only proposes inputs; witnesses are
+confirmed against CRuby and the plain `rubycore` observation path. See [`concolic/README.md`](concolic/README.md) to
 run it and [`concolic/implementation-notes.md`](concolic/implementation-notes.md)
 for revertable decisions (K1–K8).
 

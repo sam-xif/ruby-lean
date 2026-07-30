@@ -22,6 +22,7 @@ against it and the adequacy theorems proved after.
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
 | `RubyCore/Proof/` | **metatheory** (off the default build target): `Step.lean` (inductive control-core `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `TypeSafety.lean` (`invariant_sound` type-safety-by-reachability + Direction-A certificate), `Demo.lean` (worked reductions + type-safety demos). See §Metatheory. |
 | `RubyCore/Search/` | **witness finders** for type errors (off the default build target, dev-only `plausible` dep): `Random.lean` — Phase-1 random property-based search that *finds* counterexamples refuting `typeSafe?`, each certified via `Proof.runTypeStuck_unsafe`. See §Finding type errors. |
+| `ConcolicMain.lean` | the **`rubycore-concolic` exe** (off the default target): runs the real `stepFn` and emits the branch decisions taken + the authoritative outcome (incl. `typestuck`), so the concolic engine in `../concolic/` uses the semantics as its executor rather than a duplicate. Needs no `stepFn` instrumentation — branch decisions are observable at the configuration level. |
 
 ## Build & run
 
@@ -140,7 +141,8 @@ witness finders (off the default build target; `plausible` is a dev-only
 dependency the lib root and exe never import — `implementation-notes.md` L58).
 
 ```sh
-lake build RubyCore.Search.Random     # runs the searches, prints verdicts
+lake build RubyCore.Search.Random     # Phase 1: random search, prints verdicts
+lake build rubycore-concolic          # Phase 2: the concolic executor + branch tracer
 ```
 
 **Phase 1 — random (property-based) search** (`Random.lean`). Generates inputs,
