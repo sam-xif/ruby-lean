@@ -1018,3 +1018,27 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     *tactic* adds those decorations automatically, the programmatic API does not.
   - [V] CRuby agrees on the demo: `undefined method 'succ' for nil
     (NoMethodError)`.
+
+- **L59 — fragment-coverage audit (2026-07-30) and the doc-staleness lesson.** The
+  planning docs had drifted badly from the built model: `type-safety-by-reachability.md`
+  §9.0/§10.2/§10.3 still called call-site kwargs the "#1 construct blocker" and listed
+  the reflection predicates and `attr_*` as pending (all three shipped); `lean/README.md`
+  §Fragment listed `Array#each`/`map`, `Integer#times`, `Hash.new{}`, `attr_reader`,
+  `include`, kwargs and Float formatting as *gated* (all work); `lean/HANDOFF.md` still
+  warned `--sut lean` was RED with a 372/468 baseline (green, 722). All corrected, and a
+  dated "current snapshot" block now fronts `HANDOFF.md` and `ruby/AGENTS.md`.
+  **Audit method, repeatable — prefer it over reading prose:**
+  1. *Feature probe:* write a one-line snippet per feature, run
+     `harness/desugar-dt/bin/export-json f.rb | lean/.lake/build/bin/rubycore`, and read
+     exit 0 (works) vs exit 3 + the gate reason. Fast, unambiguous, and it catches exactly
+     this kind of drift.
+  2. *Prioritize by measurement, not by prose:* `cd difftest && uv run python -m difftest
+     run --tier 0 --sut lean`, then histogram the gates:
+     `python3 -c` over `reports/<latest>/cases.jsonl` counting `"reason"` values. The
+     result reordered the build plan — the top three actionable gates (`defined?` 36,
+     `zsuper` 29, `Array#[]` slice 28) are **not** the Enumerable methods the docs
+     recommended doing first.
+  Caveat to carry: counts are *first-gate-hit*, so unblocking one reason can reveal
+  another behind it — treat them as an upper bound on immediate gain, not additive.
+  **Standing instruction: re-run this audit before planning model work, and update the
+  snapshot blocks in the same commit.**

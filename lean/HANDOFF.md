@@ -1,20 +1,38 @@
-# Lean model — hand-off (2026-07-13)
+# Lean model — hand-off
 
-> **⚠️ Update 2026-07-15 — `--sut lean` is RED (export v3→v4).** The desugar side was driven
-> to 1227/1299 bootstraptest (C25–C29) and bumped `export.rb` to v4, which the decoder
-> rejects. This is an interface + new-forms migration, **not** a semantic invalidation. The
-> ordered plan to get green again lives in **[`v4-migration-handoff.md`](v4-migration-handoff.md)**
-> — start there. Everything below predates v4.
-
-> **Update 2026-07-13 (L2 object model, a+b+c):** `class`/`module` definitions,
-> `Class#new` + `initialize`, cref-scoped constants, `method_missing`,
-> frozen-`@x=` (`impl-notes L17`), `super`/`zsuper` (`L18`), and singleton
-> methods + eigenclasses `def self.m`/`def o.m`/`class << o` (`L19`) are
-> implemented in the executable stepper. **tier-0 baseline 372 → 468 agree,
-> 0 disagree** (ratchet moved). Still gated: mixins (`include`/`prepend`/MRO),
-> `@@cvar`, `alias`, class macros (`attr_reader`/`define_method`). Numbers below
-> predate this — next object-model lever is mixins + `@@cvar`.
-
+> ## ⚠️ CURRENT STATE (2026-07-30) — read this block, then skip to §"Open threads"
+>
+> The dated banners and numbers further down are **historical**; they are kept for
+> provenance but several are wrong now. Current facts:
+>
+> - **`--sut lean` is GREEN.** The v4 migration is long done. **tier-0 baseline:
+>   722/1304 agree, 0 disagree** (not 372, not 468; `v4-migration-handoff.md` is
+>   finished work).
+> - **Fragment, verified by probing the binary 2026-07-30** — see `README.md`
+>   §Fragment for the authoritative list. Notably these are **DONE** despite older
+>   text calling them gated: call-site **kwargs** (all forms), **`include` mixins**,
+>   **`attr_*`**, the **reflection predicates** (`is_a?`/`respond_to?`/…),
+>   block-driven **`each`/`map`/`inject`/`each_with_index`/`max_by`/`sum`/`times`/
+>   `Hash#each`**, `Hash.new {}`, Float shortest-roundtrip, seeded `Random`, `Math`,
+>   `Range`-as-a-value.
+> - **Top actionable gates** (tier-0 histogram, 582 gates): `defined?` (36),
+>   `zsuper` param shapes (29), `Array#[]` slice (28), `Rational`/`Complex` (43),
+>   `Integer#times` other forms (21), `Regexp`/`Struct` (33), `define_method` (10).
+>   Still gated too: Enumerable **predicates** (`select`/`reject`/`find`/`all?`/
+>   `any?`/`count {}`/`sort_by`/`group_by`/`each_with_object`/`upto`), **`Range`
+>   enumeration**, `prepend`, class variables, visibility, `*_eval`.
+>   Re-measure rather than trust this: `difftest run --tier 0 --sut lean`, then read
+>   `reports/<latest>/cases.jsonl`. Counts are first-gate-hit, so unblocking one can
+>   reveal another behind it.
+> - **Metatheory + checker are well ahead of the fragment** (`impl-notes L51`–`L58`):
+>   `invariant_sound` (type safety as reachability) proved over the full `stepFn`;
+>   T5 `class_hierarchy` proved type-safe **Direction B, axiom-clean**
+>   (`Proof/T5Loop.lean`); Direction-A witnesses found and certified by random search
+>   (`Search/Random.lean`) and by a **concolic engine** (`../concolic/`) for which
+>   **this model is the executor** (`ConcolicMain.lean` → `rubycore-concolic`).
+> - **Consequence for sequencing:** the bottleneck is now **model coverage**, not
+>   checker machinery. Grow the fragment off the histogram; every increment pays three
+>   ways (ratchet ↑, Direction-B reach ↑, concolic reach ↑ for free).
 
 Fresh-context hand-off for the Lean interpreter work begun 2026-07-07 (mirrors
 `../difftest/HANDOFF.md` in role). Read `README.md` first for layout/build;

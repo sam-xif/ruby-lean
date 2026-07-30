@@ -258,11 +258,16 @@ free.
 
 Cheap de-risking runnable *before* all that:
 
-- **`Plausible` witness demo (Direction A, shallow)** over the current fuel interpreter on a
-  handful of hand-written programs with obvious type errors — pure win, no new theory.
-- **Toy integer-only concolic stepper** (the same one `bounded-effect-checking.md` §8
-  proposes) with `typeStuck` as its bad-state predicate instead of an effect manifest —
-  proves the "swap the predicate" thesis end to end.
+- ~~**`Plausible` witness demo (Direction A, shallow)**~~ — **DONE** (2026-07-28,
+  `lean/RubyCore/Search/Random.lean`, impl-notes L58). Finds `nil_dispatch`'s witness with
+  automatic shrinking; the control program yields no false positive; and it *provably misses*
+  a needle behind a narrow guard even at 20x budget — which motivated the next item.
+- ~~**Toy integer-only concolic stepper**~~ — **DONE** (2026-07-29, `ruby/concolic/`).
+  Solves for that needle in 2 iterations. `typeStuck` is the bad-state predicate, so the
+  "swap the predicate" thesis is demonstrated end to end. **The Lean semantics is the
+  executor** (`lean/ConcolicMain.lean` emits branch decisions + the authoritative outcome),
+  so the engine holds no method tables of its own; see `concolic/implementation-notes.md`
+  K9 and the dataflow design in `ruby/docs/semantics/concolic-dataflow.md`.
 - **Object-model abstract domain, off-Lean:** boot programs under CRuby, dump method tables
   by reflection, and prototype the "responds-to" abstraction + its heap-delta invalidation
   (shared with the §4.2 semantic heap-diff) before committing it to Lean.
@@ -280,23 +285,50 @@ real code.
 
 ### 9.0 Reality check — what "fits the fragment" means today
 
-Verified against `RubyCore/Builtins.lean` (2026-07-16): the modeled builtins are ~40 scalar
-`String`/`Array`/`Hash`/numeric methods (`length`/`size`/`push`/`<<`-style `unshift`/`join`/
-`include?`/`fetch`/`keys`/`values`/`sort`/`upcase`/`to_i`/`succ`/`even?`/… ) plus integer
-arithmetic, `puts`/`print`/`p`, and `raise`. **Not yet modeled:** Enumerable iteration
-(`each`/`map`/`times`/`upto`/`inject` — the names are *recognized* in `CRubyNames.lean` but
-have no builtin body), **regex** (`Regexp`/`gsub`/`scan`/`match`), and **file/IO**. So:
+**Re-audited 2026-07-30 by probing the built model directly** — the 2026-07-16 assessment
+this replaces was badly out of date, and several things it called blockers have shipped.
+Method: run minimal snippets through `bin/export-json | rubycore` and read the gate.
 
-- **In-fragment control:** literals, locals/ivars/globals, `if`/`while`, recursion,
-  `def`/`class`/`module`/singleton, `begin`/`rescue`/`ensure`, blocks/`yield`/`->`/lambda
-  (strict arity), splat.
-- **Out-of-fragment today:** any program that iterates a collection with a block, or touches
-  regex/IO. That rules out *every* real gem for now — hence the toy tier is bespoke minimal
-  programs, not harvested code.
+**Now working** (previously listed as missing): **call-site keyword arguments** in every
+form (required, defaults, `**h` double-splat, `**kwrest`, `Class.new(a: 3)`) — §10.2's "#1
+construct blocker" is *resolved*; **block-driven Enumerable** for `each`, `map`, `inject`,
+`each_with_index`, `max_by`/`min_by`, `sum`, `3.times {}`, `Hash#each`/`each_key`/
+`each_value`; **the reflection predicates** `is_a?`/`kind_of?`/`instance_of?`/`respond_to?`
+(§10.3 #5 — the correctness-critical ones for false-positive-free pruning);
+**`attr_reader`/`attr_writer`/`attr_accessor`**; `Range` as a value (literals,
+`first`/`last`, `[*1..3]`); plus the L2 object model, blocks/procs/lambdas,
+`begin`/`rescue`/`ensure`, `super`/`zsuper`, eigenclasses, Float shortest-roundtrip
+formatting, seeded MT19937 `Random`, and `Math`.
 
-Consequence: **the toy ladder is written to fit; the real corpus is gated on Builtins/
-Enumerable growth**, driven by the existing coverage ratchet toward the smallest DRuby
-benchmark's needs (§8). This is the dominant lever, not more checker machinery.
+**Still gated**, ranked by the *actual* tier-0 gate histogram (582 gates; counts are
+first-gate-hit, so unblocking one may reveal another behind it — an upper bound on gain,
+not additive):
+
+| Count | Gate | Character |
+|---|---|---|
+| 38 | string `eval` family | permanently out of scope (artifact 00 §6) |
+| 36 | `defined?` | desugar-side, cheap (§10.2 #2) |
+| 29 | `zsuper` param reconstruction | delicate |
+| 28 | `Array#[]` slice `(start,len)` | trivial builtin |
+| 25 / 18 | `Rational` / `Complex` | numeric tower |
+| 21 | `Integer#times` (a form other than the working block call) | small |
+| 17 / 16 | `Regexp` / `Struct` constants | large |
+| 10 | `define_method` | the metaprogramming gate |
+| 10 | `Array#any?` | Enumerable predicate family |
+
+**The Enumerable gap is now specific, not structural:** the `iterK` iterator machinery
+works; what is missing are particular bodies — `select`, `reject`, `find`/`detect`,
+`sort_by`, `all?`/`any?`, `count {}`, `group_by`, `each_with_object`, `Integer#upto` — plus
+**Range enumeration** (`each`/`map`/`to_a`/`include?`: the value exists but is not
+iterable). Each reuses the existing machinery (a filter-style `IterKind` plus a couple of
+new kinds), so these are low-risk increments rather than new mechanism.
+
+Consequence — **the 2026-07-16 conclusion is reversed.** The toy ladder is no longer
+fragment-limited (T1-T5 all fit, and T5 is proved in both directions), and "no program that
+iterates a collection can run" is false. The remaining distance to the real corpus is a
+*list of named builtins*, not a missing mechanism. Note that the biggest single wins
+(`defined?`, `zsuper`, `Array#[]` slice) are **not** Enumerable methods, so drive the work
+off the histogram rather than off this document's earlier guesses.
 
 ### 9.1 Tier 0 — hand-written toys (runnable as the fragment stands)
 
@@ -373,6 +405,11 @@ needs already decodes.
 
 ### 10.1 Already present (do not re-plan)
 
+**(Updated 2026-07-30 — see the §9.0 re-audit for the verified list.)** Also already present
+and NOT to be re-planned: **call-site kwargs** (all forms), the **reflection predicates**
+(`is_a?`/`kind_of?`/`instance_of?`/`respond_to?`), **`attr_*`**, and block-driven `each`/
+`map`/`inject`/`each_with_index`/`max_by`/`min_by`/`sum`/`times`/`Hash#each`.
+
 `case/when` (desugared, `desugar.rb:306`); structured params incl. keyword/optional/
 destructuring (M2 — `req`/`opt`/`key`/`kwrest`/`block`/`fwd`/`destr`); blocks/`yield`/`->`;
 `for`/`while`/`dowhile`; `begin`/`rescue`/`ensure`/`retry`; class/module/singleton/`super`.
@@ -384,29 +421,32 @@ new coercion site.
 
 ### 10.2 Construct-level gaps (small, ranked)
 
-1. **Call-site keyword arguments** — the `kwargs` marker gates to `Unsupported`
-   (`Syntax.lean:311`). Param side landed in M2; call side did not. Blocks
-   `sample(random: @rng)`, `Float(x, exception: false)`, any `Foo.new(k: v)`. **#1 construct
-   blocker for ai4r-class code.**
-2. **`defined?`** — gated (`Syntax.lean:313`); needed for `@x ||= …` / `CONST ||= …` and
-   some guards.
+1. ~~**Call-site keyword arguments**~~ — **DONE** (verified 2026-07-30: required, defaults,
+   `**h`, `**kwrest`, `Class.new(a: v)` all run). No longer a blocker.
+2. **`defined?`** — still gated; **now the single largest actionable gate (36 tier-0 cases)**.
+   Needed for `@x ||= …` / `CONST ||= …` and some guards. Desugar-side and cheap: do it first.
 3. **Argument forwarding `...`** (`pfwd`/`fwd`) — gated; rare in this corpus.
 4. `case/in` pattern matching — deferred (unrelated to `case/when`, which works).
 
 ### 10.3 Builtin-semantics gaps (the real work, ranked)
 
-1. **Enumerable driven by a block** — `each`, `map`/`collect`, `inject`/`reduce`, `select`,
-   `find`/`detect`, `sort_by`, `each_with_index`, `min_by`/`max_by`, `sum`, `to_a`, `times`,
-   `upto`. The `yield`/block machinery already exists (L1); what is missing is **builtin
-   bodies that drive the block over a collection**. Unlocks essentially every real program —
-   do first.
-2. **`Range` as a value** — `(0...n)`, `.to_a`, `.include?`, iteration. Pervasive.
-3. **`attr_reader`/`attr_accessor`/`attr_writer`** — method-table-installing builtins (pure
-   heap mutation on the class object; fits everything-is-heap-mutation). Core, model for real.
-4. **Array/Hash/Float completeness** — `<<`, `Array.new(n){…}`, `dup`, `round`, hash
-   `sort_by` (`concat`/`unshift`/`+`/`-`/`*` already exist).
-5. **Complete the reflection predicates** — `is_a?`/`kind_of?`/`instance_of?` (recognized,
-   `Heap.lean:219`) + `respond_to?`.
+**(Rewritten 2026-07-30 against the measured gate histogram; the previous list's items 1–3
+and 5 are substantially or fully done — see §9.0.)**
+
+1. **The Enumerable *predicate* family** — `select`, `reject`, `find`/`detect`, `all?`/`any?`,
+   `count {}`, `sort_by`, `group_by`, `each_with_object`, `Integer#upto`. The `iterK`
+   machinery and the collect/fold/maxBy kinds already exist, so these are new `IterKind`s +
+   bodies, not new mechanism. (`all?`/`any?` double as pruning predicates.)
+2. **`Range` enumeration** — `each`/`map`/`to_a`/`include?`/`sum`. The value exists (L48) and
+   `spread` already expands integer ranges, so this likely routes through the same iterator.
+3. **`Array#[]` slice `(start, len)`** — 28 tier-0 cases for a trivial builtin; take it early.
+4. **Array/Hash/Float completeness** — `Array.new(n){…}`, `dup`, `round`, hash `sort_by`.
+5. ~~**Complete the reflection predicates**~~ — **DONE** (`is_a?`/`kind_of?`/`instance_of?`/
+   `respond_to?` all verified working 2026-07-30). The precision argument below still stands
+   and is now *realized*, not aspirational.
+6. **Bigger, separate efforts:** `zsuper` param reconstruction (29), the numeric tower
+   (`Rational`/`Complex`, 43 combined), `Struct`, `Regexp`, and `define_method` (10 — the
+   metaprogramming gate, and the one that most matters for the concolic story).
 
 **Precision insight — why #5 is correctness-critical, not coverage.** DRuby's 16 false
 positives came from *union types discriminated by runtime tests* (§9.3). A program that
@@ -416,9 +456,13 @@ impossible branch for free — occurrence typing without occurrence-typing machi
 `is_a?`/`respond_to?` is what cashes out "zero false positives by construction" (§1). Treat
 as correctness-critical.
 
-**Build order:** call-site kwargs (10.2 #1) → Enumerable-over-blocks (10.3 #1) → `Range` →
-reflection predicates → `attr_*` → Array/Hash/Float fill-in. That sequence takes Tier 0.5
-(`Set`/`Prime`) to `ai4r` without touching regex.
+**Build order (revised 2026-07-30, histogram-driven):** `Array#[]` slice → `defined?`
+(10.2 #2) → the Enumerable predicate family (10.3 #1) → `Range` enumeration → `zsuper` param
+shapes → Array/Hash fill-in. The first three are ~90+ tier-0 cases and low risk; that
+sequence still reaches `ai4r` without touching regex. Re-measure the histogram after each
+batch (`difftest run --tier 0 --sut lean`, then read `cases.jsonl`) rather than trusting this
+list — it is a snapshot, and counts are first-gate-hit so unblocking one reason can reveal
+another behind it.
 
 ### 10.4 Mocking dependencies
 

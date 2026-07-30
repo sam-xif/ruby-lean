@@ -41,25 +41,63 @@ uv run python -m difftest run --tier 0 --sut lean       # bootstraptest corpus
 uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 1
 ```
 
-## Fragment (L0, growing)
+## Fragment (verified 2026-07-30 by probing the built binary)
 
-Modeled: literals, locals/ivars/gvars, sends, `if`/`while` (+`break`/`next`),
-`def`/call with required params, `begin`/`rescue`/`else`/`ensure`/`retry`,
-`return`, arrays/hashes/strings as mutable heap payloads, `raise`, `$!`
-save/restore semantics, and the builtin slices listed in `Boot.builtinMethods`.
-**L1 (blocks/procs/lambdas):** literal blocks + `yield`, `block_given?`,
-`&blk` capture params, block-pass `&e`/`&:sym`, `proc`/`lambda`/`->`/`Proc.new`,
-`Proc#call`, and the non-local control (`next`/`break`/`return`) with
-proc-vs-lambda semantics and shared-scope locals (`impl-notes L16`).
+**Modeled.** Literals, locals/ivars/gvars, sends, `if`/`while`/`dowhile`/`for`
+(+`break`/`next`/`redo`), `def`/call with **all param kinds** (required, optional,
+`*rest`, keyword, `**kwrest`, `&blk`, destructuring), `begin`/`rescue`/`else`/
+`ensure`/`retry`, `return`, `case`/`when`, constant paths, `undef`/`alias`,
+arrays/hashes/strings as mutable heap payloads, `raise`, `$!` save/restore.
 
-Gated (`Unsupported`, exit 3): iterating builtins that yield (`Array#each`/
-`map`, `Integer#times`, `Hash.new{}`), mixins (`include`/`prepend`), class
-macros (`attr_reader`/`define_method`); **L2 object model done** — `class`/`module`
-bodies, `Class#new`/`initialize`, `method_missing`, `super`/`zsuper`, singleton
-methods + eigenclasses (`impl-notes L17`–`L19`), splat/kwargs, class variables, `Float` **formatting** (Ruby needs
-shortest-roundtrip; float arithmetic works), `Integer#hash` (seeded),
-vcall-vs-fcall `NameError` ambiguity, and anything CRuby defines that the
-model doesn't (via `CRubyNames`).
+- **L1 (blocks/procs/lambdas):** literal blocks + `yield`, `block_given?`, `&blk`
+  capture params, block-pass `&e`/`&:sym`, `proc`/`lambda`/`->`/`Proc.new`,
+  `Proc#call`, and non-local control (`next`/`break`/`return`) with proc-vs-lambda
+  semantics and shared-scope locals (`impl-notes L16`).
+- **L2 (object model):** `class`/`module` bodies, `Class#new`/`initialize`,
+  cref-scoped constants, `method_missing`, `super`/`zsuper`, singleton methods +
+  eigenclasses, **`include` mixins**, **`attr_reader`/`attr_writer`/
+  `attr_accessor`** (`impl-notes L17`–`L19`).
+- **Call-site keyword arguments** — every form: required, defaults, `**h`
+  double-splat, `**kwrest`, `Class.new(a: v)`.
+- **Reflection predicates** — `is_a?`/`kind_of?`/`instance_of?`/`respond_to?`.
+  (Load-bearing for the checker: executing the real predicate prunes impossible
+  branches — see `../../type-safety-by-reachability.md` §10.3.)
+- **Block-driven Enumerable** — `each`, `map`/`collect`, `inject`/`reduce`,
+  `each_with_index`, `each_index`, `max_by`/`min_by`, `sum`, `Integer#times`,
+  `Hash#each`/`each_pair`/`each_key`/`each_value`, `Hash.new(v)` and
+  `Hash.new { … }` default procs (`impl-notes L41`, `L42`, `L44`).
+- **Numerics/misc:** `Float#to_s`/`#inspect` shortest round-trip (Dragon4, `L45`),
+  seeded MT19937 `Random` (`L46`), `require`/`require_relative` no-ops (`L47`),
+  `Math` + `Range`-as-a-value (`L48`), array/numeric builtins (`L49`).
+
+**Gated (`Unsupported`, exit 3).** Ranked by the tier-0 gate histogram — re-measure
+with `difftest run --tier 0 --sut lean` then read `cases.jsonl`, don't trust this
+list to stay current:
+
+| Count | Gate |
+|---|---|
+| 38 | string `eval` family (permanently out of scope) |
+| 36 | `defined?` (desugar-side) |
+| 29 | `zsuper` param reconstruction (unsupported param shape) |
+| 28 | `Array#[]` slice `(start, len)` |
+| 25 / 18 | `Rational` / `Complex` |
+| 21 | `Integer#times` (a form other than the working block call) |
+| 17 / 16 | `Regexp` / `Struct` |
+| 10 | `Module#define_method` |
+| 10 | `Array#any?` |
+
+Also gated: **Enumerable predicates** `select`/`reject`/`find`/`all?`/`any?`/
+`count {}`/`sort_by`/`group_by`/`each_with_object`/`Integer#upto`; **`Range`
+enumeration** (`each`/`map`/`to_a`/`include?` — the value works, iteration
+doesn't); `prepend`; **class variables**; `Integer#hash` (seeded);
+visibility (`private`/`public`, `impl-notes L50`); `*_eval`; vcall-vs-fcall
+`NameError` ambiguity; and anything CRuby defines that the model doesn't (via
+`CRubyNames`).
+
+The Enumerable gap is **specific, not structural** — the `iterK` machinery works;
+what's missing are particular bodies (new `IterKind`s), so these are low-risk
+increments. See `../../type-safety-by-reachability.md` §9.0/§10.3 for the
+histogram-driven build order.
 
 Two fidelity policies worth knowing (both are what keeps the corpus at
 0-disagree rather than quietly wrong):

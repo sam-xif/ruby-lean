@@ -27,6 +27,38 @@ Two load-bearing ideas a new agent must internalize before touching anything:
 
 ## Status (current phase)
 
+> ### ⚠️ CURRENT SNAPSHOT (2026-07-30) — read this first
+>
+> The detailed log below is **historical and partly superseded** (it is kept as the
+> build record). Verified current state:
+>
+> - **Desugar: 1227/1299** bootstraptest agree, 0 disagree — effectively done; the
+>   remaining 72 are the unsupportable/deferred set.
+> - **Lean model: 722/1304** tier-0 agree, **0 disagree** (`--sut lean` GREEN; the
+>   v4 migration referenced below is finished). Verified working by probing the
+>   binary: call-site **kwargs** (all forms), **`include` mixins**, **`attr_*`**,
+>   **reflection predicates** (`is_a?`/`kind_of?`/`instance_of?`/`respond_to?`),
+>   block-driven **`each`/`map`/`inject`/`each_with_index`/`max_by`/`sum`/`times`/
+>   `Hash#each`**, `Hash.new {}`, Float shortest-roundtrip, seeded `Random`, `Math`,
+>   `Range`-as-a-value. **`lean/README.md` §Fragment is the authoritative list.**
+> - **Top actionable gates** (582 tier-0 gates): `defined?` (36), `zsuper` param
+>   shapes (29), `Array#[]` slice (28), `Rational`/`Complex` (43), `Regexp`/`Struct`
+>   (33), `define_method` (10); plus Enumerable **predicates**
+>   (`select`/`reject`/`find`/`all?`/`any?`/`sort_by`/…) and **`Range` enumeration**.
+>   The Enumerable gap is *specific, not structural* — `iterK` works, bodies are
+>   missing. Re-measure with `difftest run --tier 0 --sut lean` + `cases.jsonl`.
+> - **Metatheory: type safety as reachability, proved** — `invariant_sound` over the
+>   full `stepFn`, and T5 `class_hierarchy` proved type-safe **Direction B,
+>   axiom-clean** (`lean/RubyCore/Proof/`, impl-notes L51–L57).
+> - **Checkers built:** Phase-1 random witness search (`lean/RubyCore/Search/`, L58)
+>   and a **concolic engine** (`concolic/`) that solves for witnesses random search
+>   cannot reach — with **the Lean model as its executor**.
+> - **Bottleneck is now model coverage, not checker machinery.** Grow the fragment off
+>   the histogram; each increment pays three ways (ratchet ↑, Direction-B reach ↑,
+>   concolic reach ↑ for free). Build order:
+>   `../type-safety-by-reachability.md` §9.0/§10.3.
+
+
 - **Design artifacts (00–06): drafted.** Quasi-formal small-step semantics of the core,
   the differential-testing methodology, and the desugar-first plan.
 - **Desugar harness: built and passing, fragment growing.** Validated on hand-written
