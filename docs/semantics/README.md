@@ -34,6 +34,18 @@ repeatable agent playbook for producing/extending these docs against a Ruby orac
 **Technique:** [Linearization](linearization.md) — a worked example of why `desugar` is
 nontrivial: hoisting control-flow jumps out of operand position (e.g. `"#{next}"`).
 
+**Instrumentation design:** [Concolic dataflow tracing](concolic-dataflow.md) — how the
+model should emit *symbolic terms* (not just branch directions) so the concolic engine can
+build solver queries without re-deriving dataflow outside the semantics. States the
+requirement (a condition is generally not a syntactic function of the inputs — see the
+`derived.rb` counterexample), rules out reconstruction from concrete traces (value
+ambiguity), and recommends a **symbolic shadow machine driven by configuration
+observation** (no `stepFn` changes, mirroring the same `(ctl, kont-head)` discrimination),
+with the key property that the shadow **self-checks against the concrete run** so
+mirroring bugs degrade to lost precision rather than wrong constraints. Staged S1–S4;
+§8.5 notes that symbolic *dispatch* — solving directly for inputs that force a dispatch
+miss — is the payoff this layer enables.
+
 **Framing:** [Co-semantics of Ruby and Rails](co-semantics.md) — an early design artifact
 (to grow over time): Rails as a *second* semantics at a higher altitude, joined to the
 core by a refinement/bisimulation correspondence (structural where macros define methods,
