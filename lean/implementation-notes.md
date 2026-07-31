@@ -1042,3 +1042,42 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   another behind it — treat them as an upper bound on immediate gain, not additive.
   **Standing instruction: re-run this audit before planning model work, and update the
   snapshot blocks in the same commit.**
+
+- **L60 — S1 of the concolic **symbolic shadow machine** (`RubyCore/Concolic/Shadow.lean`,
+  wired into `ConcolicMain.lean`).** Implements `docs/semantics/concolic-dataflow.md` D2/S1:
+  the tracer now emits each branch condition as a **term over the symbolic inputs**, so the
+  concolic engine no longer has to re-derive dataflow by walking the AST. Verified on
+  `derived.rb` (`n = $__in0; x = n*3+7; if x == 100`): the emitted condition is
+  `eq(add(mul(inp 0, lit 3), lit 7), lit 100)` — precisely the constraint z3 needs.
+  - **No `stepFn` changes** (the whole point). The shadow observes `(m, m')` pairs: `stepFn`
+    is deterministic and dispatches on `(ctl, kont-head)`, so the pre-state says which rule
+    fires and `m'` shows the result. Tier-0 `--sut lean` unchanged: **722 agree, 0 disagree**.
+  - **No taint flag** (KLEE's discipline): concrete ⟺ the term is `lit`. `mkUn`/`mkBin`
+    constant-fold at construction, so fully-concrete arithmetic collapses to a literal for
+    free and `hasInput` answers "is this flippable?" structurally. Rejected the earlier
+    `Term(expr, tainted)` shape — a flag can desync from the term it describes.
+  - **The `mirror` is the load-bearing trick.** It runs parallel to `m.kont` and stores only
+    what the machine's kont does *not* already expose. Since the kont is fully visible,
+    `asgnK`/`ifK`/… need no payload; only `argsK` does (it accumulates argument *values*
+    whose *terms* must ride along). `realign` resizes the mirror from the observed kont
+    depth, so **unmodeled konts are automatically safe** — they contribute `opaque`, i.e. no
+    constraint, never a wrong one.
+  - **Self-check (the property the design rests on).** Every term assigned to `ctl` is a
+    claim that evaluating it at the concrete inputs equals the value the machine just
+    produced; on mismatch we drop to `opaque` and record a frontier note. **Validated
+    adversarially:** deliberately mis-mapping `*` to `add` produced
+    `SELF-CHECK FAILED at *: term=3 machine=0 (term dropped)` and `cond: null` — precision
+    lost, soundness preserved, no wrong constraint emitted. This is what converts "the
+    shadow drifts as the model grows" from a silent-correctness risk into a visible
+    precision report.
+  - **Inputs are the reserved globals `$__in0`, `$__in1`, …** (design §6.5), preloaded by
+    the tracer via `--inputs 31,7`, so **no AST rewriting** is needed. Chosen because Prism
+    parses `$__in0` unambiguously as a gvar read (a bare identifier would be a *vcall*) and
+    it exports as `["var","gvar","$__in0"]` — name-distinctive, so recognition needs no node
+    identity. Rejected: substituting `__input__ → ["int", n]` (a literal `31` elsewhere is
+    then indistinguishable from the input — unsound); a new `Expr` head (touches the SUT).
+  - Scope: integer arithmetic/comparison (`+ - *`, `< <= > >= == !=`, `-@`/`succ`/`pred`),
+    locals, globals, `if`/`while` conditions. `/`/`%`/`**` stay `opaque` (K7). Next: S2
+    param binding at method entry (dataflow through calls), then S3 (engine consumes terms,
+    delete the AST walk). Note S1/S2 are less separable in Ruby than in a C-like language
+    because **arithmetic is dispatch** — `n * 3` is a send, so S1 already needed the mirror.

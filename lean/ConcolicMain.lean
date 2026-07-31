@@ -27,6 +27,7 @@ Usage (stdin = the same versioned RubyCore JSON `bin/export-json` emits):
     rubycore-concolic [maxSteps] < program.json
 -/
 import RubyCore
+import RubyCore.Concolic.Shadow
 
 open Lean (Json)
 open RubyCore
@@ -43,33 +44,26 @@ def typeErrorFamily : List ObjId :=
 def isTypeError (h : Heap) (exc : Value) : Bool :=
   typeErrorFamily.any (fun k => isA h exc k)
 
-/-- A branch decision observed at the configuration level: the control is a value
-    and the top kont is a conditional. `Value.truthy` decides the direction, so no
-    instrumentation inside `stepFn` is required. -/
-def branchEvent (m : Machine) : Option Json :=
-  match m.ctl, m.kont with
-  | .value v, (.ifK _ _) :: _ =>
-    some (Json.mkObj [("kind", Json.str "if"), ("taken", Json.bool v.truthy)])
-  | .value v, (.whileCondK _ _) :: _ =>
-    some (Json.mkObj [("kind", Json.str "while"), ("taken", Json.bool v.truthy)])
-  | _, _ => none
-
-/-- Run the program, accumulating branch events; classify the outcome. -/
-partial def collect (steps maxSteps : Nat) (acc : Array Json) (m : Machine) :
-    Array Json × Json :=
+/-- Run the program, advancing the **symbolic shadow** in lockstep (S1 of
+    `docs/semantics/concolic-dataflow.md`) so each branch carries its condition as
+    a term over the inputs, and classify the outcome. -/
+partial def collect (inputs : List Int) (steps maxSteps : Nat)
+    (acc : Array Json) (s : SymState) (m : Machine) : Array Json × Json × List String :=
   if steps ≥ maxSteps then
     (acc, Json.mkObj [("kind", Json.str "outoffuel"),
-                      ("detail", Json.str s!"step cap {maxSteps} reached")])
+                      ("detail", Json.str s!"step cap {maxSteps} reached")], s.notes)
   else
-    let acc := match branchEvent m with
-      | some e => acc.push e
-      | none => acc
     match stepFn m with
-    | .next m' => collect (steps + 1) maxSteps acc m'
+    | .next m' =>
+      let (s', ev?) := symStep inputs m m' s
+      let acc := match ev? with
+        | some ev => acc.push ev.toJson
+        | none => acc
+      collect inputs (steps + 1) maxSteps acc s' m'
     | .done v m' =>
       (acc, Json.mkObj [("kind", Json.str "value"),
                         ("detail", Json.str ((RubyCore.inspect m'.heap v).toOption.getD "?")),
-                        ("stdout", Json.str m'.out)])
+                        ("stdout", Json.str m'.out)], s.notes)
     | .uncaught exc m' =>
       let cls := className m'.heap (classOf m'.heap exc)
       let msg := match (m'.heap.get (match exc with | .ref o => o | _ => 0)).payload with
@@ -78,15 +72,28 @@ partial def collect (steps maxSteps : Nat) (acc : Array Json) (m : Machine) :
       (acc, Json.mkObj [
         ("kind", Json.str (if isTypeError m'.heap exc then "typestuck" else "uncaught")),
         ("class", Json.str cls), ("message", Json.str msg),
-        ("stdout", Json.str m'.out)])
+        ("stdout", Json.str m'.out)], s.notes)
     | .unsupported r =>
-      (acc, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)])
+      (acc, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)], s.notes)
     | .stuck msg =>
-      (acc, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)])
+      (acc, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)], s.notes)
 
 end RubyCore.Concolic
 
+/-- CLI: `rubycore-concolic [maxSteps] [--inputs n1,n2,…] < program.json`.
+    Inputs are bound to the reserved globals `$__in0`, `$__in1`, … (§6.5), so no
+    AST rewriting is needed to supply them. -/
+def parseInputs (args : List String) : List Int :=
+  match args.dropWhile (· != "--inputs") with
+  | _ :: spec :: _ =>
+    (spec.splitOn ",").filterMap fun t =>
+      let t := t.trimAscii
+      if t.startsWith "-" then (t.drop 1).toString.toNat?.map (fun n => -(Int.ofNat n))
+      else t.toNat?.map Int.ofNat
+  | _ => []
+
 def main (args : List String) : IO UInt32 := do
+  let inputs := parseInputs args
   let maxSteps := (args.head?.bind (·.toNat?)).getD 500000
   let input ← (← IO.getStdin).readToEnd
   match Json.parse input with
@@ -102,8 +109,12 @@ def main (args : List String) : IO UInt32 := do
         return 0
       IO.eprintln s!"decode error: {e}"; return 1
     | .ok prog =>
-      let (branches, outcome) :=
-        RubyCore.Concolic.collect 0 maxSteps #[] (Machine.init prog)
-      IO.println (Json.mkObj [("branches", Json.arr branches),
-                              ("outcome", outcome)]).compress
+      let m0 := RubyCore.Concolic.initMachine prog inputs
+      let s0 := RubyCore.Concolic.initSym inputs
+      let (branches, outcome, notes) :=
+        RubyCore.Concolic.collect inputs 0 maxSteps #[] s0 m0
+      IO.println (Json.mkObj [
+        ("branches", Json.arr branches),
+        ("outcome", outcome),
+        ("frontier", Json.arr (notes.map Json.str).toArray)]).compress
       return 0
