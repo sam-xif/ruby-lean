@@ -282,7 +282,17 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
       -- zero-arg send: a unary primitive, or unknown
       match unOpOf mname with
       | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none)
-      | none => ({ s0 with ctl := .opaque }, none)   -- incl. zero-arg user methods
+      | none =>
+        -- A zero-arg *user method* pushes a frame; its body's term flows back out via
+        -- the frameK passthrough, so nothing is lost and we must NOT cry frontier.
+        -- An unmodeled *builtin* on a symbolic receiver DOES lose precision — report
+        -- it, and attribute it, or the loss is silent (the string/`to_s` case).
+        let userCall := m'.frames.size > m.frames.size
+        let s1 := if !userCall && s.ctl.hasInput
+                  then s0.note
+                    s!"input-dependent `{mname}` not in the op map (term opaque)"
+                  else s0
+        ({ s1 with ctl := .opaque }, none)
     else
       -- args follow: stash the receiver term on the incoming `argsK` mirror entry
       match s0.mirror with
