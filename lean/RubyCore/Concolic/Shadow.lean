@@ -233,6 +233,30 @@ def checked (inputs : List Int) (s : SymState) (m' : Machine) (t : SymTerm)
         { s with ctl := .opaque }
     | none => { s with ctl := t }
 
+/-- **Param binding at method entry** (S2): a user method call pushes a frame whose
+    `locals` are the parameter bindings, in order. We bind those names to the caller's
+    argument *terms* positionally, so dataflow crosses the call boundary.
+
+    Safety: we only bind when the shapes line up (equal length), and each binding is
+    self-checked against the concrete value the machine stored — a mismatch records a
+    note and drops that binding to `opaque` rather than asserting a wrong term. -/
+def bindParams (inputs : List Int) (s : SymState) (m' : Machine)
+    (argsT : List SymTerm) : SymState :=
+  let fid := m'.stack.headD 0
+  let f := m'.frames.getD fid default
+  if f.locals.length != argsT.length then
+    if argsT.any (·.hasInput) then
+      s.note s!"param binding skipped (shape: {f.locals.length} locals vs {argsT.length} args)"
+    else s
+  else
+    (f.locals.zip argsT).foldl (fun (st : SymState) (b : (String × Value) × SymTerm) =>
+      let name := b.1.1
+      match b.1.2, SymTerm.evalTerm inputs b.2 with
+      | .int actual, some predicted =>
+        if predicted == actual then st.setLocal fid name b.2
+        else (st.note s!"SELF-CHECK FAILED binding {name}: term={predicted} machine={actual} (dropped)").setLocal fid name .opaque
+      | _, _ => st.setLocal fid name b.2) s
+
 /-- Advance the shadow across one observed transition `m → m'`.
     Returns the new shadow state and a branch event if this step was a decision. -/
 def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
@@ -258,7 +282,7 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
       -- zero-arg send: a unary primitive, or unknown
       match unOpOf mname with
       | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none)
-      | none => ({ s0 with ctl := .opaque }, none)
+      | none => ({ s0 with ctl := .opaque }, none)   -- incl. zero-arg user methods
     else
       -- args follow: stash the receiver term on the incoming `argsK` mirror entry
       match s0.mirror with
@@ -275,10 +299,14 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
       | some op, [argT] =>
         (checked inputs s0 m' (SymTerm.mkBin op entry.recvT argT) s!"{mname}", none)
       | _, _ =>
-        let s1 := if entry.recvT.hasInput || argsT.any (·.hasInput)
-                  then s0.note s!"input-dependent `{mname}` not in the op map (term opaque)"
-                  else s0
-        ({ s1 with ctl := .opaque }, none)
+        if m'.frames.size > m.frames.size then
+          -- a user method activation was pushed: carry arg terms into its params (S2)
+          ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none)
+        else
+          let s1 := if entry.recvT.hasInput || argsT.any (·.hasInput)
+                    then s0.note s!"input-dependent `{mname}` not in the op map (term opaque)"
+                    else s0
+          ({ s1 with ctl := .opaque }, none)
     else
       -- more args to evaluate: carry the accumulated terms forward
       match s0.mirror with
@@ -286,6 +314,10 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
         let f' : SymFrame := { f with recvT := entry.recvT, accT := argsT }
         ({ s0 with mirror := f' :: tl, ctl := .opaque }, none)
       | [] => ({ s0 with ctl := .opaque }, none)
+  -- a method/block returning: its value's term passes through the boundary (S2)
+  | .value _, (.frameK _) :: _ => (s0, none)
+  | .value _, (.blkFrameK _ _ _) :: _ => (s0, none)
+  | .value _, (.seqK []) :: _ => (s0, none)
   | .value v, (.ifK _ _) :: _ =>
     ({ s0 with ctl := .opaque },
      some { kind := "if", taken := v.truthy, cond := s.ctl })
