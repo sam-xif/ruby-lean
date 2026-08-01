@@ -1126,7 +1126,24 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   - `symStep` now returns `(SymState × Option BranchEvent × Option NilRisk)`; the
     trace gains a `nilrisks` array. Ratchet unchanged (**722 agree, 0 disagree**);
     25 concolic tests pass.
-  - **Not yet:** `@q[state].empty?` — a *Hash* predicate over heap state — remains
-    `opaque`. That needs theory-of-arrays over the object store
-    (`docs/semantics/concolic-dataflow.md` §8.2) and is the remaining blocker for the
-    ai4r q_learning natural trigger (`typecheck-pipeline/findings/`).
+  - **Hash miss as a second nil source** (2026-08-01). `h[k]` yields `nil` when `k`
+    is none of the keys and the hash has **no default** — the same shape as an
+    out-of-range index, and again with no branch. When the hash is input-independent
+    and its keys are integers, the shadow emits the guard
+    `k ≠ k₁ ∧ … ∧ k ≠ kₙ` (hence `BinOp.and`); everything else stays `opaque`.
+    Required tracking hash *literals* as `conc`, mirroring `hshKeyK`/`hshValK` the way
+    `arrK` was already mirrored. **Verified:** seeded with a *valid* key (so the goal
+    must do the work) the engine derives a non-key and finds the error; **precision
+    control:** give the hash a default and no risk is raised at all, because the
+    shadow asks the heap (`hashDflt`) instead of assuming a miss means `nil`.
+    Two deliberate bail-outs, both "no constraint rather than a wrong one": a
+    non-integer key (`:sym` keys are not expressible as terms yet) and a hash whose
+    contents are input-dependent.
+    *Gotcha logged:* `(match … with | a => x | b => y, none, none)` parses
+    ambiguously — bind the match to a `let` (or build the tuple outside) instead.
+  - **Not yet:** `@q[state].empty?` — a Hash predicate over *mutated heap* state with
+    *symbol* keys — remains `opaque` (both bail-outs above apply). That needs
+    theory-of-arrays over the object store
+    (`docs/semantics/concolic-dataflow.md` §8.2) plus symbol-valued terms, and is the
+    remaining blocker for the ai4r q_learning natural trigger
+    (`typecheck-pipeline/findings/`).

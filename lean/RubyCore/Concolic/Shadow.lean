@@ -37,6 +37,8 @@ inductive BinOp where
   /-- Boolean disjunction (operands are 1/0-valued predicate terms). Needed to
       express a nil-guard such as `i < 0 ∨ i ≥ len` as a single term. -/
   | or
+  /-- Boolean conjunction — expresses a Hash miss, `k ≠ k₁ ∧ … ∧ k ≠ kₙ`. -/
+  | and
 deriving Repr, DecidableEq
 
 /-- A symbolic term over the inputs. `opaque` = not tracked (see header). -/
@@ -63,7 +65,7 @@ def unOpName : UnOp → String
 def binOpName : BinOp → String
   | .add => "add" | .sub => "sub" | .mul => "mul"
   | .lt => "lt" | .le => "le" | .gt => "gt" | .ge => "ge"
-  | .eq => "eq" | .ne => "ne" | .or => "or"
+  | .eq => "eq" | .ne => "ne" | .or => "or" | .and => "and"
 
 /-- Is this a comparison (boolean-valued)? Arithmetic is integer-valued. -/
 def binIsCmp : BinOp → Bool
@@ -125,6 +127,7 @@ def mkBin (op : BinOp) (a b : SymTerm) : SymTerm :=
     | .eq => .lit (if x == y then 1 else 0)
     | .ne => .lit (if x != y then 1 else 0)
     | .or => .lit (if x != 0 || y != 0 then 1 else 0)
+    | .and => .lit (if x != 0 && y != 0 then 1 else 0)
   | _, _ => .bin op a b
 
 /-- Evaluate at the concrete inputs — the self-check oracle (§6.4). Comparisons
@@ -148,6 +151,7 @@ partial def evalTerm (inputs : List Int) : SymTerm → Option Int
       | .eq => pure (if x == y then 1 else 0)
       | .ne => pure (if x != y then 1 else 0)
       | .or => pure (if x != 0 || y != 0 then 1 else 0)
+      | .and => pure (if x != 0 && y != 0 then 1 else 0)
 
 end SymTerm
 
@@ -419,11 +423,27 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
         let nilGuard : SymTerm :=
           match mname, argsT, recvV with
           | "[]", [argT], .ref o =>
-            if argT.hasInput then
+            if argT.hasInput && entry.recvT.isConst then
               match (m.heap.get o).payload with
               | .arr xs =>
                 SymTerm.mkBin .or (SymTerm.mkBin .lt argT (.lit 0))
                                   (SymTerm.mkBin .ge argT (.lit (Int.ofNat xs.size)))
+              -- Hash miss: `h[k]` yields nil when `k` is none of the (known,
+              -- input-independent) keys AND the hash has no default. With a
+              -- default the miss is not a nil source at all — ask the heap, do
+              -- not assume.
+              | .hsh pairs =>
+                if (m.heap.get o).hashDflt.isSome then .opaque
+                else
+                  -- only integer keys are expressible as terms today; a
+                  -- non-integer key means we cannot state the guard, so bail
+                  -- rather than emit a partial (and therefore wrong) one.
+                  if pairs.toList.all (fun kv => match kv.1 with | .int _ => true | _ => false)
+                  then pairs.toList.foldl (fun acc kv =>
+                        match kv.1 with
+                        | .int k => SymTerm.mkBin .and acc (SymTerm.mkBin .ne argT (.lit k))
+                        | _ => acc) (SymTerm.lit 1)
+                  else .opaque
               | _ => .opaque
             else .opaque
           | _, _, _ => .opaque
@@ -449,6 +469,23 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
   | .value _, (.frameK _) :: _ => (s0, none, none)
   | .value _, (.blkFrameK _ _ _) :: _ => (s0, none, none)
   | .value _, (.seqK []) :: _ => (s0, none, none)
+  | .value _, (.hshKeyK _ _ _) :: _ =>
+    -- key evaluated: remember its term so the literal's const-ness can be judged
+    let entry := s.mirror.headD default
+    let f' : SymFrame := { entry with accT := entry.accT ++ [s.ctl] }
+    let mirror' := f' :: s0.mirror.tail
+    ({ s0 with mirror := mirror', ctl := .opaque }, none, none)
+  | .value _, (.hshValK _ _ rest) :: _ =>
+    -- value evaluated; on the last pair the hash is allocated in `m'`, and it is
+    -- input-independent exactly when every key and value is
+    let entry := s.mirror.headD default
+    let partsT := entry.accT ++ [s.ctl]
+    if rest.isEmpty then
+      ({ s0 with ctl := if partsT.all SymTerm.isConst then .conc else .opaque },
+       none, none)
+    else
+      let f' : SymFrame := { entry with accT := partsT }
+      ({ s0 with mirror := f' :: s0.mirror.tail, ctl := .opaque }, none, none)
   | .value _, (.arrK _ rest) :: _ =>
     let entry := s.mirror.headD default
     let elemsT := entry.accT ++ [s.ctl]
