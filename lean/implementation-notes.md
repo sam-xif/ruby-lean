@@ -1101,16 +1101,28 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     deterministic Int-returning methods. That whitelist is load-bearing — the
     self-check **cannot** catch a wrongly-frozen literal, since it only validates the
     current run, so `rand`-like or address-dependent methods must never appear.
-  - **Directed nil-risk goals — a mechanism branch-flipping cannot substitute for.**
-    An out-of-range `Array#[]` silently yields `nil`; it is *not a different path*, so
-    no flip discovers it (`i = 0` and `i = 3` take identical branches). The tracer now
-    emits `nilrisks` sites (`{op, idx, len}`) and the engine issues the directed query
-    `pathCondition ∧ (idx < 0 ∨ idx ≥ len)` — exactly the shape
-    `type-safety-by-reachability.md` §3 specifies ("emit `pathCondition ∧ …`; SAT →
-    concrete witness"). **Verified:** on an off-by-one guard (`i <= len` for `i < len`)
-    the engine derives `i = 3` in one goal query and the witness is confirmed by both
-    the Lean observation path and CRuby. This is the first bug the engine finds that
-    branch exploration provably cannot.
+  - **Directed `DispatchRisk` goals — a mechanism branch-flipping cannot substitute
+    for, stated in its general form.** The bad state is *"the receiver could be a class
+    that does not define the sent method"* — a reachable `NoMethodError`;
+    `nil.to_sym` is merely its commonest instance. This must be a **goal, not a flip**,
+    because the bad class typically arises with **no branch at all** (out-of-range
+    index, `Hash` miss, guarded `nil` return): `i = 0` and `i = 3` traverse *identical*
+    branches, so no amount of path exploration reaches it.
+    Mechanism: values carry a **nil-guard** — a boolean term true exactly when the
+    value is `nil` — which propagates through locals; at **every send site** the shadow
+    asks the *semantics* (`lookup heap Value.nil mname`) whether the alternative class
+    defines the method, and if not emits `DispatchRisk {source, meth, badClass, guard}`.
+    The engine then solves `pathCondition ∧ guard`.
+    Two verified properties: (a) on an off-by-one guard (`i <= len` for `i < len`) it
+    derives `i = 3` — `goal[NilClass#to_sym via nil_source] → [3]` — confirmed by the
+    Lean observation path and CRuby; (b) **precision**: changing the sent method to
+    `to_s`, which `NilClass` *does* define, raises **no risk at all** and yields no
+    witness. That (b) holds *because* the check consults the model's own method table
+    rather than a heuristic is what keeps it false-positive-free (cf. K9).
+    Correctness detail worth preserving: the nil-guard is **cleared at every step**
+    (`ctlNil := .opaque` in `s0`) and re-established only by rules that mean it — a
+    stale guard would be attributed to an unrelated receiver and manufacture a false
+    positive. `BinOp` gained `or` to express the guard as one term.
   - `symStep` now returns `(SymState × Option BranchEvent × Option NilRisk)`; the
     trace gains a `nilrisks` array. Ratchet unchanged (**722 agree, 0 disagree**);
     25 concolic tests pass.

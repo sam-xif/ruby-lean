@@ -34,6 +34,9 @@ deriving Repr, DecidableEq
 inductive BinOp where
   | add | sub | mul
   | lt | le | gt | ge | eq | ne
+  /-- Boolean disjunction (operands are 1/0-valued predicate terms). Needed to
+      express a nil-guard such as `i < 0 ∨ i ≥ len` as a single term. -/
+  | or
 deriving Repr, DecidableEq
 
 /-- A symbolic term over the inputs. `opaque` = not tracked (see header). -/
@@ -60,7 +63,7 @@ def unOpName : UnOp → String
 def binOpName : BinOp → String
   | .add => "add" | .sub => "sub" | .mul => "mul"
   | .lt => "lt" | .le => "le" | .gt => "gt" | .ge => "ge"
-  | .eq => "eq" | .ne => "ne"
+  | .eq => "eq" | .ne => "ne" | .or => "or"
 
 /-- Is this a comparison (boolean-valued)? Arithmetic is integer-valued. -/
 def binIsCmp : BinOp → Bool
@@ -121,6 +124,7 @@ def mkBin (op : BinOp) (a b : SymTerm) : SymTerm :=
     | .ge => .lit (if x ≥ y then 1 else 0)
     | .eq => .lit (if x == y then 1 else 0)
     | .ne => .lit (if x != y then 1 else 0)
+    | .or => .lit (if x != 0 || y != 0 then 1 else 0)
   | _, _ => .bin op a b
 
 /-- Evaluate at the concrete inputs — the self-check oracle (§6.4). Comparisons
@@ -143,6 +147,7 @@ partial def evalTerm (inputs : List Int) : SymTerm → Option Int
       | .ge => pure (if x ≥ y then 1 else 0)
       | .eq => pure (if x == y then 1 else 0)
       | .ne => pure (if x != y then 1 else 0)
+      | .or => pure (if x != 0 || y != 0 then 1 else 0)
 
 end SymTerm
 
@@ -187,11 +192,18 @@ deriving Inhabited
 structure SymState where
   /-- Term of the in-flight value. -/
   ctl : SymTerm := .opaque
+  /-- Boolean term that is true exactly when the in-flight value is `nil`
+      (`opaque` = we cannot say). This is what makes a *silent* nil source —
+      one that produces no branch — visible to the solver at the send site that
+      later dispatches on it. -/
+  ctlNil : SymTerm := .opaque
   /-- Parallel to `m.kont`. -/
   mirror : List SymFrame := []
   /-- Locals, keyed by frame id (matches the model's frame store, so
       shared-scope closure locals are not a special case). -/
   locals : List ((FrameId × String) × SymTerm) := []
+  /-- Nil-guards for locals, so a nil source survives being stored and re-read. -/
+  localNils : List ((FrameId × String) × SymTerm) := []
   globals : List (String × SymTerm) := []
   notes : List String := []
 deriving Inhabited
@@ -207,6 +219,13 @@ def getLocal (s : SymState) (fid : FrameId) (x : String) : SymTerm :=
 def setLocal (s : SymState) (fid : FrameId) (x : String) (t : SymTerm) : SymState :=
   { s with locals := ((fid, x), t) ::
       s.locals.filter (fun e => !(e.1.1 == fid && e.1.2 == x)) }
+
+def getLocalNil (s : SymState) (fid : FrameId) (x : String) : SymTerm :=
+  (s.localNils.find? (fun e => e.1.1 == fid && e.1.2 == x)).map (·.2) |>.getD .opaque
+
+def setLocalNil (s : SymState) (fid : FrameId) (x : String) (t : SymTerm) : SymState :=
+  { s with localNils := ((fid, x), t) ::
+      s.localNils.filter (fun e => !(e.1.1 == fid && e.1.2 == x)) }
 
 def getGlobal (s : SymState) (x : String) : SymTerm :=
   (s.globals.find? (·.1 == x)).map (·.2) |>.getD .opaque
@@ -238,23 +257,34 @@ def BranchEvent.toJson (b : BranchEvent) : Json :=
   Json.mkObj [("kind", Json.str b.kind), ("taken", Json.bool b.taken),
               ("cond", SymTerm.toJson b.cond)]
 
-/-- A **nil-risk site**: a place where the semantics silently yields `nil` for some
-    inputs rather than branching, so pure branch-flipping can never discover it
-    (an out-of-bounds `Array#[]` is not a different *path* — it is the same path
-    with a different value). Reporting these lets the engine issue the *directed*
-    query `pathCondition ∧ outOfRange` that `type-safety-by-reachability.md` §3
-    calls for, turning a silent nil source into a solvable goal.
+/-- A **dispatch risk**: a send `recv.m` where, under some inputs, the receiver
+    would be a *different class that does not define `m`* — i.e. a reachable
+    `NoMethodError`. This is the general form of the bad-state query in
+    `type-safety-by-reachability.md` §3/§9; `nil.to_sym` is merely its most common
+    instance.
 
-    `idx` is the index term; `len` the (input-independent) collection length. -/
-structure NilRisk where
-  op : String
-  idx : SymTerm
-  len : Int
+    Why it cannot be left to branch-flipping: the alternative class often arises
+    *without a branch* (an out-of-range `Array#[]`, a `Hash` miss, a guarded `nil`
+    return), so the same path simply carries a different value. `guard` is a boolean
+    term that is true exactly when the receiver takes the bad class, so the engine
+    can ask `pathCondition ∧ guard` directly.
+
+    Currently the modeled alternative class is `NilClass` (by far the dominant one
+    in practice); the structure generalizes to any class term. -/
+structure DispatchRisk where
+  /-- what makes the receiver take the bad class, e.g. `array_index_out_of_range` -/
+  source : String
+  /-- the method that would then be missing -/
+  meth : String
+  /-- the class the receiver would have (currently always `NilClass`) -/
+  badClass : String
+  /-- boolean term: true exactly when the receiver takes `badClass` -/
+  guard : SymTerm
   deriving Inhabited
 
-def NilRisk.toJson (r : NilRisk) : Json :=
-  Json.mkObj [("op", Json.str r.op), ("idx", SymTerm.toJson r.idx),
-              ("len", Json.num ⟨r.len, 0⟩)]
+def DispatchRisk.toJson (r : DispatchRisk) : Json :=
+  Json.mkObj [("source", Json.str r.source), ("meth", Json.str r.meth),
+              ("badClass", Json.str r.badClass), ("guard", SymTerm.toJson r.guard)]
 
 /-- The concrete integer the machine produced, if the post-state holds one —
     the oracle for the self-check. -/
@@ -308,9 +338,9 @@ def bindParams (inputs : List Int) (s : SymState) (m' : Machine)
 /-- Advance the shadow across one observed transition `m → m'`.
     Returns the new shadow state and a branch event if this step was a decision. -/
 def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
-    SymState × Option BranchEvent × Option NilRisk :=
+    SymState × Option BranchEvent × Option DispatchRisk :=
   let fid := m.stack.headD 0
-  let s0 := s.realign m'.kont.length
+  let s0 := { s.realign m'.kont.length with ctlNil := .opaque }
   match m.ctl, m.kont with
   -- ── expression evaluation ───────────────────────────────────────────────
   | .eval (.int n), _ => ({ s0 with ctl := .lit n }, none, none)
@@ -319,7 +349,8 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
   | .eval .nil, _ => ({ s0 with ctl := .conc }, none, none)
   | .eval .tru, _ => ({ s0 with ctl := .conc }, none, none)
   | .eval .fls, _ => ({ s0 with ctl := .conc }, none, none)
-  | .eval (.var .lvar x), _ => ({ s0 with ctl := s.getLocal fid x }, none, none)
+  | .eval (.var .lvar x), _ =>
+    ({ s0 with ctl := s.getLocal fid x, ctlNil := s.getLocalNil fid x }, none, none)
   | .eval (.var .gvar x), _ =>
     -- the reserved input globals are the symbolic sources (§6.5)
     match inputIndexOf x with
@@ -327,21 +358,30 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
     | none => ({ s0 with ctl := s.getGlobal x }, none, none)
   -- ── value in flight: consume the top continuation ───────────────────────
   | .value _, (.asgnK .lvar x) :: _ =>
-    -- assignment yields the assigned value, so `ctl` is unchanged
-    ((s0.setLocal fid x s.ctl), none, none)
+    -- assignment yields the assigned value: `ctl` and its nil-guard both survive
+    (({ (s0.setLocal fid x s.ctl).setLocalNil fid x s.ctlNil with
+          ctlNil := s.ctlNil }), none, none)
   | .value _, (.asgnK .gvar x) :: _ => ((s0.setGlobal x s.ctl), none, none)
   | .value _, (.recvK mname args _ _) :: _ =>
+    -- Ask the *semantics* whether the alternative class defines `mname` — no
+    -- duplicated method table here (cf. K9). Currently the modeled alternative is
+    -- NilClass, which is the dominant real-world case.
+    let risk : Option DispatchRisk :=
+      if s.ctlNil.hasInput && (lookup m.heap Value.nil mname).isNone then
+        some { source := "nil_source", meth := mname, badClass := "NilClass",
+               guard := s.ctlNil }
+      else none
     if args.isEmpty then
       -- zero-arg send: a unary primitive, or unknown
       match unOpOf mname with
-      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none, none)
+      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none, risk)
       | none =>
         if s.ctl.isConst && constIntMethod mname then
           -- e.g. `[:a,:b,:c].length` -> lit 3, which makes a bounds guard
           -- `i < arr.length` solvable even though the collection is unmodeled.
           match concreteInt m' with
-          | some n => ({ s0 with ctl := .lit n }, none, none)
-          | none => ({ s0 with ctl := .opaque }, none, none)
+          | some n => ({ s0 with ctl := .lit n }, none, risk)
+          | none => ({ s0 with ctl := .opaque }, none, risk)
         else
         -- A zero-arg *user method* pushes a frame; its body's term flows back out via
         -- the frameK passthrough, so nothing is lost and we must NOT cry frontier.
@@ -352,14 +392,14 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
                   then s0.note
                     s!"input-dependent `{mname}` not in the op map (term opaque)"
                   else s0
-        ({ s1 with ctl := .opaque }, none, none)
+        ({ s1 with ctl := .opaque }, none, risk)
     else
       -- args follow: stash the receiver term on the incoming `argsK` mirror entry
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with recvT := s.ctl, accT := [] }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
-      | [] => ({ s0 with ctl := .opaque }, none, none)
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, risk)
+      | [] => ({ s0 with ctl := .opaque }, none, risk)
   | .value _, (.argsK recvV _ mname _ rest _) :: _ =>
     let entry := s.mirror.headD default
     let argsT := entry.accT ++ [s.ctl]
@@ -372,18 +412,24 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
         -- `arr[i]` with an input-dependent index over an array whose length is
         -- input-independent: out-of-range silently yields `nil`, which no branch
         -- reveals. Report it as a directed goal instead (see `NilRisk`).
-        let risk : Option NilRisk :=
+        -- `arr[i]` with an input-dependent index over an input-independent array:
+        -- out of range yields `nil` with NO branch, so record *when* that happens
+        -- as a nil-guard on the result. The risk is raised later, at whatever send
+        -- dispatches on this value — which is the general rule (see `DispatchRisk`).
+        let nilGuard : SymTerm :=
           match mname, argsT, recvV with
           | "[]", [argT], .ref o =>
             if argT.hasInput then
               match (m.heap.get o).payload with
-              | .arr xs => some { op := "array_index", idx := argT, len := Int.ofNat xs.size }
-              | _ => none
-            else none
-          | _, _, _ => none
-        match risk with
-        | some r => ({ s0 with ctl := .opaque }, none, some r)
-        | none =>
+              | .arr xs =>
+                SymTerm.mkBin .or (SymTerm.mkBin .lt argT (.lit 0))
+                                  (SymTerm.mkBin .ge argT (.lit (Int.ofNat xs.size)))
+              | _ => .opaque
+            else .opaque
+          | _, _, _ => .opaque
+        if !(nilGuard.isConst) && nilGuard.hasInput then
+          ({ s0 with ctl := .opaque, ctlNil := nilGuard }, none, none)
+        else
         if m'.frames.size > m.frames.size then
           -- a user method activation was pushed: carry arg terms into its params (S2)
           ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none, none)

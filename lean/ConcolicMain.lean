@@ -119,7 +119,7 @@ def main (args : List String) : IO UInt32 := do
         RubyCore.Concolic.collect inputs 0 maxSteps #[] #[] s0 m0
       IO.println (Json.mkObj [
         ("branches", Json.arr branches),
-        ("nilrisks", Json.arr risks),
+        ("dispatchrisks", Json.arr risks),
         ("outcome", outcome),
         ("frontier", Json.arr (notes.map Json.str).toArray)]).compress
       return 0
