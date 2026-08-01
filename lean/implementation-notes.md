@@ -1081,3 +1081,40 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     param binding at method entry (dataflow through calls), then S3 (engine consumes terms,
     delete the AST walk). Note S1/S2 are less separable in Ruby than in a C-like language
     because **arithmetic is dispatch** — `n * 3` is a send, so S1 already needed the mirror.
+
+- **L61 — concolic coverage for the *nil-bug class*: input-independence tracking +
+  directed nil-risk goals.** Driven by measurement: a census of ai4r's nil-returning
+  guards found **`.empty?` first (5 of 14)**, then `==`, `.length`, `.nil?` — so the
+  work was aimed at collection predicates, not strings (`==` against a string/symbol
+  literal is the *smallest* category in ai4r, 16 vs 128 for collection+class
+  predicates).
+  - **`SymTerm.conc` — a third state, and the load-bearing idea.** `opaque` conflated
+    *"unmodeled type"* with *"may depend on the input"*. Splitting out `conc`
+    ("input-**independent** value of a type we don't model") lets the shadow do
+    something previously impossible: read a **concrete fact off the machine and freeze
+    it as a `lit`**, soundly, because that fact is identical on every run. Concretely,
+    `[:s1,:s2,:s3].length → lit 3`, which makes the ubiquitous bounds guard
+    `i < arr.length` solvable even though the array itself is unmodeled.
+    Soundness discipline: `conc` is established only for literals and arrays whose
+    elements are all const; arithmetic mixing `conc` yields `opaque`; and the frozen
+    read is restricted to a **short whitelist** (`length`/`size`/`count`) of zero-arg
+    deterministic Int-returning methods. That whitelist is load-bearing — the
+    self-check **cannot** catch a wrongly-frozen literal, since it only validates the
+    current run, so `rand`-like or address-dependent methods must never appear.
+  - **Directed nil-risk goals — a mechanism branch-flipping cannot substitute for.**
+    An out-of-range `Array#[]` silently yields `nil`; it is *not a different path*, so
+    no flip discovers it (`i = 0` and `i = 3` take identical branches). The tracer now
+    emits `nilrisks` sites (`{op, idx, len}`) and the engine issues the directed query
+    `pathCondition ∧ (idx < 0 ∨ idx ≥ len)` — exactly the shape
+    `type-safety-by-reachability.md` §3 specifies ("emit `pathCondition ∧ …`; SAT →
+    concrete witness"). **Verified:** on an off-by-one guard (`i <= len` for `i < len`)
+    the engine derives `i = 3` in one goal query and the witness is confirmed by both
+    the Lean observation path and CRuby. This is the first bug the engine finds that
+    branch exploration provably cannot.
+  - `symStep` now returns `(SymState × Option BranchEvent × Option NilRisk)`; the
+    trace gains a `nilrisks` array. Ratchet unchanged (**722 agree, 0 disagree**);
+    25 concolic tests pass.
+  - **Not yet:** `@q[state].empty?` — a *Hash* predicate over heap state — remains
+    `opaque`. That needs theory-of-arrays over the object store
+    (`docs/semantics/concolic-dataflow.md` §8.2) and is the remaining blocker for the
+    ai4r q_learning natural trigger (`typecheck-pipeline/findings/`).

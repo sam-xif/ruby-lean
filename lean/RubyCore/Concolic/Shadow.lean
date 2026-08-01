@@ -42,6 +42,13 @@ inductive SymTerm where
   | lit (n : Int)
   | un (op : UnOp) (a : SymTerm)
   | bin (op : BinOp) (a b : SymTerm)
+  /-- A value we do not model *structurally*, but which we know does not depend on
+      any symbolic input (a literal, or something built purely from literals).
+      Distinguishing this from `opaque` is what lets us soundly read a *concrete*
+      fact off the machine — e.g. the length of a literal array — and emit it as a
+      `lit`, because that fact is the same on every run. Conflating the two (as a
+      two-state design must) would either lose the fact or emit it unsoundly. -/
+  | conc
   | opaque
 deriving Repr, Inhabited
 
@@ -66,7 +73,9 @@ partial def toJson : SymTerm → Json
   | .un op a => Json.arr #[Json.str "un", Json.str (unOpName op), toJson a]
   | .bin op a b =>
     Json.arr #[Json.str "bin", Json.str (binOpName op), toJson a, toJson b]
-  | .opaque => Json.null
+  -- `conc` carries no integer value, so it is not a solver term; the engine sees
+  -- `null` and records no constraint (same treatment as `opaque`).
+  | .conc | .opaque => Json.null
 
 /-- Does the term mention an input? (Only such conditions are worth emitting —
     a purely-literal condition is not flippable.) -/
@@ -75,12 +84,21 @@ partial def hasInput : SymTerm → Bool
   | .lit _ => false
   | .un _ a => hasInput a
   | .bin _ a b => hasInput a || hasInput b
+  | .conc => false
   | .opaque => false
+
+/-- Is this value the same on every run (independent of the inputs)? Only such
+    values may have a concrete fact read off the machine and frozen as a `lit`. -/
+def isConst : SymTerm → Bool
+  | .lit _ => true
+  | .conc => true
+  | _ => false
 
 /-! ### Smart constructors (constant-folding — KLEE's `ExprBuilder` discipline) -/
 
 def mkUn (op : UnOp) (a : SymTerm) : SymTerm :=
   match a with
+  | .conc => .opaque
   | .opaque => .opaque
   | .lit n => match op with
     | .neg => .lit (-n) | .succ => .lit (n + 1) | .pred => .lit (n - 1)
@@ -90,6 +108,8 @@ def mkUn (op : UnOp) (a : SymTerm) : SymTerm :=
     fold to `lit 1`/`lit 0` (see `evalTerm`: booleans are 1/0). -/
 def mkBin (op : BinOp) (a b : SymTerm) : SymTerm :=
   match a, b with
+  | .conc, _ => .opaque
+  | _, .conc => .opaque
   | .opaque, _ => .opaque
   | _, .opaque => .opaque
   | .lit x, .lit y =>
@@ -108,6 +128,7 @@ def mkBin (op : BinOp) (a b : SymTerm) : SymTerm :=
 partial def evalTerm (inputs : List Int) : SymTerm → Option Int
   | .inp k => inputs[k]?
   | .lit n => some n
+  | .conc => none
   | .opaque => none
   | .un op a => (evalTerm inputs a).map fun x =>
       match op with | .neg => -x | .succ => x + 1 | .pred => x - 1
@@ -133,6 +154,15 @@ end SymTerm
 def unOpOf : String → Option UnOp
   | "-@" => some .neg | "succ" => some .succ | "pred" => some .pred
   | _ => none
+
+/-- Zero-arg, deterministic, Int-returning methods. On an input-*independent*
+    receiver their result is identical on every run, so it can be read off the
+    machine and frozen as a `lit`. Deliberately a short whitelist: `rand`-like or
+    address-dependent methods must never appear here, since the self-check cannot
+    catch a wrongly-frozen literal (it only validates the current run). -/
+def constIntMethod : String → Bool
+  | "length" | "size" | "count" => true
+  | _ => false
 
 def binOpOf : String → Option BinOp
   | "+" => some .add | "-" => some .sub | "*" => some .mul
@@ -208,6 +238,24 @@ def BranchEvent.toJson (b : BranchEvent) : Json :=
   Json.mkObj [("kind", Json.str b.kind), ("taken", Json.bool b.taken),
               ("cond", SymTerm.toJson b.cond)]
 
+/-- A **nil-risk site**: a place where the semantics silently yields `nil` for some
+    inputs rather than branching, so pure branch-flipping can never discover it
+    (an out-of-bounds `Array#[]` is not a different *path* — it is the same path
+    with a different value). Reporting these lets the engine issue the *directed*
+    query `pathCondition ∧ outOfRange` that `type-safety-by-reachability.md` §3
+    calls for, turning a silent nil source into a solvable goal.
+
+    `idx` is the index term; `len` the (input-independent) collection length. -/
+structure NilRisk where
+  op : String
+  idx : SymTerm
+  len : Int
+  deriving Inhabited
+
+def NilRisk.toJson (r : NilRisk) : Json :=
+  Json.mkObj [("op", Json.str r.op), ("idx", SymTerm.toJson r.idx),
+              ("len", Json.num ⟨r.len, 0⟩)]
+
 /-- The concrete integer the machine produced, if the post-state holds one —
     the oracle for the self-check. -/
 def concreteInt (m' : Machine) : Option Int :=
@@ -260,29 +308,41 @@ def bindParams (inputs : List Int) (s : SymState) (m' : Machine)
 /-- Advance the shadow across one observed transition `m → m'`.
     Returns the new shadow state and a branch event if this step was a decision. -/
 def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
-    SymState × Option BranchEvent :=
+    SymState × Option BranchEvent × Option NilRisk :=
   let fid := m.stack.headD 0
   let s0 := s.realign m'.kont.length
   match m.ctl, m.kont with
   -- ── expression evaluation ───────────────────────────────────────────────
-  | .eval (.int n), _ => ({ s0 with ctl := .lit n }, none)
-  | .eval (.var .lvar x), _ => ({ s0 with ctl := s.getLocal fid x }, none)
+  | .eval (.int n), _ => ({ s0 with ctl := .lit n }, none, none)
+  | .eval (.str _), _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval (.sym _), _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval .nil, _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval .tru, _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval .fls, _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval (.var .lvar x), _ => ({ s0 with ctl := s.getLocal fid x }, none, none)
   | .eval (.var .gvar x), _ =>
     -- the reserved input globals are the symbolic sources (§6.5)
     match inputIndexOf x with
-    | some k => ({ s0 with ctl := .inp k }, none)
-    | none => ({ s0 with ctl := s.getGlobal x }, none)
+    | some k => ({ s0 with ctl := .inp k }, none, none)
+    | none => ({ s0 with ctl := s.getGlobal x }, none, none)
   -- ── value in flight: consume the top continuation ───────────────────────
   | .value _, (.asgnK .lvar x) :: _ =>
     -- assignment yields the assigned value, so `ctl` is unchanged
-    ((s0.setLocal fid x s.ctl), none)
-  | .value _, (.asgnK .gvar x) :: _ => ((s0.setGlobal x s.ctl), none)
+    ((s0.setLocal fid x s.ctl), none, none)
+  | .value _, (.asgnK .gvar x) :: _ => ((s0.setGlobal x s.ctl), none, none)
   | .value _, (.recvK mname args _ _) :: _ =>
     if args.isEmpty then
       -- zero-arg send: a unary primitive, or unknown
       match unOpOf mname with
-      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none)
+      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none, none)
       | none =>
+        if s.ctl.isConst && constIntMethod mname then
+          -- e.g. `[:a,:b,:c].length` -> lit 3, which makes a bounds guard
+          -- `i < arr.length` solvable even though the collection is unmodeled.
+          match concreteInt m' with
+          | some n => ({ s0 with ctl := .lit n }, none, none)
+          | none => ({ s0 with ctl := .opaque }, none, none)
+        else
         -- A zero-arg *user method* pushes a frame; its body's term flows back out via
         -- the frameK passthrough, so nothing is lost and we must NOT cry frontier.
         -- An unmodeled *builtin* on a symbolic receiver DOES lose precision — report
@@ -292,50 +352,77 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
                   then s0.note
                     s!"input-dependent `{mname}` not in the op map (term opaque)"
                   else s0
-        ({ s1 with ctl := .opaque }, none)
+        ({ s1 with ctl := .opaque }, none, none)
     else
       -- args follow: stash the receiver term on the incoming `argsK` mirror entry
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with recvT := s.ctl, accT := [] }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none)
-      | [] => ({ s0 with ctl := .opaque }, none)
-  | .value _, (.argsK _ _ mname _ rest _) :: _ =>
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
+      | [] => ({ s0 with ctl := .opaque }, none, none)
+  | .value _, (.argsK recvV _ mname _ rest _) :: _ =>
     let entry := s.mirror.headD default
     let argsT := entry.accT ++ [s.ctl]
     if rest.isEmpty then
       -- all args in ⇒ this step dispatches; recognize a binary primitive
       match binOpOf mname, argsT with
       | some op, [argT] =>
-        (checked inputs s0 m' (SymTerm.mkBin op entry.recvT argT) s!"{mname}", none)
+        (checked inputs s0 m' (SymTerm.mkBin op entry.recvT argT) s!"{mname}", none, none)
       | _, _ =>
+        -- `arr[i]` with an input-dependent index over an array whose length is
+        -- input-independent: out-of-range silently yields `nil`, which no branch
+        -- reveals. Report it as a directed goal instead (see `NilRisk`).
+        let risk : Option NilRisk :=
+          match mname, argsT, recvV with
+          | "[]", [argT], .ref o =>
+            if argT.hasInput then
+              match (m.heap.get o).payload with
+              | .arr xs => some { op := "array_index", idx := argT, len := Int.ofNat xs.size }
+              | _ => none
+            else none
+          | _, _, _ => none
+        match risk with
+        | some r => ({ s0 with ctl := .opaque }, none, some r)
+        | none =>
         if m'.frames.size > m.frames.size then
           -- a user method activation was pushed: carry arg terms into its params (S2)
-          ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none)
+          ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none, none)
         else
           let s1 := if entry.recvT.hasInput || argsT.any (·.hasInput)
                     then s0.note s!"input-dependent `{mname}` not in the op map (term opaque)"
                     else s0
-          ({ s1 with ctl := .opaque }, none)
+          ({ s1 with ctl := .opaque }, none, none)
     else
       -- more args to evaluate: carry the accumulated terms forward
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with recvT := entry.recvT, accT := argsT }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none)
-      | [] => ({ s0 with ctl := .opaque }, none)
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
+      | [] => ({ s0 with ctl := .opaque }, none, none)
   -- a method/block returning: its value's term passes through the boundary (S2)
-  | .value _, (.frameK _) :: _ => (s0, none)
-  | .value _, (.blkFrameK _ _ _) :: _ => (s0, none)
-  | .value _, (.seqK []) :: _ => (s0, none)
+  | .value _, (.frameK _) :: _ => (s0, none, none)
+  | .value _, (.blkFrameK _ _ _) :: _ => (s0, none, none)
+  | .value _, (.seqK []) :: _ => (s0, none, none)
+  | .value _, (.arrK _ rest) :: _ =>
+    let entry := s.mirror.headD default
+    let elemsT := entry.accT ++ [s.ctl]
+    if rest.isEmpty then
+      -- array allocated in `m'`: input-independent iff every element is
+      ({ s0 with ctl := if elemsT.all SymTerm.isConst then .conc else .opaque }, none, none)
+    else
+      match s0.mirror with
+      | f :: tl =>
+        let f' : SymFrame := { f with accT := elemsT }
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
+      | [] => ({ s0 with ctl := .opaque }, none, none)
   | .value v, (.ifK _ _) :: _ =>
     ({ s0 with ctl := .opaque },
-     some { kind := "if", taken := v.truthy, cond := s.ctl })
+     some { kind := "if", taken := v.truthy, cond := s.ctl }, none)
   | .value v, (.whileCondK _ _) :: _ =>
     ({ s0 with ctl := .opaque },
-     some { kind := "while", taken := v.truthy, cond := s.ctl })
+     some { kind := "while", taken := v.truthy, cond := s.ctl }, none)
   -- ── everything else: safe precision loss ───────────────────────────────
-  | _, _ => ({ s0 with ctl := .opaque }, none)
+  | _, _ => ({ s0 with ctl := .opaque }, none, none)
 
 /-- Initial shadow state for a run: bind the reserved input globals to `inp k`. -/
 def initSym (inputs : List Int) : SymState :=

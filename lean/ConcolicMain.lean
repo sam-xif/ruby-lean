@@ -48,20 +48,24 @@ def isTypeError (h : Heap) (exc : Value) : Bool :=
     `docs/semantics/concolic-dataflow.md`) so each branch carries its condition as
     a term over the inputs, and classify the outcome. -/
 partial def collect (inputs : List Int) (steps maxSteps : Nat)
-    (acc : Array Json) (s : SymState) (m : Machine) : Array Json × Json × List String :=
+    (acc : Array Json) (risks : Array Json) (s : SymState) (m : Machine) :
+    Array Json × Array Json × Json × List String :=
   if steps ≥ maxSteps then
-    (acc, Json.mkObj [("kind", Json.str "outoffuel"),
+    (acc, risks, Json.mkObj [("kind", Json.str "outoffuel"),
                       ("detail", Json.str s!"step cap {maxSteps} reached")], s.notes)
   else
     match stepFn m with
     | .next m' =>
-      let (s', ev?) := symStep inputs m m' s
+      let (s', ev?, risk?) := symStep inputs m m' s
       let acc := match ev? with
         | some ev => acc.push ev.toJson
         | none => acc
-      collect inputs (steps + 1) maxSteps acc s' m'
+      let risks := match risk? with
+        | some r => risks.push r.toJson
+        | none => risks
+      collect inputs (steps + 1) maxSteps acc risks s' m'
     | .done v m' =>
-      (acc, Json.mkObj [("kind", Json.str "value"),
+      (acc, risks, Json.mkObj [("kind", Json.str "value"),
                         ("detail", Json.str ((RubyCore.inspect m'.heap v).toOption.getD "?")),
                         ("stdout", Json.str m'.out)], s.notes)
     | .uncaught exc m' =>
@@ -69,14 +73,14 @@ partial def collect (inputs : List Int) (steps maxSteps : Nat)
       let msg := match (m'.heap.get (match exc with | .ref o => o | _ => 0)).payload with
         | .exc s => s
         | _ => ""
-      (acc, Json.mkObj [
+      (acc, risks, Json.mkObj [
         ("kind", Json.str (if isTypeError m'.heap exc then "typestuck" else "uncaught")),
         ("class", Json.str cls), ("message", Json.str msg),
         ("stdout", Json.str m'.out)], s.notes)
     | .unsupported r =>
-      (acc, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)], s.notes)
+      (acc, risks, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)], s.notes)
     | .stuck msg =>
-      (acc, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)], s.notes)
+      (acc, risks, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)], s.notes)
 
 end RubyCore.Concolic
 
@@ -111,10 +115,11 @@ def main (args : List String) : IO UInt32 := do
     | .ok prog =>
       let m0 := RubyCore.Concolic.initMachine prog inputs
       let s0 := RubyCore.Concolic.initSym inputs
-      let (branches, outcome, notes) :=
-        RubyCore.Concolic.collect inputs 0 maxSteps #[] s0 m0
+      let (branches, risks, outcome, notes) :=
+        RubyCore.Concolic.collect inputs 0 maxSteps #[] #[] s0 m0
       IO.println (Json.mkObj [
         ("branches", Json.arr branches),
+        ("nilrisks", Json.arr risks),
         ("outcome", outcome),
         ("frontier", Json.arr (notes.map Json.str).toArray)]).compress
       return 0
