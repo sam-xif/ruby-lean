@@ -22,6 +22,17 @@
 #    suppresses the shadow gate for its own name (L62), so fidelity is on this
 #    file. Match CRuby exactly, including the empty-receiver and tie cases.
 
+# ─── BasicObject ────────────────────────────────────────────────────────────
+
+class BasicObject
+  # `!=` *is* the negation of `==` in Ruby, so it must **dispatch** `==` — a
+  # builtin comparing payloads gets `ma != "a_"` wrong the moment a subclass
+  # overrides `==` (test_yjit_115). One definition here covers every class.
+  def !=(other)
+    !(self == other)
+  end
+end
+
 # ─── Kernel/Object ──────────────────────────────────────────────────────────
 
 class Object

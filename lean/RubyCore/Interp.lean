@@ -1290,6 +1290,24 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
   -- `recv` with the rest. Only when unshadowed by a user `send` (rare) [V].
+  -- `raise C` / `raise C, msg` where `C` defines a *user* `initialize`: CRuby
+  -- builds the exception with `C.new(…)`, so the initializer (and any `super`
+  -- into `Exception#initialize`) must actually run — a frame the `raise` builtin
+  -- cannot push, so it is intercepted here (L70).
+  if mname == "raise" && (lookup m.heap recv "raise").map (·.2.builtin.isSome) == some true then
+    match args with
+    | (.ref k) :: rest =>
+      match m.heap.classPayload? k, userInit? m.heap k with
+      | some c, some md =>
+        if c.isModule || rest.length > 1 then invokeDispatch m recv implicit mname args blk kw
+        else
+          let (io, h) := m.heap.alloc { klass := k, payload := .exc "" }
+          let inst := Value.ref io
+          let m := { m with heap := h, kont := .raiseNewK inst :: m.kont }
+          enterUserMethod m inst "initialize" md rest none
+      | _, _ => invokeDispatch m recv implicit mname args blk kw
+    | _ => invokeDispatch m recv implicit mname args blk kw
+  else
   if (mname == "send" || mname == "public_send" || mname == "__send__")
       && (lookup m.heap recv mname).isNone then
     match args with
@@ -1365,11 +1383,19 @@ where
       if mname == "new" && !c.isModule then
         match userInit? m.heap o with
         | some md =>
-          if (ancestors m.heap o).any (fun a =>
-              Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) then
-            .unsupported "Class#new with user initialize on a special-payload subclass"
-          else
-            let (io, h) := m.heap.alloc { klass := o }
+          -- Allocate, then run the user `initialize` (a frame the builtin cannot
+          -- push). For a subclass of String/Array/Hash/Exception the instance
+          -- starts with that class's *empty* payload, so `super` inside
+          -- `initialize` can fill it (L70); a Proc/Range/Random subclass has no
+          -- such allocator and still gates.
+          match Builtins.allocatableCore m.heap o, (ancestors m.heap o).any
+              (fun a => Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) with
+          | none, true => .unsupported "Class#new with user initialize on a special-payload subclass"
+          | core?, _ =>
+            let payload := match core? with
+              | some core => Builtins.emptyCorePayload core
+              | none => Payload.none
+            let (io, h) := m.heap.alloc { klass := o, payload }
             let inst := Value.ref io
             let m := { m with heap := h, kont := .newK inst :: m.kont }
             enterUserMethod m inst "initialize" md args blk kw
@@ -1434,7 +1460,8 @@ where
     forwarding/passing `blk`. A miss raises `NoMethodError "super: no superclass
     method '{m}' for {recv}"` [V]. `super` is evaluated in the enclosing method
     activation (`methodFrameOf`), so it works from inside a block too. -/
-def doSuper (m : Machine) (args : List Value) (blk : Option Value) : StepResult :=
+def doSuper (m : Machine) (args : List Value) (blk : Option Value)
+    (kw : List (Value × Value) := []) : StepResult :=
   let f := m.frames.getD (methodFrameOf m) default
   if f.meth == "" then .unsupported "super outside a method"
   else
@@ -1448,41 +1475,63 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value) : StepResult 
     | some (_, md) =>
       match md.builtin with
       | some bid =>
+        -- builtins take keywords as a trailing positional Hash (Ruby-3 [V])
+        let (args, m) := appendKwHash m args kw
         match Builtins.run bid self args m with
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
         | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
         | .unsupported r => .unsupported r
-      | none => enterUserMethod m self f.meth md args blk
+      | none => enterUserMethod m self f.meth md args blk kw
     | none =>
       .next (raiseErr m Boot.noMethodErrorId
         s!"super: no superclass method '{f.meth}' for {receiverDesc m.heap self}")
 
 /-- Args that bare `super` forwards: the *current* values of the enclosing
     method's formal parameters — read from the method frame's locals, a splat
-    param spreading its array (artifact 02 §2) [V: `x=x+1; super` forwards the
-    reassigned value]. `none` if the param shape is beyond L2b. -/
-def zsuperArgs (m : Machine) : Option (List Value) :=
+    param spreading its array, keyword params re-bundled as keywords (artifact 02
+    §2) [V: `x=x+1; super` forwards the reassigned value]. `none` if the param
+    shape is not reconstructible: a `define_method` body (no formals — CRuby
+    raises, see L66) or destructuring params, whose synthetic slots are dropped
+    after binding (L70). -/
+def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
   let f := m.frames.getD (methodFrameOf m) default
   match methodOn m.heap f.defmod f.meth with
   | some (_, md) =>
     if md.capturedFrame.isSome then none else
-    match classifySimple md.params with
+    match classifyFull md.params with
     | none => none
-    | some sp =>
-    let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
-    let readL (n : String) : Value := (f.locals.find? (·.1 == n)).map (·.2) |>.getD .nil
-    let preV := pre.map readL
-    let postV := post.map readL
-    match rest? with
-    | none => some (preV ++ postV)
-    | some rname =>
-      match f.locals.find? (·.1 == rname) with
-      | some (_, .ref o) =>
-        match (m.heap.get o).payload with
-        | .arr xs => some (preV ++ xs.toList ++ postV)
-        | _ => none
-      | _ => none
+    | some fp =>
+      if !fp.destrs.isEmpty then none else
+      let readL : String → Value := fun n =>
+        (f.locals.find? (·.1 == n)).map (·.2) |>.getD .nil
+      let spreadRest : Option (List Value) := match fp.rest? with
+        | none => some []
+        | some rname =>
+          match readL rname with
+          | .ref o => match (m.heap.get o).payload with
+            | .arr xs => some xs.toList
+            | _ => none
+          | _ => none
+      match spreadRest with
+      | none => none
+      | some restV =>
+        let pos := fp.pre.map readL ++ fp.opt.map (fun p => readL p.1)
+          ++ restV ++ fp.post.map readL
+        let kwPairs := fp.keys.map (fun p => (Value.sym p.1, readL p.1))
+        let kwRest : Option (List (Value × Value)) := match fp.kwrest? with
+          | none => some []
+          | some none => some []            -- anonymous `**`: nothing to read back
+          | some (some kr) =>
+            match readL kr with
+            | .ref o => match (m.heap.get o).payload with
+              | .hsh ps => some ps.toList
+              | _ => none
+            | .nil => some []
+            | _ => none
+        match kwRest with
+        | none => none
+        | some kwr => some (pos, kwPairs ++ kwr)
   | none => none
 
 /-- The block bare `super`/`super(args)` forwards: the enclosing method's. -/
@@ -1751,6 +1800,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .raiseNewK inst =>
+      -- `raise C[, msg]` with a user `initialize`: now raise the built instance
+      .next (withCtl m (.jump (.raiseJ inst)))
     | .includeK recv =>
       -- `included` hook returned; its value is discarded, `include` yields recv
       .next (withCtl m (.value recv))
@@ -2394,7 +2446,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match blk with
     | none =>
       match zsuperArgs m with
-      | some args => doSuper m args (methodBlk m)
+      | some (args, kw) => doSuper m args (methodBlk m) kw
       | none =>
         -- A `define_method` body has no formal parameter list to forward from;
         -- CRuby raises rather than guessing [V].

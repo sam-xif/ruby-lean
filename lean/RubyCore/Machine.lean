@@ -128,6 +128,10 @@ inductive Kont where
       is `initialize`'s (discarded) result; yield the fresh instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
+      in-flight value is that initializer's (discarded) result; raise the freshly
+      built instance. -/
+  | raiseNewK (inst : Value)
   /-- `include M` when `M` defines `self.included`: the in-flight value is the
       hook's (discarded) result; `include` evaluates to the receiver instead. -/
   | includeK (recv : Value)

@@ -1423,3 +1423,45 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     the `redoJ` arm simply pops the frame and re-enters `callClosure`. 18 tier-1 +
     4 tier-0 gates for two extra fields.
   Ratchet: tier-0 **842 → 865 agree, 0 disagree**.
+
+## Payload-core subclassing and full `zsuper` (L70)
+
+- **L70 — `class MyString < String` and the rest of the payload-core
+  subclasses.** The representation was already right (a `Payload` and a `klass`
+  are independent fields, and the builtins match on the *payload*), so what was
+  missing was **allocation**: `Class#new` special-cased `k == Boot.stringId`
+  rather than "has String in its ancestors", and a subclass therefore gated.
+  Now:
+  - `newImpl` dispatches on the **allocatable core ancestor**
+    (`allocatableCore`: String/Array/Hash/Exception) and allocates with
+    `klass := k`, so `MyString.new("abc")` is a `MyString` carrying a String
+    payload — `length`/`upcase`/`+` and `inspect` all work through the ordinary
+    builtins. `String.new("x")` (previously gated) came along for free.
+    Proc/Range/Random/Integer subclasses still gate: their allocators need
+    arguments no `new` can synthesize.
+  - **Core `initialize` builtins** (`String#`/`Array#`/`Hash#`/`Exception#`, plus
+    a no-op `Object#initialize`) *mutate* the already-allocated receiver, which is
+    what makes the idiomatic subclass work:
+    `class MyString2 < String; def initialize(s); super(s + "!"); end; end`. The
+    allocate-then-initialize path in `invokeMaybeNew` gives such an instance the
+    core class's **empty** payload up front, so `super` fills it in place.
+  - **`raise C` / `raise C, msg` now runs a user `initialize`.** CRuby builds the
+    exception via `C.new(…)`, so a subclass whose `initialize` supplies a default
+    message must actually run — `raiseImpl` (a pure builtin) could not push that
+    frame, so `invoke` intercepts and finishes through a new `raiseNewK` kont.
+  - **`zsuper` param reconstruction generalized** (29 tier-0 gates): it used
+    `classifySimple` (req/rest/block only), so a bare `super` in a method with an
+    *optional* or *keyword* parameter gated — including the very common
+    `def initialize(msg = "default"); super; end`. It now uses `classifyFull` and
+    forwards positionals, filled optionals, the spread rest, post-params, keyword
+    params re-bundled as keywords and a `**kwrest`'s entries; `doSuper` carries the
+    keywords through. Destructuring params still gate (their synthetic slots are
+    dropped after binding, so there is nothing to read back) as does a
+    `define_method` body (CRuby raises there — L66).
+  - **`!=` moved into the prelude** as `BasicObject#!= := !(self == other)`, and
+    removed from every builtin table. In Ruby `!=` *is* the negation of `==`, so it
+    must **dispatch**: a payload-comparing builtin gets `ma != "a_"` wrong the
+    moment a subclass overrides `==` (test_yjit_115, the one disagreement this
+    batch introduced). This is the prelude paying off as a *correctness*
+    mechanism rather than a coverage one — the faithful definition is Ruby code.
+  Ratchet: tier-0 **865 → 898 agree, 0 disagree**; tier-1 270/300, 0 disagree.

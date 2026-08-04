@@ -93,6 +93,21 @@ def payloadCoreClasses : List ObjId :=
   [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
    Boot.floatId, Boot.symbolId]
 
+/-- The payload-carrying core class `k` inherits from, if any — `String`, `Array`,
+    `Hash` and `Exception` are *allocatable* for a subclass (L70: allocate the
+    empty payload with `klass := k`, then let `initialize` fill it), the rest are
+    not (a `Proc` needs a closure, a `Range`/`Random` needs its own arguments). -/
+def allocatableCore (h : Heap) (k : ObjId) : Option ObjId :=
+  (ancestors h k).find? fun a =>
+    a == Boot.stringId || a == Boot.arrayId || a == Boot.hashId || a == Boot.exceptionId
+
+/-- The empty payload an instance of core class `core` starts with. -/
+def emptyCorePayload (core : ObjId) : Payload :=
+  if core == Boot.stringId then .str ""
+  else if core == Boot.arrayId then .arr #[]
+  else if core == Boot.hashId then .hsh #[]
+  else .exc ""
+
 /-- Does `v`'s class resolve `==` to a *user* (non-builtin) method? Builtins
     that lean on default value-equality (`Array#include?`/`index`, …) must gate
     when an operand overrides `==`, since a pure comparison can't dispatch it. -/
@@ -241,7 +256,7 @@ def zeroArgBids : List String :=
    "Hash#inspect", "Hash#to_s", "Hash#dup",
    "Exception#message", "Exception#to_s", "Exception#inspect",
    "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
-   "Proc#lambda?", "Proc#to_proc",
+   "Proc#lambda?", "Proc#to_proc", "Object#initialize",
    "Range#inspect", "Range#to_s", "Range#first", "Range#last", "Range#begin",
    "Range#end", "Range#exclude_end?"]
 
@@ -1151,6 +1166,48 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
         .ok v m
       else .unsupported "ancestors"
     | _ => .unsupported "ancestors"
+  | "Object#initialize" => .ok .nil m
+  | "String#initialize" | "Array#initialize" | "Hash#initialize"
+  | "Exception#initialize" =>
+    -- Core initializers *mutate* the (already allocated) receiver, so a subclass's
+    -- `initialize` can `super` into them (L70). Reached only via `super` or the
+    -- allocate-then-initialize path; a plain `String.new` goes through `newImpl`.
+    match recv with
+    | .ref o =>
+      let setP := fun (pl : Payload) =>
+        BRes.ok .nil { m with heap := m.heap.set o { m.heap.get o with payload := pl } }
+      if bid == "String#initialize" then
+        match args with
+        | [] => setP (.str "")
+        | [sv] => match strPayload? h sv with
+          | some str => setP (.str str)
+          | none => .unsupported "String#initialize with a non-String argument"
+        | _ => .unsupported "String#initialize arity"
+      else if bid == "Array#initialize" then
+        match args with
+        | [] => setP (.arr #[])
+        | [.int n] =>
+          if n < 0 then .err Boot.argumentErrorId "negative array size" m
+          else setP (.arr (Array.replicate n.toNat .nil))
+        | [.int n, dflt] =>
+          if n < 0 then .err Boot.argumentErrorId "negative array size" m
+          else setP (.arr (Array.replicate n.toNat dflt))
+        | _ => .unsupported "Array#initialize arity"
+      else if bid == "Hash#initialize" then
+        match args with
+        | [] => setP (.hsh #[])
+        | [dflt] =>
+          let obj := { m.heap.get o with payload := .hsh #[], hashDflt := some (.val dflt) }
+          .ok .nil { m with heap := m.heap.set o obj }
+        | _ => .unsupported "Hash#initialize arity"
+      else
+        match args with
+        | [] => setP (.exc (className h (h.get o).klass))
+        | [msgV] => match toSP m msgV with
+          | .ok str => setP (.exc str)
+          | .error e => .unsupported e
+        | _ => .unsupported "Exception#initialize arity"
+    | _ => .unsupported "initialize on a non-object"
   | "Class#new" => newImpl m recv args
   | _ => .unsupported s!"builtin {bid}"
 where
@@ -1252,31 +1309,47 @@ where
             | .ok s => let (v, m) := allocExc m k s; .ok v m
             | .error e => .unsupported e
           | _ => .unsupported "Exception.new arity"
-        else if k == Boot.stringId then
+        else if (ancestors m.heap k).contains Boot.stringId then
+          -- `String.new` / `MyString.new(str)`: klass is `k`, so a subclass keeps
+          -- its own class while carrying a String payload (L70).
           match args with
-          | [] => okStr m ""
-          | _ => .unsupported "String.new with args"
-        else if k == Boot.arrayId then
+          | [] => let (o, h) := m.heap.alloc { klass := k, payload := .str "" }
+                  .ok (.ref o) { m with heap := h }
+          | [sv] =>
+            match strPayload? m.heap sv with
+            | some str => let (o, h) := m.heap.alloc { klass := k, payload := .str str }
+                          .ok (.ref o) { m with heap := h }
+            | none => .unsupported "String.new with a non-String argument"
+          | _ => .unsupported "String.new arity"
+        else if (ancestors m.heap k).contains Boot.arrayId then
           match args with
-          | [] => let (v, m) := allocArr m #[]; .ok v m
+          | [] => let (o, h) := m.heap.alloc { klass := k, payload := .arr #[] }
+                  .ok (.ref o) { m with heap := h }
           | [.int n] =>
             if n < 0 then .err Boot.argumentErrorId "negative array size" m
-            else let (v, m) := allocArr m (Array.replicate n.toNat .nil); .ok v m
+            else
+              let (o, h) := m.heap.alloc
+                { klass := k, payload := .arr (Array.replicate n.toNat .nil) }
+              .ok (.ref o) { m with heap := h }
           | [.int n, dflt] =>
             -- Array.new(n, default): n references to the *same* default object
             -- (Ruby semantics; matters only for mutable defaults, unused here).
             if n < 0 then .err Boot.argumentErrorId "negative array size" m
-            else let (v, m) := allocArr m (Array.replicate n.toNat dflt); .ok v m
+            else
+              let (o, h) := m.heap.alloc
+                { klass := k, payload := .arr (Array.replicate n.toNat dflt) }
+              .ok (.ref o) { m with heap := h }
           | _ => .unsupported "Array.new (block form / non-int size)"
-        else if k == Boot.hashId then
+        else if (ancestors m.heap k).contains Boot.hashId then
           match args with
-          | [] => let (v, m) := allocHsh m #[]; .ok v m
+          | [] => let (o, h) := m.heap.alloc { klass := k, payload := .hsh #[] }
+                  .ok (.ref o) { m with heap := h }
           | [dflt] =>
             -- `Hash.new(default)`: a static default value for missing keys.
             -- (The `Hash.new { |h,k| … }` default_proc form carries a block, so it
             -- is intercepted in `invoke` before this pure builtin — see L42.)
             let (o, h) := m.heap.alloc
-              { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.val dflt) }
+              { klass := k, payload := .hsh #[], hashDflt := some (.val dflt) }
             .ok (.ref o) { m with heap := h }
           | _ => .unsupported "Hash.new arity > 1"
         else if k == Boot.randomId then
@@ -1306,7 +1379,7 @@ where
                  Boot.falseClassId].contains k then
           .unsupported s!"{className m.heap k}.new"
         else if (ancestors m.heap k).any payloadCoreClasses.contains then
-          -- a subclass of String/Array/… inherits an unmodeled allocator
+          -- a subclass of Proc/Integer/… whose allocator we cannot model
           .unsupported s!"{className m.heap k}.new (payload-core subclass)"
         else
           -- Plain object. A user `initialize` is intercepted in `invoke`
