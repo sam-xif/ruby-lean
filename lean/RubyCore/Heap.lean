@@ -283,7 +283,7 @@ def builtinMethods : List (ObjId × List String) := [
   -- registered here.
   (procId, ["lambda?", "to_proc"]),
   (randomId, ["rand"]),
-  (rangeId, ["first", "last", "begin", "end", "exclude_end?"])
+  (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=

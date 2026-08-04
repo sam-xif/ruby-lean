@@ -1201,3 +1201,56 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   First content is `Comparable` (`< <= > >= between? clamp` over `<=>`), which also
   retires the "unmodeled constant Comparable" gate. Ratchet: **722 agree, 0
   disagree** — unchanged, as intended for a mechanism-only step.
+
+- **L63 — prelude content: `Enumerable` (36 methods), `Range` enumeration,
+  `Comparable` consumers, `Hash`'s Enumerable overrides — plus two fidelity
+  fixes the prelude exposed.** All of it is `each`-based Ruby: one `each` per
+  collection buys the module, so `Range` went from an opaque value to a full
+  collection by adding *one* method (`Range#each`, a `while` loop over `succ`)
+  and `include Enumerable`. Early exit inside the iteration block uses `return`
+  (unwinds to the Enumerable method's frame) and `break` (returns from `each`) —
+  both already modeled, and both load-bearing for `find`/`take`/`any?`.
+  Fidelity decisions worth recording:
+  - **Blockless Enumerable calls gate, they do not guess.** CRuby answers them
+    with an `Enumerator`; every such method starts with
+    `unless block_given? … __unsupported__(…)`. Same for the pattern-argument
+    forms (`all?(Integer)`), which is why the methods take `*pat` and gate on a
+    non-empty one instead of raising a wrong `ArgumentError`.
+  - **`Hash` needs its own `select`/`reject`/`transform_*`/predicates**: CRuby's
+    return a **Hash** and yield the key and value as *two* arguments, while the
+    generic Enumerable ones yield the `[k, v]` pair as one. Verified against the
+    oracle (`{a: 1}.select { |x| p x }` prints `:a`, not `[:a, 1]`), and the
+    reason `include Enumerable` into Hash is safe: Hash's own methods (and the
+    builtins `include?`/`member?`, which are *key* tests) sit lower in the chain.
+  - **`sort`/`sort_by` are insertion sorts over `<=>` dispatch** — works for user
+    classes and mixed comparables, and is *stable*, whereas CRuby's sort is not.
+    Programs that observe tie order are therefore outside what this models
+    faithfully; noted here rather than papered over.
+  - **`Range#include?`/`member?` are restricted to numeric ranges.** For
+    non-numeric ranges CRuby *iterates* (`('a'..'z').include?('cc')` is false)
+    while `cover?` compares (true), so the non-numeric case gates.
+  - `Object#===` (the `==` default) with `Range#===`/`Proc#===` overrides makes
+    `case`/`when` over ranges and lambdas work; `Object#tap` came along free.
+  Two fixes the prelude surfaced, both real bugs rather than gaps:
+  - **`blockSensitiveBids` — blocks were being silently dropped by builtins.**
+    `[3,1,2].sort { |a,b| b <=> a }` returned `[1,2,3]`: the builtin `Array#sort`
+    ran and ignored the block, a *silent disagreement* the corpus had not hit.
+    Dispatch now checks a list of builtins whose CRuby meaning *changes* with a
+    block (`sort`/`min`/`max`/`sum`/`index`/`uniq`/`fetch`/`delete`/`merge`/`new`)
+    and, when one gets a block, continues the ancestor walk above the builtin's
+    owner (`lookupAbove`) to a prelude definition of the same name — so
+    `sort {}`/`min {}`/`sum {}`/`index {}` now route to `Enumerable` and are
+    *right* rather than gated. No prelude definition ⇒ gate. Builtins CRuby also
+    ignores a block for (`length`, `to_s`, …) are deliberately not listed:
+    gating those would be over-strict, and CRuby agrees with us there.
+  - **`Range#inspect`/`#to_s` registered on `Range`.** `Repr` already rendered
+    `.range` payloads, but the methods were inherited from `Object`, so the L6
+    between-check fired ("unmodeled builtin would shadow: Range#inspect") on
+    seven tier-0 cases that only wanted `(1..2).inspect`. Registering them with
+    the right owner is the whole fix.
+  - **`for … in` over a Range** now expands via `spread` (integer ranges) instead
+    of gating on "non-Array collection" — 13 tier-1 cases.
+  Ratchet: tier-0 **722 → 761 agree, 0 disagree**; tier-1 (n=300, seed 11) 0
+  disagree. Tier-1's remaining gates are almost entirely metaprogramming
+  (`define_method` 96, `prepend` 27, `define_singleton_method` 21,
+  `alias_method` 9) — the next step, and the one Rails needs.

@@ -210,7 +210,20 @@ def zeroArgBids : List String :=
    "Hash#inspect", "Hash#to_s", "Hash#dup",
    "Exception#message", "Exception#to_s", "Exception#inspect",
    "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
-   "Proc#lambda?", "Proc#to_proc"]
+   "Proc#lambda?", "Proc#to_proc",
+   "Range#inspect", "Range#to_s", "Range#first", "Range#last", "Range#begin",
+   "Range#end", "Range#exclude_end?"]
+
+/-- Builtins whose CRuby behavior *changes* when a block is passed (`sort` sorts
+    by the block, `min`/`max` compare with it, `fetch` computes the default with
+    it, …). Our builtin arms are all blockless, so a block here must not be
+    silently ignored: dispatch instead falls through to a prelude definition of
+    the same name if one exists (`Enumerable#sort`), else gates (L63).
+    Builtins CRuby *also* ignores a block for (`length`, `to_s`, …) are
+    deliberately absent — gating those would be over-strict. -/
+def blockSensitiveBids : List String :=
+  ["Array#sort", "Array#min", "Array#max", "Array#sum", "Array#index",
+   "Array#uniq", "Hash#fetch", "Hash#delete", "Hash#merge", "Class#new"]
 
 /-- Run builtin `bid` ("Owner#name"). `implicitSelf` is whether the send had
     no explicit receiver (needed by nothing yet; visibility is deferred). -/
@@ -300,6 +313,16 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- stdlib (e.g. `benchmark`/`yaml`) is a no-op that returns true (as CRuby's
     -- first load does). The result is essentially never observed.
     .ok (.bool true) m
+  -- Registered on Range (not inherited from Object) so the L6 shadow check sees
+  -- the right owner; `Repr` already renders `.range` payloads [V].
+  | "Range#inspect" =>
+    match inspectP m recv with
+    | .ok s => okStr m s
+    | .error e => .unsupported e
+  | "Range#to_s" =>
+    match toSP m recv with
+    | .ok s => okStr m s
+    | .error e => .unsupported e
   | "Range#first" | "Range#begin" =>
     match recv with
     | .ref o => match (h.get o).payload with

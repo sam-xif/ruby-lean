@@ -421,6 +421,16 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk))
 
+/-- Continue the `lookup` walk *strictly above* `owner` in `recv`'s ancestor
+    chain. Used by the block fallback (L63): a blockless builtin shadowing a
+    prelude definition of the same name defers to it when a block is passed. -/
+def lookupAbove (h : Heap) (recv : Value) (owner : ObjId) (mname : String)
+    : Option (ObjId × MethodDef) :=
+  ((ancestors h (classOf h recv)).dropWhile (· != owner)).drop 1 |>.firstM fun k =>
+    match h.classPayload? k with
+    | some c => (c.methods.find? (·.1 == mname)).map (fun (_, md) => (k, md))
+    | none => none
+
 /-- First module in `ancestors k` defining `m` directly, with its owner — like
     `lookup` but keyed on a class ObjId rather than a receiver value (used to
     inspect a class before any instance of it exists, e.g. for `initialize`). -/
@@ -1091,6 +1101,17 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        -- A block changes what several builtins mean (L63). Our arms are
+        -- blockless, so defer to a prelude definition of the same name higher in
+        -- the chain (`Array#sort {}` → `Enumerable#sort`) rather than dropping
+        -- the block on the floor; gate if there is none.
+        if blk.isSome && Builtins.blockSensitiveBids.contains bid then
+          match lookupAbove m.heap recv owner mname with
+          | some (_, md2) =>
+            if md2.builtin.isNone then enterUserMethod m recv mname md2 args blk kw
+            else .unsupported s!"block passed to builtin {bid}"
+          | none => .unsupported s!"block passed to builtin {bid}"
+        else
         -- builtins have no keyword params in the model: keywords collapse to a
         -- trailing positional Hash (Ruby-3 [V]).
         let (args, m) := appendKwHash m args kw
@@ -1459,12 +1480,18 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .whileBodyK c body =>
       .next (withKont m (.eval c) (.whileCondK c body))
     | .forStartK targets body =>
-      -- v is the collection: iterate an Array natively (the model gates
-      -- Array#each, so `for` cannot desugar to it). Others gate.
+      -- v is the collection: iterate it natively (the model resolves `each` on a
+      -- lookup miss, so `for` cannot desugar to it). `spread` supplies the
+      -- element list — Arrays directly, integer Ranges expanded (L63) — and
+      -- gates anything whose expansion would need a dispatch.
       match v with
       | .ref o =>
         match (m.heap.get o).payload with
         | .arr xs => forStep m targets body xs.toList v
+        | .range .. =>
+          match spread m v with
+          | .ok vs => forStep m targets body vs v
+          | .error e => .unsupported e
         | _ => .unsupported "for over a non-Array collection"
       | _ => .unsupported "for over a non-Array collection"
     | .forBodyK targets body rest coll =>
