@@ -285,6 +285,39 @@ real code.
 
 ### 9.0 Reality check — what "fits the fragment" means today
 
+> **Superseded in part — 2026-08-03 snapshot.** The audit below is the 2026-07-30
+> one and is kept for provenance; the fragment has moved a long way since. Current:
+> **tier-0 940/1304 agree, 0 disagree** (was 722). Now working and *not* to be
+> re-planned: the whole **Enumerable predicate family**, `sort`/`sort_by`,
+> `group_by`, `each_with_object`, `each_slice`/`each_cons`, `inject(:sym)`,
+> **`Range` enumeration** (`each`/`map`/`to_a`/`include?`/`cover?`/`===`),
+> `Integer#upto`/`downto`/`step`, `Comparable`, **`defined?`**, **class variables**,
+> `Array#[]`/`String#[]` slice forms, **`define_method`** and the rest of the
+> reflective core (`class_eval`/`instance_eval`/`instance_exec`/`prepend`/
+> `alias_method`/`singleton_class`/ivar+const reflection/`Class.new`),
+> **`catch`/`throw`**, `redo` in blocks, **payload-core subclassing**
+> (`class MyString < String`), full `zsuper` param shapes, and **visibility**.
+> Most of that arrived via a **prelude** — Ruby's core library written *in RubyCore*
+> — so §10.3's "the real work is builtin semantics" is now cheap work: a few lines
+> of Ruby per method, validated by the same ratchet
+> (`ruby/lean/implementation-notes.md` L62–L73).
+>
+> **The remaining gates are no longer a list of small builtins.** They are: the
+> string `eval` family (48, permanently out of scope), the **numeric tower**
+> (`Rational`/`Complex`, 43), **`Enumerator`** in every form (a blockless Enumerable
+> call, ~22), **`Regexp`** (20), **`Struct`** (16), and out-of-scope reflection
+> (`TracePoint`/`File`/`RubyVM`/`binding`, ~27). Two of those — `Struct` and the
+> numeric tower — are blocked on the *same* structural thing, and it is worth
+> stating as the next lever: **repr must dispatch.** A struct's `inspect` and a
+> Rational's `to_s` cannot live in the prelude because defining `to_s`/`inspect`/`==`
+> flips the global `reprPure` flag (L7) and every `puts` in every program then
+> gates. Moving `p`/`puts`/interpolation into the prelude over a printing primitive
+> (so they *dispatch* `to_s`/`inspect`) retires the flag, unlocks ~59 tier-0 cases,
+> and — more important for this document — makes **any user class with a custom
+> `to_s`/`inspect`/`==` fully checkable**, which the DRuby corpus (§9.3) is full of.
+> Regex is the other big one and is unavoidable for the parser-shaped programs.
+
+
 **Re-audited 2026-07-30 by probing the built model directly** — the 2026-07-16 assessment
 this replaces was badly out of date, and several things it called blockers have shipped.
 Method: run minimal snippets through `bin/export-json | rubycore` and read the gate.
@@ -456,13 +489,17 @@ impossible branch for free — occurrence typing without occurrence-typing machi
 `is_a?`/`respond_to?` is what cashes out "zero false positives by construction" (§1). Treat
 as correctness-critical.
 
-**Build order (revised 2026-07-30, histogram-driven):** `Array#[]` slice → `defined?`
-(10.2 #2) → the Enumerable predicate family (10.3 #1) → `Range` enumeration → `zsuper` param
-shapes → Array/Hash fill-in. The first three are ~90+ tier-0 cases and low risk; that
-sequence still reaches `ai4r` without touching regex. Re-measure the histogram after each
-batch (`difftest run --tier 0 --sut lean`, then read `cases.jsonl`) rather than trusting this
-list — it is a snapshot, and counts are first-gate-hit so unblocking one reason can reveal
-another behind it.
+**Build order (revised 2026-08-03).** Everything the 2026-07-30 order listed is
+**done** (`Array#[]` slice → `defined?` → the Enumerable predicate family → `Range`
+enumeration → `zsuper` param shapes), and the mechanism that made the middle three
+cheap is the **prelude** (core library in RubyCore). The order from here:
+**(1) dispatching repr** (retires `reprPure`, unlocks `Struct` + the numeric tower +
+every user `to_s`/`==`), **(2) `Struct` and `Rational`/`Complex` in the prelude**
+(mechanical once (1) lands), **(3) `Enumerator`** (needs suspend/resume — scope it
+deliberately or mock it), **(4) `Regexp`** (a real matcher; unavoidable for the
+parser-shaped DRuby programs), **(5) `Method`/`UnboundMethod` objects** (`&method(:f)`
+is common in real code). Re-measure the histogram after each batch rather than
+trusting this list.
 
 ### 10.4 Mocking dependencies
 

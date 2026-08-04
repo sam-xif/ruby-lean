@@ -27,37 +27,50 @@ Two load-bearing ideas a new agent must internalize before touching anything:
 
 ## Status (current phase)
 
-> ### ⚠️ CURRENT SNAPSHOT (2026-07-30) — read this first
+> ### ⚠️ CURRENT SNAPSHOT (2026-08-03) — read this first
 >
 > The detailed log below is **historical and partly superseded** (it is kept as the
 > build record). Verified current state:
 >
 > - **Desugar: 1227/1299** bootstraptest agree, 0 disagree — effectively done; the
 >   remaining 72 are the unsupportable/deferred set.
-> - **Lean model: 722/1304** tier-0 agree, **0 disagree** (`--sut lean` GREEN; the
->   v4 migration referenced below is finished). Verified working by probing the
->   binary: call-site **kwargs** (all forms), **`include` mixins**, **`attr_*`**,
->   **reflection predicates** (`is_a?`/`kind_of?`/`instance_of?`/`respond_to?`),
->   block-driven **`each`/`map`/`inject`/`each_with_index`/`max_by`/`sum`/`times`/
->   `Hash#each`**, `Hash.new {}`, Float shortest-roundtrip, seeded `Random`, `Math`,
->   `Range`-as-a-value. **`lean/README.md` §Fragment is the authoritative list.**
-> - **Top actionable gates** (582 tier-0 gates): `defined?` (36), `zsuper` param
->   shapes (29), `Array#[]` slice (28), `Rational`/`Complex` (43), `Regexp`/`Struct`
->   (33), `define_method` (10); plus Enumerable **predicates**
->   (`select`/`reject`/`find`/`all?`/`any?`/`sort_by`/…) and **`Range` enumeration**.
->   The Enumerable gap is *specific, not structural* — `iterK` works, bodies are
->   missing. Re-measure with `difftest run --tier 0 --sut lean` + `cases.jsonl`.
+> - **Lean model: 940/1304** tier-0 agree, **0 disagree** (`--sut lean` GREEN; was
+>   722 before the 2026-08-03 batch). Tier-1 (n=400, seed 7) 371 agree / 0 disagree;
+>   tier-3 + regression replays clean. **`lean/README.md` §Fragment is the
+>   authoritative list**; `lean/implementation-notes.md` L62–L73 is the build record.
+> - **What the model now covers** beyond the L0–L2 core: a **prelude** (Ruby's core
+>   library written *in RubyCore* — Enumerable/Comparable/`Range#each`/Hash overrides
+>   — so a missing builtin costs a few lines of Ruby, not a new Lean rule); the
+>   **reflective metaprogramming core** (`define_method`, `class_eval`/
+>   `instance_eval`/`instance_exec`, `prepend`, `alias_method`, `singleton_class`,
+>   ivar/const reflection, `Class.new`); **`defined?`**; **class variables**;
+>   **`catch`/`throw`** + `redo` in blocks; **payload-core subclassing**
+>   (`class MyString < String`); full **`zsuper`** param shapes; **visibility**
+>   (`private`/`protected`/`public`, enforced at dispatch); `Kernel`/`Numeric` in the
+>   ancestor chain (byte-exact `ancestors`); `Array#[]`/`String#[]` slices;
+>   `dup`/`clone` copying ivars.
+> - **Top remaining gates** (356 tier-0): string `eval` family (48, permanently out
+>   of scope), `Rational`/`Complex` (43), blockless `Integer#times`/`Enumerator`
+>   (22), `Regexp` (20), `Struct` (16), dynamic keyword keys (14),
+>   `TracePoint`/`File`/`RubyVM` (22, out of scope). Re-measure with
+>   `difftest run --tier 0 --sut lean` + `cases.jsonl` rather than trusting this.
+> - **The next structural lever is dispatching repr, not more builtins.** `Struct`
+>   and `Rational` are both blocked on the same thing: their `inspect`/`==` cannot
+>   live in the prelude, because defining those names flips the *global* `reprPure`
+>   flag and every `puts` in every program would gate. Making `p`/`puts`/
+>   interpolation **dispatch** `to_s`/`inspect` retires that flag and unlocks ~59
+>   cases plus every user class with a custom `to_s`.
 > - **Metatheory: type safety as reachability, proved** — `invariant_sound` over the
 >   full `stepFn`, and T5 `class_hierarchy` proved type-safe **Direction B,
->   axiom-clean** (`lean/RubyCore/Proof/`, impl-notes L51–L57).
+>   axiom-clean** (`lean/RubyCore/Proof/`, impl-notes L51–L57); re-verified against
+>   the new machine (L73), still axiom-clean.
 > - **Checkers built:** Phase-1 random witness search (`lean/RubyCore/Search/`, L58)
->   and a **concolic engine** (`concolic/`) that solves for witnesses random search
->   cannot reach — with **the Lean model as its executor**.
-> - **Bottleneck is now model coverage, not checker machinery.** Grow the fragment off
->   the histogram; each increment pays three ways (ratchet ↑, Direction-B reach ↑,
->   concolic reach ↑ for free). Build order:
->   `../type-safety-by-reachability.md` §9.0/§10.3.
-
+>   and a **concolic engine** (`concolic/`, 28 tests) that solves for witnesses random
+>   search cannot reach — with **the Lean model as its executor**.
+> - **Two traps before touching `stepFn`** (L73): a `partial def` or a
+>   `String.endsWith`/`startsWith` on the dispatch path is not kernel-reducible and
+>   silently breaks every proof while the difftest ratchet stays green. Build the
+>   `Proof/` files at batch boundaries.
 
 - **Design artifacts (00–06): drafted.** Quasi-formal small-step semantics of the core,
   the differential-testing methodology, and the desugar-first plan.

@@ -1,38 +1,45 @@
 # Lean model — hand-off
 
-> ## ⚠️ CURRENT STATE (2026-07-30) — read this block, then skip to §"Open threads"
+> ## ⚠️ CURRENT STATE (2026-08-03) — read this block, then skip to §"Open threads"
 >
-> The dated banners and numbers further down are **historical**; they are kept for
-> provenance but several are wrong now. Current facts:
+> Everything dated earlier in this file (and the 2026-07-30 banner it replaces) is
+> **historical**; numbers below are the measured current ones.
 >
-> - **`--sut lean` is GREEN.** The v4 migration is long done. **tier-0 baseline:
->   722/1304 agree, 0 disagree** (not 372, not 468; `v4-migration-handoff.md` is
->   finished work).
-> - **Fragment, verified by probing the binary 2026-07-30** — see `README.md`
->   §Fragment for the authoritative list. Notably these are **DONE** despite older
->   text calling them gated: call-site **kwargs** (all forms), **`include` mixins**,
->   **`attr_*`**, the **reflection predicates** (`is_a?`/`respond_to?`/…),
->   block-driven **`each`/`map`/`inject`/`each_with_index`/`max_by`/`sum`/`times`/
->   `Hash#each`**, `Hash.new {}`, Float shortest-roundtrip, seeded `Random`, `Math`,
->   `Range`-as-a-value.
-> - **Top actionable gates** (tier-0 histogram, 582 gates): `defined?` (36),
->   `zsuper` param shapes (29), `Array#[]` slice (28), `Rational`/`Complex` (43),
->   `Integer#times` other forms (21), `Regexp`/`Struct` (33), `define_method` (10).
->   Still gated too: Enumerable **predicates** (`select`/`reject`/`find`/`all?`/
->   `any?`/`count {}`/`sort_by`/`group_by`/`each_with_object`/`upto`), **`Range`
->   enumeration**, `prepend`, class variables, visibility, `*_eval`.
->   Re-measure rather than trust this: `difftest run --tier 0 --sut lean`, then read
->   `reports/<latest>/cases.jsonl`. Counts are first-gate-hit, so unblocking one can
->   reveal another behind it.
-> - **Metatheory + checker are well ahead of the fragment** (`impl-notes L51`–`L58`):
->   `invariant_sound` (type safety as reachability) proved over the full `stepFn`;
->   T5 `class_hierarchy` proved type-safe **Direction B, axiom-clean**
->   (`Proof/T5Loop.lean`); Direction-A witnesses found and certified by random search
->   (`Search/Random.lean`) and by a **concolic engine** (`../concolic/`) for which
->   **this model is the executor** (`ConcolicMain.lean` → `rubycore-concolic`).
-> - **Consequence for sequencing:** the bottleneck is now **model coverage**, not
->   checker machinery. Grow the fragment off the histogram; every increment pays three
->   ways (ratchet ↑, Direction-B reach ↑, concolic reach ↑ for free).
+> - **`--sut lean` is GREEN. Tier-0 baseline: 940/1304 agree, 0 disagree**
+>   (722 → 940 in the 2026-08-03 batch). Tier-1 fuzzing (n=400, seed 7) 371 agree /
+>   0 disagree; tier-3 and regression replays clean. Concolic suite 28/28. All ten
+>   `Proof/` files build, axiom-clean.
+> - **What landed (see `implementation-notes.md` L62–L73):**
+>   - **A prelude** — the core library written *in RubyCore* (`prelude/prelude.rb`,
+>     generated into `RubyCore/Prelude.lean`, loaded by a two-phase boot). Enumerable
+>     (~36 methods), Comparable, `Range#each` (Range is now a full collection), Hash's
+>     Enumerable overrides, `BasicObject#!=`. **This is the mechanism to reach for
+>     when a builtin is missing**: a few lines of Ruby, not a new `IterKind`.
+>   - **Reflective metaprogramming** — `define_method`, the `*_eval`/`*_exec` block
+>     forms, `prepend`, `alias_method`, `singleton_class`, ivar/const reflection,
+>     `Class.new`.
+>   - **`defined?`** (the old largest gate), **class variables**, `Array#[]`/
+>     `String#[]` slices, **`catch`/`throw`**, `redo` in a block, **payload-core
+>     subclassing** (`class MyString < String`), full `zsuper` param shapes,
+>     **visibility** (`private`/`protected`/`public`, enforced at dispatch),
+>     `Kernel`/`Numeric` in the ancestor chain (so `ancestors` is byte-exact).
+> - **Top remaining tier-0 gates** (356 total): string `eval` family (48,
+>   permanently out of scope), `Rational`/`Complex` (43), blockless `Integer#times`
+>   i.e. `Enumerator` (22), `Regexp` (20), `Struct` (16), dynamic keyword keys (14),
+>   `TracePoint`/`File`/`RubyVM` (22, out of scope). Re-measure rather than trust
+>   this: `difftest run --tier 0 --sut lean`, then read `reports/<latest>/cases.jsonl`.
+> - **The next structural lever is *dispatching repr*, not more builtins.**
+>   `Struct` and `Rational` are both blocked on the same thing: their `inspect`/`==`
+>   cannot live in the prelude because defining those names flips the global
+>   `reprPure` flag (L7) and every `puts` in every program would gate. Making
+>   `p`/`puts`/interpolation dispatch `to_s`/`inspect` (moving them into the prelude
+>   over a printing primitive) retires that flag and unlocks ~59 cases plus every
+>   user class with a custom `to_s`. See `README.md` §Fragment.
+> - **Two traps to know before touching the step function** (L73): a `partial def`
+>   or a `String.endsWith`/`startsWith` on the dispatch path is **not
+>   kernel-reducible** and silently breaks every `Proof/` file while the difftest
+>   ratchet stays green. Dispatch on literal-list membership instead, and build the
+>   proofs (`lake build RubyCore.Proof.T5Loop …`) as part of a batch.
 
 Fresh-context hand-off for the Lean interpreter work begun 2026-07-07 (mirrors
 `../difftest/HANDOFF.md` in role). Read `README.md` first for layout/build;
@@ -162,4 +169,6 @@ disagreement — preserve them as the fragment grows.
 
 Ratchet discipline carries over from the desugar: after any change, tier-0
 full + tier-1 + regression replay must stay **0 disagree**, and agreement may
-only go up (baseline now 372, was 295 pre-L1).
+only go up (baseline now **940**). At batch boundaries also build the `Proof/`
+files and run `../concolic` (28 tests) — the ratchet does not notice a
+kernel-reducibility regression (L73).

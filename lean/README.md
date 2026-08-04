@@ -17,6 +17,9 @@ against it and the adequacy theorems proved after.
 | `RubyCore/CRubyNames.lean` | **generated from the oracle**: per-class method-name sets + toplevel constants, so dispatch can detect "an unmodeled CRuby builtin would shadow this" and gate instead of mis-dispatching |
 | `RubyCore/Machine.lean` | `Machine` config: control state, kont stack, frame **store** + id stack (sketch §1.2), stdout accumulator, `$!` |
 | `RubyCore/Builtins.lean` | the axiomatized builtin methods, keyed `"Owner#name"`, registered in H₀'s method tables so shadowing is uniform |
+| `prelude/prelude.rb` | the **prelude**: the part of the core library modeled *in Ruby* (Enumerable, Comparable, `Range#each`, Hash's Enumerable overrides, `BasicObject#!=`, …). Authored here; read the rules at the top of the file before editing (L62/L63) |
+| `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from `prelude/prelude.rb`: the desugared prelude as export JSON, decoded by the ordinary `Decode.program` |
+| `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
@@ -41,63 +44,89 @@ uv run python -m difftest run --tier 0 --sut lean       # bootstraptest corpus
 uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 1
 ```
 
-## Fragment (verified 2026-07-30 by probing the built binary)
+## Fragment (verified 2026-08-03 by probing the built binary)
 
-**Modeled.** Literals, locals/ivars/gvars, sends, `if`/`while`/`dowhile`/`for`
-(+`break`/`next`/`redo`), `def`/call with **all param kinds** (required, optional,
-`*rest`, keyword, `**kwrest`, `&blk`, destructuring), `begin`/`rescue`/`else`/
-`ensure`/`retry`, `return`, `case`/`when`, constant paths, `undef`/`alias`,
-arrays/hashes/strings as mutable heap payloads, `raise`, `$!` save/restore.
+Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
+
+**Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/
+`for` (+`break`/`next`/`redo`), `def`/call with **all param kinds** (required,
+optional, `*rest`, keyword, `**kwrest`, `&blk`, destructuring), `begin`/`rescue`/
+`else`/`ensure`/`retry`, `return`, `case`/`when`, constant paths, `undef`/`alias`,
+`defined?`, arrays/hashes/strings as mutable heap payloads, `raise`, `$!`
+save/restore.
 
 - **L1 (blocks/procs/lambdas):** literal blocks + `yield`, `block_given?`, `&blk`
   capture params, block-pass `&e`/`&:sym`, `proc`/`lambda`/`->`/`Proc.new`,
   `Proc#call`, and non-local control (`next`/`break`/`return`) with proc-vs-lambda
   semantics and shared-scope locals (`impl-notes L16`).
 - **L2 (object model):** `class`/`module` bodies, `Class#new`/`initialize`,
-  cref-scoped constants, `method_missing`, `super`/`zsuper`, singleton methods +
-  eigenclasses, **`include` mixins**, **`attr_reader`/`attr_writer`/
-  `attr_accessor`** (`impl-notes L17`–`L19`).
-- **Call-site keyword arguments** — every form: required, defaults, `**h`
-  double-splat, `**kwrest`, `Class.new(a: v)`.
-- **Reflection predicates** — `is_a?`/`kind_of?`/`instance_of?`/`respond_to?`.
-  (Load-bearing for the checker: executing the real predicate prunes impossible
-  branches — see `../../type-safety-by-reachability.md` §10.3.)
-- **Block-driven Enumerable** — `each`, `map`/`collect`, `inject`/`reduce`,
-  `each_with_index`, `each_index`, `max_by`/`min_by`, `sum`, `Integer#times`,
-  `Hash#each`/`each_pair`/`each_key`/`each_value`, `Hash.new(v)` and
-  `Hash.new { … }` default procs (`impl-notes L41`, `L42`, `L44`).
-- **Numerics/misc:** `Float#to_s`/`#inspect` shortest round-trip (Dragon4, `L45`),
-  seeded MT19937 `Random` (`L46`), `require`/`require_relative` no-ops (`L47`),
-  `Math` + `Range`-as-a-value (`L48`), array/numeric builtins (`L49`).
+  cref-scoped constants, `method_missing`, `super`/`zsuper` (**all param shapes**),
+  singleton methods + eigenclasses, `include`/**`prepend`** mixins, `attr_*`,
+  **`Kernel`/`Numeric` in the real ancestor chain** so `ancestors` is byte-exact
+  (`L17`–`L19`, `L65`, `L70`).
+- **The prelude — core library written in RubyCore** (`prelude/prelude.rb`,
+  `L62`/`L63`): `Enumerable` (~36 methods: `select`/`reject`/`find`/`all?`/`any?`/
+  `none?`/`count`/`sum`/`map`/`flat_map`/`each_with_index`/`each_with_object`/
+  `group_by`/`partition`/`tally`/`take`/`drop`/`*_while`/`each_slice`/`each_cons`/
+  `min`/`max`/`min_by`/`max_by`/`sort`/`sort_by`/`inject`/…), `Comparable`,
+  **`Range#each`** (so Range is a full collection), Hash's Enumerable overrides
+  (which return Hashes and yield `(k, v)`), `Integer#upto`/`downto`/`step`,
+  `Object#===`/`tap`, `Proc#===`, and `BasicObject#!=` (which *must* dispatch `==`).
+- **Reflective metaprogramming** (`L64`/`L65`): `define_method`/
+  `define_singleton_method` (bodies that close over the defining scope),
+  `class_eval`/`module_eval`/`instance_eval`/`instance_exec` (block forms),
+  `alias_method`, `singleton_class`, `instance_variable_get`/`_set`/`_defined?`,
+  `instance_variables`, `const_get`/`const_set`/`const_defined?`,
+  `remove_method`/`undef_method`, `Class.new`/`Module.new` (incl. the block form)
+  with anonymous-class naming on constant assignment.
+- **Visibility** (`L71`): `private`/`protected`/`public` (bare mode + name forms),
+  `module_function`, `private_class_method`, enforced at dispatch against the call
+  site (`self.m` may call private, `x.m` may not, `send` bypasses,
+  `public_send` does not); `respond_to?`/`method_defined?`/`defined?` honour it.
+- **Non-local control** (`L69`): `catch`/`throw` (+ `UncaughtThrowError` raised at
+  the throw site), `redo` in a block, `break`/`next` through a class body.
+- **Payload-core subclassing** (`L70`): `class MyString < String` (and Array/Hash/
+  Exception) allocate and initialize properly, including `super` in `initialize`
+  and `raise C` running a user `initialize`.
+- **Call-site keyword arguments** — every form; **reflection predicates**
+  `is_a?`/`kind_of?`/`instance_of?`/`respond_to?` (load-bearing for the checker:
+  executing the real predicate prunes impossible branches).
+- **Numerics/misc:** `Float#to_s`/`#inspect` shortest round-trip (`L45`), seeded
+  MT19937 `Random` (`L46`), `Math` + `Range` (`L48`), `Array#[]`/`String#[]` slice
+  forms (`L68`), `dup`/`clone` (copying ivars, `L66`), `String#+@`/`-@` (`L72`).
 
-**Gated (`Unsupported`, exit 3).** Ranked by the tier-0 gate histogram — re-measure
-with `difftest run --tier 0 --sut lean` then read `cases.jsonl`, don't trust this
-list to stay current:
+**Gated (`Unsupported`, exit 3).** Ranked by the tier-0 gate histogram (2026-08-03,
+356 gates) — re-measure with `difftest run --tier 0 --sut lean` then read
+`cases.jsonl`; do not trust this list to stay current:
 
 | Count | Gate |
 |---|---|
-| 38 | string `eval` family (permanently out of scope) |
-| 36 | `defined?` (desugar-side) |
-| 29 | `zsuper` param reconstruction (unsupported param shape) |
-| 28 | `Array#[]` slice `(start, len)` |
-| 25 / 18 | `Rational` / `Complex` |
-| 21 | `Integer#times` (a form other than the working block call) |
-| 17 / 16 | `Regexp` / `Struct` |
-| 10 | `Module#define_method` |
-| 10 | `Array#any?` |
+| 38 + 10 | string `eval` / `instance_eval`/`class_eval` of a string (permanently out of scope) |
+| 25 / 18 | `Rational` / `Complex` (the numeric tower) |
+| 22 | `Integer#times` without a block (an `Enumerator`) |
+| 20 | `Regexp` |
+| 16 | `Struct` |
+| 14 | dynamic (non-symbol) keyword key (decode-side) |
+| 9 / 8 / 5 | `TracePoint` / `File` / `RubyVM` (out of scope by design) |
+| 7 | optional/keyword/destructuring **block** params |
+| 6 | toplevel `return` (desugar-side) |
+| 5 | `Object#binding`, `Object#object_id` |
 
-Also gated: **Enumerable predicates** `select`/`reject`/`find`/`all?`/`any?`/
-`count {}`/`sort_by`/`group_by`/`each_with_object`/`Integer#upto`; **`Range`
-enumeration** (`each`/`map`/`to_a`/`include?` — the value works, iteration
-doesn't); `prepend`; **class variables**; `Integer#hash` (seeded);
-visibility (`private`/`public`, `impl-notes L50`); `*_eval`; vcall-vs-fcall
-`NameError` ambiguity; and anything CRuby defines that the model doesn't (via
+Also gated: `Enumerator` in every form (a blockless Enumerable call), `Method`/
+`UnboundMethod` objects (`Object#method`), `private_constant`, `prepend` with a
+`prepended` hook, `Proc`/`Range`/`Random` subclass allocation, class variables in a
+singleton-class scope, and anything CRuby defines that the model doesn't (via
 `CRubyNames`).
 
-The Enumerable gap is **specific, not structural** — the `iterK` machinery works;
-what's missing are particular bodies (new `IterKind`s), so these are low-risk
-increments. See `../../type-safety-by-reachability.md` §9.0/§10.3 for the
-histogram-driven build order.
+**The next lever is `Struct`, and it is blocked on repr, not on metaprogramming.**
+`Class.new` + `define_method` + `attr_accessor` are all in place, so `Struct` could
+be written in the prelude — but a struct's `inspect` is `#<struct S a=1>` and its
+`==` compares fields, and a prelude definition of either flips `reprPure` (`L7`)
+globally, making every `puts` in every program gate. The principled fix is to make
+`p`/`puts`/interpolation **dispatch** `to_s`/`inspect` instead of relying on pure
+repr (i.e. move them into the prelude too, with a printing primitive underneath),
+which also retires the `reprPure` flag. That is the recommended next structural
+step; `Rational`/`Complex` (43 cases) are blocked on exactly the same thing.
 
 Two fidelity policies worth knowing (both are what keeps the corpus at
 0-disagree rather than quietly wrong):
@@ -109,7 +138,31 @@ Two fidelity policies worth knowing (both are what keeps the corpus at
 2. **`reprPure`** — a user `def` of `to_s`/`inspect`/`==`/`eql?`/`message`/`to_str`
    flips a flag; builtins that internally rely on *pure* default repr
    (`puts`, `p`, interpolation's `String()`, `Array#inspect`, …) then answer
-   `Unsupported` for plain objects rather than printing the wrong thing.
+   `Unsupported` for plain objects rather than printing the wrong thing. (It is a
+   *global* flag, which is why the prelude may not define any of those names — and
+   why `Struct`/`Rational` wait on dispatching repr, see §Fragment.)
+3. **A prelude method suppresses the shadow gate for its own name** (`L62`) — it
+   *is* the model of that CRuby builtin, so `Array#select` resolving to the
+   prelude's `Enumerable#select` is intended, not a mis-dispatch. The fidelity
+   obligation moves into `prelude/prelude.rb`, where difftest checks it. A *user*
+   method shadowed by a real builtin still gates.
+4. **Blockless builtins defer to the prelude when given a block** (`L63`):
+   `[3,1,2].sort { … }` would silently ignore the block, so such calls route to a
+   prelude definition of the same name, or gate.
+
+## Regenerating the generated files
+
+`RubyCore/CRubyNames.lean` (oracle name tables) and `RubyCore/Prelude.lean` (the
+desugared prelude) are both **generated and committed**. Regenerate the prelude
+after every edit to `prelude/prelude.rb`:
+
+```sh
+"$(brew --prefix ruby)/bin/ruby" scripts/gen_prelude.rb > RubyCore/Prelude.lean
+lake build
+```
+
+`scripts/cmp.sh 'p [1,2].select { |x| x > 1 }'` is the dev loop: it runs a snippet
+through both CRuby and the model and reports AGREE / DIFF / GATE.
 
 ## Regenerating `CRubyNames.lean`
 
