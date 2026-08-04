@@ -1465,3 +1465,35 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     batch introduced). This is the prelude paying off as a *correctness*
     mechanism rather than a coverage one — the faithful definition is Ruby code.
   Ratchet: tier-0 **865 → 898 agree, 0 disagree**; tier-1 270/300, 0 disagree.
+
+## Visibility (L71)
+
+- **L71 — `private`/`protected`/`public`, enforced at dispatch.** `MethodDef`
+  gained a three-valued `visibility` (replacing the unused `private'` flag) and
+  `Frame` a `defVis`, which is what a **bare** `private` in a class body sets for
+  the rest of that body. `def` reads it (and `initialize` is always private [V]),
+  as does `attr_*`.
+  - **The call site had to become first-class.** CRuby's private check is
+    *syntactic*: `self.priv` is allowed (Ruby 2.7+) but `x.priv` is not — *even
+    when `x` happens to be `self`* [V]. So the `implicit : Bool` threaded through
+    the send konts became `SendSite := implicit | selfRecv | explicit | reflective`:
+    only `explicit` is checked, `selfRecv` is decided syntactically at the send,
+    and `reflective` is `send`/`__send__` (which bypass visibility, while
+    `public_send` does not [V]). The Bool's other job — the vcall/fcall `NameError`
+    split — now keys on `.implicit` alone, which is *more* precise than before:
+    `self.nonexistent` no longer looks like a bare-name miss.
+  - Protected passes when the **caller's** `self` is a kind of the method's owner,
+    which is why the check lives at dispatch (where both are known) rather than in
+    the method table.
+  - Reflection follows: `respond_to?` answers false for private *and* protected
+    unless `include_private` [V]; `method_defined?` covers public and protected,
+    with `public_`/`private_`/`protected_method_defined?` asking for exactly one;
+    and `defined?(obj.private_m)` is nil (it shares `visError?`).
+  - `module_function :m` copies the method to the eigenclass **with the eigenclass
+    as its owner** — without that, `super` inside the copy has no chain to continue
+    (test_method_210: it must find `Object#foo`). A bare `module_function` (a
+    body-wide mode) gates.
+  - `private_class_method`/`public_class_method` are the same code with the
+    eigenclass as target. `private_constant` is still gated (constant visibility
+    would have to be checked in constant lookup).
+  Ratchet: tier-0 **898 → 909 agree, 0 disagree**; tier-1 270/300, 0 disagree.

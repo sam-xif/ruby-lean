@@ -49,6 +49,13 @@ def Value.truthy : Value → Bool
   | .nil => false
   | _ => true
 
+/-- Method visibility (artifact 02 §5, L71). `protected` differs from `private`
+    only in the dispatch check: an explicit receiver is allowed when the *caller's*
+    `self` is a kind of the method's owner. -/
+inductive Visibility where
+  | pub | priv | prot
+deriving Repr, DecidableEq, Inhabited
+
 structure MethodDef where
   params : List Param
   body : Expr
@@ -60,7 +67,7 @@ structure MethodDef where
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
-  private' : Bool := false
+  visibility : Visibility := .pub
   /-- `define_method`: the frame this body **closes over** — free variables
       resolve up its `captured` chain, exactly as in the block it came from
       (L64). `none` for an ordinary `def`, whose body has no enclosing scope.

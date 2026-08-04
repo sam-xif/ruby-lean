@@ -51,6 +51,9 @@ structure Frame where
   home : FrameId := 0
   /-- Block frames: lambda semantics (strict arity, local return/break). -/
   lam : Bool := false
+  /-- Default visibility for `def`s in this class body — set by a bare `private`
+      / `public` / `protected` (artifact 02 §5, L71). -/
+  defVis : Visibility := .pub
 deriving Inhabited
 
 /-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
@@ -70,6 +73,19 @@ inductive Jump where
       A tag-carrying transfer, so one Jump constructor covers every use. -/
   | throwJ (tag : Value) (v : Value)
 deriving Inhabited
+
+/-- What the call site looked like — needed for visibility (artifact 02 §5) and
+    for the vcall/fcall `NameError` split (L71):
+    - `implicit`: no receiver written (`m()`), so private methods are callable and
+      a bare zero-arg miss is the vcall/fcall ambiguity;
+    - `selfRecv`: a literal `self.m`, which may call private methods (Ruby 2.7+)
+      but is unambiguously a method call;
+    - `explicit`: any other receiver — visibility is enforced;
+    - `reflective`: via `send`/`__send__`, which bypass visibility entirely
+      (`public_send` uses `explicit`). -/
+inductive SendSite where
+  | implicit | selfRecv | explicit | reflective
+deriving Repr, DecidableEq, Inhabited
 
 /-- A send's block child, carried through arg evaluation. A literal block is
     reified (capturing the caller frame) only once args are in; a `&e`
@@ -172,23 +188,23 @@ inductive Kont where
   | iterK (cl : Closure) (brk : FrameId) (rest : List (List Value))
       (kind : IterKind) (acc : List Value) (retVal : Value) (cur : Value)
   /-- Got the receiver; evaluate args next. `blk` rides along to the dispatch. -/
-  | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : Bool)
+  | recvK (m : String) (args : List Expr) (blk : PendingBlk) (implicit : SendSite)
   /-- Evaluating args left to right. -/
-  | argsK (recv : Value) (implicit : Bool) (m : String)
+  | argsK (recv : Value) (implicit : SendSite) (m : String)
       (acc : List Value) (rest : List Expr) (blk : PendingBlk)
   /-- Value in flight is a `*e` splat operand of a send: spread it. -/
-  | argsSplatK (recv : Value) (implicit : Bool) (m : String)
+  | argsSplatK (recv : Value) (implicit : SendSite) (m : String)
       (acc : List Value) (rest : List Expr) (blk : PendingBlk)
   /-- Value in flight is a `&e` block-pass operand: coerce via to_proc, then
       dispatch (args + keywords already evaluated). -/
-  | blkCoerceK (recv : Value) (implicit : Bool) (m : String) (acc : List Value)
+  | blkCoerceK (recv : Value) (implicit : SendSite) (m : String) (acc : List Value)
       (kw : List (Value × Value))
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
-      (recv : Value) (implicit : Bool) (m : String) (posArgs : List Value) (pblk : PendingBlk)
+      (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
   /-- Evaluating a call-site `**h` double-splat; then continue the kwargs. -/
   | kwSplatK (rest : List KwEntry) (kwacc : List (Value × Value))
-      (recv : Value) (implicit : Bool) (m : String) (posArgs : List Value) (pblk : PendingBlk)
+      (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
   /-- Evaluating `yield` args left to right. -/
   | yieldArgK (acc : List Value) (rest : List Expr)
   | yieldSplatK (acc : List Value) (rest : List Expr)

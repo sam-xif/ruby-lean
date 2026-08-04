@@ -714,12 +714,28 @@ def cpathContainer (m : Machine) (base : Value) : Except StepResult ObjId :=
     | .ok r => .error (.next (raiseErr m Boot.typeErrorId s!"{r} is not a class/module"))
     | .error e => .error (.unsupported e)
 
+/-- Visibility enforcement at dispatch (artifact 02 §5, L71): only an `explicit`
+    receiver is checked — an implicit send, a literal `self.m`, and `send`/
+    `__send__` are all exempt. Protected passes when the *caller's* `self` is a
+    kind of the method's owner. Messages are byte-exact [V]. -/
+def visError? (m : Machine) (recv : Value) (site : SendSite) (md : MethodDef)
+    (mname : String) : Option StepResult :=
+  match site, md.visibility with
+  | .explicit, .priv =>
+    some (.next (raiseErr m Boot.noMethodErrorId
+      s!"private method '{mname}' called for {receiverDesc m.heap recv}"))
+  | .explicit, .prot =>
+    if isA m.heap m.currentFrame.self md.owner then none
+    else some (.next (raiseErr m Boot.noMethodErrorId
+      s!"protected method '{mname}' called for {receiverDesc m.heap recv}"))
+  | _, _ => none
+
 /-- Default `method_missing` (artifact 02 §4): the bare implicit-self zero-arg
     send is ambiguous (vcall `NameError` vs fcall `NoMethodError`; RubyCore
     conflates them) — gate; otherwise the byte-exact `NoMethodError`. -/
-def missNoMethod (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def missNoMethod (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) : StepResult :=
-  if implicit && args.isEmpty then
+  if implicit == .implicit && args.isEmpty then
     .unsupported s!"vcall/fcall NameError ambiguity: {mname}"
   else
     .next (raiseErr m Boot.noMethodErrorId
@@ -936,12 +952,13 @@ def defineAttr (m : Machine) (cls : ObjId) (mname : String)
     | .sym s =>
       -- accessor methods are named `s`/`s=`, but the backing ivar is `@s` [V].
       let iv := "@" ++ s
+      let vis := m.currentFrame.defVis
       let getter : MethodDef :=
         { params := [], body := .var .ivar iv, owner := cls,
-          fromPrelude := m.preludeMode }
+          fromPrelude := m.preludeMode, visibility := vis }
       let setter : MethodDef :=
         { params := [.req "__v"], body := .vasgn .ivar iv (.var .lvar "__v"), owner := cls,
-          fromPrelude := m.preludeMode }
+          fromPrelude := m.preludeMode, visibility := vis }
       let m := if mname != "attr_writer" then { m with heap := defineMethod m.heap cls s getter } else m
       let m := if mname != "attr_reader" then { m with heap := defineMethod m.heap cls (s ++ "=") setter } else m
       let names := names
@@ -1066,6 +1083,61 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
     | [tag] => some (go tag .nil)
     | [tag, v] => some (go tag v)
     | _ => some (.unsupported "throw/arity")
+  | "public" | "private" | "protected" | "module_function"
+  | "private_class_method" | "public_class_method" =>
+    -- artifact 02 §5 (L71). Bare form: set the class body's default visibility.
+    -- With names: set those methods' visibility (and, for `module_function`, copy
+    -- them to the eigenclass). Returns the names (or nil for the bare form) [V].
+    let vis : Visibility := match mname with
+      | "public" | "public_class_method" => .pub
+      | "protected" => .prot
+      | _ => .priv
+    match recv with
+    | .ref o =>
+      if (m.heap.classPayload? o).isNone then none
+      else
+      let names := args.filterMap (symOrStr m)
+      if names.length != args.length then none
+      else if names.isEmpty then
+        if mname == "private_class_method" || mname == "public_class_method" then none
+        else if mname == "module_function" then
+          some (.unsupported "bare module_function (sets a body-wide mode)")
+        else
+          -- bare `private`/`public`/`protected` in a class body
+          let f := m.currentFrame
+          let m := m.setCurrentFrame { f with defVis := vis }
+          some (.next (withCtl m (.value .nil)))
+      else
+        -- the target class: the eigenclass for the `*_class_method` forms
+        let (target, m) :=
+          if mname == "private_class_method" || mname == "public_class_method" then
+            eigenclassOf m o
+          else (o, m)
+        let step := fun (acc : Option Machine) (n : String) =>
+          acc.bind fun m =>
+            match methodOn m.heap target n with
+            | some (_, md) =>
+              if md.builtin.isSome && !md.fromPrelude then none   -- unmodeled builtin → gate
+              else
+                let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
+                -- `module_function :m` also defines `m` as a singleton method [V]
+                if mname == "module_function" then
+                  -- the singleton copy is *owned by the eigenclass*, so `super`
+                  -- inside it continues from there (Module → Object) [V]
+                  let (e, m) := eigenclassOf m o
+                  let copy := { md with visibility := .pub, owner := e }
+                  some { m with heap := defineMethod m.heap e n copy }
+                else some m
+            | none => none
+        match names.foldl step (some m) with
+        | some m =>
+          let (arr, m) := Builtins.allocArr m (names.map Value.sym).toArray
+          -- a single name answers that name, several answer the array [V]
+          match names with
+          | [n] => some (.next (withCtl m (.value (.sym n))))
+          | _ => some (.next (withCtl m (.value arr)))
+        | none => some (.unsupported s!"{mname} of a method the model does not define")
+    | _ => none
   | "singleton_class" =>
     match recv with
     | .ref o => let (e, m) := eigenclassOf m o; some (.next (withCtl m (.value (.ref e))))
@@ -1219,12 +1291,22 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         some (.next (withCtl m (.value arr)))
       | none => none
     | _ => none
-  | "method_defined?" =>
+  | "method_defined?" | "public_method_defined?" | "private_method_defined?"
+  | "protected_method_defined?" =>
     match recv, args with
     | .ref o, [nameArg] =>
       match symOrStr m nameArg, m.heap.classPayload? o with
       | some name, some _ =>
-        let found := (match methodOn m.heap o name with | some (_, md) => !md.undefined | none => false)
+        -- `method_defined?` covers public *and* protected; the three specific
+        -- predicates ask for exactly one visibility [V].
+        let visOk : Visibility → Bool := fun v => match mname with
+          | "public_method_defined?" => v == .pub
+          | "private_method_defined?" => v == .priv
+          | "protected_method_defined?" => v == .prot
+          | _ => v != .priv
+        let found := (match methodOn m.heap o name with
+            | some (_, md) => !md.undefined && visOk md.visibility
+            | none => false)
           || (crubyShadow m.heap (ancestors m.heap o) name).isSome
           || mixinDefines m o name
         some (.next (withCtl m (.value (.bool found))))
@@ -1232,10 +1314,16 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
     | _, _ => none
   | "respond_to?" =>
     match args with
-    | nameArg :: _ =>   -- ignore the optional include_private flag
+    | nameArg :: rest =>
+      let inclPrivate := match rest with
+        | [v] => v.truthy
+        | _ => false
       match symOrStr m nameArg with
       | some name =>
-        let found := (match lookup m.heap recv name with | some (_, md) => !md.undefined | none => false)
+        -- private *and* protected answer false unless include_private [V]
+        let found := (match lookup m.heap recv name with
+            | some (_, md) => !md.undefined && (inclPrivate || md.visibility == .pub)
+            | none => false)
           || (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
           || mixinDefines m (classOf m.heap recv) name
         if found then some (.next (withCtl m (.value (.bool true))))
@@ -1255,7 +1343,7 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
     names, else route to `method_missing` (user override) or the byte-exact
     `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
     tombstone-hit dispatch paths. -/
-def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) : StepResult :=
   match tryIterator m recv mname args blk with
   | some sr => sr
@@ -1286,7 +1374,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
-def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
   -- `recv` with the rest. Only when unshadowed by a user `send` (rare) [V].
@@ -1313,7 +1401,10 @@ def invoke (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
     match args with
     | nameArg :: rest =>
       match symOrStr m nameArg with
-      | some m2 => invoke m recv false m2 rest blk kw
+      | some m2 =>
+        -- `send`/`__send__` bypass visibility; `public_send` does not [V]
+        let site : SendSite := if mname == "public_send" then .explicit else .reflective
+        invoke m recv site m2 rest blk kw
       | none => invokeDispatch m recv implicit mname args blk kw
     | [] => invokeDispatch m recv implicit mname args blk kw
   else
@@ -1374,7 +1465,7 @@ decreasing_by
   simp_wf
 where
   invokeMaybeNew (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
-      (implicit : Bool) (mname : String) (args : List Value) (blk : Option Value)
+      (implicit : SendSite) (mname : String) (args : List Value) (blk : Option Value)
       (kw : List (Value × Value)) : StepResult :=
       -- `Class#new` on a class with a user `initialize` must allocate then run
       -- `initialize` (a frame the builtin cannot push); yield the instance via
@@ -1401,7 +1492,7 @@ where
             enterUserMethod m inst "initialize" md args blk kw
         | none => invokeDispatch m recv implicit mname args blk kw
       else invokeDispatch m recv implicit mname args blk kw
-  invokeDispatch (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+  invokeDispatch (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
       (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   let chain := ancestors m.heap (classOf m.heap recv)
   match lookup m.heap recv mname with
@@ -1411,6 +1502,9 @@ where
       let (args, m) := appendKwHash m args kw
       dispatchMiss m recv implicit mname args blk
     else
+    match visError? m recv implicit md mname with
+    | some sr => sr
+    | none =>
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
     -- receiver's class and our resolved owner, CRuby would dispatch there —
     -- we'd be running the wrong method. Gate. (Builtins are exempt only
@@ -1555,14 +1649,14 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
     a block capture rather than call; a `&e` block-pass evaluates `e` last
     (eval order) then coerces. -/
-def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (pblk : PendingBlk) (kw : List (Value × Value) := []) : StepResult :=
   match pblk with
   | .passExpr e => .next (withKont m (.eval e) (.blkCoerceK recv implicit mname args kw))
   | .lit ps ls body =>
-    let mkLam := implicit && mname == "lambda"
+    let mkLam := implicit == .implicit && mname == "lambda"
     let (v, m) := reifyBlock m ps ls body mkLam
-    if implicit && (mname == "lambda" || mname == "proc") then
+    if implicit == .implicit && (mname == "lambda" || mname == "proc") then
       .next (withCtl m (.value v))
     else if mname == "new" && (match recv with | .ref k => k == Boot.procId | _ => false) then
       .next (withCtl m (.value v))
@@ -1587,7 +1681,7 @@ def finishSend (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
 /-- Evaluate the pending call-site `kwargs` entries (values left to right,
     `**h` splats expanded), then dispatch. Duplicate keys keep first position,
     last value (as hash literals do [V]). -/
-def startKwargs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def startKwargs (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (posArgs : List Value) (kwacc : List (Value × Value)) (entries : List KwEntry)
     (pblk : PendingBlk) : StepResult :=
   match entries with
@@ -1619,7 +1713,7 @@ def forwardBundle (m : Machine) : List Value × List (Value × Value) × Option 
 /-- Evaluate the next pending argument, or dispatch if none remain. A trailing
     `kwargs` marker switches to keyword evaluation; a `fwd` marker (`g(...)`)
     expands the enclosing method's forwarding bundle. -/
-def startArgs (m : Machine) (recv : Value) (implicit : Bool) (mname : String)
+def startArgs (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (acc : List Value) (rest : List Expr) (pblk : PendingBlk) : StepResult :=
   match rest with
   | [] => finishSend m recv implicit mname acc pblk
@@ -1721,7 +1815,8 @@ def cvarScope (m : Machine) : Option ObjId :=
     but we don't model it (gate — the L5 fidelity split; `defined?` must not
     answer nil for a method that really exists). `method_missing` is deliberately
     *not* consulted: CRuby's `defined?` doesn't either [V]. -/
-def definedMethod? (m : Machine) (recv : Value) (mname : String) : Option Bool :=
+def definedMethod? (m : Machine) (recv : Value) (mname : String)
+    (site : SendSite := .implicit) : Option Bool :=
   -- CRuby routes an *explicit-receiver* `defined?` through `respond_to?`, so a
   -- user override of it (or of `respond_to_missing?`) is observable — and can even
   -- have side effects (test_yjit_023). We cannot dispatch from here → gate.
@@ -1731,7 +1826,10 @@ def definedMethod? (m : Machine) (recv : Value) (mname : String) : Option Bool :
       | none => false) then none
   else
   match lookup m.heap recv mname with
-  | some (_, md) => if md.undefined then some false else some true
+  | some (_, md) =>
+    -- visibility counts: `defined?(obj.private_m)` is nil [V] (L71)
+    if md.undefined then some false
+    else some (visError? m recv site md mname).isNone
   | none =>
     if (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) mname).isSome then none
     else some false
@@ -2013,7 +2111,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       .next (withCtl m (.value v))
     | .definedRecvK mname =>
       -- v is the evaluated receiver of `defined?(recv.m)`
-      match definedMethod? m v mname with
+      match definedMethod? m v mname .explicit with
       | some true => let (sv, m) := Builtins.allocStr m "method"; .next (withCtl m (.value sv))
       | some false => .next (withCtl m (.value .nil))
       | none => .unsupported s!"defined?(unmodeled method {mname})"
@@ -2344,8 +2442,12 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       | some (.blockpass none) => .passAnon
       | some _ => .none  -- desugar guarantees blk ∈ {block, blockpass}; unreachable
     match recv with
-    | some r => .next (withKont m (.eval r) (.recvK mname args pblk false))
-    | none => startArgs m m.currentFrame.self true mname [] args pblk
+    | some r =>
+      -- a *literal* `self.m` may call private methods (Ruby 2.7+), while any other
+      -- receiver may not — so the site kind is decided here, syntactically [V].
+      let site : SendSite := match r with | .self' => .selfRecv | _ => .explicit
+      .next (withKont m (.eval r) (.recvK mname args pblk site))
+    | none => startArgs m m.currentFrame.self .implicit mname [] args pblk
   | .block .. => .stuck "bare block node outside send"
   | .kwargs .. => .stuck "bare kwargs node outside call position"
   | .fwd => .stuck "bare fwd (...) node outside call position"
@@ -2364,7 +2466,10 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     let defmod := m.currentFrame.defmod
     let md : MethodDef :=
       { params, body, owner := defmod, cref := m.currentFrame.cref,
-        fromPrelude := m.preludeMode }
+        fromPrelude := m.preludeMode,
+        -- `private` / `protected` with no arguments set the default for the rest
+        -- of the class body (artifact 02 §5); `initialize` is always private [V].
+        visibility := if name == "initialize" then .priv else m.currentFrame.defVis }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))
