@@ -225,8 +225,11 @@ def kernelId : ObjId := 33
     mixed in), so `1.is_a?(Numeric)` and `Integer.ancestors` are faithful (L65).
     Carries no methods of its own at L0. -/
 def numericId : ObjId := 34
+/-- `UncaughtThrowError < ArgumentError` — a `throw` with no matching `catch`
+    (L69). -/
+def uncaughtThrowErrorId : ObjId := 35
 /-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 35
+def mainId : ObjId := 36
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -264,7 +267,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (mathId, "Math", some objectId),   -- modeled as a constant with singleton fns
   (rangeId, "Range", some objectId),
   (kernelId, "Kernel", Option.none),     -- patched to a module in `initHeap`
-  (numericId, "Numeric", some objectId)
+  (numericId, "Numeric", some objectId),
+  (uncaughtThrowErrorId, "UncaughtThrowError", some argumentErrorId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.

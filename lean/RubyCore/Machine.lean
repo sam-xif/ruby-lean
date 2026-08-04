@@ -66,6 +66,9 @@ inductive Jump where
   /-- `redo` — re-run the current loop body/iteration without re-testing the
       condition or advancing (artifact 04). -/
   | redoJ
+  /-- `throw tag, v` (artifact 04, L69): unwinds to the matching `catch tag`.
+      A tag-carrying transfer, so one Jump constructor covers every use. -/
+  | throwJ (tag : Value) (v : Value)
 deriving Inhabited
 
 /-- A send's block child, carried through arg evaluation. A literal block is
@@ -211,8 +214,14 @@ inductive Kont where
   /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes
-      `next` (block value) and a lambda-targeted `return`/`break`. -/
+      `next` (block value) and a lambda-targeted `return`/`break`.
+      `cl`/`args` are kept so `redo` can re-run this invocation from the top with
+      the same arguments (L69). -/
   | blkFrameK (fid : FrameId) (lam : Bool) (brk : Option FrameId)
+      (cl : Closure) (args : List Value)
+  /-- `catch tag do … end` (L69): consumes a `throw` carrying an `equal?` tag,
+      yielding its value. -/
+  | catchK (tag : Value)
   /-- Begin body executing: rescues are live, node kept for retry/ensure. -/
   | beginBodyK (node : BeginNode)
   /-- Rescue-clause matching: evaluating candidate class exprs one at a

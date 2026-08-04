@@ -75,6 +75,7 @@ def jumpBrief (h : Heap) : Jump → String
   | .nxtJ v => s!"next {valBrief h 3 v}"
   | .retryJ => "retry"
   | .redoJ => "redo"
+  | .throwJ t v => s!"throw {valBrief h 3 t}, {valBrief h 3 v}"
 
 def ctlBrief (h : Heap) : Ctl → String
   | .eval e => "eval  " ++ exprBrief e
@@ -121,7 +122,8 @@ def kontLabel : Kont → String
   | .hshValK .. => "hash: next pair"
   | .jumpValK _ => "then jump with ▢"
   | .frameK fid => s!"◀ method frame #{fid}"
-  | .blkFrameK fid _ _ => s!"◀ block frame #{fid}"
+  | .blkFrameK fid .. => s!"◀ block frame #{fid}"
+  | .catchK _ => "catch: await throw"
   | .beginBodyK _ => "begin body (rescues live)"
   | .rescMatchK .. => "rescue: match class ▢"
   | .rescueK .. => "rescue handler"

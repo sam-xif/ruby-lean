@@ -1395,3 +1395,31 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   the end is nil but a start *at* the end is empty, a negative length is nil, and
   a count is clamped to what remains [V]. 28 tier-0 + 10 tier-1 gates for a
   contained builtin. Ratchet: tier-0 **815 → 842 agree, 0 disagree**.
+
+## Non-local control: tagged unwinding (L69)
+
+- **L69 — `catch`/`throw`, class-body-transparent `break`/`next`, and `redo` in a
+  block.** Three gaps, one mechanism family (artifact 04 §3): the unwinder already
+  had markers, so each was a new marker or a new marker *behaviour*, not new
+  machinery.
+  - **`catch`/`throw`** = one `Jump.throwJ (tag) (v)` + one `Kont.catchK (tag)`
+    marker that consumes a throw whose tag is `equal?` and yields its value.
+    `catch` lives in the miss path (like the iterators) because it must push a
+    block frame, which a pure builtin cannot; a tagless `catch` allocates a fresh
+    Object as the tag, as CRuby does, and passes it to the block.
+    The one subtlety: with **no matching `catch`**, CRuby raises
+    `UncaughtThrowError` *at the throw site*, so an enclosing `rescue` catches it
+    [V] — unwinding first and raising at the top of the stack would have thrown
+    that rescue away. So `throw` scans the kont stack for a matching `catchK`
+    before jumping. (New boot class `UncaughtThrowError < ArgumentError`.)
+  - **A class/module body is transparent to `break`/`next`/`redo`/`retry`**:
+    `3.times { class C; break; end }` breaks out of the `times` block, and `next`
+    continues the iteration [V] (test_flow_027/029 — 9 tier-0 cases). Both class
+    bodies and method activations are `frameK`, so the arm now consults the
+    frame's `kind`: `.classBody` pops and propagates, a method activation still
+    gates (`break` in a method body is not valid Ruby).
+  - **`redo` in a block** re-runs *that* invocation from the top with the same
+    arguments, so `blkFrameK` now carries the `Closure` and the argument list and
+    the `redoJ` arm simply pops the frame and re-enters `callClosure`. 18 tier-1 +
+    4 tier-0 gates for two extra fields.
+  Ratchet: tier-0 **842 → 865 agree, 0 disagree**.

@@ -467,7 +467,7 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
       | [] => ({ s0 with ctl := .opaque }, none, none)
   -- a method/block returning: its value's term passes through the boundary (S2)
   | .value _, (.frameK _) :: _ => (s0, none, none)
-  | .value _, (.blkFrameK _ _ _) :: _ => (s0, none, none)
+  | .value _, (.blkFrameK ..) :: _ => (s0, none, none)
   | .value _, (.seqK []) :: _ => (s0, none, none)
   | .value _, (.hshKeyK _ _ _) :: _ =>
     -- key evaluated: remember its term so the literal's const-ness can be judged

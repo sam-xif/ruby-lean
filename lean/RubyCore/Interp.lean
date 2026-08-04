@@ -435,7 +435,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
         home := cl.home, lam := cl.lam, cref := capF.cref }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk))
+    .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
 
 /-- Continue the `lookup` walk *strictly above* `owner` in `recv`'s ancestor
     chain. Used by the block fallback (L63): a blockless builtin shadowing a
@@ -1032,6 +1032,40 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
       | _ =>
         if isMod then none
         else some (.unsupported s!"{mname} on an immediate receiver")
+  | "catch" =>
+    -- `catch(tag) { |t| … }` (artifact 04, L69): mark the stack with `catchK` and
+    -- run the block with the tag as its argument. A tagless `catch` generates a
+    -- fresh object as the tag, exactly as CRuby does.
+    match blk.bind (procClosure? m) with
+    | none => none
+    | some cl =>
+      match args with
+      | [tag] =>
+        let m := { m with kont := .catchK tag :: m.kont }
+        some (callClosure m cl [tag] none)
+      | [] =>
+        let (o, hp) := m.heap.alloc { klass := Boot.objectId }
+        let tag := Value.ref o
+        let m := { m with heap := hp, kont := .catchK tag :: m.kont }
+        some (callClosure m cl [tag] none)
+      | _ => some (.unsupported "catch/arity")
+  | "throw" =>
+    -- With no matching `catch` on the stack, CRuby raises `UncaughtThrowError`
+    -- **at the throw site**, so an enclosing `rescue` sees it [V] — checked here
+    -- rather than after unwinding, which would have discarded that rescue.
+    let matched := fun (tag : Value) =>
+      m.kont.any fun k => match k with
+        | .catchK t => t.identEq tag
+        | _ => false
+    let go := fun (tag : Value) (v : Value) =>
+      if matched tag then StepResult.next (withCtl m (.jump (.throwJ tag v)))
+      else match Builtins.inspectP m tag with
+        | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
+        | .error e => .unsupported e
+    match args with
+    | [tag] => some (go tag .nil)
+    | [tag, v] => some (go tag v)
+    | _ => some (.unsupported "throw/arity")
   | "singleton_class" =>
     match recv with
     | .ref o => let (e, m) := eigenclassOf m o; some (.next (withCtl m (.value (.ref e))))
@@ -1893,7 +1927,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .frameK _ =>
       -- normal completion of a method body: pop the activation
       .next (withCtl { m with stack := m.stack.tail } (.value v))
-    | .blkFrameK _ _ _ =>
+    | .blkFrameK .. =>
       -- normal completion of a block body: pop the block frame
       .next (withCtl { m with stack := m.stack.tail } (.value v))
     | .beginBodyK node =>
@@ -1922,6 +1956,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       .next (finishRegion { m with currentExc := saved } node.ens (.val v))
     | .elseK node =>
       .next (finishRegion m node.ens (.val v))
+    | .catchK _ =>
+      -- the catch block finished normally: its value is `catch`'s value
+      .next (withCtl m (.value v))
     | .definedRecvK mname =>
       -- v is the evaluated receiver of `defined?(recv.m)`
       match definedMethod? m v mname with
@@ -1962,6 +1999,10 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .retJ _ _ =>
       -- a non-lambda block `return` whose home method already exited [V]
       .next (raiseErr m Boot.localJumpErrorId "unexpected return")
+    | .throwJ tag _ =>
+      match Builtins.inspectP m tag with
+      | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
+      | .error e => .unsupported e
     | _ => .stuck "jump escaped the program (break/next/retry at toplevel)"
   | k :: rest =>
     let m := { m with kont := rest }
@@ -1989,11 +2030,15 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
           .next (withCtl { m with stack := m.stack.tail } (.value v))
         else  -- return targets an outer method: pop and keep unwinding
           .next (withCtl { m with stack := m.stack.tail } (.jump j))
-      | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
-      | .brkJ _ | .nxtJ _ => .unsupported "break/next crossing a method boundary"
-      | .retryJ => .unsupported "retry crossing a method boundary"
-      | .redoJ => .unsupported "redo crossing a method boundary"
-    | .blkFrameK fid lam brk =>
+      | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .brkJ _ | .nxtJ _ | .retryJ | .redoJ =>
+        -- A **class/module body** is transparent to these: `3.times { class C;
+        -- break; end }` breaks out of the `times` block [V] (test_flow_027/029).
+        -- Crossing a *method* activation is not valid Ruby, so it still gates.
+        if (m.frames.getD fid default).kind == .classBody then
+          .next (withCtl { m with stack := m.stack.tail } (.jump j))
+        else .unsupported "break/next/retry/redo crossing a method boundary"
+    | .blkFrameK fid lam brk cl args =>
       match j with
       | .nxtJ v =>
         -- `next` ends this block invocation with value v (artifact 04 §4)
@@ -2012,15 +2057,22 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
           .next (withCtl { m with stack := m.stack.tail } (.value v))
         else  -- non-lambda return heads to its home method: pop and propagate
           .next (withCtl { m with stack := m.stack.tail } (.jump j))
-      | .raiseJ _ => .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .retryJ => .unsupported "retry crossing a block boundary"
-      -- `redo` re-runs the block body, but blkFrameK does not carry the body
-      -- expr (block invocation is driven by callClosure) → gate.
-      | .redoJ => .unsupported "redo in a block"
+      | .redoJ =>
+        -- `redo` re-runs *this* block invocation from the top with the same
+        -- arguments (artifact 04, L69): pop the frame and re-enter the closure.
+        callClosure { m with stack := m.stack.tail } cl args brk
     | .definedGuardK =>
       -- any exception while evaluating a `defined?` operand makes it nil [V]
       match j with
       | .raiseJ _ => .next (withCtl m (.value .nil))
+      | _ => .next (withCtl m (.jump j))
+    | .catchK tag =>
+      match j with
+      | .throwJ t v =>
+        if t.identEq tag then .next (withCtl m (.value v))
+        else .next (withCtl m (.jump j))
       | _ => .next (withCtl m (.jump j))
     | .beginBodyK node =>
       match j with
