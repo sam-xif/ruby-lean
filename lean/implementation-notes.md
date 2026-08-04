@@ -1388,3 +1388,10 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     singleton-class scope gates (CRuby shares the attached class's variables and
     we do not track attachment).
   Ratchet: tier-0 **792 → 815 agree, 0 disagree**.
+
+- **L68 — `Array#[]`/`String#[]` slice forms.** `(start, len)` for both, plus
+  `Range` and substring (`s["ell"]`) for String, via one shared `sliceRange`
+  normalizer so the three CRuby nil-vs-empty cases are written once: a start past
+  the end is nil but a start *at* the end is empty, a negative length is nil, and
+  a count is clamped to what remains [V]. 28 tier-0 + 10 tier-1 gates for a
+  contained builtin. Ratchet: tier-0 **815 → 842 agree, 0 disagree**.

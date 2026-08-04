@@ -201,6 +201,17 @@ def numOrd? (a b : Value) : Option Ordering :=
 
 def strCompare (a b : String) : Ordering := compare a b
 
+/-- Normalize a `(start, len)` slice against a collection of size `n` (L68):
+    `none` = the CRuby nil result (start out of range, or a negative length),
+    `some (offset, count)` otherwise. `start == n` yields an empty slice, and a
+    count is clamped to what remains [V]. -/
+def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
+  let st := if start < 0 then start + n else start
+  if st < 0 || st > n || len < 0 then Option.none
+  else
+    let stN := st.toNat
+    Option.some (stN, min len.toNat (n - stN))
+
 /-! ### Main dispatch -/
 
 /-- Builtins that take exactly zero arguments in CRuby — extra args must be
@@ -704,7 +715,37 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
       let idx := if i < 0 then i + cs.length else i
       if idx < 0 || idx ≥ cs.length then .ok .nil m
       else okStr m (String.singleton cs[idx.toNat]!)
-    | some _, _ => .unsupported "String#[] non-int-index"
+    | some str, [.int start, .int len] =>
+      let cs := str.toList
+      match sliceRange cs.length start len with
+      | none => .ok .nil m
+      | some (off, count) => okStr m (String.ofList ((cs.drop off).take count))
+    | some str, [.ref ro] =>
+      match (h.get ro).payload with
+      | .range lo hi excl =>
+        let cs := str.toList
+        let n : Int := cs.length
+        let st? : Option Int := match lo with
+          | .nil => some 0
+          | .int i => some (if i < 0 then i + n else i)
+          | _ => none
+        let last? : Option Int := match hi with
+          | .nil => some (n - 1)
+          | .int i => let e := if i < 0 then i + n else i; some (if excl then e - 1 else e)
+          | _ => none
+        match st?, last? with
+        | some st, some lastRaw =>
+          if st < 0 || st > n then .ok .nil m
+          else
+            let lastI := min lastRaw (n - 1)
+            let count := if lastI < st then 0 else (lastI - st + 1).toNat
+            okStr m (String.ofList ((cs.drop st.toNat).take count))
+        | _, _ => .unsupported "String#[] non-Integer range endpoint"
+      -- `s["sub"]` → the substring if present, else nil [V]
+      | .str sub =>
+        if sub.isEmpty || (str.splitOn sub).length > 1 then okStr m sub else .ok .nil m
+      | _ => .unsupported "String#[] non-index argument"
+    | some _, _ => .unsupported "String#[] index form"
     | _, _ => .unsupported "[]"
   /- ─── Symbol ─── -/
   | "Symbol#to_s" =>
@@ -777,7 +818,13 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
                 let sub := ((xs.toList.drop s.toNat).take (lastI.toNat - s.toNat + 1)).toArray
                 let (v, m) := allocArr m sub; .ok v m
       | _ => .unsupported "Array#[] non-int index"
-    | some _, _ => .unsupported "Array#[] slice (start,len)"
+    | some xs, [.int start, .int len] =>
+      match sliceRange xs.size start len with
+      | none => .ok .nil m
+      | some (off, count) =>
+        let (v, m) := allocArr m ((xs.toList.drop off).take count).toArray
+        .ok v m
+    | some _, _ => .unsupported "Array#[] index form"
     | _, _ => .unsupported "[]"
   | "Array#[]=" =>
     match recv, arrPayload? h recv, args with
