@@ -229,6 +229,7 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
     | retJ v => simp [FragJump] at hfj
     | raiseJ v => simp [FragJump] at hfj
     | retryJ => simp [FragJump] at hfj
+    | throwJ tag v => simp [FragJump] at hfj
 
 /-- **Function–relation adequacy** on the fragment. -/
 theorem Step.adequacy {m m' : Machine} (hf : InFrag m) :

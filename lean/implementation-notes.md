@@ -1546,3 +1546,39 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     would otherwise have to guess at.
   Ratchet: tier-0 **909 → 940 agree, 0 disagree**; tier-1 (n=400, seed 7) 371
   agree, 0 disagree; tier-3 replay 54 agree, 0 disagree; regressions clean.
+
+## Keeping the metatheory reducible (L73)
+
+- **L73 — two kernel-reducibility traps, and the lesson.** The batches above broke
+  every `Proof/` file, and *not* because the theorems became false: they became
+  **unprovable by computation**. Both causes are worth remembering, because both
+  are invisible to the difftest ratchet and only the proofs notice.
+  - **`partial def` is opaque to the kernel.** `modAncestors` (the mixin expansion
+    inside `ancestors`) was `partial`. That was harmless while no class in a chain
+    had mixins — `[].flatMap _` reduces without touching it — but the moment
+    `Object` included `Kernel` (L65), *every* ancestor walk went through it and no
+    `rfl`/`decide` over a dispatch could reduce. It is now fuel-bounded on
+    `h.objs.size`, exactly like `ancestors`'s own `go`.
+  - **`String.endsWith` does not reduce either** (`example : ("a#b".endsWith "#b") = false := rfl`
+    fails). The L66 dup/clone routing put it at the top of `Builtins.run`, so every
+    builtin step became irreducible. Replaced with `dupBids`/`cloneBids` list
+    membership, which is `String.beq` on literals and reduces fine. Rule of thumb
+    for this codebase: **in the step function, dispatch on equality against literal
+    lists, never on `String` prefix/suffix predicates.**
+  - The mechanical updates: the `SendSite` argument in `recvK` literals, the
+    boot-heap id shift (`Kernel`/`Numeric`/`UncaughtThrowError` pushed
+    `T5Loop.clsA` from 34 to 37), `simp [Machine.init]` needing `Machine.initOn`
+    now that `init` delegates, and two hypotheses added to
+    `T5.dispatch_progress`: `md.visibility = .pub` and `md.fromPrelude = false`.
+    Those two are an *improvement* to the statement — the theorem always depended
+    on the method being publicly callable and on the prelude-shadow suppression not
+    applying; now it says so.
+  - Also worth noting for future debugging: Lean's `rfl` failure message prints the
+    **un-reduced** goal, so it tells you nothing about where whnf actually stopped.
+    The fast way to localise it is `#eval` of the same step (which uses the
+    compiler, not the kernel): if `#eval` gives the expected answer, the problem is
+    reducibility, not semantics — which is exactly how both traps above were found.
+  Verified after the repair: all ten `Proof/` files build; `t5_loop_type_safe`,
+  `invariant_sound`, `invariant_sound_from` depend only on
+  `[propext, Classical.choice, Quot.sound]`; `../concolic` 28/28; tier-0 unchanged
+  at **940 agree, 0 disagree**.

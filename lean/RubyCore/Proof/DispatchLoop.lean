@@ -46,7 +46,7 @@ def sA : Machine := base
 def sB : Machine := { base with ctl := .eval .tru, kont := [.whileCondK .tru body] }
 def sC : Machine := { base with ctl := .value (.bool true), kont := [.whileCondK .tru body] }
 def sD : Machine := { base with ctl := .eval body, kont := [.whileBodyK .tru body] }
-def recvKont : List Kont := [.recvK "succ" [] .none false, .whileBodyK .tru body]
+def recvKont : List Kont := [.recvK "succ" [] .none .explicit, .whileBodyK .tru body]
 def sE : Machine := { base with ctl := .eval (.int 1), kont := recvKont }
 def sF : Machine := { base with ctl := .value (.int 1), kont := recvKont }
 def sG : Machine := { base with ctl := .value (.int 2), kont := [.whileBodyK .tru body] }

@@ -407,11 +407,21 @@ def realClassOf (h : Heap) : Value → ObjId
   | v => classOf h v
 
 /-- A module's own ancestor list: itself, then its `include`d modules
-    (most-recent first), recursively. Fuel-bounded on the (finite) heap. -/
-partial def modAncestors (h : Heap) (m : ObjId) : List ObjId :=
-  m :: (match h.classPayload? m with
-    | some c => c.includes.reverse.flatMap (modAncestors h)
-    | Option.none => [])
+    (most-recent first), recursively.
+
+    **Fuel-bounded rather than `partial`** (L73): a `partial def` is opaque to the
+    kernel, so once *any* class in a chain has mixins — and `Object` now includes
+    `Kernel` (L65), so every chain does — `ancestors` would no longer reduce and
+    every `decide`/`rfl` in the metatheory over a dispatch would get stuck. -/
+def modAncestors (h : Heap) (mo : ObjId) : List ObjId :=
+  go mo (h.objs.size + 1)
+where
+  go (mo : ObjId) : Nat → List ObjId
+    | 0 => [mo]
+    | fuel + 1 =>
+      mo :: (match h.classPayload? mo with
+        | some c => c.includes.reverse.flatMap (fun i => go i fuel)
+        | Option.none => [])
 
 /-- Ancestor chain (MRO): the superclass walk, with each class's `include`d
     modules spliced in just above it (most-recent-first, modules-of-modules

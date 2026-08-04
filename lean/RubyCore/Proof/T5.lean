@@ -62,18 +62,26 @@ open Interp
 theorem dispatch_progress
     (m : Machine) (o owner : ObjId) (md : MethodDef) (rest : List Kont)
     (hctl : m.ctl = .value (.ref o))
-    (hk : m.kont = .recvK "m" [] .none false :: rest)
+    (hk : m.kont = .recvK "m" [] .none .explicit :: rest)
     (hpay : (m.heap.get o).payload = .none)
     (heigen : (m.heap.get o).eigen = none)
     (hlook : lookup m.heap (.ref o) "m" = some (owner, md))
     (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.params = [])
+    -- the method is public: an *explicit*-receiver send to a private/protected
+    -- method raises instead of entering the activation (visibility, L71)
+    (hvis : md.visibility = .pub)
+    -- not a prelude method, so the between-chain shadow check is the plain one
+    -- (a prelude method suppresses it for its own name, L62)
+    (hpre : md.fromPrelude = false)
     (hbtw : crubyShadow m.heap
               ((ancestors m.heap ((m.heap.get o).klass)).takeWhile (· != owner)) "m" = none)
     (hsing : crubySingletonShadow m.heap (.ref o) "m" = none) :
     ∃ m', stepFn m = .next m' := by
   simp only [stepFn, hctl, applyKont, hk, startArgs, finishSend]
   rw [invoke.eq_def]
-  simp only [invoke.invokeDispatch, classOf, heigen, hlook, hpay, hb, hu, hbtw, hsing]
+  simp only [invoke.invokeDispatch, classOf, heigen, hlook, hpay, hb, hu, hbtw, hsing,
+    visError?, hvis, hpre, Option.isNone_some, Bool.and_false, reduceIte, reduceBEq,
+    Bool.or_eq_true, Bool.false_or, or_self, Bool.false_eq_true, if_false, ite_false]
   simp only [enterUserMethod, hp]
   exact ⟨_, rfl⟩
 
@@ -83,17 +91,23 @@ theorem dispatch_progress
 theorem dispatch_not_typestick
     (m : Machine) (o owner : ObjId) (md : MethodDef) (rest : List Kont)
     (hctl : m.ctl = .value (.ref o))
-    (hk : m.kont = .recvK "m" [] .none false :: rest)
+    (hk : m.kont = .recvK "m" [] .none .explicit :: rest)
     (hpay : (m.heap.get o).payload = .none)
     (heigen : (m.heap.get o).eigen = none)
     (hlook : lookup m.heap (.ref o) "m" = some (owner, md))
     (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.params = [])
+    -- the method is public: an *explicit*-receiver send to a private/protected
+    -- method raises instead of entering the activation (visibility, L71)
+    (hvis : md.visibility = .pub)
+    -- not a prelude method, so the between-chain shadow check is the plain one
+    -- (a prelude method suppresses it for its own name, L62)
+    (hpre : md.fromPrelude = false)
     (hbtw : crubyShadow m.heap
               ((ancestors m.heap ((m.heap.get o).klass)).takeWhile (· != owner)) "m" = none)
     (hsing : crubySingletonShadow m.heap (.ref o) "m" = none) :
     ¬ aboutToTypeStick m := by
   obtain ⟨m', hnext⟩ :=
-    dispatch_progress m o owner md rest hctl hk hpay heigen hlook hb hu hp hbtw hsing
+    dispatch_progress m o owner md rest hctl hk hpay heigen hlook hb hu hp hvis hpre hbtw hsing
   unfold aboutToTypeStick typeStuck
   rw [hnext]
   exact not_false

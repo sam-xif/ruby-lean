@@ -260,6 +260,20 @@ def zeroArgBids : List String :=
    "Range#inspect", "Range#to_s", "Range#first", "Range#last", "Range#begin",
    "Range#end", "Range#exclude_end?"]
 
+/-- The `dup`/`clone` bids, listed rather than matched with `String.endsWith`
+    (L73): `endsWith` is **not kernel-reducible**, so having it at the top of
+    `run` stopped every `rfl`/`decide` in the metatheory that steps through a
+    builtin. `List.contains` over literals reduces fine. -/
+def dupBids : List String :=
+  ["Object#dup", "String#dup", "Array#dup", "Hash#dup", "Integer#dup",
+   "Float#dup", "Symbol#dup", "NilClass#dup", "TrueClass#dup", "FalseClass#dup",
+   "Exception#dup"]
+
+def cloneBids : List String :=
+  ["Object#clone", "String#clone", "Array#clone", "Hash#clone", "Integer#clone",
+   "Float#clone", "Symbol#clone", "NilClass#clone", "TrueClass#clone",
+   "FalseClass#clone", "Exception#clone"]
+
 /-- Builtins whose CRuby behavior *changes* when a block is passed (`sort` sorts
     by the block, `min`/`max` compare with it, `fetch` computes the default with
     it, …). Our builtin arms are all blockless, so a block here must not be
@@ -278,7 +292,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
   if zeroArgBids.contains bid && !args.isEmpty then
     .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m
-  else if bid.endsWith "#dup" || bid.endsWith "#clone" then
+  else if dupBids.contains bid || cloneBids.contains bid then
     -- One rule for every class (L66): copies the payload *and* the instance
     -- variables (`str.dup` keeps `@ivar` [V]); `dup` drops the frozen bit,
     -- `clone` keeps it. Gates where a copy would need more than the object:
@@ -291,7 +305,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
       else match (h.get o).payload with
         | .cls _ => .unsupported "dup/clone of a class/module"
         | .rng _ => .unsupported "dup/clone of a Random (state identity)"
-        | _ => let (v, m) := dupObj m o (bid.endsWith "#clone"); .ok v m
+        | _ => let (v, m) := dupObj m o (cloneBids.contains bid); .ok v m
     | _ => .ok recv m   -- immediates dup/clone to themselves [V]
   else
   match bid with

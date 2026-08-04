@@ -1432,6 +1432,13 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
       else missNoMethod m recv implicit mname args
     | none => missNoMethod m recv implicit mname args
 
+/-- The site kind a `send`-family re-dispatch runs at: `send`/`__send__` bypass
+    visibility, `public_send` does not [V]. A top-level `match` rather than an
+    inline `ite`, so `invoke` stays reducible for the metatheory (L73). -/
+def reflectiveSite : String → SendSite
+  | "public_send" => .explicit
+  | _ => .reflective
+
 /-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
     receiver called via call/()/[]/yield runs its closure directly (a builtin
     cannot push a frame). -/
@@ -1439,33 +1446,12 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
   -- `recv` with the rest. Only when unshadowed by a user `send` (rare) [V].
-  -- `raise C` / `raise C, msg` where `C` defines a *user* `initialize`: CRuby
-  -- builds the exception with `C.new(…)`, so the initializer (and any `super`
-  -- into `Exception#initialize`) must actually run — a frame the `raise` builtin
-  -- cannot push, so it is intercepted here (L70).
-  if mname == "raise" && (lookup m.heap recv "raise").map (·.2.builtin.isSome) == some true then
-    match args with
-    | (.ref k) :: rest =>
-      match m.heap.classPayload? k, userInit? m.heap k with
-      | some c, some md =>
-        if c.isModule || rest.length > 1 then invokeDispatch m recv implicit mname args blk kw
-        else
-          let (io, h) := m.heap.alloc { klass := k, payload := .exc "" }
-          let inst := Value.ref io
-          let m := { m with heap := h, kont := .raiseNewK inst :: m.kont }
-          enterUserMethod m inst "initialize" md rest none
-      | _, _ => invokeDispatch m recv implicit mname args blk kw
-    | _ => invokeDispatch m recv implicit mname args blk kw
-  else
   if (mname == "send" || mname == "public_send" || mname == "__send__")
       && (lookup m.heap recv mname).isNone then
     match args with
     | nameArg :: rest =>
       match symOrStr m nameArg with
-      | some m2 =>
-        -- `send`/`__send__` bypass visibility; `public_send` does not [V]
-        let site : SendSite := if mname == "public_send" then .explicit else .reflective
-        invoke m recv site m2 rest blk kw
+      | some m2 => invoke m recv (reflectiveSite mname) m2 rest blk kw
       | none => invokeDispatch m recv implicit mname args blk kw
     | [] => invokeDispatch m recv implicit mname args blk kw
   else
@@ -1585,6 +1571,40 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        -- `raise C` / `raise C, msg` where `C` defines a *user* `initialize`:
+        -- CRuby builds the exception with `C.new(…)`, so the initializer (and any
+        -- `super` into `Exception#initialize`) must run — a frame this builtin
+        -- cannot push, so it is finished by a `raiseNewK` kont (L70). Keyed on the
+        -- resolved *bid*, so no other dispatch pays for the check.
+        if bid == "Object#raise" then
+          match args with
+          | (.ref k) :: rest =>
+            match m.heap.classPayload? k, userInit? m.heap k with
+            | some c, some md' =>
+              if c.isModule || rest.length > 1 then
+                match Builtins.run bid recv args m with
+                | .ok v m => .next (withCtl m (.value v))
+                | .err cls msg m => .next (raiseErr m cls msg)
+                | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+                | .unsupported r => .unsupported r
+              else
+                let (io, h) := m.heap.alloc { klass := k, payload := .exc "" }
+                let inst := Value.ref io
+                let m := { m with heap := h, kont := .raiseNewK inst :: m.kont }
+                enterUserMethod m inst "initialize" md' rest none
+            | _, _ =>
+              match Builtins.run bid recv args m with
+              | .ok v m => .next (withCtl m (.value v))
+              | .err cls msg m => .next (raiseErr m cls msg)
+              | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+              | .unsupported r => .unsupported r
+          | _ =>
+            match Builtins.run bid recv args m with
+            | .ok v m => .next (withCtl m (.value v))
+            | .err cls msg m => .next (raiseErr m cls msg)
+            | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+            | .unsupported r => .unsupported r
+        else
         -- A block changes what several builtins mean (L63). Our arms are
         -- blockless, so defer to a prelude definition of the same name higher in
         -- the chain (`Array#sort {}` → `Enumerable#sort`) rather than dropping

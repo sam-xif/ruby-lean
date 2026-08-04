@@ -21,7 +21,7 @@ inductive Steps : Machine → Machine → Prop where
     (`self = main`, empty kont, fragment head). -/
 theorem init_InFrag {e : Expr} (he : FragExpr e) : InFrag (Machine.init e) := by
   refine ⟨⟨Boot.mainId, rfl⟩, ?_, ?_, ?_⟩
-  · intro k hk; simp [Machine.init] at hk
+  · intro k hk; simp [Machine.init, Machine.initOn] at hk
   · intro e' he'
     have : (Machine.init e).ctl = .eval e := rfl
     rw [this] at he'; injection he' with h; subst h; exact he

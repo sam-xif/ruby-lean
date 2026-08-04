@@ -35,10 +35,11 @@ set_option maxRecDepth 100000
 
 /-! ### The class-bearing heap `Hstar` and the loop program -/
 
-/-- Class `A` (id = `initHeap.size` = 34) with a single user method `m` ↦ `0`. -/
-def clsA : ObjId := 34
-/-- An instance of `A` (id 35). -/
-def inst : ObjId := 35
+/-- Class `A` (id = `initHeap.size` = 37 — the boot heap grew with `Kernel`,
+    `Numeric` and `UncaughtThrowError`, L65/L69) with one user method `m` ↦ `0`. -/
+def clsA : ObjId := 37
+/-- An instance of `A` (id 38). -/
+def inst : ObjId := 38
 def mMd : MethodDef := { params := [], body := .int 0, owner := clsA }
 def clsAObj : Object :=
   { klass := Boot.classId,
@@ -66,7 +67,7 @@ def mF : Frame :=
 /-- Continuation shapes. -/
 abbrev kC : List Kont := [.whileCondK .tru bodyE]
 abbrev kB : List Kont := [.whileBodyK .tru bodyE]
-abbrev kR : List Kont := [.recvK "m" [] .none false, .whileBodyK .tru bodyE]
+abbrev kR : List Kont := [.recvK "m" [] .none .explicit, .whileBodyK .tru bodyE]
 
 /-! ### Frame / dispatch helper lemmas -/
 
@@ -90,6 +91,7 @@ theorem getLocal_x (m : Machine) (hs : m.stack = [0])
 def mkNext (m : Machine) : Machine :=
   { m with ctl := .eval (.int 0), kont := [.frameK m.frames.size, .whileBodyK .tru bodyE], stack := m.frames.size :: m.stack, frames := m.frames.push mF }
 
+set_option maxHeartbeats 2000000 in
 /-- The dispatch step: `x.m` resolves `A#m` in `Hstar` and enters the activation.
     Reduces the well-founded `invoke` (`invoke.eq_def`); the `A#m` lookup closes
     by `rfl` over the reducible `Hstar` — axiom-clean, abstract `frames`. -/
