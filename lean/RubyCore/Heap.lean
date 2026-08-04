@@ -61,6 +61,12 @@ structure MethodDef where
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   private' : Bool := false
+  /-- `define_method`: the frame this body **closes over** — free variables
+      resolve up its `captured` chain, exactly as in the block it came from
+      (L64). `none` for an ordinary `def`, whose body has no enclosing scope.
+      `Nat` rather than `FrameId` to avoid the Machine import cycle (as
+      `Closure` does). -/
+  capturedFrame : Option Nat := none
   /-- Defined by the **prelude** (the core library written in RubyCore itself,
       `prelude/prelude.rb`) rather than by the program under test. Such a method
       *is* the model of the CRuby builtin of the same name, so it suppresses the
@@ -81,6 +87,10 @@ structure ClassPayload where
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
       into the ancestor chain just above this class, most-recent first (MRO). -/
   includes : List ObjId := []
+  /-- Modules mixed in via `prepend` (most-recently-prepended **last**); inserted
+      *below* this class in the chain, so their methods win over the class's own
+      and `super` from them reaches the class (artifact 02 §1, L65). -/
+  prepends : List ObjId := []
 deriving Inhabited
 
 /-- A block/proc/lambda closure (artifact 04 §1). Frame identity supplies
@@ -202,8 +212,17 @@ def procId : ObjId := 29
 def randomId : ObjId := 30
 def mathId : ObjId := 31
 def rangeId : ObjId := 32
+/-- `Kernel` — a real module in `Object`'s ancestor chain (L65). Its *methods*
+    still live directly on Object at L0, so the module itself is empty; what it
+    buys is a faithful `ancestors` (`[Object, Kernel, BasicObject]`) and a
+    reopened `Kernel` resolving through the ordinary MRO. -/
+def kernelId : ObjId := 33
+/-- `Numeric` — Integer's and Float's real superclass (and where `Comparable` is
+    mixed in), so `1.is_a?(Numeric)` and `Integer.ancestors` are faithful (L65).
+    Carries no methods of its own at L0. -/
+def numericId : ObjId := 34
 /-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 33
+def mainId : ObjId := 35
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -214,8 +233,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (nilClassId, "NilClass", some objectId),
   (trueClassId, "TrueClass", some objectId),
   (falseClassId, "FalseClass", some objectId),
-  (integerId, "Integer", some objectId),   -- Numeric omitted at L0
-  (floatId, "Float", some objectId),
+  (integerId, "Integer", some numericId),
+  (floatId, "Float", some numericId),
   (stringId, "String", some objectId),
   (symbolId, "Symbol", some objectId),
   (arrayId, "Array", some objectId),
@@ -239,7 +258,9 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (procId, "Proc", some objectId),
   (randomId, "Random", some objectId),
   (mathId, "Math", some objectId),   -- modeled as a constant with singleton fns
-  (rangeId, "Range", some objectId)
+  (rangeId, "Range", some objectId),
+  (kernelId, "Kernel", Option.none),     -- patched to a module in `initHeap`
+  (numericId, "Numeric", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -251,31 +272,32 @@ def builtinMethods : List (ObjId × List String) := [
   (objectId, ["==", "!=", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
-              "require", "require_relative", "__unsupported__"]),
-  (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|"]),
-  (trueClassId, ["to_s", "inspect", "&", "|"]),
-  (falseClassId, ["to_s", "inspect", "&", "|"]),
+              "require", "require_relative", "__unsupported__", "dup", "clone"]),
+  (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
+  (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
+  (falseClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
   (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "!=", "<", ">",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?",
-               "eql?", "hash"]),
+               "eql?", "hash", "dup", "clone"]),
   (floatId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
-             "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?"]),
+             "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
+             "dup", "clone"]),
   (stringId, ["+", "*", "==", "!=", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
-              "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup",
+              "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone",
               "to_sym", "[]"]),
-  (symbolId, ["to_s", "inspect", "==", "to_sym", "to_proc"]),
+  (symbolId, ["to_s", "inspect", "==", "to_sym", "to_proc", "dup", "clone"]),
   (arrayId, ["==", "!=", "[]", "[]=", "<<", "push", "pop", "shift", "unshift",
              "length", "size", "first", "last", "empty?", "include?", "+",
              "-", "*", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
-             "compact", "uniq", "concat", "index", "eql?", "dup", "freeze",
+             "compact", "uniq", "concat", "index", "eql?", "dup", "clone", "freeze",
              "frozen?", "sort", "min", "max", "sum"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
             "include?", "member?", "keys", "values", "delete", "fetch",
-            "inspect", "to_s", "dup", "merge"]),
-  (exceptionId, ["message", "to_s", "inspect"]),
+            "inspect", "to_s", "dup", "clone", "merge"]),
+  (exceptionId, ["message", "to_s", "inspect", "dup", "clone"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors"]),
   (classId, ["new"]),
   -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
@@ -327,6 +349,16 @@ def initHeap : Heap :=
   let hMain := (hClasses.alloc { klass := objectId }).2
   -- install builtins
   let hBuiltins := builtinMethods.foldl (fun h (e : ObjId × List String) => install h e.1 e.2) hMain
+  -- Kernel is a *module*, and `Object` includes it (L65): allocated as an
+  -- ordinary classTable entry (so ids stay dense and `initHeap` stays a plain
+  -- fold), then patched here.
+  let kernObj : Object :=
+    { klass := moduleId,
+      payload := .cls { superclass := Option.none, name := "Kernel", isModule := true } }
+  let hKern := hBuiltins.set kernelId kernObj
+  let hBuiltins := match hKern.classPayload? objectId with
+    | some c => hKern.setClassPayload objectId { c with includes := [kernelId] }
+    | Option.none => hKern
   -- register every class name as a constant on Object
   match hBuiltins.classPayload? objectId with
   | some c =>
@@ -377,6 +409,7 @@ where
       match h.classPayload? k with
       | Option.none => [k]
       | some c =>
+        c.prepends.reverse.flatMap (modAncestors h) ++
         (k :: c.includes.reverse.flatMap (modAncestors h)) ++
         (match c.superclass with
           | some s => go s fuel

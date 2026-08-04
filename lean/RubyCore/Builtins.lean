@@ -101,6 +101,15 @@ def hasUserEq (h : Heap) (v : Value) : Bool :=
   | some (_, md) => md.builtin.isNone
   | none => false
 
+/-- Would CRuby dispatch `to_ary` on this value? `Kernel#puts` does, to flatten
+    its arguments — so a *user* `to_ary`, or a user `method_missing` that could
+    intercept it, means a pure `puts` would silently print where CRuby raises
+    (`can't convert C to Array (C#to_ary gives String)`). A builtin cannot run a
+    dispatch, so `puts` gates instead (L66). -/
+def mayDispatchToAry (h : Heap) (v : Value) : Bool :=
+  (match lookup h v "to_ary" with | some (_, md) => md.builtin.isNone | none => false)
+  || (match lookup h v "method_missing" with | some (_, md) => md.builtin.isNone | none => false)
+
 def allocStr (m : Machine) (s : String) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s }
   (.ref o, { m with heap := h })
@@ -116,6 +125,16 @@ def allocHsh (m : Machine) (xs : Array (Value × Value)) : Value × Machine :=
 def allocExc (m : Machine) (cls : ObjId) (msg : String) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := cls, payload := .exc msg }
   (.ref o, { m with heap := h })
+
+/-- `dup`: a fresh object with the same class, payload and **instance variables**
+    (`str.dup` keeps `@ivar` [V]), but *not* the frozen bit and *not* the
+    singleton class. `keepFrozen` gives `clone`, which does preserve it. -/
+def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
+  let src := m.heap.get o
+  let (o2, h) := m.heap.alloc
+    { klass := src.klass, ivars := src.ivars, payload := src.payload,
+      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen }
+  (.ref o2, { m with heap := h })
 
 def okStr (m : Machine) (s : String) : BRes :=
   let (v, m) := allocStr m s
@@ -205,7 +224,8 @@ def zeroArgBids : List String :=
    "Symbol#to_s", "Symbol#inspect", "Symbol#to_sym", "Symbol#to_proc",
    "Array#length", "Array#size", "Array#empty?", "Array#inspect",
    "Array#to_s", "Array#to_a", "Array#reverse", "Array#compact",
-   "Array#dup", "Array#frozen?", "Array#freeze", "Array#sort", "Array#uniq",
+   "Array#dup", "Array#clone", "Object#dup", "Object#clone",
+   "String#clone", "Hash#clone", "Array#frozen?", "Array#freeze", "Array#sort", "Array#uniq",
    "Hash#length", "Hash#size", "Hash#empty?", "Hash#keys", "Hash#values",
    "Hash#inspect", "Hash#to_s", "Hash#dup",
    "Exception#message", "Exception#to_s", "Exception#inspect",
@@ -232,6 +252,21 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
   if zeroArgBids.contains bid && !args.isEmpty then
     .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m
+  else if bid.endsWith "#dup" || bid.endsWith "#clone" then
+    -- One rule for every class (L66): copies the payload *and* the instance
+    -- variables (`str.dup` keeps `@ivar` [V]); `dup` drops the frozen bit,
+    -- `clone` keeps it. Gates where a copy would need more than the object:
+    -- a singleton class (clone copies it) or a class/module payload (a duped
+    -- class is anonymous, which our `name` field cannot express).
+    match recv with
+    | .ref o =>
+      if (h.get o).eigen.isSome then
+        .unsupported "dup/clone of an object with a singleton class"
+      else match (h.get o).payload with
+        | .cls _ => .unsupported "dup/clone of a class/module"
+        | .rng _ => .unsupported "dup/clone of a Random (state identity)"
+        | _ => let (v, m) := dupObj m o (bid.endsWith "#clone"); .ok v m
+    | _ => .ok recv m   -- immediates dup/clone to themselves [V]
   else
   match bid with
   /- ─── BasicObject / Object core ─── -/
@@ -658,10 +693,6 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
     | _ => .unsupported "frozen?"
-  | "String#dup" =>
-    match strPayload? h recv with
-    | some s => okStr m s
-    | none => .unsupported "dup"
   | "String#to_sym" =>
     match strPayload? h recv with
     | some s => .ok (.sym s) m
@@ -895,10 +926,6 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
       let (v, m) := allocArr m ys
       .ok v m
     | _, _ => .unsupported "uniq"
-  | "Array#dup" =>
-    match arrPayload? h recv with
-    | some xs => let (v, m) := allocArr m xs; .ok v m
-    | none => .unsupported "dup"
   | "Array#frozen?" =>
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
@@ -1020,17 +1047,6 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     match inspectP m recv with
     | .ok s => okStr m s
     | .error e => .unsupported e
-  | "Hash#dup" =>
-    match recv with
-    | .ref o =>
-      match (h.get o).payload with
-      | .hsh xs =>
-        -- dup copies the default (value or proc), per CRuby.
-        let (o2, h) := h.alloc { klass := Boot.hashId, payload := .hsh xs,
-                                 hashDflt := (h.get o).hashDflt }
-        .ok (.ref o2) { m with heap := h }
-      | _ => .unsupported "dup"
-    | _ => .unsupported "dup"
   | "Hash#merge" =>
     -- Non-mutating merge: start from self's entries, fold each Hash arg in with
     -- later keys overriding — an existing key keeps its position but takes the
@@ -1112,7 +1128,7 @@ where
   putsImpl (m : Machine) (args : List Value) : BRes :=
     match putsGo m args 100 with
     | some m => .ok .nil { m with out := if args.isEmpty then m.out ++ "\n" else m.out }
-    | none => .unsupported "puts: impure to_s or deep nesting"
+    | none => .unsupported "puts: impure to_s, to_ary dispatch, or deep nesting"
   putsGo (m : Machine) (args : List Value) : Nat → Option Machine
     | 0 => none
     | fuel + 1 =>
@@ -1123,10 +1139,15 @@ where
           match (m.heap.get o).payload with
           | .arr xs => putsGo m xs.toList fuel
           | .str s => some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
-          | _ => match toSP m a with
+          | _ =>
+            -- CRuby tries `to_ary` on a non-Array, non-String argument (L66)
+            if mayDispatchToAry m.heap a then none
+            else match toSP m a with
             | .ok s => some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
             | .error _ => none
-        | _ => match toSP m a with
+        | _ =>
+          if mayDispatchToAry m.heap a then none
+          else match toSP m a with
           | .ok s => some (m.emit (s ++ "\n"))
           | .error _ => none
   /-- Kernel#raise: [] → re-raise $! or fresh RuntimeError "" [V];

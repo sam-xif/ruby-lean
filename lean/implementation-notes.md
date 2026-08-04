@@ -1254,3 +1254,94 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   disagree. Tier-1's remaining gates are almost entirely metaprogramming
   (`define_method` 96, `prepend` 27, `define_singleton_method` 21,
   `alias_method` 9) — the next step, and the one Rails needs.
+
+## Reflective metaprogramming (L64–L66)
+
+- **L64 — `define_method` & friends: a method whose body is a closure.** One new
+  field carries it: `MethodDef.capturedFrame : Option Nat`, the frame the body
+  closes over. `enterUserMethod` puts it in the activation frame's `captured`
+  slot, so free variables resolve up the defining chain exactly as in the block
+  the body came from, while the frame stays `kind := .method` — which is what
+  makes `self` the call-time receiver and `return` return from the *method*. No
+  new evaluation rule, no new Kont: the "everything is heap mutation" principle
+  held (artifact 02 §1).
+  - Params come from the closure, so `define_method(:m) { |a, b: 2| }` gets the
+    full structured-param treatment for free, with **method** arity (strict) —
+    `A.new.m` with no args raises `ArgumentError` [V], unlike calling the proc.
+  - `blk` is the subtle one: a `define_method` body is a *block*, so
+    `block_given?`/`yield` inside it refer to the block of the scope where it was
+    **defined**, not the call (`C.new.foo {}` → `false` [V], test_method_204).
+    The frame therefore takes the captured frame's `blk`, and a new
+    `Frame.callBlk` records the call's block for the two things that still need
+    it: an explicit `&b` param, and `break` targeting (below).
+  - Bare `super` from such a body has no formal parameter list to forward, and
+    CRuby refuses rather than guessing: `RuntimeError "implicit argument passing
+    of super from method defined by define_method() is not supported…"` [V].
+  - `define_singleton_method` is the same code with the eigenclass as target;
+    `alias_method` is `alias` with dynamic names (copy semantics, so a later
+    redefinition of the original does not follow [V]).
+  - Constants in the body resolve at the **definition** site: the MethodDef takes
+    the captured frame's `cref`.
+  - **Frame pre-declaration** (needed once bodies can close over a scope):
+    `enterUserMethod` now seeds the frame's locals with every formal bound *after*
+    the defaults (`rest`/`post`/`block`/`kwrest`) as nil, because those go through
+    `setLocal`, which walks the `captured` chain — without pre-declaration a
+    `*rest` param would clobber a same-named local in the enclosing scope.
+- **L65 — `class_eval`/`instance_eval`/`instance_exec`, `prepend`, and the
+  reflection surface.** All of it is `self`/`defmod` rebinding plus heap reads:
+  - `callClosure` gained `selfOv`/`defmodOv`. `class_eval` rebinds both to the
+    module (so `def` inside defines instance methods); `instance_eval` rebinds
+    `self` to the receiver and the `def` target to its **eigenclass**, which is
+    why `o.instance_eval { def m; end }` defines a singleton method [V].
+    Everything else about the block frame (captured chain, `home`, `cref`, `lam`)
+    is untouched, so free variables, `return` and constant lookup keep block
+    semantics. `_exec` passes the caller's args; `_eval` passes the receiver.
+  - **`prepend`** needed a real MRO slot: `ClassPayload.prepends`, spliced
+    *below* the class in `ancestors`, so prepended methods win and `super` from
+    them reaches the overridden definition (`[:M, :B]` [V]). 27 tier-1 gates.
+  - `singleton_class`, `instance_variable_get`/`_set`/`_defined?`,
+    `instance_variables`, `const_get`/`const_set`/`const_defined?`,
+    `remove_method`/`undef_method`. Two fidelity details: `const_defined?` gates
+    for a constant CRuby has but we don't model (the L5 split — a wrong `false`
+    is worse than a gate), and `remove_method` raises CRuby's
+    `NameError "method 'm' not defined in C"` [V] but treats an `undef`
+    tombstone as *not* a definition (test_method_201) and gates when CRuby
+    defines the method there and we don't (`BasicObject#method_missing`,
+    test_method_211).
+  - **`Kernel` and `Numeric` are now real boot classes.** `Kernel` is a module
+    `include`d into Object (its methods still live on Object; the module is
+    empty), `Numeric` is Integer's and Float's superclass and where the prelude
+    mixes in `Comparable`. Payoff: `ancestors` is now byte-exact —
+    `[Array, Enumerable, Object, Kernel, BasicObject]`,
+    `[Integer, Numeric, Comparable, Object, Kernel, BasicObject]` [V] — where
+    before it silently omitted them; `1.is_a?(Numeric)` is true; and a reopened
+    `Kernel` resolves through the ordinary MRO instead of the `stdMixins` hack.
+    That hack is now *harmful* where the module is really in the chain — it
+    re-added methods an `undef_method` had removed (test_yjit_266) — so
+    `stdMixins` shrank to the one class whose CRuby mixin we still do not splice
+    (`Symbol`, now also handled by the prelude).
+- **L66 — fidelity fixes the metaprogramming work exposed.** Each was a silent
+  disagreement waiting for a corpus that reached it:
+  - **`puts` must consider `to_ary` dispatch.** `Kernel#puts` flattens its
+    arguments by calling `to_ary`, so an object with a user `to_ary` — *or a user
+    `method_missing`*, which can intercept it — makes CRuby raise
+    (`can't convert C0 to Array (C0#to_ary gives String)`) where our pure `puts`
+    happily printed. A builtin cannot run a dispatch, so it gates
+    (`mayDispatchToAry`). This was 169 tier-1 disagreements the moment `for … in`
+    over a Range stopped gating early — a good illustration that un-gating one
+    construct *reveals* rather than creates infidelity.
+  - **`dup`/`clone` copy instance variables** (`str.dup` keeps `@ivar` [V]) —
+    one `dupObj` rule for every payload, routed by the `#dup`/`#clone` bid
+    suffix, `dup` dropping the frozen bit and `clone` keeping it. Gates where a
+    copy needs more than the object: a singleton class, or a class/module payload
+    (a duped class is anonymous, which our `name` field cannot express).
+    `Object#dup`/`#clone` also retire the plain-object `dup` gates.
+  - **`break` from a proc invoked via `#call`** is valid while the method the
+    block was passed to is still active — CRuby's rule, not "always
+    LocalJumpError". `blockOwner` finds that method by scanning the stack for the
+    frame whose `callBlk` *is* this proc, and it becomes the `brk` target; a
+    detached proc still raises `LocalJumpError` [V] (test_method_205).
+  - **Symbol inspect of sigil names**: `p [:@a]` printed `[:"@a"]`. `simpleSymbol`
+    now strips a leading `@@`/`@`/`$` before the identifier test [V].
+  Ratchet: tier-0 **761 → 792 agree, 0 disagree**; tier-1 (n=300, seed 11)
+  **114 → 242 agree**, 0 disagree.

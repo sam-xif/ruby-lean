@@ -667,9 +667,13 @@ end
 
 # ─── Integer ────────────────────────────────────────────────────────────────
 
-class Integer
+class Numeric
+  # CRuby mixes Comparable into Numeric, not into Integer/Float — which is also
+  # where it lands in `Integer.ancestors` [V].
   include Comparable
+end
 
+class Integer
   def upto(n)
     return __unsupported__("Enumerator: Integer#upto without a block") unless block_given?
     i = self
@@ -709,11 +713,11 @@ class Integer
   end
 end
 
-class Float
+class String
   include Comparable
 end
 
-class String
+class Symbol
   include Comparable
 end
 

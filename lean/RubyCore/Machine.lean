@@ -35,6 +35,11 @@ structure Frame where
       *defined* (not its dispatch owner — matters for `def self.m` in a module). -/
   cref : List ObjId := []
   blk : Option Value := none
+  /-- The block the *call* supplied, kept separately from `blk` because a
+      `define_method` body rebinds `blk` to its defining scope's (L66). Used only
+      to answer "which active method was this proc passed to?" when a `break`
+      leaves a proc invoked via `#call`. -/
+  callBlk : Option Value := none
   kind : FrameKind
   /-- Name of the method this activation is running (`""` for toplevel/class
       bodies/blocks) — the target `super`/`zsuper` re-dispatch (artifact 02 §2). -/
