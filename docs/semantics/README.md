@@ -34,6 +34,18 @@ repeatable agent playbook for producing/extending these docs against a Ruby orac
 **Technique:** [Linearization](linearization.md) — a worked example of why `desugar` is
 nontrivial: hoisting control-flow jumps out of operand position (e.g. `"#{next}"`).
 
+**Strategy / brainstorm:** [Search and proof](search-and-proof.md) — where the checker sits
+on the concrete↔symbolic spectrum and **how Direction A and Direction B come together**
+(*"search enumerates trip counts; invariants summarise them"*). Rosette's symbolic
+reflection adapted as finite-domain exhaustive case-splitting via **directed goals**
+rather than machine forking; the *measured* finding that input-bounded loops relocate the
+symbolism into the path condition (so collection opacity cost nothing on the fold
+benchmark); branch distance and why *summary inference* is the stronger half; recovering
+summaries from samples (finite differences) or from the code (one symbolic loop
+iteration); and CHC/Spacer as the concrete instantiation of the untrusted invariant
+engine that `invariant_sound` was built to check. Includes a literature table marking
+which references were verified in-session.
+
 **Instrumentation design:** [Concolic dataflow tracing](concolic-dataflow.md) — how the
 model should emit *symbolic terms* (not just branch directions) so the concolic engine can
 build solver queries without re-deriving dataflow outside the semantics. States the
