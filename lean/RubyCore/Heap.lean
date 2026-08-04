@@ -303,7 +303,7 @@ def builtinMethods : List (ObjId × List String) := [
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
               "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone",
-              "initialize",
+              "initialize", "+@", "-@",
               "to_sym", "[]"]),
   (symbolId, ["to_s", "inspect", "==", "to_sym", "to_proc", "dup", "clone"]),
   (arrayId, ["==", "[]", "[]=", "<<", "push", "pop", "shift", "unshift",

@@ -144,6 +144,10 @@ inductive Kont where
       is `initialize`'s (discarded) result; yield the fresh instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- `Array.try_convert(x)` dispatched `x.to_ary` (L72): the in-flight value is
+      its result — an Array is the answer, nil is nil, anything else is a
+      `TypeError` naming both classes. -/
+  | tryConvertK (srcClass : String)
   /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
       in-flight value is that initializer's (discarded) result; raise the freshly
       built instance. -/

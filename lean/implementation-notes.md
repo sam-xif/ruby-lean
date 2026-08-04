@@ -1497,3 +1497,52 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     eigenclass as target. `private_constant` is still gated (constant visibility
     would have to be checked in constant lookup).
   Ratchet: tier-0 **898 → 909 agree, 0 disagree**; tier-1 270/300, 0 disagree.
+
+## Filling out the frontier (L72)
+
+- **L72 — toplevel visibility, `Array.try_convert`, `instance_eval` on
+  immediates, `Class.new`, `String#+@`/`-@`, and one exactness win on
+  `defined?`.**
+  - **A toplevel `def` is a *private* method of Object** [V] — which is why
+    `public def m …` exists at all (8 tier-0 cases used it). `private`/`public`/
+    `module_function` at toplevel receive `main`, not a class, so they now target
+    Object. Consequence, and it is the faithful one: `0.some_toplevel_method`
+    raises `NoMethodError: private method …` exactly as CRuby does.
+  - **Visibility is checked *after* the shadow gate.** Ordering matters: a toplevel
+    `def getbyte` lands on Object and is now private, but CRuby dispatches
+    `"a".getbyte(0)` to the real `String#getbyte` — so the honest answer is
+    Unsupported, not a NoMethodError about our own resolution (test_yjit_120).
+  - **`Array.try_convert`** (16 cases; the desugar's single-RHS massign uses it):
+    an Array is itself, otherwise CRuby *calls* `to_ary` — so `method_missing` can
+    intercept — and demands an Array or nil back, else
+    `TypeError "can't convert C to Array (C#to_ary gives String)"`. The dispatch
+    result is validated by a new `tryConvertK` kont. This also makes
+    `a, b = obj_with_to_ary` work.
+  - **`instance_eval`/`instance_exec` on an immediate** is fine as long as the
+    block does not `def` — only a *definition* needs the eigenclass an immediate
+    cannot have (CRuby's `TypeError: can't define singleton`). A syntactic
+    `definesMethod` scan of the block decides, so `1.instance_eval { self }` runs
+    and the definition case still gates.
+  - **`Class.new` / `Module.new`, anonymous classes, and constant naming.**
+    `Class.new(sup)` allocates a class with an **empty** name; `Module#name`
+    answers nil for it and `inspect`/`to_s` render `#<Class:0x…>` [V]. The block
+    form is `class_eval`: allocate, then run the block with `self` and the `def`
+    target rebound to the new class, discarding its value via `newK` (the block's
+    last `def` returns a Symbol, which would otherwise *be* the result). And
+    **constant assignment names an anonymous class** — `S = Class.new` makes
+    `S.name == "S"`, `class Wrap; X = Class.new; end` makes it `"Wrap::X"` [V] —
+    applied by both constant-assignment paths (`nameIfAnonymous`).
+  - `String#+@`/`-@`: an unfrozen / frozen copy. Note a **verified-against-4.0.5
+    deviation from the 3.x docs**: `(+str).equal?(str)` is *false* even for an
+    already-unfrozen receiver, so `+@` always copies. (`-@` does not model
+    fstring interning: `(-"x").equal?(-"x")` is true in CRuby, false here.)
+  - **`defined?(local)` is now exact, not approximate.** L67 recorded a deliberate
+    divergence for `y = 1 if false; defined?(y)`; a tier-3 case caught it as a real
+    disagreement, and the fix was already in the data: the **desugarer only emits a
+    `var local` node for a name the parser knows is a local** (an unknown bare name
+    becomes a vcall `send`), which is *precisely* CRuby's static rule. So the
+    answer is unconditionally `"local-variable"` — no runtime frame lookup, no
+    divergence. A good example of the front end carrying information the model
+    would otherwise have to guess at.
+  Ratchet: tier-0 **909 → 940 agree, 0 disagree**; tier-1 (n=400, seed 7) 371
+  agree, 0 disagree; tier-3 replay 54 agree, 0 disagree; regressions clean.

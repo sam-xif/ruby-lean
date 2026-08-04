@@ -719,6 +719,25 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
     | _ => .unsupported "frozen?"
+  | "String#+@" =>
+    -- `+str`: an unfrozen String. CRuby 4.0.5 returns a *fresh* object even when
+    -- the receiver is already unfrozen (`(+a).equal?(a)` is false [V], unlike what
+    -- the 3.x docs describe), so always copy.
+    match recv with
+    | .ref o => let (v, m) := dupObj m o false; .ok v m
+    | _ => .unsupported "+@ on a non-String"
+  | "String#-@" =>
+    -- `-str`: a frozen (deduplicated) string; sharing is unobservable here [V]
+    match recv with
+    | .ref o =>
+      if (h.get o).frozen then .ok recv m
+      else
+        let (v, m) := dupObj m o false
+        match v with
+        | .ref o2 =>
+          .ok v { m with heap := m.heap.set o2 { m.heap.get o2 with frozen := true } }
+        | _ => .unsupported "-@"
+    | _ => .unsupported "-@ on a non-String"
   | "String#to_sym" =>
     match strPayload? h recv with
     | some s => .ok (.sym s) m
@@ -1153,7 +1172,15 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     match recv with
     | .ref k =>
       match h.classPayload? k with
-      | some c => okStr m c.name
+      | some c =>
+        if c.name.isEmpty then
+          -- anonymous (`Class.new`): `name` is nil, `to_s`/`inspect` show the
+          -- address form (L72)
+          if bid == "Module#name" then .ok .nil m
+          else match inspectP m recv with
+            | .ok r => okStr m r
+            | .error e => .unsupported e
+        else okStr m c.name
       | none => .unsupported "name"
     | _ => .unsupported "name"
   | "Module#==" =>
@@ -1374,7 +1401,39 @@ where
           | [lo, hi, .bool e] => mk lo hi e
           | [lo, hi, .nil] => mk lo hi false
           | _ => .unsupported "Range.new arity"
-        else if [Boot.classId, Boot.moduleId, Boot.integerId, Boot.floatId,
+        else if k == Boot.classId then
+          -- `Class.new(superclass = Object)`: an **anonymous** class (empty name,
+          -- rendered `#<Class:0x…>`; a later constant assignment names it, L72).
+          -- The block form carries a block, so it is intercepted in `invoke`.
+          match args with
+          | [] =>
+            let (o, h) := m.heap.alloc
+              { klass := Boot.classId,
+                payload := .cls { superclass := some Boot.objectId, name := "" } }
+            .ok (.ref o) { m with heap := h }
+          | [.ref sup] =>
+            match m.heap.classPayload? sup with
+            | some sc =>
+              if sc.isModule then
+                .err Boot.typeErrorId "superclass must be an instance of Class (given a Module)" m
+              else
+                let (o, h) := m.heap.alloc
+                  { klass := Boot.classId,
+                    payload := .cls { superclass := some sup, name := "" } }
+                .ok (.ref o) { m with heap := h }
+            | none =>
+              .err Boot.typeErrorId
+                s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap (.ref sup))})" m
+          | _ => .unsupported "Class.new arity"
+        else if k == Boot.moduleId then
+          match args with
+          | [] =>
+            let (o, h) := m.heap.alloc
+              { klass := Boot.moduleId,
+                payload := .cls { superclass := Option.none, name := "", isModule := true } }
+            .ok (.ref o) { m with heap := h }
+          | _ => .unsupported "Module.new arity"
+        else if [Boot.integerId, Boot.floatId,
                  Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                  Boot.falseClassId].contains k then
           .unsupported s!"{className m.heap k}.new"

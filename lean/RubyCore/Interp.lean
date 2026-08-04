@@ -579,6 +579,17 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     | (n0, d0) :: more =>
       .next (withKont m (.eval d0) (.optDefK n0 more localsB md.body))
 
+/-- Assigning an **anonymous** class/module (from `Class.new`) to a constant gives
+    it that constant's name [V]: `S = Class.new; S.name == "S"` (L72). Applied by
+    every constant-assignment path. -/
+def nameIfAnonymous (h : Heap) (name : String) (v : Value) : Heap :=
+  match v with
+  | .ref o =>
+    match h.classPayload? o with
+    | some c => if c.name.isEmpty then h.setClassPayload o { c with name } else h
+    | none => h
+  | _ => h
+
 /-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
     superclass realizes the metaclass chain so dispatch through `classOf` finds
     both singleton methods and inherited ones:
@@ -967,6 +978,22 @@ def defineAttr (m : Machine) (cls : ObjId) (mname : String)
       (m, names)
     | _ => (m, names)) (m, [])
 
+/-- Does this expression define a method directly (a `def`/`def self.`)? Used to
+    decide whether an `instance_eval` on an *immediate* receiver is admissible:
+    only a body that defines a singleton method needs the eigenclass it cannot
+    have (L72). Conservative: a `def` anywhere inside counts. -/
+partial def definesMethod : Expr → Bool
+  | .def' .. | .defs .. => true
+  | .seq es => es.any definesMethod
+  | .if' c t e => definesMethod c || definesMethod t || (e.map definesMethod).getD false
+  | .while' c b | .dowhile b c => definesMethod c || definesMethod b
+  | .begin' b rs els ens =>
+    definesMethod b || rs.any (fun r => definesMethod r.2.2)
+      || (els.map definesMethod).getD false || (ens.map definesMethod).getD false
+  | .send _ _ args blk => args.any definesMethod || (blk.map definesMethod).getD false
+  | .block _ _ b => definesMethod b
+  | _ => false
+
 /-- The closure a Proc value carries, if any. -/
 def procClosure? (m : Machine) (v : Value) : Option Closure :=
   match v with
@@ -1048,7 +1075,12 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           some (callClosure m cl blkArgs none (some recv) (some e))
       | _ =>
         if isMod then none
-        else some (.unsupported s!"{mname} on an immediate receiver")
+        -- An immediate has no eigenclass, so a `def` inside is CRuby's
+        -- "can't define singleton" TypeError; anything else just needs `self`
+        -- rebound, which is safe (L72).
+        else if definesMethod cl.body then
+          some (.unsupported s!"{mname} defining a method on an immediate")
+        else some (callClosure m cl blkArgs none (some recv) (some (classOf m.heap recv)))
   | "catch" =>
     -- `catch(tag) { |t| … }` (artifact 04, L69): mark the stack with `catchK` and
     -- run the block with the tag as its argument. A tagless `catch` generates a
@@ -1093,9 +1125,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
       | "protected" => .prot
       | _ => .priv
     match recv with
-    | .ref o =>
-      if (m.heap.classPayload? o).isNone then none
-      else
+    | .ref o0 =>
+      -- at toplevel the receiver is `main`, and these operate on Object [V]
+      let o := if (m.heap.classPayload? o0).isNone then Boot.objectId else o0
       let names := args.filterMap (symOrStr m)
       if names.length != args.length then none
       else if names.isEmpty then
@@ -1138,6 +1170,35 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           | _ => some (.next (withCtl m (.value arr)))
         | none => some (.unsupported s!"{mname} of a method the model does not define")
     | _ => none
+  | "try_convert" =>
+    -- `Array.try_convert(x)` (L72): an Array is itself; otherwise CRuby *calls*
+    -- `to_ary` (so `method_missing` can intercept) and demands an Array or nil
+    -- back. Used by the desugar's single-RHS massign, hence 16 tier-0 cases.
+    match recv, args with
+    | .ref k, [x] =>
+      if k != Boot.arrayId then none
+      else
+        match Builtins.arrPayload? m.heap x with
+        | some _ => some (.next (withCtl m (.value x)))
+        | none =>
+          let hasToAry := ["to_ary", "method_missing"].any fun n =>
+            match lookup m.heap x n with
+            | some (_, md) => md.builtin.isNone
+            | none => false
+          if !hasToAry then some (.next (withCtl m (.value .nil)))
+          else
+            let src := className m.heap (classOf m.heap x)
+            let m := { m with kont := .tryConvertK src :: m.kont }
+            -- resolve `to_ary` directly (this runs *below* `invoke` in the file):
+            -- a user definition, else `method_missing(:to_ary)`.
+            match lookup m.heap x "to_ary" with
+            | some (_, md) => some (enterUserMethod m x "to_ary" md [] none)
+            | none =>
+              match methodOn m.heap (classOf m.heap x) "method_missing" with
+              | some (_, mm) =>
+                some (enterUserMethod m x "method_missing" mm [.sym "to_ary"] none)
+              | none => some (.unsupported "Array.try_convert: unresolvable to_ary")
+    | _, _ => none
   | "singleton_class" =>
     match recv with
     | .ref o => let (e, m) := eigenclassOf m o; some (.next (withCtl m (.value (.ref e))))
@@ -1502,9 +1563,6 @@ where
       let (args, m) := appendKwHash m args kw
       dispatchMiss m recv implicit mname args blk
     else
-    match visError? m recv implicit md mname with
-    | some sr => sr
-    | none =>
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
     -- receiver's class and our resolved owner, CRuby would dispatch there —
     -- we'd be running the wrong method. Gate. (Builtins are exempt only
@@ -1517,6 +1575,13 @@ where
     let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
     match crubyShadow m.heap between mname with
     | some cname => .unsupported s!"unmodeled builtin would shadow: {cname}#{mname}"
+    | none =>
+    -- Visibility (L71) is checked *after* the shadow gate: when CRuby would
+    -- dispatch to a method we don't model, the honest answer is Unsupported, not
+    -- a NoMethodError about *our* resolution (test_yjit_120 — a toplevel
+    -- `def getbyte`, now private, shadowed by the real `String#getbyte`).
+    match visError? m recv implicit md mname with
+    | some sr => sr
     | none =>
       match md.builtin with
       | some bid =>
@@ -1670,6 +1735,25 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
           { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.prc bo) }
         .next (withCtl { m with heap := h } (.value (.ref o)))
       | _ => .unsupported "Hash.new block not a proc"
+    else if mname == "new"
+        && (match recv with | .ref k => k == Boot.classId || k == Boot.moduleId | _ => false) then
+      -- `Class.new { … }` / `Module.new { … }`: allocate the anonymous class, then
+      -- run the block with `self`/the `def` target rebound to it — i.e. exactly
+      -- `class_eval` (L72). The block also receives the class as its argument [V].
+      match recv with
+      | .ref k =>
+        match Builtins.run (if k == Boot.classId then "Class#new" else "Module#new") recv args m with
+        | .ok newV m =>
+          match newV, procClosure? m v with
+          | .ref newK, some cl =>
+            -- the block's value is discarded; `Class.new` yields the class [V]
+            let m := { m with kont := .newK newV :: m.kont }
+            callClosure m cl [newV] none (some newV) (some newK)
+          | _, _ => .unsupported "Class.new did not yield a class"
+        | .err cls msg m => .next (raiseErr m cls msg)
+        | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+        | .unsupported r => .unsupported r
+      | _ => .unsupported "Class#new with a block"
     else if mname == "new" then
       -- Class#new with a block (initialize block) — the block affects behaviour
       -- and we don't model it, so gate rather than silently drop it.
@@ -1873,8 +1957,10 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           else
             .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
-      .next (withCtl
-        { m with heap := constSetIn m.heap m.currentFrame.defmod n v } (.value v))
+      let defmod := m.currentFrame.defmod
+      let qual := if defmod == Boot.objectId then n else s!"{className m.heap defmod}::{n}"
+      let h := nameIfAnonymous m.heap qual v
+      .next (withCtl { m with heap := constSetIn h defmod n v } (.value v))
     | .classDefK name body =>
       -- v is the resolved superclass: it must be a non-module Class object [V]
       match v with
@@ -1898,6 +1984,15 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .tryConvertK src =>
+      match v with
+      | .nil => .next (withCtl m (.value .nil))
+      | _ =>
+        match Builtins.arrPayload? m.heap v with
+        | some _ => .next (withCtl m (.value v))
+        | none =>
+          .next (raiseErr m Boot.typeErrorId
+            s!"can't convert {src} to Array ({src}#to_ary gives {className m.heap (classOf m.heap v)})")
     | .raiseNewK inst =>
       -- `raise C[, msg]` with a user `initialize`: now raise the built instance
       .next (withCtl m (.jump (.raiseJ inst)))
@@ -1953,7 +2048,10 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .ok o => .next (withKont m (.eval rhs) (.cpathAsgnValK name o))
     | .cpathAsgnValK name base =>
       -- v is the rhs; write it into base's namespace; assignment yields rhs [V].
-      .next (withCtl { m with heap := constSetIn m.heap base name v } (.value v))
+      let qual := if base == Boot.objectId then name
+                  else s!"{className m.heap base}::{name}"
+      let h := nameIfAnonymous m.heap qual v
+      .next (withCtl { m with heap := constSetIn h base name v } (.value v))
     | .scopedClassDefK name isMod body =>
       -- v is base `A`; open (or create) `name` inside it.
       match cpathContainer m v with
@@ -2301,10 +2399,13 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
   | .tru => str "true"
   | .fls => str "false"
   | .self' => str "self"
-  | .var .lvar x =>
-    -- Runtime presence, not the parser's static scope: a local assigned only in
-    -- dead code (`x = 1 if false`) is "local-variable" to CRuby but absent here.
-    strIf (m.hasLocal x) "local-variable"
+  | .var .lvar _ =>
+    -- Always "local-variable" — and this is *exact*, not an approximation: the
+    -- desugarer only emits a `var local` node for a name the parser knows to be a
+    -- local in this scope (an unknown bare name becomes a vcall `send`), which is
+    -- precisely CRuby's static rule. So `y = 1 if false; defined?(y)` answers
+    -- "local-variable" even though no binding exists at runtime [V] (L72).
+    str "local-variable"
   | .var .ivar x =>
     let has := match m.currentFrame.self with
       | .ref o => (m.heap.get o).ivars.any (·.1 == x)
@@ -2467,9 +2568,14 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     let md : MethodDef :=
       { params, body, owner := defmod, cref := m.currentFrame.cref,
         fromPrelude := m.preludeMode,
-        -- `private` / `protected` with no arguments set the default for the rest
-        -- of the class body (artifact 02 §5); `initialize` is always private [V].
-        visibility := if name == "initialize" then .priv else m.currentFrame.defVis }
+        -- `private`/`protected` with no arguments set the default for the rest of
+        -- the class body (artifact 02 §5); `initialize` is always private, and so
+        -- is a **toplevel** `def` (a private method of Object) [V] — which is why
+        -- `public def m …` at toplevel exists at all (L72).
+        visibility :=
+          if name == "initialize" then .priv
+          else if m.currentFrame.kind == .toplevel then .priv
+          else m.currentFrame.defVis }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))

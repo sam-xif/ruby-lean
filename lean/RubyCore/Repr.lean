@@ -164,7 +164,11 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
           else return s!"{escapeString s}: {vs}"
         | _ => return s!"{← inspect h k} => {vs}"
       return "{" ++ String.intercalate ", " parts ++ "}"
-    | .cls c => return c.name
+    | .cls c =>
+      -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
+      -- address (L72)
+      if c.name.isEmpty then return s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr o}>"
+      else return c.name
     | .exc msg =>
       let cname := className h (h.get o).klass
       if msg.isEmpty then return cname else return s!"#<{cname}: {msg}>"
@@ -195,7 +199,11 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     match (h.get o).payload with
     | .str s => return s
     | .arr _ | .hsh _ => inspect h v
-    | .cls c => return c.name
+    | .cls c =>
+      -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
+      -- address (L72)
+      if c.name.isEmpty then return s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr o}>"
+      else return c.name
     | .exc msg => return msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
     | .rng _ => throw "Random#to_s (state/address non-deterministic)"
