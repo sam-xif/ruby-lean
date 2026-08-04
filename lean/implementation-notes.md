@@ -1147,3 +1147,57 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     (`docs/semantics/concolic-dataflow.md` §8.2) plus symbol-valued terms, and is the
     remaining blocker for the ai4r q_learning natural trigger
     (`typecheck-pipeline/findings/`).
+
+## The prelude — core library written in RubyCore (L62–…)
+
+- **L62 — the prelude mechanism: two-phase boot + `fromPrelude` + a
+  RubyCore-level gate.** The iterating-builtin machinery (`tryIterator`,
+  `IterKind`) is hardcoded per `(class, method)` pair and its five-constructor
+  `IterKind` cannot express `select`/`find`/`group_by`/… without a new Lean
+  constructor each — which is why the coverage histogram's tail reads as "a list
+  of named builtins". The prelude inverts that: core-library methods are written
+  **in Ruby**, desugared by the harness, and loaded into the heap before the
+  program under test, so each new method costs a few lines of RubyCore rather
+  than a Lean primitive — and lands *inside* the model, where Direction-B proofs
+  and the concolic engine reach it for free.
+  Four decisions, each revertable:
+  - **Carried as export JSON, not a Lean `Expr` literal.** `scripts/gen_prelude.rb`
+    desugars `prelude/prelude.rb` and emits `RubyCore/Prelude.lean` holding the
+    exported RubyCore **JSON** as a chunked string literal; the model decodes it
+    with the ordinary `Decode.program`. Rejected: emitting Lean `Expr` syntax from
+    Ruby (a second AST encoder that would silently drift from `Export::VERSION`),
+    and reading a JSON file at runtime (the SUT binary must be self-contained —
+    difftest invokes it from anywhere). Cost: one JSON parse per process (~ms) and
+    the prelude is not kernel-reducible, which is fine because the proofs use bare
+    `Machine.init`.
+  - **Two-phase boot, not a `.seq [prelude, program]` wrapper.** `Prelude.boot`
+    runs the prelude from H₀ with `preludeMode := true`; `initWithPrelude` then
+    builds a *fresh* machine on the resulting heap (`Machine.initOn`, carrying
+    `globals`/`reprPure` forward). This keeps the program's own frame/kont/step
+    numbering unpolluted, gives the flag a natural extent (phase 1 only), and is
+    literally the "concrete boot heap" of `bounded-effect-checking.md`.
+    `Machine.init` is untouched, so `Proof/` and `Search/` are unaffected.
+  - **`MethodDef.fromPrelude` suppresses the L6 shadow gate for its own name.**
+    Necessary, and measured: a *direct* `class Array; def select` resolves with an
+    empty `between` chain and needs nothing, but the same method supplied via
+    `include Enumerable` resolves to an owner *above* `Array`, so the L6 check
+    fires ("unmodeled builtin would shadow: Array#select") — the mixin route is
+    the whole point of a prelude. The rule is uniform: a prelude method *is* the
+    model of the CRuby builtin of that name, so it suppresses the gate for that
+    name only; the fidelity obligation moves into `prelude.rb`, where difftest
+    checks it like any other model code. A *user* method shadowed by a real
+    builtin still gates, so L6 is intact where it earns its keep.
+  - **`Kernel#__unsupported__(msg)` — the prelude's gate.** RubyCore code cannot
+    return `.unsupported`, so a prelude method that meets a form it does not model
+    (the standard case: a blockless Enumerable call, which CRuby answers with an
+    `Enumerator`) calls this builtin, which returns `BRes.unsupported msg`. Without
+    it, prelude authors would have to *guess*, and the 0-disagree ratchet would
+    become a coin flip.
+  Authoring rules live at the top of `prelude/prelude.rb`. The sharpest one:
+  **never define `to_s`/`inspect`/`==`/`eql?`/`message`/`to_str` in the prelude** —
+  `reprPure` (L7) is a global flag, so one such `def` would make every `puts` in
+  every program gate. That is what keeps `Rational`/`Struct`-style classes out of
+  the prelude until L7 is refined to a per-class check.
+  First content is `Comparable` (`< <= > >= between? clamp` over `<=>`), which also
+  retires the "unmodeled constant Comparable" gate. Ratchet: **722 agree, 0
+  disagree** — unchanged, as intended for a mechanism-only step.

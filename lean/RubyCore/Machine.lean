@@ -243,6 +243,10 @@ structure Machine where
       (to_s/inspect/==/eql?/message/to_str); pure repr is then inadmissible
       and builtins that need it must answer Unsupported. -/
   reprPure : Bool := true
+  /-- True only while the **prelude** (the core library written in RubyCore,
+      `prelude/prelude.rb`) is being loaded: methods defined in this phase are
+      marked `fromPrelude` (L62). -/
+  preludeMode : Bool := false
 deriving Inhabited
 
 namespace Machine
@@ -302,9 +306,11 @@ def setGlobal (m : Machine) (x : String) (v : Value) : Machine :=
 def emit (m : Machine) (s : String) : Machine :=
   { m with out := m.out ++ s }
 
-/-- Initial machine for a program: H₀, one toplevel frame, self = main. -/
-def init (program : Expr) : Machine :=
-  let heap := Boot.initHeap
+/-- Initial machine for a program running on an already-booted heap `heap`
+    (fresh frames/kont/stack; stdout and `$!` reset). Used for the two-phase
+    prelude boot: phase 1 runs `prelude/prelude.rb` from H₀, phase 2 runs the
+    program on the resulting heap (L62). `init` is `initOn Boot.initHeap`. -/
+def initOn (heap : Heap) (program : Expr) : Machine :=
   let top : Frame :=
     { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel,
       cref := [Boot.objectId] }
@@ -312,6 +318,9 @@ def init (program : Expr) : Machine :=
     stack := [0],
     frames := #[top],
     heap }
+
+/-- Initial machine for a program: H₀, one toplevel frame, self = main. -/
+def init (program : Expr) : Machine := initOn Boot.initHeap program
 
 end Machine
 

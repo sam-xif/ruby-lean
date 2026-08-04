@@ -6,4 +6,6 @@ import RubyCore.Repr
 import RubyCore.Machine
 import RubyCore.Builtins
 import RubyCore.Interp
+import RubyCore.Prelude
+import RubyCore.PreludeBoot
 import RubyCore.Obs

@@ -61,6 +61,11 @@ structure MethodDef where
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   private' : Bool := false
+  /-- Defined by the **prelude** (the core library written in RubyCore itself,
+      `prelude/prelude.rb`) rather than by the program under test. Such a method
+      *is* the model of the CRuby builtin of the same name, so it suppresses the
+      "unmodeled builtin would shadow" gate for its own name (L62). -/
+  fromPrelude : Bool := false
   /-- `undef name` tombstone (artifact 02): the entry exists so the ancestor
       walk stops here (blocking any inherited definition), but dispatch treats
       it as a miss → `NoMethodError`/`method_missing`. -/
@@ -246,7 +251,7 @@ def builtinMethods : List (ObjId × List String) := [
   (objectId, ["==", "!=", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
-              "require", "require_relative"]),
+              "require", "require_relative", "__unsupported__"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|"]),
   (trueClassId, ["to_s", "inspect", "&", "|"]),
   (falseClassId, ["to_s", "inspect", "&", "|"]),

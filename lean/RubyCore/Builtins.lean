@@ -285,6 +285,16 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- true iff the enclosing method activation received a block (the block
     -- is propagated onto block frames, so the current frame's blk answers) [V]
     .ok (.bool m.currentFrame.blk.isSome) m
+  | "Object#__unsupported__" =>
+    -- The prelude's fragment gate (L62): RubyCore-level core-library code cannot
+    -- return `.unsupported` on its own, so it calls this to declare a form it
+    -- does not model (`Enumerator`, a `<=>`-less comparison, …). Keeps the
+    -- "declare, never guess" discipline available to prelude authors.
+    match args with
+    | [a] => match strPayload? h a with
+      | some s => .unsupported s
+      | none => .unsupported "prelude gate (non-String reason)"
+    | _ => .unsupported "prelude gate"
   | "Object#require" | "Object#require_relative" =>
     -- Linked programs have their internal deps inlined; a residual `require` of a
     -- stdlib (e.g. `benchmark`/`yaml`) is a no-op that returns true (as CRuby's

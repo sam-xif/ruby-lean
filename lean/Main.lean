@@ -8,6 +8,7 @@ Exit codes (mirroring the desugar SUT adapter contract):
   1 — harness error (bad input, stuck machine); message on stderr
 -/
 import RubyCore.Obs
+import RubyCore.PreludeBoot
 import RubyCore.Trace
 
 open RubyCore
@@ -44,10 +45,18 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"undecodable RubyCore: {e}"
         return 1
     | .ok prog =>
+      -- Phase 1: boot the prelude (the core library written in RubyCore, L62);
+      -- phase 2 runs `prog` on the resulting heap. A prelude failure is a model
+      -- bug, never a program outcome → exit 1.
+      let m0 ← match Prelude.initWithPrelude prog with
+        | .error e =>
+          IO.eprintln s!"MODEL PRELUDE FAILURE (bug): {e}"
+          return 1
+        | .ok m0 => pure m0
       if let some maxSteps := traceSteps then
-        IO.println (Trace.traceJson maxSteps (Machine.init prog)).compress
+        IO.println (Trace.traceJson maxSteps m0).compress
         return 0
-      let result := Interp.run fuel (Machine.init prog)
+      let result := Interp.run fuel m0
       match observe result with
       | .obs obs =>
         IO.println obs.compress

@@ -880,9 +880,12 @@ def defineAttr (m : Machine) (cls : ObjId) (mname : String)
     | .sym s =>
       -- accessor methods are named `s`/`s=`, but the backing ivar is `@s` [V].
       let iv := "@" ++ s
-      let getter : MethodDef := { params := [], body := .var .ivar iv, owner := cls }
+      let getter : MethodDef :=
+        { params := [], body := .var .ivar iv, owner := cls,
+          fromPrelude := m.preludeMode }
       let setter : MethodDef :=
-        { params := [.req "__v"], body := .vasgn .ivar iv (.var .lvar "__v"), owner := cls }
+        { params := [.req "__v"], body := .vasgn .ivar iv (.var .lvar "__v"), owner := cls,
+          fromPrelude := m.preludeMode }
       let m := if mname != "attr_writer" then { m with heap := defineMethod m.heap cls s getter } else m
       let m := if mname != "attr_reader" then { m with heap := defineMethod m.heap cls (s ++ "=") setter } else m
       let names := names
@@ -1077,7 +1080,12 @@ where
     -- receiver's class and our resolved owner, CRuby would dispatch there —
     -- we'd be running the wrong method. Gate. (Builtins are exempt only
     -- from their own owner downward.)
-    let between := chain.takeWhile (· != owner)
+    -- Exception (L62): a **prelude**-defined method *is* our model of the CRuby
+    -- builtin of that name, so the "between" class CRuby would dispatch to is
+    -- exactly what the prelude implements (`Array#select` resolved to the
+    -- prelude's `Enumerable#select`). Suppress the gate for prelude owners; the
+    -- fidelity obligation moves to the prelude's body, where difftest checks it.
+    let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
     match crubyShadow m.heap between mname with
     | some cname => .unsupported s!"unmodeled builtin would shadow: {cname}#{mname}"
     | none =>
@@ -1391,7 +1399,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let (e, m) := eigenclassOf m o
         -- `def self.m` in a module keeps that module's lexical cref for constant
         -- lookup even though its dispatch owner is the eigenclass (artifact 03).
-        let md : MethodDef := { params, body, owner := e, cref := m.currentFrame.cref }
+        let md : MethodDef :=
+          { params, body, owner := e, cref := m.currentFrame.cref,
+            fromPrelude := m.preludeMode }
         let m := { m with heap := defineMethod m.heap e name md }
         let m := if reprSensitive.contains name then { m with reprPure := false } else m
         .next (withCtl m (.value (.sym name)))
@@ -1799,7 +1809,9 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     .next (withKont m (.eval coll) (.forStartK targets body))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
-    let md : MethodDef := { params, body, owner := defmod, cref := m.currentFrame.cref }
+    let md : MethodDef :=
+      { params, body, owner := defmod, cref := m.currentFrame.cref,
+        fromPrelude := m.preludeMode }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))
