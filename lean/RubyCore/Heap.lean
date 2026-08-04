@@ -87,6 +87,10 @@ structure ClassPayload where
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
       into the ancestor chain just above this class, most-recent first (MRO). -/
   includes : List ObjId := []
+  /-- Class variables `@@x` (artifact 03 §3): stored on the class/module, looked
+      up along the ancestor chain, and *assigned* in the highest ancestor that
+      already has one (L67). -/
+  cvars : List (String × Value) := []
   /-- Modules mixed in via `prepend` (most-recently-prepended **last**); inserted
       *below* this class in the chain, so their methods win over the class's own
       and `super` from them reaches the class (artifact 02 §1, L65). -/
@@ -477,6 +481,28 @@ def constLookupFrom (h : Heap) (cls : ObjId) (name : String) : Option Value :=
     match h.classPayload? k with
     | some c => (c.consts.find? (·.1 == name)).map (·.2)
     | Option.none => Option.none
+
+/-- `@@x` read from lexical scope `scope`: the first ancestor (class or included
+    module) that defines it (artifact 03 §3). -/
+def cvarLookupIn (h : Heap) (scope : ObjId) (name : String) : Option Value :=
+  (ancestors h scope).firstM fun k =>
+    (h.classPayload? k).bind fun c => (c.cvars.find? (·.1 == name)).map (·.2)
+
+/-- `@@x = v` from lexical scope `scope`: writes to the **highest** ancestor that
+    already defines `@@x` (so a subclass assignment updates the superclass's
+    variable [V]), else creates it on `scope` itself. -/
+def cvarSetIn (h : Heap) (scope : ObjId) (name : String) (v : Value) : Heap :=
+  let chain := ancestors h scope
+  let owners := chain.filter fun k =>
+    match h.classPayload? k with
+    | some c => c.cvars.any (·.1 == name)
+    | Option.none => false
+  let target := owners.getLast?.getD scope
+  match h.classPayload? target with
+  | some c =>
+    h.setClassPayload target
+      { c with cvars := (name, v) :: c.cvars.filter (·.1 != name) }
+  | Option.none => h
 
 /-- Install a method (def'). Returns the updated heap. -/
 def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Heap :=

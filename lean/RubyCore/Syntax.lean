@@ -92,6 +92,9 @@ inductive Expr where
   | undef (names : List String)
   /-- `alias new old` — bind `new` to the current definition of `old`. -/
   | alias' (newName oldName : String)
+  /-- `defined?(e)` — a String naming what `e` is, or nil (artifact 03 §6). The
+      operand is *not* evaluated, except a send's receiver / a cpath's base. -/
+  | defined (e : Expr)
   | seq (es : List Expr)
 
 /-- Method/block/lambda formal parameters (rubycore.rb `PARAM_HEADS`; mutual
@@ -336,10 +339,10 @@ partial def expr (j : Json) : M Expr := do
   | "seq", _ =>
       if a.size ≥ 2 then .seq <$> exprs (a.extract 1 a.size)
       else fail "empty seq" j
+  | "defined", #[_, e] => .defined <$> expr e
   -- v4 additive heads not yet modeled by the stepper: gate as Unsupported
   -- (exit 3) rather than a hard decode failure. Some appear as arg markers
   -- (`kwargs`/`fwd`), the rest as statements.
-  | "defined",    _ => unsupported "defined?"
   | _, _ => fail s!"unknown or malformed head :{head}" j
 
 end

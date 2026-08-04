@@ -1345,3 +1345,46 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     now strips a leading `@@`/`@`/`$` before the identifier test [V].
   Ratchet: tier-0 **761 → 792 agree, 0 disagree**; tier-1 (n=300, seed 11)
   **114 → 242 agree**, 0 disagree.
+
+## `defined?` and class variables (L67)
+
+- **L67 — `defined?` (the largest single tier-0 gate, 36 cases) and `@@x`.**
+  - **`defined?` is answered from the operand's *shape*, not by evaluating it**
+    (artifact 03 §6): a new `Expr.defined` head plus a `evalDefined` dispatch that
+    reads the frame/heap. CRuby's exact spellings, all [V]: `"nil"`, `"true"`,
+    `"false"`, `"self"`, `"expression"`, `"assignment"`, `"local-variable"`,
+    `"instance-variable"`, `"global-variable"`, `"class variable"` (note: no
+    hyphen), `"constant"`, `"method"`, `"yield"`, `"super"`. Two easy-to-get-wrong
+    ones the oracle settled: `defined?(1+1)` is `"method"` (it *is* a send), and
+    `defined?(nil)` is `"nil"`, not `"expression"`.
+  - **The two operands CRuby does evaluate** are a send's receiver and a cpath's
+    base (`defined?(C.new.m)` really runs `C.new`), and *any* exception during
+    that evaluation makes the whole `defined?` nil [V] — even a `RuntimeError`
+    from `initialize`, not just NameError. Modeled with three konts:
+    `definedRecvK`/`definedCpathK` (compute the answer from the evaluated value)
+    over a `definedGuardK` marker that `unwind` consumes on a raise, yielding nil.
+    A guard marker is exactly how `begin/rescue` already works, so this cost no
+    new machinery.
+  - **Two fidelity traps, both found by the corpus rather than by reasoning.**
+    (a) `defined?(recv.m)` goes through **`respond_to?`** in CRuby, so a *user*
+    override of `respond_to?`/`respond_to_missing?` is observable — and in
+    test_yjit_023 it has a side effect (it nils out a local). A pure check cannot
+    dispatch, so `definedMethod?` gates whenever a user override is in the chain.
+    (b) `defined?(super)` must do the `super` *lookup* without calling — nil when
+    there is no super method (test_syntax_130), with the usual L5 split when CRuby
+    has one we don't model.
+  - **Known divergence, deliberate:** the local-variable check is a *runtime*
+    frame lookup (`Machine.hasLocal`), while CRuby's is the parser's static scope —
+    so `x = 1 if false; defined?(x)` is `"local-variable"` in CRuby and nil here.
+    Fixing it properly needs the desugarer to export declared-local sets; the
+    corpus has no such case, and the alternative (gating every absent local) would
+    forfeit all 36 cases.
+  - **Class variables** (`ClassPayload.cvars`) came along because `defined?(@@a)`
+    needs them: read walks the ancestor chain from the *lexical* scope
+    (`cvarScope` = cref head), and assignment writes to the **highest** ancestor
+    that already has the variable, so `class B < A; @@a = 9` updates `A`'s [V].
+    Toplevel access raises CRuby's `RuntimeError "class variable access from
+    toplevel"` — except `defined?(@@a)`, which is plain nil [V]. A
+    singleton-class scope gates (CRuby shares the attached class's variables and
+    we do not track attachment).
+  Ratchet: tier-0 **792 → 815 agree, 0 disagree**.

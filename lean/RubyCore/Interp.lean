@@ -1619,6 +1619,40 @@ def forStep (m : Machine) (targets : List (TargetKind × String)) (body : Expr)
     | none => .unsupported "for with a non-local loop target"
     | some m => .next (withKont m (.eval body) (.forBodyK targets body tail coll))
 
+/-- The class/module a `@@x` in the current frame belongs to (artifact 03 §3):
+    the innermost *lexical* class/module (cref head), falling back to `defmod`.
+    `none` when there is no such scope (toplevel — CRuby warns and uses Object,
+    but the desugar's toplevel `@@x` cases are rare) or when it is an eigenclass,
+    whose class-variable scope CRuby resolves differently (L67). -/
+def cvarScope (m : Machine) : Option ObjId :=
+  let k := match m.currentFrame.cref with
+    | c :: _ => c
+    | [] => m.currentFrame.defmod
+  -- An eigenclass body shares the *attached* class's class variables in CRuby
+  -- (`class << self; @@f = 1; end` writes the class's `@@f` [V]); our cref head
+  -- is the eigenclass itself, and we do not track the attachment → gate.
+  if (className m.heap k).startsWith "#<" then none else some k
+
+/-- Does `mname` resolve on `recv` for `defined?` purposes: `some true` = yes
+    ("method"), `some false` = genuinely not defined (nil), `none` = CRuby has it
+    but we don't model it (gate — the L5 fidelity split; `defined?` must not
+    answer nil for a method that really exists). `method_missing` is deliberately
+    *not* consulted: CRuby's `defined?` doesn't either [V]. -/
+def definedMethod? (m : Machine) (recv : Value) (mname : String) : Option Bool :=
+  -- CRuby routes an *explicit-receiver* `defined?` through `respond_to?`, so a
+  -- user override of it (or of `respond_to_missing?`) is observable — and can even
+  -- have side effects (test_yjit_023). We cannot dispatch from here → gate.
+  if ["respond_to?", "respond_to_missing?"].any (fun n =>
+      match lookup m.heap recv n with
+      | some (_, md) => md.builtin.isNone
+      | none => false) then none
+  else
+  match lookup m.heap recv mname with
+  | some (_, md) => if md.undefined then some false else some true
+  | none =>
+    if (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) mname).isSome then none
+    else some false
+
 /-- Deliver a value to the top continuation. -/
 def applyKont (m : Machine) (v : Value) : StepResult :=
   match m.kont with
@@ -1649,7 +1683,14 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           | .ok r => .next (raiseErr m Boot.frozenErrorId
               s!"can't modify frozen {className m.heap (classOf m.heap selfV)}: {r}")
           | .error e => .unsupported e
-      | .cvar => .unsupported "class variables"
+      | .cvar =>
+        match cvarScope m with
+        | none => .unsupported "class variable in a singleton-class scope"
+        | some scope =>
+          if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
+            .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
+          else
+            .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
       .next (withCtl
         { m with heap := constSetIn m.heap m.currentFrame.defmod n v } (.value v))
@@ -1881,6 +1922,26 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       .next (finishRegion { m with currentExc := saved } node.ens (.val v))
     | .elseK node =>
       .next (finishRegion m node.ens (.val v))
+    | .definedRecvK mname =>
+      -- v is the evaluated receiver of `defined?(recv.m)`
+      match definedMethod? m v mname with
+      | some true => let (sv, m) := Builtins.allocStr m "method"; .next (withCtl m (.value sv))
+      | some false => .next (withCtl m (.value .nil))
+      | none => .unsupported s!"defined?(unmodeled method {mname})"
+    | .definedCpathK name =>
+      -- v is the evaluated base of `defined?(A::B)`; a non-namespace base is a
+      -- TypeError in CRuby, so gate rather than answer nil.
+      match v with
+      | .ref o =>
+        if (m.heap.classPayload? o).isSome then
+          match constLookupFrom m.heap o name with
+          | some _ => let (sv, m) := Builtins.allocStr m "constant"; .next (withCtl m (.value sv))
+          | none => .next (withCtl m (.value .nil))
+        else .unsupported "defined?(A::B) with a non-namespace base"
+      | _ => .unsupported "defined?(A::B) with a non-namespace base"
+    | .definedGuardK =>
+      -- the operand evaluated without raising: pass its `defined?` answer on
+      .next (withCtl m (.value v))
     | .ensureK pending restore =>
       -- ensure's value is discarded; resume what was pending
       let m := match restore with
@@ -1956,6 +2017,11 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       -- `redo` re-runs the block body, but blkFrameK does not carry the body
       -- expr (block invocation is driven by callClosure) → gate.
       | .redoJ => .unsupported "redo in a block"
+    | .definedGuardK =>
+      -- any exception while evaluating a `defined?` operand makes it nil [V]
+      match j with
+      | .raiseJ _ => .next (withCtl m (.value .nil))
+      | _ => .next (withCtl m (.jump j))
     | .beginBodyK node =>
       match j with
       | .raiseJ exc =>
@@ -2018,6 +2084,88 @@ def undefNames (m : Machine) (defmod : ObjId) : List String → StepResult
       else undefNames { m with heap := undefMethod m.heap defmod n } defmod rest
     | none => undefAliasMiss m n
 
+/-- `defined?(e)` (artifact 03 §6, L67). The operand is **not** evaluated — the
+    answer comes from the shape of `e` plus a heap/frame lookup — except a send's
+    receiver and a cpath's base, which CRuby does evaluate (under a guard that
+    turns any raise into nil). Strings are CRuby's exact spellings [V]. -/
+def evalDefined (m : Machine) (e : Expr) : StepResult :=
+  let str : String → StepResult := fun s =>
+    let (v, m) := Builtins.allocStr m s
+    .next (withCtl m (.value v))
+  let nilR : StepResult := .next (withCtl m (.value .nil))
+  let strIf : Bool → String → StepResult := fun b s => if b then str s else nilR
+  match e with
+  | .nil => str "nil"
+  | .tru => str "true"
+  | .fls => str "false"
+  | .self' => str "self"
+  | .var .lvar x =>
+    -- Runtime presence, not the parser's static scope: a local assigned only in
+    -- dead code (`x = 1 if false`) is "local-variable" to CRuby but absent here.
+    strIf (m.hasLocal x) "local-variable"
+  | .var .ivar x =>
+    let has := match m.currentFrame.self with
+      | .ref o => (m.heap.get o).ivars.any (·.1 == x)
+      | _ => false
+    strIf has "instance-variable"
+  | .var .gvar x =>
+    let has := if x == "$!" then m.currentExc.isSome else m.globals.any (·.1 == x)
+    strIf has "global-variable"
+  | .var .cvar x =>
+    -- `defined?(@@a)` at toplevel is nil, *not* the access RuntimeError [V]
+    match cvarScope m with
+    | none => .unsupported "defined?(@@x) in a singleton-class scope"
+    | some scope => strIf (cvarLookupIn m.heap scope x).isSome "class variable"
+  | .const n =>
+    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
+    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
+    | some _ => str "constant"
+    | none =>
+      -- same fidelity split as a constant *read*: a constant CRuby has but we
+      -- don't model must not answer nil.
+      if crubyToplevelConstants.contains n then .unsupported s!"defined?(unmodeled constant {n})"
+      else nilR
+  | .cpath (some base) name =>
+    -- the base *is* evaluated (`defined?(A::B)` runs `A`), under the guard
+    let k := Kont.definedCpathK name :: Kont.definedGuardK :: m.kont
+    let m := { m with ctl := Ctl.eval base, kont := k }
+    .next m
+  | .cpath none name =>
+    match constLookup m.heap name with
+    | some _ => str "constant"
+    | none =>
+      if crubyToplevelConstants.contains name then
+        .unsupported s!"defined?(unmodeled constant {name})"
+      else nilR
+  | .send none mname _ _ =>
+    -- implicit self: method existence only; args are never evaluated [V]
+    match definedMethod? m m.currentFrame.self mname with
+    | some b => strIf b "method"
+    | none => .unsupported s!"defined?(unmodeled method {mname})"
+  | .send (some recv) mname _ _ =>
+    let k := Kont.definedRecvK mname :: Kont.definedGuardK :: m.kont
+    let m := { m with ctl := Ctl.eval recv, kont := k }
+    .next m
+  | .yield' _ => strIf m.currentFrame.blk.isSome "yield"
+  | .super' .. | .zsuper .. =>
+    -- would `super` find a method? (no call, artifact 02 §2) [V]
+    let f := m.frames.getD (methodFrameOf m) default
+    if f.meth == "" then nilR
+    else
+      let after := ((ancestors m.heap (classOf m.heap f.self)).dropWhile (· != f.defmod)).drop 1
+      let found := after.any fun c =>
+        match m.heap.classPayload? c with
+        | some cp => match cp.methods.find? (·.1 == f.meth) with
+          | some (_, md) => !md.undefined
+          | none => false
+        | none => false
+      if found then str "super"
+      else if (crubyShadow m.heap after f.meth).isSome then
+        .unsupported s!"defined?(super) of unmodeled method {f.meth}"
+      else nilR
+  | .vasgn .. | .casgn .. | .cpathAsgn .. => str "assignment"
+  | _ => str "expression"
+
 /-- Evaluate one expression head. -/
 def evalExpr (m : Machine) (e : Expr) : StepResult :=
   match e with
@@ -2042,11 +2190,19 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         let v := ((m.heap.get o).ivars.find? (·.1 == x)).map (·.2) |>.getD .nil
         .next (withCtl m (.value v))
       | _ => .next (withCtl m (.value .nil))  -- unset ivar on immediate self → nil
-    | .cvar => .unsupported "class variables"
-  | .vasgn kind x rhs =>
-    match kind with
-    | .cvar => .unsupported "class variables"
-    | _ => .next (withKont m (.eval rhs) (.asgnK kind x))
+    | .cvar =>
+      match cvarScope m with
+      | none => .unsupported "class variable in a singleton-class scope"
+      | some scope =>
+        if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
+          .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
+        else
+          match cvarLookupIn m.heap scope x with
+          | some v => .next (withCtl m (.value v))
+          | none =>
+            .next (raiseErr m Boot.nameErrorId
+              s!"uninitialized class variable {x} in {className m.heap scope}")
+  | .vasgn kind x rhs => .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
     -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
     -- first), then inheritance phase (ancestors of the innermost class/defmod).
@@ -2108,6 +2264,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
     .next (withCtl m (.value (.sym name)))
+  | .defined e => evalDefined m e
   | .undef names => undefNames m m.currentFrame.defmod names
   | .alias' newN oldN =>
     -- `alias` captures the current definition of `oldN` (walking ancestors) and

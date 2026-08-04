@@ -226,6 +226,16 @@ inductive Kont where
   | rescueK (node : BeginNode) (savedExc : Option Value)
   /-- Else clause executing (rescues no longer live; ensure pending). -/
   | elseK (node : BeginNode)
+  /-- `defined?(recv.m)`: the in-flight value is the evaluated receiver; answer
+      `"method"` or nil (artifact 03 §6, L67). -/
+  | definedRecvK (mname : String)
+  /-- `defined?(A::B)`: the in-flight value is the evaluated base; answer
+      `"constant"` or nil. -/
+  | definedCpathK (name : String)
+  /-- `defined?` guard: any exception raised while evaluating that receiver/base
+      makes the whole `defined?` nil [V] (`defined?(F.new.x)` with a raising
+      `initialize` is nil), so this marker swallows an in-flight raise. -/
+  | definedGuardK
   /-- Ensure body executing; its value is discarded and `pending` resumes —
       unless the ensure itself jumps, which supersedes (artifact 04 §5).
       When pending is an in-flight raise, `$!` is set to it for the ensure's
@@ -297,6 +307,19 @@ def setLocal (m : Machine) (x : String) (v : Value) : Machine :=
   let f := m.frames.getD target default
   let f' := { f with locals := (x, v) :: f.locals.filter (·.1 != x) }
   { m with frames := m.frames.set! target f' }
+
+/-- Is `x` bound as a local in the current frame or anywhere up its `captured`
+    chain? (`getLocal` cannot answer this: an unbound read is also nil.) -/
+def hasLocal (m : Machine) (x : String) : Bool :=
+  let rec go : FrameId → Nat → Bool
+    | _, 0 => false
+    | fid, fuel + 1 =>
+      let f := m.frames.getD fid default
+      if f.locals.any (·.1 == x) then true
+      else match f.captured with
+        | some p => go p fuel
+        | none => false
+  go (m.stack.headD 0) (m.frames.size + 1)
 
 def getGlobal (m : Machine) (x : String) : Value :=
   if x == "$!" then m.currentExc.getD .nil
