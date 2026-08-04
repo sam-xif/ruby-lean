@@ -61,10 +61,19 @@ def symbolIdentLike (s : String) : Bool :=
                  then rest.dropLast else rest
      core.all (fun c => c.isAlphanum || c == '_'))
 
-/-- Printable without quotes in `Symbol#inspect` (identifiers AND operators). -/
+/-- Printable without quotes in `Symbol#inspect` (identifiers, the variable
+    sigils `@x`/`@@x`/`$x` — `p [:@a]` prints `[:@a]`, not `[:"@a"]` [V] — and
+    operators). -/
 def simpleSymbol (s : String) : Bool :=
-  symbolIdentLike s || operators.contains s
+  symbolIdentLike (stripSigil s) || operators.contains s
 where
+  /-- Drop a leading `@@` / `@` / `$`; the remainder must be identifier-like.
+      (An ivar/cvar/gvar-named symbol cannot end in `?`/`!`/`=`, but
+      `symbolIdentLike` accepting those is harmless here.) -/
+  stripSigil (s : String) : String :=
+    if s.startsWith "@@" then (s.drop 2).toString
+    else if s.startsWith "@" || s.startsWith "$" then (s.drop 1).toString
+    else s
   operators : List String :=
     ["+", "-", "*", "/", "%", "**", "==", "!=", "<", ">", "<=", ">=", "<=>",
      "===", "[]", "[]=", "<<", ">>", "!", "~", "+@", "-@", "&", "|", "^", "=~"]
