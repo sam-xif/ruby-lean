@@ -85,12 +85,15 @@ manually reproduce each documented bug on CRuby at a pinned version — that def
 | Program | LOC | Documented bug | Our bad-state class | Source |
 |---|---|---|---|---|
 | hashslice | 91 | `assert_kind_of(Fixnum, @hash['a','b'] = 3, 4)` parses as 3 args; the stray `4` lands on the `?String` message param | **not reachable** — masked by coercion; §5 conformance, not §1 reachability (**done**, see finding) | **live on GitHub**, pinned `0b59424` ✓ |
-| vimrecover | 173 | undefined vars in error-recovery branches | `NameError` — **§4 work item** | RubyForge mirror / IA |
-| ObjectGraph | 153 | `break k` from `each_object` returns `Class` vs `Fixnum` → downstream `NoMethodError` | `NoMethodError` ✓ | RubyForge mirror / IA |
-| ai4r | 992 | `return rule_not_found if …` — undefined var on untested branch | `NameError` — **§4** | vendored ✓ |
+| vimrecover | 173 | two undefined vars on the version-mismatch path (`bin/vimrecover:13`) | `NameError` — **§4.1 work item** (**reproduced**) | **rubygems, exact version** ✓ LOC 173=173 |
+| ObjectGraph | 153 | `break k` from `each_object` returns `Class` vs `Integer` → downstream `NoMethodError` | `NoMethodError` ✓ **already in family** (**reproduced**) | **Wayback RPA port** ✓ LOC 153=153 |
+| ai4r | 992 | `return rule_not_found if …` — undefined var on untested branch (`id3.rb:283`) | `NameError` — **§4.1** (**reproduced**, real library) | **GitHub pin `f264f77`** (2009) ✓ defect verbatim; LOC 1397≠992 |
 | StreetAddress | 877 | none (prove-safe) | — | live gem |
 | text-highlight | 1030 | `eval`-metaprogramming; DRuby punted | expected UNKNOWN | RubyForge mirror / IA |
-| pscan / merge-bibtex / style-check / gs_phone | 29–827 | none (DRuby 0/0/0) | prove-safe / exhausted-within-bounds | RubyForge mirror / IA |
+| pscan | 29 | none (DRuby 0/0/0) | prove-safe | **Wayback RubyForge FRS** ✓ LOC 29=29 |
+| style-check | 150 | none | prove-safe | **live at cs.umd.edu/~nspring** ✓ LOC 150=150 |
+| gs_phone | 827 | none | prove-safe | **rubygems, exact version** ✓ (LOC 542 lib+bin; 827 only if tests+build counted) |
+| merge-bibtex | 103 | none | — | **NOT OBTAINABLE** — the only Fig. 1 entry with no version; Furr's thesis says the suite came partly "from our colleagues", so likely an unreleased personal script. rubygems/RAA/Wayback/GitHub/DRuby distributions all exhausted. |
 
 Mechanics per program: `bin/fetch-<name>` + `config/<name>.rb` + `ASSUMPTIONS-<name>.md`
 (the pipeline was built codebase-agnostic for exactly this). Pin the version DRuby
@@ -230,7 +233,7 @@ For each program, in order — this is the ai4r finding industrialized:
 
 | | Milestone | Exit criterion |
 |---|---|---|
-| **M0** | Corpus + ground truth | 10 programs fetched, pinned, configured; each documented bug reproduced manually on CRuby; 1.8 patches disclosed in ASSUMPTIONS docs |
+| **M0** ✅ | Corpus + ground truth | **DONE 2026-08-04** (see `../typecheck-pipeline/findings/2026-08-04-druby-corpus-m0-ground-truth.md`). All 4 error-bearing programs acquired, pinned and reproduced on CRuby 4.0.5 — **and all agree byte-identically in the Lean model**. 3 of 4 acquisitions are provenance-solid (exact version or exact LOC); ai4r is defect-verbatim/tree-inexact. `merge-bibtex` is not obtainable. One disclosed patch total (vimrecover `when X:`), outside every defect path. Two model gates found and fixed: **L74**, **L75**. |
 | **M1** | Predicate + coverage base | `NameError` un-gated + pluggable family (§4); `defined?` + `Array#[]` slice landed; prelude coverage measurement done (§5.1); per-program gate histograms published |
 | **M2** | Engine quick wins | exponential probing + boot snapshotting landed, with measured speedups on `loop_sum` and a linked ai4r driver |
 | **M3** | **The ai4r experiment** | finite-domain splitting over hash keys: does the search find the `choose_action` natural trigger end-to-end, no human step? This re-measures the 4/25-solvable number and **decides the theory-of-arrays question** for the campaign |
