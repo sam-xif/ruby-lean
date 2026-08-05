@@ -22,6 +22,7 @@ class Desugar
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
     redo undef alias for regex isym massign-to_ary fwd-arg fwd-param when-splat
     index-opwrite attr-opwrite numbered-params dowhile destructure-param
+    vcall
   ].freeze
 
   attr_reader :coverage
@@ -202,6 +203,19 @@ class Desugar
     # expression is the RHS `v`, not the writer method's return. Desugar to preserve both
     # the value and left-to-right single-evaluation (recv, indices, then v).
     return assign_call(n) if n.equal_loc
+
+    # A **vcall** — a bare identifier that is not a local variable (Prism's
+    # `variable_call?`: no receiver, no parens, no args, no block). Semantically an
+    # implicit-self zero-arg send, but it is emitted as its own head because CRuby's
+    # dispatch-*miss* message differs [V]:
+    #   `foo`   → NameError: undefined local variable or method 'foo'
+    #   `foo()` → NoMethodError: undefined method 'foo'
+    # Conflating them forced the model to gate the miss. Additive: ordinary sends and
+    # the existing v4 corpus are unchanged.
+    if n.variable_call?
+      fire(:vcall)
+      return [:vcall, name]
+    end
 
     fire(:send)
     recv  = n.receiver ? node(n.receiver) : nil

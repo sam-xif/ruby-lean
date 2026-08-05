@@ -42,6 +42,20 @@ inductive Expr where
   | cpathAsgn (base : Option Expr) (name : String) (e : Expr)
   /-- `recv = none` is an implicit-self send (private methods admissible). -/
   | send (recv : Option Expr) (m : String) (args : List Expr) (blk : Option Expr)
+  /-- A **vcall**: a bare identifier (`foo`) that is not a local variable — Prism's
+      `variable_call` flag. Semantically an implicit-self, zero-arg, block-less send,
+      and it is evaluated as exactly that; the reason it is a *separate* head is the
+      dispatch-*miss* message, which CRuby distinguishes [V]:
+
+        foo        (vcall)  → NameError:     undefined local variable or method 'foo'
+        foo()      (fcall)  → NoMethodError: undefined method 'foo'
+        self.foo / foo(1)   → NoMethodError: undefined method 'foo'
+
+      RubyCore previously conflated the two (both exported as
+      `["send",null,"foo",[],null]`), which forced `missNoMethod` to gate rather than
+      answer. Keeping this additive — a new head rather than a field on `send` — means
+      the v4 corpus and every existing `send` node are untouched. -/
+  | vcall (m : String)
   /-- Brace-less keyword arguments at a call site (`f(k: 1, **h)`) — only occurs
       as the last element of a send/super `args` list (Ruby-3 separation). -/
   | kwargs (entries : List KwEntry)
@@ -284,6 +298,7 @@ partial def expr (j : Json) : M Expr := do
       return .cpathAsgn (← opt base) (← asStr nm) (← expr e)
   | "send",  #[_, recv, m, args, blk] =>
       return .send (← opt recv) (← asStr m) (← exprs (← asArr args)) (← opt blk)
+  | "vcall", #[_, m] => return .vcall (← asStr m)
   | "kwargs", #[_, entries] =>
       .kwargs <$> (← asArr entries).toList.mapM kwEntry
   | "fwd",   #[_] => return .fwd

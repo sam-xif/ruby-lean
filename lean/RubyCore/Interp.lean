@@ -741,13 +741,20 @@ def visError? (m : Machine) (recv : Value) (site : SendSite) (md : MethodDef)
       s!"protected method '{mname}' called for {receiverDesc m.heap recv}"))
   | _, _ => none
 
-/-- Default `method_missing` (artifact 02 §4): the bare implicit-self zero-arg
-    send is ambiguous (vcall `NameError` vs fcall `NoMethodError`; RubyCore
-    conflates them) — gate; otherwise the byte-exact `NoMethodError`. -/
+/-- Default `method_missing` (artifact 02 §4). A **vcall** (bare identifier, now
+    carried as its own `SendSite` — L75) misses with `NameError: undefined local
+    variable or method`; every other site misses with `NoMethodError: undefined
+    method`. Both messages are byte-exact [V].
+
+    This previously gated: RubyCore conflated `foo` and `foo()`, so an
+    implicit zero-arg miss could not be attributed and answered
+    `.unsupported "vcall/fcall NameError ambiguity"`. The front end now marks
+    vcalls, so the ambiguity is gone. -/
 def missNoMethod (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
-    (args : List Value) : StepResult :=
-  if implicit == .implicit && args.isEmpty then
-    .unsupported s!"vcall/fcall NameError ambiguity: {mname}"
+    (_args : List Value) : StepResult :=
+  if implicit == .vcall then
+    .next (raiseErr m Boot.nameErrorId
+      s!"undefined local variable or method '{mname}' for {receiverDesc m.heap recv}")
   else
     .next (raiseErr m Boot.noMethodErrorId
       s!"undefined method '{mname}' for {receiverDesc m.heap recv}")
@@ -2460,8 +2467,10 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
       if crubyToplevelConstants.contains name then
         .unsupported s!"defined?(unmodeled constant {name})"
       else nilR
-  | .send none mname _ _ =>
-    -- implicit self: method existence only; args are never evaluated [V]
+  | .send none mname _ _ | .vcall mname =>
+    -- implicit self: method existence only; args are never evaluated [V].
+    -- `defined?(foo)` on a vcall answers "method" too when it resolves — the
+    -- local-variable case never reaches here (the desugarer emits `var`).
     match definedMethod? m m.currentFrame.self mname with
     | some b => strIf b "method"
     | none => .unsupported s!"defined?(unmodeled method {mname})"
@@ -2569,6 +2578,9 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       let site : SendSite := match r with | .self' => .selfRecv | _ => .explicit
       .next (withKont m (.eval r) (.recvK mname args pblk site))
     | none => startArgs m m.currentFrame.self .implicit mname [] args pblk
+  -- A vcall is an implicit-self, zero-arg, block-less send; only the miss
+  -- message differs (L75), and that is carried by the `.vcall` site.
+  | .vcall mname => startArgs m m.currentFrame.self .vcall mname [] [] .none
   | .block .. => .stuck "bare block node outside send"
   | .kwargs .. => .stuck "bare kwargs node outside call position"
   | .fwd => .stuck "bare fwd (...) node outside call position"

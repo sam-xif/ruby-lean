@@ -50,6 +50,7 @@ def exprBrief : Expr → String
   | .cpath _ n => s!"…::{n}" | .cpathAsgn _ n _ => s!"…::{n} = …"
   | .defined _ => "defined?(…)"
   | .send _ m _ _ => s!"send .{m}(…)"
+  | .vcall m => s!"vcall {m}"
   | .kwargs _ => "kwargs(…)" | .fwd => "..."
   | .block .. => "block { … }"
   | .yield' _ => "yield"

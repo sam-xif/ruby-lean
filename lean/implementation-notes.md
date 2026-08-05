@@ -1609,3 +1609,47 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     Whether other `.unsupported` arms similarly shadow type-family errors is
     worth a sweep — grep `unsupported` for arity/coercion sites — but is not
     done here.
+
+## vcall vs fcall: the `NameError` gate is gone (L75)
+
+- **L75 — a bare identifier is its own head, so a missed vcall raises
+  `NameError` instead of gating.** CRuby distinguishes three misses [V]:
+
+  | source | error |
+  |---|---|
+  | `foo` (vcall) | `NameError: undefined local variable or method 'foo' for …` |
+  | `foo()` (fcall) | `NoMethodError: undefined method 'foo' for …` |
+  | `self.foo`, `foo(1)` | `NoMethodError: undefined method 'foo' for …` |
+
+  RubyCore exported **both** `foo` and `foo()` as `["send",null,"foo",[],null]`,
+  so `missNoMethod` could not attribute the miss and answered
+  `.unsupported "vcall/fcall NameError ambiguity"`. That gate is now removed.
+  - **The fix is additive, deliberately.** A new head `["vcall", name]` plus a new
+    `Expr.vcall` and a new `SendSite.vcall` — *not* a sixth field on `send`. So
+    every existing `send` node and the whole v4 corpus decode unchanged, and there
+    is no format bump. Prism already carries the bit (`CallNode#variable_call?`);
+    the desugarer simply stopped discarding it.
+  - **A vcall is evaluated as exactly an implicit-self zero-arg send** —
+    `startArgs … .vcall mname [] [] .none` — so dispatch, visibility exemption and
+    `method_missing` are all inherited. `SendSite.vcall` differs from `.implicit`
+    *only* at the miss. `defined?` treats the two arms identically; the
+    local-variable case never reaches there (the desugarer emits `var`).
+  - **Round-trip:** `render.rb` emits a vcall as the **bare** identifier. Adding
+    `()` would silently convert it to an fcall and change the error — the one place
+    where the renderer's habit of parenthesizing implicit sends would have been
+    wrong. Safe against re-parse capture because desugar temps are `__dt_t<N>`.
+  - **Why it was worth doing now:** `NameError` is the bad-state class for two of
+    DRuby's five documented errors (ai4r, vimrecover — see
+    `../docs/druby-reproduction-plan.md` §4.1). The gate meant the checker answered
+    "cannot say" on both. ai4r's `return rule_not_found if !@values.include?(value)`
+    (`id3.rb:283` at the 2009 tree) now reproduces byte-exactly in-model.
+  - Measured: desugar tier-0 **unchanged at 1227** (round-trip oracle included);
+    Lean tier-0 **940 → 942 agree, 356 → 354 unsupported, 0 disagreements**;
+    `Proof/` builds and `invariant_sound`/`t5_loop_type_safe`/`run_value_type_safe`/
+    `run_typeError_unsafe` remain `[propext, Classical.choice, Quot.sound]`;
+    `../concolic` 28/28.
+  - Note `NameError` is **not** in `typeErrorFamily` (NoMethodError ⊂ NameError, but
+    a bare `NameError` is not a type error by our definition — `TypeSafety.lean` §1
+    says so explicitly). Reporting ai4r/vimrecover therefore still needs the
+    *pluggable bad-state family* of plan §4.1; L75 supplies the raise, not the
+    verdict.

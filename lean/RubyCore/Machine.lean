@@ -85,6 +85,11 @@ deriving Inhabited
       (`public_send` uses `explicit`). -/
 inductive SendSite where
   | implicit | selfRecv | explicit | reflective
+  /-- A bare-identifier **vcall** (`foo`, not `foo()`). Identical to `implicit`
+      for visibility and dispatch; differs only in the dispatch-*miss* error,
+      which CRuby reports as `NameError: undefined local variable or method`
+      rather than `NoMethodError: undefined method` (L75). -/
+  | vcall
 deriving Repr, DecidableEq, Inhabited
 
 /-- A send's block child, carried through arg evaluation. A literal block is

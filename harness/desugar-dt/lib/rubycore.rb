@@ -23,6 +23,7 @@ module RubyCore
     cpath: "[:cpath, base_or_nil, name]",         # A::B (base a node) / ::B (base nil, top-level)
     cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]",  # A::B = expr
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
+    vcall: "[:vcall, mname]",  # bare identifier, not a local (Prism variable_call): NameError on miss
     block: "[:block, [params], [block_locals], body]",  # {|params; locals| body}; params are param-nodes
     yield: "[:yield, [args]]",                               # yield to the current block
     if:    "[:if, cond, then, else_or_nil]",

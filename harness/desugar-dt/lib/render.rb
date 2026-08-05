@@ -29,6 +29,11 @@ module Render
     when :cpath then cpath_str(node[1], node[2])
     when :cpath_asgn then "(#{cpath_str(node[1], node[2])} = #{core(node[3])})"
     when :send  then send_str(node)
+    # A vcall renders as the bare identifier — adding `()` would turn it into an
+    # fcall and change the dispatch-miss error (NameError vs NoMethodError).
+    # Safe to re-parse as a vcall: desugar temps are `__dt_t<N>`-prefixed, so no
+    # generated local can shadow a user identifier here.
+    when :vcall then node[1]
     when :block then block_str(node)
     when :yield then "yield(#{node[1].map { |a| core(a) }.join(', ')})"
     when :if
