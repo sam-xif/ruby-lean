@@ -1582,3 +1582,30 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   `invariant_sound`, `invariant_sound_from` depend only on
   `[propext, Classical.choice, Quot.sound]`; `../concolic` 28/28; tier-0 unchanged
   at **940 agree, 0 disagree**.
+
+## `Hash#[]=` arity raises instead of gating (L74)
+
+- **L74 — a wrong-arity `Hash#[]=` is an `ArgumentError`, not `.unsupported`.**
+  `Builtins.lean`'s `Hash#[]=` matched `[k, v]` and sent every other shape to
+  `.unsupported "[]=/arity"`. CRuby's `[]=` is a C function of arity 2, so a
+  wrong arity is `ArgumentError: wrong number of arguments (given N, expected 2)`
+  — checked *before* the receiver's payload, which is why the new arm sits
+  outside the `.hsh` match and does not inspect the payload at all. Verified
+  against CRuby 4.0.5 at arities 0/1/3/4: the message is uniform.
+  - **Why this is more than fidelity.** `ArgumentError` is in `typeErrorFamily`
+    (`Proof/TypeSafety.lean`), so gating here made a *reachable type-stuck
+    outcome* invisible to the checker: the run reported "cannot say" where the
+    correct answer is "this program is not type-safe, and here is the witness."
+    Gates that shadow a bad-state class are worse than gates that shadow a value
+    — they are silent where the whole point is to be loud.
+  - **Found by**, and the motivating case: the DRuby hashslice reproduction
+    (`../docs/druby-reproduction-plan.md`, `../typecheck-pipeline/findings/`).
+    The call site `probe(0, h['a','b'] = 3, 4)` parses as three arguments to
+    `Hash#[]=` — the exact shape — and hashslice's own variadic override is what
+    *masks* it upstream. Dispatch decides whether this raises, so it is also a
+    clean small instance of the object-model dependence the invariant must track.
+  - Tier-0 is **unchanged at 940 agree, 0 disagree** (1304 total): no corpus
+    program exercised the gate, so this is new reach rather than a repair.
+    Whether other `.unsupported` arms similarly shadow type-family errors is
+    worth a sweep — grep `unsupported` for arity/coercion sites — but is not
+    done here.

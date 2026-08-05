@@ -45,7 +45,12 @@ The comparable set is the **documented bugs**: for each one, either
   axiom-clean); or
 - **out of fragment**: an honest `unsupported`/UNKNOWN with the gate named (the
   three-valued discipline — `text-highlight` is *expected* to land here; DRuby punted
-  on it too).
+  on it too); or
+- **reproduced but unreachable**: the defect's mechanism is confirmed, and we *show* no
+  execution can reach a bad state — because the error is masked at run time. This is an
+  annotation-conformance discrepancy (`type-safety-by-reachability.md` §5), reported
+  distinctly from a reachable type error. Discovered empirically on the first target
+  (hashslice, §4); do not assume it is rare.
 
 And the differentiator is structural: **zero false positives by construction** (every
 report replays), where DRuby's 16 FPs came from union types discriminated by runtime
@@ -79,7 +84,7 @@ manually reproduce each documented bug on CRuby at a pinned version — that def
 
 | Program | LOC | Documented bug | Our bad-state class | Source |
 |---|---|---|---|---|
-| hashslice | 91 | `@hash['a','b'] = 3,4` parses as 3 args → arity | `ArgumentError` ✓ in family | RubyForge mirror / IA |
+| hashslice | 91 | `assert_kind_of(Fixnum, @hash['a','b'] = 3, 4)` parses as 3 args; the stray `4` lands on the `?String` message param | **not reachable** — masked by coercion; §5 conformance, not §1 reachability (**done**, see finding) | **live on GitHub**, pinned `0b59424` ✓ |
 | vimrecover | 173 | undefined vars in error-recovery branches | `NameError` — **§4 work item** | RubyForge mirror / IA |
 | ObjectGraph | 153 | `break k` from `each_object` returns `Class` vs `Fixnum` → downstream `NoMethodError` | `NoMethodError` ✓ | RubyForge mirror / IA |
 | ai4r | 992 | `return rule_not_found if …` — undefined var on untested branch | `NameError` — **§4** | vendored ✓ |
@@ -99,7 +104,29 @@ be untouched by it (checked by reproducing the bug on both the pristine tree und
 old Ruby if obtainable, and the patched tree under modern CRuby). If a program's bug
 *is* a 1.8-ism, report it as out of scope rather than force it.
 
-## 4. The bad-state predicate must widen — `NameError`
+## 4. The bad-state predicate must widen — and, separately, must not be the only check
+
+**Measured correction (2026-08-04, hashslice — see
+[`../typecheck-pipeline/findings/2026-08-04-hashslice-masked-arity.md`](../typecheck-pipeline/findings/2026-08-04-hashslice-masked-arity.md)).**
+This section originally assumed every documented DRuby error is a reachable outcome that a
+wider exception family would capture. The first reproduction disproved that. There are
+**two independent axes**:
+
+1. **Family width** (below): `NameError` for ai4r/vimrecover — a real, small work item.
+2. **Reachability itself**: some DRuby errors are *unreachable by construction*.
+   hashslice's is masked at run time by coercion — DRuby's own §6.1 says so, and we
+   measured it on both the passing and the failing path. No exception family captures it,
+   because nothing raises. It is a mismatch against a **declared annotation**, i.e.
+   exactly the *separate* conformance check of `type-safety-by-reachability.md` §5
+   ("spec-vs-behavior discrepancy"), not a §1 reachability claim.
+
+Consequence for the campaign: **report the two categories in separate columns** (§10).
+Conflating them either overstates the reachability results or understates coverage of
+DRuby's findings. And treat §5 conformance as in-scope at small scale — hashslice is an
+unusually clean first target (one-line annotation, callee already mocked, discrepancy
+decidable by executing the real call).
+
+### 4.1 Family width — `NameError`
 
 Two of the four documented bugs (ai4r, vimrecover) are **undefined-variable
 `NameError`s**, deliberately outside `typeErrorFamily` (t-s-b-r §2), and the model
@@ -207,7 +234,7 @@ For each program, in order — this is the ai4r finding industrialized:
 | **M1** | Predicate + coverage base | `NameError` un-gated + pluggable family (§4); `defined?` + `Array#[]` slice landed; prelude coverage measurement done (§5.1); per-program gate histograms published |
 | **M2** | Engine quick wins | exponential probing + boot snapshotting landed, with measured speedups on `loop_sum` and a linked ai4r driver |
 | **M3** | **The ai4r experiment** | finite-domain splitting over hash keys: does the search find the `choose_action` natural trigger end-to-end, no human step? This re-measures the 4/25-solvable number and **decides the theory-of-arrays question** for the campaign |
-| **M4** | The bug ladder | hashslice (smallest real bug) → vimrecover → ObjectGraph (best full-loop demo) → ai4r (flagship). Each: witness, CRuby confirmation, Lean theorem, finding doc |
+| **M4** | The bug ladder | ~~hashslice~~ (**done 2026-08-04** — reproduced, but not reachable: §5 conformance, plus the L74 model fix) → vimrecover → ObjectGraph (best full-loop demo) → ai4r (flagship). Each: witness, CRuby confirmation, Lean theorem, finding doc. **Three reachable targets, not four.** |
 | **M5** | The safe side | pscan/merge-bibtex/style-check/gs_phone: exhausted-within-bounds verdicts with the bound frontier reported; **one** upgraded to a Direction-B invariant proof (the contrast the paper needs); StreetAddress if regex permits, else deferred with the gate named |
 | **M6** | Write-up | results table vs DRuby Fig. 1 (found / out-of-fragment / new-bugs / FP=0), findings docs, certificates, replayable artifact |
 
@@ -237,9 +264,12 @@ onboarded in M0 and reported as the honest UNKNOWN.
 
 ## 10. What this yields for the paper
 
-The results table has four columns per program — *documented bug found (witness +
-theorem) / new bugs / out-of-fragment (gate named) / false positives (identically 0)* —
-against DRuby's error/warning/FP triple. The methods section is §6: constraints emitted
+The results table has five columns per program — *documented bug reachable (witness +
+theorem) / documented bug reproduced-but-masked (§5 conformance) / new bugs /
+out-of-fragment (gate named) / false positives (identically 0)* — against DRuby's
+error/warning/FP triple. The second column is not padding: it is where we are **more
+precise than the baseline**, since DRuby reports masked defects as errors and we can show,
+by measurement, that no execution reaches a bad state. The methods section is §6: constraints emitted
 from inside the semantics, targets discovered by speculatively stepping it, domains
 enumerated from its concrete state, and every finding certified as a kernel-checked
 theorem — with CRuby appearing exactly once per finding, as the reality check. The

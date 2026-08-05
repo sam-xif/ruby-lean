@@ -1088,7 +1088,15 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
             | none => xs.push (k, v)
           .ok v { m with heap := h.set o { h.get o with payload := .hsh xs } }
       | _ => .unsupported "[]="
-    | _, _ => .unsupported "[]=/arity"
+    -- Arity is checked before the receiver's payload (CRuby's `[]=` is a C
+    -- function of arity 2, so the check precedes any element handling). Dispatch
+    -- has already resolved `Hash#[]=`, so the receiver is a Hash: a wrong arity
+    -- is an `ArgumentError`, not an unmodeled case. This matters beyond fidelity
+    -- — ArgumentError is in `typeErrorFamily`, so gating here made a *reachable
+    -- type-stuck outcome* invisible to the checker (druby-reproduction-plan.md
+    -- §4; the hashslice call site `h['a','b'] = 3, 4` is exactly this shape).
+    | _, _ => .err Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 2)" m
   | "Hash#length" | "Hash#size" =>
     match hshPayload? h recv with
     | some xs => .ok (.int xs.size) m
