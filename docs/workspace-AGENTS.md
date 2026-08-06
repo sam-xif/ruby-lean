@@ -219,6 +219,23 @@ sig-boundary `TypeError` is now an ordinary reachable outcome of `stepFn`, so `t
 and `invariant_sound` apply to it with no new machinery. Still gated: `T::Struct`,
 `T::Enum` (structural, not annotations — they gate honestly rather than NameError).
 
+**Sorbet safety is stated and proved, both directions (2026-08-06).**
+`lean/RubyCore/Proof/SorbetSafety.lean` (L81) makes §C.1's three-outcome runtime statement
+a formal object by **reusing `TypeSafety.lean` with the bad state weakened** —
+`sorbetStuck := typeStuck ∧ ¬ isBlame`, blame being sorbet-runtime firing at a boundary,
+i.e. the type system working. Axiom-clean: `sorbet_invariant_sound` (Direction B) plus the
+Direction-A certificates including `run_blame_sorbet_safe`; `sorbetStuck_typeStuck` proves
+the weakening only removes outcomes, so existing certificates transfer.
+`SorbetConcrete.lean` certifies real corpus programs through the **prelude-booted** model
+(the property is stated over that machine — over `Machine.init` there is no `T` at all and
+the theorem would be about nothing): `sig-basic/000` safe by value, **`sig-basic/001` safe
+by *blaming*** (the whole content of the weakening), `untyped-boundary/000` refuted.
+`lean/RubyCore/Types/Fragment.lean` (L82, `rubycore --fragment`) pins the *scope*
+executably — 6/18 of the corpus in-fragment, 3 in scope once intersected with srb
+acceptance, and **no unsoundness witness is in the fragment** (guarded). Not claimed:
+"srb accepts P ⇒ P is Sorbet-safe" — that needs Sorbet's static judgment (`type-judgments.md`
+T1–T3), which is the next build.
+
 **Sorbet scaffolding (tier 4, 2026-08-05)** — the no-Lean-needed half of the
 Sorbet-soundness plan in [`docs/semantics/types-and-preservation.md`](docs/semantics/types-and-preservation.md)
 §C.3 is built and runnable: `corpus/sorbet/` (18 programs taxonomized by Sorbet design
