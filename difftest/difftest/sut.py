@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from .compare import gradual_guarantee_compare
 from .control import CRubyRunner
 from .observation import Observation
 
@@ -191,6 +192,46 @@ class LeanSUT:
             return Unsupported(f"MODEL-BUG: unparseable observation: {e}")
 
 
+class SigStripSUT:
+    """The gradual-guarantee probe: CRuby on the *sig-stripped* program.
+
+    A metamorphic SUT — the implementation is not varied, the *program* is. The
+    control runs the annotated program, this runs the less-precise variant, and
+    the two are related by the gradual guarantee rather than by equality, so it
+    carries its own comparator (the `compare` attribute `runner.run_case`
+    honors). See `compare.gradual_guarantee_compare` and
+    `../docs/semantics/types-and-preservation.md` §C.3 step 1: this is the
+    cheapest real check on Sorbet's runtime semantics, and it needs no Lean.
+    """
+
+    name = "sig-strip"
+
+    def __init__(self, runner: CRubyRunner | None = None, stripper=None):
+        from .sorbet import SigStripper
+
+        self.runner = runner or CRubyRunner()
+        self.stripper = stripper or SigStripper(ruby=self.runner.ruby)
+
+    def compare(self, control_obs, sut_obs, case):
+        """Custom comparator (see `runner.run_case`): the relation needs a
+        *third* run of the annotated program with enforcement neutralized, to
+        attribute any difference to runtime checking rather than to the
+        annotations themselves. That is why this takes the case, not just the
+        two observations."""
+        from .sorbet import unchecked_variant
+
+        unchecked = self.runner.run(unchecked_variant(case.source))
+        return gradual_guarantee_compare(control_obs, sut_obs, unchecked)
+
+    def run(self, source: str) -> Observation | Unsupported:
+        from .sorbet import Unstrippable
+
+        stripped = self.stripper.strip(source)
+        if isinstance(stripped, Unstrippable):
+            return Unsupported(f"not sig-strippable: {stripped.reason}")
+        return self.runner.run(stripped)
+
+
 def make_sut(kind: str, inject_bug: bool = False) -> SystemUnderTest:
     if kind == "stub":
         return StubSUT()
@@ -200,4 +241,6 @@ def make_sut(kind: str, inject_bug: bool = False) -> SystemUnderTest:
         return DesugarRoundtripSUT(inject_bug=inject_bug)
     if kind == "lean":
         return LeanSUT()
+    if kind == "sig-strip":
+        return SigStripSUT()
     raise ValueError(f"unknown SUT kind: {kind}")

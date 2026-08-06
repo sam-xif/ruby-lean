@@ -234,6 +234,36 @@ class SigStripper:
         return proc.stdout
 
 
+# Neutralize sorbet-runtime's enforcement without touching the program:
+# `call_validation_error_handler` covers sig parameter/return/block checks and
+# `inline_type_error_handler` covers the T.let/T.cast/T.must/T.assert_type!
+# family (two knobs, because they are two mechanisms). Both are public
+# configuration, so this is Sorbet's own supported "checks off" mode rather
+# than monkey-patching.
+#
+# Kept to a SINGLE LINE on purpose: prepending it shifts the program's line
+# numbers by exactly one, which keeps any line number that leaks into an
+# observation easy to reason about.
+_UNCHECKED_PRELUDE = (
+    'require "sorbet-runtime"; '
+    "T::Configuration.call_validation_error_handler = ->(*) {}; "
+    "T::Configuration.inline_type_error_handler = ->(*) {}\n"
+)
+
+
+def unchecked_variant(source: str) -> str:
+    """The annotated program with sorbet-runtime enforcement neutralized.
+
+    The third leg of the gradual-guarantee probe: comparing it against the
+    stripped variant *attributes* any precise-vs-stripped difference to runtime
+    enforcement, which is the only difference the guarantee licenses. Note this
+    is deliberately NOT the same as the stripped program — the annotations are
+    all still there, still evaluated, still wrapping methods; only their
+    failure behavior is silenced.
+    """
+    return _UNCHECKED_PRELUDE + source
+
+
 # --------------------------------------------------------------------------
 # Runtime half: classifying a sorbet-runtime sig violation
 # --------------------------------------------------------------------------

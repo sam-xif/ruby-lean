@@ -20,7 +20,7 @@ from pathlib import Path
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
-from .sources import load_bootstraptest, load_corpus_cases
+from .sources import load_bootstraptest, load_corpus_cases, load_sorbet_corpus
 from .tiers import GENERATIVE_ARMS
 from .sut import make_sut
 
@@ -55,12 +55,14 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
     print(f"\nreport: {out_dir / 'report.md'}")
 
 
-CORPUS_ARMS = ("tier0", "tier3")  # mix arms backed by persisted corpora
+CORPUS_ARMS = ("tier0", "tier3", "sorbet")  # mix arms backed by persisted corpora
 
 
 def _load_corpus_arm(name: str, args) -> list:
     if name == "tier0":
         return load_bootstraptest(Path(args.corpus) if args.corpus else None)
+    if name == "sorbet":
+        return load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
     return load_corpus_cases(BASE / "corpus" / "tier3", default_tier=3)
 
 
@@ -99,6 +101,13 @@ def cmd_run(args) -> int:
             cases = sorted(picked, key=lambda c: c.id)
         run_campaign(cases, control, sut, on_result=reporter.record)
         extra = {"tier0": {"available": total, "ran": len(cases), "seed": args.seed}}
+    elif args.tier == "4":
+        # The Sorbet corpus (tier 4). Runs whole; it is small and every program
+        # is hand-authored to probe a specific feature, so sampling it would
+        # lose the point rather than save time.
+        cases = load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
+        run_campaign(cases, control, sut, on_result=reporter.record)
+        extra = {"tier4": {"ran": len(cases), "corpus": "sorbet"}}
     elif args.tier in ("1", "1.5"):
         extra = run_generative_campaign(
             control, sut, reporter,
@@ -160,7 +169,7 @@ def main(argv=None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--sut", default="stub", choices=["stub", "identity", "desugar", "lean"])
+        p.add_argument("--sut", default="stub", choices=["stub", "identity", "desugar", "lean", "sig-strip"])
         p.add_argument("--inject-bug", action="store_true", help="desugar SUT: enable DESUGAR_BUG")
         p.add_argument("--timeout", type=float, default=10.0)
         p.add_argument("--out", help="report directory (default: reports/<timestamp>-<label>)")
@@ -168,17 +177,22 @@ def main(argv=None) -> int:
     p_run = sub.add_parser("run", help="run a generation-tier or mixed campaign")
     # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
     # flag; a distinct tier id keeps selection uniform).
-    p_run.add_argument("--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3"])
+    p_run.add_argument(
+        "--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3", "4"]
+    )
     p_run.add_argument(
         "--mix",
         help='weighted mixed campaign over generative (tier1, tier1.5) and corpus '
-             '(tier0, tier3) arms, e.g. "tier1.5=0.9,tier0=0.05,tier3=0.05" (overrides --tier)',
+             '(tier0, tier3, sorbet) arms, e.g. "tier1.5=0.9,tier0=0.05,tier3=0.05" '
+             '(overrides --tier)',
     )
     p_run.add_argument(
         "-n", type=int, help="number of cases (tier 1/mix default: 100; tier 0 default: all)"
     )
     p_run.add_argument("--seed", type=int, help="generator seed for reproducibility")
-    p_run.add_argument("--corpus", help="tier0 corpus dir (default: harvested bootstraptest)")
+    p_run.add_argument(
+        "--corpus", help="corpus dir override for tier 0 (bootstraptest) / tier 4 (sorbet)"
+    )
     common(p_run)
     p_run.set_defaults(func=cmd_run)
 

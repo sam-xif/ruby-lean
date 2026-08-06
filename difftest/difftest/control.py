@@ -47,6 +47,34 @@ __difftest_real_stdout.write({sentinel} + JSON.generate(__difftest_obs))
 """
 
 
+def _scrub_program_path(obs: Observation, path: str) -> Observation:
+    """Rewrite the wrapper's own temp-file path out of the observation.
+
+    The engine writes each program to a fresh `tmpXXXX.rb`, so anything that
+    reports the script path — `__FILE__`, a backtrace, and notably every
+    sorbet-runtime error message ("Caller: /var/…/tmpshj155fk.rb:19") — differs
+    between two runs of the *same* program. That is nondeterminism the harness
+    injected, not the program's, and left alone it makes the determinism
+    double-run reject every program whose sig check fires. Quotienting out our
+    own path is the honest fix; genuine nondeterminism is still caught.
+    (`os.path.realpath` too: on macOS /var is a symlink to /private/var, and
+    Ruby reports the resolved form.)
+    """
+    variants = {path, os.path.realpath(path)}
+
+    def scrub(s: str) -> str:
+        for v in variants:
+            s = s.replace(v, "<program>")
+        return s
+
+    return Observation(
+        stdout=scrub(obs.stdout),
+        result_repr=scrub(obs.result_repr) if obs.result_repr is not None else None,
+        exception=(obs.exception[0], scrub(obs.exception[1])) if obs.exception else None,
+        timed_out=obs.timed_out,
+    )
+
+
 class HarnessError(Exception):
     """The wrapper itself failed to produce an observation (not a verdict on the program)."""
 
@@ -117,10 +145,13 @@ class CRubyRunner:
             except json.JSONDecodeError as e:
                 raise HarnessError(f"unparseable observation payload: {e}") from e
             exc = d.get("exception")
-            return Observation(
-                stdout=d["stdout"],
-                result_repr=d.get("result_repr"),
-                exception=(exc[0], exc[1]) if exc else None,
+            return _scrub_program_path(
+                Observation(
+                    stdout=d["stdout"],
+                    result_repr=d.get("result_repr"),
+                    exception=(exc[0], exc[1]) if exc else None,
+                ),
+                path,
             )
         finally:
             os.unlink(path)

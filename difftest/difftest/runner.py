@@ -40,7 +40,15 @@ def run_case(case: TestCase, control: CRubyRunner, sut: SystemUnderTest) -> Case
             control_obs=control_obs,
             timings=timings,
         )
-    verdict, reason = compare(control_obs, sut_out)
+    # A SUT may carry its own comparator, taking the case as well as the two
+    # observations. The default relation is "the two implementations should
+    # produce the same observation", but a *metamorphic* SUT (sig-strip: same
+    # implementation, transformed program) relates the two runs differently and
+    # may need the source to do so — see `compare.gradual_guarantee_compare`.
+    relation = getattr(sut, "compare", None)
+    verdict, reason = (
+        relation(control_obs, sut_out, case) if relation else compare(control_obs, sut_out)
+    )
     return CaseResult(
         case, verdict, reason=reason, control_obs=control_obs, sut_obs=sut_out, timings=timings
     )
