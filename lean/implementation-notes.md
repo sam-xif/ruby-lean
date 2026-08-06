@@ -1827,3 +1827,66 @@ Decisions worth recording:
 Result: `difftest run --tier 4 --sut lean` goes from **1 agree / 17 disagree** to
 **14 agree / 0 disagree / 4 unsupported** (T::Struct ×2, T::Enum, and `Enumerable#sum` on
 mixed types — an unrelated pre-existing gap).
+
+## L81 — Sorbet safety stated and proved (both directions), over the weakened bad state
+
+`RubyCore/Proof/SorbetSafety.lean` makes the three-outcome runtime statement of
+`types-and-preservation.md` §C.1 a formal object, and proves the reachability machinery
+for it by **reusing `TypeSafety.lean` unchanged with the bad-state predicate weakened** —
+the running "one engine, one metatheorem, a swappable bad state" thesis applied once more:
+
+```
+sorbetStuck r  :=  typeStuck r  ∧  ¬ isBlame …      -- blame is enforcement working
+SorbetSafeFrom m₀ := ∀ r, ReachableResult m₀ r → ¬ sorbetStuck r
+```
+
+Proved, axiom-clean (`propext`/`Classical.choice`/`Quot.sound` only):
+`sorbet_invariant_sound` (Direction B — an inductive invariant certifies Sorbet-safety),
+`sorbetStuck_typeStuck` + `typeSafe_sorbetSafe` (the weakening only ever removes outcomes,
+so existing type-safety certificates transfer), and the Direction-A execution
+certificates including the new middle case, `run_blame_sorbet_safe`.
+
+Three decisions worth recording:
+
+- **The property is stated over the prelude-booted machine, not `Machine.init`.** Sig
+  enforcement lives in the `T` shim, which is part of the prelude (L80), so a statement
+  over `Machine.init` would be about a program running with no core library and no `T` at
+  all — under which every Sorbet program raises `NameError` and the theorem says nothing
+  about Sorbet. The first draft got this wrong; `SorbetSafe` now quantifies over
+  `Prelude.initWithPrelude program = .ok m₀`.
+- **Blame is detected by message prefix, not by class.** sorbet-runtime raises a plain
+  `::TypeError` for enforcement failures, so blame is indistinguishable *by class* from a
+  genuine Ruby `TypeError`. That is Sorbet's design choice, not a modeling shortcut, and
+  it forces the same message-shape test the difftest classifier needs (difftest N28).
+- **What is deliberately NOT claimed:** "srb accepts P ⇒ P is Sorbet-safe". That needs
+  Sorbet's *static* judgment (`Δ; Γ ⊢ e : τ`, the T1–T3 staging of `type-judgments.md`),
+  which does not exist yet. This file supplies the property such a theorem would conclude;
+  `Types/Fragment.lean` supplies, executably, the scope it could have.
+
+`RubyCore/Proof/SorbetConcrete.lean` applies it to real corpus programs through the booted
+model (`native_decide`, as `T5Concrete` does — the metatheorems stay clean):
+`sig-basic/000` certified Sorbet-safe by running to a value; **`sig-basic/001` certified
+Sorbet-safe by *blaming*** — an uncaught `TypeError` that `TypeSafety.lean` counts as
+type-stuck and that Sorbet-safety counts as a pass, which is the entire content of the
+weakening; and `untyped-boundary/000` refuting Sorbet-safety with an uncaught
+`NoMethodError` that is not blame — a program the fragment already excludes, so it refutes
+nothing the fragment claims.
+
+## L82 — the Sorbet fragment predicate (`RubyCore/Types/Fragment.lean`)
+
+An executable, reason-carrying predicate defining *which programs a soundness theorem can
+be about*, queried by `rubycore --fragment`. Two criteria: (1) every static-unsound
+construct must be runtime-checked — which admits `T.cast`/`T.let`/`T.must` and excludes
+`T.unsafe`, `.checked(:never|:tests)`, `T::Struct`/`T::Enum` (unchecked getters), and
+parameterized generics (erased type arguments, §A.6); (2) no untyped code — every method
+sigged, no `T.untyped`, no reflective definition/dispatch.
+
+It is a *static* query: nothing runs, the prelude is not booted, so the answer is
+independent of model coverage (the separate `.unsupported` gate). Over the corpus: 6/18
+in-fragment, 3 in scope once intersected with srb acceptance, and — the property that
+matters — **no unsoundness witness is in the fragment** (guarded by a difftest test that
+first asserts the witness set is non-empty, so it cannot pass vacuously).
+
+Implementation note: the "a sig precedes this def" flag is threaded through the single
+traversal rather than split into a second pass, because the natural two-function shape
+requires a same-size mutual call and has no termination measure.
