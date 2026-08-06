@@ -85,3 +85,83 @@ def test_genuine_typeerror_is_not_classified_as_sorbet():
     )
     assert not is_sorbet_runtime_error(("NoMethodError", "undefined method 'x'"))
     assert not is_sorbet_runtime_error(None)
+
+
+# --------------------------------------------------------------------------
+# sig-stripping (the precision transform)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def stripper():
+    from difftest.sorbet import SigStripper
+
+    return SigStripper()
+
+
+def test_strips_sig_and_extend(stripper):
+    out = stripper.strip(CLEAN)
+    assert "sig" not in out
+    assert "T::Sig" not in out
+    assert "def f(x)" in out and "x.to_s" in out
+
+
+def test_strips_assertion_family(stripper):
+    out = stripper.strip(
+        '# typed: true\nrequire "sorbet-runtime"\n'
+        "a = T.let(1, Integer)\n"
+        "b = T.cast(a, Integer)\n"
+        "c = T.must(b)\n"
+        "d = T.unsafe(c)\n"
+        "puts a + b + c + d\n"
+    )
+    assert "T." not in out
+    assert "a = 1" in out and "b = a" in out and "c = b" in out and "d = c" in out
+
+
+def test_strips_nested_assertions_to_a_fixpoint(stripper):
+    out = stripper.strip(
+        '# typed: true\nrequire "sorbet-runtime"\n'
+        "x = T.must(T.cast(T.unsafe(1), Integer))\n"
+    )
+    assert "x = 1" in out
+
+
+def test_strips_chained_checked_sig(stripper):
+    out = stripper.strip(
+        '# typed: true\nrequire "sorbet-runtime"\nextend T::Sig\n'
+        "sig { params(x: Integer).returns(String).checked(:never) }\n"
+        "def label(x)\n  x.to_s\nend\nputs label(1)\n"
+    )
+    assert "sig" not in out and "checked" not in out
+    assert "def label(x)" in out
+
+
+def test_require_is_kept(stripper):
+    # The two variants must differ only in annotation precision, so the require
+    # (which changes what is loaded) is deliberately left in place.
+    runnable = CLEAN.replace(
+        "# typed: strict\n", '# typed: strict\nrequire "sorbet-runtime"\n'
+    )
+    assert 'require "sorbet-runtime"' in stripper.strip(runnable)
+
+
+def test_structural_constructs_are_gated_not_mangled(stripper):
+    from difftest.sorbet import Unstrippable
+
+    out = stripper.strip(
+        '# typed: true\nrequire "sorbet-runtime"\n'
+        "class Point < T::Struct\n  const :x, Integer\nend\n"
+        "puts Point.new(x: 1).x\n"
+    )
+    assert isinstance(out, Unstrippable)
+    assert "T::Struct" in out.reason
+
+
+def test_stripped_program_still_runs(stripper):
+    from difftest.control import CRubyRunner
+
+    out = stripper.strip(CLEAN)
+    obs = CRubyRunner().run(out)
+    assert obs.exception is None, obs.exception
+    assert obs.stdout == "3\n"

@@ -189,6 +189,52 @@ def _parse_errors(raw: str) -> list[StaticError]:
 
 
 # --------------------------------------------------------------------------
+# The precision transform: sig-stripping (the `⊑` of the gradual guarantee)
+# --------------------------------------------------------------------------
+
+_SIG_STRIP_RB = Path(__file__).resolve().parents[1] / "ruby" / "sig_strip.rb"
+
+
+@dataclass(frozen=True)
+class Unstrippable:
+    """The program contains Sorbet constructs that are structural, not
+    annotations (T::Struct, T::Enum, T.absurd, …), so no less-precise variant
+    of *the same program* exists. Gated with a reason, never mangled."""
+
+    reason: str
+
+
+class SigStripper:
+    """Produce the less-precise variant of a Sorbet-annotated program.
+
+    Implemented as a Prism-based source-to-source transform (`ruby/sig_strip.rb`)
+    rather than a regex: `sig do … end` blocks, chained `.checked(:never)`, and
+    nested assertions all need real parse structure, and the transform must
+    splice byte ranges so that everything it does not touch stays identical.
+    """
+
+    def __init__(self, ruby: str | None = None, timeout: float = 30.0):
+        self.ruby = ruby or ruby_path()
+        self.timeout = timeout
+
+    def strip(self, source: str) -> str | Unstrippable:
+        proc = subprocess.run(
+            [self.ruby, str(_SIG_STRIP_RB)],
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
+        )
+        if proc.returncode == 3:
+            return Unstrippable(proc.stderr.strip())
+        if proc.returncode != 0:
+            raise SorbetUnavailable(
+                f"sig_strip failed (exit {proc.returncode}): {proc.stderr.strip()[:300]}"
+            )
+        return proc.stdout
+
+
+# --------------------------------------------------------------------------
 # Runtime half: classifying a sorbet-runtime sig violation
 # --------------------------------------------------------------------------
 
