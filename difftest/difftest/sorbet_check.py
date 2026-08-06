@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .control import CRubyRunner
-from .sorbet import SorbetStatic, is_sorbet_runtime_error
+from .sorbet import FragmentChecker, SorbetStatic, is_sorbet_runtime_error
 from .testcase import TestCase
 
 # Mirrors `typeErrorFamily` in lean/RubyCore/Proof/TypeSafety.lean. The Lean
@@ -85,6 +85,13 @@ class CheckResult:
     cell: str
     declared_static: str
     declared_runtime: str
+    fragment: object = None  # FragmentResult | None ("cannot say")
+
+    @property
+    def in_theorem_scope(self) -> bool:
+        """In the provable subset AND accepted by srb — the set a soundness
+        theorem would actually make a claim about."""
+        return bool(self.fragment and self.fragment.in_fragment and self.static_ok)
 
     @property
     def matches_declaration(self) -> bool:
@@ -112,6 +119,8 @@ class CheckResult:
                 "static_expect": self.declared_static,
                 "runtime_expect": self.declared_runtime,
             },
+            "fragment": self.fragment.to_json() if self.fragment else None,
+            "in_theorem_scope": self.in_theorem_scope,
             "matches_declaration": self.matches_declaration,
             "description": self.case.provenance.get("description"),
             "doc_ref": self.case.provenance.get("doc_ref"),
@@ -119,7 +128,10 @@ class CheckResult:
 
 
 def check_case(
-    case: TestCase, static: SorbetStatic, control: CRubyRunner
+    case: TestCase,
+    static: SorbetStatic,
+    control: CRubyRunner,
+    fragment: FragmentChecker | None = None,
 ) -> CheckResult:
     result = static.check(case.source)
     obs = control.run(case.source)
@@ -134,6 +146,7 @@ def check_case(
         cell=classify(result.ok, kind, obs.exception[0] if obs.exception else None),
         declared_static=case.provenance.get("static_expect", "?"),
         declared_runtime=case.provenance.get("runtime_expect", "?"),
+        fragment=fragment.check(case.source) if fragment else None,
     )
 
 
@@ -167,6 +180,33 @@ def render_markdown(results: list[CheckResult]) -> str:
         "> is for. Until it exists, this report undercounts the catalogue.",
         "",
     ]
+
+    scope = [r for r in results if r.in_theorem_scope]
+    in_frag = [r for r in results if r.fragment and r.fragment.in_fragment]
+    unknown = [r for r in results if r.fragment is None]
+    lines += [
+        "## Theorem scope — what a soundness proof could be about",
+        "",
+        f"**{len(in_frag)}/{len(results)} in the Sorbet fragment** "
+        f"(`lean/RubyCore/Types/Fragment.lean`); intersected with what `srb` accepts, "
+        f"**{len(scope)} are in scope** for a soundness claim.",
+        "",
+        "In scope: " + (", ".join(f"`{r.case.id}`" for r in scope) or "_none_"),
+        "",
+    ]
+    if unknown:
+        lines += [
+            "Fragment undecidable (did not desugar/decode — *not* the same as "
+            "out-of-fragment): " + ", ".join(f"`{r.case.id}`" for r in unknown),
+            "",
+        ]
+    out = [r for r in results if r.fragment and not r.fragment.in_fragment]
+    if out:
+        lines += ["Excluded, with the construct responsible:", ""]
+        for r in out:
+            whats = ", ".join(f"`{v['what']}`" for v in r.fragment.violations[:4])
+            lines.append(f"- `{r.case.id}` — {whats}")
+        lines.append("")
 
     if mismatches:
         lines += [
@@ -212,7 +252,8 @@ def render_markdown(results: list[CheckResult]) -> str:
 def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> dict:
     static = SorbetStatic(timeout=timeout)
     control = CRubyRunner(timeout=timeout)
-    results = [check_case(c, static, control) for c in cases]
+    fragment = FragmentChecker(runner=control)
+    results = [check_case(c, static, control, fragment) for c in cases]
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "cases.jsonl").open("w") as fh:
@@ -227,6 +268,8 @@ def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> di
         "total": len(results),
         "cells": counts,
         "mismatches": [r.case.id for r in results if not r.matches_declaration],
+        "in_fragment": [r.case.id for r in results if r.fragment and r.fragment.in_fragment],
+        "theorem_scope": [r.case.id for r in results if r.in_theorem_scope],
         "unsoundness_witnesses": [
             r.case.id for r in results if r.cell == "unsoundness-witness"
         ],

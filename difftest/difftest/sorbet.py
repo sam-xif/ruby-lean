@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .control import ruby_path
+from .control import CRubyRunner, ruby_path
 
 SETUP_RECIPE = """\
 The Sorbet toolchain is not vendored. To install it:
@@ -262,6 +262,81 @@ def unchecked_variant(source: str) -> str:
     failure behavior is silenced.
     """
     return _UNCHECKED_PRELUDE + source
+
+
+# --------------------------------------------------------------------------
+# The Sorbet fragment: what a soundness theorem could be about
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FragmentResult:
+    """`rubycore --fragment`: is this program in the provable subset, and if
+    not, why (`lean/RubyCore/Types/Fragment.lean`)."""
+
+    in_fragment: bool
+    violations: tuple[dict, ...]
+
+    def to_json(self) -> dict:
+        return {"in_fragment": self.in_fragment, "violations": list(self.violations)}
+
+
+class FragmentChecker:
+    """Ask the Lean model whether a program is in the Sorbet fragment.
+
+    A *static* query: the binary decodes and scans, it does not run anything, so
+    the answer is independent of model coverage. Deliberately the same binary
+    that carries the semantics — the fragment is the hypothesis of a theorem
+    about that semantics, so it must not drift into a separate reimplementation.
+    """
+
+    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
+                 runner: CRubyRunner | None = None):
+        root = Path(__file__).resolve().parents[2]
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.runner = runner or CRubyRunner()
+
+    def check(self, source: str) -> FragmentResult | None:
+        """None when the program cannot be desugared or decoded — "we cannot
+        say", never a silent False (which would read as "out of fragment")."""
+        import json as _json
+
+        proc = subprocess.run(
+            [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
+            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if proc.returncode != 0:
+            return None
+        lean = subprocess.run(
+            [str(self.lean_bin), "--fragment"],
+            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if lean.returncode != 0:
+            return None
+        try:
+            d = _json.loads(lean.stdout)
+        except ValueError:
+            return None
+        return FragmentResult(bool(d["in_fragment"]), tuple(d.get("violations", [])))
+
+
+# Same desugar-and-export snippet the Lean SUT uses; duplicated as a module-level
+# constant here to avoid importing `sut` (which imports `compare`, which imports
+# this module).
+_EXPORT_SNIPPET_FOR_FRAGMENT = """\
+$LOAD_PATH.unshift(ARGV[0])
+require "desugar"
+require "export"
+src = $stdin.read
+begin
+  core, = Desugar.program(src)
+rescue Desugar::Unsupported => e
+  $stderr.puts(e.message)
+  exit 3
+end
+print Export.json(core)
+"""
 
 
 # --------------------------------------------------------------------------
