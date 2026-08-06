@@ -812,3 +812,445 @@ end
 class Array
   include Enumerable
 end
+
+# ─── T — the sorbet-runtime shim ────────────────────────────────────────────
+#
+# Sorbet's *runtime* half, modeled the way this project models everything else:
+# as ordinary RubyCore code performing heap mutation, not as new Lean rules
+# (`../../docs/semantics/types-and-preservation.md` §A.5, §C.2 — "a `sig` is heap
+# mutation that replaces a method-table entry with a checking wrapper").
+#
+# Why it belongs in the model at all: the honest soundness statement for Sorbet
+# is the *runtime* three-outcome one (§C.1 option 2), because the static half is
+# unsound by design. That statement is only meaningful if the enforcement
+# mechanism is inside the semantics — otherwise there is nothing for the theorem
+# to quantify over. With the shim here, "sorbet-runtime raised a TypeError at a
+# sig boundary" is an ordinary reachable outcome of `stepFn`, so the existing
+# `typeStuck` / `invariant_sound` machinery applies to it unchanged.
+#
+# Fidelity is established the same way as the rest of the prelude: by difftest
+# against the real gem over `difftest/corpus/sorbet/`. Error messages therefore
+# match sorbet-runtime **byte for byte**, except for the `Caller:`/`Definition:`
+# source-location lines, which RubyCore cannot produce (the AST carries no line
+# numbers) and which the engine normalizes away on both sides.
+
+module T
+  # A runtime type. sorbet-runtime coerces raw types into `T::Types::*` objects
+  # with a `valid?` predicate; the shim keeps that shape but flattens the class
+  # hierarchy into one tagged object, since only `valid?` and the printed label
+  # are observable.
+  #
+  # NOTE the deliberate absence of `to_s`/`inspect`/`==`: defining any of those
+  # anywhere in the prelude flips `reprPure` off globally (authoring rule 3) and
+  # every `puts` in every program would gate. `label` carries the rendering.
+  class Type
+    def initialize(kind, args, label)
+      @kind = kind
+      @args = args
+      @label = label
+    end
+
+    def label
+      @label
+    end
+
+    def valid?(value)
+      k = @kind
+      return true if k == :untyped
+      return value.is_a?(@args[0]) if k == :simple
+      if k == :any
+        i = 0
+        while i < @args.length
+          return true if T.__valid?(@args[i], value)
+          i += 1
+        end
+        return false
+      end
+      if k == :all
+        i = 0
+        while i < @args.length
+          return false unless T.__valid?(@args[i], value)
+          i += 1
+        end
+        return true
+      end
+      # Generics are ERASED at runtime (§A.6): the check is the top-level class
+      # only, never the element types. This is not a shortcut — it is what
+      # sorbet-runtime does, and reproducing it is the point (a heterogeneous
+      # array walks straight through, `difftest/corpus/sorbet/generics/000.rb`).
+      return value.is_a?(@args[0]) if k == :erased_generic
+      return value.is_a?(Proc) if k == :proc
+      return value.is_a?(Class) if k == :class_of
+      # :self_type / :attached_class / :type_parameter — unchecked at runtime
+      true
+    end
+  end
+
+  # A subscriptable type constructor: `T::Array[Integer]`.
+  class GenericType
+    def initialize(base, label)
+      @base = base
+      @label = label
+    end
+
+    def [](*args)
+      parts = []
+      i = 0
+      while i < args.length
+        parts.push(T.type_label(args[i]))
+        i += 1
+      end
+      T::Type.new(:erased_generic, [@base], @label + "[" + parts.join(", ") + "]")
+    end
+  end
+
+  # ── coercion and rendering ────────────────────────────────────────────────
+
+  def self.__valid?(type, value)
+    return type.valid?(value) if type.is_a?(T::Type)
+    return value.is_a?(type) if type.is_a?(Module)
+    true
+  end
+
+  def self.type_label(type)
+    return type.label if type.is_a?(T::Type)
+    return type.name if type.is_a?(Module)
+    type.inspect
+  end
+
+  # The shared failure path. Message shapes are sorbet-runtime's, verified
+  # against the gem (`difftest/corpus/sorbet/`).
+  def self.__check!(prefix, type, value)
+    return value if T.__valid?(type, value)
+    raise TypeError, prefix + ": Expected type " + T.type_label(type) +
+                     ", got type " + value.class.name +
+                     " with value " + value.inspect
+  end
+
+  # ── the assertion family (§A.3) ───────────────────────────────────────────
+  # The static/runtime split is the whole soundness architecture in one table:
+  # `T.unsafe` is the ONE form with no runtime check; every other form that is
+  # static-unsound is at least runtime-checked. That asymmetry is reproduced
+  # exactly here.
+
+  def self.let(value, type)
+    __check!("T.let", type, value)
+  end
+
+  def self.cast(value, type)
+    __check!("T.cast", type, value)
+  end
+
+  def self.assert_type!(value, type)
+    __check!("T.assert_type!", type, value)
+  end
+
+  def self.must(value)
+    raise TypeError, "Passed `nil` into T.must" if value.nil?
+    value
+  end
+
+  # No runtime check at all — the escape hatch, faithfully unchecked.
+  def self.unsafe(value)
+    value
+  end
+
+  # `T.bind(self, X)`: trusted statically, checked at runtime like T.cast.
+  def self.bind(value, type)
+    __check!("T.bind", type, value)
+  end
+
+  # A static-only tool: at runtime it is the identity.
+  def self.reveal_type(value)
+    value
+  end
+
+  # Exhaustiveness. Statically proves all cases are handled; reaching it at
+  # runtime means the static proof did not apply, and the gem raises.
+  def self.absurd(value)
+    raise TypeError, "Control flow reached T.absurd."
+  end
+
+  # ── type constructors (§A.1) ──────────────────────────────────────────────
+
+  def self.untyped
+    T::Type.new(:untyped, [], "T.untyped")
+  end
+
+  def self.noreturn
+    T::Type.new(:untyped, [], "T.noreturn")
+  end
+
+  def self.anything
+    T::Type.new(:untyped, [], "T.anything")
+  end
+
+  def self.self_type
+    T::Type.new(:self_type, [], "T.self_type")
+  end
+
+  def self.attached_class
+    T::Type.new(:attached_class, [], "T.attached_class")
+  end
+
+  def self.type_parameter(name)
+    T::Type.new(:type_parameter, [], "T.type_parameter(:" + name.to_s + ")")
+  end
+
+  def self.class_of(klass)
+    T::Type.new(:class_of, [klass], "T.class_of(" + T.type_label(klass) + ")")
+  end
+
+  def self.any(*types)
+    T::Type.new(:any, types, "T.any(" + T.__labels(types) + ")")
+  end
+
+  def self.all(*types)
+    T::Type.new(:all, types, "T.all(" + T.__labels(types) + ")")
+  end
+
+  # `T.nilable(x)` is *literally* `T.any(NilClass, x)` [D: /docs/union-types],
+  # but it prints under its own name.
+  def self.nilable(type)
+    T::Type.new(:any, [NilClass, type], "T.nilable(" + T.type_label(type) + ")")
+  end
+
+  def self.proc
+    T::Type.new(:proc, [], "T.proc")
+  end
+
+  def self.type_alias(&blk)
+    yield
+  end
+
+  def self.__labels(types)
+    parts = []
+    i = 0
+    while i < types.length
+      parts.push(T.type_label(types[i]))
+      i += 1
+    end
+    parts.join(", ")
+  end
+
+  # ── the sig DSL and its runtime enforcement (§A.5) ────────────────────────
+
+  # Records what a `sig { … }` block declared. The block is `instance_eval`ed
+  # against one of these, so every DSL method returns self to keep the chain
+  # going.
+  class Decl
+    def initialize
+      @params = nil
+      @returns = nil
+      @void = false
+      @checked = :always
+    end
+
+    def param_types
+      @params
+    end
+
+    def return_type
+      @returns
+    end
+
+    def void?
+      @void
+    end
+
+    def checked_level
+      @checked
+    end
+
+    def params(**kw)
+      @params = kw
+      self
+    end
+
+    def returns(type)
+      @returns = type
+      self
+    end
+
+    def void
+      @void = true
+      self
+    end
+
+    def checked(level)
+      @checked = level
+      self
+    end
+
+    # Declarations with no runtime effect. They exist so a real-world sig
+    # parses; the static half is Sorbet's business, not the model's.
+    def on_failure(*args)
+      self
+    end
+
+    def type_parameters(*args)
+      self
+    end
+
+    def abstract
+      self
+    end
+
+    def overridable
+      self
+    end
+
+    def override(**kw)
+      self
+    end
+
+    def final
+      self
+    end
+
+    def bind(type)
+      self
+    end
+  end
+
+  # `extend T::Sig` is what puts `sig` in a class body. Enforcement rides on
+  # `Module#method_added`: `sig` records a pending declaration and the hook
+  # wraps the method defined immediately after — the same mechanism the real
+  # gem uses, which is why the model had to grow the hook (L77).
+  module Sig
+    def sig(&blk)
+      # In a class/module body `self` is the definee and `T::Sig#method_added`
+      # (an instance method of the extended module, so it sits on the class
+      # object's singleton chain) is already the hook. At **toplevel** `self` is
+      # `main`, not a Module: the `def` that follows lands on Object, whose
+      # `method_added` must therefore be installed explicitly. The real gem does
+      # the same thing — `sig` installs hooks on the definee rather than
+      # assuming they are there.
+      if self.is_a?(Module)
+        @__t_pending_sig = blk
+      else
+        T.__toplevel_sig(blk)
+      end
+      nil
+    end
+
+    def method_added(name)
+      T.__hook(self, name)
+    end
+  end
+
+  def self.__toplevel_sig(blk)
+    Object.instance_variable_set(:@__t_pending_sig, blk)
+    return nil if @__toplevel_hook_installed
+    @__toplevel_hook_installed = true
+    # A *singleton* method on Object, so it resolves ahead of CRuby's
+    # `Module#method_added` no-op (a plain Object instance method would be
+    # shadowed by it — see the `.def'` rule in Interp.lean).
+    Object.define_singleton_method(:method_added) do |name|
+      T.__hook(Object, name)
+    end
+    nil
+  end
+
+  # The hook body, shared by the class-body and toplevel paths.
+  def self.__hook(mod, name)
+    blk = mod.instance_variable_get(:@__t_pending_sig)
+    return nil if blk.nil?
+    mod.instance_variable_set(:@__t_pending_sig, nil)
+    # Re-entrancy guard: installing the wrapper defines a method, and CRuby
+    # fires `method_added` for `define_method` too. Without this a sig would
+    # wrap its own wrapper forever.
+    return nil if mod.instance_variable_get(:@__t_wrapping)
+    decl = T::Decl.new
+    decl.instance_eval(&blk)
+    # `.checked(:never)` means no wrapper at all — the quiet escape hatch of
+    # §A.5, reproduced rather than papered over.
+    return nil if decl.checked_level == :never
+    mod.instance_variable_set(:@__t_wrapping, true)
+    T.__wrap(mod, name, decl)
+    mod.instance_variable_set(:@__t_wrapping, false)
+    nil
+  end
+
+  # Install the checking wrapper: alias the original aside, then define a
+  # forwarding method that validates arguments, calls through, and validates the
+  # return. This IS the heap mutation of §C.2 — a method-table entry replaced by
+  # a checking one.
+  def self.__wrap(mod, name, decl)
+    hidden = "__t_unchecked_" + name.to_s
+    mod.send(:alias_method, hidden, name)
+    mod.send(:define_method, name) do |*args, &blk|
+      T.__check_params(decl, args)
+      result = send(hidden, *args, &blk)
+      T.__check_return(decl, result)
+    end
+    nil
+  end
+
+  # Positional matching: Sorbet requires a sig to list the method's parameters
+  # in order, so the i-th declared name governs the i-th argument. A sig over a
+  # method with *keyword* parameters cannot be matched this way (the shim has no
+  # `instance_method(…).parameters` to consult), so it declares rather than
+  # guesses.
+  def self.__check_params(decl, args)
+    types = decl.param_types
+    return nil if types.nil?
+    names = types.keys
+    return __unsupported__("sorbet-runtime: sig with more params than arguments (keyword params?)") if names.length > args.length
+    i = 0
+    while i < names.length
+      key = names[i]
+      __check!("Parameter '" + key.to_s + "'", types[key], args[i])
+      i += 1
+    end
+    nil
+  end
+
+  def self.__check_return(decl, result)
+    # `.void` discards the real return value and yields sorbet's VOID sentinel,
+    # which IS observable (`p` prints it), so the shim reproduces it.
+    return T::Private::Types::Void::VOID if decl.void?
+    rt = decl.return_type
+    return result if rt.nil?
+    __check!("Return value", rt, result)
+  end
+
+  module Private
+    module Types
+      module Void
+        module VOID
+        end
+      end
+    end
+  end
+end
+
+# Subscriptable generic constructors and the Boolean alias. Assigned at toplevel
+# (not inside `module T`) so `Array`/`Hash` resolve to the real classes rather
+# than to the constants being defined.
+T::Array = T::GenericType.new(Array, "T::Array")
+T::Hash = T::GenericType.new(Hash, "T::Hash")
+T::Range = T::GenericType.new(Range, "T::Range")
+T::Enumerable = T::GenericType.new(Enumerable, "T::Enumerable")
+T::Boolean = T::Type.new(:any, [TrueClass, FalseClass], "T::Boolean")
+
+# `T::Struct` / `T::Enum` are **structural**, not annotations: they define a
+# class hierarchy and generate methods, so a program using them cannot be
+# understood by ignoring them. Until they are modeled they gate at first use —
+# an honest Unsupported rather than a NameError that would read as a wrong
+# answer (the difftest engine's one unforgivable verdict).
+class T::Struct
+  def self.prop(*args)
+    __unsupported__("T::Struct")
+  end
+
+  def self.const(*args)
+    __unsupported__("T::Struct")
+  end
+end
+
+class T::Enum
+  def self.enums(*args)
+    __unsupported__("T::Enum")
+  end
+end

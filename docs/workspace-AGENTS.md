@@ -207,6 +207,18 @@ deliberately deferred until the corpora exist to seed it. Built-in SUTs: `stub`,
 `identity` (smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is
 the detection self-test), `lean`, and `sig-strip` (the gradual-guarantee probe).
 
+**The Sorbet corpus runs in the Lean model (2026-08-05).** `run --tier 4 --sut lean` is
+**14/18 agree, 0 disagree, 4 unsupported** (was 1 agree / 17 disagree). Two changes got it
+there: **`Module#method_added` now fires on `def`** (`lean/implementation-notes.md` L77 —
+a pre-existing fidelity gap, and the hook sorbet-runtime's `sig` is built on), and a **`T`
+prelude shim** (L78) carrying Sorbet's runtime half as ordinary RubyCore — the assertion
+family, the type constructors, and real **sig enforcement** via `alias_method` +
+`define_method`, which is §C.2's "a sig is heap mutation replacing a method-table entry
+with a checking wrapper" made literal. Consequence for the soundness work: a
+sig-boundary `TypeError` is now an ordinary reachable outcome of `stepFn`, so `typeStuck`
+and `invariant_sound` apply to it with no new machinery. Still gated: `T::Struct`,
+`T::Enum` (structural, not annotations — they gate honestly rather than NameError).
+
 **Sorbet scaffolding (tier 4, 2026-08-05)** — the no-Lean-needed half of the
 Sorbet-soundness plan in [`docs/semantics/types-and-preservation.md`](docs/semantics/types-and-preservation.md)
 §C.3 is built and runnable: `corpus/sorbet/` (18 programs taxonomized by Sorbet design
