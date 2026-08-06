@@ -494,3 +494,170 @@ reverted: `_expr` draws `new` from all `env.classes` (not the `has_mm`-filtered 
 Validation: 6-seed sweep (seed 1 × 400 + seeds 2–6 × 300 = 1900 examples) all
 0-disagree/0-control_invalid vs desugar; the three C30 reproducers (tier1-01039/01173/01430)
 replay as agree.
+
+## N26 — Tier 4: the Sorbet corpus, taxonomized by design feature rather than by construct
+
+The object of study for the Sorbet work is the *type system*, not the language, so
+`corpus/sorbet/` is organized by which part of Sorbet's design a program probes —
+`sig-basic`, `narrowing`, `assertions`, `untyped-boundary`, `escape-hatches`,
+`structs-enums`, `generics` — mirroring §A of
+[`../docs/semantics/types-and-preservation.md`](../docs/semantics/types-and-preservation.md).
+That is a different axis from tier 3's (dispatch, blocks/jumps, eval-order, …), which is
+organized by Ruby construct, and both are right for their purpose.
+
+Each program carries a sidecar declaring the expected outcome of **both halves**
+(`static_expect: clean|errors`, `runtime_expect: value|sorbet_error|ruby_error`), so the
+two-by-two is explicit and machine-checkable rather than living in prose. The
+declarations are enforced by `difftest sorbet check` (N30), not decorative.
+
+Programs `require "sorbet-runtime"` themselves rather than having the control wrapper
+inject it: the corpus keeps tier 0/3's "self-contained single file" invariant, and the
+control then exercises real runtime enforcement with no wrapper cooperation. Consequence
+recorded rather than hidden — see N34 for what this does to the Lean SUT.
+
+`--tier 4` runs the whole corpus; unlike tier 0 there is no `-n` sample, because every
+program is hand-authored to probe one specific thing and sampling would lose the point
+rather than save time (the corpus is 18 programs).
+
+## N27 — `srb tc` output is parsed from its human format; a nonzero exit with no parsed errors is a tool failure
+
+Sorbet exposes no machine-readable error format for `tc` — only `--metrics-file`
+counters and the LSP protocol. The human output is parsed instead, keyed off the
+trailing `https://srb.help/CODE` URL, which makes the error code unambiguous;
+indented continuation lines (context, source snippets) are skipped.
+
+Exit codes are *not* pinned (`srb tc` currently exits 100 on type errors, and this has
+drifted across releases). The rule is: exit 0 ⇒ clean; nonzero **with** parsed errors ⇒
+those errors; nonzero **without** parsed errors ⇒ raise `SorbetUnavailable`. A future
+exit-code change therefore degrades loudly instead of silently reporting "clean".
+
+`--no-config` keeps each check hermetic: the program plus Sorbet's built-in RBIs for `T`,
+no surrounding project config or RBI payload. Right scope for a self-contained corpus.
+
+## N28 — sorbet-runtime violations are classified by message shape, not by installing an error handler
+
+`sorbet-runtime`'s default handlers raise a plain `::TypeError`, indistinguishable *by
+class* from a genuine Ruby `TypeError` (`1 + "a"`). Telling them apart matters: one is
+Sorbet's runtime backstop firing ("blame"), the other is the type-stuck outcome the
+reachability checker hunts.
+
+The robust-looking alternative — set `T::Configuration.call_validation_error_handler` to
+raise a distinguishable class — was rejected because it **changes the program's
+semantics**. A program under test may itself `rescue TypeError`, and the corpus
+deliberately contains such a program (`sig-basic/002`: a locally-rescued sig violation is
+a type-safe program, the "raised ≠ stuck" point of
+`../type-safety-by-reachability.md` §2). Classifying after the fact leaves the observed
+behavior untouched. The trade is that the pattern list in `sorbet.py` must track
+sorbet-runtime's message wording; it is one list, in one place, covered by tests.
+
+## N29 — sig-strip gates structural constructs instead of mangling them; iterates to a fixpoint; keeps the require
+
+`ruby/sig_strip.rb` is the `e ⊑ e'` precision transform. Three choices:
+
+- **Prism, not regex.** `sig do … end`, chained `.checked(:never)`, and nested assertions
+  need real parse structure, and byte-range splicing guarantees everything untouched stays
+  byte-identical — which is the whole premise of the probe.
+- **Gate, don't mangle.** `T::Struct`, `T::Enum`, `T.absurd`, `T::Array[…]` in a value
+  position are *not* annotations: the class hierarchy and the DSL-generated methods are
+  part of the program's behavior. Removing them yields a *different program*, not a
+  less-precise variant of the same one, so the stripper exits 3 with the surviving
+  constructs named (3 of 18 corpus programs gate). Same discipline as every other
+  fragment gate here: declare, never silently degrade.
+- **Fixpoint, not edit ordering.** An edit's replacement is raw source text that may itself
+  contain annotations (`T.must(T.cast(x, Integer))`), so the pass is iterated to a fixpoint
+  (max 10) rather than ordering nested edits. Simpler and more obviously correct.
+
+`require "sorbet-runtime"` is deliberately kept: the two variants must differ only in
+annotation precision, and dropping the require would also change what is loaded.
+
+## N30 — the gradual-guarantee relation needs a *third* run, because a rescued trap has no exception to key off
+
+The obvious formulation of the escape clause — "licensed iff the precise run raised a
+sorbet-runtime `TypeError`" — is wrong. A program may **rescue its own sig violation**
+(`sig-basic/002`), in which case the two variants differ only in stdout, with no exception
+anywhere. The published theorem (Siek/Vitousek/Cimini/Boyland, SNAPL 2015) does not cover
+this: it is stated over a calculus whose blame outcomes cannot be caught and observed, and
+real Ruby programs can do both.
+
+So the clause is discharged by **attribution** instead. `sorbet.unchecked_variant` runs the
+annotated program a third time with enforcement neutralized — two public knobs, because
+they are two mechanisms: `T::Configuration.call_validation_error_handler` (sig
+parameter/return/block checks) and `inline_type_error_handler` (the
+`T.let`/`T.cast`/`T.must`/`T.assert_type!` family). Then:
+
+- control == stripped → `AGREE`
+- control ≠ stripped **and** unchecked == stripped → `AGREE_WEAKENED`: the entire
+  difference is attributable to enforcement firing, which is exactly what the guarantee
+  licenses
+- otherwise → `DISAGREE`: the annotations changed behavior by some means *other* than
+  trapping, which the guarantee forbids
+
+The prelude is a single line so it shifts program line numbers by exactly one.
+`AGREE_WEAKENED` is a distinct verdict rather than folded into `AGREE`, so licensed
+weakenings are counted (a probe reporting "all agree" while quietly excusing half its
+cases would be the "no silent caps" sin).
+
+## N31 — a SUT may carry its own comparator, and it takes the case
+
+`runner.run_case` now honors an optional `compare` attribute on the SUT,
+`compare(control_obs, sut_obs, case)`; SUTs without one keep the default
+"both implementations should produce the same observation" relation, unchanged.
+
+The hook exists because `sig-strip` is a **metamorphic** SUT: the implementation is not
+varied, the *program* is, so equality is the wrong relation. It takes the case (not just
+the two observations) because the attribution run of N30 needs the source.
+
+## N32 — the control scrubs its own temp-file path out of observations
+
+Every program is written to a fresh `tmpXXXX.rb`, so anything reporting the script path —
+`__FILE__`, a backtrace, and notably **every sorbet-runtime error message**
+("Caller: /var/…/tmpshj155fk.rb:19") — differs between two runs of the *same* program.
+Before this fix the determinism double-run rejected as `CONTROL_INVALID` every program
+whose sig check fires, which is most of the Sorbet corpus.
+
+That is nondeterminism the harness injected, not the program's, so `CRubyRunner.run` now
+rewrites its own path (and `realpath`, since macOS `/var` → `/private/var` and Ruby
+reports the resolved form) to `<program>`. Genuine nondeterminism is still caught. This
+is a global control change, deliberately: the leak was never Sorbet-specific.
+
+## N33 — finding: sorbet-runtime's wrapper is visible through reflection (a real gradual-guarantee violation)
+
+Found by the probe on its first run outside the corpus, and kept as the probe's
+**detection self-test** (`tests/test_gradual_guarantee.py`, the role `--inject-bug` plays
+for the desugar SUT — a probe that never fires proves nothing):
+
+```ruby
+sig { params(x: Integer).returns(String) }
+def f(x) = x.to_s
+C.instance_method(:f).parameters
+#  annotated: [[:req, :arg0], [:block, :blk]]
+#  stripped:  [[:req, :x]]
+```
+
+The checking wrapper renames parameters and appends a block parameter, so a program that
+reflects on its own signature behaves differently purely because annotations are present,
+with nothing trapped. It is not licensed by the guarantee's escape clause (the unchecked
+variant is still wrapped, so attribution correctly fails), and it is not exotic — keyword
+splatting and DSLs that read `parameters` are ordinary Ruby. Deliberately kept *out* of
+`corpus/sorbet/`, which holds programs where the relation is expected to hold, so the
+corpus keeps its 0-violation ratchet.
+
+## N34 — finding: the Lean SUT false-disagrees on all of tier 4, because `require` lies
+
+Measured, not assumed: `run --tier 4 --sut lean` reports **17 disagree, 1 agree**. Every
+disagreement is the same one — `NameError: uninitialized constant T`. The model's
+`Object#require` is a no-op returning `true` (`Builtins.lean`, "the result is essentially
+never observed"), which is true for an *inert* stdlib require and false the moment the
+library defines something the program uses. So an honest "out of fragment" becomes a
+**false wrong-answer**, which is the one classification this engine must never produce.
+
+`type-safety-by-reachability.md` §10.4 already specifies the fix — an unknown `require`
+target gates to `.unsupported`, a known one installs a mock from a manifest — and tier 0
+would barely notice (1 of 1304 bootstraptest cases contains a `require` at all). It is
+**not** done here because it is a model-semantics change that could affect the
+typecheck-pipeline demos, whose linked programs rely on residual stdlib requires being
+inert; that belongs with the mock-manifest work, not with harness scaffolding.
+
+Until then: **do not put the `sorbet` arm in a mixed campaign against the Lean SUT**, and
+read the 17 as "the model does not have sorbet-runtime", which is exactly what the
+prelude-shim phase exists to change.

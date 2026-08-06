@@ -200,15 +200,31 @@ in here; deliberately decoupled from any modeling approach). Built: **tier 0**
 751 agree / 0 disagree), **tier 1** (Hypothesis scope-aware AST fuzzing with automatic
 shrinking of disagreements → `corpus/regressions/`), **tier 3** (Anthropic-API-generated
 adversarial programs, all 7 semantic categories, validation-gated into the committed
-`corpus/tier3/`), and **mixed campaigns** (`run --mix tier1=0.9,tier0=0.05,tier3=0.05`,
+`corpus/tier3/`), **tier 4** (the **Sorbet** corpus — see below), and **mixed campaigns**
+(`run --mix tier1=0.9,tier0=0.05,tier3=0.05`,
 Hypothesis-hosted so shrinking survives). Tier 2 (mutating scraped Ruby) is a stub slot,
 deliberately deferred until the corpora exist to seed it. Built-in SUTs: `stub`,
 `identity` (smoke test), `desugar` (adapter over `harness/desugar-dt/`; `--inject-bug` is
-the detection self-test). See [`difftest/README.md`](difftest/README.md) to run it,
+the detection self-test), `lean`, and `sig-strip` (the gradual-guarantee probe).
+
+**Sorbet scaffolding (tier 4, 2026-08-05)** — the no-Lean-needed half of the
+Sorbet-soundness plan in [`docs/semantics/types-and-preservation.md`](docs/semantics/types-and-preservation.md)
+§C.3 is built and runnable: `corpus/sorbet/` (18 programs taxonomized by Sorbet design
+feature, each with a sidecar declaring the expected outcome of *both* halves);
+`difftest sorbet check` (the `srb tc`-vs-actual-behavior two-by-two — **4 unsoundness
+witnesses, 2 conservative rejections, 0 declaration mismatches**); and
+`run --tier 4 --sut sig-strip` (the **gradual-guarantee** probe over a Prism sig-stripping
+transform — **10 agree, 5 licensed weakenings, 3 gated, 0 violations**). Two findings
+worth knowing before building on it: sorbet-runtime's checking wrapper is visible through
+reflection (a genuine guarantee violation, kept as the probe's detection self-test, N33),
+and the Lean SUT false-disagrees on all of tier 4 because the model's `require` returns
+true for a library it does not have (N34 — fix specified in
+`../type-safety-by-reachability.md` §10.4; do not mix the `sorbet` arm with `--sut lean`
+until then). See [`difftest/README.md`](difftest/README.md) to run it,
 [`difftest/HANDOFF.md`](difftest/HANDOFF.md) for the fresh-context hand-off (state,
 load-bearing invariants, enhancement queue), and
 [`difftest/implementation-notes.md`](difftest/implementation-notes.md) for non-critical
-implementation choices (N1–N8, committed for rollback).
+implementation choices (N1–N34, committed for rollback).
 
 ### `lean/` — the Lean 4 model (runnable SUT)
 The mechanization of artifacts 00–04 begun from the sketch. See
