@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "IVAR-WRITE CHANNEL: an unsigned method in the same class writes @n, which a sig'd method then reads. The crossing is not a call into typed code at all -- it is shared mutable state -- so no condition over the call graph can see it.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md C.2"
+}

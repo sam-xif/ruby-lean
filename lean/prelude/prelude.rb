@@ -851,7 +851,45 @@ module T
     end
 
     def label
-      @label
+      return @label unless @kind == :proc
+
+      # `T.proc` renders its accumulated chain; the gem prints `params()` even
+      # when empty (verified: `T.proc.returns(Integer)` names itself
+      # `T.proc.params().returns(Integer)`).
+      parts = []
+      unless @proc_params.nil?
+        @proc_params.each { |k, v| parts.push(k.to_s + ": " + T.type_label(v)) }
+      end
+      tail = if @proc_void
+               ".void"
+             elsif @proc_returns.nil?
+               ".returns(T.untyped)"
+             else
+               ".returns(" + T.type_label(@proc_returns) + ")"
+             end
+      "T.proc.params(" + parts.join(", ") + ")" + tail
+    end
+
+    # The `T.proc` builder chain. sorbet-runtime's `T.proc` returns a builder
+    # that accumulates `.params`/`.returns`/`.void`, and the resulting type's
+    # runtime check is only `is_a?(Proc)` — the declared parameter and return
+    # types are **erased**, exactly like generic type arguments (§A.6). That
+    # erasure is not an approximation here: it is why
+    # `difftest/corpus/sorbet/untyped-boundary/003.rb` reaches a TypeError
+    # inside typed code with nothing having checked the block's return.
+    def params(**kw)
+      @proc_params = kw
+      self
+    end
+
+    def returns(type)
+      @proc_returns = type
+      self
+    end
+
+    def void
+      @proc_void = true
+      self
     end
 
     def valid?(value)

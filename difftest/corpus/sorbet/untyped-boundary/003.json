@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "BLOCK-RETURN CHANNEL: sorbet-runtime validates that a block parameter is a Proc but never what the block returns, so a declared T.proc.returns(Integer) has no runtime backstop. The block comes from an unsigned method, so srb cannot see its return type either. Higher-order, so a call-graph closure condition cannot name the callee.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md A.5"
+}

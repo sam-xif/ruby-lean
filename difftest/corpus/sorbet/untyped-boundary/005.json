@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "ALIAS+MUTATE CHANNEL, the one that settles the design space: the array conforms at the boundary and is mutated afterwards through an alias held by untyped code. No entry check, however deep, can prevent this -- which is why 'deepen the boundary checks' is not a fix and why the condition is a property of the heap over time, not of the call graph.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md A.6, B.5"
+}
