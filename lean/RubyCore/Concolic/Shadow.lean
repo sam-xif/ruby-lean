@@ -736,6 +736,23 @@ def initSym (inputs : List SymVal) : SymState :=
 
 /-- Initial machine with the input globals preloaded — so **no AST rewriting** is
     needed to supply inputs (§6.5). -/
+def initMachineOn (base : Machine) (inputs : List SymVal) : Machine :=
+  -- String inputs are heap objects, so they must be allocated before binding;
+  -- integers are immediates and need no heap.
+  (inputs.zipIdx).foldl (fun (m : Machine) (vk : SymVal × Nat) =>
+    let (v, k) := vk
+    let (val, m) := match v with
+      | .i n => (Value.int n, m)
+      | .s str => Builtins.allocStr m str
+    { m with globals := (s!"$__in{k}", val) :: m.globals })
+    base
+
+/-- Legacy entry point: inputs on a **bare** `Machine.init` heap, i.e. *without*
+    the prelude. Kept only for tests that predate the prelude; the CLI now boots
+    the prelude first (`initMachineOn`), so the tracer sees the same language the
+    SUT does. Running the tracer on a bare heap silently loses everything the
+    prelude provides (Enumerable, Comparable, Range enumeration …), which showed
+    up as the tracer gating on `Array#any?` where the SUT was fine. -/
 def initMachine (prog : Expr) (inputs : List SymVal) : Machine :=
   -- String inputs are heap objects, so they must be allocated before binding;
   -- integers are immediates and need no heap. Fold so each allocation threads

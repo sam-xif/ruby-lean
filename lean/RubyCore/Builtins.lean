@@ -970,6 +970,27 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
         let (v, m) := allocArr m (xs.filter (fun x => !(ys.any (valueEql h x ·))))
         .ok v m
       | _, _ => .unsupported "-"
+  -- Set intersection/union. Both **deduplicate** and keep the receiver's order
+  -- [V]: `[1,2,2,3] & [2,3,4]` is `[2,3]`, `[1,2,2,3] | [3,4,4]` is `[1,2,3,4]`.
+  -- Element identity is `eql?` (`valueEql`), matching `Array#-` above.
+  | "Array#&" =>
+    binArg m args fun b =>
+      match arrPayload? h recv, arrPayload? h b with
+      | some xs, some ys =>
+        let keep := xs.foldl (fun acc x =>
+          if ys.any (valueEql h x ·) && !(acc.any (valueEql h x ·)) then acc.push x else acc) #[]
+        let (v, m) := allocArr m keep
+        .ok v m
+      | _, _ => .unsupported "&"
+  | "Array#|" =>
+    binArg m args fun b =>
+      match arrPayload? h recv, arrPayload? h b with
+      | some xs, some ys =>
+        let dedup := fun (acc : Array Value) (x : Value) =>
+          if acc.any (valueEql h x ·) then acc else acc.push x
+        let (v, m) := allocArr m (ys.foldl dedup (xs.foldl dedup #[]))
+        .ok v m
+      | _, _ => .unsupported "|"
   | "Array#*" =>
     binArg m args fun b =>
       match arrPayload? h recv, b with
@@ -1258,6 +1279,33 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
         | _ => .unsupported "Exception#initialize arity"
     | _ => .unsupported "initialize on a non-object"
   | "Class#new" => newImpl m recv args
+  -- `allocate`: the first half of `new` — an instance with the class's *empty*
+  -- payload and NO `initialize` call. Immediates have no heap representation, so
+  -- CRuby raises `TypeError: allocator undefined for X` for Integer/Float/Symbol/
+  -- NilClass/TrueClass/FalseClass [V]. That error is not academic: ObjectGraph's
+  -- `objectspace_loop` rescues exactly it (`detail.message =~ /allocator
+  -- undefined/`), so answering it faithfully is what lets that loop run.
+  | "Class#allocate" =>
+    match recv with
+    | .ref k =>
+      match m.heap.classPayload? k with
+      | none => .unsupported "allocate on non-class"
+      | some c =>
+        if c.isModule then .unsupported "Module#allocate"
+        else
+          let chain := ancestors m.heap k
+          let noAllocator :=
+            [Boot.integerId, Boot.floatId, Boot.symbolId, Boot.nilClassId,
+             Boot.trueClassId, Boot.falseClassId].any chain.contains
+          if noAllocator then
+            .err Boot.typeErrorId s!"allocator undefined for {className m.heap k}" m
+          else
+            let payload := match allocatableCore m.heap k with
+              | some core => emptyCorePayload core
+              | none => Payload.none
+            let (o, h) := m.heap.alloc { klass := k, payload }
+            .ok (.ref o) { m with heap := h }
+    | _ => .unsupported "allocate on non-class"
   | _ => .unsupported s!"builtin {bid}"
 where
   owner (bid : String) : String :=

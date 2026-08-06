@@ -1610,6 +1610,54 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     worth a sweep — grep `unsupported` for arity/coercion sites — but is not
     done here.
 
+## The tracer was running without the prelude (L77)
+
+- **L77 — `rubycore-concolic` booted a bare heap, so the engine saw a *smaller*
+  language than the SUT.** `ConcolicMain` built its initial machine with
+  `Concolic.initMachine` (= `Machine.init`, i.e. `initOn Boot.initHeap`) while the
+  SUT uses `Prelude.initWithPrelude`. Everything the prelude provides — Enumerable,
+  Comparable, Range enumeration, the Hash overrides — was therefore **invisible to
+  the concolic engine**, silently, since a gate just reads as `unsupported` on that
+  run. Surfaced by running the engine on the full `objectgraph.rb`: the tracer
+  gated on `Array#any?` where plain `rubycore` was perfectly happy.
+  - Fixed with `Concolic.initMachineOn (base : Machine)`, which applies the input
+    globals to an already-booted machine; the CLI calls `Prelude.initWithPrelude`
+    first and reports a boot failure as a `stuck` outcome. `initMachine` is kept
+    for tests that predate the prelude, with a docstring saying what it loses.
+  - **Worth generalising:** any second entry point into the model needs the same
+    two-phase boot. `initMachine` was written before the prelude existed and simply
+    never got revisited — the failure mode is a coverage gap that looks like a
+    frontier note, so nothing was going to catch it except running real code.
+  - Knock-on: `test_closure_captured_local_is_visible_to_the_shadow` asserted "no
+    input-dependent frontier note", which is now the *wrong signal* — with the
+    prelude, `map`/`each` are Ruby code whose internals (`push`) legitimately note.
+    Rewritten to assert the property directly: the branch condition inside the
+    block is `eq (inp 0) (lit 7)`.
+
+## `Array#&`/`Array#|` and `Class#allocate` (L77b)
+
+- **L77b — three builtins the real `objectgraph.rb` needs**, each
+  differential-tested byte-for-byte against CRuby 4.0.5.
+  - **`Array#&` / `Array#|`** — set intersection/union. Both **deduplicate** and
+    keep the receiver's order [V]: `[1,2,2,3] & [2,3,4]` is `[2,3]`,
+    `[1,2,2,3] | [3,4,4]` is `[1,2,3,4]`. Element identity is `valueEql`, matching
+    the existing `Array#-`. Registered on `arrayId` in `Heap.lean` — the arm in
+    `Builtins.lean` is inert until the name is in the boot list, which is easy to
+    forget and presents as "unmodeled method".
+  - **`Class#allocate`** — the first half of `new`: an instance with the class's
+    *empty* payload and no `initialize` call. Immediates have no heap
+    representation, so CRuby raises `TypeError: allocator undefined for X` for
+    Integer/Float/Symbol/NilClass/TrueClass/FalseClass [V]. **That error is
+    load-bearing, not a detail**: ObjectGraph's `objectspace_loop` rescues exactly
+    it (`detail.message =~ /allocator undefined/`) to skip un-allocatable classes,
+    so the loop only runs at all if the message is right. Reuses the existing
+    `allocatableCore`/`emptyCorePayload` helpers.
+  - Tier-0 unchanged at **942 agree, 0 disagree** — none of the three is exercised
+    by the bootstraptest corpus, so this is new reach rather than a repair.
+    (`control_invalid` reads 5 rather than the 7 recorded earlier; that is the
+    CRuby oracle side, which model changes cannot influence, and it is stable
+    across repeated runs.)
+
 ## Concolic reach: strings, closure locals, observed domains (L76)
 
 - **L76 — three shadow changes that together find two DRuby corpus defects

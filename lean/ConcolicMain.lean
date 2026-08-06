@@ -176,7 +176,17 @@ def main (args : List String) : IO UInt32 := do
         return 0
       IO.eprintln s!"decode error: {e}"; return 1
     | .ok prog =>
-      let m0 := RubyCore.Concolic.initMachine prog inputs
+      -- Boot the prelude first, exactly as the SUT does (`Prelude.initWithPrelude`).
+      -- Without this the tracer runs on a bare heap and silently sees a SMALLER
+      -- language than the model it is supposed to be executing.
+      match RubyCore.Prelude.initWithPrelude prog with
+      | .error e =>
+        IO.println (Json.mkObj [("branches", Json.arr #[]),
+          ("outcome", Json.mkObj [("kind", Json.str "stuck"),
+                                  ("detail", Json.str s!"prelude boot: {e}")])]).compress
+        return 0
+      | .ok booted =>
+      let m0 := RubyCore.Concolic.initMachineOn booted inputs
       let s0 := RubyCore.Concolic.initSym inputs
       let (branches, risks, domains, outcome, notes) :=
         RubyCore.Concolic.collect fam inputs 0 maxSteps #[] #[] #[] s0 m0
