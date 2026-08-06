@@ -8,6 +8,7 @@ Exit codes (mirroring the desugar SUT adapter contract):
   1 — harness error (bad input, stuck machine); message on stderr
 -/
 import RubyCore.Obs
+import RubyCore.Types.Fragment
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -28,6 +29,11 @@ def main (args : List String) : IO UInt32 := do
   let traceSteps : Option Nat := match args with
     | "--trace" :: rest => some (rest.head?.bind (·.toNat?) |>.getD traceStepsDefault)
     | _ => none
+  -- `--fragment`: report whether the program is in the **Sorbet fragment** (the
+  -- scope any soundness theorem can have — `RubyCore/Types/Fragment.lean`),
+  -- with a reason per exclusion. A static query: nothing is executed, so the
+  -- prelude is not booted and the answer is independent of model coverage.
+  let fragmentOnly := args.contains "--fragment"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -45,6 +51,15 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"undecodable RubyCore: {e}"
         return 1
     | .ok prog =>
+      if fragmentOnly then
+        let vs := Types.violationSummary prog
+        IO.println (Lean.Json.mkObj [
+          ("in_fragment", Lean.Json.bool vs.isEmpty),
+          ("violations", Lean.Json.arr (vs.map (fun v => Lean.Json.mkObj [
+            ("kind", Lean.Json.str v.kind),
+            ("what", Lean.Json.str v.what),
+            ("reason", Lean.Json.str v.reason)])).toArray)]).compress
+        return 0
       -- Phase 1: boot the prelude (the core library written in RubyCore, L62);
       -- phase 2 runs `prog` on the resulting heap. A prelude failure is a model
       -- bug, never a program outcome → exit 1.
