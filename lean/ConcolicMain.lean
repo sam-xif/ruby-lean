@@ -35,19 +35,44 @@ open RubyCore.Interp
 
 namespace RubyCore.Concolic
 
-/-- The type-error family of `type-safety-by-reachability.md` §2 / `typeErrorFamily`
-    in `Proof/TypeSafety.lean`. Membership is by `isA`, so it is closed under
-    user subclassing. -/
-def typeErrorFamily : List ObjId :=
-  [Boot.noMethodErrorId, Boot.argumentErrorId, Boot.typeErrorId]
+/-- **The bad-state family is a campaign parameter** (`druby-reproduction-plan.md`
+    §4.1). "One checker, pluggable bad-state predicate" is the standing thesis; this
+    is where it is cashed out for Direction A.
 
-def isTypeError (h : Heap) (exc : Value) : Bool :=
-  typeErrorFamily.any (fun k => isA h exc k)
+    - `typeOnly` — `typeErrorFamily` of `type-safety-by-reachability.md` §2 /
+      `Proof/TypeSafety.lean`: NoMethodError ∪ ArgumentError ∪ TypeError. The
+      default, and the only family with metatheory attached.
+    - `typeAndName` — additionally a bare `NameError` (undefined local/constant).
+      Deliberately *not* the default: a `NameError` is not a type error under our
+      definition, and `TypeSafety.lean` §1 says so. It is the class DRuby's ai4r
+      and vimrecover errors land in, so reporting those needs this family.
+
+    Note NoMethodError ⊂ NameError, so `typeAndName` subsumes the NoMethodError
+    entry; both are listed for clarity, and `isA` makes the overlap harmless. -/
+inductive BadStateFamily where
+  | typeOnly | typeAndName
+deriving Repr, DecidableEq, Inhabited
+
+def BadStateFamily.ids : BadStateFamily → List ObjId
+  | .typeOnly => [Boot.noMethodErrorId, Boot.argumentErrorId, Boot.typeErrorId]
+  | .typeAndName =>
+    [Boot.noMethodErrorId, Boot.argumentErrorId, Boot.typeErrorId, Boot.nameErrorId]
+
+def BadStateFamily.ofString : String → Option BadStateFamily
+  | "type" => some .typeOnly
+  | "type+name" => some .typeAndName
+  | _ => none
+
+def BadStateFamily.name : BadStateFamily → String
+  | .typeOnly => "type" | .typeAndName => "type+name"
+
+def isTypeError (fam : BadStateFamily) (h : Heap) (exc : Value) : Bool :=
+  fam.ids.any (fun k => isA h exc k)
 
 /-- Run the program, advancing the **symbolic shadow** in lockstep (S1 of
     `docs/semantics/concolic-dataflow.md`) so each branch carries its condition as
     a term over the inputs, and classify the outcome. -/
-partial def collect (inputs : List Int) (steps maxSteps : Nat)
+partial def collect (fam : BadStateFamily) (inputs : List Int) (steps maxSteps : Nat)
     (acc : Array Json) (risks : Array Json) (s : SymState) (m : Machine) :
     Array Json × Array Json × Json × List String :=
   if steps ≥ maxSteps then
@@ -63,7 +88,7 @@ partial def collect (inputs : List Int) (steps maxSteps : Nat)
       let risks := match risk? with
         | some r => risks.push r.toJson
         | none => risks
-      collect inputs (steps + 1) maxSteps acc risks s' m'
+      collect fam inputs (steps + 1) maxSteps acc risks s' m'
     | .done v m' =>
       (acc, risks, Json.mkObj [("kind", Json.str "value"),
                         ("detail", Json.str ((RubyCore.inspect m'.heap v).toOption.getD "?")),
@@ -74,7 +99,7 @@ partial def collect (inputs : List Int) (steps maxSteps : Nat)
         | .exc s => s
         | _ => ""
       (acc, risks, Json.mkObj [
-        ("kind", Json.str (if isTypeError m'.heap exc then "typestuck" else "uncaught")),
+        ("kind", Json.str (if isTypeError fam m'.heap exc then "typestuck" else "uncaught")),
         ("class", Json.str cls), ("message", Json.str msg),
         ("stdout", Json.str m'.out)], s.notes)
     | .unsupported r =>
@@ -96,8 +121,22 @@ def parseInputs (args : List String) : List Int :=
       else t.toNat?.map Int.ofNat
   | _ => []
 
+/-- `--bad-state type|type+name` (default `type`). An unrecognized value is a hard
+    error rather than a silent fallback: guessing the family would make the verdict
+    mean something other than what the caller asked for. -/
+def parseFamily (args : List String) : Except String RubyCore.Concolic.BadStateFamily :=
+  match args.dropWhile (· != "--bad-state") with
+  | _ :: spec :: _ =>
+    match RubyCore.Concolic.BadStateFamily.ofString spec.trimAscii.toString with
+    | some f => .ok f
+    | none => .error s!"unknown --bad-state '{spec}' (expected: type | type+name)"
+  | _ => .ok .typeOnly
+
 def main (args : List String) : IO UInt32 := do
   let inputs := parseInputs args
+  let fam ← match parseFamily args with
+    | .ok f => pure f
+    | .error e => IO.eprintln e; return 1
   let maxSteps := (args.head?.bind (·.toNat?)).getD 500000
   let input ← (← IO.getStdin).readToEnd
   match Json.parse input with
@@ -116,10 +155,11 @@ def main (args : List String) : IO UInt32 := do
       let m0 := RubyCore.Concolic.initMachine prog inputs
       let s0 := RubyCore.Concolic.initSym inputs
       let (branches, risks, outcome, notes) :=
-        RubyCore.Concolic.collect inputs 0 maxSteps #[] #[] s0 m0
+        RubyCore.Concolic.collect fam inputs 0 maxSteps #[] #[] s0 m0
       IO.println (Json.mkObj [
         ("branches", Json.arr branches),
         ("dispatchrisks", Json.arr risks),
         ("outcome", outcome),
+        ("badstate", Json.str fam.name),
         ("frontier", Json.arr (notes.map Json.str).toArray)]).compress
       return 0
