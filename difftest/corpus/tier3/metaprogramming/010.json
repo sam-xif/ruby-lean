@@ -1,0 +1,7 @@
+{
+  "tier": 3,
+  "category": "metaprogramming",
+  "description": "Module#method_added as heap mutation: the hook fires per def (including inside class_eval and on a subclass, whose own @seen starts nil), def still evaluates to the method name, an extended module supplies the hook, and a *toplevel* `def method_added` must NOT fire because CRuby's private Module#method_added no-op shadows an Object instance method.",
+  "model": "hand-written",
+  "provenance": "authored alongside lean/implementation-notes.md L77 (the hook sorbet-runtime's sig is built on); the toplevel-shadowing clause is the fidelity detail that rule got wrong on the first attempt"
+}

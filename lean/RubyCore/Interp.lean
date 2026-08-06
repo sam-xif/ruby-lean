@@ -2011,6 +2011,10 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .methodAddedK name =>
+      -- the `method_added` hook returned; its value is discarded and `def`
+      -- yields the method name, as if the hook had not run
+      .next (withCtl m (.value (.sym name)))
     | .tryConvertK src =>
       match v with
       | .nil => .next (withCtl m (.value .nil))
@@ -2610,7 +2614,30 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
           else m.currentFrame.defVis }
     let m := { m with heap := defineMethod m.heap defmod name md }
     let m := if reprSensitive.contains name then { m with reprPure := false } else m
-    .next (withCtl m (.value (.sym name)))
+    -- CRuby fires `Module#method_added(:name)` on the defining module right after
+    -- installing, and `def` still evaluates to the name. The model has no builtin
+    -- `method_added`, so a lookup miss means "no hook" — the common case costs one
+    -- lookup. This is the hook sorbet-runtime's `sig` is built on: `sig` records a
+    -- pending declaration and `method_added` wraps the method that follows, so
+    -- without it a `sig` cannot enforce anything (prelude §T).
+    if m.preludeMode then .next (withCtl m (.value (.sym name)))
+    else
+      match lookup m.heap (.ref defmod) "method_added" with
+      | some (owner, hookMd) =>
+        -- CRuby defines `Module#method_added` as a private no-op, which *shadows*
+        -- anything further down the class object's ancestry. So a plain toplevel
+        -- `def method_added` (an Object instance method, and Object comes after
+        -- Module in a class object's chain) must NOT fire — verified against CRuby,
+        -- which prints nothing for it. Resolving to Object/Kernel/BasicObject here
+        -- means we walked past where CRuby's no-op sits: treat it as no hook.
+        if hookMd.undefined
+            || owner == Boot.objectId || owner == Boot.kernelId
+            || owner == Boot.basicObjectId then
+          .next (withCtl m (.value (.sym name)))
+        else
+          let m := { m with kont := .methodAddedK name :: m.kont }
+          enterUserMethod m (.ref defmod) "method_added" hookMd [.sym name] none
+      | none => .next (withCtl m (.value (.sym name)))
   | .defined e => evalDefined m e
   | .undef names => undefNames m m.currentFrame.defmod names
   | .alias' newN oldN =>

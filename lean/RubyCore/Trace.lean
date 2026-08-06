@@ -90,6 +90,7 @@ def kontLabel : Kont → String
   | .casgnK n => s!"then {n} = ▢"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"
+  | .methodAddedK n => s!"then yield :{n} (method_added hook)"
   | .raiseNewK _ => "then raise the new exception"
   | .tryConvertK _ => "then check to_ary's result"
   | .includeK _ => "then yield include receiver"

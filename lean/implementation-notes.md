@@ -1739,3 +1739,91 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     says so explicitly). Reporting ai4r/vimrecover therefore still needs the
     *pluggable bad-state family* of plan §4.1; L75 supplies the raise, not the
     verdict.
+
+## L77 — `Module#method_added` fires on `def` (the hook sorbet-runtime's `sig` is built on)
+
+`def` now dispatches `method_added(:name)` on the defining module after installing the
+method, yielding the method name as before (new `methodAddedK` kont — same shape as
+`newK`: run a call, discard its value, yield a fixed one). This is artifact 02 §6 in
+action: a definition hook is *ordinary dispatch on the defining module*, not a new
+evaluation rule.
+
+Motivation is the Sorbet work — `sig` records a pending declaration and `method_added`
+wraps the method that follows, so without the hook a `sig` cannot enforce anything — but
+the gap was independent: CRuby fires the hook and the model silently did not, which is a
+plain fidelity bug any `method_added` program would have caught.
+
+**Two fidelity details, both found by checking against CRuby rather than assumed:**
+
+1. **`Module#method_added` is a private no-op in CRuby, and it shadows.** A toplevel
+   `def method_added(n)` defines an Object *instance* method, and Object comes *after*
+   Module in a class object's ancestry — so CRuby's no-op wins and the hook never fires.
+   Verified: CRuby prints nothing for that program. The model has no such no-op, so its
+   `lookup` walked past where CRuby's sits; the rule therefore treats a resolution to
+   Object/Kernel/BasicObject as "no hook".
+2. **Skipped during prelude boot** (`preludeMode`). The prelude is model code loaded
+   before any program, so no hook it installs can be legitimately observed at boot; the
+   skip also keeps boot cost exactly unchanged.
+
+**Known remaining gap:** CRuby fires `method_added` for `define_method` too, and the model
+fires it only for `def`. The shim's re-entrancy guard is written as if it did (it must be,
+or a future fix silently loops), and the one corpus program that redefines a sig'd method
+with `define_method` (`escape-hatches/002`) agrees either way, since CRuby's hook finds no
+pending sig there. Also not modeled: `singleton_method_added`, `method_removed`,
+`method_undefined`.
+
+Cost: one method lookup per `def` when no hook exists. Ratchet: tier-0 unchanged, all ten
+`Proof/` files still build.
+
+## L78 — the `T` prelude shim: Sorbet's runtime half as ordinary heap mutation
+
+`prelude/prelude.rb` now carries a sorbet-runtime shim — `T.let`/`cast`/`must`/`unsafe`/
+`assert_type!`/`bind`/`absurd`, the type constructors (`T.nilable`/`any`/`all`/`untyped`/
+`class_of`/`type_parameter`/`proc`, `T::Boolean`, `T::Array[…]`/`T::Hash[…]`), the `sig`
+DSL, and **runtime sig enforcement**.
+
+Why in the model at all: the honest soundness statement for Sorbet is the *runtime*
+three-outcome one (`types-and-preservation.md` §C.1 option 2), because the static half is
+unsound by design. That statement only means something if the enforcement mechanism is
+inside the semantics — otherwise the theorem has nothing to quantify over. With the shim
+here, "sorbet-runtime raised a TypeError at a sig boundary" is an ordinary reachable
+outcome of `stepFn`, so `typeStuck` / `invariant_sound` apply to it unchanged. And it is
+§C.2 made literal: **a `sig` is heap mutation replacing a method-table entry with a
+checking wrapper** — `alias_method` the original aside, `define_method` a validating
+forwarder.
+
+Decisions worth recording:
+
+- **Messages match the gem byte for byte** (`Parameter 'x': Expected type Integer, got
+  type String with value "two"`, `T.let: …`, `Passed \`nil\` into T.must`), because the
+  difftest observation compares them. The one thing RubyCore cannot produce is the
+  `Caller:`/`Definition:` suffix — the AST has no line numbers — so the engine normalizes
+  those lines away on both sides (difftest N35).
+- **Generics are checked as their bare class.** `T::Array[Integer]` validates only
+  `is_a?(Array)`. Not a shortcut: it is exactly the runtime erasure of §A.6, and
+  reproducing it is the point — `corpus/sorbet/generics/000.rb` depends on a heterogeneous
+  array walking straight through.
+- **`.checked(:never)` installs no wrapper** and `T.unsafe` checks nothing, faithfully.
+  The shim reproduces the escape hatches rather than quietly closing them; a model that
+  was *sounder* than Sorbet would be the wrong model.
+- **`.void` returns the `VOID` sentinel**, because it is observable (`p` prints
+  `T::Private::Types::Void::VOID`).
+- **Toplevel `sig` installs its own hook.** In a class body `self` is the definee and
+  `T::Sig#method_added` is already in the class object's singleton chain; at toplevel
+  `self` is `main` and the `def` lands on Object, so `sig` installs a *singleton*
+  `method_added` on Object (ahead of CRuby's `Module#method_added` no-op — L77 detail 1).
+  The real gem installs hooks on the definee for the same reason.
+- **No repr-sensitive method is defined** (authoring rule 3): the type objects carry
+  `label`, not `to_s`, so `reprPure` stays on.
+- **Positional param matching.** Sorbet requires a sig to list parameters in order, so the
+  i-th declared name governs the i-th argument. A sig over a method with *keyword*
+  parameters cannot be matched this way (no `instance_method(…).parameters` in the model),
+  so it gates rather than guessing.
+- **`T::Struct`/`T::Enum` gate at first use.** They are structural, not annotations — they
+  define a hierarchy and generate methods — so ignoring them would change the program.
+  Gating gives an honest Unsupported instead of a `NameError` that would read as a wrong
+  answer.
+
+Result: `difftest run --tier 4 --sut lean` goes from **1 agree / 17 disagree** to
+**14 agree / 0 disagree / 4 unsupported** (T::Struct ×2, T::Enum, and `Enumerable#sum` on
+mixed types — an unrelated pre-existing gap).
