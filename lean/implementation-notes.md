@@ -1740,7 +1740,7 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     *pluggable bad-state family* of plan §4.1; L75 supplies the raise, not the
     verdict.
 
-## L77 — `Module#method_added` fires on `def` (the hook sorbet-runtime's `sig` is built on)
+## L79 — `Module#method_added` fires on `def` (the hook sorbet-runtime's `sig` is built on)
 
 `def` now dispatches `method_added(:name)` on the defining module after installing the
 method, yielding the method name as before (new `methodAddedK` kont — same shape as
@@ -1775,7 +1775,7 @@ pending sig there. Also not modeled: `singleton_method_added`, `method_removed`,
 Cost: one method lookup per `def` when no hook exists. Ratchet: tier-0 unchanged, all ten
 `Proof/` files still build.
 
-## L78 — the `T` prelude shim: Sorbet's runtime half as ordinary heap mutation
+## L80 — the `T` prelude shim: Sorbet's runtime half as ordinary heap mutation
 
 `prelude/prelude.rb` now carries a sorbet-runtime shim — `T.let`/`cast`/`must`/`unsafe`/
 `assert_type!`/`bind`/`absurd`, the type constructors (`T.nilable`/`any`/`all`/`untyped`/

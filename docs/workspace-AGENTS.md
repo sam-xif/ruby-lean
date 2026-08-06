@@ -209,9 +209,9 @@ the detection self-test), `lean`, and `sig-strip` (the gradual-guarantee probe).
 
 **The Sorbet corpus runs in the Lean model (2026-08-05).** `run --tier 4 --sut lean` is
 **14/18 agree, 0 disagree, 4 unsupported** (was 1 agree / 17 disagree). Two changes got it
-there: **`Module#method_added` now fires on `def`** (`lean/implementation-notes.md` L77 —
+there: **`Module#method_added` now fires on `def`** (`lean/implementation-notes.md` L79 —
 a pre-existing fidelity gap, and the hook sorbet-runtime's `sig` is built on), and a **`T`
-prelude shim** (L78) carrying Sorbet's runtime half as ordinary RubyCore — the assertion
+prelude shim** (L80) carrying Sorbet's runtime half as ordinary RubyCore — the assertion
 family, the type constructors, and real **sig enforcement** via `alias_method` +
 `define_method`, which is §C.2's "a sig is heap mutation replacing a method-table entry
 with a checking wrapper" made literal. Consequence for the soundness work: a
