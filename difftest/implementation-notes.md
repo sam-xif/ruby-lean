@@ -661,3 +661,24 @@ inert; that belongs with the mock-manifest work, not with harness scaffolding.
 Until then: **do not put the `sorbet` arm in a mixed campaign against the Lean SUT**, and
 read the 17 as "the model does not have sorbet-runtime", which is exactly what the
 prelude-shim phase exists to change.
+
+## N35 — sorbet-runtime's `Caller:`/`Definition:` lines are normalized out of exception messages
+
+Every sorbet-runtime enforcement error carries its source location:
+
+```
+Parameter 'x': Expected type Integer, got type String with value "two"
+Caller: prog.rb:19
+Definition: prog.rb:14 (Object#stringify)
+```
+
+RubyCore carries no line numbers — the desugared AST has no source positions, by design —
+so no model built on it can ever reproduce those lines. Without normalization the Sorbet
+corpus cannot be compared against the Lean SUT at all: the three programs whose sig check
+fires disagree on the suffix alone, with the message body identical.
+
+The rule is deliberately narrow: **exception messages only**, and only lines matching
+`^(Caller|Definition): `. Not applied to stdout, because a program that prints an
+exception message itself would then have real output quotiented away. Within those limits
+the risk of manufacturing a false AGREE is confined to text neither side can meaningfully
+differ on. Guarded by `tests/test_observation.py`.

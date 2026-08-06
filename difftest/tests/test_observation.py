@@ -25,3 +25,41 @@ def test_exception_message_normalized():
 def test_json_roundtrip():
     a = Observation("out", None, ("RuntimeError", "boom"), timed_out=False)
     assert Observation.from_json(a.to_json()) == a
+
+
+def test_sorbet_location_lines_are_normalized_away():
+    """RubyCore has no line numbers, so a model can never reproduce sorbet's
+    `Caller:`/`Definition:` suffix. Normalizing it away is what lets the Sorbet
+    corpus be compared against the Lean model at all."""
+    from difftest.observation import Observation
+
+    cruby = Observation(
+        stdout="1\n",
+        result_repr=None,
+        exception=(
+            "TypeError",
+            "Parameter 'x': Expected type Integer, got type String with value \"two\"\n"
+            "Caller: /tmp/prog.rb:19\n"
+            "Definition: /tmp/prog.rb:14 (Object#stringify)",
+        ),
+    )
+    model = Observation(
+        stdout="1\n",
+        result_repr=None,
+        exception=(
+            "TypeError",
+            "Parameter 'x': Expected type Integer, got type String with value \"two\"",
+        ),
+    )
+    assert cruby.normalized() == model.normalized()
+
+
+def test_normalization_does_not_touch_stdout_or_the_message_body():
+    """The rule is narrow on purpose: only exception messages, only lines with
+    exactly that shape. A program printing such a line keeps it."""
+    from difftest.observation import Observation
+
+    a = Observation(stdout="Caller: mine\n", result_repr=None, exception=None)
+    assert a.normalized().stdout == "Caller: mine\n"
+    b = Observation(stdout="", result_repr=None, exception=("E", "boom\nCallerX: keep"))
+    assert b.normalized().exception == ("E", "boom\nCallerX: keep")

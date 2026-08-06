@@ -18,6 +18,21 @@ from dataclasses import dataclass, replace
 
 _ADDR_RE = re.compile(r"0x[0-9a-f]{4,}")
 
+# sorbet-runtime appends source locations to every enforcement error:
+#
+#   Parameter 'x': Expected type Integer, got type String with value "two"
+#   Caller: prog.rb:19
+#   Definition: prog.rb:14 (Object#stringify)
+#
+# RubyCore carries no line numbers — the desugared AST has no source positions
+# by design — so a model can never reproduce these lines. They are dropped from
+# **exception messages only**, and only when the line has exactly this shape.
+# Deliberately not applied to stdout: a program that prints an exception message
+# itself would then have real output quotiented away, and the narrow rule keeps
+# the risk of manufacturing a false AGREE confined to text neither side can
+# meaningfully differ on.
+_LOCATION_LINE_RE = re.compile(r"^(?:Caller|Definition): .*$\n?", re.MULTILINE)
+
 
 @dataclass(frozen=True)
 class Observation:
@@ -42,7 +57,11 @@ class Observation:
             self,
             stdout=norm(self.stdout),
             result_repr=norm(self.result_repr) if self.result_repr is not None else None,
-            exception=(self.exception[0], norm(self.exception[1])) if self.exception else None,
+            exception=(
+                (self.exception[0], _LOCATION_LINE_RE.sub("", norm(self.exception[1])).rstrip("\n"))
+                if self.exception
+                else None
+            ),
         )
 
     def to_json(self) -> dict:
