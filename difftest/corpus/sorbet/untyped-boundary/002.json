@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "THE CALL-BACK HOLE: an unsigned method's return value enters a sig'd method unchecked, and the resulting TypeError is raised INSIDE the typed body — not at any boundary. Sorbet is guarded at sig'd boundaries, but an unsigned callee has no wrapper in either direction. No escape hatch is used. This is the counterexample that forces a call-graph closure hypothesis on any 'the typed portion cannot be blamed' theorem.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md A.5, B.5 (blame)"
+}
