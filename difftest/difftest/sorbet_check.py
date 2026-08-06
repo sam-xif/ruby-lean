@@ -1,0 +1,238 @@
+"""The static oracle: what Sorbet says vs. what the program actually does.
+
+`srb tc` is an *oracle*, not truth. Sorbet is unsound by design (§A.3), so
+"accepted" is not a safety claim, and "rejected" is not a bug report. What is
+informative is the **two-by-two** of static verdict against actual runtime
+outcome, and in particular its off-diagonal cells:
+
+  static clean + uncaught type-family error  ->  UNSOUNDNESS WITNESS. Sorbet
+      accepted a program that reaches a type-stuck outcome in exactly the sense
+      the reachability checker means (`type-safety-by-reachability.md` §2:
+      NoMethodError / ArgumentError / TypeError escaping to toplevel). These
+      are the seeds of the unsoundness catalogue.
+  static errors + terminates normally        ->  CONSERVATIVE REJECTION. The
+      program is safe on this run and Sorbet rejected it anyway — the DRuby
+      false-positive family (§9.3 of type-safety-by-reachability.md), and the
+      thing a semantics-driven checker claims to avoid by construction.
+
+The command doubles as the corpus's integrity gate: each sidecar *declares*
+both outcomes, and a mismatch fails the run. That keeps the corpus honest as
+Sorbet versions move under it — the declarations are checked, not decorative.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from .control import CRubyRunner
+from .sorbet import SorbetStatic, is_sorbet_runtime_error
+from .testcase import TestCase
+
+# Mirrors `typeErrorFamily` in lean/RubyCore/Proof/TypeSafety.lean. The Lean
+# version tests membership with `isA`, so it is closed under subclassing; here
+# the check is by class name, which agrees with it for the builtin classes the
+# corpus raises. Note NoMethodError < NameError but a *bare* NameError is
+# deliberately not in the family (an undefined constant/local is not a type
+# error) — matching the Lean definition exactly.
+TYPE_ERROR_FAMILY = ("NoMethodError", "ArgumentError", "TypeError")
+
+# The cells of the two-by-two, named. Order matters: the report lists them in
+# this order, findings first.
+CELLS = {
+    "unsoundness-witness": "srb accepted; an uncaught type-family error escaped",
+    "conservative-rejection": "srb rejected; the program ran to completion",
+    "accepted-blamed": "srb accepted; sorbet-runtime caught it at a boundary",
+    "accepted-nontype-error": "srb accepted; a non-type-family error escaped",
+    "rejected-and-unsafe": "srb rejected; an error escaped (true positive)",
+    "rejected-and-blamed": "srb rejected; sorbet-runtime caught it too",
+    "accepted-and-safe": "srb accepted; the program ran to completion",
+}
+
+
+def runtime_kind(exception: tuple[str, str] | None) -> str:
+    """value | sorbet_error | ruby_error — the vocabulary the sidecars declare."""
+    if exception is None:
+        return "value"
+    return "sorbet_error" if is_sorbet_runtime_error(exception) else "ruby_error"
+
+
+def classify(static_ok: bool, kind: str, exc_class: str | None) -> str:
+    if static_ok:
+        if kind == "value":
+            return "accepted-and-safe"
+        if kind == "sorbet_error":
+            return "accepted-blamed"
+        return (
+            "unsoundness-witness"
+            if exc_class in TYPE_ERROR_FAMILY
+            else "accepted-nontype-error"
+        )
+    if kind == "value":
+        return "conservative-rejection"
+    return "rejected-and-blamed" if kind == "sorbet_error" else "rejected-and-unsafe"
+
+
+@dataclass
+class CheckResult:
+    case: TestCase
+    static_ok: bool
+    static_errors: list
+    runtime_kind: str
+    exception: tuple[str, str] | None
+    stdout: str
+    cell: str
+    declared_static: str
+    declared_runtime: str
+
+    @property
+    def matches_declaration(self) -> bool:
+        return (
+            ("clean" if self.static_ok else "errors") == self.declared_static
+            and self.runtime_kind == self.declared_runtime
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "id": self.case.id,
+            "category": self.case.provenance.get("category"),
+            "sigil": self.case.provenance.get("sigil"),
+            "cell": self.cell,
+            "static": {
+                "ok": self.static_ok,
+                "errors": [e.to_json() for e in self.static_errors],
+            },
+            "runtime": {
+                "kind": self.runtime_kind,
+                "exception": list(self.exception) if self.exception else None,
+                "stdout": self.stdout,
+            },
+            "declared": {
+                "static_expect": self.declared_static,
+                "runtime_expect": self.declared_runtime,
+            },
+            "matches_declaration": self.matches_declaration,
+            "description": self.case.provenance.get("description"),
+            "doc_ref": self.case.provenance.get("doc_ref"),
+        }
+
+
+def check_case(
+    case: TestCase, static: SorbetStatic, control: CRubyRunner
+) -> CheckResult:
+    result = static.check(case.source)
+    obs = control.run(case.source)
+    kind = runtime_kind(obs.exception)
+    return CheckResult(
+        case=case,
+        static_ok=result.ok,
+        static_errors=list(result.errors),
+        runtime_kind=kind,
+        exception=obs.exception,
+        stdout=obs.stdout,
+        cell=classify(result.ok, kind, obs.exception[0] if obs.exception else None),
+        declared_static=case.provenance.get("static_expect", "?"),
+        declared_runtime=case.provenance.get("runtime_expect", "?"),
+    )
+
+
+def render_markdown(results: list[CheckResult]) -> str:
+    by_cell: dict[str, list[CheckResult]] = {}
+    for r in results:
+        by_cell.setdefault(r.cell, []).append(r)
+    mismatches = [r for r in results if not r.matches_declaration]
+
+    lines = [
+        "# Sorbet static oracle vs. actual behavior",
+        "",
+        f"{len(results)} programs. `srb tc` is an oracle, not truth: Sorbet is unsound",
+        "by design, so the informative content is the off-diagonal cells below.",
+        "",
+        "| Cell | Count | Meaning |",
+        "|---|---|---|",
+    ]
+    for cell, meaning in CELLS.items():
+        lines.append(f"| `{cell}` | {len(by_cell.get(cell, []))} | {meaning} |")
+    lines += [
+        "",
+        "> **Blind spot, stated rather than hidden.** This two-by-two can only see",
+        "> *errors*. A hole that lets a wrong-typed value through with no error",
+        "> anywhere — `.checked(:never)`, the unchecked `T::Struct` getter — is",
+        "> indistinguishable here from a correct program and lands in",
+        "> `accepted-and-safe`. Catching those needs behavior compared against a",
+        "> *declared* type discipline rather than against the presence of an",
+        "> exception: the annotation-conformance check of",
+        "> `type-safety-by-reachability.md` §5, which is what the Lean typing layer",
+        "> is for. Until it exists, this report undercounts the catalogue.",
+        "",
+    ]
+
+    if mismatches:
+        lines += [
+            "## Declaration mismatches (corpus integrity — this fails the run)",
+            "",
+        ]
+        for r in mismatches:
+            lines.append(
+                f"- `{r.case.id}`: declared "
+                f"({r.declared_static}, {r.declared_runtime}), observed "
+                f"({'clean' if r.static_ok else 'errors'}, {r.runtime_kind})"
+            )
+        lines.append("")
+
+    for cell, meaning in CELLS.items():
+        rs = by_cell.get(cell, [])
+        if not rs:
+            continue
+        lines += [f"## `{cell}` — {meaning}", ""]
+        for r in rs:
+            lines.append(f"### `{r.case.id}`")
+            lines.append("")
+            lines.append(f"{r.case.provenance.get('description', '')}")
+            lines.append("")
+            lines.append("```ruby")
+            lines.append(r.case.source.rstrip())
+            lines.append("```")
+            lines.append("")
+            if r.static_errors:
+                for e in r.static_errors:
+                    lines.append(f"- srb `{e.line}` (srb.help/{e.code}): {e.message}")
+            else:
+                lines.append("- srb: no errors")
+            if r.exception:
+                lines.append(f"- runtime: `{r.exception[0]}`: {r.exception[1].splitlines()[0]}")
+            else:
+                lines.append(f"- runtime: ran to completion, stdout `{r.stdout!r}`")
+            lines.append(f"- doc: {r.case.provenance.get('doc_ref', '')}")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> dict:
+    static = SorbetStatic(timeout=timeout)
+    control = CRubyRunner(timeout=timeout)
+    results = [check_case(c, static, control) for c in cases]
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with (out_dir / "cases.jsonl").open("w") as fh:
+        for r in results:
+            fh.write(json.dumps(r.to_json()) + "\n")
+    (out_dir / "report.md").write_text(render_markdown(results))
+
+    counts = {cell: 0 for cell in CELLS}
+    for r in results:
+        counts[r.cell] += 1
+    summary = {
+        "total": len(results),
+        "cells": counts,
+        "mismatches": [r.case.id for r in results if not r.matches_declaration],
+        "unsoundness_witnesses": [
+            r.case.id for r in results if r.cell == "unsoundness-witness"
+        ],
+        "conservative_rejections": [
+            r.case.id for r in results if r.cell == "conservative-rejection"
+        ],
+    }
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    return summary

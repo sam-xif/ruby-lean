@@ -147,6 +147,24 @@ def cmd_gen3(args) -> int:
     return 0
 
 
+def cmd_sorbet(args) -> int:
+    from .sorbet import SorbetUnavailable, require_toolchain
+    from .sorbet_check import run_check
+
+    try:
+        require_toolchain()
+    except SorbetUnavailable as e:
+        print(e, file=sys.stderr)
+        return 2
+    cases = load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
+    out_dir = _out_dir(args.out, "sorbet-check")
+    summary = run_check(cases, out_dir, timeout=args.timeout)
+    _print_summary(summary, out_dir)
+    # Exit 1 on a *declaration mismatch* only. Unsoundness witnesses are
+    # findings, not failures — the corpus exists to collect them.
+    return 1 if summary["mismatches"] else 0
+
+
 def cmd_replay(args) -> int:
     control = CRubyRunner(timeout=args.timeout)
     sut = make_sut(args.sut, inject_bug=args.inject_bug)
@@ -203,6 +221,15 @@ def main(argv=None) -> int:
     p_gen.add_argument("--corpus", help="corpus root (default: corpus/tier3)")
     p_gen.add_argument("--timeout", type=float, default=10.0)
     p_gen.set_defaults(func=cmd_gen3)
+
+    p_sorbet = sub.add_parser(
+        "sorbet", help="Sorbet static oracle vs. actual behavior over the tier-4 corpus"
+    )
+    p_sorbet.add_argument("subcommand", choices=["check"])
+    p_sorbet.add_argument("--corpus", help="corpus dir (default: corpus/sorbet)")
+    p_sorbet.add_argument("--timeout", type=float, default=60.0)
+    p_sorbet.add_argument("--out", help="report directory")
+    p_sorbet.set_defaults(func=cmd_sorbet)
 
     p_rep = sub.add_parser("replay", help="re-run a persisted corpus directory")
     p_rep.add_argument("corpus")
