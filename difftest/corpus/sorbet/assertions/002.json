@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "assertions",
+  "description": "T.must on a nil the static side cannot see: narrows statically, raises at runtime.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "sorbet_error",
+  "doc_ref": "types-and-preservation.md A.3"
+}

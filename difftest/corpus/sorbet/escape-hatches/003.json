@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "escape-hatches",
+  "description": "T::Struct getters are plain attr_readers -- deliberately NOT runtime-checked, unlike constructors and setters (A.1). An ivar write smuggles a wrong-typed value past every check.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.1"
+}

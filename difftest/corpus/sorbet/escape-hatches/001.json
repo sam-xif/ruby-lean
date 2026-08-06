@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "escape-hatches",
+  "description": "sig .checked(:never) disables the runtime wrapper. A wrong-typed value flows through a method Sorbet believes is typed and is OBSERVED, with no error anywhere. The quietest hole in the catalogue.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.5"
+}

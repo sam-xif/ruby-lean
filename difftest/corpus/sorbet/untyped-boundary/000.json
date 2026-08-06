@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "THE FLAGSHIP HOLE: no sig means every param and the return is T.untyped, so Sorbet permits any send. srb accepts a program that reaches an uncaught NoMethodError -- a type-stuck outcome in the typeErrorFamily sense.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md A.5"
+}

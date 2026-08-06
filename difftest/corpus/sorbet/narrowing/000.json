@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "narrowing",
+  "description": "Flow-sensitive narrowing of T.nilable(String) by a nil? guard on a local. The sound, supported case.",
+  "sigil": "strict",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.2"
+}

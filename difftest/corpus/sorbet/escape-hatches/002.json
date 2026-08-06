@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "escape-hatches",
+  "description": "define_method reinstalls a sig-annotated method with no sig: the checking wrapper is gone (metaprogramming as heap mutation, C.2) while typed callers still see the declared sig.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md C.2"
+}

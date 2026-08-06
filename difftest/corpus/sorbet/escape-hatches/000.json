@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "escape-hatches",
+  "description": "T.unsafe: the ONE assertion form with no runtime check at all (A.3). srb accepts; the program reaches an uncaught NoMethodError.",
+  "sigil": "strict",
+  "static_expect": "clean",
+  "runtime_expect": "ruby_error",
+  "doc_ref": "types-and-preservation.md A.3"
+}

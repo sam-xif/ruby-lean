@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "untyped-boundary",
+  "description": "Untyped code calls typed code with a wrong-typed value. The sig wrapper catches it at the boundary and blame lands on the untyped caller -- the blame theorem shape (B.5).",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "sorbet_error",
+  "doc_ref": "types-and-preservation.md B.5"
+}

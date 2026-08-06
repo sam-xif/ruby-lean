@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "structs-enums",
+  "description": "T::Struct: keyword-only constructor, runtime-checked (the asymmetric half that IS checked).",
+  "sigil": "strict",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.1"
+}

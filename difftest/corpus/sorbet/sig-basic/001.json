@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "sig-basic",
+  "description": "Both halves fire on the same defect: srb rejects the call site AND the runtime sig wrapper raises TypeError. The calibration case.",
+  "sigil": "strict",
+  "static_expect": "errors",
+  "runtime_expect": "sorbet_error",
+  "doc_ref": "types-and-preservation.md A.5"
+}

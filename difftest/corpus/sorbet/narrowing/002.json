@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "narrowing",
+  "description": "respond_to? does not narrow (A.2 constraint 2): a duck-typed guard Sorbet cannot use. srb rejects; the program runs fine. The DRuby false-positive family.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.2"
+}

@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "assertions",
+  "description": "T.cast: trusted statically, checked at runtime. srb is quiet; the runtime raises TypeError. The static/runtime asymmetry that makes the RUNTIME statement the sound one.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "sorbet_error",
+  "doc_ref": "types-and-preservation.md A.3"
+}

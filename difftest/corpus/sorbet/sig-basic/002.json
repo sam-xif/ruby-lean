@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "sig-basic",
+  "description": "A sig violation that the program itself rescues. The run terminates in a value, so the program is type-SAFE despite raising: 'raised != stuck' (type-safety-by-reachability.md S2).",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "type-safety-by-reachability.md S2"
+}

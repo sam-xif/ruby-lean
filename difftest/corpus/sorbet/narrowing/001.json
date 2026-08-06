@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "narrowing",
+  "description": "Narrowing applies to locals only, never to method-call results (A.2 constraint 1). srb rejects; the program runs fine. A static false positive with respect to reachability.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.2"
+}

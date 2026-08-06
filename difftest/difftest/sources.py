@@ -21,6 +21,32 @@ BOOTSTRAPTEST_DIR = (
     BASE.parent / "harness" / "desugar-dt" / "corpus" / "bootstraptest"
 )
 
+SORBET_DIR = BASE / "corpus" / "sorbet"
+
+# The Sorbet corpus is organized by *which part of Sorbet's design* a program
+# probes, not by Ruby construct — the taxonomy is the one in
+# `../docs/semantics/types-and-preservation.md` §A, because the object of study
+# is the type system, not the language.
+SORBET_CATEGORIES = {
+    "sig-basic": "plain sigs; both halves quiet, or both firing on one defect (§A.5)",
+    "narrowing": "flow-sensitive/occurrence typing and its documented limits (§A.2)",
+    "assertions": "the T.let/T.cast/T.must/T.unsafe static-vs-runtime table (§A.3)",
+    "untyped-boundary": "T.untyped and the no-sig gradual boundary; blame (§A.5, §B.5)",
+    "escape-hatches": "the unsoundness catalogue: holes Sorbet accepts by design (§A.3)",
+    "structs-enums": "T::Struct / T::Enum, incl. the checked/unchecked asymmetry (§A.1)",
+    "generics": "runtime-erased generics — statically checked, no runtime backstop (§A.6)",
+}
+
+# Declared expectations recorded in each sidecar, validated by `difftest sorbet
+# check`. Kept as closed vocabularies so a typo in a sidecar is an error rather
+# than a silently-unmatched string.
+STATIC_EXPECT = ("clean", "errors")
+RUNTIME_EXPECT = (
+    "value",  # terminates normally
+    "sorbet_error",  # sorbet-runtime enforcement raised (the "blame" outcome)
+    "ruby_error",  # a genuine Ruby-level error escaped (Sorbet gave no backstop)
+)
+
 HARVEST_RECIPE = """\
 The bootstraptest corpus is harvested on demand (not vendored). To fetch it:
   git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby
@@ -44,6 +70,18 @@ def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:
             )
         )
     return cases
+
+
+def load_sorbet_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """Load the Sorbet-annotated corpus (tier 4) as TestCases.
+
+    Every program is self-contained and `require "sorbet-runtime"` itself, so
+    the *control* exercises Sorbet's runtime enforcement with no wrapper
+    changes. Consequence, stated rather than hidden: the Lean SUT gates every
+    one of these on `require` until the sorbet-runtime prelude shim exists —
+    that gap is the point of the next phase, not a defect in the corpus.
+    """
+    return load_corpus_cases(Path(corpus) if corpus else SORBET_DIR, default_tier=4)
 
 
 def load_bootstraptest(corpus: Path | None = None) -> list[TestCase]:

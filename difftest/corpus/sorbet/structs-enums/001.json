@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "structs-enums",
+  "description": "T::Enum values are singleton instances of the enum class; T.absurd gives compile-time exhaustiveness over the cases.",
+  "sigil": "strict",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.1"
+}

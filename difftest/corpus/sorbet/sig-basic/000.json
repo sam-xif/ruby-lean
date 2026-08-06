@@ -1,0 +1,9 @@
+{
+  "tier": 4,
+  "category": "sig-basic",
+  "description": "A correctly-annotated class: sigs on initialize/greet, T.let-declared ivar. Both halves quiet.",
+  "sigil": "strict",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "doc_ref": "types-and-preservation.md A.1"
+}
