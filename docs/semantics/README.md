@@ -90,6 +90,20 @@ machine-level preservation theorem, and a staging plan (T1 = the exact fragment 
 proven in `Proof/Step.lean` → T2 send → T3 gradual boundary → T4 flow-sensitivity → T5+
 generics). Companion to `types-and-preservation.md` (rationale) — this is the reference spec.
 
+**Types (plan):** [Typed-portion safety](typed-portion-safety.md) — the plan of attack for
+the property worth chasing: *a type error never occurs inside typed code* (the blame-theorem
+shape), which unlike the whole-program statement already proved (L81) is non-vacuous on
+partially typed codebases. Records the verified counterexample that makes the naive form
+false (`untyped-boundary/002`: an unsigned callee's return crosses into a sig'd method
+unchecked, and the TypeError fires *inside* the typed body while `srb` reports no errors),
+the **call-graph closure** hypothesis it forces, the three kinds of callee that make closure
+affordable (sig'd / RBI-declared builtin / unsigned — with RBI conformance becoming a
+testable obligation rather than Sorbet's unchecked trust), the move of the bad state from
+terminal outcome to configuration-at-raise, why runtime checks make the proof *local*
+(per-method, sig as pre/postcondition, no global `Δ ⊨ H`), the erasure problem that makes
+boundary checks shallower than the sigs, and milestones — M0 being "measure whether the
+hypothesis is inhabited on real code, and abandon cheaply if not".
+
 ## Conventions
 
 - **[V]** behavior verified against a real interpreter (CRuby 4.0.5, installed via
