@@ -35,8 +35,12 @@ require "prism"
 
 STRIP_TO_FIRST_ARG = %i[let cast must unsafe assert_type! reveal_type].freeze
 
-# An edit is [start_offset, end_offset, replacement_or_nil]; nil deletes the
-# whole statement line.
+# An edit is [start, finish, replacement_or_nil]; nil deletes the whole
+# statement line. Offsets are **character** offsets, not Prism's default byte
+# offsets: every splice below uses Ruby's `String#[]`, which indexes by
+# character. A single non-ASCII byte anywhere earlier in the file (a `§` in a
+# comment was how this surfaced) desynchronizes the two and silently corrupts
+# the output.
 Edit = Struct.new(:start, :finish, :replacement)
 
 # True for `sig { … }` and for the chained `sig { … }.checked(:never)` /
@@ -74,7 +78,7 @@ class Collector < Prism::Visitor
 
   def visit_call_node(node)
     if sig_call?(node) || extend_t_sig?(node)
-      @edits << Edit.new(node.location.start_offset, node.location.end_offset, nil)
+      @edits << Edit.new(node.location.start_character_offset, node.location.end_character_offset, nil)
       return # do not descend: the whole statement is going away
     end
 
@@ -82,11 +86,13 @@ class Collector < Prism::Visitor
       args = node.arguments&.arguments || []
       if STRIP_TO_FIRST_ARG.include?(node.name) && args.length >= 1
         inner = args[0].location
-        @edits << Edit.new(node.location.start_offset, node.location.end_offset,
-                           @source[inner.start_offset...inner.end_offset])
+        @edits << Edit.new(node.location.start_character_offset,
+                           node.location.end_character_offset,
+                           @source[inner.start_character_offset...inner.end_character_offset])
         return
       elsif node.name == :bind && args.length >= 1
-        @edits << Edit.new(node.location.start_offset, node.location.end_offset, "self")
+        @edits << Edit.new(node.location.start_character_offset,
+                           node.location.end_character_offset, "self")
         return
       end
       # anything else on `T` is left alone; the fixpoint check below gates it

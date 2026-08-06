@@ -165,3 +165,28 @@ def test_stripped_program_still_runs(stripper):
     obs = CRubyRunner().run(out)
     assert obs.exception is None, obs.exception
     assert obs.stdout == "3\n"
+
+
+def test_strips_correctly_with_non_ascii_earlier_in_the_file(stripper):
+    """Prism reports **byte** offsets; the splices index by **character**.
+
+    A single multi-byte character anywhere before an edit desynchronizes the
+    two and silently corrupts the output — the stripper produced
+    `"ig { returns(Integer) }"` (two characters eaten) before this was fixed.
+    Non-ASCII in comments is ordinary in this corpus, so the guard is cheap.
+    """
+    out = stripper.strip(
+        "# typed: true\n"
+        'require "sorbet-runtime"\n'
+        "extend T::Sig\n"
+        "\n"
+        "# a section marker — § — two bytes, one character\n"
+        "sig { params(x: Integer).returns(String) }\n"
+        "def f(x)\n"
+        "  x.to_s\n"
+        "end\n"
+        "puts f(1)\n"
+    )
+    assert "sig {" not in out and "T::Sig" not in out
+    assert "def f(x)\n  x.to_s\nend" in out, out
+    assert "§" in out  # the comment itself survives untouched
