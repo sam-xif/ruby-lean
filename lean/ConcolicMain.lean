@@ -72,25 +72,27 @@ def isTypeError (fam : BadStateFamily) (h : Heap) (exc : Value) : Bool :=
 /-- Run the program, advancing the **symbolic shadow** in lockstep (S1 of
     `docs/semantics/concolic-dataflow.md`) so each branch carries its condition as
     a term over the inputs, and classify the outcome. -/
-partial def collect (fam : BadStateFamily) (inputs : List Int) (steps maxSteps : Nat)
-    (acc : Array Json) (risks : Array Json) (s : SymState) (m : Machine) :
-    Array Json × Array Json × Json × List String :=
+partial def collect (fam : BadStateFamily) (inputs : List SymVal) (steps maxSteps : Nat)
+    (acc : Array Json) (risks : Array Json) (doms : Array Json)
+    (s : SymState) (m : Machine) :
+    Array Json × Array Json × Array Json × Json × List String :=
   if steps ≥ maxSteps then
-    (acc, risks, Json.mkObj [("kind", Json.str "outoffuel"),
+    (acc, risks, doms, Json.mkObj [("kind", Json.str "outoffuel"),
                       ("detail", Json.str s!"step cap {maxSteps} reached")], s.notes)
   else
     match stepFn m with
     | .next m' =>
-      let (s', ev?, risk?) := symStep inputs m m' s
+      let (s', ev?, risk?, doms') := symStep inputs m m' s
       let acc := match ev? with
         | some ev => acc.push ev.toJson
         | none => acc
       let risks := match risk? with
         | some r => risks.push r.toJson
         | none => risks
-      collect fam inputs (steps + 1) maxSteps acc risks s' m'
+      let doms := doms'.foldl (fun (a : Array Json) d => a.push d.toJson) doms
+      collect fam inputs (steps + 1) maxSteps acc risks doms s' m'
     | .done v m' =>
-      (acc, risks, Json.mkObj [("kind", Json.str "value"),
+      (acc, risks, doms, Json.mkObj [("kind", Json.str "value"),
                         ("detail", Json.str ((RubyCore.inspect m'.heap v).toOption.getD "?")),
                         ("stdout", Json.str m'.out)], s.notes)
     | .uncaught exc m' =>
@@ -98,27 +100,49 @@ partial def collect (fam : BadStateFamily) (inputs : List Int) (steps maxSteps :
       let msg := match (m'.heap.get (match exc with | .ref o => o | _ => 0)).payload with
         | .exc s => s
         | _ => ""
-      (acc, risks, Json.mkObj [
+      (acc, risks, doms, Json.mkObj [
         ("kind", Json.str (if isTypeError fam m'.heap exc then "typestuck" else "uncaught")),
         ("class", Json.str cls), ("message", Json.str msg),
         ("stdout", Json.str m'.out)], s.notes)
     | .unsupported r =>
-      (acc, risks, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)], s.notes)
+      (acc, risks, doms, Json.mkObj [("kind", Json.str "unsupported"), ("detail", Json.str r)], s.notes)
     | .stuck msg =>
-      (acc, risks, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)], s.notes)
+      (acc, risks, doms, Json.mkObj [("kind", Json.str "stuck"), ("detail", Json.str msg)], s.notes)
 
 end RubyCore.Concolic
 
-/-- CLI: `rubycore-concolic [maxSteps] [--inputs n1,n2,…] < program.json`.
+/-- CLI: `rubycore-concolic [maxSteps] [--inputs SPEC] [--bad-state F] < program.json`.
     Inputs are bound to the reserved globals `$__in0`, `$__in1`, … (§6.5), so no
-    AST rewriting is needed to supply them. -/
-def parseInputs (args : List String) : List Int :=
+    AST rewriting is needed to supply them.
+
+    `--inputs` accepts two forms:
+
+    * **JSON array** — `--inputs '[31, "Numeric"]'` — the general form, needed now
+      that the input vector is heterogeneous (`SymVal`). An element's JSON sort
+      *is* its declared sort: that is how the harness author says "this input is a
+      string", which is typing information about the program's interface, not a
+      hint about the answer.
+    * **legacy comma list** — `--inputs 31,7` — all integers. Kept so existing
+      callers and tests are unaffected. -/
+def parseInputs (args : List String) : List RubyCore.Concolic.SymVal :=
   match args.dropWhile (· != "--inputs") with
   | _ :: spec :: _ =>
-    (spec.splitOn ",").filterMap fun t =>
-      let t := t.trimAscii
-      if t.startsWith "-" then (t.drop 1).toString.toNat?.map (fun n => -(Int.ofNat n))
-      else t.toNat?.map Int.ofNat
+    let spec := spec.trimAscii.toString
+    if spec.startsWith "[" then
+      match Json.parse spec with
+      | .ok (.arr elems) => elems.toList.filterMap fun e =>
+        match e.getInt? with
+        | .ok n => some (.i n)
+        | .error _ => match e.getStr? with
+          | .ok s => some (.s s)
+          | .error _ => none
+      | _ => []
+    else
+      (spec.splitOn ",").filterMap fun t =>
+        let t := t.trimAscii
+        if t.startsWith "-" then
+          (t.drop 1).toString.toNat?.map (fun n => .i (-(Int.ofNat n)))
+        else t.toNat?.map (fun n => .i (Int.ofNat n))
   | _ => []
 
 /-- `--bad-state type|type+name` (default `type`). An unrecognized value is a hard
@@ -154,11 +178,12 @@ def main (args : List String) : IO UInt32 := do
     | .ok prog =>
       let m0 := RubyCore.Concolic.initMachine prog inputs
       let s0 := RubyCore.Concolic.initSym inputs
-      let (branches, risks, outcome, notes) :=
-        RubyCore.Concolic.collect fam inputs 0 maxSteps #[] #[] s0 m0
+      let (branches, risks, domains, outcome, notes) :=
+        RubyCore.Concolic.collect fam inputs 0 maxSteps #[] #[] #[] s0 m0
       IO.println (Json.mkObj [
         ("branches", Json.arr branches),
         ("dispatchrisks", Json.arr risks),
+        ("domains", Json.arr domains),
         ("outcome", outcome),
         ("badstate", Json.str fam.name),
         ("frontier", Json.arr (notes.map Json.str).toArray)]).compress

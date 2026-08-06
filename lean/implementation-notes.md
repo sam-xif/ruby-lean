@@ -1610,6 +1610,44 @@ gated. The fix is a stepper-level mechanism, not a builtin.
     worth a sweep — grep `unsupported` for arity/coercion sites — but is not
     done here.
 
+## Concolic reach: strings, closure locals, observed domains (L76)
+
+- **L76 — three shadow changes that together find two DRuby corpus defects
+  automatically.** Motivated by a measurement (`druby-reproduction-plan.md`): the
+  engine explored *one* input vector on an ObjectGraph-shaped program and stopped,
+  because **every reachable corpus defect branches on a string**, and the shadow
+  was integer-only.
+  - **A string sort.** `SymVal = i Int | s String`; `SymTerm.slit`; `evalTerm`
+    returns a `SymVal`. Only the well-behaved fragment is modeled — *equality
+    against literals*. No concat/length/regex: those are what make SMT string
+    reasoning brittle, and no corpus guard needs them. Mixed-sort equality folds to
+    false, which is just Ruby (`1 == "a"`). Inputs are a heterogeneous vector;
+    `--inputs` grew a JSON form (`'[31, "Numeric"]'`) and the element's JSON sort
+    *is* its declared sort. String inputs are heap-allocated in `initMachine`.
+  - **Closure locals.** `SymState.getLocal` looked up `(fid, name)` exactly, while
+    `Machine.getLocal` walks the block-frame `captured` chain. So **every local read
+    inside a block went `opaque`** — silently, since the frontier note fires only on
+    input-dependent terms. `getLocalChain`/`getLocalNilChain`/`ownerFrame` now mirror
+    the machine. This was the single biggest precision loss and it was invisible.
+  - **`DomainFact` — observed comparison domains** (`search-and-proof.md`
+    §2.3/§2.4). When an input is compared against something the shadow cannot
+    express (`k.name == base_class_name`, where `k.name` is opaque), the *constraint*
+    is lost but the **concrete value seen on this run** is not. Recording it gives a
+    finite candidate domain; the engine tries each observed value plus one outside
+    the set. Extended to `include?`/`index`/`key?`/… where the comparison happens
+    *inside* the builtin and no `==` is ever observable — capped at 16 elements, and
+    the cap is reported rather than applied silently.
+  - **Why domain facts may be liberal where terms may not.** A `DomainFact` is a
+    *candidate input*, never a path-condition constraint: every candidate is executed
+    and its outcome comes from the semantics, so a wrong guess costs one iteration.
+    That is why the receiver need not be proven input-independent here, while
+    freezing a *term* would require exactly that. It is an under-approximation
+    (§2.2) — missed witnesses, never false ones — and must never feed a safety claim.
+  - Measured: **ObjectGraph** and **ai4r** defects both found with no human step,
+    each seeded on the *safe* input so nothing hints at the answer. `../concolic`
+    28 → 33 tests. Tier-0 unchanged at **942 agree, 0 disagree** (the shadow is not
+    on the SUT path, but the whole build is green).
+
 ## vcall vs fcall: the `NameError` gate is gone (L75)
 
 - **L75 — a bare identifier is its own head, so a missed vcall raises

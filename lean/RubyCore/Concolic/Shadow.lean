@@ -41,10 +41,31 @@ inductive BinOp where
   | and
 deriving Repr, DecidableEq
 
+/-- A concrete value a term can denote: the two sorts the shadow tracks. Inputs are
+    a heterogeneous vector of these, and `evalTerm` (the self-check oracle) returns
+    one.
+
+    Strings are here because **every reachable DRuby corpus defect branches on a
+    string**, not an integer (`druby-reproduction-plan.md`). Only the well-behaved
+    fragment is modeled — *equality against literals*. No concat, length, or regex:
+    those are what make SMT string reasoning brittle, and none of the corpus's
+    decisive guards need them. -/
+inductive SymVal where
+  | i (n : Int)
+  | s (str : String)
+deriving Repr, DecidableEq, Inhabited
+
+def SymVal.toJson : SymVal → Json
+  | .i n => Json.num ⟨n, 0⟩
+  | .s str => Json.str str
+
 /-- A symbolic term over the inputs. `opaque` = not tracked (see header). -/
 inductive SymTerm where
   | inp (k : Nat)
   | lit (n : Int)
+  /-- A **string literal**. Distinct from `conc`: we know its exact value, so an
+      equality against it is a real constraint rather than lost precision. -/
+  | slit (str : String)
   | un (op : UnOp) (a : SymTerm)
   | bin (op : BinOp) (a b : SymTerm)
   /-- A value we do not model *structurally*, but which we know does not depend on
@@ -75,6 +96,7 @@ def binIsCmp : BinOp → Bool
 partial def toJson : SymTerm → Json
   | .inp k => Json.arr #[Json.str "inp", Json.num ⟨Int.ofNat k, 0⟩]
   | .lit n => Json.arr #[Json.str "lit", Json.num ⟨n, 0⟩]
+  | .slit s => Json.arr #[Json.str "slit", Json.str s]
   | .un op a => Json.arr #[Json.str "un", Json.str (unOpName op), toJson a]
   | .bin op a b =>
     Json.arr #[Json.str "bin", Json.str (binOpName op), toJson a, toJson b]
@@ -87,6 +109,7 @@ partial def toJson : SymTerm → Json
 partial def hasInput : SymTerm → Bool
   | .inp _ => true
   | .lit _ => false
+  | .slit _ => false
   | .un _ a => hasInput a
   | .bin _ a b => hasInput a || hasInput b
   | .conc => false
@@ -96,6 +119,7 @@ partial def hasInput : SymTerm → Bool
     values may have a concrete fact read off the machine and frozen as a `lit`. -/
 def isConst : SymTerm → Bool
   | .lit _ => true
+  | .slit _ => true
   | .conc => true
   | _ => false
 
@@ -105,6 +129,9 @@ def mkUn (op : UnOp) (a : SymTerm) : SymTerm :=
   match a with
   | .conc => .opaque
   | .opaque => .opaque
+  -- no unary arithmetic on strings; `-@`/`succ`/`pred` on a String is either a
+  -- different operation or an error, and guessing is exactly what we must not do
+  | .slit _ => .opaque
   | .lit n => match op with
     | .neg => .lit (-n) | .succ => .lit (n + 1) | .pred => .lit (n - 1)
   | _ => .un op a
@@ -128,30 +155,55 @@ def mkBin (op : BinOp) (a b : SymTerm) : SymTerm :=
     | .ne => .lit (if x != y then 1 else 0)
     | .or => .lit (if x != 0 || y != 0 then 1 else 0)
     | .and => .lit (if x != 0 && y != 0 then 1 else 0)
+  -- String/String: only equality folds. Ordering (`<`) on strings IS defined in
+  -- Ruby but is not modeled, and arithmetic (`+` = concat) is deliberately out —
+  -- see the `SymVal` note on which fragment is well-behaved.
+  | .slit x, .slit y =>
+    match op with
+    | .eq => .lit (if x == y then 1 else 0)
+    | .ne => .lit (if x != y then 1 else 0)
+    | _ => .opaque
+  -- Mixed sorts: in Ruby `1 == "a"` is simply *false* (no coercion, no error), so
+  -- equality is decidable across sorts and folds. Anything else is unmodeled.
+  | .slit _, .lit _ | .lit _, .slit _ =>
+    match op with
+    | .eq => .lit 0
+    | .ne => .lit 1
+    | _ => .opaque
   | _, _ => .bin op a b
 
-/-- Evaluate at the concrete inputs — the self-check oracle (§6.4). Comparisons
-    yield 1/0 so one `Int` result type covers both sorts. -/
-partial def evalTerm (inputs : List Int) : SymTerm → Option Int
+/-- Evaluate at the concrete inputs — the self-check oracle (§6.4). Booleans are
+    `SymVal.i 1`/`i 0`, so comparisons of either sort land in the integer sort.
+    A sort mismatch on an unmodeled operation yields `none` ("cannot say"), never
+    a guessed value. -/
+partial def evalTerm (inputs : List SymVal) : SymTerm → Option SymVal
   | .inp k => inputs[k]?
-  | .lit n => some n
+  | .lit n => some (.i n)
+  | .slit s => some (.s s)
   | .conc => none
   | .opaque => none
-  | .un op a => (evalTerm inputs a).map fun x =>
-      match op with | .neg => -x | .succ => x + 1 | .pred => x - 1
+  | .un op a => do
+      match ← evalTerm inputs a with
+      | .i x => pure (.i (match op with | .neg => -x | .succ => x + 1 | .pred => x - 1))
+      | .s _ => none
   | .bin op a b => do
       let x ← evalTerm inputs a
       let y ← evalTerm inputs b
-      match op with
-      | .add => pure (x + y) | .sub => pure (x - y) | .mul => pure (x * y)
-      | .lt => pure (if x < y then 1 else 0)
-      | .le => pure (if x ≤ y then 1 else 0)
-      | .gt => pure (if x > y then 1 else 0)
-      | .ge => pure (if x ≥ y then 1 else 0)
-      | .eq => pure (if x == y then 1 else 0)
-      | .ne => pure (if x != y then 1 else 0)
-      | .or => pure (if x != 0 || y != 0 then 1 else 0)
-      | .and => pure (if x != 0 && y != 0 then 1 else 0)
+      let bool (c : Bool) : Option SymVal := pure (.i (if c then 1 else 0))
+      match op, x, y with
+      | .add, .i p, .i q => pure (.i (p + q))
+      | .sub, .i p, .i q => pure (.i (p - q))
+      | .mul, .i p, .i q => pure (.i (p * q))
+      | .lt, .i p, .i q => bool (p < q)
+      | .le, .i p, .i q => bool (p ≤ q)
+      | .gt, .i p, .i q => bool (p > q)
+      | .ge, .i p, .i q => bool (p ≥ q)
+      | .or, .i p, .i q => bool (p != 0 || q != 0)
+      | .and, .i p, .i q => bool (p != 0 && q != 0)
+      -- equality is total across sorts (Ruby: `1 == "a"` is false, not an error)
+      | .eq, _, _ => bool (x == y)
+      | .ne, _, _ => bool (x != y)
+      | _, _, _ => none
 
 end SymTerm
 
@@ -172,6 +224,20 @@ def unOpOf : String → Option UnOp
 def constIntMethod : String → Bool
   | "length" | "size" | "count" => true
   | _ => false
+
+/-- Builtins that compare an argument against a collection's elements *internally*,
+    so the comparison never surfaces as an observable `==`. For these, the
+    collection's concrete elements are the interesting candidate domain
+    (`search-and-proof.md` §2.3: "hash keys — bounded by the concrete key set"). -/
+def collDomainMethod : String → Bool
+  | "include?" | "member?" | "index" | "find_index" | "key?" | "has_key?"
+  | "fetch" | "delete" | "count" | "rindex" | "assoc" => true
+  | _ => false
+
+/-- Cap on elements offered per collection, so a 10k-entry hash does not become
+    10k candidate runs (`search-and-proof.md` §2.4 lists exactly this cost). When
+    the cap bites it is reported on the frontier, never applied silently. -/
+def collDomainCap : Nat := 16
 
 def binOpOf : String → Option BinOp
   | "+" => some .add | "-" => some .sub | "*" => some .mul
@@ -223,6 +289,48 @@ def getLocal (s : SymState) (fid : FrameId) (x : String) : SymTerm :=
 def setLocal (s : SymState) (fid : FrameId) (x : String) (t : SymTerm) : SymState :=
   { s with locals := ((fid, x), t) ::
       s.locals.filter (fun e => !(e.1.1 == fid && e.1.2 == x)) }
+
+/-- Read `x` the way the *machine* does: walk the block-frame `captured` chain into
+    enclosing scopes (`Machine.getLocal`). Keying `locals` by `FrameId` is only half
+    the story — a block body reads its enclosing method's locals, so the lookup has
+    to walk too, or every closure-captured value silently goes `opaque`. That was
+    costing the shadow every `{ |k| … outer … }` comparison. -/
+def getLocalChain (s : SymState) (m : Machine) (x : String) : SymTerm :=
+  let rec go : FrameId → Nat → SymTerm
+    | _, 0 => .opaque
+    | fid, fuel + 1 =>
+      match s.locals.find? (fun e => e.1.1 == fid && e.1.2 == x) with
+      | some e => e.2
+      | none => match (m.frames.getD fid default).captured with
+        | some p => go p fuel
+        | none => .opaque
+  go (m.stack.headD 0) (m.frames.size + 1)
+
+/-- Nil-guard counterpart of `getLocalChain`. -/
+def getLocalNilChain (s : SymState) (m : Machine) (x : String) : SymTerm :=
+  let rec go : FrameId → Nat → SymTerm
+    | _, 0 => .opaque
+    | fid, fuel + 1 =>
+      match s.localNils.find? (fun e => e.1.1 == fid && e.1.2 == x) with
+      | some e => e.2
+      | none => match (m.frames.getD fid default).captured with
+        | some p => go p fuel
+        | none => .opaque
+  go (m.stack.headD 0) (m.frames.size + 1)
+
+/-- Which frame owns `x`, mirroring `Machine.setLocal`: if some frame on the
+    captured chain already binds it, assignment mutates *there* (shared closure
+    locals); otherwise it is a new local in the current frame. -/
+def ownerFrame (s : SymState) (m : Machine) (x : String) : FrameId :=
+  let start := m.stack.headD 0
+  let rec go : FrameId → Nat → FrameId
+    | _, 0 => start
+    | fid, fuel + 1 =>
+      if s.locals.any (fun e => e.1.1 == fid && e.1.2 == x) then fid
+      else match (m.frames.getD fid default).captured with
+        | some p => go p fuel
+        | none => start
+  go start (m.frames.size + 1)
 
 def getLocalNil (s : SymState) (fid : FrameId) (x : String) : SymTerm :=
   (s.localNils.find? (fun e => e.1.1 == fid && e.1.2 == x)).map (·.2) |>.getD .opaque
@@ -290,28 +398,84 @@ def DispatchRisk.toJson (r : DispatchRisk) : Json :=
   Json.mkObj [("source", Json.str r.source), ("meth", Json.str r.meth),
               ("badClass", Json.str r.badClass), ("guard", SymTerm.toJson r.guard)]
 
-/-- The concrete integer the machine produced, if the post-state holds one —
-    the oracle for the self-check. -/
+/-- **An observed comparison domain** (`search-and-proof.md` §2.3/§2.4).
+
+    When an input is compared for equality against a value the shadow cannot express
+    as a term — `k.name == base_class_name`, where `k.name` is a String produced by
+    machinery we do not model — the *constraint* is lost, but the **concrete value
+    that appeared on this run** is still observable. Recording it gives the engine a
+    finite candidate domain: try each value the input was compared against, plus one
+    value outside the set.
+
+    Why this is sound where freezing a term would not be: a `DomainFact` is a
+    *candidate input*, never a path-condition constraint. Every candidate is executed
+    and its outcome comes from the semantics, so a wrong guess costs one iteration
+    and nothing else. Freezing `k.name` as a literal, by contrast, would assert a
+    fact about *other* runs that may not hold.
+
+    This is deliberately an under-approximation — it sees only the comparisons this
+    path performed. Per `search-and-proof.md` §2.2 that is acceptable for Direction A
+    (missed witnesses, never false ones) and must never feed a safety claim. -/
+structure DomainFact where
+  /-- input indices appearing on the symbolic side of the comparison -/
+  inputs : List Nat
+  /-- the concrete value the *other* side had on this run -/
+  value : SymVal
+  /-- where it was observed, for reporting -/
+  site : String
+  deriving Inhabited
+
+def DomainFact.toJson (d : DomainFact) : Json :=
+  Json.mkObj [("inputs", Json.arr ((d.inputs.map (fun k => Json.num ⟨Int.ofNat k, 0⟩)).toArray)),
+              ("value", d.value.toJson), ("site", Json.str d.site)]
+
+/-- Input indices a term mentions. -/
+partial def SymTerm.inputIdxs : SymTerm → List Nat
+  | .inp k => [k]
+  | .un _ a => a.inputIdxs
+  | .bin _ a b => a.inputIdxs ++ b.inputIdxs
+  | _ => []
+
+/-- A machine value in one of the tracked sorts, if it is one. -/
+def valueSym (h : Heap) : Value → Option SymVal
+  | .int n => some (.i n)
+  | .ref o => match (h.get o).payload with
+    | .str s => some (.s s)
+    | _ => none
+  | _ => none
+
+/-- The concrete integer the machine produced, if the post-state holds one. -/
 def concreteInt (m' : Machine) : Option Int :=
   match m'.ctl with
   | .value (.int n) => some n
   | _ => none
 
+/-- The concrete value the machine produced, in either tracked sort — the oracle
+    for the self-check. Strings are heap objects, so this reads the payload. -/
+def concreteVal (m' : Machine) : Option SymVal :=
+  match m'.ctl with
+  | .value (.int n) => some (.i n)
+  | .value (.ref o) =>
+    match (m'.heap.get o).payload with
+    | .str s => some (.s s)
+    | _ => none
+  | _ => none
+
 /-- **Self-check** (§6.4): a term assigned as `ctl` must evaluate, at the concrete
     inputs, to the value the machine actually produced. Mismatch ⇒ drop to
     `opaque` + note, so mirroring bugs cost precision, never soundness. -/
-def checked (inputs : List Int) (s : SymState) (m' : Machine) (t : SymTerm)
+def checked (inputs : List SymVal) (s : SymState) (m' : Machine) (t : SymTerm)
     (site : String) : SymState :=
-  match t, concreteInt m' with
+  match t, concreteVal m' with
   | .opaque, _ => { s with ctl := .opaque }
-  | _, none => { s with ctl := t }   -- non-integer result: nothing to check against
+  | _, none => { s with ctl := t }   -- untracked sort: nothing to check against
   | _, some actual =>
     match SymTerm.evalTerm inputs t with
     | some predicted =>
       if predicted == actual then { s with ctl := t }
       else
         let s := s.note
-          s!"SELF-CHECK FAILED at {site}: term={predicted} machine={actual} (term dropped)"
+          s!"SELF-CHECK FAILED at {site}: term={repr predicted} machine={repr actual} (term dropped)"
         { s with ctl := .opaque }
     | none => { s with ctl := t }
 
@@ -322,7 +486,7 @@ def checked (inputs : List Int) (s : SymState) (m' : Machine) (t : SymTerm)
     Safety: we only bind when the shapes line up (equal length), and each binding is
     self-checked against the concrete value the machine stored — a mismatch records a
     note and drops that binding to `opaque` rather than asserting a wrong term. -/
-def bindParams (inputs : List Int) (s : SymState) (m' : Machine)
+def bindParams (inputs : List SymVal) (s : SymState) (m' : Machine)
     (argsT : List SymTerm) : SymState :=
   let fid := m'.stack.headD 0
   let f := m'.frames.getD fid default
@@ -333,39 +497,49 @@ def bindParams (inputs : List Int) (s : SymState) (m' : Machine)
   else
     (f.locals.zip argsT).foldl (fun (st : SymState) (b : (String × Value) × SymTerm) =>
       let name := b.1.1
-      match b.1.2, SymTerm.evalTerm inputs b.2 with
-      | .int actual, some predicted =>
+      -- the bound value may be either tracked sort; strings live on the heap
+      let actual? : Option SymVal := match b.1.2 with
+        | .int n => some (.i n)
+        | .ref o => match (m'.heap.get o).payload with
+          | .str str => some (.s str)
+          | _ => none
+        | _ => none
+      match actual?, SymTerm.evalTerm inputs b.2 with
+      | some actual, some predicted =>
         if predicted == actual then st.setLocal fid name b.2
-        else (st.note s!"SELF-CHECK FAILED binding {name}: term={predicted} machine={actual} (dropped)").setLocal fid name .opaque
+        else (st.note s!"SELF-CHECK FAILED binding {name}: term={repr predicted} machine={repr actual} (dropped)").setLocal fid name .opaque
       | _, _ => st.setLocal fid name b.2) s
 
 /-- Advance the shadow across one observed transition `m → m'`.
     Returns the new shadow state and a branch event if this step was a decision. -/
-def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
-    SymState × Option BranchEvent × Option DispatchRisk :=
+def symStep (inputs : List SymVal) (m m' : Machine) (s : SymState) :
+    SymState × Option BranchEvent × Option DispatchRisk × List DomainFact :=
   let fid := m.stack.headD 0
   let s0 := { s.realign m'.kont.length with ctlNil := .opaque }
   match m.ctl, m.kont with
   -- ── expression evaluation ───────────────────────────────────────────────
-  | .eval (.int n), _ => ({ s0 with ctl := .lit n }, none, none)
-  | .eval (.str _), _ => ({ s0 with ctl := .conc }, none, none)
-  | .eval (.sym _), _ => ({ s0 with ctl := .conc }, none, none)
-  | .eval .nil, _ => ({ s0 with ctl := .conc }, none, none)
-  | .eval .tru, _ => ({ s0 with ctl := .conc }, none, none)
-  | .eval .fls, _ => ({ s0 with ctl := .conc }, none, none)
+  | .eval (.int n), _ => ({ s0 with ctl := .lit n }, none, none, [])
+  -- a string literal is now a *term*, so `x == "lit"` is a real constraint
+  | .eval (.str str), _ => ({ s0 with ctl := .slit str }, none, none, [])
+  | .eval (.sym _), _ => ({ s0 with ctl := .conc }, none, none, [])
+  | .eval .nil, _ => ({ s0 with ctl := .conc }, none, none, [])
+  | .eval .tru, _ => ({ s0 with ctl := .conc }, none, none, [])
+  | .eval .fls, _ => ({ s0 with ctl := .conc }, none, none, [])
   | .eval (.var .lvar x), _ =>
-    ({ s0 with ctl := s.getLocal fid x, ctlNil := s.getLocalNil fid x }, none, none)
+    ({ s0 with ctl := s.getLocalChain m x, ctlNil := s.getLocalNilChain m x },
+     none, none, [])
   | .eval (.var .gvar x), _ =>
     -- the reserved input globals are the symbolic sources (§6.5)
     match inputIndexOf x with
-    | some k => ({ s0 with ctl := .inp k }, none, none)
-    | none => ({ s0 with ctl := s.getGlobal x }, none, none)
+    | some k => ({ s0 with ctl := .inp k }, none, none, [])
+    | none => ({ s0 with ctl := s.getGlobal x }, none, none, [])
   -- ── value in flight: consume the top continuation ───────────────────────
   | .value _, (.asgnK .lvar x) :: _ =>
     -- assignment yields the assigned value: `ctl` and its nil-guard both survive
-    (({ (s0.setLocal fid x s.ctl).setLocalNil fid x s.ctlNil with
-          ctlNil := s.ctlNil }), none, none)
-  | .value _, (.asgnK .gvar x) :: _ => ((s0.setGlobal x s.ctl), none, none)
+    let owner := s.ownerFrame m x
+    (({ (s0.setLocal owner x s.ctl).setLocalNil owner x s.ctlNil with
+          ctlNil := s.ctlNil }), none, none, [])
+  | .value _, (.asgnK .gvar x) :: _ => ((s0.setGlobal x s.ctl), none, none, [])
   | .value _, (.recvK mname args _ _) :: _ =>
     -- Ask the *semantics* whether the alternative class defines `mname` — no
     -- duplicated method table here (cf. K9). Currently the modeled alternative is
@@ -378,14 +552,14 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
     if args.isEmpty then
       -- zero-arg send: a unary primitive, or unknown
       match unOpOf mname with
-      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none, risk)
+      | some op => (checked inputs s0 m' (SymTerm.mkUn op s.ctl) s!"{mname}", none, risk, [])
       | none =>
         if s.ctl.isConst && constIntMethod mname then
           -- e.g. `[:a,:b,:c].length` -> lit 3, which makes a bounds guard
           -- `i < arr.length` solvable even though the collection is unmodeled.
           match concreteInt m' with
-          | some n => ({ s0 with ctl := .lit n }, none, risk)
-          | none => ({ s0 with ctl := .opaque }, none, risk)
+          | some n => ({ s0 with ctl := .lit n }, none, risk, [])
+          | none => ({ s0 with ctl := .opaque }, none, risk, [])
         else
         -- A zero-arg *user method* pushes a frame; its body's term flows back out via
         -- the frameK passthrough, so nothing is lost and we must NOT cry frontier.
@@ -396,22 +570,39 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
                   then s0.note
                     s!"input-dependent `{mname}` not in the op map (term opaque)"
                   else s0
-        ({ s1 with ctl := .opaque }, none, risk)
+        ({ s1 with ctl := .opaque }, none, risk, [])
     else
       -- args follow: stash the receiver term on the incoming `argsK` mirror entry
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with recvT := s.ctl, accT := [] }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, risk)
-      | [] => ({ s0 with ctl := .opaque }, none, risk)
-  | .value _, (.argsK recvV _ mname _ rest _) :: _ =>
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, risk, [])
+      | [] => ({ s0 with ctl := .opaque }, none, risk, [])
+  | .value argV, (.argsK recvV _ mname _ rest _) :: _ =>
     let entry := s.mirror.headD default
     let argsT := entry.accT ++ [s.ctl]
     if rest.isEmpty then
       -- all args in ⇒ this step dispatches; recognize a binary primitive
       match binOpOf mname, argsT with
       | some op, [argT] =>
-        (checked inputs s0 m' (SymTerm.mkBin op entry.recvT argT) s!"{mname}", none, none)
+        let t := SymTerm.mkBin op entry.recvT argT
+        -- **Domain observation.** An equality we could not express as a term, where
+        -- one side *is* input-dependent: the other side's concrete value on this run
+        -- is a candidate input worth trying (`DomainFact`). This is what makes
+        -- `k.name == base_class_name` productive even though `k.name` is opaque —
+        -- we cannot say what `k.name` is in general, but we can see what it was.
+        let dom : Option DomainFact :=
+          match t, op with
+          | .opaque, .eq | .opaque, .ne =>
+            if argT.hasInput && !entry.recvT.hasInput then
+              (valueSym m.heap recvV).map fun v =>
+                { inputs := argT.inputIdxs, value := v, site := mname }
+            else if entry.recvT.hasInput && !argT.hasInput then
+              (valueSym m.heap argV).map fun v =>
+                { inputs := entry.recvT.inputIdxs, value := v, site := mname }
+            else none
+          | _, _ => none
+        (checked inputs s0 m' t s!"{mname}", none, none, dom.toList)
       | _, _ =>
         -- `arr[i]` with an input-dependent index over an array whose length is
         -- input-independent: out-of-range silently yields `nil`, which no branch
@@ -448,33 +639,65 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
             else .opaque
           | _, _, _ => .opaque
         if !(nilGuard.isConst) && nilGuard.hasInput then
-          ({ s0 with ctl := .opaque, ctlNil := nilGuard }, none, none)
+          ({ s0 with ctl := .opaque, ctlNil := nilGuard }, none, none, [])
         else
         if m'.frames.size > m.frames.size then
           -- a user method activation was pushed: carry arg terms into its params (S2)
-          ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none, none)
+          ({ bindParams inputs s0 m' argsT with ctl := .opaque }, none, none, [])
         else
-          let s1 := if entry.recvT.hasInput || argsT.any (·.hasInput)
-                    then s0.note s!"input-dependent `{mname}` not in the op map (term opaque)"
+          -- **Collection membership as a finite domain** (`search-and-proof.md`
+          -- §2.3). `coll.include?(x)` / `coll.index(x)` with an input-dependent
+          -- `x`: the comparison happens *inside* the builtin, so no `==` is ever
+          -- observable and the branch on its result is unflippable. What we can do
+          -- is read the collection's concrete elements and offer each as a
+          -- candidate (the engine adds one value outside the set).
+          --
+          -- The receiver need NOT be input-independent: a `DomainFact` is a
+          -- candidate, not a constraint, so a receiver that varies across runs
+          -- costs at worst a wasted iteration. That freedom is exactly why
+          -- candidate generation reaches cases constraint solving cannot.
+          let doms : List DomainFact :=
+            match argsT with
+            | [argT] =>
+              if argT.hasInput && collDomainMethod mname then
+                let elems : List Value :=
+                  match recvV with
+                  | .ref o =>
+                    match (m.heap.get o).payload with
+                    | .arr xs => xs.toList
+                    | .hsh pairs => pairs.toList.map (·.1)
+                    | _ => []
+                  | _ => []
+                (elems.take collDomainCap).filterMap fun e =>
+                  (valueSym m.heap e).map fun v =>
+                    { inputs := argT.inputIdxs, value := v, site := mname }
+              else []
+            | _ => []
+          -- No silent caps: if the collection was truncated, say so.
+          let s1 := if doms.length == collDomainCap
+                    then s0.note s!"domain for `{mname}` capped at {collDomainCap} elements"
                     else s0
-          ({ s1 with ctl := .opaque }, none, none)
+          let s2 := if (entry.recvT.hasInput || argsT.any (·.hasInput)) && doms.isEmpty
+                    then s1.note s!"input-dependent `{mname}` not in the op map (term opaque)"
+                    else s1
+          ({ s2 with ctl := .opaque }, none, none, doms)
     else
       -- more args to evaluate: carry the accumulated terms forward
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with recvT := entry.recvT, accT := argsT }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
-      | [] => ({ s0 with ctl := .opaque }, none, none)
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none, [])
+      | [] => ({ s0 with ctl := .opaque }, none, none, [])
   -- a method/block returning: its value's term passes through the boundary (S2)
-  | .value _, (.frameK _) :: _ => (s0, none, none)
-  | .value _, (.blkFrameK ..) :: _ => (s0, none, none)
-  | .value _, (.seqK []) :: _ => (s0, none, none)
+  | .value _, (.frameK _) :: _ => (s0, none, none, [])
+  | .value _, (.blkFrameK ..) :: _ => (s0, none, none, [])
+  | .value _, (.seqK []) :: _ => (s0, none, none, [])
   | .value _, (.hshKeyK _ _ _) :: _ =>
     -- key evaluated: remember its term so the literal's const-ness can be judged
     let entry := s.mirror.headD default
     let f' : SymFrame := { entry with accT := entry.accT ++ [s.ctl] }
     let mirror' := f' :: s0.mirror.tail
-    ({ s0 with mirror := mirror', ctl := .opaque }, none, none)
+    ({ s0 with mirror := mirror', ctl := .opaque }, none, none, [])
   | .value _, (.hshValK _ _ rest) :: _ =>
     -- value evaluated; on the last pair the hash is allocated in `m'`, and it is
     -- input-independent exactly when every key and value is
@@ -482,40 +705,48 @@ def symStep (inputs : List Int) (m m' : Machine) (s : SymState) :
     let partsT := entry.accT ++ [s.ctl]
     if rest.isEmpty then
       ({ s0 with ctl := if partsT.all SymTerm.isConst then .conc else .opaque },
-       none, none)
+       none, none, [])
     else
       let f' : SymFrame := { entry with accT := partsT }
-      ({ s0 with mirror := f' :: s0.mirror.tail, ctl := .opaque }, none, none)
+      ({ s0 with mirror := f' :: s0.mirror.tail, ctl := .opaque }, none, none, [])
   | .value _, (.arrK _ rest) :: _ =>
     let entry := s.mirror.headD default
     let elemsT := entry.accT ++ [s.ctl]
     if rest.isEmpty then
       -- array allocated in `m'`: input-independent iff every element is
-      ({ s0 with ctl := if elemsT.all SymTerm.isConst then .conc else .opaque }, none, none)
+      ({ s0 with ctl := if elemsT.all SymTerm.isConst then .conc else .opaque }, none, none, [])
     else
       match s0.mirror with
       | f :: tl =>
         let f' : SymFrame := { f with accT := elemsT }
-        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none)
-      | [] => ({ s0 with ctl := .opaque }, none, none)
+        ({ s0 with mirror := f' :: tl, ctl := .opaque }, none, none, [])
+      | [] => ({ s0 with ctl := .opaque }, none, none, [])
   | .value v, (.ifK _ _) :: _ =>
     ({ s0 with ctl := .opaque },
-     some { kind := "if", taken := v.truthy, cond := s.ctl }, none)
+     some { kind := "if", taken := v.truthy, cond := s.ctl }, none, [])
   | .value v, (.whileCondK _ _) :: _ =>
     ({ s0 with ctl := .opaque },
-     some { kind := "while", taken := v.truthy, cond := s.ctl }, none)
+     some { kind := "while", taken := v.truthy, cond := s.ctl }, none, [])
   -- ── everything else: safe precision loss ───────────────────────────────
-  | _, _ => ({ s0 with ctl := .opaque }, none, none)
+  | _, _ => ({ s0 with ctl := .opaque }, none, none, [])
 
 /-- Initial shadow state for a run: bind the reserved input globals to `inp k`. -/
-def initSym (inputs : List Int) : SymState :=
+def initSym (inputs : List SymVal) : SymState :=
   { globals := (inputs.zipIdx).map (fun (_, k) => (s!"$__in{k}", SymTerm.inp k)) }
 
 /-- Initial machine with the input globals preloaded — so **no AST rewriting** is
     needed to supply inputs (§6.5). -/
-def initMachine (prog : Expr) (inputs : List Int) : Machine :=
-  { Machine.init prog with
-      globals := (inputs.zipIdx).map (fun (v, k) => (s!"$__in{k}", Value.int v)) }
+def initMachine (prog : Expr) (inputs : List SymVal) : Machine :=
+  -- String inputs are heap objects, so they must be allocated before binding;
+  -- integers are immediates and need no heap. Fold so each allocation threads
+  -- through the machine it extends.
+  (inputs.zipIdx).foldl (fun (m : Machine) (vk : SymVal × Nat) =>
+    let (v, k) := vk
+    let (val, m) := match v with
+      | .i n => (Value.int n, m)
+      | .s str => Builtins.allocStr m str
+    { m with globals := (s!"$__in{k}", val) :: m.globals })
+    (Machine.init prog)
 
 end Concolic
 end RubyCore
