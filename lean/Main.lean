@@ -9,6 +9,7 @@ Exit codes (mirroring the desugar SUT adapter contract):
 -/
 import RubyCore.Obs
 import RubyCore.Types.Fragment
+import RubyCore.Types.Core
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -34,6 +35,12 @@ def main (args : List String) : IO UInt32 := do
   -- with a reason per exclusion. A static query: nothing is executed, so the
   -- prelude is not booted and the answer is independent of model coverage.
   let fragmentOnly := args.contains "--fragment"
+  -- `--check`: run the P0 static checker (`RubyCore/Types/Core.lean`) and report
+  -- its verdict. Static, like `--fragment`: nothing runs, so the answer is
+  -- independent of model coverage and of the prelude. `accept` is the verdict
+  -- `Proof/StaticSoundness.check_sound` licenses; `reject` is a claim about our
+  -- rules only (`static-soundness-poc.md` §2.2); `unknown` claims nothing.
+  let checkOnly := args.contains "--check"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -51,6 +58,23 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"undecodable RubyCore: {e}"
         return 1
     | .ok prog =>
+      if checkOnly then
+        let verdict := match Types.check prog with
+          | .accept => "accept"
+          | .reject => "reject"
+          | .unknown => "unknown"
+        -- The inferred program type accompanies `accept` as a development aid.
+        -- It is deliberately *not* a difftest signal: comparing inferred types
+        -- against `T.reveal_type` tests neither direction that matters
+        -- (`typed-portion-safety.md` §8).
+        let ty := match Types.infer [] prog with
+          | some (t, _) => match t with
+            | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
+          | none => ""
+        IO.println (Lean.Json.mkObj
+          ([("verdict", Lean.Json.str verdict)] ++
+           (if ty == "" then [] else [("type", Lean.Json.str ty)]))).compress
+        return 0
       if fragmentOnly then
         let vs := Types.violationSummary prog
         IO.println (Lean.Json.mkObj [

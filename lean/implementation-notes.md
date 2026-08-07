@@ -2059,3 +2059,17 @@ Discharging `builtinSig`'s entries against the interpreter. Choices:
   safety-bearing ones in `Proof/StaticSoundness.lean`. Two duplicates were removed from the
   proof file when the reject pass landed, and one of them (`1 + true`) had become *wrong*
   there — it asserted `unknown`.
+
+## L87 — the checker difftest harness
+
+Difftesting `check` against `srb`, per `docs/semantics/static-soundness-poc.md` §7.
+
+- **`rubycore --check` is static, like `--fragment`.** No prelude boot, nothing executed, so
+  the verdict is independent of model coverage — a program the interpreter cannot run still
+  gets a checker verdict. That is the right call because `check` is a *static* artifact and
+  conflating it with `.unsupported` would make the ratchet's `unknown` count meaningless.
+- **The JSON carries the inferred type alongside `accept`, as a development aid only.**
+  It is deliberately not a difftest signal: comparing inferred types against
+  `T.reveal_type` tests neither direction that matters (`typed-portion-safety.md` §8, which
+  replaced exactly that plan). Recorded here so nobody later mistakes the field for an
+  oracle.
