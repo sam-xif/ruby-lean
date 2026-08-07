@@ -1,6 +1,6 @@
 # Static soundness on the fully-typed fragment — a proof of concept
 
-> **Status:** **P0a built and proved** (2026-08-07); P0b onward planned. This is deliberately the *smallest*
+> **Status:** **P0a and P0b built and proved** (2026-08-07); P1 onward planned. This is deliberately the *smallest*
 > soundness result the architecture can produce end-to-end, and it is sequenced **before**
 > everything in [`typed-portion-safety.md`](typed-portion-safety.md).
 >
@@ -153,9 +153,8 @@ mitigation is the one that document already names — our setting is *better off
 Sorbet's*, because the model defines the builtin, so conformance is differentially
 checkable rather than assumed forever.
 
-**P0b** therefore exists to hold a one-entry-wide version of this table. It was meant to be
-P0's job; P0a excluded `send` and so did not touch it — see §8.1(3). The risk is unchanged,
-only deferred by one milestone.
+**P0b** holds a three-entry version of this table (`Integer#+`, `#-`, `#*`), and — the
+result that matters — **it did not cost the unconditionality of `check_sound`**. See §8.2.
 
 ---
 
@@ -209,7 +208,7 @@ pinned zero, because there is no `reject` verdict yet (§2.2). Moving a program 
 | # | Work | Exit criterion |
 |---|---|---|
 | **P0a** | `Ty`; `KontOk`/`CtlOk`/`Inv` over `Machine`. Fragment: literals, locals, `if`, `while`, `seq`. **No `send`.** | **DONE** (2026-08-07) — `check_sound` proved, axiom-clean, two worked examples. |
-| **P0b** | `send` for `Integer` builtins only + the signature table of §5. Fragment gains `1 + 2`. | The builtin-table risk actually de-risked (P0a did not touch it — see §8.1). |
+| **P0b** | `send` for `Integer` builtins only + the signature table of §5. Fragment gains `1 + 2`. | **DONE** (2026-08-07) — three entries, conformance proved, `check_sound` still unconditional. See §8.2. |
 | **P1** | User classes, sigs, single inheritance, ivars, `.new`, user method dispatch. | A corpus program with real methods accepted and proved safe. |
 | **P2** | `check` wired as a total executable into `sorbet check` + difftest, one-directionally. | Zero accept-disagreements over the 22-program tier-4 corpus; `unknown` baseline recorded. |
 | **P3** | Widen by one axis — `T.nilable` + narrowing, **or** arrays with element types. | `unknown` down, zero held. |
@@ -219,6 +218,46 @@ P0 is almost degenerate **on purpose**. Its deliverable is not the theorem, whic
 trivial at that scope; it is the measured cost of typing the *continuation stack*
 (`KontOk`/`ConfigTy`, `type-judgments.md` §10 T1). That is where machine-level preservation
 proofs actually get long, and the number is wanted before P1's scope is fixed.
+
+### 8.2 P0b as built — the table did not cost unconditionality
+
+`Types/Core.lean` gains `builtinSig` and a `send` rule;
+`Proof/BuiltinConformance.lean` discharges the table against the interpreter;
+`Proof/StaticSoundness.lean` gains `TableOk`, two `KontOk` constructors, and the send
+cases. `check_sound` and `egArith_safe` (`x = 3; (x + 1) * 2`) are axiom-clean, and the
+model runs that program to `8` through the real dispatch path, so the theorem is not
+vacuous [V].
+
+**(1) The headline worry was wrong, in the good direction.** §5 warns that the builtin
+table is trusted. It is — but only as a statement about *the heap*, and
+`TableOk Boot.initHeap` is provable **by `rfl`**. So `check_sound` remains unconditional:
+no hypothesis leaks into the theorem, and RBI-conformance is discharged rather than
+assumed. This is a direct dividend of L73's reducibility discipline; had any step of the
+dispatch path been `partial` or gone through `String.endsWith`, the discharge would have
+needed `native_decide` and the theorem would have inherited `ofReduceBool`.
+
+Caveat, stated plainly: this holds for `Machine.init`. A **prelude-booted** start (P1) will
+almost certainly need `native_decide` for its `TableOk`, at which point the split has to be
+the `SorbetConcrete.lean` one — general theorem clean, concrete instance dirty.
+
+**(2) Conformance is a fact about dispatch, not about the machine.** First cut stated it as
+"`m.ctl = …`, `m.kont = argsK … ⟹ stepFn m = .next …`". That proves, but does not compose:
+by the time preservation reaches the `argsK` case it has already unfolded `applyKont`. The
+lemmas are now about `startArgs` with receiver and argument already values.
+
+**(3) `Builtins.run` reduces by `rfl` instantly and is fatal to `simp`** (maxRecDepth, then
+heartbeats, on a 1582-line match). L73's rule generalizes: on this path, `rfl` to prove,
+`#eval` to debug, never `simp` through the builtin table.
+
+**(4) The send site is syntactic.** `evalExpr` picks `.selfRecv` vs `.explicit` by matching
+on the receiver *expression* (`Interp.lean:2582`), and that match will not rewrite under
+`rw` or `simp only`. It has to be forced to compute with `cases r`; every branch but
+`self'` is `.explicit`, and `infer` rejects `self'`.
+
+**(5) Scope, stated honestly.** The fragment admits only a binary send with an explicit
+receiver, exactly one argument, no block, and a method in the three-entry table. Widening
+the table is now a `rfl` lemma plus a three-line instantiation of `int_bin_dispatch`; that
+cheapness is the point of the parameterization, and it is the ratchet's next easy win.
 
 ### 8.1 P0a as built — what the measurement said
 

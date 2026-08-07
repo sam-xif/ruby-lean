@@ -40,6 +40,43 @@ def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
   | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ
 
+/-! ## The builtin signature table
+
+`static-soundness-poc.md` §5. The prelude-booted heap carries Ruby's core
+library, none of which is in any typed fragment, so `WellTyped` cannot quantify
+over it — builtins are carried by a **declared** signature instead.
+
+Every entry is a **proof obligation**, not an assumption we get to keep: for
+each one, the model's own implementation must be shown to conform
+(`Proof/StaticSoundness.lean` §…). That is the RBI-conformance obligation of
+`typed-portion-safety.md` §6, and our setting is better off than Sorbet's here —
+Sorbet trusts its RBIs with no runtime backstop, whereas the model *defines* the
+builtin, so conformance is a lemma.
+
+The table is keyed on the receiver's **static type**, which is enough at P0
+where `Ty` and the dispatch class are in bijection. P1 needs class names.
+-/
+
+/-- Declared `(parameter types, return type)` of a builtin, or `none` for
+    "not in the table", which the checker reads as `unknown`.
+
+    Deliberately narrow: only entries whose conformance lemma is proved may
+    appear. Notable absences and why —
+
+    * `/` and `%` — `ZeroDivisionError`. Not a *type* error, so admitting them
+      would not endanger `check_sound`, but their conformance lemma needs a
+      side condition and they buy nothing at P0.
+    * `**` — a negative exponent produces a Rational in Ruby, which the model
+      does not have.
+    * the `Float` cases of the same bids — `numBin` promotes `Int × Float` to
+      `Float`, so `Integer#+` is only `int → int` because the *argument* type
+      is pinned by the table. -/
+def builtinSig : Ty → String → Option (List Ty × Ty)
+  | .int, "+" => some ([.int], .int)
+  | .int, "-" => some ([.int], .int)
+  | .int, "*" => some ([.int], .int)
+  | _, _ => none
+
 mutual
 
 /-- `infer Γ e = some (τ, Γ')` — `e` has type `τ` and leaves the environment
@@ -54,6 +91,20 @@ def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   | .vasgn .lvar x rhs =>
     match infer Γ rhs with
     | some (τ, Γ₁) => some (τ, envSet Γ₁ x τ)
+    | none => none
+  -- Binary send to a builtin, explicit receiver, no block. Every other send
+  -- shape — implicit self, wrong arity, a block, `vcall` — is `unknown`, which
+  -- is also what keeps `.self'` out of receiver position (see `KontOk.recvK`:
+  -- `evalExpr` picks the `.selfRecv` site *syntactically* for a literal `self`).
+  | .send (some recv) mname [arg] none =>
+    match infer Γ recv with
+    | some (τr, Γ₁) =>
+      match builtinSig τr mname with
+      | some ([τp], τret) =>
+        match infer Γ₁ arg with
+        | some (τa, Γ₂) => if τa = τp then some (τret, Γ₂) else none
+        | none => none
+      | _ => none
     | none => none
   | .seq es => inferSeq Γ es
   | .if' c t els =>
@@ -105,43 +156,6 @@ def inferIf (Γ : Env) (t : Expr) (els : Option Expr) : Option (Ty × Env) :=
 termination_by sizeOf t + sizeOf els
 
 end
-
-/-! ## The builtin signature table
-
-`static-soundness-poc.md` §5. The prelude-booted heap carries Ruby's core
-library, none of which is in any typed fragment, so `WellTyped` cannot quantify
-over it — builtins are carried by a **declared** signature instead.
-
-Every entry is a **proof obligation**, not an assumption we get to keep: for
-each one, the model's own implementation must be shown to conform
-(`Proof/StaticSoundness.lean` §…). That is the RBI-conformance obligation of
-`typed-portion-safety.md` §6, and our setting is better off than Sorbet's here —
-Sorbet trusts its RBIs with no runtime backstop, whereas the model *defines* the
-builtin, so conformance is a lemma.
-
-The table is keyed on the receiver's **static type**, which is enough at P0
-where `Ty` and the dispatch class are in bijection. P1 needs class names.
--/
-
-/-- Declared `(parameter types, return type)` of a builtin, or `none` for
-    "not in the table", which the checker reads as `unknown`.
-
-    Deliberately narrow: only entries whose conformance lemma is proved may
-    appear. Notable absences and why —
-
-    * `/` and `%` — `ZeroDivisionError`. Not a *type* error, so admitting them
-      would not endanger `check_sound`, but their conformance lemma needs a
-      side condition and they buy nothing at P0.
-    * `**` — a negative exponent produces a Rational in Ruby, which the model
-      does not have.
-    * the `Float` cases of the same bids — `numBin` promotes `Int × Float` to
-      `Float`, so `Integer#+` is only `int → int` because the *argument* type
-      is pinned by the table. -/
-def builtinSig : Ty → String → Option (List Ty × Ty)
-  | .int, "+" => some ([.int], .int)
-  | .int, "-" => some ([.int], .int)
-  | .int, "*" => some ([.int], .int)
-  | _, _ => none
 
 /-- The POC verdict lattice (doc §2.2): two-valued. There is deliberately no
     `reject` — a rejection is a claim about our rules and needs its own guard

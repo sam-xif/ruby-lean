@@ -1,4 +1,4 @@
-import RubyCore.Proof.TypeSafety
+import RubyCore.Proof.BuiltinConformance
 import RubyCore.Types.Core
 
 /-!
@@ -21,7 +21,7 @@ gets proved (doc §2.1).
 
 ## Shape of the invariant
 
-    Inv m  ≡  Flat m ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
+    Inv m  ≡  Flat m ∧ TableOk m.heap ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
 
 `CtlOk`/`KontOk` play the role the doc §4 assigns to `InFragment`: they simply
 have **no constructor** for the machine shapes outside the fragment, so the
@@ -36,6 +36,9 @@ namespace Static
 
 open Interp
 open RubyCore.Types
+
+-- The boot-heap `rfl`s of `tableOk_initHeap` walk the whole method table.
+set_option maxRecDepth 100000
 
 /-! ## 1. Values and locals -/
 
@@ -171,6 +174,22 @@ inductive KontOk : Env → Ty → List Kont → Prop where
       LoopOk Γ c body → KontOk Γ .nilT k → KontOk Γ τ (.whileCondK c body :: k)
   | whileBody {Γ τ c body k} :
       LoopOk Γ c body → KontOk Γ .nilT k → KontOk Γ τ (.whileBodyK c body :: k)
+  /-- The in-flight value is the **receiver** of a binary builtin send; the
+      argument expression runs next. The site is `.explicit` because `evalExpr`
+      picks it syntactically and `infer` rejects `self` in receiver position. -/
+  | recvK {Γ τ mname arg τp τret Γ₂ k} :
+      builtinSig τ mname = some ([τp], τret) →
+      infer Γ arg = some (τp, Γ₂) →
+      KontOk Γ₂ τret k →
+      KontOk Γ τ (.recvK mname [arg] .none .explicit :: k)
+  /-- The in-flight value is the **argument**; the receiver is already a value
+      carried by the kont, so its type is pinned by `ValueTy` rather than by
+      `infer`. -/
+  | argsK {Γ τ mname recv τr τret k} :
+      ValueTy recv τr →
+      builtinSig τr mname = some ([τ], τret) →
+      KontOk Γ τret k →
+      KontOk Γ τ (.argsK recv .explicit mname [] [] .none :: k)
 
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
     are not in the fragment, so no step can produce one. -/
@@ -180,9 +199,65 @@ def CtlOk (Γ : Env) (m : Machine) : Prop :=
   | .value v => ∃ τ, ValueTy v τ ∧ KontOk Γ τ m.kont
   | .jump _ => False
 
+/-- Every `builtinSig` entry still resolves in this heap. A *heap* condition,
+    so preservation must re-establish it — trivially here, since no step in the
+    fragment writes the method table (the fragment has no `def` and no class
+    reopening, `static-soundness-poc.md` §6). -/
+def TableOk (h : Heap) : Prop :=
+  IntBuiltinResolves h "+" "Integer#+" ∧
+  IntBuiltinResolves h "-" "Integer#-" ∧
+  IntBuiltinResolves h "*" "Integer#*"
+
 /-- **The invariant** handed to `invariant_sound_from`. -/
 def Inv (m : Machine) : Prop :=
-  Flat m ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
+  Flat m ∧ TableOk m.heap ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
+
+/-! ### Inversions used by the send cases -/
+
+theorem valueTy_int {v : Value} (h : ValueTy v .int) : ∃ a, v = .int a := by
+  cases v <;> simp_all [ValueTy, valueTy?]
+
+/-- The table is small and closed, so a successful lookup pins everything. -/
+theorem builtinSig_inv {τr τp τret : Ty} {mname : String}
+    (h : builtinSig τr mname = some ([τp], τret)) :
+    τr = .int ∧ τp = .int ∧ τret = .int ∧
+      (mname = "+" ∨ mname = "-" ∨ mname = "*") := by
+  cases τr
+  · simp only [builtinSig] at h
+    split at h <;> simp_all <;> exact h.2.symm.trans h.1
+  all_goals exact absurd h (by simp [builtinSig])
+
+/-- `evalExpr` chooses the send site *syntactically* from the receiver
+    expression (`Interp.lean:2582`); `infer` rejects `self`, so the site is
+    always `.explicit` in the fragment. -/
+theorem site_explicit {Γ : Env} {r : Expr} {x : Ty × Env} (h : infer Γ r = some x) :
+    (match r with | .self' => SendSite.selfRecv | _ => SendSite.explicit) = .explicit := by
+  cases r <;> try rfl
+  exact absurd h (by simp [infer])
+
+/-- Inversion for the send rule. Factored out of `step_ok` because the nested
+    `split at` needs `next`-bound names that are unreadable inline. -/
+theorem infer_send_inv {Γ : Env} {r arg : Expr} {mname : String} {τ : Ty} {Γ' : Env}
+    (h : infer Γ (.send (some r) mname [arg] none) = some (τ, Γ')) :
+    ∃ τr Γ₁ τp, infer Γ r = some (τr, Γ₁) ∧
+      builtinSig τr mname = some ([τp], τ) ∧
+      infer Γ₁ arg = some (τp, Γ') := by
+  simp only [infer] at h
+  split at h
+  · next τr Γ₁ hr =>
+    split at h
+    · next τp τret hsg =>
+      split at h
+      · next τa Γ₂ ha =>
+        split at h
+        · next hτ =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          exact ⟨τr, Γ₁, τp, hr, hsg, hτ ▸ ha⟩
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
 
 /-! ### 2.1 Environment update, and its agreement with `setLocal` -/
 
@@ -277,21 +352,22 @@ theorem LocalsOk_congr {m m' : Machine} (hf : Flat m) (hf' : Flat m')
 /-! ### 2.3 Building `Inv` for the machines the fragment steps to -/
 
 theorem inv_eval {m : Machine} {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env}
-    (hf : Flat m) (hl : LocalsOk Γ m)
+    (hf : Flat m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
     (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk Γ' τ m.kont) :
     Inv (withCtl m (.eval e)) :=
-  ⟨Flat.withCtl hf _, Γ, LocalsOk.withCtl hf hl _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨Flat.withCtl hf _, ht, Γ, LocalsOk.withCtl hf hl _, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {m : Machine} {Γ : Env} {v : Value} {τ : Ty}
-    (hf : Flat m) (hl : LocalsOk Γ m) (hv : ValueTy v τ) (hk : KontOk Γ τ m.kont) :
+    (hf : Flat m) (ht : TableOk m.heap) (hl : LocalsOk Γ m) (hv : ValueTy v τ)
+    (hk : KontOk Γ τ m.kont) :
     Inv (withCtl m (.value v)) :=
-  ⟨Flat.withCtl hf _, Γ, LocalsOk.withCtl hf hl _, ⟨τ, hv, hk⟩⟩
+  ⟨Flat.withCtl hf _, ht, Γ, LocalsOk.withCtl hf hl _, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {m : Machine} {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env} {k : Kont}
-    (hf : Flat m) (hl : LocalsOk Γ m)
+    (hf : Flat m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
     (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk Γ' τ (k :: m.kont)) :
     Inv (withKont m (.eval e) k) :=
-  ⟨Flat.withKont hf _ _, Γ, LocalsOk.withKont hf hl _ _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨Flat.withKont hf _ _, ht, Γ, LocalsOk.withKont hf hl _ _, ⟨τ, Γ', hinf, hk⟩⟩
 
 /-! ## 3. Progress and preservation, in one case analysis
 
@@ -307,7 +383,7 @@ def StepOk : StepResult → Prop
   | _ => False
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
-  obtain ⟨hf, Γ, hl, hc⟩ := h
+  obtain ⟨hf, htab, Γ, hl, hc⟩ := h
   unfold CtlOk at hc
   rcases hctl : m.ctl with e | v | j
   · -- ## control = eval e
@@ -318,19 +394,19 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     case int n =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf hl rfl hk
+      exact inv_value hf htab hl rfl hk
     case tru =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf hl rfl hk
+      exact inv_value hf htab hl rfl hk
     case fls =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf hl rfl hk
+      exact inv_value hf htab hl rfl hk
     case nil =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf hl rfl hk
+      exact inv_value hf htab hl rfl hk
     case var k x =>
       cases k
       case lvar =>
@@ -338,7 +414,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         obtain ⟨σ, hg, heq⟩ := hinf
         simp only [Prod.mk.injEq] at heq
         obtain ⟨rfl, rfl⟩ := heq
-        exact inv_value hf hl (hl x _ hg) hk
+        exact inv_value hf htab hl (hl x _ hg) hk
       all_goals (simp only [infer] at hinf; contradiction)
     case vasgn k x rhs =>
       cases k
@@ -348,7 +424,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i σ Γ₁ hrhs
           simp only [Option.some.injEq, Prod.mk.injEq] at hinf
           obtain ⟨rfl, rfl⟩ := hinf
-          exact inv_push hf hl hrhs (KontOk.asgn hk)
+          exact inv_push hf htab hl hrhs (KontOk.asgn hk)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case seq es =>
@@ -357,23 +433,23 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | nil =>
         simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl⟩ := hinf
-        exact inv_value hf hl rfl hk
+        exact inv_value hf htab hl rfl hk
       | cons e₁ rest =>
         cases rest with
         | nil =>
           simp only [inferSeq] at hinf
-          exact inv_eval hf hl hinf hk
+          exact inv_eval hf htab hl hinf hk
         | cons e₂ rest' =>
           simp only [inferSeq] at hinf
           split at hinf
           · rename_i σ Γ₁ h₁
-            exact inv_push hf hl h₁ (KontOk.seqCons hinf hk)
+            exact inv_push hf htab hl h₁ (KontOk.seqCons hinf hk)
           · exact absurd hinf (by simp)
     case if' c t els =>
       simp only [infer] at hinf
       split at hinf
       · rename_i σ Γ₁ hcnd
-        exact inv_push hf hl hcnd (KontOk.ifK hinf hk)
+        exact inv_push hf htab hl hcnd (KontOk.ifK hinf hk)
       · exact absurd hinf (by simp)
     case while' c body =>
       simp only [infer] at hinf
@@ -389,12 +465,34 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               subst hΓ₂
               simp only [Option.some.injEq, Prod.mk.injEq] at hinf
               obtain ⟨rfl, rfl⟩ := hinf
-              exact inv_push hf hl hcnd
+              exact inv_push hf htab hl hcnd
                 (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hk)
             · exact absurd hinf (by simp)
           · exact absurd hinf (by simp)
         · exact absurd hinf (by simp)
       · exact absurd hinf (by simp)
+    case send recv mname args blk =>
+      cases recv with
+      | none => exact absurd hinf (by simp [infer])
+      | some r =>
+        cases args with
+        | nil => exact absurd hinf (by simp [infer])
+        | cons arg extra =>
+          cases extra with
+          | cons _ _ => exact absurd hinf (by simp [infer])
+          | nil =>
+            cases blk with
+            | some b => exact absurd hinf (by simp [infer])
+            | none =>
+              obtain ⟨τr, Γ₁, τp, hr, hsg, ha⟩ := infer_send_inv hinf
+              -- `evalExpr` picks the send site by matching on the receiver
+              -- *expression*, and that match will not rewrite under `rw`, so
+              -- force it to compute. Every branch but `self` is `.explicit`,
+              -- and `infer` rejects `self`.
+              simp only [evalExpr]
+              cases r <;>
+                try exact inv_push hf htab hl hr (KontOk.recvK hsg ha hk)
+              exact absurd hr (by simp [infer])
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, hv, hk⟩ := hc
@@ -406,24 +504,24 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     | @seqNil Γ τ k hk' =>
       have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
-      exact inv_value hf' hl' hv hk'
+      exact inv_value hf' htab hl' hv hk'
     | @seqCons Γ τ e₁ es τ' Γ' k hseq hk' =>
       have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
       cases es with
       | nil =>
         simp only [inferSeq] at hseq
-        exact inv_push hf' hl' hseq (KontOk.seqNil hk')
+        exact inv_push hf' htab hl' hseq (KontOk.seqNil hk')
       | cons e₂ es' =>
         simp only [inferSeq] at hseq
         split at hseq
         · rename_i σ Γ₁ h₁
-          exact inv_push hf' hl' h₁ (KontOk.seqCons hseq hk')
+          exact inv_push hf' htab hl' h₁ (KontOk.seqCons hseq hk')
         · exact absurd hseq (by simp)
     | @asgn Γ τ x k hk' =>
       have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
-      exact ⟨Flat.withCtl (Flat.setLocal hf' x v) _, envSet Γ x τ,
+      exact ⟨Flat.withCtl (Flat.setLocal hf' x v) _, htab, envSet Γ x τ,
         LocalsOk.withCtl (Flat.setLocal hf' x v) (LocalsOk_setLocal hf' hl' hv) _,
         ⟨τ, hv, hk'⟩⟩
     | @ifK Γ τ t els τ' Γ' k hif hk' =>
@@ -440,8 +538,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq, Prod.mk.injEq] at hif
             obtain ⟨rfl, rfl⟩ := hif
             by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hf' hl' ht hk'
-            · simp only [hb]; exact inv_eval hf' hl' he hk'
+            · simp only [hb, if_true]; exact inv_eval hf' htab hl' ht hk'
+            · simp only [hb]; exact inv_eval hf' htab hl' he hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
       | none =>
@@ -454,8 +552,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq, Prod.mk.injEq] at hif
             obtain ⟨rfl, rfl⟩ := hif
             by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hf' hl' ht hk'
-            · simp only [hb]; exact inv_value hf' hl' rfl hk'
+            · simp only [hb, if_true]; exact inv_eval hf' htab hl' ht hk'
+            · simp only [hb]; exact inv_value hf' htab hl' rfl hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
     | @whileCond Γ τ c body k hloop hk' =>
@@ -464,14 +562,38 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_push hf' hl' hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+        exact inv_push hf' htab hl' hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
       · simp only [hb]
-        exact inv_value hf' hl' rfl hk'
+        exact inv_value hf' htab hl' rfl hk'
     | @whileBody Γ τ c body k hloop hk' =>
       have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
-      exact inv_push hf' hl' hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+      exact inv_push hf' htab hl' hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+    | @recvK Γ τ mname arg τp τret Γ₂ k hsg ha hk' =>
+      have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
+      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
+      have hsp : ∀ e, arg ≠ .splat e := by
+        rintro e rfl; exact absurd ha (by simp [infer])
+      have hkw : ∀ es, arg ≠ .kwargs es := by
+        rintro es rfl; exact absurd ha (by simp [infer])
+      have hfw : arg ≠ .fwd := by
+        rintro rfl; exact absurd ha (by simp [infer])
+      dsimp only
+      rw [startArgs_plain hsp hkw hfw]
+      exact inv_push hf' htab hl' ha (KontOk.argsK hv hsg hk')
+    | @argsK Γ τ mname recv τr τret k hrv hsg hk' =>
+      have hf' : Flat { m with kont := k } := Flat_congr rfl rfl hf
+      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl hl
+      obtain ⟨rfl, rfl, rfl, hname⟩ := builtinSig_inv hsg
+      obtain ⟨a, rfl⟩ := valueTy_int hrv
+      obtain ⟨b, rfl⟩ := valueTy_int hv
+      dsimp only
+      simp only [List.nil_append]
+      rcases hname with rfl | rfl | rfl
+      · rw [int_add_dispatch (m := { m with kont := k }) htab.1]; exact inv_value hf' htab hl' rfl hk'
+      · rw [int_sub_dispatch (m := { m with kont := k }) htab.2.1]; exact inv_value hf' htab hl' rfl hk'
+      · rw [int_mul_dispatch (m := { m with kont := k }) htab.2.2]; exact inv_value hf' htab hl' rfl hk'
   · -- ## control = jump: excluded by `CtlOk`
     rw [hctl] at hc
     exact hc.elim
@@ -499,9 +621,18 @@ theorem safety (m : Machine) (h : Inv m) : ¬ aboutToTypeStick m := by
   | unsupported r => rw [hr] at hbad; exact hbad
   | stuck msg => rw [hr] at hbad; exact hbad
 
+/-- The boot heap satisfies the table condition — **by `rfl`**, which is what
+    keeps `check_sound` unconditional. Were this only reachable by
+    `native_decide` the headline theorem would inherit `ofReduceBool`; L73's
+    reducibility discipline is what makes it come out this way. -/
+theorem tableOk_initHeap : TableOk Boot.initHeap :=
+  ⟨⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩,
+   ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩,
+   ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
+
 /-- Initiation, for the machine `Machine.init` builds. -/
 theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
-  refine ⟨⟨rfl, rfl, rfl⟩, [], ?_, ?_⟩
+  refine ⟨⟨rfl, rfl, rfl⟩, tableOk_initHeap, [], ?_, ?_⟩
   · intro x τ hg; exact absurd hg (by simp [envGet?])
   · unfold check at h
     show CtlOk [] (Machine.init p)
@@ -553,10 +684,29 @@ example : check egLoop = .accept := by
 theorem egLoop_safe : ∀ r, ReachableResult (Machine.init egLoop) r → ¬ typeStuck r :=
   check_sound (by simp [check, egLoop, infer, inferSeq, envSet])
 
-/-- The ratchet's default. A `send` is outside P0, so the checker abstains —
-    it does **not** reject. -/
-example : check (.send (some (.int 1)) "+" [.int 2] none) = .unknown := by
-  simp [check, infer]
+/-- `(x + 1) * 2` with `x` a local — the P0b program shape. -/
+def egArith : Expr :=
+  .seq [ .vasgn .lvar "x" (.int 3),
+         .send (some (.send (some (.var .lvar "x")) "+" [.int 1] none))
+               "*" [.int 2] none ]
+
+example : check egArith = .accept := by
+  simp [check, egArith, infer, inferSeq, builtinSig, envSet, envGet?]
+
+theorem egArith_safe :
+    ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
+  check_sound (by simp [check, egArith, infer, inferSeq, builtinSig, envSet, envGet?])
+
+/-- The ratchet's default. `/` is not in `builtinSig` (its conformance lemma is
+    not proved — `ZeroDivisionError`), so the checker abstains. It does **not**
+    reject: the program is perfectly fine, we just make no claim. -/
+example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
+  simp [check, infer, builtinSig]
+
+/-- A real type error inside the fragment: `1 + true`. Still `unknown`, not
+    `reject` — P0 has no reject verdict (doc §2.2). -/
+example : check (.send (some (.int 1)) "+" [.tru] none) = .unknown := by
+  simp [check, infer, builtinSig]
 
 /-- A genuine type disagreement inside the fragment is `unknown` too: P0 has no
     union type, so the branches cannot be joined. -/

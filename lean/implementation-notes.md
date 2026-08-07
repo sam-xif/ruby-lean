@@ -1989,3 +1989,40 @@ Discharging `builtinSig`'s entries against the interpreter. Choices:
   `Kont` shapes. Its three `arg ≠ …` side conditions are `startArgs`'s own special cases
   (splat, kwargs, fwd — `Interp.lean:1832`), all of which `infer` already rejects, so the
   caller discharges them from the typing hypothesis rather than carrying them.
+
+## L85 — P0b: wiring `send` into the checker and the proof
+
+- **`TableOk` is a conjunct of `Inv`, not a hypothesis of `check_sound`.** Builtin
+  resolution is a *heap* property, so preservation must re-establish it; it does so
+  trivially, because no step in the fragment writes the method table. Keeping it inside
+  `Inv` rather than on the theorem is what preserves the unconditional headline statement.
+- **`tableOk_initHeap` is `rfl`.** The whole point: had the discharge needed `native_decide`
+  the theorem would carry `ofReduceBool`. It needs `set_option maxRecDepth 100000` (the
+  `rfl`s walk the boot method table) but nothing worse. For the *prelude-booted* heap at P1
+  this will likely flip to `native_decide`, and then it must move to a separate concrete
+  file (the L81 split), never into `StaticSoundness.lean`.
+- **`IntBuiltinResolves` is stated at `.int 0`, not `∀ a`.** `lookup_int_const` (`rfl`)
+  says resolution ignores the integer's value, since `lookup` reaches the heap only through
+  `classOf`. Keeps the hypothesis first-order and the `rfl` discharge small.
+- **Two new `KontOk` constructors, asymmetric on purpose.** `recvK` types the *argument
+  expression* with `infer`; `argsK` types the *receiver value* with `ValueTy`, because by
+  then the receiver is a value carried inside the kont and there is no expression left to
+  infer from. Getting this backwards is the obvious trap.
+- **`cases r` is needed for the send site.** `evalExpr` chooses `.selfRecv` vs `.explicit`
+  by matching on the receiver *expression* (`Interp.lean:2582`). That match does not rewrite
+  under `rw` or `simp only [site_explicit hr]` — the motive does not line up — so the only
+  reliable move is to force it to compute. 40 goals, all discharged by one `try exact`, plus
+  the `self'` case by contradiction with `infer`.
+- **`dsimp only` before `rw` in the `applyKont` cases.** After `generalize hK : m.kont = K`
+  and `cases hk`, the goal still holds an unreduced `match K with …`. Cases that finish with
+  `exact` never notice (defeq does the work), but `rw` needs the iota reduction first. This
+  bit twice; if a `rw` into an `applyKont` arm reports "did not find an occurrence" of a
+  pattern that is plainly there, this is why.
+- **Pin the machine when rewriting with a dispatch lemma**:
+  `int_add_dispatch (m := { m with kont := k }) htab.1`. The implicit `m` is solved from the
+  `IntBuiltinResolves m.heap …` argument, which pins it to the *outer* machine, while the
+  goal is about the kont-popped one. The heaps are definitionally equal; the elaborator will
+  not go looking.
+- **`infer_send_inv` is a standalone lemma** rather than inline `split at`. The nested
+  splits need `next`-bound names (`rename_i` miscounts and silently destructures the
+  environment list instead), which is unreadable inside an already-large case analysis.
