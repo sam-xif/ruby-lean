@@ -168,15 +168,66 @@ def cmd_sorbet(args) -> int:
     return 1 if (summary["mismatches"] or summary["check_violations"]) else 0
 
 
+def cmd_checker_sample(args) -> int:
+    """Print generated programs and nothing else — no srb, no CRuby, no Lean, so
+    it works with none of the toolchain installed. For eyeballing what a
+    population actually looks like before spending minutes checking it."""
+    from . import fragment_fuzz, sig_gen
+
+    count = args.count if args.count is not None else 4
+    if args.kind == "siggen":
+        if args.sigil == "strict" and args.coverage < 1.0:
+            print("--sigil strict forces every method to carry a sig (srb 7017); "
+                  "use --sigil true for partial coverage", file=sys.stderr)
+            return 2
+        # Over-generate when filtering, so `--intent` still yields `count`
+        # programs instead of however many happen to fall in the slice.
+        n = count * 4 if args.intent else count
+        samples = sig_gen.sample(n, args.seed, sigil=args.sigil,
+                                 coverage=args.coverage, loose=args.loose)
+    else:
+        n = count * 4 if args.intent else count
+        samples = fragment_fuzz.sample(n, args.seed)
+
+    if args.intent:
+        samples = [s for s in samples if s.intent == args.intent]
+        if not samples:
+            kinds = sorted({s.intent for s in (
+                sig_gen.sample(12, 0) if args.kind == "siggen"
+                else fragment_fuzz.sample(12, 0))})
+            print(f"no `{args.intent}` programs; {args.kind} intents are "
+                  f"{', '.join(kinds)}", file=sys.stderr)
+            return 2
+    samples = samples[:count]
+
+    for s in samples:
+        mut = getattr(s, "mutation", None)
+        label = f"{s.name}  intent={s.intent}" + (f"  mutation={mut}" if mut else "")
+        print(f"# ---- {label} " + "-" * max(0, 66 - len(label)))
+        print(s.source.rstrip())
+        print()
+    # Footer on stderr so `> out.rb` stays clean; flush first or the terminal
+    # shows it before the programs it describes.
+    sys.stdout.flush()
+    print(f"# {len(samples)} program(s); reproduce with "
+          f"--kind {args.kind} --seed {args.seed}", file=sys.stderr)
+    return 0
+
+
 def cmd_checker(args) -> int:
     from .fragment_fuzz import run_fuzz
     from .sorbet import SorbetUnavailable, require_toolchain
+
+    # `sample` only generates, so it must not demand the toolchain.
+    if args.subcommand == "sample":
+        return cmd_checker_sample(args)
 
     try:
         require_toolchain(runtime=False)
     except SorbetUnavailable as e:
         print(e, file=sys.stderr)
         return 2
+    count = args.count if args.count is not None else 60
     if args.subcommand == "siggen":
         from .sig_gen import run_siggen
 
@@ -186,14 +237,14 @@ def cmd_checker(args) -> int:
             return 2
         out_dir = _out_dir(args.out, "checker-siggen")
         summary = run_siggen(
-            args.count, args.seed, out_dir, sigil=args.sigil,
+            count, args.seed, out_dir, sigil=args.sigil,
             coverage=args.coverage, loose=args.loose, timeout=args.timeout,
         )
         _print_summary(summary, out_dir)
         return 1 if summary["violations"] else 0
 
     out_dir = _out_dir(args.out, "checker-fuzz")
-    summary = run_fuzz(args.count, args.seed, out_dir, timeout=args.timeout)
+    summary = run_fuzz(count, args.seed, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
     # Pinned-zero violations fail. A wellformed program that is not accepted is
     # a *checker* regression rather than a relation violation, but it is still a
@@ -272,8 +323,9 @@ def main(argv=None) -> int:
         help="fuzz the P0 checker fragment and relate `check` to srb "
              "(static-soundness-poc.md §7)",
     )
-    p_checker.add_argument("subcommand", choices=["fuzz", "siggen"])
-    p_checker.add_argument("--count", type=int, default=60)
+    p_checker.add_argument("subcommand", choices=["fuzz", "siggen", "sample"])
+    p_checker.add_argument("--count", type=int, default=None,
+                           help="programs to generate (default 60; 4 for `sample`)")
     p_checker.add_argument("--seed", type=int, default=0)
     p_checker.add_argument("--timeout", type=float, default=300.0)
     p_checker.add_argument("--out", help="report directory")
@@ -283,6 +335,9 @@ def main(argv=None) -> int:
                            help="siggen only: fraction of methods carrying a sig")
     p_checker.add_argument("--loose", type=float, default=0.25,
                            help="siggen only: fraction of sigs widened to a supertype")
+    p_checker.add_argument("--kind", choices=["siggen", "fuzz"], default="siggen",
+                           help="sample only: which generator to draw from")
+    p_checker.add_argument("--intent", help="sample only: show just this intent")
     p_checker.set_defaults(func=cmd_checker)
 
     p_rep = sub.add_parser("replay", help="re-run a persisted corpus directory")

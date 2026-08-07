@@ -801,3 +801,15 @@ Annotated Ruby, generated type-first. Spec: `../docs/semantics/static-soundness-
 - **Only `gen-typed-rejected` fails the run.** A generator emitting programs it wrongly
   believes are well typed invalidates every other number in the report. The unsoundness cells
   are *findings*, the same stance `sorbet_check.py` takes on `unsoundness-witness`.
+- **`checker sample` prints programs and nothing else**, and deliberately skips
+  `require_toolchain`: eyeballing a population should work with no `srb`, no CRuby and no
+  Lean binary present. It also means `--count` had to become `default=None` and be resolved
+  per-subcommand (4 for `sample`, 60 for the checking arms), rather than saddling a display
+  command with a count sized for a batch run.
+- **`--intent` over-generates before filtering.** Returning however many programs happen to
+  fall in the requested slice would make `--count 3 --intent illtyped` silently show fewer
+  than three; an unknown intent lists the real ones rather than printing nothing.
+- **The footer goes to stderr, after an explicit `stdout.flush()`**, so `> out.rb` stays
+  clean while the terminal still shows it *after* the programs it describes. Every emitted
+  line is a `#` comment or program text, and method names are sample-prefixed, so a
+  redirected multi-program dump is still loadable Ruby.

@@ -188,3 +188,61 @@ def test_every_mutation_kind_is_reachable():
     """A kind that never fires would silently shrink the injected population."""
     kinds = {s.mutation for s in sample(120, 11) if s.intent == "illtyped"}
     assert set(MUTATIONS) <= kinds, set(MUTATIONS) - kinds
+
+
+# --------------------------------------------------------------------------
+# The `sample` subcommand (display only — needs no toolchain)
+# --------------------------------------------------------------------------
+
+
+def _sample_args(**kw):
+    from argparse import Namespace
+
+    base = dict(kind="siggen", count=None, seed=0, intent=None,
+                sigil="true", coverage=1.0, loose=0.25)
+    base.update(kw)
+    return Namespace(**base)
+
+
+def test_sample_defaults_to_a_readable_handful(capsys):
+    from difftest.cli import cmd_checker_sample
+
+    assert cmd_checker_sample(_sample_args()) == 0
+    out = capsys.readouterr().out
+    assert out.count("# ---- ") == 4  # not the 60 the checking arms default to
+
+
+def test_sample_intent_filter_still_yields_count_programs(capsys):
+    """Filtering must over-generate, not return however many happen to land in
+    the slice — otherwise `--count 3 --intent illtyped` silently shows fewer."""
+    from difftest.cli import cmd_checker_sample
+
+    assert cmd_checker_sample(_sample_args(count=3, intent="illtyped")) == 0
+    out = capsys.readouterr().out
+    assert out.count("# ---- ") == 3
+    assert out.count("intent=illtyped") == 3
+    assert "mutation=" in out
+
+
+def test_sample_rejects_an_unknown_intent_and_lists_the_real_ones(capsys):
+    from difftest.cli import cmd_checker_sample
+
+    assert cmd_checker_sample(_sample_args(intent="nope")) == 2
+    err = capsys.readouterr().err
+    assert "wellformed" in err and "illtyped" in err
+
+
+def test_sample_refuses_the_incoherent_knob_combination(capsys):
+    from difftest.cli import cmd_checker_sample
+
+    assert cmd_checker_sample(_sample_args(sigil="strict", coverage=0.5)) == 2
+    assert "7017" in capsys.readouterr().err
+
+
+def test_sample_can_draw_from_the_fragment_fuzzer(capsys):
+    from difftest.cli import cmd_checker_sample
+
+    assert cmd_checker_sample(_sample_args(kind="fuzz", count=2)) == 0
+    out = capsys.readouterr().out
+    # the plain-Ruby fragment carries no annotations at all
+    assert "sorbet-runtime" not in out and "sig {" not in out
