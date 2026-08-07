@@ -1890,3 +1890,57 @@ first asserts the witness set is non-empty, so it cannot pass vacuously).
 Implementation note: the "a sig precedes this def" flag is threaded through the single
 traversal rather than split into a second pass, because the natural two-function shape
 requires a same-size mutual call and has no termination measure.
+
+## L83 — P0a of the static-soundness POC (`Types/Core.lean`, `Proof/StaticSoundness.lean`)
+
+Design doc: `../docs/semantics/static-soundness-poc.md`. The nontrivial choices, and the
+alternatives rejected.
+
+- **The typing judgment is *defined by* the executable checker.** `infer Γ e = some (τ, Γ')`
+  is the judgment; there is no separate `inductive HasType` to keep in agreement with it.
+  This buys two things: no sync obligation between a `Prop` and the decision procedure, and
+  **no completeness proof owed** — `none` simply means `unknown`, which is exactly the POC's
+  verdict lattice. The cost is that the judgment is not usable for inversion in the pretty
+  way an inductive would be; in practice `split at h` on `infer`'s own `match` does the job.
+- **Environments thread input→output** (`Env → Expr → Option (Ty × Env)`). Ruby locals are
+  *assigned*, not declared, so a non-flow-sensitive `Γ ⊢ e : τ` cannot type `x = 1; x`.
+- **`envSet` replaces in place** rather than prepending a shadowing entry, so `Env` equality
+  is canonical and therefore *usable as a check*. Both the `if`-merge (branches must agree
+  on the environment) and the loop-stability condition are decided by `Γ₁ = Γ₂`, which a
+  prepend-based representation would make false for environments that ought to be equal.
+- **`while` requires environment-stability at `Γ`; `if` does not.** The loop re-enters its
+  condition with whatever the body leaves, so without `infer Γ c = (_, Γ)` and
+  `infer Γ body = (_, Γ)` there is no single environment to index `whileCondK`/`whileBodyK`
+  by. This is the P0 stand-in for a fixpoint and is the one place the fragment is more
+  restrictive than it needs to be. `if` needs no such condition: `ifK` is indexed at the
+  *post-condition* environment, which falls out of `CtlOk`'s `.eval` case for free.
+- **No separate `InFragment` predicate**, though the design doc §4 called for one. `KontOk`
+  has no constructor for 43 of the machine's 48 `Kont`s and `infer` returns `none` off
+  fragment, so the restriction is already carried by the typing relations. The whole ~40-way
+  `Expr` case split is discharged by `cases e <;> try (simp only [infer] at hinf;
+  contradiction)`.
+- **`Flat`** (one frame, `captured = none`) is assumed, because `getLocal`/`setLocal` walk
+  the captured chain and so reduce to nothing without it. Four lemmas ride on it
+  (`getLocal_flat`, `setLocal_owner_zero`, `setLocal_frame`, `getLocal_setLocal`). **This is
+  the entry to delete at P1** — `send` pushes frames and `Flat` becomes false. It is stated
+  as a conjunct of `Inv` rather than baked into the other definitions precisely so that
+  deleting it is a local edit.
+- **Progress and preservation are bundled** into `StepOk : StepResult → Prop` (`.next` ⇒
+  `Inv`, `.done` ⇒ `True`, everything else ⇒ `False`) so the 48-way `Kont` split and the
+  40-way `Expr` split are each walked exactly once. `.uncaught` being `False` under `StepOk`
+  *is* the progress obligation; `consecution` and `safety` are three lines each off it.
+- **Proved against `stepFn`/`SmallStep`, not the inductive `Step` of `Step.lean`.** `Step`
+  covers only the control core and would have to be extended (and its adequacy redone) for
+  every fragment widening. Going through `invariant_sound_from` costs a larger case analysis
+  and buys immunity from that — and the larger analysis is what the previous bullet makes
+  cheap.
+- **Examples are discharged by `simp` over equation lemmas, not `decide`.** `infer` is
+  well-founded-recursive (three mutually recursive functions over `Expr`/`List Expr`/
+  `Option Expr` with `sizeOf` measures), so kernel reduction sticks. `native_decide` would
+  work but costs `ofReduceBool`, breaking the axiom baseline for no benefit at this size. If
+  P1 programs get big enough that `simp` is slow, the fix is a structurally-recursive
+  reformulation of `infer`, not `native_decide`.
+- **`check_sound` is over `Machine.init`, `sound_from` over any `m₀` with `Inv`.** P0a's
+  fragment issues no sends, so the prelude is inert and the no-prelude start is sound.
+  Stating the general form separately means the prelude-booted start `SorbetSafety.lean`
+  insists on is an *instance* at P0b rather than a restatement.
