@@ -2156,3 +2156,30 @@ RubyCore — hashes, arrays, blocks, ivars.
 - **`undecidable` also fails the `sigread` run.** The generator only emits programs the
   pipeline can handle, so a desugar/decode failure there is a pipeline regression rather than
   honest abstention — unlike `checker fuzz`, where `unknown` is a legitimate outcome.
+
+## L90 — P1b step 1: `Flat` deleted, and it was cheaper than L83 predicted
+
+L83 flagged `Flat` (one frame, `captured = none`) as "the entry to delete at P1", and §8.1(2)
+priced frame-store work as P1's dominant cost. Deleting it turned out to be small, for a
+reason worth recording:
+
+- **Two of `Flat`'s three clauses were never load-bearing.** `stack = [0]` and
+  `frames.size = 1` were added so the `getLocal`/`setLocal` fuel recursions would reduce. They
+  are not needed: `getLocal`'s fuel is `m.frames.size + 1`, *always* a successor, so
+  `Machine.getLocal.go` unfolds once whatever the array size. Only `captured = none` on the
+  **current** frame does any work.
+- **`FrameOk` is therefore `stack ≠ [] ∧ curFid m < frames.size ∧ captured = none`.** The
+  bound replaces `frames.size = 1` and is what `getD_set!_self` needs; a *stack* of frames
+  satisfies it, which is the precondition methods need.
+- **The `curFid` indirection is what made the rename mechanical.** Every lemma that said
+  "frame 0" now says "frame `curFid m`", and the only new obligation anywhere is
+  `curFid m' = curFid m`, discharged from stack equality by `simp [curFid, hs]`.
+- **`LocalsOk_congr` gained a `stack` hypothesis.** With a fixed frame 0 it needed only
+  `frames` equality; with `curFid` it needs the stack too, or the two sides name different
+  frames. Callers pass `rfl` twice — the machines differ only in `ctl`/`kont`.
+- **Only `initiation` needed real repair**, because `⟨rfl, rfl, rfl⟩` no longer typechecks
+  against the new clauses; `simp [Machine.init, Machine.initOn]` discharges them.
+
+Cost: one file, no change to `check`, no change to the axiom baseline, and the fragment is
+byte-identical. Worth noting against L83's prediction — the frame-store cost is real but it
+sits in the *env-stack* generalization (P1b step 2), not in local access.
