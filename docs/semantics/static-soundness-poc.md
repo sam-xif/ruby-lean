@@ -368,7 +368,10 @@ population therefore guards the three pinned zeros as well, before P1 has done a
 |---|---|---|
 | **P0a** | `Ty`; `KontOk`/`CtlOk`/`Inv` over `Machine`. Fragment: literals, locals, `if`, `while`, `seq`. **No `send`.** | **DONE** (2026-08-07) — `check_sound` proved, axiom-clean, two worked examples. |
 | **P0b** | `send` for `Integer` builtins only + the signature table of §5. Fragment gains `1 + 2`. | **DONE** (2026-08-07) — three entries, conformance proved, `check_sound` still unconditional. See §8.2. |
-| **P1** | User classes, sigs, single inheritance, ivars, `.new`, user method dispatch. | A corpus program with real methods accepted and proved safe. |
+| **P1a** | The sig **reader**: `Expr → Ty` over Sorbet's type grammar, and sig-to-`def` association. Feeds `rubycore --sigs`; does **not** feed `accept` (§8.3). | The reader recovers the types `checker siggen` declared, over a generated population. |
+| **P1b** | Method dispatch in the *proof*: frames, `frameK`, per-frame `LocalsOk`, `Flat` deleted. Sig-free programs (§8.3(c)). | A program with a real `def` and call accepted and proved safe. |
+| **P1c** | User classes, single inheritance, ivars, `.new`. | A corpus program with methods on a class proved safe. |
+| **P1d** | The two-machine argument of §8.3(a), which is what finally admits sigs to the proved fragment. | `SorbetSafe` for an annotated program, via the stripped one. |
 | **P2** | `check` wired as a total executable into `sorbet check` + difftest, both directions of §7. | **DONE** (2026-08-07) — three zeros hold on the corpus and on a 300-program fuzz run; baseline recorded. See §7.4. |
 | **P3** | Widen by one axis — `T.nilable` + narrowing, **or** arrays with element types. | `unknown` down, zero held. |
 | **P4** | `T.untyped` re-enters — the gradual boundary, and where `typed-portion-safety.md` resumes. | — |
@@ -417,6 +420,50 @@ on the receiver *expression* (`Interp.lean:2582`), and that match will not rewri
 receiver, exactly one argument, no block, and a method in the three-entry table. Widening
 the table is now a `rfl` lemma plus a three-line instantiation of `int_bin_dispatch`; that
 cheapness is the point of the parameterization, and it is the ratchet's next easy win.
+
+### 8.3 [✗→] P1 and the shim wall — why sigs cannot enter the *proved* fragment yet
+
+The P1 row below reads "user classes, sigs, …" as though sigs were one feature among
+several. Measured, they are not [V, step counts from `rubycore --trace`]:
+
+| program | steps |
+|---|---|
+| `require "sorbet-runtime"` + `extend T::Sig` | 13 |
+| + `sig {...}` + `def f(a)` | 230 |
+| + one call `f(2)` | 486 |
+| + a second call `f(3)` | 742 |
+| the same `def`/call with **no annotations** | 15 |
+
+So sig registration costs ~217 steps and **every sig'd call costs ~256 more** (exactly 256,
+from the two-call delta), against ~7 for an unwrapped call. Those steps are the `T` shim
+(L80) executing as ordinary RubyCore: hashes, arrays, blocks, ivars, string formatting.
+
+**The consequence is structural, not a matter of effort.** `Inv` works by *restriction* —
+`KontOk` has constructors only for admitted `Kont`s (§8.1(1)). The shim leaves any small
+fragment on its first step, so `Inv` would be false immediately after `sig` is evaluated.
+No amount of widening the P0 fragment fixes this; the shim's execution touches essentially
+the whole language.
+
+Three ways out, none free:
+
+- **(a) Two-machine gradual-guarantee argument.** Prove `TypeSafe` for the **stripped**
+  program and transfer to the annotated one. The transfer is not identity: the annotated
+  program can raise *blame* where the stripped one cannot, so the annotated conclusion is
+  `SorbetSafe` (blame carved out, `SorbetSafety.lean:76`), not `TypeSafe`. `sig_strip.rb`
+  already implements the `e ⊑ e'` direction and `types-and-preservation.md` §C.3 already
+  frames it. A one-time metatheorem rather than per-program work — and the most principled
+  route.
+- **(b) Bring the shim into the fragment.** Requires an invariant that survives arbitrary
+  prelude code, i.e. abandoning restriction as the proof technique. Not tractable at this
+  scale.
+- **(c) Keep the proved fragment sig-free.** `check` reads sigs (it must, to stay relevant
+  to Sorbet) but returns `unknown` on programs containing them, exactly as it does today.
+  Proof effort goes into *methods* — frames, `frameK`, per-frame locals — which is the
+  frame-store cost §8.1(2) predicted and which is needed under any of the three routes.
+
+**P1 takes (c), and P1's milestone row is split accordingly.** (a) is the intended
+successor and nothing in (c) is wasted under it: the stripped program is precisely what (a)
+proves about.
 
 ### 8.1 P0a as built — what the measurement said
 

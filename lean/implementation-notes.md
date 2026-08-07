@@ -2088,3 +2088,37 @@ Difftesting `check` against `srb`, per `docs/semantics/static-soundness-poc.md` 
   implementation limit). The alternative, recording unrecognised codes and continuing, makes
   the exclusion list a place to quietly park disagreements; that is exactly the erosion the
   pinned zeros exist to prevent.
+
+## L88 — P1 scoping: the shim wall, measured
+
+Before writing any P1 Lean, `rubycore --trace` was used to price sigs. The numbers decided
+the milestone split, so they are recorded here rather than re-derived:
+
+| program | steps |
+|---|---|
+| `require "sorbet-runtime"` + `extend T::Sig` | 13 |
+| + `sig {...}` + `def f(a)` | 230 |
+| + `f(2)` | 486 |
+| + `f(3)` | 742 |
+| the same `def`/call **unannotated** | 15 |
+
+Registration ~217 steps; **every sig'd call ~256 more** (exactly 256, from the two-call
+delta) against ~7 unwrapped. Those steps are the `T` shim (L80) running as ordinary
+RubyCore — hashes, arrays, blocks, ivars.
+
+- **This is why `Inv`'s technique does not stretch to sigs.** `Inv` works by *restriction*:
+  `KontOk` has constructors only for admitted `Kont`s, and everything else is discharged by
+  contradiction (L83). The shim leaves any small fragment on its first step, so `Inv` is
+  false immediately after `sig` is evaluated. Widening the fragment cannot fix it — the
+  shim touches essentially the whole language.
+- **P1 therefore keeps the proved fragment sig-free** and spends its proof effort on
+  *methods* (frames, `frameK`, per-frame locals, `Flat` deleted). That work is needed under
+  every option, so none of it is wasted.
+- **The intended successor is the two-machine argument**: prove `TypeSafe` for the
+  *stripped* program and transfer to the annotated one. Note the conclusion weakens on
+  transfer — the annotated program can raise blame where the stripped one cannot, so the
+  annotated statement is `SorbetSafe` (blame carved out, `Proof/SorbetSafety.lean:76`), not
+  `TypeSafe`. `difftest/ruby/sig_strip.rb` already implements the `e ⊑ e'` direction.
+- **The sig *reader* is still built first (P1a) and is not blocked by any of this**, because
+  reading a declared type off the AST is a static question. It just cannot feed `accept`
+  until the machine-side story exists, so sig-bearing programs stay `unknown`.
