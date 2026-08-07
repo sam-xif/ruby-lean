@@ -77,6 +77,90 @@ def builtinSig : Ty → String → Option (List Ty × Ty)
   | .int, "*" => some ([.int], .int)
   | _, _ => none
 
+/-! ## The refutation pass
+
+`static-soundness-poc.md` §2.2 deferred a `reject` verdict; this supplies it, as
+a **second pass independent of `infer`**. The separation is deliberate: `infer`'s
+`none` conflates "outside the fragment" with "ill-typed", and threading a third
+value through it would touch every `KontOk` constructor and every case of the
+preservation proof for no gain. `check_sound` is about `accept` and is untouched
+by anything here.
+
+**What `reject` claims.** Only that *our rules refute the program* — not that it
+will fail at runtime. `if false then 1 + nil else 0 end` is rejected and is
+perfectly safe. That asymmetry is inherent (`typed-portion-safety.md` §8.1) and
+is why the guard on `reject` is a difftest direction — `reject ⇒ srb rejects` —
+rather than a Lean theorem. Verified for the cases below [V].
+
+**Bias toward `unknown`.** Every source of doubt resolves to `unknown`:
+a receiver or argument whose type is not *unconditional*, a method absent from
+`builtinSig`, or any expression outside the fragment's spine.
+-/
+
+/-- The type of an expression when it is **unconditional** — literals, and sends
+    whose operands are themselves unconditional. Deliberately takes no
+    environment, so a local variable is always `none`: `q = 1; q + nil` is
+    `unknown` here though `srb` rejects it [V]. That is incompleteness, which
+    the ratchet is allowed to have; it is also the obvious next widening. -/
+def defTy (e : Expr) : Option Ty :=
+  match e with
+  | .int _ => some .int
+  | .tru => some .bool
+  | .fls => some .bool
+  | .nil => some .nilT
+  | .send (some r) mname [a] none =>
+    match defTy r with
+    | some τr =>
+      match builtinSig τr mname with
+      | some ([τp], τret) =>
+        match defTy a with
+        | some τa => if τa = τp then some τret else none
+        | none => none
+      | _ => none
+    | none => none
+  | _ => none
+termination_by sizeOf e
+
+/-- Does the table *definitely* refute this call? Requires the receiver and the
+    argument to have unconditional types **and** the method to be in the table.
+
+    A method the table does not carry is `false`, not `true`: the table is
+    narrow on purpose (`/` is absent but perfectly valid), so absence means "no
+    opinion". `1.foo(2)` is therefore `unknown` here even though `srb` rejects it
+    with 7003 [V] — again incompleteness, never unsoundness. -/
+def tableRefutes (r : Expr) (mname : String) (a : Expr) : Bool :=
+  match defTy r, defTy a with
+  | some τr, some τa =>
+    match builtinSig τr mname with
+    | some ([τp], _) => τa != τp
+    | _ => false
+  | _, _ => false
+
+mutual
+
+/-- Refutation: is there a call anywhere on the fragment's spine that the table
+    refutes? Recursion stops at any construct outside the fragment, so an
+    unsupported node hides everything below it — the conservative direction. -/
+def illTyped (e : Expr) : Bool :=
+  match e with
+  | .seq es => illTypedAny es
+  | .if' c t els =>
+    illTyped c || illTyped t || (match els with | some e' => illTyped e' | none => false)
+  | .while' c b => illTyped c || illTyped b
+  | .vasgn _ _ rhs => illTyped rhs
+  | .send (some r) mname [a] none =>
+    illTyped r || illTyped a || tableRefutes r mname a
+  | _ => false
+termination_by sizeOf e
+
+def illTypedAny (es : List Expr) : Bool :=
+  match es with
+  | [] => false
+  | e :: rest => illTyped e || illTypedAny rest
+termination_by sizeOf es
+
+end
+
 mutual
 
 /-- `infer Γ e = some (τ, Γ')` — `e` has type `τ` and leaves the environment
