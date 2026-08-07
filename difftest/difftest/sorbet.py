@@ -321,6 +321,68 @@ class FragmentChecker:
         return FragmentResult(bool(d["in_fragment"]), tuple(d.get("violations", [])))
 
 
+# --------------------------------------------------------------------------
+# The static checker: what `check` says
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CheckResultLean:
+    """`rubycore --check`: the P0 static checker's verdict
+    (`lean/RubyCore/Types/Core.lean`).
+
+    `accept` is licensed by `Proof/StaticSoundness.check_sound`; `reject` is a
+    claim about our rules only and carries no theorem; `unknown` claims nothing.
+    """
+
+    verdict: str  # accept | reject | unknown
+    inferred_type: str | None
+
+    def to_json(self) -> dict:
+        return {"verdict": self.verdict, "type": self.inferred_type}
+
+
+class StaticChecker:
+    """Ask the Lean model for the static checker's verdict.
+
+    Same shape and same rationale as `FragmentChecker`: a static query against
+    the binary that carries the semantics, so the checker cannot drift into a
+    separate reimplementation of itself.
+    """
+
+    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
+                 runner: CRubyRunner | None = None):
+        root = Path(__file__).resolve().parents[2]
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.runner = runner or CRubyRunner()
+
+    def check(self, source: str) -> CheckResultLean | None:
+        """None when the program cannot be desugared or decoded — "we cannot
+        say". Deliberately distinct from `unknown`, which is the checker having
+        looked and abstained; conflating them would let pipeline breakage read
+        as honest abstention and quietly flatter the ratchet."""
+        import json as _json
+
+        proc = subprocess.run(
+            [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
+            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if proc.returncode != 0:
+            return None
+        lean = subprocess.run(
+            [str(self.lean_bin), "--check"],
+            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if lean.returncode != 0:
+            return None
+        try:
+            d = _json.loads(lean.stdout)
+        except ValueError:
+            return None
+        return CheckResultLean(str(d["verdict"]), d.get("type"))
+
+
 # Same desugar-and-export snippet the Lean SUT uses; duplicated as a module-level
 # constant here to avoid importing `sut` (which imports `compare`, which imports
 # this module).

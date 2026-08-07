@@ -160,9 +160,12 @@ def cmd_sorbet(args) -> int:
     out_dir = _out_dir(args.out, "sorbet-check")
     summary = run_check(cases, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
-    # Exit 1 on a *declaration mismatch* only. Unsoundness witnesses are
-    # findings, not failures — the corpus exists to collect them.
-    return 1 if summary["mismatches"] else 0
+    # Exit 1 on a *declaration mismatch* or a **pinned-zero violation** of the
+    # checker relation (static-soundness-poc.md §7). Unsoundness witnesses stay
+    # findings, not failures — the corpus exists to collect them — but a program
+    # where `check` and `srb` genuinely disagree is a bug in one of them, and
+    # the whole point of the zeros is that they are not negotiable.
+    return 1 if (summary["mismatches"] or summary["check_violations"]) else 0
 
 
 def cmd_replay(args) -> int:

@@ -682,3 +682,34 @@ The rule is deliberately narrow: **exception messages only**, and only lines mat
 exception message itself would then have real output quotiented away. Within those limits
 the risk of manufacturing a false AGREE is confined to text neither side can meaningfully
 differ on. Guarded by `tests/test_observation.py`.
+
+## N-checker — the `check` vs. `srb` relation (`checker_relation.py`)
+
+Design notes for the checker difftest; the Lean-side notes are `../lean/implementation-notes.md`
+L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.
+
+- **Unclassified srb codes default to *type-relevant*, and that is the whole safety property
+  of the module.** `EXCLUDED_CODES` is the only list; anything not in it counts. So a
+  diagnostic nobody has classified, appearing on an accepted program, fires the accept zero
+  and stops the run. The alternative shape — an allowlist of known type-relevant codes with
+  unknown ones ignored — would turn the file into a place to park disagreements, which is
+  the erosion the zeros exist to prevent. It also means no registry of srb's hundreds of
+  codes is needed: the default does the work.
+- **Two exclusions, both found by measurement rather than anticipated** (§7.1): 7006
+  (unreachable / always-truthy — a reachability opinion) and 3002 (unsupported integer
+  literal — an srb implementation limit). Each carries its reason in the source, because
+  adding an exclusion narrows what the accept zero can catch and should never be a casual
+  edit.
+- **`check-undecidable` is distinct from `check-unknown`.** The first is "the pipeline
+  broke", the second is "the checker looked and abstained". Conflating them would let
+  desugar breakage read as honest abstention and quietly flatter the ratchet — the same
+  distinction `FragmentChecker` already draws by returning `None` rather than `False`.
+- **`check-model-bug` outranks `check-accept-disagreement`** when both apply. Both are real,
+  but a model that disagrees with CRuby invalidates the ground the checker stands on, so it
+  is the one to look at first.
+- **The relation lives beside the existing two-by-two, not inside it.** `srb` × runtime keeps
+  its seven cells untouched; the checker is a third axis reported separately. Crossing all
+  three would give 18 cells and obscure the three numbers that actually matter.
+- **Pinned-zero violations exit 1**, alongside the existing declaration-mismatch gate.
+  Unsoundness witnesses deliberately stay findings rather than failures — the corpus exists
+  to collect them — but a genuine `check`/`srb` disagreement is a bug in one of the two.
