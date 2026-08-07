@@ -106,6 +106,21 @@ taxonomy in which `reject-witnessed` is the one verdict allowed to disagree, bec
 replayable trace against an `srb`-accepted program *is* the finding. M0 is taint tracking,
 deliberately first, as the cheap off-ramp.
 
+**Types (POC, active):** [Static soundness on the fully-typed fragment](static-soundness-poc.md)
+— the *smallest* soundness result the architecture can produce end-to-end, sequenced
+**before** `typed-portion-safety.md`. It is row 1 of that document's table, which dismissed
+it for coverage; the reason to do it first is that it is the only target whose theorem is
+**unconditional** (no `R1`/`R2`, no rely condition, no measured hypothesis). Shape: a total
+executable `check : Expr → Verdict` (two-valued — `accept`/`unknown`, no `reject` yet) plus
+`check_sound : check P = .accept → ∀ r, ReachableResult → ¬ typeStuck r`, proving the
+*strong* bad state rather than `sorbetStuck`, since a fully-typed program's sig checks
+cannot fire. The tractability idea is `I ≡ InFragment ∧ WellTyped` — a machine-level
+restriction conjunct that discharges most `stepFn` branches by contradiction so typing work
+happens only on admitted ones. Records the unavoidable cost the prelude forces (a **builtin
+signature table**, i.e. RBI-conformance at step one, since `1 + 2` is a send), the two
+load-bearing exclusions that keep the class table static, and P0–P4 with the ratchet at one
+pinned zero.
+
 ## Conventions
 
 - **[V]** behavior verified against a real interpreter (CRuby 4.0.5, installed via
