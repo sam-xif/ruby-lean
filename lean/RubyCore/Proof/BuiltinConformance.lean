@@ -72,69 +72,65 @@ def IntBuiltinResolves (h : Heap) (mname bid : String) : Prop :=
 theorem lookup_int_const (h : Heap) (a : Int) (mname : String) :
     lookup h (.int a) mname = lookup h (.int 0) mname := rfl
 
-/-- **The conformance step.** With the last argument in flight and the receiver
-    already evaluated, one `stepFn` yields the declared result — `.next`, so no
-    raise, which is what makes this discharge a progress obligation as well as a
-    preservation one. -/
-theorem int_bin_step
+/-- **The conformance step.** With the receiver and the argument both already
+    values, the dispatch yields the declared result in one `.next` — no raise,
+    which makes this discharge a progress obligation as much as a preservation
+    one.
+
+    Stated at the `startArgs` level rather than about `stepFn`: conformance is a
+    fact about *dispatch*, and the caller (`StaticSoundness.step_ok`) has by then
+    already unfolded `applyKont`, so a `stepFn`-shaped statement would not
+    compose. -/
+theorem int_bin_dispatch
     {m : Machine} {a b : Int} {mname bid : String} {op : Int → Int → Int}
-    {rest : List Kont}
-    (hctl : m.ctl = .value (.int b))
-    (hk : m.kont = .argsK (.int a) .explicit mname [] [] .none :: rest)
     (hres : IntBuiltinResolves m.heap mname bid)
     (hns : (mname == "send" || mname == "public_send" || mname == "__send__") = false)
     (hrun : ∀ (x y : Int) (m' : Machine),
         Builtins.run bid (.int x) [.int y] m' = .ok (.int (op x y)) m') :
-    stepFn m = .next (withCtl { m with kont := rest } (.value (.int (op a b)))) := by
+    startArgs m (.int a) .explicit mname [.int b] [] .none
+      = .next (withCtl m (.value (.int (op a b)))) := by
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
   rw [lookup_int_const m.heap 0 mname] at hlook
-  simp only [stepFn, hctl, applyKont, hk, startArgs, finishSend]
+  simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   simp [invoke.invokeDispatch, classOf, lookup_int_const, hlook, hb, hu, hbtw, hpre,
     visError?, hvis, appendKwHash, hrun, hns]
 
 /-! ### 2.1 The three table entries -/
 
-theorem int_add_step {m : Machine} {a b : Int} {rest : List Kont}
-    (hctl : m.ctl = .value (.int b))
-    (hk : m.kont = .argsK (.int a) .explicit "+" [] [] .none :: rest)
+theorem int_add_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "+" "Integer#+") :
-    stepFn m = .next (withCtl { m with kont := rest } (.value (.int (a + b)))) :=
-  int_bin_step hctl hk hres (by decide) run_int_add
+    startArgs m (.int a) .explicit "+" [.int b] [] .none
+      = .next (withCtl m (.value (.int (a + b)))) :=
+  int_bin_dispatch hres (by decide) run_int_add
 
-theorem int_sub_step {m : Machine} {a b : Int} {rest : List Kont}
-    (hctl : m.ctl = .value (.int b))
-    (hk : m.kont = .argsK (.int a) .explicit "-" [] [] .none :: rest)
+theorem int_sub_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "-" "Integer#-") :
-    stepFn m = .next (withCtl { m with kont := rest } (.value (.int (a - b)))) :=
-  int_bin_step hctl hk hres (by decide) run_int_sub
+    startArgs m (.int a) .explicit "-" [.int b] [] .none
+      = .next (withCtl m (.value (.int (a - b)))) :=
+  int_bin_dispatch hres (by decide) run_int_sub
 
-theorem int_mul_step {m : Machine} {a b : Int} {rest : List Kont}
-    (hctl : m.ctl = .value (.int b))
-    (hk : m.kont = .argsK (.int a) .explicit "*" [] [] .none :: rest)
+theorem int_mul_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "*" "Integer#*") :
-    stepFn m = .next (withCtl { m with kont := rest } (.value (.int (a * b)))) :=
-  int_bin_step hctl hk hres (by decide) run_int_mul
+    startArgs m (.int a) .explicit "*" [.int b] [] .none
+      = .next (withCtl m (.value (.int (a * b)))) :=
+  int_bin_dispatch hres (by decide) run_int_mul
 
-/-! ## 3. The receiver step
+/-! ## 3. Starting argument evaluation
 
-`recvK` needs no heap facts at all — it only starts argument evaluation. Split
-out because it is the cheap half and the preservation proof needs it separately.
+The cheap half of the send path: no heap facts, since nothing has dispatched
+yet. The four excluded argument shapes are `startArgs`' own special cases
+(`Interp.lean:1832`), and the fragment cannot express any of them — which is
+why the side condition is discharged from `infer` succeeding rather than
+carried by the caller.
 -/
 
-theorem recv_step {m : Machine} {v : Value} {mname : String} {arg : Expr}
-    {rest : List Kont}
-    (hctl : m.ctl = .value v)
-    (hk : m.kont = .recvK mname [arg] .none .explicit :: rest)
-    (harg : ∀ ps ls b, arg ≠ .block ps ls b)
-    (harg2 : ∀ e, arg ≠ .splat e)
-    (harg3 : ∀ es, arg ≠ .kwargs es)
-    (harg4 : arg ≠ .fwd) :
-    stepFn m =
-      .next (withKont { m with kont := rest } (.eval arg)
-              (.argsK v .explicit mname [] [] .none)) := by
-  simp only [stepFn, hctl, applyKont, hk, startArgs]
-  cases arg <;> simp_all
+theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value}
+    {site : SendSite} {mname : String}
+    (hsplat : ∀ e, arg ≠ .splat e) (hkw : ∀ es, arg ≠ .kwargs es) (hfwd : arg ≠ .fwd) :
+    startArgs m recv site mname [] [arg] .none
+      = .next (withKont m (.eval arg) (.argsK recv site mname [] [] .none)) := by
+  cases arg <;> simp_all [startArgs]
 
 end Static
 end Proof

@@ -1978,7 +1978,14 @@ Discharging `builtinSig`'s entries against the interpreter. Choices:
   the `send`/`public_send`/`__send__` re-dispatch guard at the top of `invoke` does not fold
   on string literals under `simp only`, so it is passed in as a `(… || … || …) = false`
   hypothesis discharged by `decide` at each instantiation.
-- **`recv_step` is split from the argument step** even though both are "the send path": it
-  needs no heap facts, and the preservation proof consumes them at different `Kont` shapes.
-  Its four `arg ≠ …` side conditions are `startArgs`'s own special cases (splat, kwargs,
-  fwd, and a block literal in argument position), which the fragment excludes anyway.
+- **Conformance is stated at the `startArgs` level, not about `stepFn`.** First attempt
+  phrased it as "`m.ctl = .value b`, `m.kont = argsK … :: rest` ⟹ `stepFn m = .next …`",
+  which proves fine but does **not compose**: by the time `StaticSoundness.step_ok` reaches
+  the `argsK` case it has already unfolded `applyKont` and generalized `m.kont`, so a
+  `stepFn`-shaped lemma no longer matches the goal. Conformance is a fact about *dispatch*,
+  and saying so is what makes it usable.
+- **`startArgs_plain` is split from the dispatch lemma** even though both are "the send
+  path": it needs no heap facts, and the preservation proof consumes the two at different
+  `Kont` shapes. Its three `arg ≠ …` side conditions are `startArgs`'s own special cases
+  (splat, kwargs, fwd — `Interp.lean:1832`), all of which `infer` already rejects, so the
+  caller discharges them from the typing hypothesis rather than carrying them.
