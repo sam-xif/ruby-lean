@@ -2208,3 +2208,40 @@ Mechanical half of the method-dispatch generalization, landed on its own.
 - Cost: one file, fragment byte-identical, axiom baseline unchanged. `Γs` is `[]` in every
   reachable configuration today, so this commit is pure preparation — its value is that the
   next diff is only the two new step cases.
+
+## L92 — P1b step 3: per-frame conformance, and `frameK` proved
+
+L91 deferred `frameK` because its case was unprovable without per-frame conformance. That
+clause now exists and the case is closed.
+
+- **`FramesOk : Array Frame → List FrameId → List Env → Prop`**, recursive down the stack,
+  innermost first. Phrased over the **array and the stack** rather than over the machine, which
+  is what makes it transport by `rfl` under `ctl`/`kont` updates: P0a needed `FrameOk_congr`
+  *and* `LocalsOk_congr` and both are now deleted, as is `LocalsOk_setLocal`.
+- **The `∀ g ∈ fids, g < fid` clause is what makes `setLocal` provably local.** `setLocal`
+  writes at `curFid`; every frame below has a strictly smaller id, hence a different one, hence
+  is untouched (`getD_set!_ne`). Distinctness is true of the real machine — a pushed id is
+  `frames.size` — but it must be *carried*, so it rides in the invariant rather than being
+  rediscovered. Equal lengths come free from the `_, _ => False` arm, which is why this also
+  subsumes P0a's `stack ≠ []`.
+- **`FrameOk` and `LocalsOk` survive as *derived* notions** (`FramesOk.frameOk`,
+  `FramesOk.localsOk`), which kept the local-access lemmas and the `var` case of `step_ok`
+  untouched. Deriving rather than replacing is why this refactor was one file and not three.
+- **[✗→] `frameK` needs a *two-deep* environment stack**, `Γ :: Γ' :: Γs`. The one-deep version
+  looks right and is wrong: `KontOk.nil` accepts any stack including `[]`, so
+  `KontOk (Γ :: []) τ [frameK]` would be derivable, and popping it leaves a machine with no
+  current environment for `CtlOk`. Requiring the caller's environment to exist is what makes
+  the pop total. Found by the case failing to close, not by reading.
+- **Two array lemmas were needed and neither is in core** under a guessable name:
+  `getD_set!_ne` and `getD_push_lt`. `Array.getElem_setIfInBounds_ne` takes the bound as an
+  explicit argument and its disequality the *other* way round (`i ≠ j`), and `simp only
+  [Array.getD]` followed by `split` produces `getInternal` terms that `rw` cannot see through —
+  use `dif_pos`/`dif_neg` with an explicit size-equality rewrite instead.
+- **Ordering bite:** `FramesOk.setLocal` needs `envGet?_set`, which lived in a later section.
+  The env lemmas moved up to §1.3. Worth knowing because the file's sections are otherwise in
+  dependency order and this was the first exception.
+
+Still no `def`/dispatch in the fragment: `Γs` is `[]` in every reachable configuration, so
+`frameK` remains unproduced. What is now true is that the invariant *supports* activation
+stacks and the pop is proved, so the remaining step is the two new `step_ok` cases plus the
+`TableOk`-under-`defineMethod` heap lemma flagged last turn.

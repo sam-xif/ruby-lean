@@ -21,7 +21,8 @@ gets proved (doc §2.1).
 
 ## Shape of the invariant
 
-    Inv m  ≡  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ Γs, LocalsOk Γ m ∧ CtlOk Γ Γs m
+    Inv m  ≡  TableOk m.heap ∧ ∃ Γ Γs, FramesOk m.frames m.stack (Γ :: Γs) ∧
+                                       CtlOk Γ Γs m
 
 `CtlOk`/`KontOk` play the role the doc §4 assigns to `InFragment`: they simply
 have **no constructor** for the machine shapes outside the fragment, so the
@@ -55,43 +56,79 @@ def ValueTy (v : Value) (τ : Ty) : Prop := valueTy? v = some τ
 /-- The frame currently executing. -/
 def curFid (m : Machine) : FrameId := m.stack.headD 0
 
-/-- **The current frame is self-contained.** `getLocal`/`setLocal` walk the
-    block-frame `captured` chain (`Machine.lean:322–352`), so nothing about them
-    reduces without knowing that the chain is empty here. That is the *only*
-    thing they need.
+/-- The frame currently executing. -/
+def curFrame (m : Machine) : Frame := m.frames.getD (curFid m) default
 
-    P0a additionally assumed `stack = [0] ∧ frames.size = 1` — a genuinely
-    single-frame machine — and both clauses turn out to be unnecessary:
-    `getLocal`'s fuel is `frames.size + 1`, always a successor, so the walk
-    unfolds once whatever the size. Dropping them is what lets a *stack* of
-    frames satisfy this, which is the precondition for methods (P1b). -/
+/-- A frame's binding for `x`, or `nil` — the value `getLocal` reads once the
+    `captured` chain is known empty. -/
+def localOf (f : Frame) (x : String) : Value :=
+  match f.locals.find? (·.1 == x) with
+  | some (_, v) => v
+  | none => .nil
+
+/-- One activation conforms to one environment. `captured = none` is what makes
+    the frame *self-contained*: `getLocal`/`setLocal` otherwise walk into
+    enclosing scopes (`Machine.lean:322–352`) and nothing about them reduces. -/
+def FrameConforms (Γ : Env) (f : Frame) : Prop :=
+  f.captured = none ∧ ∀ x τ, envGet? Γ x = some τ → ValueTy (localOf f x) τ
+
+/-- **Per-frame conformance down the activation stack**, innermost first.
+
+    The `∀ g ∈ fids, g < fid` clause buys frame-id **distinctness**, which is
+    what makes `setLocal` provably local: it writes to `curFid` only, so every
+    other frame on the stack is untouched. Distinctness is true of the real
+    machine — a pushed id is `frames.size`, hence strictly greater than every id
+    already on the stack — but it has to be *carried*, not rediscovered, so it
+    rides here rather than being a side theorem (L91 predicted this clause).
+
+    Equal lengths are forced by the `_, _ => False` arm, which is why this
+    subsumes P0a's `stack ≠ []`. -/
+def FramesOk (frames : Array Frame) : List FrameId → List Env → Prop
+  | [], [] => True
+  | fid :: fids, Γ :: Γs =>
+      fid < frames.size ∧ (∀ g ∈ fids, g < fid) ∧
+      FrameConforms Γ (frames.getD fid default) ∧ FramesOk frames fids Γs
+  | _, _ => False
+
+/-- What `getLocal`/`setLocal` need, derived from the head of `FramesOk`. Kept as
+    its own definition so the local-access lemmas stay readable. -/
 def FrameOk (m : Machine) : Prop :=
-  m.stack ≠ [] ∧
-  curFid m < m.frames.size ∧
-  (m.frames.getD (curFid m) default).captured = none
-
-/-- The locals of the frame currently executing. -/
-def theLocals (m : Machine) : List (String × Value) :=
-  (m.frames.getD (curFid m) default).locals
+  m.stack ≠ [] ∧ curFid m < m.frames.size ∧ (curFrame m).captured = none
 
 /-- Every variable the environment types holds a value of that type. Stated
-    against `m.getLocal` — what the interpreter actually reads — not against the
-    list representation. -/
+    against `m.getLocal` — what the interpreter actually reads. -/
 def LocalsOk (Γ : Env) (m : Machine) : Prop :=
   ∀ x τ, envGet? Γ x = some τ → ValueTy (m.getLocal x) τ
 
-/-! ### 1.1 `getLocal`/`setLocal` on the current frame -/
+/-! ### 1.1 Two array facts, and local access on the current frame -/
+
+theorem getD_set!_ne (a : Array Frame) (i j : Nat) (f : Frame) (h : j ≠ i) :
+    (a.set! i f).getD j default = a.getD j default := by
+  have hsz : (a.set! i f).size = a.size := by simp [Array.set!]
+  by_cases hj : j < a.size
+  · simp only [Array.getD]
+    rw [dif_pos (hsz ▸ hj), dif_pos hj]
+    exact Array.getElem_setIfInBounds_ne hj (Ne.symm h)
+  · simp only [Array.getD]
+    rw [dif_neg (hsz ▸ hj), dif_neg hj]
+
+theorem getD_set!_self (a : Array Frame) (i : Nat) (f : Frame) (h : i < a.size) :
+    (a.set! i f).getD i default = f := by
+  simp [Array.getD, h]
+
+theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
+    (a.push f).getD j default = a.getD j default := by
+  simp only [Array.getD]
+  rw [dif_pos h, dif_pos (show j < (a.push f).size by simp [Array.size_push]; omega)]
+  exact Array.getElem_push_lt h
 
 theorem getLocal_cur {m : Machine} (hf : FrameOk m) (x : String) :
-    m.getLocal x =
-      match (theLocals m).find? (·.1 == x) with
-      | some (_, v) => v
-      | none => .nil := by
+    m.getLocal x = localOf (curFrame m) x := by
   obtain ⟨_, _, hc⟩ := hf
-  simp only [curFid] at hc
+  simp only [curFrame, curFid] at hc
   unfold Machine.getLocal
   unfold Machine.getLocal.go
-  simp only [theLocals, curFid, hc]
+  simp only [localOf, curFrame, curFid, hc]
   rfl
 
 theorem find?_filter_ne {α : Type} (l : List (String × α)) {x y : String}
@@ -117,44 +154,180 @@ theorem setLocal_owner_start {m : Machine} {start : FrameId}
   simp only [hc]
   split <;> rfl
 
-/-- An in-bounds `set!` is read back by `getD`. -/
-theorem getD_set!_self (a : Array Frame) (i : Nat) (f : Frame) (h : i < a.size) :
-    (a.set! i f).getD i default = f := by
-  simp [Array.getD, h]
-
-/-- The update is a list prepend-and-filter on the current frame. -/
-theorem setLocal_frame {m : Machine} (hf : FrameOk m) (x : String) (v : Value) :
-    ((m.setLocal x v).frames.getD (curFid m) default) =
-      { (m.frames.getD (curFid m) default) with
-        locals := (x, v) :: (theLocals m).filter (·.1 != x) } := by
-  obtain ⟨_, hlt, hc⟩ := hf
+/-- `setLocal` is a `set!` at `curFid`, and nothing else. -/
+theorem setLocal_frames {m : Machine} (hf : FrameOk m) (x : String) (v : Value) :
+    (m.setLocal x v).frames =
+      m.frames.set! (curFid m)
+        { curFrame m with locals := (x, v) :: (curFrame m).locals.filter (·.1 != x) } := by
+  obtain ⟨_, _, hc⟩ := hf
+  simp only [curFrame, curFid] at hc ⊢
   unfold Machine.setLocal
-  simp only [curFid] at hc hlt ⊢
-  simp only [setLocal_owner_start hc x m.frames.size, theLocals, curFid]
-  exact getD_set!_self _ _ _ hlt
+  simp only [setLocal_owner_start hc x m.frames.size]
+
+theorem setLocal_stack {m : Machine} (x : String) (v : Value) :
+    (m.setLocal x v).stack = m.stack := by simp [Machine.setLocal]
+
+theorem curFid_setLocal {m : Machine} (x : String) (v : Value) :
+    curFid (m.setLocal x v) = curFid m := by simp [Machine.setLocal, curFid]
 
 theorem FrameOk.setLocal {m : Machine} (hf : FrameOk m) (x : String) (v : Value) :
     FrameOk (m.setLocal x v) := by
-  have h := setLocal_frame hf x v
+  have hfr := setLocal_frames hf x v
   obtain ⟨hne, hlt, hc⟩ := hf
-  refine ⟨?_, ?_, ?_⟩
-  · simpa [Machine.setLocal] using hne
-  · simpa [Machine.setLocal, curFid] using hlt
-  · have : curFid (m.setLocal x v) = curFid m := by simp [Machine.setLocal, curFid]
-    rw [this, h]; exact hc
+  refine ⟨by rw [setLocal_stack]; exact hne, ?_, ?_⟩
+  · rw [curFid_setLocal, hfr]; simpa [Array.set!] using hlt
+  · rw [curFrame, curFid_setLocal, hfr, getD_set!_self _ _ _ (by simpa using hlt)]
+    exact hc
 
 /-- The one substantive fact about locals: assignment updates exactly `x`. -/
-theorem getLocal_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Value) :
-    (m.setLocal x v).getLocal y = if y = x then v else m.getLocal y := by
-  rw [getLocal_cur (FrameOk.setLocal hf x v) y, getLocal_cur hf y]
-  have hcf : curFid (m.setLocal x v) = curFid m := by simp [Machine.setLocal, curFid]
-  simp only [theLocals, hcf, setLocal_frame hf x v]
+theorem localOf_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Value) :
+    localOf (curFrame (m.setLocal x v)) y =
+      if y = x then v else localOf (curFrame m) y := by
+  have hlt := hf.2.1
+  rw [curFrame, curFid_setLocal, setLocal_frames hf x v,
+    getD_set!_self _ _ _ (by simpa using hlt)]
   by_cases hyx : y = x
-  · subst hyx; simp [List.find?]
+  · subst hyx; simp [localOf, List.find?]
   · have hne : ((x, v).1 == y) = false := by
       simp only [beq_eq_false_iff_ne]; exact fun h => hyx h.symm
-    simp only [List.find?, hne, if_neg hyx]
+    simp only [localOf, List.find?, hne, if_neg hyx]
     rw [find?_filter_ne _ hyx]
+
+theorem getLocal_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Value) :
+    (m.setLocal x v).getLocal y = if y = x then v else m.getLocal y := by
+  rw [getLocal_cur (FrameOk.setLocal hf x v) y, getLocal_cur hf y,
+    localOf_setLocal hf x y v]
+
+/-! ### 1.2 `FramesOk` implies what the old invariant asserted -/
+
+theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
+    (h : FramesOk m.frames m.stack (Γ :: Γs)) : FrameOk m := by
+  cases hst : m.stack with
+  | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
+  | cons fid fids =>
+    rw [hst] at h
+    obtain ⟨hlt, _, ⟨hc, _⟩, _⟩ := h
+    refine ⟨by rw [hst]; simp, ?_, ?_⟩
+    · simpa [curFid, hst] using hlt
+    · simpa [curFrame, curFid, hst] using hc
+
+/-- Popping the innermost activation: a suffix of a conforming stack conforms. -/
+theorem FramesOk.tail {frames : Array Frame} {fids : List FrameId} {Γ : Env}
+    {Γs : List Env} (h : FramesOk frames fids (Γ :: Γs)) :
+    FramesOk frames fids.tail Γs := by
+  cases fids with
+  | nil => exact absurd h (by simp [FramesOk])
+  | cons fid rest => exact h.2.2.2
+
+theorem FramesOk.localsOk {m : Machine} {Γ : Env} {Γs : List Env}
+    (h : FramesOk m.frames m.stack (Γ :: Γs)) : LocalsOk Γ m := by
+  intro x τ hg
+  rw [getLocal_cur h.frameOk x]
+  cases hst : m.stack with
+  | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
+  | cons fid fids =>
+    have hc : FrameConforms Γ (m.frames.getD fid default) := by
+      rw [hst] at h; exact h.2.2.1
+    have : curFrame m = m.frames.getD fid default := by
+      simp [curFrame, curFid, hst]
+    rw [this]
+    exact hc.2 x τ hg
+
+/-! ### 1.3 Environment update, and its agreement with `setLocal` -/
+
+theorem envGet?_nil (y : String) : envGet? ([] : Env) y = none := rfl
+
+theorem envGet?_cons (z : String) (σ : Ty) (Γ : Env) (y : String) :
+    envGet? ((z, σ) :: Γ) y = if z = y then some σ else envGet? Γ y := by
+  by_cases h : z = y
+  · subst h; simp [envGet?, List.find?]
+  · have hb : (z == y) = false := by simpa using h
+    simp [envGet?, List.find?, hb, h]
+
+theorem envSet_nil (x : String) (τ : Ty) : envSet [] x τ = [(x, τ)] := rfl
+
+theorem envSet_cons (z : String) (σ : Ty) (Γ : Env) (x : String) (τ : Ty) :
+    envSet ((z, σ) :: Γ) x τ =
+      if z = x then (x, τ) :: Γ else (z, σ) :: envSet Γ x τ := by
+  simp only [envSet, beq_iff_eq]
+
+theorem envGet?_set (Γ : Env) (x y : String) (τ : Ty) :
+    envGet? (envSet Γ x τ) y = if y = x then some τ else envGet? Γ y := by
+  induction Γ with
+  | nil =>
+    rw [envSet_nil, envGet?_cons, envGet?_nil]
+    by_cases h : y = x
+    · subst h; simp
+    · rw [if_neg h, if_neg (fun hh => h hh.symm)]
+  | cons a Γ ih =>
+    obtain ⟨z, σ⟩ := a
+    rw [envSet_cons]
+    by_cases hzx : z = x
+    · subst hzx
+      rw [if_pos rfl, envGet?_cons, envGet?_cons]
+      by_cases hyz : y = z
+      · subst hyz; simp
+      · rw [if_neg hyz, if_neg (fun hh => hyz hh.symm), if_neg (fun hh => hyz hh.symm)]
+    · rw [if_neg hzx, envGet?_cons, envGet?_cons, ih]
+      by_cases hzy : z = y
+      · subst hzy
+        rw [if_pos rfl, if_pos rfl, if_neg (fun hh => hzx hh)]
+      · rw [if_neg hzy, if_neg hzy]
+
+/-! ### 1.4 `FramesOk` under the fragment's updates -/
+
+/-- Conformance only reads the frames the stack names, so an array change that
+    leaves those alone transports it. -/
+theorem FramesOk.frames_congr {a b : Array Frame} :
+    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk a fids Γs →
+      (∀ g ∈ fids, g < b.size) → (∀ g ∈ fids, b.getD g default = a.getD g default) →
+      FramesOk b fids Γs
+  | [], [], h, _, _ => h
+  | fid :: fids, Γ :: Γs, h, hb, heq => by
+    obtain ⟨_, hlt2, hcf, hrest⟩ := h
+    exact ⟨hb fid (by simp), hlt2,
+      by rw [heq fid (by simp)]; exact hcf,
+      FramesOk.frames_congr hrest (fun g hg => hb g (by simp [hg]))
+        (fun g hg => heq g (by simp [hg]))⟩
+  | [], _ :: _, h, _, _ => absurd h (by simp [FramesOk])
+  | _ :: _, [], h, _, _ => absurd h (by simp [FramesOk])
+
+theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
+    {τ : Ty} {v : Value} (hfs : FramesOk m.frames m.stack (Γ :: Γs))
+    (hv : ValueTy v τ) :
+    FramesOk (m.setLocal x v).frames (m.setLocal x v).stack (envSet Γ x τ :: Γs) := by
+  have hf := hfs.frameOk
+  have hlt := hf.2.1
+  rw [setLocal_stack]
+  cases hst : m.stack with
+  | nil => rw [hst] at hfs; exact absurd hfs (by simp [FramesOk])
+  | cons fid fids =>
+    have hcur : curFid m = fid := by simp [curFid, hst]
+    rw [hst] at hfs
+    obtain ⟨hfl, hgt, hcf, hrest⟩ := hfs
+    have hsz : (m.setLocal x v).frames.size = m.frames.size := by
+      rw [setLocal_frames hf x v]; simp [Array.set!]
+    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨?_, ?_⟩, ?_⟩
+    -- the head frame: captured survives, and the binding is updated at `x` only
+    · have := (FrameOk.setLocal hf x v).2.2
+      simpa [curFrame, curFid_setLocal, hcur] using this
+    · intro y σ hg
+      have hy : localOf ((m.setLocal x v).frames.getD fid default) y
+          = localOf (curFrame (m.setLocal x v)) y := by
+        simp [curFrame, curFid_setLocal, hcur]
+      rw [envGet?_set] at hg
+      rw [hy, localOf_setLocal hf x y v]
+      by_cases hyx : y = x
+      · rw [if_pos hyx] at hg ⊢
+        rw [Option.some.injEq] at hg; subst hg; exact hv
+      · rw [if_neg hyx] at hg ⊢
+        have := hcf.2 y σ hg
+        simpa [curFrame, hcur] using this
+    -- the frames below: every id there is `< fid = curFid`, so `set!` missed them
+    · refine FramesOk.frames_congr hrest (fun g hg => by rw [hsz]; exact Nat.lt_trans (hgt g hg) hfl)
+        (fun g hg => ?_)
+      rw [setLocal_frames hf x v, hcur]
+      exact getD_set!_ne _ _ _ _ (Nat.ne_of_lt (hgt g hg))
 
 /-! ## 2. Typing the machine
 
@@ -217,12 +390,17 @@ inductive KontOk : List Env → Ty → List Kont → Prop where
       builtinSig τr mname = some ([τ], τret) →
       KontOk (Γ :: Γs) τret k →
       KontOk (Γ :: Γs) τ (.argsK recv .explicit mname [] [] .none :: k)
--- **No `frameK` constructor yet, deliberately.** Popping an activation resumes
--- the *caller's* locals, so its case needs a per-frame conformance clause
--- (every frame on the stack against its own environment) that this invariant
--- does not yet carry. Adding the constructor without it makes `step_ok`'s
--- `frameK` case unprovable rather than merely unused, so it lands together with
--- user dispatch — the only thing that produces one.
+  /-- **Method return.** The in-flight value is the body's value; popping the
+      activation (`Interp.lean:2206`) discards the callee's environment and
+      resumes the caller's.
+
+      Note the **two-deep** env stack `Γ :: Γ' :: Γs`. A one-deep version would
+      be provable-looking and wrong: `KontOk.nil` accepts *any* stack including
+      `[]`, so `KontOk (Γ :: []) τ (frameK :: [])` would be derivable, and
+      popping it leaves a machine with no current environment for `CtlOk` to use.
+      Requiring a caller environment to exist is what makes the pop total. -/
+  | frameK {Γ Γ' Γs τ fid k} :
+      KontOk (Γ' :: Γs) τ k → KontOk (Γ :: Γ' :: Γs) τ (.frameK fid :: k)
 
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
     are not in the fragment, so no step can produce one. -/
@@ -243,7 +421,7 @@ def TableOk (h : Heap) : Prop :=
 
 /-- **The invariant** handed to `invariant_sound_from`. -/
 def Inv (m : Machine) : Prop :=
-  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ Γs, LocalsOk Γ m ∧ CtlOk Γ Γs m
+  TableOk m.heap ∧ ∃ Γ Γs, FramesOk m.frames m.stack (Γ :: Γs) ∧ CtlOk Γ Γs m
 
 /-! ### Inversions used by the send cases -/
 
@@ -292,119 +470,36 @@ theorem infer_send_inv {Γ : Env} {r arg : Expr} {mname : String} {τ : Ty} {Γ'
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-! ### 2.1 Environment update, and its agreement with `setLocal` -/
 
-theorem envGet?_nil (y : String) : envGet? ([] : Env) y = none := rfl
+/-! ### 2.2 `FramesOk` survives the fragment's frame-preserving updates
 
-theorem envGet?_cons (z : String) (σ : Ty) (Γ : Env) (y : String) :
-    envGet? ((z, σ) :: Γ) y = if z = y then some σ else envGet? Γ y := by
-  by_cases h : z = y
-  · subst h; simp [envGet?, List.find?]
-  · have hb : (z == y) = false := by simpa using h
-    simp [envGet?, List.find?, hb, h]
-
-theorem envSet_nil (x : String) (τ : Ty) : envSet [] x τ = [(x, τ)] := rfl
-
-theorem envSet_cons (z : String) (σ : Ty) (Γ : Env) (x : String) (τ : Ty) :
-    envSet ((z, σ) :: Γ) x τ =
-      if z = x then (x, τ) :: Γ else (z, σ) :: envSet Γ x τ := by
-  simp only [envSet, beq_iff_eq]
-
-theorem envGet?_set (Γ : Env) (x y : String) (τ : Ty) :
-    envGet? (envSet Γ x τ) y = if y = x then some τ else envGet? Γ y := by
-  induction Γ with
-  | nil =>
-    rw [envSet_nil, envGet?_cons, envGet?_nil]
-    by_cases h : y = x
-    · subst h; simp
-    · rw [if_neg h, if_neg (fun hh => h hh.symm)]
-  | cons a Γ ih =>
-    obtain ⟨z, σ⟩ := a
-    rw [envSet_cons]
-    by_cases hzx : z = x
-    · subst hzx
-      rw [if_pos rfl, envGet?_cons, envGet?_cons]
-      by_cases hyz : y = z
-      · subst hyz; simp
-      · rw [if_neg hyz, if_neg (fun hh => hyz hh.symm), if_neg (fun hh => hyz hh.symm)]
-    · rw [if_neg hzx, envGet?_cons, envGet?_cons, ih]
-      by_cases hzy : z = y
-      · subst hzy
-        rw [if_pos rfl, if_pos rfl, if_neg (fun hh => hzx hh)]
-      · rw [if_neg hzy, if_neg hzy]
-
-theorem LocalsOk_setLocal {m : Machine} {Γ : Env} {x : String} {τ : Ty} {v : Value}
-    (hf : FrameOk m) (hl : LocalsOk Γ m) (hv : ValueTy v τ) :
-    LocalsOk (envSet Γ x τ) (m.setLocal x v) := by
-  intro y σ hg
-  rw [envGet?_set] at hg
-  rw [getLocal_setLocal hf x y v]
-  by_cases hyx : y = x
-  · rw [if_pos hyx] at hg ⊢
-    rw [Option.some.injEq] at hg
-    subst hg; exact hv
-  · rw [if_neg hyx] at hg ⊢
-    exact hl y σ hg
-
-/-! ### 2.2 `FrameOk` survives the fragment's frame-preserving updates -/
-
-theorem FrameOk.withCtl {m : Machine} (hf : FrameOk m) (c : Ctl) :
-    FrameOk (Interp.withCtl m c) := hf
-
-theorem FrameOk.withKont {m : Machine} (hf : FrameOk m) (c : Ctl) (k : Kont) :
-    FrameOk (Interp.withKont m c k) := hf
-
-theorem LocalsOk.withCtl {m : Machine} {Γ : Env} (hf : FrameOk m) (hl : LocalsOk Γ m)
-    (c : Ctl) : LocalsOk Γ (Interp.withCtl m c) := by
-  intro x τ hg
-  rw [getLocal_cur (FrameOk.withCtl hf c) x]
-  have h := hl x τ hg
-  rwa [getLocal_cur hf x] at h
-
-theorem LocalsOk.withKont {m : Machine} {Γ : Env} (hf : FrameOk m) (hl : LocalsOk Γ m)
-    (c : Ctl) (k : Kont) : LocalsOk Γ (Interp.withKont m c k) := by
-  intro x τ hg
-  rw [getLocal_cur (FrameOk.withKont hf c k) x]
-  have h := hl x τ hg
-  rwa [getLocal_cur hf x] at h
-
-/-- `FrameOk` and `LocalsOk` see only `stack`/`frames`, so any update that leaves
-    those alone (`ctl`, `kont`) transports both. -/
-theorem FrameOk_congr {m m' : Machine} (hs : m'.stack = m.stack)
-    (hfr : m'.frames = m.frames) (hf : FrameOk m) : FrameOk m' := by
-  obtain ⟨hne, hlt, hc⟩ := hf
-  have hcf : curFid m' = curFid m := by simp [curFid, hs]
-  exact ⟨by rw [hs]; exact hne, by rw [hcf, hfr]; exact hlt, by rw [hcf, hfr]; exact hc⟩
-
-theorem LocalsOk_congr {m m' : Machine} (hf : FrameOk m) (hf' : FrameOk m')
-    (hs : m'.stack = m.stack) (hfr : m'.frames = m.frames)
-    {Γ : Env} (hl : LocalsOk Γ m) : LocalsOk Γ m' := by
-  intro x τ hg
-  have hcf : curFid m' = curFid m := by simp [curFid, hs]
-  rw [getLocal_cur hf' x, theLocals, hcf, hfr]
-  have h := hl x τ hg
-  rwa [getLocal_cur hf x, theLocals] at h
+`ctl` and `kont` updates leave `frames` and `stack` alone, and `FramesOk` reads
+nothing else — so it transports by `rfl` rather than by a congruence lemma. That
+is the payoff of phrasing conformance over the array and the stack instead of
+over the machine: P0a needed `FrameOk_congr` *and* `LocalsOk_congr`, and both are
+now gone.
+-/
 
 /-! ### 2.3 Building `Inv` for the machines the fragment steps to -/
 
 theorem inv_eval {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr} {τ : Ty} {Γ' : Env}
-    (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
+    (hfs : FramesOk m.frames m.stack (Γ :: Γs)) (ht : TableOk m.heap)
     (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk (Γ' :: Γs) τ m.kont) :
     Inv (withCtl m (.eval e)) :=
-  ⟨FrameOk.withCtl hf _, ht, Γ, Γs, LocalsOk.withCtl hf hl _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {m : Machine} {Γ : Env} {Γs : List Env} {v : Value} {τ : Ty}
-    (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m) (hv : ValueTy v τ)
-    (hk : KontOk (Γ :: Γs) τ m.kont) :
+    (hfs : FramesOk m.frames m.stack (Γ :: Γs)) (ht : TableOk m.heap)
+    (hv : ValueTy v τ) (hk : KontOk (Γ :: Γs) τ m.kont) :
     Inv (withCtl m (.value v)) :=
-  ⟨FrameOk.withCtl hf _, ht, Γ, Γs, LocalsOk.withCtl hf hl _, ⟨τ, hv, hk⟩⟩
+  ⟨ht, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr} {τ : Ty}
     {Γ' : Env} {k : Kont}
-    (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
+    (hfs : FramesOk m.frames m.stack (Γ :: Γs)) (ht : TableOk m.heap)
     (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk (Γ' :: Γs) τ (k :: m.kont)) :
     Inv (withKont m (.eval e) k) :=
-  ⟨FrameOk.withKont hf _ _, ht, Γ, Γs, LocalsOk.withKont hf hl _ _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 /-! ## 3. Progress and preservation, in one case analysis
 
@@ -420,7 +515,9 @@ def StepOk : StepResult → Prop
   | _ => False
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
-  obtain ⟨hf, htab, Γ, Γs, hl, hc⟩ := h
+  obtain ⟨htab, Γ, Γs, hfs, hc⟩ := h
+  have hf : FrameOk m := hfs.frameOk
+  have hl : LocalsOk Γ m := hfs.localsOk
   unfold CtlOk at hc
   rcases hctl : m.ctl with e | v | j
   · -- ## control = eval e
@@ -431,19 +528,19 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     case int n =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf htab hl rfl hk
+      exact inv_value hfs htab rfl hk
     case tru =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf htab hl rfl hk
+      exact inv_value hfs htab rfl hk
     case fls =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf htab hl rfl hk
+      exact inv_value hfs htab rfl hk
     case nil =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl⟩ := hinf
-      exact inv_value hf htab hl rfl hk
+      exact inv_value hfs htab rfl hk
     case var k x =>
       cases k
       case lvar =>
@@ -451,7 +548,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         obtain ⟨σ, hg, heq⟩ := hinf
         simp only [Prod.mk.injEq] at heq
         obtain ⟨rfl, rfl⟩ := heq
-        exact inv_value hf htab hl (hl x _ hg) hk
+        exact inv_value hfs htab (hl x _ hg) hk
       all_goals (simp only [infer] at hinf; contradiction)
     case vasgn k x rhs =>
       cases k
@@ -461,7 +558,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i σ Γ₁ hrhs
           simp only [Option.some.injEq, Prod.mk.injEq] at hinf
           obtain ⟨rfl, rfl⟩ := hinf
-          exact inv_push hf htab hl hrhs (KontOk.asgn hk)
+          exact inv_push hfs htab hrhs (KontOk.asgn hk)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case seq es =>
@@ -470,23 +567,23 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | nil =>
         simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl⟩ := hinf
-        exact inv_value hf htab hl rfl hk
+        exact inv_value hfs htab rfl hk
       | cons e₁ rest =>
         cases rest with
         | nil =>
           simp only [inferSeq] at hinf
-          exact inv_eval hf htab hl hinf hk
+          exact inv_eval hfs htab hinf hk
         | cons e₂ rest' =>
           simp only [inferSeq] at hinf
           split at hinf
           · rename_i σ Γ₁ h₁
-            exact inv_push hf htab hl h₁ (KontOk.seqCons hinf hk)
+            exact inv_push hfs htab h₁ (KontOk.seqCons hinf hk)
           · exact absurd hinf (by simp)
     case if' c t els =>
       simp only [infer] at hinf
       split at hinf
       · rename_i σ Γ₁ hcnd
-        exact inv_push hf htab hl hcnd (KontOk.ifK hinf hk)
+        exact inv_push hfs htab hcnd (KontOk.ifK hinf hk)
       · exact absurd hinf (by simp)
     case while' c body =>
       simp only [infer] at hinf
@@ -502,7 +599,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               subst hΓ₂
               simp only [Option.some.injEq, Prod.mk.injEq] at hinf
               obtain ⟨rfl, rfl⟩ := hinf
-              exact inv_push hf htab hl hcnd
+              exact inv_push hfs htab hcnd
                 (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hk)
             · exact absurd hinf (by simp)
           · exact absurd hinf (by simp)
@@ -528,7 +625,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               -- and `infer` rejects `self`.
               simp only [evalExpr]
               cases r <;>
-                try exact inv_push hf htab hl hr (KontOk.recvK hsg ha hk)
+                try exact inv_push hfs htab hr (KontOk.recvK hsg ha hk)
               exact absurd hr (by simp [infer])
   · -- ## control = value v
     rw [hctl] at hc
@@ -539,31 +636,21 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     cases hk with
     | nil => trivial
     | @seqNil Γ Γs τ k hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
-      exact inv_value hf' htab hl' hv hk'
+      exact inv_value hfs htab hv hk'
     | @seqCons Γ Γs τ e₁ es τ' Γ' k hseq hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       cases es with
       | nil =>
         simp only [inferSeq] at hseq
-        exact inv_push hf' htab hl' hseq (KontOk.seqNil hk')
+        exact inv_push hfs htab hseq (KontOk.seqNil hk')
       | cons e₂ es' =>
         simp only [inferSeq] at hseq
         split at hseq
         · rename_i σ Γ₁ h₁
-          exact inv_push hf' htab hl' h₁ (KontOk.seqCons hseq hk')
+          exact inv_push hfs htab h₁ (KontOk.seqCons hseq hk')
         · exact absurd hseq (by simp)
     | @asgn Γ Γs τ x k hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
-      exact ⟨FrameOk.withCtl (FrameOk.setLocal hf' x v) _, htab, envSet Γ x τ, Γs,
-        LocalsOk.withCtl (FrameOk.setLocal hf' x v) (LocalsOk_setLocal hf' hl' hv) _,
-        ⟨τ, hv, hk'⟩⟩
+      exact ⟨htab, envSet Γ x τ, Γs, FramesOk.setLocal hfs hv, ⟨τ, hv, hk'⟩⟩
     | @ifK Γ Γs τ t els τ' Γ' k hif hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       cases els with
       | some e₂ =>
         simp only [inferIf] at hif
@@ -575,8 +662,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq, Prod.mk.injEq] at hif
             obtain ⟨rfl, rfl⟩ := hif
             by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hf' htab hl' ht hk'
-            · simp only [hb]; exact inv_eval hf' htab hl' he hk'
+            · simp only [hb, if_true]; exact inv_eval hfs htab ht hk'
+            · simp only [hb]; exact inv_eval hfs htab he hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
       | none =>
@@ -589,27 +676,26 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq, Prod.mk.injEq] at hif
             obtain ⟨rfl, rfl⟩ := hif
             by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hf' htab hl' ht hk'
-            · simp only [hb]; exact inv_value hf' htab hl' rfl hk'
+            · simp only [hb, if_true]; exact inv_eval hfs htab ht hk'
+            · simp only [hb]; exact inv_value hfs htab rfl hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
     | @whileCond Γ Γs τ c body k hloop hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_push hf' htab hl' hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+        exact inv_push hfs htab hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
       · simp only [hb]
-        exact inv_value hf' htab hl' rfl hk'
+        exact inv_value hfs htab rfl hk'
     | @whileBody Γ Γs τ c body k hloop hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
-      exact inv_push hf' htab hl' hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+      exact inv_push hfs htab hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+    | @frameK Γ Γ' Γs τ fid k hk' =>
+      -- The activation pops: `frames` is untouched, `stack` loses its head, and
+      -- the caller's environment — carried all along by `FramesOk` — becomes
+      -- current again. This is the case L91 could not close.
+      exact ⟨htab, Γ', Γs, hfs.tail, ⟨τ, hv, hk'⟩⟩
     | @recvK Γ Γs τ mname arg τp τret Γ₂ k hsg ha hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       have hsp : ∀ e, arg ≠ .splat e := by
         rintro e rfl; exact absurd ha (by simp [infer])
       have hkw : ∀ es, arg ≠ .kwargs es := by
@@ -618,19 +704,17 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rintro rfl; exact absurd ha (by simp [infer])
       dsimp only
       rw [startArgs_plain hsp hkw hfw]
-      exact inv_push hf' htab hl' ha (KontOk.argsK hv hsg hk')
+      exact inv_push hfs htab ha (KontOk.argsK hv hsg hk')
     | @argsK Γ Γs τ mname recv τr τret k hrv hsg hk' =>
-      have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
-      have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨rfl, rfl, rfl, hname⟩ := builtinSig_inv hsg
       obtain ⟨a, rfl⟩ := valueTy_int hrv
       obtain ⟨b, rfl⟩ := valueTy_int hv
       dsimp only
       simp only [List.nil_append]
       rcases hname with rfl | rfl | rfl
-      · rw [int_add_dispatch (m := { m with kont := k }) htab.1]; exact inv_value hf' htab hl' rfl hk'
-      · rw [int_sub_dispatch (m := { m with kont := k }) htab.2.1]; exact inv_value hf' htab hl' rfl hk'
-      · rw [int_mul_dispatch (m := { m with kont := k }) htab.2.2]; exact inv_value hf' htab hl' rfl hk'
+      · rw [int_add_dispatch (m := { m with kont := k }) htab.1]; exact inv_value hfs htab rfl hk'
+      · rw [int_sub_dispatch (m := { m with kont := k }) htab.2.1]; exact inv_value hfs htab rfl hk'
+      · rw [int_mul_dispatch (m := { m with kont := k }) htab.2.2]; exact inv_value hfs htab rfl hk'
   · -- ## control = jump: excluded by `CtlOk`
     rw [hctl] at hc
     exact hc.elim
@@ -669,9 +753,9 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
 
 /-- Initiation, for the machine `Machine.init` builds. -/
 theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
-  refine ⟨⟨by simp [Machine.init, Machine.initOn], by simp [curFid, Machine.init,
-    Machine.initOn], rfl⟩, tableOk_initHeap, [], [], ?_, ?_⟩
-  · intro x τ hg; exact absurd hg (by simp [envGet?])
+  refine ⟨tableOk_initHeap, [], [], ?_, ?_⟩
+  · show FramesOk (Machine.init p).frames (Machine.init p).stack ([] :: [])
+    simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at h
     show CtlOk [] [] (Machine.init p)
     unfold CtlOk
