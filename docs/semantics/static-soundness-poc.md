@@ -320,6 +320,46 @@ top ratchet item** — and it is a *checker* change, not a harness one: `int_bin
 `Int → Int → Int`, so it needs a Bool-returning variant and a `builtinSig_inv` that admits a
 non-`int` return type.
 
+### 7.5 The type-directed generator
+
+`difftest checker siggen` generates **annotated** Ruby type-first: a term is built downward
+from the type it must have, so the well-typed population is exact *by construction*. This is
+synthesis, not checking — no inference, no join, no fixpoint — and it is the standard way to
+fuzz a type-directed tool [D: Palka et al. on GHC; QuickChick].
+
+**Independence is the load-bearing constraint.** The generator's builtin table is a second,
+independent transcription of Sorbet's RBIs, never `builtinSig`; if well-typedness were defined
+by the artifact under test, agreement would be guaranteed by construction. The two tables
+already disagree (Sorbet's `Integer#+` is wider), and ours being narrower is incompleteness,
+which is allowed. A test enforces the separation mechanically.
+
+**Approximation is confined to one side.** The injected population is only *intended*
+ill-typed; `srb` adjudicates. A generator mistake therefore surfaces as its own cell rather
+than corrupting the check-vs-`srb` zeros, which is what makes the "approximately correct"
+latitude safe.
+
+**Self-validating, and validated** [V, 80 programs, seed 3]: 40/40 intended well-typed are
+`srb`-clean and 40/40 injected are caught, per mutation kind. Both directions have to hold
+before any conclusion is drawn from the population.
+
+**Two knobs worth more than the grammar.** `loose` widens a declared return type to a genuine
+supertype — `returns(Object)` over an `Integer` body is `srb`-clean [V] — which is where a
+checker is liable to over-reject. `coverage` sets the fraction of methods carrying a sig, and
+is the dial that produces the **partially-typed population**
+[`typed-portion-safety.md`](typed-portion-safety.md) §7's M0 wanted and had no corpus for.
+The two are coupled: at `# typed: strict` an unsig'd method draws 7017, so partial coverage
+requires `# typed: true`, and the CLI rejects the other combination.
+
+**The payoff cell.** `intent = ill-typed` with `srb` clean *and* CRuby raising a type-family
+error is a **confirmed hole in Sorbet** — mechanising what the `escape-hatches` and
+`untyped-boundary` corpus entries were found by hand. Zero so far, over the shapes this
+grammar reaches.
+
+**An unanticipated result:** the checker arm is already non-vacuous on annotated programs. Six
+of eighty come back `reject`, because the mutated toplevel body still lands in P0's fragment
+even though the methods do not — and all six land in `reject-agrees-reason`. The annotated
+population therefore guards the three pinned zeros as well, before P1 has done anything.
+
 ---
 
 ## 8. Milestones
