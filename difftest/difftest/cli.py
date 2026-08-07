@@ -177,6 +177,21 @@ def cmd_checker(args) -> int:
     except SorbetUnavailable as e:
         print(e, file=sys.stderr)
         return 2
+    if args.subcommand == "siggen":
+        from .sig_gen import run_siggen
+
+        if args.sigil == "strict" and args.coverage < 1.0:
+            print("--sigil strict forces every method to carry a sig (srb 7017); "
+                  "use --sigil true for partial coverage", file=sys.stderr)
+            return 2
+        out_dir = _out_dir(args.out, "checker-siggen")
+        summary = run_siggen(
+            args.count, args.seed, out_dir, sigil=args.sigil,
+            coverage=args.coverage, loose=args.loose, timeout=args.timeout,
+        )
+        _print_summary(summary, out_dir)
+        return 1 if summary["violations"] else 0
+
     out_dir = _out_dir(args.out, "checker-fuzz")
     summary = run_fuzz(args.count, args.seed, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
@@ -257,11 +272,17 @@ def main(argv=None) -> int:
         help="fuzz the P0 checker fragment and relate `check` to srb "
              "(static-soundness-poc.md §7)",
     )
-    p_checker.add_argument("subcommand", choices=["fuzz"])
+    p_checker.add_argument("subcommand", choices=["fuzz", "siggen"])
     p_checker.add_argument("--count", type=int, default=60)
     p_checker.add_argument("--seed", type=int, default=0)
     p_checker.add_argument("--timeout", type=float, default=300.0)
     p_checker.add_argument("--out", help="report directory")
+    p_checker.add_argument("--sigil", choices=["true", "strict"], default="true",
+                           help="siggen only; `strict` forces coverage=1 (7017)")
+    p_checker.add_argument("--coverage", type=float, default=1.0,
+                           help="siggen only: fraction of methods carrying a sig")
+    p_checker.add_argument("--loose", type=float, default=0.25,
+                           help="siggen only: fraction of sigs widened to a supertype")
     p_checker.set_defaults(func=cmd_checker)
 
     p_rep = sub.add_parser("replay", help="re-run a persisted corpus directory")

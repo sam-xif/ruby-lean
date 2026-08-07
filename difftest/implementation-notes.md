@@ -758,3 +758,46 @@ L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.
   Adding `Integer#<` unlocks both and is the top ratchet item — but it is a *checker*
   change, not a harness one: `int_bin_dispatch` is `Int → Int → Int` and a Bool-returning
   variant is needed, along with a `builtinSig_inv` that admits a non-`int` return.
+
+## N-siggen — the type-directed generator (`sig_gen.py`)
+
+Annotated Ruby, generated type-first. Spec: `../docs/semantics/static-soundness-poc.md` §7.
+
+- **It is synthesis, not checking, and that is why it is cheap.** Terms are built downward
+  from the type they must have, so the well-typed population is exact *by construction* —
+  no inference, no join, no fixpoint, no subsumption decision anywhere. The temptation to
+  resist is generating a program and then checking it: that is the hard problem, and it is
+  the one we are trying to test. Standard technique (Palka et al. on GHC; QuickChick's
+  generators-for-inductive-relations).
+- **Approximation is confined to the ill-typed population.** A mutated program is only
+  *intended* ill-typed; `srb` adjudicates. So a generator mistake shows up as an explicit
+  generator-vs-`srb` cell rather than corrupting the check-vs-`srb` zeros.
+- **`BUILTINS` is a second, independent transcription of Sorbet's RBIs**, and must never be
+  `builtinSig`. If well-typedness were defined by the artifact under test, agreement would be
+  guaranteed by construction. The two tables already disagree — Sorbet's `Integer#+` accepts
+  `T.any(Integer, Float, Rational, BigDecimal, Complex)`, ours accepts `Integer` — and ours
+  being narrower is incompleteness, which is allowed. A test
+  (`test_generation_path_does_not_consult_the_checker`) enforces the separation by tokenising
+  the generation functions and asserting they never name the checker. `run_siggen` is
+  deliberately outside that set: it *records* the verdict for the report, which is not the
+  same as letting the checker decide what is well typed.
+- **Method names are prefixed with the sample id.** Toplevel `def`s land on `Object`, so a
+  batched `srb --dir` run would otherwise have every program redefining `m0` — exactly the
+  hazard `fragment_fuzz.srb_batch` warns about. Prefixing keeps batching legal and cannot
+  affect typing.
+- **`sigil` and `coverage` are coupled** [V]: at `# typed: strict` every unsig'd method draws
+  7017, so partial coverage requires `# typed: true`. The CLI rejects the bad combination
+  rather than silently producing a population rejected for reasons unrelated to types.
+- **`Object` sites are never mutated.** Nothing is ill-typed against `Object`, so
+  `incompatible` returns `None` there and the mutator skips those sites — otherwise the
+  generator emits programs it wrongly believes are broken.
+- **Exactly one mutation per program**, recorded by kind, so a program `srb` accepts anyway is
+  a clean candidate finding rather than a pile of confounded breakages. `by_mutation` in the
+  summary reports catch rate per kind, so a kind `srb` never catches stands out instead of
+  being averaged away.
+- **CRuby runs only where it can change a verdict**: an intended-ill-typed program `srb`
+  accepted (does it really fail?), or one *our* checker accepted (the model-bug zero).
+  Everywhere else it would cost a process per program to confirm what `srb` already settled.
+- **Only `gen-typed-rejected` fails the run.** A generator emitting programs it wrongly
+  believes are well typed invalidates every other number in the report. The unsoundness cells
+  are *findings*, the same stance `sorbet_check.py` takes on `unsoundness-witness`.
