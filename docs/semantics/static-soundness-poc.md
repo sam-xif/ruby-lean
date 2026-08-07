@@ -226,9 +226,69 @@ are the expected state of a growing checker; they must not fail the run.
 
 > `check P = reject` ⇒ `srb tc` reports **some** error in `P`
 
-**The metric:** `unknown`-count declining, with **two pinned zeros** —
-accept-disagreements and reject-disagreements. `unknown → accept` and `unknown → reject`
-are equally risky transitions and get the same guard; only `unknown` is free.
+### 7.1 What the relation has to exclude, measured
+
+Stating the accept direction as the bare *"⇒ `srb` accepts"* of
+[`typed-portion-safety.md`](typed-portion-safety.md) §8.1 does not survive contact with
+`srb`. Measured over the 1304-program bootstraptest corpus [V, srb 0.6.13405]:
+
+| | count |
+|---|---|
+| `check` accepts | 21 |
+| `check` rejects | **0** |
+| `check` unknown | 1190 |
+| pipeline failure (export/decode) | 93 |
+
+Of the 21 accepts, **8 draw an `srb` error, and every one of them is benign**:
+
+- **7006** — *unreachable code* / *left side of `&&` was always truthy*, on
+  `if true then 1 else 2 end`, `1 && 2 && 3 && 4`, `1 || 2 || 3 || 4` and kin (7 programs).
+  The programs are well typed; `srb` is reporting that a branch cannot run. We have no
+  reachability analysis and claim none.
+- **3002** — *unsupported integer literal*, on `123456789012345678901234567890` (1 program).
+  An `srb` implementation limit, not a statement about the program's types.
+
+So the naive guard would fire on **38% of its own accept population** on day one, and every
+firing would be noise. A pinned zero that is routinely overridden is worse than no zero, so
+the relation is refined rather than the ratchet weakened:
+
+```
+accept  ⇒  srb reports no error in a type-relevant class     (7006, 3002 excluded)
+reject  ⇒  srb reports some error, in any class
+```
+
+The asymmetry is deliberate. `accept` is the strong claim — backed by `check_sound` — so it
+gets the strong test. `reject` claims only that our rules refute the program, so it gets the
+weak one; it also *must* be the weak one, because our dead-branch rejects are witnessed by
+`srb` **only** through 7006.
+
+**Exclusions are enumerated, justified, and closed.** An `srb` error code the harness has
+never seen fails the run rather than being silently absorbed — the noisy choice, because the
+quiet one is how the exclusion list turns into a place to hide disagreements.
+
+### 7.2 Agreement on the verdict is not agreement on the reason
+
+`if false then 1 + nil else 0 end` is rejected by us for `1 + nil` and by `srb` for 7006.
+Verdict-only comparison scores that a win. It is not one, so `reject` splits into two
+recorded outcomes — **agrees-on-reason** (some type-relevant `srb` error) and
+**agrees-on-verdict-only** (excluded errors only). Only the second is a coincidence, and
+watching it is the cheap approximation of the site-level comparison §8.3 defers.
+
+### 7.3 The third zero is free, and it tests the model
+
+The engine already runs CRuby. Crossing that with the checker gives one cell worth more
+than the rest:
+
+> `check` accepts **and** CRuby raises a type-family error ⇒ **model bug**
+
+`check_sound` is proved, so this cannot indicate a checker bug — only that the Lean model
+and CRuby disagree, i.e. an adequacy failure. The harness is therefore also an adequacy
+probe, at no extra cost.
+
+**The metric:** `unknown`-count declining, with **three pinned zeros** —
+accept-vs-`srb`, reject-vs-`srb`, and accept-vs-CRuby. `unknown → accept` and
+`unknown → reject` are equally risky transitions and get the same guard; only `unknown` is
+free.
 
 ---
 

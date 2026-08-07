@@ -2073,3 +2073,18 @@ Difftesting `check` against `srb`, per `docs/semantics/static-soundness-poc.md` 
   `T.reveal_type` tests neither direction that matters (`typed-portion-safety.md` §8, which
   replaced exactly that plan). Recorded here so nobody later mistakes the field for an
   oracle.
+- **Mining the bootstraptest corpus was measured before being relied on, and it does not
+  carry the harness.** 1304 programs → 21 accept, **0 reject**, 1190 unknown, 93 pipeline
+  failures. Twelve of the 21 are empty or a bare literal. So mining supplies a small, real,
+  *accept*-only sample and cannot exercise `reject` at all — which is the dangerous verdict.
+  Generation is therefore not an optimisation, it is required. Recorded so the 1.6% is not
+  re-derived later.
+- **`# typed: true` is injected when handing a file to `srb`.** Bootstraptest files carry no
+  sigil, and `srb`'s default is `# typed: false`, under which it checks essentially nothing
+  — the comparison would be vacuous and would look like perfect agreement.
+- **The srb-error exclusion list is closed, and an unknown code fails the run.** Two entries,
+  both found by measurement rather than anticipated: **7006** (unreachable / always-truthy —
+  a reachability opinion, not a type one) and **3002** (unsupported integer literal — an srb
+  implementation limit). The alternative, recording unrecognised codes and continuing, makes
+  the exclusion list a place to quietly park disagreements; that is exactly the erosion the
+  pinned zeros exist to prevent.
