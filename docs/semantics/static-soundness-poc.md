@@ -290,6 +290,36 @@ accept-vs-`srb`, reject-vs-`srb`, and accept-vs-CRuby. `unknown → accept` and
 `unknown → reject` are equally risky transitions and get the same guard; only `unknown` is
 free.
 
+### 7.4 The harness, as built
+
+`rubycore --check` (static, like `--fragment`) feeds `difftest/checker_relation.py`, which
+is reported by `difftest sorbet check` and by a new `difftest checker fuzz`. Both exit
+nonzero on a pinned-zero violation.
+
+**It is exercised, not merely plumbed.** The tier-4 corpus is Sorbet-flavoured and lands
+22/22 in `unknown`, so a `p0-fragment` category of six programs was added to populate the
+cells — chosen to pin decisions rather than to cover syntax: `001` (`if true then 1 else 2
+end`) is the case that *forces* the 7006 exclusion, `003` is the agree-on-verdict-not-reason
+coincidence, `004` (`1 / 2`) is why absent-from-the-table must mean no opinion.
+
+**The zeros are known to fire.** Unit tests drive all three into existence and assert that
+an unclassified `srb` code lands on the type-relevant side; end-to-end, deleting 7006 from
+the exclusion list turns `p0-fragment/001` into an accept-disagreement and the run exits 1.
+A pinned zero nobody has watched fail is not evidence.
+
+**Fuzz results** (300 programs, seed 7, ~26s): 100 `check-accept-agrees`, 100
+`check-reject-agrees-reason`, 100 `check-unknown`, **reject recall 1.0**, zero violations.
+The injected population lands in *agrees-on-reason*, so `srb` raises a real 7002 on each
+rather than a coincidental 7006.
+
+**What the fuzzer cannot yet reach.** With only `+ - *` tabulated there is no comparison
+operator, so a loop condition cannot be typed and a terminating typed loop is
+inexpressible; `if` conditions could only be literals, which `srb` always flags 7006. The
+grammar therefore omits `while` entirely and a test asserts it. **Adding `Integer#<` is the
+top ratchet item** — and it is a *checker* change, not a harness one: `int_bin_dispatch` is
+`Int → Int → Int`, so it needs a Bool-returning variant and a `builtinSig_inv` that admits a
+non-`int` return type.
+
 ---
 
 ## 8. Milestones
@@ -299,7 +329,7 @@ free.
 | **P0a** | `Ty`; `KontOk`/`CtlOk`/`Inv` over `Machine`. Fragment: literals, locals, `if`, `while`, `seq`. **No `send`.** | **DONE** (2026-08-07) — `check_sound` proved, axiom-clean, two worked examples. |
 | **P0b** | `send` for `Integer` builtins only + the signature table of §5. Fragment gains `1 + 2`. | **DONE** (2026-08-07) — three entries, conformance proved, `check_sound` still unconditional. See §8.2. |
 | **P1** | User classes, sigs, single inheritance, ivars, `.new`, user method dispatch. | A corpus program with real methods accepted and proved safe. |
-| **P2** | `check` wired as a total executable into `sorbet check` + difftest, both directions of §7. | Both pinned zeros hold over the 22-program tier-4 corpus; `unknown` baseline recorded. |
+| **P2** | `check` wired as a total executable into `sorbet check` + difftest, both directions of §7. | **DONE** (2026-08-07) — three zeros hold on the corpus and on a 300-program fuzz run; baseline recorded. See §7.4. |
 | **P3** | Widen by one axis — `T.nilable` + narrowing, **or** arrays with element types. | `unknown` down, zero held. |
 | **P4** | `T.untyped` re-enters — the gradual boundary, and where `typed-portion-safety.md` resumes. | — |
 

@@ -118,8 +118,12 @@ cannot fire. The tractability idea is `I ≡ InFragment ∧ WellTyped` — a mac
 restriction conjunct that discharges most `stepFn` branches by contradiction so typing work
 happens only on admitted ones. Records the unavoidable cost the prelude forces (a **builtin
 signature table**, i.e. RBI-conformance at step one, since `1 + 2` is a send), the two
-load-bearing exclusions that keep the class table static, and P0–P4 with the ratchet at one
-pinned zero.
+load-bearing exclusions that keep the class table static, and P0–P4 with the ratchet. §7 is
+the **checker difftest**, built and exercised: the naive guard `accept ⇒ srb accepts` was
+*measured* to fire on 38% of its own accept population (7006 unreachable, 3002 bignum
+literal), so the relation is refined asymmetrically rather than the ratchet weakened, and
+the three pinned zeros — accept-vs-srb, reject-vs-srb, and accept-vs-CRuby, the last of
+which tests the *model* rather than the checker — are each verified to fire.
 
 ## Conventions
 
