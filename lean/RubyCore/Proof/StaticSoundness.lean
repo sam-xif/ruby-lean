@@ -21,7 +21,7 @@ gets proved (doc §2.1).
 
 ## Shape of the invariant
 
-    Inv m  ≡  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
+    Inv m  ≡  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ Γs, LocalsOk Γ m ∧ CtlOk Γ Γs m
 
 `CtlOk`/`KontOk` play the role the doc §4 assigns to `InFragment`: they simply
 have **no constructor** for the machine shapes outside the fragment, so the
@@ -170,50 +170,66 @@ absence of the other 43 is what makes preservation's case analysis collapse.
 def LoopOk (Γ : Env) (c body : Expr) : Prop :=
   (∃ τc, infer Γ c = some (τc, Γ)) ∧ (∃ τb, infer Γ body = some (τb, Γ))
 
-inductive KontOk : Env → Ty → List Kont → Prop where
+/-- `KontOk Γs τ k` reads: *the in-flight value has type `τ`, the environment
+    **stack** is `Γs` (innermost first), and `k` is a well-typed continuation.*
+
+    The stack replaces P0's single environment because a method activation has
+    its own locals: `frameK` — the kont `enterUserMethod` pushes
+    (`Interp.lean:573`) and `applyKont` pops (`Interp.lean:2206`) — is exactly
+    the marker at which one environment goes out of scope. Every other
+    constructor operates on the head and passes the tail through untouched. -/
+inductive KontOk : List Env → Ty → List Kont → Prop where
   /-- Empty stack: the in-flight value is the program's result. -/
-  | nil {Γ τ} : KontOk Γ τ []
+  | nil {Γs τ} : KontOk Γs τ []
   /-- `seqK []` yields the in-flight value unchanged (`Interp.lean:1957`). -/
-  | seqNil {Γ τ k} : KontOk Γ τ k → KontOk Γ τ (.seqK [] :: k)
+  | seqNil {Γ Γs τ k} : KontOk (Γ :: Γs) τ k → KontOk (Γ :: Γs) τ (.seqK [] :: k)
   /-- `seqK (e :: es)` discards the in-flight value and runs the rest. -/
-  | seqCons {Γ τ e es τ' Γ' k} :
-      inferSeq Γ (e :: es) = some (τ', Γ') → KontOk Γ' τ' k →
-      KontOk Γ τ (.seqK (e :: es) :: k)
+  | seqCons {Γ Γs τ e es τ' Γ' k} :
+      inferSeq Γ (e :: es) = some (τ', Γ') → KontOk (Γ' :: Γs) τ' k →
+      KontOk (Γ :: Γs) τ (.seqK (e :: es) :: k)
   /-- Assignment binds `x` at the in-flight type and re-yields the value. -/
-  | asgn {Γ τ x k} :
-      KontOk (envSet Γ x τ) τ k → KontOk Γ τ (.asgnK .lvar x :: k)
+  | asgn {Γ Γs τ x k} :
+      KontOk (envSet Γ x τ :: Γs) τ k → KontOk (Γ :: Γs) τ (.asgnK .lvar x :: k)
   /-- The in-flight value is the condition; either branch may run next, so the
       join must be the one `inferIf` computed. -/
-  | ifK {Γ τ t els τ' Γ' k} :
-      inferIf Γ t els = some (τ', Γ') → KontOk Γ' τ' k →
-      KontOk Γ τ (.ifK t els :: k)
-  | whileCond {Γ τ c body k} :
-      LoopOk Γ c body → KontOk Γ .nilT k → KontOk Γ τ (.whileCondK c body :: k)
-  | whileBody {Γ τ c body k} :
-      LoopOk Γ c body → KontOk Γ .nilT k → KontOk Γ τ (.whileBodyK c body :: k)
+  | ifK {Γ Γs τ t els τ' Γ' k} :
+      inferIf Γ t els = some (τ', Γ') → KontOk (Γ' :: Γs) τ' k →
+      KontOk (Γ :: Γs) τ (.ifK t els :: k)
+  | whileCond {Γ Γs τ c body k} :
+      LoopOk Γ c body → KontOk (Γ :: Γs) .nilT k →
+      KontOk (Γ :: Γs) τ (.whileCondK c body :: k)
+  | whileBody {Γ Γs τ c body k} :
+      LoopOk Γ c body → KontOk (Γ :: Γs) .nilT k →
+      KontOk (Γ :: Γs) τ (.whileBodyK c body :: k)
   /-- The in-flight value is the **receiver** of a binary builtin send; the
       argument expression runs next. The site is `.explicit` because `evalExpr`
       picks it syntactically and `infer` rejects `self` in receiver position. -/
-  | recvK {Γ τ mname arg τp τret Γ₂ k} :
+  | recvK {Γ Γs τ mname arg τp τret Γ₂ k} :
       builtinSig τ mname = some ([τp], τret) →
       infer Γ arg = some (τp, Γ₂) →
-      KontOk Γ₂ τret k →
-      KontOk Γ τ (.recvK mname [arg] .none .explicit :: k)
+      KontOk (Γ₂ :: Γs) τret k →
+      KontOk (Γ :: Γs) τ (.recvK mname [arg] .none .explicit :: k)
   /-- The in-flight value is the **argument**; the receiver is already a value
       carried by the kont, so its type is pinned by `ValueTy` rather than by
       `infer`. -/
-  | argsK {Γ τ mname recv τr τret k} :
+  | argsK {Γ Γs τ mname recv τr τret k} :
       ValueTy recv τr →
       builtinSig τr mname = some ([τ], τret) →
-      KontOk Γ τret k →
-      KontOk Γ τ (.argsK recv .explicit mname [] [] .none :: k)
+      KontOk (Γ :: Γs) τret k →
+      KontOk (Γ :: Γs) τ (.argsK recv .explicit mname [] [] .none :: k)
+-- **No `frameK` constructor yet, deliberately.** Popping an activation resumes
+-- the *caller's* locals, so its case needs a per-frame conformance clause
+-- (every frame on the stack against its own environment) that this invariant
+-- does not yet carry. Adding the constructor without it makes `step_ok`'s
+-- `frameK` case unprovable rather than merely unused, so it lands together with
+-- user dispatch — the only thing that produces one.
 
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
     are not in the fragment, so no step can produce one. -/
-def CtlOk (Γ : Env) (m : Machine) : Prop :=
+def CtlOk (Γ : Env) (Γs : List Env) (m : Machine) : Prop :=
   match m.ctl with
-  | .eval e => ∃ τ Γ', infer Γ e = some (τ, Γ') ∧ KontOk Γ' τ m.kont
-  | .value v => ∃ τ, ValueTy v τ ∧ KontOk Γ τ m.kont
+  | .eval e => ∃ τ Γ', infer Γ e = some (τ, Γ') ∧ KontOk (Γ' :: Γs) τ m.kont
+  | .value v => ∃ τ, ValueTy v τ ∧ KontOk (Γ :: Γs) τ m.kont
   | .jump _ => False
 
 /-- Every `builtinSig` entry still resolves in this heap. A *heap* condition,
@@ -227,7 +243,7 @@ def TableOk (h : Heap) : Prop :=
 
 /-- **The invariant** handed to `invariant_sound_from`. -/
 def Inv (m : Machine) : Prop :=
-  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ, LocalsOk Γ m ∧ CtlOk Γ m
+  FrameOk m ∧ TableOk m.heap ∧ ∃ Γ Γs, LocalsOk Γ m ∧ CtlOk Γ Γs m
 
 /-! ### Inversions used by the send cases -/
 
@@ -371,23 +387,24 @@ theorem LocalsOk_congr {m m' : Machine} (hf : FrameOk m) (hf' : FrameOk m')
 
 /-! ### 2.3 Building `Inv` for the machines the fragment steps to -/
 
-theorem inv_eval {m : Machine} {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env}
+theorem inv_eval {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr} {τ : Ty} {Γ' : Env}
     (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
-    (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk Γ' τ m.kont) :
+    (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk (Γ' :: Γs) τ m.kont) :
     Inv (withCtl m (.eval e)) :=
-  ⟨FrameOk.withCtl hf _, ht, Γ, LocalsOk.withCtl hf hl _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨FrameOk.withCtl hf _, ht, Γ, Γs, LocalsOk.withCtl hf hl _, ⟨τ, Γ', hinf, hk⟩⟩
 
-theorem inv_value {m : Machine} {Γ : Env} {v : Value} {τ : Ty}
+theorem inv_value {m : Machine} {Γ : Env} {Γs : List Env} {v : Value} {τ : Ty}
     (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m) (hv : ValueTy v τ)
-    (hk : KontOk Γ τ m.kont) :
+    (hk : KontOk (Γ :: Γs) τ m.kont) :
     Inv (withCtl m (.value v)) :=
-  ⟨FrameOk.withCtl hf _, ht, Γ, LocalsOk.withCtl hf hl _, ⟨τ, hv, hk⟩⟩
+  ⟨FrameOk.withCtl hf _, ht, Γ, Γs, LocalsOk.withCtl hf hl _, ⟨τ, hv, hk⟩⟩
 
-theorem inv_push {m : Machine} {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env} {k : Kont}
+theorem inv_push {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr} {τ : Ty}
+    {Γ' : Env} {k : Kont}
     (hf : FrameOk m) (ht : TableOk m.heap) (hl : LocalsOk Γ m)
-    (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk Γ' τ (k :: m.kont)) :
+    (hinf : infer Γ e = some (τ, Γ')) (hk : KontOk (Γ' :: Γs) τ (k :: m.kont)) :
     Inv (withKont m (.eval e) k) :=
-  ⟨FrameOk.withKont hf _ _, ht, Γ, LocalsOk.withKont hf hl _ _, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨FrameOk.withKont hf _ _, ht, Γ, Γs, LocalsOk.withKont hf hl _ _, ⟨τ, Γ', hinf, hk⟩⟩
 
 /-! ## 3. Progress and preservation, in one case analysis
 
@@ -403,7 +420,7 @@ def StepOk : StepResult → Prop
   | _ => False
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
-  obtain ⟨hf, htab, Γ, hl, hc⟩ := h
+  obtain ⟨hf, htab, Γ, Γs, hl, hc⟩ := h
   unfold CtlOk at hc
   rcases hctl : m.ctl with e | v | j
   · -- ## control = eval e
@@ -521,11 +538,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     generalize hK : m.kont = K at hk ⊢
     cases hk with
     | nil => trivial
-    | @seqNil Γ τ k hk' =>
+    | @seqNil Γ Γs τ k hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       exact inv_value hf' htab hl' hv hk'
-    | @seqCons Γ τ e₁ es τ' Γ' k hseq hk' =>
+    | @seqCons Γ Γs τ e₁ es τ' Γ' k hseq hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       cases es with
@@ -538,13 +555,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i σ Γ₁ h₁
           exact inv_push hf' htab hl' h₁ (KontOk.seqCons hseq hk')
         · exact absurd hseq (by simp)
-    | @asgn Γ τ x k hk' =>
+    | @asgn Γ Γs τ x k hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
-      exact ⟨FrameOk.withCtl (FrameOk.setLocal hf' x v) _, htab, envSet Γ x τ,
+      exact ⟨FrameOk.withCtl (FrameOk.setLocal hf' x v) _, htab, envSet Γ x τ, Γs,
         LocalsOk.withCtl (FrameOk.setLocal hf' x v) (LocalsOk_setLocal hf' hl' hv) _,
         ⟨τ, hv, hk'⟩⟩
-    | @ifK Γ τ t els τ' Γ' k hif hk' =>
+    | @ifK Γ Γs τ t els τ' Γ' k hif hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       cases els with
@@ -576,7 +593,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             · simp only [hb]; exact inv_value hf' htab hl' rfl hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
-    | @whileCond Γ τ c body k hloop hk' =>
+    | @whileCond Γ Γs τ c body k hloop hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
@@ -585,12 +602,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         exact inv_push hf' htab hl' hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
       · simp only [hb]
         exact inv_value hf' htab hl' rfl hk'
-    | @whileBody Γ τ c body k hloop hk' =>
+    | @whileBody Γ Γs τ c body k hloop hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       exact inv_push hf' htab hl' hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
-    | @recvK Γ τ mname arg τp τret Γ₂ k hsg ha hk' =>
+    | @recvK Γ Γs τ mname arg τp τret Γ₂ k hsg ha hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       have hsp : ∀ e, arg ≠ .splat e := by
@@ -602,7 +619,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       dsimp only
       rw [startArgs_plain hsp hkw hfw]
       exact inv_push hf' htab hl' ha (KontOk.argsK hv hsg hk')
-    | @argsK Γ τ mname recv τr τret k hrv hsg hk' =>
+    | @argsK Γ Γs τ mname recv τr τret k hrv hsg hk' =>
       have hf' : FrameOk { m with kont := k } := FrameOk_congr rfl rfl hf
       have hl' : LocalsOk Γ { m with kont := k } := LocalsOk_congr hf hf' rfl rfl hl
       obtain ⟨rfl, rfl, rfl, hname⟩ := builtinSig_inv hsg
@@ -653,10 +670,10 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
 /-- Initiation, for the machine `Machine.init` builds. -/
 theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
   refine ⟨⟨by simp [Machine.init, Machine.initOn], by simp [curFid, Machine.init,
-    Machine.initOn], rfl⟩, tableOk_initHeap, [], ?_, ?_⟩
+    Machine.initOn], rfl⟩, tableOk_initHeap, [], [], ?_, ?_⟩
   · intro x τ hg; exact absurd hg (by simp [envGet?])
   · unfold check at h
-    show CtlOk [] (Machine.init p)
+    show CtlOk [] [] (Machine.init p)
     unfold CtlOk
     split at h
     · rename_i r hr

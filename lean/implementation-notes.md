@@ -2183,3 +2183,28 @@ reason worth recording:
 Cost: one file, no change to `check`, no change to the axiom baseline, and the fragment is
 byte-identical. Worth noting against L83's prediction — the frame-store cost is real but it
 sits in the *env-stack* generalization (P1b step 2), not in local access.
+
+## L91 — P1b step 2: `KontOk` indexed by an environment *stack*
+
+Mechanical half of the method-dispatch generalization, landed on its own.
+
+- **`KontOk : List Env → Ty → List Kont → Prop`.** Every existing constructor operates on the
+  head and passes the tail through untouched, so the diff is `Γ` → `Γ :: Γs` throughout;
+  `CtlOk` gains a `Γs` parameter and `Inv` an extra existential. `KontOk.nil` deliberately
+  accepts *any* stack, including `[]` — that is what makes the toplevel case work.
+- **[✗→] `frameK` was written and then removed from this commit.** Its case in `step_ok` is not
+  merely unused, it is *unprovable*: popping an activation resumes the caller's locals, so the
+  invariant must carry per-frame conformance (each frame against its own environment) before
+  the constructor can be discharged. Adding a constructor whose case cannot be closed turns a
+  green file red for no gain, so `frameK` now lands together with user dispatch — the only
+  thing that produces one. The comment in place of the constructor says so, to stop the next
+  person re-adding it in isolation.
+- **What the deferred clause needs**, scoped while it was fresh: `FramesOk : List Env →
+  Machine → Prop` requiring conformance frame-by-frame down the stack. The pop case is then
+  free (a suffix of a conforming stack conforms), and the only real obligation is that
+  `setLocal` leaves frames *other* than `curFid` alone — which needs stack entries to be
+  distinct, true because a pushed frame id is `frames.size` and therefore strictly increasing,
+  but an invariant clause rather than a theorem.
+- Cost: one file, fragment byte-identical, axiom baseline unchanged. `Γs` is `[]` in every
+  reachable configuration today, so this commit is pure preparation — its value is that the
+  next diff is only the two new step cases.
