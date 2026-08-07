@@ -383,6 +383,45 @@ class StaticChecker:
         return CheckResultLean(str(d["verdict"]), d.get("type"))
 
 
+class SigReader:
+    """Ask the Lean model which Sorbet signatures a program *declares*
+    (`rubycore --sigs`, `lean/RubyCore/Types/SigRead.lean`).
+
+    Static, like `FragmentChecker` and `StaticChecker`, and against the same
+    binary — the reader is what a later typing layer will consume, so it must not
+    drift into a separate reimplementation.
+    """
+
+    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
+                 runner: CRubyRunner | None = None):
+        root = Path(__file__).resolve().parents[2]
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.runner = runner or CRubyRunner()
+
+    def read(self, source: str) -> list[dict] | None:
+        """`[{method, params: [{name, type}], returns}]`, or None when the
+        program could not be desugared or decoded."""
+        import json as _json
+
+        proc = subprocess.run(
+            [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
+            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if proc.returncode != 0:
+            return None
+        lean = subprocess.run(
+            [str(self.lean_bin), "--sigs"],
+            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
+        )
+        if lean.returncode != 0:
+            return None
+        try:
+            return _json.loads(lean.stdout)["sigs"]
+        except (ValueError, KeyError):
+            return None
+
+
 # Same desugar-and-export snippet the Lean SUT uses; duplicated as a module-level
 # constant here to avoid importing `sut` (which imports `compare`, which imports
 # this module).

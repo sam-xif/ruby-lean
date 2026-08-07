@@ -228,6 +228,20 @@ def cmd_checker(args) -> int:
         print(e, file=sys.stderr)
         return 2
     count = args.count if args.count is not None else 60
+    if args.subcommand == "sigread":
+        from .sig_gen import run_sigread
+
+        out_dir = _out_dir(args.out, "checker-sigread")
+        summary = run_sigread(count, args.seed, out_dir, sigil=args.sigil,
+                              coverage=args.coverage, loose=args.loose,
+                              timeout=args.timeout)
+        _print_summary(summary, out_dir)
+        # A reader that loses or garbles a declared type would poison every later
+        # typing decision, so any mismatch fails. `undecidable` fails too: the
+        # generator only emits programs the pipeline can handle, so a failure
+        # there is a pipeline regression, not honest abstention.
+        return 1 if (summary["mismatch"] or summary["undecidable"]) else 0
+
     if args.subcommand == "siggen":
         from .sig_gen import run_siggen
 
@@ -323,7 +337,8 @@ def main(argv=None) -> int:
         help="fuzz the P0 checker fragment and relate `check` to srb "
              "(static-soundness-poc.md §7)",
     )
-    p_checker.add_argument("subcommand", choices=["fuzz", "siggen", "sample"])
+    p_checker.add_argument("subcommand",
+                           choices=["fuzz", "siggen", "sample", "sigread"])
     p_checker.add_argument("--count", type=int, default=None,
                            help="programs to generate (default 60; 4 for `sample`)")
     p_checker.add_argument("--seed", type=int, default=0)

@@ -246,3 +246,42 @@ def test_sample_can_draw_from_the_fragment_fuzzer(capsys):
     out = capsys.readouterr().out
     # the plain-Ruby fragment carries no annotations at all
     assert "sorbet-runtime" not in out and "sig {" not in out
+
+
+# --------------------------------------------------------------------------
+# `decls` — the oracle the sig reader is validated against
+# --------------------------------------------------------------------------
+
+
+def test_decls_cover_exactly_the_sigged_methods():
+    """`rubycore --sigs` reports sig'd methods only, so the oracle must too —
+    an unsig'd method is the gradual boundary, not a missing declaration."""
+    import random as _r
+
+    from difftest.sig_gen import build
+
+    rng = _r.Random(3)
+    for _ in range(30):
+        p = build(rng, sigil="true", coverage=0.5)
+        sigged = {m.name for m in p.methods if m.sigged}
+        decls = {name for name, _, _ in tuple(
+            (m.name, tuple((n, t.render()) for n, t in m.params), m.declared.render())
+            for m in p.methods if m.sigged)}
+        assert decls == sigged
+
+
+def test_declared_types_appear_verbatim_in_the_source():
+    """The oracle is only an oracle if it renders the same surface syntax the
+    program carries — otherwise a reader mismatch could be a rendering mismatch."""
+    for s in sample(20, 13, loose=1.0):
+        for name, params, ret in s.decls:
+            assert f"def {name}" in s.source
+            assert f".returns({ret})" in s.source or f"returns({ret})" in s.source
+            for pname, ptype in params:
+                assert f"{pname}: {ptype}" in s.source
+
+
+def test_zero_coverage_declares_nothing():
+    for s in sample(8, 14, coverage=0.0):
+        assert s.decls == ()
+        assert "sig {" not in s.source

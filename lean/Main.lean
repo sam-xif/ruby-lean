@@ -10,6 +10,7 @@ Exit codes (mirroring the desugar SUT adapter contract):
 import RubyCore.Obs
 import RubyCore.Types.Fragment
 import RubyCore.Types.Core
+import RubyCore.Types.SigRead
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -41,6 +42,11 @@ def main (args : List String) : IO UInt32 := do
   -- `Proof/StaticSoundness.check_sound` licenses; `reject` is a claim about our
   -- rules only (`static-soundness-poc.md` §2.2); `unknown` claims nothing.
   let checkOnly := args.contains "--check"
+  -- `--sigs`: report the Sorbet signatures the program *declares*, as read off
+  -- the AST (`RubyCore/Types/SigRead.lean`). Static, and deliberately separate
+  -- from `--check`: reading a declared type is unblocked, whereas concluding
+  -- safety about a machine that executes the `T` shim is not (poc doc §8.3).
+  let sigsOnly := args.contains "--sigs"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -58,6 +64,25 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"undecodable RubyCore: {e}"
         return 1
     | .ok prog =>
+      if sigsOnly then
+        let decls := Types.collectSigs prog
+        let paramJson := fun (pn : String) (pt : Types.SigTy) =>
+          Lean.Json.mkObj [("name", Lean.Json.str pn),
+                           ("type", Lean.Json.str pt.render)]
+        let declJson := fun (name : String) (d : Types.SigDecl) =>
+          Lean.Json.mkObj [
+            ("method", Lean.Json.str name),
+            ("params", Lean.Json.arr
+              (d.params.map (fun p => paramJson p.1 p.2)).toArray),
+            -- `null` is `.void`, which is Sorbet saying "no meaningful return"
+            -- — not an absence of information.
+            ("returns", match d.ret with
+              | some t => Lean.Json.str t.render
+              | none => Lean.Json.null)]
+        IO.println (Lean.Json.mkObj [
+          ("sigs", Lean.Json.arr
+            (decls.map (fun d => declJson d.1 d.2)).toArray)]).compress
+        return 0
       if checkOnly then
         let verdict := match Types.check prog with
           | .accept => "accept"

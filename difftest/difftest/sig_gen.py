@@ -325,6 +325,11 @@ class Sample:
     sigil: str
     coverage: float
     source: str
+    # What the generator *declared*, for the sig'd methods only. This is the
+    # oracle for the reader (`rubycore --sigs`): the reader must recover exactly
+    # these, and it is an oracle we get for free precisely because generation is
+    # type-directed rather than filtered.
+    decls: tuple[tuple[str, tuple[tuple[str, str], ...], str], ...] = ()
 
 
 def sample(count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0,
@@ -338,7 +343,11 @@ def sample(count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0,
         name = f"s{i:04d}"
         p = build(rng, sigil=sigil, coverage=coverage, loose=loose, intent=intent,
                   prefix=f"{name}_")
-        out.append(Sample(name, intent, p.mutation, sigil, coverage, p.render()))
+        decls = tuple(
+            (m.name, tuple((pn, pt.render()) for pn, pt in m.params), m.declared.render())
+            for m in p.methods if m.sigged
+        )
+        out.append(Sample(name, intent, p.mutation, sigil, coverage, p.render(), decls))
     return out
 
 
@@ -469,6 +478,67 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
         ],
         "findings": [r["name"] for r in rows
                      if r["cell"] in ("gen-unsoundness-witness", "gen-illtyped-accepted")],
+    }
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Validating the reader against the declarations (P1a's exit criterion)
+# ---------------------------------------------------------------------------
+
+
+def run_sigread(count: int, seed: int, out_dir, *, sigil: str = "true",
+                coverage: float = 1.0, loose: float = 0.25,
+                timeout: float = 300.0) -> dict:
+    """Does `rubycore --sigs` recover what the generator declared?
+
+    A real oracle rather than a self-consistency check: the generator chose the
+    types *before* rendering them to Ruby, so agreement means the reader
+    understood Sorbet's surface syntax, not that two copies of the same code
+    agree. Any mismatch fails the run — a reader that silently loses or garbles a
+    declared type would poison every later typing decision.
+    """
+    import json
+
+    from .sorbet import SigReader
+
+    samples = sample(count, seed, sigil=sigil, coverage=coverage, loose=loose)
+    reader = SigReader()
+
+    rows = []
+    for s in samples:
+        got = reader.read(s.source)
+        if got is None:
+            rows.append({"name": s.name, "status": "undecidable",
+                         "expected": [list(d) for d in s.decls], "got": None})
+            continue
+        # Compare as sorted tuples: the reader reports source order, and so does
+        # the generator, but pinning order would test the traversal rather than
+        # the reading.
+        want = sorted((m, list(ps), r) for m, ps, r in
+                      ((m, [list(p) for p in ps], r) for m, ps, r in s.decls))
+        have = sorted((d["method"],
+                       [[p["name"], p["type"]] for p in d["params"]],
+                       d["returns"]) for d in got)
+        rows.append({
+            "name": s.name,
+            "status": "agree" if want == have else "mismatch",
+            "expected": want, "got": have,
+        })
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with (out_dir / "cases.jsonl").open("w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+
+    n_sigs = sum(len(s.decls) for s in samples)
+    summary = {
+        "count": count, "seed": seed, "sigil": sigil, "coverage": coverage,
+        "signatures_read": n_sigs,
+        "agree": sum(1 for r in rows if r["status"] == "agree"),
+        "mismatch": [r["name"] for r in rows if r["status"] == "mismatch"],
+        "undecidable": [r["name"] for r in rows if r["status"] == "undecidable"],
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary

@@ -2122,3 +2122,37 @@ RubyCore — hashes, arrays, blocks, ivars.
 - **The sig *reader* is still built first (P1a) and is not blocked by any of this**, because
   reading a declared type off the AST is a static question. It just cannot feed `accept`
   until the machine-side story exists, so sig-bearing programs stay `unknown`.
+
+## L89 — P1a, the sig reader (`Types/SigRead.lean`)
+
+- **`SigTy` is deliberately wider than `Ty`, and `toTy` is the explicit bridge.** `Ty` is what
+  the *proof* understands (three ground types); `SigTy` is what a *program can declare*.
+  Conflating them would have forced `Ty` to grow for reasons the proof does not need, and
+  would have made the reader silently lossy. `toTy` is partial and its `none` must be read as
+  "cannot say", never as a default.
+- **`render` reproduces Sorbet's surface syntax exactly**, so reader output is comparable
+  against a generator's declaration string with no translation layer between them
+  (`difftest/difftest/sig_gen.py`'s `Ty.render`). That is what makes the validation arm a
+  one-line comparison instead of a mapping table nobody trusts.
+- **Unrecognised links in the sig chain are skipped, not failed.** `.checked(:tests)`,
+  `.override`, `.abstract`, `.type_parameters` modify enforcement or dispatch, not the declared
+  types; refusing them would discard signatures we can read perfectly well. Verified: the
+  `.checked(:tests)` case reads its types [V].
+- **`ret = none` means `.void`**, which is Sorbet saying "no meaningful return" — not an
+  absence of information. The JSON emits `null` for it, and the distinction matters because a
+  `def` with *no sig at all* is omitted from the output entirely (the gradual boundary).
+- **`collectSigs` threads the pending declaration rather than a flag.** `Fragment.lean` threads
+  a `sigPrecedes : Bool` for the same adjacency problem (L82); carrying the decl itself is the
+  same single traversal holding slightly more, and avoids a second pass whose natural
+  two-function shape has no termination measure.
+- **`DecidableEq` cannot be derived for `SigTy`** — the nested `List SigTy` defeats the
+  handler. Nothing needs it, so it is dropped rather than hand-written.
+- **The reader is validated against the generator, which is a real oracle**, not a
+  self-consistency check: `checker siggen` chooses types *before* rendering them to Ruby, so
+  agreement means the reader understood Sorbet's syntax. `difftest checker sigread` fails the
+  run on any mismatch — a reader that garbles a declared type would poison every later typing
+  decision. Measured: 80 signatures over 40 programs agree, and agreement holds at
+  `--coverage {0.0, 0.5}`, `--sigil strict`, and `--loose 1.0` (all-widened types).
+- **`undecidable` also fails the `sigread` run.** The generator only emits programs the
+  pipeline can handle, so a desugar/decode failure there is a pipeline regression rather than
+  honest abstention — unlike `checker fuzz`, where `unknown` is a legitimate outcome.
