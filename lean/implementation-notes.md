@@ -1944,3 +1944,41 @@ alternatives rejected.
   fragment issues no sends, so the prelude is inert and the no-prelude start is sound.
   Stating the general form separately means the prelude-booted start `SorbetSafety.lean`
   insists on is an *instance* at P0b rather than a restatement.
+
+## L84 — P0b builtin conformance (`Proof/BuiltinConformance.lean`)
+
+Discharging `builtinSig`'s entries against the interpreter. Choices:
+
+- **Separate file, imported by nothing yet.** The conformance proofs are a distinct concern
+  from the type system and are the risky half of P0b, so they land before the `infer`
+  wiring and can be reverted without it.
+- **`IntBuiltinResolves` is a hypothesis, not a lemma.** It bundles the heap facts a
+  dispatch depends on (the table resolves the name to the bid; live, public, unshadowed,
+  non-prelude). It cannot be proved in general — a program may reopen `Integer` and redefine
+  `+` — so it is assumed here, forbidden by the fragment (§6, no class reopening), and
+  discharged for the concrete booted heap elsewhere. **That discharge must not live in this
+  file**: it is `native_decide`-shaped and would cost `ofReduceBool`, breaking the axiom
+  baseline. Same split as `SorbetConcrete.lean` (L81).
+- **`crubySingletonShadow` gets no clause.** It is `none` by computation for any non-`.ref`
+  receiver (`Interp.lean:126`), so integer dispatch never needs the hypothesis. P1's object
+  receivers will.
+- **`lookup_int_const` (`rfl`).** `lookup` reaches the heap only via `classOf`, which is
+  `Boot.integerId` for every `.int` (`Heap.lean:396`), so `IntBuiltinResolves` can be stated
+  at the single witness `.int 0` instead of quantifying over all integers. Keeps the
+  hypothesis first-order and makes it cheap to discharge concretely.
+- **`int_bin_step` is parameterized by `bid` + `op` + a `Builtins.run` equation**, with the
+  three entries instantiating it. Adding a table entry is then a `rfl` lemma plus a
+  three-line instantiation — the ratchet step is deliberately trivial.
+- **The `Builtins.run` layer is `rfl` and fast**; `simp [Builtins.run]` is *not* (it blows
+  maxRecDepth, then heartbeats, on the 1582-line match). Follow L73's advice: `#eval` to
+  check semantics, `rfl` to prove, never `simp` through `Builtins.run`.
+- **The proof shape is copied from `T5.dispatch_progress`** — `rw [invoke.eq_def]` then
+  `simp [invoke.invokeDispatch, …]` — because `invoke` is well-founded-recursive
+  (`termination_by args.length`) and so does not reduce by `rfl`. One addition was needed:
+  the `send`/`public_send`/`__send__` re-dispatch guard at the top of `invoke` does not fold
+  on string literals under `simp only`, so it is passed in as a `(… || … || …) = false`
+  hypothesis discharged by `decide` at each instantiation.
+- **`recv_step` is split from the argument step** even though both are "the send path": it
+  needs no heap facts, and the preservation proof consumes them at different `Kont` shapes.
+  Its four `arg ≠ …` side conditions are `startArgs`'s own special cases (splat, kwargs,
+  fwd, and a block literal in argument position), which the fragment excludes anyway.
