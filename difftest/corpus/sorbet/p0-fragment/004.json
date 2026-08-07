@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "`/` is absent from builtinSig, so `check` abstains; srb accepts. Rejecting here would break the reject direction outright — the case that makes absent-means-no-opinion mandatory.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "check_expect": "unknown",
+  "doc_ref": "static-soundness-poc.md 2.2"
+}

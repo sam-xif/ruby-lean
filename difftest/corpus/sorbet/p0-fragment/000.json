@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "Integer arithmetic over a local: the shape `check` accepts. Both halves quiet, so the accept direction agrees with no exclusion doing any work.",
+  "sigil": "true",
+  "static_expect": "clean",
+  "runtime_expect": "value",
+  "check_expect": "accept",
+  "doc_ref": "static-soundness-poc.md 7"
+}

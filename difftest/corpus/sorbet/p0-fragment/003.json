@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "Rejected by `check` for `1 + nil`; rejected by srb for 7006 unreachable. Agreement on the verdict but NOT the reason (7.2) — and the program is perfectly safe, which is what `reject` does not claim.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "value",
+  "check_expect": "reject",
+  "doc_ref": "static-soundness-poc.md 7.2"
+}

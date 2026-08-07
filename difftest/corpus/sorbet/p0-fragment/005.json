@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "srb rejects (7002); `check` abstains because defTy has no environment, so a local has no unconditional type. Incompleteness, not a failure — and the obvious next widening.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "ruby_error",
+  "check_expect": "unknown",
+  "doc_ref": "static-soundness-poc.md 2.2"
+}

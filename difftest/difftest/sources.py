@@ -34,6 +34,14 @@ SORBET_CATEGORIES = {
     "untyped-boundary": "T.untyped and the no-sig gradual boundary; blame (§A.5, §B.5)",
     "escape-hatches": "the unsoundness catalogue: holes Sorbet accepts by design (§A.3)",
     "structs-enums": "T::Struct / T::Enum, incl. the checked/unchecked asymmetry (§A.1)",
+    # The only category with no annotations, and deliberately so — see
+    # `test_every_program_requires_sorbet_runtime` for why it is exempt from the
+    # `require "sorbet-runtime"` rule.
+    "p0-fragment": (
+        "plain Ruby inside the P0 static-checker fragment; exercises the "
+        "check-vs-srb relation and its pinned zeros "
+        "(static-soundness-poc.md §7)"
+    ),
     "generics": "runtime-erased generics — statically checked, no runtime backstop (§A.6)",
 }
 

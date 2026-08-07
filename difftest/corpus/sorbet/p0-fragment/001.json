@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "Accepted by `check`; srb reports 7006 unreachable. THE case that forces the exclusion list (7.1): without 7006 excluded this is an accept-disagreement and the pinned zero fires on a correct program.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "value",
+  "check_expect": "accept",
+  "doc_ref": "static-soundness-poc.md 7.1"
+}

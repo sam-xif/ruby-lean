@@ -1,0 +1,10 @@
+{
+  "tier": 4,
+  "category": "p0-fragment",
+  "description": "Rejected by `check` via the builtin table; srb agrees with 7002. Agreement on the reason.",
+  "sigil": "true",
+  "static_expect": "errors",
+  "runtime_expect": "ruby_error",
+  "check_expect": "reject",
+  "doc_ref": "static-soundness-poc.md 7"
+}

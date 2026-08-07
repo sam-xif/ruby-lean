@@ -713,3 +713,26 @@ L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.
 - **Pinned-zero violations exit 1**, alongside the existing declaration-mismatch gate.
   Unsoundness witnesses deliberately stay findings rather than failures — the corpus exists
   to collect them — but a genuine `check`/`srb` disagreement is a bug in one of the two.
+- **A `p0-fragment` corpus category exists because the harness was otherwise vacuous.** The
+  22 pre-existing tier-4 programs are Sorbet-flavoured and all land in `unknown`, so every
+  cell read 0 and the report looked like agreement when it was really silence. Six programs
+  now populate four cells, chosen to pin the design decisions rather than to cover syntax:
+  `001` (`if true then 1 else 2 end`) is the case that *forces* the 7006 exclusion — without
+  it the accept zero fires on a correct program; `003` is the agree-on-verdict-not-reason
+  coincidence; `004` (`1 / 2`) is why absent-from-the-table must mean no opinion.
+- **`p0-fragment` is exempt from the `require "sorbet-runtime"` rule**, with a second test
+  (`test_annotation_free_categories_really_are_annotation_free`) guarding the exemption so
+  it cannot become a hiding place. These programs carry no annotations — they exercise the
+  *static* checker — so there is no enforcement for the control to exercise. The exemption
+  also buys something: they are the only tier-4 programs the Lean SUT can run, since it
+  gates every other one on the `require`.
+- **`check_expect` in the sidecar is optional but enforced where present.** Making it
+  mandatory would turn every fragment widening into a 22-file edit on programs that predate
+  the checker. Where declared it is checked, which catches a verdict silently flipping
+  `accept` → `unknown` — a regression that breaks no pinned zero and would otherwise pass
+  unnoticed.
+- **The zeros were verified to fire, both ways.** `tests/test_checker_relation.py` drives
+  each of the three into existence and asserts an unclassified srb code lands on the
+  type-relevant side; end-to-end, deleting 7006 from `EXCLUDED_CODES` turns
+  `p0-fragment/001` into an accept-disagreement and `sorbet check` exits 1. A pinned zero
+  nobody has watched fail is not evidence of anything.

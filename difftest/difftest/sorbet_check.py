@@ -86,6 +86,7 @@ class CheckResult:
     cell: str
     declared_static: str
     declared_runtime: str
+    declared_check: str | None = None
     fragment: object = None  # FragmentResult | None ("cannot say")
     checker: object = None  # CheckResultLean | None ("cannot say")
     check_cell: str = "check-undecidable"
@@ -98,6 +99,17 @@ class CheckResult:
 
     @property
     def matches_declaration(self) -> bool:
+        """Corpus integrity. `check_expect` is **optional**: the 22 pre-existing
+        tier-4 programs predate the checker and their verdicts will churn as the
+        fragment widens, so requiring a declaration there would make every
+        widening a 22-file edit. Where it *is* declared it is enforced — that
+        catches a verdict silently flipping `accept` to `unknown`, which breaks
+        no pinned zero and would otherwise pass unnoticed."""
+        if (
+            self.declared_check is not None
+            and (self.checker.verdict if self.checker else None) != self.declared_check
+        ):
+            return False
         return (
             ("clean" if self.static_ok else "errors") == self.declared_static
             and self.runtime_kind == self.declared_runtime
@@ -121,6 +133,7 @@ class CheckResult:
             "declared": {
                 "static_expect": self.declared_static,
                 "runtime_expect": self.declared_runtime,
+                "check_expect": self.declared_check,
             },
             "fragment": self.fragment.to_json() if self.fragment else None,
             "checker": self.checker.to_json() if self.checker else None,
@@ -153,6 +166,7 @@ def check_case(
         cell=classify(result.ok, kind, obs.exception[0] if obs.exception else None),
         declared_static=case.provenance.get("static_expect", "?"),
         declared_runtime=case.provenance.get("runtime_expect", "?"),
+        declared_check=case.provenance.get("check_expect"),
         fragment=fragment.check(case.source) if fragment else None,
         checker=verdict,
         check_cell=relate(
@@ -279,8 +293,10 @@ def render_markdown(results: list[CheckResult]) -> str:
         for r in mismatches:
             lines.append(
                 f"- `{r.case.id}`: declared "
-                f"({r.declared_static}, {r.declared_runtime}), observed "
-                f"({'clean' if r.static_ok else 'errors'}, {r.runtime_kind})"
+                f"({r.declared_static}, {r.declared_runtime}, "
+                f"{r.declared_check or '-'}), observed "
+                f"({'clean' if r.static_ok else 'errors'}, {r.runtime_kind}, "
+                f"{(r.checker.verdict if r.checker else '-')})"
             )
         lines.append("")
 
