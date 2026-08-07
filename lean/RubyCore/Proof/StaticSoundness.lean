@@ -641,7 +641,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     · rename_i r hr
       obtain ⟨τ, Γ'⟩ := r
       exact ⟨τ, Γ', hr, KontOk.nil⟩
-    · exact absurd h (by simp)
+    · exact absurd h (by split <;> simp)
 
 /-- **Static soundness, from any machine satisfying the invariant.** Stated this
     way so that P1's prelude-booted start (`Prelude.initWithPrelude`, the
@@ -697,21 +697,15 @@ theorem egArith_safe :
     ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
   check_sound (by simp [check, egArith, infer, inferSeq, builtinSig, envSet, envGet?])
 
-/-- The ratchet's default. `/` is not in `builtinSig` (its conformance lemma is
-    not proved — `ZeroDivisionError`), so the checker abstains. It does **not**
-    reject: the program is perfectly fine, we just make no claim. -/
-example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
-  simp [check, infer, builtinSig]
+/-- A branch-type disagreement the fragment cannot join: `unknown`, not
+    `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls
+    the builtin table refutes — so the absence of a union type shows up as
+    incompleteness rather than as a claim about the program.
 
-/-- A real type error inside the fragment: `1 + true`. Still `unknown`, not
-    `reject` — P0 has no reject verdict (doc §2.2). -/
-example : check (.send (some (.int 1)) "+" [.tru] none) = .unknown := by
-  simp [check, infer, builtinSig]
-
-/-- A genuine type disagreement inside the fragment is `unknown` too: P0 has no
-    union type, so the branches cannot be joined. -/
+    The verdict examples that *do* exercise `reject` live next to the checker
+    in `Types/Core.lean`; only the safety-bearing ones belong here. -/
 example : check (.if' .tru (.int 1) (some .nil)) = .unknown := by
-  simp [check, infer, inferIf]
+  simp [check, infer, inferIf, illTyped]
 
 /-! ## 6. Axiom hygiene
 

@@ -241,19 +241,65 @@ termination_by sizeOf t + sizeOf els
 
 end
 
-/-- The POC verdict lattice (doc §2.2): two-valued. There is deliberately no
-    `reject` — a rejection is a claim about our rules and needs its own guard
-    and its own difftest direction. -/
+/-- The verdict lattice. `accept` is backed by `check_sound`; `reject` is backed
+    by the difftest direction `reject ⇒ srb rejects` (not by a theorem — see the
+    refutation-pass header); `unknown` claims nothing and is the default. -/
 inductive Verdict where
   | accept
+  | reject
   | unknown
 deriving DecidableEq, Repr, Inhabited
 
-/-- **The checker.** Total and executable; `accept` is what `check_sound`
-    licenses. -/
+/-- **The checker.** Total and executable. `infer` is consulted first, so a
+    program the type rules accept is never refuted; `illTyped` only ever
+    upgrades an `unknown` to a `reject`. -/
 def check (p : Expr) : Verdict :=
   match infer [] p with
   | some _ => .accept
-  | none => .unknown
+  | none => if illTyped p then .reject else .unknown
+
+/-! ## Worked verdicts
+
+Each `unknown` below is *incompleteness* — `srb` rejects and we abstain — which
+the ratchet permits and the pinned zero does not count. Each `reject` agrees
+with `srb` [V, 0.6.13405].
+-/
+
+/-- `1 + nil` — srb 7002. The motivating case. -/
+example : check (.send (some (.int 1)) "+" [.nil] none) = .reject := by
+  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+
+/-- `1 + true` — srb 7002. -/
+example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
+  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+
+/-- **Rejected, and perfectly safe.** `if false then 1 + nil else 0 end` runs to
+    `0`. `reject` claims our rules refute the program, *not* that it fails —
+    the asymmetry of `typed-portion-safety.md` §8.1. srb rejects this too, but
+    for a different reason (7006 unreachable, not 7002), which is worth
+    remembering when the difftest starts comparing diagnostics [V]. -/
+example :
+    check (.if' .fls (.send (some (.int 1)) "+" [.nil] none) (some (.int 0)))
+      = .reject := by
+  simp [check, infer, inferIf, illTyped, tableRefutes, defTy, builtinSig]
+
+/-- `1 / 2` — srb *accepts*; `/` is absent from the table, so we abstain. This
+    is the case that makes "absent ⇒ no opinion" mandatory rather than merely
+    conservative: rejecting here would break `reject ⇒ srb rejects`. -/
+example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
+  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+
+/-- `1.foo(2)` — srb 7003. We abstain: the table cannot distinguish "no such
+    method" from "method we have not tabulated". Incompleteness. -/
+example : check (.send (some (.int 1)) "foo" [.int 2] none) = .unknown := by
+  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+
+/-- `q = 1; q + nil` — srb 7002. We abstain because `defTy` has no environment,
+    so a local has no unconditional type. The obvious next widening. -/
+example :
+    check (.seq [ .vasgn .lvar "q" (.int 1),
+                  .send (some (.var .lvar "q")) "+" [.nil] none ]) = .unknown := by
+  simp [check, infer, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
+    builtinSig, envSet, envGet?]
 
 end RubyCore.Types

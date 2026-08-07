@@ -62,13 +62,40 @@ and the blame carve-out is simply unnecessary here. This is a simplification, no
 weakening: `typeSafe_sorbetSafe` (`SorbetSafety.lean:119`) already derives the Sorbet
 statement from the strong one.
 
-### 2.2 There is no `reject`
+### 2.2 `reject`, and what it does *not* claim
 
-The verdict lattice is two-valued for the POC. `unknown` is the default and absorbs
-everything the checker does not handle. A `reject` verdict is a claim about our rules that
-needs its own guard and its own difftest direction ([`typed-portion-safety.md`](typed-portion-safety.md)
-§8.2) — deliberately deferred, because getting it wrong is how `reject` silently becomes
-"anything the checker dislikes."
+The lattice is three-valued. `unknown` remains the default and absorbs everything the
+checker has no opinion about.
+
+> `reject` says **our rules refute this program**. It does not say the program fails.
+
+That asymmetry is inherent ([`typed-portion-safety.md`](typed-portion-safety.md) §8.1): a
+refuted call may sit on a dead branch. `if false then 1 + nil else 0 end` is rejected here
+and runs to `0`. Consequently `reject` is **not** backed by a Lean theorem — its guard is
+the difftest direction `reject ⇒ srb rejects` (§7), which is why the failure mode to fear
+is `reject` quietly becoming "anything the checker dislikes."
+
+Two design choices keep that from happening.
+
+**It is an independent second pass, not a third value threaded through `infer`.**
+`infer`'s `none` conflates "outside the fragment" with "ill-typed". Splitting it would touch
+every `KontOk` constructor and every case of preservation. Instead `check` consults
+`illTyped` only when `infer` has already failed, so `check_sound` — a statement about
+`accept` alone — is untouched, and the entire new obligation is confined to the new pass.
+
+**Every doubt resolves to `unknown`.** `defTy` types only *unconditional* expressions and
+takes no environment, so a local variable has no type; `tableRefutes` fires only when the
+method is **present** in `builtinSig`, since the table is narrow by design; and `illTyped`
+stops recursing at any node off the fragment's spine. Measured against `srb` 0.6.13405 [V]:
+
+| Program | `srb` | `check` | |
+|---|---|---|---|
+| `1 + nil` | 7002 | `reject` | agrees |
+| `1 + true` | 7002 | `reject` | agrees |
+| `if false then 1 + nil else 0 end` | 7006 *unreachable* | `reject` | agrees — but on a **different diagnostic**, worth remembering when the difftest starts comparing reasons |
+| `1 / 2` | accepted | `unknown` | `/` absent from the table; rejecting here would break the guard |
+| `1.foo(2)` | 7003 | `unknown` | the table cannot tell "no such method" from "not tabulated" |
+| `q = 1; q + nil` | 7002 | `unknown` | `defTy` has no environment — the obvious next widening |
 
 ---
 
@@ -197,9 +224,11 @@ evidence that `check` formalizes Sorbet rather than a type system we invented.
 Failures the other way (`srb` accepts, `check` says `unknown`) are **incompleteness** and
 are the expected state of a growing checker; they must not fail the run.
 
-**The metric:** `unknown`-count declining, **accept-disagreements pinned at zero**. One
-pinned zero, because there is no `reject` verdict yet (§2.2). Moving a program from
-`unknown` to `accept` is the only risky transition and gets the guard.
+> `check P = reject` ⇒ `srb tc` reports **some** error in `P`
+
+**The metric:** `unknown`-count declining, with **two pinned zeros** —
+accept-disagreements and reject-disagreements. `unknown → accept` and `unknown → reject`
+are equally risky transitions and get the same guard; only `unknown` is free.
 
 ---
 
@@ -210,7 +239,7 @@ pinned zero, because there is no `reject` verdict yet (§2.2). Moving a program 
 | **P0a** | `Ty`; `KontOk`/`CtlOk`/`Inv` over `Machine`. Fragment: literals, locals, `if`, `while`, `seq`. **No `send`.** | **DONE** (2026-08-07) — `check_sound` proved, axiom-clean, two worked examples. |
 | **P0b** | `send` for `Integer` builtins only + the signature table of §5. Fragment gains `1 + 2`. | **DONE** (2026-08-07) — three entries, conformance proved, `check_sound` still unconditional. See §8.2. |
 | **P1** | User classes, sigs, single inheritance, ivars, `.new`, user method dispatch. | A corpus program with real methods accepted and proved safe. |
-| **P2** | `check` wired as a total executable into `sorbet check` + difftest, one-directionally. | Zero accept-disagreements over the 22-program tier-4 corpus; `unknown` baseline recorded. |
+| **P2** | `check` wired as a total executable into `sorbet check` + difftest, both directions of §7. | Both pinned zeros hold over the 22-program tier-4 corpus; `unknown` baseline recorded. |
 | **P3** | Widen by one axis — `T.nilable` + narrowing, **or** arrays with element types. | `unknown` down, zero held. |
 | **P4** | `T.untyped` re-enters — the gradual boundary, and where `typed-portion-safety.md` resumes. | — |
 

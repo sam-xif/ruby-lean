@@ -2026,3 +2026,36 @@ Discharging `builtinSig`'s entries against the interpreter. Choices:
 - **`infer_send_inv` is a standalone lemma** rather than inline `split at`. The nested
   splits need `next`-bound names (`rename_i` miscounts and silently destructures the
   environment list instead), which is unreadable inside an already-large case analysis.
+
+## L86 — the `reject` verdict as an independent second pass
+
+- **Not a third value threaded through `infer`.** `infer`'s `none` conflates "outside the
+  fragment" with "ill-typed", and splitting it would have touched all three functions in the
+  `mutual` block, all nine `KontOk` constructors that reference an `infer`/`inferSeq`/
+  `inferIf` equation, `CtlOk`, `infer_send_inv`, and every `absurd hinf` in `step_ok`.
+  `check` instead consults `illTyped` only after `infer` has failed, so **`check_sound` did
+  not change at all** — one line of `initiation` (`by simp` → `by split <;> simp`, because
+  the `none` branch is now an `if`) was the entire proof cost.
+- **`reject` has no theorem, by design.** It claims our *rules* refute the program, not that
+  the program fails: a refuted call can sit on a dead branch. Its guard is the difftest
+  direction `reject ⇒ srb rejects`, which is P2. Anyone tempted to strengthen it to "will
+  raise a TypeError" should read `typed-portion-safety.md` §8.1 first — that is the
+  *witnessed* verdict, a different (and cheaper) thing built on `run_typeError_unsafe`
+  (`Proof/TypeSafety.lean:243`), not on syntax.
+- **Three separate conservatism knobs, all pointing at `unknown`.** (1) `defTy` takes no
+  environment, so locals have no unconditional type; (2) `tableRefutes` fires only when the
+  method is *present* in `builtinSig`, because the table is deliberately narrow — `/` is
+  absent but valid, and rejecting it would break the guard outright; (3) `illTyped` does not
+  recurse past a node off the fragment's spine, so an unsupported construct hides everything
+  under it. Knob (2) is the load-bearing one: it is the difference between "absent means no
+  opinion" and an immediate difftest violation.
+- **Verdicts were checked against a real `srb`** (0.6.13405, from the `sorbet` gem —
+  `$(gem contents sorbet | grep bin/srb)`, run with a `sorbet/config` of `false` in a temp
+  dir), not assumed. One nuance found that way and recorded in the examples: srb rejects
+  `if false then 1 + nil else 0 end` with **7006 unreachable**, not 7002 — so we agree on
+  the verdict but not on the reason, which will matter if the difftest ever compares
+  diagnostics rather than accept/reject.
+- **Examples live next to what they test**: verdict examples in `Types/Core.lean`,
+  safety-bearing ones in `Proof/StaticSoundness.lean`. Two duplicates were removed from the
+  proof file when the reject pass landed, and one of them (`1 + true`) had become *wrong*
+  there — it asserted `unknown`.
