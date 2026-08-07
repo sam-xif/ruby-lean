@@ -168,6 +168,24 @@ def cmd_sorbet(args) -> int:
     return 1 if (summary["mismatches"] or summary["check_violations"]) else 0
 
 
+def cmd_checker(args) -> int:
+    from .fragment_fuzz import run_fuzz
+    from .sorbet import SorbetUnavailable, require_toolchain
+
+    try:
+        require_toolchain(runtime=False)
+    except SorbetUnavailable as e:
+        print(e, file=sys.stderr)
+        return 2
+    out_dir = _out_dir(args.out, "checker-fuzz")
+    summary = run_fuzz(args.count, args.seed, out_dir, timeout=args.timeout)
+    _print_summary(summary, out_dir)
+    # Pinned-zero violations fail. A wellformed program that is not accepted is
+    # a *checker* regression rather than a relation violation, but it is still a
+    # failure — silently degrading to `unknown` is exactly how a ratchet rots.
+    return 1 if (summary["violations"] or summary["wellformed_not_accepted"]) else 0
+
+
 def cmd_replay(args) -> int:
     control = CRubyRunner(timeout=args.timeout)
     sut = make_sut(args.sut, inject_bug=args.inject_bug)
@@ -233,6 +251,18 @@ def main(argv=None) -> int:
     p_sorbet.add_argument("--timeout", type=float, default=60.0)
     p_sorbet.add_argument("--out", help="report directory")
     p_sorbet.set_defaults(func=cmd_sorbet)
+
+    p_checker = sub.add_parser(
+        "checker",
+        help="fuzz the P0 checker fragment and relate `check` to srb "
+             "(static-soundness-poc.md §7)",
+    )
+    p_checker.add_argument("subcommand", choices=["fuzz"])
+    p_checker.add_argument("--count", type=int, default=60)
+    p_checker.add_argument("--seed", type=int, default=0)
+    p_checker.add_argument("--timeout", type=float, default=300.0)
+    p_checker.add_argument("--out", help="report directory")
+    p_checker.set_defaults(func=cmd_checker)
 
     p_rep = sub.add_parser("replay", help="re-run a persisted corpus directory")
     p_rep.add_argument("corpus")

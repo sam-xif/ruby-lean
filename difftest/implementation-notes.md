@@ -736,3 +736,25 @@ L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.
   type-relevant side; end-to-end, deleting 7006 from `EXCLUDED_CODES` turns
   `p0-fragment/001` into an accept-disagreement and `sorbet check` exits 1. A pinned zero
   nobody has watched fail is not evidence of anything.
+- **The fuzz arm generates Ruby *source*, not `Expr`.** Generating `Expr` would need an
+  `Expr → Ruby` printer and trust in it; source reuses the existing desugar pipeline and
+  guarantees `srb` and the checker read the same artifact.
+- **Three intents, because one population cannot measure both directions.** `wellformed`
+  must accept (anything else is a checker regression, tracked separately from relation
+  violations so it cannot hide in the `unknown` count); `injected-literal` puts the bad
+  operand under a **literal-rooted** receiver so `defTy` knows both types and the honest
+  verdict is `reject` — the rate is `reject_recall`, the number that says whether `reject`
+  earns its risk; `injected-local` puts the same operand under a *local*, where `unknown` is
+  correct because `defTy` has no environment. Generating the third deliberately keeps the
+  known incompleteness measured rather than assumed.
+- **`srb` is batched for the fuzz arm and per-file everywhere else.** One process for the
+  whole sample instead of one per program — 300 programs in ~26s. Safe *only* here:
+  generated programs use nothing but top-level locals, which are file-scoped, so no two
+  files can interact. The moment the grammar gains constants, methods or classes this must
+  revert to per-file, and the docstring says so.
+- **The grammar has no `while` and no comparison**, and a test asserts it. `builtinSig`
+  carries `+ - *` only, so a loop condition cannot be typed and a terminating typed loop is
+  inexpressible; `if` conditions could only be literals, which `srb` always flags 7006.
+  Adding `Integer#<` unlocks both and is the top ratchet item — but it is a *checker*
+  change, not a harness one: `int_bin_dispatch` is `Int → Int → Int` and a Bool-returning
+  variant is needed, along with a `builtinSig_inv` that admits a non-`int` return.
