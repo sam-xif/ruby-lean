@@ -95,6 +95,8 @@ def main (args : List String) : IO UInt32 := do
         let ty := match Types.infer [] prog with
           | some (t, _) => match t with
             | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
+            -- `def` evaluates to the method name.
+            | .sym => "Symbol"
           | none => ""
         IO.println (Lean.Json.mkObj
           ([("verdict", Lean.Json.str verdict)] ++

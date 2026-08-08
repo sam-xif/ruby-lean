@@ -26,6 +26,10 @@ inductive Ty where
   | int
   | bool
   | nilT
+  /-- A Symbol. Present only because `def` *evaluates* to the method name
+      (`Interp.lean:2624`), so a `def` in tail position needs a type. Nothing
+      constructs or consumes one otherwise. -/
+  | sym
 deriving DecidableEq, Repr, Inhabited
 
 /-- Local-variable typing environment. Order is canonical (`envSet` replaces in
@@ -190,6 +194,24 @@ def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
         | none => none
       | _ => none
     | none => none
+  -- A **zero-parameter** definition. Parameters wait for call-site types (the
+  -- next step); until then there is no environment to check the body in.
+  --
+  -- Three names are excluded, and each exclusion is what discharges a clause of
+  -- the machine invariant rather than a matter of taste: `+`/`-`/`*` would
+  -- shadow a tabulated builtin and break `TableOk`
+  -- (`Proof/StaticSoundness.TableOk_defineMethod`), and `method_added` would
+  -- install the `def` hook (`Interp.lean:2625`) whose body we cannot type.
+  | .def' name params body =>
+    if params.isEmpty ∧ name ≠ "+" ∧ name ≠ "-" ∧ name ≠ "*"
+        ∧ name ≠ "method_added" then
+      -- The body is checked even though nothing can call it yet. Skipping the
+      -- check would accept more programs *now* and fewer once calls arrive,
+      -- which is a ratchet regression; the fragment only ever grows.
+      match infer [] body with
+      | some _ => some (.sym, Γ)
+      | none => none
+    else none
   | .seq es => inferSeq Γ es
   | .if' c t els =>
     match infer Γ c with

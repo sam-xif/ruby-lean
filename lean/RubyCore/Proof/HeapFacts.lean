@@ -295,6 +295,35 @@ theorem className_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     `lookup` congruence below needs no side condition for integer receivers. -/
 theorem classOf_int (h : Heap) (a : Int) : classOf h (.int a) = Boot.integerId := rfl
 
+/-- `defineMethod` rewrites one object's *payload*; `klass` and `eigen` are
+    separate `Object` fields and `setClassPayload` copies them (`Heap.lean:181`),
+    so `classOf` — which reads only those — is untouched. -/
+theorem classOf_defineMethod (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (v : Value) :
+    classOf (defineMethod h cls name md) v = classOf h v := by
+  cases v
+  case ref o =>
+    have hgo : ((defineMethod h cls name md).get o).eigen = (h.get o).eigen ∧
+        ((defineMethod h cls name md).get o).klass = (h.get o).klass := by
+      unfold defineMethod
+      split
+      · rename_i c hc
+        by_cases hk : o = cls
+        · subst hk
+          simp only [Heap.setClassPayload, Heap.get, Heap.set]
+          by_cases hb : o < h.objs.size
+          · simp [Array.getD, hb, Array.set!]
+          · rw [classPayload?_oob h o hb] at hc; exact absurd hc (by simp)
+        · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+          rw [objs_getD_set!_ne _ _ _ _ hk]
+          exact ⟨rfl, rfl⟩
+      · exact ⟨rfl, rfl⟩
+    unfold classOf
+    dsimp only
+    rw [hgo.1, hgo.2]
+  case bool b => cases b <;> rfl
+  all_goals rfl
+
 /-- **`lookup` is unchanged by defining a *differently named* method.** The
     name-disjointness route (§3 of the header): it avoids having to reason about
     *where* in the ancestor chain resolution lands. -/

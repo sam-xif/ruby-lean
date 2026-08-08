@@ -2346,3 +2346,44 @@ detail rather than a semantic one.
   *name* has to differ from a tabulated builtin. That is a stronger statement than expected —
   the fragment does not need to forbid reopening `Integer`, only shadowing `+`/`-`/`*` — and it
   is what makes the side condition purely syntactic.
+
+## L96 — P1b: `def` enters the proved fragment
+
+The first actual widening since P0b. `def f; 1 + 2; end; 3 * 4` is accepted and
+`egDef_safe` proves it type-safe, axiom-clean. Zero-parameter definitions only; calls come
+next.
+
+- **Three excluded names, each discharging an invariant clause rather than expressing taste.**
+  `+`/`-`/`*` would shadow a tabulated builtin and break `TableOk`
+  (`TableOk_defineMethod`); `method_added` would install the `def` hook. All three are
+  syntactic, which is the point — the fragment predicate stays decidable.
+- **The hook is excludable because the prelude installs it lazily.** `T.__toplevel_sig`'s
+  `Object.define_singleton_method(:method_added)` (`prelude/prelude.rb:1187`) runs only when a
+  toplevel `sig` is evaluated, so a sig-free program never has one and `lookup` misses —
+  `rfl` on the boot heap [V]. Had it been installed eagerly on `Module`, every `def` would
+  dispatch a hook and this milestone would have been impossible without P1d.
+- **`NoHook` must be a pure *heap* fact, and `defmod` must live in `FrameConforms`.** Stating
+  it as `lookup m.heap (.ref (curFrame m).defmod) …` is unprovable across `frameK`, which
+  resumes a *different* frame whose `defmod` the invariant would know nothing about. Carrying
+  `f.defmod = Boot.objectId` per frame fixes it, and pop then transports `NoHook` for free.
+  Found by the `frameK` case failing after the clause was added — the same lesson as L92's
+  two-deep env stack.
+- **The body is checked even though nothing can call it.** Skipping the check would accept
+  strictly more programs now and fewer once calls arrive, which is a ratchet *regression*.
+  Accept only ever grows.
+- **`Ty.sym` exists solely because `def` evaluates to the method name** (`Interp.lean:2624`),
+  so a `def` in tail position needs a type. Nothing constructs or consumes one otherwise.
+  It also has to be added to `Main.lean`'s `--check` type rendering — a non-exhaustive match
+  there is a *build* failure, not a proof failure, and the proof file compiles happily without
+  it. Check `lake build`, not just the file.
+
+Tactic notes, both new:
+
+- **`split` dives into the `MethodDef` literal's `visibility` `if`s.** The `def` branch has two
+  outer conditions (`reprSensitive`, `preludeMode`) and two more buried inside the term. Case
+  on the outer two with `by_cases` and let the inner ones ride — `hres` is quantified over the
+  machine precisely so they never have to be resolved.
+- **Quantify a helper over the *facts*, not over the `MethodDef`.** `∀ md, … → Inv …` leaves
+  `md` an unsolvable metavariable when applied by `refine`, because nothing in the conclusion
+  mentions it. Taking `TableOk m₀.heap` and `NoHook m₀.heap` as hypotheses instead fixes `m₀`
+  from the goal first and forces each remaining unification.
