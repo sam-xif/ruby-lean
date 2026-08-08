@@ -2245,3 +2245,40 @@ Still no `def`/dispatch in the fragment: `Γs` is `[]` in every reachable config
 `frameK` remains unproduced. What is now true is that the invariant *supports* activation
 stacks and the pop is proved, so the remaining step is the two new `step_ok` cases plus the
 `TableOk`-under-`defineMethod` heap lemma flagged last turn.
+
+## L93 — `TableOk` under `defineMethod`: the chain, priced
+
+P1b's last obligation, sized before being attempted. A user `def` mutates the method table
+(`Interp.lean:2615`), so `Inv`'s `TableOk` conjunct must survive it. `TableOk` reaches the
+heap through exactly two functions — `lookup` and `ancestors` — which decomposes it:
+
+1. **`shape_defineMethod` — proved** (`Proof/HeapFacts.lean`). `defineMethod` leaves every
+   payload field except `methods` alone, which is what makes the rest possible since
+   `ancestors` reads only `prepends`/`includes`/`superclass`.
+2. **`ancestors` congruence — not done.** Needs a fuel induction over `ancestors.go` *and* a
+   second over `modAncestors.go` (`Heap.lean:416`, `431`), because the chain walk splices
+   included modules. This is the bulk of the remaining work.
+3. **`lookup` congruence — not done.** Cheap route: **name-disjointness**. At every class in
+   the chain, `methods.find? (·.1 == m)` is unaffected by prepending an entry named
+   `name ≠ m` — that is `find?_filter_ne`, already proved. It avoids reasoning about *where*
+   in the chain resolution lands, which the alternative condition ("the resolving class
+   precedes `owner`") would force. The fragment supplies the side condition for free by
+   forbidding a `def` of any name in `builtinSig`, which is syntactic.
+4. `IntBuiltinResolves` → `TableOk` → the `def` case of `step_ok`.
+
+Traps found while proving (1), all in `Heap` internals rather than in the statement:
+
+- `Heap.set` is `Array.set!`, so the `k = cls` case needs the in-bounds fact. It comes from
+  `classPayload? k = some c` via the new `classPayload?_oob`; **`simp [Heap.set]` without
+  splitting on the bound leaves an irreducible `if k < size`** in the goal.
+- `classPayload?_oob` finishes with a bare `rfl` after `simp`: the goal reduces to a match on
+  `default.payload`, and `simp` will not take the last step.
+- The `Object` array lemma is stated separately from the `Frame` one in
+  `StaticSoundness.lean`. Generalising over the element type was tried and was not shorter,
+  because both need `Inhabited`-specific `default` reasoning.
+
+**Alternative considered and rejected.** State `check_sound` from a machine with the `def`s
+already installed (`sound_from`), discharging setup per-program by `native_decide` — the same
+split P1d needs for sigs. It dodges the chain entirely but weakens the headline claim for
+every method-bearing program, and these lemmas are reusable by any future heap-mutating step.
+Worth paying for once.
