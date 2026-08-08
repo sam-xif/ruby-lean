@@ -1,4 +1,5 @@
 import RubyCore.Proof.BuiltinConformance
+import RubyCore.Proof.HeapFacts
 import RubyCore.Types.Core
 
 /-!
@@ -131,19 +132,9 @@ theorem getLocal_cur {m : Machine} (hf : FrameOk m) (x : String) :
   simp only [localOf, curFrame, curFid, hc]
   rfl
 
-theorem find?_filter_ne {α : Type} (l : List (String × α)) {x y : String}
-    (hxy : ¬ (y = x)) :
-    (l.filter (·.1 != x)).find? (·.1 == y) = l.find? (·.1 == y) := by
-  induction l with
-  | nil => rfl
-  | cons a l ih =>
-    by_cases hax : a.1 = x
-    · have h1 : (a.1 != x) = false := by simp [hax]
-      have h2 : (a.1 == y) = false := by
-        simp only [beq_eq_false_iff_ne]; rw [hax]; exact fun h => hxy h.symm
-      simp [List.filter, List.find?, h1, h2, ih]
-    · have h1 : (a.1 != x) = true := by simp [hax]
-      simp [List.filter, List.find?, h1, ih]
+-- `find?_filter_ne` now lives in `Proof/HeapFacts.lean` — the `defineMethod`
+-- chain needs it too, and one copy is better than two.
+open RubyCore.Proof in
 
 /-- With no captured chain, `setLocal`'s owner search returns the start frame on
     both branches, whichever frame that is. -/
@@ -418,6 +409,20 @@ def TableOk (h : Heap) : Prop :=
   IntBuiltinResolves h "+" "Integer#+" ∧
   IntBuiltinResolves h "-" "Integer#-" ∧
   IntBuiltinResolves h "*" "Integer#*"
+
+/-- **`TableOk` survives a user `def`.** The obligation P1b's `def` case needs:
+    `def` writes the method table (`Interp.lean:2615`), and `TableOk` is a heap
+    condition, so it has to be re-established. The side condition is exactly what
+    the fragment can check syntactically — a `def` may not shadow a tabulated
+    builtin name. Note it holds for *any* target class `cls`, so reopening
+    `Integer` itself is fine as long as the name differs. -/
+theorem TableOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (ht : TableOk h)
+    (h1 : ¬ (name = "+")) (h2 : ¬ (name = "-")) (h3 : ¬ (name = "*")) :
+    TableOk (defineMethod h cls name md) :=
+  ⟨IntBuiltinResolves_defineMethod ht.1 (fun hh => h1 hh.symm),
+   IntBuiltinResolves_defineMethod ht.2.1 (fun hh => h2 hh.symm),
+   IntBuiltinResolves_defineMethod ht.2.2 (fun hh => h3 hh.symm)⟩
 
 /-- **The invariant** handed to `invariant_sound_from`. -/
 def Inv (m : Machine) : Prop :=

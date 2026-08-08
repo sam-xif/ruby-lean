@@ -2252,19 +2252,22 @@ P1b's last obligation, sized before being attempted. A user `def` mutates the me
 (`Interp.lean:2615`), so `Inv`'s `TableOk` conjunct must survive it. `TableOk` reaches the
 heap through exactly two functions — `lookup` and `ancestors` — which decomposes it:
 
-1. **`shape_defineMethod` — proved** (`Proof/HeapFacts.lean`). `defineMethod` leaves every
-   payload field except `methods` alone, which is what makes the rest possible since
-   `ancestors` reads only `prepends`/`includes`/`superclass`.
-2. **`ancestors` congruence — not done.** Needs a fuel induction over `ancestors.go` *and* a
-   second over `modAncestors.go` (`Heap.lean:416`, `431`), because the chain walk splices
-   included modules. This is the bulk of the remaining work.
-3. **`lookup` congruence — not done.** Cheap route: **name-disjointness**. At every class in
-   the chain, `methods.find? (·.1 == m)` is unaffected by prepending an entry named
-   `name ≠ m` — that is `find?_filter_ne`, already proved. It avoids reasoning about *where*
-   in the chain resolution lands, which the alternative condition ("the resolving class
-   precedes `owner`") would force. The fragment supplies the side condition for free by
-   forbidding a `def` of any name in `builtinSig`, which is syntactic.
-4. `IntBuiltinResolves` → `TableOk` → the `def` case of `step_ok`.
+1. **`shape_defineMethod`** — `defineMethod` leaves every payload field except `methods`
+   alone, which is what makes the rest possible since `ancestors` reads only
+   `prepends`/`includes`/`superclass`.
+2. **`ancestors` congruence** — a fuel induction over `ancestors.go` *and* a second over
+   `modAncestors.go` (`Heap.lean:416`, `431`), because the chain walk splices included
+   modules.
+3. **`lookup` congruence** via **name-disjointness**: at every class in the chain,
+   `methods.find? (·.1 == m)` is unaffected by prepending an entry named `name ≠ m`
+   (`find?_filter_ne`). Avoids reasoning about *where* in the chain resolution lands, which
+   the alternative condition ("the resolving class precedes `owner`") would force. The
+   fragment supplies the side condition syntactically by forbidding a `def` of any name in
+   `builtinSig`.
+4. `IntBuiltinResolves_defineMethod` → `TableOk_defineMethod`.
+
+**All four are now proved**, axiom-clean (`[propext, Quot.sound]` — not even
+`Classical.choice`), and with no `native_decide` anywhere, which is what §8.4/L94 requires.
 
 Traps found while proving (1), all in `Heap` internals rather than in the statement:
 
@@ -2312,3 +2315,34 @@ runtime** in the trust base beside the kernel. Rule, adopted here rather than as
   defs-installed start machine discharged the same way. Both are now closed off. The
   prelude-booted case in particular deserves a *measurement* first — `rfl` already handles the
   boot heap, so whether it handles the prelude-booted heap is unknown, not hopeless.
+
+
+## L95 — closing the `defineMethod` chain: what the four links actually cost
+
+Follow-up to L93, which priced the chain. It is closed. The estimate was roughly right about
+*where* the work was and wrong about *how* the difficulty distributes: steps 2–3 were long but
+mechanical once the right congruence shape was found, and every real fight was a Lean-side
+detail rather than a semantic one.
+
+- **Congruence is stated over a `ShapeAgree` hypothesis, not over `defineMethod`.** `ancestors`
+  and `modAncestors` are congruent in *any* two heaps that agree on
+  `prepends`/`includes`/`superclass` pointwise and have equal `objs.size`; `defineMethod` is
+  then one instance. That generalisation cost nothing and makes the lemmas reusable by every
+  future heap-mutating step — which was the argument for paying for the chain at all.
+- **`modAncestors` needs a `funext` form.** `ancestors.go` uses `modAncestors h` *unapplied*
+  as the function argument of `flatMap`, so the pointwise congruence will not rewrite there
+  and `simp` reports the argument unused. `modAncestors_funext` is the version `simp` can use.
+  This cost the most time of anything in the chain.
+- **`lookup.go` needs a `dsimp only` before the `rw`.** After `cases h1 : … classPayload? k`
+  the goal still holds `match some c' with …`; the rewrite target is under an unreduced iota.
+  Same trap as L85's `applyKont` note, in a different function — worth treating as a general
+  rule for this codebase: **after `cases` on a scrutinee, `dsimp only` before any `rw`.**
+- **The `name`/`methods` field lemmas are three copies of one proof shape.**
+  `shape_defineMethod`, `methods_find_defineMethod` and `clsName_defineMethod` differ only in
+  the projection. Factoring over the projection was attempted and abandoned: the `k = cls`
+  branch needs projection-specific `simp` sets (`find?_filter_ne` for one, nothing for the
+  others), so the shared form was longer than three instances.
+- **`TableOk_defineMethod` holds for *any* target class**, including `Integer` itself. Only the
+  *name* has to differ from a tabulated builtin. That is a stronger statement than expected —
+  the fragment does not need to forbid reopening `Integer`, only shadowing `+`/`-`/`*` — and it
+  is what makes the side condition purely syntactic.

@@ -13,29 +13,30 @@ conjunct — "the tabulated `Integer` builtins still resolve" — has to survive
 1. **`shape_defineMethod`** (here) — `defineMethod` leaves every payload field
    *except* `methods` alone. This is what makes the rest possible: `ancestors`
    reads only `prepends`/`includes`/`superclass`.
-2. **`ancestors` congruence** under (1) — *not yet proved*. Needs a fuel
-   induction over `ancestors.go` **and** a second over `modAncestors.go`
-   (`Heap.lean:416`, `Heap.lean:431`), since the chain walk splices included
-   modules.
-3. **`lookup` congruence** given (2) plus **name-disjointness** — *not yet
-   proved*. The disjointness is the cheap route: at every class in the chain,
-   `methods.find? (·.1 == m)` is unaffected by prepending an entry named
-   `name ≠ m`, which is `find?_filter_ne` (already proved in
-   `StaticSoundness.lean`). It avoids having to reason about *where* in the chain
-   resolution happens, which the alternative — "the resolving class precedes
-   `owner`" — would require.
-4. `IntBuiltinResolves` preservation, then `TableOk`, then the `def` case of
-   `step_ok`.
+2. **`ancestors` congruence** under (1) — a fuel induction over `ancestors.go`
+   **and** a second over `modAncestors.go` (`Heap.lean:416`, `Heap.lean:431`),
+   since the chain walk splices included modules.
+3. **`lookup` congruence** given (2) plus **name-disjointness**. Disjointness is
+   the cheap route: at every class in the chain, `methods.find? (·.1 == m)` is
+   unaffected by prepending an entry named `name ≠ m` (`find?_filter_ne`). It
+   avoids reasoning about *where* in the chain resolution lands, which the
+   alternative — "the resolving class precedes `owner`" — would require.
+4. `IntBuiltinResolves` and `TableOk` preservation, in
+   `BuiltinConformance.lean` and `StaticSoundness.lean` respectively, since they
+   need `Interp` and the checker.
+
+All of 1–3 are proved here.
 
 The fragment supplies (3)'s side condition for free: it can forbid `def`ining a
 name in `builtinSig`, which is syntactic.
 
-**The alternative considered and rejected.** State `check_sound` from a machine
-where the `def`s are already installed (`sound_from`), discharging the setup
-per-program by `native_decide` — the same split P1d needs for sigs. That dodges
-this chain entirely but weakens the headline claim for every method-bearing
-program, and these lemmas are reusable by any future heap-mutating step, so the
-chain is worth paying for once.
+**The alternative, rejected twice over.** State `check_sound` from a machine with
+the `def`s already installed, discharging setup per-program by `native_decide`.
+It dodges this chain entirely, but it weakens the headline claim for every
+method-bearing program *and* it violates the standing rule of §8.4 / L94 — no
+`native_decide` above a per-program leaf, because it puts the Lean compiler in
+the trust base. These lemmas are reusable by any future heap-mutating step, so
+the chain is worth paying for once.
 -/
 
 namespace RubyCore
@@ -46,6 +47,7 @@ namespace Proof
 The `Frame` versions live in `StaticSoundness.lean`. They are stated separately
 rather than generalized over the element type because both need
 `Inhabited`-specific `default` reasoning and the shared form was not shorter.
+`find?_filter_ne` lives here rather than there because both consumers need it.
 -/
 
 theorem objs_getD_set!_ne (a : Array Object) (i j : Nat) (o : Object) (h : j ≠ i) :
@@ -99,6 +101,209 @@ theorem shape_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
+
+/-! ## Steps 2 and 3 of the chain -/
+
+abbrev ShapeAgree (h h' : Heap) : Prop :=
+  ∀ k, (h'.classPayload? k).map clsShape = (h.classPayload? k).map clsShape
+
+theorem modAncestors_go_congr {h h' : Heap} (hs : ShapeAgree h h') :
+    ∀ (fuel : Nat) (mo : ObjId),
+      modAncestors.go h' mo fuel = modAncestors.go h mo fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro mo; rfl
+  | succ n ih =>
+    intro mo
+    unfold modAncestors.go
+    have := hs mo
+    cases h1 : h'.classPayload? mo with
+    | none =>
+      cases h2 : h.classPayload? mo with
+      | none => simp
+      | some c => rw [h1, h2] at this; exact absurd this (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? mo with
+      | none => rw [h1, h2] at this; exact absurd this (by simp)
+      | some c =>
+        rw [h1, h2] at this
+        simp only [Option.map_some, Option.some.injEq, clsShape, Prod.mk.injEq] at this
+        obtain ⟨_, hinc, _⟩ := this
+        simp only [hinc, ih]
+
+theorem modAncestors_congr {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h'.objs.size = h.objs.size) (mo : ObjId) :
+    modAncestors h' mo = modAncestors h mo := by
+  unfold modAncestors
+  rw [hsz]
+  exact modAncestors_go_congr hs _ mo
+
+/-- `ancestors.go` uses `modAncestors h` **unapplied** as a `flatMap` function, so
+    the pointwise congruence will not rewrite there; the funext form is what
+    `simp` can use. -/
+theorem modAncestors_funext {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h'.objs.size = h.objs.size) : modAncestors h' = modAncestors h :=
+  funext (modAncestors_congr hs hsz)
+
+theorem ancestors_go_congr {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h'.objs.size = h.objs.size) :
+    ∀ (fuel : Nat) (k : ObjId), ancestors.go h' k fuel = ancestors.go h k fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro k; rfl
+  | succ n ih =>
+    intro k
+    unfold ancestors.go
+    have hk := hs k
+    cases h1 : h'.classPayload? k with
+    | none =>
+      cases h2 : h.classPayload? k with
+      | none => simp
+      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? k with
+      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
+      | some c =>
+        rw [h1, h2] at hk
+        simp only [Option.map_some, Option.some.injEq, clsShape, Prod.mk.injEq] at hk
+        obtain ⟨hpre, hinc, hsup⟩ := hk
+        simp only [hpre, hinc, hsup, modAncestors_funext hs hsz, ih]
+
+theorem ancestors_congr {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h'.objs.size = h.objs.size) (k : ObjId) :
+    ancestors h' k = ancestors h k := by
+  unfold ancestors
+  rw [hsz, ancestors_go_congr hs hsz]
+
+/-! ## `defineMethod` instances -/
+
+theorem objs_size_defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) :
+    (defineMethod h cls name md).objs.size = h.objs.size := by
+  unfold defineMethod
+  split
+  · simp [Heap.setClassPayload, Heap.set, Array.set!]
+  · rfl
+
+theorem ancestors_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ancestors (defineMethod h cls name md) k = ancestors h k :=
+  ancestors_congr (fun j => shape_defineMethod h cls j name md)
+    (objs_size_defineMethod h cls name md) k
+
+/-! ## Step 3: `lookup` is unchanged for a *different* method name -/
+
+theorem find?_filter_ne {α : Type} (l : List (String × α)) {x y : String}
+    (hxy : ¬ (y = x)) :
+    (l.filter (·.1 != x)).find? (·.1 == y) = l.find? (·.1 == y) := by
+  induction l with
+  | nil => rfl
+  | cons a l ih =>
+    by_cases hax : a.1 = x
+    · have h1 : (a.1 != x) = false := by simp [hax]
+      have h2 : (a.1 == y) = false := by
+        simp only [beq_eq_false_iff_ne]; rw [hax]; exact fun h => hxy h.symm
+      simp [List.filter, List.find?, h1, h2, ih]
+    · have h1 : (a.1 != x) = true := by simp [hax]
+      simp [List.filter, List.find?, h1, ih]
+
+theorem methods_find_defineMethod (h : Heap) (cls k : ObjId) (name m : String)
+    (md : MethodDef) (hne : ¬ (m = name)) :
+    ((defineMethod h cls name md).classPayload? k).map
+        (fun c => c.methods.find? (·.1 == m))
+      = (h.classPayload? k).map (fun c => c.methods.find? (·.1 == m)) := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · have hhead : ((name, md).1 == m) = false := by
+          simp only [beq_eq_false_iff_ne]; exact fun hh => hne hh.symm
+        simp [Array.getD, hb, Array.set!, List.find?, hhead, find?_filter_ne _ hne]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem lookup_go_defineMethod (h : Heap) (cls : ObjId) (name m : String)
+    (md : MethodDef) (hne : ¬ (m = name)) :
+    ∀ chain, lookup.go (defineMethod h cls name md) m chain = lookup.go h m chain := by
+  intro chain
+  induction chain with
+  | nil => rfl
+  | cons k rest ih =>
+    unfold lookup.go
+    have hk := methods_find_defineMethod h cls k name m md hne
+    cases h1 : (defineMethod h cls name md).classPayload? k with
+    | none =>
+      cases h2 : h.classPayload? k with
+      | none => exact ih
+      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? k with
+      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
+      | some c =>
+        rw [h1, h2] at hk
+        simp only [Option.map_some, Option.some.injEq] at hk
+        dsimp only
+        rw [hk]
+        split <;> simp [ih]
+
+theorem clsName_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).map (·.name)
+      = (h.classPayload? k).map (·.name) := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem className_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) : className (defineMethod h cls name md) k = className h k := by
+  unfold className
+  have hk := clsName_defineMethod h cls k name md
+  cases h1 : (defineMethod h cls name md).classPayload? k with
+  | none =>
+    cases h2 : h.classPayload? k with
+    | none => rfl
+    | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
+  | some c' =>
+    cases h2 : h.classPayload? k with
+    | none => rw [h1, h2] at hk; exact absurd hk (by simp)
+    | some c =>
+      rw [h1, h2] at hk
+      simp only [Option.map_some, Option.some.injEq] at hk
+      dsimp only
+      exact hk
+
+/-- `classOf` on an immediate is heap-independent (`Heap.lean:396`), so the
+    `lookup` congruence below needs no side condition for integer receivers. -/
+theorem classOf_int (h : Heap) (a : Int) : classOf h (.int a) = Boot.integerId := rfl
+
+/-- **`lookup` is unchanged by defining a *differently named* method.** The
+    name-disjointness route (§3 of the header): it avoids having to reason about
+    *where* in the ancestor chain resolution lands. -/
+theorem lookup_defineMethod (h : Heap) (cls : ObjId) (name m : String)
+    (md : MethodDef) (v : Value) (hne : ¬ (m = name))
+    (hco : classOf (defineMethod h cls name md) v = classOf h v) :
+    lookup (defineMethod h cls name md) v m = lookup h v m := by
+  unfold lookup
+  rw [hco, ancestors_defineMethod, lookup_go_defineMethod h cls name m md hne]
 
 end Proof
 end RubyCore

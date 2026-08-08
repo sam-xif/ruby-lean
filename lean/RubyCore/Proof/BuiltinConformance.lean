@@ -1,4 +1,5 @@
 import RubyCore.Proof.TypeSafety
+import RubyCore.Proof.HeapFacts
 
 /-!
 # RBI-conformance for the builtins the typed fragment calls
@@ -131,6 +132,31 @@ theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value}
     startArgs m recv site mname [] [arg] .none
       = .next (withKont m (.eval arg) (.argsK recv site mname [] [] .none)) := by
   cases arg <;> simp_all [startArgs]
+
+/-! ## 4. Surviving a user `def`
+
+`IntBuiltinResolves` is a *heap* condition, so any step that writes the method
+table has to preserve it. The `defineMethod` chain is proved in
+`Proof/HeapFacts.lean`; this is its application, and the side condition
+(`mname ≠ name`) is the one the fragment can supply syntactically by forbidding a
+`def` of any name in `builtinSig`.
+-/
+
+theorem crubyShadow_defineMethod (h : Heap) (cls : ObjId) (name mname : String)
+    (md : MethodDef) (chain : List ObjId) :
+    crubyShadow (defineMethod h cls name md) chain mname
+      = crubyShadow h chain mname := by
+  unfold crubyShadow
+  simp only [className_defineMethod]
+
+theorem IntBuiltinResolves_defineMethod {h : Heap} {mname bid : String}
+    {cls : ObjId} {name : String} {md : MethodDef}
+    (hres : IntBuiltinResolves h mname bid) (hne : ¬ (mname = name)) :
+    IntBuiltinResolves (defineMethod h cls name md) mname bid := by
+  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
+  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
+  · rw [lookup_defineMethod h cls name mname md (.int 0) hne rfl]; exact hlook
+  · rw [ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
 
 end Static
 end Proof
