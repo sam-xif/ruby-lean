@@ -465,6 +465,50 @@ Three ways out, none free:
 successor and nothing in (c) is wasted under it: the stripped program is precisely what (a)
 proves about.
 
+### 8.4 The trust base, and the standing rule on `native_decide`
+
+**Rule: no `native_decide` in a metatheorem, and none in the path from `check` to
+`check_sound`.** It discharges a goal by *compiling and running* it, so it puts the Lean
+compiler and runtime into the trust base alongside the kernel. Every use mints its own named
+axiom, which is at least honest — `#print axioms` says exactly which fact is
+compiler-trusted rather than hiding behind a single global — but the trust is real and it is
+not the trust we are trying to buy.
+
+Inventory as it stands [V, 8 tactic uses in 5 files]:
+
+| Where | Uses | What they establish |
+|---|---|---|
+| `Proof/SorbetConcrete.lean` | 3 | *this corpus program* runs to a value / to blame |
+| `Proof/T5Concrete.lean` | 2 | *this* program runs to a value / hits a type error |
+| `Proof/QLearningTypeSafe.lean` | 1 | *this* demo runs to a value |
+| `Search/Random.lean` | 2 | a witness found by random search really is one |
+
+Every one is a **per-program** fact. The general lemmas above them —
+`runsToValueBooted_safe`, `runsToSorbetStuckBooted_unsafe` — are clean
+`[propext, Classical.choice, Quot.sound]` [V], and so are `check_sound`,
+`sound_from`, `step_ok`, `int_add_dispatch` and `tableOk_initHeap`. That is the shape to
+preserve: **compiler trust may sit on a leaf claim about one program, never on a theorem
+about all of them.**
+
+`tableOk_initHeap` is the model. It is a fact about a large concrete heap and it is proved by
+`rfl` — kernel reduction, no compiler — which only works because of L73's standing
+reducibility discipline (nothing on the dispatch path may be `partial`, and no
+`String.endsWith`-style irreducible predicate may appear in `stepFn`).
+
+**Two consequences for the plan, both corrections.**
+
+- **[✗→] §8.3(a)/P1d cannot discharge the sig-setup phase by `native_decide`.** That was
+  offered as the escape route; under this rule it is not available, and P1d needs the setup
+  either proved or made unnecessary. Open.
+- **[✗→] §8.2's caveat that a prelude-booted `TableOk` "will almost certainly need
+  `native_decide`" is not an acceptable answer either.** It may not even be true: `rfl` already
+  discharges the *boot* heap, so whether it also discharges the *prelude-booted* heap is a
+  measurement nobody has taken. Take it before assuming a fallback that policy forbids.
+
+It also settles a decision that was previously argued on other grounds: the
+"defs-installed machine" alternative to the `defineMethod` chain (L93) is rejected here too,
+now for trust rather than only for claim strength.
+
 ### 8.1 P0a as built — what the measurement said
 
 `lean/RubyCore/Types/Core.lean` (checker) + `lean/RubyCore/Proof/StaticSoundness.lean`

@@ -2282,3 +2282,33 @@ already installed (`sound_from`), discharging setup per-program by `native_decid
 split P1d needs for sigs. It dodges the chain entirely but weakens the headline claim for
 every method-bearing program, and these lemmas are reusable by any future heap-mutating step.
 Worth paying for once.
+
+## L94 — standing rule: no `native_decide` above a per-program leaf
+
+`native_decide` discharges a goal by compiling and running it, putting the Lean **compiler and
+runtime** in the trust base beside the kernel. Rule, adopted here rather than assumed:
+
+> No `native_decide` in a metatheorem, and none anywhere on the path from `check` to
+> `check_sound`. It may sit on a **leaf claim about one concrete program**, never on a theorem
+> about all of them.
+
+- **Inventory [V]: 8 tactic uses in 5 files**, all per-program — `SorbetConcrete` (3),
+  `T5Concrete` (2), `QLearningTypeSafe` (1), `Search/Random` (2, and off the default target).
+  Many other files *mention* it in prose; those are not uses, so grep for `by native_decide`
+  rather than the bare word when auditing.
+- **Each use mints its own axiom**, e.g.
+  `sigBasic000_runs_to_value._native.native_decide.ax_1_1`. That is worth knowing: the
+  audit is precise, `#print axioms` names the exact program-level fact that is
+  compiler-trusted, and there is no single global `ofReduceBool` to hide behind.
+- **The general lemmas above the leaves are clean** — `runsToValueBooted_safe` and
+  `runsToSorbetStuckBooted_unsafe` are `[propext, Classical.choice, Quot.sound]` [V], as are
+  `check_sound`, `sound_from`, `step_ok`, `int_add_dispatch`, `tableOk_initHeap`. The existing
+  files already respected the rule; it just was not written down.
+- **`tableOk_initHeap` is the model to copy.** A fact about a large concrete heap, proved by
+  `rfl`. It only works because of L73's reducibility discipline, which is therefore not a
+  historical curiosity but the thing that keeps the compiler out of the trust base.
+- **[✗→] Two earlier notes offered `native_decide` as a fallback and must not be followed.**
+  L85 said a prelude-booted `TableOk` "will likely flip to `native_decide`", and L93 offered a
+  defs-installed start machine discharged the same way. Both are now closed off. The
+  prelude-booted case in particular deserves a *measurement* first — `rfl` already handles the
+  boot heap, so whether it handles the prelude-booted heap is unknown, not hopeless.
