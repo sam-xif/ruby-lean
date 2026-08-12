@@ -188,6 +188,8 @@ class Object
   end
 
   def present? = !blank?
+
+  def presence = present? ? self : nil
 end
 """
 

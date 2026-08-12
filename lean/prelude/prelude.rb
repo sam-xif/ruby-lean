@@ -846,6 +846,211 @@ class Array
   end
 end
 
+
+
+# ─── Kernel conversions ─────────────────────────────────────────────────────
+
+module Kernel
+  # `Array(x)`: nil → [], an Array (or `to_ary`) → itself, `to_a` if it has one,
+  # else a one-element array [V]. `vulns/vulnerability.rb` uses it three times to
+  # normalize optional OSV list fields.
+  def Array(arg)
+    return [] if arg.nil?
+    return arg if arg.is_a?(Array)
+    return arg.to_ary if arg.respond_to?(:to_ary)
+    return arg.to_a if arg.respond_to?(:to_a)
+    [arg]
+  end
+end
+
+class NilClass
+  def to_i = 0
+
+  def to_f = 0.0
+
+  def to_h = {}
+end
+
+class Hash
+  # `compact` drops nil *values*; `compact!` is deliberately absent until asked
+  # for (it returns nil when nothing changed, which is easy to get wrong).
+  def compact
+    h = {}
+    each { |k, v| h[k] = v unless v.nil? }
+    h
+  end
+end
+
+# ─── File — the pure path operations only ───────────────────────────────────
+#
+# `File` is a filesystem class, and the slice reaches exactly one of its
+# methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
+# component off a *URL*. That operation is pure string manipulation with no
+# effect at all, so it is modeled; everything else routes to `method_missing`
+# and gates by name. Defining the constant without that guard would turn
+# `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
+# answer rather than a refusal.
+module File
+  SEPARATOR = "/"
+
+  def self.basename(path, suffix = nil)
+    s = path.to_s
+    parts = s.split("/")
+    base = parts.empty? ? (s.empty? ? "" : "/") : parts[parts.length - 1]
+    return base if suffix.nil?
+    return base if suffix == base
+    if suffix == ".*"
+      i = base.length - 1
+      while i > 0
+        return base[0, i] if base[i] == "."
+        i -= 1
+      end
+      base
+    else
+      base.end_with?(suffix) ? base[0, base.length - suffix.length] : base
+    end
+  end
+
+  def self.extname(path)
+    b = basename(path)
+    i = b.length - 1
+    while i > 0
+      return b[i, b.length - i] if b[i] == "."
+      i -= 1
+    end
+    ""
+  end
+
+  def self.dirname(path)
+    s = path.to_s
+    i = s.length - 1
+    while i >= 0
+      if s[i] == "/"
+        return "/" if i.zero?
+        return s[0, i]
+      end
+      i -= 1
+    end
+    "."
+  end
+
+  def self.join(*parts)
+    parts.map { |x| x.to_s }.join("/")
+  end
+
+  def self.method_missing(name, *args, **kw, &blk)
+    __unsupported__("File." + name.to_s + " (only the pure path operations are modeled)")
+  end
+
+  def self.respond_to_missing?(name, include_private = false)
+    true
+  end
+end
+
+class String
+  # `b` returns a copy in ASCII-8BIT. Encodings are not modeled, and every
+  # string in the model is already a byte string, so this is a copy [V] for the
+  # ASCII inputs the slice passes it.
+  def b = dup
+end
+
+# ─── Struct ─────────────────────────────────────────────────────────────────
+#
+# `Struct.new(:a, :b)` returns a **class**, so the whole feature is a class
+# factory: `Class.new` plus `define_method`, both of which the model already has
+# (L64/L66). That is the thesis of this project made concrete — a "core class"
+# that is really a metaprogramming pattern costs prelude Ruby, not Lean rules.
+#
+# It could not live here before L103: `inspect`, `to_s` and `==` are part of a
+# Struct's contract, and defining any of them in the prelude used to turn off
+# pure repr for the whole program.
+class Struct
+  # `keyword_init: nil` (the default) accepts *either* calling convention, which
+  # is what CRuby does for a struct that was not created with an explicit
+  # `keyword_init:` [V].
+  def self.new(*names, keyword_init: nil, &body)
+    return __unsupported__("Struct.new with no members") if names.empty?
+    return __unsupported__("Struct.new(\"Name\") (named struct constant)") if names[0].is_a?(String)
+    syms = names.map { |n| n.to_sym }
+    kwi = keyword_init
+    # `Class.new { … }` (block form) is not modeled; `Class.new` + `class_eval`
+    # is the same thing and both halves are (L64/L66).
+    cls = Class.new
+    cls.class_eval do
+      define_singleton_method(:members) { syms.dup }
+
+      define_method(:members) { syms.dup }
+
+      define_method(:initialize) do |*a, **kw|
+        if kwi == true || (kwi.nil? && a.empty? && !kw.empty?)
+          bad = kw.keys.reject { |k| syms.include?(k) }
+          raise ArgumentError, "unknown keywords: " + bad.map { |k| k.inspect }.join(", ") unless bad.empty?
+          syms.each { |s| instance_variable_set("@" + s.to_s, kw[s]) }
+        else
+          raise ArgumentError, "struct size differs" if a.length > syms.length
+          i = 0
+          while i < syms.length
+            instance_variable_set("@" + syms[i].to_s, a[i])
+            i += 1
+          end
+        end
+        nil
+      end
+
+      syms.each do |s|
+        define_method(s) { instance_variable_get("@" + s.to_s) }
+        define_method(s.to_s + "=") { |v| instance_variable_set("@" + s.to_s, v) }
+      end
+
+      define_method(:to_a) { syms.map { |s| send(s) } }
+      define_method(:deconstruct) { syms.map { |s| send(s) } }
+
+      define_method(:to_h) do
+        h = {}
+        syms.each { |s| h[s] = send(s) }
+        h
+      end
+
+      define_method(:[]) do |k|
+        if k.is_a?(Integer)
+          i = k < 0 ? syms.length + k : k
+          raise IndexError, "offset " + k.to_s + " too large for struct(size:" + syms.length.to_s + ")" if i < 0 || i >= syms.length
+          send(syms[i])
+        else
+          key = k.to_sym
+          raise NameError, "no member '" + k.to_s + "' in struct" unless syms.include?(key)
+          send(key)
+        end
+      end
+
+      define_method(:==) do |other|
+        other.class == self.class && syms.all? { |s| send(s) == other.send(s) }
+      end
+
+      define_method(:eql?) { |other| self == other }
+
+      define_method(:each) do |&blk|
+        return __unsupported__("Enumerator: Struct#each without a block") if blk.nil?
+        syms.each { |s| blk.call(send(s)) }
+        self
+      end
+
+      define_method(:size) { syms.length }
+      define_method(:length) { syms.length }
+
+      define_method(:inspect) do
+        parts = syms.map { |s| s.to_s + "=" + send(s).inspect }
+        nm = self.class.name
+        "#<struct " + (nm.nil? ? "" : nm + " ") + parts.join(", ") + ">"
+      end
+
+      define_method(:to_s) { inspect }
+    end
+    cls.class_eval(&body) unless body.nil?
+    cls
+  end
+end
+
 # ─── T — the sorbet-runtime shim ────────────────────────────────────────────
 #
 # Sorbet's *runtime* half, modeled the way this project models everything else:
@@ -923,6 +1128,17 @@ module T
     def void
       @proc_void = true
       self
+    end
+
+    # Is this `T.nilable(X)`? (`T.nilable` builds an `:any` of X and NilClass.)
+    def nilable?
+      @kind == :any && !@args.nil? && @args.any? { |a| a == NilClass }
+    end
+
+    # The label of the non-nil part, for the T::Struct prop-type message.
+    def nilable_inner_label
+      rest = @args.reject { |a| a == NilClass }
+      rest.length == 1 ? T.type_label(rest[0]) : @label
     end
 
     def valid?(value)
@@ -1333,14 +1549,30 @@ end
 # gets `extend M` — so it is implemented rather than declared.
 module T
   module Helpers
+    # `abstract!` / `interface!` are mostly declarations, but they have one
+    # runtime effect and the slice's specs test it: the abstract class itself
+    # cannot be instantiated [V] —
+    # `RuntimeError: A is declared as abstract; it cannot be instantiated`.
+    # Subclasses can, so the guard compares against the declaring class and the
+    # inherited path allocates and initializes directly (rather than `super`,
+    # which from a `define_singleton_method` body would have to resolve through
+    # the eigenclass chain).
     def abstract!
       @__t_abstract = true
+      cls = self
+      define_singleton_method(:new) do |*a, **kw, &b|
+        if equal?(cls)
+          raise RuntimeError, cls.name + " is declared as abstract; it cannot be instantiated"
+        end
+        obj = allocate
+        obj.send(:initialize, *a, **kw, &b)
+        obj
+      end
       nil
     end
 
     def interface!
-      @__t_abstract = true
-      nil
+      abstract!
     end
 
     def sealed!
@@ -1383,13 +1615,126 @@ T::Boolean = T::Type.new(:any, [TrueClass, FalseClass], "T::Boolean")
 # understood by ignoring them. Until they are modeled they gate at first use —
 # an honest Unsupported rather than a NameError that would read as a wrong
 # answer (the difftest engine's one unforgivable verdict).
+# `T::Struct` — a typed record. Like `Struct` (L105) this is a metaprogramming
+# pattern rather than a core class: `const`/`prop` are class macros that record a
+# property and define its reader, and `initialize` is generated from the record.
+# It could not live in the prelude before L103, because a `T::Struct` needs its
+# own `inspect`.
+#
+# Two behaviours that a plausible implementation gets wrong, both verified
+# against the gem [V]:
+#   * `T::Struct` does **not** define `==` — two structs with equal fields are
+#     *not* equal, because equality stays identity (inherited from Object).
+#   * `inspect` lists the props **alphabetically**, while `serialize` lists them
+#     in declaration order and **omits nil**.
 class T::Struct
-  def self.prop(*args)
-    __unsupported__("T::Struct")
+  def self.__own_props
+    @__props = [] if @__props.nil?
+    @__props
   end
 
-  def self.const(*args)
-    __unsupported__("T::Struct")
+  # Props are inherited, parents first.
+  def self.__all_props
+    sup = superclass
+    base = (!sup.nil? && sup.respond_to?(:__all_props)) ? sup.__all_props : []
+    base + __own_props
+  end
+
+  # The gem exposes `props` as a Hash keyed by prop name.
+  def self.props
+    h = {}
+    __all_props.each { |pp| h[pp[0]] = { type: pp[1] } }
+    h
+  end
+
+  def self.const(name, type, default: :__t_none, factory: nil)
+    __define_prop(name, type, false, default)
+  end
+
+  def self.prop(name, type, default: :__t_none, factory: nil)
+    __define_prop(name, type, true, default)
+  end
+
+  def self.__define_prop(name, type, mutable, default)
+    nm = name.to_sym
+    __own_props.push([nm, type, mutable, default])
+    ivar = "@" + nm.to_s
+    define_method(nm) { instance_variable_get(ivar) }
+    if mutable
+      cls = self
+      define_method(nm.to_s + "=") do |v|
+        T.__struct_check(cls, nm, type, v)
+        instance_variable_set(ivar, v)
+      end
+    end
+    nil
+  end
+
+  def initialize(**kw)
+    ps = self.class.__all_props
+    known = ps.map { |pp| pp[0] }
+    extra = kw.keys.reject { |k| known.include?(k) }
+    unless extra.empty?
+      raise ArgumentError, self.class.name + ": Unrecognized properties: " +
+                           extra.map { |k| k.to_s }.join(", ")
+    end
+    ps.each do |pp|
+      nm = pp[0]
+      type = pp[1]
+      dflt = pp[3]
+      if kw.key?(nm)
+        v = kw[nm]
+        T.__struct_check(self.class, nm, type, v)
+      elsif dflt != :__t_none
+        v = dflt
+      elsif T.__struct_nilable?(type)
+        v = nil
+      else
+        raise ArgumentError, "Missing required prop `" + nm.to_s +
+                             "` for class `" + self.class.name + "`"
+      end
+      instance_variable_set("@" + nm.to_s, v)
+    end
+    nil
+  end
+
+  def inspect
+    ps = self.class.__all_props.map { |pp| pp[0].to_s }.sort
+    "<" + self.class.name + " " +
+      ps.map { |n| n + "=" + send(n).inspect }.join(" ") + ">"
+  end
+
+  def to_s
+    inspect
+  end
+
+  def serialize(strict = true)
+    h = {}
+    self.class.__all_props.each do |pp|
+      v = send(pp[0])
+      h[pp[0].to_s] = v unless v.nil?
+    end
+    h
+  end
+end
+
+module T
+  # A prop typed `T.nilable(X)` with no default starts as nil [V].
+  def self.__struct_nilable?(type)
+    return false unless type.is_a?(T::Type)
+    type.nilable?
+  end
+
+  # The gem reports the *non-nil* part of a nilable prop's type in this message
+  # ("need a String", not "need a T.nilable(String)") [V]. The `Caller:` line the
+  # gem appends is a source location RubyCore cannot produce; the difftest engine
+  # normalizes it away on both sides (see the shim header).
+  def self.__struct_check(cls, name, type, value)
+    return value if T.__valid?(type, value)
+    want = (type.is_a?(T::Type) && type.nilable?) ? type.nilable_inner_label : T.type_label(type)
+    raise TypeError, "Parameter '" + name.to_s + "': Can't set " + cls.name + "." +
+                     name.to_s + " to " + value.inspect + " (instance of " +
+                     value.class.name + ") - need a " + want
   end
 end
 

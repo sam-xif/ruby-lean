@@ -61,6 +61,14 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         .ok v m
       else .unsupported "ancestors"
     | _ => .unsupported "ancestors"
+  | "Class#superclass" =>
+    -- `nil` for BasicObject and for a module [V].
+    match recv with
+    | .ref k =>
+      match h.classPayload? k with
+      | some cp => .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
+      | none => .unsupported "superclass on a non-class"
+    | _ => .unsupported "superclass on a non-class"
   | "Object#initialize" => .ok .nil m
   | "String#initialize" | "Array#initialize" | "Hash#initialize"
   | "Exception#initialize" =>

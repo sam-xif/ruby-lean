@@ -22,7 +22,7 @@ class Desugar
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
     redo undef alias for regex isym massign-to_ary fwd-arg fwd-param when-splat
     index-opwrite attr-opwrite numbered-params dowhile destructure-param
-    vcall implicit
+    vcall implicit safe-nav
   ].freeze
 
   attr_reader :coverage
@@ -225,7 +225,23 @@ class Desugar
     recv  = n.receiver ? node(n.receiver) : nil
     args  = n.arguments ? n.arguments.arguments.map { |a| arg_node(a) } : []
     block = call_block(n.block)
-    [:send, recv, n.name.to_s, args, block]
+    send = [:send, recv, n.name.to_s, args, block]
+    n.safe_navigation? ? safe_nav(recv, send) : send
+  end
+
+  # `recv&.m(args)` — nil-guarded send (C34). The receiver is evaluated **once**
+  # and the arguments are not evaluated at all when it is nil, so the guard has
+  # to bind a temp and wrap the whole send, not just test the receiver twice.
+  # Not sugar for `recv && recv.m`: `false&.to_s` calls `to_s` [V], because the
+  # guard is `nil?`, not truthiness.
+  def safe_nav(recv, send)
+    fire(:"safe-nav")
+    t = fresh
+    guarded = send.dup
+    guarded[1] = [:var, :local, t]
+    [:seq,
+     [:vasgn, :local, t, recv],
+     [:if, [:send, [:var, :local, t], "nil?", [], nil], [:nil], guarded]]
   end
 
   # recv.WRITER(idx..., rhs) where the expression value must be `rhs`. We bind rhs to a

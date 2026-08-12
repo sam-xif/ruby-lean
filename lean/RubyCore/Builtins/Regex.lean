@@ -72,6 +72,19 @@ def runSearch (src : String) (opts : Nat) (subject : String) (start : Nat := 0) 
     | .oof => .gate "regex: bound exhausted"
     | .yes a b caps => .hit a b caps r.names
 
+/-- `Regexp.escape`: backslash every character that is special in a pattern,
+    and render the control whitespace as its escape [V]. -/
+def escapeSource (s : String) : String :=
+  s.foldl (fun acc c =>
+    if c == '\n' then acc ++ "\\n"
+    else if c == '\t' then acc ++ "\\t"
+    else if c == '\r' then acc ++ "\\r"
+    else if c == Char.ofNat 12 then acc ++ "\\f"
+    else if c == Char.ofNat 11 then acc ++ "\\v"
+    else if c == ' ' then acc ++ "\\ "
+    else if "[]{}()|-*.\\?+^$#".any (· == c) then (acc.push '\\').push c
+    else acc.push c) ""
+
 /-- Characters `a` (inclusive) to `b` (exclusive) of `s`. -/
 def charSlice (s : String) (a b : Nat) : String :=
   String.mk ((s.toList.drop a).take (b - a))
@@ -131,6 +144,39 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
       | _, _ => .ok (.bool false) m
   | "Regexp#match" | "Regexp#match?" | "Regexp#=~" | "Regexp#===" =>
     binArg m args fun subj => regexApply bid m recv subj
+  | "Regexp#escape" | "Regexp#quote" =>
+    binArg m args fun a =>
+      match strPayload? h a, a with
+      | some str, _ => okStr m (escapeSource str)
+      | none, .sym sy => okStr m (escapeSource sy)
+      | _, _ => .unsupported "Regexp.escape of a non-String"
+  | "Regexp#union" =>
+    -- `Regexp.union(a, b)` and `Regexp.union([a, b])` are the same call [V].
+    -- A String member is escaped (it is a literal); a Regexp member contributes
+    -- its `to_s`, which carries its own flags as an inline group — which is why
+    -- `Regexp#to_s` renders `(?-mix:…)` rather than the bare source.
+    let items := match args with
+      | [one] => match arrPayload? h one with
+        | some xs => xs.toList
+        | none => args
+      | _ => args
+    if items.isEmpty then
+      let (v, m) := allocRegexp m "(?!)" 0
+      .ok v m
+    else
+      let parts := items.map fun it =>
+        match regexpParts? h it with
+        | some (src, opts) => some (regexpToS src opts)
+        | none => match strPayload? h it with
+          | some str => some (escapeSource str)
+          | none => match it with
+            | .sym sy => some (escapeSource sy)
+            | _ => none
+      if parts.any (·.isNone) then .unsupported "Regexp.union member is not a String or Regexp"
+      else
+        let src := String.intercalate "|" (parts.filterMap id)
+        let (v, m) := allocRegexp m src 0
+        .ok v m
   /- ─── MatchData ─── -/
   | "MatchData#to_s" =>
     match mdataParts? h recv with
@@ -237,10 +283,22 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
       | some s, some (src, opts) => scanAll m s src opts
       | _, _ => .unsupported "String#scan"
   | "String#split" =>
-    binArg m args fun pat =>
-      match strPayload? h recv, regexpParts? h pat with
-      | some s, some (src, opts) => splitBy m s src opts
-      | _, _ => .unsupported "String#split with a Regexp"
+    match args, strPayload? h recv with
+    | [pat], some s =>
+      match regexpParts? h pat with
+      | some (src, opts) => splitBy m s src opts
+      | none =>
+        match strPayload? h pat with
+        -- A String separator is a *literal*, not a pattern, so it is escaped
+        -- rather than compiled — otherwise `"a.b".split(".")` would split on
+        -- every character [V]. `" "` is Ruby's awk-mode separator (runs of
+        -- whitespace, leading whitespace ignored) and is its own rule.
+        | some sep =>
+          if sep == " " then splitBy m s.trimLeft ("[ " ++ "\\t\\n\\r\\f\\v" ++ "]+") 0
+          else if sep.isEmpty then splitBy m s "(?!\\A)" 0
+          else splitBy m s (escapeSource sep) 0
+        | none => .unsupported "String#split with a non-String, non-Regexp pattern"
+    | _, _ => .unsupported "String#split arity"
   | "String#sub" | "String#gsub" =>
     match args, strPayload? h recv with
     | [pat, rep], some s =>
@@ -302,9 +360,13 @@ where
     match allMatches src opts s (s.length + 2) 0 [] with
     | .error why => .unsupported why
     | .ok hits =>
+      -- A separator match ends the current piece at `a` and starts the next at
+      -- `b`; for a zero-width separator those coincide, which is what makes
+      -- `"abc".split("")` give three pieces rather than one [V]. A zero-width
+      -- match at offset 0 is not a separator at all and adds nothing.
       let (pieces, last) := hits.foldl (fun (acc, cur) (a, b, _) =>
-        if b == a && a == 0 then (acc, cur)         -- a leading empty match adds nothing
-        else (acc ++ [charSlice s cur a], if b == a then a + 1 else b)) ([], 0)
+        if b == a && a == 0 then (acc, cur)
+        else (acc ++ [charSlice s cur a], b)) ([], 0)
       let pieces := pieces ++ [charSlice s last s.length]
       -- `split` drops *trailing* empty fields (but not leading or interior) [V].
       let trimmed := (pieces.reverse.dropWhile (·.isEmpty)).reverse

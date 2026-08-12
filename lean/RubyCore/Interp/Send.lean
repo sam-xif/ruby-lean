@@ -56,7 +56,37 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
       -- `Math` module functions (`Math.sqrt`/`exp`/`log`): a real double transform,
       -- special-cased on the receiver id since they are singleton methods of the
       -- `Math` constant (no eigenclass machinery at boot). Args coerce Int→Float.
-      if o == Boot.mathId then
+      if o == Boot.regexpId && mname == "last_match" then
+        -- `Regexp.last_match` is `$~`; with an index it is `$~[n]`. A class
+        -- method, so it is dispatched here rather than installed as a builtin
+        -- (L106). Reads the same global the match rules write, so it cannot
+        -- drift from `$1`.
+        let md := m.getGlobal "$~"
+        match args with
+        | [] => .next (withCtl m (.value md))
+        | [i] =>
+          match md with
+          | .nil => .next (withCtl m (.value .nil))
+          | _ =>
+            -- the builtin directly, not a re-dispatch: `invoke`'s termination
+            -- measure is `args.length`, which this would not decrease
+            match Builtins.run "MatchData#[]" md [i] m with
+            | .ok v m => .next (withCtl m (.value v))
+            | .err cls msg m => .next (raiseErr m cls msg)
+            | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+            | .unsupported r => .unsupported r
+        | _ => .unsupported "Regexp.last_match arity"
+      else if o == Boot.regexpId && (mname == "escape" || mname == "quote" || mname == "union") then
+        -- `Regexp.escape`/`.union` are singleton methods of the `Regexp`
+        -- constant, dispatched here for the same reason `Math.sqrt` is: the
+        -- boot heap installs builtins as *instance* methods, and these are not
+        -- (L106).
+        match Builtins.run ("Regexp#" ++ mname) recv args m with
+        | .ok v m => .next (withCtl m (.value v))
+        | .err cls msg m => .next (raiseErr m cls msg)
+        | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+        | .unsupported r => .unsupported r
+      else if o == Boot.mathId then
         let f? := fun (v : Value) => match v with
           | .int n => some (Float.ofInt n) | .flt x => some x | _ => none
         match mname, args with
@@ -350,9 +380,19 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
         | .unsupported r => .unsupported r
       | _ => .unsupported "Class#new with a block"
     else if mname == "new" then
-      -- Class#new with a block (initialize block) — the block affects behaviour
-      -- and we don't model it, so gate rather than silently drop it.
-      .unsupported "Class#new with a block"
+      -- `X.new { … }` for any other class. If the receiver has a **user**
+      -- `self.new` (a singleton or inherited-singleton method), that method is
+      -- what runs and the block is an ordinary block argument — the interception
+      -- above must not steal it. `Struct.new(:a) { … }` in the prelude is exactly
+      -- this shape (L105). Otherwise the block would be an `initialize` block,
+      -- which is unmodeled, so gate.
+      match recv with
+      | .ref k =>
+        match methodOn m.heap (classOf m.heap recv) "new" with
+        | some (_, md) => if md.builtin.isNone then invoke m recv implicit mname args (some v) kw
+                          else .unsupported "Class#new with a block"
+        | none => .unsupported "Class#new with a block"
+      | _ => .unsupported "Class#new with a block"
     else invoke m recv implicit mname args (some v) kw
   | .passAnon => invoke m recv implicit mname args m.currentFrame.blk kw
   | .none => invoke m recv implicit mname args none kw

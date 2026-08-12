@@ -884,3 +884,38 @@ on the gvar namespace, all already modeled.
 contrast) agrees. Seeds **42/42**, rule coverage 75/75. bootstraptest **1227 agree, 0
 disagree** — unchanged, and provably unaffected: measured 0 uses of `/o` and 0 of `/n` in
 the corpus.
+
+## C34 — safe navigation `recv&.m` was being dropped (bugfix)
+
+`x&.to_h` desugared to a plain `[:send, x, "to_h", …]`: the `&.` was read off the Prism
+node and discarded. The bug hides in plain sight, because for any method `nil` does *not*
+answer both CRuby and the model raise the same `NoMethodError` — it only shows for a
+method `nil` **does** answer, and `NilClass` answers a dozen of them. `nil&.to_h` is
+`nil`; `nil.to_h` is `{}`.
+
+Found while running the Homebrew-slice corpus (difftest N36): `vulns/identify.rb` ends
+`registry_package(url)&.to_h`, and the model reported `{}` for a URL that should identify
+nothing.
+
+The desugaring binds a temp and wraps the *whole* send:
+
+```ruby
+t = recv; t.nil? ? nil : t.m(args)
+```
+
+Two things that shape are chosen for, both verified: the receiver is evaluated **once**,
+and when it is nil the **arguments are not evaluated at all**. So it cannot be
+`recv && recv.m(args)` (double evaluation) and it cannot be a guard around an
+already-evaluated argument list. It is also not `&&`: the test is `nil?`, not truthiness,
+so `false&.to_s` really does call `to_s` [V].
+
+New rule name `safe-nav` (RULES 75→76); no new RubyCore heads and no export bump — the
+output is `seq`/`vasgn`/`if`/`send`, all already modeled. Safe-navigation *op-assign*
+(`a&.b += 1`) stays gated, as before.
+
+Seed `corpus/seeds/43_safe_navigation.rb`: the nil-responder cases, the truthiness
+contrast, the once-only receiver and unevaluated arguments (marker-printing), chaining,
+block form, and statement position.
+
+**Result (measured).** Seeds **43/43**, rule coverage 76/76; bootstraptest **1227 agree,
+0 disagree** (unchanged — no bootstraptest program uses `&.` on a nil-responding method).
