@@ -337,7 +337,7 @@ def crubySingletonNames : List (String × List String) := [
     unmodeled-constant check by hand (L109). Kept short and only extended when a
     corpus actually reaches one. Hand-maintained, unlike the rest of this file. -/
 def crubyStdlibConstants : List String := [
-  "URI", "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
+  "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
   "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",
   "OptionParser", "Open3", "SecureRandom", "Etc", "Zlib", "Base64", "CSV",
   "Logger", "Delegator", "SimpleDelegator", "Singleton", "Observable"

@@ -2872,3 +2872,38 @@ result-check kont along with itself.
 
 **Result (measured).** Homebrew-slice **217 → 238 agree, 0 disagree**; tier-0 unchanged at
 **991 agree, 0 disagree**.
+
+## L112 — `Pathname` and `URI`, restricted to their pure halves
+
+The two biggest rows of `homebrew/slice-gates.md` (76 + 5 examples, and 81 once `URI` was
+out of the way and `Pathname` became the next gate behind it).
+
+**`URI` is one function.** `version.rb:351` calls `URI.decode_www_form_component(spec)`, and
+that is the *only* `URI` use in all eight slice files. Pure string work: `+` → space, `%XX`
+→ byte, `ArgumentError: invalid %-encoding (…)` on a malformed escape [V]. A `%XX` above
+0x7F is a *byte* of a multi-byte character (`caf%C3%A9` is `café`), so that gates — the
+byte-string limit again, not a new one.
+
+**`Pathname` is a String wrapper.** `Version.detect` wraps its argument in `Pathname(spec)`
+and asks for `to_s`, `basename`, `dirname` and `extname`; nothing in the slice touches the
+filesystem through it. Modeled as exactly those, plus `to_str`/`to_path`/`sub`/`<=>`/`==`/
+`inspect`, with `method_missing` gating everything else by name — the same guard `File`
+uses, so `Pathname#exist?` refuses instead of answering. `Kernel#Pathname(x)` is idempotent
+on a `Pathname` [V].
+
+Both are added to `Builtins.modeledFeatures`, so `require "pathname"` / `require "uri"` are
+faithful no-ops rather than L109 gates.
+
+**One thing I got wrong, and it is worth recording as a rule.** I first put
+`Pathname#stem` in the prelude too — `Version.detect` calls it. `stem` is **Homebrew's**
+(`extend/pathname.rb:187`), not Ruby's, and modeling it there made the model answer
+something the *control* could not: the harvested program has no Homebrew boot path, so
+CRuby raised `NoMethodError: undefined method 'stem'` while the model sailed past. 79
+disagreements, all of them the model being **too capable**.
+
+The rule: the prelude models *Ruby*. Anything the target program's own environment supplies
+belongs in the difftest harness's stub set, where both executors get it (N36's `blank?` is
+the same case). `stem` moved to `PATHNAME_STEM_STUB`, copied verbatim from upstream.
+
+**Result (measured).** Homebrew-slice **238 → 319 agree, 0 disagree**, 33 gated. tier-0
+**991 agree, 0 disagree**; domain 200/200 at 10,000 inputs.

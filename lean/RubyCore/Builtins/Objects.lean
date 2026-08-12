@@ -16,7 +16,10 @@ namespace Builtins
     is a faithful no-op. `sorbet-runtime` is the T shim (L80/L101); the rest of
     the stdlib is not modeled and must gate rather than pretend (L109). -/
 def modeledFeatures : List String :=
-  ["sorbet-runtime", "sorbet-runtime/lib/types/private/methods/decl_builder"]
+  ["sorbet-runtime", "sorbet-runtime/lib/types/private/methods/decl_builder",
+   -- the pure halves of these are in the prelude (L112): `Pathname`'s path
+   -- operations, `URI.decode_www_form_component`, `File`'s path operations
+   "pathname", "uri"]
 
 /-- BasicObject / Object core, Kernel I/O, and the nil / boolean rules. -/
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=

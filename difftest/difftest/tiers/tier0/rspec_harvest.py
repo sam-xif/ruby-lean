@@ -196,7 +196,25 @@ end
 SORBET_REQUIRE = (
     'require "sorbet-runtime"\n'
     'class Module\n  include T::Sig\nend\n'
+    # `Version.detect` wraps its argument in `Pathname(...)` and `Version.parse`
+    # percent-decodes with `URI`. Homebrew loads both from its boot path; the
+    # control has no boot path, so the program requires them and the model
+    # recognises both (the pure halves are in its prelude, L112).
+    'require "pathname"\nrequire "uri"\n'
 )
+
+# `Pathname#stem` is **Homebrew's**, not Ruby's (`extend/pathname.rb:187`), so it
+# cannot live in the model's prelude: that would make the model answer something
+# the control cannot. Copied verbatim, like BLANK_STUB, so both executors run the
+# same code. `extend/pathname.rb` itself is 523 lines of filesystem work and the
+# slice reaches exactly this one method of it.
+PATHNAME_STEM_STUB = """
+class Pathname
+  def stem
+    File.basename(self, extname)
+  end
+end
+"""
 
 # Stdlib the slice's *library* code reaches but never requires, because Homebrew
 # loads it from its boot path. The control has it (RSpec and sorbet-runtime pull
@@ -237,7 +255,7 @@ def program(ex: Example, prefix: str) -> str:
     for const, feature in STDLIB_REQUIRES:
         if re.search(r"\b" + const + r"\b", prefix):
             parts.append(f'require "{feature}"\n')
-    parts += [BLANK_STUB, prefix, PREAMBLE]
+    parts += [BLANK_STUB, PATHNAME_STEM_STUB, prefix, PREAMBLE]
     if ex.described:
         parts.append(f"DESCRIBED_CLASS = {ex.described}\n")
     for m in ex.memos:

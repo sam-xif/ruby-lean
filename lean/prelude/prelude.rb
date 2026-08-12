@@ -1053,6 +1053,124 @@ class Hash
   end
 end
 
+# ─── Pathname — the pure path half ─────────────────────────────────────────
+#
+# `Version.detect` wraps its argument in `Pathname(spec)` and then asks it for
+# `to_s`, `basename`, `dirname` and Homebrew's own `stem` — all pure string
+# operations on the path, with no filesystem access anywhere in the slice. So
+# `Pathname` is a wrapper over a String with exactly those, plus the
+# `extname`/`sub`/`==`/`inspect` that fall out; anything else routes to
+# `method_missing` and gates by name, the same guard `File` and `URI` use, so
+# `Pathname#exist?` refuses rather than answering.
+#
+# `Pathname#stem`, which `Version.detect` also calls, is deliberately **not**
+# here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
+# putting it in the prelude would make the model answer something the control —
+# running the same program without Homebrew's boot path — cannot. It belongs in
+# the difftest harness's stub set, alongside `blank?` (N36).
+class Pathname
+  include Comparable
+
+  def initialize(path)
+    @path = path.to_s
+  end
+
+  def to_s = @path
+
+  def to_str = @path
+
+  def to_path = @path
+
+  def inspect = "#<Pathname:" + @path + ">"
+
+  def <=>(other) = other.is_a?(Pathname) ? (@path <=> other.to_s) : nil
+
+  def ==(other) = other.is_a?(Pathname) && @path == other.to_s
+
+  def eql?(other) = self == other
+
+  def basename(suffix = nil)
+    Pathname.new(suffix.nil? ? File.basename(@path) : File.basename(@path, suffix))
+  end
+
+  def dirname = Pathname.new(File.dirname(@path))
+
+  def extname = File.extname(@path)
+
+  def sub(*args, &blk) = Pathname.new(@path.sub(*args, &blk))
+
+  def empty? = @path.empty?
+
+  def method_missing(name, *args, **kw, &blk)
+    __unsupported__("Pathname#" + name.to_s + " (only the pure path operations are modeled)")
+  end
+
+  def respond_to_missing?(name, include_private = false)
+    true
+  end
+end
+
+module Kernel
+  def Pathname(arg)
+    arg.is_a?(Pathname) ? arg : Pathname.new(arg)
+  end
+end
+
+# ─── URI — the one function the slice reaches ───────────────────────────────
+#
+# `version.rb:351` calls `URI.decode_www_form_component(spec)` and that is the
+# **only** use of `URI` anywhere in the slice's eight files. It is a pure string
+# function, so it is modeled; everything else on `URI` routes to
+# `method_missing` and gates by name, for the same reason `File` does — defining
+# the constant without that guard would turn `URI.parse` from an honest
+# Unsupported into a NoMethodError.
+#
+# One real limit, and it is the byte-string limit again: a `%XX` above 0x7F is a
+# *byte* of a multi-byte character (`caf%C3%A9` is `café`), and the model has no
+# byte strings, so that gates rather than producing two junk characters.
+module URI
+  def self.decode_www_form_component(str, enc = nil)
+    s = str.to_s
+    out = ""
+    i = 0
+    while i < s.length
+      c = s[i]
+      if c == "+"
+        out += " "
+        i += 1
+      elsif c == "%"
+        hex = s[i + 1, 2]
+        if hex.nil? || hex.length < 2 || !__hex2?(hex)
+          raise ArgumentError, "invalid %-encoding (" + s + ")"
+        end
+        n = Integer(hex, 16)
+        if n > 127
+          return __unsupported__("URI.decode_www_form_component of a multi-byte %-escape " \
+                                 "(byte strings are not modeled)")
+        end
+        out += n.chr
+        i += 3
+      else
+        out += c
+        i += 1
+      end
+    end
+    out
+  end
+
+  def self.__hex2?(h)
+    h.each_char.all? { |c| "0123456789abcdefABCDEF".include?(c) }
+  end
+
+  def self.method_missing(name, *args, **kw, &blk)
+    __unsupported__("URI." + name.to_s + " (only decode_www_form_component is modeled)")
+  end
+
+  def self.respond_to_missing?(name, include_private = false)
+    true
+  end
+end
+
 # ─── File — the pure path operations only ───────────────────────────────────
 #
 # `File` is a filesystem class, and the slice reaches exactly one of its
