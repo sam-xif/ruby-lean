@@ -914,6 +914,85 @@ end
 # ─── Kernel conversions ─────────────────────────────────────────────────────
 
 module Kernel
+  # `Integer(x, base)` — strict, unlike `String#to_i`: the whole string must be
+  # a number or it is an ArgumentError [V]. `vulns/identify.rb` uses the base-16
+  # form to decode a percent-escape.
+  def Integer(arg, base = 10)
+    return arg if arg.is_a?(Integer) && base == 10
+    s = arg.to_s.strip
+    neg = s.start_with?("-")
+    s = s[1, s.length - 1] if neg || s.start_with?("+")
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"[0, base]
+    if s.empty? || !s.each_char.all? { |c| digits.include?(c.downcase) }
+      raise ArgumentError, "invalid value for Integer(): " + arg.inspect
+    end
+    n = 0
+    s.each_char { |c| n = n * base + digits.index(c.downcase) }
+    neg ? -n : n
+  end
+
+  # `format("%%%02X", n)` and the handful of directives the slice uses.
+  def format(fmt, *args)
+    out = ""
+    i = 0
+    ai = 0
+    while i < fmt.length
+      c = fmt[i]
+      if c != "%"
+        out += c
+        i += 1
+        next
+      end
+      j = i + 1
+      flags = ""
+      while j < fmt.length && "0-+ #".include?(fmt[j])
+        flags += fmt[j]
+        j += 1
+      end
+      width = ""
+      while j < fmt.length && "0123456789".include?(fmt[j])
+        width += fmt[j]
+        j += 1
+      end
+      return __unsupported__("format: unterminated directive") if j >= fmt.length
+      conv = fmt[j]
+      i = j + 1
+      if conv == "%"
+        out += "%"
+        next
+      end
+      v = args[ai]
+      ai += 1
+      body = case conv
+             when "d", "i" then v.to_i.to_s
+             when "s" then v.to_s
+             when "X" then __to_base(v.to_i, 16).upcase
+             when "x" then __to_base(v.to_i, 16)
+             when "o" then __to_base(v.to_i, 8)
+             when "b" then __to_base(v.to_i, 2)
+             else return __unsupported__("format directive %" + conv)
+             end
+      w = width.empty? ? 0 : width.to_i
+      pad = flags.include?("0") ? "0" : " "
+      body = pad * (w - body.length) + body if body.length < w
+      out += body
+    end
+    out
+  end
+
+  def __to_base(n, base)
+    return "0" if n.zero?
+    neg = n.negative?
+    n = -n if neg
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    s = ""
+    while n.positive?
+      s = digits[n % base] + s
+      n /= base
+    end
+    neg ? "-" + s : s
+  end
+
   # `Array(x)`: nil → [], an Array (or `to_ary`) → itself, `to_a` if it has one,
   # else a one-element array [V]. `vulns/vulnerability.rb` uses it three times to
   # normalize optional OSV list fields.
@@ -1020,6 +1099,46 @@ module File
 end
 
 class String
+  # `sub`/`gsub` live here because of the **block form**, which a builtin cannot
+  # serve: it has to call back into the interpreter once per match. The
+  # two-argument replacement form stays a primitive (`__sub_rep`/`__gsub_rep`)
+  # and this only dispatches to it, so the common path costs one extra send.
+  #
+  # The loop is written on `match` + `pre_match`/`post_match` rather than on
+  # offsets, and it advances past a **zero-width** match by one character —
+  # without that, `"aaa".gsub(/a*/) { "X" }` would not terminate.
+  def sub(pat, rep = nil, &blk)
+    return __sub_rep(pat, rep) unless rep.nil?
+    return __unsupported__("String#sub with neither a replacement nor a block") if blk.nil?
+    re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
+    m = re.match(self)
+    return self if m.nil?
+    m.pre_match + blk.call(m[0]).to_s + m.post_match
+  end
+
+  def gsub(pat, rep = nil, &blk)
+    return __gsub_rep(pat, rep) unless rep.nil?
+    return __unsupported__("String#gsub with neither a replacement nor a block") if blk.nil?
+    re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
+    out = ""
+    rest = self
+    guard = 0
+    while guard <= length
+      guard += 1
+      m = re.match(rest)
+      break if m.nil?
+      out += m.pre_match + blk.call(m[0]).to_s
+      adv = m.end(0)
+      if adv == m.begin(0)
+        out += rest[adv, 1].to_s
+        adv += 1
+      end
+      break if adv > rest.length
+      rest = rest[adv, rest.length - adv]
+    end
+    out + rest
+  end
+
   # `partition`/`rpartition` split around the first / last occurrence of a
   # String separator and always return three parts [V]; a miss puts the whole
   # string in the *head* for `partition` and in the *tail* for `rpartition`.
@@ -1048,6 +1167,17 @@ class String
   end
 
   def each_char
+    return to_enum_chars unless block_given?
+    __each_char_blk { |c| yield(c) }
+  end
+
+  # `each_char` without a block would need an Enumerator; the two prelude uses
+  # (`all?`, `format`'s digit scan) always pass one, and `chars` covers the rest.
+  def to_enum_chars
+    chars
+  end
+
+  def __each_char_blk
     return __unsupported__("Enumerator: String#each_char without a block") unless block_given?
     i = 0
     while i < length
@@ -1113,10 +1243,17 @@ class String
     out
   end
 
-  # `b` returns a copy in ASCII-8BIT. Encodings are not modeled, and every
-  # string in the model is already a byte string, so this is a copy [V] for the
-  # ASCII inputs the slice passes it.
-  def b = dup
+  # `b` returns a copy in ASCII-8BIT. The model has no encodings: a String is a
+  # sequence of *characters*, so for ASCII input `b` is a copy and for anything
+  # else it would silently mean the wrong thing. `Purl.encode` is exactly that
+  # case — `"café".b.gsub(…) { |c| "%%%02X" % c.ord }` must yield `%C3%A9` (two
+  # UTF-8 bytes) and a character-wise model yields `%E9`. So non-ASCII gates
+  # rather than answering (L110).
+  def b
+    return __unsupported__("String#b on non-ASCII (byte strings are not modeled)") unless
+      each_char.all? { |c| c.ord < 128 }
+    dup
+  end
 end
 
 # ─── Struct ─────────────────────────────────────────────────────────────────

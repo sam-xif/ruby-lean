@@ -359,7 +359,7 @@ def builtinMethods : List (ObjId × List String) := [
   (procId, ["lambda?", "to_proc"]),
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
-  (stringId, ["=~", "match", "match?", "scan", "sub", "gsub", "split", "to_i",
+  (stringId, ["=~", "match", "match?", "scan", "__sub_rep", "__gsub_rep", "split", "to_i",
               "ord", "chars"]),
   (regexpId, ["escape", "quote", "union", "source", "options", "match", "match?", "=~", "===", "inspect",
               "to_s", "names", "==", "eql?", "hash"]),

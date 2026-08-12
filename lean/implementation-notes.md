@@ -2808,3 +2808,29 @@ and the constant-miss `NameError` now qualifies with the **innermost cref**
 **14 → 25 agree, 0 disagree** — the N34 fix, which `difftest/implementation-notes.md` N34
 had recorded as blocking that arm. Homebrew-slice **160 agree, 0 disagree, 192 gated**
 (from 352 disagree when the corpus first ran). Regex oracle 7,418/7,418. Axioms unchanged.
+
+## L110 — `sub`/`gsub` with a block; `Kernel#Integer`/`format`; `String#b` gates on non-ASCII
+
+`homebrew/PLAN.md` M7's other half. `gsub(pat) { |m| … }` is what `vulns/purl.rb` and
+`vulns/identify.rb` percent-encode and -decode with — 38 of the slice's programs — and a
+builtin cannot serve it: it has to call back into the interpreter once per match.
+
+So `sub`/`gsub` move into the **prelude**, and the two-argument replacement form stays a
+primitive under a private name (`__sub_rep`/`__gsub_rep`) that the prelude delegates to.
+The common path costs one extra send; the block path is an ordinary Ruby loop over
+`match` + `pre_match`/`post_match`. It advances past a **zero-width** match by one
+character, without which `"aaa".gsub(/a*/) { "X" }` does not terminate.
+
+`Kernel#Integer(x, base)` (strict, unlike `String#to_i` — the whole string must be a
+number) and `Kernel#format` (the `%d %s %x %X %o %b %%` directives with width and
+zero-padding) came along with it, both in the prelude.
+
+**`String#b` now gates on non-ASCII, and the reason is worth recording.** The model has no
+encodings: a String is a sequence of *characters*. `Purl.encode` is
+`component.b.gsub(/[^A-Za-z0-9\-._~:]/n) { |c| format("%%%02X", c.ord) }`, and for
+`"café"` the answer must be `caf%C3%A9` — the two **UTF-8 bytes** — where a character-wise
+model produces `caf%E9`. That was the last disagreement in the slice corpus. Gating is the
+honest answer; making it right needs byte strings, which is a real feature and not a patch.
+
+**Result (measured).** Homebrew-slice **160 → 210 agree, 0 disagree**, 142 gated. tier-0
+unchanged at **991 agree, 0 disagree**.
