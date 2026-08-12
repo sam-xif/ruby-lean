@@ -2496,3 +2496,63 @@ before the split. `#print axioms` on `invariant_sound`, `Static.check_sound` and
 
 With L98 this closes `homebrew/PLAN.md` M3 on the Lean side; `difftest/tiers/tier1/
 strategies.py` (1,087) is the remaining offender and is W4b's to split.
+
+## L100 — the regex engine: syntax, parser, matcher, and its own oracle (W2a)
+
+The long pole of `homebrew/PLAN.md` (M4). Landed in the order the plan's risk table
+prescribes — Syntax → Parse → matcher → oracle — with the Ruby-visible API (`Api.lean`)
+still to come. New directory `lean/RubyCore/Regex/`, nothing over 400 lines.
+
+**Scope is measured, not guessed.** The 86 regex literals of the eight slice files use:
+bracket classes (53), `+` (49), `?` (44), `(?:…)` (32), interpolation (28), `\A` (28),
+`\d`/`\w`/`\s` (26), `\z` (22), `$` (22), `*` (20), `|` (19), `.` (18), `{n,m}` (7),
+backrefs (2), `(?!…)` (2), lazy (2), `^` (2), `(?i:…)` (2), `\Z` (1), `(?<name>…)` (1),
+`(?=…)` (1). **Zero** uses of lookbehind, atomic groups, possessive quantifiers, `\b`,
+POSIX bracket classes, `\p{…}`, `\x…`, or `\G` — each of which the parser therefore
+*gates by name* rather than approximating. Resisting generalisation beyond this list is a
+plan decision (§7), not laziness.
+
+**`Syntax.lean`** — `inductive Regex`. Two flags are resolved at parse time rather than
+carried at match time: `i` is pushed onto the leaves it reaches (so `(?i:…)`'s lexical
+scoping needs no flag stack to unwind on backtracking) and `x` is purely lexical. `m`
+survives only as a field of `any`. `^`/`$` are line anchors in Ruby *regardless* of `m`
+(unlike Perl), so no flag reaches them.
+
+**`Parse.lean`** — recursive descent, total, structurally recursive on a fuel `Nat` seeded
+from the input length. Every failure is an `Except String` with a reason the caller turns
+into the clean `Unsupported` gate; there is no path on which it guesses a pattern.
+
+**`Match.lean`** — leftmost, greedy-first backtracking in CPS, **structurally recursive on
+a fuel `Nat` computed from the input** (D1): no `partial def`, no `termination_by`, so the
+definition reduces in the kernel and a per-program `rfl` leaf proof stays possible
+(L73/L94). Fuel exhaustion is a **third outcome** (`MRes.oof`), distinct from "no match"
+and propagated to the top — a matcher that reported "no match" when it ran out of fuel
+would be a silent wrong answer, the one failure mode the ratchet cannot catch. Once
+`bound_suffices` is proved the gate becomes dead code rather than a caveat.
+
+**One real fidelity finding, and the reason the oracle exists.** The obvious reading of
+"a repetition may not loop on an empty match" — refuse the empty iteration — is *wrong*.
+CRuby **performs** the empty iteration, keeps its captures, and only then stops looping:
+`/(a*)*/ =~ "aaa"` leaves `$1` as the empty match at offset **3**, not `"aaa"`, and
+`/(a?)*b/ =~ "b"` sets `$1` to `""` rather than leaving it nil. That is the only
+disagreement the first run produced, and it accounted for all eight of them.
+
+**The oracle** (`scripts/rxcases.rb`, `scripts/rxprobe.rb`, `scripts/rxprobe.lean`). Cases
+are `pattern ⇥ opts ⇥ input`; both sides print the same line format, so `diff` is the
+test. Two populations: the slice's own harvested patterns (interpolations replaced by
+plausible sub-patterns, since the desugarer builds a `Regexp.new` over a string anyway)
+crossed with 60 version-, URL- and CVSS-shaped inputs; and a hand-written adversarial set
+for the constructs where *backtracking order is the specification* — greedy vs lazy,
+nested and empty-body repetition, capture restoration across backtracking, leftmost (not
+longest) alternation, the anchors at string edges, `\Z` before a trailing newline, negated
+classes, case folding, lookahead, and `(a+)+b` on a non-matching input (which must answer,
+not hang). This needs none of the rest of the pipeline, so a failure is unambiguously a
+regex bug.
+
+**Result (measured).** **7,418 / 7,418 cases byte-identical to CRuby — 0 disagreements, 0
+`OOF`, 0 parse gates.** The zero `OOF` is the empirical half of `bound_suffices`: the
+computed bound sufficed on every case, including the exponential-looking one.
+
+Not wired into `stepFn` yet, so the tier-0 ratchet is untouched by this commit (955 agree,
+0 disagree). `Api.lean` is next, then `Relation.lean` + `Adequacy.lean` + `Bound.lean` as
+W6 proof obligations.
