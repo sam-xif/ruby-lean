@@ -135,6 +135,17 @@ inductive Payload where
   | rng (s : MT.State)
   /-- A `Range` (`lo..hi` / `lo...hi`): endpoints and exclusivity. -/
   | range (lo hi : Value) (excl : Bool)
+  /-- A `Regexp`: the pattern source and the option word, exactly as
+      `Regexp.new` received them. The compiled `Rx.Regex` is *not* stored — it
+      is re-parsed at each use, so the heap stays a plain data structure and no
+      `Regex` value has to be `Inhabited`/`Repr`-able alongside `Value`. Parsing
+      is linear and the patterns are short. -/
+  | regexp (src : String) (opts : Nat)
+  /-- A `MatchData`: the subject string, the whole-match span, the capture
+      spans (index 0 is the whole match), and the named-group map. Character
+      offsets throughout, matching Ruby. -/
+  | mdata (subject : String) (caps : Array (Option (Nat × Nat)))
+      (names : List (String × Nat))
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
@@ -235,8 +246,16 @@ def numericId : ObjId := 34
 /-- `UncaughtThrowError < ArgumentError` — a `throw` with no matching `catch`
     (L69). -/
 def uncaughtThrowErrorId : ObjId := 35
-/-- Toplevel self (`main`), an ordinary Object instance. -/
-def mainId : ObjId := 36
+/-- `Regexp` (L101). -/
+def regexpId : ObjId := 36
+/-- `MatchData` (L101) — the object `Regexp#match` returns and `$~` holds. -/
+def matchDataId : ObjId := 37
+/-- `RegexpError < StandardError` — raised by `Regexp.new` on a bad pattern. -/
+def regexpErrorId : ObjId := 38
+/-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
+    `initHeap` allocates every `classTable` entry densely and then `main`, so
+    `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
+def mainId : ObjId := 39
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -275,7 +294,10 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (rangeId, "Range", some objectId),
   (kernelId, "Kernel", Option.none),     -- patched to a module in `initHeap`
   (numericId, "Numeric", some objectId),
-  (uncaughtThrowErrorId, "UncaughtThrowError", some argumentErrorId)
+  (uncaughtThrowErrorId, "UncaughtThrowError", some argumentErrorId),
+  (regexpId, "Regexp", some objectId),
+  (matchDataId, "MatchData", some objectId),
+  (regexpErrorId, "RegexpError", some standardErrorId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -323,7 +345,13 @@ def builtinMethods : List (ObjId × List String) := [
   -- registered here.
   (procId, ["lambda?", "to_proc"]),
   (randomId, ["rand"]),
-  (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"])
+  (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
+  (stringId, ["=~", "match", "match?", "scan", "sub", "gsub", "split"]),
+  (regexpId, ["source", "options", "match", "match?", "=~", "===", "inspect",
+              "to_s", "names", "==", "eql?", "hash"]),
+  (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",
+                 "pre_match", "post_match", "to_a", "size", "length", "to_s",
+                 "inspect", "values_at"])
 ]
 
 def mkClassObj (name : String) (sup : Option ObjId) : Object :=

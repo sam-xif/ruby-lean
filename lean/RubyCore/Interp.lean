@@ -46,7 +46,12 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
       | _ => false
     strIf has "instance-variable"
   | .var .gvar x =>
-    let has := if x == "$!" then m.currentExc.isSome else m.globals.any (·.1 == x)
+    let has :=
+      if x == "$!" then m.currentExc.isSome
+      else match matchGlobal m x with
+        -- a match global is "defined" exactly when the last match filled it [V]
+        | some (v, _) => match v with | .nil => false | _ => true
+        | none => m.globals.any (·.1 == x)
     strIf has "global-variable"
   | .var .cvar x =>
     -- `defined?(@@a)` at toplevel is nil, *not* the access RuntimeError [V]
@@ -122,7 +127,10 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   | .var kind x =>
     match kind with
     | .lvar => .next (withCtl m (.value (m.getLocal x)))
-    | .gvar => .next (withCtl m (.value (m.getGlobal x)))
+    | .gvar =>
+      match matchGlobal m x with
+      | some (v, m) => .next (withCtl m (.value v))
+      | none => .next (withCtl m (.value (m.getGlobal x)))
     | .ivar =>
       match m.currentFrame.self with
       | .ref o =>

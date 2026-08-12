@@ -1,4 +1,5 @@
 import RubyCore.Machine
+import RubyCore.Regex.Parse
 import RubyCore.Repr
 
 /-
@@ -447,6 +448,39 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
             .ok (.ref o) { m with heap := h }
         | [] => .unsupported "Random.new (unseeded — nondeterministic)"
         | _ => .unsupported "Random.new arity"
+      else if k == Boot.regexpId then
+        -- `Regexp.new(src[, opts])`; regex *literals* desugar to exactly this
+        -- (desugar C33), so this is the only way a Regexp is built. The pattern
+        -- is checked here so a bad one gates at construction rather than at
+        -- first use, matching where CRuby raises `RegexpError` (L101).
+        let mk (src : String) (opts : Nat) : BRes :=
+          match Rx.parse src opts with
+          | .error e => .unsupported e
+          | .ok _ =>
+            let (o, h) := m.heap.alloc
+              { klass := Boot.regexpId, payload := .regexp src opts }
+            .ok (.ref o) { m with heap := h }
+        match args with
+        | [s] =>
+          match strPayload? m.heap s with
+          | some src => mk src 0
+          | none =>
+            -- `Regexp.new(/x/)` copies the pattern *and its options* [V]
+            match s with
+            | .ref o => match (m.heap.get o).payload with
+              | .regexp src opts => mk src opts
+              | _ => .unsupported "Regexp.new of a non-String"
+            | _ => .unsupported "Regexp.new of a non-String"
+        | [s, o] =>
+          match strPayload? m.heap s with
+          | none => .unsupported "Regexp.new of a non-String"
+          | some src =>
+            match o with
+            | .int n => if n < 0 then .unsupported "Regexp.new negative options" else mk src n.toNat
+            | .nil | .bool false => mk src 0
+            -- any other truthy second argument means IGNORECASE [V]
+            | _ => mk src 1
+        | _ => .unsupported "Regexp.new arity"
       else if k == Boot.rangeId then
         -- `Range.new(lo, hi[, excl])` (range literals `a..b`/`a...b` desugar here).
         let mk (lo hi : Value) (excl : Bool) : BRes :=

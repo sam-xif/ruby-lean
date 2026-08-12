@@ -134,6 +134,33 @@ def fakeAddr (o : ObjId) : String :=
   let hex := String.ofList (Nat.toDigits 16 o)
   "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
 
+/-- `Regexp#inspect` renders `/src/flags`, escaping only `/` in the source, and
+    orders the flag letters `m i x n` [V] (`/a/imx.inspect` is `"/a/mix"`). -/
+def regexpInspect (src : String) (opts : Nat) : String :=
+  let esc := src.foldl (fun acc c => if c == '/' then acc ++ "\\/" else acc.push c) ""
+  let f := (if opts / 4 % 2 == 1 then "m" else "") ++
+           (if opts % 2 == 1 then "i" else "") ++
+           (if opts / 2 % 2 == 1 then "x" else "") ++
+           (if opts / 32 % 2 == 1 then "n" else "")
+  "/" ++ esc ++ "/" ++ f
+
+/-- `Regexp#to_s` renders the equivalent inline-flag group, listing the flags
+    that are on, then `-`, then those that are off [V] (`/a/i.to_s` is
+    `"(?i-mx:a)"`). `n` never appears. -/
+def regexpToS (src : String) (opts : Nat) : String :=
+  let on := (if opts / 4 % 2 == 1 then "m" else "") ++
+            (if opts % 2 == 1 then "i" else "") ++
+            (if opts / 2 % 2 == 1 then "x" else "")
+  let off := (if opts / 4 % 2 == 1 then "" else "m") ++
+             (if opts % 2 == 1 then "" else "i") ++
+             (if opts / 2 % 2 == 1 then "" else "x")
+  "(?" ++ on ++ (if off.isEmpty then "" else "-" ++ off) ++ ":" ++ src ++ ")"
+
+/-- The substring a capture span denotes, in *characters*. -/
+def spanText (subject : String) : Option (Nat × Nat) → Option String
+  | some (a, b) => some (String.mk ((subject.toList.drop a).take (b - a)))
+  | none => none
+
 mutual
 
 /-- Ruby `inspect` (default builtin). Errors are Unsupported reasons. -/
@@ -176,6 +203,22 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
     | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .range lo hi excl =>
       return (← inspect h lo) ++ (if excl then "..." else "..") ++ (← inspect h hi)
+    | .regexp src opts => return regexpInspect src opts
+    | .mdata subject caps names =>
+      -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
+      -- instead of their index, and an unset group prints `nil` [V].
+      let whole := (spanText subject (caps[0]?.getD none)).getD ""
+      let byIdx : Nat → String := fun i =>
+        match names.find? (fun p => p.2 == i) with
+        | some (n, _) => n
+        | none => toString i
+      let parts := (caps.toList.drop 1).zipIdx.map fun (sp, j) =>
+        s!"{byIdx (j + 1)}:" ++
+          (match spanText subject sp with
+           | some t => escapeString t
+           | none => "nil")
+      return "#<MatchData " ++ escapeString whole ++
+        (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
     | .none =>
       let cname := className h (h.get o).klass
       let ivars := (h.get o).ivars.reverse
@@ -209,6 +252,8 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     | .rng _ => throw "Random#to_s (state/address non-deterministic)"
     | .range lo hi excl =>
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
+    | .regexp src opts => return regexpToS src opts
+    | .mdata subject caps _ => return (spanText subject (caps[0]?.getD none)).getD ""
     | .none =>
       let cname := className h (h.get o).klass
       return s!"#<{cname}:{fakeAddr o}>"

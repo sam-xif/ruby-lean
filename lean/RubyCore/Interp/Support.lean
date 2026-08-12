@@ -434,6 +434,43 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
 
+/-- `$1`…`$9`, `$&`, `` $` `` and `$'` are **views of `$~`**, not stored
+    globals: CRuby derives them from the last `MatchData` on every read. Storing
+    them instead would need every failed match to clear nine slots, and would
+    still get `defined?($3)` wrong. Returns `none` for any other global name, so
+    the ordinary path is untouched. (L101.) -/
+def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=
+  let idx? : Option Nat :=
+    if x.length == 2 then
+      let c := x.get ⟨1⟩
+      if c.isDigit && c != '0' then some (c.toNat - '0'.toNat)
+      else if c == '&' then some 0
+      else none
+    else none
+  let pre := x == "$`"
+  let post := x == "$'"
+  if idx?.isNone && !pre && !post then none
+  else
+    match m.getGlobal "$~" with
+    | .ref o =>
+      match (m.heap.get o).payload with
+      | .mdata subject caps _ =>
+        let slice (a b : Nat) : Value × Machine := Builtins.allocStr m (Builtins.charSlice subject a b)
+        match caps[0]? with
+        | some (some (wa, wb)) =>
+          if pre then some (slice 0 wa)
+          else if post then some (slice wb subject.length)
+          else match idx? with
+            | some i =>
+              match caps[i]? with
+              | some (some (a, b)) => some (slice a b)
+              | _ => some (.nil, m)
+            | none => some (.nil, m)
+        | _ => some (.nil, m)
+      | _ => some (.nil, m)
+    | _ => some (.nil, m)
+
+
 end Interp
 
 end RubyCore

@@ -1,4 +1,4 @@
-import RubyCore.Builtins.Support
+import RubyCore.Builtins.Regex
 
 /-!
 Exception, Module and Class rules — the end of the chain, so this is
@@ -131,7 +131,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
             let (o, h) := m.heap.alloc { klass := k, payload }
             .ok (.ref o) { m with heap := h }
     | _ => .unsupported "allocate on non-class"
-  | _ => .unsupported s!"builtin {bid}"
+  | _ => runRegex bid recv args m
 
 end Builtins
 

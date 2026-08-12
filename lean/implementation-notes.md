@@ -2556,3 +2556,48 @@ computed bound sufficed on every case, including the exponential-looking one.
 Not wired into `stepFn` yet, so the tier-0 ratchet is untouched by this commit (955 agree,
 0 disagree). `Api.lean` is next, then `Relation.lean` + `Adequacy.lean` + `Bound.lean` as
 W6 proof obligations.
+
+## L101 — the Ruby-visible regex surface: `Regexp`, `MatchData`, `$~` and friends
+
+L100's engine, wired into the model (W2a `Api.lean`). Three bootstrap classes
+(`Regexp` 36, `MatchData` 37, `RegexpError` 38 — `mainId` moved to 39, since `initHeap`
+allocates `classTable` densely and then `main`, so **`mainId` must stay last**; a comment
+now says so), two `Payload` constructors, and one rule file
+`Builtins/Regex.lean` at the end of the L98 chain.
+
+**A `Regexp` stores its source and options, not a compiled `Rx.Regex`.** Each use
+re-parses. That keeps `Payload` a plain data type — no `Regex` value has to sit inside
+`Value` and be `Inhabited`/`Repr`-able — and costs a linear pass over a pattern that is,
+in this corpus, tens of characters long. Revisit if a profile ever says so.
+
+**One choke point.** Every pattern application goes through `runSearch`, which is the only
+place the engine's three outcomes meet Ruby's two: a parse failure gates with the parser's
+own reason (never an invented `RegexpError`, never a guessed pattern); `oof` gates as
+`"regex: bound exhausted"` (never "no match"); `no`/`yes` become `nil`/a `MatchData`.
+`Regexp.new` parses eagerly, so a bad pattern gates at construction, which is where CRuby
+raises.
+
+**`$1`…`$9`, `$&`, `` $` ``, `$'` are views of `$~`, not stored globals** (`matchGlobal`
+in `Interp/Support.lean`). Storing them would make every *failed* match responsible for
+clearing nine slots, and would still get `defined?($3)` wrong. Deriving them is what fixes
+`bootstraptest/test_syntax_032` — the one disagreement this batch produced, and a good
+one: it asks for `defined?($1..$4)` before and after `/(a)(b)/ =~ 'ab'`, so it is precisely
+a test that the *arity of the last match* is visible through `defined?`.
+
+**Implemented.** `Regexp#source/options/names/match/match?/=~/===/inspect/to_s/==/eql?/
+hash`; `MatchData#[]` (integer, symbol and string keys) `/captures/to_a/named_captures/
+names/begin/end/pre_match/post_match/size/length/to_s/inspect`;
+`String#=~/match/match?/scan/sub/gsub/split`. `String#match` and friends are literally
+`Regexp#match` with the arguments swapped, so they share the code path.
+
+Two fidelity details that a plausible implementation gets wrong and the oracle caught:
+a **zero-width match advances by one character** when scanning (so `"aaa".gsub(/a*/, "X")`
+is `"XX"` and `"".scan(/a*/)` is `[""]`), and `split` drops **trailing** empty fields but
+not leading or interior ones. `sub`/`gsub` with a backreference in the *replacement*
+(`\1`, `\k<name>`) is its own sublanguage and gates rather than emitting the backslash.
+
+**Result (measured).** tier-0 `--sut lean` **955 → 974 agree, 0 disagree** (the `Regexp`
+gate was #4 on the histogram at 20 cases). The L100 regex oracle still 7,418/7,418. Two
+discriminating scripts byte-identical to CRuby across the whole `Regexp`/`MatchData`
+surface and the seven `String` methods. `#print axioms` unchanged on `invariant_sound`,
+`Static.check_sound`, `sorbet_invariant_sound`.

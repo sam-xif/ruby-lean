@@ -32,6 +32,8 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .proc c => if c.lam then "#<Proc (lambda)>" else "#<Proc>"
     | .rng _ => "#<Random>"
     | .range lo hi excl => valBrief h d lo ++ (if excl then "..." else "..") ++ valBrief h d hi
+    | .regexp src _ => "/" ++ src ++ "/"
+    | .mdata _ caps _ => s!"#<MatchData {caps.size} slots>"
     | .none =>
       if o == Boot.mainId then "main"
       else s!"#<{className h (h.get o).klass}##{o}>"
