@@ -169,6 +169,13 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           let (v, m) := allocArr m #[.int (Int.fdiv a c), .int (Int.fmod a c)]
           .ok v m
       | _, _ => .unsupported "Integer#divmod of a non-Integer"
+  | "Integer#nonzero?" | "Float#nonzero?" =>
+    -- `self` if non-zero, **nil** if zero — the idiom behind
+    -- `pkg_version.rb`'s `version_comparison.nonzero? || revision <=> …` [V].
+    match recv with
+    | .int n => .ok (if n == 0 then .nil else recv) m
+    | .flt x => .ok (if x == 0.0 then .nil else recv) m
+    | _ => .unsupported "nonzero?"
   | "Integer#chr" =>
     -- ASCII only: CRuby raises RangeError above 255, and 128..255 produces an
     -- ASCII-8BIT string whose rendering depends on an encoding the model does

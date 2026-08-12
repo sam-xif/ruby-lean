@@ -316,7 +316,7 @@ def classTable : List (ObjId × String × Option ObjId) := [
 def builtinMethods : List (ObjId × List String) := [
   (basicObjectId, ["==", "!", "equal?"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
-  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect",
+  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect", "<=>",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
@@ -327,9 +327,9 @@ def builtinMethods : List (ObjId × List String) := [
   (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
-               "round", "ceil", "floor", "truncate", "divmod",
+               "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
                "eql?", "hash", "dup", "clone"]),
-  (floatId, ["round", "ceil", "floor", "truncate", "divmod",
+  (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
              "+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
              "dup", "clone"]),

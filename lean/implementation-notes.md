@@ -2947,3 +2947,20 @@ signature made the right answer unreachable and the wrong one silent.
 
 **Result (measured).** Homebrew-slice **319 → 338 agree, 0 disagree**, and the gate count is
 down from 135 at the baseline to **14**. tier-0 unchanged at **991 agree, 0 disagree**.
+
+## L114 — `nonzero?` and the default `Object#<=>`
+
+`nonzero?` returns **self** if non-zero and **nil** if zero — the idiom behind
+`pkg_version.rb`'s `version_comparison.nonzero? || revision <=> other.revision`, which is
+also `PLAN.md`'s headline line 202.
+
+`Object#<=>` is `0` when the two are `==` and **nil** otherwise, and the nil is the point:
+it is what lets `Comparable` degrade to "incomparable" rather than raise from the wrong
+place. CRuby calls `rb_equal`, so a **user `==` participates** — a builtin cannot dispatch
+one, so the rule answers from `valueEq` when nothing overrides `==` and **gates** when
+something does, rather than quietly using the wrong equality. (Verified: a class with
+`def ==(x) = true` makes `<=>` answer 0 for any argument.)
+
+**Result (measured).** Homebrew-slice **338 → 339 agree, 0 disagree**, gates **14 → 13** —
+and the 13 are now exactly the two structural rows of `slice-gates.md`: 10 dispatching repr
+and 3 byte strings. tier-0 **991 agree, 0 disagree**.
