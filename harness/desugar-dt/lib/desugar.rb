@@ -22,7 +22,7 @@ class Desugar
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
     redo undef alias for regex isym massign-to_ary fwd-arg fwd-param when-splat
     index-opwrite attr-opwrite numbered-params dowhile destructure-param
-    vcall
+    vcall implicit
   ].freeze
 
   attr_reader :coverage
@@ -136,6 +136,10 @@ class Desugar
     when :call_and_write_node       then desugar_attr_write(n, :and)
     # Regex match globals — read-only thread-local match state; render back verbatim as
     # gvar reads (`$1`, `$&`). `$~`/`$`'`/etc. already arrive as global_variable_read_node.
+    # Ruby 3.1 hash/keyword shorthand `{x:}` / `foo(x:)`. Prism has already resolved the
+    # omitted value to the node it stands for (a local read or a self-call), so the
+    # desugaring is `x: x` with that resolution — pure sugar. (C32.)
+    when :implicit_node           then fire(:implicit); node(n.value)
     when :numbered_reference_read_node then fire(:var); [:var, :gvar, "$#{n.number}"]
     when :back_reference_read_node     then fire(:var); [:var, :gvar, n.name.to_s]
     # Out of scope (documented, self-describing gate reasons):

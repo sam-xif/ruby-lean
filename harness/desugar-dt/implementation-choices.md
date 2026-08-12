@@ -804,3 +804,39 @@ wrongly print `0.0` (a disagreement, once Float rendering exists — L45). Fix
 round-trip renders it back to a `-0.0`-valued expression, so the desugar difftest
 is unaffected. Only negative zero is special-cased; all other float literals stay
 `[:flt, v]`.
+
+## C32 — `implicit_node` (Ruby 3.1 hash/keyword shorthand) resolves through Prism
+
+`{x:}` / `foo(x:)` parses to an `AssocNode` whose *value* is an `ImplicitNode`. Prism has
+already done the local-or-method resolution for us: `ImplicitNode#value` is either a
+`LocalVariableReadNode` or a `CallNode`, chosen by the same rule the interpreter uses. So
+the desugaring is one line — `when :implicit_node then node(n.value)` — and is exactly the
+`x: x` expansion, with the *resolved* reading of `x`.
+
+Rejected alternative: re-deriving the resolution ourselves from the key name (emit
+`[:var, :local, k]` if `k` is in scope, else a vcall). That duplicates Prism's scope
+tracking in the desugarer for no gain and would drift on the edge cases (a local
+introduced by a block param, a shadowed method name).
+
+Rationale for doing it first: it is the single biggest front-end gate in the Homebrew
+corpus — **332 of 962 files** (~2,412 uses) — and it is the *only* thing blocking three of
+the eight files of the version+vulnerability slice (`version.rb`, `vulns/vulnerability.rb`,
+`vulns/identify.rb`); the other five already desugared. See
+[`../../homebrew/PLAN.md`](../../homebrew/PLAN.md) W1/M1.
+
+New rule name `implicit` (RULES 74→75). No new RubyCore heads, no `Export::VERSION` bump —
+the output is an ordinary `[:hash, …]`/`[:kwargs, …]` pair whose value is a `var` or `send`
+the Lean model already consumes.
+
+Seed `corpus/seeds/41_implicit_hash.rb` covers: hash-literal and keyword-argument
+positions, a resolution to a local and one to a method (`def name = "c"; { name: }`),
+mixing with explicit pairs, and the eval-order obligation (a shorthand whose resolution is
+a call fires exactly once, in source order).
+
+**Result (measured).** Seeds 41/41 agree, rule coverage 75/75. bootstraptest
+**1227 agree, 0 disagree, 0 harness-error** (unchanged — no bootstraptest program uses the
+shorthand, so this is a pure additive extension). All 8 slice files now desugar.
+
+Not in scope here (separate gate, not needed by the slice): `**` inside a *hash literal*
+(`assoc_splat_node` in `desugar_hash`; the call-argument form already works). 155 uses
+corpus-wide.
