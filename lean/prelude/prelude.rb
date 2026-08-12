@@ -855,6 +855,22 @@ class String
 end
 
 class Array
+  # `zip` over one or more other arrays; a short partner pads with nil [V]. The
+  # block form yields each tuple and returns nil.
+  def zip(*others)
+    out = []
+    i = 0
+    while i < length
+      row = [self[i]]
+      others.each { |o| row.push(o[i]) }
+      out.push(row)
+      i += 1
+    end
+    return out unless block_given?
+    out.each { |row| yield(row) }
+    nil
+  end
+
   def dig(i, *rest)
     v = self[i]
     return v if rest.empty? || v.nil?

@@ -904,3 +904,41 @@ as bootstraptest), so no committed corpus disagrees. Generated and run today,
 `NameError: uninitialized constant T::Helpers`, because the prelude's `T` shim has the
 assertion family and `sig` but not `T::Helpers`/`abstract!`/`override`/`T::Struct`. That is
 M6's work, and this corpus is the thing that measures it.
+
+## N37 — the domain-input corpus: fuzzing the slice's *inputs* (W4d)
+
+`homebrew/PLAN.md` M8. The premise from §W4d: for this slice the highest-value fuzzing is
+not random ASTs but random **inputs**. A random program mostly exercises the machine; a
+random version string exercises the tokenizer, the comparison chain, the URL parsers and
+the regex engine — which is where the model and CRuby can actually differ.
+
+**Grammar-based, not character-random.** The shapes come from the ones the spec suite
+already contains: dotted numerics, `-rc1`, `_1_2`, `R13B`, date stamps, platform suffixes,
+prerelease and build metadata, and the ten forge-URL templates. A uniformly random string
+lands in the same "no match" arm every time and tests nothing.
+
+**Batched, not one program per input.** Each program carries a library prefix (~25 KB from
+the linker) plus a literal input array and prints one line per input, so 10,000 inputs cost
+200 subprocess pairs rather than 10,000 — while the comparison stays per line. The batch
+is **50**: at 250 the two Version-heavy harnesses overran the SUT timeout (control 0.1 s,
+model 10 s+), which the batch exists to amortize the prefix, not to maximise.
+
+**Five harnesses**, each printing every intermediate value (rescued, so a raise is an
+observation rather than the end of the program): `version` (construct, render,
+major/minor/patch, self-compare), `semver` (compare against a fixed point and against
+itself), `purl` (parse, re-render), `identify` (forge URL → OSV key), and **`pairs`** —
+which runs `Version.new(a) <=> Version.new(b)` **and** `Semver.compare(a, b)` on the same
+pair and prints both. That last one is W4e's disagreement search reduced to a difftest
+case; here it is being used for the other question (does the model agree with CRuby), but
+the same programs answer both, and the control output already shows the two orderings
+parting company on generated pairs.
+
+    difftest domain-fuzz --brew <path> -n 10000
+    difftest run --tier domain --sut lean --timeout 30
+
+**Result (measured): 200 programs / 10,000 inputs, 200 agree, 0 disagree.** That is
+`homebrew/PLAN.md` M8's gate, and criterion 1 of the initiative's definition of done for
+the executable half of the slice.
+
+Generated, not vendored (`corpus/domain-fuzz/` is gitignored), same as the other two
+Homebrew corpora. One prelude gap fell out of the first run: `Array#zip`.

@@ -20,8 +20,8 @@ from pathlib import Path
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
-from .sources import (load_bootstraptest, load_corpus_cases, load_slice_corpus,
-                      load_sorbet_corpus)
+from .sources import (load_bootstraptest, load_corpus_cases, load_domain_corpus,
+                      load_slice_corpus, load_sorbet_corpus)
 from .tiers import GENERATIVE_ARMS
 from .sut import make_sut
 
@@ -56,7 +56,7 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
     print(f"\nreport: {out_dir / 'report.md'}")
 
 
-CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice")  # mix arms backed by persisted corpora
+CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain")  # mix arms backed by persisted corpora
 
 
 def _load_corpus_arm(name: str, args) -> list:
@@ -66,6 +66,8 @@ def _load_corpus_arm(name: str, args) -> list:
         return load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
     if name == "slice":
         return load_slice_corpus(Path(args.corpus) if args.corpus else None)
+    if name == "domain":
+        return load_domain_corpus(Path(args.corpus) if args.corpus else None)
     return load_corpus_cases(BASE / "corpus" / "tier3", default_tier=3)
 
 
@@ -76,6 +78,14 @@ def cmd_harvest_rspec(args) -> int:
     res = harvest(args.brew, out, ruby=args.ruby)
     print(json.dumps(res, indent=2))
     print(f"skips: {Path(out) / 'skipped.json'}")
+    return 0
+
+
+def cmd_domain_fuzz(args) -> int:
+    from .tiers.domain.build import build
+
+    out = args.out or str(BASE / "corpus" / "domain-fuzz")
+    print(json.dumps(build(args.brew, out, args.n, args.seed, ruby=args.ruby), indent=2))
     return 0
 
 
@@ -121,6 +131,12 @@ def cmd_run(args) -> int:
         cases = load_slice_corpus(Path(args.corpus) if args.corpus else None)
         run_campaign(cases, control, sut, on_result=reporter.record)
         extra = {"slice": {"ran": len(cases), "corpus": "homebrew-slice"}}
+    elif args.tier == "domain":
+        # W4d: generated *inputs* rather than generated programs. Runs whole.
+        cases = load_domain_corpus(Path(args.corpus) if args.corpus else None)
+        run_campaign(cases, control, sut, on_result=reporter.record)
+        total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
+        extra = {"domain": {"programs": len(cases), "inputs": total_inputs}}
     elif args.tier == "4":
         # The Sorbet corpus (tier 4). Runs whole; it is small and every program
         # is hand-authored to probe a specific feature, so sampling it would
@@ -317,7 +333,7 @@ def main(argv=None) -> int:
     # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
     # flag; a distinct tier id keeps selection uniform).
     p_run.add_argument(
-        "--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3", "4", "slice"]
+        "--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain"]
     )
     p_run.add_argument(
         "--mix",
@@ -343,6 +359,17 @@ def main(argv=None) -> int:
     p_harv.add_argument("--out", help="output corpus dir (default corpus/homebrew-slice)")
     p_harv.add_argument("--ruby", help="Ruby used for the Prism transform and validation")
     p_harv.set_defaults(func=cmd_harvest_rspec)
+
+    p_dom = sub.add_parser(
+        "domain-fuzz",
+        help="generate the domain-input corpus (version/semver/purl/URL strings, W4d)",
+    )
+    p_dom.add_argument("--brew", required=True, help="path to a Homebrew/brew checkout")
+    p_dom.add_argument("-n", type=int, default=10000, help="number of inputs (default 10000)")
+    p_dom.add_argument("--seed", type=int, default=7)
+    p_dom.add_argument("--out", help="output corpus dir (default corpus/domain-fuzz)")
+    p_dom.add_argument("--ruby", help="Ruby used for linking")
+    p_dom.set_defaults(func=cmd_domain_fuzz)
 
     p_gen = sub.add_parser("gen3", help="generate tier-3 corpus via the Anthropic API")
     p_gen.add_argument("--category", nargs="+", default=["all"])

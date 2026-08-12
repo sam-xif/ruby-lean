@@ -120,6 +120,34 @@ def load_slice_corpus(corpus: Path | None = None) -> list[TestCase]:
     return cases
 
 
+DOMAIN_DIR = BASE / "corpus" / "domain-fuzz"
+
+DOMAIN_RECIPE = """The domain-fuzz corpus is generated, not vendored. To build it:
+
+  python3 -m difftest domain-fuzz --brew /path/to/Homebrew/brew -n 10000"""
+
+
+def load_domain_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """Batched harness programs over generated version/semver/purl/URL inputs
+    (W4d). Each program prints one line per input, so the number of *cases* is
+    small and the number of compared observations is large."""
+    corpus = Path(corpus) if corpus else DOMAIN_DIR
+    if not corpus.is_dir():
+        raise FileNotFoundError(f"no domain corpus at {corpus}\n{DOMAIN_RECIPE}")
+    manifest: dict[str, dict] = {}
+    mp = corpus / "manifest.json"
+    if mp.exists():
+        manifest = {e["id"]: e for e in json.loads(mp.read_text())}
+    cases = [
+        TestCase(id=f"domain/{p.stem}", source=p.read_text(), tier=0,
+                 provenance={"suite": "domain-fuzz", **manifest.get(p.stem, {})})
+        for p in sorted(corpus.glob("*.rb"))
+    ]
+    if not cases:
+        raise FileNotFoundError(f"no .rb cases under {corpus}\n{DOMAIN_RECIPE}")
+    return cases
+
+
 def load_sorbet_corpus(corpus: Path | None = None) -> list[TestCase]:
     """Load the Sorbet-annotated corpus (tier 4) as TestCases.
 
