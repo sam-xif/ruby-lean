@@ -840,3 +840,47 @@ shorthand, so this is a pure additive extension). All 8 slice files now desugar.
 Not in scope here (separate gate, not needed by the slice): `**` inside a *hash literal*
 (`assoc_splat_node` in `desugar_hash`; the call-argument form already works). 155 uses
 corpus-wide.
+
+## C33 — regex literal fidelity: the `n` flag, `/o` compile-once, and gated encoding flags
+
+`desugar_regex` lowered `/…/` to `Regexp.new(src, opts)` with `opts` carrying only
+`i`/`x`/`m`. Two of the remaining flags are observable, and one of them is on the Homebrew
+slice's critical path.
+
+**`/n` → `Regexp::NOENCODING` (32).** Measured: `vulns/purl.rb`'s
+`/[^A-Za-z0-9\-._~:]/n` was the *only* regex in the eight slice files whose
+`Regexp.new(unescaped, opts)` reconstruction differed from the literal (86 literals + 28
+interpolated, 1 mismatch). Adding bit 32 closes it. [V] `Regexp.new("a", 32) == /a/n`.
+
+**`/u`, `/e`, `/s` gate.** These fix the *encoding* of the pattern, which the integer
+option word cannot express — `Regexp.new` would need a source String already in that
+encoding. Silently dropping them would be a fidelity hole, so they raise `Unsupported`
+with a self-describing reason. Zero uses in the Homebrew corpus (1,133 regexes measured),
+zero in bootstraptest.
+
+**`/o` → a gensym'd global cache.** `/…/o` compiles the literal once, at first evaluation,
+and thereafter returns *that same object* without re-running the interpolations. This was
+being dropped, which is wrong on three observables: interpolation side effects, object
+identity, and staleness when the interpolated value changes. It is not academic —
+`version.rb` uses it **8 times** (`/\A#{AlphaToken::PATTERN}\z/o` and siblings), i.e. once
+per `Token` subclass, and it is 24 uses corpus-wide.
+
+The desugaring is `$g ? $g : ($g = Regexp.new(…))` with `$g` a fresh `$__dt_rxN`. A
+*global* is the right cache, not a local or an ivar: CRuby's cache is per literal **site**
+and shared program-wide (not per receiver, not per thread), and a distinct site gets a
+distinct gensym. The emitted shape is exactly what `logic_write` produces for `$g ||= e`,
+so the rendered program re-desugars to itself (AST idempotence holds), and a `Regexp` is
+never nil/false so the truthiness test is a faithful "already compiled?".
+
+Rejected alternative: a hidden per-site *constant*. Constants are cref-scoped, so a `/o`
+inside a class body would need a name mangled with the cref, and an unset constant read
+raises rather than returning nil (the reason `const ||=` is still deferred, C-earlier).
+
+No new RubyCore heads and no `Export::VERSION` bump — the output uses `if`/`var`/`vasgn`
+on the gvar namespace, all already modeled.
+
+**Result (measured).** Seed `corpus/seeds/42_regex_flags_once.rb` (flag round-trip via
+`Regexp#options`, `/o` call-count + `equal?` identity + staleness, and the non-`/o`
+contrast) agrees. Seeds **42/42**, rule coverage 75/75. bootstraptest **1227 agree, 0
+disagree** — unchanged, and provably unaffected: measured 0 uses of `/o` and 0 of `/n` in
+the corpus.

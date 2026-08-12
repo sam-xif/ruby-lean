@@ -927,8 +927,29 @@ class Desugar
   def desugar_regex(n)
     fire(:regex)
     src = n.type == :regular_expression_node ? [:str, n.unescaped] : interp_concat(n.parts)
-    opts = (n.ignore_case? ? 1 : 0) | (n.extended? ? 2 : 0) | (n.multi_line? ? 4 : 0)
-    [:send, [:const, "Regexp"], "new", [src, [:int, opts]], nil]
+    # `/u`, `/e`, `/s` fix the *encoding* of the pattern, which `Regexp.new`'s integer
+    # option word cannot express (it would need a source String in that encoding), so they
+    # gate rather than being silently dropped. `/n` is `Regexp::NOENCODING` (32) and does
+    # round-trip. `/o` (interpolate-once) is handled at the call site, not here. (C33.)
+    if n.euc_jp? || n.windows_31j? || n.utf_8?
+      raise Unsupported, "regex encoding flag (/u, /e, /s — not expressible as Regexp.new options)"
+    end
+    opts = (n.ignore_case? ? 1 : 0) | (n.extended? ? 2 : 0) | (n.multi_line? ? 4 : 0) |
+           (n.ascii_8bit? ? 32 : 0)
+    lit = [:send, [:const, "Regexp"], "new", [src, [:int, opts]], nil]
+    n.once? ? once_cached(lit) : lit
+  end
+
+  # `/…/o` — compile the literal *once*, at first evaluation, and return that same object
+  # on every later evaluation without re-running the interpolations. The cache in CRuby is
+  # per literal *site* and global (not per receiver, not per thread), so a gensym'd global
+  # is an exact model: `$g ? $g : ($g = Regexp.new(…))`, which is the shape `logic_write`
+  # already emits for `$g ||= e` — so the round-trip re-desugars to itself. A Regexp is
+  # never nil/false, so the truthiness test is a faithful "already compiled?". (C33.)
+  def once_cached(lit)
+    g = "$__dt_rx#{@gensym += 1}"
+    rd = [:var, :gvar, g]
+    [:if, rd, rd, [:vasgn, :gvar, g, lit]]
   end
 
   # :"a#{e}b" => (interp string).to_sym — behavior-identical dynamic symbol.
