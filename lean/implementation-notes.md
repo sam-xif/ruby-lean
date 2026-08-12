@@ -2421,3 +2421,47 @@ byte-identical to CRuby across string keys, symbol keys, a computed key, an arra
 `Interp.lean` (2,767 lines) should split it first. This change is +6 lines on the *send*
 path, not the builtin-dispatch section W2d is scheduled to split; the split lands at M3,
 before the regex work, as planned.
+
+## L98 — `Builtins.lean` split into `Builtins/` — one class group per file
+
+`RubyCore/Builtins.lean` was 1,582 lines, 1,290 of them a single `run` function: one
+`match bid with` over every builtin rule, plus a 270-line `where` block. The regex API
+(`homebrew/PLAN.md` W2a `Api.lean`) adds ~20 `String`/`Regexp`/`MatchData` rules to it, so
+the norm — no file over 1,000 lines, split before you touch it (`PLAN.md` §4.3, milestone
+M3) — bites here first.
+
+**Shape.** `run` keeps only the two pre-match rules (the zero-arg arity check and the
+uniform `dup`/`clone` rule) and hands off to a **chain**:
+
+```
+run → runObjects → runNumerics → runStrings → runCollections → runModules
+        Object/Kernel/nil/bool   Integer/Float   String/Symbol/Proc   Array/Hash   Exception/Module/Class
+```
+
+Each file matches its own bids and its default arm calls the next; the last one is where an
+unmodeled bid becomes `.unsupported s!"builtin {bid}"`. Imports run backwards along the
+chain, so the dependency order is explicit and acyclic.
+
+**Why a chain and not `Option BRes` + `orElse`.** A `BRes`-returning tail call unfolds in
+one step and allocates nothing; an `Option`-returning stage plus `orElse` puts an extra
+`Option` match between every builtin call and its result, on the dispatch path, in every
+`rfl`-reducible leaf proof. L73's reducibility trap says do not put anything on the dispatch
+path that costs kernel reduction for free.
+
+**`Builtins/Support.lean`** holds what the rule files share: the payload accessors,
+allocation helpers, `SortKey`/`BRes`, the numeric and string-ordering primitives, the bid
+lists, and — the reason the split is possible at all — the former `where` helpers, promoted
+to top level (`binArg`, `putsImpl`, `raiseImpl`, `newImpl`, `joinImpl`, `sortImpl`, …). A
+`where` binding is not visible outside its own definition, so those had to move. The only
+edit beyond relocation is **ordering them by use** (`putsGo` before `putsImpl`,
+`raiseClass` before `raiseImpl`, `flattenAll` before `joinImpl`), which `where` did not
+require.
+
+**No behaviour change, and that is checked, not asserted.** tier-0 `--sut lean`
+**955 agree, 0 disagree** — byte-identical to the pre-split run. `#print axioms` on
+`invariant_sound`, `Static.check_sound` and `sorbet_invariant_sound`: `[propext,
+Classical.choice, Quot.sound]`, unchanged. Every file is now under 600 lines
+(48 / 206 / 149 / 228 / 392 / 138 / 569).
+
+Still to split under the same norm: `Interp.lean` (2,767) — the next one, and the one the
+regex *dispatch* touches.
