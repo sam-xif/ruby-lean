@@ -2907,3 +2907,43 @@ the same case). `stem` moved to `PATHNAME_STEM_STUB`, copied verbatim from upstr
 
 **Result (measured).** Homebrew-slice **238 → 319 agree, 0 disagree**, 33 gated. tier-0
 **991 agree, 0 disagree**; domain 200/200 at 10,000 inputs.
+
+## L113 — `Float`/`Integer` rounding, `Forwardable`, `to_json`, and splatting a `MatchData`
+
+Third batch off `homebrew/slice-gates.md`.
+
+**`Float#round` is CRuby's `round_half_up`, correction and all.** Not "scale, round,
+descale":
+
+```c
+f = round(x * s);                              // half away from zero
+if (x > 0 && (double)((f + 0.5) / s) <= x) f += 1;
+if (x < 0 && (double)((f - 0.5) / s) >= x) f -= 1;
+```
+
+That correction is why `2.675.round(2)` is **2.68** even though `2.675` is really
+`2.67499999999999982…` in binary, and why `1.005.round(2)` is `1.01`. The naive version
+gives `2.67` and `1.0` — it is exactly the sort of thing that looks right until an oracle
+looks at it. `ndigits > 0` keeps a Float, `0` or negative yields an Integer [V]. `ceil`,
+`floor`, `truncate` and `divmod` came with it, for both classes; `Integer#round(-1)` is half
+**up** away from zero (`25.round(-1)` is 30).
+
+**`Forwardable`** is `define_method` over a receiver expression — another metaprogramming
+pattern rather than a library, so it is prelude Ruby and no Lean rules. The accessor may be
+an ivar (`:@list`) or a method (`:inner`), which is the one thing to get right.
+
+**`to_json`** is generation only, as a `__to_json` fold over each class. `JSON.parse`
+**gates**: the slice never parses (its OSV records arrive as decoded Hashes), and a parser
+we do not need is a parser we should not guess at.
+
+**And a wrong answer, not a gate.** `pkg_version.rb` destructures a match with
+`_, version, revision = *path.match(REGEX)`. `spread` had a fallthrough that wrapped any
+non-Array as `[v]`, so splatting a `MatchData` bound the *MatchData* to the first target and
+**nil to the rest** — and nothing downstream could tell, because a one-element spread is
+perfectly well formed. CRuby splats via `MatchData#to_a`: the whole match, then every
+capture, nil for one that did not participate. Fixing it needed a `spreadA` that can
+allocate (the captures are fresh Strings), which is why `spread` had missed it — the pure
+signature made the right answer unreachable and the wrong one silent.
+
+**Result (measured).** Homebrew-slice **319 → 338 agree, 0 disagree**, and the gate count is
+down from 135 at the baseline to **14**. tier-0 unchanged at **991 agree, 0 disagree**.

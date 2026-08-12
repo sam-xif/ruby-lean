@@ -1053,6 +1053,119 @@ class Hash
   end
 end
 
+# ─── Forwardable ────────────────────────────────────────────────────────────
+#
+# `def_delegator :@list, :size` installs a `size` that forwards to `@list.size`.
+# Like `Struct`, it is a metaprogramming pattern rather than a library: the whole
+# module is `define_method` over a receiver expression, so it costs prelude Ruby
+# and no Lean rules. `pkg_version.rb` delegates six methods to its `version`.
+#
+# The accessor may be an ivar (`:@list`) or a method (`:inner`), which is the one
+# case worth being careful about — `instance_variable_get` for the former,
+# `send` for the latter [V].
+module Forwardable
+  def def_delegator(accessor, method, ali = method)
+    acc = accessor.to_s
+    meth = method.to_sym
+    ivar = acc.start_with?("@")
+    define_method(ali.to_sym) do |*args, **kw, &blk|
+      target = ivar ? instance_variable_get(acc) : send(acc)
+      kw.empty? ? target.send(meth, *args, &blk) : target.send(meth, *args, **kw, &blk)
+    end
+    nil
+  end
+
+  def def_delegators(accessor, *methods)
+    methods.each { |mm| def_delegator(accessor, mm) }
+    nil
+  end
+
+  # The `_delegator`-less spellings are the documented aliases.
+  def delegate(hash)
+    hash.each do |methods, accessor|
+      Array(methods).each { |mm| def_delegator(accessor, mm) }
+    end
+    nil
+  end
+end
+
+# ─── JSON — generation only ─────────────────────────────────────────────────
+#
+# `version_spec.rb` asserts `Version#to_json`, which Homebrew gets from the json
+# library. Generation is a pure fold over the value; **parsing is not modeled**
+# and `JSON.parse` gates, because the slice never parses (its OSV records arrive
+# as already-decoded Hashes in the specs).
+module JSON
+  def self.generate(obj) = obj.__to_json
+
+  def self.dump(obj) = obj.__to_json
+
+  def self.parse(*args, **kw)
+    __unsupported__("JSON.parse (only generation is modeled)")
+  end
+end
+
+class Object
+  def to_json(*args) = __to_json
+
+  # `#<Object:0x…>`-style default: the json library emits the `to_s` for an
+  # object it does not know, as a JSON string.
+  def __to_json = to_s.__to_json
+end
+
+class NilClass
+  def __to_json = "null"
+end
+
+class TrueClass
+  def __to_json = "true"
+end
+
+class FalseClass
+  def __to_json = "false"
+end
+
+class Integer
+  def __to_json = to_s
+end
+
+class Float
+  def __to_json = to_s
+end
+
+class Symbol
+  def __to_json = to_s.__to_json
+end
+
+class String
+  # Only the escapes JSON requires: quote, backslash, and the C0 controls. `/`
+  # is **not** escaped [V].
+  def __to_json
+    out = "\""
+    each_char do |c|
+      out += if c == "\"" then "\\\""
+             elsif c == "\\" then "\\\\"
+             elsif c == "\n" then "\\n"
+             elsif c == "\t" then "\\t"
+             elsif c == "\r" then "\\r"
+             elsif c.ord < 32 then "\\u" + format("%04x", c.ord)
+             else c
+             end
+    end
+    out + "\""
+  end
+end
+
+class Array
+  def __to_json = "[" + map { |e| e.__to_json }.join(",") + "]"
+end
+
+class Hash
+  def __to_json
+    "{" + map { |k, v| k.to_s.__to_json + ":" + v.__to_json }.join(",") + "}"
+  end
+end
+
 # ─── Pathname — the pure path half ─────────────────────────────────────────
 #
 # `Version.detect` wraps its argument in `Pathname(spec)` and then asks it for

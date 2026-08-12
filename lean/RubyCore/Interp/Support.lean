@@ -293,6 +293,28 @@ def spread (m : Machine) (v : Value) : Except String (List Value) :=
   | .nil => .ok []
   | _ => .ok [v]
 
+/-- `spread`, but able to **allocate** — which a `MatchData` needs, since its
+    `to_a` is the whole match plus every capture as fresh Strings.
+
+    `_, version, revision = *path.match(REGEX)` is how `pkg_version.rb`
+    destructures a match, and without this the splat wrapped the MatchData itself:
+    the first target got the MatchData and every other bound to nil. That is a
+    *wrong answer*, not a gate, because `[md]` is a perfectly good one-element
+    spread and nothing downstream could tell (L113). -/
+def spreadA (m : Machine) (v : Value) : Except String (List Value × Machine) :=
+  match v with
+  | .ref o =>
+    match (m.heap.get o).payload with
+    | .mdata subject caps _ =>
+      .ok (caps.toList.foldl (fun (acc, m) sp =>
+        match sp with
+        | some (a, b) =>
+          let (sv, m) := Builtins.allocStr m (Builtins.charSlice subject a b)
+          (acc ++ [sv], m)
+        | none => (acc ++ [Value.nil], m)) ([], m))
+    | _ => (spread m v).map (fun vs => (vs, m))
+  | _ => (spread m v).map (fun vs => (vs, m))
+
 /-- The method activation governing the current frame (itself if a
     method/toplevel frame; its `home` if a block frame). -/
 def methodFrameOf (m : Machine) : FrameId :=

@@ -19,7 +19,7 @@ def modeledFeatures : List String :=
   ["sorbet-runtime", "sorbet-runtime/lib/types/private/methods/decl_builder",
    -- the pure halves of these are in the prelude (L112): `Pathname`'s path
    -- operations, `URI.decode_www_form_component`, `File`'s path operations
-   "pathname", "uri"]
+   "pathname", "uri", "forwardable", "json"]
 
 /-- BasicObject / Object core, Kernel I/O, and the nil / boolean rules. -/
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=

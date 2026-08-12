@@ -237,8 +237,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .argsK recv implicit mname acc rest pblk =>
       startArgs m recv implicit mname (acc ++ [v]) rest pblk
     | .argsSplatK recv implicit mname acc rest pblk =>
-      match spread m v with
-      | .ok vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
+      match spreadA m v with
+      | .ok (vs, m) => startArgs m recv implicit mname (acc ++ vs) rest pblk
       | .error e => .unsupported e
     | .blkCoerceK recv implicit mname acc kw =>
       match coerceToProc m v with
@@ -261,18 +261,18 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "** of a non-Hash"
     | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
     | .superSplatK acc rest blk =>
-      match spread m v with
-      | .ok vs => startSuperArgs m (acc ++ vs) rest blk
+      match spreadA m v with
+      | .ok (vs, m) => startSuperArgs m (acc ++ vs) rest blk
       | .error e => .unsupported e
     | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
     | .yieldSplatK acc rest =>
-      match spread m v with
-      | .ok vs => startYield m (acc ++ vs) rest
+      match spreadA m v with
+      | .ok (vs, m) => startYield m (acc ++ vs) rest
       | .error e => .unsupported e
     | .arrK acc rest => continueArray m (acc ++ [v]) rest
     | .arrSplatK acc rest =>
-      match spread m v with
-      | .ok vs => continueArray m (acc ++ vs) rest
+      match spreadA m v with
+      | .ok (vs, m) => continueArray m (acc ++ vs) rest
       | .error e => .unsupported e
     | .hshKeyK acc vExpr rest =>
       .next (withKont m (.eval vExpr) (.hshValK acc v rest))
