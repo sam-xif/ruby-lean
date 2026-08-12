@@ -150,6 +150,7 @@ def readKw : List KwEntry → Option (List (String × SigTy))
     match readTy v, readKw rest with
     | some t, some ps => some ((k, t) :: ps)
     | _, _ => none
+  | .dyn _ _ :: _ => none
   | .splat _ :: _ => none
 
 /-- Walk the `params(...).returns(...)` chain from the outside in. Unrecognised

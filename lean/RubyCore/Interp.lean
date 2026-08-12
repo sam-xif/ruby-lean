@@ -1799,6 +1799,10 @@ def startKwargs (m : Machine) (recv : Value) (implicit : SendSite) (mname : Stri
   | [] => finishSend m recv implicit mname posArgs pblk kwacc
   | .pair k valE :: rest =>
     .next (withKont m (.eval valE) (.kwPairK k rest kwacc recv implicit mname posArgs pblk))
+  | .dyn keyE valE :: rest =>
+    -- Key first, then value: `f(k => v)` evaluates left to right like a hash
+    -- literal [V].
+    .next (withKont m (.eval keyE) (.kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk))
   | .splat e :: rest =>
     .next (withKont m (.eval e) (.kwSplatK rest kwacc recv implicit mname posArgs pblk))
 
@@ -2152,6 +2156,10 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .error e => .unsupported e
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
+    | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
+      .next (withKont m (.eval valE) (.kwDynValK v rest kwacc recv implicit mname posArgs pblk))
+    | .kwDynValK key rest kwacc recv implicit mname posArgs pblk =>
+      startKwargs m recv implicit mname posArgs (kwAdd kwacc key v) rest pblk
     | .kwSplatK rest kwacc recv implicit mname posArgs pblk =>
       match v with
       | .ref o =>

@@ -131,10 +131,12 @@ inductive Param where
   /-- `(a, b)` (destructuring; nests, may hold a rest). -/
   | destr (subs : List Param)
 
-/-- One entry of a call-site `kwargs` marker: a `k: v` pair (static symbol key)
-    or a `**h` double-splat. -/
+/-- One entry of a call-site `kwargs` marker: a `k: v` pair (static symbol key),
+    a `kExpr => v` pair whose key is an arbitrary expression, or a `**h`
+    double-splat. -/
 inductive KwEntry where
   | pair (key : String) (val : Expr)
+  | dyn (key : Expr) (val : Expr)
   | splat (e : Expr)
 end
 
@@ -230,8 +232,9 @@ partial def param (j : Json) : M Param := do
 partial def params (j : Json) : M (List Param) := do
   (← asArr j).toList.mapM param
 
-/-- One call-site keyword entry: `[[sym, k], v]` (static-symbol key) or
-    `["kwsplat", e]`. A non-symbol (dynamic) key gates Unsupported. -/
+/-- One call-site keyword entry: `[[sym, k], v]` (static-symbol key),
+    `["kwsplat", e]`, or `[kExpr, v]` for a brace-less pair whose key is an
+    arbitrary expression (`f("a" => 1)`, `delegate [:x] => :y`). -/
 partial def kwEntry (j : Json) : M KwEntry := do
   match ← asArr j with
   | #[a, b] =>
@@ -242,8 +245,8 @@ partial def kwEntry (j : Json) : M KwEntry := do
       | #[hd, nm] =>
         match ← asStr hd with
         | "sym" => return .pair (← asStr nm) (← expr b)
-        | _ => unsupported "dynamic (non-symbol) keyword key"
-      | _ => fail "kwargs key node" a
+        | _ => return .dyn (← expr a) (← expr b)
+      | _ => return .dyn (← expr a) (← expr b)
   | _ => fail "kwargs entry" j
 
 partial def exprs (js : Array Json) : M (List Expr) :=

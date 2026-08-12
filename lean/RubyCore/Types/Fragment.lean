@@ -219,6 +219,7 @@ def scanPairs : List (Expr × Expr) → List Violation
 def scanKw : List KwEntry → List Violation
   | [] => []
   | .pair _ v :: rest => scan false v ++ scanKw rest
+  | .dyn k v :: rest => scan false k ++ scan false v ++ scanKw rest
   | .splat e :: rest => scan false e ++ scanKw rest
 
 def scanRescues :

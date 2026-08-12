@@ -115,6 +115,8 @@ def kontLabel : Kont → String
   | .argsSplatK _ _ m .. => s!"splat args for .{m}"
   | .blkCoerceK _ _ m _ _ => s!"coerce &block for .{m}"
   | .kwPairK k .. => s!"kwarg {k}: ▢"
+  | .kwDynKeyK .. => "kwarg ▢ => _"
+  | .kwDynValK .. => "kwarg _ => ▢"
   | .kwSplatK .. => "kwarg **▢"
   | .yieldArgK .. => "collect yield args"
   | .yieldSplatK .. => "splat yield args"

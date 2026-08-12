@@ -216,6 +216,12 @@ inductive Kont where
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
+  /-- Evaluating the *key* of a call-site `kExpr => v` pair; the value follows. -/
+  | kwDynKeyK (valE : Expr) (rest : List KwEntry) (kwacc : List (Value × Value))
+      (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
+  /-- Evaluating the *value* of a call-site `kExpr => v` pair (key already in hand). -/
+  | kwDynValK (key : Value) (rest : List KwEntry) (kwacc : List (Value × Value))
+      (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
   /-- Evaluating a call-site `**h` double-splat; then continue the kwargs. -/
   | kwSplatK (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)

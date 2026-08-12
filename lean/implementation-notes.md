@@ -2387,3 +2387,37 @@ Tactic notes, both new:
   `md` an unsolvable metavariable when applied by `refine`, because nothing in the conclusion
   mentions it. Taking `TableOk m₀.heap` and `NoHook m₀.heap` as hypotheses instead fixes `m₀`
   from the goal first and forces each remaining unification.
+
+## L97 — dynamic (non-symbol) keyword keys at a call site
+
+`f("a" => 1)` / `delegate [:x, :y] => :version` is a brace-less keyword hash whose key is
+an arbitrary expression rather than a static symbol. The decoder gated it
+(`"dynamic (non-symbol) keyword key"`), which was #6 on the tier-0 `Unsupported`
+histogram (14 cases) and the one thing stopping Homebrew's `pkg_version.rb` — a
+version+vulnerability slice file — from decoding at all (`homebrew/PLAN.md` M1).
+
+**Shape.** `KwEntry` gains `.dyn (key : Expr) (val : Expr)` alongside `.pair`/`.splat`.
+The static-symbol case keeps its own constructor rather than being folded into `.dyn` with
+a `[:sym, k]` key expression: `.pair` carries the key as a `String`, which is what the
+parameter binder matches on, and collapsing them would push a runtime `Value` comparison
+into every ordinary `k: v` call.
+
+**Evaluation order.** Two konts, `kwDynKeyK` then `kwDynValK`: key first, then value,
+entries left to right — the same order a hash literal uses. [V] verified against CRuby with
+a marker-printing key/value pair (`f(m("k1") => m("v1"), m("k2") => m("v2"))` prints
+`k1,v1,k2,v2` in both). Accumulation reuses `kwAdd`, so duplicate keys keep first position
+and last value, and `**h` splats interleave correctly.
+
+`Types/Fragment.lean`, `Types/SigRead.lean` and `Trace.lean` get the new case
+(`SigRead.readKw` returns `none` — a `sig` with a computed keyword name is not a sig we
+read).
+
+**Result (measured).** tier-0 `--sut lean` **942 → 955 agree, 0 disagree** (13 of the 14
+gated cases; the remaining one has a second gate behind this). Discriminating snippet
+byte-identical to CRuby across string keys, symbol keys, a computed key, an array key,
+`**`-splat interleaving, and the eval-order trace. All 8 slice files now decode.
+
+**Not done here (deliberate).** `homebrew/PLAN.md` norm 3 says a workstream touching
+`Interp.lean` (2,767 lines) should split it first. This change is +6 lines on the *send*
+path, not the builtin-dispatch section W2d is scheduled to split; the split lands at M3,
+before the regex work, as planned.
