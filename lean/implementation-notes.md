@@ -2465,3 +2465,34 @@ Classical.choice, Quot.sound]`, unchanged. Every file is now under 600 lines
 
 Still to split under the same norm: `Interp.lean` (2,767) — the next one, and the one the
 regex *dispatch* touches.
+
+## L99 — `Interp.lean` split into `Interp/` — one stage of the machine per file
+
+The companion to L98, and the one the regex *dispatch* work needs: `RubyCore/Interp.lean`
+was 2,767 lines. It is now 370, with five files behind it:
+
+| file | lines | contents |
+|---|---|---|
+| `Interp/Support.lean` | 439 | `StepResult`; control/kont constructors, exception-region bookkeeping, parameter classification + binding, splat spreading, the return target, closure creation/invocation |
+| `Interp/Dispatch.lean` | 568 | the ancestor walk, entering a user method or a class/module body, eigenclasses, visibility, `method_missing`, the iterating-builtin bridge, mixin hooks |
+| `Interp/Reflect.lean` | 481 | the reflective metaprogramming core (`define_method`, `*_eval`, `prepend`, `alias_method`, `singleton_class`, ivar/const reflection, `Class.new`) + the lookup-miss classifier |
+| `Interp/Send.lean` | 522 | `invoke`, `super`/`zsuper`, `finishSend`, `startArgs`/`startKwargs`/`doYield` |
+| `Interp/Kont.lean` | 493 | `applyKont` and `unwind` |
+| `Interp.lean` | 370 | `evalDefined`, `evalExpr`, `stepFn` |
+
+**Why this cut is free.** The file's own header already recorded the load-bearing fact:
+*"the helpers below are NOT mutually recursive: each performs exactly one transition —
+evidence the machine really is small-step."* That means the definitions were already in a
+topological order, so the split is five cuts along it and a linear import chain. Nothing
+was reordered, renamed, or re-typed; each cut was pulled back to include the leading `/--`
+doc comment of the definition it precedes.
+
+Every file is now under 600 lines, and the parts a workstream touches are separable: the
+regex API is a `Builtins/` rule file plus, at most, `Interp/Send.lean`.
+
+**Checked, not asserted.** tier-0 `--sut lean` **955 agree, 0 disagree** — identical to
+before the split. `#print axioms` on `invariant_sound`, `Static.check_sound` and
+`sorbet_invariant_sound`: `[propext, Classical.choice, Quot.sound]`, unchanged.
+
+With L98 this closes `homebrew/PLAN.md` M3 on the Lean side; `difftest/tiers/tier1/
+strategies.py` (1,087) is the remaining offender and is W4b's to split.
