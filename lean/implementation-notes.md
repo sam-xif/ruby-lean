@@ -2672,3 +2672,67 @@ rather than `"uninitialized constant C::K"` — so the rule does too.
 
 `version.rb` declares nine private constants, so this is on the slice's critical path.
 tier-0 unchanged at 974 agree, 0 disagree.
+
+## L105 — `Struct` and `T::Struct`, in the prelude
+
+`homebrew/PLAN.md` M6, and the payoff for L103: both classes need `inspect` (and `Struct`
+needs `==`), which the old global `reprPure` flag made impossible to define anywhere in
+the prelude. With purity now a per-class question they are ordinary prelude Ruby.
+
+**Both are class factories, not core classes.** `Struct.new(:a, :b)` *returns a class*, so
+the implementation is `Class.new` + `class_eval` + `define_method` — machinery the model
+already had (L64/L66). That is this project's thesis made concrete: a "core class" that is
+really a metaprogramming pattern costs prelude Ruby, not Lean rules.
+
+Behaviours a plausible implementation gets wrong, each verified against CRuby:
+
+* `Struct` with `keyword_init: nil` (the default) accepts **either** calling convention.
+* `T::Struct` does **not** define `==` — two structs with equal fields are *not* equal
+  [V]. Equality stays identity.
+* `T::Struct#inspect` lists props **alphabetically** (`<I inc=true lower="1" n=3>`) while
+  `#serialize` lists them in *declaration* order and **omits nil**.
+* `T::Struct`'s prop-type error names the *non-nil* part of a nilable type ("need a
+  `String`", not "need a `T.nilable(String)`").
+* `abstract!` is not purely declarative: the abstract class itself cannot be instantiated
+  (`RuntimeError: A is declared as abstract; it cannot be instantiated`), and
+  `version/parser_spec.rb:7` tests exactly that. Subclasses can, so the generated `new`
+  compares against the declaring class and otherwise allocates and initializes directly —
+  rather than `super`, which from a `define_singleton_method` body would have to resolve
+  through the eigenclass chain.
+
+**Two model changes this needed.** `Class#superclass` (for inherited props), and
+`X.new { … }` no longer being intercepted as an unmodeled "initialize block" when the
+receiver has a **user** `self.new` — `Struct.new(:q) { … }` is exactly that shape, and the
+interception was stealing the block before the user method could see it.
+
+Also landed in this batch, all in the prelude: `Kernel#Array`, `Hash#compact`,
+`NilClass#to_i`/`to_f`/`to_h`, `String#b`/`delete_prefix`/`delete_suffix`, `Array#fetch`,
+and `File` restricted to its **pure path operations** (`basename`, `extname`, `dirname`,
+`join`) with a `method_missing` that gates everything else by name — defining the constant
+without that guard would turn `File.read` from an honest `Unsupported` into a
+`NoMethodError`, which is a wrong answer rather than a refusal.
+
+**Result (measured).** tier-0 `--sut lean` **974 → 990 agree, 0 disagree**.
+
+## L106 — `Regexp.escape` / `.union` / `.last_match`, and `String#split` on a String
+
+Class methods of `Regexp`, dispatched in `invoke` the way `Math.sqrt` already is: the boot
+heap installs builtins as *instance* methods and these are singletons of the constant.
+
+* `escape`/`quote` — backslash the pattern metacharacters and render control whitespace as
+  its escape [V].
+* `union` — `union(a, b)` and `union([a, b])` are the same call; a String member is
+  escaped (it is a literal) and a Regexp member contributes its `to_s`, which is why
+  `Regexp#to_s` renders `(?-mix:…)` rather than the bare source. `union()` is `/(?!)/`.
+* `last_match` — `$~`, or `$~[n]`. It reads the same global the match rules write, so it
+  cannot drift from `$1`. Calls the `MatchData#[]` builtin directly rather than
+  re-dispatching, because `invoke`'s termination measure is `args.length` and a
+  re-dispatch with the same argument would not decrease it.
+
+`String#split` gained the **String separator**, which is a literal and therefore escaped
+rather than compiled — otherwise `"a.b".split(".")` would split on every character. `" "`
+is Ruby's awk-mode separator (runs of whitespace, leading whitespace ignored) and is its
+own rule, and `""` splits into characters. That last one exposed a bug in the split loop:
+a separator match ends the current piece at its *start* and the next begins at its *end*,
+which for a zero-width separator coincide — the old code advanced by one and returned
+`["a"]` for `"abc".split("")`.
