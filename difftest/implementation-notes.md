@@ -813,3 +813,32 @@ Annotated Ruby, generated type-first. Spec: `../docs/semantics/static-soundness-
   clean while the terminal still shows it *after* the programs it describes. Every emitted
   line is a `#` comment or program text, and method names are sample-prefixed, so a
   redirected multi-program dump is still loadable Ruby.
+
+## N35 — `tier1/strategies.py` split by grammar category
+
+1,087 lines in one file, and W4b (`homebrew/PLAN.md`) adds regex literals, the
+`String` pattern methods, `<=>`/`Comparable` chains, `T::Struct` and abstract/override
+hierarchies to it. Split first, per the plan's milestone M3 and its file-size norm:
+
+| file | lines | contents |
+|---|---|---|
+| `tier1/env.py` | 245 | the name pools, `_callable_ok`/`_CALL_ORDER`, and `Sig`/`ClassInfo`/`ModuleInfo`/`Env` — the scope record that is prong-2's central design feature |
+| `tier1/exprs.py` | 356 | literals, calls, operators, `_method_param_spec`, lambdas, blocks |
+| `tier1/stmts.py` | 275 | assignment, control flow, exceptions, `_method_body` |
+| `tier1/classes.py` | 193 | class/module definition and reopening |
+| `tier1/strategies.py` | 87 | `programs` — the public entry point, unchanged |
+
+**The one wrinkle: expressions and statements are mutually recursive** (a block body is a
+statement sequence; a statement contains expressions). Rather than merge the two
+categories back into one file, `_block_body` imports `_stmt_seq` *inside the function*. A
+deferred import is the standard Python answer to a genuine cycle, it costs one dict lookup
+per call in a generator that is already doing Hypothesis draws, and it keeps the category
+boundary the plan asked for.
+
+Every other cross-module use is acyclic: `exprs` → `env`, `stmts` → `exprs`/`env`,
+`classes` → `stmts`/`exprs`/`env`, `strategies` → all.
+
+**No behaviour change, checked by re-running the same seed.** `run --tier 1 -n 200
+--seed 7 --sut lean` gives **182 agree / 18 unsupported / 0 disagree** both before and
+after — identical, which is the strong form of the claim: the split did not perturb the
+Hypothesis draw sequence, so the generated corpus is the same corpus.
