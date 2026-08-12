@@ -66,6 +66,32 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | some s => .ok (.int s.length) m  -- character count (UTF-8-aware) [D]
     | none => .unsupported "length"
   | "String#to_s" | "String#to_str" => .ok recv m
+  | "String#to_i" =>
+    -- CRuby's `to_i` is lenient by design: skip leading whitespace, take an
+    -- optional sign, then digits (with `_` allowed *between* digits), and stop
+    -- at the first character that does not fit. No match at all is `0`, not an
+    -- error — which is why `"nope".to_i` is `0` and not a `TypeError` [V].
+    match strPayload? h recv with
+    | none => .unsupported "String#to_i on a non-String"
+    | some str =>
+      let cs := str.toList.dropWhile (fun c => c == ' ' || c == '\t' || c == '\n' || c == '\r')
+      let (neg, cs) := match cs with
+        | '-' :: r => (true, r)
+        | '+' :: r => (false, r)
+        | r => (false, r)
+      -- `_` is a separator only *between* digits: `"1_0"` is 10, but `"_5"` is
+      -- 0 and `"1__0"` is 1 [V]. So this is a small scan, not a filter.
+      let rec grab : List Char → List Char → List Char
+        | acc, d :: r => if d.isDigit then grab (d :: acc) r
+                         else if d == '_' then
+                           match r with
+                           | e :: r' => if e.isDigit && !acc.isEmpty then grab (e :: acc) r' else acc.reverse
+                           | [] => acc.reverse
+                         else acc.reverse
+        | acc, [] => acc.reverse
+      let digits := grab [] cs
+      let n : Int := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) (0 : Int)
+      .ok (.int (if neg then -n else n)) m
   | "String#inspect" =>
     match strPayload? h recv with
     | some s => okStr m (escapeString s)

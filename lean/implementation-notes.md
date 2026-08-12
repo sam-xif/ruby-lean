@@ -2601,3 +2601,25 @@ gate was #4 on the histogram at 20 cases). The L100 regex oracle still 7,418/7,4
 discriminating scripts byte-identical to CRuby across the whole `Regexp`/`MatchData`
 surface and the seven `String` methods. `#print axioms` unchanged on `invariant_sound`,
 `Static.check_sound`, `sorbet_invariant_sound`.
+
+## L102 — `String#to_i`, and the M4 gate
+
+The last thing between the model and `homebrew/PLAN.md`'s **M4 gate** — "`Version.new(…)
+.tokens` and `Semver.parse` match CRuby" — turned out not to be the regex engine at all but
+a missing `String#to_i` (`Semver.parse` builds its record with `m[1].to_i`).
+
+CRuby's `to_i` is lenient by design and the leniency is the specification: skip leading
+whitespace, take an optional sign, then digits, and **stop at the first character that does
+not fit**, with no match at all giving `0` rather than an error. `_` is a separator only
+*between* digits, so it is a small scan and not a filter — `"1_0"` is 10, but `"_5"` is 0
+and `"1__0"` is 1 [V]. Filtering underscores out (the obvious implementation) gets the last
+two wrong.
+
+**M4 gate met.** A transcription of the slice's tokenizer (`scan` over an interpolated,
+`/i`-flagged alternation of `NUMERIC_WITH_DOTS | [a-z]+ | \d+`) and of `Semver.parse`
+(anchored capture of major/minor/patch/prerelease/build, `to_i`, a nil result on a
+non-match) runs in the model **byte-identical to CRuby**, including the `ALPHA`/`BETA`/`RC`
+token patterns with their `{,2}` bounds.
+
+tier-0 `--sut lean` **974 agree, 0 disagree** (unchanged by `to_i` itself — no tier-0 case
+gated on it).
