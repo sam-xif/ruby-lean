@@ -291,6 +291,42 @@ locals, continuation stack, stdout). Zero-dependency Python stdlib server
 lean && lake build`, then `python3 playground/server.py`. See
 [`playground/README.md`](playground/README.md).
 
+### `homebrew/` — coverage analysis + the **active initiative** (runnable)
+**Start at [`homebrew/PLAN.md`](homebrew/PLAN.md)** — the build plan for taking Homebrew's
+CVE-matching decision core (`version.rb` + `vulns/{semver,cvss,purl,vulnerability,identify}.rb`,
+~1,876 lines, ~360 spec examples, zero effects) end to end: desugar → model → difftest →
+type check → soundness. Nine workstreams (front end, regex engine, linker, difftest,
+checker T2–T7, proof, demonic mocks, LLM type-fill, the finding), 12 gated milestones,
+five fixed decisions, and the working norms (`implementation-choices.md` per decision,
+one commit per entry, no file over 1,000 lines).
+
+Measurement of Homebrew (`Library/Homebrew`, 962 files / 147k lines / 7,777 sigs,
+`# typed: strict` throughout) against all three layers. Headline (2026-08-10): desugar
+**589/962 files**, three small syntax features from ~97%; the executable semantics
+already resolves **93.6% of the 113,610 call sites**, with the 6.4% gap concentrated in
+`Pathname`/`File` (§2.2 — scope an **FS-lite `F` component of our own** rather than
+waiting on `../posix/`; network reduces to a subprocess oracle), `Regexp`, and a
+prelude-sized Enumerable tail; whole-program execution is ruled out on six independent
+grounds (§2.1) with `rubocops/` as the one genuinely executable subtree; the
+**Sorbet fragment admits 6.4% of methods** (erased generics + `prepend` + `T.untyped` are
+the blockers) and the checker answers `unknown` on every file, because its type language
+is `Int|Bool|Nil|Sym` and Homebrew's types live in **280 RBI files**. `scan.rb`
+(desugar-fragment scan + RubyCore export), `census.rb` (unbiased Prism census),
+`analyze.py` (report), `closure.py` (rank candidate slices by require-closure purity).
+See [`homebrew/README.md`](homebrew/README.md), plus
+[`homebrew/execution-by-mocking.md`](homebrew/execution-by-mocking.md) (linker + typed
+mocks: feasible; RBIs first, LLM last; demonic mocks are sound for Direction B; the
+load-time-heap objection is 111 files once sorbet-runtime is excluded) and
+[`homebrew/first-complete-slice.md`](homebrew/first-complete-slice.md) (**full
+enumeration of candidate slices** + the race target: **the version + vulnerability
+stack** — `version.rb` under `vulns/{semver,cvss,purl,vulnerability}.rb`, ~1,530 lines,
+zero effects, ~270 existing spec examples, no RBI ingestion needed. Structural finding:
+the require graph has **one 227-file cycle**, so every formula-touching subsystem —
+including `cli/parser` — has a 501-file / 80k-line closure and the core cannot be sliced.
+Headline the slice supports: Homebrew carries **two inequivalent version orderings**
+(`::Version#<=>` and `Vulns::Semver.compare`) and uses both inside the same CVE-matching
+decision).
+
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`
 (Furr et al., DLS'09 — RIL/desugaring reference), `csmith.pdf` (PLDI'11 — differential
