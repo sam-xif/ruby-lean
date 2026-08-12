@@ -2834,3 +2834,41 @@ honest answer; making it right needs byte strings, which is a real feature and n
 
 **Result (measured).** Homebrew-slice **160 → 210 agree, 0 disagree**, 142 gated. tier-0
 unchanged at **991 agree, 0 disagree**.
+
+## L111 — the arity/overload tail: `split` limits, `String#[]`, `chomp`, `to_f`, `try_convert`, Comparable failures
+
+First batch of `homebrew/slice-gates.md`. Six rows, 34 gated examples, all verified against
+the CRuby oracle with one probe script before a line was written.
+
+**`String#split` with a limit, and with a capturing separator.** A positive limit caps the
+field count, so the scan stops after `limit - 1` separators and the remainder is the last
+field *verbatim* (`"  a  b  c ".split(" ", 2)` is `["a", "b  c "]`). `0` is "no limit, drop
+trailing empties", negative is "keep them all". And a **capturing** separator contributes
+its groups to the result — `"a1b".split(/(\d)/)` is `["a", "1", "b"]` — which the old
+implementation silently dropped.
+
+**`String#[]` with a non-index argument**: `s[/re/]`, `s[/re/, n]`, `s[/re/, "name"]`,
+`s[/re/, :name]`. Each sets `$~` like any other match, and the capture selector reuses the
+`MatchData#[]` rule rather than reimplementing name lookup. This lives in `Strings.lean`,
+which can see `runSearch` because the L98 rule chain imports *forwards* (Strings →
+Collections → Modules → Regex).
+
+**`chomp(suffix)`** — and `chomp("")` strips **all** trailing newlines, not one [V].
+**`String#to_f`** — the same lenient prefix parse as `to_i`, plus a fraction and an
+exponent. **`Comparable#< <= > >=`** with a nil `<=>` now raise
+`ArgumentError: comparison of X with Y failed` instead of gating: our gate was refusing a
+case the model can answer exactly. `Y` is rendered the way coercion errors render it (value
+for nil/true/false/Integer/Symbol, class name otherwise) [V].
+
+**`String.try_convert` needed two konts, and the reason is a good one.** CRuby asks
+`respond_to?(:to_str)` and only then calls `to_str`, and **both are dispatched**. Reading
+the method table instead is not an optimisation, it is wrong on real code: Homebrew's
+`Version` overrides `respond_to?` so that its `NULL` instance *hides* a `to_str` that would
+raise, and `version_spec.rb:103` asserts `String.try_convert(Version::NULL)` is nil. The
+table-reading version answered `NoMethodError`. So `strConvRespK` (decide on `respond_to?`'s
+answer) and `strConvResK` (check `to_str` gave a String, else
+`can't convert C to String (C#to_str gives Integer)`), with the falsy branch dropping the
+result-check kont along with itself.
+
+**Result (measured).** Homebrew-slice **217 → 238 agree, 0 disagree**; tier-0 unchanged at
+**991 agree, 0 disagree**.

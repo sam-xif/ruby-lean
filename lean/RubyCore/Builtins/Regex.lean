@@ -85,6 +85,10 @@ def escapeSource (s : String) : String :=
     else if "[]{}()|-*.\\?+^$#".any (· == c) then (acc.push '\\').push c
     else acc.push c) ""
 
+/-- Ruby's awk-mode separator: runs of whitespace (`split` with `" "` or no
+    argument), with leading whitespace already trimmed by the caller. -/
+def awkSep : String := "[ " ++ "\\t\\n\\r\\f\\v" ++ "]+"
+
 /-- Characters `a` (inclusive) to `b` (exclusive) of `s`. -/
 def charSlice (s : String) (a b : Nat) : String :=
   String.mk ((s.toList.drop a).take (b - a))
@@ -284,9 +288,15 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
       | _, _ => .unsupported "String#scan"
   | "String#split" =>
     match args, strPayload? h recv with
+    | [], some s => splitBy m s.trimLeft awkSep 0 0
+    | [pat], some s => splitOn m h s pat 0
+    | [pat, .int lim], some s => splitOn m h s pat lim
+    | _, _ => .unsupported "String#split arity"
+  | "String#__split_never" =>
+    match args, strPayload? h recv with
     | [pat], some s =>
       match regexpParts? h pat with
-      | some (src, opts) => splitBy m s src opts
+      | some (src, opts) => splitBy m s src opts 0
       | none =>
         match strPayload? h pat with
         -- A String separator is a *literal*, not a pattern, so it is escaped
@@ -294,9 +304,9 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
         -- every character [V]. `" "` is Ruby's awk-mode separator (runs of
         -- whitespace, leading whitespace ignored) and is its own rule.
         | some sep =>
-          if sep == " " then splitBy m s.trimLeft ("[ " ++ "\\t\\n\\r\\f\\v" ++ "]+") 0
-          else if sep.isEmpty then splitBy m s "(?!\\A)" 0
-          else splitBy m s (escapeSource sep) 0
+          if sep == " " then splitBy m s.trimLeft awkSep 0 0
+          else if sep.isEmpty then splitBy m s "(?!\\A)" 0 0
+          else splitBy m s (escapeSource sep) 0 0
         | none => .unsupported "String#split with a non-String, non-Regexp pattern"
     | _, _ => .unsupported "String#split arity"
   | "String#__sub_rep" | "String#__gsub_rep" =>
@@ -363,22 +373,51 @@ where
           let (v, m) := allocArr m inner; (acc.push v, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
-  splitBy (m : Machine) (s : String) (src : String) (opts : Nat) : BRes :=
+  /-- `split` with any pattern shape and any limit. A String separator is a
+      *literal* (escaped), `" "` is awk mode, `""` splits into characters. -/
+  splitOn (m : Machine) (h : Heap) (s : String) (pat : Value) (lim : Int) : BRes :=
+    match regexpParts? h pat with
+    | some (src, opts) => splitBy m s src opts lim
+    | none =>
+      match strPayload? h pat, pat with
+      | _, .nil => splitBy m s.trimLeft awkSep 0 lim
+      | some sep, _ =>
+        if sep == " " then splitBy m s.trimLeft awkSep 0 lim
+        else if sep.isEmpty then splitBy m s "(?!\\A)" 0 lim
+        else splitBy m s (escapeSource sep) 0 lim
+      | none, _ => .unsupported "String#split with a non-String, non-Regexp pattern"
+  splitBy (m : Machine) (s : String) (src : String) (opts : Nat) (lim : Int) : BRes :=
+    -- A positive limit caps the number of fields, so the scan stops after
+    -- `lim - 1` separators and the remainder is the last field verbatim [V].
+    let maxHits : Nat := if lim > 0 then (lim - 1).toNat else s.length + 2
     match allMatches src opts s (s.length + 2) 0 [] with
     | .error why => .unsupported why
-    | .ok hits =>
+    | .ok allHits =>
+      let hits := allHits.take maxHits
       -- A separator match ends the current piece at `a` and starts the next at
       -- `b`; for a zero-width separator those coincide, which is what makes
       -- `"abc".split("")` give three pieces rather than one [V]. A zero-width
       -- match at offset 0 is not a separator at all and adds nothing.
-      let (pieces, last) := hits.foldl (fun (acc, cur) (a, b, _) =>
+      --
+      -- A **capturing** separator also contributes its groups to the result:
+      -- `"a1b".split(/(\d)/)` is `["a", "1", "b"]` [V].
+      let (pieces, last) := hits.foldl (fun (acc, cur) (a, b, caps) =>
         if b == a && a == 0 then (acc, cur)
-        else (acc ++ [charSlice s cur a], b)) ([], 0)
-      let pieces := pieces ++ [charSlice s last s.length]
-      -- `split` drops *trailing* empty fields (but not leading or interior) [V].
-      let trimmed := (pieces.reverse.dropWhile (·.isEmpty)).reverse
+        else
+          let groups := (caps.toList.drop 1).map fun sp =>
+            match sp with
+            | some (x, y) => some (charSlice s x y)
+            | none => none
+          (acc ++ [some (charSlice s cur a)] ++ groups, b)) ([], 0)
+      let pieces := pieces ++ [some (charSlice s last s.length)]
+      -- `split` drops *trailing* empty fields — unless a limit was given, where
+      -- a positive one keeps them and a negative one keeps them all [V].
+      let trimmed :=
+        if lim == 0 then (pieces.reverse.dropWhile (· == some "")).reverse else pieces
       let (vs, m) := trimmed.foldl (fun (acc, m) p =>
-        let (v, m) := allocStr m p; (acc.push v, m)) (#[], m)
+        match p with
+        | some str => let (v, m) := allocStr m str; (acc.push v, m)
+        | none => (acc.push Value.nil, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
   subst (m : Machine) (s : String) (src : String) (opts : Nat) (rep : String)

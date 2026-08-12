@@ -95,6 +95,8 @@ def kontLabel : Kont → String
   | .methodAddedK n => s!"then yield :{n} (method_added hook)"
   | .raiseNewK _ => "then raise the new exception"
   | .tryConvertK _ => "then check to_ary's result"
+  | .strConvRespK _ => "then String.try_convert: respond_to?(:to_str)"
+  | .strConvResK _ => "then check to_str's result"
   | .includeK _ => "then yield include receiver"
   | .defsK name .. => s!"then def ▢.{name}"
   | .sclassK _ => "then open singleton class of ▢"

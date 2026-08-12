@@ -85,29 +85,34 @@ module Comparable
     self
   end
 
-  def <(other)
-    c = (self <=> other)
-    return __unsupported__("Comparable#< with a nil <=>") if c.nil?
-    c < 0
+  # A `<=>` of nil means "not comparable", and every operator except `==` turns
+  # that into `ArgumentError: comparison of X with Y failed` [V] — X is the
+  # receiver's class name, Y is the argument rendered the way coercion errors
+  # render it (its value for nil/true/false/Integer/Symbol, its class name
+  # otherwise). Gating instead, as the prelude used to, refused a case the model
+  # can answer exactly.
+  def __cmp!(other)
+    c = self <=> other
+    return c unless c.nil?
+    raise ArgumentError, "comparison of " + self.class.name + " with " +
+                         Comparable.__desc(other) + " failed"
   end
 
-  def <=(other)
-    c = (self <=> other)
-    return __unsupported__("Comparable#<= with a nil <=>") if c.nil?
-    c <= 0
+  def self.__desc(o)
+    return "nil" if o.nil?
+    return "true" if o == true
+    return "false" if o == false
+    return o.inspect if o.is_a?(Integer) || o.is_a?(Symbol)
+    o.class.name
   end
 
-  def >(other)
-    c = (self <=> other)
-    return __unsupported__("Comparable#> with a nil <=>") if c.nil?
-    c > 0
-  end
+  def <(other) = __cmp!(other) < 0
 
-  def >=(other)
-    c = (self <=> other)
-    return __unsupported__("Comparable#>= with a nil <=>") if c.nil?
-    c >= 0
-  end
+  def <=(other) = __cmp!(other) <= 0
+
+  def >(other) = __cmp!(other) > 0
+
+  def >=(other) = __cmp!(other) >= 0
 
   def between?(min, max)
     if self < min

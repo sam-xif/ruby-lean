@@ -93,6 +93,20 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         | none =>
           .next (raiseErr m Boot.typeErrorId
             s!"can't convert {src} to Array ({src}#to_ary gives {className m.heap (classOf m.heap v)})")
+    | .strConvRespK recv =>
+      -- `respond_to?(:to_str)` answered. Falsy ⇒ nil, without calling anything.
+      if v.truthy then
+        .next (withKont m (.value recv) (.recvK "to_str" [] .none .explicit))
+      else
+        -- Nothing will be converted, so the result check below us has nothing to
+        -- check: drop it along with this frame.
+        .next (withCtl { m with kont := m.kont.drop 1 } (.value .nil))
+    | .strConvResK src =>
+      match Builtins.strPayload? m.heap v with
+      | some _ => .next (withCtl m (.value v))
+      | none =>
+        .next (raiseErr m Boot.typeErrorId
+          s!"can't convert {src} to String ({src}#to_str gives {className m.heap (classOf m.heap v)})")
     | .raiseNewK inst =>
       -- `raise C[, msg]` with a user `initialize`: now raise the built instance
       .next (withCtl m (.jump (.raiseJ inst)))
