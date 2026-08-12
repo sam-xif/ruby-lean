@@ -110,7 +110,6 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           { params, body, owner := e, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode }
         let m := { m with heap := defineMethod m.heap e name md }
-        let m := if reprSensitive.contains name then { m with reprPure := false } else m
         .next (withCtl m (.value (.sym name)))
       | _ =>
         -- singleton def on an immediate (`def 1.m`) — TypeError; message-gate
@@ -130,7 +129,14 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match cpathContainer m v with
       | .error sr => sr
       | .ok o =>
-        match constLookupFrom m.heap o name with
+        -- A `private_constant` is invisible through `A::B` even though it is
+        -- still there for lexical lookup inside the module (L104), so the miss
+        -- path — `const_missing`, else NameError — is the right one.
+        let isPrivate := (ancestors m.heap o).any fun a =>
+          match m.heap.classPayload? a with
+          | some cp => cp.privateConsts.contains name
+          | none => false
+        match (if isPrivate then none else constLookupFrom m.heap o name) with
         | some cv => .next (withCtl m (.value cv))
         | none =>
           -- CRuby invokes `const_missing` before raising; if the base defines it
@@ -139,6 +145,11 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
             | some e => (methodOn m.heap e "const_missing").isSome
             | none => false
           if hasCM then .unsupported "const_missing hook"
+          else if isPrivate then
+            -- CRuby distinguishes the two misses [V]: a private constant that
+            -- *exists* says so, rather than claiming to be uninitialized.
+            .next (raiseErr m Boot.nameErrorId
+              s!"private constant {className m.heap o}::{name} referenced")
           else .next (raiseErr m Boot.nameErrorId
             s!"uninitialized constant {className m.heap o}::{name}")
     | .cpathAsgnK name rhs =>

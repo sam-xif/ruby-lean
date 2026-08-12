@@ -24,11 +24,6 @@ deriving Inhabited
 
 namespace Interp
 
-/-- User `def`s of these names shadow builtins that pure repr silently
-    assumes; flip `reprPure` when one lands (Builtins.pureOk gates). -/
-def reprSensitive : List String :=
-  ["to_s", "inspect", "==", "eql?", "message", "to_str"]
-
 def raiseErr (m : Machine) (cls : ObjId) (msg : String) : Machine :=
   let (v, m) := Builtins.allocExc m cls msg
   { m with ctl := .jump (.raiseJ v) }

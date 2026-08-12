@@ -89,6 +89,9 @@ structure ClassPayload where
   superclass : Option ObjId
   methods : List (String × MethodDef) := []
   consts : List (String × Value) := []
+  /-- Constants declared `private_constant`: still visible to lexical lookup
+      from inside the module, invisible to `A::B` from outside (L104). -/
+  privateConsts : List String := []
   name : String
   isModule : Bool := false
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
@@ -335,10 +338,12 @@ def builtinMethods : List (ObjId × List String) := [
              "initialize",
              "frozen?", "sort", "min", "max", "sum"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
+            "freeze", "frozen?",
             "include?", "member?", "keys", "values", "delete", "fetch",
             "inspect", "to_s", "dup", "clone", "merge", "initialize"]),
   (exceptionId, ["message", "to_s", "inspect", "dup", "clone", "initialize"]),
-  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors"]),
+  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",
+              "private_constant", "public_constant"]),
   (classId, ["new", "allocate"]),
   -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
   -- frame, which a pure builtin cannot); only the pure introspectors are

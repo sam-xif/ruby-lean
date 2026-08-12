@@ -2623,3 +2623,52 @@ token patterns with their `{,2}` bounds.
 
 tier-0 `--sut lean` **974 agree, 0 disagree** (unchanged by `to_i` itself — no tier-0 case
 gated on it).
+
+## L103 — retiring `reprPure`: purity is a property of the *class*, not the program
+
+`Machine.reprPure` was a single global boolean, flipped to `false` the moment any user
+`def` landed on one of `to_s`/`inspect`/`==`/`eql?`/`message`/`to_str` **anywhere**. After
+that, `Repr.lean`'s pure rendering was inadmissible for every plain object in the program.
+This is the blocker `homebrew/PLAN.md` W2b names: `Struct` and `T::Struct` need `inspect`
+and `==`, and defining them in the prelude would have poisoned every `puts` in every
+program. It is also, per the plan, ~59 unrelated tier-0 cases.
+
+**The replacement** is `reprOverridden h sens k`: does `k`'s ancestor chain carry a
+*non-builtin* definition of one of `sens`? Purity is then a per-value question, computed
+from the heap, and `pureOk` recurses into containers with the elements' own classes. The
+`reprPure` field, the six `if reprSensitive.contains name then …` flips in the `def` /
+`define_method` / `alias` rules, and the authoring rule that kept the prelude from ever
+defining `to_s` are all gone.
+
+**Two sensitivity lists, not one — and this is load-bearing.** The first attempt used a
+single list and *lost* three tier-0 cases, because it was over-strict in a way the global
+flag had been accidentally right about: a user `to_s` does not change what `inspect`
+prints (`Object#inspect` renders class and ivars), so `class Integer; def to_s; "x"; end`
+must not make `p 1` inadmissible. `inspectSensitive = [inspect, message]` and
+`toSSensitive = [to_s, message]`; `message` is in both because `Exception#inspect` is
+built from it. `to_str` is in neither — it governs implicit *string conversion*, not
+rendering.
+
+**Result (measured).** tier-0 `--sut lean` **974 agree, 0 disagree** — the same as before,
+which is the claim: this is a refactor of *when* the model may speak, and it neither gains
+nor loses a case on a corpus whose programs mostly define nothing repr-sensitive. What it
+buys is that the prelude can now define `inspect`/`==` on a class without consequence for
+any other class, which is what `Struct` and `T::Struct` need.
+
+## L104 — `private_constant`, for real
+
+Carrying `private_constant` as a prelude no-op (the reading of `homebrew/PLAN.md` W1's
+"parse and carry it") **disagreed**: `bootstraptest/test_constant_cache_005` and `006`
+declare a constant private and then read it through `A::B`, expecting `const_missing`; the
+model returned the value. That is the failure mode the ratchet exists to catch, so the
+feature is modeled instead.
+
+`ClassPayload` gains `privateConsts : List String`; `Module#private_constant` /
+`#public_constant` are builtins that maintain it; and the `cpath` rule treats a private
+name as a **miss**, so it takes the existing `const_missing`-else-`NameError` path.
+Lexical lookup from inside the module is untouched, which is the whole point of the
+feature. [V] CRuby distinguishes the two misses — `"private constant C::K referenced"`
+rather than `"uninitialized constant C::K"` — so the rule does too.
+
+`version.rb` declares nine private constants, so this is on the slice's critical path.
+tier-0 unchanged at 974 agree, 0 disagree.

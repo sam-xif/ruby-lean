@@ -82,7 +82,6 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
                 { params := cl.params, body := cl.body, owner := target, cref,
                   capturedFrame := some cl.captured, fromPrelude := m.preludeMode }
               let m := { m with heap := defineMethod m.heap target name md }
-              let m := if reprSensitive.contains name then { m with reprPure := false } else m
               some (.next (withCtl m (.value (.sym name))))
     | [] => none
   | "class_eval" | "module_eval" | "class_exec" | "module_exec"
@@ -375,7 +374,6 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           if md.undefined then some (.unsupported "alias_method of an undef'd method")
           else
             let m := { m with heap := defineMethod m.heap o newN md }
-            let m := if reprSensitive.contains newN then { m with reprPure := false } else m
             some (.next (withCtl m (.value (.sym newN))))
         | none => some (.unsupported s!"alias_method of unmodeled method {oldN}")
       | _, _, _ => none

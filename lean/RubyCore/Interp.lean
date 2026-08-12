@@ -224,7 +224,6 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
           else if m.currentFrame.kind == .toplevel then .priv
           else m.currentFrame.defVis }
     let m := { m with heap := defineMethod m.heap defmod name md }
-    let m := if reprSensitive.contains name then { m with reprPure := false } else m
     -- CRuby fires `Module#method_added(:name)` on the defining module right after
     -- installing, and `def` still evaluates to the name. The model has no builtin
     -- `method_added`, so a lookup miss means "no hook" — the common case costs one
@@ -262,7 +261,6 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       if md.undefined then undefAliasMiss m oldN
       else
         let m := { m with heap := defineMethod m.heap defmod newN md }
-        let m := if reprSensitive.contains newN then { m with reprPure := false } else m
         .next (withCtl m (.value .nil))
     | none => undefAliasMiss m oldN
   | .array elems => continueArray m [] elems

@@ -303,10 +303,6 @@ structure Machine where
   out : String := ""
   /-- `$!` — the exception being handled (set on rescue entry). -/
   currentExc : Option Value := none
-  /-- False once a user `def` shadows a repr-sensitive builtin
-      (to_s/inspect/==/eql?/message/to_str); pure repr is then inadmissible
-      and builtins that need it must answer Unsupported. -/
-  reprPure : Bool := true
   /-- True only while the **prelude** (the core library written in RubyCore,
       `prelude/prelude.rb`) is being loaded: methods defined in this phase are
       marked `fromPrelude` (L62). -/

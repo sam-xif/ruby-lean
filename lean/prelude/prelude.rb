@@ -813,6 +813,39 @@ class Array
   include Enumerable
 end
 
+class String
+  # `delete_prefix`/`delete_suffix`/`start_with?`-adjacent trimming, in RubyCore
+  # rather than as Lean rules (L62: a missing builtin should cost a few lines of
+  # Ruby). `version.rb` and `vulns/purl.rb` use `delete_prefix` on URL scheme and
+  # `v`-prefix handling.
+  def delete_prefix(pre)
+    start_with?(pre) ? self[pre.length, length - pre.length] : self
+  end
+
+  def delete_suffix(suf)
+    end_with?(suf) ? self[0, length - suf.length] : self
+  end
+end
+
+class Array
+  # `fetch(i)` raises where `[]` returns nil, and `fetch(i, default)` /
+  # `fetch(i) { … }` supply one instead.
+  def fetch(i, *default)
+    n = length
+    j = i < 0 ? n + i : i
+    if j >= 0 && j < n
+      self[j]
+    elsif block_given?
+      yield(i)
+    elsif default.length == 1
+      default[0]
+    else
+      raise IndexError, "index " + i.to_s + " outside of array bounds: " +
+                        (n.zero? ? "0...0" : (-n).to_s + "..." + n.to_s)
+    end
+  end
+end
+
 # ─── T — the sorbet-runtime shim ────────────────────────────────────────────
 #
 # Sorbet's *runtime* half, modeled the way this project models everything else:
@@ -1199,13 +1232,8 @@ module T
     # fires `method_added` for `define_method` too. Without this a sig would
     # wrap its own wrapper forever.
     return nil if mod.instance_variable_get(:@__t_wrapping)
-    decl = T::Decl.new
-    decl.instance_eval(&blk)
-    # `.checked(:never)` means no wrapper at all — the quiet escape hatch of
-    # §A.5, reproduced rather than papered over.
-    return nil if decl.checked_level == :never
     mod.instance_variable_set(:@__t_wrapping, true)
-    T.__wrap(mod, name, decl)
+    T.__wrap(mod, name, blk)
     mod.instance_variable_set(:@__t_wrapping, false)
     nil
   end
@@ -1214,13 +1242,39 @@ module T
   # forwarding method that validates arguments, calls through, and validates the
   # return. This IS the heap mutation of §C.2 — a method-table entry replaced by
   # a checking one.
-  def self.__wrap(mod, name, decl)
+  # The sig block is evaluated **lazily, once, on the first call** of the method
+  # it governs — not at `def` time. That is what the real gem does, and it is
+  # not a detail: a sig may name a constant that is not defined yet when the
+  # class body runs (`utils/output.rb` has `T.nilable(Time)` in a sig, with
+  # `Time` supplied later by the boot path), and evaluating eagerly turns that
+  # into a load-time NameError the real program never sees. The `cache` array is
+  # captured by the wrapper's closure, so the memo needs no `object_id` and no
+  # global table.
+  #
+  # Consequence of laziness, recorded rather than hidden: `.checked(:never)`
+  # can no longer skip *installing* the wrapper (deciding that would mean
+  # evaluating the block eagerly), so the wrapper is always installed and calls
+  # straight through instead. The escape hatch still skips every check; what
+  # changes is only that the frame is present, which is the same reflective
+  # visibility the gradual-guarantee probe already records as a violation (N33).
+  def self.__wrap(mod, name, blk)
     hidden = "__t_unchecked_" + name.to_s
+    cache = []
     mod.send(:alias_method, hidden, name)
-    mod.send(:define_method, name) do |*args, &blk|
-      T.__check_params(decl, args)
-      result = send(hidden, *args, &blk)
-      T.__check_return(decl, result)
+    mod.send(:define_method, name) do |*args, &b|
+      if cache.empty?
+        d = T::Decl.new
+        d.instance_eval(&blk)
+        cache.push(d)
+      end
+      decl = cache[0]
+      if decl.checked_level == :never
+        send(hidden, *args, &b)
+      else
+        T.__check_params(decl, args)
+        result = send(hidden, *args, &b)
+        T.__check_return(decl, result)
+      end
     end
     nil
   end
@@ -1259,6 +1313,58 @@ module T
         module VOID
         end
       end
+    end
+  end
+end
+
+# `extend T::Helpers` is the other half of the annotation surface (the `sig`
+# half is `T::Sig`). Everything it installs is a *declaration*: `abstract!`
+# and `interface!` tell the static checker that instantiating or calling is a
+# type error, `sealed!`/`final!` restrict subclassing, `requires_ancestor`
+# constrains where a module may be mixed in — none of them changes what a
+# correct program does at runtime.
+#
+# sorbet-runtime does add one runtime behaviour to `abstract!`: calling an
+# unimplemented abstract method raises `NotImplementedError`. That is
+# reproduced below rather than dropped, because it is a reachable outcome and
+# dropping it would make an abstract call silently return nil.
+#
+# `mixes_in_class_methods(M)` is the one with real semantics — the includer
+# gets `extend M` — so it is implemented rather than declared.
+module T
+  module Helpers
+    def abstract!
+      @__t_abstract = true
+      nil
+    end
+
+    def interface!
+      @__t_abstract = true
+      nil
+    end
+
+    def sealed!
+      nil
+    end
+
+    def final!
+      nil
+    end
+
+    # Takes a block naming the required ancestor; purely static.
+    def requires_ancestor(&blk)
+      nil
+    end
+
+    def mixes_in_class_methods(*mods)
+      @__t_class_methods = mods
+      nil
+    end
+
+    def included(base)
+      mods = @__t_class_methods
+      base.extend(mods[0]) if !mods.nil? && mods.length == 1
+      nil
     end
   end
 end

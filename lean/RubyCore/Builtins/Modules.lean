@@ -131,6 +131,30 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
             let (o, h) := m.heap.alloc { klass := k, payload }
             .ok (.ref o) { m with heap := h }
     | _ => .unsupported "allocate on non-class"
+  | "Module#private_constant" | "Module#public_constant" =>
+    -- Constant *visibility*: a `private_constant` name stays visible to lexical
+    -- lookup from inside the module and disappears from `A::B` outside it, where
+    -- CRuby then runs `const_missing` (or raises `NameError`). Modeled as a list
+    -- on the class payload and consulted by the `cpath` rule (L104). Nine of
+    -- Homebrew `version.rb`'s constants are declared this way.
+    match recv with
+    | .ref o =>
+      match h.classPayload? o with
+      | none => .unsupported "private_constant on a non-module"
+      | some cp =>
+        let names := args.filterMap fun a =>
+          match a with
+          | .sym s => some s
+          | .ref so => match (h.get so).payload with | .str s => some s | _ => none
+          | _ => none
+        if names.length != args.length then .unsupported "private_constant: non-name argument"
+        else
+          let priv :=
+            if bid == "Module#private_constant" then
+              cp.privateConsts ++ names.filter (fun n => !cp.privateConsts.contains n)
+            else cp.privateConsts.filter (fun n => !names.contains n)
+          .ok .nil { m with heap := h.setClassPayload o { cp with privateConsts := priv } }
+    | _ => .unsupported "private_constant on a non-module"
   | _ => runRegex bid recv args m
 
 end Builtins

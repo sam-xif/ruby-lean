@@ -40,26 +40,56 @@ inductive BRes where
 namespace Builtins
 
 
-/-- Can pure repr (Repr.lean) speak for this value? Always for immediates
-    and builtin payloads; for plain objects (and main) only while no user
-    def has shadowed a repr-sensitive method. -/
-partial def pureOk (h : Heap) (reprPure : Bool) : Value → Bool
+/-- Methods whose user definition changes what **`inspect`** would print. `to_s`
+    is deliberately absent: a user `to_s` does not change `Object#inspect`, which
+    renders class and ivars [V]. `message` is present because `Exception#inspect`
+    is built from it. -/
+def inspectSensitive : List String := ["inspect", "message"]
+
+/-- The same, for **`to_s`**. Splitting the two lists is what keeps the check
+    from being over-strict: before L103 a single global flag conflated them, so
+    `class Integer; def to_s; "x"; end` made `p 1` inadmissible even though
+    `p` uses `inspect` and is unaffected. -/
+def toSSensitive : List String := ["to_s", "message"]
+
+/-- Does `k`'s ancestor chain carry a **non-builtin** definition of one of
+    `sens`? This is the per-class replacement for the old global `reprPure` flag
+    (L103): a `def to_s` on one class used to make pure repr refuse to speak for
+    *every* object in the program — including unrelated ones, and including the
+    prelude's own, which is why the prelude could not define `to_s`/`inspect`/
+    `==` anywhere and why `Struct`/`T::Struct` were blocked on this. -/
+def reprOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
+  (ancestors h k).any fun a =>
+    match h.classPayload? a with
+    | some cp =>
+      cp.methods.any fun (n, md) =>
+        sens.contains n && md.builtin.isNone && !md.undefined
+    | none => false
+
+/-- Can pure repr (Repr.lean) speak for this value? Only if nothing in its
+    class's ancestor chain overrides a repr-sensitive method — and, for
+    containers, recursively for what they hold. -/
+partial def pureOk (h : Heap) (sens : List String) : Value → Bool
   | .ref o =>
+    let own := !reprOverridden h sens (h.get o).klass
     match (h.get o).payload with
-    | .arr xs => xs.all (pureOk h reprPure)
-    | .hsh xs => xs.all fun (k, v) => pureOk h reprPure k && pureOk h reprPure v
-    | .none => reprPure && (h.get o).ivars.all (fun (_, v) => pureOk h reprPure v)
+    -- A container renders its elements with *their* `inspect`, so purity is
+    -- recursive even when the container's own class is untouched.
+    | .arr xs => own && xs.all (pureOk h inspectSensitive)
+    | .hsh xs => own && xs.all fun (k, v) =>
+        pureOk h inspectSensitive k && pureOk h inspectSensitive v
+    | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h inspectSensitive v)
     | .proc _ => false   -- Proc repr is address-based → never pure
-    | _ => true
-  | _ => true
+    | _ => own
+  | v => !reprOverridden h sens (realClassOf h v)
 
 def inspectP (m : Machine) (v : Value) : Except String String :=
-  if pureOk m.heap m.reprPure v then inspect m.heap v
-  else .error "inspect after user override of repr-sensitive method"
+  if pureOk m.heap inspectSensitive v then inspect m.heap v
+  else .error "inspect after user override of inspect"
 
 def toSP (m : Machine) (v : Value) : Except String String :=
-  if pureOk m.heap m.reprPure v then toS m.heap v
-  else .error "to_s after user override of repr-sensitive method"
+  if pureOk m.heap toSSensitive v then toS m.heap v
+  else .error "to_s after user override of to_s"
 
 /-- Operand description in "no implicit conversion of X into Y" errors:
     class name, except nil/true/false literally [V]

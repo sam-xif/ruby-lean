@@ -27,21 +27,40 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-# Homebrew loads these from its boot path, not from the slice's own requires,
-# so the emitted program has to link them itself. `extend/blank.rb` is the only
-# one the slice actually calls into (`version.rb` uses `String#blank?`); it is
-# 11 files, all in-tree, no effects — the honest choice over reimplementing
-# `blank?`, since then both CRuby and the model run the *same* code.
-BOOT_FEATURES = ["extend/blank"]
+# Files linked from Homebrew's boot path (it loads them globally; the emitted
+# program has no boot path). Empty today — see BLANK_STUB for why `extend/blank`
+# is not among them.
+BOOT_FEATURES: list[str] = []
 
 # `vulns/vulnerability.rb` does `include Utils::Output::Mixin` — the one
-# external constant the slice touches (homebrew/PLAN.md §2). It is included
-# **verbatim**, not linked: every `require` in `utils/output.rb` is *inside a
-# method body*, so linking it would follow them and drag in the 227-file cycle
-# the slice exists to avoid, while the file's own text is self-contained and is
-# still upstream code rather than a mock of ours. The slice reaches exactly one
-# of its methods (`odebug`, from one rescue path in `in_interval_permissive?`).
-VERBATIM_FEATURES = ["utils/output"]
+# external constant the slice touches (homebrew/PLAN.md §2). Neither linking nor
+# including `utils/output.rb` verbatim works: every `require` in it is inside a
+# method body (so linking follows them into the 227-file cycle the slice exists
+# to avoid), and its last three lines are `extend Mixin` / `$stdout.extend
+# Mixin` / `$stderr.extend Mixin`, which reach IO objects the model does not
+# have.
+#
+# So the corpus supplies the module itself. The slice reaches **exactly one** of
+# its 25 methods — `odebug`, from one rescue path in `in_interval_permissive?` —
+# and `odebug` is *observationally equivalent to a no-op here*: it returns early
+# unless debug is on (it is not, since nothing sets `Context.current.debug?`),
+# and even when it does fire it writes to **stderr**, which the observation
+# function does not capture. So this stand-in cannot change any comparison,
+# and both executors run it.
+OUTPUT_STUB = """
+module Utils
+  module Output
+    module Mixin
+      # See difftest/implementation-notes.md N36: upstream `odebug` returns
+      # early unless debug is enabled and otherwise writes to stderr, neither of
+      # which is observable here.
+      def odebug(title, *sput, always_display: false)
+        nil
+      end
+    end
+  end
+end
+"""
 
 # The eight spec files of the version + vulnerability slice, paired with the
 # library feature each one requires (homebrew/PLAN.md §2).
@@ -153,6 +172,25 @@ def harvest_file(spec_path: str, ruby: str, script: str) -> list[Example]:
 # `class Module; include T::Sig; end` is Homebrew's own boot line
 # (`extend/module.rb:5`); without it `sig` is not a method in a class body and
 # the slice's files do not extend `T::Sig` themselves.
+# `version.rb` calls `String#blank?`, which Homebrew gets from `extend/blank.rb`.
+# That file is *not* linked in: it pulls in ten per-class specializations, and
+# the String one alone needs a POSIX bracket class, `Encoding` and
+# `Regexp::FIXEDENCODING` — none of which the slice uses and none of which the
+# model covers, so linking it would gate every program on infrastructure the
+# slice does not exercise. Instead both executors run this stand-in, copied from
+# `extend/blank.rb`'s own `Object#blank?` (minus the `T.unsafe`, which is
+# identity at runtime). It is the **only** place the corpus substitutes for
+# upstream code, and it is boot-path code rather than slice code.
+BLANK_STUB = """
+class Object
+  def blank?
+    respond_to?(:empty?) ? !!empty? : false
+  end
+
+  def present? = !blank?
+end
+"""
+
 SORBET_REQUIRE = (
     'require "sorbet-runtime"\n'
     # `pkg_version.rb` does `extend Forwardable`. CRuby loads the stdlib; the
@@ -175,7 +213,7 @@ def _sub_described(text: str) -> str:
 
 def program(ex: Example, prefix: str) -> str:
     """`library + helpers + memos + body`, as one self-contained program."""
-    parts = [SORBET_REQUIRE, prefix, PREAMBLE]
+    parts = [SORBET_REQUIRE, BLANK_STUB, prefix, PREAMBLE]
     if ex.described:
         parts.append(f"DESCRIBED_CLASS = {ex.described}\n")
     for m in ex.memos:
@@ -209,13 +247,7 @@ def build_prefix(feature: str, brew_root: str, ruby: str) -> str:
     entries = [os.path.join(lib, f + ".rb") for f in BOOT_FEATURES + [feature]]
     nodes = graph.build(entries, [lib], ruby, script)
     linked = emit.link(nodes, entries, lib, {"platform": "generic"}).source
-    verbatim = "".join(
-        f"# >>> verbatim: {f}.rb\n"
-        + open(os.path.join(lib, f + ".rb"), encoding="utf-8").read()
-        + f"\n# <<< end verbatim: {f}.rb\n"
-        for f in VERBATIM_FEATURES
-    )
-    return verbatim + linked
+    return OUTPUT_STUB + linked
 
 
 def harvest(brew_root: str, out_dir: str, ruby: str | None = None) -> dict:

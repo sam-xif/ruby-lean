@@ -54,11 +54,11 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match toSP m recv with
     | .ok s => okStr m s
     | .error e => .unsupported e
-  | "Object#frozen?" =>
+  | "Object#frozen?" | "Hash#frozen?" =>
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
     | _ => .ok (.bool true) m
-  | "Object#freeze" | "String#freeze" | "Array#freeze" =>
+  | "Object#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
     match recv with
     | .ref o => .ok recv { m with heap := h.set o { h.get o with frozen := true } }
     | _ => .ok recv m

@@ -20,7 +20,7 @@ namespace Prelude
     prelude fails fast instead of hanging. -/
 def bootFuel : Nat := 200_000
 
-/-- Run phase 1 and return the booted machine (heap + globals + `reprPure`). -/
+/-- Run phase 1 and return the booted machine (heap + globals). -/
 def boot : Except String Machine :=
   match program with
   | .error e => .error s!"prelude decode: {e}"
@@ -34,13 +34,13 @@ def boot : Except String Machine :=
     | .outOfFuel _ => .error "prelude out of fuel"
     | .stuck msg _ => .error s!"prelude stuck: {msg}"
 
-/-- Initial machine for `prog` on the booted (prelude-loaded) heap. `reprPure`
+/-- Initial machine for `prog` on the booted (prelude-loaded) heap. The heap
     and globals carry over from phase 1; frames/kont/stdout/`$!` are fresh, and
     `preludeMode` is back to `false` so program `def`s are ordinary. -/
 def initWithPrelude (prog : Expr) : Except String Machine :=
   boot.map fun mp =>
     { Machine.initOn mp.heap prog with
-      globals := mp.globals, reprPure := mp.reprPure }
+      globals := mp.globals }
 
 end Prelude
 end RubyCore
