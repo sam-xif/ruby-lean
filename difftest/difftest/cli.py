@@ -81,6 +81,40 @@ def cmd_harvest_rspec(args) -> int:
     return 0
 
 
+def cmd_gates(args) -> int:
+    """Histogram the `sut_unsupported` reasons of a run — the coverage tracker
+    behind `homebrew/slice-gates.md`. Reads a report's cases.jsonl so it is
+    always a measurement of a real run rather than a hand-kept list."""
+    import collections
+
+    d = Path(args.report) if args.report else max(
+        (p for p in (BASE / "reports").iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime)
+    by_reason: collections.Counter = collections.Counter()
+    by_file: collections.Counter = collections.Counter()
+    verdicts: collections.Counter = collections.Counter()
+    for line in (d / "cases.jsonl").read_text().splitlines():
+        r = json.loads(line)
+        verdicts[r.get("verdict")] += 1
+        if r.get("verdict") != "sut_unsupported":
+            continue
+        reason = (r.get("reason") or "?").removeprefix("out of Lean fragment: ")
+        by_reason[reason] += 1
+        by_file[r.get("provenance", {}).get("file", "?")] += 1
+
+    print(f"report: {d.name}")
+    print(f"verdicts: {dict(verdicts)}\n")
+    print("| n | gate |")
+    print("|---|---|")
+    for reason, n in by_reason.most_common():
+        print(f"| {n} | `{reason}` |")
+    if by_file:
+        print("\nby source file:")
+        for f, n in by_file.most_common():
+            print(f"  {n:4d}  {f}")
+    return 0
+
+
 def cmd_domain_fuzz(args) -> int:
     from .tiers.domain.build import build
 
@@ -359,6 +393,13 @@ def main(argv=None) -> int:
     p_harv.add_argument("--out", help="output corpus dir (default corpus/homebrew-slice)")
     p_harv.add_argument("--ruby", help="Ruby used for the Prism transform and validation")
     p_harv.set_defaults(func=cmd_harvest_rspec)
+
+    p_gates = sub.add_parser(
+        "gates",
+        help="histogram a run's Unsupported reasons (the slice coverage tracker)",
+    )
+    p_gates.add_argument("report", nargs="?", help="report dir (default: most recent)")
+    p_gates.set_defaults(func=cmd_gates)
 
     p_dom = sub.add_parser(
         "domain-fuzz",
