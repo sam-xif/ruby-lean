@@ -195,12 +195,30 @@ end
 
 SORBET_REQUIRE = (
     'require "sorbet-runtime"\n'
-    # `pkg_version.rb` does `extend Forwardable`. CRuby loads the stdlib; the
-    # model's `require` is a no-op, so it gates on the constant — a clean gate,
-    # not a disagreement.
-    'require "forwardable"\n'
     'class Module\n  include T::Sig\nend\n'
 )
+
+# Stdlib the slice's *library* code reaches but never requires, because Homebrew
+# loads it from its boot path. The control has it (RSpec and sorbet-runtime pull
+# most of it in transitively); the model does not. Emitting the `require`
+# explicitly, and only for the programs whose library actually mentions the
+# constant, turns each into an honest refusal (L109: `require` of an unmodeled
+# library gates) instead of a `NameError` the control never sees — and keeps the
+# gate confined to the programs that need it. `URI` is the expensive one: it is
+# what `Version.detect` parses URLs with, so it covers the `be_detected_from`
+# family.
+# Only the constants the model would *not* already gate on: `Pathname` and
+# `Set` are in its CRuby name table, so an unmodeled reference to them is
+# already an honest Unsupported and needs no help.
+STDLIB_REQUIRES = [("Forwardable", "forwardable")]
+
+# The same problem one level down: `to_json` is a *method* the json library adds
+# to every object, so an unmodeled reference is a NoMethodError rather than a
+# missing constant, and the constant gate cannot catch it. Scanned over the
+# **example** only, not the library: `version.rb` defines its own `to_json` and
+# scanning the prefix too would gate 28 programs that never call one.
+STDLIB_METHOD_REQUIRES = [("to_json", "json")]
+
 
 
 DESCRIBED_RE = re.compile(r"(^|[^\w.:])described_class\b")
@@ -215,7 +233,11 @@ def _sub_described(text: str) -> str:
 
 def program(ex: Example, prefix: str) -> str:
     """`library + helpers + memos + body`, as one self-contained program."""
-    parts = [SORBET_REQUIRE, BLANK_STUB, prefix, PREAMBLE]
+    parts = [SORBET_REQUIRE]
+    for const, feature in STDLIB_REQUIRES:
+        if re.search(r"\b" + const + r"\b", prefix):
+            parts.append(f'require "{feature}"\n')
+    parts += [BLANK_STUB, prefix, PREAMBLE]
     if ex.described:
         parts.append(f"DESCRIBED_CLASS = {ex.described}\n")
     for m in ex.memos:
@@ -239,7 +261,14 @@ def program(ex: Example, prefix: str) -> str:
     parts.append(f"# {ex.file}:{ex.line} — {ex.name}\n")
     parts.append(ex.body)
     parts.append("\nnil\n")
-    return "\n".join(parts)
+    body = "\n".join(parts)
+    example_only = ex.body + "".join(m["body"] for m in ex.memos) + "".join(ex.helpers)
+    extra = "".join(
+        f'require "{feature}"\n'
+        for token, feature in STDLIB_METHOD_REQUIRES
+        if re.search(r"\b" + token + r"\b", example_only)
+    )
+    return extra + body
 
 
 def build_prefix(feature: str, brew_root: str, ruby: str) -> str:

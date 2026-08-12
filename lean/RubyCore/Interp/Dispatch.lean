@@ -144,7 +144,9 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
       | none => blk
     let frame : Frame :=
       { self := recv, locals := localsA ++ predeclared, defmod := md.owner,
-        kind := .method, blk := frameBlk, callBlk := blk, meth := mname,
+        kind := .method, blk := frameBlk, callBlk := blk,
+        meth := md.superName.getD mname,
+        runParams := md.params, runFromDM := md.capturedFrame.isSome,
         cref := md.cref, captured := md.capturedFrame }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }

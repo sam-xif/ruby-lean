@@ -329,6 +329,20 @@ def crubySingletonNames : List (String × List String) := [
   ])
 ]
 
+/-- Constants a **`require` would define** — stdlib and default gems that a bare
+    `ruby` process does not have, so `gen_cruby_names.rb` cannot see them. The
+    model has no idea whether the program's environment loaded them, and getting
+    it wrong is a *disagreement* rather than a refusal: a `NameError` where the
+    control succeeded. Gating is the safe answer, so these are folded into the
+    unmodeled-constant check by hand (L109). Kept short and only extended when a
+    corpus actually reaches one. Hand-maintained, unlike the rest of this file. -/
+def crubyStdlibConstants : List String := [
+  "URI", "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
+  "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",
+  "OptionParser", "Open3", "SecureRandom", "Etc", "Zlib", "Base64", "CSV",
+  "Logger", "Delegator", "SimpleDelegator", "Singleton", "Observable"
+]
+
 /-- Toplevel constants CRuby defines (Object.constants): a constant-lookup
     miss on one of these is "unmodeled", not NameError. -/
 def crubyToplevelConstants : List String := [

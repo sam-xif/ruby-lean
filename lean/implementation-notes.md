@@ -2736,3 +2736,75 @@ own rule, and `""` splits into characters. That last one exposed a bug in the sp
 a separator match ends the current piece at its *start* and the next begins at its *end*,
 which for a zero-width separator coincide — the old code advanced by one and returned
 `["a"]` for `"abc".split("")`.
+
+## L107 — a sig with keyword parameters, and the shim's hidden alias
+
+`__check_params` matched a sig's declared names *positionally* and gave up as soon as it
+declared more names than there were positional arguments — "sig with more params than
+arguments (keyword params?)". That gate accounted for **186 of the 355** Homebrew-slice
+programs.
+
+It does not need `instance_method(…).parameters`, which the model does not have: **the
+call itself says which names arrived as keywords.** `__check_params_kw` walks the declared
+names; a name that is a key in `**kw` is checked against that value, otherwise it consumes
+the next positional argument, and a name that is neither is an optional parameter the
+caller omitted — nothing to check. The wrapper's signature grows `**kw` and forwards it
+(omitting it when empty, so Ruby 3 keyword separation is preserved).
+
+**And a latent bug the gate had been hiding.** The hidden alias was `__t_unchecked_<name>`
+— flat, so a subclass's alias *shadows its parent's*, and the parent wrapper's
+`send(hidden, …)` dispatches back into the subclass's original body.
+`Version::NullToken#initialize` (zero parameters) was receiving `Token#initialize`'s one
+argument. The name is now qualified with the defining module.
+
+## L108 — `super` from an aliased method searches for the *original* name
+
+`alias_method :b, :a` then `super` inside `b` looks for **`a`** in the superclass [V]. The
+model used the frame's `meth`, which was the name the method was invoked under, so `super`
+searched for `b` and missed. The sorbet-runtime shim depends on this: it aliases a method
+aside and the original body's `super` must still reach its parent — every `<=>` in
+Homebrew's `Token` hierarchy is that shape.
+
+`MethodDef` gains `superName`, set by `alias`/`alias_method` — but **only when the alias
+lands on the module that defines the method**. Cross-module, CRuby resumes from the
+original definition's position in the chain, which a single `defmod` cannot express when
+that module has been included twice; `bootstraptest/test_yjit_145` is exactly that, so the
+cross-module case keeps the old behaviour rather than a new wrong one.
+
+Two consequences had to be untangled from the same field. `zsuper` reconstructs its
+arguments from the running method's parameter list, which it found by looking `f.meth` up
+in `f.defmod` — with `meth` now possibly an alias's original name, that finds a *different*
+method (the wrapper), and `zsuper` reported CRuby's "implicit argument passing … from
+`define_method`" error for an ordinary `def`. The frame now carries `runParams` and
+`runFromDM` directly.
+
+Also: a **user `self.new`** now wins over the `Class#new` interception. `T::Helpers#
+abstract!` installs one (an abstract class must refuse to instantiate), and the
+interception was allocating an instance without ever consulting it.
+
+## L109 — `require` of an unmodeled library gates; stdlib constants gate too
+
+`Object#require` returned `true` for everything (difftest N34). That is not a harmless
+approximation: the program then runs on against constants the library would have defined,
+and the first one is a `NameError` **where the control succeeded** — a disagreement rather
+than a refusal. `require` now returns true only for features the prelude actually carries
+(`sorbet-runtime`) and gates by name otherwise.
+
+The same argument one level up: `URI`, `Forwardable`, `JSON`, `Date`, … are not in
+`crubyToplevelConstants`, because that list is generated from a *bare* `ruby` process which
+has not required them. So a reference to one raised `NameError` where the control had the
+constant. `crubyStdlibConstants` is a short hand-maintained list folded into the same
+unmodeled-constant check — the one part of `CRubyNames.lean` that is not generated, and
+marked as such.
+
+Also in this batch: `Float::NAN` / `Float::INFINITY` as real constants of the class object;
+`Comparable#==`/`between?`/`clamp` (`==` was another casualty of the old `reprPure` flag,
+and its absence was observable — Homebrew's `Version::Token` mixes in Comparable and its
+specs compare a token to a String, which fell through to `Object#==` and answered false);
+and the constant-miss `NameError` now qualifies with the **innermost cref**
+(`uninitialized constant Homebrew::Vulns::Vulnerability::Version`, not `… Version`) [V].
+
+**Result (measured).** tier-0 `--sut lean` **991 agree, 0 disagree**; tier-4 (Sorbet)
+**14 → 25 agree, 0 disagree** — the N34 fix, which `difftest/implementation-notes.md` N34
+had recorded as blocking that arm. Homebrew-slice **160 agree, 0 disagree, 192 gated**
+(from 352 disagree when the corpus first ran). Regex oracle 7,418/7,418. Axioms unchanged.

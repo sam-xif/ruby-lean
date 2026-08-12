@@ -42,8 +42,16 @@ structure Frame where
   callBlk : Option Value := none
   kind : FrameKind
   /-- Name of the method this activation is running (`""` for toplevel/class
-      bodies/blocks) — the target `super`/`zsuper` re-dispatch (artifact 02 §2). -/
+      bodies/blocks) — the target `super`/`zsuper` re-dispatch (artifact 02 §2).
+      For an **alias** this is the *original* name, which is what CRuby's `super`
+      searches for (L108). -/
   meth : String := ""
+  /-- The running body's own parameter list, and whether it came from
+      `define_method`. `zsuper` reconstructs its arguments from these; it used to
+      re-look-up `meth` in `defmod`, which stopped working once `meth` could be an
+      alias's original name and therefore find a *different* method (L108). -/
+  runParams : List Param := []
+  runFromDM : Bool := false
   /-- Block frames: the defining frame's id. Free-variable reads/writes walk
       this chain into the enclosing scope (sketch §1.2, artifact 03 §2). -/
   captured : Option FrameId := none

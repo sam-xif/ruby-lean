@@ -66,6 +66,21 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | some s => .ok (.int s.length) m  -- character count (UTF-8-aware) [D]
     | none => .unsupported "length"
   | "String#to_s" | "String#to_str" => .ok recv m
+  | "String#ord" =>
+    match strPayload? h recv with
+    | some str =>
+      match str.toList with
+      | c :: _ => .ok (.int c.toNat) m
+      | [] => .err Boot.argumentErrorId "empty string" m
+    | none => .unsupported "String#ord on a non-String"
+  | "String#chars" =>
+    match strPayload? h recv with
+    | some str =>
+      let (vs, m) := str.toList.foldl (fun (acc, m) c =>
+        let (v, m) := allocStr m (String.singleton c); (acc.push v, m)) (#[], m)
+      let (v, m) := allocArr m vs
+      .ok v m
+    | none => .unsupported "String#chars on a non-String"
   | "String#to_i" =>
     -- CRuby's `to_i` is lenient by design: skip leading whitespace, take an
     -- optional sign, then digits (with `_` allowed *between* digits), and stop

@@ -123,7 +123,17 @@ where
       -- `initialize` (a frame the builtin cannot push); yield the instance via
       -- `newK`. Special-payload subclasses (String/Array/Exception/…) need
       -- allocation we don't model → gate. No user init ⇒ fall to the builtin.
-      if mname == "new" && !c.isModule then
+      -- A **user `self.new`** wins over this interception: it is an ordinary
+      -- singleton method and CRuby dispatches to it, not to `Class#new`.
+      -- `T::Helpers#abstract!` installs exactly that (the abstract class must
+      -- refuse to instantiate, L105), and without this check the interception
+      -- allocated an instance and never consulted it.
+      let userNew := match (m.heap.get o).eigen with
+        | some e => match methodOn m.heap e "new" with
+          | some (_, md) => md.builtin.isNone && !md.undefined
+          | none => false
+        | none => false
+      if mname == "new" && !c.isModule && !userNew then
         match userInit? m.heap o with
         | some md =>
           -- Allocate, then run the user `initialize` (a frame the builtin cannot
@@ -280,10 +290,13 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     after binding (L70). -/
 def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
   let f := m.frames.getD (methodFrameOf m) default
-  match methodOn m.heap f.defmod f.meth with
-  | some (_, md) =>
-    if md.capturedFrame.isSome then none else
-    match classifyFull md.params with
+  -- The running body's own params, carried on the frame (L108): looking them up
+  -- by `f.meth` would find whatever *currently* answers that name, which for an
+  -- aliased body is a different method.
+  match (if f.meth.isEmpty then none else some f) with
+  | some _ =>
+    if f.runFromDM then none else
+    match classifyFull f.runParams with
     | none => none
     | some fp =>
       if !fp.destrs.isEmpty then none else

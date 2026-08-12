@@ -92,6 +92,16 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     match recv, args with
     | .int n, [] => okStr m (toString n)
     | _, _ => .unsupported "Integer#to_s with base"
+  | "Integer#chr" =>
+    -- ASCII only: CRuby raises RangeError above 255, and 128..255 produces an
+    -- ASCII-8BIT string whose rendering depends on an encoding the model does
+    -- not carry, so that half gates rather than guessing [V].
+    match recv with
+    | .int n =>
+      if n < 0 || n > 255 then .err Boot.rangeErrorId s!"{n} out of char range" m
+      else if n > 127 then .unsupported "Integer#chr above 127 (encoding)"
+      else okStr m (String.singleton (Char.ofNat n.toNat))
+    | _ => .unsupported "Integer#chr"
   | "Integer#to_i" => .ok recv m
   | "Integer#to_f" =>
     match recv with | .int n => .ok (.flt (Float.ofInt n)) m | _ => .unsupported "to_f"

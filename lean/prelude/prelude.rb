@@ -58,6 +58,33 @@ end
 # ─── Comparable ─────────────────────────────────────────────────────────────
 
 module Comparable
+  # `==` via `<=>`, which the old global `reprPure` flag made impossible to put
+  # here: defining `==` anywhere in the prelude turned pure repr off for the
+  # whole program (retired in L103). Its absence was observable — Homebrew's
+  # `Version::Token` mixes in Comparable and its specs compare a token to a
+  # String, which fell through to `Object#==` (identity) and answered false.
+  # A `<=>` of nil means "not comparable", which is `false`, not an error [V];
+  # and CRuby swallows a StandardError from `<=>` here rather than propagating.
+  def ==(other)
+    c = begin
+      self <=> other
+    rescue StandardError
+      nil
+    end
+    !c.nil? && c.zero?
+  end
+
+  def between?(lo, hi)
+    self >= lo && self <= hi
+  end
+
+  def clamp(lo, hi = nil)
+    return __unsupported__("Comparable#clamp with a Range") if hi.nil?
+    return lo if self < lo
+    return hi if self > hi
+    self
+  end
+
   def <(other)
     c = (self <=> other)
     return __unsupported__("Comparable#< with a nil <=>") if c.nil?
@@ -828,6 +855,42 @@ class String
 end
 
 class Array
+  def dig(i, *rest)
+    v = self[i]
+    return v if rest.empty? || v.nil?
+    v.dig(*rest)
+  end
+
+  # `[[k, v], …].to_h`, or `to_h { |e| [k, v] }` [V]. A non-pair element is a
+  # TypeError naming the element's class.
+  def to_h
+    h = {}
+    each do |e|
+      pair = block_given? ? yield(e) : e
+      unless pair.is_a?(Array) && pair.length == 2
+        raise TypeError, "wrong element type " + pair.class.name + " (expected array)" unless pair.is_a?(Array)
+        raise ArgumentError, "wrong array length (expected 2, was " + pair.length.to_s + ")"
+      end
+      h[pair[0]] = pair[1]
+    end
+    h
+  end
+
+  # Element-wise `<=>`: the first non-zero comparison wins, else length decides;
+  # nil if any element pair is incomparable [V].
+  def <=>(other)
+    return nil unless other.is_a?(Array)
+    n = length < other.length ? length : other.length
+    i = 0
+    while i < n
+      c = self[i] <=> other[i]
+      return nil if c.nil?
+      return c unless c.zero?
+      i += 1
+    end
+    length <=> other.length
+  end
+
   # `fetch(i)` raises where `[]` returns nil, and `fetch(i, default)` /
   # `fetch(i) { … }` supply one instead.
   def fetch(i, *default)
@@ -872,6 +935,15 @@ class NilClass
 end
 
 class Hash
+  # `dig(a, b, …)`: follow the chain, stopping at the first nil [V]. A non-nil
+  # intermediate that cannot be dug raises TypeError, which falls out of the
+  # `dig` send below.
+  def dig(key, *rest)
+    v = self[key]
+    return v if rest.empty? || v.nil?
+    v.dig(*rest)
+  end
+
   # `compact` drops nil *values*; `compact!` is deliberately absent until asked
   # for (it returns nil when nothing changed, which is easy to get wrong).
   def compact
@@ -948,6 +1020,99 @@ module File
 end
 
 class String
+  # `partition`/`rpartition` split around the first / last occurrence of a
+  # String separator and always return three parts [V]; a miss puts the whole
+  # string in the *head* for `partition` and in the *tail* for `rpartition`.
+  # `index`/`rindex` for a String needle (a Regexp needle would go through the
+  # matcher and is not needed here).
+  def index(needle, start = 0)
+    n = needle.length
+    i = start < 0 ? length + start : start
+    i = 0 if i < 0
+    while i + n <= length
+      return i if self[i, n] == needle
+      i += 1
+    end
+    nil
+  end
+
+  def rindex(needle, start = nil)
+    n = needle.length
+    i = (start.nil? ? length - n : (start < 0 ? length + start : start))
+    i = length - n if i > length - n
+    while i >= 0
+      return i if self[i, n] == needle
+      i -= 1
+    end
+    nil
+  end
+
+  def each_char
+    return __unsupported__("Enumerator: String#each_char without a block") unless block_given?
+    i = 0
+    while i < length
+      yield(self[i, 1])
+      i += 1
+    end
+    self
+  end
+
+  def partition(sep)
+    i = index(sep)
+    return [self, "", ""] if i.nil?
+    [self[0, i], sep, self[i + sep.length, length - i - sep.length]]
+  end
+
+  def rpartition(sep)
+    i = rindex(sep)
+    return ["", "", self] if i.nil?
+    [self[0, i], sep, self[i + sep.length, length - i - sep.length]]
+  end
+
+  # `tr` over explicit character lists and `a-z` ranges, with `^` negation. The
+  # `to`-list is padded with its last character, and an empty `to` deletes [V].
+  def tr(from, to)
+    neg = from.start_with?("^") && from.length > 1
+    src = __tr_expand(neg ? from[1, from.length - 1] : from)
+    dst = __tr_expand(to)
+    out = ""
+    each_char do |c|
+      hit = src.include?(c)
+      hit = !hit if neg
+      if !hit
+        out += c
+      elsif dst.empty?
+        # delete
+      elsif neg
+        out += dst[dst.length - 1]
+      else
+        i = src.index(c)
+        out += (i < dst.length ? dst[i] : dst[dst.length - 1])
+      end
+    end
+    out
+  end
+
+  def __tr_expand(spec)
+    out = []
+    i = 0
+    while i < spec.length
+      if i + 2 < spec.length && spec[i + 1] == "-"
+        a = spec[i].ord
+        b = spec[i + 2].ord
+        while a <= b
+          out.push(a.chr)
+          a += 1
+        end
+        i += 3
+      else
+        out.push(spec[i])
+        i += 1
+      end
+    end
+    out
+  end
+
   # `b` returns a copy in ASCII-8BIT. Encodings are not modeled, and every
   # string in the model is already a byte string, so this is a copy [V] for the
   # ASCII inputs the slice passes it.
@@ -1474,10 +1639,18 @@ module T
   # changes is only that the frame is present, which is the same reflective
   # visibility the gradual-guarantee probe already records as a violation (N33).
   def self.__wrap(mod, name, blk)
-    hidden = "__t_unchecked_" + name.to_s
+    # The hidden alias must be **unique per module**, not just per method name.
+    # With a flat `__t_unchecked_initialize`, a subclass's alias shadows its
+    # parent's, so the parent wrapper's `send(hidden, …)` dispatches back into
+    # the *subclass's* original body — which is how `Version::NullToken`'s
+    # zero-argument `initialize` ended up receiving `Token#initialize`'s one
+    # argument ("wrong number of arguments (given 1, expected 0)"). The bug was
+    # latent until L107 stopped gating sigs with keyword parameters.
+    hidden = "__t_u_" + (mod.name.nil? ? "anon" : mod.name.gsub("::", "_")) +
+             "__" + name.to_s
     cache = []
     mod.send(:alias_method, hidden, name)
-    mod.send(:define_method, name) do |*args, &b|
+    mod.send(:define_method, name) do |*args, **kw, &b|
       if cache.empty?
         d = T::Decl.new
         d.instance_eval(&blk)
@@ -1485,21 +1658,41 @@ module T
       end
       decl = cache[0]
       if decl.checked_level == :never
-        send(hidden, *args, &b)
+        kw.empty? ? send(hidden, *args, &b) : send(hidden, *args, **kw, &b)
       else
-        T.__check_params(decl, args)
-        result = send(hidden, *args, &b)
+        T.__check_params_kw(decl, args, kw)
+        result = kw.empty? ? send(hidden, *args, &b) : send(hidden, *args, **kw, &b)
         T.__check_return(decl, result)
       end
     end
     nil
   end
 
-  # Positional matching: Sorbet requires a sig to list the method's parameters
-  # in order, so the i-th declared name governs the i-th argument. A sig over a
-  # method with *keyword* parameters cannot be matched this way (the shim has no
-  # `instance_method(…).parameters` to consult), so it declares rather than
-  # guesses.
+  # Positional-or-keyword matching (L107). Sorbet requires a sig to list the
+  # method's parameters in order, so the i-th *positional* declared name governs
+  # the i-th argument; a declared name that appears as a **key in `kw`** is a
+  # keyword parameter and is checked against that value instead. The shim has no
+  # `instance_method(…).parameters` to consult, but it does not need one: the
+  # call itself says which names arrived as keywords. A declared name that is
+  # neither is an optional parameter the caller omitted, and there is nothing to
+  # check. This replaces the old rule, which gated the whole sig as soon as it
+  # declared more names than there were positional arguments — 186 of the
+  # Homebrew-slice corpus's programs.
+  def self.__check_params_kw(decl, args, kw)
+    types = decl.param_types
+    return nil if types.nil?
+    i = 0
+    types.keys.each do |key|
+      if kw.key?(key)
+        T.__check!("Parameter '" + key.to_s + "'", types[key], kw[key])
+      elsif i < args.length
+        T.__check!("Parameter '" + key.to_s + "'", types[key], args[i])
+        i += 1
+      end
+    end
+    nil
+  end
+
   def self.__check_params(decl, args)
     types = decl.param_types
     return nil if types.nil?

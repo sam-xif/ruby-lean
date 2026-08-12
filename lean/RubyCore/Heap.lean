@@ -64,6 +64,13 @@ structure MethodDef where
       class/module first), threaded to the activation frame for cref-scoped
       constant lookup (artifact 03 §4). Empty = toplevel/`[Object]`. -/
   cref : List ObjId := []
+  /-- The name `super` searches for from inside this body. Normally the name the
+      method is installed under, but an **alias** keeps the *original* name: in
+      CRuby `alias_method :b, :a` then `super` inside `b` looks for `a` in the
+      superclass, not `b` [V] (L108). The sorbet-runtime shim depends on this —
+      it aliases a method aside as `__t_unchecked_x` and a `super` in the body
+      must still reach `x`'s parent. -/
+  superName : Option String := none
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
@@ -319,7 +326,7 @@ def builtinMethods : List (ObjId × List String) := [
   (falseClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
   (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
-               "pred", "zero?", "positive?", "negative?", "even?", "odd?",
+               "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "eql?", "hash", "dup", "clone"]),
   (floatId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
@@ -352,7 +359,8 @@ def builtinMethods : List (ObjId × List String) := [
   (procId, ["lambda?", "to_proc"]),
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
-  (stringId, ["=~", "match", "match?", "scan", "sub", "gsub", "split", "to_i"]),
+  (stringId, ["=~", "match", "match?", "scan", "sub", "gsub", "split", "to_i",
+              "ord", "chars"]),
   (regexpId, ["escape", "quote", "union", "source", "options", "match", "match?", "=~", "===", "inspect",
               "to_s", "names", "==", "eql?", "hash"]),
   (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",
@@ -411,6 +419,13 @@ def initHeap : Heap :=
   let hBuiltins := match hKern.classPayload? objectId with
     | some c => hKern.setClassPayload objectId { c with includes := [kernelId] }
     | Option.none => hKern
+  -- `Float::NAN` / `Float::INFINITY`: real constants of the class object, not
+  -- methods, so they belong in the boot heap rather than in a rule (L109).
+  let hBuiltins := match hBuiltins.classPayload? floatId with
+    | some c => hBuiltins.setClassPayload floatId
+        { c with consts := c.consts ++
+            [("NAN", Value.flt (0.0 / 0.0)), ("INFINITY", Value.flt (1.0 / 0.0))] }
+    | Option.none => hBuiltins
   -- register every class name as a constant on Object
   match hBuiltins.classPayload? objectId with
   | some c =>

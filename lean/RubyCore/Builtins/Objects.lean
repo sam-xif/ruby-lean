@@ -12,6 +12,12 @@ namespace RubyCore
 
 namespace Builtins
 
+/-- Libraries whose surface the prelude actually carries, so `require` of them
+    is a faithful no-op. `sorbet-runtime` is the T shim (L80/L101); the rest of
+    the stdlib is not modeled and must gate rather than pretend (L109). -/
+def modeledFeatures : List String :=
+  ["sorbet-runtime", "sorbet-runtime/lib/types/private/methods/decl_builder"]
+
 /-- BasicObject / Object core, Kernel I/O, and the nil / boolean rules. -/
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
@@ -91,10 +97,21 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | none => .unsupported "prelude gate (non-String reason)"
     | _ => .unsupported "prelude gate"
   | "Object#require" | "Object#require_relative" =>
-    -- Linked programs have their internal deps inlined; a residual `require` of a
-    -- stdlib (e.g. `benchmark`/`yaml`) is a no-op that returns true (as CRuby's
-    -- first load does). The result is essentially never observed.
-    .ok (.bool true) m
+    -- Linked programs have their internal deps inlined, so a residual `require`
+    -- names a library the *control* will load and the model will not. Returning
+    -- `true` for all of them (the old rule) is the N34 bug: the program then
+    -- runs on against constants the model does not have, and the first one
+    -- becomes a NameError where CRuby succeeded — a **disagreement** rather than
+    -- a refusal. So: a feature the prelude actually models returns true; any
+    -- other gates by name (L109).
+    match args with
+    | [f] =>
+      match strPayload? h f with
+      | some feat =>
+        if modeledFeatures.contains feat then .ok (.bool true) m
+        else .unsupported s!"require of an unmodeled library: {feat}"
+      | none => .unsupported "require of a non-String feature"
+    | _ => .unsupported "require arity"
   -- Registered on Range (not inherited from Object) so the L6 shadow check sees
   -- the right owner; `Repr` already renders `.range` payloads [V].
   | "Range#inspect" =>

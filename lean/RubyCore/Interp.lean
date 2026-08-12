@@ -65,7 +65,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     | none =>
       -- same fidelity split as a constant *read*: a constant CRuby has but we
       -- don't model must not answer nil.
-      if crubyToplevelConstants.contains n then .unsupported s!"defined?(unmodeled constant {n})"
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then .unsupported s!"defined?(unmodeled constant {n})"
       else nilR
   | .cpath (some base) name =>
     -- the base *is* evaluated (`defined?(A::B)` runs `A`), under the guard
@@ -76,7 +76,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     match constLookup m.heap name with
     | some _ => str "constant"
     | none =>
-      if crubyToplevelConstants.contains name then
+      if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then
         .unsupported s!"defined?(unmodeled constant {name})"
       else nilR
   | .send none mname _ _ | .vcall mname =>
@@ -159,10 +159,17 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
       -- model gates as Unsupported; a genuine miss is a real NameError
-      if crubyToplevelConstants.contains n then
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then
         .unsupported s!"unmodeled constant {n}"
       else
-        .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {n}")
+        -- CRuby qualifies the miss with the **innermost cref**, not the bare
+        -- name: inside `module A; class B` a missing `Foo` is
+        -- `uninitialized constant A::B::Foo` [V]. Toplevel (cref empty or
+        -- Object) keeps the bare form.
+        let pre := match m.currentFrame.cref with
+          | c :: _ => if c == Boot.objectId then "" else className m.heap c ++ "::"
+          | [] => ""
+        .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {pre}{n}")
   | .casgn n rhs => .next (withKont m (.eval rhs) (.casgnK n))
   | .cpath base name =>
     match base with
@@ -171,7 +178,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       match constLookup m.heap name with
       | some v => .next (withCtl m (.value v))
       | none =>
-        if crubyToplevelConstants.contains name then .unsupported s!"unmodeled constant {name}"
+        if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then .unsupported s!"unmodeled constant {name}"
         else .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {name}")
     | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathK name))
   | .cpathAsgn base name rhs =>
@@ -260,6 +267,10 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | some (_, md) =>
       if md.undefined then undefAliasMiss m oldN
       else
+        -- keep the original name for `super` (L108); same-module only, see
+        -- the `alias_method` rule for why
+        let md := if md.owner == defmod then { md with superName := some (md.superName.getD oldN) }
+                  else md
         let m := { m with heap := defineMethod m.heap defmod newN md }
         .next (withCtl m (.value .nil))
     | none => undefAliasMiss m oldN
@@ -330,10 +341,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         -- A `define_method` body has no formal parameter list to forward from;
         -- CRuby raises rather than guessing [V].
         let f := m.frames.getD (methodFrameOf m) default
-        let fromDM := match methodOn m.heap f.defmod f.meth with
-          | some (_, md) => md.capturedFrame.isSome
-          | none => false
-        if fromDM then
+        if f.runFromDM then
           .next (raiseErr m Boot.runtimeErrorId
             "implicit argument passing of super from method defined by define_method() is not supported. Specify all arguments explicitly.")
         else .unsupported "zsuper param reconstruction (unsupported param shape)"

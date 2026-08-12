@@ -302,9 +302,16 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
   | "String#sub" | "String#gsub" =>
     match args, strPayload? h recv with
     | [pat, rep], some s =>
-      match regexpParts? h pat, strPayload? h rep with
-      | some (src, opts), some r => subst m s src opts r (bid == "String#gsub")
-      | _, _ => .unsupported "String#sub/gsub arguments"
+      match strPayload? h rep with
+      | none => .unsupported "String#sub/gsub with a non-String replacement"
+      | some r =>
+        match regexpParts? h pat with
+        | some (src, opts) => subst m s src opts r (bid == "String#gsub")
+        -- A String pattern is a literal, escaped rather than compiled — the
+        -- same rule as `split` [V].
+        | none => match strPayload? h pat with
+          | some lit => subst m s (escapeSource lit) 0 r (bid == "String#gsub")
+          | none => .unsupported "String#sub/gsub with a non-String, non-Regexp pattern"
     | _, _ => .unsupported "String#sub/gsub arity"
   | _ => .unsupported s!"builtin {bid}"
 where

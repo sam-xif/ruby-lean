@@ -373,6 +373,15 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         | some (_, md) =>
           if md.undefined then some (.unsupported "alias_method of an undef'd method")
           else
+            -- Keep the original name for `super` (L108) — but only when the
+            -- alias lands on the module that *defines* the method. When it does
+            -- not, CRuby resumes the search from the original definition's
+            -- position in the chain, which this frame cannot express if that
+            -- module appears twice (`bootstraptest/test_yjit_145`), so the
+            -- cross-module case keeps the old behaviour rather than a new wrong
+            -- one. Every use in the sorbet-runtime shim is same-module.
+            let md := if md.owner == o then { md with superName := some (md.superName.getD oldN) }
+                      else md
             let m := { m with heap := defineMethod m.heap o newN md }
             some (.next (withCtl m (.value (.sym newN))))
         | none => some (.unsupported s!"alias_method of unmodeled method {oldN}")
