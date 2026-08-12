@@ -4,3 +4,8 @@ __pycache__/
 .hypothesis/
 reports/
 *.egg-info/
+
+# Harvested Homebrew-slice corpus (W4a). Generated, not vendored: each program
+# embeds ~20 KB of upstream Homebrew, so 355 of them is ~7 MB of someone else's
+# code. Rebuild with `python -m difftest harvest-rspec --brew <path>`.
+corpus/homebrew-slice/

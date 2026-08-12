@@ -80,6 +80,46 @@ def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:
     return cases
 
 
+SLICE_DIR = BASE / "corpus" / "homebrew-slice"
+
+SLICE_HARVEST_RECIPE = """The Homebrew-slice corpus is generated, not vendored (each program
+embeds ~20 KB of upstream Homebrew). To build it:
+
+  python3 -m difftest harvest-rspec --brew /path/to/Homebrew/brew"""
+
+
+def load_slice_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """Homebrew's own RSpec examples for the version + vulnerability slice,
+    mechanically rewritten into plain-Ruby assertion programs (W4a / N36).
+
+    Each program prints, per expectation, the actual value *and* the matcher's
+    verdict — tier 0 asks whether CRuby and the model agree, not whether
+    Homebrew's suite passes, so a model bug that changes a value is caught even
+    where the verdict would agree either way.
+    """
+    corpus = Path(corpus) if corpus else SLICE_DIR
+    if not corpus.is_dir():
+        raise FileNotFoundError(f"no slice corpus at {corpus}\n{SLICE_HARVEST_RECIPE}")
+    manifest: dict[str, dict] = {}
+    manifest_path = corpus / "manifest.json"
+    if manifest_path.exists():
+        manifest = {e["id"]: e for e in json.loads(manifest_path.read_text())}
+    cases = []
+    for path in sorted(corpus.glob("*.rb")):
+        meta = manifest.get(path.stem, {"id": path.stem})
+        cases.append(
+            TestCase(
+                id=f"slice/{path.stem}",
+                source=path.read_text(),
+                tier=0,
+                provenance={"suite": "homebrew-slice", **meta},
+            )
+        )
+    if not cases:
+        raise FileNotFoundError(f"no .rb cases under {corpus}\n{SLICE_HARVEST_RECIPE}")
+    return cases
+
+
 def load_sorbet_corpus(corpus: Path | None = None) -> list[TestCase]:
     """Load the Sorbet-annotated corpus (tier 4) as TestCases.
 

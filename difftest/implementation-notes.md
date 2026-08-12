@@ -842,3 +842,65 @@ Every other cross-module use is acyclic: `exprs` → `env`, `stmts` → `exprs`/
 --seed 7 --sut lean` gives **182 agree / 18 unsupported / 0 disagree** both before and
 after — identical, which is the strong form of the claim: the split did not perturb the
 Hypothesis draw sequence, so the generated corpus is the same corpus.
+
+## N36 — the Homebrew-slice corpus: RSpec examples as tier-0 programs (W4a)
+
+`homebrew/PLAN.md` M5. Homebrew's own suite for the version + vulnerability slice is
+**360 examples** across 8 spec files; this turns them into plain-Ruby programs the model
+can consume, and runs them as `difftest run --tier slice`.
+
+**Why a transform and not a runner.** Tier 0 compares CRuby against the model *on the same
+program*, so the corpus has to be programs — no RSpec, no `expect`, no metaclass tricks.
+And the interesting question is not "does Homebrew's suite pass" but "do the two executors
+agree", so each expectation becomes **two** printed observations: the actual value and the
+matcher's verdict. A model bug that changes a value is then caught even where the verdict
+would agree either way. Both are wrapped, so one broken expectation cannot hide the rest.
+
+**Three stages, each owned by the tool already good at it.**
+
+1. `linker` (W3) builds the library prefix: a spec says `require "version"`, the linker
+   turns that into one self-contained program.
+2. `difftest/ruby/rspec_harvest.rb` parses the spec with Prism and rewrites every
+   `expect(…).to matcher` **by byte offset**, so an `expect` nested in an `each` block is
+   handled by the same rule as a top-level one. Ruby parses Ruby — the LK1 division of
+   labour.
+3. `difftest/tiers/tier0/rspec_harvest.py` assembles `prefix + helpers + memos + body`,
+   writes a manifest, and writes a **skip report**.
+
+**Matcher vocabulary handled**: `eq`, `eql`, `equal`, `be(x)`, `be > x` and friends,
+`be_nil`, `be_a`/`be_an`/`be_kind_of`, `respond_to`, `include`, `match`,
+`contain_exactly`, `have_attributes`, the `be_foo` → `foo?` predicate form, block-form
+`raise_error`, and `not_to` for all of them — plus **`be_detected_from`**, a matcher the
+spec file defines itself and which carries **102 of the 360 examples** (it means
+`described_class.detect(url, **specs) == actual`).
+
+**Three things the emitted program needs that Homebrew supplies from its boot path**, all
+recorded rather than invented: `require "sorbet-runtime"` and Homebrew's own
+`class Module; include T::Sig; end` (`extend/module.rb:5`); `extend/blank.rb` linked in
+(11 files, in-tree, no effects — `version.rb` calls `String#blank?`); and
+`utils/output.rb` included **verbatim** rather than linked, because every `require` in it
+is inside a method body and linking would follow them into the 227-file cycle the slice
+exists to avoid. Verbatim keeps it upstream code rather than a mock of ours.
+
+**Validation gate.** Every emitted program is run under CRuby at harvest time; one it
+cannot execute is deleted and reported as a skip, so the corpus never contains a case that
+would sit at `control_invalid` forever.
+
+**Result (measured): 355 harvested, 4 skipped, all 4 reported** —
+`version_spec.rb:328` and `:911` reach constants outside the slice (`URI`,
+`HOMEBREW_CELLAR`); `purl_spec.rb:23` uses the `all` matcher; `vulnerability_spec.rb:456`
+uses `allow` (a stub). No silent truncation: 355 + 4 = 359 of the 360 `it`/`specify`
+calls, the last being one nested inside the `matcher` definition block rather than a group.
+
+**One byte-offset bug worth recording**, because it is the kind that produces plausible
+garbage: Prism's offsets are **byte** offsets and these spec files contain em dashes, so
+slicing the source by *character* index silently shifted every rewrite after the first
+(`expect` became `e__exp`). `String#byteslice` throughout.
+
+**State against the ratchet.** The corpus is **generated, not vendored** (each program
+embeds ~20 KB of upstream Homebrew; `corpus/homebrew-slice/` is gitignored, same treatment
+as bootstraptest), so no committed corpus disagrees. Generated and run today,
+`--tier slice --sut lean` is **352 disagree** — every one of them the *same* W2c gap:
+`NameError: uninitialized constant T::Helpers`, because the prelude's `T` shim has the
+assertion family and `sig` but not `T::Helpers`/`abstract!`/`override`/`T::Struct`. That is
+M6's work, and this corpus is the thing that measures it.
