@@ -175,6 +175,126 @@ def regex_probe(draw, idx: int) -> tuple:
     return tuple(stmts)
 
 
+# ─── Where the last match *lives* (`$~` is frame-local) ─────────────────────
+
+# Seeds: a pattern with two groups and a subject it matches, so the caller's view
+# before the call is a known non-nil `$~`/`$1` pair. A callee that wrongly shares
+# the caller's storage overwrites exactly these.
+RX_SEED_POOL: tuple[tuple[str, str], ...] = (
+    (r"(b)(c)", "abc"),
+    (r"(\d)(\d)", "x42y"),
+    (r"(o)(k)", "ok!"),
+)
+
+
+@st.composite
+def regex_scope_probe(draw, idx: int) -> tuple:
+    """Regex operations **inside method bodies**, with `$~` read on both sides.
+
+    `regex_probe` puts every match at toplevel, where one storage location for the
+    last match is indistinguishable from CRuby's per-frame one. CRuby keeps the
+    backref in the *frame*: a callee's match is invisible to its caller, while a
+    **block** shares its defining method's frame and so is visible. The three
+    axes generated here are the three that distinguish them:
+
+    1. a callee matches, and the caller re-reads `$~`/`$1` — must still see its own
+       seed match;
+    2. the callee reads its *own* `$~` — must see its match, including through the
+       prelude-Ruby `sub`/`gsub`/`index` and through `Regexp.last_match`, all of
+       which are C functions in CRuby and therefore write their **caller's** frame;
+    3. a block matches — visible to its *lexically* enclosing method, not to the
+       method that invoked it, which is why the stored-proc pair is here.
+    """
+    src, flags = draw(st.sampled_from(RX_POOL))
+    subject = draw(st.sampled_from(RX_SUBJECT_POOL))
+    seed_src, seed_sub = draw(st.sampled_from(RX_SEED_POOL))
+
+    p = f"rs{idx}_"
+    sjv, rxv, pcv = f"rsj{idx}", f"rrx{idx}", f"rpc{idx}"
+    S, R = A.LocalRead("s"), A.LocalRead("r")
+    # `$~ && $~[0]` rather than `$~[0]`: a miss must read as an observable nil, not
+    # as a NoMethodError that ends the program.
+    view = lambda: A.And(  # noqa: E731
+        A.GvarRead("$~"), A.Index(A.GvarRead("$~"), A.IntLit(0))
+    )
+
+    # (suffix, statements run before the callee reads its own `$~`)
+    callees: tuple[tuple[str, tuple], ...] = (
+        ("match", (A.MethodCall(S, "match", (R,)),)),
+        ("eqt", (A.BinOp("=~", S, R),)),
+        ("sub", (A.MethodCall(S, "sub", (R, A.StrLit("-"))),)),
+        ("gsub", (A.BlockCall(S, "gsub", (R,), A.Block(("w",), (A.LocalRead("w"),))),)),
+        ("index", (A.MethodCall(S, "index", (R,)),)),
+        ("scan", (A.MethodCall(S, "scan", (R,)),)),
+        ("split", (A.MethodCall(S, "split", (R,)),)),
+        # a block inside the callee: its match lands in the callee's own frame [V]
+        (
+            "blk",
+            (
+                A.BlockCall(
+                    A.ArrayLit((A.IntLit(1),)),
+                    "each",
+                    (),
+                    A.Block(("z",), (A.MethodCall(S, "match", (R,)),)),
+                ),
+            ),
+        ),
+    )
+
+    stmts: list[A.Node] = [
+        A.MethodDef(p + name, ("s", "r"), pre + (view(),)) for name, pre in callees
+    ]
+    # `Regexp.last_match` is prelude Ruby reading `$~`, so it must resolve to its
+    # *caller's* frame — the read-side twin of the write-side cases above.
+    stmts.append(
+        A.MethodDef(
+            p + "lm",
+            ("s", "r"),
+            (
+                A.MethodCall(S, "match", (R,)),
+                A.MethodCall(A.ConstRead("Regexp"), "last_match", (A.IntLit(0),)),
+            ),
+        )
+    )
+    # A proc matches in the frame it was **defined** in, so the method that calls it
+    # sees nothing [V] — the one case the captured chain answers and the stack cannot.
+    stmts.append(A.MethodDef(p + "mk", ("s", "r"), (A.Lambda("proc", (), (A.MethodCall(S, "match", (R,)),)),)))
+    stmts.append(A.MethodDef(p + "run", ("pr",), (A.ProcCall(A.LocalRead("pr"), ()), view())))
+
+    stmts.append(A.Assign(sjv, A.StrLit(subject)))
+    stmts.append(A.Assign(rxv, A.RegexLit(src, flags)))
+    sj, rx = A.LocalRead(sjv), A.LocalRead(rxv)
+    seed = A.MethodCall(A.StrLit(seed_sub), "match", (A.RegexLit(seed_src, ""),))
+
+    def probe(call: A.Node) -> list[A.Node]:
+        """Seed the caller's frame, run `call`, then re-read the caller's view."""
+        return [seed, _show(call), _show(view()), _show(A.GvarRead("$1"))]
+
+    for name, _ in callees:
+        stmts += probe(A.Call(p + name, (sj, rx)))
+    stmts += probe(A.Call(p + "lm", (sj, rx)))
+    stmts.append(A.Assign(pcv, A.Call(p + "mk", (sj, rx))))
+    stmts += probe(A.Call(p + "run", (A.LocalRead(pcv),)))
+
+    # The block *passed to* `gsub` reads the match `gsub` is making, per iteration —
+    # it shares the frame `gsub` writes, which is what makes this the delicate case
+    # for any frame-local scheme (L120's "a block can read `$1`").
+    stmts += [
+        seed,
+        _show(
+            A.BlockCall(
+                sj,
+                "gsub",
+                (rx,),
+                A.Block(("w",), (A.MethodCall(view(), "to_s", ()),)),
+            )
+        ),
+        _show(view()),
+        _show(A.GvarRead("$1")),
+    ]
+    return tuple(stmts)
+
+
 # ─── Interpolated regex literals (W4c obligations 2 and 3) ──────────────────
 
 # Pattern fragments that are valid on their own, so `/pre#{piece}post/` parses.
@@ -208,6 +328,85 @@ def regex_interp_probe(draw, idx: int) -> tuple:
         A.Assign(pv, A.StrLit(piece)),
         A.WhileCounter(lv, draw(st.integers(2, 3)), body),
     )
+
+
+# ─── Range endpoints: what a range *refuses* to be ──────────────────────────
+
+def _ends() -> tuple[tuple[A.Node, A.Node], ...]:
+    """Endpoint pairs, one per arm of CRuby's `range_init` check: comparable,
+    cross-type (raises), and the nil ends that skip the check entirely. The
+    grammar's own ranges are all `Int..Int` — the one case where every arm
+    agrees."""
+    i, s, y, n = A.IntLit, A.StrLit, A.SymLit, A.NilLit
+    return (
+        (i(1), i(3)),
+        (i(1), s("a")),
+        (s("a"), i(1)),
+        (y("a"), y("b")),
+        (i(1), y("a")),
+        (s("a"), s("c")),
+        (i(1), n()),
+        (n(), i(3)),
+        (n(), n()),
+        (n(), s("a")),
+    )
+
+
+@st.composite
+def range_probe(draw, idx: int) -> tuple:
+    """Range construction over mismatched and missing endpoints.
+
+    Two model defects were live here until L122 and neither could be reached by an
+    `Int..Int` range: `Range.new` **built** a range CRuby rejects with
+    `ArgumentError: bad value for range`, and a range with one nil end rendered its
+    nil (`"1..nil"`) where CRuby prints `"1.."`. Both are wrong answers rather than
+    gates, so the head generates the endpoint pairs that separate them — including
+    a user `<=>` whose answer decides the arm, since the check *dispatches*.
+    """
+    cname = f"Rng{idx}"
+    # the user `<=>` decides the arm, so all three answers are generated: `0`
+    # accepts, `nil` raises, and a non-nil non-Integer *also* accepts [V]
+    answer = draw(st.sampled_from([A.IntLit(0), A.NilLit(), A.StrLit("junk")]))
+    cls = A.ClassDef(
+        name=cname,
+        superclass=None,
+        mixins=(),
+        ivars=(),
+        self_methods=(),
+        methods=(
+            A.MethodDef("<=>", ("o",), (answer,)),
+            # a fixed repr, so a range *over* these objects still prints
+            # process-independently — the default `#<Rng0:0x…>` would put an
+            # address in the observation, which this module does not do (N38)
+            A.MethodDef("inspect", (), (A.StrLit(f"#<{cname}>"),)),
+            A.MethodDef("to_s", (), (A.StrLit(f"#<{cname}>"),)),
+        ),
+        decls=(),
+    )
+    excl = draw(st.booleans())
+    # third argument by truthiness, not by being a Bool: `Range.new(1, 2, 3)` is
+    # exclusive [V]
+    extra = draw(
+        st.sampled_from([A.BoolLit(True), A.BoolLit(False), A.NilLit(), A.IntLit(3)])
+    )
+    inst = A.New(cname, ())
+    stmts: list[A.Node] = [cls]
+    pairs = list(_ends()) + [(inst, inst), (inst, A.IntLit(1)), (A.IntLit(1), inst)]
+    for lo, hi in pairs:
+        for e in (A.New("Range", (lo, hi, extra)), A.RangeLit(lo, hi, excl)):
+            stmts.append(
+                _rescued(
+                    (
+                        _show(e),
+                        _show(A.MethodCall(e, "to_s", ())),
+                        _show(A.MethodCall(e, "exclude_end?", ())),
+                        _show(A.MethodCall(e, "frozen?", ())),
+                    )
+                )
+            )
+    # the arity error, whose message this head also pins
+    stmts.append(_rescued((_show(A.New("Range", (A.IntLit(1),))),)))
+    return tuple(stmts)
 
 
 # ─── `<=>` chains and `Comparable` ──────────────────────────────────────────

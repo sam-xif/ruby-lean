@@ -1070,3 +1070,48 @@ set its *caller's* `$~` — which CRuby's C implementations do — so frame-loca
 companion "set the caller's match" primitive to avoid trading this wrong answer for another.
 `homebrew/slice-gates.md` carries it with the other known gaps; it belongs near the top of
 that list, because unlike the rest of them it is a wrong answer.
+
+## N40 — two heads for *where* a value lives: `$~`'s frame and a Range's endpoints
+
+Two tier-1 generation heads written as **witnesses first**, each red before the model fix it
+exists for (L121, L122) and green after. Both target the same blind spot in the W4b heads
+(N39): those generate every operation at **toplevel**, in one frame, over well-typed operands —
+which is precisely where a per-frame rule and a global one, or a validated constructor and an
+unvalidated one, are indistinguishable.
+
+**`regex_scope_probe` — regex operations inside method bodies.** Ten generated callees do a
+regex operation and return their *own* `$~[0]`; the driver seeds the caller's frame with a
+two-group match first, then re-reads `$~` and `$1` after the call. Three axes, one per way a
+frame can fail to own its last match: a callee's match must not be visible to its caller; the
+callee must see its own, *including* through the prelude-Ruby `sub`/`gsub`/`index` and
+`Regexp.last_match`, which are C functions in CRuby and write their caller's frame; and a
+block's match belongs to its **lexically** enclosing method — hence the stored-proc pair
+(`mk` builds a proc, `run` calls it from elsewhere and sees nothing [V]), which is the one case
+the frame stack cannot answer and `captured` can. It found the L121 defect on ten lines per
+probe.
+
+**`range_probe` — endpoint pairs a range refuses to be.** The grammar's ranges are all
+`Int..Int`, the one shape where every arm of CRuby's endpoint check agrees. This head draws from
+a pool that separates them — cross-type, symbol, one-nil, both-nil — plus a generated class
+whose `<=>` answers `0`, `nil` or `"junk"`, since the check *dispatches* and all three answers
+are distinct arms. Both `Range.new(lo, hi, extra)` and the literal, since they are separate
+paths in the desugarer; `extra` is drawn from truthy non-Bools too.
+
+That class is given a **fixed `inspect`/`to_s`**, obeying this module's no-address rule (N38) —
+and that constraint is what found L122's third defect: with a deterministic repr, the model's
+failure to dispatch a user `inspect` for a range's endpoint became a plain textual disagreement
+instead of address noise the observation would have normalized away.
+
+**A pre-existing defect surfaced too, and it is not mine to claim as found by design.** Adding a
+head shifts hypothesis's draw stream, so tier 1.5 generated programs it never had before and
+came back with 164 disagreements — all one shape: `Integer + obj` / `Integer % obj` where `obj`
+supplies `coerce` through `method_missing`. CRuby calls it and raises
+`TypeError: coerce must return [x, y]` on a bad answer; the model raises
+`TypeError: C can't be coerced into Integer` without ever calling it. Confirmed pre-existing by
+`git stash` + rebuild, on the same repro, before touching anything. The runner's own minimizer
+left the case at `corpus/regressions/tier1.5-00930-minimized.rb`; it is **open**, and it is now
+the model's shortest known wrong answer.
+
+The general lesson is N39's, sharpened: a new head does not only test the rule you wrote it for.
+It re-rolls the dice for every *other* head in the program, and a green tier is partly a
+statement about which programs were drawn.
