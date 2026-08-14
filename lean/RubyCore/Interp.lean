@@ -48,6 +48,11 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
   | .var .gvar x =>
     let has :=
       if x == "$!" then m.currentExc.isSome
+      -- `$~` is *always* "global-variable", match or not — unlike its views, where
+      -- `defined?($1)` with no match is nil [V] (L121). It used to answer from
+      -- `globals`, which happened to agree only because any match attempt put the
+      -- key there; frame-local storage has no such key to consult.
+      else if x == "$~" then true
       else match matchGlobal m x with
         -- a match global is "defined" exactly when the last match filled it [V]
         | some (v, _) => match v with | .nil => false | _ => true

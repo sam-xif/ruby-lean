@@ -4,7 +4,7 @@
 # proofs still work".
 #
 # That norm existed and was not followed, and the cost was three independent
-# breaks sitting undetected for 24 commits (N40):
+# breaks sitting undetected for 24 commits (L119):
 #
 #   * L101 put `matchGlobal` in front of the gvar read, so `Step.varGvar`'s
 #     "a gvar read is `getGlobal`" stopped being true → `Step.sound` failed, and

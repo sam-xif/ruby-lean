@@ -75,7 +75,7 @@ inductive Step : Machine → Machine → Prop where
       last match, derived rather than stored (L101), so a read of one is not a
       `getGlobal` at all; `matchGlobal` is consulted first. The hypothesis is the
       semantic one `stepFn` actually branches on, and `Adequacy`'s fragment
-      predicate supplies it from the *syntactic* `isMatchView` (N40). -/
+      predicate supplies it from the *syntactic* `isMatchView` (L119). -/
   | varGvar {m x} :
       m.ctl = .eval (.var .gvar x) → matchGlobal m x = none →
       Step m (withCtl m (.value (m.getGlobal x)))

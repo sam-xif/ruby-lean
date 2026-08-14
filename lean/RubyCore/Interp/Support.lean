@@ -471,7 +471,7 @@ def matchViewIdx? (x : String) : Option Nat :=
     rule `matchGlobal` implements: `Step.varGvar` said a gvar read is a plain
     `getGlobal`, which stopped being true when L101 put `matchGlobal` in front of
     it, and nothing noticed for 24 commits because `Proof/` is off the default
-    build target (N40). -/
+    build target (L119). -/
 def isMatchView (x : String) : Bool :=
   (matchViewIdx? x).isSome || x == "$`" || x == "$'"
 

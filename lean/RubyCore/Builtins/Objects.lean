@@ -69,6 +69,18 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv with
     | .ref o => okStr m (fakeAddr o)
     | _ => .unsupported "__addr_str of an immediate"
+  | "Object#__match_to_caller" =>
+    -- Declares the running activation a stand-in for a CRuby **C function** as far
+    -- as `$~` goes: every later read or write in this body resolves to the
+    -- caller's frame slot (L121). `String#sub`/`#gsub`/`#index` and
+    -- `Regexp.last_match` are prelude Ruby (L110/L115) where CRuby has C, and a C
+    -- function sets its caller's backref — so without this the caller of `gsub`
+    -- would see no match where CRuby shows it the last one.
+    --
+    -- A marker *call* rather than a Lean-side list of transparent bids, because a
+    -- reader of `gsub` has to be able to see it: this is the one property of the
+    -- method not derivable from its body. It must be the body's first statement.
+    .ok .nil (m.setCurrentFrame { m.currentFrame with matchXparent := true })
   | "Object#__user_defines?" =>
     -- Heap introspection the object language cannot perform: does this object's
     -- ancestor chain carry a **non-builtin** definition of `name`? Prelude Ruby

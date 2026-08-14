@@ -653,6 +653,27 @@ end
 class Range
   include Enumerable
 
+  # CRuby's `range_init` **validates the endpoints**: with both ends present,
+  # `lo <=> hi` must answer non-nil, or it raises `ArgumentError: bad value for
+  # range` [V]. Three details, each probed rather than assumed:
+  #
+  #   * only *non-nil* is required. An endpoint whose `<=>` answers `"junk"`
+  #     builds a Range quite happily — the check is not "is this an Integer";
+  #   * a **beginless or endless** range skips the check entirely, so `(nil..nil)`,
+  #     `(nil.."a")` and `("a"..nil)` are all legal;
+  #   * `<=>` is dispatched on the **left** endpoint, so `Range.new(D.new, 1)`
+  #     succeeds where `Range.new(1, D.new)` raises, for a `D` whose `<=>`
+  #     answers 0. A `<=>` that raises propagates.
+  #
+  # It is prelude Ruby because it *dispatches* (L115, L122); the arity error
+  # comes out of this signature for free (`given 1, expected 2..3` [V]). Range
+  # literals `a..b`/`a...b` desugar to this send, so they are checked too.
+  def self.new(lo, hi, excl = false)
+    raise ArgumentError, "bad value for range" if !lo.nil? && !hi.nil? && (lo <=> hi).nil?
+
+    __range_new_unchecked(lo, hi, excl)
+  end
+
   def each
     return __unsupported__("Enumerator: Range#each without a block") unless block_given?
     i = self.begin
@@ -1174,8 +1195,17 @@ class Array
 end
 
 class Range
+  # A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` — except
+  # when both are nil, which prints `"nil..nil"` [V]. `to_s` needs no such case:
+  # `nil.to_s` is `""` already, so `(nil..nil).to_s` really is `".."`. The Lean
+  # twin in `Repr.lean` carries the same rule (L122).
   def __inspect_slow
-    self.begin.inspect + (exclude_end? ? "..." : "..") + self.end.inspect
+    dots = exclude_end? ? "..." : ".."
+    lo = self.begin
+    hi = self.end
+    return "nil" + dots + "nil" if lo.nil? && hi.nil?
+
+    (lo.nil? ? "" : lo.inspect) + dots + (hi.nil? ? "" : hi.inspect)
   end
 
   def __to_s_slow
@@ -1273,8 +1303,11 @@ class Array
 end
 
 class Regexp
-  # `$~` is an ordinary global, so this needs nothing from the machine.
+  # `$~` lives in the **frame** (L121), and CRuby's `last_match` is a C function
+  # reading its caller's — so this needs the one primitive that says so, without
+  # which it would read its own (always-empty) slot.
   def self.last_match(n = nil)
+    __match_to_caller
     md = $~
     return md if n.nil?
     return nil if md.nil?
@@ -1598,6 +1631,7 @@ class String
   # A **zero-width** match advances one character, without which
   # `"aaa".gsub(/a*/) { "X" }` would not terminate.
   def sub(pat, rep = nil, &blk)
+    __match_to_caller
     return __sub_rep(pat, rep) unless rep.nil?
     return __unsupported__("String#sub with neither a replacement nor a block") if blk.nil?
     re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
@@ -1609,6 +1643,7 @@ class String
   end
 
   def gsub(pat, rep = nil, &blk)
+    __match_to_caller
     return __gsub_rep(pat, rep) unless rep.nil?
     return __unsupported__("String#gsub with neither a replacement nor a block") if blk.nil?
     re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
@@ -1646,6 +1681,7 @@ class String
   # `index`/`rindex` for a String needle (a Regexp needle would go through the
   # matcher and is not needed here).
   def index(needle, start = 0)
+    __match_to_caller
     i = start < 0 ? length + start : start
     i = 0 if i < 0
     # A **Regexp** needle searches with the engine and sets `$~`, exactly as

@@ -97,9 +97,12 @@ def charSlice (s : String) (a b : Nat) : String :=
   String.mk ((s.toList.drop a).take (b - a))
 
 /-- Set `$~` and the numbered globals, the way a successful (or failed) match
-    does [V]: on a miss they all become nil. -/
+    does [V]: on a miss they all become nil. The slot is **frame-local** (L121),
+    so which frame this lands in is `Machine.matchFrameId`'s answer, not a
+    global — and a builtin pushes no frame, so for a rule reached from Ruby code
+    that is the Ruby caller's frame, exactly as a CRuby C function behaves. -/
 def setMatchGlobals (m : Machine) (md : Option Value) : Machine :=
-  { m with globals := m.globals.filter (fun p => p.1 != "$~") ++ [("$~", md.getD .nil)] }
+  m.setLastMatchValue (md.getD .nil)
 
 /-- Leave `$~` at the **last** of a scan's matches, or at nil when there were
     none. Every multi-match builtin owes this: CRuby's `scan`/`sub`/`gsub` all

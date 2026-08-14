@@ -3337,3 +3337,105 @@ any method leaks to its caller — a wrong answer, unreached by every corpus. `h
 carries it at the top of the known-gaps list, with the design tension that makes it more than a
 one-liner: a `$~` frame slot would stop a *prelude-implemented* `sub`/`gsub` from setting its
 **caller's** `$~`, which CRuby's C versions do.
+
+## L121 — `$~` is frame-local, and the prelude's C-function stand-ins write their caller's slot
+
+The first of the two wrong answers `homebrew/HANDOFF.md` left open, and the design tension it
+warned about is real: the obvious fix breaks something else, so this is two mechanisms rather
+than one.
+
+**The defect.** CRuby keeps the last match in the **frame**. A callee's match is therefore
+invisible to its caller, while a block shares its defining method's frame and so is visible.
+The model kept `$~` in `m.globals`, where every match was visible everywhere:
+
+```ruby
+def inner = "zz".match(/z/)
+"ab".match(/a/); inner; $~[0]   # CRuby "a"   model "z"  (before this entry)
+```
+
+**Storage.** `Frame.lastMatch : Value`, routed inside `Machine.getGlobal`/`setGlobal` rather
+than at each read site. That choice buys three things: `matchGlobal` (the `$1`…`$9`/`` $` ``/`$'`
+views, L101) reads `$~` through `getGlobal` and so needs no change; a user's `$~ = md` works;
+and `Proof/Step.varGvar`'s statement — "a gvar read is a plain `getGlobal`" — stays *true*, so
+the metatheory needed only one repair (`setGlobal_heap` is now two cases, not `rfl`, because one
+branch writes `frames`).
+
+**Which frame.** `Machine.matchFrameId`, three cases:
+
+* a **block** resolves through `captured` — *lexically*. This is observable and the stack cannot
+  answer it: a proc built in one method and `call`ed from another writes the frame it was
+  **defined** in, so the calling method sees nothing [V]. When the defining frame is still on
+  the stack, resolution continues from there, which is what keeps L120's "a block passed to
+  `gsub` can read `$1`" working;
+* a **match-transparent** activation resolves to the frame below it on the stack;
+* everything else owns its slot.
+
+**The tension, and the second mechanism.** `String#sub`/`#gsub`/`#index` and
+`Regexp.last_match` are prelude *Ruby* (L110/L115) where CRuby has *C*, and a C function writes
+its **caller's** backref. Under frame-local storage alone, the prelude `gsub` would have set
+`$~` in its own frame and the caller would have seen nothing — trading one wrong answer for
+another, quietly. `HANDOFF.md` proposed a `__set_caller_match` primitive called at the end of
+those methods; what landed instead is a **marker at the top**: `__match_to_caller` sets
+`Frame.matchXparent`, and every later read *and* write in that body resolves to the caller.
+
+Three reasons the marker beat the write-through primitive, all found by trying the latter first:
+
+1. `sub`/`gsub` have several exits (`return __sub_rep(...)` before the block path, the loop's
+   `break`, the trailing re-search); a write-through call has to be on all of them.
+2. It only fixes *writes*. `Regexp.last_match` **reads** `$~` and would have kept reading its
+   own always-empty slot.
+3. The builtins the prelude methods call (`__search_at`, `__sub_rep`, `__gsub_rep`) push no
+   frame, so with the marker they write the caller's slot *by construction* — exactly the C
+   behavior — instead of writing the prelude frame and needing a second copy.
+
+A marker *call* rather than a Lean-side list of transparent method ids because a reader of
+`gsub` has to be able to see it: transparency is the one property of the method not derivable
+from its body. It is on `byteStrAwareBids` (L118) since it reads neither receiver nor argument —
+without that, `"\xC8".b.gsub(...)` would have gated on the marker.
+
+**`defined?($~)` came along.** It is `"global-variable"` **always**, match or not — unlike its
+views, where `defined?($1)` with no match is nil [V]. The old code answered from `globals` and
+happened to agree only because any match attempt put the key there; frame storage has no such
+key, so the rule is now written down.
+
+**The witness came first** (N40's `regex_scope_probe`), and it was red on ten lines per probe
+before any of this — a callee's match overwriting the caller's, and `$1` nil where CRuby had the
+caller's group. No corpus had reached it: the W4b heads put every match at toplevel, which is
+the one place where one storage location and CRuby's per-frame one are indistinguishable.
+
+## L122 — `Range.new` validates its endpoints, and two more defects that were hiding behind it
+
+The second of `HANDOFF.md`'s two known wrong answers — `Range.new(1, "a")` built a range where
+CRuby raises `ArgumentError: bad value for range`. It is small, as advertised. What it was
+*covering* was not: writing a head to witness it turned up two further wrong answers in the same
+few lines, neither previously suspected.
+
+**1. The validation.** CRuby's `range_init` requires `lo <=> hi` to answer non-nil when both
+ends are present. Probed, because none of it is guessable: only *non-nil* is required (an
+endpoint whose `<=>` answers `"junk"` builds a range quite happily — the check is not "is this
+an Integer"); a beginless or endless range skips the check entirely, so `(nil..nil)` is legal;
+`<=>` is dispatched on the **left** endpoint, so `Range.new(D.new, 1)` succeeds where
+`Range.new(1, D.new)` raises for a `D` answering 0; and a `<=>` that raises propagates.
+
+It is prelude Ruby over a `__range_new_unchecked` primitive — the L115 shape, because the check
+*dispatches*. Two things then fell out for free: the arity error comes out of the Ruby signature
+(`Range.new(1)` → `wrong number of arguments (given 1, expected 2..3)` [V]), and
+`Range.new(1, 2, 3)` is now exclusive rather than gated, since the primitive takes its third
+argument by truthiness [V]. Ranges are also frozen now, literal and constructed alike [V].
+
+**2. `inspect` of an endless range printed the nil.** `(1..nil).inspect` answered `"1..nil"`
+where CRuby prints `"1.."`, and `(nil..2)` answered `"nil..2"` for `"..2"` — *except* that
+`(nil..nil)` really is `"nil..nil"` [V]. `to_s` needs no case at all: `nil.to_s` is `""`, so
+`(nil..nil).to_s` is `".."` and always was right. Fixed in both twins (`Repr.lean` and the
+prelude's `__inspect_slow`), which is the L116 obligation — a rule in one twin only is a rule
+that applies until the value stops being pure.
+
+**3. `pureOk` did not recurse into a Range's endpoints.** So a range over an object with a user
+`inspect` was judged pure, rendered by the Lean fast path, and printed the endpoint's default
+`#<C:0x…>` — ignoring the override. `.arr`, `.hsh` and an object's ivars all recursed; `.range`
+fell through to `| _ => own`. A Range is a container of two, and now says so.
+
+Defect 3 is the same *kind* of miss as the eigenclass gap still on the known-gaps list, and it
+was found the same way defect 2 was: by giving the head's endpoint class a fixed `inspect` so
+its observations would carry no address (N38's rule), and then noticing that the model ignored
+it. A head written to be process-independent found a bug *because* of that constraint.

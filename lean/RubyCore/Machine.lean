@@ -62,6 +62,16 @@ structure Frame where
   /-- Default visibility for `def`s in this class body — set by a bare `private`
       / `public` / `protected` (artifact 02 §5, L71). -/
   defVis : Visibility := .pub
+  /-- `$~` — the last match, which CRuby keeps **per frame**, not in a global
+      (L121). A callee's match is therefore invisible to its caller, and `$1`…`$9`
+      / `` $` `` / `$'` are views of *this* slot. -/
+  lastMatch : Value := .nil
+  /-- Do `$~` reads and writes in this activation resolve to the **caller's**
+      slot? True for the prelude methods standing in for CRuby *C* functions,
+      which write the frame of whoever called them (`String#sub`/`#gsub`/`#index`,
+      `Regexp.last_match`); set by the `__match_to_caller` primitive as the first
+      statement of such a body (L121). -/
+  matchXparent : Bool := false
 deriving Inhabited
 
 /-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
@@ -370,15 +380,71 @@ def hasLocal (m : Machine) (x : String) : Bool :=
         | none => false
   go (m.stack.headD 0) (m.frames.size + 1)
 
+/-- Walk a block frame's `captured` chain to the activation that owns its `$~`
+    slot. **Lexical, not dynamic**, and that is observable: a proc built in one
+    method and `call`ed from another writes the frame it was *defined* in, so the
+    calling method sees nothing [V]. The `dropWhile`-on-the-stack path in
+    `matchFrameId` cannot answer that case, which is why this one exists. -/
+def matchFrameOwner (m : Machine) : FrameId → Nat → FrameId
+  | fid, 0 => fid
+  | fid, fuel + 1 =>
+    match (m.frames.getD fid default).captured with
+    | some p => matchFrameOwner m p fuel
+    | none => fid
+
+/-- Which frame's `$~` slot the current control position reads and writes (L121).
+    Three cases, one per way a frame can fail to own its own last match:
+
+    * `matchXparent` (a prelude stand-in for a C function) → the **caller**, the
+      frame below it on the stack;
+    * a **block** → its *defining* frame, via `captured`. When that frame is still
+      on the stack we continue from there, so a block inside a transparent method
+      keeps resolving outward — that is how the block passed to the prelude
+      `gsub` reads the very match `gsub` is making (L120);
+    * anything else owns its slot. -/
+def matchFrameId (m : Machine) : FrameId :=
+  let rec go : List FrameId → Nat → FrameId
+    | [], _ => 0
+    | fid :: _, 0 => fid
+    | fid :: rest, fuel + 1 =>
+      let f := m.frames.getD fid default
+      if f.matchXparent then
+        match rest with
+        | [] => fid          -- nothing below: keep the slot rather than lose the write
+        | _ => go rest fuel
+      else match f.captured with
+        | some p =>
+          match rest.dropWhile (· != p) with
+          | [] => matchFrameOwner m p fuel
+          | l => go l fuel
+        | none => fid
+  go m.stack (m.frames.size + 1)
+
+/-- `$~`, read through `matchFrameId`. -/
+def lastMatchValue (m : Machine) : Value :=
+  (m.frames.getD m.matchFrameId default).lastMatch
+
+/-- Write `$~` into the frame `matchFrameId` picks. -/
+def setLastMatchValue (m : Machine) (v : Value) : Machine :=
+  let fid := m.matchFrameId
+  if fid < m.frames.size then
+    { m with frames := m.frames.set! fid { m.frames.getD fid default with lastMatch := v } }
+  else m
+
 def getGlobal (m : Machine) (x : String) : Value :=
   if x == "$!" then m.currentExc.getD .nil
+  -- `$~` is not in `globals` at all (L121); routing it here rather than at each
+  -- read site keeps `Step.varGvar`'s "a gvar read is `getGlobal`" true, and picks
+  -- up the views (`matchGlobal` reads `$~` through this) and `$~ = md` for free.
+  else if x == "$~" then m.lastMatchValue
   else
     match m.globals.find? (·.1 == x) with
     | some (_, v) => v
     | none => .nil
 
 def setGlobal (m : Machine) (x : String) (v : Value) : Machine :=
-  { m with globals := (x, v) :: m.globals.filter (·.1 != x) }
+  if x == "$~" then m.setLastMatchValue v
+  else { m with globals := (x, v) :: m.globals.filter (·.1 != x) }
 
 def emit (m : Machine) (s : String) : Machine :=
   { m with out := m.out ++ s }

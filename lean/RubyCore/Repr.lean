@@ -221,7 +221,18 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
     | .proc _ => throw "Proc#inspect (address non-deterministic)"
     | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .range lo hi excl =>
-      return (← inspect h lo) ++ (if excl then "..." else "..") ++ (← inspect h hi)
+      -- A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` and
+      -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
+      -- `"nil..nil"` [V]. `to_s` needs no such case: `nil.to_s` is already `""`,
+      -- so it falls out, and `(nil..nil).to_s` really is `".."`. Found while
+      -- validating endpoints (L122): endless ranges were the one shape whose
+      -- `inspect` the model got wrong rather than gated.
+      let dots := if excl then "..." else ".."
+      match lo, hi with
+      | .nil, .nil => return "nil" ++ dots ++ "nil"
+      | .nil, _ => return dots ++ (← inspect h hi)
+      | _, .nil => return (← inspect h lo) ++ dots
+      | _, _ => return (← inspect h lo) ++ dots ++ (← inspect h hi)
     | .regexp src opts => return regexpInspect src opts
     | .mdata subject caps names =>
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name

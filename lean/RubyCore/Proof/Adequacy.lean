@@ -28,8 +28,20 @@ open Interp
 @[simp] theorem setLocal_heap (m : Machine) (x : String) (v : Value) :
     (m.setLocal x v).heap = m.heap := by unfold Machine.setLocal; rfl
 
+/-- `$~` now lives in a frame slot (L121), so writing it writes `frames`. -/
+@[simp] theorem setLastMatchValue_heap (m : Machine) (v : Value) :
+    (m.setLastMatchValue v).heap = m.heap := by
+  unfold Machine.setLastMatchValue
+  by_cases h : m.matchFrameId < m.frames.size <;> simp [h]
+
+/-- Still heap-preserving once `$~` moved into the frame: two cases now, since
+    the `$~` branch goes through `setLastMatchValue` rather than `globals`. -/
 @[simp] theorem setGlobal_heap (m : Machine) (x : String) (v : Value) :
-    (m.setGlobal x v).heap = m.heap := rfl
+    (m.setGlobal x v).heap = m.heap := by
+  unfold Machine.setGlobal
+  split
+  · exact setLastMatchValue_heap m v
+  · rfl
 
 /-- `bindIvar` mutates an object in place, so the heap size is unchanged. -/
 @[simp] theorem bindIvar_heapSize (m : Machine) (x : String) (v : Value) :
@@ -78,7 +90,7 @@ def FragExpr : Expr → Prop
   -- match rather than stored (L101), so its read is not the plain `getGlobal`
   -- that `Step.varGvar` describes. Excluded *syntactically*, which is what keeps
   -- the exclusion honest: `isMatchView` is the very predicate `matchGlobal`
-  -- branches on, so the two cannot drift apart again (N40).
+  -- branches on, so the two cannot drift apart again (L119).
   | .var .gvar x => ¬ isMatchView x
   | .var _ _ => True
   | .vasgn .cvar _ _ => False
@@ -111,7 +123,7 @@ theorem realize {m m' m'' : Machine} (hs : stepFn m = .next m') (hstep : Step m 
 
 /-- The bridge the fragment predicate needs: a name that is not a `$~` view is
     read as a plain global. Immediate from `matchGlobal`'s own first test, which is
-    exactly `isMatchView` — that shared definition is the point (N40). -/
+    exactly `isMatchView` — that shared definition is the point (L119). -/
 theorem matchGlobal_eq_none_of_not_view {m : Machine} {x : String}
     (h : ¬ isMatchView x) : matchGlobal m x = none := by
   simp [matchGlobal, h]

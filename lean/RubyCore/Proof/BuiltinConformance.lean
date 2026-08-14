@@ -92,7 +92,7 @@ theorem int_bin_dispatch
     -- whose receiver is not pure-representable dispatches a prelude twin instead
     -- of running. Arithmetic is never such a builtin, but the *statement* has to
     -- say so — leaving it implicit is what broke this proof, and `Proof/` being off
-    -- the default target is why nothing noticed (N40).
+    -- the default target is why nothing noticed (L119).
     (hdefer : Builtins.reprDefer? m.heap bid (.int a) [.int b] = none) :
     startArgs m (.int a) .explicit mname [.int b] [] .none
       = .next (withCtl m (.value (.int (op a b)))) := by

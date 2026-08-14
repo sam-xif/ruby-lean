@@ -328,7 +328,7 @@ def builtinMethods : List (ObjId × List String) := [
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
-              "__user_defines?", "__write", "__addr_str",
+              "__user_defines?", "__write", "__addr_str", "__match_to_caller",
               "initialize"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
@@ -364,7 +364,7 @@ def builtinMethods : List (ObjId × List String) := [
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",
               "private_constant", "public_constant"]),
-  (classId, ["new", "allocate"]),
+  (classId, ["new", "allocate", "__range_new_unchecked"]),
   -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
   -- frame, which a pure builtin cannot); only the pure introspectors are
   -- registered here.

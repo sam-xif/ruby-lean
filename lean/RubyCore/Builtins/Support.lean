@@ -80,6 +80,12 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     | .arr xs => own && xs.all (pureOk h sens)
     | .hsh xs => own && xs.all fun (k, v) => pureOk h sens k && pureOk h sens v
     | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h sens v)
+    -- A Range is a container of two: `(a..b).inspect` calls `a.inspect`, so an
+    -- endpoint with a user `inspect` makes the range impure too. Missing this was
+    -- a **wrong answer** — the pure path rendered the endpoint's default
+    -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
+    -- gives its endpoints a fixed `inspect` precisely so no address is observed.
+    | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   | v => !reprOverridden h sens (realClassOf h v)
@@ -296,7 +302,9 @@ def byteStrAwareBids : List String :=
    "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
    "Object#hash", "Object#class", "Object#nil?", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
-   "Object#inspect", "Object#p", "Object#__user_defines?"]
+   "Object#inspect", "Object#p", "Object#__user_defines?",
+   -- reads and writes neither operand, only the frame's `$~` routing (L121)
+   "Object#__match_to_caller"]
 
 /-- The encoding tag of `a ++ b` (L118), CRuby's compatibility rule [V]: the
     result takes the **receiver's** encoding, *unless* only the argument holds a
@@ -639,16 +647,11 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
             -- any other truthy second argument means IGNORECASE [V]
             | _ => mk src 1
         | _ => .unsupported "Regexp.new arity"
-      else if k == Boot.rangeId then
-        -- `Range.new(lo, hi[, excl])` (range literals `a..b`/`a...b` desugar here).
-        let mk (lo hi : Value) (excl : Bool) : BRes :=
-          let (o, h) := m.heap.alloc { klass := Boot.rangeId, payload := .range lo hi excl }
-          .ok (.ref o) { m with heap := h }
-        match args with
-        | [lo, hi] => mk lo hi false
-        | [lo, hi, .bool e] => mk lo hi e
-        | [lo, hi, .nil] => mk lo hi false
-        | _ => .unsupported "Range.new arity"
+      -- `Range.new` is **not** here: it validates its endpoints by dispatching
+      -- `<=>`, which a builtin cannot do, so it is prelude Ruby over
+      -- `__range_new_unchecked` below (L122, the L115 shape). Range literals
+      -- `a..b`/`a...b` desugar to that same `Range.new` send and are validated
+      -- with it.
       else if k == Boot.classId then
         -- `Class.new(superclass = Object)`: an **anonymous** class (empty name,
         -- rendered `#<Class:0x…>`; a later constant assignment names it, L72).

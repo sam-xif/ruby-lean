@@ -688,7 +688,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- retired the global `reprPure` flag for a per-class test, so `def` no longer
       -- touches it. This proof kept case-splitting on a constant that no longer
       -- exists, and `Proof/` being off the default build target is why that went
-      -- unnoticed from L103 until now — N40.)
+      -- unnoticed from L103 until now — L119.)
       -- Phrased over the *facts* about `m₀.heap` rather than over the
       -- `MethodDef` that produced it: `m₀` is then fixed by unifying the
       -- conclusion with the goal, and each remaining hypothesis is a concrete

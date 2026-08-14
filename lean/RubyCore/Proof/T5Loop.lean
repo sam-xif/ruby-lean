@@ -40,7 +40,7 @@ set_option maxRecDepth 100000
     was hard-coded as `37` and the boot heap has since grown to 40 (`Kernel`,
     `Numeric`, `UncaughtThrowError` and friends), which silently aimed `clsA` at an
     existing boot object and left `dispatch_step`'s `rfl` unprovable. Deriving it
-    is the whole fix, and it cannot rot again (N40). -/
+    is the whole fix, and it cannot rot again (L119). -/
 def clsA : ObjId := Boot.initHeap.objs.size
 /-- An instance of `A`, allocated straight after it. -/
 def inst : ObjId := Boot.initHeap.objs.size + 1

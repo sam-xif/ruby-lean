@@ -112,6 +112,20 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | _ => .unsupported "Exception#initialize arity"
     | _ => .unsupported "initialize on a non-object"
   | "Class#new" => newImpl m recv args
+  | "Class#__range_new_unchecked" =>
+    -- Allocate a `Range` with **no endpoint check** — the primitive the prelude's
+    -- `Range.new` builds on, because the check has to dispatch `<=>` (L122).
+    -- Third argument by *truthiness*, since `Range.new(1, 2, 3).exclude_end?` is
+    -- `true` [V]; it used to be matched as a `Bool` and anything else gated.
+    match recv, args with
+    | .ref k, [lo, hi, excl] =>
+      if k != Boot.rangeId then .unsupported "__range_new_unchecked on a non-Range"
+      else
+        let (o, h) := m.heap.alloc
+          -- CRuby's ranges are frozen, literal and constructed alike [V]
+          { klass := Boot.rangeId, payload := .range lo hi excl.truthy, frozen := true }
+        .ok (.ref o) { m with heap := h }
+    | _, _ => .unsupported "__range_new_unchecked arity"
   -- `allocate`: the first half of `new` — an instance with the class's *empty*
   -- payload and NO `initialize` call. Immediates have no heap representation, so
   -- CRuby raises `TypeError: allocator undefined for X` for Integer/Float/Symbol/
