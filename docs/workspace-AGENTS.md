@@ -292,7 +292,14 @@ lean && lake build`, then `python3 playground/server.py`. See
 [`playground/README.md`](playground/README.md).
 
 ### `homebrew/` — coverage analysis + the **active initiative** (runnable)
-**Start at [`homebrew/PLAN.md`](homebrew/PLAN.md)** — the build plan for taking Homebrew's
+**Start at [`homebrew/PLAN.md`](homebrew/PLAN.md)**, then
+[`homebrew/HANDOFF.md`](homebrew/HANDOFF.md) (state of play, what is in flight, next steps)
+and [`homebrew/slice-gates.md`](homebrew/slice-gates.md) (the live coverage tracker —
+`difftest gates`). **Status 2026-08-13: M1–M8 done.** Criterion 1 is close but not closed —
+all four corpora at **0 disagreements** (tier-0 **991**, slice **349/355 running, 3 gated**,
+domain **10,000 inputs**, tier-4 **25**), with the last 3 gates being byte strings, whose
+representation half is landed and whose prelude half is specified in the handoff. Criterion 2
+(the type checker, M9–M11) is not started. — the build plan for taking Homebrew's
 CVE-matching decision core (`version.rb` + `vulns/{semver,cvss,purl,vulnerability,identify}.rb`,
 ~1,876 lines, ~360 spec examples, zero effects) end to end: desugar → model → difftest →
 type check → soundness. Nine workstreams (front end, regex engine, linker, difftest,
