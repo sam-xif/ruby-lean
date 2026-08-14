@@ -306,10 +306,11 @@ def spreadA (m : Machine) (v : Value) : Except String (List Value × Machine) :=
   | .ref o =>
     match (m.heap.get o).payload with
     | .mdata subject caps _ =>
+      let bin := (m.heap.get o).binary
       .ok (caps.toList.foldl (fun (acc, m) sp =>
         match sp with
         | some (a, b) =>
-          let (sv, m) := Builtins.allocStr m (Builtins.charSlice subject a b)
+          let (sv, m) := Builtins.allocStrEnc m (Builtins.charSlice subject a b) bin
           (acc ++ [sv], m)
         | none => (acc ++ [Value.nil], m)) ([], m))
     | _ => (spread m v).map (fun vs => (vs, m))
@@ -472,7 +473,9 @@ def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=
     | .ref o =>
       match (m.heap.get o).payload with
       | .mdata subject caps _ =>
-        let slice (a b : Nat) : Value × Machine := Builtins.allocStr m (Builtins.charSlice subject a b)
+        let bin := (m.heap.get o).binary
+        let slice (a b : Nat) : Value × Machine :=
+          Builtins.allocStrEnc m (Builtins.charSlice subject a b) bin
         match caps[0]? with
         | some (some (wa, wb)) =>
           if pre then some (slice 0 wa)

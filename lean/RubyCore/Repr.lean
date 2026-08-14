@@ -16,9 +16,17 @@ import RubyCore.FloatFmt
 
 namespace RubyCore
 
+/-- Does `s` hold a character at or above 0x80? For a **binary** String (L118)
+    that means a byte no Lean `String` consumer can carry as a byte, which is
+    what `toS` and the raw-stdout paths have to refuse on. -/
+def hasHighByte (s : String) : Bool := s.toList.any (fun c => c.val ≥ 0x80)
+
 /-- Escape one char per Ruby String#inspect conventions. `next?` is the
-    following character (for `#{`/`#$`/`#@` escaping). -/
-private def escapeChar (c : Char) (next? : Option Char) : String :=
+    following character (for `#{`/`#$`/`#@` escaping). `binary` selects the
+    ASCII-8BIT rendering, where a non-printable is a **byte** (`\xNN`, upper
+    case) rather than a code point (`\uNNNN`) [V] — `(1.chr + 0xC3.chr).inspect`
+    is `"\x01\xC3"` where `"\x01".inspect` (UTF-8) is `"\u0001"` (L118). -/
+private def escapeChar (binary : Bool) (c : Char) (next? : Option Char) : String :=
   match c with
   | '\\' => "\\\\"
   | '"' => "\\\""
@@ -35,19 +43,22 @@ private def escapeChar (c : Char) (next? : Option Char) : String :=
     | some '{' | some '$' | some '@' => "\\#"
     | _ => "#"
   | _ =>
-    if c.val < 0x20 || c.val == 0x7f then
+    let hexOf (width : Nat) : String :=
       let hex := String.ofList (Nat.toDigits 16 c.val.toNat) |>.toUpper
-      let hex := String.ofList (List.replicate (4 - hex.length) '0') ++ hex
-      s!"\\u{hex}"
-    else
-      String.singleton c
+      String.ofList (List.replicate (width - hex.length) '0') ++ hex
+    if binary then
+      if c.val < 0x20 || c.val ≥ 0x7f then s!"\\x{hexOf 2}" else String.singleton c
+    else if c.val < 0x20 || c.val == 0x7f then s!"\\u{hexOf 4}"
+    else String.singleton c
 
-def escapeString (s : String) : String := Id.run do
+def escapeStringEnc (binary : Bool) (s : String) : String := Id.run do
   let cs := s.toList
   let mut out := "\""
   for i in [0:cs.length] do
-    out := out ++ escapeChar cs[i]! cs[i+1]?
+    out := out ++ escapeChar binary cs[i]! cs[i+1]?
   return out ++ "\""
+
+def escapeString (s : String) : String := escapeStringEnc false s
 
 /-- Identifier-like symbol (`:foo`, `:foo?`) — eligible for the bare
     `foo: v` hash-inspect shorthand [V] (operator symbols are NOT:
@@ -81,6 +92,14 @@ where
 def symInspect (s : String) : String :=
   if simpleSymbol s then ":" ++ s else ":" ++ escapeString s
 
+/-- String equality including the encoding tag (L118). CRuby compares bytes
+    *and*, when either operand holds a non-ASCII byte, encodings: `"a".b == "a"`
+    is true but `0xC8.chr == "È"` is **false** — same single byte 0xC8 in our
+    payload, different encodings. Ignoring the tag here would be a silent wrong
+    answer, which is why it is checked at the leaf both `==` and `eql?` share. -/
+def strEqEnc (h : Heap) (x y : ObjId) (s t : String) : Bool :=
+  s == t && ((h.get x).binary == (h.get y).binary || !hasHighByte s)
+
 /-- Strict `eql?` (type-strict: 1 ≠ 1.0). Used for hash-key matching.
     Fuel-bounded for (unconstructible-at-L0 but total-function-required)
     cyclic structures. -/
@@ -90,7 +109,7 @@ partial def valueEql (h : Heap) (a b : Value) : Bool :=
     if x == y then true
     else
       match (h.get x).payload, (h.get y).payload with
-      | .str s, .str t => s == t
+      | .str s, .str t => strEqEnc h x y s t
       | .arr xs, .arr ys =>
         xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEql h p q)
       | .hsh xs, .hsh ys => hashEq xs ys
@@ -115,7 +134,7 @@ partial def valueEq (h : Heap) (a b : Value) : Bool :=
     if x == y then true
     else
       match (h.get x).payload, (h.get y).payload with
-      | .str s, .str t => s == t
+      | .str s, .str t => strEqEnc h x y s t
       | .arr xs, .arr ys =>
         xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEq h p q)
       | .hsh xs, .hsh ys =>
@@ -177,7 +196,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
     if o == Boot.mainId then return "main"
     else
     match (h.get o).payload with
-    | .str s => return escapeString s
+    | .str s => return escapeStringEnc (h.get o).binary s
     | .arr xs =>
       let parts ← xs.toList.mapM (inspect h)
       return "[" ++ String.intercalate ", " parts ++ "]"
@@ -208,6 +227,9 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
       -- instead of their index, and an unset group prints `nil` [V].
       let whole := (spanText subject (caps[0]?.getD none)).getD ""
+      -- the tag on a MatchData object records its *subject*'s encoding (L118),
+      -- and every span rendered here is a slice of that subject
+      let esc := escapeStringEnc (h.get o).binary
       let byIdx : Nat → String := fun i =>
         match names.find? (fun p => p.2 == i) with
         | some (n, _) => n
@@ -215,9 +237,9 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       let parts := (caps.toList.drop 1).zipIdx.map fun (sp, j) =>
         s!"{byIdx (j + 1)}:" ++
           (match spanText subject sp with
-           | some t => escapeString t
+           | some t => esc t
            | none => "nil")
-      return "#<MatchData " ++ escapeString whole ++
+      return "#<MatchData " ++ esc whole ++
         (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
     | .none =>
       let cname := className h (h.get o).klass
@@ -240,7 +262,16 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     if o == Boot.mainId then return "main"
     else
     match (h.get o).payload with
-    | .str s => return s
+    | .str s =>
+      -- `to_s` hands back the **bytes**, and every consumer of this `String`
+      -- (interpolation, `print`, `join`, `%`, an exception message) drops the
+      -- encoding tag on the way. For a binary String that is only observable
+      -- when a byte is ≥ 0x80 — where a Lean `String` would silently re-read
+      -- the byte as a code point — so that case refuses rather than answering
+      -- (L118). ASCII bytes are the same either way.
+      if (h.get o).binary && hasHighByte s then
+        throw "to_s of a byte string holding a byte ≥ 0x80 (L118)"
+      else return s
     | .arr _ | .hsh _ => inspect h v
     | .cls c =>
       -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
@@ -253,7 +284,11 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     | .range lo hi excl =>
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
     | .regexp src opts => return regexpToS src opts
-    | .mdata subject caps _ => return (spanText subject (caps[0]?.getD none)).getD ""
+    | .mdata subject caps _ =>
+      let whole := (spanText subject (caps[0]?.getD none)).getD ""
+      if (h.get o).binary && hasHighByte whole then
+        throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
+      else return whole
     | .none =>
       let cname := className h (h.get o).klass
       return s!"#<{cname}:{fakeAddr o}>"

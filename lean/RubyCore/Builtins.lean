@@ -22,7 +22,20 @@ namespace Builtins
     no explicit receiver (needed by nothing yet; visibility is deferred). -/
 def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
-  if zeroArgBids.contains bid && !args.isEmpty then
+  if (recv :: args).any (unrepresentableByteStr h)
+     && !byteStrAwareBids.contains bid
+     -- `dup`/`clone` are the one *class-generic* rule below, and `dupObj` copies
+     -- the tag, so they are admitted by list membership rather than by name
+     && !dupBids.contains bid && !cloneBids.contains bid then
+    -- The byte-string safety net (L118). A binary String holding a byte ≥ 0x80
+    -- is the one value a rule can silently *mis-read*: our payload keeps it as a
+    -- one-byte character, so a rule that neither propagates the tag nor refuses
+    -- hands back a UTF-8 String whose `inspect` renders `È` where CRuby renders
+    -- `\xC8`. That is a wrong answer, not a gate, and it is unreachable by
+    -- inspection of 60-odd rules — so admission is a *list*: a rule is reached
+    -- with such an operand only if it is named in `byteStrAwareBids`.
+    .unsupported s!"{bid} with a byte-string operand holding a byte ≥ 0x80 (L118)"
+  else if zeroArgBids.contains bid && !args.isEmpty then
     .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m
   else if dupBids.contains bid || cloneBids.contains bid then

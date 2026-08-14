@@ -229,12 +229,90 @@ def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
   let src := m.heap.get o
   let (o2, h) := m.heap.alloc
     { klass := src.klass, ivars := src.ivars, payload := src.payload,
-      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen }
+      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen,
+      -- the encoding tag is part of the copy: `"café".b.dup.encoding` is
+      -- ASCII-8BIT [V] (L118)
+      binary := src.binary }
   (.ref o2, { m with heap := h })
 
 def okStr (m : Machine) (s : String) : BRes :=
   let (v, m) := allocStr m s
   .ok v m
+
+/-- Allocate a String result with an explicit encoding tag (L118). -/
+def okStrEnc (m : Machine) (binary : Bool) (s : String) : BRes :=
+  let (v, m) := allocStrEnc m s binary
+  .ok v m
+
+/-- Allocate a String result that **inherits `src`'s encoding tag** (L118).
+    `src` is normally the receiver: every byte-derived String result in CRuby
+    carries the encoding of the String it was derived from, and for a MatchData
+    receiver the tag on the object records its *subject*'s encoding, so the same
+    helper serves `MatchData#[]`/`pre_match`/… -/
+def okStrFrom (m : Machine) (src : Value) (s : String) : BRes :=
+  okStrEnc m (isBinaryStr m.heap src) s
+
+/-- Is this a binary String holding a byte the model cannot let a tag-blind rule
+    touch — one at or above 0x80 (L118)? An *ASCII-only* binary String is
+    excluded on purpose: every content answer over it is identical to the UTF-8
+    one, so only its tag is at stake, and the String rules propagate that. -/
+def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
+  match strPayload? h v with
+  | some s => isBinaryStr h v && hasHighByte s
+  | none => false
+
+/-- The rules admitted to run with such an operand (L118) — each either handles
+    the tag or refuses on its own with a better reason. Everything absent is
+    refused by `Builtins.run` before dispatch.
+
+    `<=>`/`<`/`>`/`include?`/`start_with?`/`end_with?` are **deliberately absent**:
+    CRuby raises `Encoding::CompatibilityError` for a cross-encoding comparison
+    with a non-ASCII byte, and orders same-byte different-encoding strings by an
+    internal encoding index (`"\xC3".b <=> "Ã"` is `-1` [V]) — neither of which
+    this model has. So are `puts`/`print`/`__write`/`Array#join`/`format`, which
+    would have to write the raw byte into an output `String` that cannot hold it. -/
+def byteStrAwareBids : List String :=
+  -- String: byte-wise by construction, or tag-propagating (`okStrFrom`)
+  ["String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
+   "String#!=", "String#length", "String#size", "String#empty?", "String#ord",
+   "String#to_i", "String#to_f", "String#to_s", "String#to_str", "String#to_sym",
+   "String#inspect", "String#chars", "String#reverse", "String#upcase",
+   "String#downcase", "String#strip", "String#chomp", "String#[]", "String#+@",
+   "String#-@", "String#freeze", "String#frozen?", "String#hash",
+   "String#__binary?", "String#__bytes", "String#__as_binary", "String#__as_utf8",
+   "String#__force_binary", "String#__force_utf8",
+   -- pattern methods: the subject's tag rides on the MatchData and its slices
+   "String#=~", "String#match", "String#match?", "String#scan", "String#split",
+   "String#__split_never", "String#__sub_rep", "String#__gsub_rep",
+   "Regexp#match", "Regexp#match?", "Regexp#=~", "Regexp#===",
+   "MatchData#[]", "MatchData#to_s", "MatchData#pre_match", "MatchData#post_match",
+   "MatchData#begin", "MatchData#end", "MatchData#size", "MatchData#length",
+   "MatchData#captures", "MatchData#to_a", "MatchData#names",
+   "MatchData#named_captures",
+   -- Object: identity, class and equality are tag-blind for a reason, and
+   -- `inspect`/`p` render through the binary-aware `Repr`
+   "BasicObject#==", "BasicObject#!=", "BasicObject#!", "BasicObject#equal?",
+   "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
+   "Object#hash", "Object#class", "Object#nil?", "Object#is_a?", "Object#kind_of?",
+   "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
+   "Object#inspect", "Object#p", "Object#__user_defines?"]
+
+/-- The encoding tag of `a ++ b` (L118), CRuby's compatibility rule [V]: the
+    result takes the **receiver's** encoding, *unless* only the argument holds a
+    non-ASCII byte, in which case it takes the argument's — so `"a".b + "b"` is
+    ASCII-8BIT, `"a" + "b".b` is UTF-8, and `"" .b + "café"` is UTF-8. Two
+    non-ASCII operands in *different* encodings raise
+    `Encoding::CompatibilityError`, a class the model does not have, so that
+    refuses rather than answering (the `Except` error is an Unsupported reason). -/
+def concatEnc (h : Heap) (a : Value) (s : String) (b : Value) (t : String) :
+    Except String Bool :=
+  let ab := isBinaryStr h a
+  let bb := isBinaryStr h b
+  if ab == bb then .ok ab
+  else if hasHighByte s && hasHighByte t then
+    .error "Encoding::CompatibilityError from concatenating a byte string with UTF-8 (L118)"
+  else if hasHighByte t then .ok bb
+  else .ok ab
 
 /-! ### Numerics -/
 
@@ -396,7 +474,12 @@ def putsGo (m : Machine) (args : List Value) : Nat → Option Machine
       | .ref o =>
         match (m.heap.get o).payload with
         | .arr xs => putsGo m xs.toList fuel
-        | .str s => some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
+        | .str s =>
+          -- this path writes the payload without going through `toS`, so it
+          -- repeats `toS`'s byte-string refusal (L118): CRuby would emit the
+          -- raw byte and `m.out` is a Lean `String`
+          if (m.heap.get o).binary && hasHighByte s then none
+          else some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
         | _ =>
           -- CRuby tries `to_ary` on a non-Array, non-String argument (L66)
           if mayDispatchToAry m.heap a then none

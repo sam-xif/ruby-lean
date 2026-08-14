@@ -3064,7 +3064,7 @@ fixed: the top of the tier-0 gate histogram is `Object#Rational` (25) and `Objec
 (18), which were blocked because their `inspect`/`==` could not live in the prelude. They can
 now — but they still have to be written. Dispatching repr was the prerequisite, not the work.
 
-## L117 — byte strings: the representation (step 1 of 2, IN PROGRESS)
+## L117 — byte strings: the representation (step 1 of 2)
 
 The last row of `homebrew/slice-gates.md`. `Purl.encode` is
 `component.b.gsub(/[^A-Za-z0-9\-._~:]/n) { |c| format("%%%02X", c.ord) }` and must answer
@@ -3099,3 +3099,94 @@ and `String#+` propagating the tag. See `homebrew/HANDOFF.md`.
 **Ratchet at this commit.** tier-0 **991 agree, 0 disagree**; Homebrew-slice **349 agree, 0
 disagree**, 3 gated. Unchanged — nothing yet *uses* the new primitives, which is why this is
 safe to land as a step.
+
+## L118 — byte strings: encodings, and what "nothing uses it yet" hid (L117 step 2)
+
+The prelude half of L117 plus the observation half, which turned out to be the larger and
+more interesting part. Closes **2 of the slice's last 3 gates** — `purl_spec.rb:68`
+(`encode("café") == "caf%C3%A9"`) and `identify_spec.rb:219` — leaving only the `%80` row
+L117 already argued is honest.
+
+**L117 step 1 was not inert, and the first thing this commit did was find that out.**
+"Nothing yet uses the new primitives, which is why this is safe to land" was wrong:
+`Integer#chr` above 127 *did* use them, and `p 200.chr` answered `"È"` where CRuby answers
+`"\xC8"`. A **wrong answer**, landed and green, exactly the failure mode the ratchet cannot
+see — no corpus program inspects a synthesized high byte. The lesson is narrower than "test
+more": a representation change is never inert once *one* rule can produce the new
+representation, because `inspect` can then be reached from it. The probe that would have
+caught it took four lines and was not written, because step 1 believed its own inertness
+claim.
+
+**So the design of this step is a safety net first and a feature second.** Three choke
+points, in order of how much they buy:
+
+1. **`Repr` renders the tag.** `escapeStringEnc binary` renders a byte `< 0x20` or `≥ 0x7f`
+   as `\xNN` (upper case) rather than `\uNNNN`, with the named escapes (`\n`, `\e`, `\#{`)
+   still winning — `(1.chr + 0xC3.chr).inspect` is `"\x01\xC3"` where UTF-8 `"\x01".inspect`
+   is `"\u0001"` [V]. `inspect` reads `(h.get o).binary`, so arrays, hashes and ivars get it
+   by recursion for free. A MatchData's flag records its **subject**'s encoding, since every
+   String it hands back is a slice of that subject.
+2. **`Repr.toS` refuses.** `to_s` hands back the *bytes*, and every consumer of the resulting
+   Lean `String` — interpolation, `print`, `Array#join`, `%`, an exception message — has
+   dropped the tag by construction. For a byte `≥ 0x80` that String would silently re-read
+   the byte as a code point, so `toS` returns an Unsupported reason instead. One edit covers
+   every one of those consumers; `putsGo`'s raw-payload fast path and `__write` repeat the
+   check because they bypass `toS`.
+3. **`Builtins.run` gates by allowlist.** A binary String holding a byte `≥ 0x80` reaches a
+   rule only if the rule is named in `byteStrAwareBids`. This is deliberately a *list* and
+   not a judgement: "does this rule handle the tag" is not a question 60-odd rules can be
+   audited for once and trusted, and getting it wrong is a wrong answer rather than a gate.
+   `<=>`/`<`/`include?`/`start_with?` are **excluded on purpose** — CRuby raises
+   `Encoding::CompatibilityError` for a cross-encoding comparison involving a non-ASCII byte,
+   and orders same-byte different-encoding strings by an internal encoding index
+   (`"\xC3".b <=> "Ã"` is `-1` [V]) — so is anything that writes to stdout.
+
+**Then the propagation, which is what makes the allowlist earn its place.** `okStrFrom m recv`
+replaces `okStr m` at every String-producing rule whose bytes come from the receiver: `*`,
+`[]`, `chars`, `reverse`, `upcase`, `downcase`, `strip`, `chomp`, `+@`, `-@`, `split`, `scan`,
+`sub`/`gsub`, and every MatchData accessor. `dupObj` carries the tag too — it did not, so
+`"café".b.dup` silently lost it.
+
+**`+` and `<<` needed the real compatibility rule, and my first guess at it was wrong.** The
+result takes the **receiver's** encoding unless *only* the argument holds a non-ASCII byte:
+`"a".b + "b"` is ASCII-8BIT but `"a" + "b".b` is UTF-8, and `"".b + "café"` is UTF-8 [V]. I
+had written "if either side is ASCII-only it takes the other's", which gets the both-ASCII
+case backwards. Two non-ASCII operands with different tags raise
+`Encoding::CompatibilityError`, a class the model does not have, so that refuses.
+`<<` widens the receiver **in place** by the same rule.
+
+**Equality had to learn the tag.** `"a".b == "a"` is true but `0xC8.chr == "È"` is **false**
+[V] — the same single byte in our payload, different encodings. The check lives in
+`strEqEnc`, the leaf `valueEq` and `valueEql` share, so `==`, `eql?`, `uniq`, and hash-key
+matching all get it at once; `String#==` now goes through `valueEql` rather than comparing
+payloads itself.
+
+**The prelude half is the small part.** `Encoding` with `UTF_8`, `BINARY`, `ASCII_8BIT`
+(`BINARY` *by identity*, matching CRuby [V]), `name`/`to_s`/`inspect`/`==`; and
+`String#encoding`/`#force_encoding`/`#bytes`/`#each_byte`/`#b`, each one line over a
+primitive. `force_encoding` needed **new** primitives (`__force_binary`/`__force_utf8`)
+rather than L117's `__as_*`: it mutates and returns self, and retagging rewrites the payload
+as well as the flag, so both have to move on the same object.
+
+**US-ASCII is a third encoding, it is everywhere, and this commit refuses rather than guesses
+about it.** CRuby gives US-ASCII to every String it *synthesizes* instead of reading from
+source: `65.chr`, `1.to_s`, `:a.to_s`, `nil.to_s`, `[1,2].join`, `/a/.source`, `1.inspect`
+are all US-ASCII while a literal is UTF-8 [V]. Tracking it means a third tag threaded through
+~40 String-producing rules, which is a bigger job than this step and buys nothing the slice
+needs. But answering `UTF-8` for all of them would be a wrong answer of exactly the kind
+step 1 already made once.
+
+So `String#encoding` answers only what the tag determines: `BINARY` for a tagged String,
+`UTF_8` for one holding a non-ASCII byte (which no US-ASCII String can), and otherwise
+`Encoding::UNDETERMINED` — one instance whose `name`/`to_s`/`inspect`/`==` all gate, and
+which is still the right thing to hand to `force_encoding`, because re-tagging as UTF-8 or as
+US-ASCII leaves the same bytes and `__force_utf8` gates on an invalid sequence in either
+reading. That is what makes `Identify.decode`'s closing
+`.force_encoding(component.encoding)` work while `p "abc".encoding` refuses. The residual is
+recorded in `homebrew/slice-gates.md`: `equal?` against `Encoding::UTF_8` is still an
+identity the model gets differently, and the fix for all of it is the third tag.
+
+**Ratchet.** tier-0 **991 agree, 0 disagree**; Homebrew-slice **351 agree, 0 disagree, 1
+gated** (was 349/3); domain-fuzz **10,000 inputs, 0 disagree**; tier-4 **25 agree, 0
+disagree**; the W2a regex oracle **7,418/7,418 byte-identical, 0 fuel exhaustions**. The
+gate histogram's byte-string rows are down to the single `%80` row.

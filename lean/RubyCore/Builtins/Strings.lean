@@ -69,7 +69,10 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "String#+" =>
     binArg m args fun b =>
       match strPayload? h recv, strPayload? h b with
-      | some s, some t => okStr m (s ++ t)
+      | some s, some t =>
+        match concatEnc h recv s b t with
+        | .ok bin => okStrEnc m bin (s ++ t)
+        | .error e => .unsupported e
       | some _, none => .err Boot.typeErrorId
           s!"no implicit conversion of {coerceName h b} into String" m
       | _, _ => .unsupported "String#+"
@@ -78,12 +81,14 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       match strPayload? h recv, b with
       | some s, .int n =>
         if n < 0 then .err Boot.argumentErrorId "negative argument" m
-        else okStr m (String.join (List.replicate n.toNat s))
+        else okStrFrom m recv (String.join (List.replicate n.toNat s))
       | _, _ => .unsupported "String#*"
   | "String#==" | "String#eql?" =>
+    -- `valueEql`, not a bare payload compare: equality consults the encoding tag
+    -- when a non-ASCII byte is in play (L118), and both `==` and `eql?` do.
     binArg m args fun b =>
       match strPayload? h recv, strPayload? h b with
-      | some s, some t => .ok (.bool (s == t)) m
+      | some _, some _ => .ok (.bool (valueEql h recv b)) m
       | _, _ => .ok (.bool false) m
   | "String#!=" =>
     binArg m args fun b => .ok (.bool (!(valueEq h recv b))) m
@@ -159,6 +164,34 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | some decoded => let (v, m) := allocStr m decoded; .ok v m
         | none =>
           .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
+  | "String#__force_binary" | "String#__force_utf8" =>
+    -- `force_encoding` **mutates and returns the receiver** [V], so it cannot be
+    -- `__as_binary`/`__as_utf8` (which copy, as `b` needs). Retagging also
+    -- rewrites the payload — going to binary splits each scalar into its UTF-8
+    -- bytes and coming back reassembles them — so both fields move together, on
+    -- the same object (L118).
+    match recv, strPayload? h recv with
+    | .ref o, some str =>
+      if (h.get o).frozen then
+        match inspectP m recv with
+        | .ok r => .err Boot.frozenErrorId s!"can't modify frozen String: {r}" m
+        | .error e => .unsupported e
+      else
+        let toBinary := bid == "String#__force_binary"
+        if (h.get o).binary == toBinary then .ok recv m
+        else if toBinary then
+          let bytes := str.toUTF8.toList.map (fun b => Char.ofNat b.toNat)
+          let o' := { h.get o with payload := Payload.str (String.mk bytes), binary := true }
+          .ok recv { m with heap := h.set o o' }
+        else
+          let bytes := ByteArray.mk (str.toList.map (fun c => UInt8.ofNat c.toNat)).toArray
+          match String.fromUTF8? bytes with
+          | some decoded =>
+            let o' := { h.get o with payload := Payload.str decoded, binary := false }
+            .ok recv { m with heap := h.set o o' }
+          | none =>
+            .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
+    | _, _ => .unsupported "String#force_encoding on a non-String"
   | "String#ord" =>
     match strPayload? h recv with
     | some str =>
@@ -169,8 +202,9 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "String#chars" =>
     match strPayload? h recv with
     | some str =>
+      let bin := isBinaryStr h recv
       let (vs, m) := str.toList.foldl (fun (acc, m) c =>
-        let (v, m) := allocStr m (String.singleton c); (acc.push v, m)) (#[], m)
+        let (v, m) := allocStrEnc m (String.singleton c) bin; (acc.push v, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
     | none => .unsupported "String#chars on a non-String"
@@ -201,8 +235,10 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       let n : Int := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) (0 : Int)
       .ok (.int (if neg then -n else n)) m
   | "String#inspect" =>
+    -- the *result* is UTF-8 whatever the receiver was [V] — escaping makes it
+    -- pure ASCII — but the escaping itself is tag-sensitive (L118)
     match strPayload? h recv with
-    | some s => okStr m (escapeString s)
+    | some s => okStr m (escapeStringEnc (isBinaryStr h recv) s)
     | none => .unsupported "inspect"
   | "String#<<" | "String#concat" =>
     binArg m args fun b =>
@@ -213,7 +249,13 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
           | .ok r => .err Boot.frozenErrorId s!"can't modify frozen String: {r}" m
           | .error e => .unsupported e
         else
-          .ok recv { m with heap := h.set o { h.get o with payload := .str (s ++ t) } }
+          -- appending *widens* the receiver in place: `(+"x") << "café".b` is
+          -- ASCII-8BIT afterwards [V], by the same compatibility rule as `+`
+          match concatEnc h recv s b t with
+          | .error e => .unsupported e
+          | .ok bin =>
+            let o' := { h.get o with payload := Payload.str (s ++ t), binary := bin }
+            .ok recv { m with heap := h.set o o' }
       | _, some _, none => .unsupported "String#<< non-string (codepoint append)"
       | _, _, _ => .unsupported "<<"
   | "String#empty?" =>
@@ -229,19 +271,19 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | _, _ => .unsupported "include?"
   | "String#reverse" =>
     match strPayload? h recv with
-    | some s => okStr m (String.ofList s.toList.reverse)
+    | some s => okStrFrom m recv (String.ofList s.toList.reverse)
     | none => .unsupported "reverse"
   | "String#upcase" =>
     match strPayload? h recv with
-    | some s => okStr m s.toUpper
+    | some s => okStrFrom m recv s.toUpper
     | none => .unsupported "upcase"
   | "String#downcase" =>
     match strPayload? h recv with
-    | some s => okStr m s.toLower
+    | some s => okStrFrom m recv s.toLower
     | none => .unsupported "downcase"
   | "String#strip" =>
     match strPayload? h recv with
-    | some s => okStr m s.trimAscii.toString
+    | some s => okStrFrom m recv s.trimAscii.toString
     | none => .unsupported "strip"
   | "String#chomp" =>
     match strPayload? h recv, args with
@@ -249,7 +291,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       let s := if s.endsWith "\r\n" then (s.dropEnd 2).toString
                else if s.endsWith "\n" || s.endsWith "\r" then (s.dropEnd 1).toString
                else s
-      okStr m s
+      okStrFrom m recv s
     | some s, [a] =>
       match strPayload? h a with
       | none => .unsupported "chomp with a non-String argument"
@@ -263,9 +305,9 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
               if t.endsWith "\r\n" then strip n (t.dropEnd 2).toString
               else if t.endsWith "\n" || t.endsWith "\r" then strip n (t.dropEnd 1).toString
               else t
-          okStr m (strip (s.length + 1) s)
-        else if s.endsWith suf then okStr m (s.dropEnd suf.length).toString
-        else okStr m s
+          okStrFrom m recv (strip (s.length + 1) s)
+        else if s.endsWith suf then okStrFrom m recv (s.dropEnd suf.length).toString
+        else okStrFrom m recv s
     | _, _ => .unsupported "chomp arity"
   | "String#start_with?" =>
     binArg m args fun b =>
@@ -302,7 +344,12 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | _ => .unsupported "-@ on a non-String"
   | "String#to_sym" =>
     match strPayload? h recv with
-    | some s => .ok (.sym s) m
+    -- a Symbol in the model carries no encoding, so a byte string only interns
+    -- while its bytes are ASCII (L118)
+    | some s =>
+      if isBinaryStr h recv && hasHighByte s then
+        .unsupported "String#to_sym of a byte string holding a byte ≥ 0x80 (L118)"
+      else .ok (.sym s) m
     | none => .unsupported "to_sym"
   | "String#[]" =>
     match strPayload? h recv, args with
@@ -310,12 +357,12 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       let cs := s.toList
       let idx := if i < 0 then i + cs.length else i
       if idx < 0 || idx ≥ cs.length then .ok .nil m
-      else okStr m (String.singleton cs[idx.toNat]!)
+      else okStrFrom m recv (String.singleton cs[idx.toNat]!)
     | some str, [.int start, .int len] =>
       let cs := str.toList
       match sliceRange cs.length start len with
       | none => .ok .nil m
-      | some (off, count) => okStr m (String.ofList ((cs.drop off).take count))
+      | some (off, count) => okStrFrom m recv (String.ofList ((cs.drop off).take count))
     | some str, [.ref ro] =>
       match (h.get ro).payload with
       | .range lo hi excl =>
@@ -335,19 +382,19 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
           else
             let lastI := min lastRaw (n - 1)
             let count := if lastI < st then 0 else (lastI - st + 1).toNat
-            okStr m (String.ofList ((cs.drop st.toNat).take count))
+            okStrFrom m recv (String.ofList ((cs.drop st.toNat).take count))
         | _, _ => .unsupported "String#[] non-Integer range endpoint"
       -- `s["sub"]` → the substring if present, else nil [V]
       | .str sub =>
-        if sub.isEmpty || (str.splitOn sub).length > 1 then okStr m sub else .ok .nil m
+        if sub.isEmpty || (str.splitOn sub).length > 1 then okStrFrom m recv sub else .ok .nil m
       -- `s[/re/]` → the whole match, or nil [V]. Sets `$~` like any match.
       | .regexp src opts =>
         match runSearch src opts str with
         | .gate why => .unsupported why
         | .miss => .ok .nil (setMatchGlobals m none)
         | .hit a b caps names =>
-          let (md, m) := allocMData m str caps names
-          okStr (setMatchGlobals m (some md)) (charSlice str a b)
+          let (md, m) := allocMData m str caps names (isBinaryStr h recv)
+          okStrFrom (setMatchGlobals m (some md)) recv (charSlice str a b)
       | _ => .unsupported "String#[] non-index argument"
     -- `s[/re/, n]` / `s[/re/, "name"]` → that capture, or nil [V].
     | some str, [.ref ro, sel] =>
@@ -357,7 +404,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | .gate why => .unsupported why
         | .miss => .ok .nil (setMatchGlobals m none)
         | .hit _ _ caps names =>
-          let (md, m) := allocMData m str caps names
+          let (md, m) := allocMData m str caps names (isBinaryStr h recv)
           let m := setMatchGlobals m (some md)
           match runRegex "MatchData#[]" md [sel] m with
           | .ok v m => .ok v m

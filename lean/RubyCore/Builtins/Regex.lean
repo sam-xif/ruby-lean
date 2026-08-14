@@ -45,10 +45,13 @@ def allocRegexp (m : Machine) (src : String) (opts : Nat) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.regexpId, payload := .regexp src opts }
   (.ref o, { m with heap := h })
 
+/-- `binary` records the **subject**'s encoding: every String a MatchData hands
+    back is a slice of the subject and carries its tag, so the flag lives on the
+    MatchData object and `okStrFrom md` reads it (L118). -/
 def allocMData (m : Machine) (subject : String) (caps : Array (Option (Nat × Nat)))
-    (names : List (String × Nat)) : Value × Machine :=
+    (names : List (String × Nat)) (binary : Bool := false) : Value × Machine :=
   let (o, h) := m.heap.alloc
-    { klass := Boot.matchDataId, payload := .mdata subject caps names }
+    { klass := Boot.matchDataId, payload := .mdata subject caps names, binary }
   (.ref o, { m with heap := h })
 
 /-- Outcome of applying a pattern to a subject: the engine's answer, already
@@ -186,7 +189,7 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
     match mdataParts? h recv with
     | some (s, caps, _) =>
       match caps[0]? with
-      | some (some (a, b)) => okStr m (charSlice s a b)
+      | some (some (a, b)) => okStrFrom m recv (charSlice s a b)
       | _ => .unsupported "MatchData#to_s"
     | none => .unsupported "MatchData#to_s on a non-MatchData"
   | "MatchData#size" | "MatchData#length" =>
@@ -197,14 +200,14 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
     match mdataParts? h recv with
     | some (s, caps, _) =>
       match caps[0]? with
-      | some (some (a, _)) => okStr m (charSlice s 0 a)
+      | some (some (a, _)) => okStrFrom m recv (charSlice s 0 a)
       | _ => .unsupported "MatchData#pre_match"
     | none => .unsupported "MatchData#pre_match on a non-MatchData"
   | "MatchData#post_match" =>
     match mdataParts? h recv with
     | some (s, caps, _) =>
       match caps[0]? with
-      | some (some (_, b)) => okStr m (charSlice s b s.length)
+      | some (some (_, b)) => okStrFrom m recv (charSlice s b s.length)
       | _ => .unsupported "MatchData#post_match"
     | none => .unsupported "MatchData#post_match on a non-MatchData"
   | "MatchData#begin" | "MatchData#end" =>
@@ -221,9 +224,10 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
     match mdataParts? h recv with
     | some (s, caps, _) =>
       let items := if bid == "MatchData#to_a" then caps.toList else caps.toList.drop 1
+      let bin := isBinaryStr h recv
       let (vs, m) := items.foldl (fun (acc, m) sp =>
         match sp with
-        | some (a, b) => let (v, m) := allocStr m (charSlice s a b); (acc.push v, m)
+        | some (a, b) => let (v, m) := allocStrEnc m (charSlice s a b) bin; (acc.push v, m)
         | none => (acc.push Value.nil, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
@@ -239,11 +243,12 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
   | "MatchData#named_captures" =>
     match mdataParts? h recv with
     | some (s, caps, names) =>
+      let bin := isBinaryStr h recv
       let (ps, m) := names.foldl (fun (acc, m) (n, i) =>
         let (k, m) := allocStr m n
         match caps[i]? with
         | some (some (a, b)) =>
-          let (v, m) := allocStr m (charSlice s a b); (acc.push (k, v), m)
+          let (v, m) := allocStrEnc m (charSlice s a b) bin; (acc.push (k, v), m)
         | _ => (acc.push (k, Value.nil), m)) (#[], m)
       let (v, m) := allocHsh m ps
       .ok v m
@@ -258,13 +263,13 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
           | none => .err Boot.indexErrorId s!"undefined group name reference: {n}" m
           | some (_, i) =>
             match caps[i]? with
-            | some (some (a, b)) => okStr m (charSlice s a b)
+            | some (some (a, b)) => okStrFrom m recv (charSlice s a b)
             | _ => .ok .nil m
         match key with
         | .int k =>
           if k < 0 then .ok .nil m
           else match caps[k.toNat]? with
-            | some (some (a, b)) => okStr m (charSlice s a b)
+            | some (some (a, b)) => okStrFrom m recv (charSlice s a b)
             | _ => .ok .nil m
         | .sym n => byName n
         | .ref o => match (h.get o).payload with
@@ -284,19 +289,20 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
   | "String#scan" =>
     binArg m args fun pat =>
       match strPayload? h recv, regexpParts? h pat with
-      | some s, some (src, opts) => scanAll m s src opts
+      | some s, some (src, opts) => scanAll m s src opts (isBinaryStr h recv)
       | _, _ => .unsupported "String#scan"
   | "String#split" =>
     match args, strPayload? h recv with
-    | [], some s => splitBy m s.trimLeft awkSep 0 0
-    | [pat], some s => splitOn m h s pat 0
-    | [pat, .int lim], some s => splitOn m h s pat lim
+    | [], some s => splitBy m s.trimLeft awkSep 0 0 (isBinaryStr h recv)
+    | [pat], some s => splitOn m h s pat 0 (isBinaryStr h recv)
+    | [pat, .int lim], some s => splitOn m h s pat lim (isBinaryStr h recv)
     | _, _ => .unsupported "String#split arity"
   | "String#__split_never" =>
     match args, strPayload? h recv with
     | [pat], some s =>
+      let bin := isBinaryStr h recv
       match regexpParts? h pat with
-      | some (src, opts) => splitBy m s src opts 0
+      | some (src, opts) => splitBy m s src opts 0 bin
       | none =>
         match strPayload? h pat with
         -- A String separator is a *literal*, not a pattern, so it is escaped
@@ -304,9 +310,9 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
         -- every character [V]. `" "` is Ruby's awk-mode separator (runs of
         -- whitespace, leading whitespace ignored) and is its own rule.
         | some sep =>
-          if sep == " " then splitBy m s.trimLeft awkSep 0 0
-          else if sep.isEmpty then splitBy m s "(?!\\A)" 0 0
-          else splitBy m s (escapeSource sep) 0 0
+          if sep == " " then splitBy m s.trimLeft awkSep 0 0 bin
+          else if sep.isEmpty then splitBy m s "(?!\\A)" 0 0 bin
+          else splitBy m s (escapeSource sep) 0 0 bin
         | none => .unsupported "String#split with a non-String, non-Regexp pattern"
     | _, _ => .unsupported "String#split arity"
   | "String#__sub_rep" | "String#__gsub_rep" =>
@@ -316,11 +322,13 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
       | none => .unsupported "String#sub/gsub with a non-String replacement"
       | some r =>
         match regexpParts? h pat with
-        | some (src, opts) => subst m s src opts r (bid == "String#__gsub_rep")
+        | some (src, opts) =>
+          subst m s src opts r (bid == "String#__gsub_rep") recv rep
         -- A String pattern is a literal, escaped rather than compiled — the
         -- same rule as `split` [V].
         | none => match strPayload? h pat with
-          | some lit => subst m s (escapeSource lit) 0 r (bid == "String#__gsub_rep")
+          | some lit =>
+            subst m s (escapeSource lit) 0 r (bid == "String#__gsub_rep") recv rep
           | none => .unsupported "String#sub/gsub with a non-String, non-Regexp pattern"
     | _, _ => .unsupported "String#sub/gsub arity"
   | _ => .unsupported s!"builtin {bid}"
@@ -331,8 +339,9 @@ where
     match regexpParts? m.heap re with
     | none => .unsupported "Regexp match on a non-Regexp"
     | some (src, opts) =>
+      let bin := isBinaryStr m.heap subj
       match strPayload? m.heap subj, subj with
-      | none, .sym s => applyTo bid m src opts s
+      | none, .sym s => applyTo bid m src opts s bin
       | none, _ =>
         -- `=~`/`match` against nil is nil; `===` against a non-string is false
         -- [V]; anything else would need `to_str` and is gated.
@@ -341,7 +350,7 @@ where
         | _ =>
           if bid == "Regexp#===" then .ok (.bool false) m
           else .unsupported "Regexp match against a non-String"
-      | some s, _ => applyTo bid m src opts s
+      | some s, _ => applyTo bid m src opts s bin
   /-- Every match of `src` in `s`, left to right, as (start, stop, caps). A
       zero-width match advances by one character, which is what stops
       `"abc".scan(//)` from looping [V]. Bounded by the string length. -/
@@ -356,7 +365,7 @@ where
         | .miss => .ok acc.reverse
         | .hit a b caps _ =>
           allMatches src opts s n (if b == a then b + 1 else b) ((a, b, caps) :: acc)
-  scanAll (m : Machine) (s : String) (src : String) (opts : Nat) : BRes :=
+  scanAll (m : Machine) (s : String) (src : String) (opts : Nat) (bin : Bool) : BRes :=
     match allMatches src opts s (s.length + 2) 0 [] with
     | .error why => .unsupported why
     | .ok hits =>
@@ -364,29 +373,31 @@ where
       -- the captures [V].
       let (vs, m) := hits.foldl (fun (acc, m) (a, b, caps) =>
         if caps.size ≤ 1 then
-          let (v, m) := allocStr m (charSlice s a b); (acc.push v, m)
+          let (v, m) := allocStrEnc m (charSlice s a b) bin; (acc.push v, m)
         else
           let (inner, m) := (caps.toList.drop 1).foldl (fun (ia, m) sp =>
             match sp with
-            | some (x, y) => let (v, m) := allocStr m (charSlice s x y); (ia.push v, m)
+            | some (x, y) => let (v, m) := allocStrEnc m (charSlice s x y) bin; (ia.push v, m)
             | none => (ia.push Value.nil, m)) (#[], m)
           let (v, m) := allocArr m inner; (acc.push v, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
   /-- `split` with any pattern shape and any limit. A String separator is a
       *literal* (escaped), `" "` is awk mode, `""` splits into characters. -/
-  splitOn (m : Machine) (h : Heap) (s : String) (pat : Value) (lim : Int) : BRes :=
+  splitOn (m : Machine) (h : Heap) (s : String) (pat : Value) (lim : Int)
+      (bin : Bool) : BRes :=
     match regexpParts? h pat with
-    | some (src, opts) => splitBy m s src opts lim
+    | some (src, opts) => splitBy m s src opts lim bin
     | none =>
       match strPayload? h pat, pat with
-      | _, .nil => splitBy m s.trimLeft awkSep 0 lim
+      | _, .nil => splitBy m s.trimLeft awkSep 0 lim bin
       | some sep, _ =>
-        if sep == " " then splitBy m s.trimLeft awkSep 0 lim
-        else if sep.isEmpty then splitBy m s "(?!\\A)" 0 lim
-        else splitBy m s (escapeSource sep) 0 lim
+        if sep == " " then splitBy m s.trimLeft awkSep 0 lim bin
+        else if sep.isEmpty then splitBy m s "(?!\\A)" 0 lim bin
+        else splitBy m s (escapeSource sep) 0 lim bin
       | none, _ => .unsupported "String#split with a non-String, non-Regexp pattern"
-  splitBy (m : Machine) (s : String) (src : String) (opts : Nat) (lim : Int) : BRes :=
+  splitBy (m : Machine) (s : String) (src : String) (opts : Nat) (lim : Int)
+      (bin : Bool) : BRes :=
     -- A positive limit caps the number of fields, so the scan stops after
     -- `lim - 1` separators and the remainder is the last field verbatim [V].
     let maxHits : Nat := if lim > 0 then (lim - 1).toNat else s.length + 2
@@ -416,12 +427,12 @@ where
         if lim == 0 then (pieces.reverse.dropWhile (· == some "")).reverse else pieces
       let (vs, m) := trimmed.foldl (fun (acc, m) p =>
         match p with
-        | some str => let (v, m) := allocStr m str; (acc.push v, m)
+        | some str => let (v, m) := allocStrEnc m str bin; (acc.push v, m)
         | none => (acc.push Value.nil, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
   subst (m : Machine) (s : String) (src : String) (opts : Nat) (rep : String)
-      (global : Bool) : BRes :=
+      (global : Bool) (recvV repV : Value) : BRes :=
     match allMatches src opts s (if global then s.length + 2 else 1) 0 [] with
     | .error why => .unsupported why
     | .ok hits =>
@@ -432,8 +443,13 @@ where
       else
         let (out, last) := hits.foldl (fun (acc, cur) (a, b, _) =>
           (acc ++ charSlice s cur a ++ rep, b)) ("", 0)
-        okStr m (out ++ charSlice s last s.length)
-  applyTo (bid : String) (m : Machine) (src : String) (opts : Nat) (s : String) : BRes :=
+        -- the result mixes subject and replacement bytes, so it takes the tag
+        -- their concatenation would (L118) — and refuses the incompatible mix
+        match concatEnc m.heap recvV s repV rep with
+        | .error e => .unsupported e
+        | .ok bin => okStrEnc m bin (out ++ charSlice s last s.length)
+  applyTo (bid : String) (m : Machine) (src : String) (opts : Nat) (s : String)
+      (bin : Bool) : BRes :=
     match runSearch src opts s with
     | .gate why => .unsupported why
     | .miss =>
@@ -442,10 +458,10 @@ where
     | .hit a _ caps names =>
       if bid == "Regexp#match?" then .ok (.bool true) m       -- match? sets no globals [V]
       else if bid == "Regexp#===" then
-        let (md, m) := allocMData m s caps names
+        let (md, m) := allocMData m s caps names bin
         .ok (.bool true) (setMatchGlobals m (some md))
       else
-        let (md, m) := allocMData m s caps names
+        let (md, m) := allocMData m s caps names bin
         let m := setMatchGlobals m (some md)
         if bid == "Regexp#=~" then .ok (.int a) m else .ok md m
 

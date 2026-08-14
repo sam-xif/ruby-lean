@@ -15,9 +15,13 @@
 #    Unsupported gate — the RubyCore-level equivalent of `.unsupported` in Lean.
 #    Blockless Enumerable calls (which CRuby answers with an `Enumerator`) are the
 #    standard case.
-# 3. **Never define a repr-sensitive method** (`to_s`, `inspect`, `==`, `eql?`,
-#    `message`, `to_str`): defining one flips `reprPure` off globally (L7) and
-#    every `puts`/`inspect` in every program would then gate.
+# 3. **Repr-sensitive methods** (`to_s`, `inspect`, `==`, `eql?`, `message`,
+#    `to_str`) are fine on a class this file *introduces* — `Pathname`, `Struct`,
+#    `T::Struct`, `Encoding` all define them — because purity is a per-class
+#    question (L103) and an impure receiver dispatches a prelude twin (L116).
+#    Defining one on a class the model already renders (String, Array, Integer, …)
+#    is still wrong: it makes every instance impure, and `Obs`'s `result_repr` is
+#    computed after the program ends, where nothing can dispatch.
 # 4. **A prelude method is the model of the CRuby builtin of that name** — it
 #    suppresses the shadow gate for its own name (L62), so fidelity is on this
 #    file. Match CRuby exactly, including the empty-receiver and tie cases.
@@ -1708,17 +1712,118 @@ class String
     out
   end
 
-  # `b` returns a copy in ASCII-8BIT. The model has no encodings: a String is a
-  # sequence of *characters*, so for ASCII input `b` is a copy and for anything
-  # else it would silently mean the wrong thing. `Purl.encode` is exactly that
-  # case — `"café".b.gsub(…) { |c| "%%%02X" % c.ord }` must yield `%C3%A9` (two
-  # UTF-8 bytes) and a character-wise model yields `%E9`. So non-ASCII gates
-  # rather than answering (L110).
-  def b
-    return __unsupported__("String#b on non-ASCII (byte strings are not modeled)") unless
-      each_char.all? { |c| c.ord < 128 }
-    dup
+  # ── Encodings (L117/L118) ──
+  #
+  # The model has exactly two: UTF-8 and ASCII-8BIT. A binary String's payload
+  # holds one *character per byte*, which is what makes `Purl.encode` —
+  # `component.b.gsub(…) { |c| "%%%02X" % c.ord }` — answer `caf%C3%A9` for
+  # `"café"` rather than the character-wise `caf%E9` (L110 gated on this).
+  #
+  # These are one line each over a Lean primitive, and they are here rather than
+  # in Lean for L115's reason: the *interesting* part of `force_encoding` is
+  # dispatching `Encoding#name` on its argument, which a builtin cannot do.
+  #
+  # There is a **third** CRuby encoding this model does not track: `US-ASCII`,
+  # which CRuby gives to every String it *synthesizes* rather than reads from
+  # source — `65.chr`, `1.to_s`, `:a.to_s`, `nil.to_s`, `[1,2].join`,
+  # `/a/.source`, `1.inspect` are all US-ASCII while a literal is UTF-8 [V].
+  # Tracking it needs a third tag threaded through ~40 String-producing rules;
+  # `slice-gates.md` carries it as a known gap.
+  #
+  # So `encoding` answers only what the tag actually determines: BINARY, or
+  # UTF-8 for a String holding a non-ASCII byte (which no US-ASCII String can).
+  # For an ASCII-only String it hands back `Encoding.__undetermined`, whose
+  # *observations* gate — it is still the right thing to pass to
+  # `force_encoding`, which is the only use the slice makes of it
+  # (`Identify.decode` ends `.force_encoding(component.encoding)`).
+  def encoding
+    return Encoding::BINARY if __binary?
+    return Encoding::UTF_8 unless __bytes.all? { |x| x < 128 }
+    Encoding.__undetermined
   end
+
+  # `force_encoding` **mutates and returns self**, which is why it goes through
+  # `__force_*` rather than the copying `__as_*` that `b` uses.
+  def force_encoding(enc)
+    # `__name_raw`, not `name`: the undetermined encoding refuses to *name*
+    # itself but is UTF-8-or-US-ASCII, and re-tagging as either leaves the bytes
+    # alone — `__force_utf8` gates on an invalid sequence in both readings.
+    n = enc.is_a?(Encoding) ? (enc.__name_raw || "UTF-8") : enc.to_s
+    if n == "ASCII-8BIT" || n == "BINARY" || n == "ascii-8bit" || n == "binary"
+      __force_binary
+    elsif n == "UTF-8" || n == "utf-8"
+      __force_utf8
+    else
+      __unsupported__("String#force_encoding to " + n)
+    end
+  end
+
+  def bytes = __bytes
+
+  def each_byte
+    return __unsupported__("Enumerator: String#each_byte without a block") unless block_given?
+    __bytes.each { |x| yield(x) }
+    self
+  end
+
+  # `b` is a *copy* in ASCII-8BIT, so it is the non-mutating primitive.
+  def b = __as_binary
+end
+
+# ─── Encoding ───────────────────────────────────────────────────────────────
+#
+# Two real instances and one honest placeholder are the whole class: the model's
+# Strings are either UTF-8 or ASCII-8BIT (L117), and `UNDETERMINED` stands for
+# "UTF-8 or US-ASCII, and this model does not track which" — see `String#encoding`
+# above for why that is a refusal rather than a guess.
+#
+# `ASCII_8BIT` is `BINARY` *by identity*, matching CRuby, where
+# `Encoding::BINARY.equal?(Encoding::ASCII_8BIT)` is true [V] — `BINARY` is the
+# alias and `ASCII-8BIT` the `name`, which is why `name` and `inspect` disagree
+# about which spelling to use.
+#
+# Anything else CRuby's Encoding can do (`list`, `default_external`,
+# `compatible?`, `Encoding.find`) is absent, so it gates by the shadow rule
+# rather than by a `method_missing` guard.
+class Encoding
+  def initialize(name)
+    @name = name
+  end
+
+  # The raw tag, `nil` for the undetermined one. Not CRuby API — it exists so
+  # `String#force_encoding` can act on an encoding that refuses to name itself.
+  def __name_raw = @name
+
+  def __gate = __unsupported__("Encoding of an ASCII-only String (US-ASCII vs UTF-8 is not tracked — L118)")
+
+  def name = @name.nil? ? __gate : @name
+
+  def to_s = name
+
+  def inspect
+    return __gate if @name.nil?
+    @name == "UTF-8" ? "#<Encoding:UTF-8>" : "#<Encoding:BINARY (ASCII-8BIT)>"
+  end
+
+  def ==(other)
+    return __gate if @name.nil?
+    return false unless other.is_a?(Encoding)
+    return other.__gate if other.__name_raw.nil?
+    other.__name_raw == @name
+  end
+
+  def eql?(other) = self == other
+
+  UTF_8 = new("UTF-8")
+  BINARY = new("ASCII-8BIT")
+  ASCII_8BIT = BINARY
+
+  # The "UTF-8 or US-ASCII, and the model does not know which" instance. One
+  # object, memoized, so identity is stable across calls the way the real
+  # constants' is.
+  UNDETERMINED = new(nil)
+
+  def self.__undetermined = UNDETERMINED
 end
 
 # ─── Struct ─────────────────────────────────────────────────────────────────

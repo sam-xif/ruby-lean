@@ -57,7 +57,10 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- stdout verbatim, with no rendering of any kind (L116).
     binArg m args fun a =>
       match strPayload? h a with
-      | some str => .ok .nil { m with out := m.out ++ str }
+      | some str =>
+        if isBinaryStr h a && hasHighByte str then
+          .unsupported "__write of a byte string holding a byte ≥ 0x80 (L118)"
+        else .ok .nil { m with out := m.out ++ str }
       | none => .unsupported "__write of a non-String"
   | "Object#__addr_str" =>
     -- The `0x…` an object's default `inspect` carries. The observation
