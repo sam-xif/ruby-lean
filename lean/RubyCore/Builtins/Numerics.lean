@@ -177,13 +177,15 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     | .flt x => .ok (if x == 0.0 then .nil else recv) m
     | _ => .unsupported "nonzero?"
   | "Integer#chr" =>
-    -- ASCII only: CRuby raises RangeError above 255, and 128..255 produces an
-    -- ASCII-8BIT string whose rendering depends on an encoding the model does
-    -- not carry, so that half gates rather than guessing [V].
+    -- CRuby raises RangeError above 255; 128..255 is one byte of an ASCII-8BIT
+    -- string [V].
     match recv with
     | .int n =>
       if n < 0 || n > 255 then .err Boot.rangeErrorId s!"{n} out of char range" m
-      else if n > 127 then .unsupported "Integer#chr above 127 (encoding)"
+      else if n > 127 then
+        -- 128..255 is a single **byte** in an ASCII-8BIT string (L117).
+        let (v, m) := allocStrEnc m (String.singleton (Char.ofNat n.toNat)) true
+        .ok v m
       else okStr m (String.singleton (Char.ofNat n.toNat))
     | _ => .unsupported "Integer#chr"
   | "Integer#to_i" => .ok recv m

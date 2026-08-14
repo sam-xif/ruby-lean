@@ -174,6 +174,14 @@ structure Object where
   payload : Payload := .none
   /-- Present only on Hash objects created with a default (value or proc). -/
   hashDflt : Option HashDefault := none
+  /-- String objects only: this String is **ASCII-8BIT** (`String#b`,
+      `Integer#chr` above 127). Then the invariant is that every character of the
+      `.str` payload is below 256 and *is* one byte — so `length`, `[]`, `ord`,
+      `each_char` and the matcher all operate per byte with no other change, which
+      is exactly what `Purl.encode` needs. A field on the object rather than on
+      the payload, because the payload's constructor arity is matched in ~40
+      places and an encoding is a property of the object anyway (L117). -/
+  binary : Bool := false
 deriving Inhabited
 
 /-- ObjId = index; allocation appends (ids never reused, artifact 01 §2). -/
@@ -364,7 +372,8 @@ def builtinMethods : List (ObjId × List String) := [
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
   (stringId, ["=~", "match", "match?", "scan", "__sub_rep", "__gsub_rep", "split", "to_i",
-              "ord", "chars", "to_f"]),
+              "ord", "chars", "to_f",
+              "__binary?", "__bytes", "__as_binary", "__as_utf8"]),
   (regexpId, ["escape", "quote", "union", "source", "options", "match", "match?", "=~", "===", "inspect",
               "to_s", "names", "==", "eql?", "hash"]),
   (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",

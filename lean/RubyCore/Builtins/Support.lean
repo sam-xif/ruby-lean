@@ -196,6 +196,16 @@ def mayDispatchToAry (h : Heap) (v : Value) : Bool :=
   (match lookup h v "to_ary" with | some (_, md) => md.builtin.isNone | none => false)
   || (match lookup h v "method_missing" with | some (_, md) => md.builtin.isNone | none => false)
 
+/-- Allocate a String with an explicit encoding tag (L117). -/
+def allocStrEnc (m : Machine) (s : String) (binary : Bool) : Value × Machine :=
+  let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s, binary }
+  (.ref o, { m with heap := h })
+
+/-- Is this value a binary (ASCII-8BIT) String? -/
+def isBinaryStr (h : Heap) : Value → Bool
+  | .ref o => (h.get o).binary
+  | _ => false
+
 def allocStr (m : Machine) (s : String) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s }
   (.ref o, { m with heap := h })

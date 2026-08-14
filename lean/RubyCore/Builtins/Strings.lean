@@ -122,6 +122,43 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match strPayload? h recv with
     | none => .unsupported "String#to_f on a non-String"
     | some str => .ok (.flt (parseFloatPrefix str)) m
+  | "String#__binary?" =>
+    .ok (.bool (isBinaryStr h recv)) m
+  | "String#__bytes" =>
+    -- The UTF-8 bytes of the receiver — already one per character when it is
+    -- binary, encoded when it is not.
+    match strPayload? h recv with
+    | none => .unsupported "String#bytes on a non-String"
+    | some str =>
+      let bs : List Nat :=
+        if isBinaryStr h recv then str.toList.map (·.toNat)
+        else str.toUTF8.toList.map (·.toNat)
+      let (v, m) := allocArr m (bs.map (fun b => Value.int (Int.ofNat b))).toArray
+      .ok v m
+  | "String#__as_binary" =>
+    -- Reinterpret as bytes: one character per UTF-8 byte (L117).
+    match strPayload? h recv with
+    | none => .unsupported "String#b on a non-String"
+    | some str =>
+      if isBinaryStr h recv then .ok recv m
+      else
+        let bytes := str.toUTF8.toList.map (fun b => Char.ofNat b.toNat)
+        let (v, m) := allocStrEnc m (String.mk bytes) true
+        .ok v m
+  | "String#__as_utf8" =>
+    -- Re-decode the byte characters as UTF-8. An **invalid** sequence cannot be
+    -- represented — a Lean `String` holds Unicode scalars, not bytes — so it
+    -- gates rather than producing a different string (L117).
+    match strPayload? h recv with
+    | none => .unsupported "String#force_encoding on a non-String"
+    | some str =>
+      if !isBinaryStr h recv then .ok recv m
+      else
+        let bytes := ByteArray.mk (str.toList.map (fun c => UInt8.ofNat c.toNat)).toArray
+        match String.fromUTF8? bytes with
+        | some decoded => let (v, m) := allocStr m decoded; .ok v m
+        | none =>
+          .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
   | "String#ord" =>
     match strPayload? h recv with
     | some str =>

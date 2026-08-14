@@ -3063,3 +3063,39 @@ the 3 are byte strings and nothing else. tier-0 **991 agree, 0 disagree**.
 fixed: the top of the tier-0 gate histogram is `Object#Rational` (25) and `Object#Complex`
 (18), which were blocked because their `inspect`/`==` could not live in the prelude. They can
 now — but they still have to be written. Dispatching repr was the prerequisite, not the work.
+
+## L117 — byte strings: the representation (step 1 of 2, IN PROGRESS)
+
+The last row of `homebrew/slice-gates.md`. `Purl.encode` is
+`component.b.gsub(/[^A-Za-z0-9\-._~:]/n) { |c| format("%%%02X", c.ord) }` and must answer
+`caf%C3%A9` for `"café"` — the two UTF-8 **bytes** — where a character-wise model answers
+`caf%E9`. `Identify.decode` is the inverse and ends
+`.force_encoding(component.encoding)`, so an encoding *tag* is needed, not just a byte view.
+
+**Representation.** `Object` gains `binary : Bool := false`. When set, the invariant is that
+every character of the `.str` payload is below 256 and **is** one byte. So `length`, `[]`,
+`ord`, `each_char` and the matcher all operate per byte with no other change — which is
+exactly what `encode` needs. A defaulted field on the *object* rather than on the payload,
+because the payload constructor's arity is matched in ~40 places and an encoding is a
+property of the object anyway.
+
+**Landed (this commit).** `allocStrEnc`/`isBinaryStr`; `String#__binary?`, `#__bytes`,
+`#__as_binary`, `#__as_utf8` primitives; `Integer#chr` above 127 now produces a one-byte
+binary String instead of gating.
+
+**`__as_utf8` gates on an invalid byte sequence, and that is a real limit, not a shortcut.**
+A Lean `String` holds Unicode scalars, not bytes, so `"\x80".force_encoding("UTF-8")` — which
+CRuby represents as a UTF-8-tagged string that happens to be invalid — has no faithful
+representation here. Closing that needs the payload itself to become a byte array, which is
+the ~40-site change this design was chosen to avoid. `identify_spec.rb:225` asserts
+`decode("%80").bytes == [0x80]` in the same example as the `café` case, so that one example
+stays gated on it.
+
+**Still to do (step 2).** The prelude half: an `Encoding` class (`UTF_8`, `BINARY`, `name`,
+`to_s`, `==`), `String#encoding`/`#force_encoding`/`#bytes`/`#b` over the four primitives
+above, binary-aware `inspect` (`\xNN` for a byte ≥ 0x80 — `Repr` can read `(h.get o).binary`),
+and `String#+` propagating the tag. See `homebrew/HANDOFF.md`.
+
+**Ratchet at this commit.** tier-0 **991 agree, 0 disagree**; Homebrew-slice **349 agree, 0
+disagree**, 3 gated. Unchanged — nothing yet *uses* the new primitives, which is why this is
+safe to land as a step.
