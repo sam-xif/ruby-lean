@@ -942,3 +942,48 @@ the executable half of the slice.
 
 Generated, not vendored (`corpus/domain-fuzz/` is gitignored), same as the other two
 Homebrew corpora. One prelude gap fell out of the first run: `Array#zip`.
+
+## N38 — the slice's three `control_invalid` cases are `#hash` values, and they stay that way
+
+`difftest run --tier slice` reports `{agree: 351, sut_unsupported: 1, control_invalid: 3}`.
+The one `sut_unsupported` is L117's byte-array-payload row. This entry is about the other
+three, because "control_invalid" reads like a corpus defect and it is not one.
+
+**All three are `Object#hash` *value* assertions** — `pkg_version_spec.rb:67` ("returns a
+hash based on the version and revision"), `version_spec.rb:289` ("hash equality"), and
+`purl_spec.rb:142`'s second expectation. `CRubyRunner.run_deterministic` runs the control **twice**
+and rejects the case when the runs differ (`control.py:180`); CRuby seeds `hash` per process,
+so they differ every time:
+
+    L67.0 -1387840817511769067 true   |   L67.0 -2788053335422320650 true
+
+**Note the `true` on both sides.** Every *predicate* in all three examples agrees across
+runs; only the integer printed beside it moves. So the examples are not nondeterministic —
+the **observation** is, because `__exp` prints the value as well as the predicate outcome.
+
+**And no model work could fix them.** The model gates these too (`unmodeled method
+Array#hash` / `String#hash`); the engine simply validates the oracle before consulting the
+SUT, so they are classified on the control's failure. More to the point, *no* value the model
+computes can agree with a per-process random seed — a faithful `hash` does not exist here.
+These three are permanently outside **value-level** difftest, for a property of Ruby rather
+than a deficiency of the model.
+
+**Deliberately not fixed, and it costs nothing real.** `#hash` is *defined* four times in the
+slice (`version.rb:66,705`, `pkg_version.rb:62`, `purl.rb:59`) and **called by nothing except
+the three examples that test it** — of 355 harvested programs exactly 3 assert on `.hash`,
+and they are exactly these. The CVE-matching path does not reach it: `vulnerability.rb`'s two
+`uniq` calls (`:87`, `:111`) are both `T::Array[String]`, and the model's `uniq` compares
+structurally through `valueEql` rather than dispatching `#hash`. So this is assertion-only
+code, off the real code path, and the headline finding is unaffected.
+
+**The fix, when it is worth doing, is here and not in Lean.** Have `rspec_harvest.py` emit a
+predicate-only `__exp` for a hash-valued expectation. The observation becomes deterministic,
+the three examples become tests of the hash **contract** (equal objects ⇒ equal hashes,
+`h[v2]` finds `v1`'s entry) — which is what they actually assert — and any deterministic
+model `hash` satisfies it. That is 3 recovered examples and a checkable property in place of
+an unfalsifiable value. It needs `Object#hash`/`String#hash`/`Array#hash` in the model, which
+do not exist today.
+
+*One inaccuracy to clean up with it:* L118's `byteStrAwareBids` lists `String#hash` and
+`Object#hash`, neither of which is a modeled bid. The list only ever filters, so they are
+inert — but they imply a rule that is not there.
