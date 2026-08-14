@@ -93,6 +93,34 @@ class ArrayLit(Node):
 
 
 @dataclass(frozen=True)
+class RegexLit(Node):
+    """A regex literal. `source` is emitted verbatim between slashes, so it must
+    already be valid Ruby regex source; `flags` is a subset of `imxn` (W4b keeps
+    the pool inside the engine's feature set)."""
+
+    source: str
+    flags: str = ""
+
+
+@dataclass(frozen=True)
+class RegexInterp(Node):
+    """`/pre#{e}post/flags` — an **interpolated** regex literal. Its own eval-order
+    obligation (W4c): the interpolation runs every time the literal is reached,
+    unless `/o`, which evaluates it once for the life of the program."""
+
+    parts: tuple  # alternating str and Node, like StrInterp
+    flags: str = ""
+
+
+@dataclass(frozen=True)
+class GvarRead(Node):
+    """`$~` / `$1` / `$&` — the match views (L101), which are *derived* from the
+    last MatchData rather than stored, so reading one is a semantic observation."""
+
+    name: str
+
+
+@dataclass(frozen=True)
 class Index(Node):
     recv: Node
     index: Node

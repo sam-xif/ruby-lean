@@ -987,3 +987,86 @@ do not exist today.
 *One inaccuracy to clean up with it:* L118's `byteStrAwareBids` lists `String#hash` and
 `Object#hash`, neither of which is a modeled bid. The list only ever filters, so they are
 inert — but they imply a rule that is not there.
+
+## N39 — W4b/W4c: the slice's own feature set, as tier-1 generation heads
+
+`PLAN.md` §9 recorded criterion 1's generated half as done at M8 (W4d, the domain
+generator). It was not: **W4b and W4c had not been started**, and the tier-1 grammar
+generated *nothing* the version + vulnerability slice leans on — `grep` for `Regex`, `scan`,
+`gsub`, `Comparable`, `<=>` or `Struct` across `tiers/tier1/` returned zero hits. So the
+generated half of criterion 1 was exercising control flow and the object model over a slice
+whose whole content is regexes and orderings.
+
+New `tiers/tier1/slice_heads.py` (+ `A.RegexLit`, `A.RegexInterp`, `A.GvarRead`):
+
+* **`regex_probe`** — a regex literal with the whole `String`/`Regexp`/`MatchData` surface:
+  `=~`, `match`, `match?`, `[0]`, `captures`, `to_a`, `pre_match`, `post_match`, `names`,
+  `named_captures`, `size`, `scan`, `sub`, `gsub` (both the replacement and the **block**
+  form), `split` with and without a limit, `tr`, and the `$~`/`$1`/`$&` views.
+* **`comparable_probe`** — a class that `include Comparable` over one ivar, then `<=>`, the
+  five operators, `between?`, `clamp`, `sort`/`sort_by`/`min`/`max`, and the `<=>`-returns-nil
+  arm that makes `<` raise `ArgumentError` (the `vulnerability.rb:202` shape).
+* **`regex_interp_probe`** — an interpolated literal reached repeatedly inside a loop, with
+  and without `/o`. This is **W4c**'s remaining pair of obligations.
+
+**Two design decisions.** *Probe blocks, not `_expr` heads*: a depth-limited regex head
+would generate patterns against random strings, where nearly every match fails and every
+program tests the same "no match" arm — so each family draws a pattern together with
+subjects it was written for and prints every intermediate. *The pattern pool is bounded by
+the engine's feature set* (W4b's own wording), with backreferences a deliberate 1-in-4 share
+because D2 lets `matchBR` gate and swamping the head with gates would cost most of the head.
+
+**W4c needed no tier-1.5 change, and that is the point.** §9 called for "extending the
+tier-1.5 generator with `<=>`/`Comparable` argument-order probes" — but tier 1.5 *has* no
+generator: it is `tier1.programs().map(add_eval_order_probes)`, a generic AST→AST transform.
+Extending tier 1 **is** extending tier 1.5. Both operands of every generated comparison are
+now probe-wrapped, including `@v` and `o` inside the user's own `<=>` body, so the trace
+records the evaluation order through Comparable's dispatch.
+
+### What it found: six wrong answers, none of them gates
+
+The heads paid for themselves on the first run. **Every one was a wrong answer** — the class
+the ratchet cannot catch, in code that had been green for weeks. The fixes and their probe
+evidence are `lean/implementation-notes.md` **L120**; in brief:
+
+1. `split` pushed `nil` for an unmatched capture group (`["", "1", "2", nil]` for
+   `["", "1", "2"]`);
+2. the `split` limit was spent on a separator it had already decided to skip
+   (`"abc".split(//, 2)` → `["abc"]`);
+3. the zero-width skip rule tested offset 0 rather than *the current field start*
+   (`"aab".split(/a*/)` → `["", "", "b"]`);
+4. the prelude's block-form `sub`/`gsub` looped over a **shrinking subject**, re-anchoring the
+   pattern at every step (`"12".gsub(/\A\d/) { "X" }` → `"XX"` for `"X2"`);
+5. `String#index` with a Regexp raised `NoMethodError` instead of answering an offset;
+6. `Symbol` had `include Comparable` with **no `<=>`**, so `:k < :v` raised where CRuby
+   answers `true` — the `include` had been inert since it was written.
+
+Plus the backref globals, which no builtin was maintaining: `scan`/`sub`/`gsub` must leave `$~`
+at their last match, and `split` with a Regexp must *clear* it.
+
+(6) is worth its own note for what it says about the method: it is **not a regex bug and not in
+any head's feature area**. Adding heads perturbs the draw sequence, so a new head finds old
+bugs in the parts of the grammar it never touches.
+
+### Measured
+
+tier 1 at n=250 × seeds 1/2/3 and n=200 × seed 7: **0 disagreements**. tier 1.5 at n=200 ×
+seeds 7/1/2: **0 disagreements**. The other four corpora unchanged and green (see the
+`PLAN.md` §9 table). `[:v, :k].sort` still *gates* — `Array#sort`'s `SortKey` covers numerics
+and strings only — which is safe and left alone.
+
+### Not fixed, and recorded rather than left implied
+
+*(Also L120; kept here because it is the seventh thing the heads exposed.)*
+
+**`$~` is frame-local in CRuby and a plain global in the model.** `def inner; "zz".match(/z/);
+end` followed by `$~` in the caller answers `"a"` (the caller's own earlier match) in CRuby
+and `"z"` in the model. A **wrong answer**, not a gate, and unreachable by every current
+corpus (the heads put matches at top level; no generated method body contains one).
+
+It is recorded rather than fixed because the fix has a real design tension, not because it is
+hard: making `$~` a frame slot would mean a prelude-implemented `sub`/`gsub` could no longer
+set its *caller's* `$~` — which CRuby's C implementations do — so frame-local storage needs a
+companion "set the caller's match" primitive to avoid trading this wrong answer for another.
+`homebrew/slice-gates.md` carries it with the other known gaps; it belongs near the top of
+that list, because unlike the rest of them it is a wrong answer.

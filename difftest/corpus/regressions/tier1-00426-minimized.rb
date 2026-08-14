@@ -1,0 +1,41 @@
+def m0
+  (a = 0)
+  0
+end
+def m1
+  (a = 0)
+  0
+end
+class C0
+end
+(a = nil)
+(rx0 = /\d+/)
+(sj0 = "1.2.3")
+puts(rx0.source().inspect())
+puts(rx0.to_s().inspect())
+puts((sj0 =~ rx0).inspect())
+puts(sj0.match?(rx0).inspect())
+puts(rx0.match?(sj0).inspect())
+(md0 = rx0.match(sj0))
+puts(md0.nil?().inspect())
+puts(md0.inspect())
+puts((md0 && md0[0]).inspect())
+puts((md0 && md0.captures()).inspect())
+puts((md0 && md0.to_a()).inspect())
+puts((md0 && md0.pre_match()).inspect())
+puts((md0 && md0.post_match()).inspect())
+puts((md0 && md0.names()).inspect())
+puts((md0 && md0.named_captures()).inspect())
+puts((md0 && md0.size()).inspect())
+puts(sj0.scan(rx0).inspect())
+puts(sj0.sub(rx0, "-").inspect())
+puts(sj0.gsub(rx0, "-").inspect())
+puts(sj0.split(rx0).inspect())
+puts(sj0.tr("a-z", "A-Z").inspect())
+puts((sj0.gsub(rx0) { |w|
+w.upcase()
+}).inspect())
+puts($~.inspect())
+puts($1.inspect())
+puts($&.inspect())
+puts(0)

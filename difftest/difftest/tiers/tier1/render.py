@@ -253,6 +253,15 @@ def expr(node) -> str:
                 else:
                     out += "#{" + expr(p) + "}"
             return out + '"'
+        case A.RegexLit(source, flags):
+            return f"/{source}/{flags}"
+        case A.RegexInterp(parts, flags):
+            out = "/"
+            for pp in parts:
+                out += pp if isinstance(pp, str) else "#{" + expr(pp) + "}"
+            return out + "/" + flags
+        case A.GvarRead(name):
+            return name
         case A.ArrayLit(items):
             return "[" + ", ".join(expr(i) for i in items) + "]"
         case A.Index(recv, index):
