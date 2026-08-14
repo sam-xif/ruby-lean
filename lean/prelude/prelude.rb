@@ -766,6 +766,19 @@ end
 
 class Symbol
   include Comparable
+
+  # Symbol ordering *is* String ordering of the names [V]. Without this the
+  # `include` above was inert and worse than inert: `Comparable#<` found a `nil`
+  # `<=>` and raised `ArgumentError: comparison of Symbol with :v failed` where
+  # CRuby answers `true` — a **disagreement**, not a gate, and the one the W4b
+  # heads turned up first (N39).
+  #
+  # Only Symbol compares to Symbol; `:k <=> 1` and `:k <=> "k"` are both nil [V],
+  # and Comparable turns that nil into the ArgumentError for the operators.
+  def <=>(other)
+    return nil unless other.is_a?(Symbol)
+    to_s <=> other.to_s
+  end
 end
 
 # ─── Hash ───────────────────────────────────────────────────────────────────
@@ -1573,16 +1586,26 @@ class String
   # two-argument replacement form stays a primitive (`__sub_rep`/`__gsub_rep`)
   # and this only dispatches to it, so the common path costs one extra send.
   #
-  # The loop is written on `match` + `pre_match`/`post_match` rather than on
-  # offsets, and it advances past a **zero-width** match by one character —
-  # without that, `"aaa".gsub(/a*/) { "X" }` would not terminate.
+  # The loop walks **absolute offsets into `self`** via `__search_at`, and that is
+  # not a style choice. The earlier version matched against a progressively
+  # shortened `rest`, which re-anchored the pattern at every step: `\A` and `^`
+  # matched at each remainder's start, so `"12".gsub(/\A\d/) { "X" }` answered
+  # `"XX"` where CRuby answers `"X2"` — a **wrong answer** that no corpus reached
+  # until the W4b heads generated anchored patterns (N39). Offsets also make `$~`
+  # come out right: `__search_at` sets it per iteration, so a block can read `$1`,
+  # and the spans are relative to the whole string rather than to a remainder.
+  #
+  # A **zero-width** match advances one character, without which
+  # `"aaa".gsub(/a*/) { "X" }` would not terminate.
   def sub(pat, rep = nil, &blk)
     return __sub_rep(pat, rep) unless rep.nil?
     return __unsupported__("String#sub with neither a replacement nor a block") if blk.nil?
     re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
-    m = re.match(self)
+    m = __search_at(re, 0)
     return self if m.nil?
-    m.pre_match + blk.call(m[0]).to_s + m.post_match
+    b = m.begin(0)
+    e = m.end(0)
+    self[0, b].to_s + blk.call(m[0]).to_s + self[e, length - e].to_s
   end
 
   def gsub(pat, rep = nil, &blk)
@@ -1590,22 +1613,31 @@ class String
     return __unsupported__("String#gsub with neither a replacement nor a block") if blk.nil?
     re = pat.is_a?(Regexp) ? pat : Regexp.new(Regexp.escape(pat))
     out = ""
-    rest = self
+    cur = 0        # absolute offset of the first character not yet copied out
+    last = nil     # begin offset of the last successful match, for `$~`
     guard = 0
-    while guard <= length
+    while guard <= length + 1
       guard += 1
-      m = re.match(rest)
+      m = __search_at(re, cur)
       break if m.nil?
-      out += m.pre_match + blk.call(m[0]).to_s
-      adv = m.end(0)
-      if adv == m.begin(0)
-        out += rest[adv, 1].to_s
-        adv += 1
+      b = m.begin(0)
+      e = m.end(0)
+      last = b
+      out += self[cur, b - cur].to_s + blk.call(m[0]).to_s
+      if e == b
+        out += self[e, 1].to_s
+        cur = e + 1
+      else
+        cur = e
       end
-      break if adv > rest.length
-      rest = rest[adv, rest.length - adv]
+      break if cur > length
     end
-    out + rest
+    out += self[cur, length - cur].to_s if cur <= length
+    # CRuby leaves `$~` at the **last successful** match, not at the failed search
+    # that ended the loop [V]. Re-searching from that match's own start finds it
+    # again (leftmost-first), which is cheaper than carrying the MatchData.
+    __search_at(re, last) unless last.nil?
+    out
   end
 
   # `partition`/`rpartition` split around the first / last occurrence of a
@@ -1614,9 +1646,16 @@ class String
   # `index`/`rindex` for a String needle (a Regexp needle would go through the
   # matcher and is not needed here).
   def index(needle, start = 0)
-    n = needle.length
     i = start < 0 ? length + start : start
     i = 0 if i < 0
+    # A **Regexp** needle searches with the engine and sets `$~`, exactly as
+    # `match` does [V]. Without this branch `needle.length` raised NoMethodError
+    # where CRuby answers an offset — a wrong answer, not a gate (N39).
+    if needle.is_a?(Regexp)
+      m = __search_at(needle, i)
+      return m.nil? ? nil : m.begin(0)
+    end
+    n = needle.length
     while i + n <= length
       return i if self[i, n] == needle
       i += 1
@@ -1625,6 +1664,9 @@ class String
   end
 
   def rindex(needle, start = nil)
+    # Backward search with a pattern is its own algorithm (CRuby scans right to
+    # left for the *last* match); not modeled rather than approximated.
+    return __unsupported__("String#rindex with a Regexp needle") if needle.is_a?(Regexp)
     n = needle.length
     i = (start.nil? ? length - n : (start < 0 ? length + start : start))
     i = length - n if i > length - n

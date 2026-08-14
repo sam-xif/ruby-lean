@@ -101,6 +101,23 @@ def charSlice (s : String) (a b : Nat) : String :=
 def setMatchGlobals (m : Machine) (md : Option Value) : Machine :=
   { m with globals := m.globals.filter (fun p => p.1 != "$~") ++ [("$~", md.getD .nil)] }
 
+/-- Leave `$~` at the **last** of a scan's matches, or at nil when there were
+    none. Every multi-match builtin owes this: CRuby's `scan`/`sub`/`gsub` all
+    leave the backref globals set, so `"a1b2".scan(/\d/); $~[0]` is `"2"` and
+    `"abc".gsub(/z/, "-"); $~` is nil [V]. Missing it was a wrong answer rather
+    than a gate, because `$~` simply kept an older match (N39). -/
+def setLastMatch (m : Machine) (s : String) (src : String) (opts : Nat)
+    (hits : List (Nat × Nat × Array (Option (Nat × Nat)))) (bin : Bool) : Machine :=
+  match hits.getLast? with
+  | none => setMatchGlobals m none
+  | some (_, _, caps) =>
+    -- group names are a property of the pattern, not of the match, so they are
+    -- re-derived here rather than threaded through `allMatches` — without them
+    -- `$~.names` after a `gsub` over a named pattern would come back empty
+    let names := match Rx.parse src opts with | .ok r => r.names | .error _ => []
+    let (md, m) := allocMData m s caps names bin
+    setMatchGlobals m (some md)
+
 /-- `Regexp` and `MatchData` rules, plus the pattern-taking `String` methods. -/
 def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
@@ -286,23 +303,49 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
         -- same is true of `=~` and `match?` [V], so there is one code path.
         let bid' := "Regexp#" ++ (bid.drop 7)
         regexApply bid' m pat recv
+  | "String#__search_at" =>
+    -- Search **the whole receiver** from character offset `pos`, setting `$~` the
+    -- way `Regexp#match` does. The primitive the prelude's block-form `sub`/`gsub`
+    -- is written on (N39): a loop over a *shrinking* subject re-anchors at every
+    -- step, so `"12".gsub(/\A\d/) { "X" }` answered `"XX"` where CRuby answers
+    -- `"X2"` — a wrong answer, not a gate. Anchors here are absolute (`.bos` is
+    -- `pos == 0`), which is exactly what makes offset-based iteration faithful.
+    match args, strPayload? h recv with
+    | [pat, .int pos], some s =>
+      match regexpParts? h pat with
+      | none => .unsupported "String#__search_at with a non-Regexp pattern"
+      | some (src, opts) =>
+        let start := if pos < 0 then 0 else pos.toNat
+        if start > s.length then .ok .nil (setMatchGlobals m none)
+        else match runSearch src opts s start with
+          | .gate why => .unsupported why
+          | .miss => .ok .nil (setMatchGlobals m none)
+          | .hit _ _ caps names =>
+            let (md, m) := allocMData m s caps names (isBinaryStr h recv)
+            .ok md (setMatchGlobals m (some md))
+    | _, _ => .unsupported "String#__search_at arity"
   | "String#scan" =>
     binArg m args fun pat =>
       match strPayload? h recv, regexpParts? h pat with
       | some s, some (src, opts) => scanAll m s src opts (isBinaryStr h recv)
       | _, _ => .unsupported "String#scan"
   | "String#split" =>
+    -- `split` with a **Regexp** separator *clears* `$~`, even when the pattern
+    -- matched; with a String separator it leaves the previous match alone [V].
+    -- (`scan` by contrast leaves its last match — see `setLastMatch`.) N39.
+    let clearIfRe : Machine → Value → Machine := fun m pat =>
+      if (regexpParts? h pat).isSome then setMatchGlobals m none else m
     match args, strPayload? h recv with
     | [], some s => splitBy m s.trimLeft awkSep 0 0 (isBinaryStr h recv)
-    | [pat], some s => splitOn m h s pat 0 (isBinaryStr h recv)
-    | [pat, .int lim], some s => splitOn m h s pat lim (isBinaryStr h recv)
+    | [pat], some s => splitOn (clearIfRe m pat) h s pat 0 (isBinaryStr h recv)
+    | [pat, .int lim], some s => splitOn (clearIfRe m pat) h s pat lim (isBinaryStr h recv)
     | _, _ => .unsupported "String#split arity"
   | "String#__split_never" =>
     match args, strPayload? h recv with
     | [pat], some s =>
       let bin := isBinaryStr h recv
       match regexpParts? h pat with
-      | some (src, opts) => splitBy m s src opts 0 bin
+      | some (src, opts) => splitBy (setMatchGlobals m none) s src opts 0 bin
       | none =>
         match strPayload? h pat with
         -- A String separator is a *literal*, not a pattern, so it is escaped
@@ -369,6 +412,9 @@ where
     match allMatches src opts s (s.length + 2) 0 [] with
     | .error why => .unsupported why
     | .ok hits =>
+      -- `scan` leaves `$~` at its **last** match, and at `nil` when there were
+      -- none [V] — `"a1b2".scan(/\d/); $~[0]` is `"2"` (N39).
+      let m := setLastMatch m s src opts hits bin
       -- With no groups `scan` yields strings; with groups it yields arrays of
       -- the captures [V].
       let (vs, m) := hits.foldl (fun (acc, m) (a, b, caps) =>
@@ -398,37 +444,55 @@ where
       | none, _ => .unsupported "String#split with a non-String, non-Regexp pattern"
   splitBy (m : Machine) (s : String) (src : String) (opts : Nat) (lim : Int)
       (bin : Bool) : BRes :=
-    -- A positive limit caps the number of fields, so the scan stops after
-    -- `lim - 1` separators and the remainder is the last field verbatim [V].
-    let maxHits : Nat := if lim > 0 then (lim - 1).toNat else s.length + 2
+    -- An **empty** subject splits to `[]` whatever the pattern and the limit —
+    -- including `-1`, which otherwise keeps every trailing empty field [V].
+    if s.isEmpty then let (v, m) := allocArr m #[]; .ok v m else
     match allMatches src opts s (s.length + 2) 0 [] with
     | .error why => .unsupported why
     | .ok allHits =>
-      let hits := allHits.take maxHits
-      -- A separator match ends the current piece at `a` and starts the next at
+      -- A separator match ends the current field at `a` and starts the next at
       -- `b`; for a zero-width separator those coincide, which is what makes
-      -- `"abc".split("")` give three pieces rather than one [V]. A zero-width
-      -- match at offset 0 is not a separator at all and adds nothing.
+      -- `"abc".split("")` give three pieces rather than one [V].
       --
-      -- A **capturing** separator also contributes its groups to the result:
-      -- `"a1b".split(/(\d)/)` is `["a", "1", "b"]` [V].
-      let (pieces, last) := hits.foldl (fun (acc, cur) (a, b, caps) =>
-        if b == a && a == 0 then (acc, cur)
+      -- A **capturing** separator also contributes its groups:
+      -- `"a1b".split(/(\d)/)` is `["a", "1", "b"]` [V]. An **unmatched** group
+      -- contributes *nothing* — not a `nil` element that trailing-trim later
+      -- removes, but never pushed at all, even when more fields follow:
+      -- `"a1b".split(/(\d)(x)?/)` and `"a1b".split(/(x)?(\d)/)` are both
+      -- `["a", "1", "b"]` [V]. So `split` never returns a `nil` (N39).
+      --
+      -- The fold carries the field start `cur` *and* the number of separators
+      -- taken, because both of the remaining rules need them (N39):
+      let step := fun (acc : List String × Nat × Nat)
+          (h : Nat × Nat × Array (Option (Nat × Nat))) =>
+        let (pieces, cur, nsep) := acc
+        let (a, b, caps) := h
+        -- (1) A zero-width match **at the current field start** is not a
+        -- separator: it would contribute an empty field where CRuby contributes
+        -- none. This is why `"aab".split(/a*/)` is `["", "b"]` and not
+        -- `["", "", "b"]` [V] — the empty match at offset 2, where the previous
+        -- match ended, is skipped. Testing `a == 0` instead (the old rule) only
+        -- caught the special case at the front of the string.
+        if b == a && a == cur then acc
+        -- (2) A positive limit caps the number of *fields*, so stop after
+        -- `lim - 1` separators — counted **here** rather than by pre-truncating
+        -- the hit list, because a match skipped by (1) must not consume one of
+        -- them: `"abc".split(//, 2)` is `["a", "bc"]`, and pre-truncation spent
+        -- the budget on the skipped zero-width match at 0 and answered
+        -- `["abc"]` [V].
+        else if lim > 0 && Int.ofNat nsep ≥ lim - 1 then acc
         else
-          let groups := (caps.toList.drop 1).map fun sp =>
-            match sp with
-            | some (x, y) => some (charSlice s x y)
-            | none => none
-          (acc ++ [some (charSlice s cur a)] ++ groups, b)) ([], 0)
-      let pieces := pieces ++ [some (charSlice s last s.length)]
+          let groups := (caps.toList.drop 1).filterMap fun sp =>
+            sp.map fun (x, y) => charSlice s x y
+          (pieces ++ [charSlice s cur a] ++ groups, b, nsep + 1)
+      let (pieces, last, _) := allHits.foldl step ([], 0, 0)
+      let pieces := pieces ++ [charSlice s last s.length]
       -- `split` drops *trailing* empty fields — unless a limit was given, where
       -- a positive one keeps them and a negative one keeps them all [V].
       let trimmed :=
-        if lim == 0 then (pieces.reverse.dropWhile (· == some "")).reverse else pieces
-      let (vs, m) := trimmed.foldl (fun (acc, m) p =>
-        match p with
-        | some str => let (v, m) := allocStrEnc m str bin; (acc.push v, m)
-        | none => (acc.push Value.nil, m)) (#[], m)
+        if lim == 0 then (pieces.reverse.dropWhile (· == "")).reverse else pieces
+      let (vs, m) := trimmed.foldl (fun (acc, m) str =>
+        let (v, m) := allocStrEnc m str bin; (acc.push v, m)) (#[], m)
       let (v, m) := allocArr m vs
       .ok v m
   subst (m : Machine) (s : String) (src : String) (opts : Nat) (rep : String)
@@ -436,6 +500,8 @@ where
     match allMatches src opts s (if global then s.length + 2 else 1) 0 [] with
     | .error why => .unsupported why
     | .ok hits =>
+      -- as `scan`: `sub`/`gsub` leave `$~` at their last match [V] (N39)
+      let m := setLastMatch m s src opts hits (isBinaryStr m.heap recvV)
       if rep.any (· == '\\') then
         -- `\1` / `\0` / `\k<name>` in the replacement is its own sublanguage;
         -- gate rather than emit the backslash literally.

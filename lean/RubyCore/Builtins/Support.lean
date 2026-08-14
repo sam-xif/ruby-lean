@@ -283,6 +283,7 @@ def byteStrAwareBids : List String :=
    "String#__force_binary", "String#__force_utf8",
    -- pattern methods: the subject's tag rides on the MatchData and its slices
    "String#=~", "String#match", "String#match?", "String#scan", "String#split",
+   "String#__search_at",
    "String#__split_never", "String#__sub_rep", "String#__gsub_rep",
    "Regexp#match", "Regexp#match?", "Regexp#=~", "Regexp#===",
    "MatchData#[]", "MatchData#to_s", "MatchData#pre_match", "MatchData#post_match",

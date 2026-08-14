@@ -3190,3 +3190,150 @@ identity the model gets differently, and the fix for all of it is the third tag.
 gated** (was 349/3); domain-fuzz **10,000 inputs, 0 disagree**; tier-4 **25 agree, 0
 disagree**; the W2a regex oracle **7,418/7,418 byte-identical, 0 fuel exhaustions**. The
 gate histogram's byte-string rows are down to the single `%80` row.
+
+## L119 — the metatheory had not compiled since L101, and now it builds in one command
+
+`AGENTS.md` and `homebrew/PLAN.md` §9 both assert the metatheory as done and axiom-clean.
+**14 of the 15 files in `RubyCore/Proof/` did not build.** Only `HeapFacts.lean` — the one file
+that does not transitively import `Step.lean` — compiled. Found by following `PLAN.md` §4
+norm 5 ("build the `Proof/` files at batch boundaries; a green ratchet does not mean the
+proofs still work") for the first time in a while.
+
+Three independent breaks, none of them deep, each a statement drifting away from the `stepFn`
+it was written against:
+
+1. **`Step.varGvar` vs `matchGlobal` (broken by L101, 24 commits earlier).** The constructor
+   said a global read is `withCtl m (.value (m.getGlobal x))`. L101 made `$1`…`$9`, `$&`,
+   `` $` `` and `$'` **views** of the last match, so `stepFn` now consults `matchGlobal`
+   first — and the claim stopped being true for exactly those names. `Step.sound`'s
+   `varGvar` case became unprovable, which took down `Adequacy`, `TypeSafety`
+   (`invariant_sound`), `StaticSoundness` (`check_sound`), `SorbetSafety`, the T5 files and
+   `RunCert` with it.
+2. **`StaticSoundness` vs `reprSensitive` (broken by L103).** The `def` case still
+   `by_cases`'d on `reprSensitive.contains name`, a constant L103 deleted when it retired the
+   global `reprPure` flag for a per-class test. The proof was case-splitting on something that
+   no longer exists.
+3. **`T5Loop`'s hard-coded object id.** `def clsA : ObjId := 37` with a comment reading
+   "id = `initHeap.size` = 37". `initHeap` is now **40** objects, so `clsA` pointed at an
+   existing boot object and `dispatch_step`'s `rfl` could not close.
+
+**The fixes, and why they are the honest ones rather than the quick ones.**
+
+For (1) the cheap repair is to narrow `varGvar` with a side condition and move on. That
+silently shrinks what `Step` *claims*: the relation would stop modelling `$1` reads, and
+`Step.complete` — which is stated relative to a fragment predicate — would still typecheck
+while covering less. So the hypothesis is the semantic one `stepFn` actually branches on
+(`matchGlobal m x = none`), **and** `Adequacy`'s `FragExpr` now excludes those names
+syntactically (`| .var .gvar x => ¬ isMatchView x`), with
+`matchGlobal_eq_none_of_not_view` bridging the two. Completeness therefore still holds *and*
+the fragment's boundary is written down where the reader can see it — the same treatment
+`Step.lean` already gives send, rescue and class definitions.
+
+The part that keeps it from happening again: **`isMatchView` is factored out of `matchGlobal`
+itself**, so the proof and the interpreter test the same definition. A predicate duplicated
+in the proof would drift exactly as the original claim did.
+
+For (3), `clsA` is now `Boot.initHeap.objs.size` — computed, not written down. The boot heap
+will grow again.
+
+For (2) the dead case split is simply gone, and `int_bin_dispatch` (`BuiltinConformance`)
+gained the hypothesis it had been assuming silently: L116 put a repr-twin deferral in front of
+every builtin, and arithmetic never triggers it, but the *statement* has to say so. The three
+instantiations discharge it with `simp [Builtins.reprDefer?]`.
+
+**Axiom-clean, verified rather than asserted.** `invariant_sound`, `invariant_sound_from`,
+`Static.check_sound`, `Step.sound`/`complete`/`deterministic`/`adequacy` and
+`T5Loop.t5_loop_type_safe` each depend on `propext`, `Classical.choice`, `Quot.sound` and
+nothing else — no `sorryAx`, no project-local axiom.
+
+**The root cause was process, so the fix is a target and a script.** `Proof/` is off
+`defaultTargets` for a good reason (it is slow and the SUT does not depend on it) and that is
+precisely why it rotted. Added:
+
+* a `Metatheory` lean_lib globbing `RubyCore.Proof.+`, so `lake build Metatheory` builds all
+  15 files at once — it did not exist, and checking the metatheory previously meant knowing
+  to build 15 modules by hand;
+* `scripts/check-proofs.sh`, which does that *and* re-runs `#print axioms`, exiting non-zero
+  on a failure or a `sorryAx`. One command, so norm 5 is cheap enough to actually obey.
+
+*A method note, since it cost real time.* My first attempt at checking these ran
+`timeout 3000 lake env lean <file>` in a loop — and macOS has no `timeout`, so every
+invocation failed to launch, the `grep -c` counted zero errors from empty output, and I
+briefly believed all 15 files were green. `lake build +RubyCore.Proof.X` is the command that
+actually reports.
+
+## L120 — six wrong answers in `split`, `gsub`, `index` and `Symbol`, found by the W4b heads
+
+The model fixes forced by `difftest`'s new tier-1 generation heads (N39, which is the story of
+the heads; this is the story of the bugs). All six were **wrong answers**, not gates: the
+corpora had been green for weeks over code that answered incorrectly on inputs no corpus
+generated. Each fix follows the same discipline — a `show(label) { … }` probe diffed against
+CRuby *first*, then the implementation. The probes are worth reproducing when touching any of
+this; they encode rules that are not guessable.
+
+**1. `split` never returns `nil`.** An unmatched capture group in a separator contributes
+*nothing* — it is not a `nil` element that trailing-trim removes later. `"a1b".split(/(\d)(x)?/)`
+and `"a1b".split(/(x)?(\d)/)` are both `["a", "1", "b"]` [V], with the unmatched group in the
+middle and at the front respectively. The old code pushed `nil`, which surfaced as
+`["", "1", "2", nil]` for `Version`'s own `^(\d+)\.(\d+)(?:\.(\d+))?$`.
+
+**2. The zero-width skip rule is "at the current field start", not "at offset 0".** A separator
+match that is empty *and* begins where the previous match ended is not a separator:
+`"aab".split(/a*/)` is `["", "b"]`, not `["", "", "b"]` [V] — the empty match at offset 2 is
+skipped. Offset 0 is just that rule's special case at the front of the string, and testing for
+it was the whole of the old rule.
+
+**3. A positive limit counts *effective* separators.** `maxHits` pre-truncated the hit list to
+`lim - 1`, which charged the budget for matches rule 2 then skipped: `"abc".split(//, 2)`
+answered `["abc"]` instead of `["a", "bc"]`. The count moved inside the fold, which is also
+where `cur` lives — the two rules are entangled and cannot be applied in separate passes.
+
+**4. An empty subject splits to `[]`** whatever the pattern and the limit, `-1` included [V].
+
+**5. The prelude's block-form `sub`/`gsub` re-anchored the pattern.** It looped over a
+progressively shortened `rest`, so `\A` and `^` matched at *each remainder's* start:
+`"12".gsub(/\A\d/) { "X" }` answered `"XX"` where CRuby answers `"X2"`. Rewritten over absolute
+offsets into `self` via a new `String#__search_at(re, pos)` primitive — faithful precisely
+because the engine's anchors are absolute (`Rx.Match`'s `.bos` is `pos == 0`), so a search from
+`pos` does *not* re-anchor. Two things fall out for free: `$~` is now set per iteration, so a
+block can read `$1`; and its spans are relative to the whole string.
+
+This is the L110 design being wrong rather than incomplete, and it had been green since L110
+because no corpus program `gsub`s with an anchored pattern.
+
+**6. The backref globals had no owner.** `scan`, `sub` and `gsub` must leave `$~` at their
+**last** match (nil when there were none), while `split` with a **Regexp** *clears* it and
+`split` with a String leaves the previous match alone [V]. `Regexp#match`/`String#[]` were the
+only rules maintaining `$~` at all, so after a `gsub` the program saw a stale match — the
+quietest possible wrong answer. `setLastMatch` is the shared helper; it re-derives the group
+*names* from the pattern, since `allMatches` drops them and `$~.names` would otherwise come
+back empty.
+
+**7. `String#index` with a Regexp raised.** `"abab".index(/b/)` was a `NoMethodError` on
+`Regexp#length` where CRuby answers `1`. One line over `__search_at`, which also gets `$~`
+right. `rindex` with a Regexp **gates**: a backward scan for the *last* match is its own
+algorithm and approximating it would be a wrong answer of exactly the kind this entry is about.
+
+**8. `Symbol` had `include Comparable` and no `<=>`.** So `:k < :v` raised
+`ArgumentError: comparison of Symbol with :v failed` where CRuby answers `true` — the `include`
+had been inert since it was written, and worse than inert. Symbol ordering is String ordering
+of the names, and only Symbol compares to Symbol (`:k <=> 1` and `:k <=> "k"` are both nil [V]).
+Four lines of prelude. `[:a, :b].sort` still **gates**, because `Array#sort`'s `SortKey` covers
+numerics and strings only — a gate, and left alone.
+
+**One regression of my own, caught by re-running the L118 probes.** The prelude's `gsub` now
+calls `__search_at`, which was not in `byteStrAwareBids` — so L118's byte-string safety net
+refused `Purl.encode("café")`, the very case L118 exists to answer. The net working as designed;
+the allowlist just needed the new primitive. Worth knowing that L118's net will do this to every
+future primitive that touches a String, which is the intended cost.
+
+**Ratchet.** tier-0 **991 agree, 0 disagree** (byte-identical to before); Homebrew-slice **351
+agree, 0 disagree, 1 gated**; domain-fuzz **10,000 inputs, 0 disagree**; tier-4 **25 agree, 0
+disagree**; tier 1 at n=250 × 3 seeds and tier 1.5 at n=200 × 3 seeds **0 disagree**; the W2a
+regex oracle **7,418/7,418**.
+
+**Recorded, not fixed: `$~` is frame-local in CRuby and a plain global here.** A match inside
+any method leaks to its caller — a wrong answer, unreached by every corpus. `homebrew/slice-gates.md`
+carries it at the top of the known-gaps list, with the design tension that makes it more than a
+one-liner: a `$~` frame slot would stop a *prelude-implemented* `sub`/`gsub` from setting its
+**caller's** `$~`, which CRuby's C versions do.
