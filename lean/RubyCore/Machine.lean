@@ -162,18 +162,6 @@ inductive Kont where
       (artifact 02 §6 — a definition hook is ordinary dispatch on the defining
       module, not a new evaluation rule). -/
   | methodAddedK (name : String)
-  /-- `Array.try_convert(x)` dispatched `x.to_ary` (L72): the in-flight value is
-      its result — an Array is the answer, nil is nil, anything else is a
-      `TypeError` naming both classes. -/
-  | tryConvertK (srcClass : String)
-  /-- `String.try_convert(x)` dispatched `x.respond_to?(:to_str)` (L111): the
-      in-flight value is that answer. It has to be *dispatched*, not read off the
-      method table — Homebrew's `Version` overrides `respond_to?` to hide `to_str`
-      on its NULL instance, and reading the table would call a method the object
-      says it does not have. -/
-  | strConvRespK (recv : Value)
-  /-- `String.try_convert` dispatched `x.to_str`: check the result is a String. -/
-  | strConvResK (srcClass : String)
   /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
       in-flight value is that initializer's (discarded) result; raise the freshly
       built instance. -/

@@ -56,46 +56,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
       -- `Math` module functions (`Math.sqrt`/`exp`/`log`): a real double transform,
       -- special-cased on the receiver id since they are singleton methods of the
       -- `Math` constant (no eigenclass machinery at boot). Args coerce Int→Float.
-      if o == Boot.stringId && mname == "try_convert" then
-        -- `String.try_convert(x)`: x if it is a String, `x.to_str` if it has one,
-        -- else nil [V]. A class method, so it is dispatched here (L106).
-        match args with
-        | [a] =>
-          match Builtins.strPayload? m.heap a with
-          | some _ => .next (withCtl m (.value a))
-          | none =>
-            -- CRuby asks `respond_to?(:to_str)` and only then calls it, and both
-            -- are *dispatched*: Homebrew's `Version` overrides `respond_to?` so
-            -- that its NULL instance hides a `to_str` that would raise, and
-            -- reading the method table instead answers NoMethodError where CRuby
-            -- answers nil (L111). Two konts, one per step.
-            let src := className m.heap (classOf m.heap a)
-            -- deepest first: check to_str's result, then decide on respond_to?'s
-            -- answer, then dispatch `respond_to?(:to_str)` itself.
-            let m := { m with kont := .strConvRespK a :: .strConvResK src :: m.kont }
-            .next (withKont m (.value a) (.recvK "respond_to?" [.sym "to_str"] .none .explicit))
-        | _ => .unsupported "String.try_convert arity"
-      else if o == Boot.regexpId && mname == "last_match" then
-        -- `Regexp.last_match` is `$~`; with an index it is `$~[n]`. A class
-        -- method, so it is dispatched here rather than installed as a builtin
-        -- (L106). Reads the same global the match rules write, so it cannot
-        -- drift from `$1`.
-        let md := m.getGlobal "$~"
-        match args with
-        | [] => .next (withCtl m (.value md))
-        | [i] =>
-          match md with
-          | .nil => .next (withCtl m (.value .nil))
-          | _ =>
-            -- the builtin directly, not a re-dispatch: `invoke`'s termination
-            -- measure is `args.length`, which this would not decrease
-            match Builtins.run "MatchData#[]" md [i] m with
-            | .ok v m => .next (withCtl m (.value v))
-            | .err cls msg m => .next (raiseErr m cls msg)
-            | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
-            | .unsupported r => .unsupported r
-        | _ => .unsupported "Regexp.last_match arity"
-      else if o == Boot.regexpId && (mname == "escape" || mname == "quote" || mname == "union") then
+      if o == Boot.regexpId && (mname == "escape" || mname == "quote" || mname == "union") then
         -- `Regexp.escape`/`.union` are singleton methods of the `Regexp`
         -- constant, dispatched here for the same reason `Math.sqrt` is: the
         -- boot heap installs builtins as *instance* methods, and these are not
@@ -259,7 +220,13 @@ where
         | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
         | .unsupported r => .unsupported r
       | none =>
-        match crubySingletonShadow m.heap recv mname with
+        -- Same L62 exception as the instance path above: a **prelude**-defined
+        -- singleton method *is* our model of the CRuby singleton of that name
+        -- (`String.try_convert`, `Array.try_convert`, `Regexp.last_match`), so
+        -- the gate must not fire on it. Without this the prelude cannot supply a
+        -- class method at all, which is what pushed those three into `invoke` as
+        -- hand-written special cases in the first place (L115).
+        match (if md.fromPrelude then none else crubySingletonShadow m.heap recv mname) with
         | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
         | none =>
           -- a RubyCore-defined method: bind params + push the activation

@@ -1053,6 +1053,83 @@ class Hash
   end
 end
 
+# ─── Conversion protocols (`rb_check_funcall`) ──────────────────────────────
+#
+# `String.try_convert` / `Array.try_convert` and the implicit-conversion sites
+# share one rule, and it is subtler than "call it if `respond_to?`":
+#
+#   * if the class carries a **custom `respond_to?`**, CRuby asks it, and a false
+#     answer means "not convertible" without the method ever being called;
+#   * otherwise the method is called if it is defined **or if `method_missing`
+#     can serve it** — so a `method_missing`-provided `to_ary` converts even
+#     though `respond_to?(:to_ary)` is false [V].
+#
+# Both halves are observable and they disagree, which is why this is written out
+# rather than approximated by either one. `__user_defines?` is the only piece
+# that needs the machine: "does this object's class chain carry a *user*
+# definition of this name" is a fact about the method tables (L115).
+class Object
+  # The default `<=>`: `0` when the two are `==`, and **nil** otherwise — the nil
+  # is what lets `Comparable` degrade to "incomparable" rather than raise from
+  # the wrong place. CRuby calls `rb_equal`, so a **user `==` participates**;
+  # here that is free, because `==` is an ordinary send. As a builtin it had to
+  # gate on a class with a user `==` (L114), which is the same lesson as
+  # `try_convert` (L115): a rule that needs to dispatch does not belong in Lean.
+  def <=>(other)
+    self == other ? 0 : nil
+  end
+end
+
+module Kernel
+  def __check_convert(obj, meth)
+    if obj.__user_defines?(:respond_to?)
+      return nil unless obj.respond_to?(meth)
+
+      return obj.send(meth)
+    end
+    return obj.send(meth) if obj.__user_defines?(meth) || obj.__user_defines?(:method_missing)
+
+    nil
+  end
+end
+
+class String
+  def self.try_convert(obj)
+    return obj if obj.is_a?(String)
+
+    r = __check_convert(obj, :to_str)
+    return nil if r.nil?
+    return r if r.is_a?(String)
+
+    raise TypeError, "can't convert " + obj.class.name + " to String (" +
+                     obj.class.name + "#to_str gives " + r.class.name + ")"
+  end
+end
+
+class Array
+  def self.try_convert(obj)
+    return obj if obj.is_a?(Array)
+
+    r = __check_convert(obj, :to_ary)
+    return nil if r.nil?
+    return r if r.is_a?(Array)
+
+    raise TypeError, "can't convert " + obj.class.name + " to Array (" +
+                     obj.class.name + "#to_ary gives " + r.class.name + ")"
+  end
+end
+
+class Regexp
+  # `$~` is an ordinary global, so this needs nothing from the machine.
+  def self.last_match(n = nil)
+    md = $~
+    return md if n.nil?
+    return nil if md.nil?
+
+    md[n]
+  end
+end
+
 # ─── Forwardable ────────────────────────────────────────────────────────────
 #
 # `def_delegator :@list, :size` installs a `size` that forwards to `@list.size`.

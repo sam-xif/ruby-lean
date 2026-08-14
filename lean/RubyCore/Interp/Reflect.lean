@@ -206,35 +206,6 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           | _ => some (.next (withCtl m (.value arr)))
         | none => some (.unsupported s!"{mname} of a method the model does not define")
     | _ => none
-  | "try_convert" =>
-    -- `Array.try_convert(x)` (L72): an Array is itself; otherwise CRuby *calls*
-    -- `to_ary` (so `method_missing` can intercept) and demands an Array or nil
-    -- back. Used by the desugar's single-RHS massign, hence 16 tier-0 cases.
-    match recv, args with
-    | .ref k, [x] =>
-      if k != Boot.arrayId then none
-      else
-        match Builtins.arrPayload? m.heap x with
-        | some _ => some (.next (withCtl m (.value x)))
-        | none =>
-          let hasToAry := ["to_ary", "method_missing"].any fun n =>
-            match lookup m.heap x n with
-            | some (_, md) => md.builtin.isNone
-            | none => false
-          if !hasToAry then some (.next (withCtl m (.value .nil)))
-          else
-            let src := className m.heap (classOf m.heap x)
-            let m := { m with kont := .tryConvertK src :: m.kont }
-            -- resolve `to_ary` directly (this runs *below* `invoke` in the file):
-            -- a user definition, else `method_missing(:to_ary)`.
-            match lookup m.heap x "to_ary" with
-            | some (_, md) => some (enterUserMethod m x "to_ary" md [] none)
-            | none =>
-              match methodOn m.heap (classOf m.heap x) "method_missing" with
-              | some (_, mm) =>
-                some (enterUserMethod m x "method_missing" mm [.sym "to_ary"] none)
-              | none => some (.unsupported "Array.try_convert: unresolvable to_ary")
-    | _, _ => none
   | "singleton_class" =>
     match recv with
     | .ref o => let (e, m) := eigenclassOf m o; some (.next (withCtl m (.value (.ref e))))

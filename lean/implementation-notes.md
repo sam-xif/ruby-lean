@@ -2964,3 +2964,55 @@ something does, rather than quietly using the wrong equality. (Verified: a class
 **Result (measured).** Homebrew-slice **338 → 339 agree, 0 disagree**, gates **14 → 13** —
 and the 13 are now exactly the two structural rows of `slice-gates.md`: 10 dispatching repr
 and 3 byte strings. tier-0 **991 agree, 0 disagree**.
+
+## L115 — `try_convert` ×2, `Regexp.last_match` and `Object#<=>` move to the prelude
+
+L111's `String.try_convert` was written in Lean as two `Kont` constructors, and that was the
+wrong call — a rule whose whole difficulty is *"it has to dispatch"* is precisely a rule that
+belongs in prelude Ruby, where dispatch is free. That is L62 and `AGENTS.md`'s first
+load-bearing idea, and I violated both out of momentum (the adjacent `Regexp.escape` and
+`Math.sqrt` singleton plumbing was right there in `invoke`).
+
+**Removed from Lean:** the `String.try_convert` branch in `invoke`, the `Array.try_convert`
+branch in `tryReflect`, the `Regexp.last_match` branch, the `Object#<=>` rule, and three
+`Kont` constructors (`tryConvertK`, `strConvRespK`, `strConvResK`) with their `Machine` and
+`Trace` cases. **Added to the prelude:** all four, as ordinary Ruby.
+
+**One primitive was genuinely needed**, and stating why is the useful part.
+`Object#__user_defines?(name)` answers *"does this object's dispatch chain carry a
+non-builtin definition of `name`?"* — a fact about the method tables that the object language
+cannot ask. It exists because CRuby's `rb_check_funcall` rule is subtler than "call it if
+`respond_to?`":
+
+* a class with a **custom `respond_to?`** is asked, and a false answer means "not
+  convertible" without the method ever being called — this is why
+  `String.try_convert(Version::NULL)` is nil (Homebrew's `Version` hides a `to_str` that
+  would raise);
+* otherwise the method is called if it is defined **or if `method_missing` can serve it** —
+  so a `method_missing`-provided `to_ary` converts even though `respond_to?(:to_ary)` is
+  false [V].
+
+Both halves are observable and they *disagree*, and L111's version — which dispatched
+`respond_to?` unconditionally — got the second one wrong. It answered nil where CRuby
+converts. Nothing in the slice exercised it, so the ratchet never saw it; the probe written
+for this move did.
+
+**Two bugs found while doing it, both in code I had just written.**
+
+1. The singleton-dispatch path gated on `crubySingletonShadow` **even for a successful user
+   lookup**, and unlike the instance path it did not honour `fromPrelude`. So the prelude
+   could not supply a class method *at all* — which is what pushed these three into `invoke`
+   as special cases in the first place. One `if md.fromPrelude` fixes it, symmetric with the
+   instance path's existing L62 exception.
+2. `__user_defines?` first used `realClassOf`, which **skips the eigenclass**. The chain that
+   matters is the one *dispatch* walks, which starts at the eigenclass:
+   `bootstraptest/test_yjit_167` is `def obj.to_ary` on a single object, destructured by
+   `a, b, c = obj`. Three tier-0 disagreements, caught by the ratchet immediately.
+
+`Object#<=>` came along for the same reason: as a builtin it had to **gate** on a class with
+a user `==` (L114), because CRuby calls `rb_equal`. In the prelude it is
+`self == other ? 0 : nil` and the gate disappears.
+
+**Result (measured).** tier-0 **991 agree, 0 disagree**; Homebrew-slice **339 agree, 0
+disagree**, gates 13. Same numbers as before the move — which is the point: less machine, no
+loss, and one latent fidelity bug removed.

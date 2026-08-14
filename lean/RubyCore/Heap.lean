@@ -316,10 +316,11 @@ def classTable : List (ObjId × String × Option ObjId) := [
 def builtinMethods : List (ObjId × List String) := [
   (basicObjectId, ["==", "!", "equal?"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
-  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect", "<=>",
+  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
+              "__user_defines?",
               "initialize"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),

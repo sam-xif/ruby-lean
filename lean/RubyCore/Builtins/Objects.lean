@@ -52,19 +52,25 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match args with
     | [b] => .ok (.bool (!(valueEq h recv b))) m
     | _ => .unsupported "!=/arity"
-  | "Object#<=>" =>
-    -- The default `<=>` is `0` when the two are `==` and **nil** otherwise — not
-    -- an error, which is what makes `Comparable` degrade to "incomparable" rather
-    -- than raise from the wrong place [V]. A user `==` participates, so this
-    -- consults `valueEq` rather than identity.
-    -- CRuby calls `rb_equal`, so a **user `==` participates**. A builtin cannot
-    -- dispatch one, so this answers from `valueEq` when nothing overrides `==`
-    -- and gates when something does, rather than quietly using the wrong
-    -- equality.
-    binArg m args fun b =>
-      if reprOverridden h ["=="] (realClassOf h recv) then
-        .unsupported "Object#<=> on a class with a user =="
-      else .ok (if valueEq h recv b then .int 0 else .nil) m
+  | "Object#__user_defines?" =>
+    -- Heap introspection the object language cannot perform: does this object's
+    -- ancestor chain carry a **non-builtin** definition of `name`? Prelude Ruby
+    -- needs it to reproduce CRuby's `rb_check_funcall` rule, which consults a
+    -- *custom* `respond_to?` if the class has one and otherwise falls back to
+    -- "the method is defined, or `method_missing` can serve it" (L115).
+    --
+    -- `classOf`, not `realClassOf`: the chain that matters is the one *dispatch*
+    -- would walk, which starts at the **eigenclass**. `bootstraptest/test_yjit_167`
+    -- is exactly this — `def obj.to_ary` on a single object, which `a, b, c = obj`
+    -- must find — and `realClassOf` skipped it.
+    let defines : String → Bool := fun n => reprOverridden h [n] (classOf h recv)
+    binArg m args fun a =>
+      match a with
+      | .sym n => .ok (.bool (defines n)) m
+      | .ref o => match (h.get o).payload with
+        | .str n => .ok (.bool (defines n)) m
+        | _ => .unsupported "__user_defines? of a non-name"
+      | _ => .unsupported "__user_defines? of a non-name"
   | "Object#nil?" | "NilClass#nil?" =>
     .ok (.bool (match recv with | .nil => true | _ => false)) m
   | "Object#class" => .ok (.ref (realClassOf h recv)) m
