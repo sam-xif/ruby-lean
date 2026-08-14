@@ -682,9 +682,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           (classOf_defineMethod _ _ _ _ _)]
         exact hhook
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never
-      -- has to be written out, and over `m₀` so the `reprSensitive` and
-      -- `preludeMode` branches — which differ only in fields `Inv` does not
-      -- mention — are all discharged by the same argument.
+      -- has to be written out, and over `m₀` so the `preludeMode` branch — which
+      -- differs only in fields `Inv` does not mention — is discharged by the same
+      -- argument. (There used to be a `reprSensitive` branch here too; L103
+      -- retired the global `reprPure` flag for a per-class test, so `def` no longer
+      -- touches it. This proof kept case-splitting on a constant that no longer
+      -- exists, and `Proof/` being off the default build target is why that went
+      -- unnoticed from L103 until now — N40.)
       -- Phrased over the *facts* about `m₀.heap` rather than over the
       -- `MethodDef` that produced it: `m₀` is then fixed by unifying the
       -- conclusion with the goal, and each remaining hypothesis is a concrete
@@ -701,14 +705,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · show ∃ σ, ValueTy (Value.sym name) σ ∧ KontOk (Γ' :: Γs) σ m₀.kont
           exact ⟨.sym, rfl, by rw [hko]; exact hk⟩
       -- `hlk` collapses the hook lookup to `none`, after which only the
-      -- `reprSensitive` and `preludeMode` `if`s remain.
+      -- `preludeMode` `if` remains.
       simp only [evalExpr, hdm, hdo]
       -- `split` would dive into the `visibility` `if`s *inside* the `MethodDef`
-      -- literal, which `hres` deliberately abstracts over; case on the two
-      -- conditions that matter instead.
-      by_cases hr : reprSensitive.contains name = true <;>
-        by_cases hp : m.preludeMode = true <;>
-        simp only [hr, hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+      -- literal, which `hres` deliberately abstracts over; case on the one
+      -- condition that matters instead.
+      by_cases hp : m.preludeMode = true <;>
+        simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
         refine hres _ ?_ ?_ ?_ ?_ ?_ <;>
           first
             | rfl

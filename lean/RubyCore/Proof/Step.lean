@@ -71,8 +71,14 @@ inductive Step : Machine → Machine → Prop where
   /- ── variable reads ── -/
   | varLvar {m x} :
       m.ctl = .eval (.var .lvar x) → Step m (withCtl m (.value (m.getLocal x)))
+  /-- A **plain** global read. `$1`…`$9`, `$&`, `` $` `` and `$'` are views of the
+      last match, derived rather than stored (L101), so a read of one is not a
+      `getGlobal` at all; `matchGlobal` is consulted first. The hypothesis is the
+      semantic one `stepFn` actually branches on, and `Adequacy`'s fragment
+      predicate supplies it from the *syntactic* `isMatchView` (N40). -/
   | varGvar {m x} :
-      m.ctl = .eval (.var .gvar x) → Step m (withCtl m (.value (m.getGlobal x)))
+      m.ctl = .eval (.var .gvar x) → matchGlobal m x = none →
+      Step m (withCtl m (.value (m.getGlobal x)))
   | varIvar {m x o} :
       m.ctl = .eval (.var .ivar x) → m.currentFrame.self = .ref o →
       Step m (withCtl m (.value

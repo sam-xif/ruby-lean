@@ -74,6 +74,12 @@ def FragKont : Kont → Prop
 def FragExpr : Expr → Prop
   | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => True
   | .var .cvar _ => False
+  -- a `$~` **view** (`$1`…`$9`, `$&`, `` $` ``, `$'`) is derived from the last
+  -- match rather than stored (L101), so its read is not the plain `getGlobal`
+  -- that `Step.varGvar` describes. Excluded *syntactically*, which is what keeps
+  -- the exclusion honest: `isMatchView` is the very predicate `matchGlobal`
+  -- branches on, so the two cannot drift apart again (N40).
+  | .var .gvar x => ¬ isMatchView x
   | .var _ _ => True
   | .vasgn .cvar _ _ => False
   | .vasgn _ _ _ => True
@@ -103,6 +109,13 @@ theorem realize {m m' m'' : Machine} (hs : stepFn m = .next m') (hstep : Step m 
   have h : (StepResult.next m' : StepResult) = StepResult.next m'' := hs ▸ hstep.sound
   injection h with h'; subst h'; exact hstep
 
+/-- The bridge the fragment predicate needs: a name that is not a `$~` view is
+    read as a plain global. Immediate from `matchGlobal`'s own first test, which is
+    exactly `isMatchView` — that shared definition is the point (N40). -/
+theorem matchGlobal_eq_none_of_not_view {m : Machine} {x : String}
+    (h : ¬ isMatchView x) : matchGlobal m x = none := by
+  simp [matchGlobal, h]
+
 /-- **Completeness.** Every executable `.next` step of an in-fragment config is
     realized by `Step`. With `Step.sound`, this is function–relation adequacy on
     the fragment: `InFrag m → (Step m m' ↔ stepFn m = .next m')`. -/
@@ -123,7 +136,9 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
     | self' => exact realize hs (.selfLit hcc)
     | var k x => cases k with
       | lvar => exact realize hs (.varLvar hcc)
-      | gvar => exact realize hs (.varGvar hcc)
+      | gvar =>
+        exact realize hs (.varGvar hcc (matchGlobal_eq_none_of_not_view (by
+          simpa [FragExpr] using hfe)))
       | ivar => exact realize hs (.varIvar hcc hself)
       | cvar => simp [FragExpr] at hfe
     | vasgn k x rhs => cases k with

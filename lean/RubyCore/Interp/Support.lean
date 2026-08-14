@@ -457,17 +457,31 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     them instead would need every failed match to clear nine slots, and would
     still get `defined?($3)` wrong. Returns `none` for any other global name, so
     the ordinary path is untouched. (L101.) -/
-def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=
-  let idx? : Option Nat :=
-    if x.length == 2 then
-      let c := x.get ⟨1⟩
-      if c.isDigit && c != '0' then some (c.toNat - '0'.toNat)
-      else if c == '&' then some 0
-      else none
+def matchViewIdx? (x : String) : Option Nat :=
+  if x.length == 2 then
+    let c := x.get ⟨1⟩
+    if c.isDigit && c != '0' then some (c.toNat - '0'.toNat)
+    else if c == '&' then some 0
     else none
+  else none
+
+/-- Is `x` one of those views, rather than a stored global? **Purely syntactic** —
+    the name decides, not the machine. Factored out and named so the metatheory's
+    fragment predicate can exclude exactly these names and cannot drift from the
+    rule `matchGlobal` implements: `Step.varGvar` said a gvar read is a plain
+    `getGlobal`, which stopped being true when L101 put `matchGlobal` in front of
+    it, and nothing noticed for 24 commits because `Proof/` is off the default
+    build target (N40). -/
+def isMatchView (x : String) : Bool :=
+  (matchViewIdx? x).isSome || x == "$`" || x == "$'"
+
+/-- The `$~`-view read itself. `none` for any other global name, so the ordinary
+    path is untouched. -/
+def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=
+  let idx? := matchViewIdx? x
   let pre := x == "$`"
   let post := x == "$'"
-  if idx?.isNone && !pre && !post then none
+  if !isMatchView x then none
   else
     match m.getGlobal "$~" with
     | .ref o =>

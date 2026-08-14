@@ -35,11 +35,15 @@ set_option maxRecDepth 100000
 
 /-! ### The class-bearing heap `Hstar` and the loop program -/
 
-/-- Class `A` (id = `initHeap.size` = 37 — the boot heap grew with `Kernel`,
-    `Numeric` and `UncaughtThrowError`, L65/L69) with one user method `m` ↦ `0`. -/
-def clsA : ObjId := 37
-/-- An instance of `A` (id 38). -/
-def inst : ObjId := 38
+/-- Class `A`, with one user method `m` ↦ `0`, allocated straight after the boot
+    heap — so its id is `initHeap`'s size, **computed and not written down**. It
+    was hard-coded as `37` and the boot heap has since grown to 40 (`Kernel`,
+    `Numeric`, `UncaughtThrowError` and friends), which silently aimed `clsA` at an
+    existing boot object and left `dispatch_step`'s `rfl` unprovable. Deriving it
+    is the whole fix, and it cannot rot again (N40). -/
+def clsA : ObjId := Boot.initHeap.objs.size
+/-- An instance of `A`, allocated straight after it. -/
+def inst : ObjId := Boot.initHeap.objs.size + 1
 def mMd : MethodDef := { params := [], body := .int 0, owner := clsA }
 def clsAObj : Object :=
   { klass := Boot.classId,

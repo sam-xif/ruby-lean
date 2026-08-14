@@ -25,3 +25,16 @@ root = "Main"
 [[lean_exe]]
 name = "rubycore-concolic"
 root = "ConcolicMain"
+
+# The metatheory (`RubyCore/Proof/`). **Not** in defaultTargets: it is slow and
+# nothing the SUT does depends on it, which is exactly why it rotted — three
+# independent breaks (L101, L103, L116) went unnoticed for 24 commits because a
+# green ratchet says nothing about the proofs (`PLAN.md` §4 norm 5). One target
+# so that checking them is a single command:
+#
+#     lake build Metatheory        # all 15 files
+#     scripts/check-proofs.sh      # the same, plus `#print axioms`
+[[lean_lib]]
+name = "Metatheory"
+srcDir = "."
+globs = ["RubyCore.Proof.+"]
