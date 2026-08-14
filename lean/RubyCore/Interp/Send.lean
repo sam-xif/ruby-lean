@@ -166,6 +166,21 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        -- Dispatching repr (L116): when pure repr cannot speak for the value —
+        -- because its class, or something it *contains*, overrides `inspect`/
+        -- `to_s` — the builtin defers to a prelude twin under a different name,
+        -- which then recurses through ordinary dispatch. Keyed on the resolved
+        -- bid, so nothing else pays for the check; and the twin's name shadows
+        -- nothing, so no purity answer changes.
+        -- Resolved directly rather than re-entered through dispatch: this *is*
+        -- the dispatch path, and re-entering it with the same arguments is what
+        -- the termination measure forbids.
+        match Builtins.reprDefer? m.heap bid recv args with
+        | some slow =>
+          match methodOn m.heap (classOf m.heap recv) slow with
+          | some (_, md2) => enterUserMethod m recv slow md2 args blk kw
+          | none => .unsupported s!"repr twin {slow} is missing from the prelude"
+        | none =>
         -- `raise C` / `raise C, msg` where `C` defines a *user* `initialize`:
         -- CRuby builds the exception with `C.new(…)`, so the initializer (and any
         -- `super` into `Exception#initialize`) must run — a frame this builtin

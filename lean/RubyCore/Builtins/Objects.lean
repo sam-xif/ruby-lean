@@ -52,6 +52,20 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match args with
     | [b] => .ok (.bool (!(valueEq h recv b))) m
     | _ => .unsupported "!=/arity"
+  | "Object#__write" =>
+    -- The primitive the prelude's repr twins write through: append a String to
+    -- stdout verbatim, with no rendering of any kind (L116).
+    binArg m args fun a =>
+      match strPayload? h a with
+      | some str => .ok .nil { m with out := m.out ++ str }
+      | none => .unsupported "__write of a non-String"
+  | "Object#__addr_str" =>
+    -- The `0x…` an object's default `inspect` carries. The observation
+    -- normalizes addresses on both sides, so only the *shape* matters — but it
+    -- has to be `Repr.fakeAddr`'s shape, since the two render the same objects.
+    match recv with
+    | .ref o => okStr m (fakeAddr o)
+    | _ => .unsupported "__addr_str of an immediate"
   | "Object#__user_defines?" =>
     -- Heap introspection the object language cannot perform: does this object's
     -- ancestor chain carry a **non-builtin** definition of `name`? Prelude Ruby

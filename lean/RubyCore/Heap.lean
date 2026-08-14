@@ -320,7 +320,7 @@ def builtinMethods : List (ObjId × List String) := [
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
-              "__user_defines?",
+              "__user_defines?", "__write", "__addr_str",
               "initialize"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),

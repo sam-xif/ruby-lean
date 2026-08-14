@@ -1053,6 +1053,103 @@ class Hash
   end
 end
 
+# ─── Dispatching repr: the prelude twins ────────────────────────────────────
+#
+# Pure repr (`Repr.lean`) renders a value without running any Ruby, which is fast
+# and is what almost every program needs. It cannot speak for a value whose class
+# — or whose *contents* — override `inspect`/`to_s`, because honouring that means
+# **dispatching**, and a builtin cannot push a frame.
+#
+# So each such builtin defers to a twin here under a different name (L116). The
+# different name is what makes this cheap: it shadows nothing, so no purity answer
+# changes, and `Repr` stays the fast path for everything it can still handle. The
+# twins then recurse through *ordinary dispatch*, which is exactly the behaviour
+# that was missing — `[custom].inspect` renders each element with its own
+# `inspect`, and a plain object renders each ivar with its own.
+#
+# `__write` and `__addr_str` are the two primitives they need: append a String to
+# stdout with no rendering, and the `0x…` a default `inspect` carries.
+class Object
+  def __inspect_slow
+    ivs = instance_variables
+    head = "#<" + self.class.name + ":" + __addr_str
+    return head + ">" if ivs.empty?
+
+    head + " " + ivs.map { |n| n.to_s + "=" + instance_variable_get(n).inspect }.join(", ") + ">"
+  end
+
+  def __to_s_slow
+    "#<" + self.class.name + ":" + __addr_str + ">"
+  end
+
+  # `p` returns its argument (or the array of them, or nil for none) [V].
+  def __p_slow(*args)
+    args.each { |a| __write(a.inspect + "\n") }
+    return nil if args.empty?
+    return args[0] if args.length == 1
+
+    args
+  end
+
+  def __print_slow(*args)
+    args.each { |a| __write(a.is_a?(String) ? a : a.to_s) }
+    nil
+  end
+
+  # `puts` flattens arrays, prints a blank line for nil or an empty array, and
+  # does not double a newline the value already ends with [V].
+  def __puts_slow(*args)
+    return __write("\n") if args.empty?
+
+    args.each { |a| __puts_one(a) }
+    nil
+  end
+
+  def __puts_one(a)
+    if a.is_a?(Array)
+      return __write("\n") if a.empty?
+
+      a.each { |e| __puts_one(e) }
+    elsif a.nil?
+      __write("\n")
+    else
+      str = a.is_a?(String) ? a : a.to_s
+      __write(str)
+      __write("\n") unless str.end_with?("\n")
+    end
+    nil
+  end
+end
+
+class Array
+  def __inspect_slow = "[" + map { |e| e.inspect }.join(", ") + "]"
+
+  def __to_s_slow = __inspect_slow
+end
+
+class Hash
+  def __inspect_slow
+    return "{}" if empty?
+
+    "{" + map { |k, v| __hash_key_repr(k) + " " + v.inspect }.join(", ") + "}"
+  end
+
+  def __to_s_slow = __inspect_slow
+
+  # A Symbol key with an identifier-like name renders `k: v`; everything else
+  # renders `k => v` [V].
+  def __hash_key_repr(k)
+    return k.inspect + " =>" unless k.is_a?(Symbol)
+
+    str = k.to_s
+    ident = !str.empty? && !"0123456789".include?(str[0]) &&
+            str.each_char.all? { |c| c == "_" || c == "?" || c == "!" || c == "=" ||
+                                     "abcdefghijklmnopqrstuvwxyz".include?(c.downcase) ||
+                                     "0123456789".include?(c) }
+    ident ? str + ":" : str.inspect + ":"
+  end
+end
+
 # ─── Conversion protocols (`rb_check_funcall`) ──────────────────────────────
 #
 # `String.try_convert` / `Array.try_convert` and the implicit-conversion sites

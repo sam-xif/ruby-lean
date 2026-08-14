@@ -83,6 +83,31 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     | _ => own
   | v => !reprOverridden h sens (realClassOf h v)
 
+/-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
+    instead (L116). This is L63's "defer to the prelude" pattern: the twin has a
+    **different name**, so it shadows nothing, changes no purity answer, and needs
+    no new `Kont` — `invoke` simply dispatches it in place of the builtin.
+
+    The alternative designs both fail on inspection. Excluding prelude
+    definitions from `reprOverridden` would make pure repr *lie* about `Pathname`
+    and `T::Struct`, whose prelude `inspect` it knows nothing about; and
+    redefining `inspect` itself in the prelude would make every class impure and
+    push `Obs`'s `result_repr` — computed after the program ends, where nothing
+    can dispatch — off a cliff. -/
+def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect" then
+    if pureOk h inspectSensitive recv then none else some "__inspect_slow"
+  else if bid == "Object#to_s" || bid == "Array#to_s" || bid == "Hash#to_s" then
+    if pureOk h toSSensitive recv then none else some "__to_s_slow"
+  else if bid == "Object#p" then
+    if args.all (pureOk h inspectSensitive) then none else some "__p_slow"
+  else if bid == "Object#puts" then
+    if args.all (pureOk h toSSensitive) then none else some "__puts_slow"
+  else if bid == "Object#print" then
+    if args.all (pureOk h toSSensitive) then none else some "__print_slow"
+  else none
+
 def inspectP (m : Machine) (v : Value) : Except String String :=
   if pureOk m.heap inspectSensitive v then inspect m.heap v
   else .error "inspect after user override of inspect"

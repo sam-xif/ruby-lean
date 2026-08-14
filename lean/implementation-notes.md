@@ -3016,3 +3016,41 @@ a user `==` (L114), because CRuby calls `rb_equal`. In the prelude it is
 **Result (measured).** tier-0 **991 agree, 0 disagree**; Homebrew-slice **339 agree, 0
 disagree**, gates 13. Same numbers as before the move — which is the point: less machine, no
 loss, and one latent fidelity bug removed.
+
+## L116 — dispatching repr: the builtin defers to a prelude twin
+
+`PLAN.md` W2b's other half, and the last non-encoding row of `homebrew/slice-gates.md`.
+
+Pure repr (`Repr.lean`) renders a value without running Ruby. It cannot speak for a value
+whose class — **or whose contents** — override `inspect`/`to_s`, because honouring that means
+dispatching, and a builtin cannot push a frame. The slice's six `pkg_version_spec.rb` cases
+are the recursive shape, which is the one that matters: `PkgVersion` has no `inspect` of its
+own, so the *default* one renders its ivars, and one ivar is a `Version` whose class does
+override `inspect`.
+
+**The shape that works: defer to a twin under a different name.** Each repr builtin, on
+finding pure repr inadmissible, dispatches `__inspect_slow` / `__to_s_slow` / `__p_slow` /
+`__puts_slow` / `__print_slow` instead. The twins are prelude Ruby and recurse through
+*ordinary dispatch*, which is exactly what was missing. Two primitives support them:
+`__write` (append a String to stdout, no rendering) and `__addr_str` (the `0x…`, in
+`Repr.fakeAddr`'s shape since the two render the same objects).
+
+The different name is what makes it cheap. It shadows nothing, so **no purity answer
+changes** and `Repr` stays the fast path for everything it can still handle; the check is
+keyed on the resolved bid, so no other dispatch pays for it; and it needs no new `Kont`.
+This is L63's "defer to the prelude" pattern applied to repr.
+
+**Both alternatives I had written down fail on inspection, and it is worth saying why.**
+Excluding prelude definitions from `reprOverridden` — the plan I recorded in
+`slice-gates.md` — would make pure repr **lie** about `Pathname` and `T::Struct`, whose
+prelude `inspect` it knows nothing about. And redefining `inspect` itself in the prelude
+would make every class impure, which pushes `Obs`'s `result_repr` off a cliff: that is
+computed *after* the program ends, where nothing can dispatch.
+
+**Result (measured).** Homebrew-slice **339 → 345 agree, 0 disagree**, gates 13 → **7** (and
+the 7 are byte strings and nothing else). tier-0 **991 agree, 0 disagree**.
+
+**On the "~59 tier-0 cases" `PLAN.md` attributes to this.** They are now *unblocked*, not
+fixed: the top of the tier-0 gate histogram is `Object#Rational` (25) and `Object#Complex`
+(18), which were blocked because their `inspect`/`==` could not live in the prelude. They can
+now — but they still have to be written. Dispatching repr was the prerequisite, not the work.
