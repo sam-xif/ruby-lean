@@ -73,12 +73,13 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
   | .ref o =>
     let own := !reprOverridden h sens (h.get o).klass
     match (h.get o).payload with
-    -- A container renders its elements with *their* `inspect`, so purity is
-    -- recursive even when the container's own class is untouched.
-    | .arr xs => own && xs.all (pureOk h inspectSensitive)
-    | .hsh xs => own && xs.all fun (k, v) =>
-        pureOk h inspectSensitive k && pureOk h inspectSensitive v
-    | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h inspectSensitive v)
+    -- A container renders its elements with *their* renderer, so purity is
+    -- recursive even when the container's own class is untouched — and it
+    -- recurses with the **same** sensitivity it was asked about, since
+    -- `[x].inspect` uses `x.inspect` while `[x].join` uses `x.to_s`.
+    | .arr xs => own && xs.all (pureOk h sens)
+    | .hsh xs => own && xs.all fun (k, v) => pureOk h sens k && pureOk h sens v
+    | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h sens v)
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   | v => !reprOverridden h sens (realClassOf h v)
@@ -98,8 +99,16 @@ def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
-  else if bid == "Object#to_s" || bid == "Array#to_s" || bid == "Hash#to_s" then
+  else if bid == "Object#to_s" || bid == "Array#to_s" || bid == "Hash#to_s"
+       || bid == "Range#to_s" then
     if pureOk h toSSensitive recv then none else some "__to_s_slow"
+  else if bid == "Range#inspect" then
+    if pureOk h inspectSensitive recv then none else some "__inspect_slow"
+  else if bid == "Array#join" then
+    -- `join` renders each element with **`to_s`**, recursively through nested
+    -- arrays. `Version#major_minor` is `[major, minor].join(".")` over `Token`s
+    -- that override `to_s`, which is four of the slice's examples.
+    if pureOk h toSSensitive recv then none else some "__join_slow"
   else if bid == "Object#p" then
     if args.all (pureOk h inspectSensitive) then none else some "__p_slow"
   else if bid == "Object#puts" then

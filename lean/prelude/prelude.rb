@@ -1125,6 +1125,45 @@ class Array
   def __inspect_slow = "[" + map { |e| e.inspect }.join(", ") + "]"
 
   def __to_s_slow = __inspect_slow
+
+  # `join` renders each element with `to_s`, flattens nested arrays, and renders
+  # nil as the empty string [V].
+  def __join_slow(sep = nil)
+    s = sep.nil? ? "" : sep.to_s
+    parts = []
+    __join_collect(parts)
+    out = ""
+    i = 0
+    while i < parts.length
+      out += s unless i.zero?
+      out += parts[i]
+      i += 1
+    end
+    out
+  end
+
+  def __join_collect(parts)
+    each do |e|
+      if e.is_a?(Array)
+        e.__join_collect(parts)
+      elsif e.nil?
+        parts.push("")
+      else
+        parts.push(e.is_a?(String) ? e : e.to_s)
+      end
+    end
+    nil
+  end
+end
+
+class Range
+  def __inspect_slow
+    self.begin.inspect + (exclude_end? ? "..." : "..") + self.end.inspect
+  end
+
+  def __to_s_slow
+    self.begin.to_s + (exclude_end? ? "..." : "..") + self.end.to_s
+  end
 end
 
 class Hash

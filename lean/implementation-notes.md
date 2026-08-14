@@ -3047,8 +3047,17 @@ prelude `inspect` it knows nothing about. And redefining `inspect` itself in the
 would make every class impure, which pushes `Obs`'s `result_repr` off a cliff: that is
 computed *after* the program ends, where nothing can dispatch.
 
-**Result (measured).** Homebrew-slice **339 → 345 agree, 0 disagree**, gates 13 → **7** (and
-the 7 are byte strings and nothing else). tier-0 **991 agree, 0 disagree**.
+**`Array#join` was the site I first missed**, and it is the interesting one: it renders each
+element with **`to_s`**, recursively through nested arrays, and `Version#major_minor` is
+`[major, minor].join(".")` over `Token`s that override `to_s` — four of the slice's examples.
+Adding it exposed a second bug: `pureOk` recursed into containers with a *hard-coded*
+`inspectSensitive`, so an element overriding only `to_s` was judged pure and `join` gated
+anyway. Purity now recurses with the **same** sensitivity it was asked about, since
+`[x].inspect` uses `x.inspect` while `[x].join` uses `x.to_s`. `Range#inspect`/`#to_s` got
+twins too.
+
+**Result (measured).** Homebrew-slice **339 → 349 agree, 0 disagree**, gates 13 → **3**, and
+the 3 are byte strings and nothing else. tier-0 **991 agree, 0 disagree**.
 
 **On the "~59 tier-0 cases" `PLAN.md` attributes to this.** They are now *unblocked*, not
 fixed: the top of the tier-0 gate histogram is `Object#Rational` (25) and `Object#Complex`
