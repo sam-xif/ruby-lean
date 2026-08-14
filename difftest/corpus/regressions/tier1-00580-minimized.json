@@ -1,0 +1,10 @@
+{
+  "status": "fixed",
+  "filed_by": "difftest campaign (automatic); sidecar added by hand in N41",
+  "arm": "tier1",
+  "case_id": "tier1-00580",
+  "first_reconciled": "2026-08-14 (be53647), lean SUT",
+  "observed_then": "agree",
+  "diff_then": null,
+  "note": "Filed automatically by an earlier campaign, before sidecars existed, so the specific defect it was minimized for was never recorded and is not reconstructible from the program alone. It AGREES as of the first run of the `regressions` tier (2026-08-14, commit be53647) \u2014 i.e. whatever it caught was fixed at some point in L1xx and this repro simply never ran again. Retained as a regression guard: if it ever disagrees, that is a real regression."
+}

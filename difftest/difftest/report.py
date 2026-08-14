@@ -53,6 +53,30 @@ class Reporter:
         for v in Verdict:
             lines.append(f"| {v.value} | {summary['verdicts'].get(v.value, 0)} |")
         lines.append("")
+        reg = summary.get("regressions")
+        if reg:
+            # The verdict table above is honest but misleading on its own here: a
+            # `still_open` case *is* a disagreement, and is meant to be. This
+            # section is what the exit code is computed from (N41).
+            lines += [
+                "## Regressions corpus — declared status vs observed verdict",
+                "",
+                f"{reg['ran']} pinned cases. Only `regressed` and `unexpectedly_fixed` fail.",
+                "",
+                "| outcome | count | means |",
+                "|---|---|---|",
+            ]
+            for name, blurb in reg["legend"].items():
+                n = reg["counts"].get(name, 0)
+                mark = " **← fails**" if name in ("regressed", "unexpectedly_fixed") and n else ""
+                lines.append(f"| `{name}` | {n} | {blurb}{mark} |")
+            lines.append("")
+            for cid, o in sorted(reg["outcomes"].items()):
+                lines.append(
+                    f"- `{cid}` — declared **{o['status']}**, observed "
+                    f"`{o['verdict']}` → **{o['outcome']}**"
+                )
+            lines.append("")
         skipped = [
             r
             for r in self.results

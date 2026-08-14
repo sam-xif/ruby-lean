@@ -1104,14 +1104,87 @@ instead of address noise the observation would have normalized away.
 
 **A pre-existing defect surfaced too, and it is not mine to claim as found by design.** Adding a
 head shifts hypothesis's draw stream, so tier 1.5 generated programs it never had before and
-came back with 164 disagreements — all one shape: `Integer + obj` / `Integer % obj` where `obj`
-supplies `coerce` through `method_missing`. CRuby calls it and raises
+came back with a disagreement on its 149th draw — `Integer + obj` / `Integer % obj` where `obj`
+supplies `coerce` through `method_missing`. (The report's 164 `disagree` rows are that one
+program plus its shrink trail; the campaign stops at the first disagreement. N41 has the exact
+numbers and what they cost.) CRuby calls it and raises
 `TypeError: coerce must return [x, y]` on a bad answer; the model raises
 `TypeError: C can't be coerced into Integer` without ever calling it. Confirmed pre-existing by
 `git stash` + rebuild, on the same repro, before touching anything. The runner's own minimizer
-left the case at `corpus/regressions/tier1.5-00930-minimized.rb`; it is **open**, and it is now
-the model's shortest known wrong answer.
+left the case at `corpus/regressions/tier1.5-00930-minimized.rb`; it is **open**, and N41 pins it
+so it runs on every `difftest run --tier regressions` instead of waiting to be re-drawn.
 
 The general lesson is N39's, sharpened: a new head does not only test the rule you wrote it for.
 It re-rolls the dice for every *other* head in the program, and a green tier is partly a
 statement about which programs were drawn.
+
+## N41 — the regressions corpus was write-only, and that is how a known defect hid behind a green ratchet
+
+`campaign.py` has filed a minimized reproducer to `corpus/regressions/` on every
+shrunk disagreement for as long as the shrinker has existed. **Nothing read the
+directory.** No tier loaded it, `cmd_replay` had to be pointed at a path by hand,
+and 16 files had accumulated there without ever being executed a second time.
+
+The cost was not hypothetical, and it is measurable to the draw. N40's `coerce`
+defect was found by the tier-1.5 campaign of 2026-08-14 on its **149th draw of a
+200-draw budget** (`arm_counts: {tier1.5: 149}`, `stopped_early_on_disagreement:
+true`). One extra generation head later, the next tier-1.5 run drew all 200 and
+came back **0 disagreements over the same live defect**. Both runs were reported
+honestly. Assuming that day's generator produced the shape at roughly 1 draw in
+150 — a one-sample estimate, so treat it as an order of magnitude — a 200-draw
+campaign misses it about **a quarter of the time**. A ratchet with a 25% chance of
+being green over a filed bug is not a ratchet.
+
+**The tier.** `difftest run --tier regressions` runs the corpus **whole** — no
+sampling, ever; that is the entire point — and reconciles each case's observed
+verdict against a `status` it declares in its sidecar:
+
+| status | expected | otherwise |
+|---|---|---|
+| `open` | DISAGREE (`still_open`) | `unexpectedly_fixed` — **fails** |
+| `fixed` | AGREE (`held`) | `regressed` — **fails** |
+
+Both directions matter and only one of them is the classic regression check. The
+other — a known-open case that starts agreeing — is bookkeeping falling behind
+reality, and making it a *failure* is what forces the sidecar to be updated
+instead of the corpus quietly rotting into a pile of stale `open`s.
+
+Three design points worth defending:
+
+1. **`still_open` must not redden the run.** A filed defect disagrees by design;
+   if that counted as failure the corpus could not hold one, which is the whole
+   feature. So this tier computes its own exit code rather than inheriting
+   `cmd_run`'s "any disagreement is red" rule, and `report.md` grew a section
+   explaining the gap between the verdict table (`disagree: 1`) and the verdict
+   (`0 failures`). A reader who sees only the table would be misled, so the table
+   is no longer the last word on this tier.
+2. **A gate is not a fix.** `sut_unsupported` on an `open` case means the wrong
+   answer became a refusal — an improvement, but not one this harness can verify
+   as a fix, and marking it `fixed` on that basis would retire a live defect. It
+   reports `gated`: neither pass nor fail, and printed every run so it cannot be
+   forgotten. One of the 16 is in exactly this state.
+3. **`regressions` is not a mix arm.** A campaign stops at its first disagreement,
+   so an expected-to-fail corpus would end every mixed run on its first
+   known-open case.
+
+**The filing side got the other half.** A bare `.rb` records nothing about *what
+it was filed for*, so even a human opening it had to re-derive the defect from the
+program. `_file_regression` now writes a sidecar alongside: status, arm, seed, the
+diff, and both observations. It **never overwrites a status a human has set** — a
+re-filed case whose guard silently reverted to `open` would stop guarding.
+
+**Triaging the 16-case backlog is the immediate payoff, and it is larger than the
+tier's own cost.** First run: **14 `unexpectedly_fixed`**, 1 `gated`, 1
+`still_open`. So fourteen defects found in earlier sessions had been fixed at some
+point in L1xx with their reproducers never re-run — fourteen regression guards
+that existed on disk and protected nothing. They are now sidecar'd `fixed` and
+checked every run. Their notes are honest about the limit of this: the specific
+defect each was minimized for was never recorded and is not reconstructible from
+the program, so what they assert is "this agreed on 2026-08-14 and must keep
+agreeing", which is all a regression guard ever asserts anyway.
+
+`tests/test_regressions.py` covers both failure directions explicitly, because a
+pinned-failure mechanism that cannot go red is indistinguishable from an empty
+directory — which is precisely the state being fixed here. Verified end to end by
+flipping the two statuses and observing exit 1 with `regressed` and
+`unexpectedly_fixed`, then flipping them back.

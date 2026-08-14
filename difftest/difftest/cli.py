@@ -20,8 +20,10 @@ from pathlib import Path
 from .control import CRubyRunner
 from .report import Reporter
 from .runner import run_campaign
-from .sources import (load_bootstraptest, load_corpus_cases, load_domain_corpus,
-                      load_slice_corpus, load_sorbet_corpus)
+from .sources import (REGRESSION_DEFAULT_STATUS, REGRESSION_FAILURES,
+                      REGRESSION_OUTCOMES, load_bootstraptest, load_corpus_cases,
+                      load_domain_corpus, load_regressions_corpus, load_slice_corpus,
+                      load_sorbet_corpus, regression_outcome)
 from .tiers import GENERATIVE_ARMS
 from .sut import make_sut
 
@@ -56,7 +58,10 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
     print(f"\nreport: {out_dir / 'report.md'}")
 
 
-CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain")  # mix arms backed by persisted corpora
+# Mix arms backed by persisted corpora. `regressions` is deliberately absent: a
+# campaign stops at its first disagreement, and an expected-to-fail corpus would
+# end every mixed run on its first known-open case (N41).
+CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain")
 
 
 def _load_corpus_arm(name: str, args) -> list:
@@ -131,6 +136,7 @@ def cmd_run(args) -> int:
     label = "mix" if args.mix else f"tier{args.tier}"
     out_dir = _out_dir(args.out, f"{label}-{sut.name}")
     reporter = Reporter(out_dir)
+    exit_override: int | None = None
 
     if args.mix:
         mix = parse_mix(args.mix)
@@ -178,6 +184,38 @@ def cmd_run(args) -> int:
         cases = load_sorbet_corpus(Path(args.corpus) if args.corpus else None)
         run_campaign(cases, control, sut, on_result=reporter.record)
         extra = {"tier4": {"ran": len(cases), "corpus": "sorbet"}}
+    elif args.tier == "regressions":
+        # Minimized reproducers of past disagreements, each checked against the
+        # status it declares (N41). Runs whole, and *must*: the point of this tier
+        # is that it does not sample, so a known defect cannot hide behind a draw.
+        cases = load_regressions_corpus(Path(args.corpus) if args.corpus else None)
+        if not cases:
+            print("no regressions corpus (nothing has been filed yet)", file=sys.stderr)
+            return 0
+        results: list = []
+
+        def _record(r):
+            reporter.record(r)
+            results.append(r)
+
+        run_campaign(cases, control, sut, on_result=_record)
+        outcomes = {}
+        for r in results:
+            status = r.case.provenance.get("status", REGRESSION_DEFAULT_STATUS)
+            outcomes[r.case.id] = {
+                "status": status,
+                "verdict": r.verdict.value,
+                "outcome": regression_outcome(status, r.verdict.value),
+                "reason": r.reason,
+            }
+        counts: dict[str, int] = {}
+        for o in outcomes.values():
+            counts[o["outcome"]] = counts.get(o["outcome"], 0) + 1
+        failures = [cid for cid, o in outcomes.items() if o["outcome"] in REGRESSION_FAILURES]
+        exit_override = 1 if failures else 0
+        extra = {"regressions": {"ran": len(results), "outcomes": outcomes,
+                                 "counts": counts, "failures": failures,
+                                 "legend": REGRESSION_OUTCOMES}}
     elif args.tier in ("1", "1.5"):
         extra = run_generative_campaign(
             control, sut, reporter,
@@ -191,6 +229,10 @@ def cmd_run(args) -> int:
         return 2
     summary = reporter.finalize(sut.name, extra=extra)
     _print_summary(summary, out_dir)
+    if exit_override is not None:
+        # the regressions tier owns its own verdict: a `still_open` case disagrees
+        # by design, so the generic "any disagreement is red" rule is wrong here
+        return exit_override
     return 1 if summary["verdicts"].get("disagree") else 0
 
 
@@ -367,7 +409,8 @@ def main(argv=None) -> int:
     # tier "1.5" is the tier-1 generator with eval-order probes on (no per-tier
     # flag; a distinct tier id keeps selection uniform).
     p_run.add_argument(
-        "--tier", type=str, default="1", choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain"]
+        "--tier", type=str, default="1",
+        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "regressions"]
     )
     p_run.add_argument(
         "--mix",

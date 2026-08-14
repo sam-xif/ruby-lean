@@ -11,6 +11,7 @@ rather than pre-filtered here.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -187,3 +188,93 @@ def load_bootstraptest(corpus: Path | None = None) -> list[TestCase]:
     if not cases:
         raise FileNotFoundError(f"no .rb cases under {corpus}\n{HARVEST_RECIPE}")
     return cases
+
+
+# ─── The regressions corpus: cases that once disagreed ──────────────────────
+#
+# Written by `campaign.py` every time a generative campaign shrinks a
+# disagreement, and — until this tier existed — read by nothing. A defect could
+# be found, minimized, filed here, and then never executed again, which is how a
+# *known* wrong answer can sit behind a green ratchet: the two generative tiers
+# re-draw their programs every run, so whether they rediscover it is a matter of
+# the sample. `N41` is the entry; the `coerce` defect is the case in point.
+#
+# Every case carries a **status**, and the tier checks the actual verdict against
+# it. That is what makes the corpus a ratchet in both directions:
+#
+#   * `open`  — a known wrong answer, not yet fixed. Expected to DISAGREE. If it
+#               agrees, someone fixed it and the sidecar is now a lie.
+#   * `fixed` — was a wrong answer, now correct. Expected to AGREE. If it
+#               disagrees, that is a regression in the classic sense.
+#
+# There is no third status on purpose: a case here either reproduces a live
+# defect or guards a dead one.
+REGRESSIONS_DIR = BASE / "corpus" / "regressions"
+
+REGRESSION_STATUS = ("open", "fixed")
+
+# A case with no sidecar is `open`: the campaign writes the .rb at the moment a
+# disagreement is confirmed, which is precisely when the defect is live. The
+# default therefore cannot be wrong at write time, and going green later is what
+# forces the sidecar to be written.
+REGRESSION_DEFAULT_STATUS = "open"
+
+
+def load_regressions_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """Load `corpus/regressions/` — minimized reproducers of past disagreements.
+
+    Unlike every other corpus here, this one is *append-only by machine*: the
+    campaign writes to it. An empty directory is not an error (a project with no
+    known-open defects is the goal), so this returns `[]` rather than raising.
+    """
+    corpus = Path(corpus) if corpus else REGRESSIONS_DIR
+    if not corpus.is_dir():
+        return []
+    cases = []
+    for case in load_corpus_cases(corpus, default_tier=-1):
+        status = case.provenance.get("status", REGRESSION_DEFAULT_STATUS)
+        if status not in REGRESSION_STATUS:
+            raise ValueError(
+                f"regressions case {case.id!r} has status {status!r}; "
+                f"expected one of {REGRESSION_STATUS}"
+            )
+        cases.append(
+            dataclasses.replace(case, provenance={**case.provenance, "status": status})
+        )
+    return cases
+
+
+# What a regressions case's actual verdict means, given the status it declares.
+# Only `regressed` and `unexpectedly_fixed` are failures — the first is a defect
+# reintroduced, the second is bookkeeping that has fallen behind reality, and
+# both need a human. `still_open` is the expected state of a known defect and
+# must NOT redden the run, or the corpus could never hold one.
+REGRESSION_OUTCOMES = {
+    "held": "was fixed and still agrees",
+    "still_open": "known-open defect, still reproduces",
+    "regressed": "was fixed and now disagrees — a real regression",
+    "unexpectedly_fixed": "known-open defect now agrees — flip its sidecar to fixed",
+    "gated": "the SUT now gates this program, so it no longer pins anything",
+    "unusable": "the control could not run it (parse error / timeout / nondeterminism)",
+}
+
+REGRESSION_FAILURES = ("regressed", "unexpectedly_fixed")
+
+
+def regression_outcome(status: str, verdict_value: str) -> str:
+    """Reconcile a declared status against an observed verdict.
+
+    A **gate** is deliberately not a failure and deliberately not a pass. For an
+    `open` case it means the wrong answer became a refusal, which is an
+    improvement the sidecar should record but not one this function can verify;
+    for a `fixed` case it means the guard has stopped guarding. Either way the
+    honest report is "this case no longer tests what it was filed to test".
+    """
+    if verdict_value in ("control_invalid", "harness_error"):
+        return "unusable"
+    if verdict_value == "sut_unsupported":
+        return "gated"
+    disagreed = verdict_value == "disagree"
+    if status == "open":
+        return "still_open" if disagreed else "unexpectedly_fixed"
+    return "regressed" if disagreed else "held"

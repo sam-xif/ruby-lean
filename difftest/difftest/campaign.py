@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+import json
 from pathlib import Path
 
 from hypothesis import HealthCheck, Phase, given
@@ -94,6 +95,54 @@ class _Disagreement(Exception):
     def __init__(self, result: CaseResult):
         self.result = result
         super().__init__(result.reason)
+
+
+def _file_regression(
+    regressions_dir: Path, minimal: CaseResult, origin: str, seed: int | None
+) -> Path:
+    """Persist a shrunk reproducer **and a sidecar describing it** (N41).
+
+    The `.rb` alone was write-only for as long as it existed: nothing read the
+    directory, and a bare program carries no record of what it was filed for, so
+    even a human opening it had to re-derive the defect. The sidecar makes the
+    artifact self-describing and, more to the point, gives the `regressions` tier
+    a `status` to check against — which is what turns this directory from a
+    graveyard into a ratchet.
+
+    `status` is `open`, and cannot be wrong at write time: we are here because the
+    disagreement was just confirmed. It becomes `fixed` by hand when someone fixes
+    it, and the tier *forces* that edit by failing the case as
+    `unexpectedly_fixed` until it happens.
+    """
+    regressions_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"{minimal.case.id}-minimized"
+    path = regressions_dir / f"{stem}.rb"
+    path.write_text(minimal.case.source)
+    meta = {
+        "status": "open",
+        "filed_by": "difftest campaign (automatic)",
+        "arm": origin,
+        "seed": seed,
+        "case_id": minimal.case.id,
+        "diff": minimal.reason,
+        "control": minimal.control_obs.to_json() if minimal.control_obs else None,
+        "sut": minimal.sut_obs.to_json() if minimal.sut_obs else None,
+        "note": (
+            "Minimized by hypothesis. Re-run with "
+            "`difftest run --tier regressions`; flip `status` to \"fixed\" once it "
+            "agrees, which that tier will insist on."
+        ),
+    }
+    # never clobber a status a human has already set
+    meta_path = regressions_dir / f"{stem}.json"
+    if meta_path.exists():
+        try:
+            prior = json.loads(meta_path.read_text())
+        except ValueError:
+            prior = {}
+        meta["status"] = prior.get("status", meta["status"])
+    meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+    return path
 
 
 def run_generative_campaign(
@@ -183,10 +232,9 @@ def run_generative_campaign(
         if origin in gen_strategies:
             # a generated (tier1/tier1.5/…) case: persist the shrunk reproducer
             if regressions_dir is not None:
-                regressions_dir.mkdir(parents=True, exist_ok=True)
-                path = regressions_dir / f"{minimal.case.id}-minimized.rb"
-                path.write_text(minimal.case.source)
-                extra["campaign"]["minimized_reproducer"] = str(path)
+                extra["campaign"]["minimized_reproducer"] = str(
+                    _file_regression(regressions_dir, minimal, origin, seed)
+                )
         else:
             # corpus cases are already persisted and small; point at the original
             extra["campaign"]["disagreeing_corpus_case"] = minimal.case.provenance["corpus_id"]

@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "difftest campaign (automatic); sidecar added by hand in N41",
+  "arm": "tier1",
+  "case_id": "tier1-00950",
+  "first_reconciled": "2026-08-14 (be53647), lean SUT",
+  "observed_then": "sut_unsupported",
+  "diff_then": "out of Lean fragment: puts: impure to_s, to_ary dispatch, or deep nesting",
+  "note": "Neither open nor fixed: the SUT now *refuses* this program (`puts: impure to_s, to_ary dispatch, or deep nesting`), so it can no longer pin anything. Kept, and left `open`, because a gate is not a fix \u2014 if that gate is ever closed this case starts testing again and will report `still_open` or `unexpectedly_fixed` on its own. Do not mark it `fixed` on the strength of a refusal."
+}
