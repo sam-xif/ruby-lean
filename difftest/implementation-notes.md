@@ -1427,6 +1427,24 @@ only place it was visible, and only if someone read it.
 10 s, so no existing figure moves unless a recipe passes `--timeout`. R1's is
 `--timeout 120`; with it the tier is **106 agree, 0 disagree, 0 gated**.
 
+### What it means for the numbers, measured
+
+Threading the flag through makes **tier 0 read 993 at `--timeout 120` and 992 at the 10 s
+default**, and neither is wrong: tier 0 carries **three or four bootstraptest programs sitting on
+the timeout boundary** (`test_yjit_145`, `test_yjit_30k_ifelse_001`, `test_yjit_30k_methods_001`,
+`test_proc_008`), and *which* of them completes depends on machine load. Three consecutive runs of
+the same binary reported 4, 4 and 3 timeouts.
+
+So **tier 0's agreement count is ±1 and always has been**, for a reason that has nothing to do with
+the model. Two consequences:
+
+* Quote it with its timeout. `HANDOFF.md`'s recipe uses the default, so the figure there is **992**.
+* **A one-case move in tier 0 is not evidence of anything** — diff the gate sets, not the counts.
+  This session's real +1 was `test_yjit_190` (`Array#[]= non-int index`, closed by L134), and the
+  way to know that rather than guess it is `set(gates_before) - set(gates_after)`. The same
+  instruction `HANDOFF.md` gives for gate conditions applies to timeouts: read the per-case
+  outcomes.
+
 The general lesson is the one already in `HANDOFF.md` about checks that pass by producing no
 output: a flag that is accepted, does nothing, and produces a plausible-looking result is worse
 than one that errors.
