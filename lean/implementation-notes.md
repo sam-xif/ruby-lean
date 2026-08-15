@@ -4217,3 +4217,29 @@ are **seventeen**: `Interp.lean:238,279`, `Interp/Dispatch.lean:173,509,526,540,
 cost carefully: `include`/`prepend` change `ancestors`, so name-disjointness (`HeapFacts.lean`'s
 route) is not enough on its own and the side condition becomes "the spliced module defines none of
 the protected names".
+
+## L136 — splitting `StaticSoundness.lean` before F1 touches it
+
+`PLAN.md` §4 norm 3 and W6's standing instruction ("`StaticSoundness.lean` is 968 lines — split
+before extending"). It had reached **971**, against a 1,000-line ceiling, with F1 about to add a
+`KontOk` constructor and a consecution case per continuation — 11 of them for the class/const
+rung alone.
+
+The cut follows the file's own section numbering, so it is a move and not a redesign:
+
+| file | was | lines |
+|---|---|---|
+| `Proof/Static/Locals.lean` | §1–§1.4 — `valueTy?`, `FrameConforms`, `FramesOk`, the array/local-access algebra, the environment lemmas | 320 |
+| `Proof/Static/Konts.lean` | §2 — `KontOk`, `CtlOk`, `TableOk`, `NoHook`, `Inv`, the inversions, the `Inv` builders | 249 |
+| `Proof/Static/Preservation.lean` | §3 — `step_ok`, the one case analysis | 295 |
+| `Proof/StaticSoundness.lean` | §4–§6 — `consecution`, `safety`, `initiation`, `check_sound`, the worked examples, the axiom audit | 184 |
+
+**The file kept its name deliberately.** `check_sound` is what everything downstream imports —
+`Proof/PreludeInv.lean`, `check-proofs.sh`, and the AGENTS/PLAN prose that names it — so renaming
+it would have made a mechanical split look like a semantic one in every diff that mentions it.
+
+No statement changed and no proof changed; `check-proofs.sh` is green and axiom-clean, which for a
+split is the whole test. One thing to know if you split another proof file this way: the
+`set_option maxRecDepth 100000` at the top of the original is load-bearing in **all three** parts,
+not just the one containing `tableOk_initHeap` — the boot-heap `rfl`s are elaborated wherever the
+lemma is *used*, so each part carries it.
