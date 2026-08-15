@@ -255,11 +255,18 @@ def hasUserEq (h : Heap) (v : Value) : Bool :=
   | some (_, md) => md.builtin.isNone
   | none => false
 
-/-- Would CRuby dispatch `to_ary` on this value? `Kernel#puts` does, to flatten
-    its arguments — so a *user* `to_ary`, or a user `method_missing` that could
-    intercept it, means a pure `puts` would silently print where CRuby raises
-    (`can't convert C to Array (C#to_ary gives String)`). A builtin cannot run a
-    dispatch, so `puts` gates instead (L66). -/
+/-- Would CRuby dispatch `to_ary` on this value? Every implicit Array conversion
+    goes through `rb_check_array_type`, which **dispatches** — so a *user*
+    `to_ary`, or a user `method_missing` that could intercept it, decides the
+    answer, runs its side effects, and gets the `conversion_mismatch` message
+    (`can't convert C to Array (C#to_ary gives String)`) when it answers the
+    wrong type.
+
+    A builtin cannot run a dispatch, so a site that reaches this either defers to
+    a prelude twin (`toAryDefer?`, L133) or gates. Deliberately *not* excluding
+    `fromPrelude`, unlike `mayCoerce`: the prelude's only `method_missing`s
+    (`Pathname`, `File`, `URI`) exist to refuse by name, and refusing here is
+    what they already do today — routing through them changes no answer. -/
 def mayDispatchToAry (h : Heap) (v : Value) : Bool :=
   (match lookup h v "to_ary" with | some (_, md) => md.builtin.isNone | none => false)
   || (match lookup h v "method_missing" with | some (_, md) => md.builtin.isNone | none => false)
@@ -519,12 +526,75 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     else none
   | _ => none
 
+/-! ### The implicit Array conversion (L133)
+
+The same shape as the coerce protocol one section up, and for the same reason.
+Every implicit Array-conversion site in CRuby is `rb_check_array_type`, which is
+`rb_check_funcall(:to_ary)` — it **dispatches**. So a `to_ary`, or a
+`method_missing` that serves one, *runs*: its side effects happen, an Array
+answer is used, and a non-Array answer raises `conversion_mismatch`
+(`can't convert C to Array (C#to_ary gives String)` — "to", not "into", and it
+names the method). The model's builtins tested the payload and raised
+`no implicit conversion of C into Array` without calling anything, which is a
+wrong message *and* a lost side effect.
+
+A builtin cannot dispatch, so the sites defer to prelude twins over
+`__to_array_type`. Deferral is keyed on "could a `to_ary` possibly run", so two
+real Arrays — and every argument whose class chain offers nothing — keep the Lean
+fast path untouched. `Array#-`/`&`/`|`/`*` convert too and are *not* here: they
+gate on a non-Array argument today, and a gate is not a wrong answer. -/
+
+/-- Is any value reachable from `v` through nested Arrays one that `to_ary`
+    could speak for? `Array#flatten` converts **each element** with
+    `rb_check_array_type`, so its deferral question is about the receiver's
+    contents rather than its argument. Fuel-bounded like `flattenAll`, and a
+    cyclic array runs out and answers `false` — which keeps the Lean path, whose
+    own fuel then produces the honest gate rather than a Ruby-side non-termination. -/
+def anyToAryDeep (h : Heap) : Nat → Value → Bool
+  | 0, _ => false
+  | fuel + 1, v =>
+    match arrPayload? h v with
+    | some xs => xs.any (anyToAryDeep h fuel)
+    | none => mayDispatchToAry h v
+
+/-- When an Array-conversion builtin must dispatch rather than answer, the
+    prelude twin to dispatch instead (L133). -/
+def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  if bid == "Array#+" || bid == "Array#concat" then
+    match args with
+    | [b] =>
+      if (arrPayload? h b).isSome || !mayDispatchToAry h b then none
+      else if bid == "Array#+" then some "__ary_plus_slow" else some "__ary_concat_slow"
+    | _ => none
+  else if bid == "Array#flatten" then
+    -- only the no-argument form; `flatten(n)` gates in the builtin either way
+    match args, arrPayload? h recv with
+    | [], some xs =>
+      if xs.any (anyToAryDeep h 100) then some "__ary_flatten_slow" else none
+    | _, _ => none
+  else if bid == "Array#join" then
+    -- `ary_join_one` recurses into a nested Array, and asks `rb_check_array_type`
+    -- what "nested" means — so an element answering `to_ary` is joined rather
+    -- than rendered. The same question as `flatten`, one builtin over.
+    match arrPayload? h recv with
+    | some xs => if xs.any (anyToAryDeep h 100) then some "__join_slow" else none
+    | none => none
+  else if bid == "Object#puts" then
+    -- `rb_io_puts` tries `rb_check_array_type` on every argument before
+    -- rendering it, which is why `puts` has gated on this question since L66.
+    -- With a twin that can dispatch, the gate becomes an answer.
+    if args.any (mayDispatchToAry h) then some "__puts_slow" else none
+  else none
+
 /-- Every reason a builtin defers to a prelude twin instead of running: repr
-    purity (L116) and the coerce protocol (L123). One hook, so `invoke` has one
-    place to consult and the dispatch metatheorems one hypothesis to carry. -/
+    purity (L116), the coerce protocol (L123) and the implicit Array conversion
+    (L133). One hook, so `invoke` has one place to consult and the dispatch
+    metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
+    <|> toAryDefer? h bid recv args
 
 /-- Pure numeric comparison of two values (Int/Float, mixed promoted to Float);
     `none` if either is non-numeric — the caller then gates (a full `<=>` dispatch

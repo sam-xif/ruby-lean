@@ -4012,3 +4012,77 @@ purpose: this is exactly the shape L123 solved for `coerce` and L130 for `to_int
 *rule* is known and the **site list** is the work — `Array#+`, `concat`, `Array()`, splat, `puts`,
 massign. It should be the next session's first item, because every one of those sites is a silent
 wrong answer today.
+
+## L133 — implicit `to_ary` dispatches, and the site list really was the work
+
+L132's closing section said the rule was known and the site list was the work. Both halves were
+right, and the second half was bigger than the list it named: **four** of the six sites it listed
+turned out to be answerable, one was already correct, one gates — and probing the fix found
+**three more sites and two more rules** the list did not mention.
+
+**The rule.** Every implicit Array conversion in CRuby is `rb_check_array_type`, which is
+`rb_check_funcall(:to_ary)`. It **dispatches**, so three things a payload test cannot produce are
+observable [V]:
+
+* the `to_ary` body **runs** — including one a `method_missing` serves — and whatever it printed,
+  printed;
+* an Array answer is *used*: `[1] + Pair.new` is `[1, 7, 8]`, not a `TypeError`;
+* a non-Array answer names the method — `can't convert C to Array (C#to_ary gives String)`, with
+  **`to`**, against the `into` of the nothing-answered case.
+
+The model's Array builtins tested the payload and raised `no implicit conversion of C into Array`
+without calling anything: a wrong message *and* a lost side effect, at every site at once.
+
+**The shape of the fix is L123's**, third time of asking (L123 `coerce`, L130 `to_int`/`to_i`): a
+builtin that would have to dispatch defers to a prelude twin, keyed on "could a `to_ary` possibly
+run", so two real Arrays never leave the Lean fast path. `toAryDefer?` joins `reprDefer?` and
+`coerceDefer?` under the one `deferTwin?` hook — which is what `BuiltinConformance.lean`'s `simp`
+set had to learn, and `check-proofs.sh` said so in one command.
+
+| site | before | after |
+|---|---|---|
+| `Array#+`, `Array#concat` | wrong message, no dispatch | twin over `__to_array_type` |
+| `Array#flatten` | element left unconverted — a **wrong answer** with no error at all | twin, keyed on `anyToAryDeep` over the receiver |
+| `Array#join` | same, and **not on L132's list** — found by probing | twin, same key |
+| `Kernel#Array` | prelude, but `respond_to?`-based: missed a `method_missing`'s `to_ary` and *used* a non-Array answer | `__check_array_type` then `to_a`, both `rb_check_funcall` |
+| `Kernel#puts` | gated since L66 | the gate is **retired** — `toAryDefer?` routes to `__puts_slow` |
+| massign (`a, b = obj`) | already correct | untouched — the desugarer lowers it to `Array.try_convert(x) \|\| [x]` |
+| splat (`*obj`) | wrong answer for a `method_missing`-served `to_a` | **gate** |
+| a block's auto-splat (`\|x, y\|`) | wrong answer — object to `x`, nil to `y` | **gate** |
+
+The last two are honest refusals rather than fixes, and are pinned as `to-ary-gates.rb` so they
+stay visible. Neither `spread` nor `callClosure` is a builtin, so neither has a twin to defer to:
+closing them needs a way to run a send *in the middle of argument binding*, which is the same
+machinery the observation wants (`homebrew/HANDOFF.md` §Known wrong answers 4). `Array#-`/`&`/`|`
+convert too and were deliberately left alone: they gate on a non-Array argument today, and a gate
+is not a wrong answer.
+
+### The two rules found by probing the fix
+
+**A `to_ary` that answers `nil` is a mismatch, not an absence.** `[1] + NilAry.new` raises
+`can't convert NilAry to Array (NilAry#to_ary gives NilClass)`, and the first draft raised
+`no implicit conversion` instead. The cause is that `rb_check_convert_type_with_id` (the *check*
+form, behind `Array.try_convert` and `Kernel#Array`) short-circuits on a nil result, while
+`rb_convert_type_with_id` (the *raising* form, behind `Array#+`) type-checks whatever
+`rb_check_funcall` returned — so only `Qundef`, "not callable", produces `no implicit conversion`.
+`__check_convert` collapsed those two into one `nil`, exactly as its own comment warned the
+`coerce` path about (L123 kept `__coercible?` separate for this reason and I did not read why).
+The repair is `__conv_callable?`, split out of `__check_convert` and now shared by both — the same
+refactor `__coercible?` should eventually fold into.
+
+**`Array#join` asks `rb_check_array_type` what "nested" means.** `ary_join_one` recurses into a
+nested Array, and "nested" is the conversion, not `is_a?(Array)` — so `[Pair.new].join(",")` is
+`"7,8"`. `__join_collect` tried `to_s` first, which is the wrong order: `to_ary` is asked before
+anything renders.
+
+**Probe: 40 shapes, then 51 more in the neighbourhood.** The first found 20 disagreements and left
+5, all of them refusals. The second — written against the functions the *fix* introduced, per the
+handoff's rule — found the two rules above plus three pre-existing gates worth naming: `Array.new`
+with an Array argument, `flatten(n)`, and a recursive array (CRuby raises
+`ArgumentError: tried to flatten recursive array` where `flattenAll` runs out of fuel and gates).
+It ended at 48/51, the three being those gates.
+
+**Two pinned defects came off the list**, and only one of them was the one being fixed:
+`tier1.5-01643-minimized.rb` (the `Array#+` shape L132 filed) and `tier1-00950-minimized.rb`, which
+had been `open`-but-`gated` since N41 on the `puts` refusal this note retires. Both sidecars are
+flipped to `fixed`; the answering sites are guarded by the new `to-ary-dispatch.rb`.

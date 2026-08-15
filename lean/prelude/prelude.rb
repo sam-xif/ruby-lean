@@ -1240,14 +1240,35 @@ module Kernel
     neg ? "-" + s : s
   end
 
-  # `Array(x)`: nil → [], an Array (or `to_ary`) → itself, `to_a` if it has one,
-  # else a one-element array [V]. `vulns/vulnerability.rb` uses it three times to
-  # normalize optional OSV list fields.
+  # `rb_Array`: nil → [], then `to_ary`, then `to_a`, else a one-element array
+  # [V]. `vulns/vulnerability.rb` uses it three times to normalize optional OSV
+  # list fields.
+  #
+  # Both conversions are `rb_check_funcall`, not `respond_to?` (L133): the older
+  # spelling missed a `method_missing`-supplied `to_ary` entirely and, worse,
+  # *used* a non-Array answer — `Array(o)` for a `to_ary` returning `"nope"`
+  # answered `"nope"` where CRuby raises. The `respond_to?` arm survives for the
+  # **core** `to_a`s (Hash, Range, Struct, MatchData), which `__check_convert`
+  # cannot see: it is `rb_check_funcall` over `__user_defines?`, and a builtin
+  # definition is not a user one.
   def Array(arg)
     return [] if arg.nil?
-    return arg if arg.is_a?(Array)
-    return arg.to_ary if arg.respond_to?(:to_ary)
-    return arg.to_a if arg.respond_to?(:to_a)
+
+    r = __check_array_type(arg)
+    return r unless r.nil?
+
+    if arg.__user_defines?(:to_a) || arg.__user_defines?(:method_missing)
+      u = __check_convert(arg, :to_a)
+      return u if u.is_a?(Array)
+
+      unless u.nil?
+        raise TypeError, "can't convert " + arg.class.to_s + " to Array (" +
+                         arg.class.to_s + "#to_a gives " + u.class.to_s + ")"
+      end
+    elsif arg.respond_to?(:to_a)
+      return arg.to_a
+    end
+
     [arg]
   end
 end
@@ -1359,18 +1380,26 @@ class Object
     nil
   end
 
+  # `rb_io_puts` asks each argument for `to_ary` before rendering it, so an
+  # object that answers one is *flattened* and one that answers the wrong type
+  # raises — neither of which a payload test can see. Since L133 `toAryDefer?`
+  # routes such an argument here instead of gating `puts` (L66).
   def __puts_one(a)
-    if a.is_a?(Array)
-      return __write("\n") if a.empty?
+    return __write("\n") if a.nil?
 
-      a.each { |e| __puts_one(e) }
-    elsif a.nil?
-      __write("\n")
-    else
-      str = a.__as_string
-      __write(str)
-      __write("\n") unless str.end_with?("\n")
+    unless String === a
+      arr = __check_array_type(a)
+      unless arr.nil?
+        return __write("\n") if arr.empty?
+
+        arr.each { |e| __puts_one(e) }
+        return nil
+      end
     end
+
+    str = a.__as_string
+    __write(str)
+    __write("\n") unless str.end_with?("\n")
     nil
   end
 end
@@ -1407,14 +1436,22 @@ class Array
     out
   end
 
+  # `ary_join_one`: a nested Array is joined recursively — and "nested" is
+  # `rb_check_array_type`, not `is_a?(Array)`, so an element answering `to_ary`
+  # is joined too (`[Pair.new].join(",")` is `"7,8"`, not `"#<Pair:0x…>"`). Found
+  # by probing L133's other sites; `to_ary` is tried **before** `to_s`, which is
+  # why it cannot be left to `__as_string`.
   def __join_collect(parts)
     each do |e|
-      if e.is_a?(Array)
-        e.__join_collect(parts)
-      elsif e.nil?
+      if e.nil?
         parts.push("")
       else
-        parts.push(e.__as_string)
+        sub = String === e ? nil : __check_array_type(e)
+        if sub.nil?
+          parts.push(e.__as_string)
+        else
+          sub.__join_collect(parts)
+        end
       end
     end
     nil
@@ -1511,13 +1548,22 @@ class Object
 end
 
 module Kernel
-  def __check_convert(obj, meth)
+  # `rb_check_funcall`'s callability rule, over an arbitrary method name: a
+  # **user `respond_to?`** is asked first and a false answer is believed without
+  # calling anything; otherwise the call happens if the method is defined or a
+  # user `method_missing` can serve it.
+  #
+  # Split out of `__check_convert` by L133, because the two questions are not the
+  # same one: `rb_check_funcall` returns `Qundef` for "not callable" and the
+  # method's own answer otherwise, and `rb_convert_type_with_id` distinguishes
+  # them — a `to_ary` that *answers nil* raises `can't convert C to Array
+  # (C#to_ary gives NilClass)`, where an absent one raises `no implicit
+  # conversion`. Collapsing both into `nil` cost the first of those messages.
+  def __conv_callable?(obj, meth)
     if obj.__user_defines?(:respond_to?)
-      return nil unless obj.respond_to?(meth)
-
-      return obj.send(meth)
+      return obj.respond_to?(meth)
     end
-    return obj.send(meth) if obj.__user_defines?(meth)
+    return true if obj.__user_defines?(meth)
 
     if obj.__user_defines?(:method_missing)
       # A **custom `respond_to_missing?`** is consulted before `method_missing` is
@@ -1527,13 +1573,17 @@ module Kernel
       # `Integer(obj)` on an object whose `method_missing` serves `to_int` and whose
       # `respond_to_missing?` names only `to_int` raise from the **`to_str`** probe
       # that runs first (L130).
-      return nil if obj.__user_defines?(:respond_to_missing?) &&
-                    !obj.respond_to_missing?(meth, true)
-
-      return obj.send(meth)
+      return !obj.__user_defines?(:respond_to_missing?) ||
+             obj.respond_to_missing?(meth, true)
     end
 
-    nil
+    false
+  end
+
+  # `rb_check_funcall`, for the callers that treat "answered nil" and "nothing
+  # answered" alike — which is every conversion but `rb_convert_type_with_id`.
+  def __check_convert(obj, meth)
+    __conv_callable?(obj, meth) ? obj.send(meth) : nil
   end
 end
 
@@ -1550,8 +1600,25 @@ class String
   end
 end
 
-class Array
-  def self.try_convert(obj)
+# ─── The implicit Array conversion (`rb_check_array_type`, L133) ────────────
+#
+# Every implicit Array-conversion site in CRuby — `Array#+`, `#concat`,
+# `#flatten`, `Kernel#Array`, `puts`, a block's auto-splat, `a, b = obj` — is
+# `rb_check_array_type`, which is `rb_check_funcall(:to_ary)`. It **dispatches**,
+# so three things the model's payload test could not produce are observable:
+#
+#   * the `to_ary` body **runs**, including one a `method_missing` serves, and
+#     whatever it printed, printed;
+#   * an Array answer is *used* — `[1] + Pair.new` is `[1, 7, 8]`;
+#   * a non-Array answer names the method: "can't convert C to Array
+#     (C#to_ary gives String)" — `to`, not `into`, against the `into` of the
+#     nothing-answered case [V].
+module Kernel
+  # `rb_check_array_type`: nil when nothing answered, so the caller decides what
+  # "not an array" means. An Array is itself — a redefined `to_ary` on `Array`
+  # is not consulted, as `rb_check_convert_type_with_id` short-circuits on the
+  # builtin type [V].
+  def __check_array_type(obj)
     return obj if obj.is_a?(Array)
 
     r = __check_convert(obj, :to_ary)
@@ -1560,6 +1627,54 @@ class Array
 
     raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +
                      obj.class.to_s + "#to_ary gives " + r.class.to_s + ")"
+  end
+
+  # `rb_to_array_type` (`rb_convert_type_with_id`). **Not** `__check_array_type`
+  # with a raise bolted on, and the difference is a message: the check form
+  # answers nil for a `to_ary` that returned nil, but this one type-checks the
+  # answer *whatever it is*, so `nil` is a mismatch naming `NilClass` and only an
+  # **absent** `to_ary` gets `no implicit conversion` [V]. `__conv_desc` names
+  # nil/true/false literally there, exactly as Lean's `coerceName` does.
+  def __to_array_type(obj)
+    return obj if obj.is_a?(Array)
+
+    unless __conv_callable?(obj, :to_ary)
+      raise TypeError, "no implicit conversion of " + __conv_desc(obj) + " into Array"
+    end
+
+    r = obj.to_ary
+    return r if r.is_a?(Array)
+
+    raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +
+                     obj.class.to_s + "#to_ary gives " + r.class.to_s + ")"
+  end
+end
+
+class Array
+  def self.try_convert(obj) = __check_array_type(obj)
+
+  # The twins `toAryDefer?` sends `Array#+`/`#concat` to when their argument
+  # might answer `to_ary`. Each converts and then re-enters the builtin with a
+  # real Array, which cannot defer again.
+  def __ary_plus_slow(other) = self + __to_array_type(other)
+
+  def __ary_concat_slow(other) = concat(__to_array_type(other))
+
+  # `rb_ary_flatten` converts **every element** with `rb_check_array_type`, not
+  # just the ones that already are Arrays — so an element answering `to_ary` is
+  # spliced. Entered only when some element could (`anyToAryDeep`), and only for
+  # the depth-less form; `flatten(n)` gates in the builtin.
+  def __ary_flatten_slow
+    out = []
+    each do |e|
+      sub = __check_array_type(e)
+      if sub.nil?
+        out << e
+      else
+        out.concat(sub.__ary_flatten_slow)
+      end
+    end
+    out
   end
 end
 

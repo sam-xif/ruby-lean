@@ -1,0 +1,7 @@
+{
+  "status": "open",
+  "filed_by": "hand, L133",
+  "arm": "probe",
+  "case_id": "to-ary-gates",
+  "note": "Two refusals L133 introduced, each replacing a wrong answer: `[0, *mm_obj]` used to wrap the object without running the `method_missing`-supplied `to_a`, and `[Pair.new].each { |x, y| }` used to bind the object to `x` and nil to `y` where CRuby binds the two halves. Both live in the interpreter (`spread`, `callClosure`), not in a builtin, so there is no prelude twin to defer to — closing either needs a way to run a send in the middle of argument binding. Left `open` because a gate is not a fix; the tier will report it `gated` until then."
+}

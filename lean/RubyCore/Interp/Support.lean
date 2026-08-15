@@ -295,10 +295,20 @@ def spread (m : Machine) (v : Value) : Except String (List Value) :=
       | _, _ => .error "splat of a non-integer Range"
     | _ =>
       -- CRuby splats a non-Array via `to_a` if it responds; a *user* `to_a`
-      -- is a side-effecting dispatch a pure spread can't run → gate.
-      match lookup m.heap v "to_a" with
-      | some (_, md) => if md.builtin.isNone then .error "splat via user to_a (dispatch)" else .ok [v]
-      | none => .ok [v]
+      -- is a side-effecting dispatch a pure spread can't run → gate. A user
+      -- `method_missing` can serve that `to_a` too (`rb_check_funcall`), and
+      -- until L133 that case did not gate: `[0, *mm_obj]` wrapped the object
+      -- and the `method_missing` never ran, which is a wrong answer rather than
+      -- a refusal. Splat is not a builtin, so there is no twin to defer to —
+      -- the honest move is the gate the `to_a` case already had.
+      if (match lookup m.heap v "to_a" with
+          | some (_, md) => md.builtin.isNone
+          | none => false)
+         || (match lookup m.heap v "method_missing" with
+             | some (_, md) => md.builtin.isNone
+             | none => false) then
+        .error "splat via user to_a (dispatch)"
+      else .ok [v]
   | .nil => .ok []
   | _ => .ok [v]
 
@@ -415,8 +425,23 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
   let sp := sp?.getD ⟨[], none, [], none⟩
   let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
   let required := pre.length + post.length
+  let autoSplat :=
+    !cl.lam && args.length == 1 && (required ≥ 2 || (rest?.isSome && required ≥ 1))
+  -- A block that auto-splats asks its single argument for `to_ary`
+  -- (`rb_vm_callee_setup_block_arg` → `rb_check_array_type`), so a user `to_ary`
+  -- — or a `method_missing` serving one — decides the binding, and a non-Array
+  -- answer raises. Until L133 this arm only looked at the payload, so
+  -- `[Pair.new].each { |x, y| … }` bound the object to `x` and nil to `y` where
+  -- CRuby binds the two halves: a wrong answer, not a refusal. `callClosure` is
+  -- not a builtin and has no twin to defer to, so the honest move is to gate.
+  if autoSplat && (match args.head? with
+                   | some a => (Builtins.arrPayload? m.heap a).isNone
+                               && Builtins.mayDispatchToAry m.heap a
+                   | none => false) then
+    .unsupported "block auto-splat via user to_ary (dispatch)"
+  else
   let args :=
-    if !cl.lam && args.length == 1 && (required ≥ 2 || (rest?.isSome && required ≥ 1)) then
+    if autoSplat then
       match args.head? with
       | some (.ref o) => match (m.heap.get o).payload with
         | .arr xs => xs.toList

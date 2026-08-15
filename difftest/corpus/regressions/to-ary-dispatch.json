@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L133",
+  "arm": "probe",
+  "case_id": "to-ary-dispatch",
+  "note": "Guards L133. Every implicit Array-conversion site in CRuby is `rb_check_array_type` (= `rb_check_funcall(:to_ary)`), so it dispatches: the body runs, an Array answer is used, and a non-Array answer raises `conversion_mismatch` — `can't convert C to Array (C#to_ary gives String)`, with `to` rather than the `into` of the nothing-answered case. The model's builtins tested the payload and raised without calling anything, which is a wrong message and a lost side effect. `Array#+`, `#concat`, `#flatten` and `#join` now defer to prelude twins over `__to_array_type`/`__check_array_type`; `Kernel#Array` and `puts` were rewritten to dispatch (the `puts` gate of L66 is retired). Two rules found by probing the fix are pinned here too: a `to_ary` that answers **nil** is a NilClass mismatch and not `no implicit conversion`, because `rb_convert_type_with_id` type-checks whatever `rb_check_funcall` returned and only an *absent* method is undefined — which is why `__conv_callable?` had to be split out of `__check_convert`; and `Array#join` recurses into `rb_check_array_type`, not `is_a?(Array)`. See `to-ary-gates.rb` for the two sites that gate instead."
+}
