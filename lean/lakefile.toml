@@ -32,7 +32,7 @@ root = "ConcolicMain"
 # green ratchet says nothing about the proofs (`PLAN.md` §4 norm 5). One target
 # so that checking them is a single command:
 #
-#     lake build Metatheory        # all 15 files
+#     lake build Metatheory        # all 19 files
 #     scripts/check-proofs.sh      # the same, plus `#print axioms`
 [[lean_lib]]
 name = "Metatheory"
