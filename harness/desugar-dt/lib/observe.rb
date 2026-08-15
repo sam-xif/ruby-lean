@@ -23,9 +23,31 @@ module Observe
 
   module_function
 
+  # RubyCore's **runtime support layer** (C38). The desugaring of string interpolation
+  # needs CRuby's `rb_obj_as_string`, whose third step — "if `to_s` did not answer a
+  # String, use `rb_any_to_s`" — has no Ruby-level name. The Lean model supplies this in
+  # its prelude; here it is written with the C function's own semantics so that both
+  # sides of the round-trip, `obs+(P)` and `obs+(render(desugar(P)))`, see one rule.
+  #
+  # It is in the *wrapper*, so **both** sides get it and neither can be advantaged by it
+  # — the same reason the difftest harness owns its stub set rather than the prelude
+  # (L112). `Object.instance_method(:to_s)` is exactly `rb_any_to_s`: the default
+  # `Object#to_s` *is* that C function, and binding it skips every override.
+  SUPPORT = <<~'RUBY'
+    class Object
+      def __as_string
+        return self if String === self
+
+        s = to_s
+        String === s ? s : Object.instance_method(:to_s).bind(self).call
+      end
+    end
+  RUBY
+
   WRAPPER = <<~'RUBY'
     $__obs_out = ENV["OBS_OUT"]
     srand(0)
+    %<support>s
     __exc = nil
     __val =
       begin
@@ -46,7 +68,7 @@ module Observe
   def run(src, timeout: 10)
     indented = src.each_line.map { |l| "    #{l}" }.join
     indented += "\n" unless indented.end_with?("\n")
-    wrapper = format(WRAPPER, program: indented)
+    wrapper = format(WRAPPER, program: indented, support: SUPPORT)
 
     Tempfile.create(["dt_prog", ".rb"]) do |prog_f|
       prog_f.write(wrapper)

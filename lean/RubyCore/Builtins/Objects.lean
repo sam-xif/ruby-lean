@@ -69,6 +69,27 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv with
     | .ref o => okStr m (fakeAddr o)
     | _ => .unsupported "__addr_str of an immediate"
+  | "Object#__any_to_s" =>
+    -- CRuby's **`rb_any_to_s`** (L129): `#<Foo:0x…>`, the form every C-level
+    -- renderer falls back to when a user `to_s` hands it something that is not a
+    -- String. A primitive rather than prelude Ruby for the reason `Heap.anyToS`
+    -- gives: the C function names the class through `rb_obj_class` and
+    -- `rb_class2name`, so it **dispatches nothing** — `"#{Foo.new}"` with a bad
+    -- `Foo#to_s` *and* a `def Foo.to_s` still says `#<Foo:0x…>` [V], which a Ruby
+    -- `self.class.to_s` would get wrong. `realClassOf`, so a singleton method on
+    -- the object does not rename it either [V].
+    --
+    -- Not `Heap.anyToS`: that one is the *eigenclass naming* rule, where a class
+    -- argument is named by its path (`#<Class:Foo>`). Here a class is just an
+    -- object of class `Class` — `"#{Foo}"` with a bad `Foo.to_s` is
+    -- `#<Class:0x…>` [V], not `Foo`.
+    match recv with
+    | .ref o => okStr m s!"#<{className h (realClassOf h recv)}:{fakeAddr o}>"
+    -- CRuby prints the *immediate's own VALUE* (`#<Integer:0x…b>` for 5, i.e.
+    -- `2n+1`), and reproducing that encoding to keep the observation's
+    -- occurrence-order normalization honest is not worth it for a program that
+    -- has redefined `Integer#to_s` to return a non-String.
+    | _ => .unsupported "__any_to_s of an immediate (CRuby prints its VALUE address)"
   | "Object#__match_to_caller" =>
     -- Declares the running activation a stand-in for a CRuby **C function** as far
     -- as `$~` goes: every later read or write in this body resolves to the

@@ -1123,21 +1123,49 @@ end
 # `__write` and `__addr_str` are the two primitives they need: append a String to
 # stdout with no rendering, and the `0x…` a default `inspect` carries.
 class Object
+  # `rb_obj_as_string` (L129): **the** way a C-level renderer turns a value into a
+  # String. It calls `to_s`, and if that answers something that is not a String it
+  # falls back to the default `#<C:0x…>` form — CRuby never lets a non-String out.
+  # A value that already *is* a String is used verbatim, so a redefined
+  # `String#to_s` is not called [V].
+  #
+  # Every twin below renders through this and `__as_inspect` rather than through a
+  # bare `to_s`/`inspect`, because a bare one is exactly the bug: `[BadToS.new].join`
+  # raised `TypeError: no implicit conversion of Integer into String` where CRuby
+  # answers `#<BadToS:0x…>`. The desugaring of string interpolation calls this too
+  # (desugar C38), which is why the desugar harness's wrapper defines a twin of it
+  # in plain Ruby — the same rule has to hold on both sides of the round-trip.
+  def __as_string
+    return self if String === self
+
+    s = to_s
+    String === s ? s : __any_to_s
+  end
+
+  # `rb_inspect`: `inspect`, and then **`rb_obj_as_string` of the result** — which
+  # is why `p Bar.new` prints `1` for a `Bar#inspect` that answers `1`, rather than
+  # raising [V]. Note it is the *result* that is coerced here, not the receiver.
+  def __as_inspect
+    v = inspect
+    String === v ? v : v.__as_string
+  end
+
   def __inspect_slow
     ivs = instance_variables
-    head = "#<" + self.class.to_s + ":" + __addr_str
+    # `__any_to_s` minus its closing `>`: the default `inspect` names the class the
+    # same dispatch-free way, so the two cannot drift.
+    head = __any_to_s
+    head = head[0, head.length - 1]
     return head + ">" if ivs.empty?
 
-    head + " " + ivs.map { |n| n.to_s + "=" + instance_variable_get(n).inspect }.join(", ") + ">"
+    head + " " + ivs.map { |n| n.to_s + "=" + instance_variable_get(n).__as_inspect }.join(", ") + ">"
   end
 
-  def __to_s_slow
-    "#<" + self.class.to_s + ":" + __addr_str + ">"
-  end
+  def __to_s_slow = __any_to_s
 
   # `p` returns its argument (or the array of them, or nil for none) [V].
   def __p_slow(*args)
-    args.each { |a| __write(a.inspect + "\n") }
+    args.each { |a| __write(a.__as_inspect + "\n") }
     return nil if args.empty?
     return args[0] if args.length == 1
 
@@ -1145,7 +1173,7 @@ class Object
   end
 
   def __print_slow(*args)
-    args.each { |a| __write(a.is_a?(String) ? a : a.to_s) }
+    args.each { |a| __write(a.__as_string) }
     nil
   end
 
@@ -1166,7 +1194,7 @@ class Object
     elsif a.nil?
       __write("\n")
     else
-      str = a.is_a?(String) ? a : a.to_s
+      str = a.__as_string
       __write(str)
       __write("\n") unless str.end_with?("\n")
     end
@@ -1175,14 +1203,25 @@ class Object
 end
 
 class Array
-  def __inspect_slow = "[" + map { |e| e.inspect }.join(", ") + "]"
+  def __inspect_slow = "[" + map { |e| e.__as_inspect }.join(", ") + "]"
 
   def __to_s_slow = __inspect_slow
 
   # `join` renders each element with `to_s`, flattens nested arrays, and renders
   # nil as the empty string [V].
   def __join_slow(sep = nil)
-    s = sep.nil? ? "" : sep.to_s
+    # The separator goes through `StringValue` (`to_str`), **not** `to_s`: a String
+    # is used verbatim, so `["a"].join("-")` is unaffected by a redefined
+    # `String#to_s` [V]. Calling `to_s` here made that program raise `TypeError:
+    # no implicit conversion of Integer into String` (L129). A non-String
+    # separator gates, exactly as the pure `joinImpl` does.
+    s = if sep.nil?
+          ""
+        elsif String === sep
+          sep
+        else
+          return __unsupported__("Array#join with a non-String separator")
+        end
     parts = []
     __join_collect(parts)
     out = ""
@@ -1202,7 +1241,7 @@ class Array
       elsif e.nil?
         parts.push("")
       else
-        parts.push(e.is_a?(String) ? e : e.to_s)
+        parts.push(e.__as_string)
       end
     end
     nil
@@ -1220,11 +1259,11 @@ class Range
     hi = self.end
     return "nil" + dots + "nil" if lo.nil? && hi.nil?
 
-    (lo.nil? ? "" : lo.inspect) + dots + (hi.nil? ? "" : hi.inspect)
+    (lo.nil? ? "" : lo.__as_inspect) + dots + (hi.nil? ? "" : hi.__as_inspect)
   end
 
   def __to_s_slow
-    self.begin.to_s + (exclude_end? ? "..." : "..") + self.end.to_s
+    self.begin.__as_string + (exclude_end? ? "..." : "..") + self.end.__as_string
   end
 end
 
@@ -1232,7 +1271,7 @@ class Hash
   def __inspect_slow
     return "{}" if empty?
 
-    "{" + map { |k, v| __hash_key_repr(k) + " " + v.inspect }.join(", ") + "}"
+    "{" + map { |k, v| __hash_key_repr(k) + " " + v.__as_inspect }.join(", ") + "}"
   end
 
   def __to_s_slow = __inspect_slow
@@ -1240,7 +1279,7 @@ class Hash
   # A Symbol key with an identifier-like name renders `k: v`; everything else
   # renders `k => v` [V].
   def __hash_key_repr(k)
-    return k.inspect + " =>" unless k.is_a?(Symbol)
+    return k.__as_inspect + " =>" unless k.is_a?(Symbol)
 
     str = k.to_s
     ident = !str.empty? && !"0123456789".include?(str[0]) &&

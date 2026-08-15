@@ -114,8 +114,17 @@ def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
-  else if bid == "Object#to_s" || bid == "Array#to_s" || bid == "Hash#to_s"
-       || bid == "Range#to_s" then
+  else if bid == "Array#to_s" || bid == "Hash#to_s" then
+    -- `Array#to_s` and `Hash#to_s` **are** `inspect` (`rb_ary_to_s` is
+    -- `rb_ary_inspect`), so they render their contents with `inspect` and their
+    -- sensitivity is *inspect*-sensitivity, not `to_s`-sensitivity. Asking the
+    -- `to_s` list here refused `{ a: BadInspect.new }.to_s` outright (L129): the
+    -- element overrides `inspect` only, so the purity test said "pure", the Lean
+    -- `Repr` ran, and *it* is the thing that cannot render an impure element.
+    -- `Range#to_s` is deliberately not here — it really does use its endpoints'
+    -- `to_s` [V].
+    if pureOk h inspectSensitive recv then none else some "__to_s_slow"
+  else if bid == "Object#to_s" || bid == "Range#to_s" then
     if pureOk h toSSensitive recv then none else some "__to_s_slow"
   else if bid == "Range#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
@@ -327,6 +336,8 @@ def byteStrAwareBids : List String :=
    "Object#inspect", "Object#p", "Object#__user_defines?",
    -- reads the method table, never the value (L127)
    "Object#__default_inspect?",
+   -- renders the receiver's *class name* and address, never its payload (L129)
+   "Object#__any_to_s",
    -- reads and writes neither operand, only the frame's `$~` routing (L121)
    "Object#__match_to_caller",
    -- render nothing of the operand but its *class name* (L123)

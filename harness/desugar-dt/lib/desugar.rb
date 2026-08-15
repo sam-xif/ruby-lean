@@ -956,13 +956,21 @@ class Desugar
   # called. `Kernel#String(e)` is NOT equivalent: it coerces via `to_str` first (which
   # dispatches through `method_missing` / a user `to_str`), so `String(o) != "#{o}"` for
   # such objects [V] (found by tier-1 fuzzing; see difftest N22/N23). Model it exactly as
-  # `t = e; String === t ? t : t.to_s` (t bound once; `String ===` is a C-level type check,
-  # no method dispatch). Uses only seq/if/vasgn/var/send/const — Lean-supported heads.
+  # `t = e; String === t ? t : t.__as_string` (t bound once; `String ===` is a C-level type
+  # check, no method dispatch). Uses only seq/if/vasgn/var/send/const — Lean-supported heads.
+  #
+  # The cold arm is a **runtime-support call**, not `t.to_s` (C38): `rb_obj_as_string` does
+  # not stop at `to_s`, it checks the *result* and falls back to `#<C:0x…>` when it is not a
+  # String. That third step needs `rb_any_to_s`, which has no Ruby-level name, so it lives
+  # in `Object#__as_string` — supplied by the model's prelude and by `Observe::WRAPPER` for
+  # the round-trip's plain-CRuby side. The fast arm stays inline so an already-String
+  # interpolation still costs no frame.
   def as_string(e)
     t = fresh
     check = [:send, [:const, "String"], "===", [[:var, :local, t]], nil]
     [:seq, [:vasgn, :local, t, e],
-           [:if, check, [:var, :local, t], [:send, [:var, :local, t], "to_s", [], nil]]]
+           [:if, check, [:var, :local, t],
+                        [:send, [:var, :local, t], "__as_string", [], nil]]]
   end
 
   # Shared string-interpolation concatenation for interpolated strings, symbols, and regex

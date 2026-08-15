@@ -1028,3 +1028,58 @@ trade is visible.
 
 Rule coverage unchanged (`range->send` and `regex` already existed); seeds 43/43, bootstraptest
 1227/0.
+
+## C38 — interpolation's cold arm is `__as_string`, and the target language grows a support layer
+
+C30 lowered `"#{e}"` to `t = e; String === t ? t : t.to_s`, on the strength of `rb_obj_as_string`
+being "verbatim for a String, else `to_s`". That is two of its three steps. The third:
+
+```c
+static VALUE rb_obj_as_string_result(VALUE str, VALUE obj) {
+    if (!RB_TYPE_P(str, T_STRING)) return rb_any_to_s(obj);
+    ...
+```
+
+**CRuby never lets a non-String out.** If `to_s` answers something that is not a String, the
+result is discarded and the default `#<C:0x…>` form of *the receiver* is used [V]:
+
+```ruby
+class Foo; def to_s = 1; end
+"#{Foo.new}"        # CRuby "#<Foo:0x…>"   model (before) "1"
+```
+
+and because the `1` escaped into the enclosing concatenation, the observable answer was usually a
+`TypeError` from `String#+` several steps later — which is why this looked like an arithmetic bug
+the first time it was seen.
+
+The cold arm is now `t.__as_string`, a **call**, not a third inline test. Two reasons, and the
+second is the interesting one:
+
+1. `rb_any_to_s` has no Ruby-level name, so the rule cannot be written inline in the AST heads
+   this desugarer is allowed to emit. Something has to be called.
+2. Written inline, the rule would exist **twice** — here, and in the prelude twins that render for
+   `p`/`puts`/`join`/`inspect` and had the identical bug (L129). One definition, in the prelude,
+   called from both.
+
+The fast arm stays inline, so an interpolation of something that already is a String still costs
+no frame — which is nearly all of them.
+
+**This is the first name the desugarer emits that plain CRuby does not have**, and that matters
+because the round-trip check runs `render(desugar(P))` *in CRuby* and compares it with `P`. So
+`Observe::WRAPPER` now prepends a **runtime support layer** (`Observe::SUPPORT`): one method,
+`Object#__as_string`, written in plain Ruby with the C function's semantics —
+`Object.instance_method(:to_s).bind(self).call` is exactly `rb_any_to_s`, since the default
+`Object#to_s` *is* that C function and binding it skips every override.
+
+It goes in the **wrapper**, so both `obs+(P)` and `obs+(render(desugar(P)))` see it and neither
+side can be advantaged by it — the same reason the difftest harness owns its stub set rather than
+the prelude (L112). The cost is a defensible one: the target language of this desugarer is
+RubyCore *plus a support layer*, and any future lowering that needs a C-level primitive extends
+`SUPPORT` rather than inventing a second mechanism.
+
+The alternative considered and rejected was `format("%s", t)`, which really is `rb_obj_as_string`
+in plain Ruby (`%s` calls it) and would have needed no new name. The model's `format` is prelude
+Ruby with a per-character loop, so putting it on the interpolation path of every program would
+have been a large slowdown for a cold-path rule.
+
+Rule coverage unchanged (`interp` already existed); seeds 43/43, bootstraptest 1227/0.

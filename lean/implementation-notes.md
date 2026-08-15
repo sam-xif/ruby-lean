@@ -3789,3 +3789,65 @@ to the observation contract, not to a rule, and is not attempted here.
 
 Measured: tier-0 991/0, slice 351/0 + 1 gated, tier-4 25/0, regressions 26 held + 1
 unexpectedly-fixed (this defect) — every fixed-corpus number unmoved.
+
+## L129 — a renderer never lets a non-String out: `rb_obj_as_string` / `rb_inspect` as one rule
+
+`HANDOFF.md`'s first known wrong answer. Every C-level renderer in CRuby goes through one of two
+functions, and neither can produce a non-String:
+
+* **`rb_obj_as_string(obj)`** — a String is used verbatim (so a redefined `String#to_s` is *not*
+  called), otherwise `to_s` is called, and **if the result is not a String the default
+  `#<C:0x…>` form of the receiver is used** (`rb_any_to_s`).
+* **`rb_inspect(obj)`** — `inspect`, and then `rb_obj_as_string` of **the result**. So `p Bar.new`
+  for a `Bar#inspect` that answers `1` prints `1` [V]: it is the *result* that is coerced, not the
+  receiver.
+
+The model had the first two steps of the first function and none of the third, in two places: the
+desugaring of interpolation (C30) and the prelude twins that render for `p`/`puts`/`print`/`join`
+and the container `inspect`s. Eight wrong answers plus two gates in
+`difftest/corpus/regressions/tos-not-a-string.rb`; the visible symptom was usually a `TypeError`
+several steps downstream, because the non-String escaped into the enclosing concatenation.
+
+**One rule, one definition.** `Object#__as_string` and `Object#__as_inspect` in the prelude are
+the two C functions, and every twin renders through them instead of through a bare
+`to_s`/`inspect`. The desugarer's cold arm calls the first one (C38 — which also explains why the
+round-trip harness now carries a plain-Ruby twin of it), so there is no second inline copy to
+drift.
+
+**`Object#__any_to_s` is the one new primitive**, and it is a primitive for the reason
+`Heap.anyToS` already gives: `rb_any_to_s` names the class through `rb_obj_class` +
+`rb_class2name`, so it **dispatches nothing**. `"#{Foo.new}"` with a bad `Foo#to_s` *and* a
+`def Foo.to_s` is still `#<Foo:0x…>` [V], which the obvious prelude spelling
+(`"#<" + self.class.to_s + ":" + __addr_str + ">"`) gets wrong — and that spelling was what
+`Object#__to_s_slow` and `__inspect_slow` were already using, so both now route through the
+primitive too.
+
+Note it is **not** `Heap.anyToS`, despite the previous handoff's claim that they are the same
+function. That one is the *eigenclass-naming* rule, where a class argument is named by its path
+(`#<Class:Foo>`); here a class is just an object of class `Class`, so `"#{Foo}"` with a bad
+`Foo.to_s` is `#<Class:0x…>` [V]. Two rules that agree on plain objects and disagree on classes,
+which is exactly the kind of thing a probe finds and a reading does not.
+
+An **immediate** gates: CRuby prints the immediate's own VALUE (`#<Integer:0x…b>` for `5`, i.e.
+`2n+1`), and reproducing that encoding — so that the observation's occurrence-order address
+normalization stays honest — is not worth it for a program that has redefined `Integer#to_s` to
+return a non-String.
+
+**Two pre-existing defects found by probing the fix**, neither about a bad `to_s`:
+
+* `Array#to_s` and `Hash#to_s` **are** `inspect` (`rb_ary_to_s` *is* `rb_ary_inspect`), so they
+  render their contents with `inspect` and their purity test is *inspect*-sensitivity.
+  `reprDefer?` asked the `to_s` list, so `{ a: BadInspect.new }.to_s` was judged pure, the Lean
+  `Repr` ran, and `Repr` is the thing that cannot render an impure element — a **gate** on a
+  program CRuby answers. `Range#to_s` is deliberately not moved: it really does use its
+  endpoints' `to_s` [V].
+* `Array#join`'s separator goes through `StringValue` (`to_str`), **not** `to_s`, so a String
+  separator is used verbatim. `__join_slow` called `to_s` on it, and
+  `class String; def to_s = 1; end; ["a","b"].join("-")` raised `TypeError: no implicit
+  conversion of Integer into String` where CRuby answers `"a-b"`. It now uses the separator
+  verbatim and gates on a non-String one, matching the pure `joinImpl`.
+
+Measured: 29/29 shapes in the probe file identical, tos-not-a-string.rb identical (now a guard,
+extended with the `puts`/`print` lines it had to omit while the defect was open, and with the two
+above). Desugar corpus seeds 43/43 and bootstraptest 1227/0 — the support-layer injection
+perturbs no reflective test. tier-0 991/0, slice 351/0, tier-4 25/0.
