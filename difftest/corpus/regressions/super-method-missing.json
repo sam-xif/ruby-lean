@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed while fixing L130 (a probe of the conversion protocol's neighbourhood)",
+  "arm": "hand",
+  "case_id": "super-method-missing",
+  "first_reconciled": "2026-08-15 (L130), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: \"unhandled => NoMethodError: undefined method 'nope' for an instance of Handler\" vs \"unhandled => NoMethodError: super: no superclass method 'method_missing' for an instance of Handler\" (and three more shapes)",
+  "note": "Four wrong answers. `super` inside a user `method_missing` must reach `BasicObject#method_missing`, which raises the ordinary `NoMethodError: undefined method 'X' for an instance of C`; the model has no such method, so `super` fails on its own terms. `def method_missing(n, *a) = handled?(n) ? ... : super` is the idiomatic form — anything else swallows every typo in the class — so this is not exotic. The sibling defect one name over (`super` inside a user `respond_to_missing?`) is FIXED in L130 by a two-line default builtin; this one is not, because making `BasicObject#method_missing` a builtin routes the model's whole dispatch-miss path through a method-table entry, and that path's message (L124's `receiverDesc`) would have to be reproduced from inside a builtin. A refactor of the miss path, not a new rule. The file deliberately calls no `respond_to?`: the model gates there when the receiver has a user `respond_to_missing?`, and a gate would hide everything else here."
+}

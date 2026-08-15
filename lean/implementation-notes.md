@@ -3851,3 +3851,79 @@ Measured: 29/29 shapes in the probe file identical, tos-not-a-string.rb identica
 extended with the `puts`/`print` lines it had to omit while the defect was open, and with the two
 above). Desugar corpus seeds 43/43 and bootstraptest 1227/0 — the support-layer injection
 perturbs no reflective test. tier-0 991/0, slice 351/0, tier-4 25/0.
+
+## L130 — `Kernel#Integer` is two rules wearing one name (and `Kernel#Float` is a third)
+
+`HANDOFF.md`'s second known wrong answer, which its own entry undersold. The prelude's
+`Integer` was `arg.to_s.strip`, then a digit loop — the happy path of the *String* rule, applied
+to every argument. `rb_convert_to_integer` is two rules:
+
+* **the argument is a String** (or answers `to_str`) → parse it, and this is the only argument a
+  base may accompany;
+* **anything else** → *convert* it: `to_int`, then `to_i`, and only if neither answers an Integer
+  raise `TypeError: can't convert X into Integer`.
+
+So `Integer(obj)` on an object with a `to_i` **answered 5** where the model raised, `Integer(2.9)`
+is **2** where it raised, and every other non-String got `ArgumentError: invalid value for
+Integer()` — CRuby's message for an unparseable String — instead of a `TypeError`.
+
+The two failure messages differ and both are load-bearing [V]: a **missing** conversion is
+`can't convert Plain into Integer` (with the argument named literally for nil/true/false and by
+class otherwise — `Integer(:sym)` says "Symbol", the `coerceName` rule one file over), while a
+`to_i` that answers a non-Integer is `can't convert C to Integer (C#to_i gives String)` — `to`,
+not `into`. A `to_int` that answers a non-Integer is simply **ignored**, and `to_i` decides.
+
+**The String half was wrong too, in three ways nobody had looked at**, because the default base
+is **0** and not 10 — 0 means "read the prefix":
+
+| | CRuby | model, before |
+|---|---|---|
+| `Integer("0xff")` | 255 | ArgumentError |
+| `Integer("010")` | **8** | 10 |
+| `Integer("1_000")` | 1000 | ArgumentError |
+
+`__parse_int` is `rb_int_parse_cstr`: strip, sign, prefix (base 0 reads it; an explicit base
+accepts only its own, so `Integer("0xff", 10)` is an error), then digits with **single** `_`
+separators, never leading or trailing. `invalid radix N` for base 1 or > 36.
+
+**`Kernel#Float` landed in the same pass** — it used to gate entirely (`unmodeled method
+Object#Float`) — and it is *not* the same rule three times. Three differences, each verified
+rather than assumed: it does **not** consult `to_str` (an object with only a `to_str` raises
+`TypeError`), it takes no base, and its String grammar is **looser than a Ruby float literal** —
+`".5"` is 0.5 and `"5."` is 5.0, both syntax errors as literals. Hexadecimal float strings
+(`"0x1p3"` is 8.0) are a second grammar with their own rounding and refuse rather than answer.
+
+**`exception:` is a real keyword parameter** on both, not a gate: without one the keyword arrives
+as a positional Hash (Ruby 3's rule for a method that declares no keywords) and is read as the
+*base*, so `Integer("zz", exception: false)` would answer wrongly rather than refuse.
+
+NaN and Infinity refuse: they raise `FloatDomainError`, which is not a boot class here.
+`Float#to_i`/`round`/`floor`/`truncate` already gate on them for the same reason, so this is one
+coverage hole and not a new one — adding the class would close five shapes and is worth doing.
+
+**Two more pre-existing defects, both found by the probe and neither about `Integer`:**
+
+* **`__check_convert` did not consult a custom `respond_to_missing?`.** CRuby's
+  `check_funcall_missing` tests it (with `include_private = true`) before entering
+  `method_missing`, and deliberately only when the program has overridden it —
+  `rb_method_basic_definition_p`, which is why the [V] fact in that helper's comment (a
+  `method_missing`-provided `to_ary` converts *without* a `respond_to_missing?`) and this one are
+  both true. Missing the clause made `Integer(obj)` on an object whose `method_missing` serves
+  `to_int` raise from the **`to_str`** probe that runs first.
+* **`String#to_f` answered `0.0` for a leading dot.** `parseFloatPrefix` bailed when the integer
+  part was empty; `strtod` does not, so `".5".to_f` is 0.5 and `"-.5".to_f` is -0.5. Only "no
+  digits anywhere" is the no-match case.
+
+**`Object#respond_to_missing?` is a new builtin** — the default one, answering `false`, which
+exists so a user override can call `super`. That is the idiomatic way to write one and it failed
+with `super: no superclass method 'respond_to_missing?'`. A builtin and not a prelude `def`,
+because `__user_defines?` cannot tell a prelude definition from a program's, and both rules that
+consult this name (`__check_convert`, and `respond_to?`'s gate in `Interp/Reflect.lean`) mean "did
+the *program* write one".
+
+`super` inside a user **`method_missing`** is the same shape and is *not* fixed here: it needs
+`BasicObject#method_missing` to exist as the builtin that raises `NoMethodError`, which would put
+the model's whole dispatch-miss path through a method table entry. Pinned rather than attempted.
+
+Measured: 36 of 38 probe shapes identical (the two are the `FloatDomainError` gate), the pinned
+case a guard at 46 shapes. tier-0 991/0, slice 351/0, tier-4 25/0.

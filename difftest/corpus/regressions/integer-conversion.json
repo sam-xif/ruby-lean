@@ -1,10 +1,11 @@
 {
-  "status": "open",
+  "status": "fixed",
+  "fixed_by": "L130 (2026-08-15) \u2014 `Kernel#Integer` as its two real rules, plus `Kernel#Float`",
   "filed_by": "hand-filed in N45",
   "arm": "hand",
   "case_id": "integer-conversion",
   "first_reconciled": "2026-08-15 (N45), lean SUT",
   "observed_then": "disagree",
   "diff_then": "stdout: 'to_i => 5' vs 'to_i => ArgumentError: invalid value for Integer(): #<WithToI:0xADDR>'",
-  "note": "HANDOFF.md §Known wrong answers 2, which undersold it: not only a wrong error class but a wrong **answer**. `Kernel#Integer(obj)` tries `to_int`, then `to_i`, and only then raises `TypeError: can't convert X into Integer`; the model raises `ArgumentError: invalid value for Integer()` — CRuby's message for an unparseable *String* — without trying either. So `Integer(obj)` raises where CRuby answers 5, and `Integer(2.9)` raises where CRuby answers 2 (found by a control line in this file, not by the handoff). Ten wrong answers. `Float(obj)` has the same shape but gates (`unmodeled method Object#Float`), so it is not in this file; add it when `Float()` lands."
+  "note": "HANDOFF.md \u00a7Known wrong answers 2, which undersold it: not only a wrong error class but a wrong **answer**. `Kernel#Integer(obj)` tries `to_int`, then `to_i`, and only then raises `TypeError: can't convert X into Integer`; the model raises `ArgumentError: invalid value for Integer()` \u2014 CRuby's message for an unparseable *String* \u2014 without trying either. So `Integer(obj)` raises where CRuby answers 5, and `Integer(2.9)` raises where CRuby answers 2 (found by a control line in this file, not by the handoff). Ten wrong answers. `Float(obj)` has the same shape but gates (`unmodeled method Object#Float`), so it is not in this file; add it when `Float()` lands. | FIXED 2026-08-15 (L130), and extended from 15 shapes to 46. The entry described the conversion protocol; writing it turned up that the **String** half was wrong too, because the default base is 0 and not 10 (`Integer(\"0xff\")` is 255, `Integer(\"010\")` is 8, `Integer(\"1_000\")` is 1000 \u2014 all three raised). `Kernel#Float` is in the file now: it used to gate entirely, and it is three rules different from `Integer` (no `to_str`, no base, a looser String grammar). Two pre-existing defects guarded here too: `__check_convert` now consults a custom `respond_to_missing?` before entering `method_missing`, and `String#to_f` no longer answers 0.0 for a leading dot."
 }

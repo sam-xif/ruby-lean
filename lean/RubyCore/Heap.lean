@@ -336,7 +336,7 @@ def builtinMethods : List (ObjId × List String) := [
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
-              "__any_to_s", "__match_to_caller",
+              "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed",
               "initialize"]),
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),

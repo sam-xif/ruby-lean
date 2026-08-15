@@ -90,6 +90,20 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- occurrence-order normalization honest is not worth it for a program that
     -- has redefined `Integer#to_s` to return a non-String.
     | _ => .unsupported "__any_to_s of an immediate (CRuby prints its VALUE address)"
+  | "Object#respond_to_missing?" =>
+    -- The **default** one, which answers `false` for every name [V]. It exists so
+    -- that a user override can call `super`, which is the idiomatic way to write
+    -- one and which failed with `super: no superclass method
+    -- 'respond_to_missing?'` (L130). A *builtin* rather than a prelude
+    -- `def respond_to_missing?(name, priv = false) = false`, because
+    -- `__user_defines?` cannot tell a prelude definition from a program's and the
+    -- two rules that consult this name — `__check_convert` here and
+    -- `respond_to?`'s gate in `Interp/Reflect.lean` — both mean "did the *program*
+    -- write one".
+    match args with
+    | [_] | [_, _] => .ok (.bool false) m
+    | _ => .err Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1..2)" m
   | "Object#__match_to_caller" =>
     -- Declares the running activation a stand-in for a CRuby **C function** as far
     -- as `$~` goes: every later read or write in this body resolves to the

@@ -33,16 +33,21 @@ def parseFloatPrefix (str : String) : Float :=
       else (acc.reverse, d :: r)
     | acc, [] => (acc.reverse, [])
   let (intPart, rest) := digits [] cs
-  if intPart.isEmpty then 0.0 else
   let toNatOf : List Char → Nat := fun ds =>
     ds.foldl (fun a c => a * 10 + (c.toNat - '0'.toNat)) 0
   let whole := Float.ofNat (toNatOf intPart)
-  let (frac, rest) := match rest with
+  let (frac, noFrac, rest) := match rest with
     | '.' :: r =>
       let (fs, r') := digits [] r
-      if fs.isEmpty then (0.0, '.' :: r)
-      else (Float.ofNat (toNatOf fs) / Float.ofNat (10 ^ fs.length), r')
-    | r => (0.0, r)
+      if fs.isEmpty then (0.0, true, '.' :: r)
+      else (Float.ofNat (toNatOf fs) / Float.ofNat (10 ^ fs.length), false, r')
+    | r => (0.0, true, r)
+  -- An **empty integer part is not a failure** when there is a fraction: `strtod`
+  -- accepts a leading dot, so `".5".to_f` is 0.5 and `"-.5".to_f` is -0.5 [V].
+  -- Bailing on `intPart.isEmpty` alone answered 0.0 for both (L130), and made
+  -- `Float(".5")` — which validates the grammar itself and then defers here —
+  -- answer 0.0 too. Only "no digits anywhere" is the no-match case.
+  if intPart.isEmpty && noFrac then 0.0 else
   let mant := whole + frac
   let expo : Int := match rest with
     | e :: r =>
