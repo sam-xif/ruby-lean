@@ -59,6 +59,24 @@ def roundToDigits (kind : String) (x : Float) (nd : Int) : Float :=
     else Float.ofInt (floatTruncBits xs)      -- truncate
   f / s
 
+/-- One digit of a base-≤36 numeral. Computed rather than indexed out of a digit
+    string, so nothing here can panic or block kernel reduction (L73). -/
+def baseDigit (d : Nat) : Char :=
+  if d < 10 then Char.ofNat ('0'.toNat + d) else Char.ofNat ('a'.toNat + d - 10)
+
+/-- `Integer#to_s(base)` for 2 ≤ base ≤ 36 [V]: `255.to_s(16)` is `"ff"` and
+    `-255.to_s(16)` is `"-ff"`. Fuel-bounded rather than `termination_by` (L73): a
+    `WellFounded.fix` would not reduce in the kernel, and `mag + 1` is ample since
+    every step at least halves the magnitude. -/
+def intToBase (n : Int) (base : Nat) : String :=
+  let mag := n.natAbs
+  let body := if mag == 0 then "0" else String.ofList (go mag (mag + 1)).reverse
+  if n < 0 then "-" ++ body else body
+where
+  go (k : Nat) : Nat → List Char
+    | 0 => []
+    | fuel + 1 => if k == 0 then [] else baseDigit (k % base) :: go (k / base) fuel
+
 /-- Integer and Float rules. -/
 def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
@@ -144,9 +162,36 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
       | some _ => numCmp (owner bid) m recv b fun o => .ok (ordValue o) m
       | none => .ok .nil m  -- <=> with incomparable → nil [V]
   | "Integer#to_s" | "Integer#inspect" =>
+    -- `Integer#inspect` **is** `int_to_s`, base argument and all [V]. It used to
+    -- share this arm but sit in `zeroArgBids` too, so `0.inspect(0)` answered
+    -- `wrong number of arguments (given 1, expected 0)` where CRuby says
+    -- `invalid radix 0` — found by a tier-1 draw of `each_with_index(&:inspect)`,
+    -- which hands the block *two* arguments (L132).
     match recv, args with
     | .int n, [] => okStr m (toString n)
-    | _, _ => .unsupported "Integer#to_s with base"
+    -- the base goes through `NUM2LONG`, so a Float is **truncated** rather than
+    -- refused: `42.to_s(16.5)` is `"2a"` [V]
+    | .int n, [bv] =>
+      match (match bv with
+             | .int b => some b
+             | .flt x => if x.isNaN || x.isInf then none else some (floatTruncBits x)
+             | _ => none) with
+      | none =>
+        match bv with
+        -- `nil` has its own wording in `rb_to_int`, lowercase and with different
+        -- prepositions [V]
+        | .nil => .err Boot.typeErrorId "no implicit conversion from nil to integer" m
+        -- a non-finite Float is a **RangeError**, not a TypeError [V]
+        | .flt x => .err Boot.rangeErrorId
+            s!"float {if x.isNaN then "NaN" else "Inf"} out of range of integer" m
+        | _ => .err Boot.typeErrorId
+            s!"no implicit conversion of {coerceName h bv} into Integer" m
+      | some b =>
+        if b < 2 || b > 36 then .err Boot.argumentErrorId s!"invalid radix {b}" m
+        else okStr m (intToBase n b.toNat)
+    | .int _, _ => .err Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 0..1)" m
+    | _, _ => .unsupported "Integer#to_s on a non-Integer"
   | "Integer#round" | "Integer#ceil" | "Integer#floor" | "Integer#truncate" =>
     -- An Integer rounds to itself for ndigits ≥ 0; a negative count rounds to a
     -- power of ten, and `round` there is half **up** away from zero (`25.round(-1)`

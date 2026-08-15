@@ -3971,3 +3971,44 @@ a call site means has to be decided at the call site.
 
 Measured: `exception-repr.rb` (30 shapes, red before and green after) held; regressions 30 held /
 2 still_open / 3 gated with no case changing state; tier-0 991/0, slice 351/0, tier-4 25/0.
+
+## L132 — `Integer#inspect` is `to_s`, base argument and all
+
+Found by a tier-1 draw, and the reason it had never been drawn before is worth the sentence:
+`[0, 0, 0].each_with_index(&:inspect)` hands the symbol proc **two** arguments, so it calls
+`0.inspect(0)`. `Integer#inspect` *is* `int_to_s` in CRuby, so that answers
+`ArgumentError: invalid radix 0`. The model had `Integer#inspect` in `zeroArgBids` — an arity error
+— and `Integer#to_s(base)` was not implemented at all, so even the well-formed call gated.
+
+**Confirmed pre-existing** by building the pre-session commit in a worktree, which is the norm and
+which mattered here: a defect reached through `inspect` in a session that spent its length changing
+repr looks exactly like a regression.
+
+Writing the rule turned up four more shapes, none of them about the base itself [V]:
+
+| | CRuby |
+|---|---|
+| `42.to_s(16.5)` | `"2a"` — the base goes through `NUM2LONG`, which **truncates** a Float |
+| `42.to_s(Float::NAN)` | `RangeError: float NaN out of range of integer`, not a TypeError |
+| `42.to_s(nil)` | `no implicit conversion from nil to integer` — lowercase, and different prepositions from every other operand |
+| `255.inspect(16, 2)` | `wrong number of arguments (given 2, expected 0..1)` |
+
+`intToBase` is fuel-bounded on the magnitude rather than `termination_by` (L73), and its digits are
+**computed** (`baseDigit`) rather than indexed out of a string, so nothing on the path can panic or
+block kernel reduction.
+
+Probe 17/17 plus 5/5 on the error shapes.
+
+### The other tier-1 finding, which is *not* fixed: implicit `to_ary`
+
+The same round drew `a += C0.new()` for a `C0` whose `method_missing` serves `to_ary`. CRuby
+converts through `rb_check_array_type`, so the `method_missing` **runs** — the program's own trace
+records it — and a non-Array answer gets `can't convert C0 to Array (C0#to_ary gives String)`. The
+model raises `no implicit conversion of C0 into Array` from a builtin that dispatched nothing, and
+the side effect is lost.
+
+Pre-existing (same worktree check), pinned as `tier1.5-01643-minimized.rb`, and left open on
+purpose: this is exactly the shape L123 solved for `coerce` and L130 for `to_int`/`to_i`, so the
+*rule* is known and the **site list** is the work — `Array#+`, `concat`, `Array()`, splat, `puts`,
+massign. It should be the next session's first item, because every one of those sites is a silent
+wrong answer today.

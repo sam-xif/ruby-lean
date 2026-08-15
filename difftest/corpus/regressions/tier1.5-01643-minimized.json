@@ -1,0 +1,27 @@
+{
+  "status": "open",
+  "filed_by": "difftest campaign (automatic)",
+  "arm": "tier1.5",
+  "seed": null,
+  "case_id": "tier1.5-01643",
+  "diff": "stdout: '5\\n6\\n0\\n' vs '5\\n6\\n' | exception: ('TypeError', \"can't convert C0 to Array (C0#to_ary gives String)\") vs ('TypeError', 'no implicit conversion of C0 into Array')",
+  "control": {
+    "stdout": "5\n6\n0\n",
+    "result_repr": null,
+    "exception": [
+      "TypeError",
+      "can't convert C0 to Array (C0#to_ary gives String)"
+    ],
+    "timed_out": false
+  },
+  "sut": {
+    "stdout": "5\n6\n",
+    "result_repr": null,
+    "exception": [
+      "TypeError",
+      "no implicit conversion of C0 into Array"
+    ],
+    "timed_out": false
+  },
+  "note": "Minimized by hypothesis. **Confirmed pre-existing** by building the pre-session commit in a worktree (it reproduces byte-for-byte there), so it is not a regression from this session's repr work. The defect: `Array#+` \u2014 and every other implicit Array-conversion site \u2014 does not dispatch `to_ary`. CRuby converts through `rb_check_array_type`, so a `method_missing` that serves `to_ary` **runs** (this program's prints \"0\" as a side effect) and a non-Array answer gets the `conversion_mismatch` message `can't convert C0 to Array (C0#to_ary gives String)`; the model raises `no implicit conversion of C0 into Array` from a builtin that dispatched nothing, and the side effect is lost. This is exactly the shape L123 solved for `coerce` and L130 for `to_int`/`to_i`: the fix is a prelude twin the builtin defers to when the operand *could* answer `to_ary`, plus `__check_convert` (which already implements `rb_check_funcall` correctly as of L130). The site list is the work \u2014 `Array#+`, `concat`, `Array()`, splat, `puts`, massign \u2014 not the rule."
+}

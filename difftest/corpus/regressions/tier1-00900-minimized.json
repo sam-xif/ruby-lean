@@ -1,0 +1,28 @@
+{
+  "status": "fixed",
+  "filed_by": "difftest campaign (automatic)",
+  "arm": "tier1",
+  "seed": null,
+  "case_id": "tier1-00900",
+  "diff": "exception: ('ArgumentError', 'invalid radix 0') vs ('ArgumentError', 'wrong number of arguments (given 1, expected 0)')",
+  "control": {
+    "stdout": "",
+    "result_repr": null,
+    "exception": [
+      "ArgumentError",
+      "invalid radix 0"
+    ],
+    "timed_out": false
+  },
+  "sut": {
+    "stdout": "",
+    "result_repr": null,
+    "exception": [
+      "ArgumentError",
+      "wrong number of arguments (given 1, expected 0)"
+    ],
+    "timed_out": false
+  },
+  "note": "Minimized by hypothesis, and FIXED the same session. `[0,0,0].each_with_index(&:inspect)` hands the symbol proc **two** arguments, so it calls `0.inspect(0)` \u2014 and `Integer#inspect` *is* `int_to_s`, base argument and all, so CRuby answers `invalid radix 0`. The model had `Integer#inspect` in `zeroArgBids`, so it raised an arity error, and `Integer#to_s(base)` was not implemented at all (it gated). Confirmed pre-existing by building the pre-session commit in a worktree, per the norm \u2014 not a regression from this session's repr work, which is what a defect reached through `inspect` looks like at first. Writing the rule turned up four more shapes: a Float base is truncated (`42.to_s(16.5)` is \"2a\"), a non-finite Float is a **RangeError**, `nil` has its own lowercase wording, and two arguments are `expected 0..1`.",
+  "fixed_by": "L132 (2026-08-15) \u2014 `Integer#inspect` is `to_s`, base argument and all"
+}

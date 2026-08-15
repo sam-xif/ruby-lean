@@ -567,7 +567,9 @@ def zeroArgBids : List String :=
    "Object#frozen?", "Object#freeze", "Object#block_given?",
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",
-   "Integer#inspect", "Integer#to_i", "Integer#to_f", "Integer#abs", "Integer#succ",
+   -- `Integer#inspect` is deliberately absent: it is `to_s`, base argument and
+   -- all (L132).
+   "Integer#to_i", "Integer#to_f", "Integer#abs", "Integer#succ",
    "Integer#pred", "Integer#zero?", "Integer#positive?", "Integer#negative?",
    "Integer#even?", "Integer#odd?", "Integer#-@",
    "Float#to_s", "Float#inspect", "Float#to_f", "Float#-@", "Float#abs", "Float#zero?",
