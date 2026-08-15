@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in N45",
+  "arm": "hand",
+  "case_id": "sorbet-hash-gate",
+  "first_reconciled": "2026-08-15 (N45), lean SUT",
+  "observed_then": "sut_unsupported",
+  "diff_then": "out of Lean fragment: sorbet-runtime: a type error naming an object with the default inspect (the gem prints its per-process `hash`)",
+  "note": "Neither open nor fixed in the usual sense — the SUT **gates** this program, so the tier reports it `gated` and it pins nothing today. Filed for N41's reason: a gate nobody pinned is a gate nobody revisits, and if this one is ever closed the case starts testing itself. sorbet-runtime describes a value whose `inspect` is the default by its per-process `hash`, which no implementation can reproduce (N38), so L127 made the shim refuse rather than answer the `with value` form it used to answer wrongly. Closing it is a *harness* change, not a model one: teach the observation to normalize `with hash <N>` the way it normalizes `0x…`. The program already normalizes it on the control side, so the shape is there to compare against. Cost of leaving it: any `sig`/`T.let` failing on a plain object refuses the whole program."
+}

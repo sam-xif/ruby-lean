@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in N45",
+  "arm": "hand",
+  "case_id": "integer-conversion",
+  "first_reconciled": "2026-08-15 (N45), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'to_i => 5' vs 'to_i => ArgumentError: invalid value for Integer(): #<WithToI:0xADDR>'",
+  "note": "HANDOFF.md §Known wrong answers 2, which undersold it: not only a wrong error class but a wrong **answer**. `Kernel#Integer(obj)` tries `to_int`, then `to_i`, and only then raises `TypeError: can't convert X into Integer`; the model raises `ArgumentError: invalid value for Integer()` — CRuby's message for an unparseable *String* — without trying either. So `Integer(obj)` raises where CRuby answers 5, and `Integer(2.9)` raises where CRuby answers 2 (found by a control line in this file, not by the handoff). Ten wrong answers. `Float(obj)` has the same shape but gates (`unmodeled method Object#Float`), so it is not in this file; add it when `Float()` lands."
+}

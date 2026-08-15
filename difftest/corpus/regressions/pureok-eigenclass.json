@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in N45",
+  "arm": "hand",
+  "case_id": "pureok-eigenclass",
+  "first_reconciled": "2026-08-15 (N45), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'SING' vs '#<Plain:0xADDR>'",
+  "note": "Promoted out of `slice-gates.md`'s gates list, where it had been filed as a coverage gap for three sessions: it is a **wrong answer** and it reproduces. `pureOk` asks whether the value's *class* chain defines a repr-sensitive method, so a `def obj.inspect` or an `extend` is invisible to it and Lean's pure `Repr` renders the default `#<C:0x…>`, ignoring the override — in `p`, inside an Array, a Hash, a Range, and as an ivar of another object. This is L122's miss one level down (`pureOk` was not recursing into a Range's endpoints). The fix looks like one word: `reprOverridden` walks `ancestors`, which starts at the eigenclass, but `pureOk` calls it with `(h.get o).klass`, the real class — `__user_defines?` was fixed for exactly this in L115 and the purity path was not. Fix both twins (`Repr` and the prelude's `__inspect_slow`) and keep the last control green: `to_s` through interpolation is an ordinary send and already dispatches to a singleton definition."
+}

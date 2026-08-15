@@ -1325,3 +1325,51 @@ in an *exception* observation (the engine normalizes it) and **not** fine when t
 `$!.message` as a value — `split("\n").first` is the fix, and `String#lines` is not modeled.
 And `T.let(…)` inside a `show` block is the cheapest way to probe a type-error message: it needs
 no class, no sig, and no static checker.
+
+## N45 — the four known wrong answers become four executable cases
+
+`HANDOFF.md` §Known wrong answers has been the list of defects the ratchet cannot see. Prose is
+the wrong medium for that list — N41 is the whole argument — and this closes the gap: every entry
+now has a case in `corpus/regressions/`, so the next session opens with
+`difftest run --tier regressions --sut lean` and a red-to-green target rather than a
+re-derivation from a paragraph.
+
+| case | status | reproduces |
+|---|---|---|
+| `tos-not-a-string.rb` | `open` | 8 wrong answers, 4 controls |
+| `integer-conversion.rb` | `open` | 10 wrong answers, 5 controls |
+| `pureok-eigenclass.rb` | `open` | 6 wrong answers, 3 controls |
+| `sorbet-hash-gate.rb` | `open` → reports `gated` | nothing yet, by design |
+
+The tier now reports **26 held, 4 still_open, 2 gated**, and still exits 0: a `still_open` case
+disagrees by design. It goes red if one of these starts *agreeing* (someone fixed it and the
+sidecar is now a lie) or if a `fixed` case regresses.
+
+**Writing the cases changed two of the entries**, which is the argument for writing them before
+fixing rather than after:
+
+* `Integer(obj)` was filed as a wrong error *class*. It is also a wrong *answer*: CRuby tries
+  `to_int` then `to_i` before raising, so `Integer(obj)` answers `5` for an object with a `to_i`
+  where the model raises — and a **control line** in the same file, `Integer(2.9)`, turned out to
+  raise too where CRuby answers `2`. One message defect became ten wrong answers.
+* `pureOk` and the eigenclass was not in that section at all: it was in `slice-gates.md`'s
+  gates list, described as something pure repr "would ignore". It does not "would" — it answers,
+  wrongly, in `p`, in an Array, in a Hash, in a Range and as an ivar. Three sessions of being
+  described rather than executed. It is defect 3 now.
+
+Three shapes worth reusing:
+
+* **Rescue every observation.** The first draft of `tos-not-a-string.rb` printed
+  `"label => #{obj}"` directly, and the wrong value escaped into the *enclosing* interpolation
+  (`"label => " + 1` is a TypeError), so the program died on line 1 and pinned one defect instead
+  of eight.
+* **Keep gating shapes out of an `open` case.** `puts obj` gates, and a gate anywhere makes the
+  tier report `gated` for the whole file — which pins nothing. The gating lines are named in the
+  sidecar as the check to add *with* the fix.
+* **File the gate too, separately.** `sorbet-hash-gate.rb` pins nothing today and says so. It
+  exists because a gate nobody filed is a gate nobody revisits, and if it is ever closed the case
+  starts testing itself.
+
+Each sidecar carries the shape of the fix, not just the defect — where the code is, what the two
+halves are, which control must stay green. The next session should not have to re-derive that
+either.

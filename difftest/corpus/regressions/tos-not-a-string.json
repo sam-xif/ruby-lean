@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in N45",
+  "arm": "hand",
+  "case_id": "tos-not-a-string",
+  "first_reconciled": "2026-08-15 (N45), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'interp integer => \"#<BadToS:0xADDR>\"' vs 'interp integer => 1'",
+  "note": "HANDOFF.md §Known wrong answers 1. CRuby never lets a non-String out of `rb_obj_as_string`: it calls `to_s` and falls back to the default `#<C:0x…>` form when the result is not a String; `rb_inspect` is the same shape one level up, calling `to_s` on a non-String `inspect` result. The model uses whatever came back — so `\"#{obj}\"` is `\"1\"`, `[obj].join` raises `no implicit conversion of Integer into String`, and `p obj` raises `String can't be coerced into Integer`. Eight wrong answers here plus four controls. The fix is two small halves: the desugarer's `as_string` (C30) needs a second test (`u = t.to_s; String === u ? u : t.__to_s_slow`), and the prelude twins `__join_slow`/`__puts_slow`/`__print_slow`/`__p_slow` need the same, where `__to_s_slow` already *is* `rb_any_to_s`. `puts`/`print` are deliberately not in the file: the model gates on them today (`__write of a non-String`) and one gate would refuse the whole program — add those two lines with the fix, as the check that the twins were fixed too."
+}
