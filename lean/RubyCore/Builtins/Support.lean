@@ -141,12 +141,20 @@ def coerceName (h : Heap) : Value → String
 
 /-- Operand description in "X can't be coerced into C" and "comparison of C
     with X failed" errors: special constants show their *inspect*
-    (`1+:k` → ":k can't be coerced…"), other objects their class name [V]. -/
+    (`1+:k` → ":k can't be coerced…"), other objects their class name [V].
+
+    A **Float** shows its inspect too — `rb_cmperr` and `coerce_failed` both test
+    `RB_FLOAT_TYPE_P` alongside `SPECIAL_CONST_P`. Unreachable from `numBin`,
+    where a Float argument always coerces, and so missing here until `Comparable`
+    started routing its own `comparison of … failed` through this rule (L123):
+    `Tok.new < 1.5` said "comparison of Tok with Float failed" for CRuby's
+    "…with 1.5 failed". -/
 def coerceDesc (h : Heap) : Value → String
   | .nil => "nil"
   | .bool b => toString b
   | .sym s => symInspect s
   | .int n => toString n
+  | .flt x => rubyFloatRepr x
   | v => className h (classOf h v)
 
 def strPayload? (h : Heap) : Value → Option String
@@ -304,7 +312,9 @@ def byteStrAwareBids : List String :=
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
    "Object#inspect", "Object#p", "Object#__user_defines?",
    -- reads and writes neither operand, only the frame's `$~` routing (L121)
-   "Object#__match_to_caller"]
+   "Object#__match_to_caller",
+   -- render nothing of the operand but its *class name* (L123)
+   "Object#__coerce_failed", "Object#__cmp_failed"]
 
 /-- The encoding tag of `a ++ b` (L118), CRuby's compatibility rule [V]: the
     result takes the **receiver's** encoding, *unless* only the argument holds a
@@ -338,6 +348,15 @@ def Num.value : Num → Value
   | .i n => .int n
   | .f x => .flt x
 
+/-- `coerce_failed`: what a numeric operator raises once nothing has answered
+    `coerce` — the end of the road for `coerceDefer?` (L123) and the answer
+    directly for an operand whose class chain offers no `coerce` at all. Shared so
+    that the operators which do *not* route through `numBin` (`**`, `divmod`)
+    cannot drift from the ones that do. -/
+def coerceFailed (recvCls : String) (m : Machine) (b : Value) : BRes :=
+  .err Boot.typeErrorId
+    s!"{coerceDesc m.heap b} can't be coerced into {recvCls}" m
+
 def numBin (recvCls : String) (m : Machine) (a : Value) (b : Value)
     (fi : Int → Int → BRes) (ff : Float → Float → BRes) : BRes :=
   match num? a, num? b with
@@ -345,8 +364,7 @@ def numBin (recvCls : String) (m : Machine) (a : Value) (b : Value)
   | some (.i x), some (.f y) => ff (Float.ofInt x) y
   | some (.f x), some (.i y) => ff x (Float.ofInt y)
   | some (.f x), some (.f y) => ff x y
-  | _, _ => .err Boot.typeErrorId
-      s!"{coerceDesc m.heap b} can't be coerced into {recvCls}" m
+  | _, _ => coerceFailed recvCls m b
 
 /-- `1 < "a"` → ArgumentError "comparison of Integer with String failed" [V].
     nil shows as "nil". -/
@@ -364,6 +382,91 @@ def numCmp (recvCls : String) (m : Machine) (a b : Value)
 
 def ordValue : Ordering → Value
   | .lt => .int (-1) | .eq => .int 0 | .gt => .int 1
+
+/-! ### The coerce protocol (L123)
+
+`numBin`/`numCmp` above answer for two numbers and raise for anything else. That
+second half is wrong, and not by a message: CRuby's numeric operators run
+`rb_num_coerce_bin`, which **asks the argument to `coerce` itself** and then
+re-dispatches the operator on the pair it returns. So `3 + Money.new(4)` is `7`,
+the `coerce` body's side effects happen, and the error — when there is one —
+says *why* ("coerce must return [x, y]" for a wrong shape, "X can't be coerced
+into Integer" only when nothing answered at all).
+
+A builtin cannot dispatch, so the failure path defers to a prelude twin, exactly
+as the repr builtins defer to theirs (`reprDefer?`, L116). Deferral is keyed on
+"could a `coerce` possibly run", so every operand that *is* a number, and every
+operand whose class chain offers nothing, keeps the Lean fast path untouched. -/
+
+/-- Could an ordinary send of `coerce` reach a Ruby body on `v`? A `coerce`
+    from the prelude counts (a future prelude `Rational` will have a real one);
+    a `method_missing` does **not** if it came from the prelude, because the only
+    one there is `Pathname`'s, which exists to *refuse* — routing through it
+    would turn today's correct `TypeError` into a gate. -/
+def mayCoerce (h : Heap) (v : Value) : Bool :=
+  (match lookup h v "coerce" with
+   | some (_, md) => md.builtin.isNone && !md.undefined
+   | none => false)
+  || (match lookup h v "method_missing" with
+      | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
+      | none => false)
+
+/-- Does `v` carry an `==` written by the **program**? `Integer#==` hands the
+    comparison to its argument (`rb_equal(y, x)`) rather than coercing, so a
+    user `==` decides `0 == obj` — and a truthy non-boolean answer becomes
+    `true` [V].
+
+    Prelude definitions are deliberately excluded, unlike in `hasUserEq`. The
+    prelude's `==`s are `Comparable#==`, `Pathname#==` and `Struct#==`; reversing
+    into the first *recurses* (`Comparable#==` calls `<=>`, and the default `<=>`
+    calls `==`) where CRuby's paired-recursion guard answers `false`, and the
+    other two answer `false` for a numeric argument anyway. So for those the
+    model's own `false` is already CRuby's answer, and the reversal buys a
+    fuel-exhaustion gate instead. -/
+def hasProgramEq (h : Heap) (v : Value) : Bool :=
+  match lookup h v "==" with
+  | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
+  | none => false
+
+/-- The prelude twin for each coercing operator. One name per operator because
+    the twin is entered with the builtin's own arguments — there is nowhere to
+    pass "which operator" — and each is a one-liner over `__coerce_bin`. -/
+def coerceTwin? : String → Option String
+  | "Integer#+"  | "Float#+"  => some "__coerce_add"
+  | "Integer#-"  | "Float#-"  => some "__coerce_sub"
+  | "Integer#*"  | "Float#*"  => some "__coerce_mul"
+  | "Integer#/"  | "Float#/"  => some "__coerce_div"
+  | "Integer#%"  | "Float#%"  => some "__coerce_mod"
+  | "Integer#**" | "Float#**" => some "__coerce_pow"
+  | "Integer#divmod" | "Float#divmod" => some "__coerce_divmod"
+  | "Integer#<"  | "Float#<"  => some "__coerce_lt"
+  | "Integer#>"  | "Float#>"  => some "__coerce_gt"
+  | "Integer#<=" | "Float#<=" => some "__coerce_le"
+  | "Integer#>=" | "Float#>=" => some "__coerce_ge"
+  | "Integer#<=>" | "Float#<=>" => some "__coerce_cmp"
+  | _ => none
+
+/-- When a numeric builtin must dispatch rather than answer, the prelude twin to
+    dispatch instead (L123). Numeric receiver, non-numeric argument, and one of
+    the two hooks that can make the difference observable — nothing else pays
+    for the check, and `Integer#+` of two Integers cannot reach it. -/
+def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  match args with
+  | [b] =>
+    if (num? recv).isNone || (num? b).isSome then none
+    else if bid == "Integer#==" || bid == "Float#==" then
+      if hasProgramEq h b then some "__eq_reverse" else none
+    else if mayCoerce h b then coerceTwin? bid
+    else none
+  | _ => none
+
+/-- Every reason a builtin defers to a prelude twin instead of running: repr
+    purity (L116) and the coerce protocol (L123). One hook, so `invoke` has one
+    place to consult and the dispatch metatheorems one hypothesis to carry. -/
+def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  reprDefer? h bid recv args <|> coerceDefer? h bid recv args
 
 /-- Pure numeric comparison of two values (Int/Float, mixed promoted to Float);
     `none` if either is non-numeric — the caller then gates (a full `<=>` dispatch

@@ -100,6 +100,20 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | .str n => .ok (.bool (defines n)) m
         | _ => .unsupported "__user_defines? of a non-name"
       | _ => .unsupported "__user_defines? of a non-name"
+  | "Object#__coerce_failed" =>
+    -- The two messages the coerce protocol's prelude twins raise (L123). They are
+    -- primitives for one reason: `coerceDesc`'s rule for naming an operand (a
+    -- special constant shows its `inspect`, everything else its class) is already
+    -- written once, and a second copy in Ruby is a second copy to drift — the
+    -- messages themselves are the *only* thing these builtins produce.
+    binArg m args fun b =>
+      .err Boot.typeErrorId
+        s!"{coerceDesc h b} can't be coerced into {className h (realClassOf h recv)}" m
+  | "Object#__cmp_failed" =>
+    -- `rb_cmperr`, which names the **original** operands, not the coerced pair.
+    binArg m args fun b =>
+      .err Boot.argumentErrorId
+        s!"comparison of {className h (realClassOf h recv)} with {coerceDesc h b} failed" m
   | "Object#nil?" | "NilClass#nil?" =>
     .ok (.bool (match recv with | .nil => true | _ => false)) m
   | "Object#class" => .ok (.ref (realClassOf h recv)) m

@@ -3439,3 +3439,86 @@ Defect 3 is the same *kind* of miss as the eigenclass gap still on the known-gap
 was found the same way defect 2 was: by giving the head's endpoint class a fixed `inspect` so
 its observations would carry no address (N38's rule), and then noticing that the model ignored
 it. A head written to be process-independent found a bug *because* of that constraint.
+
+## L123 — the numeric operators run the `coerce` protocol, and four wrong answers behind it
+
+`HANDOFF.md`'s one open wrong answer: `0 + obj` never called a `method_missing`-supplied
+`coerce`. The handoff's statement of the problem was right and its estimate of the size was
+not — the snippet it gave is one corner of a rule the model did not implement **at all**.
+
+**What CRuby does.** `Integer#+` is `rb_num_coerce_bin`: it asks the *argument* to `coerce`
+itself and re-dispatches the operator on the pair that comes back. `numBin` instead decided
+"not a number" from the class chain and raised. So an ordinary `def coerce` — not just a
+`method_missing` one — was wrong too: `3 + Money.new(4)` raised `TypeError` where CRuby answers
+`7`. A probe of 65 shapes against CRuby 4.0.5 put the count at **34 wrong answers in one file**,
+and two more probe files took it to 57.
+
+The three wrappers differ and all three are observable, which is why the prelude has three
+entry points rather than one:
+
+| wrapper | nothing answered | answered nil | wrong shape | answered a pair |
+|---|---|---|---|---|
+| `rb_num_coerce_bin` (`+ - * / % ** divmod`) | `TypeError: X can't be coerced into Integer` | `TypeError: coerce must return [x, y]` | same | re-dispatch |
+| `rb_num_coerce_relop` (`< > <= >=`) | `ArgumentError: comparison of Integer with X failed` | same ArgumentError | **`TypeError: coerce must return [x, y]`** | re-dispatch, and a nil answer is the ArgumentError |
+| `rb_num_coerce_cmp` (`<=>`) | `nil` | `nil` | **the same TypeError** | re-dispatch, nil and all |
+
+The wrong-shape row is the one nobody would guess: the *forgiving* wrappers raise for it. [V]
+
+**Shape of the fix.** A builtin cannot dispatch, so the failure path defers to a prelude twin —
+L116's mechanism, generalized: `reprDefer?` and the new `coerceDefer?` are now both consulted
+through one `deferTwin?`, which is also the single hypothesis `int_bin_dispatch` carries.
+Deferral is keyed on "could a `coerce` possibly run" (`mayCoerce`), so two Integers, and every
+argument whose class chain offers nothing, keep the Lean fast path and the Lean message.
+
+Two decisions inside `mayCoerce` are deliberate and neither is obvious:
+
+* a **prelude** `coerce` counts (a future `Rational` will have a real one) but a **prelude**
+  `method_missing` does not — the only one is `Pathname`'s, which exists to *refuse*, so routing
+  through it would turn today's correct `TypeError` into a gate;
+* `==` is excluded from the protocol entirely. It does not coerce: `num_equal` hands the
+  comparison to the argument (`rb_equal(y, x)`) and reduces the answer to a boolean, so
+  `0 == obj` is decided by a user `==` and a returned `5` means `true` [V] — a wrong answer of
+  its own, fixed by an `__eq_reverse` twin. It fires only for a **non-prelude** `==`: reversing
+  into `Comparable#==` recurses (it calls `<=>`, whose default calls `==`) where CRuby's
+  paired-recursion guard answers `false`, and `Pathname`/`Struct` answer `false` for a numeric
+  argument anyway — so for those the model's existing `false` is already CRuby's answer, and
+  the reversal would buy a fuel-exhaustion gate.
+
+`__coercible?` is `rb_check_funcall`'s callability rule, one step past L115's. The step is a
+`respond_to?` that answers **true** over a method nobody supplies: CRuby calls the default
+`method_missing`, rescues the `NoMethodError` and reports "not callable" — so `0 + Yes.new`
+is `TypeError: Yes can't be coerced into Integer`, not a NoMethodError [V]. A user
+`respond_to_missing?` vetoes the `method_missing` route the same way. `__check_convert` (L115)
+could not be reused: it folds "nothing answered" and "answered nil" into one `nil`, and
+`do_coerce` raises differently for those two.
+
+**Three more wrong answers, all found by probing around the fix.**
+
+1. **`Comparable#clamp` had no `min <=> max` check** and compared with `<`/`>` instead of `<=>`.
+   Latent before this work (`3.clamp(9, 1)` answered `9` where CRuby raises `min argument must
+   be less than or equal to max argument`); *visible* the moment `<` started coercing, since
+   `3.clamp(coercible, 9)` then coerced its way to a `true` and **returned the argument**. This
+   is the L117 lesson again — a change is inert only until some other rule can reach it. It also
+   had two definitions in `Comparable`, the second silently winning, and the dead one was the
+   one with the Range gate; there is now one, over `*bounds` so that the Range form still gates
+   rather than being read as "no upper bound", and a nil bound means unbounded on that side [V].
+2. **`comparison of X with Y failed` was a second copy of the operand-naming rule**, written in
+   Ruby in `Comparable.__desc`, and it rendered a Float argument as `"Float"` where CRuby shows
+   `1.5`. It now goes through `__cmp_failed` → `coerceDesc`, one rule; `coerceDesc` was itself
+   missing the Float case, which `numBin` could never reach because a Float argument coerces.
+3. **`**` and `divmod` gated on a non-numeric argument** where CRuby raises the coercion
+   `TypeError`. A gate, not a wrong answer — but it hid the *others*: a program containing
+   `n ** obj` refuses as a whole, so the L123 head could not have witnessed any of this until
+   `**` stopped gating. That is worth keeping: **a gate anywhere in a program hides a wrong
+   answer everywhere in it**, so a head is only a witness in a model that gates nowhere else in
+   the same draw.
+
+`coerceFailed` exists so the operators that skip `numBin` cannot drift from it, and
+`__coerce_failed`/`__cmp_failed` are primitives for the same reason — the message rule
+(`coerceDesc`: a special constant by value, everything else by class) stays written once, which
+is exactly what defect 2 above is the cost of not doing.
+
+Guards: six hand-filed `coerce-*.rb` cases in `difftest/corpus/regressions/` (143 observed lines
+between them) and the `coerce_probe` generation head (N42). The campaign-filed
+`tier1.5-00930-minimized` — the case the handoff pinned — now agrees and its sidecar is flipped
+to `fixed`.

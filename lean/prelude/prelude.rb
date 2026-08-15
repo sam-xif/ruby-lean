@@ -50,6 +50,22 @@ class Object
     yield(self)
     self
   end
+
+  # `rb_cmpint`: `self <=> other`, with a nil — "not comparable" — turned into the
+  # `ArgumentError: comparison of X with Y failed` that every comparison operator
+  # except `==` raises [V]. The message comes from the `__cmp_failed` primitive so
+  # that one rule names an operand (`coerceDesc`, L123): the hand-written copy
+  # this replaces rendered a **Float argument as "Float"** where CRuby shows
+  # `1.5`, which is the kind of drift a second copy buys.
+  #
+  # On Object rather than in Comparable because `clamp` needs it for its two
+  # *arguments*, which need not be Comparable themselves.
+  def __cmpint(other)
+    c = self <=> other
+    __cmp_failed(other) if c.nil?
+
+    c
+  end
 end
 
 class Proc
@@ -78,63 +94,50 @@ module Comparable
     !c.nil? && c.zero?
   end
 
-  def between?(lo, hi)
-    self >= lo && self <= hi
+  # `cmp_between`: two dispatches of `>=`/`<=` on the *receiver*, which is why a
+  # numeric receiver reaches its coerce protocol here (`3.between?(coercible, 9)`
+  # answers rather than raising, L123).
+  def between?(min, max)
+    self >= min && self <= max
   end
 
-  def clamp(lo, hi = nil)
-    return __unsupported__("Comparable#clamp with a Range") if hi.nil?
-    return lo if self < lo
-    return hi if self > hi
+  # CRuby's `cmp_clamp`, and the order is the interesting part: the **min ≤ max**
+  # check happens *first*, so `3.clamp(9, 1)` raises instead of answering 9, and
+  # an incomparable pair raises about `min` and `max` rather than about the
+  # receiver [V]. Both were wrong here before: this method used to compare with
+  # `<`/`>` and skip the check entirely, which L123 turned from a latent bug into
+  # a visible one — `3.clamp(coercible, 9)` coerced its way to a `true` and
+  # *returned the argument*.
+  # A **nil bound means "unbounded on that side"** and is skipped, checks
+  # included — `Tok.new(1).clamp(nil, 9)` raises about `Tok` and `9`, not about
+  # NilClass. `*bounds` rather than `(min, max = nil)` so that the one-argument
+  # Range form stays distinguishable from an explicit nil max: it *gates* (CRuby
+  # accepts a Range and this does not model it) instead of being silently read as
+  # "no upper bound". A wrong arity gates for the same reason — CRuby's
+  # ArgumentError there says `expected 1..2`, which is a message this cannot
+  # produce while the Range form is unmodeled.
+  def clamp(*bounds)
+    return __unsupported__("Comparable#clamp with a Range") if bounds.length == 1
+    return __unsupported__("Comparable#clamp arity (CRuby: 1..2)") unless bounds.length == 2
+
+    min = bounds[0]
+    max = bounds[1]
+    if !min.nil? && !max.nil? && min.__cmpint(max) > 0
+      raise ArgumentError, "min argument must be less than or equal to max argument"
+    end
+    return min if !min.nil? && __cmpint(min) < 0
+    return max if !max.nil? && __cmpint(max) > 0
+
     self
   end
 
-  # A `<=>` of nil means "not comparable", and every operator except `==` turns
-  # that into `ArgumentError: comparison of X with Y failed` [V] — X is the
-  # receiver's class name, Y is the argument rendered the way coercion errors
-  # render it (its value for nil/true/false/Integer/Symbol, its class name
-  # otherwise). Gating instead, as the prelude used to, refused a case the model
-  # can answer exactly.
-  def __cmp!(other)
-    c = self <=> other
-    return c unless c.nil?
-    raise ArgumentError, "comparison of " + self.class.name + " with " +
-                         Comparable.__desc(other) + " failed"
-  end
+  def <(other) = __cmpint(other) < 0
 
-  def self.__desc(o)
-    return "nil" if o.nil?
-    return "true" if o == true
-    return "false" if o == false
-    return o.inspect if o.is_a?(Integer) || o.is_a?(Symbol)
-    o.class.name
-  end
+  def <=(other) = __cmpint(other) <= 0
 
-  def <(other) = __cmp!(other) < 0
+  def >(other) = __cmpint(other) > 0
 
-  def <=(other) = __cmp!(other) <= 0
-
-  def >(other) = __cmp!(other) > 0
-
-  def >=(other) = __cmp!(other) >= 0
-
-  def between?(min, max)
-    if self < min
-      false
-    else
-      !(self > max)
-    end
-  end
-
-  def clamp(min, max)
-    if self < min
-      min
-    elsif self > max
-      max
-    else
-      self
-    end
-  end
+  def >=(other) = __cmpint(other) >= 0
 end
 
 # ─── Enumerable ─────────────────────────────────────────────────────────────
@@ -1299,6 +1302,119 @@ class Array
 
     raise TypeError, "can't convert " + obj.class.name + " to Array (" +
                      obj.class.name + "#to_ary gives " + r.class.name + ")"
+  end
+end
+
+# ─── The coerce protocol (`rb_num_coerce_bin` and friends) ──────────────────
+#
+# A numeric operator does not decide "not a number" from the class chain: it asks
+# the **argument** to `coerce` itself and re-dispatches the operator on the pair
+# that comes back. Three halves of that are observable, and a Lean rule can
+# produce none of them (L123):
+#
+#   * the `coerce` body **runs** — `3 + Money.new(4)` is `7`, and whatever the
+#     body printed, printed;
+#   * the failure says *why*. Nothing answered `coerce` → "X can't be coerced
+#     into Integer"; something answered with the wrong shape → "coerce must
+#     return [x, y]", *even for the comparisons*, which are otherwise the
+#     forgiving ones;
+#   * the pair decides the rest. `["a", 2]` makes `0 + o` raise "no implicit
+#     conversion of Integer into String" from `String#+`, and `0 < o` raise
+#     "comparison of String with 2 failed" — errors about operands the program
+#     never wrote. [V]
+#
+# `coerceDefer?` sends the operators' non-numeric argument here. The three
+# entry points mirror CRuby's three wrappers exactly, because they differ:
+# `rb_num_coerce_bin` raises, `rb_num_coerce_relop` raises a *different* error
+# naming the original operands, and `rb_num_coerce_cmp` answers nil.
+class Object
+  # `rb_check_funcall`'s callability rule, one step past L115's: a **user**
+  # `respond_to?` is asked first and a false answer is believed without calling
+  # anything; otherwise the call happens if the method is defined or a user
+  # `method_missing` can serve it — and in that second case a user
+  # `respond_to_missing?` gets the same veto. A `respond_to?` that says *true*
+  # over a method nobody supplies is not callable either: CRuby calls the
+  # default `method_missing`, rescues the `NoMethodError` and reports "not
+  # callable", which is what returning false here reproduces [V].
+  #
+  # Not folded into `__check_convert`: that one answers `nil` for both "nothing
+  # answered" and "answered nil", and `do_coerce` raises differently for those.
+  def __coercible?(obj)
+    return false if obj.__user_defines?(:respond_to?) && !obj.respond_to?(:coerce)
+    return true if obj.__user_defines?(:coerce)
+    return false unless obj.__user_defines?(:method_missing)
+
+    !obj.__user_defines?(:respond_to_missing?) || obj.respond_to_missing?(:coerce, true)
+  end
+
+  # CRuby's `do_coerce`. `err` separates the arithmetic operators (raise) from
+  # the comparisons (answer "incomparable"), and it moves only the **first**
+  # outcome: a non-nil answer of the wrong shape raises either way [V].
+  def __do_coerce(other, err)
+    unless __coercible?(other)
+      __coerce_failed(other) if err
+      return nil
+    end
+
+    pair = other.send(:coerce, self)
+    return nil if pair.nil? && !err
+    raise TypeError, "coerce must return [x, y]" unless pair.is_a?(Array) && pair.length == 2
+
+    pair
+  end
+
+  # `rb_num_coerce_bin`: coerce, then run the operator on the pair.
+  def __coerce_bin(other, op)
+    pair = __do_coerce(other, true)
+    pair[0].send(op, pair[1])
+  end
+
+  # `rb_num_coerce_relop`: "did not coerce" *and* "the coerced comparison
+  # answered nil" are the same outcome, an ArgumentError naming the operands the
+  # program actually wrote — not the coerced pair.
+  def __coerce_relop(other, op)
+    pair = __do_coerce(other, false)
+    r = pair.nil? ? nil : pair[0].send(op, pair[1])
+    __cmp_failed(other) if r.nil?
+
+    r
+  end
+
+  # `rb_num_coerce_cmp`: `<=>` never raises for an incomparable operand, and
+  # passes the pair's own answer through — including its nil.
+  def __coerce_cmp(other)
+    pair = __do_coerce(other, false)
+    pair.nil? ? nil : (pair[0] <=> pair[1])
+  end
+
+  def __coerce_add(other) = __coerce_bin(other, :+)
+
+  def __coerce_sub(other) = __coerce_bin(other, :-)
+
+  def __coerce_mul(other) = __coerce_bin(other, :*)
+
+  def __coerce_div(other) = __coerce_bin(other, :/)
+
+  def __coerce_mod(other) = __coerce_bin(other, :%)
+
+  def __coerce_pow(other) = __coerce_bin(other, :**)
+
+  def __coerce_divmod(other) = __coerce_bin(other, :divmod)
+
+  def __coerce_lt(other) = __coerce_relop(other, :<)
+
+  def __coerce_gt(other) = __coerce_relop(other, :>)
+
+  def __coerce_le(other) = __coerce_relop(other, :<=)
+
+  def __coerce_ge(other) = __coerce_relop(other, :>=)
+
+  # `Integer#==`/`Float#==` are the exception in this family: they do not coerce
+  # at all. `num_equal` hands the comparison to the other object — `rb_equal(y,
+  # x)` — and reduces its answer to a boolean, so a user `==` decides `0 == obj`
+  # and a truthy `5` becomes `true` [V].
+  def __eq_reverse(other)
+    (other == self) ? true : false
   end
 end
 

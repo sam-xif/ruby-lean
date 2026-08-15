@@ -1,10 +1,11 @@
 {
-  "status": "open",
+  "status": "fixed",
   "filed_by": "difftest campaign (automatic); sidecar added by hand in N41",
   "arm": "tier1.5",
   "case_id": "tier1.5-00930",
   "first_reconciled": "2026-08-14 (be53647), lean SUT",
   "observed_then": "disagree",
   "diff_then": "stdout: '10\\n5\\n' vs '10\\n' | exception: ('TypeError', 'coerce must return [x, y]') vs ('TypeError', \"C0 can't be coerced into Integer\")",
-  "note": "The `coerce`-through-`method_missing` defect (N40, and the top item in `homebrew/HANDOFF.md` \u00a7Known wrong answers). CRuby calls the `method_missing`-supplied `coerce` and raises `TypeError: coerce must return [x, y]`; the model decides 'not coercible' from the class chain and raises `TypeError: C0 can't be coerced into Integer` without calling it \u2014 so the `__t(\"5\", ...)` probe inside `method_missing` never prints, which is the `'10\\n5\\n'` vs `'10\\n'` half of the diff. **This is the case that motivated the tier**: it was found on 2026-08-14, and the very next tier-1.5 run drew a different sample and came back green over it."
+  "note": "The `coerce`-through-`method_missing` defect (N40, and the top item in `homebrew/HANDOFF.md` \u00a7Known wrong answers). CRuby calls the `method_missing`-supplied `coerce` and raises `TypeError: coerce must return [x, y]`; the model decides 'not coercible' from the class chain and raises `TypeError: C0 can't be coerced into Integer` without calling it \u2014 so the `__t(\"5\", ...)` probe inside `method_missing` never prints, which is the `'10\\n5\\n'` vs `'10\\n'` half of the diff. **This is the case that motivated the tier**: it was found on 2026-08-14, and the very next tier-1.5 run drew a different sample and came back green over it. **Fixed in L123**: the numeric operators' non-numeric argument now defers to a prelude twin that runs CRuby's `do_coerce`, so the `method_missing` body runs and the message is the shape error. The tier reported this case as `unexpectedly_fixed` before this sidecar was flipped, which is the signal working as designed. Hand-filed minimizations of the same defect, and of the four others the fix needed, are the `coerce-*.rb` cases.",
+  "fixed_in": "2026-08-14 (L123), lean SUT"
 }

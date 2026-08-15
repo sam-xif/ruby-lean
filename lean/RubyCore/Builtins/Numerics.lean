@@ -94,19 +94,27 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           if y == 0 then .unsupported "Float modulo by zero"
           else .ok (.flt (x - y * (x / y).floor)) m)
   | "Integer#**" =>
+    -- `**` coerces like the rest (L123), so a non-numeric argument that answered
+    -- nothing gets the coercion TypeError rather than a gate — only a *numeric*
+    -- exponent this rule cannot compute (a Float, or a negative giving a
+    -- Rational) is unsupported.
     binArg m args fun b =>
       match recv, b with
       | .int x, .int y =>
         if y ≥ 0 then .ok (.int (x ^ y.toNat)) m
         else .unsupported "Integer ** negative (Rational result)"
-      | _, _ => .unsupported "** with non-integer"
+      | _, _ =>
+        if (num? b).isNone then coerceFailed (owner bid) m b
+        else .unsupported "** with non-integer"
   | "Float#**" =>
     binArg m args fun b =>
       match recv, num? b with
       | .flt x, some nb =>
         let y := match nb with | .i n => Float.ofInt n | .f v => v
         .ok (.flt (Float.pow x y)) m
-      | _, _ => .unsupported "Float#** non-numeric"
+      | _, _ =>
+        if (num? b).isNone then coerceFailed (owner bid) m b
+        else .unsupported "Float#** non-numeric"
   | "Integer#-@" =>
     match recv with
     | .int n => .ok (.int (-n)) m
@@ -168,7 +176,10 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         else
           let (v, m) := allocArr m #[.int (Int.fdiv a c), .int (Int.fmod a c)]
           .ok v m
-      | _, _ => .unsupported "Integer#divmod of a non-Integer"
+      -- coerces like the arithmetic operators (L123)
+      | _, _ =>
+        if (num? b).isNone then coerceFailed (owner bid) m b
+        else .unsupported "Integer#divmod of a Float"
   | "Integer#nonzero?" | "Float#nonzero?" =>
     -- `self` if non-zero, **nil** if zero — the idiom behind
     -- `pkg_version.rb`'s `version_comparison.nonzero? || revision <=> …` [V].
@@ -274,7 +285,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
       match recv, b with
       | .flt a, _ =>
         match (match b with | .flt y => some y | .int i => some (Float.ofInt i) | _ => none) with
-        | none => .unsupported "Float#divmod of a non-numeric"
+        | none => coerceFailed (owner bid) m b     -- coerces (L123)
         | some c =>
           if c == 0.0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else

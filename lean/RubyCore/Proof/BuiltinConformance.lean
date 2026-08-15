@@ -88,12 +88,13 @@ theorem int_bin_dispatch
     (hns : (mname == "send" || mname == "public_send" || mname == "__send__") = false)
     (hrun : ∀ (x y : Int) (m' : Machine),
         Builtins.run bid (.int x) [.int y] m' = .ok (.int (op x y)) m')
-    -- L116 put a **repr-twin deferral** in front of every builtin: a repr builtin
-    -- whose receiver is not pure-representable dispatches a prelude twin instead
-    -- of running. Arithmetic is never such a builtin, but the *statement* has to
+    -- L116 put a **prelude-twin deferral** in front of every builtin: one whose
+    -- answer would need a dispatch it cannot perform hands the call to a prelude
+    -- method instead of running (repr purity, and L123's coerce protocol).
+    -- Arithmetic over two Integers is never such a call, but the *statement* has to
     -- say so — leaving it implicit is what broke this proof, and `Proof/` being off
     -- the default target is why nothing noticed (L119).
-    (hdefer : Builtins.reprDefer? m.heap bid (.int a) [.int b] = none) :
+    (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none) :
     startArgs m (.int a) .explicit mname [.int b] [] .none
       = .next (withCtl m (.value (.int (op a b)))) := by
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
@@ -109,19 +110,19 @@ theorem int_add_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "+" "Integer#+") :
     startArgs m (.int a) .explicit "+" [.int b] [] .none
       = .next (withCtl m (.value (.int (a + b)))) :=
-  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.reprDefer?])
+  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.num?])
 
 theorem int_sub_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "-" "Integer#-") :
     startArgs m (.int a) .explicit "-" [.int b] [] .none
       = .next (withCtl m (.value (.int (a - b)))) :=
-  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.reprDefer?])
+  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.num?])
 
 theorem int_mul_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "*" "Integer#*") :
     startArgs m (.int a) .explicit "*" [.int b] [] .none
       = .next (withCtl m (.value (.int (a * b)))) :=
-  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.reprDefer?])
+  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.num?])
 
 /-! ## 3. Starting argument evaluation
 
