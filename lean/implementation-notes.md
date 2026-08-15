@@ -4350,3 +4350,75 @@ converge.
 
 Checks: tier-0 992/0, slice 351/0 (+1 gated, +3 `control_invalid`), tier-4 25/0,
 `check-proofs.sh` green and axiom-clean.
+
+## L139 — D10 in `Fragment.lean`: the reflective family reclassified, four kinds instead of one
+
+`PLAN.md` **D10** made executable. The old fragment excluded seventeen reflective sends plus the
+`alias` and `undef` heads under one charge — *"installs or dispatches methods outside the sig
+discipline (§C.2 type escape)"* — on the equality reading of the invariant. D10 replaces the
+equality with a refinement (`homebrew/typing-a-mutable-method-table.md` §2), and once the invariant
+is monotone in the method table that one charge is wrong three different ways at once: it excludes
+additions that cannot hurt, it charges `instance_variable_set` with something it does not do, and it
+says nothing about the one step that really is fatal.
+
+**The single list becomes four, each with its own `Violation.kind` and reason line.**
+
+| list | kind | members | verdict |
+|---|---|---|---|
+| `deferredSend` | — | `define_method`, `define_singleton_method`, `alias_method`, `prepend` | **admitted** |
+| `removalSend` | `table-removal` | `remove_method`, `undef_method`, and the `undef` head | excluded — this is D10's boundary |
+| `keySend` | `key` | `set_temporary_name`, `const_set` | excluded — breaks the *key*, not the table |
+| `dynamicSend` | `dynamic` | `send`, `public_send`, `__send__`, `class_eval`, `module_eval`, `instance_eval`, `instance_exec`, `method_missing`, `respond_to_missing?` | excluded — unknown call target, hence untyped *result* |
+| `stateSend` | `state` | `instance_variable_set`, `instance_variable_get` | excluded — state outside the declared types (§4.1) |
+
+The `alias` head is now **admitted**, which is the substantive relaxation. Whether `alias eql? ==`
+is an addition or a redefinition depends on the heap, not on the expression, and whether a
+redefinition conforms is a question about *types* — so `scan` admits it and `infer` answers
+`unknown` if it cannot show conformance (§3). Two exclusions are new: `undef_method` and
+`set_temporary_name` were in neither list before, and both are steps §2's table says do not preserve
+the invariant. So this commit relaxes and tightens in the same pass, which is the reason to measure
+it rather than assert it.
+
+**Measured over all 355 harvested programs, before and after** (`--fragment` on the cached ASTs,
+same binary rebuilt from a `git stash` for the before-run):
+
+| kind | before | after |
+|---|---|---|
+| `reflective` — `alias eql? ==` | 243 programs | **0** (admitted) |
+| `reflective` — `instance_variable_set` | 142 programs | **0** (recharged) |
+| `state` — `instance_variable_set` | — | 142 programs |
+| `table-removal` / `key` / `dynamic` | — | **0, 0, 0** |
+
+Rows per program go 7 → 6 at the mode, and the same on the *linked* slice program
+(`homebrew/slice-driver`, 2,159 lines): 7 rows → 6. **No program becomes in-fragment** (0 of 355
+before and after), and that is the honest shape of the result — what still excludes every harvested
+program is criteria 1 and 2, not criterion 3: `T.untyped` (214), the erased containers (307 + 160 +
+72), and `missing-sig` on the corpus's own `__exp`/`__exr` helpers (355, deliberate — L138 says
+why).
+
+**Zero `table-removal`, `key` or `dynamic` rows corpus-wide** is the measurement §2.1 owes D5. D10
+introduces a new source of `unknown`, which is in tension with *"either verdict is a result;
+`unknown` is not"*, and the defence is that the excluded class is empty on the target. That was
+argued from the slice's source; it is now measured over the corpus that actually runs.
+
+**`deferredSend` is consulted by nothing**, which is the point — it names what D10 admits — so it
+would rot silently. A `#guard` checks the four lists are disjoint from it at elaboration, which
+turns "admitted" into a fact the build enforces rather than a comment.
+
+**Relaxing this file cannot break a proof, and that is worth recording.** No theorem in `Proof/`
+quantifies over `inSorbetFragment`; `StaticSoundness.lean` plays the fragment role with
+`CtlOk`/`KontOk` and its docstring says so. So `Fragment.lean` is a *report* today and the
+hypothesis of a theorem tomorrow, and the safety net for the relaxation is `infer`'s domain (which
+types none of these constructs, so `check` answers `unknown`) rather than the metatheory. F1a is
+where the two artifacts have to be reconciled.
+
+**Two gaps in criterion 3, named in the header rather than papered over.** Renaming is caught only
+at the two named operations, so `K = Class.new` reaches the same hazard through a plain `casgn` —
+deciding that syntactically means knowing the assigned value is an anonymous class, which is
+§Known-wrong-answers 2's shape and F1a's problem. And a class that *defines* `method_missing` is
+still admitted: §6 shows it fails in the safe direction (the call succeeds, the result is untyped),
+so whether to exclude it until occurrence typing exists is a scheduling question the document
+deliberately leaves open.
+
+Checks: tier-0 **992/0** (flat — this file is off every execution path), `check-proofs.sh` green,
+axiom-clean, F0's `heapOkB` certificate still true at the booted heap.

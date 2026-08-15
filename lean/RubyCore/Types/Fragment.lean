@@ -30,13 +30,59 @@ makes the interesting claim vacuous. `corpus/sorbet/untyped-boundary/000.rb` is
 the demonstration: a program with no sigs at all, accepted by `srb`, reaching an
 uncaught `NoMethodError`. A theorem that admitted it would say nothing.
 
-Also excluded, under (2) in spirit: the reflective definition family
-(`define_method`, `*_eval`, `alias_method`, `send`, `method_missing`, …). These
-install or dispatch methods outside the sig discipline, so the method table
-stops being described by the declarations — the "type `escape`" of §C.2.
+**(3) The method table may grow, but not shrink** — `PLAN.md` **D10**. This
+criterion *replaces* an earlier one that excluded the whole reflective family
+(`define_method`, `alias_method`, `send`, `instance_variable_*`, …) on the
+grounds that it makes the method table stop being described by the
+declarations. That exclusion was correct about equality and wrong about what a
+soundness statement needs, and it ruled out **every `sig` in the corpus**:
+`sorbet-runtime` enforces a `sig` by *replacing* the method-table entry with a
+validating wrapper — `alias_method` the original aside, `define_method` a
+closure over the displaced entry, two `instance_variable_get`/`set` for the
+pending sig — so a fragment that excluded those four could not type a single
+annotated method. `prelude/prelude.rb`'s `T.__wrap` says so in as many words:
+*"This IS the heap mutation of §C.2 — a method-table entry replaced by a
+checking one."*
+
+The invariant is therefore a **refinement** of the declarations rather than an
+equality — *every method the declarations name resolves to something conforming
+to its declared signature* — which is monotone in the table, because a
+type-stuck outcome comes from a method being **missing** or **wrong-typed**,
+never from one being present and unmentioned. So:
+
+  - **addition is admitted unconditionally** — `def`, `define_method`,
+    `attr_*`, `include`, a fresh `alias`/`alias_method`;
+  - **a redefinition is admitted with an obligation**, discharged by the
+    checker rather than by this file: whether `alias eql? ==` conforms to the
+    declaration it displaces is not a syntactic question, so `scan` admits it
+    and `infer` answers `unknown` if it cannot show conformance;
+  - **removal is the exclusion** — `undef`, `undef_method`, `remove_method`;
+  - **renaming a class is excluded separately**, because it breaks the *key*
+    declarations hang off rather than the table (`set_temporary_name`,
+    `const_set`);
+  - **dynamic dispatch and ivar access are excluded for their own reasons** —
+    an unknown call target, and state outside the declared types — not as
+    table escapes, which is what the old single "reflective" charge said.
+
+Details, including the measurement on the Homebrew slice (three conforming
+`alias`es, one `instance_variable_set`, **zero** removals) and the polarity
+asymmetry of `respond_to?`: `homebrew/typing-a-mutable-method-table.md`.
+
+**Two known gaps in criterion 3, named rather than hidden.** Renaming is caught
+only at the two *named* operations: `K = Class.new` reaches the same hazard
+through a plain constant assignment, and deciding that syntactically would mean
+knowing the assigned value is an anonymous class. And a class that defines
+`method_missing` is still admitted — a `method_missing`-served call cannot make
+a conforming call fail to conform, it only makes the *result* untyped, so the
+scheduling question (admit now, or exclude until occurrence typing can consume
+an untyped value) is deliberately left open. Both are F1a's problem, not this
+file's.
 
 What this file is NOT: a claim that in-fragment programs are safe. It is the
-*hypothesis* of that claim. The theorem is separate work; this is its scope.
+*hypothesis* of that claim. The theorem is separate work; this is its scope —
+and note that no theorem in `Proof/` quantifies over it today, so relaxing it
+here cannot break one. `Proof/StaticSoundness.lean` plays the fragment role
+with `CtlOk`/`KontOk` instead.
 -/
 import RubyCore.Syntax
 
@@ -60,8 +106,14 @@ def reason (v : Violation) : String :=
     "static-unsound with no runtime check (criterion 1)"
   | "untyped" =>
     "untyped code: the claim would be vacuous (criterion 2)"
-  | "reflective" =>
-    "installs or dispatches methods outside the sig discipline (§C.2 type escape)"
+  | "table-removal" =>
+    "removes a method, so a declared name may stop resolving (criterion 3)"
+  | "key" =>
+    "renames a class, changing the key its declarations hang off (criterion 3)"
+  | "dynamic" =>
+    "the call target is not statically known, so its result is untyped (criterion 2)"
+  | "state" =>
+    "writes or reads state outside the declared types (criterion 2)"
   | "missing-sig" =>
     "method has no sig, so its parameters and return are T.untyped (§A.5)"
   | _ => "unclassified"
@@ -88,14 +140,51 @@ def sigHeader? : Expr → Bool
   | .send (some recv) _ _ _ => sigHeader? recv
   | _ => false
 
-/-- Reflective definition/dispatch: the family that makes the method table stop
-    matching the declarations. `alias`/`undef` are heads, not sends, and are
-    handled in the main scan. -/
-def reflectiveSend : List String :=
-  ["define_method", "define_singleton_method", "class_eval", "module_eval",
-   "instance_eval", "instance_exec", "alias_method", "send", "public_send",
-   "__send__", "method_missing", "respond_to_missing?", "instance_variable_set",
-   "instance_variable_get", "const_set", "remove_method", "prepend"]
+/-- **Admitted** (D10): these install a method and cannot remove one. Where the
+    installed name already has a declaration the step is a *redefinition*, whose
+    admissibility is conformance to the displaced declaration — a question about
+    types, not about syntax, so it is `infer`'s to answer and not this file's. A
+    displacing `define_method` is exactly what the sig wrapper does, so excluding
+    it here would exclude every annotated method.
+
+    `prepend` is in this list for the same reason with the opposite default: it
+    splices *above* the owner and therefore always displaces, so it is admitted
+    only in the conditional sense. It appears nowhere in the Homebrew slice. -/
+def deferredSend : List String :=
+  ["define_method", "define_singleton_method", "alias_method", "prepend"]
+
+/-- Removal: the D10 exclusion. A declared name can stop resolving, which is a
+    type-stuck outcome the declarations cannot see coming. `undef` is a head, not
+    a send, and is handled in the main scan. -/
+def removalSend : List String := ["remove_method", "undef_method"]
+
+/-- Renaming a class changes the **key** its declarations hang off rather than
+    the table, and `infer` cannot name an `ObjId`
+    (`typing-a-mutable-method-table.md` §5). Incomplete by construction — see
+    the header's note on `K = Class.new`. -/
+def keySend : List String := ["set_temporary_name", "const_set"]
+
+/-- Dynamic dispatch: the target is a value, so the checker cannot say which
+    declaration the call is against. Excluded for the *result* type, not as a
+    table escape. -/
+def dynamicSend : List String :=
+  ["send", "public_send", "__send__", "class_eval", "module_eval",
+   "instance_eval", "instance_exec", "method_missing", "respond_to_missing?"]
+
+/-- Instance-variable access installs and removes nothing; what it does is read
+    or write state the declarations do not cover. `version.rb:783`'s `NULL`
+    sentinel is the slice's one occurrence and is genuinely untypable until W8
+    gives `@version` a nilable declaration
+    (`typing-a-mutable-method-table.md` §4.1). -/
+def stateSend : List String := ["instance_variable_set", "instance_variable_get"]
+
+-- The classification is a partition, and `deferredSend` is the one list `scan`
+-- does *not* consult — so this is what keeps it from being a comment. A name
+-- admitted by D10 must not appear in an excluded list; checked at elaboration,
+-- so the two cannot drift apart silently.
+#guard deferredSend.all fun m =>
+  !(removalSend.contains m || keySend.contains m
+      || dynamicSend.contains m || stateSend.contains m)
 
 /-- The visibility modifiers that take a `def` as their **argument**.
 
@@ -157,8 +246,14 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
         -- `T::Array[Integer]`: the element type is erased at runtime (§A.6), so
         -- the annotation is a static-only claim with no backstop.
         [{ kind := "unchecked", what := "T::" ++ gen ++ "[…] (erased type argument)" }]
-      else if reflectiveSend.contains m then
-        [{ kind := "reflective", what := m }]
+      else if removalSend.contains m then
+        [{ kind := "table-removal", what := m }]
+      else if keySend.contains m then
+        [{ kind := "key", what := m }]
+      else if dynamicSend.contains m then
+        [{ kind := "dynamic", what := m }]
+      else if stateSend.contains m then
+        [{ kind := "state", what := m }]
       else if recv.isNone && attrNames.contains m && !sigPrecedes then
         attrViolations m args
       else []
@@ -169,7 +264,11 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
       else scanList args
     here ++ scanOpt recv ++ argVs ++ scanOpt blk
   | .vcall m =>
-    if reflectiveSend.contains m then [{ kind := "reflective", what := m }] else []
+    if removalSend.contains m then [{ kind := "table-removal", what := m }]
+    else if keySend.contains m then [{ kind := "key", what := m }]
+    else if dynamicSend.contains m then [{ kind := "dynamic", what := m }]
+    else if stateSend.contains m then [{ kind := "state", what := m }]
+    else []
   | .cpath base name =>
     let here : List Violation :=
       match base with
@@ -191,8 +290,12 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
   | .scopedModule base _ body => scanOpt base ++ scan false body
   | .sclass obj body => scan false obj ++ scan false body
   | .seq es => scanStmts es false
-  | .alias' newN oldN => [{ kind := "reflective", what := "alias " ++ newN ++ " " ++ oldN }]
-  | .undef names => names.map fun n => { kind := "reflective", what := "undef " ++ n }
+  -- `alias` adds when `newN` is fresh and redefines when it is not, and which of
+  -- those it is depends on the heap rather than on this expression. Admitted
+  -- either way (D10): the slice's three `alias eql? ==` are conforming
+  -- redefinitions, and it is `infer` that has to show it.
+  | .alias' _ _ => []
+  | .undef names => names.map fun n => { kind := "table-removal", what := "undef " ++ n }
   | .vasgn _ _ e => scan false e
   | .casgn _ e => scan false e
   | .if' c t e => scan false c ++ scan false t ++ scanOpt e
