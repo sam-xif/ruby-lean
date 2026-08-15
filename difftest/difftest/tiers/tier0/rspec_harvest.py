@@ -54,6 +54,10 @@ module Utils
       # See difftest/implementation-notes.md N36: upstream `odebug` returns
       # early unless debug is enabled and otherwise writes to stderr, neither of
       # which is observable here.
+      # The sig is upstream's, verbatim (`utils/output.rb:32`) — see N48: a stub
+      # without one is a `missing-sig` row in `--fragment` for a method that *is*
+      # annotated upstream, i.e. our bug rather than the slice's.
+      sig { params(title: T.any(String, Exception), sput: T.anything, always_display: T::Boolean).void }
       def odebug(title, *sput, always_display: false)
         nil
       end
@@ -181,14 +185,18 @@ def harvest_file(spec_path: str, ruby: str, script: str) -> list[Example]:
 # `extend/blank.rb`'s own `Object#blank?` (minus the `T.unsafe`, which is
 # identity at runtime). It is the **only** place the corpus substitutes for
 # upstream code, and it is boot-path code rather than slice code.
+# The three sigs are upstream's, verbatim (`extend/blank.rb:20,26,46`) — N48.
 BLANK_STUB = """
 class Object
+  sig { returns(T::Boolean) }
   def blank?
     respond_to?(:empty?) ? !!empty? : false
   end
 
+  sig { returns(T::Boolean) }
   def present? = !blank?
 
+  sig { returns(T.nilable(T.self_type)) }
   def presence = present? ? self : nil
 end
 """
@@ -210,6 +218,7 @@ SORBET_REQUIRE = (
 # slice reaches exactly this one method of it.
 PATHNAME_STEM_STUB = """
 class Pathname
+  sig { returns(String) }
   def stem
     File.basename(self, extname)
   end

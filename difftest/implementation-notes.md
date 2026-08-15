@@ -1448,3 +1448,33 @@ the model. Two consequences:
 The general lesson is the one already in `HANDOFF.md` about checks that pass by producing no
 output: a flag that is accepted, does nothing, and produces a plausible-looking result is worse
 than one that errors.
+
+## N48 — the five boot stubs get their upstream sigs
+
+`homebrew/HANDOFF.md`'s "clear the cheap fragment rows", second half; L138 is the first. The
+harvested corpus supplies five methods both executors run because Homebrew loads them from a boot
+path the control does not have (N36, L112): `Utils::Output::Mixin#odebug`, `Object#blank?`,
+`#present?`, `#presence`, and `Pathname#stem`. None carried a `sig`, so each was a `missing-sig`
+row in `--fragment` — a row that says "this method's parameters and return are `T.untyped`", which
+is criterion 2's exclusion. Since the stubs are copies of upstream code, and **every one of the
+five is annotated upstream**, the rows were ours.
+
+Each sig is now upstream's, verbatim and cited: `utils/output.rb:32`, `extend/blank.rb:20,26,46`,
+`extend/pathname.rb:186`. Copying rather than inventing is the same discipline the stub bodies
+already follow — a stub that deviates from upstream makes the model answer something the control
+cannot.
+
+**They are enforced, which is the point and also the risk.** `sorbet-runtime` is modeled (L80), so
+these sigs are checked at runtime in *both* executors. Two of the four are shapes the shim had never
+been asked for on this path — `T.anything` and `T.self_type` in
+`sig { returns(T.nilable(T.self_type)) }` — and a probe of all five together agreed with CRuby
+before the corpus was rebuilt, which is the order to do this in.
+
+**One observable change, and it is confined.** `odebug`'s sig is `.void`, so the method now returns
+`T::Private::Types::Void::VOID` instead of `nil` — in both executors, identically. N36's argument
+that the stub cannot affect a comparison still holds: `odebug` is reached from one rescue path in
+`in_interval_permissive?` and its value is discarded there. If a future slice program ever *uses*
+the return, this is where to look.
+
+Re-harvested (355 harvested, 4 skipped, unchanged) and re-run: slice **351 agree, 0 disagree**, 1
+gated, 3 `control_invalid` — the baseline exactly. tier-4 25/0, tier-0 992/0.
