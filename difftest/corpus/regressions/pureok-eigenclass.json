@@ -1,5 +1,6 @@
 {
-  "status": "open",
+  "status": "fixed",
+  "fixed_by": "L128 (2026-08-15), one argument: `pureOk` asks `classOf`, not the object's `klass`",
   "filed_by": "hand-filed in N45",
   "arm": "hand",
   "case_id": "pureok-eigenclass",

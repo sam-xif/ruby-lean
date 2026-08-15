@@ -3743,3 +3743,49 @@ no truncation, no hash substitution, addresses and all (the engine normalizes th
 Measured: 12 of 16 value shapes byte-identical to the gem, the other four the honest hash gate
 (three objects and a `Proc`, whose `inspect` carries a source location the model cannot produce
 either). tier-4 25/0 unchanged.
+
+## L128 — pure repr asks the chain *dispatch* would walk, so a singleton `inspect` is visible
+
+`pureOk` decides whether Lean's pure `Repr` may speak for a value, by asking `reprOverridden`
+whether anything in the value's ancestor chain defines a repr-sensitive method. It asked with
+`(h.get o).klass` — the **real** class — so a method defined on the *object* was invisible to it
+and the pure path rendered the default `#<C:0x…>` while ignoring the override:
+
+```ruby
+o = Plain.new
+def o.inspect = "SING"
+p o          # CRuby  SING      model  #<Plain:0x…>
+[o].inspect  # CRuby  "[SING]"  model  "[#<Plain:0x…>]"
+```
+
+The fix is one argument — `classOf h (.ref o)`, which starts at the eigenclass — and it is the
+same miss `__user_defines?` had before **L115**, in the same function's other caller. Six wrong
+answers in `difftest/corpus/regressions/pureok-eigenclass.rb`, in `p`, inside an Array, a Hash, a
+Range, as an ivar of another object, and through `o.extend(M)`; the `to_s`-through-interpolation
+control stays green because that was always an ordinary send. The second arm of `pureOk` (the
+immediates) now says `classOf` too — for a value with no eigenclass slot the two are equal by
+definition, so this is a no-op that keeps the arms from drifting.
+
+The prelude twins needed **no** change: they were already dispatching, which is the whole point of
+deferring to them, and the fix only widens *when* the deferral happens.
+
+**The fix trades two wrong answers for two gates, both at `inspectP` call sites**, and this is
+worth stating rather than discovering later. `inspectP`/`toSP` refuse when pure repr cannot speak,
+and refusing is what they now do more often:
+
+* `frozenErr` renders the receiver into `can't modify frozen Plain: <inspect>`. CRuby dispatches
+  `inspect` there; the model gated already for a *class-level* override and now gates for a
+  singleton one too, where before it answered `#<Plain:0x…>` — wrongly.
+* `Obs.observe`'s `result_repr` is the same shape one layer out, and it is the architectural
+  version of the problem: the final value is inspected **after the program has ended**, where
+  nothing can dispatch, so `p o` at toplevel (which returns `o`) gates on the observation even
+  though its stdout is now right.
+
+Both were wrong answers before and are gates now, which is the direction the project's norms want
+(§4.4), but they are new coverage holes: pinned as `difftest/corpus/regressions/impure-repr-gates.rb`
+so the choice is visible and revisitable. Fixing them properly means letting the observation
+*dispatch* — a synthetic `inspect` send on a machine that has already halted — which is a change
+to the observation contract, not to a rule, and is not attempted here.
+
+Measured: tier-0 991/0, slice 351/0 + 1 gated, tier-4 25/0, regressions 26 held + 1
+unexpectedly-fixed (this defect) — every fixed-corpus number unmoved.

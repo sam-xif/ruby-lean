@@ -66,12 +66,19 @@ def reprOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
         sens.contains n && md.builtin.isNone && !md.undefined
     | none => false
 
-/-- Can pure repr (Repr.lean) speak for this value? Only if nothing in its
-    class's ancestor chain overrides a repr-sensitive method — and, for
-    containers, recursively for what they hold. -/
+/-- Can pure repr (Repr.lean) speak for this value? Only if nothing in the
+    ancestor chain *dispatch would walk* overrides a repr-sensitive method — and,
+    for containers, recursively for what they hold.
+
+    `classOf`, not the object's `klass`: the chain starts at the **eigenclass**,
+    so a `def obj.inspect` or an `o.extend(M)` makes the value impure exactly as a
+    class-level definition does. Asking about `klass` was a **wrong answer** — the
+    override was invisible and the pure path rendered the default `#<C:0x…>`, in
+    `p`, inside an Array/Hash/Range, and as an ivar of another object. This is the
+    same one-argument miss `__user_defines?` had before L115 (L128). -/
 partial def pureOk (h : Heap) (sens : List String) : Value → Bool
   | .ref o =>
-    let own := !reprOverridden h sens (h.get o).klass
+    let own := !reprOverridden h sens (classOf h (.ref o))
     match (h.get o).payload with
     -- A container renders its elements with *their* renderer, so purity is
     -- recursive even when the container's own class is untouched — and it
@@ -88,7 +95,9 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
-  | v => !reprOverridden h sens (realClassOf h v)
+  -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
+  -- written as `classOf` so the two arms cannot drift.
+  | v => !reprOverridden h sens (classOf h v)
 
 /-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
     instead (L116). This is L63's "defer to the prelude" pattern: the twin has a

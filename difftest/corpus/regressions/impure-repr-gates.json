@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in L128 (a probe of the fix's own neighbourhood, not campaign output)",
+  "arm": "hand",
+  "case_id": "impure-repr-gates",
+  "first_reconciled": "2026-08-15 (L128), lean SUT",
+  "observed_then": "sut_unsupported",
+  "diff_then": "out of Lean fragment: final-value inspect: inspect after user override of inspect",
+  "note": "Left `open` per README's rule that a gate is not a fix. The SUT gates, so the tier reports `gated` and the case pins nothing today — it is here because L128 traded two wrong answers for two refusals and a gate nobody pinned is a gate nobody revisits. Both are `inspectP` call sites: `frozenErr`'s `can't modify frozen C: <inspect>` (CRuby dispatches `inspect`; the model already gated for a class-level override, L128 extends it to a singleton one) and `Obs.observe`'s `result_repr`, which renders the final value **after the program has ended**, where nothing can dispatch. The second is the architectural one: closing it means a synthetic `inspect` send on a halted machine, i.e. a change to the observation contract rather than to a rule."
+}
