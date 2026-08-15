@@ -1,0 +1,22 @@
+{
+  "status": "open",
+  "filed_by": "difftest campaign (automatic)",
+  "arm": "tier1",
+  "seed": null,
+  "case_id": "tier1-00555",
+  "diff": "stdout: '0\\n0\\n0\\n' vs '0\\n1\\n0\\n'",
+  "control": {
+    "stdout": "0\n0\n0\n",
+    "result_repr": "nil",
+    "exception": null,
+    "timed_out": false
+  },
+  "sut": {
+    "stdout": "0\n1\n0\n",
+    "result_repr": "nil",
+    "exception": null,
+    "timed_out": false
+  },
+  "note": "**Block-local variables are decided lexically, and the model decides them dynamically.** A Proc/lambda body assigning a name that becomes an outer local only *later in the text* writes the outer local here; in Ruby the block's `a` is block-local, because at the point the block was written no `a` existed. Pre-existing and unrelated to the L123 coerce work it was found alongside (confirmed by `git stash` + rebuild on this same repro). Characterized: an `each` block in the same shape **agrees**, by accident of timing \u2014 it runs before the outer assignment, so no slot exists yet \u2014 and only a stored-and-called-later Proc separates the two rules. The fix starts in the desugarer: the exported AST is `[\"block\", params, [], body]`, with nowhere to record which assignment targets were new at parse time. Found by a tier-1 campaign that ran *concurrently* with another tier-1 campaign which drew all 250 programs and reported 0 disagreements (N42).",
+  "first_reconciled": "2026-08-14 (L123 session), lean SUT"
+}

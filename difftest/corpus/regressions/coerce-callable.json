@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-callable",
+  "observed_then": "disagree",
+  "note": "`rb_check_funcall`'s callability rule (L115's, extended in L123): a user `respond_to?` is believed without anything being called; a user `respond_to_missing?` vetoes the `method_missing` route; a `respond_to?` that answers true over a method nobody supplies is still not callable (CRuby rescues the NoMethodError from the default `method_missing`); and `private`, singleton, `include`d and `prepend`ed definitions all count. Two of these arms answer 'not coercible' and the other five call it \u2014 the point of the case is that the *rule* separates them, not that one answer is right."
+}

@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-eq-reverse",
+  "observed_then": "disagree",
+  "note": "`Integer#==`/`Float#==` are the exception in the family: they do not coerce, they hand the comparison to the argument (`rb_equal(y, x)`) and reduce the answer to a boolean, so a user `==` returning `5` makes `0 == obj` **true**. The model answered false for every one of these. `!=` follows from `==` (the prelude's `BasicObject#!=` dispatches it) and `eql?` deliberately does *not* reverse, which the last line of each group pins."
+}

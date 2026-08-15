@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-shapes",
+  "observed_then": "disagree",
+  "note": "What `coerce` answers selects the error, and the arithmetic operators and the comparisons agree on only some of it: a nil answer is 'incomparable' for `<`/`<=>` but `coerce must return [x, y]` for `+`, while a non-nil answer of the wrong shape raises in all three. The second half guards the messages for an operand that answers nothing at all \u2014 the one path that was already right, so this half is a *regression* guard rather than a fix witness."
+}

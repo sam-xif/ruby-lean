@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-clamp-cmperr",
+  "observed_then": "disagree",
+  "note": "Two defects the coerce protocol *exposed* rather than caused, both fixed in L123. (1) `Comparable#clamp` compared with `<`/`>` and skipped CRuby's up-front `min <=> max` check, so `3.clamp(9, 1)` answered 9 instead of raising, and once `<` started coercing, `3.clamp(coercible, 9)` **returned the argument**. (2) `comparison of X with Y failed` was a hand-written copy of the operand-naming rule that rendered a Float argument as 'Float' where CRuby shows `1.5`; it now goes through the same `coerceDesc` as the coercion errors. The nil-bound lines guard the third: a nil `min`/`max` means unbounded on that side and is skipped, checks included."
+}

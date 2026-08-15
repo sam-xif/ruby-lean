@@ -476,3 +476,123 @@ def comparable_probe(draw, idx: int) -> tuple:
     stmts.append(_show(A.BinOp("==", a, A.IntLit(1))))
     stmts.append(_show(A.BinOp("<=>", a, A.IntLit(1))))
     return tuple(stmts)
+
+
+# ─── The `coerce` protocol behind the numeric operators ─────────────────────
+
+
+@st.composite
+def coerce_probe(draw, idx: int) -> tuple:
+    """`Integer`/`Float` operators against an object that may answer `coerce`.
+
+    Until L123 the model decided "not a number" from the class chain and raised
+    its own `TypeError` — so a `coerce` **never ran**, and every program in this
+    shape got a wrong answer rather than a gate. Three drawn axes, because they
+    select genuinely different CRuby paths and the model got each of them wrong:
+
+    * **who supplies it** — a plain `def`, a `method_missing`, or nothing; plus the
+      two vetoes, a `respond_to?` that says false (believed, so nothing is called)
+      and a `respond_to_missing?` that gates the `method_missing` route;
+    * **what it answers** — a good pair, a pair that divides by zero, `nil`, a
+      scalar, one element, three, or a pair of *Strings*. The last is the one that
+      shows the operator is re-dispatched on the pair: `0 + o` then raises from
+      `String#+`, about operands the program never wrote;
+    * **which operator** — arithmetic raises `TypeError` where the comparisons
+      raise `ArgumentError` and `<=>` answers nil, and the wrong-shape answer
+      raises `TypeError: coerce must return [x, y]` in *all* of them.
+
+    `==` is the exception in the family and gets its own class here: it does not
+    coerce at all, it hands the comparison to the argument and reduces the answer
+    to a boolean, so a `5` from a user `==` means `true`.
+
+    No Float receiver and no Float in any pair, per this module's rule — the
+    Float-argument half of the same message rule is pinned in
+    `corpus/regressions/` instead, where the observation is a fixed string.
+    """
+    cname, ename = f"Coe{idx}", f"Ceq{idx}"
+    k = draw(st.sampled_from([1, 2, 4]))
+    shape = draw(
+        st.sampled_from(["pair", "zero", "nil", "scalar", "one", "three", "strs"])
+    )
+    supply = draw(st.sampled_from(["def", "mm", "none", "liar", "rtm"]))
+    recv = draw(st.sampled_from([0, 6, -3]))
+    o = A.LocalRead("o")
+    answer = {
+        "pair": A.ArrayLit((o, A.IntLit(k))),
+        "zero": A.ArrayLit((o, A.IntLit(0))),
+        "nil": A.NilLit(),
+        "scalar": A.IntLit(k),
+        "one": A.ArrayLit((A.IntLit(k),)),
+        "three": A.ArrayLit((o, A.IntLit(k), A.IntLit(k))),
+        "strs": A.ArrayLit((A.StrLit("a"), A.StrLit("b"))),
+    }[shape]
+
+    # a fixed repr, so an object that *reaches* an observation (a `clamp` result,
+    # or a class name in a message) prints process-independently (N38)
+    methods = [
+        A.MethodDef("inspect", (), (A.StrLit(f"#<{cname}>"),)),
+        A.MethodDef("to_s", (), (A.StrLit(f"#<{cname}>"),)),
+    ]
+    if supply in ("def", "liar"):
+        methods.append(A.MethodDef("coerce", ("o",), (answer,)))
+    if supply in ("mm", "rtm"):
+        # `(m, o)` and not `(m, *args)`: `coerce` is the only name this probe ever
+        # misses, so the second parameter *is* the numeric receiver, and the
+        # answer expression can be shared with the `def` arm above.
+        methods.append(A.MethodDef("method_missing", ("m", "o"), (answer,)))
+    if supply == "liar":
+        methods.append(
+            A.MethodDef(
+                "respond_to?",
+                ("n", A.POpt("ia", A.BoolLit(False))),
+                (A.BoolLit(False),),
+            )
+        )
+    if supply == "rtm":
+        methods.append(
+            A.MethodDef(
+                "respond_to_missing?", ("n", "ia"), (A.BoolLit(draw(st.booleans())),)
+            )
+        )
+    cls = A.ClassDef(
+        name=cname,
+        superclass=None,
+        mixins=(),
+        ivars=(),
+        self_methods=(),
+        methods=tuple(methods),
+        decls=(),
+    )
+    eq_cls = A.ClassDef(
+        name=ename,
+        superclass=None,
+        mixins=(),
+        ivars=(),
+        self_methods=(),
+        methods=(
+            A.MethodDef("inspect", (), (A.StrLit(f"#<{ename}>"),)),
+            A.MethodDef(
+                "==",
+                ("o",),
+                (draw(st.sampled_from([A.BoolLit(True), A.IntLit(5), A.NilLit()])),),
+            ),
+        ),
+        decls=(),
+    )
+
+    n = A.IntLit(recv)
+    stmts: list[A.Node] = [cls, eq_cls]
+    for op in ("+", "-", "*", "/", "%", "**", "<", ">", "<=", ">=", "<=>", "=="):
+        stmts.append(_rescued((_show(A.BinOp(op, n, A.New(cname, ()))),)))
+    stmts.append(_rescued((_show(A.MethodCall(n, "divmod", (A.New(cname, ()),))),)))
+    # `between?` dispatches `>=`/`<=` on the receiver, so it reaches the protocol;
+    # `clamp` checks `min <=> max` *first*, which is a different failure and was a
+    # wrong answer until L123 (it coerced its way to returning the argument)
+    stmts.append(_rescued((_show(A.MethodCall(n, "between?", (A.New(cname, ()), A.IntLit(9)))),)))
+    stmts.append(_rescued((_show(A.MethodCall(n, "clamp", (A.New(cname, ()), A.IntLit(9)))),)))
+    stmts.append(_rescued((_show(A.MethodCall(n, "clamp", (A.IntLit(9), A.IntLit(1)))),)))
+    # the `==` reversal, both directions and both polarities
+    for op in ("==", "!="):
+        stmts.append(_rescued((_show(A.BinOp(op, n, A.New(ename, ()))),)))
+        stmts.append(_rescued((_show(A.BinOp(op, A.New(ename, ()), n)),)))
+    return tuple(stmts)

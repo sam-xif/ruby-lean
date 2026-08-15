@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-method-missing",
+  "observed_then": "disagree",
+  "note": "The defect `homebrew/HANDOFF.md` \u00a7Known wrong answers led with, minimized by hand from `tier1.5-00930`: CRuby's `rb_check_funcall` takes a `method_missing`-supplied `coerce`, so the body runs (printing) and the failure is `TypeError: coerce must return [x, y]`; the model decided 'not coercible' from the class chain and raised `TypeError: C can't be coerced into Integer` without calling anything. Fixed in L123 by deferring the operators' non-numeric argument to a prelude twin. Guards all eleven operators at once, including the ones whose failure differs (`<` raises ArgumentError, `<=>` answers nil, `==` does not coerce)."
+}

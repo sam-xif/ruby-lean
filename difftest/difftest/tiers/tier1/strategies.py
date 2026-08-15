@@ -20,6 +20,7 @@ from .stmts import _stmt_seq  # noqa: F401
 from .classes import *  # noqa: F403
 from .classes import _class_def, _module_def, _reopen  # noqa: F401
 from .slice_heads import (
+    coerce_probe,
     comparable_probe,
     regex_interp_probe,
     regex_probe,
@@ -104,5 +105,7 @@ def programs(draw) -> A.Program:
         stmts.extend(draw(regex_scope_probe(i)))
     for i in range(draw(st.integers(0, 1))):
         stmts.extend(draw(range_probe(i)))
+    for i in range(draw(st.integers(0, 1))):
+        stmts.extend(draw(coerce_probe(i)))
     stmts.append(A.Puts((draw(_expr(env, 2)),)))  # always end with observable output
     return A.Program(tuple(stmts))

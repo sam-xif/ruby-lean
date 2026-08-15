@@ -1188,3 +1188,66 @@ pinned-failure mechanism that cannot go red is indistinguishable from an empty
 directory — which is precisely the state being fixed here. Verified end to end by
 flipping the two statuses and observing exit 1 with `regressed` and
 `unexpectedly_fixed`, then flipping them back.
+
+## N42 — a `coerce` head, six hand-filed guards, and two campaigns of the same tier disagreeing about the same model
+
+The witnessing half of L123 (the model now runs CRuby's `coerce` protocol). Three
+artifacts, and one accident worth more than any of them.
+
+**1. `coerce_probe`, a tier-1 generation head.** Three drawn axes, because they select
+genuinely different CRuby paths and the model got each wrong: *who supplies `coerce`* (a
+`def`, a `method_missing`, nothing, a `respond_to?` that vetoes, a `respond_to_missing?`
+that vetoes), *what it answers* (a good pair, a pair that divides by zero, nil, a scalar,
+one element, three, a pair of **Strings**), and *which operator* (eleven of them, plus
+`divmod`, `between?` and `clamp`). The String pair is the one that shows the operator is
+re-dispatched: `0 + o` then raises out of `String#+`, about operands the program never
+wrote.
+
+No Float anywhere, per `slice_heads.py`'s rule; the Float half of the same message rule is
+pinned in the corpus instead, where the observation is a fixed string. The object gets a
+fixed `inspect`/`to_s` for N38's reason — `clamp` can *return* it.
+
+**2. Six hand-filed `coerce-*.rb` guards** in `corpus/regressions/`, 143 observed lines,
+each with a `fixed` sidecar. The corpus README always allowed hand-filing; this is the
+first use of it. They exist because the head cannot: a head's program is drawn, and a
+drawn program can gate (see below), while these are chosen and every one of them runs.
+
+**3. The pinned case closed.** `tier1.5-00930-minimized` — the defect
+`homebrew/HANDOFF.md` led with — came back `unexpectedly_fixed`, which is N41's second
+direction firing exactly as designed, and its sidecar is now `fixed`.
+
+**The accident.** Two tier-1 campaigns ran against the same binary at the same time (a
+backgrounded run I believed dead, plus its replacement). One drew all 250 programs and
+reported **0 disagreements**; the other stopped at draw 170 on a real one and shrank it to
+`tier1-00555-minimized`. Same model, same generator, same minute. N41 argued that a green
+generative tier is partly a statement about which programs were drawn; this is that
+argument as an experiment, run by mistake, with the two arms disagreeing.
+
+The defect it found is unrelated to `coerce` and **pre-existing** (`git stash` + rebuild +
+the same repro, per the handoff's rule): a Proc or lambda body's assignment to a name that
+becomes an outer local only *later in the text* writes the outer local. Ruby decides that
+lexically at parse time — the block's `a` is block-local because no `a` existed at the
+point the block was written — and the model decides it dynamically, by whether a slot
+exists in the captured chain when the body finally runs. Characterized to the boundary:
+
+```ruby
+f = -> { a = 1; 0 }   # a = 0 comes *after* → CRuby prints 0, the model 1
+a = 0
+f.call
+puts a
+```
+
+An `each` block in the same shape **agrees**, by accident of timing: it runs before the
+outer assignment, so no slot exists yet. Only a stored-and-called-later Proc separates
+them. The exported AST has nowhere to record it (`["block", params, [], body]` — the
+desugarer does not mark which assignment targets were new at parse time), so the fix
+starts there, not in Lean. Filed `open`; it is `homebrew/HANDOFF.md`'s new named wrong
+answer.
+
+**One lesson from writing the head, which cost a rebuild to see.** As first written it
+would have witnessed *nothing* on the pre-fix model: it emits `n ** obj`, the old model
+gated on that, and a gate refuses the **whole program** — so all six sample draws came
+back `GATE`, not `DIFF`, and the fifteen wrong lines behind them were invisible. Removing
+the two gating operators from one sample turned it red immediately. A head is a witness
+only in a model that gates nowhere else in the same program, which is an argument for
+short heads and for the hand-filed guards above.

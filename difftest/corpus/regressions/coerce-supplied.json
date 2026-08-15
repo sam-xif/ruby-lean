@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L123/N42 (guards, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L123), lean SUT",
+  "case_id": "coerce-supplied",
+  "observed_then": "disagree",
+  "note": "The same defect for an ordinary `def coerce` \u2014 which is the *common* case and was equally wrong: every one of these thirteen answers was a TypeError before L123. Also guards that the operator is re-dispatched on the returned pair, which is where the ZeroDivisionError at the end comes from."
+}
