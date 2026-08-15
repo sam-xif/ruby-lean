@@ -73,7 +73,7 @@ puts <<~HEADER
   namespace RubyCore
   namespace Prelude
 
-  /-- The desugared prelude, as exported RubyCore JSON (`Export::VERSION` 4). -/
+  /-- The desugared prelude, as exported RubyCore JSON (`Export::VERSION` #{Export::VERSION}). -/
   def json : String := String.join [
 HEADER
 

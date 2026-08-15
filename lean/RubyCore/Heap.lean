@@ -81,6 +81,13 @@ structure MethodDef where
       `Nat` rather than `FrameId` to avoid the Machine import cycle (as
       `Closure` does). -/
   capturedFrame : Option Nat := none
+  /-- Names the body binds **itself** rather than up the `capturedFrame` chain:
+      the block-locals of the block a `define_method` was built from, explicit
+      (`|;x|`) and parse-time-implicit (C35) alike. Empty for an ordinary `def`,
+      whose frame has no enclosing scope to clobber. Pre-declared nil in the
+      activation, next to the `localsB` formals that need the same treatment for
+      the same reason (L125). -/
+  declared : List String := []
   /-- Defined by the **prelude** (the core library written in RubyCore itself,
       `prelude/prelude.rb`) rather than by the program under test. Such a method
       *is* the model of the CRuby builtin of the same name, so it suppresses the

@@ -311,7 +311,42 @@ class Desugar
 
     params, locals = block_params(b.parameters)
     fire(:block)
-    [:block, params, locals, stmts(b.body)]
+    [:block, params, locals, declared_locals(b, params, locals), stmts(b.body)]
+  end
+
+  # Ruby decides local scoping **lexically, at parse time**: a name whose first
+  # assignment in the text is inside this block is local to the block, even when
+  # the enclosing scope assigns it later. Nothing in the runtime heap can recover
+  # that — the whole point is that the answer differs from what the heap shows when
+  # the block is *called* after the outer assignment — so the front end has to say
+  # it. Prism has already computed the set, per scope, as `node.locals`. C35.
+  #
+  # Kept in its own slot rather than merged into the `|params; locals|` one: the two
+  # are identical at runtime (both are names the block frame binds itself) but they
+  # differ for `defined?`, which CRuby answers statically — an explicit `|;x|` is
+  # "local-variable" before any assignment, an implicit one is nil until the
+  # assignment is passed textually. `render.rb` must therefore *not* render these,
+  # and the Lean side, which decides `defined?` from the node shape alone (L72),
+  # merges the two lists at decode.
+  def declared_locals(scope, params, explicit)
+    bound = param_names(params) + explicit
+    scope.locals.map(&:to_s).reject do |n|
+      # `_1`…`_9` are numbered params, which Prism reports as scope locals and
+      # which no declaration slot may name (C29 keeps them verbatim).
+      bound.include?(n) || n.match?(/\A_[1-9]\z/)
+    end
+  end
+
+  # Every name the parameter list binds, including through a destructure.
+  def param_names(params)
+    params.flat_map do |p|
+      case p[0]
+      when :preq, :popt, :pkey then [p[1]]
+      when :prest, :pkwrest, :pblock then p[1] ? [p[1]] : []
+      when :pdestr then param_names(p[1])
+      else []
+      end
+    end
   end
 
   # Positional params + block-local names (`|params; locals|`) from a
@@ -342,7 +377,8 @@ class Desugar
     params, locals = block_params(n.parameters)
     fire(:block)
     fire(:"lambda->send")
-    [:send, nil, "lambda", [], [:block, params, locals, stmts(n.body)]]
+    [:send, nil, "lambda", [], [:block, params, locals,
+                                declared_locals(n, params, locals), stmts(n.body)]]
   end
 
   # case/when → temp + if/elsif chain over `===`. The subject is evaluated ONCE (bound to a
@@ -382,7 +418,7 @@ class Desugar
         if tv
           # subject present: any element === subject
           w = fresh
-          blk = [:block, [[:preq, w]], [], [:send, [:var, :local, w], "===", [tv], nil]]
+          blk = [:block, [[:preq, w]], [], [], [:send, [:var, :local, w], "===", [tv], nil]]
           [:send, arr, "any?", [], blk]
         else
           # subjectless: any element truthy ([*arr].any? with no block)

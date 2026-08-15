@@ -150,8 +150,13 @@ module Render
     blk[1] ? "&(#{core(blk[1])})" : "&"
   end
 
+  # The `declared` slot (C35, implicit parse-time block-locals) is deliberately
+  # **not** rendered: emitting them as `|;x|` would change the rendered program's
+  # `defined?` answers, which CRuby decides statically and differently for the two
+  # forms. Re-parsing the rendered source recomputes them, so the round-trip is
+  # still a fixpoint.
   def block_str(node)
-    _, params, locals, body = node
+    _, params, locals, _declared, body = node
     if params.empty? && locals.empty?
       "{ #{core(body)} }"
     else

@@ -28,7 +28,13 @@ module Export
   # desugar to full coverage (no further format break, so no bump): `defined`, `cpath`/
   # `cpath_asgn`, `redo`/`undef`/`alias`/`for`, the `fwd` arg + `pfwd` param (`...`
   # forwarding); `case`/`when` and regex/interpolated-symbol desugar away (no new head).
-  VERSION = 4
+  # v5 (2026-08-15): `block` gained a fourth slot before the body — `declared`,
+  # the names Ruby makes block-local *at parse time* because their first textual
+  # assignment is inside the block (C35). `[:block, params, locals, declared, body]`.
+  # Kept separate from `locals` because the two differ for `defined?`; the Lean
+  # decoder merges them (it decides `defined?` from the node shape) and accepts the
+  # v4 four-slot shape too, so an older AST still decodes.
+  VERSION = 5
 
   module_function
 

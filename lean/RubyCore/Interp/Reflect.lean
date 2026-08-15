@@ -62,9 +62,11 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         match cl? with
         | none => none   -- a `Method`/`UnboundMethod` argument: falls to the gate
         | some cl =>
-          if !cl.locals.isEmpty then
-            some (.unsupported "define_method with block-locals")
-          else
+            -- `cl.locals` (block-locals, explicit and parse-time-implicit alike)
+            -- used to gate here. They belong on the MethodDef instead: the body
+            -- must bind them in its *own* activation, or an assignment walks the
+            -- `capturedFrame` chain and clobbers a same-named outer local — the
+            -- L125 defect, one frame kind over (C35).
             let target? : Option (ObjId × Machine) :=
               if mname == "define_singleton_method" then
                 match recv with
@@ -80,7 +82,8 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
               let cref := (m.frames.getD cl.captured default).cref
               let md : MethodDef :=
                 { params := cl.params, body := cl.body, owner := target, cref,
-                  capturedFrame := some cl.captured, fromPrelude := m.preludeMode }
+                  capturedFrame := some cl.captured, declared := cl.locals,
+                  fromPrelude := m.preludeMode }
               let m := { m with heap := defineMethod m.heap target name md }
               some (.next (withCtl m (.value (.sym name))))
     | [] => none

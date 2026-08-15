@@ -133,8 +133,12 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     -- chain into the enclosing scope and clobbering a same-named outer local
     -- (only reachable for `define_method` bodies, L64; harmless otherwise —
     -- an unbound local reads as nil either way).
+    -- ...and, for the same reason, every name the *body* binds itself: a
+    -- `define_method` block's block-locals (L125/C35). Ordinary `def`s carry an
+    -- empty list here.
     let predeclared := localsB.map (fun b => (b.1, Value.nil)) ++
-      (optOmitted ++ kwOmitted).map (fun d => (d.1, Value.nil))
+      (optOmitted ++ kwOmitted).map (fun d => (d.1, Value.nil)) ++
+      md.declared.map (fun n => (n, Value.nil))
     -- `blk`: an ordinary method sees its caller's block. A `define_method` body
     -- is a *block*, so `block_given?`/`yield` inside it refer to the block of the
     -- scope it was defined in, not the call [V] (test_method_204) — while an

@@ -37,7 +37,7 @@ module Linearize
   def blk_of(b)
     return nil if b.nil?
     case b[0]
-    when :block     then [:block, run_params(b[1]), b[2], run(b[3])]
+    when :block     then [:block, run_params(b[1]), b[2], b[3], run(b[4])]
     when :blockpass then [:blockpass, b[1] && run(b[1])]
     end
   end

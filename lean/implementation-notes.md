@@ -3601,3 +3601,46 @@ row that number has been exactly one. `clsName_defineMethod` carried
 Guards: `anon-*.rb` and `eigen-*.rb` in `difftest/corpus/regressions/`, which is where the
 corpus rule this defect could not satisfy got solved — CRuby's own answer carries an address, so
 the case asserts a **predicate over** the message rather than the message (N43).
+
+## L125 — the model side of parse-time block scoping, and the `define_method` gate that fell with it
+
+The Lean half of C35 (the desugarer half, and the defect itself, are recorded there —
+`homebrew/HANDOFF.md`'s first known wrong answer: a Proc body's assignment wrote an outer
+local Ruby had already made block-local, at parse time). Three changes, all small, because
+the front end now supplies what the model could not compute.
+
+**1. The decoder merges the new slot.** `[:block, params, locals, declared, body]` decodes to
+the same `Expr.block` as before, with `locals ++ declared`. The two lists are *used*
+identically — `callClosure` seeds both as nil in the block frame (`Interp/Support.lean`), and
+that seeding is exactly what makes an assignment resolve in the block's own frame instead of
+walking the `captured` chain. Keeping one list in Lean means no change to `Expr`, `Closure`,
+`PendingBlk`, the `Proof/` tree or the concolic shadow store. The v4 four-slot shape still
+decodes, so an AST exported before this change is not rejected.
+
+The two lists differ only for `defined?`, and `defined?` never consults the frame: it reads
+the *node shape* (L72 — a name the parser did not know to be a local arrives as a vcall, not
+a `var local`), which is precisely CRuby's static rule. Verified both ways, since it is the
+one place this could have gone wrong: `defined?(z)` before the textual assignment in a block
+is nil, after it is `"local-variable"`, and `z = 1 if false; defined?(z)` is
+`"local-variable"` with no assignment ever executed [V].
+
+**2. `MethodDef.declared`, and the gate it retires.** `define_method`'s block becomes a method
+body that *keeps its captured frame*, so a block-local there needs the same treatment one
+frame kind over — otherwise an assignment walks out of the method and clobbers a same-named
+outer local. The model had gated on it (`define_method with block-locals`), which was safe
+while only explicit `|;x|` reached it and untenable once *every* local assignment in a
+`define_method` block did. `enterUserMethod` already pre-declares the formals bound after
+defaults, for this exact reason (L64); `md.declared` joins them, and the gate is gone. So the
+change *closes* a gate rather than opening one: `Dm.define_method(:go) { x = 5; x }` runs now,
+and `define_method` with an explicit `|;x|` runs for the first time.
+
+**3. Nothing else.** No `getLocal`/`setLocal` change: pre-seeded nil slots already give both
+the read and the write the right frame. That was worth checking rather than assuming — a read
+diverges too (`f = -> { p a; a = 1 }; a = 7; f.call` prints nil in CRuby, and would have
+printed 7), and the seeding covers it.
+
+**Measured.** 48 scoping shapes probed against CRuby (listed in C35), all agreeing; two
+pre-existing defects confirmed pre-existing on the stashed build rather than explained away —
+`_1` (a wrong answer: the model answers nil where CRuby binds the argument, now in
+`homebrew/HANDOFF.md`) and `case/in` (a gate). Full ratchet re-run: this change touches every
+block in every program, which is the widest blast radius of the session.

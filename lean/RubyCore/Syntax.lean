@@ -305,6 +305,16 @@ partial def expr (j : Json) : M Expr := do
   | "kwargs", #[_, entries] =>
       .kwargs <$> (← asArr entries).toList.mapM kwEntry
   | "fwd",   #[_] => return .fwd
+  -- v5 (C35): a fourth slot before the body carries the names Ruby makes
+  -- block-local *at parse time* — the ones whose first textual assignment is
+  -- inside the block, which no runtime lookup can recover. They are merged with
+  -- the explicit `|params; locals|` list because the block frame binds both the
+  -- same way; the two differ only for `defined?`, and `defined?` is decided here
+  -- from the *node shape* (a name the parser did not know is a vcall, not a
+  -- `var local` — L72), never from what the frame binds. The v4 four-slot shape
+  -- still decodes, so an AST exported before this change is not rejected.
+  | "block", #[_, ps, ls, ds, body] =>
+      return .block (← params ps) ((← strList ls) ++ (← strList ds)) (← expr body)
   | "block", #[_, ps, ls, body] =>
       return .block (← params ps) (← strList ls) (← expr body)
   | "yield", #[_, args] => .yield' <$> exprs (← asArr args)
@@ -365,12 +375,14 @@ partial def expr (j : Json) : M Expr := do
 
 end
 
-/-- Decode the full export document `{ "v": 4, "ast": ... }` (export.rb v4:
-    structured param nodes + additive heads; see `param` and the `unsupported`
-    gates for the forms the Phase-0 stepper does not model yet). -/
+/-- Decode the full export document `{ "v": 5, "ast": ... }` (export.rb v5:
+    structured param nodes, additive heads, and `block`'s parse-time `declared`
+    slot; see `param` and the `unsupported` gates for the forms the Phase-0
+    stepper does not model yet). v4 documents decode unchanged — the only
+    difference is `block`'s arity, and both shapes are accepted. -/
 def program (j : Json) : M Expr := do
   let v := (j.getObjVal? "v").toOption
-  unless v == some (.num 4) do
+  unless v == some (.num 5) || v == some (.num 4) do
     .error s!"unsupported rubycore export version: {v.map (·.compress)}"
   match j.getObjVal? "ast" with
   | .ok ast => expr ast

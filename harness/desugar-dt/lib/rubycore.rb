@@ -24,7 +24,7 @@ module RubyCore
     cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]",  # A::B = expr
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
     vcall: "[:vcall, mname]",  # bare identifier, not a local (Prism variable_call): NameError on miss
-    block: "[:block, [params], [block_locals], body]",  # {|params; locals| body}; params are param-nodes
+    block: "[:block, [params], [block_locals], [declared], body]",  # {|params; locals| body}; params are param-nodes. `declared` = implicit parse-time block-locals (C35)
     yield: "[:yield, [args]]",                               # yield to the current block
     if:    "[:if, cond, then, else_or_nil]",
     while: "[:while, cond, body]",
@@ -155,9 +155,12 @@ module RubyCore
       args.each { |a| e = explain(a); return "send arg: #{e}" if e }
       blk && !is_core?(blk) ? explain(blk) : nil
     when :block
-      _, params, locals, body = node
+      _, params, locals, declared, body = node
       return "block params: #{params_error(params)}" if params_error(params)
       return "block locals not Array of String" unless locals.is_a?(Array) && locals.all? { |p| p.is_a?(String) }
+      unless declared.is_a?(Array) && declared.all? { |p| p.is_a?(String) }
+        return "block declared not Array of String"
+      end
       explain(body)
     when :yield
       args = node[1]

@@ -919,3 +919,52 @@ block form, and statement position.
 
 **Result (measured).** Seeds **43/43**, rule coverage 76/76; bootstraptest **1227 agree,
 0 disagree** (unchanged — no bootstraptest program uses `&.` on a nil-responding method).
+
+## C35 — a block's parse-time locals ride in a fourth slot (`[:block, params, locals, declared, body]`)
+
+`homebrew/HANDOFF.md`'s first known wrong answer, and the one the handoff said starts here
+rather than in Lean. It was right.
+
+```ruby
+f = -> { a = 1; 0 }
+a = 0            # the *first* textual assignment to `a` is inside the block, so
+f.call           # Ruby made the block's `a` block-local at parse time
+puts a           # CRuby  0     model  1
+```
+
+Ruby decides local scoping **lexically, at parse time**: a name whose first assignment in
+the text is inside a block is local to that block even when the enclosing scope assigns it
+later. The model decided it **dynamically** — the block body wrote the captured frame if a
+slot for that name existed there when the body ran — and the two only diverge when the call
+is *deferred past* the outer assignment, which is why an `each` in the same shape agreed and
+only a stored-and-called-later Proc separated them.
+
+Nothing in the runtime heap can recover the answer; the whole point is that it differs from
+what the heap shows. The exported AST had nowhere to put it either (`[:block, params,
+locals, body]` — `locals` is only the explicit `|params; locals|` list). **Prism has already
+computed it**: every scope node carries `locals`, the set of names that scope binds, decided
+at parse. `declared_locals` takes that set less the parameters and less the explicit
+block-locals, and the block node gained a fourth slot for it (export `VERSION` 4 → 5; the
+Lean decoder accepts both shapes, so a v4 AST still decodes).
+
+**Why a separate slot rather than widening `locals`.** At runtime the two are identical —
+both are names the block frame binds itself, and the Lean decoder merges them. They differ
+for `defined?`, which CRuby answers **statically**: an explicit `|;x|` is `"local-variable"`
+before any assignment, while an implicit one is nil until the assignment is passed
+textually. Prism encodes that difference for us — the early reference parses as a *call*
+node and the later one as a local read — so the model gets it right from the node shape
+alone (L72), but only as long as `render.rb` does **not** emit these names as `|;x|`. It
+does not. Re-parsing rendered source recomputes them, so the round-trip is still a fixpoint.
+
+`_1`…`_9` are excluded: Prism reports numbered parameters as scope locals, and no
+declaration slot may name them (C29 keeps them verbatim).
+
+**Measured.** 48 hand-written scoping shapes probed against CRuby, all agreeing — the defect
+itself and its `each` twin, `rescue => e`, multiple assignment, splat assignment, `for`,
+`while`, op-assign in both orders, interpolated assignment, nested blocks and lambdas,
+`define_method`, `instance_eval`, block parameters shadowing, and `defined?` before and after
+the textual assignment. `_1` and the pattern-matching binder were checked against the
+pre-change build (`git stash` + rebuild) and are unrelated: the first is a **pre-existing
+wrong answer** (the model answers nil for `_1`, recorded in `homebrew/HANDOFF.md`), the
+second a pre-existing gate.
+
