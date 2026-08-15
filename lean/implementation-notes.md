@@ -3530,7 +3530,8 @@ every message, so `0 + Class.new.new` said `TypeError:  can't be coerced into In
 CRuby's `#<Class:0x…> can't be coerced into Integer`. The handoff called it "one Lean function,
 not a protocol". That was right about the *shape* and wrong about the *size*, in the direction
 the last three sessions have all been wrong in: probing the neighbourhood turned one wrong answer
-into **31**, in four groups, of which only the first is about anonymous classes at all.
+into **five rules** — ~48 wrong answers counted by observed probe shape — in four groups,
+of which only the first is about anonymous classes at all.
 
 **1. `className`'s fallback (≈19 wrong answers).** `Heap.className` answered `c.name`, which is
 `""` for a class with no constant bound to it. CRuby's `rb_class_name` renders such a class by
