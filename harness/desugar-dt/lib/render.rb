@@ -157,6 +157,10 @@ module Render
   # still a fixpoint.
   def block_str(node)
     _, params, locals, _declared, body = node
+    # Numbered params (C36) are synthesized for the model and must NOT be rendered:
+    # `|_1|` is a syntax error in Ruby, and the body's `_1`… re-detect on re-parse.
+    params = [] if params.all? { |p| p[0] == :preq && p[1].to_s.match?(/\A_[1-9]\z/) } &&
+                   !params.empty?
     if params.empty? && locals.empty?
       "{ #{core(body)} }"
     else

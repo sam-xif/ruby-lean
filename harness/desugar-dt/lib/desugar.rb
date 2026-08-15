@@ -353,11 +353,21 @@ class Desugar
   # BlockParametersNode (block or lambda), or [[], []] when absent.
   def block_params(bp)
     return [[], []] if bp.nil?
-    # Numbered params (`{ _1 + _2 }`): the body's `_1`… reads render verbatim and Ruby
-    # re-detects them, so no param list is needed. C29.
+    # Numbered params (`{ _1 + _2 }`). C29 emitted **no** params, on the reasoning that
+    # the body's `_1`… render verbatim and Ruby re-detects them — true for the render
+    # round-trip and false for anyone reading the AST: the Lean model bound nothing, so
+    # `[1].map { _1 + 1 }` answered `NoMethodError: undefined method '+' for nil`. A
+    # silent wrong answer, since the reads desugar to `var local` (Prism knows they are
+    # locals), not to a vcall that would have raised honestly. Prism's `maximum` gives
+    # the arity, and `_1`…`_max` are exactly the required params Ruby binds — including
+    # the auto-splat, which follows from arity ≥ 2 [V]: `[[1,2]].map { _1 }` is
+    # `[[1, 2]]` and `[[1,2]].map { _1 + _2 }` is `[3]`. `render.rb` still emits no
+    # parameter list, because `|_1|` is a syntax error ("_1 is reserved for numbered
+    # parameter") — re-parsing recovers the same synthesized list, so the round-trip
+    # stays a fixpoint. C36.
     if bp.type == :numbered_parameters_node
       fire(:"numbered-params")
-      return [[], []]
+      return [(1..bp.maximum).map { |i| [:preq, "_#{i}"] }, []]
     end
     raise Unsupported, "block param type :#{bp.type}" unless bp.type == :block_parameters_node
     [build_params(bp.parameters), bp.locals.map { |l| l.name.to_s }]

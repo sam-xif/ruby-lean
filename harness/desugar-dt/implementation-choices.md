@@ -968,3 +968,29 @@ pre-change build (`git stash` + rebuild) and are unrelated: the first is a **pre
 wrong answer** (the model answers nil for `_1`, recorded in `homebrew/HANDOFF.md`), the
 second a pre-existing gate.
 
+## C36 — numbered parameters get a real param list (bugfix)
+
+C29 desugared `{ _1 + _2 }` to a block with **no** parameters, reasoning that the body's
+`_1`… render verbatim and Ruby re-detects them on re-parse. That is true of the render
+round-trip and false of every other consumer: the Lean model bound nothing, so
+`[1].map { _1 + 1 }` answered `NoMethodError: undefined method '+' for nil`.
+
+It is a *silent* wrong answer rather than an honest gate because the reads desugar to
+`[:var, :local, "_1"]` — Prism knows they are locals — and an unbound local reads nil. A
+vcall would have raised. This is the C34 shape again: information read off the Prism node
+and then dropped, invisible until something downstream needed it.
+
+Prism's `NumberedParametersNode#maximum` is the arity, and `_1`…`_max` are exactly the
+required parameters Ruby binds. The auto-splat follows from the arity rather than needing a
+rule: `[[1,2]].map { _1 }` is `[[1, 2]]` (arity 1) and `[[1,2]].map { _1 + _2 }` is `[3]`
+(arity 2) [V] — which is what a `[:preq, "_1"]`, `[:preq, "_2"]` list already means.
+
+`render.rb` still emits no parameter list for them, and now has to say so explicitly:
+`{ |_1| … }` is a syntax error in Ruby ("_1 is reserved for numbered parameter"). Re-parsing
+recovers the same synthesized list, so the round-trip stays a fixpoint — the seeds and the
+1,227-program bootstraptest corpus confirm it.
+
+Found while probing the C35 scoping change: `_1` is a *scope local* in Prism's `locals` set,
+which is why it had to be excluded from the new `declared` slot, and excluding it is what
+prompted asking what the model did with it. Confirmed pre-existing (`git stash` + rebuild) —
+the rule that keeps a session honest about what it broke.
