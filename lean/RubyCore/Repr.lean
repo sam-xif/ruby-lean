@@ -146,13 +146,6 @@ partial def valueEq (h : Heap) (a b : Value) : Bool :=
       | _, _ => false
   | _, _ => a.identEq b
 
-/-- Fake but deterministic "address" for default Object#inspect — the
-    difftest observation normalizes `0x…` on both sides by occurrence
-    order, so only distinctness + ordering matter. -/
-def fakeAddr (o : ObjId) : String :=
-  let hex := String.ofList (Nat.toDigits 16 o)
-  "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
-
 /-- `Regexp#inspect` renders `/src/flags`, escaping only `/` in the source, and
     orders the flag letters `m i x n` [V] (`/a/imx.inspect` is `"/a/mix"`). -/
 def regexpInspect (src : String) (opts : Nat) : String :=
@@ -210,11 +203,11 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
           else return s!"{escapeString s}: {vs}"
         | _ => return s!"{← inspect h k} => {vs}"
       return "{" ++ String.intercalate ", " parts ++ "}"
-    | .cls c =>
+    | .cls _ =>
       -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
-      -- address (L72)
-      if c.name.isEmpty then return s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr o}>"
-      else return c.name
+      -- address (L72), which is `className`'s own fallback since L124 — one rule,
+      -- not a copy per repr function
+      return className h o
     | .exc msg =>
       let cname := className h (h.get o).klass
       if msg.isEmpty then return cname else return s!"#<{cname}: {msg}>"
@@ -284,11 +277,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
         throw "to_s of a byte string holding a byte ≥ 0x80 (L118)"
       else return s
     | .arr _ | .hsh _ => inspect h v
-    | .cls c =>
-      -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
-      -- address (L72)
-      if c.name.isEmpty then return s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr o}>"
-      else return c.name
+    | .cls _ => return className h o   -- as in `inspect` above (L124)
     | .exc msg => return msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
     | .rng _ => throw "Random#to_s (state/address non-deterministic)"

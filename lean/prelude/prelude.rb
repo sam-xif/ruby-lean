@@ -924,16 +924,28 @@ class Array
   end
 
   # `[[k, v], …].to_h`, or `to_h { |e| [k, v] }` [V]. A non-pair element is a
-  # TypeError naming the element's class.
+  # TypeError naming the element's class **and its index** — `rb_ary_to_h` has the
+  # index and says so, where `Enumerable#to_h`'s otherwise-identical message does
+  # not [V] (L124; found writing the guard for the class-naming rule below).
   def to_h
     h = {}
+    i = 0
     each do |e|
       pair = block_given? ? yield(e) : e
       unless pair.is_a?(Array) && pair.length == 2
-        raise TypeError, "wrong element type " + pair.class.name + " (expected array)" unless pair.is_a?(Array)
-        raise ArgumentError, "wrong array length (expected 2, was " + pair.length.to_s + ")"
+        # `.class.to_s`, not `.class.name`: CRuby names the class through
+        # `rb_class_name`, which renders an *anonymous* class by address, where
+        # `Module#name` answers nil and `+` would raise (L124). Every message in
+        # this file that names a class follows that rule.
+        unless pair.is_a?(Array)
+          raise TypeError, "wrong element type " + pair.class.to_s + " at " + i.to_s +
+                           " (expected array)"
+        end
+        raise ArgumentError, "wrong array length at " + i.to_s +
+                             " (expected 2, was " + pair.length.to_s + ")"
       end
       h[pair[0]] = pair[1]
+      i += 1
     end
     h
   end
@@ -1113,14 +1125,14 @@ end
 class Object
   def __inspect_slow
     ivs = instance_variables
-    head = "#<" + self.class.name + ":" + __addr_str
+    head = "#<" + self.class.to_s + ":" + __addr_str
     return head + ">" if ivs.empty?
 
     head + " " + ivs.map { |n| n.to_s + "=" + instance_variable_get(n).inspect }.join(", ") + ">"
   end
 
   def __to_s_slow
-    "#<" + self.class.name + ":" + __addr_str + ">"
+    "#<" + self.class.to_s + ":" + __addr_str + ">"
   end
 
   # `p` returns its argument (or the array of them, or nil for none) [V].
@@ -1287,8 +1299,8 @@ class String
     return nil if r.nil?
     return r if r.is_a?(String)
 
-    raise TypeError, "can't convert " + obj.class.name + " to String (" +
-                     obj.class.name + "#to_str gives " + r.class.name + ")"
+    raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
+                     obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
   end
 end
 
@@ -1300,8 +1312,8 @@ class Array
     return nil if r.nil?
     return r if r.is_a?(Array)
 
-    raise TypeError, "can't convert " + obj.class.name + " to Array (" +
-                     obj.class.name + "#to_ary gives " + r.class.name + ")"
+    raise TypeError, "can't convert " + obj.class.to_s + " to Array (" +
+                     obj.class.to_s + "#to_ary gives " + r.class.to_s + ")"
   end
 end
 

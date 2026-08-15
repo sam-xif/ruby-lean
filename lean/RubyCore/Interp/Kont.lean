@@ -42,7 +42,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           -- immediates are frozen: @x= with Integer self → FrozenError [V]
           match Builtins.inspectP m selfV with
           | .ok r => .next (raiseErr m Boot.frozenErrorId
-              s!"can't modify frozen {className m.heap (classOf m.heap selfV)}: {r}")
+              s!"can't modify frozen {className m.heap (realClassOf m.heap selfV)}: {r}")
           | .error e => .unsupported e
       | .cvar =>
         match cvarScope m with
@@ -65,18 +65,18 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         | some c =>
           if c.isModule then
             .next (raiseErr m Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
           else enterClassBody m name false (some k) body
         | none =>
           .next (raiseErr m Boot.typeErrorId
-            s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+            s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
       | .nil | .bool _ =>
         -- CRuby phrases these as "given nil"/"given false" — gate rather than
         -- emit the "an instance of …" form.
         .unsupported "superclass is nil/true/false"
       | _ =>
         .next (raiseErr m Boot.typeErrorId
-          s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap v)})")
+          s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))

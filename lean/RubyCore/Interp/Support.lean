@@ -91,7 +91,13 @@ def nextClause (m : Machine) (node : BeginNode) (exc : Value)
 
 /-- How a NoMethodError describes its receiver [V]:
     main / nil / true / false literally; classes as "class C";
-    everything else "an instance of C". -/
+    everything else "an instance of C" — **except** an object that has an
+    eigenclass, which CRuby renders as the object itself, by `rb_any_to_s`:
+    `def o.hi; end; o.zz` says `undefined method 'zz' for #<Foo:0x…>`, not
+    `… for an instance of Foo` (L124). The test is only "does a singleton class
+    exist" — `extend` and a bare `o.singleton_class` trigger it as much as a
+    `def o.x` — and it ignores a user `inspect`/`to_s` and any ivars. A *class*
+    receiver keeps "class C" even with singleton methods of its own [V]. -/
 def receiverDesc (h : Heap) (v : Value) : String :=
   match v with
   | .nil => "nil"
@@ -99,8 +105,11 @@ def receiverDesc (h : Heap) (v : Value) : String :=
   | .ref o =>
     if o == Boot.mainId then "main"
     else match (h.get o).payload with
-      | .cls c => (if c.isModule then "module " else "class ") ++ c.name
-      | _ => s!"an instance of {className h (h.get o).klass}"
+      | .cls c => (if c.isModule then "module " else "class ") ++ className h o
+      | _ =>
+        match (h.get o).eigen with
+        | some _ => anyToS h o
+        | Option.none => s!"an instance of {className h (h.get o).klass}"
   | _ => s!"an instance of {className h (classOf h v)}"
 
 /-- Would CRuby find `mname` on some class of `chain` (per the generated

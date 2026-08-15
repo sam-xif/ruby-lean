@@ -3522,3 +3522,82 @@ Guards: six hand-filed `coerce-*.rb` cases in `difftest/corpus/regressions/` (14
 between them) and the `coerce_probe` generation head (N42). The campaign-filed
 `tier1.5-00930-minimized` — the case the handoff pinned — now agrees and its sidecar is flipped
 to `fixed`.
+
+## L124 — how a message names a class, in one place: anonymous classes, eigenclasses, and `rb_any_to_s`
+
+`HANDOFF.md`'s second known wrong answer: an anonymous class (`Class.new`) is named `""` in
+every message, so `0 + Class.new.new` said `TypeError:  can't be coerced into Integer` for
+CRuby's `#<Class:0x…> can't be coerced into Integer`. The handoff called it "one Lean function,
+not a protocol". That was right about the *shape* and wrong about the *size*, in the direction
+the last three sessions have all been wrong in: probing the neighbourhood turned one wrong answer
+into **31**, in four groups, of which only the first is about anonymous classes at all.
+
+**1. `className`'s fallback (≈19 wrong answers).** `Heap.className` answered `c.name`, which is
+`""` for a class with no constant bound to it. CRuby's `rb_class_name` renders such a class by
+address, and *every* message built from a class name inherits that: the coercion `TypeError`, the
+`comparison of X with Y failed` ArgumentError, `NoMethodError`, `FrozenError`, `uninitialized
+constant C::X`, `superclass must be an instance of Class (given an instance of …)`, an
+`Exception.new` with no message, `no implicit conversion of X into String`, and the default
+`inspect`/`to_s` of an *instance* of one (`#<#<Class:0x…>:0x…>`, which was rendering as
+`#<:0x…>`). The fallback therefore belongs in `className`, not at ~20 call sites, and
+`fakeAddr` moved from `Repr.lean` down into `Heap.lean` so it can live there. `Repr.inspect`/
+`Repr.toS` had a private copy of the same rule for their `.cls` branch; both now call `className`,
+because a second copy of a message rule is L123 defect 2 all over again. `Module#name` still
+answers `nil`: it tests `c.name.isEmpty` itself and does not go through `className`.
+
+**2. The eigenclass's own name (12 more, and *not* an anonymous-class defect).**
+`eigenclassOf` named the new class `#<Class:{className o}>`, and `className` answers `"Object"`
+for a non-class id — so **every** singleton class of a plain object was named `#<Class:Object>`,
+including for named classes: `Foo.new.singleton_class.to_s` answered `"#<Class:Object>"` for
+CRuby's `"#<Class:#<Foo:0x…>>"`. CRuby names an eigenclass after the object it is attached to by
+`rb_any_to_s`, which is now `Heap.anyToS`: `#<RealClass:0x…>`, **ignoring** any user
+`to_s`/`inspect` and any ivars [V] — so it stays a pure heap function, which is what lets a
+builtin use it. A class's metaclass keeps the `#<Class:Foo>` form, and it composes:
+`Foo.singleton_class.singleton_class` is `#<Class:#<Class:Foo>>` [V].
+
+**3. `classOf` where CRuby uses `rb_obj_class` (5 + 6 wrong answers).** With eigenclasses
+correctly named, a second family became visible immediately — nine message sites read
+`className h (classOf h v)`, and `classOf` returns the **eigenclass** when one exists. So
+`def o.hi; end; 0 + o` said `#<Class:#<Foo:0x…>> can't be coerced` (and, before group 2,
+`#<Class:Object> can't be coerced`) where CRuby says `Foo`. `coerceName`, `coerceDesc`, the
+FrozenError, the three `superclass must be…` sites, `Class.new`'s, and the uncaught-exception
+observation in `Obs`/`PreludeBoot`/`Search.Random` all take `realClassOf` now. This is the
+argument for fixing a family rather than a case: five wrong answers that no probe of *anonymous
+classes* would ever have reached were sitting one rule away, and they were invisible while every
+eigenclass was misnamed the same way.
+
+The one place CRuby *does* look at the eigenclass is `NoMethodError`'s receiver: when a singleton
+class exists, the receiver is rendered by `rb_any_to_s` instead of `an instance of C` —
+`def o.hi; end; o.zz` is `undefined method 'zz' for #<Foo:0x…>` [V]. The test is only "does a
+singleton class exist", so `extend`, a bare `o.singleton_class` and a `def o.x` all trigger it,
+and it ignores a user `inspect` (probed: six shapes, including a `String` and an `Array`
+receiver). A *class* receiver keeps `for class Foo` even with singleton methods of its own.
+`receiverDesc` also named an anonymous class receiver `for class ` with nothing after it.
+
+**4. Four prelude messages used `.class.name` (4 wrong answers).** `Array.try_convert`'s
+`can't convert X to Array (X#to_ary gives Y)`, `String.try_convert`'s twin, `Enumerable#to_h`'s
+`wrong element type`, and the `__inspect_slow`/`__to_s_slow` twins. For an anonymous class
+`Module#name` is `nil`, so `"…" + obj.class.name` raised `TypeError: no implicit conversion of
+nil into String` — a *different* error, which is how the `to_ary` case first showed up. Ruby's
+equivalent of `rb_class_name` is `Module#to_s`, and that is what these say now. Left alone
+deliberately: `Struct#inspect`'s `self.class.name`, where the nil *is* the rule
+(`#<struct a=1>` for an anonymous struct [V]), and the sorbet-runtime shim, which models
+sorbet's own code rather than CRuby's.
+
+**What is still open, and why it is not cheap.** The model fixes an eigenclass's name at
+creation; CRuby computes it on demand. So for an anonymous class named *after* an instance's
+eigenclass already exists, the two diverge — `k = Class.new; o = k.new; o.singleton_class;
+K = k; o.singleton_class.to_s` is `#<Class:#<K:0x…>>` in CRuby and keeps the address form here.
+Closing it means storing the *attached object* on the class payload and making `className`
+recursive (fuel-bounded, since Lean cannot see that an attachment chain is finite) — a heap-shape
+change and a reducibility risk on the dispatch path, for a shape this narrow. Pinned as an `open`
+case instead (N43).
+
+**Metatheory: one repair, caught by `check-proofs.sh` in one command** — the fourth session in a
+row that number has been exactly one. `clsName_defineMethod` carried
+`(classPayload? k).map (·.name)`, which no longer determines `className`: the fallback reads
+`isModule` too. It now maps the pair. (§4 norm 5.)
+
+Guards: `anon-*.rb` and `eigen-*.rb` in `difftest/corpus/regressions/`, which is where the
+corpus rule this defect could not satisfy got solved — CRuby's own answer carries an address, so
+the case asserts a **predicate over** the message rather than the message (N43).

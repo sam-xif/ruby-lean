@@ -253,10 +253,13 @@ theorem lookup_go_defineMethod (h : Heap) (cls : ObjId) (name m : String)
         rw [hk]
         split <;> simp [ih]
 
+/-- `defineMethod` preserves everything `className` reads — the name *and*
+    `isModule`, since L124's anonymous-class fallback renders `#<Module:…>` or
+    `#<Class:…>` by it. -/
 theorem clsName_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     (md : MethodDef) :
-    ((defineMethod h cls name md).classPayload? k).map (·.name)
-      = (h.classPayload? k).map (·.name) := by
+    ((defineMethod h cls name md).classPayload? k).map (fun c => (c.name, c.isModule))
+      = (h.classPayload? k).map (fun c => (c.name, c.isModule)) := by
   unfold defineMethod
   split
   · rename_i c hc
@@ -287,9 +290,9 @@ theorem className_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     | none => rw [h1, h2] at hk; exact absurd hk (by simp)
     | some c =>
       rw [h1, h2] at hk
-      simp only [Option.map_some, Option.some.injEq] at hk
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hk
       dsimp only
-      exact hk
+      rw [hk.1, hk.2]
 
 /-- `classOf` on an immediate is heap-independent (`Heap.lean:396`), so the
     `lookup` congruence below needs no side condition for integer receivers. -/

@@ -64,7 +64,7 @@ def outcomeAt (prog : Int → Expr) (fuel : Nat) (n : Int) : String :=
   match run fuel (Machine.init (prog n)) with
   | .value _ _ => "value (safe on this input)"
   | .uncaught exc m =>
-    let cls := className m.heap (classOf m.heap exc)
+    let cls := className m.heap (realClassOf m.heap exc)
     if isTypeErrorB m.heap exc then s!"TYPE-STUCK: uncaught {cls}"
     else s!"uncaught {cls} (not a type error)"
   | .unsupported r _ => s!"FRONTIER: unsupported ({r})"

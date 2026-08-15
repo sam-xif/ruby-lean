@@ -527,11 +527,39 @@ where
 def isA (h : Heap) (v : Value) (k : ObjId) : Bool :=
   (ancestors h (classOf h v)).contains k
 
-/-- Class name (for error messages / inspect). -/
+/-- Fake but deterministic "address" for default `Object#inspect` and for every
+    message that renders an object by address — the difftest observation
+    normalizes `0x…` on both sides by occurrence order, so only distinctness +
+    ordering matter. Lives here, below `className`'s caller set, because an
+    **anonymous** class is rendered by address in error messages too (L124). -/
+def fakeAddr (o : ObjId) : String :=
+  let hex := String.ofList (Nat.toDigits 16 o)
+  "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
+
+/-- Class name (for error messages / inspect). An **anonymous** class or module
+    (`Class.new`, `Module.new`) has an empty `name`, and CRuby renders it by
+    address wherever a name is wanted — `0 + Class.new.new` says
+    `#<Class:0x…> can't be coerced into Integer`, not `` `` can't be coerced``.
+    Every message built from `className` inherits that, so the fallback belongs
+    here and not at ~20 call sites (L124). `Module#name` still answers `nil`:
+    it tests `c.name.isEmpty` itself rather than going through here. -/
 def className (h : Heap) (k : ObjId) : String :=
   match h.classPayload? k with
-  | some c => c.name
+  | some c =>
+    if c.name.isEmpty then
+      s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr k}>"
+    else c.name
   | Option.none => "Object"
+
+/-- CRuby's `rb_any_to_s`: how an object is named where a *class* would be named
+    by `className` — `#<Foo:0x…>`, ignoring any user `to_s`/`inspect` and any
+    ivars. The one caller is the **eigenclass**'s own name (`o.singleton_class`
+    is `#<Class:#<Foo:0x…>>`), which is why this is not `Repr.inspect`: it must
+    be a pure heap function, and CRuby does not dispatch here either [V]. -/
+def anyToS (h : Heap) (o : ObjId) : String :=
+  match h.classPayload? o with
+  | some _ => className h o
+  | Option.none => s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
 
 /-- Look up a constant on Object (L0: flat toplevel namespace,
     artifact 03's two-phase lookup degenerates to this). -/

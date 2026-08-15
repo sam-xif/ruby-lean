@@ -28,7 +28,7 @@ def boot : Except String Machine :=
     match Interp.run bootFuel { Machine.init p with preludeMode := true } with
     | .value _ m => .ok m
     | .uncaught exc m =>
-      let cls := className m.heap (classOf m.heap exc)
+      let cls := className m.heap (realClassOf m.heap exc)
       .error s!"prelude raised {cls}"
     | .unsupported r _ => .error s!"prelude gated: {r}"
     | .outOfFuel _ => .error "prelude out of fuel"

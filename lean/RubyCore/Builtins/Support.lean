@@ -133,11 +133,16 @@ def toSP (m : Machine) (v : Value) : Except String String :=
 
 /-- Operand description in "no implicit conversion of X into Y" errors:
     class name, except nil/true/false literally [V]
-    (`"a"+:k` → "…of Symbol into String", `"a"+nil` → "…of nil into…"). -/
+    (`"a"+:k` → "…of Symbol into String", `"a"+nil` → "…of nil into…").
+
+    `realClassOf`, not `classOf`: CRuby names the class through `rb_obj_class`,
+    which skips the eigenclass, so an operand carrying a singleton method is
+    still "of Foo into String" and not "of #<Class:#<Foo:0x…>> into String"
+    (L124 — invisible while every eigenclass was misnamed `#<Class:Object>`). -/
 def coerceName (h : Heap) : Value → String
   | .nil => "nil"
   | .bool b => toString b
-  | v => className h (classOf h v)
+  | v => className h (realClassOf h v)
 
 /-- Operand description in "X can't be coerced into C" and "comparison of C
     with X failed" errors: special constants show their *inspect*
@@ -155,7 +160,7 @@ def coerceDesc (h : Heap) : Value → String
   | .sym s => symInspect s
   | .int n => toString n
   | .flt x => rubyFloatRepr x
-  | v => className h (classOf h v)
+  | v => className h (realClassOf h v)   -- as `coerceName` above (L124)
 
 def strPayload? (h : Heap) : Value → Option String
   | .ref o => match (h.get o).payload with
@@ -777,7 +782,7 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
               .ok (.ref o) { m with heap := h }
           | none =>
             .err Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (classOf m.heap (.ref sup))})" m
+              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap (.ref sup))})" m
         | _ => .unsupported "Class.new arity"
       else if k == Boot.moduleId then
         match args with
