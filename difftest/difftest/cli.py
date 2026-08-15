@@ -22,7 +22,8 @@ from .report import Reporter
 from .runner import run_campaign
 from .sources import (REGRESSION_DEFAULT_STATUS, REGRESSION_FAILURES,
                       REGRESSION_OUTCOMES, load_bootstraptest, load_corpus_cases,
-                      load_domain_corpus, load_regressions_corpus, load_slice_corpus,
+                      load_advisory_corpus, load_domain_corpus,
+                      load_regressions_corpus, load_slice_corpus,
                       load_sorbet_corpus, regression_outcome)
 from .tiers import GENERATIVE_ARMS
 from .sut import make_sut
@@ -61,7 +62,7 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
 # Mix arms backed by persisted corpora. `regressions` is deliberately absent: a
 # campaign stops at its first disagreement, and an expected-to-fail corpus would
 # end every mixed run on its first known-open case (N41).
-CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain")
+CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain", "advisory")
 
 
 def _load_corpus_arm(name: str, args) -> list:
@@ -73,6 +74,8 @@ def _load_corpus_arm(name: str, args) -> list:
         return load_slice_corpus(Path(args.corpus) if args.corpus else None)
     if name == "domain":
         return load_domain_corpus(Path(args.corpus) if args.corpus else None)
+    if name == "advisory":
+        return load_advisory_corpus(Path(args.corpus) if args.corpus else None)
     return load_corpus_cases(BASE / "corpus" / "tier3", default_tier=3)
 
 
@@ -128,6 +131,14 @@ def cmd_domain_fuzz(args) -> int:
     return 0
 
 
+def cmd_advisory_fuzz(args) -> int:
+    from .tiers.advisory.build import build
+
+    out = args.out or str(BASE / "corpus" / "advisory-fuzz")
+    print(json.dumps(build(args.brew, out, args.n, args.seed, ruby=args.ruby), indent=2))
+    return 0
+
+
 def cmd_run(args) -> int:
     from .campaign import parse_mix, run_generative_campaign
 
@@ -177,6 +188,15 @@ def cmd_run(args) -> int:
         run_campaign(cases, control, sut, on_result=reporter.record)
         total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
         extra = {"domain": {"programs": len(cases), "inputs": total_inputs}}
+    elif args.tier == "advisory":
+        # R1: the decision core driven over generated advisory *shapes* ×
+        # version strings. Runs whole. Read its gate count alongside its
+        # verdicts — `difftest gates` — because a gate here is a coverage
+        # measurement, not a pass (`nontrivial-target.md` §3.3).
+        cases = load_advisory_corpus(Path(args.corpus) if args.corpus else None)
+        run_campaign(cases, control, sut, on_result=reporter.record)
+        total_inputs = sum(c.provenance.get("inputs", 0) for c in cases)
+        extra = {"advisory": {"programs": len(cases), "inputs": total_inputs}}
     elif args.tier == "4":
         # The Sorbet corpus (tier 4). Runs whole; it is small and every program
         # is hand-authored to probe a specific feature, so sampling it would
@@ -410,7 +430,8 @@ def main(argv=None) -> int:
     # flag; a distinct tier id keeps selection uniform).
     p_run.add_argument(
         "--tier", type=str, default="1",
-        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "regressions"]
+        choices=["0", "1", "1.5", "2", "3", "4", "slice", "domain", "advisory",
+                 "regressions"]
     )
     p_run.add_argument(
         "--mix",
@@ -454,6 +475,19 @@ def main(argv=None) -> int:
     p_dom.add_argument("--out", help="output corpus dir (default corpus/domain-fuzz)")
     p_dom.add_argument("--ruby", help="Ruby used for linking")
     p_dom.set_defaults(func=cmd_domain_fuzz)
+
+    p_adv = sub.add_parser(
+        "advisory-fuzz",
+        help="generate the advisory-shape corpus (R1: the decision core over "
+             "arbitrary JSON.parse output)",
+    )
+    p_adv.add_argument("--brew", required=True, help="path to a Homebrew/brew checkout")
+    p_adv.add_argument("-n", type=int, default=800,
+                       help="number of (advisory x version) pairs (default 800)")
+    p_adv.add_argument("--seed", type=int, default=7)
+    p_adv.add_argument("--out", help="output corpus dir (default corpus/advisory-fuzz)")
+    p_adv.add_argument("--ruby", help="Ruby used for linking")
+    p_adv.set_defaults(func=cmd_advisory_fuzz)
 
     p_gen = sub.add_parser("gen3", help="generate tier-3 corpus via the Anthropic API")
     p_gen.add_argument("--category", nargs="+", default=["all"])

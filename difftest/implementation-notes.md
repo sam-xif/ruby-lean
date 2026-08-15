@@ -1373,3 +1373,40 @@ Three shapes worth reusing:
 Each sidecar carries the shape of the fix, not just the defect — where the code is, what the two
 halves are, which control must stay green. The next session should not have to re-derive that
 either.
+
+## N46 — the advisory tier (R1): the decision core over arbitrary `JSON.parse` output
+
+`nontrivial-target.md` §6 rung R1, and `HANDOFF.md`'s first next-step. W4d generates the slice's
+*string* inputs; this generates its other one — the advisory Hash that `vulns/match.rb` hands
+`Vulnerability.new` straight out of `JSON.parse` of an HTTP body, with no schema validation of the
+record.
+
+`difftest advisory-fuzz --brew <path> -n 800`, then `difftest run --tier advisory --sut lean`.
+
+**The domain is the JSON algebraic datatype**, per §5.1: nested Hash/Array/String/Integer/Float/
+bool/nil with String keys. Generation is *skeleton plus mutation*, not uniform random — a random
+JSON value fails the `sig` on `initialize` and tests nothing past it, whereas an OSV skeleton with
+*k* nodes retyped, deleted, wrapped or unwrapped is how a hand-edited advisory-database entry
+actually goes wrong. Each program carries its mutation log as a comment, so a red row names its own
+cause. The eight seed cases are `nontrivial-target.md` §3's six witnesses plus its two
+out-of-family outcomes (`KeyError`, the silent `:affected`).
+
+**One advisory per program, deliberately unbatched** — the opposite of the domain tier's choice, and
+for a reason that tier does not have: a gate refuses the *whole* program, and §3.3 predicted this
+corpus would find gates the harvested one never touches. One shape per program means a gating shape
+costs its own rows and nothing else, so the gate count is a measurement rather than a loss. It was
+the right call: 24 of 106 programs gated.
+
+**First run: 82 agree, 0 disagree, 24 gated**, over 794 (advisory × version) pairs. Two things worth
+separating, exactly as §8's risk row asks:
+
+* **No disagreement.** On every shape the model can execute, it matches CRuby — including all six
+  witnesses, which is what makes them Direction-A certificates rather than CRuby anecdotes.
+* **23 of the 24 gates are two rules**, and they are the two §3.3 named from the probes:
+  `Array#[] non-int index` (17) and `unmodeled method Integer#[]` (6). Both arrive the same way —
+  `Array(hash)` yields `[[k, v], …]` and the code then indexes it with `"type"` — so a single
+  container-shape malformation reaches both. The 24th is a timeout.
+
+The observation is normalized twice for N38: addresses, and sorbet's `Caller:`/`Definition:` lines,
+which carry the program's own temp path. The blame *outcome* is kept — §5.4 calls it a licensed
+outcome, so a change to it must be visible — and `Object#hash` is never printed.

@@ -149,6 +149,35 @@ def load_domain_corpus(corpus: Path | None = None) -> list[TestCase]:
     return cases
 
 
+ADVISORY_DIR = BASE / "corpus" / "advisory-fuzz"
+
+ADVISORY_RECIPE = """The advisory-fuzz corpus is generated, not vendored. To build it:
+
+  python3 -m difftest advisory-fuzz --brew /path/to/Homebrew/brew -n 800"""
+
+
+def load_advisory_corpus(corpus: Path | None = None) -> list[TestCase]:
+    """The input-parameterized driver over generated OSV advisory *shapes*
+    (R1 of `homebrew/nontrivial-target.md` §6). One program per shape, several
+    versions each — deliberately unbatched across shapes, because a gate
+    refuses a whole program and this corpus is expected to find gates."""
+    corpus = Path(corpus) if corpus else ADVISORY_DIR
+    if not corpus.is_dir():
+        raise FileNotFoundError(f"no advisory corpus at {corpus}\n{ADVISORY_RECIPE}")
+    manifest: dict[str, dict] = {}
+    mp = corpus / "manifest.json"
+    if mp.exists():
+        manifest = {e["id"]: e for e in json.loads(mp.read_text())}
+    cases = [
+        TestCase(id=f"advisory/{p.stem}", source=p.read_text(), tier=0,
+                 provenance={"suite": "advisory-fuzz", **manifest.get(p.stem, {})})
+        for p in sorted(corpus.glob("*.rb"))
+    ]
+    if not cases:
+        raise FileNotFoundError(f"no .rb cases under {corpus}\n{ADVISORY_RECIPE}")
+    return cases
+
+
 def load_sorbet_corpus(corpus: Path | None = None) -> list[TestCase]:
     """Load the Sorbet-annotated corpus (tier 4) as TestCases.
 

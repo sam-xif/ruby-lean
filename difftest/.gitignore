@@ -12,3 +12,8 @@ corpus/homebrew-slice/
 
 # Generated domain-input corpus (W4d); rebuild with `difftest domain-fuzz`.
 corpus/domain-fuzz/
+
+# Advisory-shape corpus (R1). Generated, not vendored, for the same reason as
+# the two above: each program embeds the linked slice.
+# Rebuild with `python -m difftest advisory-fuzz --brew <path>`.
+corpus/advisory-fuzz/
