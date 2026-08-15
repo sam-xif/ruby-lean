@@ -43,6 +43,7 @@ AX=$(mktemp /tmp/rubycore-axioms-XXXXXX.lean)
 trap 'rm -f "$AX"' EXIT
 cat > "$AX" <<'LEAN'
 import RubyCore.Proof.StaticSoundness
+import RubyCore.Proof.PreludeInv
 import RubyCore.Proof.Adequacy
 import RubyCore.Proof.T5
 import RubyCore.Proof.T5Loop
@@ -50,6 +51,8 @@ import RubyCore.Proof.SorbetConcrete
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
+#print axioms RubyCore.Proof.Static.check_sound_withPrelude
+#print axioms RubyCore.Proof.Static.check_sound_withPrelude'
 #print axioms RubyCore.Proof.Step.sound
 #print axioms RubyCore.Proof.Step.complete
 #print axioms RubyCore.Proof.Step.deterministic
@@ -64,4 +67,15 @@ if echo "$OUT" | grep -qE "sorryAx|error"; then
   echo "FAIL: a theorem is missing, or depends on sorry / an unexpected axiom"
   exit 1
 fi
-echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only"
+# F0's certificate (`homebrew/widening-the-fragment.md` §3). `check_sound_withPrelude`
+# assumes `heapOkB` of the prelude-booted heap, and that Bool cannot be decided in
+# the kernel (`Lean.Json.parse` does not reduce; L94 bans `native_decide`), so it is
+# decided by running it. The probe computes the *same* function the lemma names —
+# `RubyCore/HeapCert.lean`, outside `Proof/` precisely so there is one copy.
+echo "== F0 certificate (heapOkB at the prelude-booted heap)"
+if ! lake env lean --run scripts/heapok_probe.lean; then
+  echo "FAIL: the prelude-booted heap does not satisfy the heap half of Inv"
+  exit 1
+fi
+
+echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB holds at the booted heap"

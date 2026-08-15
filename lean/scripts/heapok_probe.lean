@@ -1,0 +1,55 @@
+import RubyCore.PreludeBoot
+import RubyCore.HeapCert
+
+/-!
+F0's certificate (`homebrew/widening-the-fragment.md` §3/§4): does the
+**prelude-booted** heap satisfy the heap half of `Proof/StaticSoundness.Inv` —
+`TableOk` (the three tabulated `Integer` builtins still resolve: live, public,
+unshadowed, not `fromPrelude`) and `NoHook` (no `Module#method_added` on
+`Object`)?
+
+The verdict line is `heapOkB` itself, the same function
+`Proof/PreludeInv.heapOkB_sound` turns into `HeapOk`, so what this script checks
+is exactly what `check_sound_withPrelude` assumes. The per-clause lines below it
+are diagnostics only — they exist so that a failure names itself instead of
+printing `false`.
+
+This is not a proof, and it is not meant to be: `Prelude.program` is
+`Lean.Json.parse Prelude.json`, `Lean.Json.parse` does not kernel-reduce even on
+the input `"1"`, and L94 bans the `native_decide` escape. Deciding the predicate
+by *running* it is the honest remaining option, and
+`Proof/PreludeInv.heapOk_boot` is the route that removes even this.
+
+    lake env lean --run scripts/heapok_probe.lean      # exit 0 iff heapOkB
+-/
+
+open RubyCore
+open RubyCore.Interp
+
+/-- One `intResolvesB` clause per line, so a failure names itself. -/
+def report (h : Heap) (mname bid : String) : IO Unit := do
+  match lookup h (.int 0) mname with
+  | none => IO.println s!"  {mname}: does not resolve at all"
+  | some (owner, md) =>
+    let shadow := crubyShadow h ((ancestors h Boot.integerId).takeWhile (· != owner)) mname
+    IO.println s!"  {mname}: owner={className h owner} builtin={md.builtin} \
+undefined={md.undefined} vis={repr md.visibility} fromPrelude={md.fromPrelude} \
+shadow={shadow} → {intResolvesB h mname bid}"
+
+def main : IO UInt32 := do
+  match Prelude.boot with
+  | .error e => IO.println s!"prelude boot failed: {e}"; return 1
+  | .ok mp =>
+    let h := mp.heap
+    IO.println s!"booted: {h.objs.size} objects"
+    IO.println "TableOk:"
+    report h "+" "Integer#+"
+    report h "-" "Integer#-"
+    report h "*" "Integer#*"
+    let hook := lookup h (.ref Boot.objectId) "method_added"
+    IO.println s!"NoHook:\n  Object#method_added = \
+{hook.map (fun p => className h p.1)} → {hook.isNone}"
+    IO.println s!"Integer ancestors: {(ancestors h Boot.integerId).map (className h)}"
+    let ok := heapOkB h
+    IO.println s!"\nheapOkB (prelude-booted): {ok}"
+    return if ok then 0 else 1

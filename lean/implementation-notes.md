@@ -4139,3 +4139,81 @@ gates above were found because the first build of this rule turned them into wro
 is the fourth session running where the neighbourhood worth probing was the rule just written.
 
 **Result: R1 goes 82/24 → 106 agree, 0 disagree, 0 gated**, and tier-0 991 → 992.
+
+## L135 — F0: the invariant at the prelude-booted heap, and the certificate that gets it there
+
+`homebrew/PLAN.md` D6/D7 and `homebrew/widening-the-fragment.md` §3/§4. The static route's first
+rung, and the one that could have closed the route in a session. It does not: **the heap half of
+`Inv` holds at the prelude-booted heap**, measured, and there are now two theorems that reach it.
+
+`Proof/StaticSoundness.check_sound` is stated over `Machine.init p`, whose heap is `Boot.initHeap`
+— no core library. `static-soundness-poc.md` §5 says such a theorem "says nothing", and
+`sound_from` was written so the prelude-booted start would be *an instance rather than a
+restatement*. Nobody had produced the instance. `Proof/PreludeInv.lean` produces it.
+
+**What has to survive phase 1 is only two of `Inv`'s four conjuncts, and that is the whole
+structural point.** `FramesOk` and `CtlOk` at phase 2's start are re-established from scratch:
+`initWithPrelude` builds a *fresh* toplevel frame (`Machine.initOn`) and carries over `heap` and
+`globals` only, neither of which `FramesOk` reads. So `initiation` generalizes to `initiation_on`
+— any heap satisfying `HeapOk := TableOk ∧ NoHook`, any globals — by changing nothing but the
+statement. `CtlOk` moreover *cannot* hold during phase 1 (the prelude is 3,259 lines of what
+`Types/Fragment.lean` excludes by design), which is why F0 is heap-half preservation and not
+"run the invariant through the boot".
+
+### The measurement first, because it is what decides D6
+
+`scripts/heapok_probe.lean` boots the prelude and asks the four clauses directly. All four hold:
+`+`, `-`, `*` each resolve on `Integer` to the tabulated builtin, `undefined = false`,
+`visibility = .pub`, `fromPrelude = false`, `crubyShadow = none`; and `Object` has no
+`method_added`, because the prelude installs that hook **lazily** from `T.__toplevel_sig` and a
+sig-free program never evaluates one. Worth recording: `Integer`'s booted ancestor chain is
+`[Integer, Numeric, Comparable, Object, Kernel, BasicObject]`, so the prelude *does* splice a
+module into it — the shadow clause survives that because `Comparable` defines no `+`.
+
+### Two routes, and why both are in the file
+
+`HeapOk` is decidable — two `lookup`s and a `crubyShadow` on a fixed heap. What is unavailable is
+deciding it *in the kernel*: `Prelude.program` is `Lean.Json.parse Prelude.json`, and
+`Lean.Json.parse` does not kernel-reduce even on the input `"1"` (measured; it is
+`WellFounded.fix`-shaped, the trap D1 and L73 already banned on the dispatch path and nobody had
+asked of the prelude carrier), while L94 bans the `native_decide` escape.
+
+* **The certificate route** (`inv_of_cert`, `check_sound_withPrelude`). `heapOkB : Heap → Bool`,
+  with `heapOkB_sound : heapOkB h = true → HeapOk h`. The theorem's hypothesis is then *one Bool
+  about the machine actually in hand*, decided by running it. No `ofReduceBool` appears anywhere:
+  the Bool is a hypothesis, not a proof step, so the axiom baseline is unchanged.
+* **The preservation route** (`heapOk_boot`, `check_sound_withPrelude'`). `run_heapOk` carries the
+  heap half along a whole `run` given a **per-step** obligation `PreservesHeapOk`, re-basing the
+  hypothesis at each step through `Reaches.head` so it never has to be strengthened to *all*
+  machines — which would be false, since a program may reopen `Integer`. Nothing is checked at
+  runtime; the residue is `PreservesHeapOk` over the machines phase 1 reaches, left as an
+  **explicit hypothesis rather than an `axiom`**, per D8's rule that a trusted assumption must be
+  an artifact and not a residue.
+
+`PreservesHeapOk` admits `.done` alongside `.next`, which is what lets `run_heapOk` avoid inverting
+`stepFn`: the boot's last step is `applyKont` on an empty continuation stack (`Interp/Kont.lean:20`,
+the only `.done` in the interpreter), and proving *that* is the only `.done` producer would mean
+walking all 47 `Kont` cases to show none of the others is one. Admitting it costs one disjunct in a
+definition; the alternative cost a case analysis.
+
+### `heapOkB` lives outside `Proof/`, deliberately
+
+`RubyCore/HeapCert.lean`, imported by `RubyCore.lean`. Defining it next to the soundness lemma
+would put it off the default build target, where the probe cannot see it — so the probe would
+re-implement the predicate and could drift from the one the theorem is about. One definition, two
+readers, and `scripts/check-proofs.sh` now runs the probe as a third section and fails on it.
+
+It is **not** wired into `Prelude.boot`. A prelude that redefined `Integer#+` would be a legitimate
+model change that breaks the static route only; refusing to *execute* would be the wrong response,
+and the check belongs where the proofs are checked. Nothing the SUT reads changed in this note.
+
+### What remains, and its size
+
+`PreservesHeapOk` has to be discharged at every heap-writing site the interpreter has, and there
+are **seventeen**: `Interp.lean:238,279`, `Interp/Dispatch.lean:173,509,526,540,571,572`,
+`Interp/Kont.lean:103,490`, `Interp/Reflect.lean:87,193,200,310,317,359`,
+`Builtins/Modules.lean:183`. One of them is already proved — `TableOk_defineMethod`, lifted here to
+`heapOk_defineMethod` with the hook clause attached. The `setClassPayload` sites are the ones to
+cost carefully: `include`/`prepend` change `ancestors`, so name-disjointness (`HeapFacts.lean`'s
+route) is not enough on its own and the side condition becomes "the spliced module defines none of
+the protected names".

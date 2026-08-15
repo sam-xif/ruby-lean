@@ -8,4 +8,5 @@ import RubyCore.Builtins
 import RubyCore.Interp
 import RubyCore.Prelude
 import RubyCore.PreludeBoot
+import RubyCore.HeapCert
 import RubyCore.Obs
