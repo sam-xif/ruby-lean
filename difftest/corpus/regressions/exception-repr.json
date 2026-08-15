@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "fixed_by": "L131 (2026-08-15) — `Exception#message` is `to_s`, and `to_s` is repr-sensitive per value",
+  "filed_by": "hand-filed in L131 (probing the L128 fix's neighbourhood)",
+  "arm": "hand",
+  "case_id": "exception-repr",
+  "first_reconciled": "2026-08-15 (L131), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'to_s, message => \"OVER\"' vs 'to_s, message => \"boom\"' (2 wrong answers), plus 4 shapes the model refused outright (`inspect after user override of inspect`) because `message` was in `inspectSensitive`",
+  "note": "Two wrong answers and four gates, in opposite directions. `Exception#message` *is* `to_s`, so a user `to_s` must show through `message` and `inspect` — as a Lean builtin sharing `to_s`'s arm it read the payload. And a user `message` changes nothing about either, so listing `message` in the sensitivity lists only made the model refuse programs CRuby answers. `to_s`-on-an-Exception is repr-sensitive per **value** (an exception inside an Array renders through its `to_s` too), so the test is in `pureOk`'s `.exc` arm, not in a list. Found by probing L128's fix, which is the third session running where the neighbourhood of a named defect held more than the name did. An **uncaught** exception with a user `to_s`/`message` is deliberately absent: the control observes `__exc.message`, which dispatches, and the model gates — see `impure-repr-gates.rb`."
+}

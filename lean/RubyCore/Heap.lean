@@ -368,7 +368,9 @@ def builtinMethods : List (ObjId × List String) := [
             "freeze", "frozen?",
             "include?", "member?", "keys", "values", "delete", "fetch",
             "inspect", "to_s", "dup", "clone", "merge", "initialize"]),
-  (exceptionId, ["message", "to_s", "inspect", "dup", "clone", "initialize"]),
+  -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
+  -- and the prelude defines it (L131).
+  (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize"]),
   (classId, ["superclass"]),
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",

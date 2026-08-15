@@ -42,15 +42,21 @@ namespace Builtins
 
 /-- Methods whose user definition changes what **`inspect`** would print. `to_s`
     is deliberately absent: a user `to_s` does not change `Object#inspect`, which
-    renders class and ivars [V]. `message` is present because `Exception#inspect`
-    is built from it. -/
-def inspectSensitive : List String := ["inspect", "message"]
+    renders class and ivars [V].
+
+    `message` used to be here, on the theory that `Exception#inspect` is built from
+    it. It is not — `rb_exc_inspect` renders the *mesg* through `to_s`, and
+    `Exception#message` is itself `to_s`, so a user `message` changes **nothing**
+    about either [V]. Listing it only made the model refuse programs CRuby answers.
+    The real sensitivity it was standing in for is `to_s`-on-an-Exception, and that
+    is per-value rather than per-list, so it lives in `pureOk`'s `.exc` arm (L131). -/
+def inspectSensitive : List String := ["inspect"]
 
 /-- The same, for **`to_s`**. Splitting the two lists is what keeps the check
     from being over-strict: before L103 a single global flag conflated them, so
     `class Integer; def to_s; "x"; end` made `p 1` inadmissible even though
     `p` uses `inspect` and is unaffected. -/
-def toSSensitive : List String := ["to_s", "message"]
+def toSSensitive : List String := ["to_s"]
 
 /-- Does `k`'s ancestor chain carry a **non-builtin** definition of one of
     `sens`? This is the per-class replacement for the old global `reprPure` flag
@@ -64,6 +70,22 @@ def reprOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
     | some cp =>
       cp.methods.any fun (n, md) =>
         sens.contains n && md.builtin.isNone && !md.undefined
+    | none => false
+
+/-- As `reprOverridden`, but counting only definitions written by the **program**.
+    `reprOverridden` deliberately counts the prelude's own — otherwise pure repr
+    would *lie* about `Pathname` and `T::Struct`, whose prelude `inspect` it knows
+    nothing about (see `reprDefer?`). The observation needs the opposite question,
+    and asking the wrong one cost three ratchet cases: the prelude defines
+    `Exception#message` (as `to_s`, L131), so "does anything override `message`" is
+    `true` for *every* exception, and a gate meant for a program's override fired on
+    a plain `TypeError`. -/
+def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
+  (ancestors h k).any fun a =>
+    match h.classPayload? a with
+    | some cp =>
+      cp.methods.any fun (n, md) =>
+        sens.contains n && md.builtin.isNone && !md.undefined && !md.fromPrelude
     | none => false
 
 /-- Can pure repr (Repr.lean) speak for this value? Only if nothing in the
@@ -93,6 +115,14 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
     | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
+    -- An Exception renders **through `to_s`** whichever way it is asked:
+    -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
+    -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
+    -- object no matter which list the caller asked about — which is why this is
+    -- here and not in `inspectSensitive` (L131). Getting it from the list instead
+    -- was wrong in both directions: it refused a user `message`, which changes
+    -- nothing, and admitted a user `to_s`, which changes everything.
+    | .exc _ => own && !reprOverridden h ["to_s"] (classOf h (.ref o))
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
@@ -112,7 +142,8 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     can dispatch — off a cliff. -/
 def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
-  if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect" then
+  if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect"
+     || bid == "Exception#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
   else if bid == "Array#to_s" || bid == "Hash#to_s" then
     -- `Array#to_s` and `Hash#to_s` **are** `inspect` (`rb_ary_to_s` is
@@ -552,7 +583,7 @@ def zeroArgBids : List String :=
    "String#clone", "Hash#clone", "Array#frozen?", "Array#freeze", "Array#sort", "Array#uniq",
    "Hash#length", "Hash#size", "Hash#empty?", "Hash#keys", "Hash#values",
    "Hash#inspect", "Hash#to_s", "Hash#dup",
-   "Exception#message", "Exception#to_s", "Exception#inspect",
+   "Exception#to_s", "Exception#inspect",
    "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
    "Proc#lambda?", "Proc#to_proc", "Object#initialize",
    "Range#inspect", "Range#to_s", "Range#first", "Range#last", "Range#begin",

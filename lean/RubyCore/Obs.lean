@@ -46,6 +46,15 @@ def observe (r : Interp.RunResult) : ObsResult :=
         | .exc s => s
         | _ => ""
       | _ => ""
+    -- The control observes `__exc.message`, which **dispatches** — and
+    -- `Exception#message` is `to_s`, so a user `to_s` or `message` decides what the
+    -- observation says. Reading the payload answered the raw message instead, and
+    -- there is no machine left to dispatch in: the program has ended, exactly as in
+    -- `result_repr` below (L131). So refuse rather than answer the payload.
+    if Builtins.programOverridden m.heap ["to_s", "message"] (classOf m.heap exc) then
+      .unsupported
+        "uncaught exception whose message is dispatched (a user to_s/message), computed after the program has ended"
+    else
     .obs (obsJson m.out none (some (cls, msg)))
   | .unsupported reason _ => .unsupported reason
   | .outOfFuel _ => .unsupported "out of fuel"

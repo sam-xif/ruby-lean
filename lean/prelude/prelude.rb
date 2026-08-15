@@ -1440,6 +1440,26 @@ class Range
   end
 end
 
+class Exception
+  # `Exception#message` **is** `to_s` (`exc_message` is one `rb_funcall`), so a
+  # user `to_s` shows through it and a user `message` changes nothing about
+  # `to_s`/`inspect` [V]. As a Lean builtin sharing `to_s`'s arm it read the
+  # payload directly, and `E.new("boom").message` answered "boom" for a class whose
+  # `to_s` says otherwise. Prelude Ruby is the only spelling that dispatches
+  # (L131). Note it does not coerce: a `to_s` answering `1` makes `message`
+  # answer **1** [V].
+  def message = to_s
+
+  # `rb_exc_inspect`: `rb_obj_as_string(exc)` — so the *dispatched* `to_s`, coerced
+  # — and the bare class name when that is empty [V].
+  def __inspect_slow
+    s = __as_string
+    return self.class.to_s if s.empty?
+
+    "#<" + self.class.to_s + ": " + s + ">"
+  end
+end
+
 class Hash
   def __inspect_slow
     return "{}" if empty?

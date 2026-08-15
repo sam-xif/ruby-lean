@@ -3927,3 +3927,47 @@ the model's whole dispatch-miss path through a method table entry. Pinned rather
 
 Measured: 36 of 38 probe shapes identical (the two are the `FloatDomainError` gate), the pinned
 case a guard at 46 shapes. tier-0 991/0, slice 351/0, tier-4 25/0.
+
+## L131 — everything an exception says goes through `to_s`, and the model had it backwards twice
+
+Found by probing L128's fix, which is the third session running where the neighbourhood of a
+named defect held more than the name did. CRuby has one rule here and the model had two wrong
+halves of it:
+
+* **`Exception#message` *is* `to_s`** (`exc_message` is one `rb_funcall`), and `rb_exc_inspect` is
+  `#<Class: rb_obj_as_string(exc)>`. So a user `to_s` decides all three answers. As a Lean builtin
+  sharing `to_s`'s arm, `message` read the payload: `E.new("boom").message` answered `"boom"` for a
+  class whose `to_s` says `"OVER"`, and so did `inspect`. **Two wrong answers.**
+* **A user `message` changes nothing** about `to_s` or `inspect` — but `message` was in
+  `inspectSensitive` *and* `toSSensitive`, so the model **refused four shapes CRuby answers**
+  (`inspect`, `p`, in an Array, through interpolation).
+
+The lists were standing in for a sensitivity that is not expressible as a list entry: `to_s` is
+repr-sensitive **for an exception value** and not for anything else. So it moved into `pureOk`'s
+`.exc` arm, where it also covers an exception inside an Array, a Hash or an ivar, and `message`
+left both lists. `Exception#message` is prelude Ruby (`def message = to_s`) — the only spelling
+that dispatches — and `Exception#inspect` joins `reprDefer?`'s deferring bids with an
+`Exception#__inspect_slow` twin that reproduces `rb_exc_inspect`, including its bare-class-name
+answer for an empty message [V].
+
+`message` does not coerce, either: a `to_s` answering `1` makes `message` answer **1** [V], which
+falls out of L129's rule rather than needing one here.
+
+**The uncaught-exception observation is a third instance of one architectural hole.** The control
+observes `__exc.message`, which *dispatches*; `Obs.observe` read the `.exc` payload. The program
+has ended, so nothing can dispatch — the same position `result_repr` is in. It now **refuses**
+rather than answering the payload, which is a wrong answer traded for a gate, pinned as the third
+entry in `impure-repr-gates.rb`.
+
+**The mistake inside that fix is the one worth reading.** The first version asked
+`reprOverridden ["to_s", "message"]` — and `reprOverridden` deliberately counts the **prelude's
+own** definitions, because otherwise pure repr would lie about `Pathname` and `T::Struct`. The
+prelude now defines `Exception#message`. So the gate was `true` for *every* exception and fired on
+a plain `TypeError`: **three ratchet cases went from `held` to `gated`** in one run. The
+observation needs the opposite question, and it is now a separate helper — `programOverridden`,
+`fromPrelude`-excluding, the same distinction `mayCoerce` and `hasProgramEq` already draw. A
+prelude definition is an *implementation* of a builtin, not an override; which of the two questions
+a call site means has to be decided at the call site.
+
+Measured: `exception-repr.rb` (30 shapes, red before and green after) held; regressions 30 held /
+2 still_open / 3 gated with no case changing state; tier-0 991/0, slice 351/0, tier-4 25/0.

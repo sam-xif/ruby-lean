@@ -18,7 +18,12 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   let h := m.heap
   match bid with
   /- ─── Exception ─── -/
-  | "Exception#message" | "Exception#to_s" =>
+  -- `Exception#message` is **not** here: it is `to_s` in CRuby (`exc_message` is
+  -- one `rb_funcall`), so a user `to_s` must show through it. As a builtin sharing
+  -- this arm it read the payload directly, and `E.new("boom").message` answered
+  -- "boom" for a class whose `to_s` says otherwise. It is prelude Ruby now — `def
+  -- message = to_s` — which is the only spelling that dispatches (L131).
+  | "Exception#to_s" =>
     match recv with
     | .ref o => match (h.get o).payload with
       | .exc msg => okStr m msg
