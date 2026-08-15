@@ -27,9 +27,17 @@ set_option maxRecDepth 100000
 
 /-! ## 1. Values and locals -/
 
-/-- The type of a value, where P0 has one. `.ref`/`.flt`/`.sym` have none — the
-    fragment allocates no objects, so they never arise. -/
-def valueTy? : Value → Option Ty
+/-- The type of a value **in a heap**, where P0 has one. `.ref`/`.flt` have none
+    — the fragment allocates no objects, so they never arise.
+
+    **Heap-indexed as of L137, and today no arm reads the heap.** That is
+    deliberate and it is the F1 prerequisite: a nominal class type
+    (`widening-the-fragment.md` §6 F1, `PLAN.md` W5 T2) can only say what class a
+    `.ref` belongs to by consulting `classOf`/`className`, so the *judgement* has
+    to be heap-relative before the *type language* can grow. Threading it while
+    every arm is still heap-independent is what makes the two changes separable,
+    and §1.5's congruence lemmas are where the cost of the threading shows up. -/
+def valueTy? (_h : Heap) : Value → Option Ty
   | .int _ => some .int
   | .bool _ => some .bool
   | .nil => some .nilT
@@ -37,7 +45,7 @@ def valueTy? : Value → Option Ty
   | .sym _ => some .sym
   | _ => none
 
-def ValueTy (v : Value) (τ : Ty) : Prop := valueTy? v = some τ
+def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
 
 /-- The frame currently executing. -/
 def curFid (m : Machine) : FrameId := m.stack.headD 0
@@ -55,13 +63,13 @@ def localOf (f : Frame) (x : String) : Value :=
 /-- One activation conforms to one environment. `captured = none` is what makes
     the frame *self-contained*: `getLocal`/`setLocal` otherwise walk into
     enclosing scopes (`Machine.lean:322–352`) and nothing about them reduces. -/
-def FrameConforms (Γ : Env) (f : Frame) : Prop :=
+def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
   f.captured = none ∧
   -- The definee is `Object` for every frame in the fragment (no `class`, no
   -- `module`). Carried per-frame rather than for the current one only, because
   -- `frameK` resumes a *caller's* frame and `NoHook` has to survive that.
   f.defmod = Boot.objectId ∧
-  ∀ x τ, envGet? Γ x = some τ → ValueTy (localOf f x) τ
+  ∀ x τ, envGet? Γ x = some τ → ValueTy h (localOf f x) τ
 
 /-- **Per-frame conformance down the activation stack**, innermost first.
 
@@ -74,11 +82,11 @@ def FrameConforms (Γ : Env) (f : Frame) : Prop :=
 
     Equal lengths are forced by the `_, _ => False` arm, which is why this
     subsumes P0a's `stack ≠ []`. -/
-def FramesOk (frames : Array Frame) : List FrameId → List Env → Prop
+def FramesOk (h : Heap) (frames : Array Frame) : List FrameId → List Env → Prop
   | [], [] => True
   | fid :: fids, Γ :: Γs =>
       fid < frames.size ∧ (∀ g ∈ fids, g < fid) ∧
-      FrameConforms Γ (frames.getD fid default) ∧ FramesOk frames fids Γs
+      FrameConforms h Γ (frames.getD fid default) ∧ FramesOk h frames fids Γs
   | _, _ => False
 
 /-- What `getLocal`/`setLocal` need, derived from the head of `FramesOk`. Kept as
@@ -89,7 +97,7 @@ def FrameOk (m : Machine) : Prop :=
 /-- Every variable the environment types holds a value of that type. Stated
     against `m.getLocal` — what the interpreter actually reads. -/
 def LocalsOk (Γ : Env) (m : Machine) : Prop :=
-  ∀ x τ, envGet? Γ x = some τ → ValueTy (m.getLocal x) τ
+  ∀ x τ, envGet? Γ x = some τ → ValueTy m.heap (m.getLocal x) τ
 
 /-! ### 1.1 Two array facts, and local access on the current frame -/
 
@@ -182,7 +190,7 @@ theorem getLocal_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Val
 /-! ### 1.2 `FramesOk` implies what the old invariant asserted -/
 
 theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
-    (h : FramesOk m.frames m.stack (Γ :: Γs)) : FrameOk m := by
+    (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : FrameOk m := by
   cases hst : m.stack with
   | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
   | cons fid fids =>
@@ -193,21 +201,21 @@ theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     · simpa [curFrame, curFid, hst] using hc
 
 /-- Popping the innermost activation: a suffix of a conforming stack conforms. -/
-theorem FramesOk.tail {frames : Array Frame} {fids : List FrameId} {Γ : Env}
-    {Γs : List Env} (h : FramesOk frames fids (Γ :: Γs)) :
-    FramesOk frames fids.tail Γs := by
+theorem FramesOk.tail {hp : Heap} {frames : Array Frame} {fids : List FrameId} {Γ : Env}
+    {Γs : List Env} (h : FramesOk hp frames fids (Γ :: Γs)) :
+    FramesOk hp frames fids.tail Γs := by
   cases fids with
   | nil => exact absurd h (by simp [FramesOk])
   | cons fid rest => exact h.2.2.2
 
 theorem FramesOk.localsOk {m : Machine} {Γ : Env} {Γs : List Env}
-    (h : FramesOk m.frames m.stack (Γ :: Γs)) : LocalsOk Γ m := by
+    (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : LocalsOk Γ m := by
   intro x τ hg
   rw [getLocal_cur h.frameOk x]
   cases hst : m.stack with
   | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
   | cons fid fids =>
-    have hc : FrameConforms Γ (m.frames.getD fid default) := by
+    have hc : FrameConforms m.heap Γ (m.frames.getD fid default) := by
       rw [hst] at h; exact h.2.2.1
     have : curFrame m = m.frames.getD fid default := by
       simp [curFrame, curFid, hst]
@@ -259,10 +267,10 @@ theorem envGet?_set (Γ : Env) (x y : String) (τ : Ty) :
 
 /-- Conformance only reads the frames the stack names, so an array change that
     leaves those alone transports it. -/
-theorem FramesOk.frames_congr {a b : Array Frame} :
-    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk a fids Γs →
+theorem FramesOk.frames_congr {hp : Heap} {a b : Array Frame} :
+    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk hp a fids Γs →
       (∀ g ∈ fids, g < b.size) → (∀ g ∈ fids, b.getD g default = a.getD g default) →
-      FramesOk b fids Γs
+      FramesOk hp b fids Γs
   | [], [], h, _, _ => h
   | fid :: fids, Γ :: Γs, h, hb, heq => by
     obtain ⟨_, hlt2, hcf, hrest⟩ := h
@@ -274,9 +282,10 @@ theorem FramesOk.frames_congr {a b : Array Frame} :
   | _ :: _, [], h, _, _ => absurd h (by simp [FramesOk])
 
 theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
-    {τ : Ty} {v : Value} (hfs : FramesOk m.frames m.stack (Γ :: Γs))
-    (hv : ValueTy v τ) :
-    FramesOk (m.setLocal x v).frames (m.setLocal x v).stack (envSet Γ x τ :: Γs) := by
+    {τ : Ty} {v : Value} (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs))
+    (hv : ValueTy m.heap v τ) :
+    FramesOk m.heap (m.setLocal x v).frames (m.setLocal x v).stack
+      (envSet Γ x τ :: Γs) := by
   have hf := hfs.frameOk
   have hlt := hf.2.1
   rw [setLocal_stack]
@@ -315,6 +324,78 @@ theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
         (fun g hg => ?_)
       rw [setLocal_frames hf x v, hcur]
       exact getD_set!_ne _ _ _ _ (Nat.ne_of_lt (hgt g hg))
+/-! ### 1.5 Heap congruence — what the threading costs
+
+Once the typing judgement is indexed by a heap, every heap-writing step owes a
+*transport*: the `ValueTy` facts already stored in frames and continuations must
+still hold in the new heap. `TypeAgree` is the condition that discharges it, and
+it is deliberately stated as **exactly what a nominal `Ty` will read** rather than
+as what today's four ground types read (which is nothing):
+
+* `classOf` — the dispatch class of a value, what `T.instance C` must consult;
+* `className` — the name a nominal type is written with (`Sub` as the `ancestors`
+  walk, `PLAN.md` W5 T2, will need `ancestors` here too);
+* `classPayload?`-ness — whether an id is a class at all, what `T.class_of C`
+  needs.
+
+`defineMethod` satisfies all three (`Proof/HeapFacts.lean`), which is why the
+`def` case of preservation can discharge the transport today; a step that
+`alloc`s or splices `includes` will not, and that is F1's real cost showing up
+here rather than being discovered inside a 300-line case analysis.
+-/
+
+/-- The heap facts a nominal type language reads. Reflexive, and `defineMethod`
+    is an instance. -/
+def TypeAgree (h h' : Heap) : Prop :=
+  (∀ v, classOf h' v = classOf h v) ∧ (∀ k, className h' k = className h k) ∧
+    (∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome)
+
+theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
+  ⟨fun _ => Eq.refl _, fun _ => Eq.refl _, fun _ => Eq.refl _⟩
+
+theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) : TypeAgree h (defineMethod h cls name md) := by
+  refine ⟨fun v => classOf_defineMethod h cls name md v,
+    fun k => className_defineMethod h cls k name md, fun k => ?_⟩
+  have := shape_defineMethod h cls k name md
+  cases h1 : (defineMethod h cls name md).classPayload? k with
+  | none =>
+    cases h2 : h.classPayload? k with
+    | none => simp
+    | some c => rw [h1, h2] at this; exact absurd this (by simp)
+  | some c' =>
+    cases h2 : h.classPayload? k with
+    | none => rw [h1, h2] at this; exact absurd this (by simp)
+    | some c => simp
+
+/-- Transport of the value judgement. **No arm reads the heap today**, so this is
+    `id` — and it is stated with the hypothesis anyway, because the point of L137
+    is that the hypothesis is where a nominal arm will land, and a lemma that has
+    to grow a hypothesis later is a lemma every caller has to be revisited for. -/
+theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (_ha : TypeAgree h h')
+    (hv : ValueTy h v τ) : ValueTy h' v τ := by
+  cases v <;> simp_all [ValueTy, valueTy?]
+
+theorem FrameConforms.congr {h h' : Heap} {Γ : Env} {f : Frame}
+    (ha : TypeAgree h h') (hc : FrameConforms h Γ f) : FrameConforms h' Γ f :=
+  ⟨hc.1, hc.2.1, fun x τ hg => ValueTy.congr ha (hc.2.2 x τ hg)⟩
+
+theorem FramesOk.heap_congr {h h' : Heap} {frames : Array Frame}
+    (ha : TypeAgree h h') :
+    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk h frames fids Γs →
+      FramesOk h' frames fids Γs
+  | [], [], hf => hf
+  | _ :: fids, _ :: Γs, hf =>
+      ⟨hf.1, hf.2.1, FrameConforms.congr ha hf.2.2.1, FramesOk.heap_congr ha hf.2.2.2⟩
+  | [], _ :: _, hf => absurd hf (by simp [FramesOk])
+  | _ :: _, [], hf => absurd hf (by simp [FramesOk])
+
+/-- `setLocal` writes `locals`, so the heap rides through — needed wherever
+    `FramesOk` is re-established at a machine `setLocal` produced. -/
+theorem setLocal_heap {m : Machine} (x : String) (v : Value) :
+    (m.setLocal x v).heap = m.heap := by simp [Machine.setLocal]
+
+
 end Static
 end Proof
 end RubyCore

@@ -130,7 +130,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         cases hst : m.stack with
         | nil => exact absurd hst hf.1
         | cons fid _ =>
-          have : FrameConforms Γ' (m.frames.getD fid default) := by
+          have : FrameConforms m.heap Γ' (m.frames.getD fid default) := by
             rw [hst] at hfs; exact hfs.2.2.1
           simpa [curFrame, curFid, hst] using this.2.1
       have hha' : ¬ ("method_added" = name) := fun hh => hha hh.symm
@@ -154,16 +154,24 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- conclusion with the goal, and each remaining hypothesis is a concrete
       -- goal whose `md` unification is forced. Quantifying over `md` instead
       -- leaves it an unsolvable metavariable.
+      -- L137 added the fourth hypothesis, `TypeAgree`: with the judgement
+      -- heap-indexed, the `ValueTy` facts stored in the frames and in the
+      -- continuation stack have to be *transported* into the post-`def` heap
+      -- rather than reused. `defineMethod` supplies it
+      -- (`typeAgree_defineMethod`), which is the whole reason `TypeAgree` is
+      -- phrased over `classOf`/`className`/`classPayload?` and not over the
+      -- method table.
       have hres : ∀ (m₀ : Machine),
           m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
-          TableOk m₀.heap → NoHook m₀.heap →
+          TypeAgree m.heap m₀.heap → TableOk m₀.heap → NoHook m₀.heap →
           Inv (withCtl m₀ (.value (.sym name))) := by
-        intro m₀ hfr hst hko ht' hh'
+        intro m₀ hfr hst hko hag ht' hh'
         refine ⟨ht', hh', Γ', Γs, ?_, ?_⟩
-        · show FramesOk m₀.frames m₀.stack (Γ' :: Γs)
-          rw [hfr, hst]; exact hfs
-        · show ∃ σ, ValueTy (Value.sym name) σ ∧ KontOk (Γ' :: Γs) σ m₀.kont
-          exact ⟨.sym, rfl, by rw [hko]; exact hk⟩
+        · show FramesOk m₀.heap m₀.frames m₀.stack (Γ' :: Γs)
+          rw [hfr, hst]; exact FramesOk.heap_congr hag hfs
+        · show ∃ σ, ValueTy m₀.heap (Value.sym name) σ ∧
+              KontOk m₀.heap (Γ' :: Γs) σ m₀.kont
+          exact ⟨.sym, rfl, by rw [hko]; exact KontOk.heap_congr hag hk⟩
       -- `hlk` collapses the hook lookup to `none`, after which only the
       -- `preludeMode` `if` remains.
       simp only [evalExpr, hdm, hdo]
@@ -172,9 +180,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- condition that matters instead.
       by_cases hp : m.preludeMode = true <;>
         simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
-        refine hres _ ?_ ?_ ?_ ?_ ?_ <;>
+        refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ <;>
           first
             | rfl
+            | exact typeAgree_defineMethod _ _ _ _
             | exact TableOk_defineMethod htab h1 h2 h3
             | exact hlk _
     case send recv mname args blk =>
@@ -221,7 +230,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_push hfs htab hhook h₁ (KontOk.seqCons hseq hk')
         · exact absurd hseq (by simp)
     | @asgn Γ Γs τ x k hk' =>
-      exact ⟨htab, hhook, envSet Γ x τ, Γs, FramesOk.setLocal hfs hv, ⟨τ, hv, hk'⟩⟩
+      -- The machine `applyKont` steps to is `{ m with kont := k }.setLocal x v`, and
+      -- `hfs` is phrased over `m`. The two agree definitionally, but since L137 made
+      -- `FramesOk` heap-indexed the elaborator resolves `?m` from `hfs` rather than
+      -- from the goal, so the instance has to be named.
+      refine ⟨htab, hhook, envSet Γ x τ, Γs, ?_, ⟨τ, hv, hk'⟩⟩
+      exact FramesOk.setLocal (m := { m with kont := k }) hfs hv
     | @ifK Γ Γs τ t els τ' Γ' k hif hk' =>
       cases els with
       | some e₂ =>

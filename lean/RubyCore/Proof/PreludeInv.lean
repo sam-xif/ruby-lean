@@ -17,7 +17,7 @@ and until this file **nobody had produced the instance**.
 
 ## What has to survive phase 1, and what cannot
 
-`Inv` is four conjuncts (`StaticSoundness.lean:458`): `TableOk`, `NoHook`,
+`Inv` is four conjuncts (`Proof/Static/Konts.lean`): `TableOk`, `NoHook`,
 `FramesOk`, `CtlOk`. Only the first two are about the heap, and only they can be
 carried across the prelude's own execution:
 
@@ -42,9 +42,8 @@ on the input `"1"` (measured, §4), while L94 bans the `native_decide` escape. S
 1. **The certificate route** (§2, `inv_of_cert`). Reflect `HeapOk` into a `Bool`
    and prove the reflection sound. The hypothesis of the theorem is then
    `heapOkB m₀.heap = true` — *one Bool about the machine actually in hand*, which
-   the executable checks at boot (`scripts/heapok_probe.lean`, and
-   `Prelude.initChecked`) and can refuse to run on. Nothing is assumed about the
-   prelude's text or its steps.
+   `scripts/heapok_probe.lean` computes and `scripts/check-proofs.sh` fails on.
+   Nothing is assumed about the prelude's text or its steps.
 2. **The preservation route** (§3, `heapOk_boot`). Carry the heap half across
    arbitrary steps of phase 1 and hand off at the phase boundary, reducing
    `HeapOk` at the booted heap to a **per-step** obligation `PreservesHeapOk`.
@@ -99,7 +98,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     (hchk : check p = .accept) (hh : HeapOk h) :
     Inv { Machine.initOn h p with globals := g } := by
   refine ⟨hh.1, hh.2, [], [], ?_, ?_⟩
-  · show FramesOk _ _ ([] :: [])
+  · show FramesOk _ _ _ ([] :: [])
     simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at hchk
     show CtlOk [] [] _

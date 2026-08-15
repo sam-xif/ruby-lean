@@ -4243,3 +4243,64 @@ split is the whole test. One thing to know if you split another proof file this 
 `set_option maxRecDepth 100000` at the top of the original is load-bearing in **all three** parts,
 not just the one containing `tableOk_initHeap` — the boot-heap `rfl`s are elaborated wherever the
 lemma is *used*, so each part carries it.
+
+## L137 — the typing judgement becomes heap-relative, which is F1's prerequisite
+
+`homebrew/widening-the-fragment.md` §6 rung **F1**, and `PLAN.md` W5 **T2**. Nothing about the
+*type language* changed and no program's verdict moved; what changed is that every judgement in
+`Proof/Static/` is now indexed by a `Heap`.
+
+**Why it has to come first, as its own commit.** A nominal class type — `T.instance C`,
+`T.class_of C`, `Sub` as the `ancestors` walk — cannot be a predicate on a `Value` alone: a
+`Value.ref o` says nothing about what class `o` belongs to, and `classOf`/`className`/`ancestors`
+all live in the heap. So `valueTy?` has to take a heap before `Ty` can grow an arm that reads one.
+Doing the threading while every arm is still heap-*independent* is what makes the two changes
+separable: this one is verifiable by `check-proofs.sh` alone, because if the threading were wrong
+the existing proof would not close.
+
+    valueTy? : Value → Option Ty              ⇒   valueTy? : Heap → Value → Option Ty
+    FrameConforms Γ f                          ⇒   FrameConforms h Γ f
+    FramesOk frames fids Γs                    ⇒   FramesOk h frames fids Γs
+    KontOk Γs τ k                              ⇒   KontOk h Γs τ k
+    CtlOk / Inv                                    unchanged in shape (they already had `m`)
+
+**`KontOk` carries the heap for exactly one constructor, and that is the interesting part.**
+`argsK` stores an already-evaluated **receiver** and a `ValueTy` fact about it, so a continuation
+on the stack holds a claim about the heap. Every other constructor is heap-independent and the
+index just rides through. That single case is what makes the transport lemmas necessary.
+
+### `TypeAgree`, and why it is phrased over `classOf` rather than over the method table
+
+The cost of the threading is that every heap-writing step now owes a *transport*: the `ValueTy`
+facts already stored in frames and continuations must still hold in the new heap.
+`Locals.lean` §1.5 states the condition as
+
+    TypeAgree h h' := (∀ v, classOf h' v = classOf h v) ∧ (∀ k, className h' k = className h k)
+                        ∧ (∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome)
+
+— i.e. **exactly what a nominal `Ty` will read**, not what today's four ground types read (which is
+nothing). `ValueTy.congr`, `FrameConforms.congr`, `FramesOk.heap_congr` and `KontOk.heap_congr`
+transport across it, and `typeAgree_defineMethod` is the instance, assembled from
+`HeapFacts.lean`'s `classOf_defineMethod`/`className_defineMethod`/`shape_defineMethod`.
+
+**This is the part that is not inert** (L117/L118's rule: "this change is inert" is a claim to
+test). The `def` case of `step_ok` really does now go through `FramesOk.heap_congr` and
+`KontOk.heap_congr` rather than reusing `hfs`/`hk` directly — `hres` grew a fourth hypothesis for
+it — and the reason to want that today is that it puts F1's real cost where it can be read:
+`defineMethod` satisfies `TypeAgree`, and **`Heap.alloc` and an `includes` splice will not**. A
+class definition allocates and a `include` rewrites the ancestor chain, so F1's `classDefK` and
+`includeK` cases will have to establish a *weaker* agreement (new ids only, chain extended below
+the owner) rather than reuse this one. Discovering that from a lemma statement is cheaper than
+discovering it inside a 300-line case analysis.
+
+### One elaboration trap worth writing down
+
+`applyKont`'s `asgn` case steps to `{ m with kont := k }.setLocal x v`, and `hfs` is phrased over
+`m`. The two agree definitionally, and before this note the application elaborated fine — but with
+`FramesOk` heap-indexed the elaborator resolves `?m` from `hfs` instead of from the goal, and the
+unifier then reports a mismatch between two definitionally equal machine literals. The fix is one
+named instance (`FramesOk.setLocal (m := { m with kont := k })`). Expect the same wherever a lemma
+about `m` is applied at a machine `applyKont` built by a structure update.
+
+**Checks:** `check-proofs.sh` green and axiom-clean (all five headline theorems, including L135's
+two); tier-0 `--sut lean` **992 agree, 0 disagree**, unchanged.

@@ -79,7 +79,8 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
 /-- Initiation, for the machine `Machine.init` builds. -/
 theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
   refine ⟨tableOk_initHeap, (by rfl : NoHook (Machine.init p).heap), [], [], ?_, ?_⟩
-  · show FramesOk (Machine.init p).frames (Machine.init p).stack ([] :: [])
+  · show FramesOk (Machine.init p).heap (Machine.init p).frames
+      (Machine.init p).stack ([] :: [])
     simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at h
     show CtlOk [] [] (Machine.init p)
