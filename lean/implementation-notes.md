@@ -3645,3 +3645,44 @@ pre-existing defects confirmed pre-existing on the stashed build rather than exp
 `_1` (a wrong answer: the model answers nil where CRuby binds the argument, now in
 `homebrew/HANDOFF.md`) and `case/in` (a gate). Full ratchet re-run: this change touches every
 block in every program, which is the widest blast radius of the session.
+
+## L126 — the stepper trace gets a window, because 825,259 steps do not fit in one
+
+The playground (`ruby/playground/`) steps the model one `stepFn` transition at a time, over a
+`--trace` mode that emits every configuration as JSON. It had **kept up with the model without
+anyone maintaining it** — it is a *printer* over `stepFn`, not a second implementation, so
+classes, `super`, yielding builtins, the prelude, regex and the reflective core all step
+correctly today even though the playground's own README still described the July fragment.
+
+What it had not kept up with is *scale*. Asked to step the linked Homebrew slice
+(`homebrew/slice-driver/`, 2,151 lines), it showed the first 4,000 steps — all of them class
+definitions — because the trace is a flat array from step 0 and the cap is 4,000. Measured:
+the slice is **825,259 steps**, a snapshot is ~1 KB rendered, and a whole-program trace at
+200,000 steps was **1.1 GB**.
+
+Three additions, all in `Trace.lean` + `Main.lean`, none touching the observation path:
+
+* **`--steps`** — run to termination emitting nothing, report the count and how it ended. The
+  number a window is chosen against, and cheap: 825,259 steps in 0.34s, because the cost of a
+  trace is the snapshots, not the stepping.
+* **`--trace-from N`** — skip `N` steps, then emit the window.
+* **`--trace-at SUBSTR`** — skip to the first step whose *rendered control* contains `SUBSTR`,
+  then emit the window. This is the one that matters on a real program, where the step index of
+  the thing you care about is not knowable in advance: `--trace-at "send .compare("` lands on
+  the slice's first `Semver.compare` at step **50,765**, sixteen frames deep, with `a`/`b`
+  bound in the top frame.
+
+Matching the **rendering** rather than the machine is deliberate. `Trace` is a tooling view and
+says so — lossy, non-gating, not the Ruby-faithful `Obs` the difftest reads — and a breakpoint
+that reads the same text the user reads cannot disagree with what they are looking at. The
+alternative (a structural predicate over `Ctl`) is a second thing to keep in step with `Ctl`'s
+constructors, for a facility whose whole point is the string.
+
+The window carries **`first_step`**, the absolute index of `steps[0]`. Without it two windows of
+the same program render identically and both look like the beginning. A breakpoint that never
+fires is not an error: zero steps, and a status saying how the program ended instead.
+
+`playground/server.py` passes both flags through (`POST /trace` now also accepts
+`{"source", "at", "from"}`; `POST /steps` is new), and `index.html` gains the two inputs, a
+**count steps** button, and absolute step numbers. The old bare-source `POST /trace` still
+works.

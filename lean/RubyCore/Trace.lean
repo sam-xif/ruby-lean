@@ -161,6 +161,36 @@ def snapshot (m : Machine) : Json :=
     ("frames", Json.arr frames.toArray),
     ("konts", Json.arr (m.kont.map (fun k => Json.str (kontLabel k))).toArray)]
 
+/-- Where a trace should start emitting: at a step index, or at the first step
+    whose *rendered control* contains a substring (`Version#<=>`, `send .compare(`,
+    …). The substring form is the useful one on a real program, where the step
+    index of anything you care about is not knowable in advance. Deliberately a
+    match on the **rendering**, not on the machine: `Trace` is a tooling view and
+    says so, and a breakpoint that reads the same text the user reads cannot
+    disagree with what they are looking at. -/
+inductive Start where
+  | atStep (n : Nat)
+  | atCtl (needle : String)
+deriving Inhabited
+
+/-- Run — without emitting — until the start condition holds, counting steps.
+    Returns the machine and its absolute step index, or the terminal outcome if
+    the program ends first (a breakpoint that never fires is not an error: the
+    trace comes back with zero steps and a status saying how it ended). -/
+partial def seek (start : Start) (steps : Nat) (m : Machine) :
+    Except (Nat × String × String) (Nat × Machine) :=
+  let hit : Bool := match start with
+    | .atStep n => Nat.ble n steps
+    | .atCtl needle => ((ctlBrief m.heap m.ctl).splitOn needle).length != 1
+  if hit then .ok (steps, m)
+  else
+    match Interp.stepFn m with
+    | .next m' => seek start (steps + 1) m'
+    | .done v m' => .error (steps, "done", valBrief m'.heap 6 v)
+    | .uncaught exc m' => .error (steps, "uncaught", valBrief m'.heap 4 exc)
+    | .unsupported r => .error (steps, "unsupported", r)
+    | .stuck msg => .error (steps, "stuck", msg)
+
 /-- Collect a snapshot before each step until termination or the step cap. -/
 partial def collect (steps maxSteps : Nat) (acc : Array Json) (m : Machine) :
     Array Json × String × String :=
@@ -174,12 +204,48 @@ partial def collect (steps maxSteps : Nat) (acc : Array Json) (m : Machine) :
     | .unsupported r => (acc, "unsupported", r)
     | .stuck msg => (acc, "stuck", msg)
 
-def traceJson (maxSteps : Nat) (m : Machine) : Json :=
-  let (steps, status, detail) := collect 0 maxSteps #[] m
+/-- Step the machine to termination, emitting nothing: how many steps a program
+    takes, which is what tells you whether a window is worth asking for and where
+    to put it. Cheap — the cost of a trace is the snapshots, not the stepping (the
+    Homebrew slice is ~1.1M steps in seconds, and multiple GB of JSON). -/
+partial def count (steps : Nat) (m : Machine) : Nat × String × String :=
+  match Interp.stepFn m with
+  | .next m' => count (steps + 1) m'
+  | .done v m' => (steps + 1, "done", valBrief m'.heap 6 v)
+  | .uncaught exc m' => (steps + 1, "uncaught", valBrief m'.heap 4 exc)
+  | .unsupported r => (steps, "unsupported", r)
+  | .stuck msg => (steps, "stuck", msg)
+
+def countJson (m : Machine) : Json :=
+  let (steps, status, detail) := count 0 m
   Json.mkObj [
-    ("steps", Json.arr steps),
+    ("steps", Json.num steps),
     ("status", Json.str status),
     ("detail", Json.str detail)]
+
+/-- A trace window: at most `maxSteps` snapshots, starting where `start?` says.
+    `first_step` is the **absolute** index of `steps[0]`, so a window taken from
+    the middle of a long run still labels its steps the way the whole run would —
+    without it, two windows of the same program look like the same steps. -/
+def traceJson (maxSteps : Nat) (m : Machine) (start? : Option Start := none) : Json :=
+  match start? with
+  | none =>
+    let (steps, status, detail) := collect 0 maxSteps #[] m
+    Json.mkObj [
+      ("steps", Json.arr steps), ("status", Json.str status),
+      ("detail", Json.str detail), ("first_step", Json.num 0)]
+  | some start =>
+    match seek start 0 m with
+    | .error (at_, status, detail) =>
+      Json.mkObj [
+        ("steps", Json.arr #[]), ("status", Json.str status),
+        ("detail", Json.str s!"{detail} (the program ended at step {at_}, before the window)"),
+        ("first_step", Json.num at_)]
+    | .ok (at_, m') =>
+      let (steps, status, detail) := collect 0 maxSteps #[] m'
+      Json.mkObj [
+        ("steps", Json.arr steps), ("status", Json.str status),
+        ("detail", Json.str detail), ("first_step", Json.num at_)]
 
 end Trace
 end RubyCore

@@ -31,6 +31,21 @@ def main (args : List String) : IO UInt32 := do
   let traceSteps : Option Nat := match args with
     | "--trace" :: rest => some (rest.head?.bind (·.toNat?) |>.getD traceStepsDefault)
     | _ => none
+  -- Where the trace window starts. A whole-program trace is only viable for a
+  -- toy: the Homebrew slice is ~1.1M steps and a snapshot is ~1 KB, so "from
+  -- step 0" shows the first 0.4% of a class-definition boot and nothing anyone
+  -- wants to look at. `--trace-from N` skips N steps; `--trace-at SUBSTR` skips
+  -- to the first step whose *rendered* control contains SUBSTR (`send .compare(`),
+  -- which is the form that works when the step index is not knowable in advance.
+  let flagArg : String → Option String := fun name =>
+    (args.dropWhile (· != name))[1]?
+  let traceStart : Option Trace.Start :=
+    match flagArg "--trace-at" with
+    | some needle => some (.atCtl needle)
+    | none => ((flagArg "--trace-from").bind (·.toNat?)).map .atStep
+  -- `--steps`: how many steps the program takes, emitting no snapshots — the
+  -- number a window is chosen against.
+  let countOnly := args.contains "--steps"
   -- `--fragment`: report whether the program is in the **Sorbet fragment** (the
   -- scope any soundness theorem can have — `RubyCore/Types/Fragment.lean`),
   -- with a reason per exclusion. A static query: nothing is executed, so the
@@ -119,8 +134,11 @@ def main (args : List String) : IO UInt32 := do
           IO.eprintln s!"MODEL PRELUDE FAILURE (bug): {e}"
           return 1
         | .ok m0 => pure m0
+      if countOnly then
+        IO.println (Trace.countJson m0).compress
+        return 0
       if let some maxSteps := traceSteps then
-        IO.println (Trace.traceJson maxSteps m0).compress
+        IO.println (Trace.traceJson maxSteps m0 traceStart).compress
         return 0
       let result := Interp.run fuel m0
       match observe result with

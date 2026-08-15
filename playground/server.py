@@ -39,7 +39,11 @@ def find_ruby() -> str:
 RUBY = find_ruby()
 
 
-def trace(source: str) -> dict:
+def trace(source: str, window: dict | None = None) -> dict:
+    """`window` is the trace window: `{"at": SUBSTR}` or `{"from": N}`, both
+    optional. Without one the trace starts at step 0, which is only useful for a
+    small program — the Homebrew slice is 825,259 steps and a snapshot is ~1 KB,
+    so the cap shows the first half-percent of its boot (`--trace-at`)."""
     if not RUBYCORE.exists():
         return {"error": "setup", "message": f"rubycore not built at {RUBYCORE} — run `cd ../lean && lake build`"}
     try:
@@ -61,9 +65,15 @@ def trace(source: str) -> dict:
         ast = json.loads(des.stdout).get("ast")
     except ValueError:
         pass
+    argv = [str(RUBYCORE), "--trace", MAX_STEPS]
+    if window:
+        if window.get("at"):
+            argv += ["--trace-at", str(window["at"])]
+        elif window.get("from"):
+            argv += ["--trace-from", str(int(window["from"]))]
     try:
         lean = subprocess.run(
-            [str(RUBYCORE), "--trace", MAX_STEPS], input=des.stdout,
+            argv, input=des.stdout,
             capture_output=True, text=True, timeout=TIMEOUT,
         )
     except subprocess.TimeoutExpired:
@@ -107,13 +117,44 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path not in ("/trace", "/run"):
+        if self.path not in ("/trace", "/run", "/steps"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
-        source = self.rfile.read(n).decode("utf-8")
-        result = trace(source) if self.path == "/trace" else run_ruby(source)
+        body = self.rfile.read(n).decode("utf-8")
+        # `/trace` takes either a bare source string (as it always has) or a JSON
+        # object `{"source": …, "at": …, "from": …}` carrying the window.
+        source, window = body, None
+        if self.path == "/trace" and body.lstrip().startswith("{"):
+            try:
+                req = json.loads(body)
+                source, window = req.get("source", ""), req
+            except ValueError:
+                pass
+        if self.path == "/trace":
+            result = trace(source, window)
+        elif self.path == "/steps":
+            result = steps(source)
+        else:
+            result = run_ruby(source)
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
+
+
+def steps(source: str) -> dict:
+    """How many steps the program takes, with no snapshots — the number a window
+    is chosen against (`rubycore --steps`)."""
+    des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
+                         capture_output=True, text=True, timeout=TIMEOUT)
+    if des.returncode != 0:
+        return {"error": "desugar", "message": des.stderr.strip()[:500]}
+    lean = subprocess.run([str(RUBYCORE), "--steps"], input=des.stdout,
+                          capture_output=True, text=True, timeout=TIMEOUT)
+    if lean.returncode != 0:
+        return {"error": "lean", "message": lean.stderr.strip()[:500]}
+    try:
+        return json.loads(lean.stdout)
+    except ValueError as e:
+        return {"error": "lean", "message": str(e)}
 
 
 def main():

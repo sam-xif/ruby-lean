@@ -76,6 +76,9 @@
     <div class="row">
       <button id="run">Step in Lean ▶</button>
       <button class="ghost" id="runruby">Run in CRuby ▶</button>
+      <button class="ghost" id="count" title="how many steps the whole program takes">count steps</button>
+      <label class="detail">start at <input id="at" size="18" placeholder="send .compare(" title="first step whose rendered control contains this text; blank = step 0"></label>
+      <label class="detail">or step <input id="from" size="8" placeholder="0" title="skip this many steps before the window"></label>
       <span id="msg" class="detail"></span>
     </div>
     <div id="errbox"></div>
@@ -149,11 +152,30 @@ function fmtSexpr(n){
   return '(' + head + '\n' + rest.join('\n') + ')';
 }
 
+async function countSteps() {
+  $('count').disabled = true; $('msg').textContent = 'counting…';
+  try {
+    const r = await fetch('/steps', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    $('msg').textContent = d.error
+      ? `[${d.error}] ${d.message||''}`
+      : `${(d.steps||0).toLocaleString()} steps total — ${d.status}`;
+  } catch(e) { $('msg').textContent = String(e); }
+  finally { $('count').disabled = false; }
+}
+
 async function run() {
   $('run').disabled = true; $('msg').textContent = 'running…';
   $('errbox').innerHTML = '';
   try {
-    const r = await fetch('/trace', {method:'POST', body: $('src').value});
+    // A whole-program trace is only viable for a small program: the model runs
+    // the Homebrew slice in 825,259 steps, and the cap is 4,000. `at`/`from`
+    // pick the window; the server passes them to `rubycore --trace-at/--trace-from`.
+    const at = $('at').value.trim(), from = $('from').value.trim();
+    const body = (at || from)
+      ? JSON.stringify({source: $('src').value, at: at || null, from: from ? Number(from) : null})
+      : $('src').value;
+    const r = await fetch('/trace', {method:'POST', body});
     const d = await r.json();
     $('sexpr').innerHTML = d.ast ? fmtSexpr(d.ast)
       : '<span class="empty">— (desugar gated: nothing to run)</span>';
@@ -166,7 +188,10 @@ async function run() {
     }
     trace = d; i = 0;
     $('slider').max = Math.max(0, d.steps.length - 1);
-    $('msg').textContent = `${d.steps.length} steps`;
+    const base = d.first_step || 0;
+    $('msg').textContent = d.steps.length
+      ? `${d.steps.length} steps` + (base ? ` from step ${base.toLocaleString()}` : '')
+      : `no steps in this window — ${d.status}: ${d.detail || ''}`;
     render();
   } catch(e) {
     $('errbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
@@ -181,7 +206,10 @@ function render() {
   i = Math.max(0, Math.min(i, steps.length - 1));
   const s = steps[i] || {ctl:'',out:'',frames:[],konts:[],exc:''};
   $('slider').value = i;
-  $('counter').textContent = `step ${i} / ${steps.length - 1}`;
+  const base = trace.first_step || 0;
+  $('counter').textContent = base
+    ? `step ${(base + i).toLocaleString()} (${i} / ${steps.length - 1} in window)`
+    : `step ${i} / ${steps.length - 1}`;
   $('ctl').textContent = s.ctl;
   $('out').textContent = s.out;
   $('excbox').innerHTML = s.exc ? `<h2>\$! (current exception)</h2><div class="ctl" style="border-left-color:var(--bad)">${esc(s.exc)}</div>` : '';
@@ -226,6 +254,7 @@ async function runRuby() {
 function go(n){ if(!trace) return; i = n; render(); }
 $('run').onclick = run;
 $('runruby').onclick = runRuby;
+$('count').onclick = countSteps;
 $('first').onclick = () => go(0);
 $('prev').onclick = () => go(i-1);
 $('next').onclick = () => go(i+1);
