@@ -4086,3 +4086,56 @@ It ended at 48/51, the three being those gates.
 `tier1.5-01643-minimized.rb` (the `Array#+` shape L132 filed) and `tier1-00950-minimized.rb`, which
 had been `open`-but-`gated` since N41 on the `puts` refusal this note retires. Both sidecars are
 flipped to `fixed`; the answering sites are guarded by the new `to-ary-dispatch.rb`.
+
+## L134 — `NUM2LONG` over a subscript, and the 23 programs R1 lost to it
+
+R1's first run (`difftest/implementation-notes.md` N46) came back **82 agree, 0 disagree, 24
+gated**. 23 of the 24 gates were two rules — `Array#[] non-int index` (17) and
+`unmodeled method Integer#[]` (6) — and both arrive the same way: `Array(hash)` yields
+`[[k, v], …]` and Homebrew's code then indexes it with `"type"`. `nontrivial-target.md` §3.3 had
+already named both from a hand-written probe; R1 measured what they cost.
+
+They were **refusals where CRuby has a family of messages**, which is the shape §Criterion-1's
+table calls "our own gate is wrong here". Closing them took one helper, `numIndex`, shared by
+`Array#[]`, `Array#[]=`, `String#[]` and a new `Integer#[]`.
+
+| subscript | CRuby |
+|---|---|
+| Integer | itself |
+| finite Float | **truncates toward zero** — `[10,20,30][1.7]` is `20` |
+| `Float::NAN` | `RangeError: float NaN out of range of integer` |
+| nil | `no implicit conversion from nil to integer` … **or** `of nil into Integer` |
+| String / Symbol / true | `no implicit conversion of X into Integer` |
+
+**The nil row is two rows, and getting it wrong is a wrong answer rather than a gate.** The array
+and string subscript paths are `rb_num2long`, which special-cases nil with lowercase wording and
+different prepositions — the same oddity L132 found in `Integer#to_s`. `Integer#[]` is
+`rb_to_int`, which says the ordinary thing. So `[1,2][nil]` and `5[nil]` raise *differently*, and
+`numMsg` is a parameter rather than a constant because the first draft made them agree and was
+wrong about one of them.
+
+`Integer#[]` is `rb_int_bit_ref`: bit `i` of the **two's-complement** representation, so a negative
+receiver sign-extends (`(-5)[1]` is `1`) and a negative index is `0`. `Int.fdiv`/`fmod`, not
+`/`/`%`: Lean's `Int` division truncates toward zero, which gets every negative receiver wrong. An
+index above 4096 answers the sign bit directly, which also keeps `2 ^ i` from being computed for an
+astronomical `i`.
+
+### Three arms still gate, and two of them are the interesting part
+
+* **A subscript that could dispatch.** `rb_ary_aref1` tries `rb_range_beg_len` **before**
+  `NUM2LONG`, so a non-Integer subscript is asked for `begin`/`end`/`exclude_end?` first and only
+  then for `to_int` — `A[obj_whose_method_missing_answers_1]` is `[]`, not `A[1]`. That is four
+  possible dispatches for one subscript, so `mayDispatchIndex` asks about all four and gates. It
+  gated before too; nothing here turns an answer into a refusal.
+* **A Float outside `long`.** The `RangeError` renders the float with `%g` — `1e+30`, where
+  `Float#to_s` gives `1.0e+30`. The first draft answered with `rubyFloatRepr` and was wrong by two
+  characters; a second float formatter for one message is worse than refusing, so it gates and says
+  so. `NaN` is exact and is answered.
+* **`Integer#[]`'s bit-field forms** (`255[0, 4]`, `255[0..3]`, both `15`). A Range argument had to
+  be intercepted *before* `numIndex`, or it would answer `TypeError` where CRuby answers a number.
+
+**Probe: 32 shapes, 2 → 23 agreeing, and the 9 that remain are all refusals.** Two of the three
+gates above were found because the first build of this rule turned them into wrong answers — which
+is the fourth session running where the neighbourhood worth probing was the rule just written.
+
+**Result: R1 goes 82/24 → 106 agree, 0 disagree, 0 gated**, and tier-0 991 → 992.

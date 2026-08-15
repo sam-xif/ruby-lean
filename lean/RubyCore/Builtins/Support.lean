@@ -271,6 +271,76 @@ def mayDispatchToAry (h : Heap) (v : Value) : Bool :=
   (match lookup h v "to_ary" with | some (_, md) => md.builtin.isNone | none => false)
   || (match lookup h v "method_missing" with | some (_, md) => md.builtin.isNone | none => false)
 
+/-! ### `NUM2LONG` over an index operand (L134)
+
+Every indexing builtin converts its subscript with `rb_num2long`, and the model
+gated on anything that was not already an `Int` — which is how R1's advisory
+corpus lost 23 of its 106 programs to `Array#[] non-int index` and
+`unmodeled method Integer#[]`. CRuby *answers* on all of those: it is a family of
+messages rather than a refusal.
+
+The one arm that still refuses is the one that would have to dispatch — a
+`to_int`, or the `begin`/`end`/`exclude_end?` a non-Integer subscript is asked
+for **first** (`rb_ary_aref1` tries `rb_range_beg_len` before `NUM2LONG`, so
+`A[obj_with_method_missing]` answers `[]`, not an element). That was a gate
+before and stays one; nothing here turns an answer into a refusal. -/
+
+/-- The outcome of converting a subscript. `gate` carries its own reason when it
+    has one more specific than the caller's. -/
+inductive IdxRes where
+  | ok (n : Int)
+  | gate (why : Option String)
+  | err (cls : ObjId) (msg : String)
+
+/-- Could a non-Integer subscript answer one of the four methods CRuby asks it
+    for — `begin`/`end`/`exclude_end?` (the Range protocol, tried first) or
+    `to_int`? Prelude definitions count: `Range` itself has real ones, and the
+    Range arm is handled by the caller before this is reached. -/
+def mayDispatchIndex (h : Heap) (v : Value) : Bool :=
+  ["to_int", "begin", "end", "exclude_end?", "method_missing"].any fun n =>
+    match lookup h v n with
+    | some (_, md) => md.builtin.isNone && !md.undefined
+    | none => false
+
+/-- `rb_num2long` / `rb_to_int` over a subscript [V]. A finite Float
+    **truncates toward zero**, so `[10,20,30][1.7]` is `20`.
+
+    `numMsg` selects between the two conversions, which differ **only for nil**
+    and only in wording: `rb_num2long` (the array/string subscript path) says
+    `no implicit conversion from nil to integer` — lowercase, and different
+    prepositions from every other operand, the same oddity L132 found in
+    `Integer#to_s` — while `rb_to_int` (`Integer#[]`) says the ordinary
+    `no implicit conversion of nil into Integer`. Getting that backwards is a
+    wrong answer rather than a gate, which is why it is a parameter and not a
+    constant.
+
+    A Float outside `long` **gates**: the message is a `RangeError` carrying the
+    float rendered by CRuby's `%g`, which is not `Float#to_s` (`1e+30`, not
+    `1.0e+30`), and inventing a second float formatter for one message is worse
+    than refusing. NaN is exact and so is answered. -/
+def numIndex (h : Heap) (numMsg : Bool) : Value → IdxRes
+  | .int n => .ok n
+  | .flt x =>
+    if x.isNaN then .err Boot.rangeErrorId "float NaN out of range of integer"
+    else if x ≥ 9223372036854775808.0 || x ≤ -9223372036854775809.0 then
+      .gate (some "index: a Float out of long range (RangeError renders %g)")
+    else .ok (Int.ofNat x.abs.toUInt64.toNat * (if x < 0 then -1 else 1))
+  | .nil => .err Boot.typeErrorId
+      (if numMsg then "no implicit conversion from nil to integer"
+       else "no implicit conversion of nil into Integer")
+  | v =>
+    if mayDispatchIndex h v then .gate none
+    else .err Boot.typeErrorId
+      s!"no implicit conversion of {coerceName h v} into Integer"
+
+/-- `numIndex`, wired into a builtin: answer, raise, or gate with `why`. -/
+def withIndex (m : Machine) (v : Value) (why : String) (k : Int → BRes)
+    (numMsg : Bool := true) : BRes :=
+  match numIndex m.heap numMsg v with
+  | .ok n => k n
+  | .gate w => .unsupported (w.getD why)
+  | .err c msg => .err c msg m
+
 /-- Allocate a String with an explicit encoding tag (L117). -/
 def allocStrEnc (m : Machine) (s : String) (binary : Bool) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s, binary }

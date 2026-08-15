@@ -77,6 +77,26 @@ where
     | 0 => []
     | fuel + 1 => if k == 0 then [] else baseDigit (k % base) :: go (k / base) fuel
 
+/-- `rb_int_bit_ref`: bit `i` of the receiver's **two's-complement**
+    representation, so a negative receiver sign-extends — `(-5)[1]` is `1` [V] —
+    and a negative index is `0`. `fdiv`/`fmod` rather than `/`/`%` for exactly
+    that: Lean's `Int` division truncates toward zero, which gets every negative
+    receiver wrong.
+
+    The index goes through `rb_to_int`, not `rb_num2long`, which is why `numMsg`
+    is `false`: `5[nil]` says `no implicit conversion of nil into Integer` where
+    `[1,2][nil]` says `from nil to integer` [V]. -/
+def intBitRef (m : Machine) (recv : Value) (args : List Value) : BRes :=
+  match recv, args with
+  | .int n, [iv] =>
+    withIndex m iv "Integer#[] with a to_int index" (numMsg := false) fun i =>
+      if i < 0 then .ok (.int 0) m
+      -- beyond the magnitude every bit is the sign bit; the guard also keeps
+      -- `2 ^ i` from being computed for an astronomical `i`
+      else if i > 4096 then .ok (.int (if n < 0 then 1 else 0)) m
+      else .ok (.int ((n.fdiv (2 ^ i.toNat)).fmod 2)) m
+  | _, _ => .unsupported "Integer#[] bit-field form"
+
 /-- Integer and Float rules. -/
 def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
@@ -244,6 +264,23 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         .ok v m
       else okStr m (String.singleton (Char.ofNat n.toNat))
     | _ => .unsupported "Integer#chr"
+  | "Integer#[]" =>
+    -- `rb_int_bit_ref`: bit `i` of the two's-complement representation, so a
+    -- negative receiver sign-extends — `(-5)[1]` is `1` [V]. A negative index
+    -- is `0`. `NUM2LONG` decides the index, which is what makes `5["type"]` a
+    -- `TypeError` rather than the gate R1 hit 6 times (L134). The two- and
+    -- range-argument bit-field forms are not modeled and gate.
+    match recv, args with
+    -- a **Range** argument is the bit-field form (`255[0..3]` is 15), not a
+    -- subscript, so it must not reach `numIndex` — that would answer a
+    -- `TypeError` where CRuby answers a number
+    | .int _, [.ref ro] =>
+      match (h.get ro).payload with
+      | .range _ _ _ => .unsupported "Integer#[] bit-field form"
+      | _ => intBitRef m recv args
+    | .int _, [_] => intBitRef m recv args
+    | .int _, _ => .unsupported "Integer#[] bit-field form"
+    | _, _ => .unsupported "Integer#[] on a non-Integer"
   | "Integer#to_i" => .ok recv m
   | "Integer#to_f" =>
     match recv with | .int n => .ok (.flt (Float.ofInt n)) m | _ => .unsupported "to_f"

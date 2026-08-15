@@ -342,7 +342,7 @@ def builtinMethods : List (ObjId × List String) := [
   (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
   (falseClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
-  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">",
+  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "[]",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",

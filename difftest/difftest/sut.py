@@ -232,15 +232,25 @@ class SigStripSUT:
         return self.runner.run(stripped)
 
 
-def make_sut(kind: str, inject_bug: bool = False) -> SystemUnderTest:
+def make_sut(kind: str, inject_bug: bool = False,
+             timeout: float | None = None) -> SystemUnderTest:
+    """`timeout` applies to the **SUT**, not just the control.
+
+    Until N47 it did not exist: every SUT built its own default `CRubyRunner`,
+    so `--timeout 180` bounded CRuby and left the model at the 10 s default. A
+    model program slower than that was reported `sut_unsupported` — a *gate*,
+    indistinguishable in the histogram from a construct the model refuses —
+    and raising `--timeout` had no effect at all. R1's advisory corpus has one
+    such program (1.9 M steps, 13 s), which is what made it visible."""
+    runner = CRubyRunner(timeout=timeout) if timeout else None
     if kind == "stub":
         return StubSUT()
     if kind == "identity":
-        return IdentityCRubySUT()
+        return IdentityCRubySUT(runner=runner)
     if kind == "desugar":
-        return DesugarRoundtripSUT(inject_bug=inject_bug)
+        return DesugarRoundtripSUT(runner=runner, inject_bug=inject_bug)
     if kind == "lean":
-        return LeanSUT()
+        return LeanSUT(runner=runner)
     if kind == "sig-strip":
-        return SigStripSUT()
+        return SigStripSUT(runner=runner)
     raise ValueError(f"unknown SUT kind: {kind}")

@@ -143,7 +143,7 @@ def cmd_run(args) -> int:
     from .campaign import parse_mix, run_generative_campaign
 
     control = CRubyRunner(timeout=args.timeout)
-    sut = make_sut(args.sut, inject_bug=args.inject_bug)
+    sut = make_sut(args.sut, inject_bug=args.inject_bug, timeout=args.timeout)
     label = "mix" if args.mix else f"tier{args.tier}"
     out_dir = _out_dir(args.out, f"{label}-{sut.name}")
     reporter = Reporter(out_dir)
@@ -400,7 +400,7 @@ def cmd_checker(args) -> int:
 
 def cmd_replay(args) -> int:
     control = CRubyRunner(timeout=args.timeout)
-    sut = make_sut(args.sut, inject_bug=args.inject_bug)
+    sut = make_sut(args.sut, inject_bug=args.inject_bug, timeout=args.timeout)
     corpus = Path(args.corpus)
     cases = load_corpus_cases(corpus)
     if not cases:

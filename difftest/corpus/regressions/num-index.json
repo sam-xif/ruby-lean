@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L134",
+  "arm": "probe",
+  "case_id": "num-index",
+  "note": "Guards L134. Every indexing builtin converts its subscript with `rb_num2long` (`Array#[]`, `Array#[]=`, `String#[]`) or `rb_to_int` (`Integer#[]`), and the model gated on anything that was not already an Integer — 23 of R1's 106 advisory programs were lost to two of these rows. Three distinct wordings, and nil differs *per site*: `rb_num2long` says `no implicit conversion from nil to integer` (lowercase, different prepositions), `rb_to_int` says the ordinary `of nil into Integer`. A finite Float truncates toward zero. `Integer#[]` is bit reference over the two's-complement representation, so a negative receiver sign-extends. Three arms still gate rather than answer and are deliberately not here: a subscript that could *dispatch* (`to_int`, or the `begin`/`end`/`exclude_end?` a non-Integer subscript is asked for first — `rb_ary_aref1` tries `rb_range_beg_len` before `NUM2LONG`), a Float outside `long` (the RangeError renders it with `%g`, not `Float#to_s`), and `Integer#[]`'s two-argument and Range bit-field forms."
+}

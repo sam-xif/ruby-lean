@@ -58,18 +58,29 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
               else
                 let sub := ((xs.toList.drop s.toNat).take (lastI.toNat - s.toNat + 1)).toArray
                 let (v, m) := allocArr m sub; .ok v m
-      | _ => .unsupported "Array#[] non-int index"
-    | some xs, [.int start, .int len] =>
-      match sliceRange xs.size start len with
-      | none => .ok .nil m
-      | some (off, count) =>
-        let (v, m) := allocArr m ((xs.toList.drop off).take count).toArray
-        .ok v m
+      | _ =>
+        -- not a Range: `rb_ary_aref1` falls through to `NUM2LONG` (L134)
+        withIndex m (.ref ro) "Array#[] non-int index" fun i =>
+          let idx := if i < 0 then i + xs.size else i
+          if idx < 0 || idx ≥ xs.size then .ok .nil m else .ok xs[idx.toNat]! m
+    | some xs, [a] =>
+      withIndex m a "Array#[] non-int index" fun i =>
+        let idx := if i < 0 then i + xs.size else i
+        if idx < 0 || idx ≥ xs.size then .ok .nil m else .ok xs[idx.toNat]! m
+    | some xs, [a, b] =>
+      withIndex m a "Array#[] non-int index" fun start =>
+        withIndex m b "Array#[] non-int length" fun len =>
+          match sliceRange xs.size start len with
+          | none => .ok .nil m
+          | some (off, count) =>
+            let (v, m) := allocArr m ((xs.toList.drop off).take count).toArray
+            .ok v m
     | some _, _ => .unsupported "Array#[] index form"
     | _, _ => .unsupported "[]"
   | "Array#[]=" =>
     match recv, arrPayload? h recv, args with
-    | .ref o, some xs, [.int i, v] =>
+    | .ref o, some xs, [iv, v] =>
+      withIndex m iv "Array#[]= non-int index" fun i =>
       if (h.get o).frozen then frozenErr m recv "Array"
       else
         let idx := if i < 0 then i + xs.size else i

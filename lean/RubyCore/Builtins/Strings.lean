@@ -400,7 +400,20 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | .hit a b caps names =>
           let (md, m) := allocMData m str caps names (isBinaryStr h recv)
           okStrFrom (setMatchGlobals m (some md)) recv (charSlice str a b)
-      | _ => .unsupported "String#[] non-index argument"
+      -- neither a Range, a String nor a Regexp: `rb_str_aref` falls through to
+      -- `NUM2LONG` (L134), so `"abc"[nil]` is a TypeError rather than a gate
+      | _ =>
+        withIndex m (.ref ro) "String#[] non-index argument" fun i =>
+          let cs := str.toList
+          let idx := if i < 0 then i + cs.length else i
+          if idx < 0 || idx ≥ cs.length then .ok .nil m
+          else okStrFrom m recv (String.singleton cs[idx.toNat]!)
+    | some str, [a] =>
+      withIndex m a "String#[] non-index argument" fun i =>
+        let cs := str.toList
+        let idx := if i < 0 then i + cs.length else i
+        if idx < 0 || idx ≥ cs.length then .ok .nil m
+        else okStrFrom m recv (String.singleton cs[idx.toNat]!)
     -- `s[/re/, n]` / `s[/re/, "name"]` → that capture, or nil [V].
     | some str, [.ref ro, sel] =>
       match (h.get ro).payload with
