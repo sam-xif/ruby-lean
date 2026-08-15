@@ -3686,3 +3686,60 @@ fires is not an error: zero steps, and a status saying how the program ended ins
 `{"source", "at", "from"}`; `POST /steps` is new), and `index.html` gains the two inputs, a
 **count steps** button, and absolute step numbers. The old bare-source `POST /trace` still
 works.
+
+## L127 — the sorbet-runtime shim's type errors describe the value the way the gem does
+
+The shim (L80) really does enforce: `sig` aliases the method aside and installs a wrapper that
+checks every declared parameter and the return value, `T.let`/`cast`/`assert_type!`/`bind` check,
+`T.must` rejects nil, `T.unsafe` is the one form that does not, generics are erased exactly as the
+gem erases them, and `checked(:never)` skips the wrapper. That much was already true and is
+difftested against the real gem by tier 4.
+
+What was *not* right is how a failing check **describes the offending value**. Probed against
+sorbet-runtime 0.6.13405 (`types/types/base.rb#describe_obj`), which has three rules and the shim
+had none of them:
+
+| the gem | the shim, before |
+|---|---|
+| `nil`/`true`/`false` print **no value clause** ("redundant to print class and value") | `…got type NilClass with value nil` |
+| a value whose `inspect` is the **default** prints `with hash <obj.hash>` | `…with value #<Named:0x…>` |
+| everything else prints `with value <inspect truncated to 27 + "..." + 30>` | untruncated |
+
+plus the class named by `to_s` and not `name`, so an anonymous class raised
+`TypeError: no implicit conversion of nil into String` from inside the error path instead of
+naming `#<Class:0x…>`. That is the L124 rule one file over: I left the shim's `.class.name` alone
+last session on the theory that it models sorbet's own code — and sorbet's own code interpolates
+the class, which is `to_s`. **Reading the gem beats reasoning about the gem.**
+
+Four wrong answers, then, all in the shim's message rule, all invisible to tier 4 because its 28
+probes happen to violate sigs with Strings and Integers, whose `inspect` is neither default nor
+long.
+
+**The hash rule becomes a gate, not an answer.** `Object#hash` is per-process seeded — no
+implementation has a stable answer, which is exactly N38's rule and why three tier-0 cases are
+`control_invalid`. So a type error naming a default-`inspect` object now *refuses*
+(`__unsupported__`) rather than inventing a number. It used to answer, wrongly. A gate here costs
+the whole program, which is the price of not being able to produce the value at all.
+
+**`__default_inspect?`** is a new primitive because the gem's test —
+`obj.method(:inspect).owner == Kernel` — has no Ruby-level equivalent here (no `Method#owner`).
+`__user_defines?` is the wrong question: it answers "is there a non-builtin definition", so an
+`Array`, whose `inspect` is a builtin of its own rather than Kernel's, would come back as
+"default" and the gem says otherwise. The primitive asks the method table for the owner directly.
+
+Two traps inside the fix, both caught by the probe rather than by thought:
+
+* `value == true` **dispatches `==` on the value**, so `T.let((1..2), Integer)` gated with
+  `unmodeled builtin would shadow: Range#==`. The gem's `case obj when nil, true, false`
+  dispatches on the *literal*. `value.equal?(true)` is exact and dispatch-free.
+* `string_truncate_middle` slices with a range literal, and *that* is what turned up C37 — the
+  prelude defines `T::Range`, so a range literal inside `module T` resolved the shim's own
+  constant. The shim could not have been written this way before the desugarer was fixed.
+
+The `T::Struct` prop message is a **different** rule and was checked separately: plain `inspect`,
+no truncation, no hash substitution, addresses and all (the engine normalizes those) — only the
+`.class.name` → `.class.to_s` half applies there.
+
+Measured: 12 of 16 value shapes byte-identical to the gem, the other four the honest hash gate
+(three objects and a `Proc`, whose `inspect` carries a source location the model cannot produce
+either). tier-4 25/0 unchanged.

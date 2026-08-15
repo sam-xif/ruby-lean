@@ -100,6 +100,17 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | .str n => .ok (.bool (defines n)) m
         | _ => .unsupported "__user_defines? of a non-name"
       | _ => .unsupported "__user_defines? of a non-name"
+  | "Object#__default_inspect?" =>
+    -- Does `inspect` on this receiver resolve to the **default** one? The
+    -- sorbet-runtime shim needs it and cannot ask in Ruby: the gem's test is
+    -- `obj.method(:inspect).owner == Kernel`, and there is no `Method#owner`
+    -- here. `__user_defines?` is the wrong question — it answers "is there a
+    -- *non-builtin* definition", so an `Array` (whose `inspect` is a builtin of
+    -- its own, not Kernel's) would come back as default and the gem says
+    -- otherwise. This asks the owner directly (L127).
+    match lookup h recv "inspect" with
+    | some (owner, _) => .ok (.bool (owner == Boot.objectId)) m
+    | none => .ok (.bool true) m
   | "Object#__coerce_failed" =>
     -- The two messages the coerce protocol's prelude twins raise (L123). They are
     -- primitives for one reason: `coerceDesc`'s rule for naming an operand (a

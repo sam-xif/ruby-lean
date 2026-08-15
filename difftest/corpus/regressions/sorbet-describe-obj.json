@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L127/N44 (guard, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-15 (L127), lean SUT",
+  "case_id": "sorbet-describe-obj",
+  "observed_then": "disagree",
+  "note": "The sorbet-runtime shim enforces for real — `sig` installs a checking wrapper over params and return, `T.let`/`cast`/`must` check, `T.unsafe` does not, generics are erased, `checked(:never)` skips — and tier 4 difftests that against the gem. What it got wrong was how a failing check *describes the value*, in four ways, none of which tier 4's 28 probes could reach because they all violate sigs with Strings and Integers: (1) nil/true/false must print NO value clause; (2) a long inspect is truncated to 27 + '...' + 30; (3) the class is named by `to_s`, not `name`, so an anonymous class raised `no implicit conversion of nil into String` from inside the error path; (4) a value whose `inspect` is the default prints `with hash <obj.hash>` — per-process seeded, so the model now *gates* rather than answering, which is why no such value appears in this file (a gate would refuse the whole program). The `T::Struct` prop message is a different rule and is pinned in the last three lines: plain inspect, no truncation, no hash."
+}

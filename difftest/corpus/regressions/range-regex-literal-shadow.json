@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in C37/N44 (guard, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-15 (C37), lean SUT",
+  "case_id": "range-regex-literal-shadow",
+  "observed_then": "disagree",
+  "note": "A range or regex literal consults no constant in Ruby — it is a parser node — but the desugarer lowered both to a send over a bare `Range`/`Regexp` constant, reintroducing a lexical lookup Ruby never performs. Any enclosing constant of that name then hijacked every literal in the scope, and this was *live*: the prelude's own sorbet shim defines `T::Range`, so every range literal inside `module T` failed with `undefined method 'new' for an instance of T::GenericType`. Found while writing L127's `string_truncate_middle`, whose body slices with `s[0...27]`. Both lowerings now use a base-less `cpath` (`::Range`, `::Regexp`). Array/Hash/String/Proc literals never lowered through a constant and are unaffected. Still open by construction: a program that reassigns the *toplevel* `Range` would be misread, which needs a dedicated AST head to close (C37 records why that trade was not taken)."
+}

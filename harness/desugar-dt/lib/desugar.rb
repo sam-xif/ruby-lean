@@ -897,14 +897,24 @@ class Desugar
     target_write(kind, name, newval)
   end
 
-  # 1..5 => Range.new(1, 5, false) ; 1...5 => Range.new(1, 5, true) ; endless/beginless
-  # use nil endpoints. Behavior-identical to the literal.
+  # 1..5 => ::Range.new(1, 5, false) ; 1...5 => ::Range.new(1, 5, true) ; endless/beginless
+  # use nil endpoints. Behavior-identical to the literal — *once the receiver is written
+  # absolutely*. A range literal is a parser node in Ruby and consults no constant at all;
+  # lowering it to a send over a plain `Range` constant reintroduced a lookup Ruby never
+  # performs, so any lexically enclosing `Range` constant hijacked the literal:
+  #
+  #     module M; Range = 5; def self.f = (1..2); end     # CRuby 1..2, model NoMethodError
+  #
+  # Not hypothetical — the prelude's own sorbet shim defines `T::Range`, so every range
+  # literal inside `module T` broke (found writing L127's `string_truncate_middle`). `::Range`
+  # (a `cpath` with no base) skips the lexical chain and resolves on Object, which closes
+  # every shadow except a reassignment of the *toplevel* constant. C37.
   def desugar_range(n)
     fire(:"range->send")
     lo = n.left ? node(n.left) : [:nil]
     hi = n.right ? node(n.right) : [:nil]
     excl = n.exclude_end? ? [:true] : [:false]
-    [:send, [:const, "Range"], "new", [lo, hi, excl], nil]
+    [:send, [:cpath, nil, "Range"], "new", [lo, hi, excl], nil]
   end
 
   # 2r => Rational(2, 1) ; 2.5r => Rational(5, 2). Uses the literal's exact value, so it
@@ -998,7 +1008,9 @@ class Desugar
     end
     opts = (n.ignore_case? ? 1 : 0) | (n.extended? ? 2 : 0) | (n.multi_line? ? 4 : 0) |
            (n.ascii_8bit? ? 32 : 0)
-    lit = [:send, [:const, "Regexp"], "new", [src, [:int, opts]], nil]
+    # `::Regexp`, not `Regexp` — a regex literal consults no constant in Ruby, so the
+    # lowering must not either (C37, same as the range literal above).
+    lit = [:send, [:cpath, nil, "Regexp"], "new", [src, [:int, opts]], nil]
     n.once? ? once_cached(lit) : lit
   end
 

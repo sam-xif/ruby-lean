@@ -2283,13 +2283,55 @@ module T
     type.inspect
   end
 
+  # `T::Utils.string_truncate_middle(s, 30, 30)`: the gem shortens a long value
+  # in a type error to `first 27 + "..." + last 30` [V]. Reproduced because the
+  # ellipsis is *observable* — a 100-character String in a failing sig prints
+  # differently from the String itself.
+  def self.__truncate_middle(s)
+    return s if s.length <= 60
+
+    s[0...27] + "..." + s[-30..-1]
+  end
+
+  # `T::Types::Base#describe_obj`, byte for byte (gem 0.6.13405, `types/base.rb`).
+  # Three rules, none of them guessable and all three observable:
+  #
+  #   * `nil` / `true` / `false` print **no value clause** — "it would be
+  #     redundant to print class and value", says the gem;
+  #   * an object whose `inspect` is the **default** one prints `with hash N`
+  #     rather than the `#<C:0x…>` the gem calls ugly. `N` is `Object#hash`,
+  #     which is *per-process seeded* — no implementation has a stable answer
+  #     (N38), so the model refuses here rather than inventing one. It used to
+  #     answer the `with value` form, which was simply wrong;
+  #   * everything else prints `with value <inspect, truncated>`.
+  #
+  # The class is named by `to_s`, not `name`: for an anonymous class the gem
+  # prints `#<Class:0x…>` and `name` is nil, which made `+` raise a *different*
+  # TypeError (the L124 rule, one file over). (L127.)
+  def self.__describe_obj(value)
+    # `equal?`, not `==`: the gem's `case obj when nil, true, false` dispatches on
+    # the *literal* (`nil === obj`), never on `obj`. Writing it as `value == true`
+    # dispatches `==` on the value instead, which gates the whole program for any
+    # receiver whose `==` is an unmodeled builtin — `T.let((1..2), Integer)` came
+    # back `unmodeled builtin would shadow: Range#==`. Identity is exact here:
+    # nil/true/false are immediates.
+    if value.nil? || value.equal?(true) || value.equal?(false)
+      return "type " + value.class.to_s
+    end
+
+    if value.__default_inspect?
+      __unsupported__("sorbet-runtime: a type error naming an object with the " +
+                      "default inspect (the gem prints its per-process `hash`)")
+    end
+    "type " + value.class.to_s + " with value " + T.__truncate_middle(value.inspect)
+  end
+
   # The shared failure path. Message shapes are sorbet-runtime's, verified
   # against the gem (`difftest/corpus/sorbet/`).
   def self.__check!(prefix, type, value)
     return value if T.__valid?(type, value)
     raise TypeError, prefix + ": Expected type " + T.type_label(type) +
-                     ", got type " + value.class.name +
-                     " with value " + value.inspect
+                     ", got " + T.__describe_obj(value)
   end
 
   # ── the assertion family (§A.3) ───────────────────────────────────────────
@@ -2838,9 +2880,14 @@ module T
   def self.__struct_check(cls, name, type, value)
     return value if T.__valid?(type, value)
     want = (type.is_a?(T::Type) && type.nilable?) ? type.nilable_inner_label : T.type_label(type)
-    raise TypeError, "Parameter '" + name.to_s + "': Can't set " + cls.name + "." +
+    # A *different* rule from `__describe_obj` above, and checked separately
+    # against the gem: this path prints the plain `inspect` — no truncation, no
+    # hash substitution, addresses and all (the difftest engine normalizes those)
+    # — and names the class with `to_s`, so an anonymous one is `#<Class:0x…>`
+    # rather than the nil that `name` answers (L127).
+    raise TypeError, "Parameter '" + name.to_s + "': Can't set " + cls.to_s + "." +
                      name.to_s + " to " + value.inspect + " (instance of " +
-                     value.class.name + ") - need a " + want
+                     value.class.to_s + ") - need a " + want
   end
 end
 

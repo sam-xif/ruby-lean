@@ -994,3 +994,37 @@ Found while probing the C35 scoping change: `_1` is a *scope local* in Prism's `
 which is why it had to be excluded from the new `declared` slot, and excluding it is what
 prompted asking what the model did with it. Confirmed pre-existing (`git stash` + rebuild) —
 the rule that keeps a session honest about what it broke.
+
+## C37 — a range or regex literal must not consult a constant (bugfix)
+
+`1..2` desugars to `Range.new(1, 2, false)` and `/b/` to `Regexp.new("b", 0)` — both since the
+beginning, and both **behaviour-identical to the literal except for one thing nobody looked at**:
+a literal is a parser node in Ruby and consults no constant at all, while a send over a bare
+`Range` constant performs a lexical lookup that Ruby never performs. So any enclosing `Range` or
+`Regexp` constant hijacks every literal in that scope:
+
+```ruby
+module M
+  Range = 5
+  def self.f = (1..2)     # CRuby 1..2; model NoMethodError: undefined method 'new' for 5
+end
+```
+
+Not hypothetical, and not exotic: **the prelude's own sorbet shim defines `T::Range`** (as
+`T::GenericType`, for `T::Range[Integer]`), so every range literal inside `module T` was already
+broken — `undefined method 'new' for an instance of T::GenericType`. Found while writing L127's
+`string_truncate_middle`, whose body is `s[0...27] + "..." + s[-30..-1]`.
+
+Both lowerings now use a `cpath` with no base — `::Range`, `::Regexp` — which skips the lexical
+chain and resolves on Object. Array, Hash, String and Proc literals were checked and need
+nothing: none of them lowers through a constant.
+
+**What is left open, and it is small.** `::Range` still reads a constant, so a program that
+reassigns the *toplevel* `Range` would still be misread where CRuby's literal would not care.
+Closing that means a dedicated AST head for the two literals — which is an export break, and
+which would have to re-implement in Lean the endpoint check that L122 deliberately wrote as
+prelude Ruby *because it dispatches*. Not worth it for a shadow nobody writes; recorded so the
+trade is visible.
+
+Rule coverage unchanged (`range->send` and `regex` already existed); seeds 43/43, bootstraptest
+1227/0.

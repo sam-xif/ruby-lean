@@ -316,6 +316,8 @@ def byteStrAwareBids : List String :=
    "Object#hash", "Object#class", "Object#nil?", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
    "Object#inspect", "Object#p", "Object#__user_defines?",
+   -- reads the method table, never the value (L127)
+   "Object#__default_inspect?",
    -- reads and writes neither operand, only the frame's `$~` routing (L121)
    "Object#__match_to_caller",
    -- render nothing of the operand but its *class name* (L123)

@@ -1300,3 +1300,28 @@ no index [V], which is why the fix is on `Array#to_h` alone.
 witness a family that three hand-filed files pin exactly. The heads earn their cost where the
 *inputs* vary (N39's regexes, N42's coerce shapes); here the variation is in which message
 rule is reached, and that set is enumerable. Recorded so the absence reads as a choice.
+
+## N44 — two guards for the sorbet shim's message rule, and one for the literal shadow
+
+Hand-filed, in the N43 shape (the file normalizes what it must and asserts the rest whole).
+
+* **`sorbet-describe-obj.rb`** — 23 lines pinning `T::Types::Base#describe_obj` as the gem
+  implements it: nil/true/false with no value clause, `with value <inspect>` otherwise,
+  truncation at 60 characters to `27 + "..." + 30`, a user `inspect` printed rather than
+  hashed, the same rules reached through a **`sig`** (parameter, return, `checked(:never)`),
+  and the `T::Struct` prop message, which is a *different* rule (plain inspect, no truncation)
+  and is asserted separately for that reason. Deliberately absent: a value whose `inspect` is
+  the default, which the gem describes with its per-process `hash` and the model now gates on
+  (L127) — a gate anywhere refuses the whole program, so it cannot share a file with the twenty
+  lines that answer.
+* **`range-regex-literal-shadow.rb`** — a module defining `Range = 5` and `Regexp = 5`, then
+  seven literals inside it (range, exclusive, endless, a slice, a regex, an interpolated regex,
+  and a `case … when 1..9`). Every one of them used to resolve the shadowing constant (C37).
+  `.begin` rather than `.first(2)` on the endless range, because `Range#first` with an argument
+  is unmodeled and one gate would have hidden the file.
+
+Two shapes worth reusing. A message the gem appends a `Caller:` source-location line to is fine
+in an *exception* observation (the engine normalizes it) and **not** fine when the program reads
+`$!.message` as a value — `split("\n").first` is the fix, and `String#lines` is not modeled.
+And `T.let(…)` inside a `show` block is the cheapest way to probe a type-error message: it needs
+no class, no sig, and no static checker.
