@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L124/N43 (guard, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L124), lean SUT",
+  "case_id": "eigen-names",
+  "observed_then": "disagree",
+  "note": "The 18 wrong answers that were sitting one rule away from the anonymous-class defect and are not about anonymous classes at all. (1) Every eigenclass of a plain object was named `#<Class:Object>` — CRuby names it after the attached object by `rb_any_to_s`, `#<Class:#<Foo:0x…>>`, ignoring a user inspect/to_s and any ivars. (2) With that fixed, nine message sites reading `classOf` (which answers the eigenclass) instead of `rb_obj_class` became visible: a singleton method on an operand made the coercion TypeError, the relop ArgumentError, `no implicit conversion`, `superclass must be…`, FrozenError and the uncaught-exception class name all name the singleton class. (3) The one message that *does* render through the eigenclass is NoMethodError's receiver — `def o.hi; end; o.zz` is `undefined method 'zz' for #<Foo:0x…>`, and materializing the eigenclass any way at all (extend, a bare `singleton_class`) is enough."
+}

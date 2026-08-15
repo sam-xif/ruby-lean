@@ -1,0 +1,9 @@
+{
+  "status": "fixed",
+  "filed_by": "hand-filed in L124/N43 (guard, not campaign output)",
+  "arm": "hand",
+  "first_reconciled": "2026-08-14 (L124), lean SUT",
+  "case_id": "anon-class-names",
+  "observed_then": "disagree",
+  "note": "HANDOFF.md's second known wrong answer: an anonymous class was named the empty string in every message, so `0 + Class.new.new` said `TypeError:  can't be coerced into Integer`. The fix is `className`'s fallback to CRuby's `#<Class:0x…>` form, which reaches ~19 messages at once (coercion, relop, NoMethodError, FrozenError, uninitialized constant, superclass, an Exception with no message, the default repr of an *instance* of one), plus four prelude messages that used `.class.name` — where nil made a *different* error, `no implicit conversion of nil into String`. Also pins `Array#to_h`'s element index, found writing this file. The handoff said this defect could not be pinned because CRuby's answer carries an address; it can — the program normalizes the address itself (`gsub(/0x[0-9a-f]+/, \"0xADDR\")`) and then asserts the whole message, which is stronger than a predicate over it. Uses locals, not constants: a constant assignment names an anonymous class and would defeat the whole file."
+}

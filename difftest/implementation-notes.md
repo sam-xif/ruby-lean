@@ -1251,3 +1251,52 @@ back `GATE`, not `DIFF`, and the fifteen wrong lines behind them were invisible.
 the two gating operators from one sample turned it red immediately. A head is a witness
 only in a model that gates nowhere else in the same program, which is an argument for
 short heads and for the hand-filed guards above.
+
+## N43 — pinning a defect whose correct answer contains an address
+
+The witnessing half of L124 (how a message names a class). Three hand-filed cases, and one
+corpus-shape problem solved.
+
+**The problem the handoff named.** An anonymous class's messages carry an *address* in
+CRuby (`#<Class:0x…> can't be coerced into Integer`), and N38's rule is that an observation
+must be process-independent. `HANDOFF.md` concluded the case would have to assert a
+**predicate over** the message — `$!.message.include?("Class:0x")` — a shape the corpus did
+not contain, and called that the harder half of the defect.
+
+It is not necessary. The program can **normalize the address itself**:
+
+```ruby
+def norm(s) = s.gsub(/0x[0-9a-f]+/, "0xADDR")
+```
+
+and then assert the *whole* message. That is strictly stronger than a predicate — it pins
+the wording, the class-vs-module choice and the nesting (`#<#<Class:0xADDR>:0xADDR>` for an
+instance of an anonymous class), not just the presence of an address — and it needs no new
+machinery, only `gsub` with a Regexp, which the W2a engine has had since L101. Any future
+defect whose answer is address-shaped should be filed this way.
+
+Two details cost a cycle each. The address must be normalized in the **exception class
+name** too (`e.class.to_s`), not only the message, because an anonymous exception class *is*
+an address form. And the first draft bound its classes to **constants** — which *names* an
+anonymous class (L72), so every message read `Anon can't be coerced` and the file asserted
+the opposite of what it was for. It uses locals now, with two deliberate constant cases at
+the bottom to pin the naming rule itself.
+
+**The three cases.**
+
+| case | status | pins |
+|---|---|---|
+| `anon-class-names.rb` | `fixed` | 27 lines: the coercion/relop/NoMethodError/FrozenError/constant/superclass messages, `Exception.new` with no message, the default repr of an instance, the four prelude messages that used `.class.name`, and `Array#to_h`'s element index |
+| `eigen-names.rb` | `fixed` | 24 lines: an eigenclass's own name for each kind of attached object, the `rb_obj_class` sites where a singleton method must *not* change the message, and the one — NoMethodError's receiver — where it must |
+| `anon-eigen-lazy-name.rb` | `open` | what L124 left: CRuby recomputes an eigenclass's name, the model fixes it at creation |
+
+`Array#to_h`'s missing element index (`wrong element type Integer at 1 (expected array)`)
+was found *while writing the first file* — the fourth session in a row where the guard for a
+known defect turned up an unrelated one. `Enumerable#to_h`'s otherwise-identical message has
+no index [V], which is why the fix is on `Array#to_h` alone.
+
+**No generation head this time, deliberately.** The tier-1 grammar draws no `Class.new`, no
+`singleton_class` and no `def obj.x`, so a head would have meant three new generator axes to
+witness a family that three hand-filed files pin exactly. The heads earn their cost where the
+*inputs* vary (N39's regexes, N42's coerce shapes); here the variation is in which message
+rule is reached, and that set is enumerable. Recorded so the absence reads as a choice.

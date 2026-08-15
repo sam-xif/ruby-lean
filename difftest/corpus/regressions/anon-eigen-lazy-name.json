@@ -1,0 +1,10 @@
+{
+  "status": "open",
+  "filed_by": "hand-filed in L124/N43",
+  "arm": "hand",
+  "case_id": "anon-eigen-lazy-name",
+  "first_reconciled": "2026-08-14 (L124), lean SUT",
+  "observed_then": "disagree",
+  "diff_then": "stdout: 'after  => #<Class:#<K:0xADDR>>' vs 'after  => #<Class:#<#<Class:0xADDR>:0xADDR>>'",
+  "note": "What L124 left open, and the *only* shape where it is observable: CRuby computes an eigenclass's name on demand, the model fixes it at creation, so an anonymous class named by constant assignment *after* one of its instances has an eigenclass keeps the old address form. Closing it means storing the attached object on the class payload and making `className` fuel-recursive — a heap-shape change and a reducibility risk on the dispatch path, for this. Left open deliberately, not gated: the model answers, and answers wrongly."
+}
