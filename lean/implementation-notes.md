@@ -4304,3 +4304,49 @@ about `m` is applied at a machine `applyKont` built by a structure update.
 
 **Checks:** `check-proofs.sh` green and axiom-clean (all five headline theorems, including L135's
 two); tier-0 `--sut lean` **992 agree, 0 disagree**, unchanged.
+
+## L138 — `--fragment` reported `missing-sig` for six annotated methods
+
+`homebrew/HANDOFF.md`'s "clear the cheap fragment rows", and it really was our bug rather than the
+slice's. `Fragment.lean`'s `scanStmts` threads `sigPrecedes` down a statement *list*, because "every
+method carries a `sig`" is a property of a sequence. Send **arguments** are scanned with
+`sigPrecedes := false`, which is right for arguments — and wrong for exactly one shape:
+
+```ruby
+sig { params(version: String).returns(...) }
+private_class_method def self.parse(version)      # vulns/semver.rb:45–46
+```
+
+`private_class_method def self.parse` is *one statement*, so the `sig` above it precedes the `def`
+— but the `def` arrives at `scan` as the modifier's argument, and the modifier is a send. Six
+methods were reported as unannotated: `self.parse`, `self.compare_prerelease`,
+`self.compare_identifier` in `vulns/semver.rb` and `self.parse`, `self.valid_values?`,
+`self.round_up` in `vulns/cvss.rb`. All six carry sigs upstream.
+
+The fix is one branch: a `visibilityMod` (`private`, `public`, `protected`,
+`private_class_method`, `public_class_method`, `module_function`) with an implicit-self receiver
+passes `sigPrecedes` through to its arguments via a new `scanListSig`. Everything else is
+unchanged, and a `visibilityMod` applied to *symbols* (`private :a, :b`) is unaffected because a
+symbol has no `missing-sig` arm.
+
+**Why this mattered more than six rows.** A `missing-sig` row says "this method's parameters and
+return are `T.untyped`", which is the criterion-2 exclusion — so the report was claiming the slice
+had six untyped methods it does not have, in exactly the two files whose *whole content* is the
+`Semver.compare` half of §1's headline finding. `vulns/semver.rb` and `vulns/cvss.rb` now have one
+violation each, and both are the erased-type-argument row the fragment admits by design.
+
+Slice-wide, `--fragment` on a harvested program is down from 11 rows to **6**, and the remaining
+six are honest: `T.untyped` (W8's two known jobs), `T::Array[…]`/`T::Hash[…]`/`T::Struct` (the
+erased-container weakening `Fragment.lean` records), `alias eql? ==` and `instance_variable_set`
+(real reflective uses in `version.rb`) — plus `__exp`/`__exr`, the corpus's own assertion helpers,
+which are deliberately left alone: a **toplevel** `sig` installs the `method_added` hook
+(`T.__toplevel_sig`), and adding one to every harvested program to fix a report row would change
+the boot heap of all 355 of them.
+
+**Note the standing distinction, which this does not resolve.** `Fragment.lean`'s fragment (the
+Sorbet discipline: every method annotated, no unchecked escape) is *not* `infer`'s domain (what the
+type system can type). They are two artifacts with two purposes, and F1 has to decide whether they
+converge.
+
+Checks: tier-0 992/0, slice 351/0 (+1 gated, +3 `control_invalid`), tier-4 25/0,
+`check-proofs.sh` green and axiom-clean.

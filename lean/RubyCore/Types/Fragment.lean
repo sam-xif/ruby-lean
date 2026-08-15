@@ -97,6 +97,19 @@ def reflectiveSend : List String :=
    "__send__", "method_missing", "respond_to_missing?", "instance_variable_set",
    "instance_variable_get", "const_set", "remove_method", "prepend"]
 
+/-- The visibility modifiers that take a `def` as their **argument**.
+
+    `private def m` and `private_class_method def self.m` are single statements, so
+    a `sig { … }` above one precedes the `def` inside it — but the `def` reaches
+    `scan` as a send *argument*, and arguments are scanned with
+    `sigPrecedes := false`. That reported `missing-sig` for six methods on the
+    Homebrew slice (`vulns/semver.rb` and `vulns/cvss.rb`, three each) that are
+    fully annotated upstream, which made the report wrong rather than merely
+    incomplete. L138. -/
+def visibilityMod : List String :=
+  ["private", "public", "protected", "private_class_method", "public_class_method",
+   "module_function"]
+
 /-- The checked-level arguments that *remove* the runtime wrapper. `:always` is
     the default and is fine. -/
 def uncheckedLevels : List String := ["never", "tests"]
@@ -149,7 +162,12 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
       else if recv.isNone && attrNames.contains m && !sigPrecedes then
         attrViolations m args
       else []
-    here ++ scanOpt recv ++ scanList args ++ scanOpt blk
+    -- A visibility modifier passes `sigPrecedes` through to its argument; every
+    -- other send scans arguments with `false`.
+    let argVs :=
+      if recv.isNone && visibilityMod.contains m then scanListSig sigPrecedes args
+      else scanList args
+    here ++ scanOpt recv ++ argVs ++ scanOpt blk
   | .vcall m =>
     if reflectiveSend.contains m then [{ kind := "reflective", what := m }] else []
   | .cpath base name =>
@@ -211,6 +229,12 @@ def scanOpt : Option Expr → List Violation
 def scanList : List Expr → List Violation
   | [] => []
   | e :: rest => scan false e ++ scanList rest
+
+/-- `scanList` with the statement's `sigPrecedes` threaded into each argument —
+    used only for a visibility modifier wrapping a `def` (L138). -/
+def scanListSig (sigPrecedes : Bool) : List Expr → List Violation
+  | [] => []
+  | e :: rest => scan sigPrecedes e ++ scanListSig sigPrecedes rest
 
 def scanPairs : List (Expr × Expr) → List Violation
   | [] => []
