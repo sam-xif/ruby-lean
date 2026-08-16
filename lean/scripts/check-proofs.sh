@@ -48,6 +48,7 @@ import RubyCore.Proof.Adequacy
 import RubyCore.Proof.T5
 import RubyCore.Proof.T5Loop
 import RubyCore.Proof.SorbetConcrete
+import RubyCore.Proof.AncestorsGrow
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -58,6 +59,8 @@ import RubyCore.Proof.SorbetConcrete
 #print axioms RubyCore.Proof.Step.deterministic
 #print axioms RubyCore.Proof.Step.adequacy
 #print axioms RubyCore.Proof.T5Loop.t5_loop_type_safe
+#print axioms RubyCore.Proof.ancestors_congr_grow
+#print axioms RubyCore.Proof.saturatedB_sound
 LEAN
 
 echo "== axioms"
@@ -78,4 +81,17 @@ if ! lake env lean --run scripts/heapok_probe.lean; then
   exit 1
 fi
 
-echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB holds at the booted heap"
+# L144's certificate, and it is here for the same reason F0's is: `ancestors_congr_grow`
+# — the ancestor congruence across an *allocating* step — assumes `Saturated`, i.e. the
+# ancestor walk has finished before its fuel runs out. `saturatedB` decides it, the
+# probe runs it at the prelude-booted heap, and if a prelude change ever makes a walk
+# fuel-sensitive the hypothesis silently stops being satisfiable. The probe also
+# reports the clause `HANDOFF.md` proposed instead (the chain descending in `ObjId`),
+# which is **false** at the booted heap — 10 edges — and is kept visible on purpose.
+echo "== L144 certificate (saturatedB at the prelude-booted heap)"
+if ! lake env lean --run scripts/ancestors_probe.lean; then
+  echo "FAIL: the ancestor walk is not saturated at the booted heap, or an edge points out of bounds"
+  exit 1
+fi
+
+echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap"

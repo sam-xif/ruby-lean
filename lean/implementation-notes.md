@@ -4797,3 +4797,97 @@ to a `&&`-chain whose last factor is already `false` is free.
 Items 3 and 4 of L142's list, unchanged, and now with the fifth named above: the backward transport
 `ConformsAt` currently demands is a *growing*-step problem, so item 4 (`ConformsAt` past
 machine-purity) and the shape of the producer's consecution case are one question, not two.
+
+## L144 — the ancestor walk across a growing heap, and the clause `HANDOFF.md` proposed is false
+
+L142's item 3: the blocker three consecutive sessions named. `ancestors` and `modAncestors` are
+fuel-bounded rather than `partial` (L73 — a `partial def` is opaque to the kernel and every `rfl`
+over a dispatch would get stuck), the fuel is `h.objs.size + 1`, and `ancestors_congr` therefore
+requires the size to be **equal** — using that hypothesis twice, both times as a fuel rewrite and
+nothing else. An allocating step had no ancestor congruence at all.
+
+New file `Proof/AncestorsGrow.lean`; nothing existing changed.
+
+### The measurement first, and it refutes the route
+
+`HANDOFF.md` and L142 both proposed the same clause: **the superclass chain descends in `ObjId`** —
+a subclass is allocated after its superclass, so the walk from `k` takes at most `k + 1` steps, any
+fuel `≥ k + 1` agrees, and F0's `heapOkB` certificate can absorb the clause because it is decidable
+at the boot heap. Forty lines of `IO` (`scripts/ancestors_probe.lean`) before any proof attempt:
+
+```
+non-descending edges (HANDOFF's proposed clause, want 0): 10
+  include: Object (1) → Kernel (33)
+  superclass: Integer (7) → Numeric (34)
+  include: String (9) → Comparable (40)
+  include: Array (11) → Enumerable (42)
+  …
+```
+
+**It is decidable and it is false**, for a reason that is structural rather than fixable: the boot
+heap's ids are *literals* (`Boot.objectId = 1`, `Boot.integerId = 7`) while `Kernel`, `Numeric`,
+`Comparable` and `Enumerable` are **prelude Ruby**, allocated afterwards — so the classes with the
+smallest ids are exactly the ones pointing at the largest, and no re-ordering of the prelude repairs
+it while the boot ids are constants. The walk is also not only the superclass chain: `ancestors`
+splices `includes`/`prepends` and `modAncestors` recurses through modules, which is what makes the
+mixin edges count. Had this been proved rather than measured first, the failure would have arrived
+at the end of an induction instead of in the first minute.
+
+### What is true is *saturation*, and it is weaker than what was proposed
+
+The fuel does not need the walk to be **short**. It needs it to have **finished** before the fuel
+runs out, which is a different and directly checkable property: *one more unit of fuel changes
+nothing*.
+
+```lean
+def Saturated (h : Heap) : Prop :=
+  (∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size) ∧
+    (∀ k, ancestors.go h k (h.objs.size + 1) = ancestors.go h k h.objs.size)
+```
+
+Two clauses because there are **two fuels in one walk**: `ancestors.go` recurses on its own, and
+the `modAncestors h` it splices in carries a second one — `h.objs.size + 1` again — which a growing
+heap moves as well. Missing that is how a "one fuel lemma" turns into two, and reading
+`ancestors_congr`'s statement does not show it; reading what its *body* rewrites does.
+
+From saturation, `modAncestors_go_add`/`ancestors_go_add` give fuel-monotonicity at every larger
+fuel by induction on the excess, and `ancestors_congr_grow` is the payoff: `=` becomes `≤`.
+Axiom-clean (`propext`, `Quot.sound`).
+
+**Saturation is not derivable from the shape agreement it sits beside**, and that is why it is a
+hypothesis: nothing in the `Heap` type forbids a cyclic `include`, and a cyclic walk consumes all
+its fuel, after which different fuels genuinely disagree. So it is a real clause, and it is carried
+as one rather than smuggled in.
+
+### The certificate, and why it is in `check-proofs.sh`
+
+`saturatedB` decides `Saturated` at a heap in hand; `saturatedB_sound` is the reflection. The
+out-of-bounds ids the `Bool` cannot range over are free (`classPayload?` is `none` there, so both
+walks answer `[k]` at any positive fuel — `go_oob`), which is the same structure F0's `heapOkB`
+has, for the same reason: `Prelude.boot` runs `Lean.Json.parse`, which does not kernel-reduce, and
+L94 bans `native_decide`. **A hypothesis the harness can check beats an `axiom` and beats a proof
+nobody has finished** (D1's trade for `bound_suffices`, L135's for F0).
+
+So `scripts/check-proofs.sh` gained a fourth section. Without it the hypothesis could stop being
+satisfiable — a prelude change that makes one walk fuel-sensitive — with every proof still green,
+which is exactly the failure mode L119 was about. Measured: `saturatedB = true`, **0** fuel-sensitive
+ids of 105 objects / 87 classes.
+
+### What this covers, and the one case it does not
+
+`ancestors_congr_grow` takes `ShapeAgree` **unrelativized**, and `shapeAgree_alloc_nonClass` says an
+`alloc` of a **non-class** supplies it — including at the fresh id, where both heaps answer `none`.
+That is the producer for `.cls C` values: `C.new` pushes a plain object.
+
+Allocating a **class** (`classDef`, i.e. typing `class C … end`) does *not* supply it: the fresh id
+has a shape in `h'` and none in `h`. That case needs one more clause — *no in-bounds object has an
+edge pointing out of bounds* — after which the shape agreement can be relativized the way
+`TypeAgree` now is (L143). The probe measures it: **0** out-of-bounds edges at the booted heap. So
+it is a proof that is owed, not a fact in doubt, and it belongs to the `classDef` rung rather than
+this one.
+
+### Verification
+
+`Proof/` and two scripts only, so `--check` cannot move (L142's argument). `check-proofs.sh` green
+across all four sections, axiom-clean, `heapOkB` and `saturatedB` both true at the booted heap;
+`alloc_probe.lean` exit 0; tier-0 flat at 992 agree, 0 disagree.

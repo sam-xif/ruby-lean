@@ -1,0 +1,301 @@
+import RubyCore.Proof.HeapFacts
+
+/-!
+# The ancestor walk across a **growing** heap (L144, producer's bill item 3)
+
+`Proof/HeapFacts.lean`'s congruence chain — `modAncestors_congr`, `ancestors_congr`
+— requires `h'.objs.size = h.objs.size`, and uses that hypothesis **twice, both
+times as a fuel rewrite and nothing else**: `ancestors` and `modAncestors` are
+fuel-bounded rather than `partial` (L73, so that dispatch stays kernel-reducible),
+and the fuel they take is `h.objs.size + 1`. An allocating step therefore has no
+ancestor congruence at all, which is the blocker three consecutive sessions named
+as the one thing between here and a producer for the class type.
+
+This file removes it, and the interesting part is **which** heap clause does the
+job.
+
+## The route `HANDOFF.md` proposed does not exist
+
+The proposal was: *the superclass chain descends in `ObjId`* — a subclass is
+allocated after its superclass — so the walk from `k` takes at most `k + 1` steps,
+any fuel `≥ k + 1` computes the same list, and F0's `heapOkB` certificate can
+absorb the clause because it is decidable at the boot heap.
+
+It is decidable, and it is **false**. `scripts/ancestors_probe.lean` measures it at
+the prelude-booted heap and reports **ten** non-descending edges, starting with the
+ones the object model cannot do without:
+
+```
+include: Object (1) → Kernel (33)
+superclass: Integer (7) → Numeric (34)
+include: String (9) → Comparable (40)
+include: Array (11) → Enumerable (42)
+```
+
+The reason is structural rather than accidental: the boot heap's ids are **fixed
+constants** (`Boot.objectId = 1`, `Boot.integerId = 7`), while `Kernel`, `Numeric`,
+`Comparable` and `Enumerable` are *prelude* Ruby and are allocated afterwards. So
+the classes with the smallest ids are exactly the ones pointing at the largest, and
+no re-ordering of the prelude fixes it while the boot ids are literals. The walk is
+also not only the superclass chain — `ancestors` splices `includes` and `prepends`
+and `modAncestors` recurses through modules — which is what makes the mixin edges
+count.
+
+## What is true, and it is what the fuel actually needs
+
+The fuel does not care that the walk is short. It cares that the walk has
+**finished** before the fuel runs out, and that is a different, weaker, *directly
+checkable* property:
+
+    the walk is stable at the fuel the heap hands it
+
+i.e. one more unit of fuel changes nothing. Measured at the booted heap: **zero**
+classes whose walk changes when the heap grows by one, and zero that need even the
+last unit of the fuel they get. `Saturated` below is that property, `saturatedB` is
+it as a `Bool`, and `saturatedB_sound` is the reflection — the same shape as F0's
+certificate (L135) and the same trade D1 makes for `bound_suffices`: a hypothesis
+the harness can check beats an `axiom`, and beats a proof nobody has finished.
+
+Saturation is **not** derivable from the shape agreement it sits beside: a heap with
+a cyclic `include` (nothing in the `Heap` type forbids one) consumes all its fuel,
+and then different fuels genuinely give different answers. It is a real clause, and
+it is stated as one.
+
+## What this does *not* cover, and the measurement that says the rest is true
+
+`ancestors_congr_grow` takes `ShapeAgree h h'` **unrelativized** — at every id,
+including the ids `h` did not have. That is satisfied by allocating a *plain
+object*, which is what the producer for `.cls C` values does: a non-class has
+`classPayload? = none` in both heaps, so the shapes agree at the fresh id too.
+
+It is **not** satisfied by allocating a *class* (`classDef`), where the fresh id has
+a shape in `h'` and none in `h`. Typing `class C … end` therefore owes one more
+clause — *no in-bounds object has an edge pointing out of bounds*, which makes the
+walk from an old id stay among old ids and lets the shape agreement be relativized
+the way `TypeAgree` now is (L143). `scripts/ancestors_probe.lean` measures that
+clause too, and it holds (0 out-of-bounds edges), so this is a proof that is owed
+rather than a fact in doubt.
+-/
+
+namespace RubyCore
+namespace Proof
+
+/-! ## 1. Saturation, and the fuel monotonicity it buys -/
+
+/-- **The ancestor walk has finished before its fuel runs out.** Stated as "one
+    more unit changes nothing" rather than as a bound on the walk's length,
+    because that is the weakest form the congruence needs and the only form that
+    is true of a heap whose ids do not descend (see the header).
+
+    Both walks are named: `ancestors.go` recurses on its own fuel, and the
+    `modAncestors h` it splices in carries a *second* fuel — `h.objs.size + 1`
+    again — which a growing heap moves as well. Missing that is how a "one fuel
+    lemma" turns into two. -/
+def Saturated (h : Heap) : Prop :=
+  (∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size) ∧
+    (∀ k, ancestors.go h k (h.objs.size + 1) = ancestors.go h k h.objs.size)
+
+/-- **Any fuel at or above the heap's own computes the same module walk.** The
+    induction is on the *excess* `d` rather than on `f` with `h.objs.size + 1 ≤ f`,
+    because `Nat.le_induction` is Mathlib's and this tree depends on core only; the
+    `≤` form is the wrapper below.
+
+    The step is the whole argument, and it is two rewrites: unfold both sides once,
+    and the recursive calls become `go i (size + 1 + d)` against `go i size`. The
+    inductive hypothesis carries the first to `go i (size + 1)` and the *saturation
+    clause* carries that to `go i size` — which is the only place saturation is
+    used, and the reason it has to be a hypothesis rather than a consequence. -/
+theorem modAncestors_go_add {h : Heap}
+    (hm : ∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size) :
+    ∀ (d : Nat) (mo : ObjId),
+      modAncestors.go h mo (h.objs.size + 1 + d) = modAncestors.go h mo (h.objs.size + 1) := by
+  intro d
+  induction d with
+  | zero => intro mo; rfl
+  | succ d ih =>
+    intro mo
+    -- The recursive calls sit under a `flatMap`, so the pointwise IH has to be
+    -- turned into an equality of *functions* before `simp` can use it — the same
+    -- reason `modAncestors_funext` exists.
+    have hfun : (fun i => modAncestors.go h i (h.objs.size + 1 + d)) =
+        (fun i => modAncestors.go h i h.objs.size) := funext (fun i => (ih i).trans (hm i))
+    show modAncestors.go h mo (h.objs.size + 1 + d + 1) = _
+    simp only [modAncestors.go, hfun]
+
+theorem modAncestors_go_ge {h : Heap}
+    (hm : ∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size)
+    {f : Nat} (hf : h.objs.size + 1 ≤ f) (mo : ObjId) :
+    modAncestors.go h mo f = modAncestors.go h mo (h.objs.size + 1) := by
+  obtain ⟨d, rfl⟩ := Nat.le.dest hf
+  exact modAncestors_go_add hm d mo
+
+/-- The same for the class walk, and shorter: `ancestors.go`'s own fuel is spent
+    only on the **superclass** recursion, because the `prepends`/`includes` splices
+    call `modAncestors h`, whose fuel is fixed by the heap rather than by this
+    parameter. Two fuels in one walk is what makes this two lemmas. -/
+theorem ancestors_go_add {h : Heap}
+    (ha : ∀ k, ancestors.go h k (h.objs.size + 1) = ancestors.go h k h.objs.size) :
+    ∀ (d : Nat) (k : ObjId),
+      ancestors.go h k (h.objs.size + 1 + d) = ancestors.go h k (h.objs.size + 1) := by
+  intro d
+  induction d with
+  | zero => intro k; rfl
+  | succ d ih =>
+    intro k
+    have hstep : ∀ s, ancestors.go h s (h.objs.size + 1 + d) = ancestors.go h s h.objs.size :=
+      fun s => (ih s).trans (ha s)
+    show ancestors.go h k (h.objs.size + 1 + d + 1) = _
+    simp only [ancestors.go, hstep]
+
+theorem ancestors_go_ge {h : Heap}
+    (ha : ∀ k, ancestors.go h k (h.objs.size + 1) = ancestors.go h k h.objs.size)
+    {f : Nat} (hf : h.objs.size + 1 ≤ f) (k : ObjId) :
+    ancestors.go h k f = ancestors.go h k (h.objs.size + 1) := by
+  obtain ⟨d, rfl⟩ := Nat.le.dest hf
+  exact ancestors_go_add ha d k
+
+/-! ## 2. The certificate
+
+`Saturated` quantifies over every `ObjId`, and a `Bool` cannot. It does not have
+to: out of bounds `classPayload?` is `none` (`classPayload?_oob`), so both walks
+answer `[k]` at any positive fuel and the clause holds for free. The `Bool` checks
+the ids the heap actually has, and `saturatedB_sound` supplies the rest.
+-/
+
+/-- The saturation clause as a decidable check. `0 < objs.size` is not hygiene: at
+    `size = 0` the class walk's fuel is `0`, whose arm is `[]` rather than `[k]`,
+    and the out-of-bounds argument below needs a successor. No heap the interpreter
+    builds is empty. -/
+def saturatedB (h : Heap) : Bool :=
+  0 < h.objs.size &&
+    (List.range h.objs.size).all (fun k =>
+      (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
+        (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
+
+/-- Out of bounds, both walks are `[k]` at **any** positive fuel: there is no
+    payload to recurse through, so the fuel is never spent. -/
+theorem go_oob (h : Heap) (k : ObjId) (hk : ¬ k < h.objs.size) (f : Nat) :
+    modAncestors.go h k (f + 1) = [k] ∧ ancestors.go h k (f + 1) = [k] := by
+  have hp := classPayload?_oob h k hk
+  refine ⟨?_, ?_⟩ <;> simp only [modAncestors.go, ancestors.go, hp]
+
+/-- So saturation is automatic there, and the `Bool` only has to range over the ids
+    the heap actually has. -/
+theorem saturated_oob (h : Heap) (hn : 0 < h.objs.size) (k : ObjId)
+    (hk : ¬ k < h.objs.size) :
+    modAncestors.go h k (h.objs.size + 1) = modAncestors.go h k h.objs.size ∧
+      ancestors.go h k (h.objs.size + 1) = ancestors.go h k h.objs.size := by
+  obtain ⟨m, hm⟩ : ∃ m, h.objs.size = m + 1 := ⟨h.objs.size - 1, by omega⟩
+  refine ⟨?_, ?_⟩
+  · rw [(go_oob h k hk h.objs.size).1, hm, (go_oob h k hk m).1]
+  · rw [(go_oob h k hk h.objs.size).2, hm, (go_oob h k hk m).2]
+
+theorem saturatedB_sound {h : Heap} (hb : saturatedB h = true) : Saturated h := by
+  simp only [saturatedB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true,
+    beq_iff_eq] at hb
+  obtain ⟨hn, hall⟩ := hb
+  refine ⟨fun mo => ?_, fun k => ?_⟩
+  · by_cases hk : mo < h.objs.size
+    · exact (hall mo (List.mem_range.mpr hk)).1
+    · exact (saturated_oob h hn mo hk).1
+  · by_cases hk : k < h.objs.size
+    · exact (hall k (List.mem_range.mpr hk)).2
+    · exact (saturated_oob h hn k hk).2
+
+/-! ## 3. The congruence, with `≤` where there was `=` -/
+
+/-- The module walk agrees across a growing heap. Two facts compose: the shape
+    congruence holds at *equal* fuel with no size hypothesis at all
+    (`modAncestors_go_congr`), and saturation moves the fuel. -/
+theorem modAncestors_grow {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h.objs.size ≤ h'.objs.size)
+    (hm : ∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size) :
+    modAncestors h' = modAncestors h := by
+  funext mo
+  unfold modAncestors
+  rw [modAncestors_go_congr hs (h'.objs.size + 1) mo]
+  exact modAncestors_go_ge hm (Nat.succ_le_succ hsz) mo
+
+/-- `ancestors_go_congr` with the size equality replaced by `≤` plus saturation.
+    The proof is that lemma's, with one substitution: `modAncestors_funext hs hsz`
+    becomes `modAncestors_grow hs hsz hm`. Worth noting how *little* the argument
+    moves — the fuel was the only thing the size hypothesis was ever doing, which
+    is what made pricing this rung by reading the lemma so misleading. -/
+theorem ancestors_go_congr_grow {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h.objs.size ≤ h'.objs.size)
+    (hm : ∀ mo, modAncestors.go h mo (h.objs.size + 1) = modAncestors.go h mo h.objs.size) :
+    ∀ (fuel : Nat) (k : ObjId), ancestors.go h' k fuel = ancestors.go h k fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro k; rfl
+  | succ n ih =>
+    intro k
+    unfold ancestors.go
+    have hk := hs k
+    cases h1 : h'.classPayload? k with
+    | none =>
+      cases h2 : h.classPayload? k with
+      | none => simp
+      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? k with
+      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
+      | some c =>
+        rw [h1, h2] at hk
+        simp only [Option.map_some, Option.some.injEq, clsShape, Prod.mk.injEq] at hk
+        obtain ⟨hpre, hinc, hsup⟩ := hk
+        simp only [hpre, hinc, hsup, modAncestors_grow hs hsz hm, ih]
+
+/-- **The payoff: the ancestor chain survives an allocating step.** `=` became `≤`,
+    at the price of one clause about the heap in hand — checkable by
+    `saturatedB`, measured by `scripts/ancestors_probe.lean`, and true at the
+    prelude-booted heap.
+
+    `ShapeAgree` is unrelativized, which is exactly right for allocating a **plain
+    object** (the producer for `.cls C`) and exactly wrong for allocating a
+    **class** (`classDef`); the header says what the latter owes. -/
+theorem ancestors_congr_grow {h h' : Heap} (hs : ShapeAgree h h')
+    (hsz : h.objs.size ≤ h'.objs.size) (hsat : Saturated h) (k : ObjId) :
+    ancestors h' k = ancestors h k := by
+  unfold ancestors
+  rw [ancestors_go_congr_grow hs hsz hsat.1 (h'.objs.size + 1) k,
+    ancestors_go_ge hsat.2 (Nat.succ_le_succ hsz) k]
+
+/-- The shape of the hypothesis an `alloc` supplies, spelled out so the producer's
+    consecution case does not have to re-derive it: pushing an object that is **not
+    a class** leaves every shape alone, including at the fresh id, where both heaps
+    answer `none`. -/
+theorem shapeAgree_alloc_nonClass (h : Heap) (obj : Object)
+    (hnc : ∀ c, obj.payload ≠ .cls c) : ShapeAgree h ⟨h.objs.push obj⟩ := by
+  intro k
+  by_cases hk : k < h.objs.size
+  · have hget : (Heap.get ⟨h.objs.push obj⟩ k) = h.get k := by
+      simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
+        if_neg (Nat.ne_of_lt hk)]
+    simp only [Heap.classPayload?, hget]
+  · -- Out of the old heap's range there are two cases and both answer `none`: the
+    -- fresh id, because the pushed object is not a class, and everything above it,
+    -- because it is not there.
+    rw [classPayload?_oob h k hk]
+    by_cases he : k = h.objs.size
+    · subst he
+      have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+        simp [Heap.get, Array.getD_eq_getD_getElem?]
+      have hnone : (Heap.classPayload? ⟨h.objs.push obj⟩ h.objs.size) = none := by
+        unfold Heap.classPayload?
+        rw [hget]
+        cases hpl : obj.payload with
+        | cls c => exact absurd hpl (hnc c)
+        | _ => rfl
+      rw [hnone]
+    · have hoob : (Heap.classPayload? ⟨h.objs.push obj⟩ k) = none := by
+        refine classPayload?_oob _ k ?_
+        have hlt : h.objs.size < k :=
+          Nat.lt_of_le_of_ne (Nat.not_lt.mp hk) (fun hEq => he hEq.symm)
+        show ¬ k < (h.objs.push obj).size
+        rw [Array.size_push]
+        exact Nat.not_lt.mpr (Nat.succ_le_of_lt hlt)
+      rw [hoob]
+
+end Proof
+end RubyCore
