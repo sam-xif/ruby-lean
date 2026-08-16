@@ -192,6 +192,25 @@ theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.
   simp only [Bool.and_eq_true, decide_eq_true_eq] at hp
   exact hp.1.1.2
 
+/-- **A typed `.ref` has a class type**, since that is the only arm that admits one.
+    The contrapositive is what `DeclsOk_grow` needs (L146): a declaration at a
+    *ground* type can only ever be about immediates, so an allocation cannot give it
+    a new inhabitant. -/
+theorem valueTy_ref_cls {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+    ∃ n, τ = .cls n := by
+  by_cases hp : plainRecv h o
+  · exact ⟨className h (classOf h (.ref o)), by simpa [ValueTy, valueTy?, hp] using hv.symm⟩
+  · simp [ValueTy, valueTy?, hp] at hv
+
+/-- **An immediate's type does not depend on the heap.** Four constant arms; stated
+    as a transport in the direction `DeclsOk_grow` reads it, which is the direction
+    `ValueTy.congr` cannot supply for a growing heap. -/
+theorem valueTy_immediate {h h' : Heap} {v : Value} {τ : Ty} (hnr : ∀ o, v ≠ .ref o)
+    (hv : ValueTy h' v τ) : ValueTy h v τ := by
+  cases v with
+  | ref o => exact absurd rfl (hnr o)
+  | _ => simpa [ValueTy, valueTy?] using hv
+
 /-- Every value in the list has the corresponding declared type. Pointwise, and
     length-forcing by the `_, _ => False` arm — the same shape as `FramesOk`, for
     the same reason: an arity mismatch must not be silently admissible. -/

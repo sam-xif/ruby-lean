@@ -105,13 +105,31 @@ def ResolvesTo (h : Heap) (recv : Value) (mname bid : String) : Prop :=
     reads the *method table*, so a heap write can change it. Requiring the
     deferral to be absent in every heap is what makes conformance survive a `def`;
     for arithmetic over two Integers it is true by computation, and an entry for
-    which it is false does not belong in the table at all. -/
-def ConformsAt (h : Heap) (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
+    which it is false does not belong in the table at all.
+
+    **Heap-uniform since L146, and that is a change of statement rather than of
+    strength.** It used to be indexed by the invariant's heap, with the machine
+    quantified *inside* the existential — so `∀ m, run … m = .ok w m` (heap-uniform
+    conclusion) sat under `ValueTy h recv τr` (heap-*dependent* hypothesis). The
+    asymmetry cost a transport: `ConformsAt_defineMethod` had to read its hypotheses
+    in the old heap and its conclusion in the new one, which is the only reason
+    `TypeAgree` needed a backward direction at all (L143) — and the backward
+    direction **does not exist for a growing heap**, so the producer could not have
+    had it.
+
+    Quantifying the machine over the whole statement fixes both: conformance is now
+    a fact about a builtin and a declaration, mentioning no heap, so it is not a
+    clause preservation has to re-establish. `DeclsOk`'s heap-dependent half is
+    exactly `ResolvesTo` — which is what L140's split said it should be, one level
+    more honestly than L140 achieved. Every witness's *proof* is unchanged: the
+    hypotheses it actually used were `valueTy_int`-shaped inversions, and those are
+    heap-independent. -/
+def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
   (mname == "send" || mname == "public_send" || mname == "__send__") = false ∧
   bid ≠ "Object#raise" ∧
-  ∀ recv args, ValueTy h recv τr → ValuesTy h args d.params →
+  ∀ (m : Machine) recv args, ValueTy m.heap recv τr → ValuesTy m.heap args d.params →
     (∀ h' : Heap, Builtins.deferTwin? h' bid recv args = none) ∧
-    ∃ w, ValueTy h w d.ret ∧ ∀ m : Machine, Builtins.run bid recv args m = .ok w m
+    ∃ w, ValueTy m.heap w d.ret ∧ Builtins.run bid recv args m = .ok w m
 
 /-- One declared method, satisfied: **some** builtin both resolves for every
     receiver of the class and conforms. Existential in `bid` rather than pinning
@@ -119,7 +137,7 @@ def ConformsAt (h : Heap) (τr : Ty) (mname bid : String) (d : MethodDecl) : Pro
     *which* implementation answers, only that a conforming one does. -/
 def EntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
   ∃ bid, (∀ recv, ValueTy h recv τr → ResolvesTo h recv mname bid) ∧
-    ConformsAt h τr mname bid d
+    ConformsAt τr mname bid d
 
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
@@ -143,7 +161,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
         = .next (withCtl m (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres recv hrv
-  obtain ⟨hdefer, w, hw, hrun⟩ := hconf recv args hrv hargs
+  obtain ⟨hdefer, w, hw, hrun⟩ := hconf m recv args hrv hargs
   refine ⟨w, hw, ?_⟩
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
@@ -291,21 +309,12 @@ theorem ResolvesTo_grow {h h' : Heap} {recv : Value} {mname bid : String}
   · rw [hg.classOf_value_eq recv hrv, hg.ancestors_eq hsat, crubyShadow_grow hg]
     exact hbtw
 
-theorem ConformsAt_defineMethod {h : Heap} {τr : Ty} {mname bid : String}
-    {d : MethodDecl} {cls : ObjId} {name : String} {md : MethodDef}
-    (hc : ConformsAt h τr mname bid d) :
-    ConformsAt (defineMethod h cls name md) τr mname bid d := by
-  -- L143: the backward transport is `typeAgree_defineMethod'` rather than
-  -- `hag.symm`, because a relativized `TypeAgree` is not symmetric. `defineMethod`
-  -- supplies both directions from the same four equalities
-  -- (`TypeAgree.of_equalities`); a *growing* step will not, which is the shape the
-  -- producer has to face.
-  have hag := typeAgree_defineMethod h cls name md
-  have hag' := typeAgree_defineMethod' h cls name md
-  refine ⟨hc.1, hc.2.1, fun recv args hrv hargs => ?_⟩
-  obtain ⟨hdefer, w, hw, hrun⟩ :=
-    hc.2.2 recv args (ValueTy.congr hag' hrv) (ValuesTy.congr hag' hargs)
-  exact ⟨hdefer, w, ValueTy.congr hag hw, hrun⟩
+/-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
+`ConformsAt` no longer mentions a heap, so a heap-writing step has nothing to
+re-establish about it and the lemma has no content. It is worth recording what it
+*was*: the only consumer of `TypeAgree`'s backward direction — the one L143 had to
+supply specially, and the one a growing step cannot supply at all. Deleting the
+clause deleted the obligation. -/
 
 /-- **The additive step preserves the invariant, with no condition beyond
     non-displacement.** D10's claim, and the reason `infer`'s `def` rule checks
@@ -319,9 +328,63 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
     rw [heq] at hdecl
     exact absurd (declFor_declaresName hdecl) (by simp [hfresh])
   obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
-  refine ⟨bid, fun recv hrv => ?_, ConformsAt_defineMethod hconf⟩
+  -- `hconf` passes straight through (L146): it is a fact about `bid` and `decl`, not
+  -- about this heap. What is left is the resolution clause, and its `ValueTy`
+  -- hypothesis still runs backwards — which `defineMethod` can supply and a growing
+  -- step cannot (`DeclsOk_grow`).
+  refine ⟨bid, fun recv hrv => ?_, hconf⟩
   exact ResolvesTo_defineMethod
     (hres recv (ValueTy.congr (typeAgree_defineMethod' h cls name md) hrv)) hne
+
+/-- **The invariant survives an allocating step** (L146), and after L146's
+    restatement the whole content is resolution — `hconf` passes through untouched
+    because conformance no longer mentions a heap.
+
+    The side condition is the one L145 predicted, in the form `ResolvesTo_classOf`
+    consumes: *every receiver the new heap types was already typed by some receiver
+    of the same dispatch class*. It is what a fresh inhabitant of a declared class
+    forces, and it is the honest one — resolution is a fact about a class, so a new
+    object needs no new proof provided its class is not new either.
+
+    Note which hypothesis is **absent**: nothing about the backward type transport,
+    which is what `DeclsOk_defineMethod` needs and what a growing heap cannot give
+    (L143). That obligation left with `ConformsAt`'s heap index. -/
+theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hd : DeclsOk D h)
+    (hnew : ∀ τr mname decl, declFor D τr mname = some decl →
+      ∀ recv, ValueTy h' recv τr →
+        ∃ recv₀, ValueTy h recv₀ τr ∧ (∀ o, recv₀ = .ref o → o < h.objs.size) ∧
+          classOf h' recv = classOf h' recv₀) :
+    DeclsOk D h' := by
+  intro τr mname decl hdecl
+  obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
+  refine ⟨bid, fun recv hrv => ?_, hconf⟩
+  obtain ⟨recv₀, hrv₀, hb₀, hcls⟩ := hnew τr mname decl hdecl recv hrv
+  exact ResolvesTo_classOf hcls (ResolvesTo_grow hg hsat hb₀ (hres recv₀ hrv₀))
+
+/-- **And it survives unconditionally when no declared type is a class type**, which
+    is the shape the first producer commit lands in: `baseDecls` declares three names
+    on `Integer`, a declaration at a ground type can only be about immediates
+    (`valueTy_ref_cls`), and an immediate's type does not depend on the heap
+    (`valueTy_immediate`). So the fresh object inhabits nothing the declarations
+    name, and the side condition above discharges with `recv₀ := recv`.
+
+    This is not the general case and is not meant to be — it is the measurement of
+    how far the *inert* producer gets, and the reason it gets that far is that
+    nothing declares a row for a user class yet. The moment one does, `DeclsOk_grow`
+    is the theorem and its side condition is a real obligation. -/
+theorem DeclsOk_grow_ground {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hd : DeclsOk D h)
+    (hground : ∀ τr mname decl, declFor D τr mname = some decl → ∀ n, τr ≠ .cls n) :
+    DeclsOk D h' := by
+  refine DeclsOk_grow hg hsat hd ?_
+  intro τr mname decl hdecl recv hrv
+  have hnr : ∀ o, recv ≠ .ref o := by
+    intro o hEq
+    subst hEq
+    obtain ⟨n, rfl⟩ := valueTy_ref_cls hrv
+    exact hground _ mname decl hdecl n rfl
+  exact ⟨recv, valueTy_immediate hnr hrv, fun o hEq => absurd hEq (hnr o), rfl⟩
 
 /-! ## 4. The bridge from `TableOk`
 
@@ -399,13 +462,48 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     refine ⟨owner, md, ?_, hb, hu, hvis, hpre, ?_⟩
     · rw [lookup_int_const h a mname]; exact hlook
     · rw [classOf_int]; exact hbtw
-  · intro recv args hrv hargs
+  · -- L146: the conformance half is now quantified over the machine, and the proof
+    -- did not move — every hypothesis it used was a `valueTy_int` inversion, which
+    -- is heap-independent. That is the evidence the heap index was carrying nothing.
+    intro m recv args hrv hargs
     obtain ⟨a, rfl⟩ := valueTy_int hrv
     -- `d.params = [.int]`, so `ValuesTy` pins the argument list to one integer.
     match args, hargs with
     | [b], ⟨hb, _⟩ =>
       obtain ⟨y, rfl⟩ := valueTy_int hb
-      exact ⟨fun h' => hdefer h' a y, .int (op a y), rfl, fun m => hrun a y m⟩
+      exact ⟨fun h' => hdefer h' a y, .int (op a y), rfl, hrun a y m⟩
+
+/-- **The base table declares nothing at a class type.** `baseDecls`'s only key is
+    `"Integer"`, and `tyClassNames` subtracts the ground names from the class arm's
+    range (L141) precisely so that `.cls "Integer"` — whose inhabitants are objects
+    of *some* class merely named `Integer` — cannot read `Integer`'s row.
+
+    Pulled out of `tableOk_declsOk`'s class arm because L146 needs it a second time:
+    it is what discharges `DeclsOk_grow_ground`'s side condition for the table the
+    model actually carries, which is what makes "the inert producer preserves the
+    invariant" a theorem rather than a plan. -/
+theorem declFor_baseDecls_cls (n mname : String) :
+    declFor baseDecls (.cls n) mname = none := by
+  unfold declFor
+  simp only [tyClassNames]
+  by_cases hg : groundClassNames.contains n = true
+  · rw [if_pos hg]
+  · rw [if_neg hg]
+    have hne : ("Integer" == n) = false := by
+      by_cases he : "Integer" = n
+      · exact absurd (by subst he; simp [groundClassNames]) hg
+      · simpa using he
+    simp [declOf?, declsFor, baseDecls, hne]
+
+/-- So the invariant for `baseDecls` survives an allocation with **no** side
+    condition. This is the producer's `DeclsOk` obligation, discharged for the table
+    as it stands — and the reason it discharges is exactly the reason the producer
+    lands inert: nothing declares a row for a user class yet. -/
+theorem declsOk_baseDecls_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hd : DeclsOk baseDecls h) : DeclsOk baseDecls h' :=
+  DeclsOk_grow_ground hg hsat hd (fun τr mname decl hdecl n hEq => by
+    subst hEq
+    exact absurd hdecl (by rw [declFor_baseDecls_cls]; simp))
 
 theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   intro τr mname d hd
@@ -448,22 +546,10 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   | sym =>
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
-  -- The class arm (F1b): `baseDecls` has one key, `"Integer"`, and `tyClassNames`
-  -- has just subtracted it from the class arm's range — so a class type has no
-  -- declarations in the base table by construction, and this case is a refutation
-  -- rather than an obligation. That is the whole point of the subtraction.
-  | cls n =>
-    refine absurd hd ?_
-    unfold declFor
-    simp only [tyClassNames]
-    by_cases hg : groundClassNames.contains n = true
-    · rw [if_pos hg]; simp
-    · rw [if_neg hg]
-      have hne : ("Integer" == n) = false := by
-        by_cases he : "Integer" = n
-        · exact absurd (by subst he; simp [groundClassNames]) hg
-        · simpa using he
-      simp [declOf?, declsFor, baseDecls, hne]
+  -- The class arm (F1b): refuted by `declFor_baseDecls_cls` below — `baseDecls` has
+  -- one key, `"Integer"`, and `tyClassNames` subtracts it from the class arm's
+  -- range, so a class type has no declarations in the base table by construction.
+  | cls n => exact absurd hd (by rw [declFor_baseDecls_cls]; simp)
 
 end Static
 end Proof

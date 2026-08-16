@@ -4974,3 +4974,79 @@ the answer's type be read in the **post** heap — which is also what removes `C
 `Proof/` only; `--check` cannot move. `check-proofs.sh` green across all four sections and
 axiom-clean, `heapOkB` and `saturatedB` true at the booted heap; `alloc_probe.lean` exit 0; tier-0
 flat at 992 agree, 0 disagree.
+
+## L146 — conformance stops being heap-indexed, and `DeclsOk` survives an allocation
+
+The producer's bill item 4. L142 stated it as *`ConformsAt` cannot describe an allocating builtin*,
+which is true and is the second half; the first half is what L145 turned up — `ConformsAt`'s heap
+index is what makes the invariant demand a **backward** type transport, and a growing heap has none.
+Both are one change of statement.
+
+### The change
+
+```lean
+-- before                                    -- after
+def ConformsAt (h : Heap) (τr : Ty) …        def ConformsAt (τr : Ty) …
+  ∀ recv args, ValueTy h recv τr → …           ∀ (m : Machine) recv args,
+    ∃ w, ValueTy h w d.ret ∧                     ValueTy m.heap recv τr → …
+      ∀ m, Builtins.run bid recv args m          ∃ w, ValueTy m.heap w d.ret ∧
+             = .ok w m                             Builtins.run bid recv args m = .ok w m
+```
+
+The machine moves from *inside* the existential to the front of the statement. That is all, and it
+was hiding in plain sight: the old form had a heap-**uniform** conclusion (`∀ m`) under a
+heap-**dependent** hypothesis (`ValueTy h recv τr`), and the asymmetry was the whole cost.
+
+**Nothing else moved.** `entryOk_int`'s proof changes by one line (`intro m` earlier, `hrun a y m`
+instead of `fun m => hrun a y m`) because every hypothesis it used was a `valueTy_int` inversion, and
+those are heap-independent. That is the evidence the index was carrying nothing: if a witness had
+really needed the invariant's heap, this would have broken it.
+
+### What the index was costing
+
+* **~~`ConformsAt_defineMethod`~~ is withdrawn, not repaired.** Conformance mentions no heap, so a
+  heap-writing step has nothing to re-establish. It is worth recording what that lemma *was*: the
+  only consumer of `TypeAgree`'s backward direction — the one L143 had to supply specially via
+  `TypeAgree.of_equalities`, and the one no growing step can supply. **Deleting the clause deleted
+  the obligation.**
+* `DeclsOk`'s heap-dependent half is now exactly `ResolvesTo`, which is what L140's split *said* it
+  was. L140 achieved the split for preservation; this achieves it for the statement.
+
+### `DeclsOk` across an allocating step
+
+With conformance out of the way, `DeclsOk_grow` is resolution and nothing else, and its side
+condition is the one L145 predicted in the form `ResolvesTo_classOf` consumes:
+
+> every receiver the new heap types was already typed by some receiver of the same dispatch class.
+
+That is exactly what a *fresh inhabitant of a declared class* forces, and it is honest: resolution is
+a fact about a class, so a new object needs no new proof unless its class is new too. Note the
+hypothesis that is **absent** — nothing about the backward type transport.
+
+`DeclsOk_grow_ground` discharges it unconditionally when no declared type is a class type, via two
+new inversions: a typed `.ref` has a *class* type (`valueTy_ref_cls`, so a ground-typed declaration
+can only ever be about immediates) and an immediate's type is heap-independent
+(`valueTy_immediate`). And `declsOk_baseDecls_grow` applies that to the table the model actually
+carries — `declFor_baseDecls_cls` says `baseDecls` declares nothing at a class type, which is
+`tyClassNames`' ground-name subtraction (L141) paying off a second time.
+
+**So the producer's `DeclsOk` obligation is discharged today, for the table as it stands** — and the
+reason it discharges is the reason the producer lands inert: nothing declares a row for a user class
+yet. The moment one does, `DeclsOk_grow` is the theorem and its side condition is real work.
+`declFor_baseDecls_cls` was also pulled out of `tableOk_declsOk`'s class arm, which now cites it
+instead of repeating the computation.
+
+### What is left of item 4
+
+The half L142 named: `ConformsAt`'s conclusion still says the machine comes back **unchanged**, so an
+allocating builtin — `Class#new`, and most of F6's ~128 String/Array/Hash/Regexp rows — still cannot
+be a conforming entry. That is now a *conclusion*-side change only, and the pieces it needs are all
+in place: `PlainGrow` for what the step leaves alone, `typeAgree_of_plainGrow` for the value
+transport, `declsOk_baseDecls_grow` for the invariant. `entry_dispatch` is where it lands, because
+the two branches produce different step results.
+
+### Verification
+
+`Proof/` only; `--check` cannot move. `check-proofs.sh` green, axiom-clean (the audit now names
+`declsOk_baseDecls_grow` too), `heapOkB` and `saturatedB` true at the booted heap;
+`alloc_probe.lean` exit 0; tier-0 flat at 992 agree, 0 disagree.
