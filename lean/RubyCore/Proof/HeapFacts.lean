@@ -82,6 +82,50 @@ theorem classPayload?_oob (h : Heap) (k : ObjId) (hb : ¬ k < h.objs.size) :
 def clsShape (c : ClassPayload) : List ObjId × List ObjId × Option ObjId :=
   (c.prepends, c.includes, c.superclass)
 
+/-- **`defineMethod` leaves every class's *constant* table alone** (L156), and so
+    does the constant lookup built on it.
+
+    A separate lemma rather than a fifth component of `clsShape`: `ShapeAgree` is
+    `ancestors_congr`'s **hypothesis**, so widening it would oblige every caller to
+    supply agreement about a field the ancestor walk never reads. The proof is
+    `shape_defineMethod`'s, field for field — which is the argument for keeping the
+    two separate rather than merging them.
+
+    `ClassOk` is the consumer: the reopen branch of `enterClassBody` is chosen by
+    `constOwn`, so the clause promising that branch has to survive a `def` — and a
+    `def` inside the very class body being reopened is the case that makes it
+    non-trivial. -/
+theorem consts_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).map ClassPayload.consts
+      = (h.classPayload? k).map ClassPayload.consts := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+/-- `constOwn` reads a class's own constant table and nothing else, so it inherits
+    `consts_defineMethod` directly. -/
+theorem constOwn_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
+    (md : MethodDef) :
+    constOwn (defineMethod h cls name md) k n = constOwn h k n := by
+  have hc := consts_defineMethod h cls k name md
+  unfold constOwn
+  cases h1 : (defineMethod h cls name md).classPayload? k <;>
+    cases h2 : h.classPayload? k <;>
+    rw [h1, h2] at hc <;> simp_all
+
 /-- **`defineMethod` changes `methods` and nothing else.**
 
     Proof note, because it cost time: `Heap.set` is `Array.set!`, so the `k = cls`

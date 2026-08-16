@@ -341,6 +341,11 @@ theorem getD_set!_self (a : Array Frame) (i : Nat) (f : Frame) (h : i < a.size) 
     (a.set! i f).getD i default = f := by
   simp [Array.getD, h]
 
+/-- The pushed frame reads back at the id it was given. -/
+theorem getD_push_lt_self (a : Array Frame) (f : Frame) :
+    (a.push f).getD a.size default = f := by
+  simp [Array.getD, Array.size_push]
+
 theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
     (a.push f).getD j default = a.getD j default := by
   simp only [Array.getD]
@@ -451,6 +456,42 @@ theorem FramesOk.mem_lt {hp : Heap} {frames : Array Frame} :
       rcases List.mem_cons.mp hg with rfl | hm
       · exact h.1
       · exact ih h.2.2.2 g hm
+
+/-- **A pushed frame disturbs no frame already on the stack** (L156). `FramesOk`
+    reads frames by id and every stacked id is already in bounds
+    (`FramesOk.mem_lt`), so `getD` answers the same object either side of a
+    `push`. This is what `class'` and `enterUserMethod` both need, and it is the
+    frames-side counterpart of `BottomObj_push`. -/
+theorem FramesOk.push {hp : Heap} {frames : Array Frame} {f : Frame} :
+    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk hp frames fids Γs →
+      FramesOk hp (frames.push f) fids Γs := by
+  intro fids
+  induction fids with
+  | nil => intro Γs h; cases Γs with
+    | nil => exact trivial
+    | cons _ _ => exact absurd h (by simp [FramesOk])
+  | cons fid rest ih =>
+    intro Γs h
+    cases Γs with
+    | nil => exact absurd h (by simp [FramesOk])
+    | cons Γ Γs' =>
+      obtain ⟨hlt, hgt, hfc, htl⟩ := h
+      exact ⟨by rw [Array.size_push]; exact Nat.lt_succ_of_lt hlt, hgt,
+        by rw [getD_push_lt _ _ _ hlt]; exact hfc, ih htl⟩
+
+/-- **The toplevel mode really does mean a single activation.** `FramesOk`'s
+    `_, _ => False` arm forces the frame stack and the environment stack to have
+    equal length, so an empty environment tail is a singleton frame stack — which
+    with `BottomObj` is what pins the definee to `Object`. -/
+theorem FramesOk.stack_singleton {hp : Heap} {frames : Array Frame}
+    {fids : List FrameId} {Γ : Env} (h : FramesOk hp frames fids [Γ]) :
+    ∃ fid, fids = [fid] := by
+  cases fids with
+  | nil => exact absurd h (by simp [FramesOk])
+  | cons fid rest =>
+    cases rest with
+    | nil => exact ⟨fid, rfl⟩
+    | cons a b => exact absurd h.2.2.2 (by simp [FramesOk])
 
 /-! ### 1.2a `BottomObj` transports
 

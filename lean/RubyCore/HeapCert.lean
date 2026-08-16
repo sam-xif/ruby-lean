@@ -1,4 +1,5 @@
 import RubyCore.Interp.Support
+import RubyCore.Types.Decls
 
 /-!
 # The heap certificate — `HeapOk` as a `Bool`
@@ -76,6 +77,24 @@ def noHookB (h : Heap) : Bool :=
   (List.range h.objs.size).all fun k =>
     (h.classPayload? k).isNone || (lookup h (.ref k) "method_added").isNone
 
+/-- Executable form of `ClassOk` (L156): every reopenable class name is bound, in
+    `Object`'s **own** constant table, to a class object that is not a module.
+
+    Those are the three tests `enterClassBody` applies before it takes the reopen
+    branch, and computing them is what makes `reopenableClasses` a table one can add
+    a row to rather than a promise one has to re-argue. `constOwn` rather than
+    `constLookupFrom` on purpose: the interpreter's reopen detection is deliberately
+    *not* the cref walk (`Interp/Dispatch.lean:228`), and a certificate that decided
+    the wrong lookup would be worse than none. -/
+def classOkB (h : Heap) : Bool :=
+  Types.reopenableClasses.all fun n =>
+    match constOwn h Boot.objectId n with
+    | some (.ref k) =>
+      match h.classPayload? k with
+      | some cp => !cp.isModule
+      | none => false
+    | _ => false
+
 /-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook`, since L148
     `Saturated`, and since L151 `StrClsOk`.
 
@@ -93,6 +112,9 @@ def heapOkB (h : Heap) : Bool :=
     noHookB h &&
     saturatedB h &&
     (h.classPayload? Boot.stringId).isSome &&
-    (className h Boot.stringId == "String")
+    (className h Boot.stringId == "String") &&
+    -- L156's sixth conjunct, folded in for the same reason L148 folded `saturatedB`:
+    -- one certificate, decided once, rather than a second probe to keep in step.
+    classOkB h
 
 end RubyCore

@@ -5550,3 +5550,80 @@ Verified inert: `--check` **byte-identical** over the 1,227 cached bootstraptest
 1,189 unknown / 0 reject) against the pre-commit binary — owed here rather than argued, because
 `Types/Core.lean` *is* linked into `rubycore`. `check-proofs.sh` green and axiom-clean; tier-0
 **992 agree, 0 disagree**.
+
+## L156 — reopening a class, and the first accepted program with a class body in it
+
+The rung `homebrew/HANDOFF.md` priced at "five to eight commits" for `class C; end`, taken by the
+**branch it did not separate out**. `enterClassBody` has three (`Interp/Dispatch.lean:236`):
+
+| branch | condition | what it does | can `Inv` survive it? |
+|---|---|---|---|
+| **reopen** | `constOwn defmod name` is a class of matching kind | `pushFrame`, **no heap write at all** | yes — this commit |
+| `TypeError` | it is something else | `raiseErr`, a `.jump` | no: `CtlOk` refuses `.jump` outright |
+| allocate | it is absent | `alloc` + `constSetIn` + `eigenclassOf` | not yet: `PlainGrow`'s *nothing became a class* |
+
+HANDOFF's four-item list is **entirely about the third**, and reading the second and third against
+the first is what showed the first is one commit rather than a share of eight: the reopen branch
+writes no heap, so all five heap conjuncts carry across by `rfl` and what remains is a frame push.
+This is L151's lesson at a different rung — *when a rung is blocked, ask what else satisfies the same
+obligation*. The obligation was "put a class body in the fragment"; reopening satisfies it and skips
+the allocation side entire.
+
+**What the rule is, and why each of its three side conditions names a branch rather than a taste.**
+`infer` admits `.class' name none body` when `top` (L155 — the reopen lookup is the *definee's own*
+constant table, and `Object`'s is the only one `Inv` describes), when there is no explicit superclass
+(which would evaluate first through `classDefK` and then have to *match*, a `raiseErr` if it does
+not), and when `name ∈ reopenableClasses`. The type is the **body's** type and the environment is the
+caller's, because the class body runs in its own frame and `frameK` hands its value back.
+
+* **`reopenableClasses` is a table, and every row is a proof obligation** — `baseDecls`'s discipline
+  applied to a second kind of promise. `ClassOk` is what `Inv` carries, `classOkB` is what the
+  certificate decides, and widening the list is a row plus a `decide`. `String` is the one entry
+  because it is the only ground class the fragment can currently *produce a value of* (L151), so it
+  is the only one where reopening will eventually buy a call site.
+* **`ClassOk` is the D10-shaped program-indexed clause, in the only form that is preserved.** Not
+  *absent or a non-module class* — HANDOFF proposed that disjunction and it is right that "absent" is
+  not preserved — but **present and a non-module class**, which is what the reopen branch needs and
+  what every step in the fragment leaves alone. Dropping the disjunct is what makes `ClassOk_grow`
+  and `ClassOk_defineMethod` one-liners.
+* **The `defineMethod` case is the one that is not free, and it is the case that matters**: a `def`
+  in the body of the very class being reopened. `constOwn` reads `consts`, `defineMethod` writes
+  `methods`, and `clsShape` does not carry `consts` — so `consts_defineMethod`/`constOwn_defineMethod`
+  are new. Deliberately *not* a fifth field of `clsShape`: `ShapeAgree` is `ancestors_congr`'s
+  **hypothesis**, so widening it would oblige every caller to supply agreement about a field the
+  ancestor walk never reads.
+* `isModule` needed no new lemma — `clsName_defineMethod` already carries it, because L124 put it
+  there for the anonymous-class fallback. Reused rather than reproved, which is the L154 habit
+  (read what a hypothesis already gives you before writing another).
+
+**The consecution case is eleven lines**, and the shape is worth reading as the measurement L155 was
+for: `infer_class_inv` hands back the mode, `FramesOk.stack_singleton` turns it into a singleton frame
+stack, `BottomObj_curFrame` turns that into `defmod = Object`, `ClassOk` collapses the three-way
+branch to `pushFrame`, and `KontOk.frameK` — which has existed since P0a and until now only ever
+popped a *method* — types the class body's return with no change at all.
+
+**Inert on the corpus, not inert in capability, and the distinction is the finding.** `--check` over
+the 1,227 cached bootstraptest ASTs is **byte-identical** (36 accept / 1,189 unknown / 0 reject):
+none of those programs reopens a core class. So the rung is witnessed by `egClassBody` in
+`StaticSoundness.lean` instead —
+
+```ruby
+class String
+  def shout
+    1
+  end
+end
+```
+
+— which is **the first program the checker accepts that has a class body in it**, and therefore the
+first whose accepting run passes through a frame that is not the toplevel one. L151's lesson said an
+accept-rate number flatters and you should report what the programs are; its converse is that a *flat*
+number can hide a capability, and the answer is the same — put the program in the build.
+
+What it still does not buy is the call: `"hi".shout` needs a row for `String#shout`, a row obliges
+`EntryOk`, and `EntryOk` can today only be witnessed by a **builtin**. That is constraint 1, it is the
+next commit, and this rung is what makes it reachable — a public user method on a class the fragment
+can produce a value of, which is exactly what a toplevel `def` (private, on `Object`) cannot be.
+
+`check-proofs.sh` green and axiom-clean, `heapOkB` — now including `classOkB` — still true at the
+prelude-booted heap; tier-0 **992 agree, 0 disagree**.

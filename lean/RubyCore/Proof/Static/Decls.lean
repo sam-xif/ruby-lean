@@ -609,6 +609,89 @@ theorem StrClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.stringId name md]; exact hs.1,
    by rw [className_defineMethod h cls Boot.stringId name md]; exact hs.2⟩
 
+/-! ### The reopen promise
+
+`ClassOk` is `Inv`'s **fifth** heap conjunct (L156) and the first that is indexed
+by something the *program* chooses rather than by a boot id. It is the D10-shaped
+program-indexed clause `HANDOFF.md` §What is left item 4 asked for, in the only
+form that is preserved: not *absent or a class* — "absent" is falsified by the
+very step that would need it — but **present and a non-module class**, which every
+step in the fragment leaves alone.
+-/
+
+/-- **Every reopenable class name really names a reopenable class**: `Object`'s own
+    constant table binds it to a class object that is not a module.
+
+    Those are exactly the three tests `enterClassBody` applies before `pushFrame`
+    (`Interp/Dispatch.lean:236–246`), and stating them as one clause is what lets
+    the `class'` consecution case be a rewrite rather than a case analysis over
+    branches it must then refute one at a time.
+
+    The `isModule = false` conjunct is not redundant with being a class: a
+    `ClassPayload` describes modules too, and `enterClassBody` compares the flag
+    against the head keyword. A `module M` reopened as `class M` is a `TypeError`,
+    which is a `.jump`, which `CtlOk` refuses — so the flag has to be pinned here
+    rather than derived. -/
+def ClassOk (h : Heap) : Prop :=
+  ∀ n ∈ reopenableClasses, ∃ k cp,
+    constOwn h Boot.objectId n = some (.ref k) ∧
+    h.classPayload? k = some cp ∧ cp.isModule = false
+
+/-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
+    computes, the invariant quantifies, and this is the one place they meet. -/
+theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
+  intro n hn
+  have := List.all_eq_true.mp hb n hn
+  revert this
+  cases hc : constOwn h Boot.objectId n with
+  | none => simp
+  | some v =>
+    cases v with
+    | ref k =>
+      cases hp : h.classPayload? k with
+      | none => simp [hc, hp]
+      | some cp =>
+        intro hm
+        simp only [hc, hp, Bool.not_eq_true'] at hm
+        exact ⟨k, cp, rfl, hp, hm⟩
+    | _ => simp [hc]
+
+/-- **`ClassOk` survives an allocating step**, and it needs nothing but
+    `PlainGrow`'s third clause: `constOwn` is `classPayload?` composed with a
+    lookup in `consts`, and `PlainGrow` pins `classPayload?` at *every* id. That is
+    the same one-line argument `StrClsOk_grow` makes, for the same reason. -/
+theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hc : ClassOk h) :
+    ClassOk h' := by
+  intro n hn
+  obtain ⟨k, cp, h1, h2, h3⟩ := hc n hn
+  exact ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
+    by rw [hg.payload]; exact h2, h3⟩
+
+/-- **And a `def`** — including a `def` in the body of the very class being
+    reopened, which is the case that makes the clause worth carrying rather than
+    re-deriving. `defineMethod` writes `methods`; `constOwn` and `isModule` read
+    neither. -/
+theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hc : ClassOk h) : ClassOk (defineMethod h cls name md) := by
+  intro n hn
+  obtain ⟨k, cp, h1, h2, h3⟩ := hc n hn
+  refine ⟨k, ?_⟩
+  rw [constOwn_defineMethod h cls Boot.objectId name n md]
+  -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
+  -- the witness is the *new* payload, and what carries over is its `isModule`.
+  have hsh := shape_defineMethod h cls k name md
+  cases hk : (defineMethod h cls name md).classPayload? k with
+  | none => rw [hk, h2] at hsh; exact absurd hsh (by simp)
+  | some cp' =>
+    refine ⟨cp', h1, rfl, ?_⟩
+    -- `isModule` is not in `clsShape`, but it *is* in `clsName_defineMethod` — L124
+    -- put it there because the anonymous-class fallback renders by it. Reused rather
+    -- than reproved.
+    have hnm := clsName_defineMethod h cls k name md
+    rw [hk, h2] at hnm
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm
+    rw [hnm.2]; exact h3
+
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is
     its `defineMethod` case. `DeclsOk_defineMethod` is the general version of the

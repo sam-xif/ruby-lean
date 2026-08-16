@@ -100,7 +100,12 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     (show StrClsOk (Machine.init p).heap from
       ⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
        (by rfl : className Boot.initHeap Boot.stringId = "String")⟩),
-    -- L155's fifth conjunct, and the only one that is not about the heap: the
+    -- L156's fifth heap conjunct: `Object`'s constant table binds every reopenable
+    -- class name to a non-module class. A literal heap, so `decide` — and the reason
+    -- `reopenableClasses` is a table is that this is what a row costs.
+    (show ClassOk (Machine.init p).heap from
+      classOkB_sound (by decide : classOkB Boot.initHeap = true)),
+    -- L155's sixth conjunct, and the only one that is not about the heap: the
     -- outermost activation's definee is `Object`. `Machine.init` builds exactly
     -- one frame and it is the toplevel one, so this is a computation on a literal.
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
@@ -150,6 +155,30 @@ example : check egIf = .accept := by
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
   check_sound (by simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf])
+
+/-- **A reopened class carrying a user-defined method** (L156):
+
+        class String
+          def shout
+            1
+          end
+        end
+
+    The first program the checker accepts that has a **class body** in it, and
+    therefore the first whose accepting run passes through a frame that is not the
+    toplevel one. Kept as a checked fact rather than a comment because the corpus
+    cannot witness it: `--check` over the 1,227 bootstraptest ASTs is byte-identical
+    across L156, since none of those programs reopens a core class. The rung is
+    inert *on the corpus* and not inert *in capability*, and that distinction is
+    only visible if something in the build asserts the capability. -/
+def egClassBody : Expr :=
+  .class' "String" none (.def' "shout" [] (.int 1))
+
+example : check egClassBody = .accept := by simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses]
+
+theorem egClassBody_safe :
+    ∀ r, ReachableResult (Machine.init egClassBody) r → ¬ typeStuck r :=
+  check_sound (by simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses])
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/

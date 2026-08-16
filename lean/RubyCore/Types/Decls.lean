@@ -155,6 +155,27 @@ def baseDecls : Decls :=
      -- one. Check both before adding a row, not just the first.
      ("zero?", { params := [], ret := .bool })])]
 
+/-! ## The reopenable classes
+
+`class C … end` takes one of three branches in `enterClassBody`
+(`Interp/Dispatch.lean:236`): **reopen** if `constOwn defmod name` answers a class
+object of matching kind, **`TypeError`** if it answers anything else, and
+**allocate** if it answers nothing. Only the first is a step the invariant can
+survive today — the third writes a class into the heap, which is what
+`PlainGrow`'s *nothing became a class* clause forbids, and the second is a `.jump`,
+which `CtlOk` refuses outright.
+
+So the rule is admissible for a name the invariant can *promise* takes the reopen
+branch, and this is that list. Every entry is a proof obligation of exactly the
+same kind as a `baseDecls` row — `ClassOk` (`Proof/Static/Decls.lean`) is what the
+invariant carries and `classOkB` is what the certificate decides — and widening it
+is a table row plus a `decide`.
+
+`String` is the one entry, and it is not arbitrary: it is the only ground class
+the fragment can currently *produce a value of* (`.str`, L151), so it is the only
+one for which reopening buys a call site. -/
+def reopenableClasses : List String := ["String"]
+
 /-- The declarations in force while checking `p`.
 
     A function of the program, and constant today: no construct in `infer`'s

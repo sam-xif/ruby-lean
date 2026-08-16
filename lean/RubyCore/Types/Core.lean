@@ -221,6 +221,30 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
       | some _ => some (.sym, Γ)
       | none => none
     else none
+  -- **Reopening a class** (F1b.6, L156). Three restrictions, and each one names a
+  -- branch of `enterClassBody` the invariant cannot survive rather than a matter of
+  -- taste:
+  --
+  -- * `top` — the reopen lookup is `constOwn m.currentFrame.defmod name`, the
+  --   definee's *own* constant table, and `Object`'s is the only one `Inv`
+  --   describes (`BottomObj`, L155).
+  -- * `sup.isNone` — an explicit superclass evaluates first (`classDefK`) and then
+  --   has to *match*, and a mismatch is `raiseErr`.
+  -- * `reopenableClasses.contains name` — the promise that the constant is there
+  --   and is a non-module class, so the step is neither an allocation nor a
+  --   `TypeError`. `Types/Decls.lean` says why that is a table.
+  --
+  -- The body is checked in the **empty** environment at `top := false`, because
+  -- `enterClassBody` pushes a frame with no locals and a definee that is the class.
+  -- The value is the body's: the frame pops through `frameK` and the body's value
+  -- is what the caller sees, so the type is the body's and the environment is the
+  -- caller's, untouched.
+  | .class' name sup body =>
+    if top ∧ sup.isNone ∧ reopenableClasses.contains name then
+      match infer D [] body with
+      | some (τ, _) => some (τ, Γ)
+      | none => none
+    else none
   | .seq es => inferSeq D Γ es top
   | .if' c t els =>
     match infer D Γ c top with

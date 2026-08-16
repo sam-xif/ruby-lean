@@ -80,7 +80,8 @@ set_option maxRecDepth 100000
     `TableOk` and `NoHook` when the invariant started needing it for `DeclsOk_grow`,
     and it belongs here for the same reason the other two do — it is a fact about the
     heap, decided by the same certificate, at the same point. -/
-def HeapOk (h : Heap) : Prop := TableOk h ∧ NoHook h ∧ Saturated h ∧ StrClsOk h
+def HeapOk (h : Heap) : Prop :=
+  TableOk h ∧ NoHook h ∧ Saturated h ∧ StrClsOk h ∧ ClassOk h
 
 /-- The bare boot heap satisfies it — `TableOk` by `tableOk_initHeap`'s walk of
     the method table, `NoHook` by `rfl`, and `Saturated` by `decide`: the boot heap is
@@ -89,7 +90,7 @@ def HeapOk (h : Heap) : Prop := TableOk h ∧ NoHook h ∧ Saturated h ∧ StrCl
     difficulty of F0 is the other end. -/
 theorem heapOk_initHeap : HeapOk Boot.initHeap :=
   ⟨tableOk_initHeap, noHookB_sound (by decide), saturatedB_sound (by decide),
-   ⟨by decide, by rfl⟩⟩
+   ⟨by decide, by rfl⟩, classOkB_sound (by decide)⟩
 
 /-! ### 1.1 Initiation at an arbitrary heap
 
@@ -106,9 +107,9 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
   -- F1a: the invariant's heap clause is `DeclsOk`, and `HeapOk`'s `TableOk` half
   -- is its concrete witness for `baseDecls`. That is the whole reason F0 needed no
   -- restatement — `heapOkB` still decides exactly what it decided before.
-  -- L155's fifth conjunct is heap-independent, so it comes out the same here as at
+  -- L155's sixth conjunct is heap-independent, so it comes out the same here as at
   -- `Machine.init`: `initOn` builds one frame and it is the toplevel one.
-  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2,
+  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2.1, hh.2.2.2.2,
     (by simp [Machine.initOn, BottomObj]), [], [], ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
@@ -153,11 +154,11 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩, h8⟩ := hb
   exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3,
       intResolvesB_sound hz⟩,
     noHookB_sound hnh, saturatedB_sound h5,
-    ⟨h6, by simpa using h7⟩⟩
+    ⟨h6, by simpa using h7⟩, classOkB_sound h8⟩
 
 /-- **F0, certificate form.** A checked `Bool` about the machine in hand plus an
     accepting `check` gives the invariant — for *any* start configuration, so in
@@ -230,7 +231,11 @@ theorem heapOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
    Saturated_defineMethod hh.2.2.1 cls name md,
    -- L151's fourth, and the same argument once more: `setClassPayload` rewrites the
    -- method table and leaves the payload a `.cls` with the name it had.
-   StrClsOk_defineMethod hh.2.2.2⟩
+   StrClsOk_defineMethod hh.2.2.2.1,
+   -- L156's, and the case that makes it worth stating: a `def` in the body of
+   -- the very class being reopened. `constOwn` reads `consts`; `defineMethod` writes
+   -- `methods`.
+   ClassOk_defineMethod hh.2.2.2.2⟩
 
 /-! ### 3.1 Carrying it along a run -/
 

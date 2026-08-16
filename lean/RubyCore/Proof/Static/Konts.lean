@@ -168,7 +168,7 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
     `Boot.stringId`. See its own docstring for why the join belongs in the
     invariant rather than at the use site.
 
-    **`BottomObj` is the fifth conjunct** (L155), and it is the only one that is
+    **`BottomObj` is the sixth conjunct** (L155), and it is the only one that is
     not about the heap: *the outermost activation's definee is `Object`.* It is
     what turns `infer`'s `top` flag from a decoration into a fact — `CtlOk` reads
     the mode as `Γs.isEmpty`, `FramesOk` makes that a singleton frame stack, and
@@ -177,7 +177,7 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
     establishes it and every step preserves it. -/
 def Inv (D : Decls) (m : Machine) : Prop :=
   DeclsOk D m.heap ∧ NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
-    BottomObj m.frames m.stack ∧
+    ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     ∃ Γ Γs, FramesOk m.heap m.frames m.stack (Γ :: Γs) ∧ CtlOk D Γ Γs m
 
 /-! ### Inversions used by the send cases -/
@@ -230,6 +230,27 @@ theorem infer_def_inv {D : Decls} {Γ : Env} {name : String} {params : List Para
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       exact ⟨h.1.symm, h.2.symm, List.isEmpty_iff.mp hp, h1, h2⟩
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Inversion for the **class-reopen** rule (L156). The three side conditions come
+    back out as separate facts because the consecution case spends them in three
+    different places: `top` against `BottomObj`, `sup = none` against `evalExpr`'s
+    own match, and membership against `ClassOk`. -/
+theorem infer_class_inv {D : Decls} {Γ : Env} {name : String} {sup : Option Expr}
+    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool}
+    (h : infer D Γ (.class' name sup body) top = some (τ, Γ')) :
+    top = true ∧ sup = none ∧ reopenableClasses.contains name = true ∧ Γ' = Γ ∧
+      ∃ Γ'', infer D [] body = some (τ, Γ'') := by
+  simp only [infer] at h
+  split at h
+  · next hc =>
+    obtain ⟨ht, hs, hm⟩ := hc
+    split at h
+    · next τb Γb hb =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨ht, Option.isNone_iff_eq_none.mp hs, hm, rfl, Γb, hb⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -291,31 +312,31 @@ now gone.
 theorem inv_eval {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hinf : infer D Γ e Γs.isEmpty = some (τ, Γ'))
     (hk : KontOk D m.heap (Γ' :: Γs) τ m.kont) :
     Inv D (withCtl m (.eval e)) :=
-  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hcls, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {v : Value}
     {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hv : ValueTy m.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m (.value v)) :=
-  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hcls, hbot, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hinf : infer D Γ e Γs.isEmpty = some (τ, Γ'))
     (hk : KontOk D m.heap (Γ' :: Γs) τ (k :: m.kont)) :
     Inv D (withKont m (.eval e) k) :=
-  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hcls, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
     (L151). This is the *value* half of a producer's obligation — the half
@@ -387,7 +408,7 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
 theorem inv_grow_value {D : Decls} {m m' : Machine} {Γ : Env} {Γs : List Env}
     {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
@@ -396,6 +417,7 @@ theorem inv_grow_value {D : Decls} {m m' : Machine} {Γ : Env} {Γs : List Env}
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
   refine ⟨DeclsOk_grow hg hsat ht, NoHook_grow hg hsat hh,
     Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr,
+    ClassOk_grow hg hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot, Γ, Γs, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs)
     rw [hfr, hst]
