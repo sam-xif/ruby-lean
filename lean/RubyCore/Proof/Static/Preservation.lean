@@ -137,7 +137,12 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
     case def' name params body =>
       obtain ⟨rfl, rfl, rfl, hfresh, hha⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
-      have hdo : (curFrame m).defmod = Boot.objectId := by
+      -- L154: the definee is *a class* rather than *`Object`*, which is what makes a
+      -- class-body frame expressible. Every `defineMethod` lemma below is already
+      -- stated `∀ cls`, so the generalization costs nothing here — the equation was
+      -- only ever used to instantiate `NoHook` at the definee, and `NoHook` is now
+      -- quantified over exactly the class objects this predicate names.
+      have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
         cases hst : m.stack with
         | nil => exact absurd hst hf.1
         | cons fid _ =>
@@ -149,20 +154,17 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
       -- `evalExpr`'s hook `match`; `hlkNH` is the invariant's clause, which since L149
       -- also carries `Boot.objectId < objs.size` — preserved because `set!` does not
       -- resize.
-      have hlk : ∀ md : MethodDef,
-          lookup (defineMethod m.heap Boot.objectId name md)
-            (.ref Boot.objectId) "method_added" = none := by
-        intro md
-        rw [lookup_defineMethod _ _ name "method_added" md _ hha'
-          (classOf_defineMethod _ _ _ _ _)]
-        -- L153: `NoHook` is a `∀` over class objects now, so this is one *instance*
-        -- of it — at `Boot.objectId`, which is where a toplevel `def` installs.
-        -- `Object` is a class in any heap the interpreter builds, and `heapOkB`
-        -- decides it; the invariant does not have to say so separately, because the
-        -- clause is vacuous at a non-class id and this branch never runs there.
-        exact hhook.2 Boot.objectId hhook.1
-      have hlkNH : ∀ md : MethodDef, NoHook (defineMethod m.heap Boot.objectId name md) :=
+      have hlkNH : ∀ md : MethodDef,
+          NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
         fun _ => NoHook_defineMethod hhook hha'
+      -- L153/L154: one *instance* of the generalized clause, at the definee the frame
+      -- names. That the definee is a class is `hdo`, and `classPayload?` is unmoved by
+      -- a method-table write.
+      have hlk : ∀ md : MethodDef,
+          lookup (defineMethod m.heap (curFrame m).defmod name md)
+            (.ref (curFrame m).defmod) "method_added" = none := fun md =>
+        (hlkNH md).2 (curFrame m).defmod
+          (by rw [classPayload?_isSome_defineMethod]; exact hdo)
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never
       -- has to be written out, and over `m₀` so the `preludeMode` branch — which
       -- differs only in fields `Inv` does not mention — is discharged by the same
@@ -197,7 +199,7 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
           exact ⟨.sym, rfl, by rw [hko]; exact KontOk.heap_congr hag hk⟩
       -- `hlk` collapses the hook lookup to `none`, after which only the
       -- `preludeMode` `if` remains.
-      simp only [evalExpr, hdm, hdo]
+      simp only [evalExpr, hdm]
       -- `split` would dive into the `visibility` `if`s *inside* the `MethodDef`
       -- literal, which `hres` deliberately abstracts over; case on the one
       -- condition that matters instead.

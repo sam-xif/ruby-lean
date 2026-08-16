@@ -108,7 +108,11 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
   -- restatement — `heapOkB` still decides exactly what it decided before.
   refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2, [], [], ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
+    -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
+    -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
+    -- what that conjunct is for.
     simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
+    exact hh.2.1.1
   · unfold check at hchk
     show CtlOk (declsOf p) [] [] _
     unfold CtlOk

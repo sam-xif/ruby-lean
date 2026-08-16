@@ -5438,3 +5438,59 @@ Checks: check-proofs.sh green and axiom-clean, with the probe now reporting the 
 offenders rather than one `Object` line; three probes exit 0; `--check` **byte-identical** to L152
 over the 1,227 cached ASTs (36 accept / 1,189 unknown / 0 reject) — owed because `HeapCert.lean` is
 linked into `rubycore`, so it was run rather than argued; tier-0 992/0.
+
+## L154 — the frame's definee becomes a predicate, and a class body becomes expressible
+
+`FrameConforms` carried `f.defmod = Boot.objectId`, with a comment saying why: *the definee is
+`Object` for every frame in the fragment (no `class`, no `module`)*. True, and it makes a class-body
+frame **inexpressible** — `enterClassBody` pushes a frame whose `defmod` is the class being opened,
+so no amount of work on `class'` could have produced a machine `FramesOk` accepts. This is the last
+of the four rungs L151 named that is *not* about allocation.
+
+**The replacement is `(h.classPayload? f.defmod).isSome`, and it was found by reading what the
+hypothesis was used for rather than by asking what would generalize.** The equation had exactly one
+consumer — the `def` case, which used it to instantiate `NoHook` at the definee. L153 made `NoHook` a
+quantifier over class objects, so what the `def` case needs of the definee is now precisely *that it
+is a class*, and nothing else. Every other `defineMethod` lemma the case invokes — `DeclsOk`,
+`Saturated`, `StrClsOk`, `TypeAgree` — was already stated `∀ cls` and needed no change at all. The
+two rungs are one move split in half: generalize the clause, then generalize the thing that
+instantiates it.
+
+**It transports for free.** The new conjunct rides on `TypeAgree`'s **third** component — the
+`classPayload?`-isSome agreement that has been there since L141 for `TyClass` — and the bound that
+component needs comes from the clause itself, since `classPayload?` answers `none` out of bounds.
+So `FrameConforms.congr` grows one rewrite and `FramesOk.heap_congr` is untouched.
+
+Two places needed a hand where `simp` had been enough, and both are the same phenomenon — **a
+predicate does not reduce where an equation did**:
+
+* `FramesOk.setLocal`'s definee goal was `show (curFrame m).defmod = Boot.objectId`, closed by
+  definitional unfolding. The `classPayload?` form sits under `setLocal`'s structure-update literal
+  and will not `show`; rewriting backwards through `curFrame m = frames.getD fid default` is what
+  composes. (L137's lesson about structure-update literals, in a new place.)
+* `initiation` needs one `decide` — `Object` is a class at the boot heap — and `initiation_on` needs
+  `NoHook`'s **first conjunct**, which is exactly what that conjunct was added for one rung earlier.
+
+Inert in both artifacts: `--check` byte-identical to L153 (36 accept / 1,189 unknown / 0 reject), and
+no rule, prelude line or front-end file moved. What it buys is not a verdict but a *shape*: the
+invariant can now describe a machine whose current frame is a class body, which is the precondition
+for `class'` having a consecution case at all.
+
+**What is left for `class C; end`, priced by reading rather than by attempting** — the allocation
+side, entire:
+
+1. `TypeAgree`'s first clause relativized to plain receivers. `eigenclassOf` materializes eigenclasses
+   on classes, and `classOf` reads `eigen`, so the clause is **false** as stated for a class that
+   gains one. Only plain receivers ever need it (`ValueTy.congr`), so this is L143's relativization
+   again, one clause along.
+2. A `ClassGrow` relation. `PlainGrow`'s third clause — *nothing anywhere became a class* — is
+   exactly what `class'` violates, and `ancestors_congr` under the weaker relation needs the
+   *no in-bounds object has an edge pointing out of bounds* clause `scripts/ancestors_probe.lean`
+   measures at **0** and nobody has proved.
+3. `enterClassBody` allocates **more than one object**: the class, then `eigenclassOf`'s metaclass
+   chain, which may realize eigenclasses for superclasses too. The transport is not a single `alloc`.
+4. The reopen and `TypeError` branches. `constOwn h defmod name` may answer a non-class, and that
+   branch is `raiseErr` — a `.jump`, which `CtlOk` refuses outright. Ruling it out needs a
+   program-indexed heap clause in the D10 style: *for each class name the program defines, the
+   enclosing namespace's constant of that name is absent or is a non-module class*. Absent is **not**
+   preserved (the step sets it), so the disjunction is the weakest form that is.

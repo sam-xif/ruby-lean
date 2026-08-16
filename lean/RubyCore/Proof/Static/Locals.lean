@@ -259,10 +259,21 @@ def localOf (f : Frame) (x : String) : Value :=
     enclosing scopes (`Machine.lean:322–352`) and nothing about them reduces. -/
 def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
   f.captured = none ∧
-  -- The definee is `Object` for every frame in the fragment (no `class`, no
-  -- `module`). Carried per-frame rather than for the current one only, because
-  -- `frameK` resumes a *caller's* frame and `NoHook` has to survive that.
-  f.defmod = Boot.objectId ∧
+  -- **The definee is a class** (L153's `NoHook` generalization cashed, L154). It
+  -- used to be `f.defmod = Boot.objectId`, which is all a fragment with no `class`
+  -- and no `module` can ever produce — and which makes a class-body frame
+  -- *inexpressible*, since `enterClassBody` pushes a frame whose `defmod` is the
+  -- class being opened.
+  --
+  -- What the `def` case actually needs of the definee is exactly this and no more:
+  -- somewhere to instantiate `NoHook`'s quantifier, so the `method_added` lookup at
+  -- the definee misses. Every other `defineMethod` lemma — `DeclsOk`, `Saturated`,
+  -- `StrClsOk`, `TypeAgree` — is already stated `∀ cls`. Reading what the hypothesis
+  -- was *used for* is what shrank it from an equation to a predicate.
+  --
+  -- Carried per-frame rather than for the current one only, because `frameK` resumes
+  -- a *caller's* frame and `NoHook` has to survive that.
+  (h.classPayload? f.defmod).isSome ∧
   ∀ x τ, envGet? Γ x = some τ → ValueTy h (localOf f x) τ
 
 /-- **Per-frame conformance down the activation stack**, innermost first.
@@ -498,9 +509,14 @@ theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
     · -- `defmod` rides through `setLocal`, which only rewrites `locals`
       have := setLocal_frames hf x v
       rw [this, hcur, getD_set!_self _ _ _ hfl]
-      show (curFrame m).defmod = Boot.objectId
-      have : curFrame m = m.frames.getD fid default := by simp [curFrame, hcur]
-      rw [this]; exact hcf.2.1
+      -- L154: the clause is now `classPayload?` at the definee. `setLocal` rewrites
+      -- `locals` and touches neither `defmod` nor the heap, so it still rides
+      -- through — but the goal no longer reduces by `show`, because the definee is
+      -- under a structure-update literal rather than being a constant.
+      have hcf' : curFrame m = m.frames.getD fid default := by simp [curFrame, hcur]
+      have := hcf.2.1
+      rw [← hcf'] at this
+      exact this
     · intro y σ hg
       have hy : localOf ((m.setLocal x v).frames.getD fid default) y
           = localOf (curFrame (m.setLocal x v)) y := by
@@ -749,7 +765,11 @@ theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
 
 theorem FrameConforms.congr {h h' : Heap} {Γ : Env} {f : Frame}
     (ha : TypeAgree h h') (hc : FrameConforms h Γ f) : FrameConforms h' Γ f :=
-  ⟨hc.1, hc.2.1, fun x τ hg => ValueTy.congr ha (hc.2.2 x τ hg)⟩
+  -- L154's definee clause transports by `TypeAgree`'s **third** component, which was
+  -- already there for `TyClass` — the bound it needs comes from the clause itself,
+  -- since `classPayload?` answers `none` out of bounds.
+  ⟨hc.1, by rw [ha.2.2.1 f.defmod (classPayload?_isSome_lt hc.2.1)]; exact hc.2.1,
+   fun x τ hg => ValueTy.congr ha (hc.2.2 x τ hg)⟩
 
 theorem FramesOk.heap_congr {h h' : Heap} {frames : Array Frame}
     (ha : TypeAgree h h') :

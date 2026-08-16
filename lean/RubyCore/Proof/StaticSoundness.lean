@@ -103,7 +103,11 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     [], [], ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
+    -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
+    -- `Object`, and the clause is now that it is a *class* rather than that it is
+    -- that id — one `decide` at a literal heap.
     simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
+    decide
   · unfold check at h
     show CtlOk (declsOf p) [] [] (Machine.init p)
     unfold CtlOk
