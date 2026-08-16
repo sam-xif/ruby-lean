@@ -5262,3 +5262,79 @@ worth a sentence because the natural assumption is that it would.
 
 Nothing else moved: `check-proofs.sh` green and axiom-clean, all three probes exit 0, tier-0 flat at
 992 agree / 0 disagree. `Proof/` only.
+
+## L151 — a producer at last, and it is the string literal rather than `C.new`
+
+**The accept rate moves for the first time since F0.** `--check` over the 1,227 cached bootstraptest
+ASTs goes **21 accept / 1,204 unknown / 0 reject → 36 accept / 1,189 unknown / 0 reject**: fifteen
+programs, every one of them `unknown → accept`, none the other way. Five rungs of transport and
+invariant work were inert on purpose; this is the first that is not, and the twelfth check is what
+says so rather than an argument.
+
+**The producer is `.str`, and choosing it over `C.new` is the whole content of the commit.**
+`HANDOFF.md` §The next commit named `C.new` and priced it as *a rule plus a consecution case*, with
+everything around it proved. Reading the interpreter against that plan says it is four further rungs,
+none of them the producer:
+
+1. **A class object has no `ValueTy`.** `evalExpr` on `.send (some (.const "C")) "new" [] none`
+   pushes `recvK` and evaluates the receiver first, so the machine passes through
+   `.value (class object)` — and `plainRecv` is **false** on a `.cls` payload, by design, because
+   that is how `entry_dispatch` refutes `invoke`'s `invokeMaybeNew` arm. `CtlOk`'s `.value` case
+   demands a type there and none exists. Typing `C.new` therefore needs a **new `Ty` arm** for class
+   objects before it needs a rule.
+2. **`.new` is a zero-argument send**, and `infer`'s send rule matches exactly `[arg]` while `sigOf`
+   matches exactly `some ([τp], τret)`. Arity generalization touches every rule that reads `sigOf`
+   plus the `recvK`/`argsK` constructors and their consecution cases — plausibly larger than the
+   producer it is in service of.
+3. **`newImpl`'s plain-object branch is guarded by facts about the class**, not about the send:
+   no user `initialize` (else `invoke` intercepts and pushes a frame), no
+   Exception/String/Array/Hash/`Class`/`Module`/`Random`/`Regexp`/payload-core ancestor, no user
+   `self.new` on the eigenclass. Each is heap-dependent, so by this file's own four-times-measured
+   rule they belong in the judgement — a `newableCls` predicate — not at the use site. Note a `def`
+   can falsify it, so `infer`'s `def` rule would owe `name ≠ "initialize"` the way it already owes
+   `name ≠ "method_added"`.
+4. **`class'` is still behind the unproved clause** L149 named (*no in-bounds object has an edge
+   pointing out of bounds*, measured true at 0 edges).
+
+A string literal has none of that. `Builtins.allocStr` is one `Heap.alloc` of
+`{ klass := Boot.stringId, payload := .str s }` — a single non-class allocation, no constant read, no
+send, no dispatch, no continuation. So `plainGrow_alloc` supplies the step and `inv_grow_value`
+(L149) supplies everything else, and the consecution case is **six lines**. That the case is this
+short is the measurement L143–L149 were for.
+
+**What the rule owes, and the one clause it needed.** `infer` types `.str _` at `.cls "String"` — a
+claim about a *name* — while the step allocates an object whose class is the *id* `Boot.stringId`.
+Something must join the two, and the invariant is where it is cheapest: **`StrClsOk`** —
+*`Boot.stringId` is a class, and it is named `"String"`* — is `Inv`'s fourth heap conjunct, the same
+put-the-condition-in-the-judgement move as `NoHook`'s bound (L149) a fifth time. Two halves, and
+neither implies the other: `className` answers `"Object"` at an id that is not a class, so the name
+clause alone is satisfied by an *absent* `String`, while `plainRecv` separately needs the allocated
+object's class to *be* a class. Preserved by `defineMethod` (`setClassPayload` keeps the payload a
+`.cls` with its name) and by `PlainGrow` (which pins `classPayload?` at every id, needing neither the
+bound `NoHook_grow` needs nor saturation), decided by `heapOkB` — which is now eight conjuncts — and
+true at the prelude-booted heap, measured rather than argued.
+
+**`valueTy_alloc_fresh` is stated once for every producer that follows.** It is the *value* half
+`inv_grow_value` deliberately left to the rule — `hv`, read in the **new** heap — and every producer
+owes exactly it, differing only in which `klass` and payload it pushes. Its payload hypothesis is
+three refutations rather than `plainRecv`'s own `match`, and the reason is worth carrying: **a
+`match` written in a statement elaborates to a fresh matcher constant and will not `rw` against the
+one the definition was compiled with.** Case-splitting the payload is the shape that composes, and it
+is what `entry_dispatch` already does with the same three shapes.
+
+**What the fifteen programs are, said plainly because the number flatters.** They are bare or
+near-bare string literals (`?a`, `" "`). The corpus has no richer in-fragment program to offer,
+because the fragment still has no blocks, no `def` body that returns a String and no method call on
+one — so the binding constraint on the accept rate is the *rest* of the fragment, not the producer.
+The rung's value is that the class arm of `Ty`, the `.ref` arm of `valueTy?` and the class arm of
+`declFor` now have an inhabitant at all: `egStr`/`egStrSeq` in `Proof/StaticSoundness.lean` are the
+first safety theorems about a heap the program itself grew, and `egStrSeq` is the first program that
+transports a stored `ValueTy` fact across an allocation rather than across a `rfl` — which is
+L143–L149's arc, run.
+
+**No new rows.** `declFor baseDecls (.cls n) mname = none` (`declFor_baseDecls_cls`), so the produced
+value can be assigned and passed and cannot be a receiver — the "land it inert" discipline
+`HANDOFF.md` asks for, applied to a producer that is not `C.new`. A String row is *not* the obvious
+next step and the reason is a third finding: `ConformsAt` would have to hold for **every** plain
+receiver of a class merely *named* `"String"`, in **every** heap, and `Ty.cls` pins the name without
+pinning the payload — so `String#==` conformance is false as stated, not merely unproved.

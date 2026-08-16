@@ -514,6 +514,42 @@ theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
   rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact hh.1)]
   exact hh.2
 
+/-- **The boot `String` id is a class named `"String"`** (L151), and it is the
+    fourth heap conjunct for the same reason the other three are conjuncts rather
+    than theorems: nothing in the `Heap` *type* forbids a heap where it is false,
+    and no step a program can take makes it false.
+
+    It exists because `infer` types a string literal `.cls "String"` — a claim about
+    a **name** — while the step allocates an object whose class is the **id**
+    `Boot.stringId`. Something has to join the two, and the invariant is where it
+    is cheapest: the alternative is for the producer's consecution case to re-derive
+    it at the use site, which is the trade L142/L143/L147/L149 each priced and each
+    resolved the same way.
+
+    Both halves are needed and neither implies the other: `className` answers
+    `"Object"` at an id that is not a class, so the name clause alone would be
+    satisfied by an *absent* `String`, and `plainRecv` separately requires the
+    allocated object's class to *be* a class. -/
+def StrClsOk (h : Heap) : Prop :=
+  (h.classPayload? Boot.stringId).isSome ∧ className h Boot.stringId = "String"
+
+/-- **`StrClsOk` survives an allocating step**, and unlike `NoHook_grow` it needs
+    neither a bound nor saturation: `PlainGrow` pins `classPayload?` at *every* id
+    (that is exactly what the non-class restriction buys, `lookup_go_grow`'s note)
+    and `className` is a function of it. -/
+theorem StrClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hs : StrClsOk h) :
+    StrClsOk h' :=
+  ⟨by rw [hg.payload]; exact hs.1, by rw [hg.className_eq]; exact hs.2⟩
+
+/-- **And a `def`**, from the same two facts `TyClass_defineMethod` uses. A
+    `defineMethod` at `Boot.stringId` itself rewrites the payload, but
+    `setClassPayload` changes the method table and nothing else, so the class stays
+    a class and keeps its name. -/
+theorem StrClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hs : StrClsOk h) : StrClsOk (defineMethod h cls name md) :=
+  ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.stringId name md]; exact hs.1,
+   by rw [className_defineMethod h cls Boot.stringId name md]; exact hs.2⟩
+
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is
     its `defineMethod` case. `DeclsOk_defineMethod` is the general version of the

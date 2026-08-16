@@ -122,6 +122,19 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   | .tru => some (.bool, Γ)
   | .fls => some (.bool, Γ)
   | .nil => some (.nilT, Γ)
+  -- **The first producer of a class-typed value** (F1b.3, L151). A string
+  -- literal allocates a fresh plain `String` (`Builtins.allocStr`), so this is
+  -- the one construct that inhabits `Ty.cls` in a *single* step, with no
+  -- constant read, no send and no dispatch — which is why it is the producer
+  -- that landed rather than `C.new` (`homebrew/HANDOFF.md` §The next commit
+  -- costed that one and it needs four further rungs; see L151's note).
+  --
+  -- The name is the literal `"String"` rather than anything read from the heap
+  -- because `infer` is a pure function of the program. Tying it to the object
+  -- the step really allocates is `Inv`'s job, and the clause that does it is
+  -- `StrClsOk` — *the boot `String` id is a class named `"String"`* — which is
+  -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound (L149).
+  | .str _ => some (.cls "String", Γ)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ))
   | .vasgn .lvar x rhs =>
     match infer D Γ rhs with

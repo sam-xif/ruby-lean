@@ -54,6 +54,13 @@ def main : IO UInt32 := do
     -- also reports the *false* route (descent in `ObjId`); here it is one line,
     -- because `heapOkB` now includes it and this probe is that Bool's report.
     IO.println s!"Saturated:\n  saturatedB = {saturatedB h}"
+    -- L151's fourth clause, the producer's: a string literal is typed `.cls "String"`
+    -- by name while the step allocates at the id `Boot.stringId`. Reported as two
+    -- lines because the two halves fail differently — an absent `String` satisfies
+    -- the name clause on its own, since `className` answers `"Object"` out of bounds.
+    IO.println s!"StrClsOk:\n  String is a class = \
+{(h.classPayload? Boot.stringId).isSome}\n  className String = \
+{className h Boot.stringId}"
     let ok := heapOkB h
     IO.println s!"\nheapOkB (prelude-booted): {ok}"
     return if ok then 0 else 1

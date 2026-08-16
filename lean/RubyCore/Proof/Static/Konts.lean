@@ -139,9 +139,15 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
 
     It is *not* a fragment restriction. A program cannot make it false — nothing in
     the object model builds a cyclic `include` — but nothing in the `Heap` **type**
-    forbids one either, which is why it cannot be a theorem. -/
+    forbids one either, which is why it cannot be a theorem.
+
+    **`StrClsOk` is the fourth heap conjunct** (L151), and it is here for the
+    producer: `infer` gives a string literal the type `.cls "String"`, which is a
+    claim about a name, while the step allocates an object whose class is the id
+    `Boot.stringId`. See its own docstring for why the join belongs in the
+    invariant rather than at the use site. -/
 def Inv (D : Decls) (m : Machine) : Prop :=
-  DeclsOk D m.heap ∧ NoHook m.heap ∧ Saturated m.heap ∧
+  DeclsOk D m.heap ∧ NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
     ∃ Γ Γs, FramesOk m.heap m.frames m.stack (Γ :: Γs) ∧ CtlOk D Γ Γs m
 
 /-! ### Inversions used by the send cases -/
@@ -233,27 +239,71 @@ now gone.
 theorem inv_eval {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
     (hinf : infer D Γ e = some (τ, Γ')) (hk : KontOk D m.heap (Γ' :: Γs) τ m.kont) :
     Inv D (withCtl m (.eval e)) :=
-  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {v : Value}
     {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
     (hv : ValueTy m.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m (.value v)) :=
-  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
     (hinf : infer D Γ e = some (τ, Γ'))
     (hk : KontOk D m.heap (Γ' :: Γs) τ (k :: m.kont)) :
     Inv D (withKont m (.eval e) k) :=
-  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+
+/-- **A freshly allocated non-class object has the class type its `klass` names**
+    (L151). This is the *value* half of a producer's obligation — the half
+    `inv_grow_value` deliberately left to the rule (`hv`, read in the **new** heap) —
+    and it is stated once here because every producer owes exactly it: a string
+    literal today, `.array` and `C.new` later, each differing only in which `klass`
+    and which payload it pushes.
+
+    The four hypotheses are `plainRecv`'s four conjuncts at the fresh id, each
+    discharged from the object literal or from the invariant:
+    the bound is free (the id is the one being pushed), `hpl` is a computation on the
+    payload, `hk`/`hn` are the heap facts — which for `String` is exactly what the
+    `StrClsOk` conjunct carries.
+
+    `hpl` is three refutations rather than `plainRecv`'s own `match` because a `match`
+    written in a *statement* elaborates to a fresh matcher constant, which then will
+    not `rw` against the one `plainRecv` was compiled with. Case-splitting the payload
+    is the shape that composes; `entry_dispatch` discharges the same three shapes the
+    same way. -/
+theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
+    (hpl : (∀ c, obj.payload ≠ .proc c) ∧ (∀ xs, obj.payload ≠ .hsh xs) ∧
+           (∀ c, obj.payload ≠ .cls c))
+    (he : obj.eigen = none)
+    (hk : (h.classPayload? obj.klass).isSome)
+    (hn : className h obj.klass = n) :
+    ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
+  obtain ⟨hproc, hhsh, hnc⟩ := hpl
+  have hg : PlainGrow h ⟨h.objs.push obj⟩ := plainGrow_alloc h obj hnc
+  -- The fresh id reads back as the object that was pushed; everything else is a
+  -- rewrite through `PlainGrow`, which pins `classPayload?` at *every* id.
+  have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+    simp [Heap.get, Array.getD_eq_getD_getElem?]
+  have hlt : h.objs.size < (Heap.mk (h.objs.push obj)).objs.size := by simp
+  have hplain : plainRecv ⟨h.objs.push obj⟩ h.objs.size = true := by
+    unfold plainRecv
+    rw [hget, he, hg.payload obj.klass]
+    cases hp : obj.payload
+    case proc c => exact absurd hp (hproc c)
+    case hsh xs => exact absurd hp (hhsh xs)
+    case cls c => exact absurd hp (hnc c)
+    all_goals simp [hlt, hk]
+  show valueTy? _ _ = _
+  simp only [valueTy?, hplain, if_true]
+  rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass, hn]
 
 /-- **The invariant survives a step that allocates a plain object** (L149) — which
     is the producer's consecution case with the rule removed, and therefore the
@@ -281,14 +331,14 @@ theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr
 theorem inv_grow_value {D : Decls} {m m' : Machine} {Γ : Env} {Γs : List Env}
     {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap) (hsat : Saturated m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : ValueTy m'.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
   refine ⟨DeclsOk_grow hg hsat ht, NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, Γ, Γs, ?_, ?_⟩
+    Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr, Γ, Γs, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs)
     rw [hfr, hst]
     exact FramesOk.heap_congr hag hfs

@@ -62,13 +62,21 @@ def saturatedB (h : Heap) : Bool :=
       (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
         (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
 
-/-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook` and, since L148,
-    `Saturated`. -/
+/-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook`, since L148
+    `Saturated`, and since L151 `StrClsOk`.
+
+    The last is the producer's clause: a string literal is typed `.cls "String"`, a
+    claim about a *name*, while the step allocates an object whose class is the *id*
+    `Boot.stringId`. Two conjuncts rather than one because `className` answers
+    `"Object"` at an id that is not a class, so the name alone would be satisfied by
+    an absent `String`. -/
 def heapOkB (h : Heap) : Bool :=
   intResolvesB h "+" "Integer#+" && intResolvesB h "-" "Integer#-" &&
     intResolvesB h "*" "Integer#*" &&
     (Boot.objectId < h.objs.size) &&
     (lookup h (.ref Boot.objectId) "method_added").isNone &&
-    saturatedB h
+    saturatedB h &&
+    (h.classPayload? Boot.stringId).isSome &&
+    (className h Boot.stringId == "String")
 
 end RubyCore

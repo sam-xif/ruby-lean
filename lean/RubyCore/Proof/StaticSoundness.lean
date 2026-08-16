@@ -89,6 +89,12 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     -- at the prelude-booted heap where `Lean.Json.parse` does not reduce (L135).
     (show Saturated (Machine.init p).heap from
       saturatedB_sound (by decide : saturatedB Boot.initHeap = true)),
+    -- L151's fourth heap conjunct, the producer's. `Boot.stringId` is a literal in a
+    -- literal heap, so both halves are kernel computations — the same reason
+    -- `Saturated` needs no certificate here and does at the prelude-booted heap.
+    (show StrClsOk (Machine.init p).heap from
+      ⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
+       (by rfl : className Boot.initHeap Boot.stringId = "String")⟩),
     [], [], ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
@@ -168,6 +174,39 @@ example : check egArith = .accept := by
 theorem egArith_safe :
     ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
   check_sound (by simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?])
+
+/-- **The first accepted program that allocates** (L151), and therefore the first
+    whose safety theorem is about a heap the program itself grew. `s = "hi"; s` was
+    `unknown` at F0, F1a and F1b.1 — not because anything refuted it, but because
+    `infer` had no rule for a string literal and `Ty` had no inhabitant that was an
+    object.
+
+    Read the type: `s` is bound at `.cls "String"`, so the accept genuinely goes
+    through the class arm of `Ty`, the `.ref` arm of `valueTy?` and the class arm of
+    `declFor` — the three pieces F1b.1 added with nothing to exercise them. -/
+def egStr : Expr :=
+  .seq [ .vasgn .lvar "s" (.str "hi"), .var .lvar "s" ]
+
+example : check egStr = .accept := by
+  simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf]
+
+theorem egStr_safe : ∀ r, ReachableResult (Machine.init egStr) r → ¬ typeStuck r :=
+  check_sound (by simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf])
+
+/-- The same, mixed with the arithmetic fragment: an allocation happens *between*
+    two typed integer sends, so `KontOk`'s stored `ValueTy` facts really are
+    transported across a growing heap rather than across a `rfl`. That transport is
+    L143–L149's whole arc, and this is the first program that runs it. -/
+def egStrSeq : Expr :=
+  .seq [ .vasgn .lvar "n" (.send (some (.int 1)) "+" [.int 2] none),
+         .vasgn .lvar "s" (.str "hi"),
+         .send (some (.var .lvar "n")) "*" [.int 4] none ]
+
+theorem egStrSeq_safe :
+    ∀ r, ReachableResult (Machine.init egStrSeq) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egStrSeq, infer, inferSeq, declsOf, sigOf, declFor, declOf?,
+      declsFor, baseDecls, tyClassNames, envSet, envGet?])
 
 /-- A branch-type disagreement the fragment cannot join: `unknown`, not
     `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls
