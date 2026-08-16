@@ -5494,3 +5494,59 @@ side, entire:
    program-indexed heap clause in the D10 style: *for each class name the program defines, the
    enclosing namespace's constant of that name is absent or is a non-module class*. Absent is **not**
    preserved (the step sets it), so the disjunction is the weakest form that is.
+
+## L155 — the toplevel-position flag, and the fact that makes it mean something
+
+`homebrew/HANDOFF.md` §What is left item 4 wanted a *program-indexed heap clause* ruling out
+`class'`'s `TypeError` branch. Reading `enterClassBody` (`Interp/Dispatch.lean:219`) against that
+plan turns up something the plan had not separated: the branch is chosen by
+`constOwn m.currentFrame.defmod name` — a lookup in the **current definee's own** constant table,
+"NOT a flat toplevel lookup and NOT the full lexical cref chain", as the comment there says in as
+many words. So before any clause about *which* constant, the invariant owes a clause about **whose
+table**, and the only definee whose constant table an invariant can describe is `Object`.
+
+That makes `class` a rule admissible in a **toplevel position and nowhere else**, and `infer` had no
+way to tell the two apart. This commit gives it one, and gives the invariant the matching fact. It
+is inert: no rule reads the flag yet.
+
+**The flag is a parameter, not an index, and that is the whole content of the commit.** `infer`,
+`inferSeq`, `inferIf` and `LoopOk` gain `(top : Bool := false)`; `check` passes `true`; `CtlOk` and
+the four expression-storing `KontOk` constructors read the mode as **`Γs.isEmpty`** — the
+environment stack the judgement already carries. `frameK` is the constructor at which that stack
+pops, and it is *already* the constructor at which the definee changes, so the mode flips in exactly
+the right place with no new index and no new constructor.
+
+**The alternative was costed and rejected.** A genuine `Bool` index on `KontOk` needs, at the
+`frameK` **pop**, the *caller's* definee — which `KontOk` cannot see, because it is indexed by
+environments and not by frames. Recovering it costs a stack-*depth* index, and `Γs.length` already
+is that index. Naming the mode `Γs.isEmpty` is the same observation taken seriously, and it is L147's
+question asked of a different clause: *what is this actually indexed by?*
+
+**What forced the propagation rule, which is not the one I first wrote.** The first version threaded
+`top` through `.seq` only, on the theory that a `class` inside an `if` is not worth admitting. That
+does not typecheck, and the reason is structural rather than a matter of taste: `CtlOk` reads the
+mode off the environment stack, so a subexpression the machine evaluates **without pushing a frame**
+is read back at the *enclosing* mode — and if the rule checked it at `false` while `CtlOk` demands
+`Γs.isEmpty`, the two disagree at the toplevel and `inv_push` cannot be applied. So the flag
+propagates through every subexpression evaluated in the same activation (`vasgn` rhs, `if`/`while`
+condition and branches, send receiver and argument) and is blocked at exactly the two that are not:
+a `def` body and, next commit, a class body. **The split is forced by where the machine pushes a
+frame, which is the only place it could have been.**
+
+* **`BottomObj` is `Inv`'s fifth conjunct**, and the first that is not about the heap: *the outermost
+  activation's definee is `Object`*. `CtlOk`'s mode is `Γs.isEmpty`; `FramesOk` forces the
+  environment stack and the frame stack to have equal length, so an empty tail means a **singleton**
+  frame stack; and `BottomObj` names that frame's definee. Composed — `BottomObj_curFrame` — that is
+  *toplevel mode ⇒ the definee is `Object`*, which is precisely what `constOwn` needs pinned.
+* **It is its own recursion over the stack rather than a clause of `FramesOk`.** `FramesOk`'s
+  four-way destructuring has nine consumers and a fifth conjunct in its `cons` arm would churn every
+  one of them for a fact none of them uses. Three transport lemmas (`BottomObj_congr` over a `set!`
+  that preserves definees, `_push`, `_cons`, `_tail`) cover every way the fragment touches
+  `frames`/`stack`, and none mentions the heap — so the four heap-writing cases pay nothing.
+* `FramesOk.mem_lt` is new and is the only thing the `push` transport needed: `BottomObj` reads
+  frames by id, and a `push` leaves those reads alone exactly when the ids are already in bounds.
+
+Verified inert: `--check` **byte-identical** over the 1,227 cached bootstraptest ASTs (36 accept /
+1,189 unknown / 0 reject) against the pre-commit binary — owed here rather than argued, because
+`Types/Core.lean` *is* linked into `rubycore`. `check-proofs.sh` green and axiom-clean; tier-0
+**992 agree, 0 disagree**.

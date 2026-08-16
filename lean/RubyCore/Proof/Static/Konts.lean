@@ -30,8 +30,8 @@ absence of the other 43 is what makes preservation's case analysis collapse.
 /-- A `while` whose condition and body are both **environment-stable** at `Γ`.
     The loop re-enters the condition with whatever the body leaves, so without
     stability there is no single `Γ` to index the two loop konts by. -/
-def LoopOk (D : Decls) (Γ : Env) (c body : Expr) : Prop :=
-  (∃ τc, infer D Γ c = some (τc, Γ)) ∧ (∃ τb, infer D Γ body = some (τb, Γ))
+def LoopOk (D : Decls) (Γ : Env) (c body : Expr) (top : Bool := false) : Prop :=
+  (∃ τc, infer D Γ c top = some (τc, Γ)) ∧ (∃ τb, infer D Γ body top = some (τb, Γ))
 
 /-- `KontOk h Γs τ k` reads: *in heap `h`, the in-flight value has type `τ`, the
     environment **stack** is `Γs` (innermost first), and `k` is a well-typed
@@ -52,9 +52,16 @@ inductive KontOk (D : Decls) : Heap → List Env → Ty → List Kont → Prop w
   | nil {h Γs τ} : KontOk D h Γs τ []
   /-- `seqK []` yields the in-flight value unchanged (`Interp.lean:1957`). -/
   | seqNil {h Γ Γs τ k} : KontOk D h (Γ :: Γs) τ k → KontOk D h (Γ :: Γs) τ (.seqK [] :: k)
-  /-- `seqK (e :: es)` discards the in-flight value and runs the rest. -/
+  /-- `seqK (e :: es)` discards the in-flight value and runs the rest.
+
+      **`Γs.isEmpty` is the toplevel mode** (L155), and this is the only
+      constructor that has to name it: `seqK` is the one kont that stores
+      *unevaluated statements*, so it is the one whose contents may be a `class`.
+      The mode is read off the environment stack rather than carried as an index
+      because `frameK` — the constructor at which an activation's environment goes
+      out of scope — is already exactly where the definee changes. -/
   | seqCons {h Γ Γs τ e es τ' Γ' k} :
-      inferSeq D Γ (e :: es) = some (τ', Γ') → KontOk D h (Γ' :: Γs) τ' k →
+      inferSeq D Γ (e :: es) Γs.isEmpty = some (τ', Γ') → KontOk D h (Γ' :: Γs) τ' k →
       KontOk D h (Γ :: Γs) τ (.seqK (e :: es) :: k)
   /-- Assignment binds `x` at the in-flight type and re-yields the value. -/
   | asgn {h Γ Γs τ x k} :
@@ -62,20 +69,20 @@ inductive KontOk (D : Decls) : Heap → List Env → Ty → List Kont → Prop w
   /-- The in-flight value is the condition; either branch may run next, so the
       join must be the one `inferIf` computed. -/
   | ifK {h Γ Γs τ t els τ' Γ' k} :
-      inferIf D Γ t els = some (τ', Γ') → KontOk D h (Γ' :: Γs) τ' k →
+      inferIf D Γ t els Γs.isEmpty = some (τ', Γ') → KontOk D h (Γ' :: Γs) τ' k →
       KontOk D h (Γ :: Γs) τ (.ifK t els :: k)
   | whileCond {h Γ Γs τ c body k} :
-      LoopOk D Γ c body → KontOk D h (Γ :: Γs) .nilT k →
+      LoopOk D Γ c body Γs.isEmpty → KontOk D h (Γ :: Γs) .nilT k →
       KontOk D h (Γ :: Γs) τ (.whileCondK c body :: k)
   | whileBody {h Γ Γs τ c body k} :
-      LoopOk D Γ c body → KontOk D h (Γ :: Γs) .nilT k →
+      LoopOk D Γ c body Γs.isEmpty → KontOk D h (Γ :: Γs) .nilT k →
       KontOk D h (Γ :: Γs) τ (.whileBodyK c body :: k)
   /-- The in-flight value is the **receiver** of a binary builtin send; the
       argument expression runs next. The site is `.explicit` because `evalExpr`
       picks it syntactically and `infer` rejects `self` in receiver position. -/
   | recvK {h Γ Γs τ mname arg τp τret Γ₂ k} :
       sigOf D τ mname = some ([τp], τret) →
-      infer D Γ arg = some (τp, Γ₂) →
+      infer D Γ arg Γs.isEmpty = some (τp, Γ₂) →
       KontOk D h (Γ₂ :: Γs) τret k →
       KontOk D h (Γ :: Γs) τ (.recvK mname [arg] .none .explicit :: k)
   /-- **A zero-argument send** (L152), and it is a separate constructor rather than
@@ -114,7 +121,8 @@ inductive KontOk (D : Decls) : Heap → List Env → Ty → List Kont → Prop w
     are not in the fragment, so no step can produce one. -/
 def CtlOk (D : Decls) (Γ : Env) (Γs : List Env) (m : Machine) : Prop :=
   match m.ctl with
-  | .eval e => ∃ τ Γ', infer D Γ e = some (τ, Γ') ∧ KontOk D m.heap (Γ' :: Γs) τ m.kont
+  | .eval e =>
+    ∃ τ Γ', infer D Γ e Γs.isEmpty = some (τ, Γ') ∧ KontOk D m.heap (Γ' :: Γs) τ m.kont
   | .value v => ∃ τ, ValueTy m.heap v τ ∧ KontOk D m.heap (Γ :: Γs) τ m.kont
   | .jump _ => False
 
@@ -158,9 +166,18 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
     producer: `infer` gives a string literal the type `.cls "String"`, which is a
     claim about a name, while the step allocates an object whose class is the id
     `Boot.stringId`. See its own docstring for why the join belongs in the
-    invariant rather than at the use site. -/
+    invariant rather than at the use site.
+
+    **`BottomObj` is the fifth conjunct** (L155), and it is the only one that is
+    not about the heap: *the outermost activation's definee is `Object`.* It is
+    what turns `infer`'s `top` flag from a decoration into a fact — `CtlOk` reads
+    the mode as `Γs.isEmpty`, `FramesOk` makes that a singleton frame stack, and
+    this names that frame's definee. Carried rather than derived because nothing
+    in the `Machine` *type* says the bottom frame is the toplevel one; `initFrom`
+    establishes it and every step preserves it. -/
 def Inv (D : Decls) (m : Machine) : Prop :=
   DeclsOk D m.heap ∧ NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
+    BottomObj m.frames m.stack ∧
     ∃ Γ Γs, FramesOk m.heap m.frames m.stack (Γ :: Γs) ∧ CtlOk D Γ Γs m
 
 /-! ### Inversions used by the send cases -/
@@ -187,8 +204,8 @@ theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
 /-- `evalExpr` chooses the send site *syntactically* from the receiver
     expression (`Interp.lean:2582`); `infer` rejects `self`, so the site is
     always `.explicit` in the fragment. -/
-theorem site_explicit {D : Decls} {Γ : Env} {r : Expr} {x : Ty × Env}
-    (h : infer D Γ r = some x) :
+theorem site_explicit {D : Decls} {Γ : Env} {r : Expr} {x : Ty × Env} {top : Bool}
+    (h : infer D Γ r top = some x) :
     (match r with | .self' => SendSite.selfRecv | _ => SendSite.explicit) = .explicit := by
   cases r <;> try rfl
   exact absurd h (by simp [infer])
@@ -202,8 +219,8 @@ theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
 
 /-- Inversion for the `def` rule. -/
 theorem infer_def_inv {D : Decls} {Γ : Env} {name : String} {params : List Param}
-    {body : Expr} {τ : Ty} {Γ' : Env}
-    (h : infer D Γ (.def' name params body) = some (τ, Γ')) :
+    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool}
+    (h : infer D Γ (.def' name params body) top = some (τ, Γ')) :
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added" := by
   simp only [infer] at h
@@ -220,8 +237,9 @@ theorem infer_def_inv {D : Decls} {Γ : Env} {name : String} {params : List Para
     its unary sibling, because there is no argument to infer and therefore no
     parameter-type equality to check — the output environment is the receiver's. -/
 theorem infer_send0_inv {D : Decls} {Γ : Env} {r : Expr} {mname : String} {τ : Ty}
-    {Γ' : Env} (h : infer D Γ (.send (some r) mname [] none) = some (τ, Γ')) :
-    ∃ τr, infer D Γ r = some (τr, Γ') ∧ sigOf D τr mname = some ([], τ) := by
+    {Γ' : Env} {top : Bool}
+    (h : infer D Γ (.send (some r) mname [] none) top = some (τ, Γ')) :
+    ∃ τr, infer D Γ r top = some (τr, Γ') ∧ sigOf D τr mname = some ([], τ) := by
   simp only [infer] at h
   split at h
   · next τr Γ₁ hr =>
@@ -236,10 +254,11 @@ theorem infer_send0_inv {D : Decls} {Γ : Env} {r : Expr} {mname : String} {τ :
 /-- Inversion for the send rule. Factored out of `step_ok` because the nested
     `split at` needs `next`-bound names that are unreadable inline. -/
 theorem infer_send_inv {D : Decls} {Γ : Env} {r arg : Expr} {mname : String} {τ : Ty}
-    {Γ' : Env} (h : infer D Γ (.send (some r) mname [arg] none) = some (τ, Γ')) :
-    ∃ τr Γ₁ τp, infer D Γ r = some (τr, Γ₁) ∧
+    {Γ' : Env} {top : Bool}
+    (h : infer D Γ (.send (some r) mname [arg] none) top = some (τ, Γ')) :
+    ∃ τr Γ₁ τp, infer D Γ r top = some (τr, Γ₁) ∧
       sigOf D τr mname = some ([τp], τ) ∧
-      infer D Γ₁ arg = some (τp, Γ') := by
+      infer D Γ₁ arg top = some (τp, Γ') := by
   simp only [infer] at h
   split at h
   · next τr Γ₁ hr =>
@@ -273,26 +292,30 @@ theorem inv_eval {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr
     {τ : Ty} {Γ' : Env}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
-    (hinf : infer D Γ e = some (τ, Γ')) (hk : KontOk D m.heap (Γ' :: Γs) τ m.kont) :
+    (hbot : BottomObj m.frames m.stack)
+    (hinf : infer D Γ e Γs.isEmpty = some (τ, Γ'))
+    (hk : KontOk D m.heap (Γ' :: Γs) τ m.kont) :
     Inv D (withCtl m (.eval e)) :=
-  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {v : Value}
     {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hbot : BottomObj m.frames m.stack)
     (hv : ValueTy m.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m (.value v)) :=
-  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
-    (hinf : infer D Γ e = some (τ, Γ'))
+    (hbot : BottomObj m.frames m.stack)
+    (hinf : infer D Γ e Γs.isEmpty = some (τ, Γ'))
     (hk : KontOk D m.heap (Γ' :: Γs) τ (k :: m.kont)) :
     Inv D (withKont m (.eval e) k) :=
-  ⟨ht, hh, hsat, hstr, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, hstr, hbot, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
     (L151). This is the *value* half of a producer's obligation — the half
@@ -365,13 +388,15 @@ theorem inv_grow_value {D : Decls} {m m' : Machine} {Γ : Env} {Γs : List Env}
     {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hbot : BottomObj m.frames m.stack)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : ValueTy m'.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
   refine ⟨DeclsOk_grow hg hsat ht, NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr, Γ, Γs, ?_, ?_⟩
+    Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr,
+    show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot, Γ, Γs, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs)
     rw [hfr, hst]
     exact FramesOk.heap_congr hag hfs

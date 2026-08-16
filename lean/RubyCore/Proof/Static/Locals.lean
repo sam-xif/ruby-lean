@@ -294,6 +294,27 @@ def FramesOk (h : Heap) (frames : Array Frame) : List FrameId → List Env → P
       FrameConforms h Γ (frames.getD fid default) ∧ FramesOk h frames fids Γs
   | _, _ => False
 
+/-- **The outermost activation is the toplevel one, and its definee is `Object`**
+    (L155).
+
+    This is the fact that makes `infer`'s `top` flag mean something. `CtlOk` reads
+    the mode off the environment stack (`Γs.isEmpty`), `FramesOk` forces the
+    environment stack and the frame stack to have equal length, so `Γs = []` says
+    the frame stack is a *singleton* — and this predicate says the frame a
+    singleton stack names has `defmod = Object`. Composed:
+    *toplevel mode ⇒ the definee is `Object`*, which is exactly what
+    `enterClassBody`'s `constOwn m.currentFrame.defmod` needs pinned before the
+    reopen branch can be described by a heap clause.
+
+    Stated as its own recursion over the stack rather than as a clause of
+    `FramesOk` deliberately: `FramesOk`'s four-way destructuring is consumed by
+    nine existing lemmas, and a fifth conjunct in its `cons` arm would churn every
+    one of them for a fact none of them uses. -/
+def BottomObj (frames : Array Frame) : List FrameId → Prop
+  | [] => True
+  | [fid] => (frames.getD fid default).defmod = Boot.objectId
+  | _ :: rest => BottomObj frames rest
+
 /-- What `getLocal`/`setLocal` need, derived from the head of `FramesOk`. Kept as
     its own definition so the local-access lemmas stay readable. -/
 def FrameOk (m : Machine) : Prop :=
@@ -412,6 +433,84 @@ theorem FramesOk.tail {hp : Heap} {frames : Array Frame} {fids : List FrameId} {
   cases fids with
   | nil => exact absurd h (by simp [FramesOk])
   | cons fid rest => exact h.2.2.2
+
+/-- Every id on a conforming stack indexes a real frame. `FramesOk` says so of the
+    head at each level; this collects it, which is what `BottomObj`'s transport
+    across a `push` needs. -/
+theorem FramesOk.mem_lt {hp : Heap} {frames : Array Frame} :
+    ∀ {fids : List FrameId} {Γs : List Env}, FramesOk hp frames fids Γs →
+      ∀ g ∈ fids, g < frames.size := by
+  intro fids
+  induction fids with
+  | nil => intro _ _ g hg; exact absurd hg (by simp)
+  | cons fid rest ih =>
+    intro Γs h g hg
+    cases Γs with
+    | nil => exact absurd h (by simp [FramesOk])
+    | cons Γ Γs' =>
+      rcases List.mem_cons.mp hg with rfl | hm
+      · exact h.1
+      · exact ih h.2.2.2 g hm
+
+/-! ### 1.2a `BottomObj` transports
+
+Three lemmas, one per way the fragment touches `frames`/`stack`: a `set!` that
+preserves the written frame's definee, a `push` under a non-empty stack, and a
+pop. None mentions the heap. -/
+
+/-- `BottomObj` only reads each stacked frame's `defmod`, so any array that agrees
+    with the old one on those fields carries it. -/
+theorem BottomObj_congr {f₁ f₂ : Array Frame} :
+    ∀ {st : List FrameId},
+      (∀ fid ∈ st, (f₂.getD fid default).defmod = (f₁.getD fid default).defmod) →
+      BottomObj f₁ st → BottomObj f₂ st := by
+  intro st
+  induction st with
+  | nil => intro _ h; exact h
+  | cons a rest ih =>
+    cases rest with
+    | nil =>
+      intro hd h
+      show (f₂.getD a default).defmod = Boot.objectId
+      rw [hd a (by simp)]; exact h
+    | cons b rest' =>
+      intro hd h
+      show BottomObj f₂ (b :: rest')
+      exact ih (fun fid hm => hd fid (List.mem_cons_of_mem a hm)) h
+
+/-- A `push` leaves every id the stack already carries reading the same frame. -/
+theorem BottomObj_push {frames : Array Frame} {st : List FrameId} {f : Frame}
+    (hlt : ∀ g ∈ st, g < frames.size) (h : BottomObj frames st) :
+    BottomObj (frames.push f) st :=
+  BottomObj_congr (fun fid hm => by rw [getD_push_lt _ _ _ (hlt fid hm)]) h
+
+/-- Pushing a *new* activation on a non-empty stack: the outermost frame is
+    unchanged, and it is still the outermost one. -/
+theorem BottomObj_cons {frames : Array Frame} {st : List FrameId} {fid : FrameId}
+    (hne : st ≠ []) (h : BottomObj frames st) : BottomObj frames (fid :: st) := by
+  cases st with
+  | nil => exact absurd rfl hne
+  | cons a rest => exact h
+
+/-- Popping an activation from a stack of at least two frames. -/
+theorem BottomObj_tail {frames : Array Frame} {st : List FrameId}
+    (h : BottomObj frames st) : BottomObj frames st.tail := by
+  cases st with
+  | nil => exact h
+  | cons a rest =>
+    cases rest with
+    | nil => exact trivial
+    | cons b rest' => exact h
+
+/-- **The toplevel mode really does pin the definee.** A singleton frame stack is
+    the one `FramesOk` forces when the environment stack has an empty tail, and
+    `BottomObj` names its definee. This is the composite the `class` rule consumes. -/
+theorem BottomObj_curFrame {m : Machine} {fid : FrameId}
+    (hst : m.stack = [fid]) (h : BottomObj m.frames m.stack) :
+    (curFrame m).defmod = Boot.objectId := by
+  rw [hst] at h
+  simp only [curFrame, curFid, hst, List.headD_cons]
+  exact h
 
 theorem FramesOk.localsOk {m : Machine} {Γ : Env} {Γs : List Env}
     (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : LocalsOk Γ m := by

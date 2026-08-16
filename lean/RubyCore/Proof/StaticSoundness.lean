@@ -100,6 +100,11 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     (show StrClsOk (Machine.init p).heap from
       ⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
        (by rfl : className Boot.initHeap Boot.stringId = "String")⟩),
+    -- L155's fifth conjunct, and the only one that is not about the heap: the
+    -- outermost activation's definee is `Object`. `Machine.init` builds exactly
+    -- one frame and it is the toplevel one, so this is a computation on a literal.
+    (show BottomObj (Machine.init p).frames (Machine.init p).stack by
+      simp [Machine.init, Machine.initOn, BottomObj]),
     [], [], ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])

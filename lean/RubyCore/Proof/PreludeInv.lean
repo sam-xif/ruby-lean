@@ -106,7 +106,10 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
   -- F1a: the invariant's heap clause is `DeclsOk`, and `HeapOk`'s `TableOk` half
   -- is its concrete witness for `baseDecls`. That is the whole reason F0 needed no
   -- restatement — `heapOkB` still decides exactly what it decided before.
-  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2, [], [], ?_, ?_⟩
+  -- L155's fifth conjunct is heap-independent, so it comes out the same here as at
+  -- `Machine.init`: `initOn` builds one frame and it is the toplevel one.
+  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2,
+    (by simp [Machine.initOn, BottomObj]), [], [], ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly

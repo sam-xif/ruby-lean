@@ -115,8 +115,32 @@ end
 mutual
 
 /-- `infer Γ e = some (τ, Γ')` — `e` has type `τ` and leaves the environment
-    `Γ'`. `none` is `unknown`: outside the P0 fragment, or ill-typed. -/
-def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
+    `Γ'`. `none` is `unknown`: outside the P0 fragment, or ill-typed.
+
+    **`top` is the toplevel-position flag** (L155), and it exists for exactly one
+    future rule: `class C … end` reopens a constant looked up in the *current
+    definee's* own constant table (`enterClassBody`'s `constOwn m.currentFrame.defmod`,
+    `Interp/Dispatch.lean:236`), and the only definee whose table an invariant can
+    describe is `Object`. So the rule is admissible in a toplevel position and
+    nowhere else, and `infer` has to be able to tell the two apart.
+
+    **The flag is redundant with something the judgement already carries, which is
+    why it costs one parameter rather than an index.** `CtlOk` reads it off the
+    *environment stack* — `Γs.isEmpty`, i.e. no enclosing activation — and
+    `KontOk.frameK` is already the constructor at which that stack pops, so the
+    mode flips exactly where the definee does. The alternative considered and
+    rejected was a genuine `Bool` index on `KontOk`: it needs the caller's definee
+    at the `frameK` *pop*, which `KontOk` cannot see, and recovering it costs a
+    stack-depth index that `Γs.length` already is.
+
+    **Threaded through every subexpression evaluated in the *same activation*,
+    and blocked at exactly the two that are not** — a `def` body and (F1b.6) a
+    class body, both of which run in a frame `enterUserMethod`/`enterClassBody`
+    pushes. That split is forced rather than chosen: `CtlOk` reads the mode off
+    the environment stack, so a subexpression the machine evaluates without
+    pushing a frame is read at the *enclosing* mode, and checking it at any other
+    would leave `KontOk` unable to state its own hypothesis. -/
+def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty × Env) :=
   match e with
   | .int _ => some (.int, Γ)
   | .tru => some (.bool, Γ)
@@ -137,7 +161,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   | .str _ => some (.cls "String", Γ)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ))
   | .vasgn .lvar x rhs =>
-    match infer D Γ rhs with
+    match infer D Γ rhs top with
     | some (τ, Γ₁) => some (τ, envSet Γ₁ x τ)
     | none => none
   -- Binary send to a builtin, explicit receiver, no block. Every other send
@@ -145,11 +169,11 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   -- is also what keeps `.self'` out of receiver position (see `KontOk.recvK`:
   -- `evalExpr` picks the `.selfRecv` site *syntactically* for a literal `self`).
   | .send (some recv) mname [arg] none =>
-    match infer D Γ recv with
+    match infer D Γ recv top with
     | some (τr, Γ₁) =>
       match sigOf D τr mname with
       | some ([τp], τret) =>
-        match infer D Γ₁ arg with
+        match infer D Γ₁ arg top with
         | some (τa, Γ₂) => if τa = τp then some (τret, Γ₂) else none
         | none => none
       | _ => none
@@ -165,7 +189,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
   -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
-    match infer D Γ recv with
+    match infer D Γ recv top with
     | some (τr, Γ₁) =>
       match sigOf D τr mname with
       | some ([], τret) => some (τret, Γ₁)
@@ -197,18 +221,18 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
       | some _ => some (.sym, Γ)
       | none => none
     else none
-  | .seq es => inferSeq D Γ es
+  | .seq es => inferSeq D Γ es top
   | .if' c t els =>
-    match infer D Γ c with
-    | some (_, Γ₁) => inferIf D Γ₁ t els
+    match infer D Γ c top with
+    | some (_, Γ₁) => inferIf D Γ₁ t els top
     | none => none
   | .while' c body =>
     -- The loop re-enters the condition with the environment the body leaves, so
     -- both must be *stable* at `Γ`. This is the P0 stand-in for a fixpoint.
-    match infer D Γ c with
+    match infer D Γ c top with
     | some (_, Γ₁) =>
       if Γ₁ = Γ then
-        match infer D Γ body with
+        match infer D Γ body top with
         | some (_, Γ₂) => if Γ₂ = Γ then some (.nilT, Γ) else none
         | none => none
       else none
@@ -219,13 +243,14 @@ termination_by sizeOf e
 /-- Statement sequence: thread the environment, take the last type. Mirrors
     `evalExpr`'s three-way split on `.seq` (`Interp.lean:2732`) exactly — in
     particular `[e]` steps straight to `e` with no `seqK` pushed. -/
-def inferSeq (D : Decls) (Γ : Env) (es : List Expr) : Option (Ty × Env) :=
+def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false) :
+    Option (Ty × Env) :=
   match es with
   | [] => some (.nilT, Γ)
-  | [e] => infer D Γ e
+  | [e] => infer D Γ e top
   | e :: rest =>
-    match infer D Γ e with
-    | some (_, Γ₁) => inferSeq D Γ₁ rest
+    match infer D Γ e top with
+    | some (_, Γ₁) => inferSeq D Γ₁ rest top
     | none => none
 termination_by sizeOf es
 
@@ -233,15 +258,16 @@ termination_by sizeOf es
     branch-for-branch. No union type in P0, so the two arms must agree on both
     the type and the environment; a missing `else` contributes `nil` and no
     environment change (`applyKont`'s fall-through, `Interp.lean:2096`). -/
-def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) : Option (Ty × Env) :=
+def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool := false) :
+    Option (Ty × Env) :=
   match els with
   | some e =>
-    match infer D Γ t, infer D Γ e with
+    match infer D Γ t top, infer D Γ e top with
     | some (τt, Γt), some (τe, Γe) =>
       if τt = τe ∧ Γt = Γe then some (τt, Γt) else none
     | _, _ => none
   | none =>
-    match infer D Γ t with
+    match infer D Γ t top with
     | some (τt, Γt) => if τt = Ty.nilT ∧ Γt = Γ then some (.nilT, Γ) else none
     | none => none
 termination_by sizeOf t + sizeOf els
@@ -263,7 +289,9 @@ deriving DecidableEq, Repr, Inhabited
     first, so a program the type rules accept is never refuted; `illTyped` only
     ever upgrades an `unknown` to a `reject`. -/
 def check (p : Expr) : Verdict :=
-  match infer (declsOf p) [] p with
+  -- `top := true`: the program body *is* the toplevel position (L155). Inert
+  -- until a rule reads the flag, and the verdict diff proves it.
+  match infer (declsOf p) [] p true with
   | some _ => .accept
   | none => if illTyped (declsOf p) p then .reject else .unknown
 
