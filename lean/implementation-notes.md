@@ -4712,3 +4712,88 @@ producer commit should use too. The moment a row exists for a user class, `Entry
 clause needs a resolving builtin for it, i.e. the user-method witness `HANDOFF.md` describes. So
 the producer and that witness are two halves of one accept-rate change, not two independent
 prerequisites.
+
+## L143 — the producer rung's second bill: `TypeAgree` relativized, and a second bound it needed
+
+L142's item 2, and it did not come alone. Relativizing the transport is the mechanical half; what
+the commit is *worth* is the second out-of-bounds default it found, in the same shape as L142's and
+one indirection further along.
+
+### The relativization, and the clause that had to change shape
+
+`TypeAgree` was four unrelativized equalities. Three become "at every id the old heap had":
+
+```lean
+def TypeAgree (h h' : Heap) : Prop :=
+  (∀ o, o < h.objs.size → classOf h' (.ref o) = classOf h (.ref o)) ∧
+    (∀ k, k < h.objs.size → className h' k = className h k) ∧
+    (∀ k, k < h.objs.size → (h'.classPayload? k).isSome = (h.classPayload? k).isSome) ∧
+    (∀ o, o < h.objs.size → plainRecv h o = true → plainRecv h' o = true)
+```
+
+The first clause also moved from values to ids, because `classOf` on an immediate is a
+heap-independent constant, so the value form is derivable and was carrying nothing.
+
+**The fourth clause is an implication, and that is forced rather than chosen.** `plainRecv` reads
+`h.objs.size` — twice, after this commit — so a *growing* heap can turn a non-plain receiver plain,
+and does exactly that for an object whose class is the id being allocated. An equality is therefore
+false for `alloc`. Nothing needs the equality: transport carries facts *forward*, so what it needs
+is that a receiver the old heap **typed** is still typed. Read the four clauses as *everything the
+old heap could say about an id it had, it can still say* — the weakest thing `ValueTy.congr` accepts.
+
+`typeAgree_alloc` is the payoff and is proved here rather than promised: one fact — `Array.push`
+leaves every existing index where it was — discharges all four clauses.
+
+### The second bill: `className` has an out-of-bounds default too
+
+`ValueTy.congr`'s `.ref` case needs the transport at *two* ids: `o`, and the class `o` dispatches
+through, because the arm's type is `className h (classOf h (.ref o))`. `className` answers out of
+bounds with `"Object"` (via `classPayload? = none`). So for an object whose `klass` is the id an
+`alloc` is about to hand out, the type moves from `.cls "Object"` to `.cls C` — **L142's defect
+exactly, one indirection along, and relativizing to `o < h.objs.size` alone does not touch it.**
+
+Fixed the same way, which is now the third application of the ninth session's lesson: the side
+condition goes into the judgement. `plainRecv` gains `(h.get o).klass < h.objs.size`, and
+`valueTy_ref_klass_lt` reads it back out for the transport. **A refusal has to be priced**, so
+`scripts/alloc_probe.lean` now counts what the clause costs at the *prelude-booted* heap:
+
+```
+booted heap: 105 objects, 18 plain receivers, 0 refused for an out-of-bounds klass (want 0)
+```
+
+Zero, as a heap no rule can build ill-formed should be — but measured, because that is the number
+this clause could get wrong, and the script fails if it ever moves.
+
+### `TypeAgree.symm` is withdrawn, and its two callers now say which direction they need
+
+A relativized, one-directional `TypeAgree` **is not symmetric**, and cannot be: the clauses are
+about the left heap's ids, and the fourth is an implication that a heap typing *fewer* receivers
+satisfies. L137's `TypeAgree.symm` is therefore deleted rather than weakened — its statement is
+false for any growing step.
+
+Both callers were `defineMethod` ones (`ConformsAt_defineMethod` and `DeclsOk_defineMethod`, in
+`Proof/Static/Decls.lean`: `ConformsAt` reads its `ValueTy` hypotheses in the old heap while
+`DeclsOk` states them in the new one, so F1a genuinely runs the transport backwards). A
+method-table write proves four *unrelativized equalities*, so both directions come from one lemma —
+`TypeAgree.of_equalities`, whose only job is to hand back the pair — exposed as
+`typeAgree_defineMethod` and `typeAgree_defineMethod'`. **A growing step will not have that lemma
+available**, which is worth knowing now: the producer's consecution case has to be arranged so that
+the backward transport is never needed, or `ConformsAt` has to stop asking for it — which is item 4.
+
+### Verification
+
+Same argument as L142, and the same three checks: the only files touched are
+`Proof/Static/Locals.lean`, `Proof/Static/Decls.lean` and a script, all off `defaultTargets` and
+none linked into `rubycore`, so no rule, prelude line or checker function moved and `--check`'s
+answer cannot. `scripts/check-proofs.sh` green and axiom-clean, `heapOkB` still true at the booted
+heap; `scripts/alloc_probe.lean` exit 0 with the new count; tier-0 flat at **992 agree, 0 disagree**.
+
+Notable non-event: the extra `plainRecv` conjunct required **no** repair in `entry_dispatch`, which
+refutes `invoke`'s three receiver-shape special cases by `simp [plainRecv, hpl]` — a conjunct added
+to a `&&`-chain whose last factor is already `false` is free.
+
+### What the producer still owes
+
+Items 3 and 4 of L142's list, unchanged, and now with the fifth named above: the backward transport
+`ConformsAt` currently demands is a *growing*-step problem, so item 4 (`ConformsAt` past
+machine-purity) and the shape of the producer's consecution case are one question, not two.

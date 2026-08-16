@@ -248,10 +248,16 @@ theorem ConformsAt_defineMethod {h : Heap} {τr : Ty} {mname bid : String}
     {d : MethodDecl} {cls : ObjId} {name : String} {md : MethodDef}
     (hc : ConformsAt h τr mname bid d) :
     ConformsAt (defineMethod h cls name md) τr mname bid d := by
+  -- L143: the backward transport is `typeAgree_defineMethod'` rather than
+  -- `hag.symm`, because a relativized `TypeAgree` is not symmetric. `defineMethod`
+  -- supplies both directions from the same four equalities
+  -- (`TypeAgree.of_equalities`); a *growing* step will not, which is the shape the
+  -- producer has to face.
   have hag := typeAgree_defineMethod h cls name md
+  have hag' := typeAgree_defineMethod' h cls name md
   refine ⟨hc.1, hc.2.1, fun recv args hrv hargs => ?_⟩
   obtain ⟨hdefer, w, hw, hrun⟩ :=
-    hc.2.2 recv args (ValueTy.congr hag.symm hrv) (ValuesTy.congr hag.symm hargs)
+    hc.2.2 recv args (ValueTy.congr hag' hrv) (ValuesTy.congr hag' hargs)
   exact ⟨hdefer, w, ValueTy.congr hag hw, hrun⟩
 
 /-- **The additive step preserves the invariant, with no condition beyond
@@ -268,7 +274,7 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
   refine ⟨bid, fun recv hrv => ?_, ConformsAt_defineMethod hconf⟩
   exact ResolvesTo_defineMethod
-    (hres recv (ValueTy.congr (typeAgree_defineMethod h cls name md).symm hrv)) hne
+    (hres recv (ValueTy.congr (typeAgree_defineMethod' h cls name md) hrv)) hne
 
 /-! ## 4. The bridge from `TableOk`
 

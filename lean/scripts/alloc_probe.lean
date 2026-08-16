@@ -1,4 +1,5 @@
 import RubyCore.Proof.Static.Locals
+import RubyCore.PreludeBoot
 
 /-!
 The producer rung's measurement: **what does an `alloc` actually break?**
@@ -19,6 +20,16 @@ question about fuel.
 This script is that measurement, kept as a check rather than as a paragraph:
 it exits non-zero if an unallocated id ever gets a type again.
 
+**L143 adds a second measurement, for the second bound.** Relativizing
+`TypeAgree` to `< h.objs.size` needs the *class* id in bounds too — the `.ref`
+arm's type is `className h (classOf h (.ref o))`, and `className` also answers out
+of bounds with a default — so `plainRecv` gained `(h.get o).klass < h.objs.size`.
+That clause is a **refusal**, and a refusal has to be priced: this script counts
+the objects of the **prelude-booted** heap it costs. The answer must be zero, and
+if it ever is not, the fragment has silently stopped typing real objects rather
+than pathological ones. `typeAgree_alloc` is the proof that the relativization
+achieved what it was for; this is the check that it cost nothing.
+
     lake env lean --run scripts/alloc_probe.lean      # exit 0 iff no OOB id has a type
 -/
 
@@ -38,9 +49,29 @@ def main : IO UInt32 := do
   -- the fresh id — that is why the transport has to be relativized to ids the
   -- old heap had, rather than proved unrelativized.
   let ok := plainRecv h n = false && (valueTy? h (.ref n)).isNone
-  if ok then
-    IO.println "OK: an unallocated id has no type, so ValueTy implies in-bounds"
+  -- L143's clause, priced at the heap the interpreter really starts from: how many
+  -- **allocated** objects does `(h.get o).klass < h.objs.size` refuse? A real heap
+  -- never points an object at a class it has not allocated, so the answer is zero
+  -- — but that is a measurement, not an argument, and it is the one this clause
+  -- could get wrong.
+  let mut oobKlass := 0
+  let mut plainCount := 0
+  let mut bootedSize := 0
+  match Prelude.boot with
+  | .error e => IO.eprintln s!"prelude boot failed: {e}"; return 1
+  | .ok mp =>
+    let hb := mp.heap
+    bootedSize := hb.objs.size
+    for o in [0:hb.objs.size] do
+      if !((hb.get o).klass < hb.objs.size) then oobKlass := oobKlass + 1
+      if plainRecv hb o then plainCount := plainCount + 1
+  IO.println s!"booted heap: {bootedSize} objects, {plainCount} plain receivers, \
+{oobKlass} refused for an out-of-bounds klass (want 0)"
+  if ok && oobKlass == 0 then
+    IO.println "OK: an unallocated id has no type, so ValueTy implies in-bounds; \
+and no allocated object is refused for its class"
     return 0
   else
-    IO.eprintln "FAIL: an out-of-bounds ObjId has a type — TypeAgree cannot survive an alloc"
+    IO.eprintln "FAIL: an out-of-bounds ObjId has a type, or a real object's class \
+is out of bounds — TypeAgree cannot survive an alloc"
     return 1
