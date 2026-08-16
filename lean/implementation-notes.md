@@ -5238,3 +5238,27 @@ None of that is a transport, an invariant clause, or a heap fact. That is the wh
 `Proof/`, `HeapCert.lean`, one script. `check-proofs.sh` green and axiom-clean (the audit now names
 `inv_grow_value`); `heapOkB`, `heapok_probe`, `ancestors_probe`, `alloc_probe` all green at the booted
 heap; tier-0 flat at 992 agree, 0 disagree.
+
+## L150 — three lemmas the producer's arc left behind
+
+Hygiene, and the reason it is an entry rather than a silent tidy: **a lemma with no consumers is not
+neutral.** It is a statement the next reader will find by grepping, and each of these three is *weaker*
+than the thing that replaced it, so finding it is worse than not finding it.
+
+* ~~`ResolvesTo_defineMethod`~~ — L147 moved its only caller (`DeclsOk_defineMethod`) to
+  `ResolvesAt_defineMethod`. The receiver-shaped *predicate* `ResolvesTo` stays, because
+  `entry_dispatch` reads it through `EntryOk.resolves`; nothing transports it any more.
+* ~~`shapeAgree_alloc_nonClass`~~ (L144) — `plainGrow_alloc` (L145) says strictly more about the same
+  step: the whole `classPayload?` function agrees, not only its `clsShape`. Two lemmas about one step,
+  one of them weaker, is how a reader ends up proving the weaker thing.
+* ~~`lookup_eq_lookupIn`~~ (L147) — a `rfl` bridge whose content is already in `ResolvesAt`'s docstring
+  and whose *used* form is `resolvesTo_of_resolvesAt`.
+
+Also fixed in `homebrew/HANDOFF.md`: constraint 2 cited `ResolvesTo_defineMethod`, which now does not
+exist, and its argument is one step different after the class indexing — a class-relative
+`declaresName` would have to say *the defining class is not among `k`'s ancestors*, which is
+heap-dependent for the same reason as before. **L147's class indexing did not help there**, and that is
+worth a sentence because the natural assumption is that it would.
+
+Nothing else moved: `check-proofs.sh` green and axiom-clean, all three probes exit 0, tier-0 flat at
+992 agree / 0 disagree. `Proof/` only.

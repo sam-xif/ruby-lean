@@ -302,41 +302,11 @@ theorem Saturated_grow {h h' : Heap} (hg : ShapeAgree h h')
   · rw [ancestors_go_congr_grow hg hsz hsat.1 _ k, ancestors_go_congr_grow hg hsz hsat.1 _ k,
       (key _ (Nat.le_trans hsz (Nat.le_succ _)) k).2, (key _ hsz k).2]
 
-/-- The shape of the hypothesis an `alloc` supplies, spelled out so the producer's
-    consecution case does not have to re-derive it: pushing an object that is **not
-    a class** leaves every shape alone, including at the fresh id, where both heaps
-    answer `none`. -/
-theorem shapeAgree_alloc_nonClass (h : Heap) (obj : Object)
-    (hnc : ∀ c, obj.payload ≠ .cls c) : ShapeAgree h ⟨h.objs.push obj⟩ := by
-  intro k
-  by_cases hk : k < h.objs.size
-  · have hget : (Heap.get ⟨h.objs.push obj⟩ k) = h.get k := by
-      simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
-        if_neg (Nat.ne_of_lt hk)]
-    simp only [Heap.classPayload?, hget]
-  · -- Out of the old heap's range there are two cases and both answer `none`: the
-    -- fresh id, because the pushed object is not a class, and everything above it,
-    -- because it is not there.
-    rw [classPayload?_oob h k hk]
-    by_cases he : k = h.objs.size
-    · subst he
-      have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
-        simp [Heap.get, Array.getD_eq_getD_getElem?]
-      have hnone : (Heap.classPayload? ⟨h.objs.push obj⟩ h.objs.size) = none := by
-        unfold Heap.classPayload?
-        rw [hget]
-        cases hpl : obj.payload with
-        | cls c => exact absurd hpl (hnc c)
-        | _ => rfl
-      rw [hnone]
-    · have hoob : (Heap.classPayload? ⟨h.objs.push obj⟩ k) = none := by
-        refine classPayload?_oob _ k ?_
-        have hlt : h.objs.size < k :=
-          Nat.lt_of_le_of_ne (Nat.not_lt.mp hk) (fun hEq => he hEq.symm)
-        show ¬ k < (h.objs.push obj).size
-        rw [Array.size_push]
-        exact Nat.not_lt.mpr (Nat.succ_le_of_lt hlt)
-      rw [hoob]
+/-! ~~`shapeAgree_alloc_nonClass`~~ is **withdrawn** (L150). It said a non-class
+`Heap.alloc` preserves every shape; L145's `plainGrow_alloc` says strictly more (the
+whole `classPayload?` function agrees, not only its `clsShape`), and `PlainGrow.shapeAgree`
+recovers this. Two lemmas about the same step, one of them weaker, is how a reader ends up
+proving the weaker thing. -/
 
 end Proof
 end RubyCore

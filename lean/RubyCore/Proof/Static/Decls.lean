@@ -93,9 +93,6 @@ def ResolvesTo (h : Heap) (recv : Value) (mname bid : String) : Prop :=
 def lookupIn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
   lookup.go h mname (ancestors h k)
 
-theorem lookup_eq_lookupIn (h : Heap) (recv : Value) (mname : String) :
-    lookup h recv mname = lookupIn h (classOf h recv) mname := rfl
-
 /-- **Resolution, indexed by the dispatch class instead of by a receiver** (L147).
     Every clause of `ResolvesTo` is this predicate at `classOf h recv` — L145's
     `ResolvesTo_classOf` is the observation, and this is the observation taken
@@ -333,15 +330,10 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
       | exact key "NilClass" [] h
       | exact key "Symbol" [] h
 
-theorem ResolvesTo_defineMethod {h : Heap} {recv : Value} {mname bid : String}
-    {cls : ObjId} {name : String} {md : MethodDef}
-    (hr : ResolvesTo h recv mname bid) (hne : ¬ (mname = name)) :
-    ResolvesTo (defineMethod h cls name md) recv mname bid := by
-  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
-  have hco := classOf_defineMethod h cls name md recv
-  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
-  · rw [lookup_defineMethod h cls name mname md recv hne hco]; exact hlook
-  · rw [hco, ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
+/-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn** (L150): L147 moved its only caller
+(`DeclsOk_defineMethod`) to `ResolvesAt_defineMethod`, and a receiver-shaped resolution
+transport has had no consumer since. The receiver-shaped *predicate* `ResolvesTo` stays
+— `entry_dispatch` reads it, via `EntryOk.resolves` — but nothing transports it. -/
 
 /-! ~~`ResolvesTo_classOf`~~ and ~~`ResolvesTo_grow`~~ (L145) are **superseded by
 L147's class indexing** and withdrawn. `ResolvesTo_classOf` said resolution factors
