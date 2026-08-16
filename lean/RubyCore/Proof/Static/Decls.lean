@@ -157,6 +157,71 @@ theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     exact ⟨valueTy_ref_klass_isSome hv, rfl⟩
   | flt f => simp [ValueTy, valueTy?] at hv
 
+/-! ### Resolution to a **user-defined** method
+
+`ResolvesAt` pins `md.builtin = some bid`, and that is not a restriction anyone
+chose — it is what `ConformsAt`'s conclusion forces (`Builtins.run … m = .ok w m`,
+the machine back unchanged in one step). A method with `builtin = none` reaches
+`enterUserMethod`, which **pushes a frame**: the send produces no value at all,
+and the declared return type is a claim about what the activation eventually
+returns.
+
+So `EntryOk` has to become a disjunction, and this is the second disjunct's
+resolution half. Every clause is a gate on `invoke`'s path to `enterUserMethod`,
+read off `Interp/Send.lean` in order, and there is nothing here that is not one:
+
+| clause | gate |
+|---|---|
+| `lookupIn … = some (owner, md)` | the walk resolves |
+| `builtin = none` | takes the user branch rather than `Builtins.run` |
+| `undefined = false` | not an `undef` tombstone |
+| `visibility = .pub` | `visError?` at an `.explicit` site |
+| `crubyShadow … = none` | the between-classes fidelity gate |
+| `params = []`, `declared = []` | `enterUserMethod` binds nothing, so the callee's environment is `[]` |
+| `capturedFrame = none` | `FrameConforms`'s first clause — the frame is self-contained |
+| `(classPayload? md.owner).isSome` | `FrameConforms`'s definee clause; the frame's `defmod` **is** `md.owner` |
+
+**Note what is absent: `fromPrelude`.** `ResolvesAt` requires
+`fromPrelude = false` because a prelude method has no `bid` to run. The user arm
+has no such need — a prelude-Ruby method is *exactly* a `MethodDef` with
+`builtin = none`, and every gate above is one it can pass. That is D8's dominant
+category (`widening-the-fragment.md` §5.1: 153 of 285 prelude methods rising to
+269) becoming **expressible**, which `HANDOFF.md` §constraint 1 records as
+blocked. The shadow clause keeps the `fromPrelude` conditional `invokeDispatch`
+itself applies, rather than dropping it.
+
+`crubySingletonShadow` — the other gate on this branch, and the one three rungs
+predicted would come back — costs nothing again: it answers `none` unless the
+receiver's payload is `.cls`, which `plainRecv` refutes. Third prediction, third
+time it is free. -/
+def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop :=
+  ∃ owner,
+    lookupIn h k mname = some (owner, md) ∧
+    md.builtin = none ∧
+    md.undefined = false ∧
+    md.visibility = .pub ∧
+    md.params = [] ∧
+    md.declared = [] ∧
+    md.capturedFrame = none ∧
+    (h.classPayload? md.owner).isSome ∧
+    crubyShadow h
+      (if md.fromPrelude then [] else (ancestors h k).takeWhile (· != owner)) mname = none
+
+/-- **Conformance for a user method is discharged by the checker, not by running
+    anything**: the body infers at the declared return type in the environment
+    `enterUserMethod` builds, which for a zero-parameter method is the empty one.
+
+    This is the reflexive step, and it is worth naming as such. Every obligation
+    the invariant has carried until now is a fact about a *Lean builtin*, proved
+    once, externally, and independent of the checker. This one makes `infer`'s own
+    verdict on a method body a conjunct of the soundness invariant — the checker
+    appears inside the statement of its own soundness theorem. That is sound (the
+    recursion is on the *heap*, not on the proof), and it is the reason a user
+    witness cannot be a lemma about `startArgs` the way `ConformsAt` is: the fact
+    it asserts is not about one step. -/
+def UserConforms (D : Decls) (md : MethodDef) (d : MethodDecl) : Prop :=
+  d.params = [] ∧ ∃ Γ', infer D [] md.body = some (d.ret, Γ')
+
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
     declared return type without touching the machine, and defers to no prelude
@@ -204,9 +269,22 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
     receiver of the class and conforms. Existential in `bid` rather than pinning
     it, which is what makes the condition a lower bound — the invariant never says
     *which* implementation answers, only that a conforming one does. -/
-def EntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
-  ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧
-    ConformsAt τr mname bid d
+def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
+  ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧ ConformsAt τr mname bid d
+
+/-- **The user witness** (L157): resolution to a `MethodDef` with `builtin = none`,
+    with conformance discharged by the *checker* rather than by running anything. -/
+def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
+    Prop :=
+  ∃ md, (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧ UserConforms D md d
+
+/-- A declared method is satisfied by **either** kind of witness. A disjunction
+    rather than a generalization because the two produce *different steps*:
+    `entry_dispatch` lands a value in one step, `user_dispatch` lands a frame with
+    the body still to run. `HANDOFF.md` §constraint 1 predicted this shape ("a
+    disjunction of two witness kinds") and predicted the reason. -/
+def EntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
+  BuiltinEntryOk h τr mname d ∨ UserEntryOk D h τr mname d
 
 /-- The receiver-shaped form the send cases want, recovered from the class-indexed
     one. This direction is all anything needs, and it is the direction that is
@@ -221,7 +299,7 @@ theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Valu
     the table does not declare, and no upper bound on the heap's method table.
     That absence is the whole content of D10. -/
 def DeclsOk (D : Decls) (h : Heap) : Prop :=
-  ∀ τr mname d, declFor D τr mname = some d → EntryOk h τr mname d
+  ∀ τr mname d, declFor D τr mname = some d → EntryOk D h τr mname d
 
 /-! ## 2. The uniform dispatch step
 
@@ -232,7 +310,7 @@ once per tabulated builtin. This is `int_bin_dispatch` with the three
 
 theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl}
     {recv : Value} {args : List Value}
-    (he : EntryOk m.heap τr mname d)
+    (he : BuiltinEntryOk m.heap τr mname d)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
     ∃ w, ValueTy m.heap w d.ret ∧
       startArgs m recv .explicit mname args [] .none
@@ -277,6 +355,69 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   all_goals
     simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
       appendKwHash, hrun, hns, hdefer, hraise]
+
+/-- The activation `enterUserMethod` builds for a zero-parameter, non-closure
+    method. Named rather than left to an existential because unification cannot
+    find a twelve-field literal from inside a `simp`, and because the two fields
+    `FrameConforms` reads are then `rfl`. -/
+def userFrame (recv : Value) (md : MethodDef) (mname : String) : Frame :=
+  { self := recv, locals := [], defmod := md.owner, cref := md.cref,
+    blk := none, callBlk := none, kind := .method,
+    meth := md.superName.getD mname, runParams := [], runFromDM := false,
+    captured := none }
+
+set_option maxHeartbeats 1000000 in
+/-- **The user-method dispatch step** (L157) — `entry_dispatch`'s sibling, and the
+    reason the two had to split rather than generalize.
+
+    `entry_dispatch` concludes `.next (withCtl m (.value w))`: one step, a value,
+    the machine otherwise unchanged. This concludes a **frame push** with the body
+    in `ctl` and nothing in hand. Same hypothesis shape, different `StepResult`
+    argument, so no common statement covers both — which is exactly what
+    `HANDOFF.md` §constraint 1 predicted ("`entry_dispatch` splits in two, because
+    the two branches have different step results"). -/
+theorem user_dispatch {m : Machine} {τr : Ty} {mname : String} {md : MethodDef}
+    {recv : Value}
+    (hres : ResolvesUser m.heap (classOf m.heap recv) mname md)
+    (hrv : ValueTy m.heap recv τr) :
+    startArgs m recv .explicit mname [] [] .none
+      = .next { m with frames := m.frames.push (userFrame recv md mname),
+                       stack := m.frames.size :: m.stack,
+                       kont := .frameK m.frames.size :: m.kont,
+                       ctl := .eval md.body } := by
+  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw⟩ := hres
+  -- **Two stages, and the split is not cosmetic.** Unfolding `invoke` and
+  -- `enterUserMethod` in one `simp` exhausts the heartbeat budget: the first is a
+  -- nest of receiver-shape and gate `match`es, the second a hundred lines of
+  -- parameter binding, and `simp` interleaves them. Reducing the dispatch to a
+  -- *named call* first keeps each stage's search space small.
+  -- `lookup h v m` *is* `lookupIn h (classOf h v) m` (`lookupIn`'s docstring), so
+  -- this is the same equation with the definitional factoring made visible —
+  -- `resolvesTo_of_resolvesAt`'s move, at the user arm.
+  have hlook' : lookup m.heap recv mname = some (owner, md) := hlook
+  have hinv : invoke m recv .explicit mname [] none []
+      = enterUserMethod m recv mname md [] none [] := by
+    rw [invoke.eq_def]
+    -- Exactly `entry_dispatch`'s receiver split, and for the same reason: `invoke`'s
+    -- three receiver-shape arms are all `.ref`, and `plainRecv` refutes them. The
+    -- `.cls` refutation does double duty on this branch — it is also what makes
+    -- `crubySingletonShadow`, the gate `ResolvesTo` never has to mention, answer
+    -- `none`.
+    rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, hplain⟩
+    case' inr.inr.inr.inr =>
+      cases hpl : (m.heap.get o).payload
+      case proc c => exact absurd hplain (by simp [plainRecv, hpl])
+      case hsh xs => exact absurd hplain (by simp [plainRecv, hpl])
+      case cls c => exact absurd hplain (by simp [plainRecv, hpl])
+      all_goals
+        simp [invoke.invokeDispatch, hpl, hlook', hb, hu, hbtw, hvis, visError?,
+          crubySingletonShadow]
+    all_goals
+      simp [invoke.invokeDispatch, hlook', hb, hu, hbtw, hvis, visError?,
+        crubySingletonShadow]
+  simp only [startArgs, finishSend, hinv]
+  simp [enterUserMethod, classifyFull, hpar, hdec, hcap, userFrame, withCtl,
+    appendKwHash]
 
 /-! ## 3. Preservation: the additive step is free
 
@@ -362,6 +503,34 @@ theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
     rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
   · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
 
+/-- **The user arm's growth transport** (L157). Clause for clause the same argument
+    as `ResolvesAt_grow`, plus one: `(classPayload? md.owner).isSome`, which
+    `PlainGrow` pins at *every* id. That extra clause is the frame's definee, and it
+    is the only place the user arm reads the heap somewhere `ResolvesAt` does not. -/
+theorem ResolvesUser_grow {h h' : Heap} {k : ObjId} {mname : String} {md : MethodDef}
+    (hg : PlainGrow h h') (hsat : Saturated h)
+    (hr : ResolvesUser h k mname md) : ResolvesUser h' k mname md := by
+  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw⟩ := hr
+  refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap, by rw [hg.payload]; exact hown, ?_⟩
+  · unfold lookupIn at hlook ⊢
+    rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
+  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
+
+/-- **And across a `def` of a different name** — the same name-disjointness
+    `ResolvesAt_defineMethod` needs, since a write to an existing table can displace
+    an entry. `classPayload?_isSome_defineMethod` covers the definee clause. -/
+theorem ResolvesUser_defineMethod {h : Heap} {k : ObjId} {mname : String}
+    {md : MethodDef} {cls : ObjId} {name : String} {md' : MethodDef}
+    (hr : ResolvesUser h k mname md) (hne : ¬ (mname = name)) :
+    ResolvesUser (defineMethod h cls name md') k mname md := by
+  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw⟩ := hr
+  refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap,
+    by rw [classPayload?_isSome_defineMethod]; exact hown, ?_⟩
+  · unfold lookupIn at hlook ⊢
+    rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md' hne]
+    exact hlook
+  · rw [ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
+
 /-- The `defineMethod` case, class-indexed. Same proof as the receiver-shaped one it
     replaces, with `classOf_defineMethod` no longer needed — a class id is not a
     receiver, so there is nothing to re-derive about dispatch. -/
@@ -422,14 +591,20 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
     intro heq
     rw [heq] at hdecl
     exact absurd (declFor_declaresName hdecl) (by simp [hfresh])
-  obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
   -- `hconf` passes straight through (L146): it is a fact about `bid` and `decl`, not
   -- about this heap. What is left is resolution, and after L147 that is
   -- class-indexed — so the hypothesis read backwards is `TyClass`, not `ValueTy`.
   -- **That is what retired `TypeAgree`'s backward direction**: `TyClass` transports
   -- both ways for any step that preserves `className` and `classPayload?`-ness.
-  exact ⟨bid, fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne,
-    hconf⟩
+  --
+  -- L157: two arms now, and the *same* argument twice. `UserConforms` mentions no
+  -- heap either — it is a fact about `infer` and a body — so both conformance halves
+  -- pass through and only the resolution halves transport.
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, hres, hconf⟩
+  · exact Or.inl ⟨bid,
+      fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
+  · exact Or.inr ⟨mdu,
+      fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
@@ -453,8 +628,11 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
   intro τr mname decl hdecl
-  obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
-  exact ⟨bid, fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, hres, hconf⟩
+  · exact Or.inl ⟨bid,
+      fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
+  · exact Or.inr ⟨mdu,
+      fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
 
 /-! ## 4. The bridge from `TableOk`
 
@@ -721,7 +899,7 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       Builtins.run bid (.int x) [.int y] m' = .ok (.int (op x y)) m')
     (hdefer : ∀ (h' : Heap) (x y : Int),
       Builtins.deferTwin? h' bid (.int x) [.int y] = none) :
-    EntryOk h .int mname { params := [.int], ret := .int } := by
+    BuiltinEntryOk h .int mname { params := [.int], ret := .int } := by
   refine ⟨bid, ?_, hns, hraise, ?_⟩
   · -- L147: the clause is now indexed by the dispatch class, and `TyClass h .int k`
     -- *is* `k = Boot.integerId` — so the `valueTy_int` inversion and the
@@ -760,7 +938,7 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
       Builtins.run bid (.int x) [] m' = .ok (f x) m')
     (hdefer : ∀ (h' : Heap) (x : Int),
       Builtins.deferTwin? h' bid (.int x) [] = none) :
-    EntryOk h .int mname { params := [], ret := τret } := by
+    BuiltinEntryOk h .int mname { params := [], ret := τret } := by
   refine ⟨bid, ?_, hns, hraise, ?_⟩
   · intro k hk
     subst hk
@@ -803,7 +981,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
       have : d = { params := [Ty.int], ret := Ty.int } := by
         simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
       subst this
-      exact entryOk_int ht.1 (by decide) (by decide) run_int_add
+      exact Or.inl <| entryOk_int ht.1 (by decide) (by decide) run_int_add
         (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
           Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
     · by_cases h2 : mname = "-"
@@ -811,7 +989,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
         have : d = { params := [Ty.int], ret := Ty.int } := by
           simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
         subst this
-        exact entryOk_int ht.2.1 (by decide) (by decide) run_int_sub
+        exact Or.inl <| entryOk_int ht.2.1 (by decide) (by decide) run_int_sub
           (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
             Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
       · by_cases h3 : mname = "*"
@@ -819,7 +997,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
           have : d = { params := [Ty.int], ret := Ty.int } := by
             simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
           subst this
-          exact entryOk_int ht.2.2.1 (by decide) (by decide) run_int_mul
+          exact Or.inl <| entryOk_int ht.2.2.1 (by decide) (by decide) run_int_mul
             (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
               Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
         -- L152's nullary row, and the only line of this proof that differs in shape:
@@ -833,7 +1011,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
             -- `f` is given explicitly: elaborating `hty` first would leave it an
             -- undetermined metavariable, since nothing in `ValueTy _ (f x) .bool`
             -- pins the function.
-            exact entryOk_int_nullary (f := fun x => .bool (x == 0))
+            exact Or.inl <| entryOk_int_nullary (f := fun x => .bool (x == 0))
               ht.2.2.2 (by decide) (by decide)
               (fun _ _ => rfl) run_int_zero
               (fun _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,

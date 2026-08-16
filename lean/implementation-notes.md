@@ -5627,3 +5627,87 @@ can produce a value of, which is exactly what a toplevel `def` (private, on `Obj
 
 `check-proofs.sh` green and axiom-clean, `heapOkB` — now including `classOkB` — still true at the
 prelude-booted heap; tier-0 **992 agree, 0 disagree**.
+
+## L157 — `EntryOk`'s user arm: the send that pushes a frame, and the prerequisite nobody had named
+
+`HANDOFF.md` §constraint 1 — *`EntryOk` can only be witnessed by a builtin*, "the item on the most
+paths, larger than any single item" — paid, as machinery. It lands **inert**, for a reason that is
+this commit's real finding and is stated in full below.
+
+**What the constraint actually was, in the code.** `ResolvesAt` pins `md.builtin = some bid` and
+`ConformsAt` concludes `Builtins.run bid recv args m = .ok w m` — the machine back unchanged, in one
+step. A method with `builtin = none` reaches `enterUserMethod`, which **pushes a frame**: the send
+produces no value at all. So for any user or prelude method `EntryOk` was not unproved but **false**,
+and the repair is a disjunction rather than a generalization.
+
+* **`ResolvesUser`** is the user resolution clause, and every conjunct is a gate on `invoke`'s path
+  to `enterUserMethod`, read off `Interp/Send.lean` in order — `builtin = none`, `undefined = false`,
+  `visibility = .pub` (`visError?` at an `.explicit` site), the `crubyShadow` between-classes gate,
+  and then three clauses that are not gates but *frame* obligations: `params = []` and
+  `declared = []` (so the callee's environment is `[]`), `capturedFrame = none` (`FrameConforms`'s
+  first clause), and `(classPayload? md.owner).isSome` (its definee clause, since the activation's
+  `defmod` **is** `md.owner`).
+* **`fromPrelude` is absent, and that is the point.** `ResolvesAt` needs `fromPrelude = false`
+  because a prelude method has no `bid` to run. The user arm has no such need — a prelude-Ruby method
+  *is* a `MethodDef` with `builtin = none` and passes every gate above. So D8's dominant category
+  (`widening-the-fragment.md` §5.1: 153 of 285 prelude methods, 269 after F5) is now **expressible**,
+  where `HANDOFF.md` recorded it as inexpressible.
+* **`UserConforms` is the reflexive step**, and it is worth naming as one. Every obligation the
+  invariant has carried until now is a fact about a Lean builtin, proved once and externally. This
+  one is `infer D [] md.body = some (d.ret, _)` — the **checker's own verdict on a method body**, as
+  a conjunct of its own soundness invariant. Sound (the recursion is on the heap, not on the proof)
+  and unavoidable: the fact a user witness asserts is not about one step, so it cannot be a lemma
+  about `startArgs` the way `ConformsAt` is.
+* **`user_dispatch` is `entry_dispatch`'s sibling and had to be a second lemma**, exactly as
+  §constraint 1 predicted: same hypothesis shape, different `StepResult`. It cost two things worth
+  recording. The `simp` that unfolds `invoke` **and** `enterUserMethod` in one go exhausts the
+  heartbeat budget — a nest of gate `match`es times a hundred lines of parameter binding — so the
+  proof reduces the dispatch to a *named call* first and unfolds the callee second; each stage's
+  search space is then small. And `crubySingletonShadow`, the gate three rungs have now predicted
+  would come back on an object receiver, is free for the **third** time: it answers `none` unless the
+  payload is `.cls`, which `plainRecv` refutes.
+* **The unary send case refutes the user arm by arithmetic**, not by anything about dispatch:
+  `UserConforms` requires `d.params = []` while the `argsK` declaration's is `[τ]`. A one-argument
+  send is a builtin send, necessarily, until `enterUserMethod` binds parameters in the fragment.
+
+**The finding: a program-supplied declaration is unsound without flow-sensitive declarations, and
+that is why `declsOf` has had to be a constant function for four rungs.**
+
+`Types/Decls.lean` has said since F1a that `declsOf` is "a function of the program, and constant
+today", with F1b's `def` and W8's `sig`s named as what would make it non-constant. Making it
+non-constant is not deferred work — **it is unsound as the invariant is currently shaped**, and
+nothing in `PLAN.md` or `HANDOFF.md` records this:
+
+    initiation : check p = .accept → Inv (declsOf p) (Machine.init p)
+
+`Inv` carries `DeclsOk (declsOf p) m.heap`, and `Machine.init p`'s heap is `Boot.initHeap`. A row for
+`String#shout` synthesized from the program's own `class String; def shout; …; end; end` obliges
+`EntryOk` **at the boot heap**, where `lookupIn Boot.initHeap Boot.stringId "shout"` is `none`. The
+obligation is false, `initiation` is unprovable, and no amount of work on the *witness* changes it —
+the method does not exist until the program's own `def` step installs it, which is many steps after
+`Machine.init`.
+
+So the row cannot be a constant of the program; it has to come into force **at the step that
+installs the method**. `infer` already threads exactly this kind of thing — `Γ` is flow-sensitive
+because a local has no type until it is assigned — and a declaration is the same shape of fact one
+level up. The change is to thread `Decls` in *and out* of `infer` beside `Env`, index `KontOk` by
+the pair, and let `Inv` quantify the current table; the `def` step then both installs the method and
+adds the row, and the row is satisfiable precisely because the method was just installed.
+
+Two things that pricing turned up and that the next rung should not rediscover:
+
+1. **`infer` is not monotone in `D`.** Adding a row makes `declaresName` true, which *refuses* a
+   `def` of that name. So "the callee saw a smaller table" is not automatically a weakening, and the
+   frame-return case needs care.
+2. **The row is class-name-indexed, so it obliges *every* class of that name.** `TyClass h (.cls n) k`
+   quantifies over classes named `n` (L147's class indexing, which is right for the reason L147
+   gives). A `def` installs on one class object. So a program-supplied row also needs a **uniqueness**
+   clause — *the class named `n` is unique* — which is decidable at both heaps and is a natural
+   sibling of `ClassOk`. This is `HANDOFF.md` §Known-wrong-answers 2 arriving from a new direction:
+   the declaration table's *key* is the fragile part.
+
+**Verification.** The user arm is currently uninhabited — nothing constructs a `UserEntryOk` — so the
+commit accepts no new programs, and `--check` over the 1,227 cached bootstraptest ASTs is
+**byte-identical** (36 accept / 1,189 unknown / 0 reject). That is L141's shape exactly: the
+machinery lands, proved, one rung before the thing that inhabits it. `check-proofs.sh` green and
+axiom-clean; tier-0 **992 agree, 0 disagree**.

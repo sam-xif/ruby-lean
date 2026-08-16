@@ -389,11 +389,37 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
     -- `trivial`, which is the whole of what the empty parameter list costs.
     | @recvK0 Γ Γs τ mname τret k hsg hk' =>
       dsimp only
-      obtain ⟨w, hw, hstep⟩ :=
-        entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
-          (htab τ mname _ (sigOf_declFor hsg)) hv trivial
-      rw [hstep]
-      exact inv_value hfs htab hhook hsat hstr hcls hbot hw hk'
+      -- **The two witness kinds land different steps** (L157), which is why
+      -- `EntryOk` is a disjunction and why this case is the first to case on it.
+      rcases htab τ mname _ (sigOf_declFor hsg) with hbi | ⟨mdu, hresu, hconfu⟩
+      · obtain ⟨w, hw, hstep⟩ :=
+          entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
+            hbi hv trivial
+        rw [hstep]
+        exact inv_value hfs htab hhook hsat hstr hcls hbot hw hk'
+      · -- The user branch: no value, a **frame**. `user_dispatch` supplies the step;
+        -- the heap is untouched, so all five heap conjuncts pass straight through and
+        -- what is left is the push and the callee's `CtlOk`.
+        have hru := hresu _ (valueTy_tyClass hv)
+        have hown : (m.heap.classPayload? mdu.owner).isSome := by
+          obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
+        rw [user_dispatch (m := { m with kont := k }) hru hv]
+        have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+        obtain ⟨hdp, Γb, hbody⟩ := hconfu
+        refine ⟨htab, hhook, hsat, hstr, hcls,
+          BottomObj_cons hf.1 (BottomObj_push hlt hbot), [], Γ :: Γs, ?_, ?_⟩
+        · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
+            FramesOk.push hfs⟩
+          rw [getD_push_lt_self]
+          -- `FrameConforms` at the activation: `userFrame` leaves `captured` at its
+          -- default, its definee **is** `md.owner`, and `ResolvesUser` carries that
+          -- that id is a class — the clause the user arm has and `ResolvesAt` does
+          -- not need.
+          exact ⟨rfl, hown, by simp [envGet?]⟩
+        · -- The callee's body, typed at the **declared return type**: that is what
+          -- makes `frameK` — which has always resumed the caller at the in-flight
+          -- type — line the activation's answer up with the send's continuation.
+          exact ⟨τret, Γb, hbody, KontOk.frameK hk'⟩
     | @argsK Γ Γs τ mname recv τr τret k hrv hsg hk' =>
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The
@@ -402,9 +428,17 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
       -- than a parallel obligation (`typing-a-mutable-method-table.md` §7).
       dsimp only
       simp only [List.nil_append]
+      -- **The user arm is refuted rather than handled**, and by arithmetic rather
+      -- than by anything about dispatch: `UserConforms` requires `d.params = []`
+      -- (a zero-parameter method is all `enterUserMethod` binds today) while this
+      -- declaration's is `[τ]`. So a unary send is a builtin send, necessarily.
+      have hbi : BuiltinEntryOk m.heap τr mname { params := [τ], ret := τret } := by
+        rcases htab τr mname _ (sigOf_declFor hsg) with hb | ⟨_, _, hdp, _⟩
+        · exact hb
+        · exact absurd hdp (by simp)
       obtain ⟨w, hw, hstep⟩ :=
         entry_dispatch (m := { m with kont := k }) (recv := recv) (args := [v])
-          (htab τr mname _ (sigOf_declFor hsg)) hrv (And.intro hv trivial)
+          hbi hrv (And.intro hv trivial)
       rw [hstep]
       exact inv_value hfs htab hhook hsat hstr hcls hbot hw hk'
   · -- ## control = jump: excluded by `CtlOk`
