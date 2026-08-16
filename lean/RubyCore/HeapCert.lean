@@ -67,6 +67,7 @@ def saturatedB (h : Heap) : Bool :=
 def heapOkB (h : Heap) : Bool :=
   intResolvesB h "+" "Integer#+" && intResolvesB h "-" "Integer#-" &&
     intResolvesB h "*" "Integer#*" &&
+    (Boot.objectId < h.objs.size) &&
     (lookup h (.ref Boot.objectId) "method_added").isNone &&
     saturatedB h
 

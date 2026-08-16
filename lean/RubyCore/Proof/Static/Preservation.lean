@@ -134,13 +134,19 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
             rw [hst] at hfs; exact hfs.2.2.1
           simpa [curFrame, curFid, hst] using this.2.1
       have hha' : ¬ ("method_added" = name) := fun hh => hha hh.symm
+      -- `hlk` is the raw lookup equation, because `simp` needs it to collapse
+      -- `evalExpr`'s hook `match`; `hlkNH` is the invariant's clause, which since L149
+      -- also carries `Boot.objectId < objs.size` — preserved because `set!` does not
+      -- resize.
       have hlk : ∀ md : MethodDef,
           lookup (defineMethod m.heap Boot.objectId name md)
             (.ref Boot.objectId) "method_added" = none := by
         intro md
         rw [lookup_defineMethod _ _ name "method_added" md _ hha'
           (classOf_defineMethod _ _ _ _ _)]
-        exact hhook
+        exact hhook.2
+      have hlkNH : ∀ md : MethodDef, NoHook (defineMethod m.heap Boot.objectId name md) :=
+        fun md => ⟨by rw [objs_size_defineMethod]; exact hhook.1, hlk md⟩
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never
       -- has to be written out, and over `m₀` so the `preludeMode` branch — which
       -- differs only in fields `Inv` does not mention — is discharged by the same
@@ -185,7 +191,7 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
             | rfl
             | exact typeAgree_defineMethod _ _ _ _
             | exact DeclsOk_defineMethod htab hfresh
-            | exact hlk _
+            | exact hlkNH _
             -- L148: the third heap conjunct, and `defineMethod` preserves it for the
             -- same reason it preserves the other two — it moves no id.
             | exact Saturated_defineMethod hsat _ _ _

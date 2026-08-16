@@ -88,7 +88,7 @@ def HeapOk (h : Heap) : Prop := TableOk h ∧ NoHook h ∧ Saturated h
     a kernel computation. This is the *start* of phase 1, not its end; the whole
     difficulty of F0 is the other end. -/
 theorem heapOk_initHeap : HeapOk Boot.initHeap :=
-  ⟨tableOk_initHeap, by rfl, saturatedB_sound (by decide)⟩
+  ⟨tableOk_initHeap, ⟨by decide, by rfl⟩, saturatedB_sound (by decide)⟩
 
 /-! ### 1.1 Initiation at an arbitrary heap
 
@@ -145,9 +145,9 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hb
-  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := hb
-  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3⟩, h4,
-    saturatedB_sound h5⟩
+  obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hobj⟩, h4⟩, h5⟩ := hb
+  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3⟩,
+    ⟨of_decide_eq_true hobj, h4⟩, saturatedB_sound h5⟩
 
 /-- **F0, certificate form.** A checked `Bool` about the machine in hand plus an
     accepting `check` gives the invariant — for *any* start configuration, so in
@@ -214,11 +214,11 @@ theorem heapOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     (h4 : ¬ ("method_added" = name)) :
     HeapOk (defineMethod h cls name md) :=
   ⟨TableOk_defineMethod hh.1 h1 h2 h3,
-   by
-     show lookup (defineMethod h cls name md) (.ref Boot.objectId) "method_added" = none
-     rw [lookup_defineMethod _ _ name "method_added" md _ h4
-       (classOf_defineMethod _ _ _ _ _)]
-     exact hh.2.1,
+   ⟨by rw [objs_size_defineMethod]; exact hh.2.1.1,
+    by
+      rw [lookup_defineMethod _ _ name "method_added" md _ h4
+        (classOf_defineMethod _ _ _ _ _)]
+      exact hh.2.1.2⟩,
    -- L148's third clause, and it needs no side condition: a method-table write moves
    -- no id, so the walk cannot become fuel-sensitive.
    Saturated_defineMethod hh.2.2 cls name md⟩

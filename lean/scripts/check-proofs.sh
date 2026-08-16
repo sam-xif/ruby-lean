@@ -62,6 +62,7 @@ import RubyCore.Proof.AncestorsGrow
 #print axioms RubyCore.Proof.ancestors_congr_grow
 #print axioms RubyCore.Proof.saturatedB_sound
 #print axioms RubyCore.Proof.Static.DeclsOk_grow
+#print axioms RubyCore.Proof.Static.inv_grow_value
 LEAN
 
 echo "== axioms"

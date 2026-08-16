@@ -82,7 +82,8 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
   -- `DeclsOk` is what the invariant carries now (F1a), and `tableOk_declsOk` is
   -- how the boot heap's three concrete `rfl`-proved resolutions become it.
   refine ⟨tableOk_declsOk tableOk_initHeap,
-    (by rfl : NoHook (Machine.init p).heap),
+    (show NoHook (Machine.init p).heap from
+      ⟨(by decide : Boot.objectId < Boot.initHeap.objs.size), by rfl⟩),
     -- L148's third heap conjunct. The boot heap is a literal, so the walk's
     -- saturation is decidable *in the kernel* — no certificate needed here, unlike
     -- at the prelude-booted heap where `Lean.Json.parse` does not reduce (L135).

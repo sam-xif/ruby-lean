@@ -503,7 +503,24 @@ def TableOk (h : Heap) : Prop :=
     `FrameConforms` instead — phrasing it at the current frame's `defmod` makes it
     unprovable across `frameK`, which resumes a different frame. -/
 def NoHook (h : Heap) : Prop :=
-  lookup h (.ref Boot.objectId) "method_added" = none
+  Boot.objectId < h.objs.size ∧
+    lookup h (.ref Boot.objectId) "method_added" = none
+
+/-- **`NoHook` survives an allocating step** (L149), and the bound is why the clause
+    grew one. `lookup` on `Object` is a walk from `classOf h (.ref Boot.objectId)`, and
+    `PlainGrow` pins that only for ids the old heap had — so without
+    `Boot.objectId < h.objs.size` the *pathological* case where `Object` is the id being
+    allocated is not ruled out, and the hook lookup could change under an allocation.
+
+    The bound is not a new assumption in any real sense: a heap without `Object` is not
+    one the interpreter can build, `heapOkB` decides it, and it is preserved by every
+    step (sizes only grow). It is the same trade as `plainRecv`'s clauses — say the
+    condition where the judgement can see it rather than at the use site. -/
+theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hh : NoHook h) : NoHook h' := by
+  refine ⟨Nat.lt_of_lt_of_le hh.1 hg.size, ?_⟩
+  rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact hh.1)]
+  exact hh.2
 
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is

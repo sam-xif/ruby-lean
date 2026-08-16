@@ -254,6 +254,46 @@ theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr
     (hk : KontOk D m.heap (Γ' :: Γs) τ (k :: m.kont)) :
     Inv D (withKont m (.eval e) k) :=
   ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+
+/-- **The invariant survives a step that allocates a plain object** (L149) — which
+    is the producer's consecution case with the rule removed, and therefore the
+    statement that says how much of the producer is *not* about the producer.
+
+    Every conjunct is discharged by a lemma of its own rung, and it is worth reading
+    the list as a summary of what items 2–5 of the bill bought:
+
+    | conjunct | discharged by | rung |
+    |---|---|---|
+    | `DeclsOk`   | `DeclsOk_grow`          | L147 (class-indexed resolution) |
+    | `NoHook`    | `NoHook_grow`           | L149 |
+    | `Saturated` | `Saturated_grow`        | L148 |
+    | `FramesOk`  | `FramesOk.heap_congr` ∘ `typeAgree_of_plainGrow` | L143/L145 |
+    | `CtlOk`     | `KontOk.heap_congr` ∘ the same | L143/L145 |
+
+    What the *rule* still owes is only what a rule can owe: that the step really
+    lands in a machine related to this one by `PlainGrow` with frames, stack and
+    `kont` untouched, and that the value it produces has the type the rule assigns.
+    `plainGrow_alloc` supplies the first for a non-class `Heap.alloc`.
+
+    The produced value's type is read in the **new** heap (`hv`), which is the whole
+    reason the transport had to be relativized rather than proved unrelativized
+    (L143): the fresh object has no type in the old one. -/
+theorem inv_grow_value {D : Decls} {m m' : Machine} {Γ : Env} {Γs : List Env}
+    {v : Value} {τ : Ty}
+    (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap)
+    (hg : PlainGrow m.heap m'.heap)
+    (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
+    (hv : ValueTy m'.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
+    Inv D (withCtl m' (.value v)) := by
+  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
+  refine ⟨DeclsOk_grow hg hsat ht, NoHook_grow hg hsat hh,
+    Saturated_grow hg.shapeAgree hg.size hsat, Γ, Γs, ?_, ?_⟩
+  · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs)
+    rw [hfr, hst]
+    exact FramesOk.heap_congr hag hfs
+  · show ∃ σ, ValueTy m'.heap v σ ∧ KontOk D m'.heap (Γ :: Γs) σ m'.kont
+    exact ⟨τ, hv, by rw [hko]; exact KontOk.heap_congr hag hk⟩
 end Static
 end Proof
 end RubyCore

@@ -5187,3 +5187,54 @@ calls `heapOkB` on the execution path — it exists for the probes — so `--che
 move; the binary's behaviour is unchanged by a new unused `def`. `check-proofs.sh` green and
 axiom-clean; `heapOkB` (now including saturation) and both probes true at the booted heap; tier-0 flat
 at 992 agree, 0 disagree.
+
+## L149 — the invariant survives an allocation, which is the producer's case minus the rule
+
+`inv_grow_value`: **if `Inv` holds and a step allocates a plain object while leaving frames, stack and
+`kont` alone, `Inv` holds afterwards.** That is the producer's consecution case with the rule removed,
+and therefore the statement that says how much of the producer was never about the producer.
+
+Every conjunct falls to a lemma of its own rung, which reads as a summary of items 2–5:
+
+| conjunct | discharged by | rung |
+|---|---|---|
+| `DeclsOk` | `DeclsOk_grow` | L147 — class-indexed resolution |
+| `NoHook` | `NoHook_grow` | this commit |
+| `Saturated` | `Saturated_grow` | L148 |
+| `FramesOk` | `FramesOk.heap_congr` ∘ `typeAgree_of_plainGrow` | L143 / L145 |
+| `CtlOk` | `KontOk.heap_congr` ∘ the same | L143 / L145 |
+
+The produced value's type is read in the **new** heap, which is the whole reason the transport had to
+be relativized rather than proved unrelativized (L143): the fresh object has no type in the old one.
+
+### `NoHook` gained a clause, and it is the same clause a third time
+
+`NoHook` is `lookup h (.ref Boot.objectId) "method_added" = none`, and `lookup` on `Object` is a walk
+from `classOf h (.ref Boot.objectId)` — which `PlainGrow` pins only for ids the old heap had. So
+without `Boot.objectId < h.objs.size` the pathological case where `Object` *is* the id being allocated
+is not excluded, and the hook lookup could change under an allocation.
+
+So `NoHook` is now `Boot.objectId < h.objs.size ∧ lookup … = none`. That is the fourth instance of the
+pattern L147 named (after `plainRecv`'s three): **the condition goes where the judgement can see it,
+not where the use site would have to derive it.** `heapOkB` decides it, the boot heap satisfies it by
+`decide`, `defineMethod` preserves it because `set!` does not resize, and an allocation preserves it
+because sizes only grow.
+
+### What the producer still owes, and it is now only what a rule can owe
+
+1. the rule in `infer` (a type for `Class#new`/`.new`, and the fragment clause admitting it);
+2. its consecution case: that the step lands in a machine `PlainGrow`-related to this one with frames,
+   stack and `kont` untouched — `plainGrow_alloc` supplies the heap half for a non-class
+   `Heap.alloc` — and that the value it produces has the type the rule assigns;
+3. `Class#new` is not the only shape: `classDef` allocates a **class**, which breaks `PlainGrow`'s
+   third clause and needs the relativized shape agreement (`AncestorsGrow.lean`'s header; the clause it
+   needs is measured true, 0 out-of-bounds edges).
+
+None of that is a transport, an invariant clause, or a heap fact. That is the whole result of items
+2–5.
+
+### Verification
+
+`Proof/`, `HeapCert.lean`, one script. `check-proofs.sh` green and axiom-clean (the audit now names
+`inv_grow_value`); `heapOkB`, `heapok_probe`, `ancestors_probe`, `alloc_probe` all green at the booted
+heap; tier-0 flat at 992 agree, 0 disagree.
