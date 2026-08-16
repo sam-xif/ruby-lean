@@ -45,9 +45,30 @@ set_option maxRecDepth 100000
 
     **This is a refusal, not an approximation.** A Proc, a Hash and a class object
     simply have no type in this rung; nothing unsound follows from a value having
-    no type, only that no call on it can be checked. -/
+    no type, only that no call on it can be checked.
+
+    **`o < h.objs.size` is the producer rung's clause, and it repairs a latent
+    defect rather than merely preparing for one.** `Heap.get` answers an
+    out-of-bounds id with `default`, whose `klass` is `0`, whose `eigen` is `none`
+    and whose payload is `.none` — so without this bound *every unallocated id is
+    a plain receiver*, and L141's `.ref` arm gave it the type
+    `.cls "BasicObject"`. Measured, not reasoned: at the boot heap
+    `valueTy? h (.ref 40) = some (.cls "BasicObject")` with `h.objs.size = 40`.
+
+    Nothing observes that today, because nothing constructs a class-typed value
+    and every `baseDecls` row is at a ground type. What it *blocks* is the
+    producer: `alloc` turns id `n` from `.cls "BasicObject"` into `.cls C`, which
+    refutes `TypeAgree`'s first clause at the fresh id — so the transport
+    condition is **false for any allocating step**, before any question of
+    `ancestors_congr`'s fuel arises. With the bound, `ValueTy` implies the value
+    is in bounds (`valueTy_ref_lt`), which is what lets the transport be
+    relativized to ids the old heap actually had, and `alloc` satisfies *that*
+    definitionally.
+
+    The move is L141's own: a side condition the use site would have to derive
+    goes into the judgement instead. -/
 def plainRecv (h : Heap) (o : ObjId) : Bool :=
-  (h.get o).eigen.isNone &&
+  o < h.objs.size && (h.get o).eigen.isNone &&
     (match (h.get o).payload with
      | .proc _ => false
      | .hsh _ => false
@@ -114,6 +135,16 @@ theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     · exact hp
     · simp [ValueTy, valueTy?, hp] at hv
   | _ => simp_all [ValueTy, valueTy?]
+
+/-- **A typed `.ref` is an id the heap actually has.** The point of `plainRecv`'s
+    bound, isolated so that the transport lemmas can consume it without unfolding
+    `valueTy?`: it is what will let `TypeAgree` be relativized to `< h.objs.size`
+    and therefore hold across an `alloc`. -/
+theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+    o < h.objs.size := by
+  by_cases hb : o < h.objs.size
+  · exact hb
+  · simp [ValueTy, valueTy?, plainRecv, hb] at hv
 
 /-- Every value in the list has the corresponding declared type. Pointwise, and
     length-forcing by the `_, _ => False` arm — the same shape as `FramesOk`, for
@@ -485,8 +516,11 @@ theorem plainRecv_defineMethod (h : Heap) (cls o : ObjId) (name : String)
       unfold plainRecv
       rw [payload_setClassPayload h o _ hb, hpay]
       simp
-    · unfold plainRecv
-      simp only [Heap.setClassPayload, Heap.get, Heap.set]
+    · -- `set!` preserves `objs.size`, so the new bound clause is untouched too.
+      have hsz : ∀ (a : Array Object) (i : Nat) (x : Object), (a.set! i x).size = a.size :=
+        fun a i x => by simp [Array.set!]
+      unfold plainRecv
+      simp only [Heap.setClassPayload, Heap.get, Heap.set, hsz]
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 

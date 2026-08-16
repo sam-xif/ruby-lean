@@ -4631,3 +4631,84 @@ an **arbitrary** `cls`, so a class-relative version is an ancestors-relative, he
 argument, i.e. the wrong side of the `ResolvesTo`/`ConformsAt` line L140 says to keep clauses off.
 So `widening-the-fragment.md` §5.2's sixteen prelude signatures are **not** parallelisable from
 F1b as `HANDOFF.md`'s list says; they are downstream of this.
+
+## L142 — the producer rung's first bill: an unallocated `ObjId` had a type
+
+`homebrew/HANDOFF.md` (ninth session) and L141's own closing section both name **one** blocker in
+front of a producer for the class type: `ancestors_congr` (`Proof/HeapFacts.lean`) requires
+`objs.size` to be *equal*, so an allocating step wants a fuel-monotonicity lemma that does not
+exist. That is true. It is also **not the first bill an `alloc` runs into**, and the one in front of
+it is smaller, is a latent defect rather than a missing lemma, and is fixed here.
+
+### The measurement
+
+`Heap.get` answers an out-of-bounds id with `default` (`Array.getD`), and a `default : Object` has
+`klass = 0`, `eigen = none` and `payload = .none`. So `plainRecv` was **true out of bounds**, and
+L141's `.ref` arm duly read a type off it. Measured at the boot heap
+(`scripts/alloc_probe.lean`, kept as a check):
+
+```
+objs.size before = 40, after = 41, fresh id = 40
+valueTy? h  (.ref 40) = some (Ty.cls "BasicObject")     -- before this commit
+valueTy? h' (.ref 40) = some (Ty.cls "String")
+classOf  h  (.ref 40) = 0  →  after alloc  9
+```
+
+**Every unallocated id was typed `.cls "BasicObject"`, and allocating changed its type.** That
+refutes `TypeAgree`'s first clause (`∀ v, classOf h' v = classOf h v`) at the fresh id, so the
+transport condition is **false for any allocating step** — not unproved, false — before any
+question about `ancestors`' fuel arises. Nothing observes it today, because nothing constructs a
+class-typed value and every `baseDecls` row is at a ground type; it is exactly the kind of defect
+that becomes live in the commit that adds the producer.
+
+### The fix, and why it is the same move L141 made
+
+`plainRecv` gains `o < h.objs.size`. The lesson the ninth session recorded — *ask what the absent
+case was proving, and whether it can be a hypothesis instead* — applies unchanged one rung later:
+the side condition goes into the **judgement** rather than being derived at the use site. `ValueTy`
+then implies the value is in bounds (`valueTy_ref_lt`, isolated so the transport lemmas can consume
+it without unfolding `valueTy?`), which is what will let `TypeAgree` be relativized to ids the old
+heap actually had — and `alloc` satisfies *that* definitionally, since `Array.push` does not touch
+an existing index.
+
+Cost: one clause, one lemma, and one line of `plainRecv_defineMethod` (`set!` preserves
+`objs.size`, so the new clause transports for free). Nothing else in the tree needed repair —
+`valueTy_shapes`, `ValueTy.congr` and `entry_dispatch` are untouched.
+
+### Verification, and why the `--check` diff is not owed this time
+
+`plainRecv` and `valueTy?` live in `Proof/Static/Locals.lean`, which is off `defaultTargets` and is
+not linked into `rubycore`. No rule, front-end file, prelude line or *checker* function changed, so
+`--check`'s answer cannot move and the byte-diff L140/L141 owed has no content here. What is owed
+and was run: `check-proofs.sh` green, axiom-clean (`propext`/`Classical.choice`/`Quot.sound` only),
+`heapOkB` still true at the booted heap; `scripts/alloc_probe.lean` exit 0; tier-0 flat.
+
+### What the producer still owes, re-measured
+
+The remaining bill, in the order an allocating step meets it — the point of writing it down is that
+only the third item was on the list before:
+
+1. ~~An unallocated id has a type.~~ This commit.
+2. **`TypeAgree` relativized to `< h.objs.size`.** The definition and `ValueTy.congr` are the only
+   real consumers of the `.ref` case, and item 1 supplies the in-bounds fact `ValueTy.congr` needs.
+3. **`ancestors`/`lookup` preserved across a size-*increasing* heap.** `ancestors` takes fuel
+   `h.objs.size + 1`, so `ancestors_congr`'s `hsz` is used twice as a fuel rewrite and nothing
+   else. Either weaken it to `≥` plus a "the walk terminates within its fuel" side condition, or
+   get termination from a heap clause — the superclass chain descending in `ObjId` is true by
+   construction (a subclass is allocated after its superclass) and decidable at the boot heap, so
+   F0's certificate could absorb it the way it absorbs `TableOk`. This is the item the handoff
+   named, and it is third rather than first.
+4. **`ConformsAt` cannot describe an allocating builtin at all**, and this one reshapes the rung:
+   its conclusion is `∀ m, Builtins.run bid recv args m = .ok w m` — the machine **unchanged** —
+   and `entry_dispatch` concludes `.next (withCtl m (.value w))` for the same `m`. `Class#new`
+   allocates (`Builtins/Support.lean` `newImpl`). So `C.new` cannot be typed through the
+   declaration table by an `EntryOk` witness; the producer has to be a **syntactic** rule in
+   `infer` with its own consecution case proving the allocating step directly. Worth stating
+   plainly because it means the producer is not "one more table row".
+
+`DeclsOk` preservation across the alloc is the fifth item and is vacuous *only* while the produced
+class has no declared rows — which is the inert shape L140 and L141 both used, and the shape the
+producer commit should use too. The moment a row exists for a user class, `EntryOk`'s ∀-receiver
+clause needs a resolving builtin for it, i.e. the user-method witness `HANDOFF.md` describes. So
+the producer and that witness are two halves of one accept-rate change, not two independent
+prerequisites.
