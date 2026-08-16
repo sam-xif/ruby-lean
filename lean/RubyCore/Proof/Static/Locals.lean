@@ -47,6 +47,29 @@ def valueTy? (_h : Heap) : Value → Option Ty
 
 def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
 
+/-- Inversion at the `int` arm. Moved here from `Proof/Static/Konts.lean` in F1a:
+    it is a fact about `ValueTy`, and `Proof/Static/Decls.lean` — which sits
+    *below* `Konts.lean` now — needs it to build the base table's entries. -/
+theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v = .int a := by
+  cases v <;> simp_all [ValueTy, valueTy?]
+
+/-- **Every value with a type is an immediate.** `valueTy?` has no `.ref` arm, so
+    the fragment's judgement itself rules out an object receiver — which is what
+    lets `Proof/Static/Decls.lean`'s `entry_dispatch` discharge `invoke`'s
+    class-receiver special cases (F1a). The first place F1b will have to change
+    something rather than extend it. -/
+theorem valueTy_immediate {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
+    (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) := by
+  cases v <;> simp_all [ValueTy, valueTy?]
+
+/-- Every value in the list has the corresponding declared type. Pointwise, and
+    length-forcing by the `_, _ => False` arm — the same shape as `FramesOk`, for
+    the same reason: an arity mismatch must not be silently admissible. -/
+def ValuesTy (h : Heap) : List Value → List Ty → Prop
+  | [], [] => True
+  | v :: vs, τ :: τs => ValueTy h v τ ∧ ValuesTy h vs τs
+  | _, _ => False
+
 /-- The frame currently executing. -/
 def curFid (m : Machine) : FrameId := m.stack.headD 0
 
@@ -353,20 +376,20 @@ def TypeAgree (h h' : Heap) : Prop :=
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ => Eq.refl _, fun _ => Eq.refl _, fun _ => Eq.refl _⟩
 
+/-- Symmetric, because it is an equality of three functions. Needed by F1a: a
+    conformance fact whose *hypotheses* mention the old heap has to read them in
+    the new one, which is the transport running backwards. -/
+theorem TypeAgree.symm {h h' : Heap} (ha : TypeAgree h h') : TypeAgree h' h :=
+  ⟨fun v => (ha.1 v).symm, fun k => (ha.2.1 k).symm, fun k => (ha.2.2 k).symm⟩
+
 theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     (md : MethodDef) : TypeAgree h (defineMethod h cls name md) := by
-  refine ⟨fun v => classOf_defineMethod h cls name md v,
-    fun k => className_defineMethod h cls k name md, fun k => ?_⟩
-  have := shape_defineMethod h cls k name md
-  cases h1 : (defineMethod h cls name md).classPayload? k with
-  | none =>
-    cases h2 : h.classPayload? k with
-    | none => simp
-    | some c => rw [h1, h2] at this; exact absurd this (by simp)
-  | some c' =>
-    cases h2 : h.classPayload? k with
-    | none => rw [h1, h2] at this; exact absurd this (by simp)
-    | some c => simp
+  -- The third clause was inline here and is now `classPayload?_isSome_defineMethod`
+  -- in `Proof/HeapFacts.lean`, beside the rest of the `defineMethod` chain — it is
+  -- a fact about the heap, not about the type judgement (F1a).
+  exact ⟨fun v => classOf_defineMethod h cls name md v,
+    fun k => className_defineMethod h cls k name md,
+    fun k => classPayload?_isSome_defineMethod h cls k name md⟩
 
 /-- Transport of the value judgement. **No arm reads the heap today**, so this is
     `id` — and it is stated with the hypothesis anyway, because the point of L137
@@ -375,6 +398,13 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
 theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (_ha : TypeAgree h h')
     (hv : ValueTy h v τ) : ValueTy h' v τ := by
   cases v <;> simp_all [ValueTy, valueTy?]
+
+theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
+    ∀ {vs : List Value} {τs : List Ty}, ValuesTy h vs τs → ValuesTy h' vs τs
+  | [], [], hv => hv
+  | _ :: _, _ :: _, hv => ⟨ValueTy.congr ha hv.1, ValuesTy.congr ha hv.2⟩
+  | [], _ :: _, hv => absurd hv (by simp [ValuesTy])
+  | _ :: _, [], hv => absurd hv (by simp [ValuesTy])
 
 theorem FrameConforms.congr {h h' : Heap} {Γ : Env} {f : Frame}
     (ha : TypeAgree h h') (hc : FrameConforms h Γ f) : FrameConforms h' Γ f :=

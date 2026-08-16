@@ -96,12 +96,15 @@ carries phase 1's globals into phase 2 and `Inv` does not mention them.
 
 theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     (hchk : check p = .accept) (hh : HeapOk h) :
-    Inv { Machine.initOn h p with globals := g } := by
-  refine ⟨hh.1, hh.2, [], [], ?_, ?_⟩
+    Inv (declsOf p) { Machine.initOn h p with globals := g } := by
+  -- F1a: the invariant's heap clause is `DeclsOk`, and `HeapOk`'s `TableOk` half
+  -- is its concrete witness for `baseDecls`. That is the whole reason F0 needed no
+  -- restatement — `heapOkB` still decides exactly what it decided before.
+  refine ⟨tableOk_declsOk hh.1, hh.2, [], [], ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at hchk
-    show CtlOk [] [] _
+    show CtlOk (declsOf p) [] [] _
     unfold CtlOk
     split at hchk
     · rename_i r hr
@@ -145,7 +148,7 @@ theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
     particular for the prelude-booted one. -/
 theorem inv_of_cert {p : Expr} {h : Heap} {g : List (String × Value)}
     (hchk : check p = .accept) (hcert : heapOkB h = true) :
-    Inv { Machine.initOn h p with globals := g } :=
+    Inv (declsOf p) { Machine.initOn h p with globals := g } :=
   initiation_on hchk (heapOkB_sound hcert)
 
 /-- **F0's headline, certificate form.** Static soundness for a program running

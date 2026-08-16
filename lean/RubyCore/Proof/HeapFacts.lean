@@ -28,7 +28,7 @@ conjunct — "the tabulated `Integer` builtins still resolve" — has to survive
 All of 1–3 are proved here.
 
 The fragment supplies (3)'s side condition for free: it can forbid `def`ining a
-name in `builtinSig`, which is syntactic.
+name the declaration table names, which is syntactic (`Types.declaresName`).
 
 **The alternative, rejected twice over.** State `check_sound` from a machine with
 the `def`s already installed, discharging setup per-program by `native_decide`.
@@ -189,6 +189,19 @@ theorem ancestors_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     ancestors (defineMethod h cls name md) k = ancestors h k :=
   ancestors_congr (fun j => shape_defineMethod h cls j name md)
     (objs_size_defineMethod h cls name md) k
+
+/-- **`defineMethod` does not turn an object into a class, or out of being one.**
+    A corollary of `shape_defineMethod` that two callers now need — the third
+    conjunct of `Static.typeAgree_defineMethod`, and the singleton-shadow gate of
+    `Static.crubySingletonShadow_defineMethod` (F1a). Proved once here rather than
+    twice there. -/
+theorem classPayload?_isSome_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).isSome = (h.classPayload? k).isSome := by
+  have hsh := shape_defineMethod h cls k name md
+  cases h1 : (defineMethod h cls name md).classPayload? k <;>
+    cases h2 : h.classPayload? k <;>
+    rw [h1, h2] at hsh <;> simp_all
 
 /-! ## Step 3: `lookup` is unchanged for a *different* method name -/
 

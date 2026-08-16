@@ -5,7 +5,7 @@ import RubyCore.Proof.HeapFacts
 # RBI-conformance for the builtins the typed fragment calls
 
 `docs/semantics/static-soundness-poc.md` §5. Every entry of
-`Types/Core.lean`'s `builtinSig` is a **claim about the model's own
+`Types/Decls.lean`'s `baseDecls` is a **claim about the model's own
 implementation**, and this file discharges those claims: for each declared
 signature, the interpreter's dispatch really does produce a value of the
 declared type, in one step, without raising.
@@ -146,7 +146,7 @@ theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value}
 table has to preserve it. The `defineMethod` chain is proved in
 `Proof/HeapFacts.lean`; this is its application, and the side condition
 (`mname ≠ name`) is the one the fragment can supply syntactically by forbidding a
-`def` of any name in `builtinSig`.
+`def` of any name the declaration table declares (`Types.declaresName`).
 -/
 
 theorem crubyShadow_defineMethod (h : Heap) (cls : ObjId) (name mname : String)

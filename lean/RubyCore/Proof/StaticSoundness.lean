@@ -47,7 +47,8 @@ set_option maxRecDepth 100000
 /-! ## 4. The three obligations, and the theorem -/
 
 /-- Preservation. -/
-theorem consecution (m m' : Machine) (h : Inv m) (hs : SmallStep m m') : Inv m' := by
+theorem consecution (D : Decls) (m m' : Machine) (h : Inv D m) (hs : SmallStep m m') :
+    Inv D m' := by
   have hok := step_ok h
   unfold SmallStep at hs
   rw [hs] at hok
@@ -56,7 +57,7 @@ theorem consecution (m m' : Machine) (h : Inv m) (hs : SmallStep m m') : Inv m' 
 /-- Progress: a machine satisfying `Inv` is never one step from a type error.
     Every `StepResult` other than `.next`/`.done` is `False` under `StepOk`, so
     `.uncaught` in particular is unreachable. -/
-theorem safety (m : Machine) (h : Inv m) : ¬ aboutToTypeStick m := by
+theorem safety (D : Decls) (m : Machine) (h : Inv D m) : ¬ aboutToTypeStick m := by
   intro hbad
   have hok := step_ok h
   unfold aboutToTypeStick typeStuck at hbad
@@ -77,13 +78,16 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 /-- Initiation, for the machine `Machine.init` builds. -/
-theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
-  refine ⟨tableOk_initHeap, (by rfl : NoHook (Machine.init p).heap), [], [], ?_, ?_⟩
+theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine.init p) := by
+  -- `DeclsOk` is what the invariant carries now (F1a), and `tableOk_declsOk` is
+  -- how the boot heap's three concrete `rfl`-proved resolutions become it.
+  refine ⟨tableOk_declsOk tableOk_initHeap,
+    (by rfl : NoHook (Machine.init p).heap), [], [], ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
     simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at h
-    show CtlOk [] [] (Machine.init p)
+    show CtlOk (declsOf p) [] [] (Machine.init p)
     unfold CtlOk
     split at h
     · rename_i r hr
@@ -95,9 +99,9 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     way so that P1's prelude-booted start (`Prelude.initWithPrelude`, the
     starting configuration `SorbetSafety.lean:100` insists on) is an instance
     rather than a restatement. -/
-theorem sound_from {m₀ : Machine} (h : Inv m₀) :
+theorem sound_from {D : Decls} {m₀ : Machine} (h : Inv D m₀) :
     ∀ r, ReachableResult m₀ r → ¬ typeStuck r :=
-  invariant_sound_from Inv h consecution safety
+  invariant_sound_from (Inv D) h (consecution D) (safety D)
 
 /-- **The POC theorem.** `check` accepts ⇒ no reachable outcome is a type
     error. Unconditional: no rely condition, no assumed hypothesis. -/
@@ -115,10 +119,10 @@ def egIf : Expr :=
          .if' .tru (.var .lvar "x") (some (.int 0)) ]
 
 example : check egIf = .accept := by
-  simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?]
+  simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf]
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?])
+  check_sound (by simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf])
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/
@@ -127,10 +131,10 @@ def egLoop : Expr :=
          .while' .tru (.vasgn .lvar "x" (.int 1)) ]
 
 example : check egLoop = .accept := by
-  simp [check, egLoop, infer, inferSeq, envSet]
+  simp [check, egLoop, infer, inferSeq, envSet, declsOf]
 
 theorem egLoop_safe : ∀ r, ReachableResult (Machine.init egLoop) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egLoop, infer, inferSeq, envSet])
+  check_sound (by simp [check, egLoop, infer, inferSeq, envSet, declsOf])
 
 /-- `def f; 1 + 2; end; 3 * 4` — the P1b shape. The `def` installs a method,
     mutating the method table (which `TableOk_defineMethod` is what survives), and
@@ -140,10 +144,10 @@ def egDef : Expr :=
          .send (some (.int 3)) "*" [.int 4] none ]
 
 example : check egDef = .accept := by
-  simp [check, egDef, infer, inferSeq, builtinSig]
+  simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames]
 
 theorem egDef_safe : ∀ r, ReachableResult (Machine.init egDef) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egDef, infer, inferSeq, builtinSig])
+  check_sound (by simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames])
 
 /-- `(x + 1) * 2` with `x` a local — the P0b program shape. -/
 def egArith : Expr :=
@@ -152,11 +156,11 @@ def egArith : Expr :=
                "*" [.int 2] none ]
 
 example : check egArith = .accept := by
-  simp [check, egArith, infer, inferSeq, builtinSig, envSet, envGet?]
+  simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?]
 
 theorem egArith_safe :
     ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egArith, infer, inferSeq, builtinSig, envSet, envGet?])
+  check_sound (by simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?])
 
 /-- A branch-type disagreement the fragment cannot join: `unknown`, not
     `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls
@@ -166,7 +170,7 @@ theorem egArith_safe :
     The verdict examples that *do* exercise `reject` live next to the checker
     in `Types/Core.lean`; only the safety-bearing ones belong here. -/
 example : check (.if' .tru (.int 1) (some .nil)) = .unknown := by
-  simp [check, infer, inferIf, illTyped]
+  simp [check, infer, inferIf, illTyped, declsOf]
 
 /-! ## 6. Axiom hygiene
 

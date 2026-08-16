@@ -1,4 +1,4 @@
-import RubyCore.Syntax
+import RubyCore.Types.Decls
 
 /-!
 # P0 of the static-soundness POC — the type language and the checker
@@ -16,70 +16,17 @@ proof owed — `none` simply means `unknown`.
 
 Inference is **flow-sensitive** in the environment (Ruby locals are assigned,
 not declared), so every judgment threads an input and an output environment.
+
+**F1a threads a second thing: the declaration table `D`** (`Types/Decls.lean`).
+Where P0 consulted a `builtinSig` *function*, every rule now consults `sigOf D`,
+and `check` supplies `declsOf p`. Today that is `baseDecls` for every program, so
+no verdict moves; what the threading buys is that the invariant has a table to be
+a refinement *of* (`Proof/Static/Decls.lean`), and that F1b's program-supplied
+declarations are a change to `declsOf` rather than to the rules. `Ty`/`Env` moved
+to `Types/Ty.lean` in the same commit, unchanged.
 -/
 
 namespace RubyCore.Types
-
-/-- The P0 type language. No subtyping: `Sub` is equality, so it is not yet a
-    separate relation. Widening this is P1/P3. -/
-inductive Ty where
-  | int
-  | bool
-  | nilT
-  /-- A Symbol. Present only because `def` *evaluates* to the method name
-      (`Interp.lean:2624`), so a `def` in tail position needs a type. Nothing
-      constructs or consumes one otherwise. -/
-  | sym
-deriving DecidableEq, Repr, Inhabited
-
-/-- Local-variable typing environment. Order is canonical (`envSet` replaces in
-    place) so that environment *equality* is a usable check — the `if`-merge and
-    the loop-stability condition both need it. -/
-abbrev Env := List (String × Ty)
-
-def envGet? (Γ : Env) (x : String) : Option Ty :=
-  (Γ.find? (·.1 == x)).map (·.2)
-
-def envSet : Env → String → Ty → Env
-  | [], x, τ => [(x, τ)]
-  | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ
-
-/-! ## The builtin signature table
-
-`static-soundness-poc.md` §5. The prelude-booted heap carries Ruby's core
-library, none of which is in any typed fragment, so `WellTyped` cannot quantify
-over it — builtins are carried by a **declared** signature instead.
-
-Every entry is a **proof obligation**, not an assumption we get to keep: for
-each one, the model's own implementation must be shown to conform
-(`Proof/StaticSoundness.lean` §…). That is the RBI-conformance obligation of
-`typed-portion-safety.md` §6, and our setting is better off than Sorbet's here —
-Sorbet trusts its RBIs with no runtime backstop, whereas the model *defines* the
-builtin, so conformance is a lemma.
-
-The table is keyed on the receiver's **static type**, which is enough at P0
-where `Ty` and the dispatch class are in bijection. P1 needs class names.
--/
-
-/-- Declared `(parameter types, return type)` of a builtin, or `none` for
-    "not in the table", which the checker reads as `unknown`.
-
-    Deliberately narrow: only entries whose conformance lemma is proved may
-    appear. Notable absences and why —
-
-    * `/` and `%` — `ZeroDivisionError`. Not a *type* error, so admitting them
-      would not endanger `check_sound`, but their conformance lemma needs a
-      side condition and they buy nothing at P0.
-    * `**` — a negative exponent produces a Rational in Ruby, which the model
-      does not have.
-    * the `Float` cases of the same bids — `numBin` promotes `Int × Float` to
-      `Float`, so `Integer#+` is only `int → int` because the *argument* type
-      is pinned by the table. -/
-def builtinSig : Ty → String → Option (List Ty × Ty)
-  | .int, "+" => some ([.int], .int)
-  | .int, "-" => some ([.int], .int)
-  | .int, "*" => some ([.int], .int)
-  | _, _ => none
 
 /-! ## The refutation pass
 
@@ -98,7 +45,7 @@ rather than a Lean theorem. Verified for the cases below [V].
 
 **Bias toward `unknown`.** Every source of doubt resolves to `unknown`:
 a receiver or argument whose type is not *unconditional*, a method absent from
-`builtinSig`, or any expression outside the fragment's spine.
+the declaration table, or any expression outside the fragment's spine.
 -/
 
 /-- The type of an expression when it is **unconditional** — literals, and sends
@@ -106,18 +53,18 @@ a receiver or argument whose type is not *unconditional*, a method absent from
     environment, so a local variable is always `none`: `q = 1; q + nil` is
     `unknown` here though `srb` rejects it [V]. That is incompleteness, which
     the ratchet is allowed to have; it is also the obvious next widening. -/
-def defTy (e : Expr) : Option Ty :=
+def defTy (D : Decls) (e : Expr) : Option Ty :=
   match e with
   | .int _ => some .int
   | .tru => some .bool
   | .fls => some .bool
   | .nil => some .nilT
   | .send (some r) mname [a] none =>
-    match defTy r with
+    match defTy D r with
     | some τr =>
-      match builtinSig τr mname with
+      match sigOf D τr mname with
       | some ([τp], τret) =>
-        match defTy a with
+        match defTy D a with
         | some τa => if τa = τp then some τret else none
         | none => none
       | _ => none
@@ -132,10 +79,10 @@ termination_by sizeOf e
     narrow on purpose (`/` is absent but perfectly valid), so absence means "no
     opinion". `1.foo(2)` is therefore `unknown` here even though `srb` rejects it
     with 7003 [V] — again incompleteness, never unsoundness. -/
-def tableRefutes (r : Expr) (mname : String) (a : Expr) : Bool :=
-  match defTy r, defTy a with
+def tableRefutes (D : Decls) (r : Expr) (mname : String) (a : Expr) : Bool :=
+  match defTy D r, defTy D a with
   | some τr, some τa =>
-    match builtinSig τr mname with
+    match sigOf D τr mname with
     | some ([τp], _) => τa != τp
     | _ => false
   | _, _ => false
@@ -145,22 +92,22 @@ mutual
 /-- Refutation: is there a call anywhere on the fragment's spine that the table
     refutes? Recursion stops at any construct outside the fragment, so an
     unsupported node hides everything below it — the conservative direction. -/
-def illTyped (e : Expr) : Bool :=
+def illTyped (D : Decls) (e : Expr) : Bool :=
   match e with
-  | .seq es => illTypedAny es
+  | .seq es => illTypedAny D es
   | .if' c t els =>
-    illTyped c || illTyped t || (match els with | some e' => illTyped e' | none => false)
-  | .while' c b => illTyped c || illTyped b
-  | .vasgn _ _ rhs => illTyped rhs
+    illTyped D c || illTyped D t || (match els with | some e' => illTyped D e' | none => false)
+  | .while' c b => illTyped D c || illTyped D b
+  | .vasgn _ _ rhs => illTyped D rhs
   | .send (some r) mname [a] none =>
-    illTyped r || illTyped a || tableRefutes r mname a
+    illTyped D r || illTyped D a || tableRefutes D r mname a
   | _ => false
 termination_by sizeOf e
 
-def illTypedAny (es : List Expr) : Bool :=
+def illTypedAny (D : Decls) (es : List Expr) : Bool :=
   match es with
   | [] => false
-  | e :: rest => illTyped e || illTypedAny rest
+  | e :: rest => illTyped D e || illTypedAny D rest
 termination_by sizeOf es
 
 end
@@ -169,7 +116,7 @@ mutual
 
 /-- `infer Γ e = some (τ, Γ')` — `e` has type `τ` and leaves the environment
     `Γ'`. `none` is `unknown`: outside the P0 fragment, or ill-typed. -/
-def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
+def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   match e with
   | .int _ => some (.int, Γ)
   | .tru => some (.bool, Γ)
@@ -177,7 +124,7 @@ def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   | .nil => some (.nilT, Γ)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ))
   | .vasgn .lvar x rhs =>
-    match infer Γ rhs with
+    match infer D Γ rhs with
     | some (τ, Γ₁) => some (τ, envSet Γ₁ x τ)
     | none => none
   -- Binary send to a builtin, explicit receiver, no block. Every other send
@@ -185,11 +132,11 @@ def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   -- is also what keeps `.self'` out of receiver position (see `KontOk.recvK`:
   -- `evalExpr` picks the `.selfRecv` site *syntactically* for a literal `self`).
   | .send (some recv) mname [arg] none =>
-    match infer Γ recv with
+    match infer D Γ recv with
     | some (τr, Γ₁) =>
-      match builtinSig τr mname with
+      match sigOf D τr mname with
       | some ([τp], τret) =>
-        match infer Γ₁ arg with
+        match infer D Γ₁ arg with
         | some (τa, Γ₂) => if τa = τp then some (τret, Γ₂) else none
         | none => none
       | _ => none
@@ -197,33 +144,41 @@ def infer (Γ : Env) (e : Expr) : Option (Ty × Env) :=
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
   -- next step); until then there is no environment to check the body in.
   --
-  -- Three names are excluded, and each exclusion is what discharges a clause of
-  -- the machine invariant rather than a matter of taste: `+`/`-`/`*` would
-  -- shadow a tabulated builtin and break `TableOk`
-  -- (`Proof/StaticSoundness.TableOk_defineMethod`), and `method_added` would
-  -- install the `def` hook (`Interp.lean:2625`) whose body we cannot type.
+  -- Two exclusions, and each discharges a clause of the machine invariant rather
+  -- than being a matter of taste.
+  --
+  -- **`declaresName D name` is F1a's generalization of P0's `≠ "+"/"-"/"*"`.** A
+  -- `def` of a name the declarations do not mention is an *addition*, which D10
+  -- admits unconditionally, and the invariant survives it because `lookup` for
+  -- every declared name is untouched (`Proof/Static/Decls.lean`
+  -- `DeclsOk_defineMethod`). A `def` of a name they *do* mention is a
+  -- **redefinition**, admissible iff the new body conforms to the displaced
+  -- declaration — checkable, and F1c's job, so `unknown` until then. With
+  -- `baseDecls` this excludes exactly `+`, `-`, `*`.
+  --
+  -- `method_added` would install the `def` hook (`Interp.lean:2625`) whose body
+  -- we cannot type, so it stays excluded by name.
   | .def' name params body =>
-    if params.isEmpty ∧ name ≠ "+" ∧ name ≠ "-" ∧ name ≠ "*"
-        ∧ name ≠ "method_added" then
+    if params.isEmpty ∧ declaresName D name = false ∧ name ≠ "method_added" then
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
-      match infer [] body with
+      match infer D [] body with
       | some _ => some (.sym, Γ)
       | none => none
     else none
-  | .seq es => inferSeq Γ es
+  | .seq es => inferSeq D Γ es
   | .if' c t els =>
-    match infer Γ c with
-    | some (_, Γ₁) => inferIf Γ₁ t els
+    match infer D Γ c with
+    | some (_, Γ₁) => inferIf D Γ₁ t els
     | none => none
   | .while' c body =>
     -- The loop re-enters the condition with the environment the body leaves, so
     -- both must be *stable* at `Γ`. This is the P0 stand-in for a fixpoint.
-    match infer Γ c with
+    match infer D Γ c with
     | some (_, Γ₁) =>
       if Γ₁ = Γ then
-        match infer Γ body with
+        match infer D Γ body with
         | some (_, Γ₂) => if Γ₂ = Γ then some (.nilT, Γ) else none
         | none => none
       else none
@@ -234,13 +189,13 @@ termination_by sizeOf e
 /-- Statement sequence: thread the environment, take the last type. Mirrors
     `evalExpr`'s three-way split on `.seq` (`Interp.lean:2732`) exactly — in
     particular `[e]` steps straight to `e` with no `seqK` pushed. -/
-def inferSeq (Γ : Env) (es : List Expr) : Option (Ty × Env) :=
+def inferSeq (D : Decls) (Γ : Env) (es : List Expr) : Option (Ty × Env) :=
   match es with
   | [] => some (.nilT, Γ)
-  | [e] => infer Γ e
+  | [e] => infer D Γ e
   | e :: rest =>
-    match infer Γ e with
-    | some (_, Γ₁) => inferSeq Γ₁ rest
+    match infer D Γ e with
+    | some (_, Γ₁) => inferSeq D Γ₁ rest
     | none => none
 termination_by sizeOf es
 
@@ -248,15 +203,15 @@ termination_by sizeOf es
     branch-for-branch. No union type in P0, so the two arms must agree on both
     the type and the environment; a missing `else` contributes `nil` and no
     environment change (`applyKont`'s fall-through, `Interp.lean:2096`). -/
-def inferIf (Γ : Env) (t : Expr) (els : Option Expr) : Option (Ty × Env) :=
+def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) : Option (Ty × Env) :=
   match els with
   | some e =>
-    match infer Γ t, infer Γ e with
+    match infer D Γ t, infer D Γ e with
     | some (τt, Γt), some (τe, Γe) =>
       if τt = τe ∧ Γt = Γe then some (τt, Γt) else none
     | _, _ => none
   | none =>
-    match infer Γ t with
+    match infer D Γ t with
     | some (τt, Γt) => if τt = Ty.nilT ∧ Γt = Γ then some (.nilT, Γ) else none
     | none => none
 termination_by sizeOf t + sizeOf els
@@ -272,13 +227,15 @@ inductive Verdict where
   | unknown
 deriving DecidableEq, Repr, Inhabited
 
-/-- **The checker.** Total and executable. `infer` is consulted first, so a
-    program the type rules accept is never refuted; `illTyped` only ever
-    upgrades an `unknown` to a `reject`. -/
+/-- **The checker.** Total and executable, and still a pure function of the
+    program: the declaration table it runs against is `declsOf p`, computed from
+    `p` (constant today — `Types/Decls.lean` says why). `infer` is consulted
+    first, so a program the type rules accept is never refuted; `illTyped` only
+    ever upgrades an `unknown` to a `reject`. -/
 def check (p : Expr) : Verdict :=
-  match infer [] p with
+  match infer (declsOf p) [] p with
   | some _ => .accept
-  | none => if illTyped p then .reject else .unknown
+  | none => if illTyped (declsOf p) p then .reject else .unknown
 
 /-! ## Worked verdicts
 
@@ -289,11 +246,11 @@ with `srb` [V, 0.6.13405].
 
 /-- `1 + nil` — srb 7002. The motivating case. -/
 example : check (.send (some (.int 1)) "+" [.nil] none) = .reject := by
-  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 + true` — srb 7002. -/
 example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
-  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- **Rejected, and perfectly safe.** `if false then 1 + nil else 0 end` runs to
     `0`. `reject` claims our rules refute the program, *not* that it fails —
@@ -303,18 +260,18 @@ example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
 example :
     check (.if' .fls (.send (some (.int 1)) "+" [.nil] none) (some (.int 0)))
       = .reject := by
-  simp [check, infer, inferIf, illTyped, tableRefutes, defTy, builtinSig]
+  simp [check, infer, inferIf, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 / 2` — srb *accepts*; `/` is absent from the table, so we abstain. This
     is the case that makes "absent ⇒ no opinion" mandatory rather than merely
     conservative: rejecting here would break `reject ⇒ srb rejects`. -/
 example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
-  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1.foo(2)` — srb 7003. We abstain: the table cannot distinguish "no such
     method" from "method we have not tabulated". Incompleteness. -/
 example : check (.send (some (.int 1)) "foo" [.int 2] none) = .unknown := by
-  simp [check, infer, illTyped, tableRefutes, defTy, builtinSig]
+  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `q = 1; q + nil` — srb 7002. We abstain because `defTy` has no environment,
     so a local has no unconditional type. The obvious next widening. -/
@@ -322,6 +279,6 @@ example :
     check (.seq [ .vasgn .lvar "q" (.int 1),
                   .send (some (.var .lvar "q")) "+" [.nil] none ]) = .unknown := by
   simp [check, infer, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
-    builtinSig, envSet, envGet?]
+    sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf, envSet, envGet?]
 
 end RubyCore.Types

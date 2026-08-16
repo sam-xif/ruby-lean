@@ -27,12 +27,12 @@ a legitimate halt, and every remaining `StepResult` — crucially `.uncaught` �
 is `False`, which is exactly progress.
 -/
 
-def StepOk : StepResult → Prop
-  | .next m' => Inv m'
+def StepOk (D : Decls) : StepResult → Prop
+  | .next m' => Inv D m'
   | .done _ _ => True
   | _ => False
 
-theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
+theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) := by
   obtain ⟨htab, hhook, Γ, Γs, hfs, hc⟩ := h
   have hf : FrameOk m := hfs.frameOk
   have hl : LocalsOk Γ m := hfs.localsOk
@@ -124,7 +124,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · exact absurd hinf (by simp)
       · exact absurd hinf (by simp)
     case def' name params body =>
-      obtain ⟨rfl, rfl, rfl, h1, h2, h3, hha⟩ := infer_def_inv hinf
+      obtain ⟨rfl, rfl, rfl, hfresh, hha⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
       have hdo : (curFrame m).defmod = Boot.objectId := by
         cases hst : m.stack with
@@ -163,14 +163,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- method table.
       have hres : ∀ (m₀ : Machine),
           m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
-          TypeAgree m.heap m₀.heap → TableOk m₀.heap → NoHook m₀.heap →
-          Inv (withCtl m₀ (.value (.sym name))) := by
+          TypeAgree m.heap m₀.heap → DeclsOk D m₀.heap → NoHook m₀.heap →
+          Inv D (withCtl m₀ (.value (.sym name))) := by
         intro m₀ hfr hst hko hag ht' hh'
         refine ⟨ht', hh', Γ', Γs, ?_, ?_⟩
         · show FramesOk m₀.heap m₀.frames m₀.stack (Γ' :: Γs)
           rw [hfr, hst]; exact FramesOk.heap_congr hag hfs
         · show ∃ σ, ValueTy m₀.heap (Value.sym name) σ ∧
-              KontOk m₀.heap (Γ' :: Γs) σ m₀.kont
+              KontOk D m₀.heap (Γ' :: Γs) σ m₀.kont
           exact ⟨.sym, rfl, by rw [hko]; exact KontOk.heap_congr hag hk⟩
       -- `hlk` collapses the hook lookup to `none`, after which only the
       -- `preludeMode` `if` remains.
@@ -184,7 +184,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           first
             | rfl
             | exact typeAgree_defineMethod _ _ _ _
-            | exact TableOk_defineMethod htab h1 h2 h3
+            | exact DeclsOk_defineMethod htab hfresh
             | exact hlk _
     case send recv mname args blk =>
       cases recv with
@@ -292,15 +292,18 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       rw [startArgs_plain hsp hkw hfw]
       exact inv_push hfs htab hhook ha (KontOk.argsK hv hsg hk')
     | @argsK Γ Γs τ mname recv τr τret k hrv hsg hk' =>
-      obtain ⟨rfl, rfl, rfl, hname⟩ := builtinSig_inv hsg
-      obtain ⟨a, rfl⟩ := valueTy_int hrv
-      obtain ⟨b, rfl⟩ := valueTy_int hv
+      -- **F1a: one dispatch step for every declared method**, where P0 had a
+      -- three-way `rcases` over the tabulated names and a rewrite per name. The
+      -- invariant supplies the entry, `entry_dispatch` supplies the step, and the
+      -- ~128 conformance lemmas of F6 become witnesses of the same clause rather
+      -- than a parallel obligation (`typing-a-mutable-method-table.md` §7).
       dsimp only
       simp only [List.nil_append]
-      rcases hname with rfl | rfl | rfl
-      · rw [int_add_dispatch (m := { m with kont := k }) htab.1]; exact inv_value hfs htab hhook rfl hk'
-      · rw [int_sub_dispatch (m := { m with kont := k }) htab.2.1]; exact inv_value hfs htab hhook rfl hk'
-      · rw [int_mul_dispatch (m := { m with kont := k }) htab.2.2]; exact inv_value hfs htab hhook rfl hk'
+      obtain ⟨w, hw, hstep⟩ :=
+        entry_dispatch (m := { m with kont := k }) (recv := recv) (args := [v])
+          (htab τr mname _ (sigOf_declFor hsg)) hrv (And.intro hv trivial)
+      rw [hstep]
+      exact inv_value hfs htab hhook hw hk'
   · -- ## control = jump: excluded by `CtlOk`
     rw [hctl] at hc
     exact hc.elim

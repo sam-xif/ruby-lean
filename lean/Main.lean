@@ -107,7 +107,7 @@ def main (args : List String) : IO UInt32 := do
         -- It is deliberately *not* a difftest signal: comparing inferred types
         -- against `T.reveal_type` tests neither direction that matters
         -- (`typed-portion-safety.md` §8).
-        let ty := match Types.infer [] prog with
+        let ty := match Types.infer (Types.declsOf prog) [] prog with
           | some (t, _) => match t with
             | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
             -- `def` evaluates to the method name.

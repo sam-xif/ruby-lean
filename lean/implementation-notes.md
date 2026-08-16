@@ -4422,3 +4422,111 @@ deliberately leaves open.
 
 Checks: tier-0 **992/0** (flat — this file is off every execution path), `check-proofs.sh` green,
 axiom-clean, F0's `heapOkB` certificate still true at the booted heap.
+
+## L140 — F1a: the declaration table, and the invariant as a refinement of it
+
+`homebrew/typing-a-mutable-method-table.md` §8's F1a, and the rung everything below F1 is
+stated in terms of. Two halves, and the second is the one with content.
+
+### The table (`RubyCore/Types/Decls.lean`, new)
+
+`builtinSig : Ty → String → Option (List Ty × Ty)` becomes a lookup in a **static, per-class
+declaration table**: `Decls` maps a class *name* to method names to `MethodDecl` (parameters,
+return). `sigOf D τ mname` is what the rules now read, and `D` is threaded through `defTy`,
+`tableRefutes`, `illTyped`, `infer`, `inferSeq`, `inferIf`, `KontOk`, `CtlOk`, `LoopOk` and
+`Inv`. `check p` supplies `declsOf p`.
+
+Three details that are decisions rather than mechanics:
+
+* **The key is the class *name***, because `infer` cannot name an `ObjId` — `check` is a pure
+  function of the program and object identities exist only in a heap. That is also why
+  `set_temporary_name` and anonymous-class renaming are outside the D10 fragment: they change
+  the key, not the table (§5, and §Known-wrong-answers 2 is where this stops being cosmetic).
+* **`tyClassNames` returns a *list***, and `declFor` demands that every class a receiver of that
+  type can have declares the method **identically**. `Ty.bool` is already two classes, so
+  `T::Boolean` (W5 T4) gets its semantics here rather than needing a union in `Ty`. Requiring
+  agreement rather than taking the first is the honest reading: a declaration that holds on only
+  `TrueClass` supports no call site on a `T::Boolean` receiver.
+* **`declsOf p` is a function of the program and constant today.** Nothing in `infer`'s domain
+  declares a signature, so it returns `baseDecls` for every `p`. Threading it while it is constant
+  is the same move L137 made for the heap: it separates the threading from the growth, so F1b's
+  program-supplied declarations change `declsOf` and not the rules.
+
+`Ty`/`Env` moved to `RubyCore/Types/Ty.lean` unchanged, because `Decls` needs `Ty` and `Core`
+needs `Decls`. That is the first two files of the five `PLAN.md` W5 asks for.
+
+### The invariant (`RubyCore/Proof/Static/Decls.lean`, new)
+
+`Inv`'s heap clause was `TableOk` — *the three tabulated `Integer` builtins resolve, publicly,
+live, unshadowed, not `fromPrelude`* — an **equality-shaped** fact about three names. It is now
+`DeclsOk D`:
+
+> for every method the declarations name, `lookup` resolves it to something conforming to its
+> declared signature.
+
+**What that buys, concretely.** Each entry decomposes into two clauses that behave differently
+under a heap write, and the decomposition is the substance:
+
+* **`ResolvesTo h recv mname bid`** — resolution. Heap-dependent, and the *only* thing
+  preservation has to re-derive; `Proof/HeapFacts.lean`'s `defineMethod` chain discharges it.
+* **`ConformsAt h τr mname bid d`** — conformance: on arguments of the declared parameter types,
+  `bid` answers a value of the declared return type. Its two *conclusions* are heap-uniform
+  (`∀ h'`), which is what makes it transport for free, while its hypotheses read the invariant's
+  heap, which is where F1b's nominal types will need to read it.
+
+Three consequences, all of them things §7 predicted and none of them free:
+
+1. **The three `int_*_dispatch` rewrites in `step_ok`'s `argsK` case collapse into one
+   `entry_dispatch`.** So does the `builtinSig_inv` inversion, which is deleted: it existed only
+   because the table was small and closed, and pinning `τr = .int ∧ mname ∈ {+,-,*}` is exactly
+   what a refinement invariant must *not* need. §7's *"the ~128 conformance lemmas become
+   per-entry witnesses rather than a parallel obligation"* is now literally true — a new entry is
+   a `ConformsAt` proof and nothing else.
+2. **`DeclsOk_defineMethod` is D10's claim as a lemma**: the additive step preserves the
+   invariant, with no side condition beyond not displacing a **declared** name. So `infer`'s `def`
+   rule checks `declaresName D name = false` where P0 checked `name ≠ "+"/"-"/"*"`, which is the
+   same three names for `baseDecls` and generalizes without a further thought.
+3. **`TableOk` is kept, unchanged, and is now a *witness* rather than the invariant.**
+   `tableOk_declsOk` is the bridge, and the direction matters: the invariant carries the general
+   statement, `heapOkB`/`scripts/heapok_probe.lean` decide the concrete one. **F0 needed no
+   restatement at all** — `check_sound_withPrelude` and `check_sound_withPrelude'` are unchanged
+   apart from `Inv`'s index, and the certificate still checks the same `Bool`. `TableOk`, `NoHook`
+   and `TableOk_defineMethod` moved from `Proof/Static/Konts.lean` into the new file with the rest
+   of the heap conditions.
+
+### Two things the proof discovered that the design did not
+
+* **`ConformsAt` has to exclude `Object#raise`, and `send`/`public_send`/`__send__`.** With an
+  abstract `bid`, `invoke` has a post-resolution branch for `raise` that does not return a value,
+  and the send family reads the *first argument* as the method name. Both were implicit in
+  `int_bin_dispatch` — discharged by `decide` on a concrete `bid` — and a general statement has to
+  say them out loud. A builtin for which either is false does not belong in a declaration table.
+* **`entry_dispatch` must case-split the receiver, and the fragment's own judgement is what
+  closes it.** `invoke` has receiver-shape special cases *before* the resolved-builtin path (a
+  class object reaches `invokeMaybeNew`; `Math` has its own arm), so an abstract receiver leaves
+  them standing. Every one is a `.ref`, and `valueTy?` has no `.ref` arm —
+  `valueTy_immediate`. **This is the first place F1b will have to change something rather than
+  extend it**, and it is worth knowing now rather than inside a 300-line case analysis.
+
+Also found and dropped: `ResolvesTo` looked like it would need a `crubySingletonShadow` clause
+that `IntBuiltinResolves` does not carry, and does not — `invoke` consults that gate only when
+lookup did *not* resolve to a builtin. Measured by the proof not using it, which is why the
+clause and the two lemmas written for it were removed rather than kept "for F1b".
+
+### Verification, and what it is worth
+
+F1a is supposed to accept **no new programs**, so the check is that nothing moves:
+
+* **`--check` over all 1,227 decodable bootstraptest programs is byte-identical before and
+  after** — 21 accept (13 `Integer`, 5 `NilClass`, 3 `Boolean`), 1,204 unknown, 0 reject. The
+  before-run is the same corpus of cached ASTs against a binary rebuilt from a `git stash`, which
+  is the cheap form of the worktree rule.
+* `check-proofs.sh` green, axiom-clean, `heapOkB` still true at the booted heap.
+* tier-0 **992/0**, slice **351/0** (+1 gated, +3 `control_invalid`), tier-4 **25/0** — flat, as
+  they must be for a commit that touches no rule.
+
+That "nothing moved" is the whole verification available at this rung, and it is the same
+argument L137 rested on: the evidence a threading commit is right is that the *existing* proofs
+still close over the new statements. `step_ok` closing is a stronger signal here than it was
+there, because the `argsK` case genuinely goes through the new uniform lemma rather than the
+three old ones.
