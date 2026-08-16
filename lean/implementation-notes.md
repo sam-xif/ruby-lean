@@ -5387,3 +5387,54 @@ statement pins the function.
 
 Checks: check-proofs.sh green and axiom-clean, four sections plus the new `zero?` and `StrClsOk`
 lines; three probes exit 0; tier-0 992/0.
+
+## L153 — `NoHook` at every class, and the indexing that measurement chose
+
+The third of the four rungs in front of `C.new`, and a prerequisite for `class` rather than for
+`.new`: L149's `NoHook` fixes the receiver at `Boot.objectId`, which is all a fragment with no
+`class` can ever define into. A class body's `def` installs on the class it is inside, so the clause
+has to hold at *every* possible definee.
+
+**The generalization has two candidate shapes and only one of them is true.** Forty lines of `IO`
+against the prelude-booted heap, before writing any proof — the seventh session's lesson, applied
+again:
+
+| candidate | reading | at the booted heap |
+|---|---|---|
+| `∀ k, isClass k → lookup h (.ref k) "method_added" = none` | receiver-indexed: the walk `evalExpr` actually performs, through `k`'s **eigenclass** chain | **true**, 0 of 105 |
+| `∀ k, isClass k → lookupIn h k "method_added" = none` | class-indexed: `k`'s own **instance** chain | **false** — 1 of 105 |
+
+The counterexample is **`T::Sig`, which defines `method_added` as an instance method** — because
+that is precisely how `sorbet-runtime` installs a `sig` (D9/D10; `T.__wrap`'s comment says so). It
+does not fire, because the hook lookup is receiver-indexed at the class object and `T::Sig` is not on
+any class object's eigenclass chain; but the class-indexed *statement* is false about it.
+
+**This is L147's lesson with the answer the other way round, and that is the point.** L147 said: when
+a clause quantifies over the values a type has, ask whether its content depends on the value or only
+on its class — and there the answer was *the class*, which is why `ResolvesAt` exists. Here the answer
+is *the receiver*, because a class object's dispatch chain is its eigenclass and not itself. **The
+rule is to ask the question, not to prefer the answer**; picking by analogy with the last rung would
+have produced a false clause, and the thing that caught it was running the predicate rather than
+attempting the proof.
+
+**What the shape buys.** `NoHook_grow` gets *shorter*: `PlainGrow` pins `classPayload?` at every id,
+so the set of class objects is unchanged and there is **no fresh-id case at all** — where L149 needed
+an explicit bound to rule out the pathological case of `Object` being the id allocated. The first
+conjunct, `Object` is a class, replaces that bound with a strictly stronger fact at the same price:
+it is what lets the `def` case *instantiate* the quantifier at the definee a toplevel `def` uses, and
+being a class implies being in bounds (`classPayload?_isSome_lt`). Fifth time that trade has been
+priced and taken.
+
+`noHookB` reflects the clause into a `Bool` — bounded over `List.range h.objs.size`, sound because
+`classPayload?` answers `none` out of bounds so every id outside the range is vacuous — and it
+replaces the two literal conjuncts `heapOkB` had. `initiation` now goes through `noHookB_sound` at a
+literal heap, the same shape `Saturated` has had since L148, rather than through one `rfl`.
+
+`noHookB_sound` lives in `Proof/Static/Decls.lean` next to `NoHook`, **not** in `PreludeInv.lean`
+beside its `saturatedB` sibling: `PreludeInv` imports `StaticSoundness`, and `initiation` needs the
+lemma.
+
+Checks: check-proofs.sh green and axiom-clean, with the probe now reporting the clause as a count of
+offenders rather than one `Object` line; three probes exit 0; `--check` **byte-identical** to L152
+over the 1,227 cached ASTs (36 accept / 1,189 unknown / 0 reject) — owed because `HeapCert.lean` is
+linked into `rubycore`, so it was run rather than argued; tier-0 992/0.

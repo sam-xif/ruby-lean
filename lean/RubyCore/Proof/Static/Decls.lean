@@ -484,39 +484,94 @@ def TableOk (h : Heap) : Prop :=
   -- the first three and `intResolvesB` decides it unchanged.
   IntBuiltinResolves h "zero?" "Integer#zero?"
 
-/-- **No `def` hook is installed.** `Interp.lean:2625` fires
-    `Module#method_added` on the defining module right after installing a method,
-    and the hook body is arbitrary Ruby we cannot type — so the fragment has to
-    exclude it rather than reason about it.
+/-- **No `def` hook is installed on any class** (generalized in L153).
+
+    `Interp.lean:2625` fires `Module#method_added` on the defining module right after
+    installing a method, and the hook body is arbitrary Ruby we cannot type — so the
+    fragment has to exclude it rather than reason about it.
 
     It is excludable because the prelude installs the hook **lazily**: the
     `Object.define_singleton_method(:method_added)` in `T.__toplevel_sig`
     (`prelude/prelude.rb:1187`) runs only when a toplevel `sig` is evaluated. A
     sig-free program therefore never has one, and `lookup` simply misses [V —
-    `rfl` on the boot heap].
+    `rfl` on the boot heap, and measured over all 105 ids at the prelude-booted one].
 
-    A pure *heap* fact, with `defmod = Boot.objectId` carried by
-    `FrameConforms` instead — phrasing it at the current frame's `defmod` makes it
-    unprovable across `frameK`, which resumes a different frame. -/
+    **Quantified over class objects as receivers, and the indexing is the content.**
+    L149's version fixed the receiver at `Boot.objectId`, which is all a fragment with
+    no `class` can ever define into; a class body's `def` installs on the class it is
+    inside, so the clause has to hold at *every* possible definee. Two ways to say
+    that, and **only one of them is true**:
+
+    * `∀ k, (classPayload? k).isSome → lookup h (.ref k) "method_added" = none` —
+      the hook lookup `evalExpr` actually performs, which walks
+      `ancestors (classOf h (.ref k))`, i.e. the class object's **eigenclass** chain.
+      **True**, at 0 of 105 ids.
+    * `∀ k, (classPayload? k).isSome → lookupIn h k "method_added" = none` — the
+      class-*indexed* walk, over `k`'s own instance chain. **False**: `T::Sig`
+      defines `method_added` as an instance method, because that is how
+      `sorbet-runtime` installs a sig (D9/D10, and `T.__wrap`'s comment says so).
+
+    So this is L147's lesson with the answer the other way round — the content depends
+    on the *receiver*, not on the class-indexed walk — and `T::Sig` is the witness that
+    picking by analogy rather than by measurement would have produced a false clause.
+
+    The first conjunct **replaces** L149's `Boot.objectId < h.objs.size` with a
+    strictly stronger fact at the same price: it is what lets the `def` case
+    *instantiate* the quantifier at the definee a toplevel `def` uses. Being a class
+    implies being in bounds (`classPayload?_isSome_lt`), so the bound is subsumed —
+    the same put-the-condition-in-the-judgement trade, measured for the fifth time.
+
+    A pure *heap* fact, with the frame's definee carried by `FrameConforms` instead —
+    phrasing it at the current frame's `defmod` makes it unprovable across `frameK`,
+    which resumes a different frame. -/
 def NoHook (h : Heap) : Prop :=
-  Boot.objectId < h.objs.size ∧
-    lookup h (.ref Boot.objectId) "method_added" = none
+  (h.classPayload? Boot.objectId).isSome ∧
+    ∀ k, (h.classPayload? k).isSome → lookup h (.ref k) "method_added" = none
 
-/-- **`NoHook` survives an allocating step** (L149), and the bound is why the clause
-    grew one. `lookup` on `Object` is a walk from `classOf h (.ref Boot.objectId)`, and
-    `PlainGrow` pins that only for ids the old heap had — so without
-    `Boot.objectId < h.objs.size` the *pathological* case where `Object` is the id being
-    allocated is not ruled out, and the hook lookup could change under an allocation.
+/-- **`NoHook` survives an allocating step** (L149, restated at L153's indexing).
 
-    The bound is not a new assumption in any real sense: a heap without `Object` is not
-    one the interpreter can build, `heapOkB` decides it, and it is preserved by every
-    step (sizes only grow). It is the same trade as `plainRecv`'s clauses — say the
-    condition where the judgement can see it rather than at the use site. -/
+    Simpler than L149's version, and the reason is the indexing: `PlainGrow` pins
+    `classPayload?` at **every** id, so the set of class objects is unchanged and
+    there is no fresh-id case to discharge at all. L149 needed an explicit
+    `Boot.objectId < h.objs.size` to rule out the pathological case where `Object` is
+    the id being allocated; here `classPayload?_isSome_lt` supplies the bound from the
+    quantifier's own hypothesis. -/
 theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hh : NoHook h) : NoHook h' := by
-  refine ⟨Nat.lt_of_lt_of_le hh.1 hg.size, ?_⟩
-  rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact hh.1)]
-  exact hh.2
+  refine ⟨by rw [hg.payload]; exact hh.1, fun k hk => ?_⟩
+  have hk' : (h.classPayload? k).isSome := by rw [← hg.payload k]; exact hk
+  rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
+  exact hh.2 k hk'
+
+/-- **And a `def`** (L153). The receiver's dispatch class is unchanged
+    (`classOf_defineMethod`) and the name differs, so `lookup_defineMethod` applies at
+    every class object — the same argument L149's Object-only version made, now made
+    once per definee rather than once. -/
+theorem NoHook_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    (hh : NoHook h) (hne : ¬ ("method_added" = name)) :
+    NoHook (defineMethod h cls name md) := by
+  refine ⟨by rw [classPayload?_isSome_defineMethod]; exact hh.1, fun k hk => ?_⟩
+  have hk' : (h.classPayload? k).isSome := by
+    rw [← classPayload?_isSome_defineMethod h cls k name md]; exact hk
+  rw [lookup_defineMethod _ _ name "method_added" md _ hne
+    (classOf_defineMethod _ _ _ _ _)]
+  exact hh.2 k hk'
+
+/-- `noHookB` reflects `NoHook` (L153). The out-of-range ids are the only interesting
+    step: `classPayload?` answers `none` there, so the clause holds vacuously and the
+    bounded `all` really does decide an unbounded `∀`. -/
+theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
+  unfold noHookB at hb
+  simp only [Bool.and_eq_true] at hb
+  obtain ⟨hobj, hb⟩ := hb
+  refine ⟨hobj, fun k hk => ?_⟩
+  by_cases hlt : k < h.objs.size
+  · have := List.all_eq_true.mp hb k (List.mem_range.mpr hlt)
+    simp only [Bool.or_eq_true, Option.isNone_iff_eq_none] at this
+    rcases this with h1 | h2
+    · exact absurd hk (by rw [h1]; simp)
+    · exact h2
+  · exact absurd hk (by rw [classPayload?_oob h k hlt]; simp)
 
 /-- **The boot `String` id is a class named `"String"`** (L151), and it is the
     fourth heap conjunct for the same reason the other three are conjuncts rather

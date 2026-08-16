@@ -62,6 +62,20 @@ def saturatedB (h : Heap) : Bool :=
       (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
         (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
 
+/-- Executable form of `NoHook` (L153): no **class object** resolves `method_added`.
+    Quantified over `List.range h.objs.size` because `classPayload?` answers `none`
+    out of bounds, so every id outside the range satisfies the clause vacuously.
+
+    Note it is `lookup h (.ref k)` — the receiver-indexed walk, through `k`'s
+    eigenclass chain — and *not* `lookup.go h m (ancestors h k)`. The two differ, and
+    the difference is not academic: `T::Sig` defines `method_added` as an instance
+    method (that is how `sorbet-runtime` installs a sig), so the class-indexed reading
+    is **false** at the prelude-booted heap while this one is true. -/
+def noHookB (h : Heap) : Bool :=
+  (h.classPayload? Boot.objectId).isSome &&
+  (List.range h.objs.size).all fun k =>
+    (h.classPayload? k).isNone || (lookup h (.ref k) "method_added").isNone
+
 /-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook`, since L148
     `Saturated`, and since L151 `StrClsOk`.
 
@@ -76,8 +90,7 @@ def heapOkB (h : Heap) : Bool :=
     -- L152's nullary row. Resolution knows nothing about arity, so this is the same
     -- `intResolvesB` at a fourth name.
     intResolvesB h "zero?" "Integer#zero?" &&
-    (Boot.objectId < h.objs.size) &&
-    (lookup h (.ref Boot.objectId) "method_added").isNone &&
+    noHookB h &&
     saturatedB h &&
     (h.classPayload? Boot.stringId).isSome &&
     (className h Boot.stringId == "String")

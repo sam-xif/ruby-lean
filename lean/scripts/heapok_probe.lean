@@ -50,9 +50,17 @@ def main : IO UInt32 := do
     -- `zero?` does not: `ResolvesAt` requires `fromPrelude = false`, and the prelude
     -- defines `abs` twice.
     report h "zero?" "Integer#zero?"
-    let hook := lookup h (.ref Boot.objectId) "method_added"
-    IO.println s!"NoHook:\n  Object#method_added = \
-{hook.map (fun p => className h p.1)} → {hook.isNone}"
+    -- L153: quantified over every class object, not just `Object`. Reported as a
+    -- count plus the offenders, because the *shape* of this clause was picked by
+    -- measurement: the class-indexed reading (`lookup.go` over `ancestors h k`) is
+    -- **false** here — `T::Sig` defines `method_added` as an instance method, which
+    -- is how `sorbet-runtime` installs a sig — while this receiver-indexed one holds.
+    let hookBad := (List.range h.objs.size).filter (fun k =>
+      (h.classPayload? k).isSome && (lookup h (.ref k) "method_added").isSome)
+    IO.println s!"NoHook:\n  Object is a class = \
+{(h.classPayload? Boot.objectId).isSome}\n  class objects resolving \
+method_added (want 0): {hookBad.length}"
+    for k in hookBad.take 5 do IO.println s!"    {k} = {className h k}"
     IO.println s!"Integer ancestors: {(ancestors h Boot.integerId).map (className h)}"
     -- L148's third clause. `scripts/ancestors_probe.lean` reports it per-class and
     -- also reports the *false* route (descent in `ObjId`); here it is one line,

@@ -155,9 +155,14 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
         intro md
         rw [lookup_defineMethod _ _ name "method_added" md _ hha'
           (classOf_defineMethod _ _ _ _ _)]
-        exact hhook.2
+        -- L153: `NoHook` is a `∀` over class objects now, so this is one *instance*
+        -- of it — at `Boot.objectId`, which is where a toplevel `def` installs.
+        -- `Object` is a class in any heap the interpreter builds, and `heapOkB`
+        -- decides it; the invariant does not have to say so separately, because the
+        -- clause is vacuous at a non-class id and this branch never runs there.
+        exact hhook.2 Boot.objectId hhook.1
       have hlkNH : ∀ md : MethodDef, NoHook (defineMethod m.heap Boot.objectId name md) :=
-        fun md => ⟨by rw [objs_size_defineMethod]; exact hhook.1, hlk md⟩
+        fun _ => NoHook_defineMethod hhook hha'
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never
       -- has to be written out, and over `m₀` so the `preludeMode` branch — which
       -- differs only in fields `Inv` does not mention — is discharged by the same
