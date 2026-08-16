@@ -141,7 +141,19 @@ def baseDecls : Decls :=
   [("Integer",
     [("+", { params := [.int], ret := .int }),
      ("-", { params := [.int], ret := .int }),
-     ("*", { params := [.int], ret := .int })])]
+     ("*", { params := [.int], ret := .int }),
+     -- **The first nullary row** (L152), and it is here to *exercise* the zero-arity
+     -- rule rather than for its own sake: without a row whose `params` is `[]`,
+     -- `sigOf` never answers `some ([], _)` and the new `infer` arm, `KontOk.recvK0`
+     -- and its consecution case would all be unreachable code with a proof attached.
+     -- `zero?` was picked over `even?`/`abs` for two measured reasons. Constraint 2:
+     -- `declaresName` is name-global, so every row added here refuses `def <name>`
+     -- program-wide — and `def zero?` appears in **0** of the 1,227 bootstraptest
+     -- programs. And resolution: `ResolvesAt` requires `fromPrelude = false`, while
+     -- `abs` is defined **twice** in `prelude/prelude.rb`, so its row would be
+     -- unwitnessable at the prelude-booted heap even though it is fine at the boot
+     -- one. Check both before adding a row, not just the first.
+     ("zero?", { params := [], ret := .bool })])]
 
 /-- The declarations in force while checking `p`.
 

@@ -50,6 +50,14 @@ theorem run_int_sub (a b : Int) (m : Machine) :
 theorem run_int_mul (a b : Int) (m : Machine) :
     Builtins.run "Integer#*" (.int a) [.int b] m = .ok (.int (a * b)) m := rfl
 
+/-- The first **nullary** one (L152). Still `rfl`, and note the rule's arity is
+    carried by the *declaration* rather than by the builtin: `Integer#zero?` matches
+    on the receiver and ignores `args` entirely (`Builtins/Numerics.lean:296`), so it
+    is `baseDecls`'s `params := []` and `infer`'s zero-argument arm that make
+    `1.zero?(5)` `unknown` rather than typed. -/
+theorem run_int_zero (a : Int) (m : Machine) :
+    Builtins.run "Integer#zero?" (.int a) [] m = .ok (.bool (a == 0)) m := rfl
+
 /-! ## 2. The dispatch layer -/
 
 /-- The heap facts an `Integer` builtin dispatch depends on: the table resolves

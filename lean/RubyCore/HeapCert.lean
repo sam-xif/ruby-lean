@@ -73,6 +73,9 @@ def saturatedB (h : Heap) : Bool :=
 def heapOkB (h : Heap) : Bool :=
   intResolvesB h "+" "Integer#+" && intResolvesB h "-" "Integer#-" &&
     intResolvesB h "*" "Integer#*" &&
+    -- L152's nullary row. Resolution knows nothing about arity, so this is the same
+    -- `intResolvesB` at a fourth name.
+    intResolvesB h "zero?" "Integer#zero?" &&
     (Boot.objectId < h.objs.size) &&
     (lookup h (.ref Boot.objectId) "method_added").isNone &&
     saturatedB h &&

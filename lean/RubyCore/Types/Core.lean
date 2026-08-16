@@ -154,6 +154,23 @@ def infer (D : Decls) (Γ : Env) (e : Expr) : Option (Ty × Env) :=
         | none => none
       | _ => none
     | none => none
+  -- **A zero-argument send** (L152). Split from the unary rule rather than folded
+  -- into it, because the two are *different machine shapes*: with an argument the
+  -- receiver's `recvK` pushes an `argsK` and dispatch happens a step later, while
+  -- with none `applyKont` runs `startArgs … [] []`, which is `finishSend` — so the
+  -- send completes in the `recvK` step itself and needs its own `KontOk`
+  -- constructor and its own consecution case (`KontOk.recvK0`).
+  --
+  -- Every send in the fragment is now zero- or one-argument; two or more is still
+  -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
+  -- continuations rather than a single one.
+  | .send (some recv) mname [] none =>
+    match infer D Γ recv with
+    | some (τr, Γ₁) =>
+      match sigOf D τr mname with
+      | some ([], τret) => some (τret, Γ₁)
+      | _ => none
+    | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
   -- next step); until then there is no environment to check the body in.
   --

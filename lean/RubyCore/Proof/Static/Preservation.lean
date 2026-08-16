@@ -214,7 +214,18 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
       | none => exact absurd hinf (by simp [infer])
       | some r =>
         cases args with
-        | nil => exact absurd hinf (by simp [infer])
+        -- **The zero-argument send** (L152). Same `evalExpr` step as the unary one —
+        -- push `recvK` and evaluate the receiver — and the whole difference lands one
+        -- step later, in `applyKont`.
+        | nil =>
+          cases blk with
+          | some b => exact absurd hinf (by simp [infer])
+          | none =>
+            obtain ⟨τr, hr, hsg⟩ := infer_send0_inv hinf
+            simp only [evalExpr]
+            cases r <;>
+              try exact inv_push hfs htab hhook hsat hstr hr (KontOk.recvK0 hsg hk)
+            exact absurd hr (by simp [infer])
         | cons arg extra =>
           cases extra with
           | cons _ _ => exact absurd hinf (by simp [infer])
@@ -314,6 +325,18 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
       dsimp only
       rw [startArgs_plain hsp hkw hfw]
       exact inv_push hfs htab hhook hsat hstr ha (KontOk.argsK hv hsg hk')
+    -- **The zero-argument dispatch** (L152). `applyKont` runs `startArgs … [] []`,
+    -- which is `finishSend` with no argument continuation in between — so this case
+    -- ends where `argsK`'s does, one step earlier, and it is `entry_dispatch` at
+    -- `args = []` rather than a second dispatch lemma. `ValuesTy _ [] []` is
+    -- `trivial`, which is the whole of what the empty parameter list costs.
+    | @recvK0 Γ Γs τ mname τret k hsg hk' =>
+      dsimp only
+      obtain ⟨w, hw, hstep⟩ :=
+        entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
+          (htab τ mname _ (sigOf_declFor hsg)) hv trivial
+      rw [hstep]
+      exact inv_value hfs htab hhook hsat hstr hw hk'
     | @argsK Γ Γs τ mname recv τr τret k hrv hsg hk' =>
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The

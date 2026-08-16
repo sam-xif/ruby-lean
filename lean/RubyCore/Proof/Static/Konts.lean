@@ -78,6 +78,18 @@ inductive KontOk (D : Decls) : Heap → List Env → Ty → List Kont → Prop w
       infer D Γ arg = some (τp, Γ₂) →
       KontOk D h (Γ₂ :: Γs) τret k →
       KontOk D h (Γ :: Γs) τ (.recvK mname [arg] .none .explicit :: k)
+  /-- **A zero-argument send** (L152), and it is a separate constructor rather than
+      `recvK` with an empty list because the two describe *different numbers of
+      steps*. With an argument, `applyKont` pushes an `argsK` and the dispatch is a
+      step away; with none, `startArgs … [] []` is `finishSend`, so the send completes
+      **in this step** and the continuation `k` must already be typed at the return
+      type. There is no `argsK` in the chain at all, and therefore no `ValueTy` stored
+      in the kont — which is why this constructor, unlike `argsK`, does not read the
+      heap. -/
+  | recvK0 {h Γ Γs τ mname τret k} :
+      sigOf D τ mname = some ([], τret) →
+      KontOk D h (Γ :: Γs) τret k →
+      KontOk D h (Γ :: Γs) τ (.recvK mname [] .none .explicit :: k)
   /-- The in-flight value is the **argument**; the receiver is already a value
       carried by the kont, so its type is pinned by `ValueTy` rather than by
       `infer`. -/
@@ -123,6 +135,7 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
   | whileCond hl _ ih => exact .whileCond hl ih
   | whileBody hl _ ih => exact .whileBody hl ih
   | recvK hsg ha' _ ih => exact .recvK hsg ha' ih
+  | recvK0 hsg _ ih => exact .recvK0 hsg ih
   | argsK hv hsg _ ih => exact .argsK (ValueTy.congr ha hv) hsg ih
   | frameK _ ih => exact .frameK ih
 
@@ -154,10 +167,13 @@ def Inv (D : Decls) (m : Machine) : Prop :=
 
 /-- The signature in the shape `EntryOk` reads it. Trivial, and it exists because
     `sigOf` is `declFor` composed with a projection while `DeclsOk` is stated over
-    `declFor` — so the `argsK` case has to move between the two. -/
-theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {τp τret : Ty}
-    (h : sigOf D τr mname = some ([τp], τret)) :
-    declFor D τr mname = some { params := [τp], ret := τret } := by
+    `declFor` — so the `argsK` case has to move between the two.
+
+    **Generalized from `[τp]` to any `params` in L152**, because the zero-argument
+    case needs it at `[]` and the two would otherwise be the same proof twice. -/
+theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
+    {τret : Ty} (h : sigOf D τr mname = some (params, τret)) :
+    declFor D τr mname = some { params := params, ret := τret } := by
   unfold sigOf at h
   cases hd : declFor D τr mname with
   | none => rw [hd] at h; exact absurd h (by simp)
@@ -197,6 +213,23 @@ theorem infer_def_inv {D : Decls} {Γ : Env} {name : String} {params : List Para
     split at h
     · simp only [Option.some.injEq, Prod.mk.injEq] at h
       exact ⟨h.1.symm, h.2.symm, List.isEmpty_iff.mp hp, h1, h2⟩
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Inversion for the **zero-argument** send rule (L152). One `split` shallower than
+    its unary sibling, because there is no argument to infer and therefore no
+    parameter-type equality to check — the output environment is the receiver's. -/
+theorem infer_send0_inv {D : Decls} {Γ : Env} {r : Expr} {mname : String} {τ : Ty}
+    {Γ' : Env} (h : infer D Γ (.send (some r) mname [] none) = some (τ, Γ')) :
+    ∃ τr, infer D Γ r = some (τr, Γ') ∧ sigOf D τr mname = some ([], τ) := by
+  simp only [infer] at h
+  split at h
+  · next τr Γ₁ hr =>
+    split at h
+    · next τret hsg =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨τr, hr, hsg⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 

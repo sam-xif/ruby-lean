@@ -478,7 +478,11 @@ witness* for `baseDecls`, and this section is the derivation.
 def TableOk (h : Heap) : Prop :=
   IntBuiltinResolves h "+" "Integer#+" ∧
   IntBuiltinResolves h "-" "Integer#-" ∧
-  IntBuiltinResolves h "*" "Integer#*"
+  IntBuiltinResolves h "*" "Integer#*" ∧
+  -- L152's nullary row. `IntBuiltinResolves` is arity-agnostic — it is a fact about
+  -- the method table, not about the call — so the fourth clause is the same shape as
+  -- the first three and `intResolvesB` decides it unchanged.
+  IntBuiltinResolves h "zero?" "Integer#zero?"
 
 /-- **No `def` hook is installed.** `Interp.lean:2625` fires
     `Module#method_added` on the defining module right after installing a method,
@@ -560,11 +564,13 @@ theorem StrClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     reopening `Integer` itself is fine as long as the name differs. -/
 theorem TableOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (ht : TableOk h)
-    (h1 : ¬ (name = "+")) (h2 : ¬ (name = "-")) (h3 : ¬ (name = "*")) :
+    (h1 : ¬ (name = "+")) (h2 : ¬ (name = "-")) (h3 : ¬ (name = "*"))
+    (h4 : ¬ (name = "zero?")) :
     TableOk (defineMethod h cls name md) :=
   ⟨IntBuiltinResolves_defineMethod ht.1 (fun hh => h1 hh.symm),
    IntBuiltinResolves_defineMethod ht.2.1 (fun hh => h2 hh.symm),
-   IntBuiltinResolves_defineMethod ht.2.2 (fun hh => h3 hh.symm)⟩
+   IntBuiltinResolves_defineMethod ht.2.2.1 (fun hh => h3 hh.symm),
+   IntBuiltinResolves_defineMethod ht.2.2.2 (fun hh => h4 hh.symm)⟩
 
 /-- The `Integer` entries of `baseDecls`, from the corresponding
     `IntBuiltinResolves`. The `hrun`/`hdefer` hypotheses are the ones
@@ -597,6 +603,34 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     | [b], ⟨hb, _⟩ =>
       obtain ⟨y, rfl⟩ := valueTy_int hb
       exact ⟨fun h' => hdefer h' a y, .int (op a y), rfl, hrun a y m⟩
+
+/-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
+    `ValuesTy` pinning the argument list to `[]` instead of to one integer — which is
+    the whole difference an arity makes to the *invariant*, as against the difference
+    it makes to the machine (a whole `KontOk` constructor and consecution case, because
+    a zero-argument send dispatches in the `recvK` step rather than a step later).
+
+    The return type is a parameter because a nullary builtin need not answer its own
+    receiver type; `zero?` answers `.bool`. -/
+theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
+    {f : Int → Value}
+    (hres : IntBuiltinResolves h mname bid)
+    (hns : (mname == "send" || mname == "public_send" || mname == "__send__") = false)
+    (hraise : bid ≠ "Object#raise")
+    (hty : ∀ (hp : Heap) (x : Int), ValueTy hp (f x) τret)
+    (hrun : ∀ (x : Int) (m' : Machine),
+      Builtins.run bid (.int x) [] m' = .ok (f x) m')
+    (hdefer : ∀ (h' : Heap) (x : Int),
+      Builtins.deferTwin? h' bid (.int x) [] = none) :
+    EntryOk h .int mname { params := [], ret := τret } := by
+  refine ⟨bid, ?_, hns, hraise, ?_⟩
+  · intro k hk
+    subst hk
+    exact hres
+  · intro m recv args hrv hargs
+    obtain ⟨a, rfl⟩ := valueTy_int hrv
+    match args, hargs with
+    | [], _ => exact ⟨fun h' => hdefer h' a, f a, hty m.heap a, hrun a m⟩
 
 /-- **The base table declares nothing at a class type.** `baseDecls`'s only key is
     `"Integer"`, and `tyClassNames` subtracts the ground names from the class arm's
@@ -647,14 +681,31 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
           have : d = { params := [Ty.int], ret := Ty.int } := by
             simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
           subst this
-          exact entryOk_int ht.2.2 (by decide) (by decide) run_int_mul
+          exact entryOk_int ht.2.2.1 (by decide) (by decide) run_int_mul
             (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
               Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
-        · exact absurd hd (by
-            simp [declFor, tyClassNames, declOf?, declsFor, baseDecls,
-              show ("+" == mname) = false from by simp [Ne.symm h1],
-              show ("-" == mname) = false from by simp [Ne.symm h2],
-              show ("*" == mname) = false from by simp [Ne.symm h3]])
+        -- L152's nullary row, and the only line of this proof that differs in shape:
+        -- the return type is `.bool` rather than the receiver's, so the witness has
+        -- to say what a `.bool` value *is* (`hty`).
+        · by_cases h4 : mname = "zero?"
+          · subst h4
+            have : d = { params := [], ret := Ty.bool } := by
+              simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
+            subst this
+            -- `f` is given explicitly: elaborating `hty` first would leave it an
+            -- undetermined metavariable, since nothing in `ValueTy _ (f x) .bool`
+            -- pins the function.
+            exact entryOk_int_nullary (f := fun x => .bool (x == 0))
+              ht.2.2.2 (by decide) (by decide)
+              (fun _ _ => rfl) run_int_zero
+              (fun _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
+                Builtins.coerceDefer?, Builtins.toAryDefer?])
+          · exact absurd hd (by
+              simp [declFor, tyClassNames, declOf?, declsFor, baseDecls,
+                show ("+" == mname) = false from by simp [Ne.symm h1],
+                show ("-" == mname) = false from by simp [Ne.symm h2],
+                show ("*" == mname) = false from by simp [Ne.symm h3],
+                show ("zero?" == mname) = false from by simp [Ne.symm h4]])
   | bool =>
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   | nilT =>

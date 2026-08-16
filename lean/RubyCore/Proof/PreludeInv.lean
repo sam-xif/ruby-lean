@@ -146,8 +146,9 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hobj⟩, h4⟩, h5⟩, h6⟩, h7⟩ := hb
-  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3⟩,
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hobj⟩, h4⟩, h5⟩, h6⟩, h7⟩ := hb
+  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3,
+      intResolvesB_sound hz⟩,
     ⟨of_decide_eq_true hobj, h4⟩, saturatedB_sound h5,
     ⟨h6, by simpa using h7⟩⟩
 
@@ -213,9 +214,9 @@ def PreservesHeapOk (m : Machine) : Prop :=
 theorem heapOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hh : HeapOk h)
     (h1 : ¬ (name = "+")) (h2 : ¬ (name = "-")) (h3 : ¬ (name = "*"))
-    (h4 : ¬ ("method_added" = name)) :
+    (h4 : ¬ ("method_added" = name)) (h5 : ¬ (name = "zero?")) :
     HeapOk (defineMethod h cls name md) :=
-  ⟨TableOk_defineMethod hh.1 h1 h2 h3,
+  ⟨TableOk_defineMethod hh.1 h1 h2 h3 h5,
    ⟨by rw [objs_size_defineMethod]; exact hh.2.1.1,
     by
       rw [lookup_defineMethod _ _ name "method_added" md _ h4

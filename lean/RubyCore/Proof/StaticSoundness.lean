@@ -75,6 +75,9 @@ theorem safety (D : Decls) (m : Machine) (h : Inv D m) : ¬ aboutToTypeStick m :
 theorem tableOk_initHeap : TableOk Boot.initHeap :=
   ⟨⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩,
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩,
+   ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩,
+   -- L152's nullary row resolves by the same eight `rfl`s: `IntBuiltinResolves` is a
+   -- fact about the method table, and a table entry does not know its own arity.
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 /-- Initiation, for the machine `Machine.init` builds. -/
@@ -207,6 +210,26 @@ theorem egStrSeq_safe :
   check_sound (by
     simp [check, egStrSeq, infer, inferSeq, declsOf, sigOf, declFor, declOf?,
       declsFor, baseDecls, tyClassNames, envSet, envGet?])
+
+/-- **The first zero-argument send** (L152). `(1 + 2).zero?` is typed end to end:
+    the inner send through `recvK`/`argsK` as before, the outer through the new
+    `recvK0`, which dispatches in the `recvK` step itself because `startArgs … [] []`
+    is `finishSend`. The result is `.bool`, so this is also the first accepted program
+    whose type comes from a declaration with a return type unlike its receiver's. -/
+def egZero : Expr :=
+  .send (some (.send (some (.int 1)) "+" [.int 2] none)) "zero?" [] none
+
+theorem egZero_safe : ∀ r, ReachableResult (Machine.init egZero) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egZero, infer, declsOf, sigOf, declFor, declOf?, declsFor,
+      baseDecls, tyClassNames])
+
+/-- Arity is carried by the *declaration*, not by the builtin: `Integer#zero?`
+    ignores its arguments entirely, and it is `baseDecls`'s `params := []` plus
+    `infer`'s zero-argument arm that make this `unknown` rather than typed. -/
+example : check (.send (some (.int 1)) "zero?" [.int 5] none) = .unknown := by
+  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?,
+    declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- A branch-type disagreement the fragment cannot join: `unknown`, not
     `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls

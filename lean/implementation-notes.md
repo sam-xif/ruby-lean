@@ -5338,3 +5338,52 @@ value can be assigned and passed and cannot be a receiver — the "land it inert
 next step and the reason is a third finding: `ConformsAt` would have to hold for **every** plain
 receiver of a class merely *named* `"String"`, in **every** heap, and `Ty.cls` pins the name without
 pinning the payload — so `String#==` conformance is false as stated, not merely unproved.
+
+## L152 — zero-argument sends, and the first row whose arity is not one
+
+The second of the four rungs L151 found in front of `C.new`, and the one that is independent of the
+other three: `infer` types `.send (some r) m [] none`, `KontOk` gains `recvK0`, and `baseDecls` gains
+`Integer#zero? : [] → Bool` so the machinery is exercised rather than merely present.
+
+**A zero-argument send is a different *number of steps*, which is why it is a separate constructor.**
+With an argument, `applyKont`'s `recvK` pushes an `argsK` and the dispatch happens a step later; with
+none, it runs `startArgs … [] []`, which is `finishSend` — so the send completes **in the `recvK`
+step itself** and the continuation must already be typed at the return type. `recvK0` therefore has
+no `ValueTy` stored in it and, alone among the send constructors, does not read the heap.
+`entry_dispatch` needed no change at all: it was already stated over an arbitrary `args`, and
+`ValuesTy _ [] []` is `trivial`.
+
+**`sigOf_declFor` was generalized from `[τp]` to any `params`** rather than duplicated — the two
+cases are the same proof, and a second copy is the kind of near-duplicate L150 was about.
+
+**Picking the row is where the measuring was.** Two independent constraints, and each rules out a
+different candidate:
+
+* **Constraint 2** — `declaresName` is name-global, so every row refuses `def <name>` *program-wide*.
+  `def zero?` appears in **0** of the 1,227 bootstraptest programs, measured before the row was
+  written rather than after the ratchet was run.
+* **Resolution** — `ResolvesAt` requires `fromPrelude = false`, and `prelude/prelude.rb` defines
+  `abs` **twice**. An `Integer#abs` row would be witnessable at the boot heap and *not* at the
+  prelude-booted one, so it would pass `check_sound` and fail `check_sound_withPrelude`. Check both
+  before adding a row; `scripts/heapok_probe.lean` now reports the fourth name so the second
+  constraint is visible rather than rediscovered.
+
+**Arity is carried by the declaration, not by the builtin.** `Integer#zero?` matches on the receiver
+and ignores `args` entirely (`Builtins/Numerics.lean:296`), so `1.zero?(5)` runs fine in the model;
+it is `params := []` plus `infer`'s new arm that make it `unknown`. There is an `example` pinning
+that, because the alternative reading — that the builtin enforces arity — is the one a reader will
+assume.
+
+**Inert on the corpus, and that is the honest report.** `--check` is byte-identical to L151's
+36 accept / 1,189 unknown / 0 reject: no bootstraptest program calls `.zero?` inside the fragment,
+and — the part worth checking rather than assuming — **no program regressed** from the new
+`declaresName`. The rung is exercised by `egZero` (`(1 + 2).zero?`), which is also the first accepted
+program whose type comes from a declaration with a return type unlike its receiver's.
+
+`entryOk_int_nullary` is `entryOk_int` with `ValuesTy` pinning the argument list to `[]` and the
+return type a parameter. Note `f` must be given explicitly at the call site: elaborating the
+`ValueTy _ (f x) τret` hypothesis first leaves it an undetermined metavariable, since nothing in that
+statement pins the function.
+
+Checks: check-proofs.sh green and axiom-clean, four sections plus the new `zero?` and `StrClsOk`
+lines; three probes exit 0; tier-0 992/0.

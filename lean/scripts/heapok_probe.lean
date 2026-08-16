@@ -46,6 +46,10 @@ def main : IO UInt32 := do
     report h "+" "Integer#+"
     report h "-" "Integer#-"
     report h "*" "Integer#*"
+    -- L152's nullary row. Worth a line of its own because `abs` fails here and
+    -- `zero?` does not: `ResolvesAt` requires `fromPrelude = false`, and the prelude
+    -- defines `abs` twice.
+    report h "zero?" "Integer#zero?"
     let hook := lookup h (.ref Boot.objectId) "method_added"
     IO.println s!"NoHook:\n  Object#method_added = \
 {hook.map (fun p => className h p.1)} → {hook.isNone}"
