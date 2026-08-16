@@ -50,6 +50,10 @@ def main : IO UInt32 := do
     IO.println s!"NoHook:\n  Object#method_added = \
 {hook.map (fun p => className h p.1)} → {hook.isNone}"
     IO.println s!"Integer ancestors: {(ancestors h Boot.integerId).map (className h)}"
+    -- L148's third clause. `scripts/ancestors_probe.lean` reports it per-class and
+    -- also reports the *false* route (descent in `ObjId`); here it is one line,
+    -- because `heapOkB` now includes it and this probe is that Bool's report.
+    IO.println s!"Saturated:\n  saturatedB = {saturatedB h}"
     let ok := heapOkB h
     IO.println s!"\nheapOkB (prelude-booted): {ok}"
     return if ok then 0 else 1

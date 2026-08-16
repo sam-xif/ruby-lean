@@ -44,10 +44,30 @@ def intResolvesB (h : Heap) (mname bid : String) : Bool :=
         !md.fromPrelude &&
         (crubyShadow h ((ancestors h Boot.integerId).takeWhile (· != owner)) mname).isNone
 
-/-- Executable form of `Proof.Static.HeapOk` — `TableOk` and `NoHook`. -/
+/-- Executable form of `Proof.Saturated` (L144/L148): **the ancestor walk has
+    finished before its fuel runs out**, one more unit of fuel changing nothing.
+
+    Here rather than in `Proof/` for `heapOkB`'s reason — the probe must compute *the*
+    predicate the theorem is about, not a copy — and folded into `heapOkB` below
+    because it is a heap clause of the invariant exactly like `TableOk` and `NoHook`,
+    and for the same reason: `DeclsOk_grow` needs it at an allocating step, and only
+    the invariant can carry it there.
+
+    `0 < objs.size` is not hygiene: at size `0` the class walk's fuel is `0`, whose arm
+    is `[]` rather than `[k]`, and the out-of-bounds argument in `saturated_oob` needs
+    a successor. No heap the interpreter builds is empty. -/
+def saturatedB (h : Heap) : Bool :=
+  0 < h.objs.size &&
+    (List.range h.objs.size).all (fun k =>
+      (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
+        (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
+
+/-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook` and, since L148,
+    `Saturated`. -/
 def heapOkB (h : Heap) : Bool :=
   intResolvesB h "+" "Integer#+" && intResolvesB h "-" "Integer#-" &&
     intResolvesB h "*" "Integer#*" &&
-    (lookup h (.ref Boot.objectId) "method_added").isNone
+    (lookup h (.ref Boot.objectId) "method_added").isNone &&
+    saturatedB h
 
 end RubyCore

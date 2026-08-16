@@ -126,9 +126,22 @@ theorem KontOk.heap_congr {D : Decls} {h h' : Heap} (ha : TypeAgree h h') :
   | argsK hv hsg _ ih => exact .argsK (ValueTy.congr ha hv) hsg ih
   | frameK _ ih => exact .frameK ih
 
-/-- **The invariant** handed to `invariant_sound_from`. -/
+/-- **The invariant** handed to `invariant_sound_from`.
+
+    **`Saturated` is the third heap conjunct since L148**, and it is here for one
+    reason: `DeclsOk_grow` — the invariant's own preservation across an allocating
+    step — needs the ancestor walk to be fuel-saturated *at the heap the step starts
+    from*, and only the invariant can carry a fact there. It is a heap clause of the
+    same kind as `NoHook`: true at the boot heap by `decide`, true at the
+    prelude-booted heap by the certificate `heapOkB` (L148 folded `saturatedB` into
+    it), and preserved by every step that writes the heap
+    (`Saturated_defineMethod`, `Saturated_grow`).
+
+    It is *not* a fragment restriction. A program cannot make it false — nothing in
+    the object model builds a cyclic `include` — but nothing in the `Heap` **type**
+    forbids one either, which is why it cannot be a theorem. -/
 def Inv (D : Decls) (m : Machine) : Prop :=
-  DeclsOk D m.heap ∧ NoHook m.heap ∧
+  DeclsOk D m.heap ∧ NoHook m.heap ∧ Saturated m.heap ∧
     ∃ Γ Γs, FramesOk m.heap m.frames m.stack (Γ :: Γs) ∧ CtlOk D Γ Γs m
 
 /-! ### Inversions used by the send cases -/
@@ -220,27 +233,27 @@ now gone.
 theorem inv_eval {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap)
     (hinf : infer D Γ e = some (τ, Γ')) (hk : KontOk D m.heap (Γ' :: Γs) τ m.kont) :
     Inv D (withCtl m (.eval e)) :=
-  ⟨ht, hh, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 
 theorem inv_value {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {v : Value}
     {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap)
     (hv : ValueTy m.heap v τ) (hk : KontOk D m.heap (Γ :: Γs) τ m.kont) :
     Inv D (withCtl m (.value v)) :=
-  ⟨ht, hh, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
+  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {D : Decls} {m : Machine} {Γ : Env} {Γs : List Env} {e : Expr}
     {τ : Ty} {Γ' : Env} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs)) (ht : DeclsOk D m.heap)
-    (hh : NoHook m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap)
     (hinf : infer D Γ e = some (τ, Γ'))
     (hk : KontOk D m.heap (Γ' :: Γs) τ (k :: m.kont)) :
     Inv D (withKont m (.eval e) k) :=
-  ⟨ht, hh, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
+  ⟨ht, hh, hsat, Γ, Γs, hfs, ⟨τ, Γ', hinf, hk⟩⟩
 end Static
 end Proof
 end RubyCore

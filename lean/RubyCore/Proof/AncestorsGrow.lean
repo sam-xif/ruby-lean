@@ -1,4 +1,5 @@
 import RubyCore.Proof.HeapFacts
+import RubyCore.HeapCert
 
 /-!
 # The ancestor walk across a **growing** heap (L144, producer's bill item 3)
@@ -162,15 +163,10 @@ answer `[k]` at any positive fuel and the clause holds for free. The `Bool` chec
 the ids the heap actually has, and `saturatedB_sound` supplies the rest.
 -/
 
-/-- The saturation clause as a decidable check. `0 < objs.size` is not hygiene: at
-    `size = 0` the class walk's fuel is `0`, whose arm is `[]` rather than `[k]`,
-    and the out-of-bounds argument below needs a successor. No heap the interpreter
-    builds is empty. -/
-def saturatedB (h : Heap) : Bool :=
-  0 < h.objs.size &&
-    (List.range h.objs.size).all (fun k =>
-      (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
-        (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
+/-! `saturatedB` — the clause as a `Bool` — lives in `RubyCore/HeapCert.lean`, beside
+`heapOkB`, and L148 folded it *into* `heapOkB`. Both moves are for the reason F0's
+certificate is there: the probe has to compute the predicate the theorem is about
+rather than a copy of it, and there is now one heap certificate rather than two. -/
 
 /-- Out of bounds, both walks are `[k]` at **any** positive fuel: there is no
     payload to recurse through, so the fuel is never spent. -/
@@ -260,6 +256,51 @@ theorem ancestors_congr_grow {h h' : Heap} (hs : ShapeAgree h h')
   unfold ancestors
   rw [ancestors_go_congr_grow hs hsz hsat.1 (h'.objs.size + 1) k,
     ancestors_go_ge hsat.2 (Nat.succ_le_succ hsz) k]
+
+/-! ## 4. Saturation is itself preserved (L148)
+
+`Saturated` is about to become a conjunct of the machine invariant, because
+`DeclsOk_grow` needs it at the step and only the invariant can carry it there. So it
+owes what every conjunct owes: a proof for each step that writes the heap. There are
+two shapes, and both are corollaries of congruences that already exist.
+-/
+
+/-- **A method-table write cannot make the walk fuel-sensitive.** `defineMethod`
+    preserves the shape *and* the size, so `go` agrees at every fuel and saturation
+    transports by rewriting three times. -/
+theorem Saturated_defineMethod {h : Heap} (hsat : Saturated h) (cls : ObjId)
+    (name : String) (md : MethodDef) : Saturated (defineMethod h cls name md) := by
+  have hs : ShapeAgree h (defineMethod h cls name md) :=
+    fun j => shape_defineMethod h cls j name md
+  have hsz := objs_size_defineMethod h cls name md
+  refine ⟨fun mo => ?_, fun k => ?_⟩
+  · rw [hsz, modAncestors_go_congr hs _ mo, modAncestors_go_congr hs _ mo]
+    exact hsat.1 mo
+  · rw [hsz, ancestors_go_congr hs hsz _ k, ancestors_go_congr hs hsz _ k]
+    exact hsat.2 k
+
+/-- **Nor can an allocation**, and this one is the interesting direction: the fuel
+    *changes*, so the proof is the fuel monotonicity of §1 rather than a rewrite.
+    Both walks agree with the old heap's at any fuel (shape congruence, which needs no
+    size hypothesis), and above `objs.size + 1` the old heap's answer no longer moves —
+    so the new heap's does not either, at its own larger fuel. -/
+theorem Saturated_grow {h h' : Heap} (hg : ShapeAgree h h')
+    (hsz : h.objs.size ≤ h'.objs.size) (hsat : Saturated h) : Saturated h' := by
+  have key : ∀ f, h.objs.size ≤ f → ∀ k,
+      modAncestors.go h k f = modAncestors.go h k (h.objs.size + 1) ∧
+        ancestors.go h k f = ancestors.go h k (h.objs.size + 1) := by
+    intro f hf k
+    rcases Nat.lt_or_ge f (h.objs.size + 1) with hlt | hge
+    · -- `f = objs.size` is the only case below the threshold, and it is saturation itself.
+      have : f = h.objs.size := by omega
+      subst this
+      exact ⟨(hsat.1 k).symm, (hsat.2 k).symm⟩
+    · exact ⟨modAncestors_go_ge hsat.1 hge k, ancestors_go_ge hsat.2 hge k⟩
+  refine ⟨fun mo => ?_, fun k => ?_⟩
+  · rw [modAncestors_go_congr hg _ mo, modAncestors_go_congr hg _ mo,
+      (key _ (Nat.le_trans hsz (Nat.le_succ _)) mo).1, (key _ hsz mo).1]
+  · rw [ancestors_go_congr_grow hg hsz hsat.1 _ k, ancestors_go_congr_grow hg hsz hsat.1 _ k,
+      (key _ (Nat.le_trans hsz (Nat.le_succ _)) k).2, (key _ hsz k).2]
 
 /-- The shape of the hypothesis an `alloc` supplies, spelled out so the producer's
     consecution case does not have to re-derive it: pushing an object that is **not

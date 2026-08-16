@@ -5137,3 +5137,53 @@ checked at the booted heap.
 `Proof/` and one script; `--check` cannot move. `check-proofs.sh` green and axiom-clean (the audit
 names `DeclsOk_grow`), `heapOkB` and `saturatedB` true at the booted heap; `alloc_probe.lean` exit 0;
 tier-0 flat at 992 agree, 0 disagree.
+
+## L148 — the invariant carries saturation, and there is one heap certificate rather than two
+
+`DeclsOk_grow` (L147) needs `Saturated` **at the heap the step starts from**, and only the invariant
+can carry a fact there. So `Inv` gains a third heap conjunct, which means it owes what every conjunct
+owes: initiation, and a proof for each step that writes the heap.
+
+### The three obligations, and none of them was hard
+
+* **Initiation at the boot heap.** `saturatedB Boot.initHeap = true` **by `decide`** — the boot heap
+  is a literal, so the walk really does reduce in the kernel, in under a second. Worth stating
+  because it is the *opposite* of the F0 situation: the prelude-booted heap is
+  `Lean.Json.parse`-built and does not reduce (L135, L94), which is why the certificate route exists
+  at all.
+* **`defineMethod`.** `Saturated_defineMethod`: shape and size are both preserved, so `go` agrees at
+  every fuel and saturation transports by three rewrites.
+* **A growing heap.** `Saturated_grow`, and this is the interesting one — the fuel *changes*, so the
+  proof is §1's fuel monotonicity rather than a rewrite. Both walks agree with the old heap's at any
+  fuel (shape congruence needs no size hypothesis), and above `objs.size + 1` the old heap's answer no
+  longer moves, so the new heap's does not either at its own larger fuel. Unconditional: it does not
+  need the growth to be by any particular amount.
+
+### One certificate, not two
+
+`saturatedB` moved out of `Proof/` into `RubyCore/HeapCert.lean` and **into `heapOkB`**. Both moves
+are for the reason `heapOkB` was put there in the first place: the probe must compute *the* predicate
+the theorem is about, not a copy that can drift. `HeapOk` is now `TableOk ∧ NoHook ∧ Saturated`,
+`heapOkB_sound` covers all three, and `check_sound_withPrelude`'s hypothesis is still **one Bool about
+the machine in hand** — it just decides one more clause. `scripts/heapok_probe.lean` reports it;
+`scripts/ancestors_probe.lean` keeps the per-class diagnostic and the record that the *descent* route
+is false.
+
+### What it cost, and what it did not
+
+24 `inv_*` call sites gained a hypothesis and three `Inv` literals gained a component — mechanical,
+and the build tells you where. Nothing about the fragment changed: `Saturated` is not a restriction on
+programs. **No program can make it false** (nothing in the object model builds a cyclic `include`),
+but nothing in the `Heap` *type* forbids one, which is exactly why it is a clause and not a theorem.
+
+The `#guard_msgs` axiom guards earned their keep: the intermediate states of this commit had
+`sorryAx` in `check_sound`, and the docstring mismatch said so on the next build rather than at the
+next audit.
+
+### Verification
+
+`Proof/`, `HeapCert.lean` and two scripts. `HeapCert.lean` *is* linked into `rubycore`, but nothing
+calls `heapOkB` on the execution path — it exists for the probes — so `--check`'s answer still cannot
+move; the binary's behaviour is unchanged by a new unused `def`. `check-proofs.sh` green and
+axiom-clean; `heapOkB` (now including saturation) and both probes true at the booted heap; tier-0 flat
+at 992 agree, 0 disagree.

@@ -75,15 +75,20 @@ set_option maxRecDepth 100000
 
 /-! ## 1. The heap half of the invariant -/
 
-/-- The two conjuncts of `Inv` that are facts about the heap alone, hence the
-    only ones that can be carried across phase 1. -/
-def HeapOk (h : Heap) : Prop := TableOk h ∧ NoHook h
+/-- The conjuncts of `Inv` that are facts about the heap alone, hence the only ones
+    that can be carried across phase 1. **Three since L148**: `Saturated` joined
+    `TableOk` and `NoHook` when the invariant started needing it for `DeclsOk_grow`,
+    and it belongs here for the same reason the other two do — it is a fact about the
+    heap, decided by the same certificate, at the same point. -/
+def HeapOk (h : Heap) : Prop := TableOk h ∧ NoHook h ∧ Saturated h
 
 /-- The bare boot heap satisfies it — `TableOk` by `tableOk_initHeap`'s walk of
-    the method table, `NoHook` by `rfl`. This is the *start* of phase 1, not its
-    end; the whole difficulty of F0 is the other end. -/
+    the method table, `NoHook` by `rfl`, and `Saturated` by `decide`: the boot heap is
+    a *literal*, so unlike at the prelude-booted heap the walk's saturation really is
+    a kernel computation. This is the *start* of phase 1, not its end; the whole
+    difficulty of F0 is the other end. -/
 theorem heapOk_initHeap : HeapOk Boot.initHeap :=
-  ⟨tableOk_initHeap, by rfl⟩
+  ⟨tableOk_initHeap, by rfl, saturatedB_sound (by decide)⟩
 
 /-! ### 1.1 Initiation at an arbitrary heap
 
@@ -100,7 +105,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
   -- F1a: the invariant's heap clause is `DeclsOk`, and `HeapOk`'s `TableOk` half
   -- is its concrete witness for `baseDecls`. That is the whole reason F0 needed no
   -- restatement — `heapOkB` still decides exactly what it decided before.
-  refine ⟨tableOk_declsOk hh.1, hh.2, [], [], ?_, ?_⟩
+  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2, [], [], ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
   · unfold check at hchk
@@ -140,8 +145,9 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hb
-  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hb
-  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3⟩, h4⟩
+  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := hb
+  exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3⟩, h4,
+    saturatedB_sound h5⟩
 
 /-- **F0, certificate form.** A checked `Bool` about the machine in hand plus an
     accepting `check` gives the invariant — for *any* start configuration, so in
@@ -212,7 +218,10 @@ theorem heapOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
      show lookup (defineMethod h cls name md) (.ref Boot.objectId) "method_added" = none
      rw [lookup_defineMethod _ _ name "method_added" md _ h4
        (classOf_defineMethod _ _ _ _ _)]
-     exact hh.2⟩
+     exact hh.2.1,
+   -- L148's third clause, and it needs no side condition: a method-table write moves
+   -- no id, so the walk cannot become fuel-sensitive.
+   Saturated_defineMethod hh.2.2 cls name md⟩
 
 /-! ### 3.1 Carrying it along a run -/
 
