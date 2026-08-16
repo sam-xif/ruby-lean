@@ -60,6 +60,13 @@ theorem objs_getD_set!_ne (a : Array Object) (i j : Nat) (o : Object) (h : j ≠
   · simp only [Array.getD]
     rw [dif_neg (hsz ▸ hj), dif_neg hj]
 
+/-- The companion of `objs_getD_set!_ne` at the written index. Needed by F1b's
+    `Static.plainRecv_defineMethod`, which has to read the payload `defineMethod`
+    just wrote rather than only the ones it left alone. -/
+theorem objs_getD_set!_self (a : Array Object) (i : Nat) (o : Object) (h : i < a.size) :
+    (a.set! i o).getD i default = o := by
+  simp [Array.getD, h]
+
 /-- Out of bounds, `Heap.get` yields `default`, whose payload is `.none` — so
     there is no class there. Needed to discharge the case where `defineMethod`'s
     target does not exist, which `classPayload? = some _` rules out. -/

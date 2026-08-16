@@ -72,7 +72,13 @@ set_option maxRecDepth 100000
     carrying for an abstract receiver, and does not — `invoke` consults that gate
     only when lookup did *not* resolve to a builtin, so an entry satisfying this
     predicate never reaches it. Measured by the proof of `entry_dispatch` not
-    using it. -/
+    using it.
+
+    **Re-measured at F1b and still true** (L141), against a prediction that it
+    would not be: `HANDOFF.md` expected an object receiver to bring the singleton
+    gate back. It does not, because the gate is a fact about which *branch* runs
+    (`md.builtin = none`) and not about which *receiver* arrives, and this
+    predicate pins the branch. -/
 def ResolvesTo (h : Heap) (recv : Value) (mname bid : String) : Prop :=
   ∃ owner md,
     lookup h recv mname = some (owner, md) ∧
@@ -142,13 +148,37 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   -- The receiver has to be case-split, and the reason is worth stating: `invoke`
-  -- has receiver-shape special cases *before* the resolved-builtin path (class
-  -- objects reach `invokeMaybeNew`, and `Math` has its own arm), so an abstract
-  -- receiver leaves them standing. Every one of them is a `.ref`, and no `.ref`
-  -- has a `Ty` — `valueTy?` is `none` there — so the fragment's own type judgement
-  -- is what closes them. F1b's nominal types will have to do this differently, and
-  -- that is the first place this rung's shape actually bites.
-  rcases valueTy_immediate hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ <;>
+  -- has receiver-shape special cases *before* the resolved-builtin path (a `.proc`
+  -- answers `call`, a `.hsh` with a proc default answers `[]`, and a `.cls` reaches
+  -- `invokeMaybeNew` or the `Math`/`Regexp` singleton arms), so an abstract
+  -- receiver leaves them standing.
+  --
+  -- **F1a closed them by there being no inhabitant** — every one is a `.ref` and
+  -- `valueTy?` had no `.ref` arm. F1b closes them by a hypothesis instead:
+  -- `plainRecv` is exactly the negation of the three payload shapes, and it is part
+  -- of what the class arm of `valueTy?` *means*, so the inversion hands it over
+  -- (`valueTy_shapes`). The special cases are still discharged by the type
+  -- judgement; what changed is that the judgement now has to say so out loud.
+  rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, hplain⟩
+  -- The four immediate cases are F1a's, unchanged: `invoke`'s receiver-shape arms
+  -- are all `.ref`, so the outer match falls straight through.
+  case' inr.inr.inr.inr =>
+    -- The `.ref` case, which is F1b's whole bill. Case on the payload: `plainRecv`
+    -- refutes the three special arms and the rest reach `invokeDispatch`, which is
+    -- what `ResolvesTo` describes. Note this does **not** need
+    -- `crubySingletonShadow`: that gate sits on `invoke`'s `md.builtin = none`
+    -- branch (`Interp/Send.lean:246`) and `ResolvesTo` pins `md.builtin = some bid`,
+    -- so F1a's measurement survives an abstract object receiver unchanged.
+    cases hpl : (m.heap.get o).payload
+    -- The three special shapes, refuted by `plainRecv` rather than reasoned about.
+    case proc => exact absurd hplain (by simp [plainRecv, hpl])
+    case hsh => exact absurd hplain (by simp [plainRecv, hpl])
+    case cls => exact absurd hplain (by simp [plainRecv, hpl])
+    -- Everything else is the uniform path, and identical to the immediate cases.
+    all_goals
+      simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
+        appendKwHash, hrun, hns, hdefer, hraise]
+  all_goals
     simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
       appendKwHash, hrun, hns, hdefer, hraise]
 
@@ -189,7 +219,15 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
     cases hd : declOf? D c mname with
     | none => rw [hd] at hh; exact absurd hh (by simp)
     | some d0 => exact declOf?_declaresName hd
-  cases τ <;> (unfold declFor at h; simp only [tyClassNames] at h) <;>
+  -- The class arm (F1b) is the only one that is not immediate: the key is a
+  -- variable, and `tyClassNames` can answer `[]` (for a ground name), which
+  -- `declFor` reads as no declaration.
+  cases τ <;> (unfold declFor at h; simp only [tyClassNames] at h)
+  case cls n =>
+    by_cases hg : groundClassNames.contains n = true
+    · rw [if_pos hg] at h; exact absurd h (by simp)
+    · rw [if_neg hg] at h; exact key n [] h
+  all_goals
     first
       | exact key "Integer" [] h
       | exact key "TrueClass" ["FalseClass"] h
@@ -357,6 +395,22 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   | sym =>
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
+  -- The class arm (F1b): `baseDecls` has one key, `"Integer"`, and `tyClassNames`
+  -- has just subtracted it from the class arm's range — so a class type has no
+  -- declarations in the base table by construction, and this case is a refutation
+  -- rather than an obligation. That is the whole point of the subtraction.
+  | cls n =>
+    refine absurd hd ?_
+    unfold declFor
+    simp only [tyClassNames]
+    by_cases hg : groundClassNames.contains n = true
+    · rw [if_pos hg]; simp
+    · rw [if_neg hg]
+      have hne : ("Integer" == n) = false := by
+        by_cases he : "Integer" = n
+        · exact absurd (by subst he; simp [groundClassNames]) hg
+        · simpa using he
+      simp [declOf?, declsFor, baseDecls, hne]
 
 end Static
 end Proof

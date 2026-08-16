@@ -28,6 +28,25 @@ inductive Ty where
       (`Interp.lean:2624`), so a `def` in tail position needs a type. Nothing
       constructs or consumes one otherwise. -/
   | sym
+  /-- **An instance of the class named `name`** (F1b/T2). The arm F1a said was
+      missing — `typing-a-mutable-method-table.md` §8's correction to its own F1a
+      row: the declaration table is keyed on a class *name* and until now no `Ty`
+      carried one, so `declFor` could only ever be asked about the four ground
+      classes.
+
+      **Keyed on the name, not on an `ObjId`**, for the reason `Decls` is:
+      `check` is a pure function of the program and object identities exist only
+      in a heap (`Types/Decls.lean`). What ties the name back to the heap is
+      `valueTy?`'s `.ref` arm, which is the first arm of that function to read
+      its heap argument at all — the change L137 threaded the heap in for.
+
+      **Nothing constructs one yet.** `infer` has no `new`, no `classDef` and no
+      `casgn`, so no program gets a value of this type; the arm exists so that
+      `entry_dispatch` has to survive an abstract non-immediate receiver, which
+      is where the fragment's poverty was load-bearing (§F1b of `HANDOFF.md`).
+      Giving it a producer needs `alloc`, hence the fuel-monotonicity lemma
+      `ancestors_congr` wants, and that is the next commit rather than this one. -/
+  | cls (name : String)
 deriving DecidableEq, Repr, Inhabited
 
 /-- Local-variable typing environment. Order is canonical (`envSet` replaces in

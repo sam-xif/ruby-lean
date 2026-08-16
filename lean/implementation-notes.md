@@ -4530,3 +4530,104 @@ argument L137 rested on: the evidence a threading commit is right is that the *e
 still close over the new statements. `step_ok` closing is a stronger signal here than it was
 there, because the `argsK` case genuinely goes through the new uniform lemma rather than the
 three old ones.
+
+## L141 — F1b/T2: a class type, and `entry_dispatch` paying F1a's deferred bill
+
+`homebrew/typing-a-mutable-method-table.md` §8's F1b, first commit — and specifically the thing
+§8's own correction to its F1a row says has to come first: *"the declaration table's key is a class
+**name**, and `Ty` still has no arm that carries one … so a user class having a type is still
+ahead, and it is the first thing F1b needs."* This is that arm.
+
+`Ty` gains `| cls (name : String)`, and `valueTy?` gains the `.ref` arm that ties it to the heap.
+**Nothing constructs one yet** — `infer` has no `new`, no `classDef`, no `casgn` — so the commit
+accepts no new programs, by the same design and with the same verification as L140. What it *does*
+is discharge the obligation F1a deferred, which is the entire reason to land it separately.
+
+### `plainRecv`, and why the refusal is in the definition rather than at the use site
+
+`valueTy? h (.ref o)` is `some (.cls (className h (classOf h (.ref o))))` **iff `plainRecv h o`**:
+the object has no eigenclass, and its payload is not `.proc`, `.hsh` or `.cls`. Those three are
+exactly `invoke`'s receiver-shape special cases (`Interp/Send.lean:33–92`) — a Proc answers
+`call`/`()`/`[]`/`yield` by running its closure, a Hash with a `prc` default answers `[]` by
+running that, and a class object reaches `invokeMaybeNew` or the `Math`/`Regexp` singleton arms.
+`eigen = none` is the fourth condition and is there for a different reason: dispatch resolves
+through `classOf`, which *is* the eigenclass when there is one, so an object with a singleton
+method would have its declarations read off a class other than the one its type names. It is the
+same hypothesis `Proof/T5.lean`'s `dispatch_progress` carries as `heigen`.
+
+Putting all four **inside `valueTy?`** rather than assuming them at the use site is the decision
+here. An inversion principle is only as strong as the definition it inverts: `valueTy_immediate`
+becomes `valueTy_shapes` (immediate **or** a plain ref), and the `.ref` disjunct hands over
+`plainRecv h o = true`, which is what `entry_dispatch` case-splits on. A Proc, a Hash and a class
+object simply have no type in this rung — a refusal, not an approximation, and nothing unsound
+follows from a value having no type.
+
+### The ground names are subtracted from the class arm's key set, and that is not a technicality
+
+`tyClassNames (.cls n)` is `[]` when `n` is one of `Integer`/`TrueClass`/`FalseClass`/`NilClass`/
+`Symbol`, and `[n]` otherwise. Without the subtraction, `.cls "Integer"` would read `Integer`'s
+declaration row — and the two arms have **disjoint inhabitants** (`valueTy?` gives an immediate a
+ground type and a `.ref` a class type, never both), so the invariant would owe an `EntryOk` for
+that row over receivers the row was never about: objects of some class merely *named* `Integer`.
+Nothing in the model rules those out, so the obligation would be **unprovable**, not merely
+awkward. Subtracting makes the type useless instead of unsound, which is the right failure
+direction, and `Sub` is what will fix it properly (an `Integer` receiver should be typed `.int`).
+This is what turns `tableOk_declsOk`'s new `cls` case into a refutation rather than an obligation.
+
+### What the bill actually was, against what L140 predicted
+
+L140 said `entry_dispatch` is *"the first place F1b will have to change something rather than
+extend it"*, and `homebrew/HANDOFF.md` §F1b said to **budget for a different argument, not a
+case-analysis widening**, and specifically that it would want `crubySingletonShadow` back as a
+`ResolvesTo` clause. Measured:
+
+* **It is a case analysis after all.** `cases (m.heap.get o).payload`: three constructors are
+  refuted by `plainRecv` in one line each, and the other eight go through the *same* simp set as
+  the four immediate cases, unchanged. The receiver-shape special cases are still closed by the
+  type judgement; what changed is that the judgement now has to say so out loud instead of having
+  no inhabitant to say it about.
+* **`crubySingletonShadow` did not come back.** That gate sits on `invoke`'s `md.builtin = none`
+  branch (`Interp/Send.lean:246`) and `ResolvesTo` pins `md.builtin = some bid`, so F1a's
+  measurement survives an abstract object receiver unchanged. The prediction was reasonable and
+  wrong for the same reason F1a's original one was: **the gate is a fact about which branch runs,
+  not about which receiver arrives.**
+
+Where the cost did land was the transport condition, and L137 had already named the spot.
+`TypeAgree` gains a fourth clause, `∀ o, plainRecv h' o = plainRecv h o`, because the `.ref` arm
+reads `eigen` and `payload` and neither is determined by `classOf`/`className`/`classPayload?`-ness.
+`ValueTy.congr` stops being `id` — it now uses three of the four clauses — which is exactly what
+L137 threaded the heap in for and predicted would happen *here* rather than at the callers. The
+instance is `plainRecv_defineMethod`, and note what it is **not**: not "the payload is unchanged",
+since at `o = cls` it really does change, only that it stays a `.cls`, which is all `plainRecv`
+asks. `objs_getD_set!_self` (`Proof/HeapFacts.lean`) is its one new supporting fact — the companion
+of `objs_getD_set!_ne` at the *written* index, which the `defineMethod` chain had never needed
+because until now nothing read the payload it writes.
+
+### Verification
+
+Same shape as L140's, because the claim is the same claim:
+
+* **`--check` over all 1,227 decodable bootstraptest programs is byte-identical before and after**
+  — 21 accept, 1,204 unknown, 0 reject, against a binary rebuilt from a `git stash`.
+* `check-proofs.sh` green, axiom-clean (`propext`/`Classical.choice`/`Quot.sound` only), `heapOkB`
+  still true at the booted heap.
+* tier-0 **992/0**, slice **351/0** (+1 gated, +3 `control_invalid`), tier-4 **25/0** — flat.
+
+### What this leaves for the next commit, precisely
+
+A **producer**. Nothing gives a value the class type, so `EntryOk` at a `.cls` is vacuous today and
+the arm is exercised only by the proofs. Giving it one means `classDef`/`Class#new` in `infer`,
+which means an `alloc`, which is where the *other* half of L140's warning comes due: `ancestors_congr`
+(`Proof/HeapFacts.lean`) requires `objs.size` to be **equal**, so an allocating step needs a
+monotonicity lemma that does not exist. That is the F1b bill that is still unpaid, and it is now
+the only thing between here and a user class having a type.
+
+Also unpaid and now visible as a *shape* rather than a suspicion: `declaresName` is **name-global
+across all classes**, so every row added to `baseDecls` refuses `def <name>` on every class. It is
+sound and it is exactly P0's behaviour for three names, but it means F6's ~128 rows would refuse
+`def to_s`/`==`/`each` program-wide. Relativizing it to the defining class is not cheap —
+`DeclsOk_defineMethod` gets its side condition from `ResolvesTo_defineMethod`'s `mname ≠ name` over
+an **arbitrary** `cls`, so a class-relative version is an ancestors-relative, heap-dependent
+argument, i.e. the wrong side of the `ResolvesTo`/`ConformsAt` line L140 says to keep clauses off.
+So `widening-the-fragment.md` §5.2's sixteen prelude signatures are **not** parallelisable from
+F1b as `HANDOFF.md`'s list says; they are downstream of this.

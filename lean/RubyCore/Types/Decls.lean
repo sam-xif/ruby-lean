@@ -77,6 +77,11 @@ def declOf? (D : Decls) (cls name : String) : Option MethodDecl :=
 def declaresName (D : Decls) (name : String) : Bool :=
   D.any fun cd => cd.2.any fun md => md.1 == name
 
+/-- The class names the four *ground* arms of `Ty` already denote. Subtracted from
+    the class arm's key set by `tyClassNames`; see the note there. -/
+def groundClassNames : List String :=
+  ["Integer", "TrueClass", "FalseClass", "NilClass", "Symbol"]
+
 /-- The classes a value of a ground type can have. A **list**, not a single name,
     because `Ty.bool` is already two classes — which is the shape `T::Boolean`
     (`PLAN.md` W5 T4) needs, arriving here for free rather than as a union in
@@ -86,6 +91,21 @@ def tyClassNames : Ty → List String
   | .bool => ["TrueClass", "FalseClass"]
   | .nilT => ["NilClass"]
   | .sym => ["Symbol"]
+  -- The class type is the arm this function was written for: one name, exactly
+  -- the key. Note it is *not* the ancestors walk — a declaration inherited from a
+  -- superclass is not visible here, which is `Sub`'s job (`PLAN.md` W5 T2) and is
+  -- deliberately still absent, so today a class type sees only its own row.
+  --
+  -- **The ground names are subtracted, and that is not a technicality.** The two
+  -- kinds of arm have *disjoint* inhabitants — `valueTy?` gives an immediate a
+  -- ground type and a `.ref` a class type, never both — so if `.cls "Integer"`
+  -- read `Integer`'s row, the invariant would owe an `EntryOk` for that row over
+  -- receivers the row was never about: objects of some class merely *named*
+  -- `Integer`. Nothing in the model rules those out, so the obligation would be
+  -- unprovable rather than merely inconvenient. Giving them no declarations makes
+  -- the type useless instead of unsound, which is the right failure direction and
+  -- is what `Sub` will fix (an `Integer` receiver should be typed `.int`).
+  | .cls n => if groundClassNames.contains n then [] else [n]
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.

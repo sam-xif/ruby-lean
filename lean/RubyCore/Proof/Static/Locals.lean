@@ -27,22 +27,54 @@ set_option maxRecDepth 100000
 
 /-! ## 1. Values and locals -/
 
-/-- The type of a value **in a heap**, where P0 has one. `.ref`/`.flt` have none
-    — the fragment allocates no objects, so they never arise.
+/-- **A receiver `invoke` dispatches uniformly.** The three receiver *shapes*
+    `invoke` special-cases before it ever consults the resolved builtin
+    (`Interp/Send.lean:33–92`) are all `.ref`s, and each is recognised by the
+    object's payload: a `.proc` answers `call`/`()`/`[]`/`yield` by running its
+    closure, a `.hsh` with a `prc` default answers `[]` by running that, and a
+    `.cls` reaches `invokeMaybeNew` (or the `Math`/`Regexp` singleton arms, both of
+    which are class objects). Everything else falls through to `invokeDispatch`,
+    which is the path `ResolvesTo` describes.
 
-    **Heap-indexed as of L137, and today no arm reads the heap.** That is
-    deliberate and it is the F1 prerequisite: a nominal class type
-    (`widening-the-fragment.md` §6 F1, `PLAN.md` W5 T2) can only say what class a
+    `eigen = none` is here for a different reason: dispatch resolves through
+    `classOf`, which *is* the eigenclass when there is one, so an object with a
+    singleton method would have its declarations read off a class other than the
+    one the type names. Excluding it keeps the key and the dispatch class the same
+    object — the same hypothesis `Proof/T5.lean`'s `dispatch_progress` carries as
+    `heigen`.
+
+    **This is a refusal, not an approximation.** A Proc, a Hash and a class object
+    simply have no type in this rung; nothing unsound follows from a value having
+    no type, only that no call on it can be checked. -/
+def plainRecv (h : Heap) (o : ObjId) : Bool :=
+  (h.get o).eigen.isNone &&
+    (match (h.get o).payload with
+     | .proc _ => false
+     | .hsh _ => false
+     | .cls _ => false
+     | _ => true)
+
+/-- The type of a value **in a heap**, where P0 has one. `.flt` has none — the
+    fragment has no Float type — and a `.ref` has one exactly when it is a
+    receiver `invoke` dispatches uniformly (`plainRecv`).
+
+    **Heap-indexed since L137, and the `.ref` arm is the first arm to use it**
+    (F1b/T2). L137's note said a nominal class type "can only say what class a
     `.ref` belongs to by consulting `classOf`/`className`, so the *judgement* has
-    to be heap-relative before the *type language* can grow. Threading it while
-    every arm is still heap-independent is what makes the two changes separable,
-    and §1.5's congruence lemmas are where the cost of the threading shows up. -/
-def valueTy? (_h : Heap) : Value → Option Ty
+    to be heap-relative before the *type language* can grow", and this is that
+    prediction cashed: the arm is `className ∘ classOf`, and the cost of the
+    threading lands in §1.5's congruence lemmas exactly where it was predicted to.
+
+    `classOf` rather than `realClassOf` because dispatch uses `classOf`, and
+    `plainRecv` makes them equal anyway — the type must name the class the method
+    table is actually walked from, not the one `Object#class` reports. -/
+def valueTy? (h : Heap) : Value → Option Ty
   | .int _ => some .int
   | .bool _ => some .bool
   | .nil => some .nilT
   -- `def` evaluates to the method name (`Interp.lean:2624`).
   | .sym _ => some .sym
+  | .ref o => if plainRecv h o then some (.cls (className h (classOf h (.ref o)))) else none
   | _ => none
 
 def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
@@ -53,14 +85,35 @@ def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
 theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v = .int a := by
   cases v <;> simp_all [ValueTy, valueTy?]
 
-/-- **Every value with a type is an immediate.** `valueTy?` has no `.ref` arm, so
-    the fragment's judgement itself rules out an object receiver — which is what
-    lets `Proof/Static/Decls.lean`'s `entry_dispatch` discharge `invoke`'s
-    class-receiver special cases (F1a). The first place F1b will have to change
-    something rather than extend it. -/
-theorem valueTy_immediate {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
-    (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) := by
-  cases v <;> simp_all [ValueTy, valueTy?]
+/-- **Every value with a type is an immediate or a plain ref.** F1a's version of
+    this said *immediate*, full stop, and that was what let
+    `Proof/Static/Decls.lean`'s `entry_dispatch` discharge `invoke`'s
+    receiver-shape special cases for free — the fragment's own poverty doing the
+    work of a proof (`HANDOFF.md` §F1b).
+
+    **F1b pays that bill, and it turns out to be a case rather than an argument.**
+    The `.ref` case is admitted with `plainRecv`, which is precisely the negation
+    of the three special shapes, so the special cases are still closed — but now
+    by a *hypothesis the type judgement carries* rather than by there being no
+    inhabitant. That is the difference between the two rungs, and it is why
+    `plainRecv` had to go into `valueTy?` rather than being assumed at the use
+    site: an inversion principle is only as strong as the definition it inverts.
+
+    **What did *not* come due, against expectation.** `HANDOFF.md` §F1b predicted
+    this would want `crubySingletonShadow` back as a `ResolvesTo` clause. It does
+    not: `invoke` consults that gate only on the `md.builtin = none` branch
+    (`Interp/Send.lean:246`) and `ResolvesTo` pins `md.builtin = some bid`, so the
+    F1a measurement survives an abstract `.ref` receiver unchanged. -/
+theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
+    (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) ∨
+      (∃ o, v = .ref o ∧ plainRecv h o = true) := by
+  cases v with
+  | ref o =>
+    refine Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩)))
+    by_cases hp : plainRecv h o
+    · exact hp
+    · simp [ValueTy, valueTy?, hp] at hv
+  | _ => simp_all [ValueTy, valueTy?]
 
 /-- Every value in the list has the corresponding declared type. Pointwise, and
     length-forcing by the `_, _ => False` arm — the same shape as `FramesOk`, for
@@ -368,36 +421,96 @@ here rather than being discovered inside a 300-line case analysis.
 -/
 
 /-- The heap facts a nominal type language reads. Reflexive, and `defineMethod`
-    is an instance. -/
+    is an instance.
+
+    **The fourth clause is F1b's**, and it is the one place the class arm cost
+    something that was not already written down: `valueTy?`'s `.ref` arm reads
+    `plainRecv`, which reads the object's `eigen` and `payload`, and neither is
+    determined by the first three. It is stated per-object rather than per-value
+    for the same reason `className`'s clause is stated per-id — the transport is
+    needed for values the *heap* holds, not only for the one in hand. -/
 def TypeAgree (h h' : Heap) : Prop :=
   (∀ v, classOf h' v = classOf h v) ∧ (∀ k, className h' k = className h k) ∧
-    (∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome)
+    (∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome) ∧
+    (∀ o, plainRecv h' o = plainRecv h o)
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
-  ⟨fun _ => Eq.refl _, fun _ => Eq.refl _, fun _ => Eq.refl _⟩
+  ⟨fun _ => Eq.refl _, fun _ => Eq.refl _, fun _ => Eq.refl _, fun _ => Eq.refl _⟩
 
-/-- Symmetric, because it is an equality of three functions. Needed by F1a: a
+/-- Symmetric, because it is an equality of four functions. Needed by F1a: a
     conformance fact whose *hypotheses* mention the old heap has to read them in
     the new one, which is the transport running backwards. -/
 theorem TypeAgree.symm {h h' : Heap} (ha : TypeAgree h h') : TypeAgree h' h :=
-  ⟨fun v => (ha.1 v).symm, fun k => (ha.2.1 k).symm, fun k => (ha.2.2 k).symm⟩
+  ⟨fun v => (ha.1 v).symm, fun k => (ha.2.1 k).symm, fun k => (ha.2.2.1 k).symm,
+    fun o => (ha.2.2.2 o).symm⟩
+
+/-- A `setClassPayload` leaves a `.cls` payload at the written id — which is the
+    only thing `plainRecv` reads there. Stated about the payload rather than about
+    the whole `Object` so that the record literal `defineMethod` builds never has to
+    be written out. -/
+theorem payload_setClassPayload (h : Heap) (o : ObjId) (c : ClassPayload)
+    (hb : o < h.objs.size) : ((h.setClassPayload o c).get o).payload = .cls c := by
+  simp only [Heap.setClassPayload, Heap.get, Heap.set]
+  rw [objs_getD_set!_self _ _ _ hb]
+
+/-- **`defineMethod` cannot change whether an object is dispatched uniformly.**
+    The fourth clause of `TypeAgree`, and the F1b analogue of
+    `classPayload?_isSome_defineMethod`. It is *not* the statement that the payload
+    is unchanged — at `o = cls` the payload really does change, since that is what
+    `defineMethod` is for — only that it stays a `.cls`, which is all `plainRecv`
+    asks. `eigen` is untouched because `setClassPayload` is a `with` on the payload
+    field alone.
+
+    Kept here rather than in `Proof/HeapFacts.lean` (where the rest of the
+    `defineMethod` chain lives) because `plainRecv` is part of the *type
+    judgement's* vocabulary — it exists to say which receivers `valueTy?` admits —
+    and separating a definition from its only consumer costs more than the
+    symmetry buys. -/
+theorem plainRecv_defineMethod (h : Heap) (cls o : ObjId) (name : String)
+    (md : MethodDef) : plainRecv (defineMethod h cls name md) o = plainRecv h o := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : o = cls
+    · subst hk
+      -- Both sides are `false`, and for the same reason: `o` is a class object
+      -- before the write (`hc`) and still one after it. Neither side reads `eigen`.
+      have hb : o < h.objs.size := by
+        by_cases hb : o < h.objs.size
+        · exact hb
+        · rw [classPayload?_oob h o hb] at hc; exact absurd hc (by simp)
+      have hpay : (h.get o).payload = .cls c := by
+        unfold Heap.classPayload? at hc
+        split at hc <;> simp_all
+      unfold plainRecv
+      rw [payload_setClassPayload h o _ hb, hpay]
+      simp
+    · unfold plainRecv
+      simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
 
 theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     (md : MethodDef) : TypeAgree h (defineMethod h cls name md) := by
   -- The third clause was inline here and is now `classPayload?_isSome_defineMethod`
   -- in `Proof/HeapFacts.lean`, beside the rest of the `defineMethod` chain — it is
-  -- a fact about the heap, not about the type judgement (F1a).
+  -- a fact about the heap, not about the type judgement (F1a). The fourth is F1b's
+  -- and is directly above, for the reason recorded there.
   exact ⟨fun v => classOf_defineMethod h cls name md v,
     fun k => className_defineMethod h cls k name md,
-    fun k => classPayload?_isSome_defineMethod h cls k name md⟩
+    fun k => classPayload?_isSome_defineMethod h cls k name md,
+    fun o => plainRecv_defineMethod h cls o name md⟩
 
-/-- Transport of the value judgement. **No arm reads the heap today**, so this is
-    `id` — and it is stated with the hypothesis anyway, because the point of L137
-    is that the hypothesis is where a nominal arm will land, and a lemma that has
-    to grow a hypothesis later is a lemma every caller has to be revisited for. -/
-theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (_ha : TypeAgree h h')
+/-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
+    reads three of `TypeAgree`'s four clauses, which is what L137 threaded the
+    heap in for and what it predicted would happen here rather than at the use
+    sites. The immediate arms are still `id`, and that asymmetry is the whole
+    reason the class arm could land as one commit. -/
+theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     (hv : ValueTy h v τ) : ValueTy h' v τ := by
-  cases v <;> simp_all [ValueTy, valueTy?]
+  cases v with
+  | ref o => simpa [ValueTy, valueTy?, ha.2.2.2 o, ha.1, ha.2.1] using hv
+  | _ => simp_all [ValueTy, valueTy?]
 
 theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
     ∀ {vs : List Value} {τs : List Ty}, ValuesTy h vs τs → ValuesTy h' vs τs

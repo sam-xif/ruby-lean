@@ -112,6 +112,10 @@ def main (args : List String) : IO UInt32 := do
             | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
             -- `def` evaluates to the method name.
             | .sym => "Symbol"
+            -- F1b's class arm. Unreachable today — `infer` has no construct that
+            -- produces one — but rendered rather than gated, because the moment a
+            -- producer lands this is the line that shows it working.
+            | .cls n => n
           | none => ""
         IO.println (Lean.Json.mkObj
           ([("verdict", Lean.Json.str verdict)] ++
