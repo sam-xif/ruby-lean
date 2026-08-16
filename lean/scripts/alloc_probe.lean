@@ -20,10 +20,14 @@ question about fuel.
 This script is that measurement, kept as a check rather than as a paragraph:
 it exits non-zero if an unallocated id ever gets a type again.
 
-**L143 adds a second measurement, for the second bound.** Relativizing
-`TypeAgree` to `< h.objs.size` needs the *class* id in bounds too — the `.ref`
-arm's type is `className h (classOf h (.ref o))`, and `className` also answers out
-of bounds with a default — so `plainRecv` gained `(h.get o).klass < h.objs.size`.
+**L143 adds a second measurement, for the second bound; L147 strengthens it.**
+Relativizing `TypeAgree` to `< h.objs.size` needs the *class* id in bounds too — the
+`.ref` arm's type is `className h (classOf h (.ref o))`, and `className` also answers
+out of bounds with a default — so `plainRecv` gained a clause about the object's
+`klass`. L147 strengthened it from `< h.objs.size` to `(classPayload? klass).isSome`,
+which **subsumes** the bound (`classPayload?` is `none` out of bounds) and is what
+`EntryOk`'s class-indexed resolution clause needs at the use site.
+
 That clause is a **refusal**, and a refusal has to be priced: this script counts
 the objects of the **prelude-booted** heap it costs. The answer must be zero, and
 if it ever is not, the fragment has silently stopped typing real objects rather
@@ -49,9 +53,9 @@ def main : IO UInt32 := do
   -- the fresh id — that is why the transport has to be relativized to ids the
   -- old heap had, rather than proved unrelativized.
   let ok := plainRecv h n = false && (valueTy? h (.ref n)).isNone
-  -- L143's clause, priced at the heap the interpreter really starts from: how many
-  -- **allocated** objects does `(h.get o).klass < h.objs.size` refuse? A real heap
-  -- never points an object at a class it has not allocated, so the answer is zero
+  -- L143's clause as L147 strengthened it, priced at the heap the interpreter really
+  -- starts from: how many **allocated** objects does *the object's class is a class*
+  -- refuse? A real heap never points an object at a non-class, so the answer is zero
   -- — but that is a measurement, not an argument, and it is the one this clause
   -- could get wrong.
   let mut oobKlass := 0
@@ -63,15 +67,15 @@ def main : IO UInt32 := do
     let hb := mp.heap
     bootedSize := hb.objs.size
     for o in [0:hb.objs.size] do
-      if !((hb.get o).klass < hb.objs.size) then oobKlass := oobKlass + 1
+      if !(hb.classPayload? (hb.get o).klass).isSome then oobKlass := oobKlass + 1
       if plainRecv hb o then plainCount := plainCount + 1
   IO.println s!"booted heap: {bootedSize} objects, {plainCount} plain receivers, \
-{oobKlass} refused for an out-of-bounds klass (want 0)"
+{oobKlass} refused because their class is not a class object (want 0)"
   if ok && oobKlass == 0 then
     IO.println "OK: an unallocated id has no type, so ValueTy implies in-bounds; \
 and no allocated object is refused for its class"
     return 0
   else
     IO.eprintln "FAIL: an out-of-bounds ObjId has a type, or a real object's class \
-is out of bounds — TypeAgree cannot survive an alloc"
+is not a class — TypeAgree cannot survive an alloc"
     return 1

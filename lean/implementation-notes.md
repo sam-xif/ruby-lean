@@ -5050,3 +5050,90 @@ the two branches produce different step results.
 `Proof/` only; `--check` cannot move. `check-proofs.sh` green, axiom-clean (the audit now names
 `declsOk_baseDecls_grow` too), `heapOkB` and `saturatedB` true at the booted heap;
 `alloc_probe.lean` exit 0; tier-0 flat at 992 agree, 0 disagree.
+
+## L147 — resolution indexed by the class, and the last conditional leaves the producer's path
+
+L145 observed that `ResolvesTo` factors through `classOf`. L146 removed conformance's heap index and
+left `DeclsOk_grow` with one side condition — *every receiver the new heap types was already typed by
+some receiver of the same dispatch class* — which was the honest form of an **inhabitant-indexed**
+clause. This takes the L145 observation seriously and the side condition disappears.
+
+### The change
+
+```lean
+-- before                                          -- after
+∃ bid, (∀ recv, ValueTy h recv τr →                ∃ bid, (∀ k, TyClass h τr k →
+          ResolvesTo h recv mname bid) ∧ …                    ResolvesAt h k mname bid) ∧ …
+```
+
+`ResolvesAt h k` is `ResolvesTo`'s clauses over `lookupIn h k` — the method-table walk *from a
+class* — and `resolvesTo_of_resolvesAt` is the identity, because `lookup h recv m` is
+`lookup.go h m (ancestors h (classOf h recv))` definitionally. `TyClass h τ k` names the dispatch
+classes a type has: boot ids for the ground arms, and for `.cls n` a name **plus** the requirement
+that the id really is a class — without which an out-of-bounds id would satisfy `.cls "Object"`
+(`className` answers `"Object"` there) and the clause would demand resolution from a slot that does
+not exist.
+
+### Why it is the right indexing, not merely a nicer one
+
+**The inhabitant-indexed clause cannot be preserved across an allocation.** A fresh object of a
+declared class needs resolution; the only receiver-shaped hypothesis available is about receivers the
+*old* heap had, and there may be none — a class can be declared before it has any instances. So the
+clause is unprovable in general, and L146's side condition was that gap made explicit.
+
+Class-indexed, the hypothesis transports:
+
+* `TyClass` reads only `className` and `classPayload?`-ness, so it transports **backwards** across
+  both steps — including at ids the old heap did not have, where both heaps answer `"Object"` and
+  `none` (`TyClass_grow`, `TyClass_defineMethod`);
+* `ResolvesAt` transports **forwards** with no receiver-side hypothesis (`ResolvesAt_grow`);
+* conformance mentions no heap at all (L146).
+
+`DeclsOk_grow` is therefore three lines and **unconditional**. `ValueTy` does not transport backwards
+across a growing heap (L143) and never will — a fresh object *is* a new inhabitant. It is not a new
+class, and that is the whole content of this commit.
+
+### Four withdrawals, and they are the good kind
+
+* ~~`DeclsOk_grow_ground`~~, ~~`declsOk_baseDecls_grow`~~ (L146) — scaffolding for the side condition
+  that no longer exists.
+* ~~`ResolvesTo_classOf`~~, ~~`ResolvesTo_grow`~~ (L145) — the first *is* the new indexing, so it
+  became `rfl`; the second carried the receiver-in-bounds hypothesis that could not reach a fresh
+  object.
+* ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ (L143) — and this one is the sequence
+  worth keeping visible, because each step corrected the previous: L137 had `TypeAgree.symm` (true,
+  the relation being four unrelativized equalities); L143 relativized the relation, making `symm`
+  **false** for a growing step, and replaced it with both-directions-from-`set!`; L146 retired one
+  caller; L147 retires the other. **The invariant's transport is now entirely forward.** What that
+  machinery was paying for was the inhabitant-indexed clause — the clause was the defect.
+
+### `plainRecv` gains a clause, the third time, and this one subsumes the second
+
+The class arm's use site (`EntryOk.resolves`, instantiated at `classOf h recv`) needs the receiver's
+dispatch class to *be* a class, so `plainRecv`'s L143 conjunct `(h.get o).klass < h.objs.size`
+becomes `(h.classPayload? (h.get o).klass).isSome`. It **subsumes** the bound —
+`classPayload?_isSome_lt` — so nothing was added, only sharpened.
+
+The pattern is now worth naming, since it has happened three times (L142, L143, L147): **every one
+of these clauses was found by asking what a later rung has to derive at the use site, and every one
+was cheaper in the judgement than at the use site.** Priced as before, by measurement rather than
+assertion: `scripts/alloc_probe.lean` reports **0 of 105** booted objects refused, 18 plain
+receivers.
+
+Two proofs got shorter as a consequence: `entryOk_int`'s resolution half is now `intro k hk; subst
+hk; exact hres` — `TyClass h .int k` *is* `k = Boot.integerId`, so the `valueTy_int` inversion and
+the `lookup_int_const`/`classOf_int` rewrites all went away — and `plainRecv_defineMethod` factors
+through a new `plainRecv_congr`.
+
+### What is left of item 4, unchanged
+
+`ConformsAt`'s conclusion still says the machine comes back **unchanged**, so an allocating builtin
+still cannot be a conforming entry. Every piece around it is now in place: `PlainGrow`,
+`typeAgree_of_plainGrow`, `DeclsOk_grow` with no hypotheses about inhabitants, and `Saturated`
+checked at the booted heap.
+
+### Verification
+
+`Proof/` and one script; `--check` cannot move. `check-proofs.sh` green and axiom-clean (the audit
+names `DeclsOk_grow`), `heapOkB` and `saturatedB` true at the booted heap; `alloc_probe.lean` exit 0;
+tier-0 flat at 992 agree, 0 disagree.

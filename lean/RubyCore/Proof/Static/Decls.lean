@@ -88,6 +88,78 @@ def ResolvesTo (h : Heap) (recv : Value) (mname bid : String) : Prop :=
     md.fromPrelude = false ∧
     crubyShadow h ((ancestors h (classOf h recv)).takeWhile (· != owner)) mname = none
 
+/-- The method-table walk from a **class**, which is all `lookup` ever does with a
+    receiver (`lookup h v m = lookup.go h m (ancestors h (classOf h v))`, definitionally). -/
+def lookupIn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
+  lookup.go h mname (ancestors h k)
+
+theorem lookup_eq_lookupIn (h : Heap) (recv : Value) (mname : String) :
+    lookup h recv mname = lookupIn h (classOf h recv) mname := rfl
+
+/-- **Resolution, indexed by the dispatch class instead of by a receiver** (L147).
+    Every clause of `ResolvesTo` is this predicate at `classOf h recv` — L145's
+    `ResolvesTo_classOf` is the observation, and this is the observation taken
+    seriously.
+
+    Why it matters, and it is not aesthetics: the inhabitant-indexed clause is
+    **not preservable across an allocation**. A fresh object of a declared class
+    needs resolution, and the only receiver-shaped hypothesis available is about
+    receivers the *old* heap had — of which there may be none, because a class can be
+    declared before it has any instances. Indexed by the class, the same fact is
+    carried by a hypothesis a growing heap can transport, and `DeclsOk_grow` loses
+    its side condition entirely. -/
+def ResolvesAt (h : Heap) (k : ObjId) (mname bid : String) : Prop :=
+  ∃ owner md,
+    lookupIn h k mname = some (owner, md) ∧
+    md.builtin = some bid ∧
+    md.undefined = false ∧
+    md.visibility = .pub ∧
+    md.fromPrelude = false ∧
+    crubyShadow h ((ancestors h k).takeWhile (· != owner)) mname = none
+
+/-- The two are the same statement at `k = classOf h recv`, definitionally — which is
+    why every existing consumer of `ResolvesTo` keeps working unchanged. -/
+theorem resolvesTo_of_resolvesAt {h : Heap} {recv : Value} {mname bid : String}
+    (hr : ResolvesAt h (classOf h recv) mname bid) : ResolvesTo h recv mname bid := hr
+
+/-- **The dispatch classes a type names.** The ground arms are boot ids and read no
+    heap at all; the class arm is a name *and* the requirement that the id really is
+    a class — without which an out-of-bounds id would satisfy `.cls "Object"`
+    (`className` answers `"Object"` there) and the clause would demand resolution
+    from a heap slot that does not exist.
+
+    `valueTy_tyClass` is the bridge from the value judgement, and `plainRecv`'s L147
+    clause is what makes the class arm's first component available there. -/
+def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
+  match τ with
+  | .int => k = Boot.integerId
+  | .bool => k = Boot.trueClassId ∨ k = Boot.falseClassId
+  | .nilT => k = Boot.nilClassId
+  | .sym => k = Boot.symbolId
+  | .cls n => (h.classPayload? k).isSome ∧ className h k = n
+
+theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
+    TyClass h τ (classOf h v) := by
+  cases v with
+  | int a => cases τ <;> simp_all [ValueTy, valueTy?, TyClass, classOf]
+  | bool b =>
+    have : τ = .bool := by simpa [ValueTy, valueTy?] using hv.symm
+    subst this
+    cases b
+    · exact Or.inr rfl
+    · exact Or.inl rfl
+  | nil => have : τ = .nilT := by simpa [ValueTy, valueTy?] using hv.symm
+           subst this; rfl
+  | sym s => have : τ = .sym := by simpa [ValueTy, valueTy?] using hv.symm
+             subst this; rfl
+  | ref o =>
+    have hp := valueTy_ref_plain hv
+    have : τ = .cls (className h (classOf h (.ref o))) := by
+      simpa [ValueTy, valueTy?, hp] using hv.symm
+    subst this
+    exact ⟨valueTy_ref_klass_isSome hv, rfl⟩
+  | flt f => simp [ValueTy, valueTy?] at hv
+
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
     declared return type without touching the machine, and defers to no prelude
@@ -136,8 +208,17 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
     it, which is what makes the condition a lower bound — the invariant never says
     *which* implementation answers, only that a conforming one does. -/
 def EntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
-  ∃ bid, (∀ recv, ValueTy h recv τr → ResolvesTo h recv mname bid) ∧
+  ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧
     ConformsAt τr mname bid d
+
+/-- The receiver-shaped form the send cases want, recovered from the class-indexed
+    one. This direction is all anything needs, and it is the direction that is
+    available: a receiver hands over its dispatch class (`valueTy_tyClass`), while a
+    class does not hand over a receiver — which is the asymmetry L147 is about. -/
+theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Value}
+    (hres : ∀ k, TyClass h τr k → ResolvesAt h k mname bid)
+    (hrv : ValueTy h recv τr) : ResolvesTo h recv mname bid :=
+  resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass hrv))
 
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
@@ -160,7 +241,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       startArgs m recv .explicit mname args [] .none
         = .next (withCtl m (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hconf⟩ := he
-  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres recv hrv
+  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves hres hrv
   obtain ⟨hdefer, w, hw, hrun⟩ := hconf m recv args hrv hargs
   refine ⟨w, hw, ?_⟩
   simp only [startArgs, finishSend]
@@ -262,52 +343,74 @@ theorem ResolvesTo_defineMethod {h : Heap} {recv : Value} {mname bid : String}
   · rw [lookup_defineMethod h cls name mname md recv hne hco]; exact hlook
   · rw [hco, ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
 
-/-- **Resolution reads the receiver only through its dispatch class** (L145), and
-    this is the fact that will make an allocation harmless where a `def` is not.
-    `lookup` is `lookup.go` over `ancestors h (classOf h recv)` and the shadow chain
-    is the same walk, so `ResolvesTo` factors through `classOf` — two rewrites, and a
-    consequence worth stating on its own:
+/-! ~~`ResolvesTo_classOf`~~ and ~~`ResolvesTo_grow`~~ (L145) are **superseded by
+L147's class indexing** and withdrawn. `ResolvesTo_classOf` said resolution factors
+through `classOf`; `ResolvesAt` *is* that factoring, so the lemma became `rfl`.
+`ResolvesTo_grow` transported the receiver-shaped form and needed the receiver to be
+an id the old heap had — which is exactly the restriction that could not reach a fresh
+object, i.e. the reason the indexing changed. `ResolvesAt_grow` below needs no such
+hypothesis. -/
 
-    **a new object of an existing class carries no new resolution obligation.** Every
-    receiver of a class the declarations name resolves iff any one of them does, so
-    `DeclsOk`'s ∀-receiver clause is really a statement about *classes*, and
-    allocation adds no class. That is what the producer's consecution case needs for
-    the receiver the old heap did not have — the case `ResolvesTo_grow` below cannot
-    reach — and it says the right restatement of the clause is class-indexed rather
-    than inhabitant-indexed. -/
-theorem ResolvesTo_classOf {h : Heap} {recv recv' : Value} {mname bid : String}
-    (heq : classOf h recv' = classOf h recv)
-    (hr : ResolvesTo h recv mname bid) : ResolvesTo h recv' mname bid := by
-  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
-  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
-  · unfold lookup at hlook ⊢
-    rw [heq]; exact hlook
-  · rw [heq]; exact hbtw
+/-- **Resolution survives an allocating step, for every class, with no side
+    condition** (L147). Every clause of `ResolvesAt` is a fact about the method
+    table, the ancestor walk or the shadow gate at a *class id*, and `PlainGrow` pins
+    all three at every id — so unlike the receiver-shaped version this says something
+    about classes the old heap had no instances of, which is the case a producer
+    creates.
 
-/-- **Resolution survives an allocating step** (L145). Every clause of
-    `ResolvesTo` is a fact about the method table, the ancestor walk or the shadow
-    gate, and `PlainGrow` pins all three — the two congruences it needs are
-    `lookup_grow` (which is where `Saturated` enters, through `ancestors`) and
-    `crubyShadow_grow`.
-
-    The receiver has to be an id the old heap had, which is exactly what a
-    `ValueTy m.heap recv τr` hypothesis supplies at the use site
-    (`valueTy_ref_lt`). Note what is **not** required: nothing about the fresh
-    object, because resolution never looks at it.
-
-    Contrast `ResolvesTo_defineMethod`, whose side condition is a *name*
-    disjointness: a write to an existing table can displace an entry, an allocation
-    cannot. That asymmetry is why the producer's step is cheaper here than the `def`
-    rule's and dearer in `ConformsAt`. -/
-theorem ResolvesTo_grow {h h' : Heap} {recv : Value} {mname bid : String}
+    `Saturated` enters once, through `ancestors` (L144). Contrast
+    `ResolvesAt_defineMethod`, whose side condition is *name* disjointness: a write to
+    an existing table can displace an entry, an allocation cannot. -/
+theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
     (hg : PlainGrow h h') (hsat : Saturated h)
-    (hrv : ∀ o, recv = .ref o → o < h.objs.size)
-    (hr : ResolvesTo h recv mname bid) : ResolvesTo h' recv mname bid := by
+    (hr : ResolvesAt h k mname bid) : ResolvesAt h' k mname bid := by
   obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
   refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
-  · rw [lookup_grow hg hsat hrv mname]; exact hlook
-  · rw [hg.classOf_value_eq recv hrv, hg.ancestors_eq hsat, crubyShadow_grow hg]
-    exact hbtw
+  · unfold lookupIn at hlook ⊢
+    rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
+  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
+
+/-- The `defineMethod` case, class-indexed. Same proof as the receiver-shaped one it
+    replaces, with `classOf_defineMethod` no longer needed — a class id is not a
+    receiver, so there is nothing to re-derive about dispatch. -/
+theorem ResolvesAt_defineMethod {h : Heap} {k : ObjId} {mname bid : String}
+    {cls : ObjId} {name : String} {md : MethodDef}
+    (hr : ResolvesAt h k mname bid) (hne : ¬ (mname = name)) :
+    ResolvesAt (defineMethod h cls name md) k mname bid := by
+  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
+  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
+  · unfold lookupIn at hlook ⊢
+    rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md hne]
+    exact hlook
+  · rw [ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
+
+/-! ### `TyClass` transports backwards, which is the point
+
+The clause is `∀ k, TyClass h τr k → ResolvesAt h k mname bid`, so preserving it means
+reading `TyClass` in the **new** heap and needing it in the old one. That direction is
+available for both steps, and for the same reason in both: `TyClass` reads only
+`className` and `classPayload?`-ness, which `defineMethod` preserves exactly and a
+`PlainGrow` preserves at every id — including the ids the old heap did not have, where
+both answer `"Object"` and `none`.
+
+This is where the inhabitant-indexed clause failed. `ValueTy` does **not** transport
+backwards across a growing heap (L143), because a fresh object *is* a new inhabitant;
+a fresh object is not a new class.
+-/
+
+theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : String}
+    {md : MethodDef} (ht : TyClass (defineMethod h cls name md) τr k) : TyClass h τr k := by
+  cases τr with
+  | cls n =>
+    exact ⟨by rw [← classPayload?_isSome_defineMethod h cls k name md]; exact ht.1,
+      by rw [← className_defineMethod h cls k name md]; exact ht.2⟩
+  | _ => exact ht
+
+theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
+    (ht : TyClass h' τr k) : TyClass h τr k := by
+  cases τr with
+  | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
+  | _ => exact ht
 
 /-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
 `ConformsAt` no longer mentions a heap, so a heap-writing step has nothing to
@@ -329,62 +432,37 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
     exact absurd (declFor_declaresName hdecl) (by simp [hfresh])
   obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
   -- `hconf` passes straight through (L146): it is a fact about `bid` and `decl`, not
-  -- about this heap. What is left is the resolution clause, and its `ValueTy`
-  -- hypothesis still runs backwards — which `defineMethod` can supply and a growing
-  -- step cannot (`DeclsOk_grow`).
-  refine ⟨bid, fun recv hrv => ?_, hconf⟩
-  exact ResolvesTo_defineMethod
-    (hres recv (ValueTy.congr (typeAgree_defineMethod' h cls name md) hrv)) hne
+  -- about this heap. What is left is resolution, and after L147 that is
+  -- class-indexed — so the hypothesis read backwards is `TyClass`, not `ValueTy`.
+  -- **That is what retired `TypeAgree`'s backward direction**: `TyClass` transports
+  -- both ways for any step that preserves `className` and `classPayload?`-ness.
+  exact ⟨bid, fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne,
+    hconf⟩
 
-/-- **The invariant survives an allocating step** (L146), and after L146's
-    restatement the whole content is resolution — `hconf` passes through untouched
-    because conformance no longer mentions a heap.
+/-- **The invariant survives an allocating step, unconditionally** (L147).
 
-    The side condition is the one L145 predicted, in the form `ResolvesTo_classOf`
-    consumes: *every receiver the new heap types was already typed by some receiver
-    of the same dispatch class*. It is what a fresh inhabitant of a declared class
-    forces, and it is the honest one — resolution is a fact about a class, so a new
-    object needs no new proof provided its class is not new either.
+    L146 proved this with a side condition — *every receiver the new heap types was
+    already typed by some receiver of the same dispatch class* — which was the honest
+    form of an inhabitant-indexed clause and would have become real work the moment a
+    user class had a declared row. L147's class indexing removes it: `TyClass`
+    transports backwards (`TyClass_grow`), `ResolvesAt` forwards
+    (`ResolvesAt_grow`), and conformance mentions no heap at all (L146). There is
+    nothing left to assume.
 
-    Note which hypothesis is **absent**: nothing about the backward type transport,
-    which is what `DeclsOk_defineMethod` needs and what a growing heap cannot give
-    (L143). That obligation left with `ConformsAt`'s heap index. -/
+    ~~`DeclsOk_grow_ground`~~ and ~~`declsOk_baseDecls_grow`~~ (L146) are withdrawn
+    with the side condition they discharged. Their content was *"the base table
+    declares nothing at a class type, so the fresh object inhabits nothing declared"*
+    — true, still true, and no longer load-bearing. That is the good kind of
+    withdrawal: the theorem got stronger, so its scaffolding stopped being needed.
+
+    What a producer still owes is not here: it is the **step**, i.e. that the rule
+    really does produce a `PlainGrow`-related machine, and `Saturated` for the heap it
+    starts from (`saturatedB`, checked by `check-proofs.sh`). -/
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
-    (hd : DeclsOk D h)
-    (hnew : ∀ τr mname decl, declFor D τr mname = some decl →
-      ∀ recv, ValueTy h' recv τr →
-        ∃ recv₀, ValueTy h recv₀ τr ∧ (∀ o, recv₀ = .ref o → o < h.objs.size) ∧
-          classOf h' recv = classOf h' recv₀) :
-    DeclsOk D h' := by
+    (hd : DeclsOk D h) : DeclsOk D h' := by
   intro τr mname decl hdecl
   obtain ⟨bid, hres, hconf⟩ := hd τr mname decl hdecl
-  refine ⟨bid, fun recv hrv => ?_, hconf⟩
-  obtain ⟨recv₀, hrv₀, hb₀, hcls⟩ := hnew τr mname decl hdecl recv hrv
-  exact ResolvesTo_classOf hcls (ResolvesTo_grow hg hsat hb₀ (hres recv₀ hrv₀))
-
-/-- **And it survives unconditionally when no declared type is a class type**, which
-    is the shape the first producer commit lands in: `baseDecls` declares three names
-    on `Integer`, a declaration at a ground type can only be about immediates
-    (`valueTy_ref_cls`), and an immediate's type does not depend on the heap
-    (`valueTy_immediate`). So the fresh object inhabits nothing the declarations
-    name, and the side condition above discharges with `recv₀ := recv`.
-
-    This is not the general case and is not meant to be — it is the measurement of
-    how far the *inert* producer gets, and the reason it gets that far is that
-    nothing declares a row for a user class yet. The moment one does, `DeclsOk_grow`
-    is the theorem and its side condition is a real obligation. -/
-theorem DeclsOk_grow_ground {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hd : DeclsOk D h)
-    (hground : ∀ τr mname decl, declFor D τr mname = some decl → ∀ n, τr ≠ .cls n) :
-    DeclsOk D h' := by
-  refine DeclsOk_grow hg hsat hd ?_
-  intro τr mname decl hdecl recv hrv
-  have hnr : ∀ o, recv ≠ .ref o := by
-    intro o hEq
-    subst hEq
-    obtain ⟨n, rfl⟩ := valueTy_ref_cls hrv
-    exact hground _ mname decl hdecl n rfl
-  exact ⟨recv, valueTy_immediate hnr hrv, fun o hEq => absurd hEq (hnr o), rfl⟩
+  exact ⟨bid, fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
 
 /-! ## 4. The bridge from `TableOk`
 
@@ -456,12 +534,14 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       Builtins.deferTwin? h' bid (.int x) [.int y] = none) :
     EntryOk h .int mname { params := [.int], ret := .int } := by
   refine ⟨bid, ?_, hns, hraise, ?_⟩
-  · intro recv hrv
-    obtain ⟨a, rfl⟩ := valueTy_int hrv
-    obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
-    refine ⟨owner, md, ?_, hb, hu, hvis, hpre, ?_⟩
-    · rw [lookup_int_const h a mname]; exact hlook
-    · rw [classOf_int]; exact hbtw
+  · -- L147: the clause is now indexed by the dispatch class, and `TyClass h .int k`
+    -- *is* `k = Boot.integerId` — so the `valueTy_int` inversion and the
+    -- `lookup_int_const`/`classOf_int` rewrites all go away. `IntBuiltinResolves` is
+    -- already a statement about `lookup h (.int 0)`, which is `lookupIn` at that
+    -- class definitionally.
+    intro k hk
+    subst hk
+    exact hres
   · -- L146: the conformance half is now quantified over the machine, and the proof
     -- did not move — every hypothesis it used was a `valueTy_int` inversion, which
     -- is heap-independent. That is the evidence the heap index was carrying nothing.
@@ -478,10 +558,10 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     range (L141) precisely so that `.cls "Integer"` — whose inhabitants are objects
     of *some* class merely named `Integer` — cannot read `Integer`'s row.
 
-    Pulled out of `tableOk_declsOk`'s class arm because L146 needs it a second time:
-    it is what discharges `DeclsOk_grow_ground`'s side condition for the table the
-    model actually carries, which is what makes "the inert producer preserves the
-    invariant" a theorem rather than a plan. -/
+    Pulled out of `tableOk_declsOk`'s class arm in L146, where it discharged the
+    side condition `DeclsOk_grow` then had. L147 removed that side condition, so this
+    is back to being one refutation used once — kept split out because the class arm
+    of a `declFor` computation is worth a name. -/
 theorem declFor_baseDecls_cls (n mname : String) :
     declFor baseDecls (.cls n) mname = none := by
   unfold declFor
@@ -494,16 +574,6 @@ theorem declFor_baseDecls_cls (n mname : String) :
       · exact absurd (by subst he; simp [groundClassNames]) hg
       · simpa using he
     simp [declOf?, declsFor, baseDecls, hne]
-
-/-- So the invariant for `baseDecls` survives an allocation with **no** side
-    condition. This is the producer's `DeclsOk` obligation, discharged for the table
-    as it stands — and the reason it discharges is exactly the reason the producer
-    lands inert: nothing declares a row for a user class yet. -/
-theorem declsOk_baseDecls_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
-    (hd : DeclsOk baseDecls h) : DeclsOk baseDecls h' :=
-  DeclsOk_grow_ground hg hsat hd (fun τr mname decl hdecl n hEq => by
-    subst hEq
-    exact absurd hdecl (by rw [declFor_baseDecls_cls]; simp))
 
 theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   intro τr mname d hd
