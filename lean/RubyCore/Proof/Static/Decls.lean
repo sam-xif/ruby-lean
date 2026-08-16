@@ -244,6 +244,53 @@ theorem ResolvesTo_defineMethod {h : Heap} {recv : Value} {mname bid : String}
   · rw [lookup_defineMethod h cls name mname md recv hne hco]; exact hlook
   · rw [hco, ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
 
+/-- **Resolution reads the receiver only through its dispatch class** (L145), and
+    this is the fact that will make an allocation harmless where a `def` is not.
+    `lookup` is `lookup.go` over `ancestors h (classOf h recv)` and the shadow chain
+    is the same walk, so `ResolvesTo` factors through `classOf` — two rewrites, and a
+    consequence worth stating on its own:
+
+    **a new object of an existing class carries no new resolution obligation.** Every
+    receiver of a class the declarations name resolves iff any one of them does, so
+    `DeclsOk`'s ∀-receiver clause is really a statement about *classes*, and
+    allocation adds no class. That is what the producer's consecution case needs for
+    the receiver the old heap did not have — the case `ResolvesTo_grow` below cannot
+    reach — and it says the right restatement of the clause is class-indexed rather
+    than inhabitant-indexed. -/
+theorem ResolvesTo_classOf {h : Heap} {recv recv' : Value} {mname bid : String}
+    (heq : classOf h recv' = classOf h recv)
+    (hr : ResolvesTo h recv mname bid) : ResolvesTo h recv' mname bid := by
+  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
+  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
+  · unfold lookup at hlook ⊢
+    rw [heq]; exact hlook
+  · rw [heq]; exact hbtw
+
+/-- **Resolution survives an allocating step** (L145). Every clause of
+    `ResolvesTo` is a fact about the method table, the ancestor walk or the shadow
+    gate, and `PlainGrow` pins all three — the two congruences it needs are
+    `lookup_grow` (which is where `Saturated` enters, through `ancestors`) and
+    `crubyShadow_grow`.
+
+    The receiver has to be an id the old heap had, which is exactly what a
+    `ValueTy m.heap recv τr` hypothesis supplies at the use site
+    (`valueTy_ref_lt`). Note what is **not** required: nothing about the fresh
+    object, because resolution never looks at it.
+
+    Contrast `ResolvesTo_defineMethod`, whose side condition is a *name*
+    disjointness: a write to an existing table can displace an entry, an allocation
+    cannot. That asymmetry is why the producer's step is cheaper here than the `def`
+    rule's and dearer in `ConformsAt`. -/
+theorem ResolvesTo_grow {h h' : Heap} {recv : Value} {mname bid : String}
+    (hg : PlainGrow h h') (hsat : Saturated h)
+    (hrv : ∀ o, recv = .ref o → o < h.objs.size)
+    (hr : ResolvesTo h recv mname bid) : ResolvesTo h' recv mname bid := by
+  obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
+  refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
+  · rw [lookup_grow hg hsat hrv mname]; exact hlook
+  · rw [hg.classOf_value_eq recv hrv, hg.ancestors_eq hsat, crubyShadow_grow hg]
+    exact hbtw
+
 theorem ConformsAt_defineMethod {h : Heap} {τr : Ty} {mname bid : String}
     {d : MethodDecl} {cls : ObjId} {name : String} {md : MethodDef}
     (hc : ConformsAt h τr mname bid d) :

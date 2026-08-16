@@ -1,5 +1,6 @@
 import RubyCore.Proof.BuiltinConformance
 import RubyCore.Proof.HeapFacts
+import RubyCore.Proof.HeapGrow
 import RubyCore.Types.Core
 
 /-!
@@ -651,11 +652,8 @@ theorem typeAgree_defineMethod' (h : Heap) (cls : ObjId) (name : String)
     Stated over the pushed heap rather than over `Heap.alloc`'s pair so that the
     producer's consecution case can use it after destructuring; `alloc` is
     literally `(h.objs.size, ⟨h.objs.push obj⟩)`. -/
-theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push obj⟩ := by
-  have hget : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
-    intro o ho
-    simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
-      if_neg (Nat.ne_of_lt ho)]
+theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
+    (hget : ∀ o, o < h.objs.size → h'.get o = h.get o) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
@@ -663,12 +661,24 @@ theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push o
   · -- The `plainRecv` clause is where the *implication* earns its keep: both
     -- bounds get wider, so the two `Bool`s are not equal in general — an object
     -- whose class is the fresh id becomes plain — and only this direction holds.
-    have hsz : h.objs.size ≤ (h.objs.push obj).size := by simp
     unfold plainRecv at hp ⊢
     rw [hget o ho]
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hp ⊢
     obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hp
     exact ⟨⟨⟨Nat.lt_of_lt_of_le h1 hsz, Nat.lt_of_lt_of_le h2 hsz⟩, h3⟩, h4⟩
+
+theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push obj⟩ :=
+  typeAgree_of_get (by simp) (fun o ho => by
+    simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
+      if_neg (Nat.ne_of_lt ho)])
+
+/-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
+    clause — `classPayload?` agrees at *every* id — is what resolution needs and the
+    type transport does not, so the type half of a producer's step is discharged by
+    the two weaker fields. Recorded here rather than in `Proof/HeapGrow.lean` because
+    `TypeAgree` is the type judgement's vocabulary, not the heap's. -/
+theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h') : TypeAgree h h' :=
+  typeAgree_of_get hg.size hg.get
 
 /-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
     reads three of `TypeAgree`'s four clauses, which is what L137 threaded the

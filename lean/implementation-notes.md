@@ -4891,3 +4891,86 @@ this one.
 `Proof/` and two scripts only, so `--check` cannot move (L142's argument). `check-proofs.sh` green
 across all four sections, axiom-clean, `heapOkB` and `saturatedB` both true at the booted heap;
 `alloc_probe.lean` exit 0; tier-0 flat at 992 agree, 0 disagree.
+
+## L145 — what an allocating step leaves alone, and where resolution stops being about receivers
+
+L143 relativized the type transport and L144 the ancestor walk. The third transport a producer's
+consecution case owes is **resolution**: `DeclsOk`'s heap-dependent half is `ResolvesTo`, which reads
+`lookup`, `ancestors`, `classOf`, `className` and `crubyShadow`. New file `Proof/HeapGrow.lean`, plus
+two lemmas in `Proof/Static/Decls.lean` and a factoring in `Proof/Static/Locals.lean`.
+
+### `PlainGrow`, and why its third clause is the interesting one
+
+```lean
+structure PlainGrow (h h' : Heap) : Prop where
+  size    : h.objs.size ≤ h'.objs.size
+  get     : ∀ o, o < h.objs.size → h'.get o = h.get o
+  payload : ∀ k, h'.classPayload? k = h.classPayload? k
+```
+
+The first two are what any `push` gives. **The third is global — at every id, including the new
+ones — and it is what a *non-class* allocation supplies**: at the fresh id both heaps answer `none`,
+in one case because the object is not a class and in the other because it is not there.
+
+That global clause is worth its restriction, because `classPayload?` is what `lookup`, `ancestors`,
+`className` and `crubyShadow` *all* read. With it, every one of those congruences is unconditional —
+no side condition saying the walk stays inside the old heap, no relativized `ShapeAgree`, no edge
+locality. `lookup_go_grow` and `crubyShadow_grow` are two lines each for that reason.
+`Saturated` (L144) enters at exactly one place, `ancestors`, and `PlainGrow.classOf_eq` is the one
+function that needs the id to be an old one — the fresh id is precisely where `classOf` differs
+(`scripts/alloc_probe.lean`).
+
+Allocating a **class** breaks the third clause and nothing else. That is the honest scope statement,
+and it is the same boundary `AncestorsGrow.lean` drew.
+
+### A factoring that fell out, and it is the useful kind
+
+`typeAgree_alloc` (L143) was proved about `h.objs.push obj` directly. Its proof never used the push:
+every clause follows from *`get` agrees at old ids, and the heap grows*. So it is now
+`typeAgree_of_get`, with `typeAgree_alloc` and `typeAgree_of_plainGrow` as corollaries — one line
+each. **The type transport needs strictly less than resolution does**, and having the two hypotheses
+side by side is what shows it.
+
+### The lemma worth more than the file: resolution is about *classes*, not receivers
+
+`ResolvesTo_grow` transports resolution across a `PlainGrow` for any receiver the old heap had. It
+cannot say anything about the receiver the old heap did *not* have — the fresh object — and that is
+the case the producer creates. Reading `ResolvesTo` to find out how bad that is turned up the
+opposite:
+
+```lean
+theorem ResolvesTo_classOf (heq : classOf h recv' = classOf h recv)
+    (hr : ResolvesTo h recv mname bid) : ResolvesTo h recv' mname bid
+```
+
+**`lookup` is `lookup.go` over `ancestors h (classOf h recv)` and the shadow chain is the same walk,
+so `ResolvesTo` factors through `classOf` — two rewrites.** Consequence: *a new object of an existing
+class carries no new resolution obligation*, because every receiver of a class resolves iff any one
+of them does. So `DeclsOk`'s ∀-receiver clause is really a statement about **classes**, and an
+allocation adds no class.
+
+That is a fact about the *shape of the invariant*, not about allocation: the clause is
+inhabitant-indexed where its content is class-indexed, and the fresh-receiver case is what makes the
+mismatch visible. Restating it class-indexed is the next commit, and it is what will let `DeclsOk`
+survive an allocating step **without** a hypothesis about which types the new object inhabits — the
+alternative being an inert-only side condition that would have to be deleted again the moment a
+declared row for a user class exists.
+
+### What is still owed on `ConformsAt`, sharpened
+
+Two problems, and they are the same problem:
+
+1. its conclusion is `∀ m, Builtins.run bid recv args m = .ok w m` — the machine **unchanged** — so
+   no allocating builtin can be a conforming entry (L142 item 4, and F6's ~128 rows);
+2. its hypotheses read the invariant's heap, so transporting it across a growing step needs the
+   **backward** type transport, which L143 showed does not exist for a growing heap.
+
+Both are fixed by making conformance *heap-uniform* — quantify over the machine it runs in, and let
+the answer's type be read in the **post** heap — which is also what removes `ConformsAt` from
+`DeclsOk`'s heap-dependent half entirely. Not done here.
+
+### Verification
+
+`Proof/` only; `--check` cannot move. `check-proofs.sh` green across all four sections and
+axiom-clean, `heapOkB` and `saturatedB` true at the booted heap; `alloc_probe.lean` exit 0; tier-0
+flat at 992 agree, 0 disagree.
