@@ -5886,3 +5886,77 @@ statement is now proved in the form that takes the agreement *after* the derivat
 `[propext, Classical.choice, Quot.sound]`; `heapOkB`/`saturatedB` true at the booted heap;
 `fragment-gap.py --self-test` all 19 cases; and the inertness diff run rather than argued,
 since `Types/Core.lean` **is** linked into `rubycore`.
+
+## L161 — `infer` is monotone in the declaration table, and that is what removes the slack
+
+One lemma, `Proof/Static/Mono.lean`, and it is the piece that decides the *shape* of the
+growing-table rung rather than a piece of it. Adds `defFree` to `Types/Core.lean` and proves
+
+    SubDecls F F' → defFree e = true → infer F Γ e top = some (τ, Γ', F)
+                                     → infer F' Γ e top = some (τ, Γ', F')
+
+by the functional induction `infer` generates — 42 cases, no `sorry`, no fallback arm, axioms
+`[propext, Quot.sound]`. Nothing calls it yet; `--check` is byte-identical (38 / 1,187 / 0).
+
+### What it is for, and why it is the cheap route
+
+`UserConforms` — the user-method arm of `EntryOk` — carries **the checker's own verdict on a
+method body** inside the soundness invariant. That fact enters when the `def` step installs the
+method and has to survive every later step, including the program's own later `def`s, which
+grow the table. So preservation owes exactly the displayed implication.
+
+L160 tried the alternative: carry the *smaller* table inside the witness, related to the
+invariant's by `SubDecls`, and thread a second table through `Inv`/`CtlOk`/`KontOk`. Three
+things went wrong, and the third is the one worth remembering:
+
+1. The `def` case needs `declaresName` freshness at the **invariant's** table while the rule
+   checks the **control's**, and `Fc ⊆ F` gives that implication the wrong way round.
+2. `DeclsOk` is antitone in the table's *domain* and monotone in nothing, because the user arm
+   reads the table through `infer`. So neither direction of a pop is free.
+3. Both problems are the *same* problem seen from two ends — *is a fact proved at one table
+   usable at another?* — and one lemma answers it once, where the slack answers it nowhere and
+   spreads the question across three definitions.
+
+**The generalizable form: when a design needs a fact to move between two indices, prove the
+transport rather than widening the statement to hold at both.** The slack looks cheaper because
+each individual site is a one-line `SubDecls.trans`; what it costs is that every site *has* to
+have one, and the sites that cannot are only visible after the shape has propagated.
+
+### `defFree`, and why the side condition is syntactic
+
+`infer` is genuinely non-monotone at exactly one rule: `def`'s guard is
+`declaresName D name = false`, which a bigger table falsifies. Every other rule reads the table
+only through `sigOf`, and `SubDecls` was defined (L160) to carry precisely that. So the
+hypothesis is *the expression contains no `def`* — and `class'` is excluded with it, not because
+a class body is a declaration but because it **contains** them.
+
+That is a real narrowing: a declared method's body may not define a method or reopen a class.
+Ruby permits both and the slice does neither, so it is cheap on the target and it is now a
+stated fragment restriction rather than an accident.
+
+### Two mechanical findings, both about equation lemmas
+
+* **A `def` with a catch-all arm has *conditional* equation lemmas**, so `simp [defFree]` makes
+  no progress on any compound shape — the earlier-patterns-did-not-match side conditions are
+  unresolved. `defFree.eq_def` unfolds to the whole `match` and loops under `simp`. The fix is
+  seven hand-stated unconditional `@[simp]` lemmas (`defFree_if`, `defFreeAll_cons`, …), each
+  proved by a single `rw [defFree.eq_def]`. Worth knowing before defining any predicate over
+  `Expr`, since a 46-constructor inductive makes the catch-all arm mandatory.
+* **`simp_all` inside a `by` that supplies an induction hypothesis's argument will rewrite the
+  hypothesis itself.** In the `if` case it silently weakened `ihI`'s statement — deleting a
+  conjunct of its conclusion — and the error surfaced as an unrelated unsolved goal two lines
+  later. Extract the sub-facts with a named `simp only` and pass them explicitly.
+
+### The tactic shape that made 42 cases tractable
+
+Three uniform alternatives in a `first` chain close 30 of them: *refute the hypothesis by
+computing `infer`*, *refute it using the branch facts* (`simp_all only`), and *the immediate
+literals*. The remaining 12 are the rules — one per `infer` arm plus `inferIf`'s two and
+`inferSeq`'s three — and they are written out. **Each alternative needs a `done`**; without it
+`first` accepts a tactic that made progress and left goals, which reads as 41 failures with the
+wrong error text.
+
+And the case arities: an `@`-alternative of `cases`/`induction` names **all** the constructor's
+fields in declaration order, including those unification discards. The reliable way to get them
+is to read the *goal display* in a failing case, which prints the introduced binders with their
+types; deriving the count from the constructor's signature does not work, as L160 also found.

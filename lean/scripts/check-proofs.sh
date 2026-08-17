@@ -49,6 +49,7 @@ import RubyCore.Proof.T5
 import RubyCore.Proof.T5Loop
 import RubyCore.Proof.SorbetConcrete
 import RubyCore.Proof.AncestorsGrow
+import RubyCore.Proof.Static.Mono
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -63,6 +64,7 @@ import RubyCore.Proof.AncestorsGrow
 #print axioms RubyCore.Proof.saturatedB_sound
 #print axioms RubyCore.Proof.Static.DeclsOk_grow
 #print axioms RubyCore.Proof.Static.inv_grow_value
+#print axioms RubyCore.Proof.Static.infer_mono
 LEAN
 
 echo "== axioms"

@@ -349,6 +349,90 @@ termination_by sizeOf t + sizeOf els
 
 end
 
+/-! ## Declaration-free expressions
+
+The side condition monotonicity needs, and the reason it is syntactic rather
+than semantic.
+
+`infer` is **not** monotone in the declaration table, and there is exactly one
+rule that makes it so: `def`'s guard is `declaresName D name = false`, which a
+larger table can falsify. Every other rule reads the table only through
+`sigOf`, and `sigOf` *is* monotone under `SubDecls` — so an expression with no
+`def` in it infers the same way at any larger table.
+
+That matters because the invariant has to survive its own program's later
+declarations. A method body is checked where the `def` appears and *called*
+later, by which time more rows are in force, and `UserConforms` — the checker's
+own verdict on the body, carried inside the soundness invariant — has to still
+hold. `infer_mono` (`Proof/Static/Mono.lean`) is that step, and this predicate
+is its hypothesis.
+
+`class'` is excluded along with `def`, and not because a class body is a
+declaration: it is excluded because a class body *contains* them, so admitting
+it here would make the predicate a lie about the rows in force after it. Both
+exclusions are what the `def` rule and `UserConforms` will require of a body,
+which is a genuine narrowing of the fragment — a method may not define a method
+— and a narrowing real Ruby rarely needs.
+-/
+
+mutual
+
+/-- No `def` (and no `class`) anywhere in the expression. -/
+def defFree (e : Expr) : Bool :=
+  match e with
+  | .def' _ _ _ => false
+  | .class' _ _ _ => false
+  | .seq es => defFreeAll es
+  | .if' c t els =>
+    defFree c && defFree t && (match els with | some e' => defFree e' | none => true)
+  | .while' c b => defFree c && defFree b
+  | .vasgn _ _ rhs => defFree rhs
+  | .send r _ args _ =>
+    (match r with | some r' => defFree r' | none => true) && defFreeAll args
+  -- Every other head is either a leaf or outside `infer`'s domain, where the
+  -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
+  -- can be satisfied.
+  | _ => true
+termination_by sizeOf e
+
+def defFreeAll (es : List Expr) : Bool :=
+  match es with
+  | [] => true
+  | e :: rest => defFree e && defFreeAll rest
+termination_by sizeOf es
+
+end
+
+/-! `defFree`'s own equation lemmas carry the *earlier patterns did not match*
+side conditions that a catch-all arm forces, so `simp [defFree]` cannot fire on
+any of the compound shapes. These are the unconditional forms, and they are what
+`Proof/Static/Mono.lean`'s induction rewrites with. -/
+
+@[simp] theorem defFree_seq (es : List Expr) : defFree (.seq es) = defFreeAll es := by
+  rw [defFree.eq_def]
+
+@[simp] theorem defFree_if (c t : Expr) (els : Option Expr) :
+    defFree (.if' c t els)
+      = (defFree c && defFree t && (match els with | some e' => defFree e' | none => true)) := by
+  rw [defFree.eq_def]
+
+@[simp] theorem defFree_while (c b : Expr) :
+    defFree (.while' c b) = (defFree c && defFree b) := by rw [defFree.eq_def]
+
+@[simp] theorem defFree_vasgn (k : VarKind) (x : String) (rhs : Expr) :
+    defFree (.vasgn k x rhs) = defFree rhs := by rw [defFree.eq_def]
+
+@[simp] theorem defFree_send (r : Option Expr) (m : String) (args : List Expr)
+    (blk : Option Expr) :
+    defFree (.send r m args blk)
+      = ((match r with | some r' => defFree r' | none => true) && defFreeAll args) := by
+  rw [defFree.eq_def]
+
+@[simp] theorem defFreeAll_nil : defFreeAll [] = true := by rw [defFreeAll.eq_def]
+
+@[simp] theorem defFreeAll_cons (e : Expr) (rest : List Expr) :
+    defFreeAll (e :: rest) = (defFree e && defFreeAll rest) := by rw [defFreeAll.eq_def]
+
 /-- The verdict lattice. `accept` is backed by `check_sound`; `reject` is backed
     by the difftest direction `reject ⇒ srb rejects` (not by a theorem — see the
     refutation-pass header); `unknown` claims nothing and is the default. -/
