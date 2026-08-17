@@ -6036,3 +6036,87 @@ needs its *name*, and `classOkB` decides both in one pass.
 * **`.unzip.1`/`.unzip.2` do not simp**; `.map Prod.fst`/`.map Prod.snd` do, via `List.map_cons`.
   The first spelling cost two rounds of "type mismatch on definitionally equal terms" before the
   second made the goals reduce.
+
+## L163 — a `def` declares, and the first accepted program with a user-method call
+
+```ruby
+class String
+  def shout
+    1
+  end
+  "x".shout      # ⇒ accept, type Integer
+end
+```
+
+`{"type":"Integer","verdict":"accept"}` — and the `Integer` is the return type of the program's
+**own** `def`, read back at the call site through a row the `def` step put in the table. This is
+the thing blocked since F1a, and `egUserCall` in `Proof/StaticSoundness.lean` is the checked
+witness. CRuby and the model agree on `p "x".shout` (both print `1`), which `check_sound` does not
+say and is worth having said.
+
+Every rung since F1a is on this one path, which is the argument for having built them in that
+order: the row is keyed on `"String"` (F1a's table), the receiver's type comes from the string
+literal (L151), the call is a zero-argument send (L152) inside a reopened class body (L156), the
+dispatch takes `EntryOk`'s **user** arm — **inhabited for the first time here**, L157 having built
+it empty — the table is threaded (L160), the body's typing survives the program's later
+declarations (L161), and the row's key is tied to the frame's definee by `StackCtx` (L162).
+
+`--check` over the 1,227 cached bootstraptest ASTs is byte-identical at 38 / 1,187 / 0: no
+bootstraptest program reopens a core class *and* calls the method it defines. Inert on the corpus,
+not inert in capability — the L156 situation exactly, and the reason the capability is asserted by
+a witness in the build rather than by a number.
+
+### The four side conditions, and that each is a fact about the interpreter
+
+A `def` adds a row only when all four hold. None is a matter of taste; each is a clause
+`ResolvesUser` requires of the `MethodDef` `evalExpr` actually builds.
+
+* **`¬ top`.** A toplevel `def` installs a **private** method
+  (`Interp.lean:225`: `else if currentFrame.kind == .toplevel then .priv`) and `ResolvesUser`
+  requires `.pub`. A row keyed at toplevel is *unwitnessable*, not merely weak. This killed the
+  cheaper rung the plan had in mind (L162) and it is pinned as a checked `unknown`.
+* **`name ≠ "initialize"`.** Private by the same rule, one line earlier.
+* **`reopenableClasses.contains ctx`.** The row obliges **every** class object named `ctx`, and
+  `ClassOk`'s uniqueness clause is stated at that table's names. Costs nothing: a class body is
+  admitted for exactly those names anyway.
+* **`defFree body`.** L161's hypothesis. The body's typing is carried in the invariant and has to
+  survive later `def`s, and `infer` is monotone in the table only on `def`-free expressions.
+
+### What the class-body rule's stability condition turned into
+
+L160 made a class body require `Db = D` — a placeholder, since a class body's `def`s are exactly
+the rows meant to escape. They now escape, and `KontOk.frameK` still carries **one** table: the
+caller's continuation is typed at `Db` because that is what the rule *returns*, so the table the
+frame pops into is the one the body ended at. No antitone step, no second index. That is worth
+stating as a rule of thumb: **when a scope's output has to outlive the scope, make the scope's
+rule return it rather than making the frame relate two of them.**
+
+### The obligation, and where each half came from
+
+`DeclsOk_addRow`: old rows survive by name-disjointness (as in `DeclsOk_defineMethod`) with their
+*user* witnesses transported by `infer_mono`; the new row is one `UserEntryOk`. Two clauses of
+`ClassOk` are spent on it and both were **measured before they were assumed**
+(`scripts/names_probe.lean`):
+
+* **uniqueness** turns `∀ k, TyClass h (.cls ctx) k → …` into the single class the step wrote to;
+* **the chain starts at the class** makes the entry just written the one `lookup` finds. Not a
+  technicality: `ancestors` puts `prepends` *before* the class (`Heap.lean:506`), so a prepended
+  module defining the same name would shadow it and the row would be false. `ancestors String =
+  [9, 40, 1, …]` at the booted heap.
+
+`hground` keeps the row off the ground types, and it is the failure `tyClassNames`' own docstring
+describes: a row on `"Integer"` would owe `EntryOk` at `.int`, whose inhabitants are immediates.
+`reopenableClasses` membership discharges it by `decide`.
+
+Two new heap lemmas, and they are the first **positive** ones about `defineMethod`
+(`Proof/HeapFacts.lean`). Every previous lemma there says what a method-table write leaves
+*alone*, because that is all a rung with a fixed table ever needed; a program-supplied row needs
+the other direction — the name just installed is the one `lookup` finds.
+
+### Maintenance note that will recur
+
+`infer.induct`'s case **numbers** move whenever `infer` gains a branch: this commit's two new
+`if`s in the `def` arm shifted eight of `Mono.lean`'s twelve explicit cases by one. There is no
+way to name them stably. The recovery is mechanical and is worth doing the same way each time —
+strip the explicit cases, restore the `trace "UNSOLVED-CASE"` fallback, read the case list off the
+goal display, renumber, re-attach.

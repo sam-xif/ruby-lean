@@ -1,4 +1,5 @@
 import RubyCore.Proof.Static.Locals
+import RubyCore.Proof.Static.Mono
 
 /-!
 # F1a — the refinement invariant
@@ -228,7 +229,8 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     it is the same shape as `LoopOk`'s stability condition and for the same
     reason. It costs nothing today, since no rule grows the table at all. -/
 def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Prop :=
-  d.params = [] ∧ ∃ Γ', infer D [] md.body false c = some (d.ret, Γ', D)
+  d.params = [] ∧ defFree md.body = true ∧
+    ∃ Γ', infer D [] md.body false c = some (d.ret, Γ', D)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -461,6 +463,63 @@ theorem declOf?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
       ⟨cd, List.mem_of_find?_eq_some hf,
         List.any_eq_true.mpr ⟨e, List.mem_of_find?_eq_some he, hp⟩⟩
 
+/-- **Adding a row for an undeclared name carries every signature the table already
+    supported** (F1b.10). The hypothesis is the `def` rule's own side condition, and
+    it is doing real work: without it the new row could *displace* an existing one
+    for the same name on the same class, and `declFor` would answer differently.
+
+    Lives here rather than beside `addRow` because the *undeclared* half is
+    `declOf?_declaresName`, which is a proof-side fact — and it is the only thing
+    that rules the displacement out. -/
+theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
+    (hfresh : declaresName D name = false) : SubDecls D (addRow D cls name d) := by
+  have hkey : ∀ (c m : String) (x : MethodDecl), declOf? D c m = some x →
+      declOf? (addRow D cls name d) c m = some x := by
+    intro c m x hd
+    have hne : ¬ (m = name) := by
+      intro heq
+      subst heq
+      exact absurd (declOf?_declaresName hd) (by simp [hfresh])
+    by_cases hc : c = cls
+    · subst hc
+      have hda : declsFor (addRow D c name d) c = (name, d) :: declsFor D c := by
+        simp [declsFor, addRow]
+      unfold declOf?
+      rw [hda, List.find?_cons_of_neg (by simpa using fun hh => hne hh.symm)]
+      exact hd
+    · have hcne : (cls == c) = false := by simpa using fun hh => hc (Eq.symm hh)
+      have hfind :
+          (addRow D cls name d).find? (fun x => x.1 == c) = D.find? (fun x => x.1 == c) :=
+        List.find?_cons_of_neg (by simp [hcne])
+      have hdb : declsFor (addRow D cls name d) c = declsFor D c := by
+        unfold declsFor; rw [hfind]
+      unfold declOf?
+      rw [hdb]
+      exact hd
+  intro τ mname dd hdf
+  unfold declFor at hdf ⊢
+  cases hcs : tyClassNames τ with
+  | nil => rw [hcs] at hdf; exact absurd hdf (by simp)
+  | cons c cs =>
+    rw [hcs] at hdf
+    dsimp only at hdf ⊢
+    cases hd : declOf? D c mname with
+    | none => rw [hd] at hdf; exact absurd hdf (by simp)
+    | some d0 =>
+      simp only [hd] at hdf
+      by_cases hall : (cs.all fun c' => declOf? D c' mname == some d0) = true
+      · rw [if_pos hall] at hdf
+        have hdd : d0 = dd := by simpa using hdf
+        subst hdd
+        simp only [hkey c mname _ hd]
+        refine if_pos (List.all_eq_true.mpr fun c' hc' => ?_)
+        have hc'' := List.all_eq_true.mp hall c' hc'
+        simp only [beq_iff_eq] at hc'' ⊢
+        cases hd' : declOf? D c' mname with
+        | none => rw [hd'] at hc''; exact absurd hc'' (by simp)
+        | some d1 => rw [hd'] at hc''; rw [hkey c' mname _ hd']; exact hc''
+      · rw [if_neg hall] at hdf; exact absurd hdf (by simp)
+
 theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodDecl}
     (h : declFor D τ mname = some d) : declaresName D mname = true := by
   have key : ∀ (c : String) (cs : List String),
@@ -623,6 +682,182 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   · exact Or.inr ⟨mdu, cu,
       fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne,
       by rw [className_defineMethod]; exact hnm, hconf⟩
+
+/-- **The `def` step with a row.** F1b.10's central obligation, and the shape says
+    what it costs: every row the table already had survives by name-disjointness,
+    exactly as in `DeclsOk_defineMethod`, and the *new* row is discharged once.
+
+    `hground` is what keeps the new row off the ground types. `tyClassNames` of a
+    ground type is a list of ground class names, so a row on a name outside that
+    list cannot change `declFor` at `.int`/`.bool`/`.nilT`/`.sym` — and a row on a
+    name *inside* it would owe `EntryOk` at a type whose inhabitants are immediates,
+    which is the failure `tyClassNames`' own docstring describes. The `def` rule
+    discharges it by requiring the class to be in `reopenableClasses`.
+
+    The user witnesses of the *old* rows need `infer_mono`, which is why
+    `UserConforms` carries `defFree`: a body typed at `D` has to still type at
+    `addRow D …`, and `infer` is not monotone in the table without it. -/
+theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
+    {md : MethodDef} {τb : Ty}
+    (hd : DeclsOk D h) (hfresh : declaresName D name = false)
+    (hground : groundClassNames.contains c = false)
+    (hnew : EntryOk (addRow D c name { params := [], ret := τb })
+              (defineMethod h cls name md) (.cls c) name { params := [], ret := τb }) :
+    DeclsOk (addRow D c name { params := [], ret := τb }) (defineMethod h cls name md) := by
+  have hsub : SubDecls D (addRow D c name { params := [], ret := τb }) :=
+    subDecls_addRow hfresh
+  intro τr mname decl hdecl
+  -- Two facts about the new table at the *written* name, and everything about the
+  -- new row follows from them: `c` has it, and no other class does.
+  have hsome : declOf? (addRow D c name { params := [], ret := τb }) c name
+      = some { params := [], ret := τb } := by
+    unfold declOf? declsFor; simp [addRow]
+  have hnone : ∀ c₀, ¬ (c₀ = c) →
+      declOf? (addRow D c name { params := [], ret := τb }) c₀ name = none := by
+    intro c₀ hne
+    have hfind : (addRow D c name { params := [], ret := τb }).find? (fun x => x.1 == c₀)
+        = D.find? (fun x => x.1 == c₀) :=
+      List.find?_cons_of_neg (by simpa using fun hh => hne (Eq.symm hh))
+    have heq : declOf? (addRow D c name { params := [], ret := τb }) c₀ name
+        = declOf? D c₀ name := by unfold declOf? declsFor; rw [hfind]
+    rw [heq]
+    cases hdd : declOf? D c₀ name with
+    | none => rfl
+    | some dd => exact absurd (declOf?_declaresName hdd) (by simp [hfresh])
+  -- Whatever type it is read at, a table with no row for `name` outside `c` gives
+  -- `declFor` nothing — which is what makes the new row's obligation *one* row.
+  have hgroundNone : ∀ τ0 : Ty, (∀ g ∈ tyClassNames τ0, ¬ (g = c)) →
+      declFor (addRow D c name { params := [], ret := τb }) τ0 name = none := by
+    intro τ0 hall
+    unfold declFor
+    cases hcs : tyClassNames τ0 with
+    | nil => rfl
+    | cons c₀ cs =>
+      dsimp only
+      rw [hnone c₀ (hall c₀ (by rw [hcs]; simp))]
+  by_cases hmn : mname = name
+  · -- The only row the new table has for `name` is the one just added, and the only
+    -- type it is read at is `.cls c` — every other class's rows are untouched, and a
+    -- ground type's class names cannot include `c`, which is what `hground` says.
+    subst hmn
+    have hgnd : ∀ g ∈ groundClassNames, ¬ (g = c) := by
+      intro g hg hgc
+      rw [hgc] at hg
+      exact absurd hg (by simpa using hground)
+    have hτ : τr = .cls c ∧ decl = { params := [], ret := τb } := by
+      cases τr with
+      | int =>
+        exfalso
+        have hn : declFor (addRow D c mname { params := [], ret := τb }) .int mname = none := by
+          refine hgroundNone _ ?_
+          intro g hg
+          simp only [tyClassNames, List.mem_singleton] at hg
+          subst hg
+          exact hgnd _ (by simp [groundClassNames])
+        rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      | bool =>
+        exfalso
+        have hn : declFor (addRow D c mname { params := [], ret := τb }) .bool mname = none := by
+          refine hgroundNone _ ?_
+          intro g hg
+          have hg' : g = "TrueClass" ∨ g = "FalseClass" := by
+            simpa [tyClassNames] using hg
+          rcases hg' with rfl | rfl
+          · exact hgnd _ (by simp [groundClassNames])
+          · exact hgnd _ (by simp [groundClassNames])
+        rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      | nilT =>
+        exfalso
+        have hn : declFor (addRow D c mname { params := [], ret := τb }) .nilT mname = none := by
+          refine hgroundNone _ ?_
+          intro g hg
+          simp only [tyClassNames, List.mem_singleton] at hg
+          subst hg
+          exact hgnd _ (by simp [groundClassNames])
+        rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      | sym =>
+        exfalso
+        have hn : declFor (addRow D c mname { params := [], ret := τb }) .sym mname = none := by
+          refine hgroundNone _ ?_
+          intro g hg
+          simp only [tyClassNames, List.mem_singleton] at hg
+          subst hg
+          exact hgnd _ (by simp [groundClassNames])
+        rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      | cls n =>
+        by_cases hng : groundClassNames.contains n = true
+        · exfalso
+          have hn : declFor (addRow D c mname { params := [], ret := τb }) (.cls n) mname
+              = none := by
+            refine hgroundNone _ ?_
+            intro g hg
+            simp only [tyClassNames, if_pos hng, List.not_mem_nil] at hg
+          rw [hn] at hdecl
+          exact absurd hdecl (by simp)
+        · by_cases hnc : n = c
+          · subst hnc
+            refine ⟨rfl, ?_⟩
+            have hn : declFor (addRow D n mname { params := [], ret := τb }) (.cls n) mname
+                = some { params := [], ret := τb } := by
+              simp only [declFor, tyClassNames, if_neg hng, hsome, List.all_nil, if_pos]
+            rw [hn] at hdecl
+            exact (Option.some.inj hdecl).symm
+          · exfalso
+            have hn : declFor (addRow D c mname { params := [], ret := τb }) (.cls n) mname
+                = none := by
+              refine hgroundNone _ ?_
+              intro g hg
+              simp only [tyClassNames, if_neg hng, List.mem_singleton] at hg
+              rw [hg]
+              exact hnc
+            rw [hn] at hdecl
+            exact absurd hdecl (by simp)
+    obtain ⟨rfl, rfl⟩ := hτ
+    exact hnew
+  · -- Every other name: `declFor` is unchanged, and both arms of the old witness
+    -- transport — the builtin one because it mentions no table, the user one by
+    -- `infer_mono` on a `defFree` body.
+    have hold : declFor D τr mname = some decl := by
+      have hsame : ∀ c', declOf? (addRow D c name { params := [], ret := τb }) c' mname
+          = declOf? D c' mname := by
+        have _ := hsome
+        intro c'
+        by_cases hcc : c' = c
+        · subst hcc
+          have hhead : (name == mname) = false := by simpa using fun hh => hmn hh.symm
+          have hda : declsFor (addRow D c' name { params := [], ret := τb }) c'
+              = (name, { params := [], ret := τb }) :: declsFor D c' := by
+            simp [declsFor, addRow]
+          unfold declOf?
+          rw [hda, List.find?_cons_of_neg (by simp [hhead])]
+        · unfold declOf? declsFor
+          rw [show (addRow D c name { params := [], ret := τb }).find?
+                  (fun x => x.1 == c') = D.find? (fun x => x.1 == c') from
+              List.find?_cons_of_neg (by simpa using fun hh => hcc (Eq.symm hh))]
+      unfold declFor at hdecl ⊢
+      cases hcs : tyClassNames τr with
+      | nil => rw [hcs] at hdecl; exact absurd hdecl (by simp)
+      | cons c₀ cs =>
+        rw [hcs] at hdecl
+        dsimp only at hdecl ⊢
+        rw [hsame c₀] at hdecl
+        cases hd0 : declOf? D c₀ mname with
+        | none => rw [hd0] at hdecl; exact absurd hdecl (by simp)
+        | some d0 =>
+          rw [hd0] at hdecl
+          simpa only [hsame] using hdecl
+    rcases hd τr mname decl hold with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hresu, hnmu, hconfu⟩
+    · exact Or.inl ⟨bid,
+        fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hmn, hconf⟩
+    · refine Or.inr ⟨mdu, cu,
+        fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
+        by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, ?_⟩
+      obtain ⟨Γ', hb⟩ := hconfu.2.2
+      exact ⟨Γ', infer_mono hsub hconfu.2.1 hb⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
@@ -851,7 +1086,14 @@ def ClassOk (h : Heap) : Prop :=
     -- class objects share a name at all, so the general clause is true and this
     -- restriction of it to the table's own names is what a row costs — the same
     -- shape, and the same argument, as the row above it.
-    (∀ j, (h.classPayload? j).isSome → className h j = n → j = k)
+    (∀ j, (h.classPayload? j).isSome → className h j = n → j = k) ∧
+    -- **and its ancestor chain starts at itself** (F1b.10). Not automatic:
+    -- `ancestors` puts `prepends` *before* the class (`Heap.lean:506`), so a
+    -- prepended module defining the same name would shadow a method the `def` step
+    -- just installed — and the row's `ResolvesUser` would be false. Measured at the
+    -- booted heap by `scripts/names_probe.lean` (`ancestors String = [9, 40, 1, …]`)
+    -- before it was assumed.
+    (ancestors h k).head? = some k
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
@@ -872,8 +1114,8 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
         intro hm
         simp only [hc, hp, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
           List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hm
-        obtain ⟨⟨hmod, hnm⟩, huniq⟩ := hm
-        refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_⟩
+        obtain ⟨⟨⟨hmod, hnm⟩, huniq⟩, hhead⟩ := hm
+        refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_, hhead⟩
         -- The bound comes from the payload, exactly as `StackCtx`'s does
         -- (`classPayload?_isSome_lt`), so the `List.range` scan really is a scan
         -- over every id that can satisfy the hypothesis.
@@ -889,13 +1131,14 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
     `PlainGrow`'s third clause: `constOwn` is `classPayload?` composed with a
     lookup in `consts`, and `PlainGrow` pins `classPayload?` at *every* id. That is
     the same one-line argument `StrClsOk_grow` makes, for the same reason. -/
-theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hc : ClassOk h) :
-    ClassOk h' := by
+theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hc : ClassOk h) : ClassOk h' := by
   refine ⟨by rw [hg.className_eq]; exact hc.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5⟩ := hc.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6⟩ := hc.2 n hn
   refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
-    by rw [hg.payload]; exact h2, h3, ?_, fun j hj hjn => ?_⟩
+    by rw [hg.payload]; exact h2, h3, ?_, fun j hj hjn => ?_,
+    by rw [ancestors_congr_grow hg.shapeAgree hg.size hsat]; exact h6⟩
   -- `PlainGrow` pins `classPayload?` at every id and `className` with it, so both
   -- new clauses transport by the same rewrite the old ones do.
   · rw [hg.className_eq]; exact h4
@@ -909,7 +1152,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : ClassOk h) : ClassOk (defineMethod h cls name md) := by
   refine ⟨by rw [className_defineMethod]; exact hc.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5⟩ := hc.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6⟩ := hc.2 n hn
   refine ⟨k, ?_⟩
   rw [constOwn_defineMethod h cls Boot.objectId name n md]
   -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
@@ -918,7 +1161,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   cases hk : (defineMethod h cls name md).classPayload? k with
   | none => rw [hk, h2] at hsh; exact absurd hsh (by simp)
   | some cp' =>
-    refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_⟩
+    refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_, ?_⟩
     -- `isModule` is not in `clsShape`, but it *is* in `clsName_defineMethod` — L124
     -- put it there because the anonymous-class fallback renders by it. Reused rather
     -- than reproved.
@@ -931,6 +1174,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     · rw [className_defineMethod]; exact h4
     · exact h5 j (by rw [← classPayload?_isSome_defineMethod]; exact hj)
         (by rw [← className_defineMethod]; exact hjn)
+    · rw [ancestors_defineMethod]; exact h6
 
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is

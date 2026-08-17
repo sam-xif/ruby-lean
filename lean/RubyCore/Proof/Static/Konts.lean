@@ -291,15 +291,32 @@ theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
 theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List Param}
     {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : String}
     (h : infer D Γ (.def' name params body) top ctx = some (τ, Γ', D')) :
-    τ = .sym ∧ Γ' = Γ ∧ D' = D ∧ params = [] ∧ declaresName D name = false
-      ∧ name ≠ "method_added" := by
+    τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
+      ∧ name ≠ "method_added"
+      ∧ ∃ τb Γb, infer D [] body false ctx = some (τb, Γb, D)
+      ∧ (D' = D ∨
+          (D' = addRow D ctx name { params := [], ret := τb } ∧
+            top = false ∧ name ≠ "initialize" ∧
+            reopenableClasses.contains ctx = true ∧ defFree body = true)) := by
   simp only [infer] at h
   split at h
   · next hc =>
     obtain ⟨hp, h1, h2⟩ := hc
     split at h
-    · simp only [Option.some.injEq, Prod.mk.injEq] at h
-      exact ⟨h.1.symm, h.2.1.symm, h.2.2.symm, List.isEmpty_iff.mp hp, h1, h2⟩
+    · next τb Γb Db hb =>
+      split at h
+      · next hDb =>
+        subst hDb
+        split at h
+        · next hrow =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb,
+            Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2⟩⟩
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb, Or.inl rfl⟩
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -311,23 +328,16 @@ theorem infer_class_inv {D D' : Decls} {Γ : Env} {name : String} {sup : Option 
     {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : String}
     (h : infer D Γ (.class' name sup body) top ctx = some (τ, Γ', D')) :
     top = true ∧ sup = none ∧ reopenableClasses.contains name = true ∧ Γ' = Γ ∧
-      D' = D ∧ ∃ Γ'', infer D [] body false name = some (τ, Γ'', D) := by
+      ∃ Γ'', infer D [] body false name = some (τ, Γ'', D') := by
   simp only [infer] at h
   split at h
   · next hc =>
     obtain ⟨ht, hs, hm⟩ := hc
     split at h
     · next τb Γb Db hb =>
-      -- F1b.8's stability condition: the body left the table as it found it, so
-      -- the frame the step pushes and the continuation it pops into read the same
-      -- declarations. `KontOk.frameK` has one table, and this is where that is paid.
-      split at h
-      · next hDb =>
-        subst hDb
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl, rfl⟩ := h
-        exact ⟨ht, Option.isNone_iff_eq_none.mp hs, hm, rfl, rfl, Γb, hb⟩
-      · exact absurd h (by simp)
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨ht, Option.isNone_iff_eq_none.mp hs, hm, rfl, Γb, hb⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -498,7 +508,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : String} {Γ : Env}
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
   refine ⟨NoHook_grow hg hsat hh,
     Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr,
-    ClassOk_grow hg hcls,
+    ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)

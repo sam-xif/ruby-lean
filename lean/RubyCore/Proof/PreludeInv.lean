@@ -126,7 +126,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- is `ClassOk`'s new clause, which is why that clause is folded into `ClassOk`
     -- rather than being a seventh conjunct — the certificate already decides it.
     show StackCtx _ _ _ ("Object" :: [])
-    exact ⟨hh.2.1.1, hh.2.2.2.2.1, rfl, trivial⟩
+    exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz, trivial⟩
   · unfold check at hchk
     show CtlOk (declsOf p) "Object" [] [] _
     unfold CtlOk

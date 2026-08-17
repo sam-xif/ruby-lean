@@ -401,5 +401,47 @@ theorem lookup_defineMethod (h : Heap) (cls : ObjId) (name m : String)
   unfold lookup
   rw [hco, ancestors_defineMethod, lookup_go_defineMethod h cls name m md hne]
 
+/-! ### The *positive* side of `defineMethod` (F1b.10)
+
+Every lemma above says what a method-table write leaves **alone**, because that is
+all a rung whose rows were fixed ever needed. A program-supplied row needs the
+other direction: the name the step just installed is the one `lookup` finds. -/
+
+/-- The written entry is at the head of the class's own table. `defineMethod`
+    filters the old entry out and conses the new one, so `find?` stops
+    immediately. -/
+theorem methods_find_defineMethod_self (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (hc : (h.classPayload? cls).isSome) :
+    ((defineMethod h cls name md).classPayload? cls).map
+        (fun c => c.methods.find? (·.1 == name))
+      = some (some (name, md)) := by
+  unfold defineMethod
+  cases hp : h.classPayload? cls with
+  | none => rw [hp] at hc; exact absurd hc (by simp)
+  | some c =>
+    have hb : cls < h.objs.size := by
+      rcases Nat.lt_or_ge cls h.objs.size with hlt | hge
+      · exact hlt
+      · rw [classPayload?_oob h cls (Nat.not_lt.mpr hge)] at hp
+        exact absurd hp (by simp)
+    simp [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set, Array.getD, hb,
+      Array.set!, List.find?]
+
+/-- **The row's resolution step.** Walking the ancestors of the class the method
+    was installed on finds it, provided the walk *starts* at that class — which is
+    not automatic (`ancestors` puts `prepends` first, `Heap.lean:506`) and is the
+    clause `ClassOk` carries for exactly this. -/
+theorem lookup_go_defineMethod_self (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (hc : (h.classPayload? cls).isSome) (rest : List ObjId) :
+    lookup.go (defineMethod h cls name md) name (cls :: rest) = some (cls, md) := by
+  unfold lookup.go
+  have hf := methods_find_defineMethod_self h cls name md hc
+  cases h1 : (defineMethod h cls name md).classPayload? cls with
+  | none => rw [h1] at hf; exact absurd hf (by simp)
+  | some c' =>
+    rw [h1] at hf
+    simp only [Option.map_some, Option.some.injEq] at hf
+    simp [hf]
+
 end Proof
 end RubyCore

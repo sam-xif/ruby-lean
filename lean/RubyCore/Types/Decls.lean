@@ -162,6 +162,16 @@ theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname :
   | none => rw [hd] at h; exact absurd h (by simp)
   | some d => rw [hs τ mname d hd]; rw [hd] at h; exact h
 
+/-- **A row, added.** Prepending shadows: `declsFor` reads `D.find?`, which stops
+    at the first entry for the class, so the new entry carries the class's old rows
+    plus the new one and every other class is found further down unchanged.
+
+    The alternative — rewriting the existing entry in place — needs a `List.map`
+    whose `find?` behaviour is a lemma; this way the only fact anything needs is
+    `List.find?`'s own equation. -/
+def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
+  (cls, (name, d) :: declsFor D cls) :: D
+
 /-! ## The base table
 
 `static-soundness-poc.md` §5's builtin signatures, as declarations. Every entry

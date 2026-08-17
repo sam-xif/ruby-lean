@@ -147,7 +147,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- the whole reason this rung comes before the allocating one: all six heap
     -- conjuncts carry across by `rfl`, and what is left is the frame push.
     case class' name sup body =>
-      obtain ⟨htop, rfl, hmem, rfl, rfl, Γb, hbody⟩ := infer_class_inv hinf
+      obtain ⟨htop, rfl, hmem, rfl, Γb, hbody⟩ := infer_class_inv hinf
       -- `Γs.isEmpty = true` is the mode `infer` was run at; `FramesOk` turns it into
       -- a singleton frame stack and `BottomObj` names that frame's definee. This is
       -- the composite L155 exists for.
@@ -164,7 +164,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- What is left is `pushFrame`, and it is a frame push on an untouched heap.
       have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
       refine ⟨hhook, hsat, hstr, hcls,
-        BottomObj_cons hf.1 (BottomObj_push hlt hbot), D', name, [], [(ctx, Γ')],
+        BottomObj_cons hf.1 (BottomObj_push hlt hbot), D, name, [], [(ctx, Γ')],
         htab, ?_, ?_, ?_⟩
       · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
           FramesOk.push hfs⟩
@@ -182,13 +182,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       · refine ⟨?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact hnm
-        · rw [getD_push_lt_self]
+        · rw [getD_push_lt_self]; exact fun _ => rfl
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
-      · exact ⟨τ, Γb, _, hbody, KontOk.frameK hk⟩
+      · exact ⟨τ, Γb, D', hbody, KontOk.frameK hk⟩
     case def' name params body =>
-      obtain ⟨rfl, rfl, rfl, rfl, hfresh, hha⟩ := infer_def_inv hinf
+      obtain ⟨rfl, rfl, rfl, hfresh, hha, τb, Γb, hbody, hrow⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
       -- L154: the definee is *a class* rather than *`Object`*, which is what makes a
       -- class-body frame expressible. Every `defineMethod` lemma below is already
@@ -260,23 +260,123 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- `split` would dive into the `visibility` `if`s *inside* the `MethodDef`
       -- literal, which `hres` deliberately abstracts over; case on the one
       -- condition that matters instead.
-      by_cases hp : m.preludeMode = true <;>
-        simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
-        refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
-          first
-            | rfl
-            | exact typeAgree_defineMethod _ _ _ _
-            | exact DeclsOk_defineMethod htab hfresh
-            | exact hlkNH _
-            -- L148: the third heap conjunct, and `defineMethod` preserves it for the
-            -- same reason it preserves the other two — it moves no id.
-            | exact Saturated_defineMethod hsat _ _ _
-            -- L151: the fourth, and the same reason a fourth time.
-            | exact StrClsOk_defineMethod hstr
-            -- L156: the sixth, and the case that matters is a `def` inside the very
-            -- class body being reopened — `constOwn` reads `consts`, `defineMethod`
-            -- writes `methods`.
-            | exact ClassOk_defineMethod hcls
+      -- **The declaration obligation** (F1b.10), and it is the only conjunct that
+      -- distinguishes the two branches of the rule. Without a row `DeclsOk` is
+      -- `DeclsOk_defineMethod` exactly as before; with one it is `DeclsOk_addRow`,
+      -- whose single new obligation is the row's own `EntryOk` — discharged by the
+      -- **user** arm, which makes this the first commit in which that arm is
+      -- inhabited (L157 built it and left it empty).
+      rcases hrow with rfl | ⟨rfl, htopf, hinit, hmemctx, hdf⟩
+      · by_cases hp : m.preludeMode = true <;>
+          simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+          refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
+            first
+              | rfl
+              | exact typeAgree_defineMethod _ _ _ _
+              | exact DeclsOk_defineMethod htab hfresh
+              | exact hlkNH _
+              | exact Saturated_defineMethod hsat _ _ _
+              | exact StrClsOk_defineMethod hstr
+              | exact ClassOk_defineMethod hcls
+      -- The row branch. Three facts about the *current frame* are wanted, and all
+      -- three come from `StackCtx` — which is what that predicate was added for.
+      · obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
+          cases hst : m.stack with
+          | nil => exact absurd hst hf.1
+          | cons a r => exact ⟨a, r, rfl⟩
+        have hΓs : Γs ≠ [] := by
+          intro hz; rw [hz] at htopf; exact absurd htopf (by simp)
+        have hfidsne : fids₀ ≠ [] := by
+          intro hz
+          rw [hst, hz] at hfs
+          cases hΓ : Γs with
+          | nil => exact absurd hΓ hΓs
+          | cons a r => rw [hΓ] at hfs; exact absurd hfs.2.2.2 (by simp [FramesOk])
+        have hscc : StackCtx m.heap m.frames (fid₀ :: fids₀) (ctx :: Γs.map Prod.fst) := by
+          rw [hst] at hsc; exact hsc
+        have hctx : className m.heap (curFrame m).defmod = ctx := by
+          rw [show curFrame m = m.frames.getD fid₀ default by
+            simp [curFrame, curFid, hst]]
+          exact hscc.2.1
+        have hvis : defVisOfDef (curFrame m) = .pub := by
+          rw [show curFrame m = m.frames.getD fid₀ default by
+            simp [curFrame, curFid, hst]]
+          exact hscc.2.2.1 hfidsne
+        -- The chain from the definee starts at the definee, which is what makes the
+        -- entry the step just wrote the one `lookup` finds.
+        have hchain : ∀ md : MethodDef, ∃ rest,
+            ancestors (defineMethod m.heap (curFrame m).defmod name md)
+              (curFrame m).defmod = (curFrame m).defmod :: rest := by
+          intro md
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀⟩ :=
+            (ClassOk_defineMethod (name := name) (md := md)
+              (cls := (curFrame m).defmod) hcls).2 ctx (List.mem_of_elem_eq_true hmemctx)
+          have hdefk : (curFrame m).defmod = k₀ :=
+            huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+              (by rw [className_defineMethod]; exact hctx)
+          rw [hdefk] at hdo hhead₀ ⊢
+          cases hanc : ancestors (defineMethod m.heap k₀ name md) k₀ with
+          | nil => rw [hanc] at hhead₀; exact absurd hhead₀ (by simp)
+          | cons a rest =>
+            rw [hanc] at hhead₀
+            simp only [List.head?_cons, Option.some.injEq] at hhead₀
+            exact ⟨rest, by rw [hhead₀]⟩
+        have hdecls : ∀ (md : MethodDef), md.owner = (curFrame m).defmod →
+            md.builtin = none → md.undefined = false → md.visibility = .pub →
+            md.params = [] → md.declared = [] → md.capturedFrame = none →
+            md.body = body →
+            DeclsOk (addRow D ctx name { params := [], ret := τb })
+              (defineMethod m.heap (curFrame m).defmod name md) := by
+          intro md hown hb hu hvs hpar hdec hcap hbd
+          refine DeclsOk_addRow htab hfresh ?_ ?_
+          · -- The row is not at a ground type, which is what `reopenableClasses`
+            -- membership buys: `tyClassNames` of a ground type lists ground names,
+            -- and a row on one would owe `EntryOk` over immediates.
+            revert hmemctx
+            simp only [reopenableClasses, groundClassNames, List.contains_cons,
+              List.contains_nil, Bool.or_false, beq_iff_eq]
+            rintro rfl
+            decide
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _⟩ :=
+            (ClassOk_defineMethod (name := name) (md := md)
+              (cls := (curFrame m).defmod) hcls).2 ctx (List.mem_of_elem_eq_true hmemctx)
+          have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
+              (curFrame m).defmod = ctx := by rw [className_defineMethod]; exact hctx
+          have hdefk : (curFrame m).defmod = k₀ :=
+            huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
+          obtain ⟨rest, hrest⟩ := hchain md
+          refine Or.inr ⟨md, ctx, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
+            by rw [hbd]; exact hdf, ?_⟩
+          · have hk : k = (curFrame m).defmod := by
+              rw [hdefk]; exact huniq₀ k htc.1 htc.2
+            subst hk
+            refine ⟨(curFrame m).defmod, ?_, hb, hu, hvs, hpar, hdec, hcap,
+              by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_⟩
+            · show lookup.go _ name (ancestors _ _) = _
+              rw [hrest]
+              exact lookup_go_defineMethod_self m.heap _ name md hdo rest
+            · split
+              · rfl
+              · rw [hrest]
+                simp only [List.takeWhile, bne_self_eq_false, decide_false,
+                  Bool.false_eq_true, if_false]
+                rfl
+          · exact ⟨Γb, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf hbody⟩
+        by_cases hp : m.preludeMode = true <;>
+          simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+          refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
+            first
+              | rfl
+              | exact typeAgree_defineMethod _ _ _ _
+              -- The literal's `visibility` is `defVisOfDef` once the name is not
+              -- `initialize`, and `StackCtx` says that is `.pub` on any frame that
+              -- is not the outermost — which `top = false` is exactly.
+              | exact hdecls _ rfl rfl rfl
+                  (by simpa [defVisOfDef, hinit] using hvis) rfl rfl rfl rfl
+              | exact hlkNH _
+              | exact Saturated_defineMethod hsat _ _ _
+              | exact StrClsOk_defineMethod hstr
+              | exact ClassOk_defineMethod hcls
     case send recv mname args blk =>
       cases recv with
       | none => exact absurd hinf (by simp [infer])
@@ -363,7 +463,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
-        · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
     | @ifK _ _ _ _ _ _ _ t els τ' Γ' k hif hk' =>
       cases els with
@@ -449,7 +551,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-        obtain ⟨hdp, Γb, hbody⟩ := hconfu
+        obtain ⟨hdp, hdfu, Γb, hbodyu⟩ := hconfu
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot), _, cu, [], (ctx, Γ) :: Γs,
           htab, ?_, ?_, ?_⟩
@@ -470,11 +572,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           refine ⟨?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact hnmu
-          · rw [getD_push_lt_self]; rfl
+          · rw [getD_push_lt_self]; exact fun _ => rfl
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
-          exact ⟨τret, Γb, _, hbody, KontOk.frameK hk'⟩
+          exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk'⟩
     | @argsK _ _ _ _ _ _ mname recv τr τret k hrv hsg hk' =>
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The
@@ -488,7 +590,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- (a zero-parameter method is all `enterUserMethod` binds today) while this
       -- declaration's is `[τ]`. So a unary send is a builtin send, necessarily.
       have hbi : BuiltinEntryOk m.heap τr mname { params := [τ], ret := τret } := by
-        rcases htab τr mname _ (sigOf_declFor hsg) with hb | ⟨_, _, _, _, hdp, _⟩
+        rcases htab τr mname _ (sigOf_declFor hsg) with hb | ⟨_, _, _, _, hdp, _, _⟩
         · exact hb
         · exact absurd hdp (by simp)
       obtain ⟨w, hw, hstep⟩ :=

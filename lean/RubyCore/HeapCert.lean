@@ -98,8 +98,12 @@ def classOkB (h : Heap) : Bool :=
           -- every name is in the table; `reopenableClasses` has one row, so this is
           -- one linear scan per row. `scripts/names_probe.lean` reports the general
           -- fact this restricts.
-          (List.range h.objs.size).all fun j =>
-            !((h.classPayload? j).isSome && className h j == n) || j == k
+          ((List.range h.objs.size).all fun j =>
+            !((h.classPayload? j).isSome && className h j == n) || j == k) &&
+          -- F1b.10: the chain starts at the class, so a `def` on it is what
+          -- `lookup` finds. `prepends` come first in `ancestors`, so this is a
+          -- real condition and not a restatement.
+          ((ancestors h k).head? == some k)
       | none => false
     | _ => false
 

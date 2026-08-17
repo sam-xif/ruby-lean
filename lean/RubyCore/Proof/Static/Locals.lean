@@ -377,12 +377,15 @@ theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
     Stated as its own recursion, following `BottomObj` and for the reason its
     docstring gives: a further conjunct in `FramesOk`'s `cons` arm would churn
     nine lemmas for a fact none of them uses. -/
+def defVisOfDef (f : Frame) : Visibility :=
+  if f.kind == .toplevel then .priv else f.defVis
+
 def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List String → Prop
   | [], [] => True
   | fid :: fids, c :: cs =>
       (h.classPayload? (frames.getD fid default).defmod).isSome ∧
       className h (frames.getD fid default).defmod = c ∧
-      (frames.getD fid default).defVis = .pub ∧
+      (fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -401,7 +404,7 @@ theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
 theorem StackCtx.headVis {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : String} {cs : List String}
     (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
-    (frames.getD fid default).defVis = .pub := hs.2.2.1
+    fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub := hs.2.2.1
 
 /-- Pushing a frame leaves every stacked frame's entry alone, provided the ids
     already on the stack are in bounds — the same hypothesis `BottomObj_push`
@@ -807,7 +810,7 @@ theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
 theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
     ∀ {st : List FrameId} {cs : List String},
       (∀ fid ∈ st, (f₂.getD fid default).defmod = (f₁.getD fid default).defmod) →
-      (∀ fid ∈ st, (f₂.getD fid default).defVis = (f₁.getD fid default).defVis) →
+      (∀ fid ∈ st, defVisOfDef (f₂.getD fid default) = defVisOfDef (f₁.getD fid default)) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
   | [], [], _, _, hs => hs
   | fid :: fids, c :: cs, hd, hv, hs => by
@@ -816,8 +819,6 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
-  | [], _ :: _, _, _, hs => hs.elim
-  | _ :: _, [], _, _, hs => hs.elim
 
 /-- **Transport across a heap-writing step.** The in-bounds clause is what makes
     it available: `TypeAgree` relativizes every one of its equalities to ids the

@@ -134,7 +134,9 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
       decide
     · exact (show ClassOk (Machine.init p).heap from
         classOkB_sound (by decide : classOkB Boot.initHeap = true)).1
-    · rfl
+    -- Vacuous at the outermost frame, and that is the point: a toplevel `def`
+    -- installs a **private** method, so no row can come from one (F1b.9/F1b.10).
+    · exact fun hz => absurd rfl hz
   · unfold check at h
     show CtlOk (declsOf p) "Object" [] [] (Machine.init p)
     unfold CtlOk
@@ -191,11 +193,63 @@ theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuc
 def egClassBody : Expr :=
   .class' "String" none (.def' "shout" [] (.int 1))
 
-example : check egClassBody = .accept := by simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses]
+example : check egClassBody = .accept := by
+  simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses,
+    defFree, defFreeAll, addRow, declsFor]
 
 theorem egClassBody_safe :
     ∀ r, ReachableResult (Machine.init egClassBody) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses])
+  check_sound (by
+    simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses,
+      defFree, defFreeAll, addRow, declsFor])
+
+/-- **The first accepted program with a user-method call** (F1b.10):
+
+        class String
+          def shout
+            1
+          end
+          "x".shout
+        end
+
+    and it type-checks at `Integer` — the return type of the program's *own*
+    `def`, read back at the call site through a row the `def` step put in the
+    table. Everything F1a through F1b.9 built is on this one path: the row is
+    keyed on `"String"` (F1a's table), the receiver's type comes from the string
+    literal producer (L151), the call is a zero-argument send (L152) inside a
+    reopened class body (L156), the send's dispatch takes `EntryOk`'s **user** arm
+    (L157 — inhabited for the first time here), the table is threaded (L160) and
+    the body's typing survives the later table (L161), and the row's key is tied to
+    the frame's definee by `StackCtx` (L162).
+
+    It is also the first accepted program whose *runtime* passes through
+    `enterUserMethod`. CRuby and the model agree on it (`p "x".shout` prints `1`
+    in both), which is not something `check_sound` says and is worth having said. -/
+def egUserCall : Expr :=
+  .class' "String" none
+    (.seq [ .def' "shout" [] (.int 1),
+            .send (some (.str "x")) "shout" [] none ])
+
+example : check egUserCall = .accept := by
+  simp [check, egUserCall, infer, inferSeq, declsOf, declaresName, baseDecls,
+    reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+    declOf?, tyClassNames, groundClassNames]
+
+theorem egUserCall_safe :
+    ∀ r, ReachableResult (Machine.init egUserCall) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egUserCall, infer, inferSeq, declsOf, declaresName, baseDecls,
+      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      declOf?, tyClassNames, groundClassNames])
+
+/-- **A toplevel `def` declares nothing, and the call is `unknown`** — which is
+    not a limitation of the rule but of Ruby: `Interp.lean:225` makes a toplevel
+    method **private**, and `ResolvesUser` requires `.pub`, so a row keyed there
+    would be unwitnessable. Kept as a checked fact because it is the constraint
+    that decided the rung's shape (F1b.9). -/
+example : check (.seq [ .def' "shout" [] (.int 1), .vcall "shout" ]) = .unknown := by
+  simp [check, infer, inferSeq, illTyped, illTypedAny, declsOf, declaresName,
+    baseDecls, defFree, defFreeAll]
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/

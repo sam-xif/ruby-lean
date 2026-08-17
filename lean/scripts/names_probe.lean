@@ -66,7 +66,20 @@ def main : IO UInt32 := do
     for nm in keys do
       let hits := named.filter (fun p => p.1 == nm)
       IO.println s!"  {nm}: {hits.size} class object(s) {hits.map (·.2)}"
+    -- **The ancestor chain starts at the class itself**, which is what makes a
+    -- freshly installed method the one `lookup` finds. It is not automatic:
+    -- `ancestors` puts `prepends` *before* `k` (`Heap.lean:506`), so a prepended
+    -- module defining the same name would shadow the definition the `def` just
+    -- made — and `ResolvesUser` would be false for the row.
+    let mut badHead := 0
+    for nm in keys do
+      for (n', k) in named do
+        if n' == nm then
+          let anc := ancestors h k
+          IO.println s!"\n  ancestors {nm} = {anc.take 4}…  head = {anc.head? }"
+          if anc.head? != some k then badHead := badHead + 1
+    IO.println s!"  classes whose chain does not start at themselves (want 0): {badHead}"
     -- Eigenclasses, the family L124 fixed and the one most likely to regress.
     let eigen := named.filter (fun p => p.1.startsWith "#<Class:")
     IO.println s!"\neigenclass-named objects: {eigen.size}"
-    return if dupes.isEmpty then 0 else 1
+    return if dupes.isEmpty && badHead == 0 then 0 else 1
