@@ -352,6 +352,73 @@ theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
   rw [dif_pos h, dif_pos (show j < (a.push f).size by simp [Array.size_push]; omega)]
   exact Array.getElem_push_lt h
 
+/-- **Each activation's definee, named** (F1b.9) — the static counterpart of
+    `FrameConforms`'s *the definee is a class*, and the fact a declaration row
+    needs.
+
+    A row is keyed on a class **name**, because `infer` cannot name an `ObjId`.
+    So the `def` rule keys its row on the context it was checked in, and the
+    invariant has to tie that name to the class the step actually installs the
+    method on — `(curFrame m).defmod`. That is this predicate, and it is carried
+    for the whole stack rather than the current frame only for the same reason
+    `FrameConforms` is: `frameK` resumes a *caller's* frame, and the caller's
+    context has to survive the pop.
+
+    **`defVis = .pub` rides here**, and it is not an afterthought. `evalExpr`'s
+    `def` builds `visibility := if name == "initialize" then .priv else if kind ==
+    .toplevel then .priv else defVis` (`Interp.lean:225`), while `ResolvesUser`
+    requires `.pub` — so a row is witnessable only where the frame's default
+    visibility is public. That also settles a question pricing raised and could
+    not answer from the rules: **a toplevel `def` cannot carry a row at all**,
+    because a toplevel method is private, which is exactly CRuby's behaviour and
+    the reason `public def m …` exists. The first row therefore has to come from a
+    `def` inside a class body, which is why the context stack is not avoidable.
+
+    Stated as its own recursion, following `BottomObj` and for the reason its
+    docstring gives: a further conjunct in `FramesOk`'s `cons` arm would churn
+    nine lemmas for a fact none of them uses. -/
+def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List String → Prop
+  | [], [] => True
+  | fid :: fids, c :: cs =>
+      (h.classPayload? (frames.getD fid default).defmod).isSome ∧
+      className h (frames.getD fid default).defmod = c ∧
+      (frames.getD fid default).defVis = .pub ∧
+      StackCtx h frames fids cs
+  | _, _ => False
+
+theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
+    {c : String} {cs : List String} (hs : StackCtx h frames fids (c :: cs)) :
+    StackCtx h frames fids.tail cs := by
+  cases fids with
+  | nil => exact absurd hs (by simp [StackCtx])
+  | cons fid rest => exact hs.2.2.2
+
+theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
+    {fids : List FrameId} {c : String} {cs : List String}
+    (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
+    className h (frames.getD fid default).defmod = c := hs.2.1
+
+theorem StackCtx.headVis {h : Heap} {frames : Array Frame} {fid : FrameId}
+    {fids : List FrameId} {c : String} {cs : List String}
+    (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
+    (frames.getD fid default).defVis = .pub := hs.2.2.1
+
+/-- Pushing a frame leaves every stacked frame's entry alone, provided the ids
+    already on the stack are in bounds — the same hypothesis `BottomObj_push`
+    takes, and true of the real machine for the same reason. -/
+theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
+    ∀ {st : List FrameId} {cs : List String}, (∀ g ∈ st, g < frames.size) →
+      StackCtx h frames st cs → StackCtx h (frames.push f) st cs
+  | [], [], _, hs => hs
+  | fid :: fids, c :: cs, hlt, hs => by
+      have hb : (frames.push f).getD fid default = frames.getD fid default :=
+        getD_push_lt _ _ _ (hlt fid (List.mem_cons_self ..))
+      exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
+        by rw [hb]; exact hs.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2⟩
+  | [], _ :: _, _, hs => hs.elim
+  | _ :: _, [], _, hs => hs.elim
+
 theorem getLocal_cur {m : Machine} (hf : FrameOk m) (x : String) :
     m.getLocal x = localOf (curFrame m) x := by
   obtain ⟨_, _, hc⟩ := hf
@@ -732,6 +799,45 @@ def TypeAgree (h h' : Heap) : Prop :=
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp⟩
+
+/-- **Transport across a frame-array rewrite**, the counterpart of
+    `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
+    reads only `defmod` and `defVis`, so a step that moves neither leaves it
+    alone. -/
+theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
+    ∀ {st : List FrameId} {cs : List String},
+      (∀ fid ∈ st, (f₂.getD fid default).defmod = (f₁.getD fid default).defmod) →
+      (∀ fid ∈ st, (f₂.getD fid default).defVis = (f₁.getD fid default).defVis) →
+      StackCtx h f₁ st cs → StackCtx h f₂ st cs
+  | [], [], _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hs => by
+      refine ⟨?_, ?_, ?_, StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
+        (fun g hg => hv g (List.mem_cons_of_mem _ hg)) hs.2.2.2⟩
+      · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
+      · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
+      · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
+  | [], _ :: _, _, _, hs => hs.elim
+  | _ :: _, [], _, _, hs => hs.elim
+
+/-- **Transport across a heap-writing step.** The in-bounds clause is what makes
+    it available: `TypeAgree` relativizes every one of its equalities to ids the
+    old heap had (L143), so a predicate that names an `ObjId` has to say the id is
+    one of them. `classPayload?`-ness supplies the bound
+    (`classPayload?_isSome_lt`), which is why that clause is here rather than
+    borrowed from `FrameConforms` — the two lists are different, so the borrow
+    would need a lemma relating them for no gain. -/
+theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array Frame} :
+    ∀ {st : List FrameId} {cs : List String},
+      StackCtx h frames st cs → StackCtx h' frames st cs
+  | [], [], hs => hs
+  | fid :: fids, c :: cs, hs => by
+      have hlt : (frames.getD fid default).defmod < h.objs.size :=
+        classPayload?_isSome_lt hs.1
+      refine ⟨?_, ?_, hs.2.2.1, StackCtx.heap_congr ha hs.2.2.2⟩
+      · rw [ha.2.2.1 _ hlt]; exact hs.1
+      · rw [ha.2.1 _ hlt]; exact hs.2.1
+  | [], _ :: _, hs => hs.elim
+  | _ :: _, [], hs => hs.elim
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 

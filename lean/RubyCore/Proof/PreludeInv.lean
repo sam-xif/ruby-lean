@@ -114,15 +114,21 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- F1b.8: the table is existential in `Inv`, and `declsOf p` is what pins it at
     -- the start of the run — the same instantiation `initiation` makes, at a heap
     -- the certificate rather than the kernel vouches for.
-    declsOf p, [], [], tableOk_declsOk hh.1, ?_, ?_⟩
+    declsOf p, "Object", [], [], tableOk_declsOk hh.1, ?_, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
     -- what that conjunct is for.
     simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
     exact hh.2.1.1
+  · -- F1b.9: the outermost activation's context is `"Object"`. The `isSome` half is
+    -- `NoHook`'s first conjunct, as it is for `FrameConforms` above; the *name* half
+    -- is `ClassOk`'s new clause, which is why that clause is folded into `ClassOk`
+    -- rather than being a seventh conjunct — the certificate already decides it.
+    show StackCtx _ _ _ ("Object" :: [])
+    exact ⟨hh.2.1.1, hh.2.2.2.2.1, rfl, trivial⟩
   · unfold check at hchk
-    show CtlOk (declsOf p) [] [] _
+    show CtlOk (declsOf p) "Object" [] [] _
     unfold CtlOk
     split at hchk
     · rename_i r hr

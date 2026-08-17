@@ -56,23 +56,23 @@ set_option linter.unusedSimpArgs false
 /-- **Monotonicity, with the table-stability half it needs.** Proved by the
     functional induction `infer` generates, so the case list is the rule list and
     every out-of-fragment head is discharged by its own `none`. -/
-theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
+theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : String),
     ∀ F', SubDecls D F' → defFree e = true → ∀ τ Γ' D₀,
-      infer D Γ e top = some (τ, Γ', D₀) →
-      D₀ = D ∧ infer F' Γ e top = some (τ, Γ', F') := by
-  intro D Γ e top
-  induction D, Γ, e, top using infer.induct with
-  | motive2 Da Γa ta elsa topa =>
+      infer D Γ e top ctx = some (τ, Γ', D₀) →
+      D₀ = D ∧ infer F' Γ e top ctx = some (τ, Γ', F') := by
+  intro D Γ e top ctx
+  induction D, Γ, e, top, ctx using infer.induct with
+  | motive2 Da Γa ta elsa topa ctxa =>
     exact ∀ F', SubDecls Da F' →
       (defFree ta && (match elsa with | some e' => defFree e' | none => true)) = true →
-      ∀ τ Γ' D₀, inferIf Da Γa ta elsa topa = some (τ, Γ', D₀) →
-        D₀ = Da ∧ inferIf F' Γa ta elsa topa = some (τ, Γ', F')
-  | motive3 Da Γa esa topa =>
+      ∀ τ Γ' D₀, inferIf Da Γa ta elsa topa ctxa = some (τ, Γ', D₀) →
+        D₀ = Da ∧ inferIf F' Γa ta elsa topa ctxa = some (τ, Γ', F')
+  | motive3 Da Γa esa topa ctxa =>
     exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
-      ∀ τ Γ' D₀, inferSeq Da Γa esa topa = some (τ, Γ', D₀) →
-        D₀ = Da ∧ inferSeq F' Γa esa topa = some (τ, Γ', F')
+      ∀ τ Γ' D₀, inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) →
+        D₀ = Da ∧ inferSeq F' Γa esa topa ctxa = some (τ, Γ', F')
   -- **A local read.** The table appears only as the third component of the answer.
-  | case7 D Γ top x =>
+  | case7 D Γ top ctx x =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, Option.map_eq_some_iff] at h
     obtain ⟨σ, hg, heq⟩ := h
@@ -81,7 +81,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     exact ⟨rfl, by simp [infer, hg]⟩
   -- **Assignment.** One IH, and the `rfl` it returns is what lines the output
   -- tables up — which is why the two conclusions had to be proved together.
-  | case8 D Γ top x rhs τr Γ₁ D₁ hrhs ih =>
+  | case8 D Γ top ctx x rhs τr Γ₁ D₁ hrhs ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hs hdf _ _ _ hrhs
@@ -91,7 +91,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
   -- **The unary send**, and the only case where `SubDecls` is *used* rather than
   -- carried: the signature has to be readable at the bigger table, which is what
   -- the relation was defined to say.
-  | case10 D Γ top recv mname arg τr Γ₁ D₁ hrecv Γ₂ D₂ τp τret hsig harg ihR ihA =>
+  | case10 D Γ top ctx recv mname arg τr Γ₁ D₁ hrecv Γ₂ D₂ τp τret hsig harg ihR ihA =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
@@ -101,7 +101,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig]⟩
   -- **The zero-argument send.** Same shape, one fewer subexpression.
-  | case15 D Γ top recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
+  | case15 D Γ top ctx recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
@@ -109,12 +109,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hmR, SubDecls.sigOf_eq hs hsig]⟩
   -- `seq` is `inferSeq` definitionally, so this case is the third motive verbatim.
-  | case25 D Γ top es ih =>
+  | case25 D Γ top ctx es ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     simp only [infer] at h ⊢
     exact ih F' hs hdf _ _ _ h
-  | case26 D Γ top c t els τc Γ₁ D₁ hc ihC ihI =>
+  | case26 D Γ top ctx c t els τc Γ₁ D₁ hc ihC ihI =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree_if, Bool.and_eq_true] at hdf
     obtain ⟨⟨hc1, ht1⟩, he1⟩ := hdf
@@ -124,7 +124,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     exact ⟨rfl, by simp [infer, hmC, hmI]⟩
   -- **The loop**, where the stability side conditions do the work: both come back
   -- as `rfl`s, so the table at `F'` is stable for the same reason it was at `F`.
-  | case28 D Γ top c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
+  | case28 D Γ top ctx c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hstc
     obtain ⟨rfl, rfl⟩ := hstb
@@ -137,7 +137,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case34 D Γ t top e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case34 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -149,7 +149,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE]⟩
-  | case37 D Γ t top τt Γt Dt hT hcond ihT =>
+  | case37 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -157,17 +157,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case40 D Γ top =>
+  | case40 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case41 D Γ top e ih =>
+  | case41 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case42 D Γ top e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case42 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -195,17 +195,18 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool),
     declared return type *and leaves the table alone*; this is that statement
     transported to a larger table, which is exactly what preservation across a
     `def` step owes for every row already in force. -/
-theorem infer_mono {F F' : Decls} {Γ : Env} {e : Expr} {top : Bool} {τ : Ty} {Γ' : Env}
+theorem infer_mono {F F' : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : String}
+    {τ : Ty} {Γ' : Env}
     (hs : SubDecls F F') (hdf : defFree e = true)
-    (h : infer F Γ e top = some (τ, Γ', F)) :
-    infer F' Γ e top = some (τ, Γ', F') :=
-  (infer_mono_all F Γ e top F' hs hdf τ Γ' F h).2
+    (h : infer F Γ e top ctx = some (τ, Γ', F)) :
+    infer F' Γ e top ctx = some (τ, Γ', F') :=
+  (infer_mono_all F Γ e top ctx F' hs hdf τ Γ' F h).2
 
 /-- The stability half on its own, which the rules' side conditions want. -/
-theorem infer_decls_stable {F : Decls} {Γ : Env} {e : Expr} {top : Bool} {τ : Ty}
-    {Γ' : Env} {D₀ : Decls} (hdf : defFree e = true)
-    (h : infer F Γ e top = some (τ, Γ', D₀)) : D₀ = F :=
-  (infer_mono_all F Γ e top F (SubDecls.refl F) hdf τ Γ' D₀ h).1
+theorem infer_decls_stable {F : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : String}
+    {τ : Ty} {Γ' : Env} {D₀ : Decls} (hdf : defFree e = true)
+    (h : infer F Γ e top ctx = some (τ, Γ', D₀)) : D₀ = F :=
+  (infer_mono_all F Γ e top ctx F (SubDecls.refl F) hdf τ Γ' D₀ h).1
 
 end Static
 end Proof

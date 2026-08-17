@@ -98,4 +98,16 @@ if ! lake env lean --run scripts/ancestors_probe.lean; then
   exit 1
 fi
 
-echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap"
+# F1b.9's measurement, kept as a check rather than a one-off. A declaration row is
+# keyed on a class *name*, so `DeclsOk`'s obligation quantifies over every class
+# object with that name while a `def` installs on exactly one — `ClassOk`'s
+# uniqueness clause is what closes the gap, and this reports the general fact it
+# restricts. If a prelude change ever makes two class objects share a name, the row
+# stops being witnessable and this says so before a proof does.
+echo "== F1b.9 measurement (no two class objects share a name)"
+if ! lake env lean --run scripts/names_probe.lean; then
+  echo "FAIL: two class objects share a name at the booted heap"
+  exit 1
+fi
+
+echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap; class names are unique"

@@ -87,11 +87,19 @@ def noHookB (h : Heap) : Bool :=
     *not* the cref walk (`Interp/Dispatch.lean:228`), and a certificate that decided
     the wrong lookup would be worse than none. -/
 def classOkB (h : Heap) : Bool :=
+  (className h Boot.objectId == "Object") &&
   Types.reopenableClasses.all fun n =>
     match constOwn h Boot.objectId n with
     | some (.ref k) =>
       match h.classPayload? k with
-      | some cp => !cp.isModule
+      | some cp =>
+        !cp.isModule && className h k == n &&
+          -- The uniqueness clause (F1b.9). Quadratic in the class objects only if
+          -- every name is in the table; `reopenableClasses` has one row, so this is
+          -- one linear scan per row. `scripts/names_probe.lean` reports the general
+          -- fact this restricts.
+          (List.range h.objs.size).all fun j =>
+            !((h.classPayload? j).isSome && className h j == n) || j == k
       | none => false
     | _ => false
 

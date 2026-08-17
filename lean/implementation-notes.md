@@ -5960,3 +5960,79 @@ And the case arities: an `@`-alternative of `cases`/`induction` names **all** th
 fields in declaration order, including those unification discards. The reliable way to get them
 is to read the *goal display* in a failing case, which prints the introduced binders with their
 types; deriving the count from the constructor's signature does not work, as L160 also found.
+
+## L162 — the activation stack learns its definee's *name*
+
+`infer` gains a context parameter beside `top`, the environment stack becomes a stack of
+**(class name, environment)** pairs, and `StackCtx` is the invariant clause that ties the static
+name to the runtime frame's `defmod`. Inert: `--check` byte-identical at 38 / 1,187 / 0.
+
+### Why a name, and why per frame
+
+A declaration row is keyed on a class **name**, because `infer` cannot name an `ObjId`
+(`Types/Decls.lean` has said so since F1a). So the `def` rule has to know which class it is
+installing on, and the only thing that says so is the frame's `defmod` — which `FrameConforms`
+knew was *a class* (L154) and nothing knew the name of.
+
+Carried per-frame rather than for the current one, for the reason `FrameConforms` is: `frameK`
+resumes a **caller's** frame, and the caller's context has to survive the pop. Pairing it into
+the environment stack rather than adding a parallel index is what makes that free — the caller's
+context is the second component of the list, not a fact the constructor has to be handed. The
+alternative (`KontOk` indexed by a bare context, related at `frameK`) needs the pop to know a
+fact the kont cannot see, which is the same shape of failure L160's `SubDecls` slack had.
+
+`FramesOk` and `BottomObj` are **untouched**: `Inv` hands them `Γs.map Prod.snd` and `StackCtx`
+`Γs.map Prod.fst`. That is `BottomObj`'s own docstring taken as advice — a further conjunct in
+`FramesOk`'s `cons` arm would churn nine lemmas for a fact none of them uses.
+
+### The finding that changes the plan: a toplevel `def` cannot carry a row
+
+Pricing this rung meant reading `evalExpr`'s `def` arm (`Interp.lean:225`) rather than reasoning
+from the rules, and it says:
+
+```lean
+visibility := if name == "initialize" then .priv
+              else if m.currentFrame.kind == .toplevel then .priv
+              else m.currentFrame.defVis
+```
+
+`ResolvesUser` requires `.pub`. **So a method defined at toplevel is private and can never
+witness a row** — which is exactly CRuby's behaviour, and the reason `public def m …` exists at
+all (L72). The plan had a cheaper intermediate rung in mind — a toplevel `def` keyed on
+`"Object"`, needing no context stack — and it is not merely weak but *unwitnessable*. The first
+row has to come from a `def` inside a class body, so the context stack is not avoidable.
+
+**That is the ninth-session lesson applied one rung later**: price a rung by asking what the step
+*does*, in order. Reading the interpreter took ten minutes; the intermediate rung would have
+taken a commit to discover it was dead.
+
+`defVis = .pub` therefore rides in `StackCtx` beside the name, because it is a fact about the
+same frame and the same step needs both.
+
+### `ClassOk` gains two clauses, one measured first
+
+* **the constant's object is a class *named* `n`** — without it a class-body frame has a definee
+  the invariant cannot name;
+* **and it is the only one.** `TyClass h (.cls n) j` quantifies over *every* class object named
+  `n`, so a row on `n` obliges all of them while a `def` installs on exactly one.
+
+The second was measured before it was assumed (`scripts/names_probe.lean`, now part of
+`check-proofs.sh`): at the prelude-booted heap **no two of the 87 class objects share a name**,
+so the general uniqueness statement is true and the restriction of it to the table's own names is
+what a row costs. 27 of the 87 are eigenclasses, which is the family L124 fixed and the one most
+likely to regress — the probe reports the count so a regression is loud.
+
+`className h Boot.objectId = "Object"` is folded into `ClassOk` too, rather than becoming a
+seventh conjunct of `Inv`: `BottomObj` says the outermost definee is the Object *id*, `StackCtx`
+needs its *name*, and `classOkB` decides both in one pass.
+
+### Mechanical notes
+
+* **`cases` alternative arities move again**, for the third time in three commits (L160, L161,
+  here). Adding one index to `KontOk` shifts every `@`-alternative by one — except the ones where
+  the new index unifies with a fixed outer variable, where it shifts by zero. There is no rule to
+  memorise: read the failing case's goal display, which prints the introduced binders with their
+  types.
+* **`.unzip.1`/`.unzip.2` do not simp**; `.map Prod.fst`/`.map Prod.snd` do, via `List.map_cons`.
+  The first spelling cost two rounds of "type mismatch on definitionally equal terms" before the
+  second made the goals reduce.

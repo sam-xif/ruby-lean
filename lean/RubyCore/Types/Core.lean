@@ -155,8 +155,8 @@ mutual
     the environment stack, so a subexpression the machine evaluates without
     pushing a frame is read at the *enclosing* mode, and checking it at any other
     would leave `KontOk` unable to state its own hypothesis. -/
-def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
-    Option (Ty × Env × Decls) :=
+def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
+    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
   match e with
   | .int _ => some (.int, Γ, D)
   | .tru => some (.bool, Γ, D)
@@ -190,7 +190,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
   | .sym _ => some (.sym, Γ, D)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ, D))
   | .vasgn .lvar x rhs =>
-    match infer D Γ rhs top with
+    match infer D Γ rhs top ctx with
     | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
     | none => none
   -- Binary send to a builtin, explicit receiver, no block. Every other send
@@ -205,9 +205,9 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
     -- left, and `KontOk.argsK`'s signature premise has to be readable there.
     -- Reading `sigOf` at the earlier table would make the kont carry a fact about
     -- a table nothing in the machine is at.
-    match infer D Γ recv top with
+    match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
-      match infer D₁ Γ₁ arg top with
+      match infer D₁ Γ₁ arg top ctx with
       | some (τa, Γ₂, D₂) =>
         match sigOf D₂ τr mname with
         | some ([τp], τret) => if τa = τp then some (τret, Γ₂, D₂) else none
@@ -225,7 +225,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
   -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
   -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
-    match infer D Γ recv top with
+    match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
       match sigOf D₁ τr mname with
       | some ([], τret) => some (τret, Γ₁, D₁)
@@ -253,7 +253,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
-      match infer D [] body with
+      match infer D [] body false ctx with
       | some _ => some (.sym, Γ, D)
       | none => none
     else none
@@ -286,14 +286,14 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
       -- revisit, because a class body's `def`s are the rows that are supposed to
       -- escape. Recorded as a refusal rather than left implicit so that widening
       -- `def` breaks the build here (constraint 4) instead of silently.
-      match infer D [] body with
+      match infer D [] body false name with
       | some (τ, _, Db) => if Db = D then some (τ, Γ, D) else none
       | none => none
     else none
-  | .seq es => inferSeq D Γ es top
+  | .seq es => inferSeq D Γ es top ctx
   | .if' c t els =>
-    match infer D Γ c top with
-    | some (_, Γ₁, D₁) => inferIf D₁ Γ₁ t els top
+    match infer D Γ c top ctx with
+    | some (_, Γ₁, D₁) => inferIf D₁ Γ₁ t els top ctx
     | none => none
   | .while' c body =>
     -- The loop re-enters the condition with the environment the body leaves, so
@@ -303,10 +303,10 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
     -- body declares a method would put a different table in force on the second
     -- iteration than the one the first was checked at, and there is no single `D`
     -- to index the two loop konts by. Same argument as `Γ`, and the same shape.
-    match infer D Γ c top with
+    match infer D Γ c top ctx with
     | some (_, Γ₁, D₁) =>
       if Γ₁ = Γ ∧ D₁ = D then
-        match infer D Γ body top with
+        match infer D Γ body top ctx with
         | some (_, Γ₂, D₂) => if Γ₂ = Γ ∧ D₂ = D then some (.nilT, Γ, D) else none
         | none => none
       else none
@@ -317,14 +317,14 @@ termination_by sizeOf e
 /-- Statement sequence: thread the environment, take the last type. Mirrors
     `evalExpr`'s three-way split on `.seq` (`Interp.lean:2732`) exactly — in
     particular `[e]` steps straight to `e` with no `seqK` pushed. -/
-def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false) :
-    Option (Ty × Env × Decls) :=
+def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
+    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
   match es with
   | [] => some (.nilT, Γ, D)
-  | [e] => infer D Γ e top
+  | [e] => infer D Γ e top ctx
   | e :: rest =>
-    match infer D Γ e top with
-    | some (_, Γ₁, D₁) => inferSeq D₁ Γ₁ rest top
+    match infer D Γ e top ctx with
+    | some (_, Γ₁, D₁) => inferSeq D₁ Γ₁ rest top ctx
     | none => none
 termination_by sizeOf es
 
@@ -332,16 +332,16 @@ termination_by sizeOf es
     branch-for-branch. No union type in P0, so the two arms must agree on both
     the type and the environment; a missing `else` contributes `nil` and no
     environment change (`applyKont`'s fall-through, `Interp.lean:2096`). -/
-def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool := false) :
-    Option (Ty × Env × Decls) :=
+def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool := false)
+    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
   match els with
   | some e =>
-    match infer D Γ t top, infer D Γ e top with
+    match infer D Γ t top ctx, infer D Γ e top ctx with
     | some (τt, Γt, Dt), some (τe, Γe, De) =>
       if τt = τe ∧ Γt = Γe ∧ Dt = De then some (τt, Γt, Dt) else none
     | _, _ => none
   | none =>
-    match infer D Γ t top with
+    match infer D Γ t top ctx with
     | some (τt, Γt, Dt) =>
       if τt = Ty.nilT ∧ Γt = Γ ∧ Dt = D then some (.nilT, Γ, D) else none
     | none => none
@@ -450,7 +450,7 @@ deriving DecidableEq, Repr, Inhabited
 def check (p : Expr) : Verdict :=
   -- `top := true`: the program body *is* the toplevel position (L155). Inert
   -- until a rule reads the flag, and the verdict diff proves it.
-  match infer (declsOf p) [] p true with
+  match infer (declsOf p) [] p true "Object" with
   | some _ => .accept
   | none => if illTyped (declsOf p) p then .reject else .unknown
 

@@ -227,8 +227,8 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     Requiring `md.body` to leave the table alone is what makes the pop total, and
     it is the same shape as `LoopOk`'s stability condition and for the same
     reason. It costs nothing today, since no rule grows the table at all. -/
-def UserConforms (D : Decls) (md : MethodDef) (d : MethodDecl) : Prop :=
-  d.params = [] ∧ ∃ Γ', infer D [] md.body = some (d.ret, Γ', D)
+def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Prop :=
+  d.params = [] ∧ ∃ Γ', infer D [] md.body false c = some (d.ret, Γ', D)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -292,7 +292,8 @@ def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Pro
     place to leave it. -/
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
-  ∃ md, (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧ UserConforms D md d
+  ∃ md c, (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
+    className h md.owner = c ∧ UserConforms D c md d
 
 /-- A declared method is satisfied by **either** kind of witness. A disjunction
     rather than a generalization because the two produce *different steps*:
@@ -616,11 +617,12 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   -- L157: two arms now, and the *same* argument twice. `UserConforms` mentions no
   -- heap either — it is a fact about `infer` and a body — so both conformance halves
   -- pass through and only the resolution halves transport.
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, hres, hconf⟩
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
-  · exact Or.inr ⟨mdu,
-      fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
+  · exact Or.inr ⟨mdu, cu,
+      fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne,
+      by rw [className_defineMethod]; exact hnm, hconf⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
@@ -644,11 +646,12 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
   intro τr mname decl hdecl
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, hres, hconf⟩
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
-  · exact Or.inr ⟨mdu,
-      fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
+  · exact Or.inr ⟨mdu, cu,
+      fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)),
+      by rw [hg.className_eq]; exact hnm, hconf⟩
 
 /-! ## 4. The bridge from `TableOk`
 
@@ -827,15 +830,36 @@ step in the fragment leaves alone.
     which is a `.jump`, which `CtlOk` refuses — so the flag has to be pinned here
     rather than derived. -/
 def ClassOk (h : Heap) : Prop :=
+  -- **`Object` is named `"Object"`** (F1b.9). `BottomObj` says the outermost
+  -- activation's definee is the `Object` *id*; `StackCtx` needs its *name*, because
+  -- a declaration row is keyed on one. Folded in here rather than made a seventh
+  -- conjunct of `Inv` because it is the same kind of fact as the rows below and
+  -- `classOkB` decides it in the same pass.
+  className h Boot.objectId = "Object" ∧
   ∀ n ∈ reopenableClasses, ∃ k cp,
     constOwn h Boot.objectId n = some (.ref k) ∧
-    h.classPayload? k = some cp ∧ cp.isModule = false
+    h.classPayload? k = some cp ∧ cp.isModule = false ∧
+    -- **The constant's object is a class *named* `n`** (F1b.9). Without this the
+    -- class-body frame has a definee the invariant cannot name, and a declaration
+    -- row — which is keyed on a name, because `infer` cannot name an `ObjId` — has
+    -- nothing to attach to.
+    className h k = n ∧
+    -- **and it is the only one.** `TyClass h (.cls n) j` quantifies over *every*
+    -- class object named `n`, so a row on `n` obliges all of them while a `def`
+    -- installs on exactly one. Measured before it was assumed
+    -- (`scripts/names_probe.lean`): at the prelude-booted heap no two of the 87
+    -- class objects share a name at all, so the general clause is true and this
+    -- restriction of it to the table's own names is what a row costs — the same
+    -- shape, and the same argument, as the row above it.
+    (∀ j, (h.classPayload? j).isSome → className h j = n → j = k)
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
 theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
+  simp only [classOkB, Bool.and_eq_true, beq_iff_eq] at hb
+  refine ⟨hb.1, ?_⟩
   intro n hn
-  have := List.all_eq_true.mp hb n hn
+  have := List.all_eq_true.mp hb.2 n hn
   revert this
   cases hc : constOwn h Boot.objectId n with
   | none => simp
@@ -846,8 +870,19 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
       | none => simp [hc, hp]
       | some cp =>
         intro hm
-        simp only [hc, hp, Bool.not_eq_true'] at hm
-        exact ⟨k, cp, rfl, hp, hm⟩
+        simp only [hc, hp, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+          List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hm
+        obtain ⟨⟨hmod, hnm⟩, huniq⟩ := hm
+        refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_⟩
+        -- The bound comes from the payload, exactly as `StackCtx`'s does
+        -- (`classPayload?_isSome_lt`), so the `List.range` scan really is a scan
+        -- over every id that can satisfy the hypothesis.
+        have hlt : j < h.objs.size := classPayload?_isSome_lt hj
+        rcases huniq j (List.mem_range.mpr hlt) with hno | heq
+        · have : ¬ ((h.classPayload? j).isSome = true ∧ className h j = n) := by
+            simpa using hno
+          exact absurd ⟨hj, hjn⟩ this
+        · exact heq
     | _ => simp [hc]
 
 /-- **`ClassOk` survives an allocating step**, and it needs nothing but
@@ -856,10 +891,15 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
     the same one-line argument `StrClsOk_grow` makes, for the same reason. -/
 theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hc : ClassOk h) :
     ClassOk h' := by
+  refine ⟨by rw [hg.className_eq]; exact hc.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3⟩ := hc n hn
-  exact ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
-    by rw [hg.payload]; exact h2, h3⟩
+  obtain ⟨k, cp, h1, h2, h3, h4, h5⟩ := hc.2 n hn
+  refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
+    by rw [hg.payload]; exact h2, h3, ?_, fun j hj hjn => ?_⟩
+  -- `PlainGrow` pins `classPayload?` at every id and `className` with it, so both
+  -- new clauses transport by the same rewrite the old ones do.
+  · rw [hg.className_eq]; exact h4
+  · exact h5 j (by rw [← hg.payload]; exact hj) (by rw [← hg.className_eq]; exact hjn)
 
 /-- **And a `def`** — including a `def` in the body of the very class being
     reopened, which is the case that makes the clause worth carrying rather than
@@ -867,8 +907,9 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hc : ClassOk h) :
     neither. -/
 theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : ClassOk h) : ClassOk (defineMethod h cls name md) := by
+  refine ⟨by rw [className_defineMethod]; exact hc.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3⟩ := hc n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5⟩ := hc.2 n hn
   refine ⟨k, ?_⟩
   rw [constOwn_defineMethod h cls Boot.objectId name n md]
   -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
@@ -877,14 +918,19 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   cases hk : (defineMethod h cls name md).classPayload? k with
   | none => rw [hk, h2] at hsh; exact absurd hsh (by simp)
   | some cp' =>
-    refine ⟨cp', h1, rfl, ?_⟩
+    refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_⟩
     -- `isModule` is not in `clsShape`, but it *is* in `clsName_defineMethod` — L124
     -- put it there because the anonymous-class fallback renders by it. Reused rather
     -- than reproved.
-    have hnm := clsName_defineMethod h cls k name md
-    rw [hk, h2] at hnm
-    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm
-    rw [hnm.2]; exact h3
+    · have hnm := clsName_defineMethod h cls k name md
+      rw [hk, h2] at hnm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm
+      rw [hnm.2]; exact h3
+    -- The two F1b.9 clauses need `className` unmoved by a method-table write, which
+    -- is `clsName_defineMethod` at *every* id rather than at the definee only.
+    · rw [className_defineMethod]; exact h4
+    · exact h5 j (by rw [← classPayload?_isSome_defineMethod]; exact hj)
+        (by rw [← className_defineMethod]; exact hjn)
 
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is

@@ -113,7 +113,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
     -- `Inv` because it changes along the run; this is where it is pinned, and the
     -- `DeclsOk` obligation is the one F1a already discharged.
-    declsOf p, [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_⟩
+    declsOf p, "Object", [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
     -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
@@ -121,8 +121,22 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- that id — one `decide` at a literal heap.
     simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
     decide
+  · -- **The toplevel activation's context is `Object`** (F1b.9), which is
+    -- `BottomObj` again, one level more informative: the bottom frame's definee is
+    -- the `Object` id, and the boot heap names that id `"Object"`. Both are
+    -- computations on a literal heap. `defVis` is the frame literal's default —
+    -- and note that a *toplevel* `def` is nevertheless private
+    -- (`Interp.lean:225`), which is why no row can come from one.
+    show StackCtx (Machine.init p).heap (Machine.init p).frames
+      (Machine.init p).stack ("Object" :: [])
+    refine ⟨?_, ?_, ?_, trivial⟩
+    · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
+      decide
+    · exact (show ClassOk (Machine.init p).heap from
+        classOkB_sound (by decide : classOkB Boot.initHeap = true)).1
+    · rfl
   · unfold check at h
-    show CtlOk (declsOf p) [] [] (Machine.init p)
+    show CtlOk (declsOf p) "Object" [] [] (Machine.init p)
     unfold CtlOk
     split at h
     · rename_i r hr
