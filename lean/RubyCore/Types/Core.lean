@@ -114,8 +114,23 @@ end
 
 mutual
 
-/-- `infer Γ e = some (τ, Γ')` — `e` has type `τ` and leaves the environment
-    `Γ'`. `none` is `unknown`: outside the P0 fragment, or ill-typed.
+/-- `infer D Γ e = some (τ, Γ', D')` — `e` has type `τ`, leaves the environment
+    `Γ'` and leaves the declarations `D'` in force. `none` is `unknown`: outside
+    the P0 fragment, or ill-typed.
+
+    **The declaration table is threaded exactly as the environment is** (F1b.8),
+    and the reason is the same one the header gives for `Γ`: Ruby methods are
+    *installed*, not declared, so the set of signatures a call site may rely on
+    is a function of where in the program the call site is. `declsOf` has been a
+    constant function since F1a with a program-supplied row named as later work
+    in two documents; it is not later work but a soundness condition, because
+    `initiation` obliges `DeclsOk` at the **boot** heap and a row synthesized
+    from the program's own `class C; def foo; …` cannot resolve there. Threading
+    is what lets the row come into force *at the step that installs the method*.
+
+    Today no rule grows the table — every arm returns the `D` it was handed — so
+    this commit changes no verdict, which is the same argument L137 makes for
+    heap-indexing a judgement whose arms do not yet read the heap.
 
     **`top` is the toplevel-position flag** (L155), and it exists for exactly one
     future rule: `class C … end` reopens a constant looked up in the *current
@@ -140,12 +155,13 @@ mutual
     the environment stack, so a subexpression the machine evaluates without
     pushing a frame is read at the *enclosing* mode, and checking it at any other
     would leave `KontOk` unable to state its own hypothesis. -/
-def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty × Env) :=
+def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) :
+    Option (Ty × Env × Decls) :=
   match e with
-  | .int _ => some (.int, Γ)
-  | .tru => some (.bool, Γ)
-  | .fls => some (.bool, Γ)
-  | .nil => some (.nilT, Γ)
+  | .int _ => some (.int, Γ, D)
+  | .tru => some (.bool, Γ, D)
+  | .fls => some (.bool, Γ, D)
+  | .nil => some (.nilT, Γ, D)
   -- **The first producer of a class-typed value** (F1b.3, L151). A string
   -- literal allocates a fresh plain `String` (`Builtins.allocStr`), so this is
   -- the one construct that inhabits `Ty.cls` in a *single* step, with no
@@ -158,7 +174,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
   -- the step really allocates is `Inv`'s job, and the clause that does it is
   -- `StrClsOk` — *the boot `String` id is a class named `"String"`* — which is
   -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound (L149).
-  | .str _ => some (.cls "String", Γ)
+  | .str _ => some (.cls "String", Γ, D)
   -- **A symbol literal** (L159). `Ty.sym` has existed since P0 — a `def`
   -- evaluates to one — and this is the rule for *writing* one, which nothing had
   -- needed until the slice was measured: `homebrew/fragment-gap.py` ranks `sym`
@@ -171,25 +187,32 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
   -- Not added to `defTy`, following L151's precedent for `.str`: widening the
   -- *refutation* pass is a separate decision with a separate guard
   -- (`reject ⇒ srb rejects` is a difftest direction, not a theorem).
-  | .sym _ => some (.sym, Γ)
-  | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ))
+  | .sym _ => some (.sym, Γ, D)
+  | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ, D))
   | .vasgn .lvar x rhs =>
     match infer D Γ rhs top with
-    | some (τ, Γ₁) => some (τ, envSet Γ₁ x τ)
+    | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
     | none => none
   -- Binary send to a builtin, explicit receiver, no block. Every other send
   -- shape — implicit self, wrong arity, a block, `vcall` — is `unknown`, which
   -- is also what keeps `.self'` out of receiver position (see `KontOk.recvK`:
   -- `evalExpr` picks the `.selfRecv` site *syntactically* for a literal `self`).
   | .send (some recv) mname [arg] none =>
+    -- **The signature is read after the argument, not before** (F1b.8). The three
+    -- tests are independent — each failure is `none` — so the order is free, and
+    -- what fixes it is the *continuation*: an `argsK` exists once both receiver and
+    -- argument have run, so the table it is indexed by is the one the argument
+    -- left, and `KontOk.argsK`'s signature premise has to be readable there.
+    -- Reading `sigOf` at the earlier table would make the kont carry a fact about
+    -- a table nothing in the machine is at.
     match infer D Γ recv top with
-    | some (τr, Γ₁) =>
-      match sigOf D τr mname with
-      | some ([τp], τret) =>
-        match infer D Γ₁ arg top with
-        | some (τa, Γ₂) => if τa = τp then some (τret, Γ₂) else none
-        | none => none
-      | _ => none
+    | some (τr, Γ₁, D₁) =>
+      match infer D₁ Γ₁ arg top with
+      | some (τa, Γ₂, D₂) =>
+        match sigOf D₂ τr mname with
+        | some ([τp], τret) => if τa = τp then some (τret, Γ₂, D₂) else none
+        | _ => none
+      | none => none
     | none => none
   -- **A zero-argument send** (L152). Split from the unary rule rather than folded
   -- into it, because the two are *different machine shapes*: with an argument the
@@ -203,9 +226,9 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
   -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
     match infer D Γ recv top with
-    | some (τr, Γ₁) =>
-      match sigOf D τr mname with
-      | some ([], τret) => some (τret, Γ₁)
+    | some (τr, Γ₁, D₁) =>
+      match sigOf D₁ τr mname with
+      | some ([], τret) => some (τret, Γ₁, D₁)
       | _ => none
     | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
@@ -231,7 +254,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
       match infer D [] body with
-      | some _ => some (.sym, Γ)
+      | some _ => some (.sym, Γ, D)
       | none => none
     else none
   -- **Reopening a class** (F1b.6, L156). Three restrictions, and each one names a
@@ -254,23 +277,37 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
   -- caller's, untouched.
   | .class' name sup body =>
     if top ∧ sup.isNone ∧ reopenableClasses.contains name then
+      -- **The body must leave the table as it found it** (F1b.8), which is the
+      -- same stability condition `LoopOk` and `UserConforms` carry and is here
+      -- for the same reason: `KontOk.frameK` resumes the caller at a table fixed
+      -- when the frame was pushed, so a class body whose `def`s changed it would
+      -- pop into a continuation typed against the wrong one. Inert today, since
+      -- no rule grows the table — and it is precisely what the *next* rung has to
+      -- revisit, because a class body's `def`s are the rows that are supposed to
+      -- escape. Recorded as a refusal rather than left implicit so that widening
+      -- `def` breaks the build here (constraint 4) instead of silently.
       match infer D [] body with
-      | some (τ, _) => some (τ, Γ)
+      | some (τ, _, Db) => if Db = D then some (τ, Γ, D) else none
       | none => none
     else none
   | .seq es => inferSeq D Γ es top
   | .if' c t els =>
     match infer D Γ c top with
-    | some (_, Γ₁) => inferIf D Γ₁ t els top
+    | some (_, Γ₁, D₁) => inferIf D₁ Γ₁ t els top
     | none => none
   | .while' c body =>
     -- The loop re-enters the condition with the environment the body leaves, so
     -- both must be *stable* at `Γ`. This is the P0 stand-in for a fixpoint.
+    --
+    -- **Stability is now about the declaration table too** (F1b.8): a loop whose
+    -- body declares a method would put a different table in force on the second
+    -- iteration than the one the first was checked at, and there is no single `D`
+    -- to index the two loop konts by. Same argument as `Γ`, and the same shape.
     match infer D Γ c top with
-    | some (_, Γ₁) =>
-      if Γ₁ = Γ then
+    | some (_, Γ₁, D₁) =>
+      if Γ₁ = Γ ∧ D₁ = D then
         match infer D Γ body top with
-        | some (_, Γ₂) => if Γ₂ = Γ then some (.nilT, Γ) else none
+        | some (_, Γ₂, D₂) => if Γ₂ = Γ ∧ D₂ = D then some (.nilT, Γ, D) else none
         | none => none
       else none
     | none => none
@@ -281,13 +318,13 @@ termination_by sizeOf e
     `evalExpr`'s three-way split on `.seq` (`Interp.lean:2732`) exactly — in
     particular `[e]` steps straight to `e` with no `seqK` pushed. -/
 def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false) :
-    Option (Ty × Env) :=
+    Option (Ty × Env × Decls) :=
   match es with
-  | [] => some (.nilT, Γ)
+  | [] => some (.nilT, Γ, D)
   | [e] => infer D Γ e top
   | e :: rest =>
     match infer D Γ e top with
-    | some (_, Γ₁) => inferSeq D Γ₁ rest top
+    | some (_, Γ₁, D₁) => inferSeq D₁ Γ₁ rest top
     | none => none
 termination_by sizeOf es
 
@@ -296,16 +333,17 @@ termination_by sizeOf es
     the type and the environment; a missing `else` contributes `nil` and no
     environment change (`applyKont`'s fall-through, `Interp.lean:2096`). -/
 def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool := false) :
-    Option (Ty × Env) :=
+    Option (Ty × Env × Decls) :=
   match els with
   | some e =>
     match infer D Γ t top, infer D Γ e top with
-    | some (τt, Γt), some (τe, Γe) =>
-      if τt = τe ∧ Γt = Γe then some (τt, Γt) else none
+    | some (τt, Γt, Dt), some (τe, Γe, De) =>
+      if τt = τe ∧ Γt = Γe ∧ Dt = De then some (τt, Γt, Dt) else none
     | _, _ => none
   | none =>
     match infer D Γ t top with
-    | some (τt, Γt) => if τt = Ty.nilT ∧ Γt = Γ then some (.nilT, Γ) else none
+    | some (τt, Γt, Dt) =>
+      if τt = Ty.nilT ∧ Γt = Γ ∧ Dt = D then some (.nilT, Γ, D) else none
     | none => none
 termination_by sizeOf t + sizeOf els
 

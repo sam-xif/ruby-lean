@@ -218,9 +218,17 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     appears inside the statement of its own soundness theorem. That is sound (the
     recursion is on the *heap*, not on the proof), and it is the reason a user
     witness cannot be a lemma about `startArgs` the way `ConformsAt` is: the fact
-    it asserts is not about one step. -/
+    it asserts is not about one step.
+
+    **The body's output table must be the one it was checked at** (F1b.8). A
+    method whose body itself declares a method would leave rows in force that the
+    caller's continuation was not typed against, and `frameK` — which resumes the
+    caller at a table fixed when the frame was pushed — has no way to carry them.
+    Requiring `md.body` to leave the table alone is what makes the pop total, and
+    it is the same shape as `LoopOk`'s stability condition and for the same
+    reason. It costs nothing today, since no rule grows the table at all. -/
 def UserConforms (D : Decls) (md : MethodDef) (d : MethodDecl) : Prop :=
-  d.params = [] ∧ ∃ Γ', infer D [] md.body = some (d.ret, Γ')
+  d.params = [] ∧ ∃ Γ', infer D [] md.body = some (d.ret, Γ', D)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -273,7 +281,15 @@ def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Pro
   ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧ ConformsAt τr mname bid d
 
 /-- **The user witness** (L157): resolution to a `MethodDef` with `builtin = none`,
-    with conformance discharged by the *checker* rather than by running anything. -/
+    with conformance discharged by the *checker* rather than by running anything.
+
+    The table is the invariant's own. A witness that carried a *smaller* one,
+    related by `SubDecls`, is what the arm will need once a `def` grows the table
+    — a body is checked where it is written and called later — and it is
+    deliberately not here yet: nothing in this commit grows the table, so the
+    clause would be a speculative one with no proof to justify its shape.
+    `SubDecls` is defined (`Types/Decls.lean`) and unused, which is the honest
+    place to leave it. -/
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
   ∃ md, (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧ UserConforms D md d

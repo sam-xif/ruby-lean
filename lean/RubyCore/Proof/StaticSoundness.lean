@@ -47,8 +47,8 @@ set_option maxRecDepth 100000
 /-! ## 4. The three obligations, and the theorem -/
 
 /-- Preservation. -/
-theorem consecution (D : Decls) (m m' : Machine) (h : Inv D m) (hs : SmallStep m m') :
-    Inv D m' := by
+theorem consecution (m m' : Machine) (h : Inv m) (hs : SmallStep m m') :
+    Inv m' := by
   have hok := step_ok h
   unfold SmallStep at hs
   rw [hs] at hok
@@ -57,7 +57,7 @@ theorem consecution (D : Decls) (m m' : Machine) (h : Inv D m) (hs : SmallStep m
 /-- Progress: a machine satisfying `Inv` is never one step from a type error.
     Every `StepResult` other than `.next`/`.done` is `False` under `StepOk`, so
     `.uncaught` in particular is unreachable. -/
-theorem safety (D : Decls) (m : Machine) (h : Inv D m) : ¬ aboutToTypeStick m := by
+theorem safety (m : Machine) (h : Inv m) : ¬ aboutToTypeStick m := by
   intro hbad
   have hok := step_ok h
   unfold aboutToTypeStick typeStuck at hbad
@@ -81,10 +81,10 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
 /-- Initiation, for the machine `Machine.init` builds. -/
-theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine.init p) := by
+theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
   -- `DeclsOk` is what the invariant carries now (F1a), and `tableOk_declsOk` is
   -- how the boot heap's three concrete `rfl`-proved resolutions become it.
-  refine ⟨tableOk_declsOk tableOk_initHeap,
+  refine ⟨
     -- L153: the clause is now a bounded `∀` over class objects, so it is `noHookB`
     -- at a literal heap rather than one `rfl` — the same shape `Saturated` has.
     (show NoHook (Machine.init p).heap from
@@ -110,7 +110,10 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     -- one frame and it is the toplevel one, so this is a computation on a literal.
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),
-    [], [], ?_, ?_⟩
+    -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
+    -- `Inv` because it changes along the run; this is where it is pinned, and the
+    -- `DeclsOk` obligation is the one F1a already discharged.
+    declsOf p, [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
     -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
@@ -123,17 +126,17 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (declsOf p) (Machine
     unfold CtlOk
     split at h
     · rename_i r hr
-      obtain ⟨τ, Γ'⟩ := r
-      exact ⟨τ, Γ', hr, KontOk.nil⟩
+      obtain ⟨τ, Γ', D'⟩ := r
+      exact ⟨τ, Γ', D', hr, KontOk.nil⟩
     · exact absurd h (by split <;> simp)
 
 /-- **Static soundness, from any machine satisfying the invariant.** Stated this
     way so that P1's prelude-booted start (`Prelude.initWithPrelude`, the
     starting configuration `SorbetSafety.lean:100` insists on) is an instance
     rather than a restatement. -/
-theorem sound_from {D : Decls} {m₀ : Machine} (h : Inv D m₀) :
+theorem sound_from {m₀ : Machine} (h : Inv m₀) :
     ∀ r, ReachableResult m₀ r → ¬ typeStuck r :=
-  invariant_sound_from (Inv D) h (consecution D) (safety D)
+  invariant_sound_from Inv h consecution safety
 
 /-- **The POC theorem.** `check` accepts ⇒ no reachable outcome is a type
     error. Unconditional: no rely condition, no assumed hypothesis. -/

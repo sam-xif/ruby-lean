@@ -5775,3 +5775,114 @@ disagreement is information.
 with: `SUPPORTED` is a hand-maintained copy of `infer`'s match arms, so a new rule means a new entry
 *and* a new `--self-test` case. The first run after this rule landed still reported `sym` as MISSING,
 which is exactly the drift the self-test exists to make loud rather than silent.
+
+## L160 — the declaration table becomes a *threaded* judgement
+
+`infer` returns `(Ty × Env × Decls)` where it returned `(Ty × Env)`, `KontOk` carries the
+declarations as an **index** rather than a parameter, and `Inv` quantifies them existentially
+instead of taking them as an argument. **No rule grows the table**, so `--check` over the 1,227
+cached bootstraptest ASTs is byte-identical — 38 / 1,187 / 0, verified by diff and not by
+comparing totals.
+
+### Why this is not a refactor
+
+`homebrew/PLAN.md`'s thirteenth-session entry recorded the finding: `declsOf` has described
+itself as *"a function of the program, and constant today"* since F1a, with a program-supplied
+row named as later work in two documents, and it **cannot** be that. `initiation` obliges
+`DeclsOk` at the *boot* heap, and a row synthesized from the program's own `class C; def foo`
+does not resolve there — the method does not exist until the program's own `def` step installs
+it. So the row has to come into force **at that step**, which means the set of signatures a
+call site may rely on is a function of *where in the program the call site is*.
+
+That is exactly what `Γ` already is, and for exactly the same reason: Ruby locals are assigned
+rather than declared, Ruby methods are installed rather than declared. Threading `D` beside `Γ`
+is the repair, and the symmetry is the argument for it.
+
+Three alternatives were priced and all three fail for the same reason, which is worth recording
+because each looks cheaper:
+
+1. **Scan the program up front** and hand `check` the full table. `initiation` then owes
+   `EntryOk` for `String#value` at the boot heap. Unsound, and it is the original finding.
+2. **Weaken `DeclsOk` to the rows that currently resolve.** The dispatch case needs `EntryOk`
+   *at the call*, and can only get it from a clause the invariant carries; "currently resolves"
+   is a fact about the machine, so the invariant has to be indexed by which rows are
+   established — which is the threading, arrived at from the other side.
+3. **Keep one fixed table and make the rows conditional.** Same thing again: the condition is
+   the run's position.
+
+### Four side conditions the shape forced, each a refusal rather than a convention
+
+Every one of these is inert today — nothing grows the table — and every one is where the *next*
+rung will break the build, which is the point (`HANDOFF.md` constraint 4).
+
+* **`while`'s stability now covers the table.** `Γ₁ = Γ ∧ D₁ = D`, because a loop whose body
+  declares a method puts a different table in force on the second iteration than the one the
+  first was checked at, and there is no single index for the two loop konts. Same argument as
+  `Γ`, same shape.
+* **`if`'s join covers the table**, for the same reason `ifK` has one continuation.
+* **A class body must leave the table as it found it.** This is the restrictive one, and it is
+  restrictive on purpose: `KontOk.frameK` carries **one** table, so the frame it pushes and the
+  continuation it pops into read the same declarations. The honest shape is two — a class
+  body's `def`s are precisely the rows meant to escape — but the pop then owes `DeclsOk` at the
+  caller's table from `DeclsOk` at the callee's, and **`DeclsOk` is neither monotone nor
+  antitone in the table**: it is antitone in the *domain* (fewer rows, fewer obligations) and
+  monotone in nothing, because `UserConforms` reads the table through `infer`, which
+  `declaresName` makes non-monotone. That is the next rung's central problem and it is now
+  stated rather than latent.
+* **`UserConforms` requires the same of a method body**, and there the restriction is one we
+  want anyway.
+
+### The one place the order of `infer`'s own tests had to change
+
+The unary send now reads `sigOf` **after** inferring the argument, not before. The three tests
+are independent and each failure is `none`, so the verdict cannot move; what fixes the order is
+the *continuation*. An `argsK` exists once both receiver and argument have run, so the table it
+is indexed by is the one the argument left — and `KontOk.argsK`'s signature premise has to be
+readable at that table. Reading `sigOf` at the earlier one makes the kont carry a fact about a
+table no machine state is at, and the `recvK` consecution case cannot close.
+
+**This is the generalizable observation of the commit**: with the table threaded, *where a rule
+reads the table* is no longer free, because each continuation constructor is pinned to the
+table in force at the moment that continuation exists. Two rules read a signature (`recvK0` at
+the receiver's output table, `recvK`/`argsK` at the argument's) and the difference is not
+stylistic.
+
+### `SubDecls`, defined and deliberately unused
+
+`Types/Decls.lean` gains `SubDecls F F' := ∀ τ m d, declFor F τ m = some d → declFor F' τ m =
+some d` — stated over `declFor` rather than over the row lists, because the structural version
+is false for the shape that matters (`declFor` on a two-class ground type demands *agreement*,
+so a table can gain a row and support strictly fewer signatures). It is what the user-method
+arm will want: a body is checked where it is written and called later, and re-checking it at
+the bigger table is not available since `infer` is not monotone in the table.
+
+It is **not** wired into `Inv` or `UserEntryOk`, and that is a decision rather than an
+omission. The first draft of this commit put the slack in both, and the `def` consecution case
+immediately failed for a reason the slack itself created: `DeclsOk_defineMethod` needs the name
+undeclared in the *invariant's* table while the rule checks the *control's*, and `D₀ ⊆ F` gives
+the implication the wrong way round. L145's lesson, a fourth time — **a clause that looks
+necessary is a measurement, not a judgement.** Write the proof, keep the clauses it used.
+
+### What `cases` does with an added index, since it cost half an hour
+
+`KontOk` went from `inductive KontOk (D : Decls) : Heap → …` to `inductive KontOk : Decls →
+Heap → …`, and every `cases hk with | @ctor …` alternative in `step_ok` changed arity — not by
+one, and not uniformly. An `@`-alternative names **all** the constructor's fields in
+declaration order, including those unification will discard; adding an index shifts every
+name. The observable symptom is a binder silently taking the wrong field (`es : List Expr`
+becoming `es : Decls`) and an error three lines later about something unrelated. Reading the
+goal display in the failing case — which prints the introduced binders *with their types* —
+is what settles it in one look; guessing the arity from the constructor's signature does not.
+
+`KontOk.heap_congr` needed the same kind of repair for the same kind of reason: with the
+declarations an index, `induction` reverts the `TypeAgree` hypothesis into the motive, so the
+statement is now proved in the form that takes the agreement *after* the derivation
+(`heap_congr'`) with the old signature recovered as a one-line wrapper.
+
+### Checks
+
+`lake build` clean; `scripts/check-proofs.sh` green and axiom-clean — `check_sound`,
+`check_sound_withPrelude` and `check_sound_withPrelude'` all still
+`[propext, Classical.choice, Quot.sound]`; `heapOkB`/`saturatedB` true at the booted heap;
+`fragment-gap.py --self-test` all 19 cases; and the inertness diff run rather than argued,
+since `Types/Core.lean` **is** linked into `rubycore`.

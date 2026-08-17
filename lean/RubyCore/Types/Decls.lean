@@ -127,6 +127,41 @@ def declFor (D : Decls) (τ : Ty) (mname : String) : Option MethodDecl :=
 def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
   (declFor D τ mname).map fun d => (d.params, d.ret)
 
+/-- **One table is carried by another**: every signature the first supports, the
+    second supports identically.
+
+    Stated over `declFor` rather than over the row lists because that is the only
+    thing any rule reads, and because the structural version would be false for
+    the shape that matters: `declFor` on a two-class ground type demands
+    *agreement*, so a table can gain a row (`TrueClass#foo`) and support strictly
+    fewer signatures than before unless the agreement survives. Requiring the
+    conclusion directly makes the relation say what its users need and leaves the
+    proof obligation at the step that grows the table, which is where the
+    information is.
+
+    This is the slack the F1b.8 threading needs. `infer` threads the table in
+    force, and a method body checked at one point in the program is *called* at a
+    later one, by which time the table has grown; carrying the smaller table in
+    the witness and relating the two by `SubDecls` is what avoids needing `infer`
+    to be monotone in the table — which it is **not** (`declaresName` is
+    name-global, so a new row refuses a `def` of that name). -/
+def SubDecls (F F' : Decls) : Prop :=
+  ∀ τ mname d, declFor F τ mname = some d → declFor F' τ mname = some d
+
+theorem SubDecls.refl (F : Decls) : SubDecls F F := fun _ _ _ h => h
+
+theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
+    SubDecls F F'' := fun τ m d h => h₂ τ m d (h₁ τ m d h)
+
+/-- The `sigOf` form, which is what the type rules read. -/
+theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}
+    {ps : List Ty} {τret : Ty} (h : sigOf F τ mname = some (ps, τret)) :
+    sigOf F' τ mname = some (ps, τret) := by
+  unfold sigOf at h ⊢
+  cases hd : declFor F τ mname with
+  | none => rw [hd] at h; exact absurd h (by simp)
+  | some d => rw [hs τ mname d hd]; rw [hd] at h; exact h
+
 /-! ## The base table
 
 `static-soundness-poc.md` §5's builtin signatures, as declarations. Every entry

@@ -103,14 +103,18 @@ carries phase 1's globals into phase 2 and `Inv` does not mention them.
 
 theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     (hchk : check p = .accept) (hh : HeapOk h) :
-    Inv (declsOf p) { Machine.initOn h p with globals := g } := by
+    Inv { Machine.initOn h p with globals := g } := by
   -- F1a: the invariant's heap clause is `DeclsOk`, and `HeapOk`'s `TableOk` half
   -- is its concrete witness for `baseDecls`. That is the whole reason F0 needed no
   -- restatement — `heapOkB` still decides exactly what it decided before.
   -- L155's sixth conjunct is heap-independent, so it comes out the same here as at
   -- `Machine.init`: `initOn` builds one frame and it is the toplevel one.
-  refine ⟨tableOk_declsOk hh.1, hh.2.1, hh.2.2.1, hh.2.2.2.1, hh.2.2.2.2,
-    (by simp [Machine.initOn, BottomObj]), [], [], ?_, ?_⟩
+  refine ⟨hh.2.1, hh.2.2.1, hh.2.2.2.1, hh.2.2.2.2,
+    (by simp [Machine.initOn, BottomObj]),
+    -- F1b.8: the table is existential in `Inv`, and `declsOf p` is what pins it at
+    -- the start of the run — the same instantiation `initiation` makes, at a heap
+    -- the certificate rather than the kernel vouches for.
+    declsOf p, [], [], tableOk_declsOk hh.1, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
@@ -122,8 +126,8 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     unfold CtlOk
     split at hchk
     · rename_i r hr
-      obtain ⟨τ, Γ'⟩ := r
-      exact ⟨τ, Γ', hr, KontOk.nil⟩
+      obtain ⟨τ, Γ', D'⟩ := r
+      exact ⟨τ, Γ', D', hr, KontOk.nil⟩
     · exact absurd hchk (by split <;> simp)
 
 /-! ## 2. The certificate route
@@ -165,7 +169,7 @@ theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
     particular for the prelude-booted one. -/
 theorem inv_of_cert {p : Expr} {h : Heap} {g : List (String × Value)}
     (hchk : check p = .accept) (hcert : heapOkB h = true) :
-    Inv (declsOf p) { Machine.initOn h p with globals := g } :=
+    Inv { Machine.initOn h p with globals := g } :=
   initiation_on hchk (heapOkB_sound hcert)
 
 /-- **F0's headline, certificate form.** Static soundness for a program running
