@@ -114,7 +114,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- F1b.8: the table is existential in `Inv`, and `declsOf p` is what pins it at
     -- the start of the run — the same instantiation `initiation` makes, at a heap
     -- the certificate rather than the kernel vouches for.
-    declsOf p, "Object", [], [], tableOk_declsOk hh.1, ?_, ?_, ?_⟩
+    declsOf p, { cls := "Object" }, [], [], tableOk_declsOk hh.1, ?_, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
@@ -125,10 +125,11 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- `NoHook`'s first conjunct, as it is for `FrameConforms` above; the *name* half
     -- is `ClassOk`'s new clause, which is why that clause is folded into `ClassOk`
     -- rather than being a seventh conjunct — the certificate already decides it.
-    show StackCtx _ _ _ ("Object" :: [])
-    exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz, trivial⟩
+    show StackCtx _ _ _ ({ cls := "Object" } :: [])
+    exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
+      fun sc hsc => absurd hsc (by simp), trivial⟩
   · unfold check at hchk
-    show CtlOk (declsOf p) "Object" [] [] _
+    show CtlOk (declsOf p) { cls := "Object" } [] [] _
     unfold CtlOk
     split at hchk
     · rename_i r hr

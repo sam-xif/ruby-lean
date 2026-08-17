@@ -61,4 +61,27 @@ def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
   | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ
 
+/-! ## The static context of an activation
+
+Two facts about the frame a rule is being checked in, bundled because they change
+at exactly the same place — `KontOk.frameK`, where the environment changes too —
+and because carrying them as separate parallel lists means two of every lemma.
+
+* **`cls`** — the definee's class **name**: where a `def` here installs, and
+  therefore the key of the row it declares (F1b.9/F1b.10). `infer` cannot name an
+  `ObjId`, so the name is what a declaration hangs off.
+* **`selfCls`** — `some c` when `self` in this activation is an *instance* of `c`,
+  which is true in a **method** body and false in a class body, where `self` is
+  the class object and has no type at all (`plainRecv` excludes classes). It is an
+  `Option` rather than a `Bool` beside `cls` because the two names are not the
+  same thing in general — a method inherited into a subclass has `cls` at the
+  owner — even though today they coincide.
+
+`top` stays a separate flag, read off `Γs.isEmpty` rather than stored, because it
+is a property of the *stack* and not of a frame. -/
+structure FrameCtx where
+  cls : String
+  selfCls : Option String := none
+deriving DecidableEq, Repr, Inhabited
+
 end RubyCore.Types

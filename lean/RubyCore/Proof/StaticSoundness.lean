@@ -113,7 +113,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
     -- `Inv` because it changes along the run; this is where it is pinned, and the
     -- `DeclsOk` obligation is the one F1a already discharged.
-    declsOf p, "Object", [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_, ?_⟩
+    declsOf p, { cls := "Object" }, [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
     -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
@@ -128,8 +128,8 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- and note that a *toplevel* `def` is nevertheless private
     -- (`Interp.lean:225`), which is why no row can come from one.
     show StackCtx (Machine.init p).heap (Machine.init p).frames
-      (Machine.init p).stack ("Object" :: [])
-    refine ⟨?_, ?_, ?_, trivial⟩
+      (Machine.init p).stack ({ cls := "Object" } :: [])
+    refine ⟨?_, ?_, ?_, ?_, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact (show ClassOk (Machine.init p).heap from
@@ -137,8 +137,11 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- Vacuous at the outermost frame, and that is the point: a toplevel `def`
     -- installs a **private** method, so no row can come from one (F1b.9/F1b.10).
     · exact fun hz => absurd rfl hz
+    -- The toplevel activation claims no self type: `self` is `main`, and nothing in
+    -- the fragment needs it (F1b.11).
+    · exact fun sc hsc => absurd hsc (by simp)
   · unfold check at h
-    show CtlOk (declsOf p) "Object" [] [] (Machine.init p)
+    show CtlOk (declsOf p) { cls := "Object" } [] [] (Machine.init p)
     unfold CtlOk
     split at h
     · rename_i r hr
@@ -170,10 +173,10 @@ def egIf : Expr :=
          .if' .tru (.var .lvar "x") (some (.int 0)) ]
 
 example : check egIf = .accept := by
-  simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf]
+  simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf, isSelf]
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf])
+  check_sound (by simp [check, egIf, infer, inferSeq, inferIf, envSet, envGet?, declsOf, isSelf])
 
 /-- **A reopened class carrying a user-defined method** (L156):
 
@@ -195,13 +198,13 @@ def egClassBody : Expr :=
 
 example : check egClassBody = .accept := by
   simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses,
-    defFree, defFreeAll, addRow, declsFor]
+    defFree, defFreeAll, addRow, declsFor, isSelf]
 
 theorem egClassBody_safe :
     ∀ r, ReachableResult (Machine.init egClassBody) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egClassBody, infer, declsOf, declaresName, baseDecls, reopenableClasses,
-      defFree, defFreeAll, addRow, declsFor])
+      defFree, defFreeAll, addRow, declsFor, isSelf])
 
 /-- **The first accepted program with a user-method call** (F1b.10):
 
@@ -233,14 +236,68 @@ def egUserCall : Expr :=
 example : check egUserCall = .accept := by
   simp [check, egUserCall, infer, inferSeq, declsOf, declaresName, baseDecls,
     reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
-    declOf?, tyClassNames, groundClassNames]
+    declOf?, tyClassNames, groundClassNames, isSelf]
 
 theorem egUserCall_safe :
     ∀ r, ReachableResult (Machine.init egUserCall) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egUserCall, infer, inferSeq, declsOf, declaresName, baseDecls,
       reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
-      declOf?, tyClassNames, groundClassNames])
+      declOf?, tyClassNames, groundClassNames, isSelf])
+
+/-- **A method calling another method of the same class, by implicit self**
+    (F1b.11):
+
+        class String
+          def value
+            1
+          end
+          def get
+            value          # ⇒ Integer
+          end
+          "x".get
+        end
+
+    This is the shape of **fourteen of the slice's ninety-two method bodies** —
+    `def hash = value.hash`, `def affected? = state == :affected`, `def to_s =
+    to_str` — every one of them a receiverless call to a user-defined accessor,
+    which is exactly what a program-supplied row is. It is the reason `vcall` and
+    not `const` was the rung after the rows, against a node count of 92 to 868.
+
+    Read what the checker had to know to accept it: that `self` inside `get` is a
+    `String` (the `StackCtx` clause), that `String#value` is declared (the row
+    L163's `def` step added), and that the row's return type is what `value`
+    answers (`UserConforms`, the checker's own verdict on `value`'s body, carried
+    inside the invariant). -/
+def egVcall : Expr :=
+  .class' "String" none
+    (.seq [ .def' "value" [] (.int 1),
+            .def' "get" [] (.vcall "value"),
+            .send (some (.str "x")) "get" [] none ])
+
+theorem egVcall_safe :
+    ∀ r, ReachableResult (Machine.init egVcall) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egVcall, infer, inferSeq, declsOf, declaresName, baseDecls,
+      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      declOf?, tyClassNames, groundClassNames, isSelf])
+
+/-- **`self` in a method body**, which the same clause pays for and which is
+    `unknown` in a class body — where `self` is the class object, and `plainRecv`
+    gives a class no type at all. -/
+def egSelf : Expr :=
+  .class' "String" none (.def' "me" [] .self')
+
+theorem egSelf_safe :
+    ∀ r, ReachableResult (Machine.init egSelf) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egSelf, infer, declsOf, declaresName, baseDecls, reopenableClasses,
+      defFree, defFreeAll, addRow, declsFor, isSelf])
+
+/-- And `self` at toplevel or in a class body is `unknown`, not accepted at some
+    guessed type. -/
+example : check (.class' "String" none .self') = .unknown := by
+  simp [check, infer, illTyped, declsOf, reopenableClasses, isSelf]
 
 /-- **A toplevel `def` declares nothing, and the call is `unknown`** — which is
     not a limitation of the rule but of Ruby: `Interp.lean:225` makes a toplevel
@@ -249,7 +306,7 @@ theorem egUserCall_safe :
     that decided the rung's shape (F1b.9). -/
 example : check (.seq [ .def' "shout" [] (.int 1), .vcall "shout" ]) = .unknown := by
   simp [check, infer, inferSeq, illTyped, illTypedAny, declsOf, declaresName,
-    baseDecls, defFree, defFreeAll]
+    baseDecls, defFree, defFreeAll, isSelf]
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/
@@ -258,10 +315,10 @@ def egLoop : Expr :=
          .while' .tru (.vasgn .lvar "x" (.int 1)) ]
 
 example : check egLoop = .accept := by
-  simp [check, egLoop, infer, inferSeq, envSet, declsOf]
+  simp [check, egLoop, infer, inferSeq, envSet, declsOf, isSelf]
 
 theorem egLoop_safe : ∀ r, ReachableResult (Machine.init egLoop) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egLoop, infer, inferSeq, envSet, declsOf])
+  check_sound (by simp [check, egLoop, infer, inferSeq, envSet, declsOf, isSelf])
 
 /-- `def f; 1 + 2; end; 3 * 4` — the P1b shape. The `def` installs a method,
     mutating the method table (which `TableOk_defineMethod` is what survives), and
@@ -271,10 +328,10 @@ def egDef : Expr :=
          .send (some (.int 3)) "*" [.int 4] none ]
 
 example : check egDef = .accept := by
-  simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames]
+  simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf]
 
 theorem egDef_safe : ∀ r, ReachableResult (Machine.init egDef) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames])
+  check_sound (by simp [check, egDef, infer, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf])
 
 /-- `(x + 1) * 2` with `x` a local — the P0b program shape. -/
 def egArith : Expr :=
@@ -283,11 +340,11 @@ def egArith : Expr :=
                "*" [.int 2] none ]
 
 example : check egArith = .accept := by
-  simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?]
+  simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf]
 
 theorem egArith_safe :
     ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?])
+  check_sound (by simp [check, egArith, infer, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf])
 
 /-- **The first accepted program that allocates** (L151), and therefore the first
     whose safety theorem is about a heap the program itself grew. `s = "hi"; s` was
@@ -302,10 +359,10 @@ def egStr : Expr :=
   .seq [ .vasgn .lvar "s" (.str "hi"), .var .lvar "s" ]
 
 example : check egStr = .accept := by
-  simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf]
+  simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf, isSelf]
 
 theorem egStr_safe : ∀ r, ReachableResult (Machine.init egStr) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf])
+  check_sound (by simp [check, egStr, infer, inferSeq, envSet, envGet?, declsOf, isSelf])
 
 /-- The same, mixed with the arithmetic fragment: an allocation happens *between*
     two typed integer sends, so `KontOk`'s stored `ValueTy` facts really are
@@ -320,7 +377,7 @@ theorem egStrSeq_safe :
     ∀ r, ReachableResult (Machine.init egStrSeq) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egStrSeq, infer, inferSeq, declsOf, sigOf, declFor, declOf?,
-      declsFor, baseDecls, tyClassNames, envSet, envGet?])
+      declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf])
 
 /-- **The first zero-argument send** (L152). `(1 + 2).zero?` is typed end to end:
     the inner send through `recvK`/`argsK` as before, the outer through the new
@@ -333,14 +390,14 @@ def egZero : Expr :=
 theorem egZero_safe : ∀ r, ReachableResult (Machine.init egZero) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egZero, infer, declsOf, sigOf, declFor, declOf?, declsFor,
-      baseDecls, tyClassNames])
+      baseDecls, tyClassNames, isSelf])
 
 /-- Arity is carried by the *declaration*, not by the builtin: `Integer#zero?`
     ignores its arguments entirely, and it is `baseDecls`'s `params := []` plus
     `infer`'s zero-argument arm that make this `unknown` rather than typed. -/
 example : check (.send (some (.int 1)) "zero?" [.int 5] none) = .unknown := by
   simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?,
-    declsFor, baseDecls, tyClassNames, declsOf]
+    declsFor, baseDecls, tyClassNames, declsOf, isSelf]
 
 /-- A branch-type disagreement the fragment cannot join: `unknown`, not
     `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls
@@ -350,7 +407,7 @@ example : check (.send (some (.int 1)) "zero?" [.int 5] none) = .unknown := by
     The verdict examples that *do* exercise `reject` live next to the checker
     in `Types/Core.lean`; only the safety-bearing ones belong here. -/
 example : check (.if' .tru (.int 1) (some .nil)) = .unknown := by
-  simp [check, infer, inferIf, illTyped, declsOf]
+  simp [check, infer, inferIf, illTyped, declsOf, isSelf]
 
 /-! ## 6. Axiom hygiene
 

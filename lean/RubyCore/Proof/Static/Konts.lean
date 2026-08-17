@@ -31,7 +31,7 @@ absence of the other 43 is what makes preservation's case analysis collapse.
     The loop re-enters the condition with whatever the body leaves, so without
     stability there is no single `Γ` to index the two loop konts by. -/
 def LoopOk (D : Decls) (Γ : Env) (c body : Expr) (top : Bool := false)
-    (ctx : String := "Object") : Prop :=
+    (ctx : FrameCtx := { cls := "Object" }) : Prop :=
   (∃ τc, infer D Γ c top ctx = some (τc, Γ, D)) ∧
     (∃ τb, infer D Γ body top ctx = some (τb, Γ, D))
 
@@ -73,7 +73,7 @@ def LoopOk (D : Decls) (Γ : Env) (c body : Expr) (top : Bool := false)
     restore *both* at once: the caller's context is the second component of the
     stack, not a fact the constructor has to be handed. `FramesOk` and
     `StackCtx` read the two projections and are otherwise untouched. -/
-inductive KontOk : Decls → Heap → List (String × Env) → Ty → List Kont → Prop where
+inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kont → Prop where
   /-- Empty stack: the in-flight value is the program's result. -/
   | nil {D h Γs τ} : KontOk D h Γs τ []
   /-- `seqK []` yields the in-flight value unchanged (`Interp.lean:1957`). -/
@@ -160,7 +160,7 @@ inductive KontOk : Decls → Heap → List (String × Env) → Ty → List Kont 
 
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
     are not in the fragment, so no step can produce one. -/
-def CtlOk (D : Decls) (c : String) (Γ : Env) (Γs : List (String × Env))
+def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     (m : Machine) : Prop :=
   match m.ctl with
   | .eval e =>
@@ -175,7 +175,7 @@ def CtlOk (D : Decls) (c : String) (Γ : Env) (Γs : List (String × Env))
     one-case induction today — and it is the case that stops being trivial the
     moment `Ty` gains a nominal arm, which is the point of writing it now. -/
 theorem KontOk.heap_congr' {h' : Heap} :
-    ∀ {D : Decls} {h : Heap} {Γs : List (String × Env)} {τ : Ty} {k : List Kont},
+    ∀ {D : Decls} {h : Heap} {Γs : List (FrameCtx × Env)} {τ : Ty} {k : List Kont},
       KontOk D h Γs τ k → TypeAgree h h' → KontOk D h' Γs τ k := by
   intro D h Γs τ k hk
   induction hk with
@@ -196,7 +196,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
     with the declarations now an index too there is no instantiation at which the
     hypothesis can stay fixed outside. -/
 theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
-    {D : Decls} {Γs : List (String × Env)} {τ : Ty} {k : List Kont}
+    {D : Decls} {Γs : List (FrameCtx × Env)} {τ : Ty} {k : List Kont}
     (hk : KontOk D h Γs τ k) : KontOk D h' Γs τ k :=
   KontOk.heap_congr' hk ha
 
@@ -245,7 +245,7 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
 def Inv (m : Machine) : Prop :=
   NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
-    ∃ F c Γ Γs, DeclsOk F m.heap ∧
+    ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
       CtlOk F c Γ Γs m
@@ -274,11 +274,10 @@ theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
 /-- `evalExpr` chooses the send site *syntactically* from the receiver
     expression (`Interp.lean:2582`); `infer` rejects `self`, so the site is
     always `.explicit` in the fragment. -/
-theorem site_explicit {D : Decls} {Γ : Env} {r : Expr} {x : Ty × Env × Decls} {top : Bool}
-    {ctx : String} (h : infer D Γ r top ctx = some x) :
+theorem site_explicit {r : Expr} (h : isSelf r = false) :
     (match r with | .self' => SendSite.selfRecv | _ => SendSite.explicit) = .explicit := by
   cases r <;> try rfl
-  exact absurd h (by simp [infer])
+  exact absurd h (by simp [isSelf])
 
 /-- `Machine.currentFrame` and `curFrame` agree once the stack is non-empty. -/
 theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
@@ -289,15 +288,16 @@ theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
 
 /-- Inversion for the `def` rule. -/
 theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List Param}
-    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : String}
+    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.def' name params body) top ctx = some (τ, Γ', D')) :
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added"
-      ∧ ∃ τb Γb, infer D [] body false ctx = some (τb, Γb, D)
+      ∧ ∃ τb Γb, infer D [] body false { ctx with selfCls := some ctx.cls }
+          = some (τb, Γb, D)
       ∧ (D' = D ∨
-          (D' = addRow D ctx name { params := [], ret := τb } ∧
+          (D' = addRow D ctx.cls name { params := [], ret := τb } ∧
             top = false ∧ name ≠ "initialize" ∧
-            reopenableClasses.contains ctx = true ∧ defFree body = true)) := by
+            reopenableClasses.contains ctx.cls = true ∧ defFree body = true)) := by
   simp only [infer] at h
   split at h
   · next hc =>
@@ -325,10 +325,10 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     different places: `top` against `BottomObj`, `sup = none` against `evalExpr`'s
     own match, and membership against `ClassOk`. -/
 theorem infer_class_inv {D D' : Decls} {Γ : Env} {name : String} {sup : Option Expr}
-    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : String}
+    {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.class' name sup body) top ctx = some (τ, Γ', D')) :
     top = true ∧ sup = none ∧ reopenableClasses.contains name = true ∧ Γ' = Γ ∧
-      ∃ Γ'', infer D [] body false name = some (τ, Γ'', D') := by
+      ∃ Γ'', infer D [] body false { cls := name } = some (τ, Γ'', D') := by
   simp only [infer] at h
   split at h
   · next hc =>
@@ -345,29 +345,39 @@ theorem infer_class_inv {D D' : Decls} {Γ : Env} {name : String} {sup : Option 
     its unary sibling, because there is no argument to infer and therefore no
     parameter-type equality to check — the output environment is the receiver's. -/
 theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {τ : Ty}
-    {Γ' : Env} {top : Bool} {ctx : String}
+    {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.send (some r) mname [] none) top ctx = some (τ, Γ', D')) :
-    ∃ τr, infer D Γ r top ctx = some (τr, Γ', D') ∧ sigOf D' τr mname = some ([], τ) := by
+    isSelf r = false ∧
+      ∃ τr, infer D Γ r top ctx = some (τr, Γ', D') ∧ sigOf D' τr mname = some ([], τ) := by
   simp only [infer] at h
+  split at h
+  case isTrue hns => exact absurd h (by simp)
+  rename_i hns
+  have hns' : isSelf r = false := by simpa using hns
   split at h
   · next τr Γ₁ D₁ hr =>
     split at h
     · next τret hsg =>
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl, rfl⟩ := h
-      exact ⟨τr, hr, hsg⟩
+      exact ⟨hns', τr, hr, hsg⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
 /-- Inversion for the send rule. Factored out of `step_ok` because the nested
     `split at` needs `next`-bound names that are unreadable inline. -/
 theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {mname : String} {τ : Ty}
-    {Γ' : Env} {top : Bool} {ctx : String}
+    {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.send (some r) mname [arg] none) top ctx = some (τ, Γ', D')) :
-    ∃ τr Γ₁ D₁ τp, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
+    isSelf r = false ∧
+      ∃ τr Γ₁ D₁ τp, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
       infer D₁ Γ₁ arg top ctx = some (τp, Γ', D') ∧
       sigOf D' τr mname = some ([τp], τ) := by
   simp only [infer] at h
+  split at h
+  case isTrue hns => exact absurd h (by simp)
+  rename_i hns
+  have hns' : isSelf r = false := by simpa using hns
   split at h
   · next τr Γ₁ D₁ hr =>
     split at h
@@ -378,7 +388,7 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {mname : String}
         · next hτ =>
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨τr, Γ₁, D₁, τp, hr, hτ ▸ ha, hτ ▸ hsg⟩
+          exact ⟨hns', τr, Γ₁, D₁, τp, hr, hτ ▸ ha, hτ ▸ hsg⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
@@ -396,8 +406,8 @@ now gone.
 
 /-! ### 2.3 Building `Inv` for the machines the fragment steps to -/
 
-theorem inv_eval {F : Decls} {m : Machine} {c : String} {Γ : Env}
-    {Γs : List (String × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls}
+theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
@@ -407,8 +417,8 @@ theorem inv_eval {F : Decls} {m : Machine} {c : String} {Γ : Env}
     Inv (withCtl m (.eval e)) :=
   ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, Γ', F', hinf, hk⟩⟩
 
-theorem inv_value {F : Decls} {m : Machine} {c : String} {Γ : Env}
-    {Γs : List (String × Env)} {v : Value} {τ : Ty}
+theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
@@ -417,8 +427,8 @@ theorem inv_value {F : Decls} {m : Machine} {c : String} {Γ : Env}
     Inv (withCtl m (.value v)) :=
   ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, hv, hk⟩⟩
 
-theorem inv_push {F : Decls} {m : Machine} {c : String} {Γ : Env}
-    {Γs : List (String × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
+theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
@@ -495,8 +505,8 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     The produced value's type is read in the **new** heap (`hv`), which is the whole
     reason the transport had to be relativized rather than proved unrelativized
     (L143): the fresh object has no type in the old one. -/
-theorem inv_grow_value {F : Decls} {m m' : Machine} {c : String} {Γ : Env}
-    {Γs : List (String × Env)} {v : Value} {τ : Ty}
+theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)

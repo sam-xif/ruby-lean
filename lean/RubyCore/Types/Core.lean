@@ -138,6 +138,13 @@ which is a genuine narrowing of the fragment — a method may not define a metho
 — and a narrowing real Ruby rarely needs.
 -/
 
+/-- Is this expression the literal `self`? A `Bool` rather than `DecidableEq` on
+    `Expr`, which the type does not have and which would be a large derivation for
+    one guard. -/
+def isSelf : Expr → Bool
+  | .self' => true
+  | _ => false
+
 mutual
 
 /-- No `def` (and no `class`) anywhere in the expression. -/
@@ -240,7 +247,7 @@ mutual
     pushing a frame is read at the *enclosing* mode, and checking it at any other
     would leave `KontOk` unable to state its own hypothesis. -/
 def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
-    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
+    (ctx : FrameCtx := { cls := "Object" }) : Option (Ty × Env × Decls) :=
   match e with
   | .int _ => some (.int, Γ, D)
   | .tru => some (.bool, Γ, D)
@@ -273,6 +280,40 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- (`reject ⇒ srb rejects` is a difftest direction, not a theorem).
   | .sym _ => some (.sym, Γ, D)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ, D))
+  -- **`self`, in a method body** (F1b.11). `evalExpr` answers the current frame's
+  -- `self` with no heap write (`Interp.lean:131`), so the rule is as cheap as a
+  -- literal's — what it costs is the *invariant* clause that says the frame's self
+  -- really has that type, which `StackCtx` now carries.
+  --
+  -- `selfCls` is `none` in a class body and at toplevel, and that is a refusal
+  -- rather than an omission: in a class body `self` is the **class object**, which
+  -- `plainRecv` excludes and `valueTy?` gives no type at all.
+  | .self' =>
+    match ctx.selfCls with
+    | some c => some (.cls c, Γ, D)
+    | none => none
+  -- **An implicit-self zero-argument send** (F1b.11) — the `vcall`, and the
+  -- construct the slice's *verdict* ratchet ranks first: 14 of its 92 method
+  -- bodies are blocked by this alone, every one of them a call to a user-defined
+  -- accessor, which is exactly what a program-supplied row is (F1b.10).
+  --
+  -- One step, like `.self'` and unlike `recvK0`: the receiver is already a value,
+  -- so `evalExpr` goes straight to `startArgs … [] []`, which is `finishSend`
+  -- (`Interp.lean:210`). There is no continuation to push and therefore no `KontOk`
+  -- constructor — the dispatch happens *in this step*, which makes it the shortest
+  -- send rule in the fragment and the only one with no kont at all.
+  --
+  -- The send **site** is `.vcall`, not `.explicit`, and that is visible to the
+  -- machine: `visError?` lets an implicit-self send reach a *private* method. The
+  -- fragment does not exploit that — `ResolvesUser` still demands `.pub` — but the
+  -- dispatch lemmas had to be generalized over the site to state the case at all.
+  | .vcall mname =>
+    match ctx.selfCls with
+    | some c =>
+      match sigOf D (.cls c) mname with
+      | some ([], τret) => some (τret, Γ, D)
+      | _ => none
+    | none => none
   | .vasgn .lvar x rhs =>
     match infer D Γ rhs top ctx with
     | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
@@ -289,6 +330,14 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     -- left, and `KontOk.argsK`'s signature premise has to be readable there.
     -- Reading `sigOf` at the earlier table would make the kont carry a fact about
     -- a table nothing in the machine is at.
+    -- **A literal `self` receiver is excluded** (F1b.11), and it is a fact about
+    -- the machine rather than about types: `evalExpr` picks the send *site*
+    -- syntactically, so `self.foo` is a `.selfRecv` send and takes a different path
+    -- through `visError?` than `.explicit`. `KontOk.recvK` is stated at
+    -- `.explicit`, and `site_explicit` — which used to hold because `infer` refused
+    -- `self` outright — is what this guard keeps true. The zero-argument case is
+    -- covered by `vcall`, which is the same dispatch without the receiver.
+    if isSelf recv then none else
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
       match infer D₁ Γ₁ arg top ctx with
@@ -309,6 +358,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
   -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
+    if isSelf recv then none else
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
       match sigOf D₁ τr mname with
@@ -361,12 +411,12 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
-      match infer D [] body false ctx with
+      match infer D [] body false { ctx with selfCls := some ctx.cls } with
       | some (τb, _, Db) =>
         if Db = D then
-          if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx ∧
+          if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
               defFree body = true then
-            some (.sym, Γ, addRow D ctx name { params := [], ret := τb })
+            some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
           else some (.sym, Γ, D)
         else none
       | none => none
@@ -407,7 +457,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- continuation is typed at `Db` because that is what this rule returns, so
       -- the table the frame pops into is the one the body ended at. No antitone
       -- step, and no second index.
-      match infer D [] body false name with
+      match infer D [] body false { cls := name } with
       | some (τ, _, Db) => some (τ, Γ, Db)
       | none => none
     else none
@@ -439,7 +489,7 @@ termination_by sizeOf e
     `evalExpr`'s three-way split on `.seq` (`Interp.lean:2732`) exactly — in
     particular `[e]` steps straight to `e` with no `seqK` pushed. -/
 def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
-    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
+    (ctx : FrameCtx := { cls := "Object" }) : Option (Ty × Env × Decls) :=
   match es with
   | [] => some (.nilT, Γ, D)
   | [e] => infer D Γ e top ctx
@@ -454,7 +504,7 @@ termination_by sizeOf es
     the type and the environment; a missing `else` contributes `nil` and no
     environment change (`applyKont`'s fall-through, `Interp.lean:2096`). -/
 def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool := false)
-    (ctx : String := "Object") : Option (Ty × Env × Decls) :=
+    (ctx : FrameCtx := { cls := "Object" }) : Option (Ty × Env × Decls) :=
   match els with
   | some e =>
     match infer D Γ t top ctx, infer D Γ e top ctx with
@@ -487,7 +537,7 @@ deriving DecidableEq, Repr, Inhabited
 def check (p : Expr) : Verdict :=
   -- `top := true`: the program body *is* the toplevel position (L155). Inert
   -- until a rule reads the flag, and the verdict diff proves it.
-  match infer (declsOf p) [] p true "Object" with
+  match infer (declsOf p) [] p true { cls := "Object" } with
   | some _ => .accept
   | none => if illTyped (declsOf p) p then .reject else .unknown
 

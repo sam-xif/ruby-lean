@@ -6120,3 +6120,103 @@ the other direction — the name just installed is the one `lookup` finds.
 way to name them stably. The recovery is mechanical and is worth doing the same way each time —
 strip the explicit cases, restore the `trace "UNSOLVED-CASE"` fallback, read the case list off the
 goal display, renumber, re-attach.
+
+## L164 — `self` and `vcall`: the shape fourteen slice method bodies have
+
+```ruby
+class String
+  def value
+    1
+  end
+  def get
+    value          # ⇒ Integer
+  end
+  "x".get
+end
+```
+
+The implicit-self send, typed. This is the construct the *verdict* ratchet ranks first — **14 of
+the slice's 92 method bodies are blocked by `vcall` alone** (`def hash = value.hash`,
+`def affected? = state == :affected`, `def to_s = to_str`) — and every one of them is a
+receiverless call to a user-defined accessor, which is exactly what L163's row is. It is the rung
+after the rows for that reason, against a node count of 92 to `const`'s 868.
+
+`egVcall` and `egSelf` are the checked witnesses. `--check` over the 1,227 cached bootstraptest
+ASTs is byte-identical at 38 / 1,187 / 0 for the fifth commit running.
+
+### `FrameCtx`, and why two facts rather than one
+
+`infer`'s context parameter goes from `String` to a two-field structure:
+
+* **`cls`** — the definee's class name, which is where a `def` here installs (L162);
+* **`selfCls`** — `some c` when `self` in this activation is an *instance* of `c`.
+
+They are different facts and the second is `none` in a class body, where `self` is the **class
+object** — which `plainRecv` excludes and `valueTy?` gives no type at all. Bundling rather than
+threading a second parallel list is the L162 lesson applied without having to relearn it: the two
+change at exactly the same place, `KontOk.frameK`, where the environment changes too.
+
+`StackCtx` gains the matching clause, and it is *carrying* rather than proving: `user_dispatch`
+already has the fact as the send's own `ValueTy` on the receiver. What the clause buys is that the
+fact survives the body's steps.
+
+### The guard nobody would have predicted: `self` in receiver position
+
+`infer` had no `self` rule at all, and `site_explicit` — *every send site in the fragment is
+`.explicit`* — was true **because of that absence**. Giving `self` a type makes it false:
+`evalExpr` picks the send site *syntactically*, so `self.foo` is a `.selfRecv` send and takes a
+different path through `visError?` than the `.explicit` one `KontOk.recvK` describes.
+
+So the two send rules now **exclude a literal `self` receiver**, and `site_explicit` is restated
+over that guard. `vcall` covers the zero-argument case, which is the one the slice uses; `self.foo`
+is `unknown`, and pinned as such.
+
+**The transferable form: a lemma that holds because a rule is absent will break when the rule
+arrives, and it will break somewhere else.** `site_explicit` is about the *machine*, is consumed
+by two consecution cases, and has nothing to do with `self`'s type — the connection is that
+`evalExpr` reads the receiver's *syntax*. Nothing in the type layer points at it.
+
+### The dispatch lemmas generalize over the site for free
+
+`entry_dispatch` and `user_dispatch` were stated at `.explicit`; a `vcall` dispatches at `.vcall`.
+Both generalize with **no change to their proofs**, because the site is consulted only by
+`visError?` and `md.visibility = .pub` passes it at any site. Worth recording as the cheap
+outcome: the site is a fact about *which check runs*, not about *which method is found*, and the
+predicates were already phrased over the latter.
+
+Note what that means for the fragment's honesty: an implicit-self send in real Ruby *can* reach a
+private method, and this rule does not exploit it — `ResolvesUser` still demands `.pub`. That is
+incompleteness, in the safe direction.
+
+### `vcall` is the only send case with no continuation
+
+`evalExpr` answers `.vcall` with `startArgs m self .vcall mname [] []`, which is `finishSend`
+(`Interp.lean:210`): the receiver is already a value, so there is nothing to evaluate first and no
+kont to push. The consecution case is therefore `recvK0`'s **without** the `KontOk` constructor —
+the dispatch happens in the same step as the expression. Three send shapes, three different numbers
+of steps (`recvK` + `argsK`, `recvK0`, none), and each needs its own case for that reason and no
+other.
+
+### `UserEntryOk` pins the row's type to its key
+
+The user arm gained `τr = .cls c`. Without it the callee's context is not recoverable at the call:
+the arm's `c` is the class the body was *checked* in, the receiver's type is the class it *is*, and
+the invariant needs them equal to say what `self` is inside the body. At the `def` step both are
+`ctx.cls`, so the clause is a `rfl`. It also rules the user arm out at a ground type, which was
+previously true only by nobody having put a row there.
+
+**The inheritance caveat this exposes, stated because it is the next place it will bite**: `c` is
+the *owner's* name, and a method inherited into a subclass is called on a receiver whose class is
+not the owner. The fragment has no inheritance in `declFor` (`Sub` is deliberately absent, F1a), so
+the two coincide today. Widening `declFor` to walk ancestors will make this clause false as stated,
+and the fix is to type `self` at the receiver's class rather than the owner's — which is what Ruby
+means anyway.
+
+### The census got *less* favourable, on purpose
+
+`fragment-gap.py`'s blocking-node count went **2,746 → 2,762**. Nothing regressed: `self` in
+receiver position is now classified as blocking (16 occurrences), and `self`/`vcall` are reported
+PARTIAL — blocking — even though an occurrence inside a method body of a reopenable class is
+admitted, because the census cannot tell which it is from the node alone. **A ratchet that cannot
+distinguish the admitted case from the refused one should count it as refused**; the alternative
+reads as progress the checker has not made.

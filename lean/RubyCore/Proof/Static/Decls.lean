@@ -230,7 +230,7 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     reason. It costs nothing today, since no rule grows the table at all. -/
 def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Prop :=
   d.params = [] ∧ defFree md.body = true ∧
-    ∃ Γ', infer D [] md.body false c = some (d.ret, Γ', D)
+    ∃ Γ', infer D [] md.body false { cls := c, selfCls := some c } = some (d.ret, Γ', D)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -294,7 +294,7 @@ def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Pro
     place to leave it. -/
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
-  ∃ md c, (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
+  ∃ md c, τr = .cls c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
     className h md.owner = c ∧ UserConforms D c md d
 
 /-- A declared method is satisfied by **either** kind of witness. A disjunction
@@ -328,11 +328,11 @@ once per tabulated builtin. This is `int_bin_dispatch` with the three
 -/
 
 theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl}
-    {recv : Value} {args : List Value}
+    {recv : Value} {args : List Value} {site : SendSite}
     (he : BuiltinEntryOk m.heap τr mname d)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
     ∃ w, ValueTy m.heap w d.ret ∧
-      startArgs m recv .explicit mname args [] .none
+      startArgs m recv site mname args [] .none
         = .next (withCtl m (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves hres hrv
@@ -396,10 +396,10 @@ set_option maxHeartbeats 1000000 in
     `HANDOFF.md` §constraint 1 predicted ("`entry_dispatch` splits in two, because
     the two branches have different step results"). -/
 theorem user_dispatch {m : Machine} {τr : Ty} {mname : String} {md : MethodDef}
-    {recv : Value}
+    {recv : Value} {site : SendSite}
     (hres : ResolvesUser m.heap (classOf m.heap recv) mname md)
     (hrv : ValueTy m.heap recv τr) :
-    startArgs m recv .explicit mname [] [] .none
+    startArgs m recv site mname [] [] .none
       = .next { m with frames := m.frames.push (userFrame recv md mname),
                        stack := m.frames.size :: m.stack,
                        kont := .frameK m.frames.size :: m.kont,
@@ -414,7 +414,7 @@ theorem user_dispatch {m : Machine} {τr : Ty} {mname : String} {md : MethodDef}
   -- this is the same equation with the definitional factoring made visible —
   -- `resolvesTo_of_resolvesAt`'s move, at the user arm.
   have hlook' : lookup m.heap recv mname = some (owner, md) := hlook
-  have hinv : invoke m recv .explicit mname [] none []
+  have hinv : invoke m recv site mname [] none []
       = enterUserMethod m recv mname md [] none [] := by
     rw [invoke.eq_def]
     -- Exactly `entry_dispatch`'s receiver split, and for the same reason: `invoke`'s
@@ -676,10 +676,10 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   -- L157: two arms now, and the *same* argument twice. `UserConforms` mentions no
   -- heap either — it is a fact about `infer` and a body — so both conformance halves
   -- pass through and only the resolution halves transport.
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hres, hnm, hconf⟩
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
-  · exact Or.inr ⟨mdu, cu,
+  · exact Or.inr ⟨mdu, cu, htys,
       fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne,
       by rw [className_defineMethod]; exact hnm, hconf⟩
 
@@ -850,10 +850,11 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         | some d0 =>
           rw [hd0] at hdecl
           simpa only [hsame] using hdecl
-    rcases hd τr mname decl hold with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hresu, hnmu, hconfu⟩
+    rcases hd τr mname decl hold with ⟨bid, hres, hconf⟩ |
+      ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
     · exact Or.inl ⟨bid,
         fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hmn, hconf⟩
-    · refine Or.inr ⟨mdu, cu,
+    · refine Or.inr ⟨mdu, cu, htys,
         fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
         by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, ?_⟩
       obtain ⟨Γ', hb⟩ := hconfu.2.2
@@ -881,10 +882,10 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
   intro τr mname decl hdecl
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, hres, hnm, hconf⟩
+  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
-  · exact Or.inr ⟨mdu, cu,
+  · exact Or.inr ⟨mdu, cu, htys,
       fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)),
       by rw [hg.className_eq]; exact hnm, hconf⟩
 

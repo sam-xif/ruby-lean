@@ -380,29 +380,37 @@ theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
 def defVisOfDef (f : Frame) : Visibility :=
   if f.kind == .toplevel then .priv else f.defVis
 
-def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List String → Prop
+def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx → Prop
   | [], [] => True
   | fid :: fids, c :: cs =>
       (h.classPayload? (frames.getD fid default).defmod).isSome ∧
-      className h (frames.getD fid default).defmod = c ∧
+      className h (frames.getD fid default).defmod = c.cls ∧
       (fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub) ∧
+      -- **The activation's `self`, when the context claims one** (F1b.11). `some c`
+      -- says this is a *method* body, where `self` is an instance of `c`; a class
+      -- body says `none`, because there `self` is the class object and `plainRecv`
+      -- gives it no type. The fact is not new work at the push — `user_dispatch`
+      -- already has it as the send's own `ValueTy` on the receiver — it is the
+      -- *carrying* of it across the body's steps that this clause is.
+      (∀ sc, c.selfCls = some sc →
+        ValueTy h (frames.getD fid default).self (.cls sc)) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
-    {c : String} {cs : List String} (hs : StackCtx h frames fids (c :: cs)) :
+    {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2
+  | cons fid rest => exact hs.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
-    {fids : List FrameId} {c : String} {cs : List String}
+    {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
     (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
-    className h (frames.getD fid default).defmod = c := hs.2.1
+    className h (frames.getD fid default).defmod = c.cls := hs.2.1
 
 theorem StackCtx.headVis {h : Heap} {frames : Array Frame} {fid : FrameId}
-    {fids : List FrameId} {c : String} {cs : List String}
+    {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
     (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
     fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub := hs.2.2.1
 
@@ -410,15 +418,15 @@ theorem StackCtx.headVis {h : Heap} {frames : Array Frame} {fid : FrameId}
     already on the stack are in bounds — the same hypothesis `BottomObj_push`
     takes, and true of the real machine for the same reason. -/
 theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
-    ∀ {st : List FrameId} {cs : List String}, (∀ g ∈ st, g < frames.size) →
+    ∀ {st : List FrameId} {cs : List FrameCtx}, (∀ g ∈ st, g < frames.size) →
       StackCtx h frames st cs → StackCtx h (frames.push f) st cs
   | [], [], _, hs => hs
   | fid :: fids, c :: cs, hlt, hs => by
       have hb : (frames.push f).getD fid default = frames.getD fid default :=
         getD_push_lt _ _ _ (hlt fid (List.mem_cons_self ..))
       exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
-        by rw [hb]; exact hs.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2⟩
+        by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -808,37 +816,21 @@ theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
     reads only `defmod` and `defVis`, so a step that moves neither leaves it
     alone. -/
 theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
-    ∀ {st : List FrameId} {cs : List String},
+    ∀ {st : List FrameId} {cs : List FrameCtx},
       (∀ fid ∈ st, (f₂.getD fid default).defmod = (f₁.getD fid default).defmod) →
       (∀ fid ∈ st, defVisOfDef (f₂.getD fid default) = defVisOfDef (f₁.getD fid default)) →
+      (∀ fid ∈ st, (f₂.getD fid default).self = (f₁.getD fid default).self) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hs => by
-      refine ⟨?_, ?_, ?_, StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
-        (fun g hg => hv g (List.mem_cons_of_mem _ hg)) hs.2.2.2⟩
+  | [], [], _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hs => by
+      refine ⟨?_, ?_, ?_, ?_,
+        StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hv g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hsf g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
-
-/-- **Transport across a heap-writing step.** The in-bounds clause is what makes
-    it available: `TypeAgree` relativizes every one of its equalities to ids the
-    old heap had (L143), so a predicate that names an `ObjId` has to say the id is
-    one of them. `classPayload?`-ness supplies the bound
-    (`classPayload?_isSome_lt`), which is why that clause is here rather than
-    borrowed from `FrameConforms` — the two lists are different, so the borrow
-    would need a lemma relating them for no gain. -/
-theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array Frame} :
-    ∀ {st : List FrameId} {cs : List String},
-      StackCtx h frames st cs → StackCtx h' frames st cs
-  | [], [], hs => hs
-  | fid :: fids, c :: cs, hs => by
-      have hlt : (frames.getD fid default).defmod < h.objs.size :=
-        classPayload?_isSome_lt hs.1
-      refine ⟨?_, ?_, hs.2.2.1, StackCtx.heap_congr ha hs.2.2.2⟩
-      · rw [ha.2.2.1 _ hlt]; exact hs.1
-      · rw [ha.2.1 _ hlt]; exact hs.2.1
-  | [], _ :: _, hs => hs.elim
-  | _ :: _, [], hs => hs.elim
+      · rw [hsf fid (List.mem_cons_self ..)]; exact hs.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 
@@ -1002,6 +994,27 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     have hk : classOf h (.ref o) < h.objs.size := valueTy_ref_klass_lt hv
     simpa [ValueTy, valueTy?, hp, ha.2.2.2 o hb hp, ha.1 o hb, ha.2.1 _ hk] using hv
   | _ => simp_all [ValueTy, valueTy?]
+
+/-- **Transport across a heap-writing step.** The in-bounds clause is what makes
+    it available: `TypeAgree` relativizes every one of its equalities to ids the
+    old heap had (L143), so a predicate that names an `ObjId` has to say the id is
+    one of them. `classPayload?`-ness supplies the bound
+    (`classPayload?_isSome_lt`), which is why that clause is here rather than
+    borrowed from `FrameConforms` — the two lists are different, so the borrow
+    would need a lemma relating them for no gain. -/
+theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array Frame} :
+    ∀ {st : List FrameId} {cs : List FrameCtx},
+      StackCtx h frames st cs → StackCtx h' frames st cs
+  | [], [], hs => hs
+  | fid :: fids, c :: cs, hs => by
+      have hlt : (frames.getD fid default).defmod < h.objs.size :=
+        classPayload?_isSome_lt hs.1
+      refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ValueTy.congr ha (hs.2.2.2.1 sc hsc),
+        StackCtx.heap_congr ha hs.2.2.2.2⟩
+      · rw [ha.2.2.1 _ hlt]; exact hs.1
+      · rw [ha.2.1 _ hlt]; exact hs.2.1
+  | [], _ :: _, hs => hs.elim
+  | _ :: _, [], hs => hs.elim
 
 theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
     ∀ {vs : List Value} {τs : List Ty}, ValuesTy h vs τs → ValuesTy h' vs τs
