@@ -5603,9 +5603,22 @@ branch to `pushFrame`, and `KontOk.frameK` — which has existed since P0a and u
 popped a *method* — types the class body's return with no change at all.
 
 **Inert on the corpus, not inert in capability, and the distinction is the finding.** `--check` over
-the 1,227 cached bootstraptest ASTs is **byte-identical** (36 accept / 1,189 unknown / 0 reject):
-none of those programs reopens a core class. So the rung is witnessed by `egClassBody` in
-`StaticSoundness.lean` instead —
+the 1,227 cached bootstraptest ASTs is **byte-identical** (36 accept / 1,189 unknown / 0 reject).
+
+~~none of those programs reopens a core class~~ — **withdrawn, and measured instead.** That
+explanation was inferred from the flat diff rather than checked, and it is wrong: **26** bootstraptest
+programs reopen a core class and **7** reopen `String` specifically. They stay `unknown` for the
+reason L151 already established — everything *around* the class body. `test_flow_004.rb` is the
+representative case: it reopens `String` with a one-line `def`, then calls `''.respond_to?`,
+`.lines.map { … }` with a block, and `break`. The binding constraint on the accept rate is the rest
+of the fragment, not the class rule, which is exactly what L151 said about the string literal.
+
+The general point, since this is the second time it has cost something: **a flat diff is evidence
+that no verdict moved, and nothing more.** Attributing it to a property of the corpus is a separate
+claim and needs a separate measurement — `grep -lE '^\s*class (String|Integer|…)' corpus/*.rb` is
+the whole of it.
+
+So the rung is witnessed by `egClassBody` in `StaticSoundness.lean` instead —
 
 ```ruby
 class String
@@ -5708,6 +5721,7 @@ Two things that pricing turned up and that the next rung should not rediscover:
 
 **Verification.** The user arm is currently uninhabited — nothing constructs a `UserEntryOk` — so the
 commit accepts no new programs, and `--check` over the 1,227 cached bootstraptest ASTs is
-**byte-identical** (36 accept / 1,189 unknown / 0 reject). That is L141's shape exactly: the
+**byte-identical** (36 accept / 1,189 unknown / 0 reject). (L156's note carries a correction that
+applies here too: the flat number is *not* evidence that the corpus lacks the construct.) That is L141's shape exactly: the
 machinery lands, proved, one rung before the thing that inhabits it. `check-proofs.sh` green and
 axiom-clean; tier-0 **992 agree, 0 disagree**.
