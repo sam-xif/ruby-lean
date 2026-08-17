@@ -5746,3 +5746,32 @@ same function is a duplicate of the decision, and a duplicate drifts the moment 
 parameter. Found by being asked what `infer` does on a file with no driver code, and noticing the
 class-body cases printed no type where a bare `def` printed `Symbol` — i.e. by *reading the output of
 an example*, which is the same move `egClassBody` exists to enable.
+
+## L159 — the symbol literal, and the first rung chosen by measurement
+
+One line of `infer`, three lines of consecution, **281 slice nodes across all 8 files**, and
+**36 → 38** on bootstraptest. It is the smallest rung in the initiative's history and it is the first
+one picked by a measurement rather than by a plan.
+
+`Ty.sym` has existed since P0 — a `def` evaluates to a symbol, which is what `.def'`'s rule returns —
+so the type was there and only the rule for *writing* one was missing. Nothing had needed it, because
+nothing had asked what the **slice** contains: `homebrew/fragment-gap.py` ranks `sym` third by node
+count and joint-first by files blocked. The consecution case is the four immediate literals' case
+verbatim; `evalExpr` answers `.value (.sym s)` with no heap write (`Interp.lean:127`), so the only
+obligation is `ValueTy … .sym`, which is `rfl`.
+
+Not added to `defTy`, following L151's precedent for `.str`: widening the **refutation** pass is a
+separate decision under a separate guard (`reject ⇒ srb rejects` is a difftest direction, not a
+theorem), and this commit claims nothing about `reject`.
+
+**Two ratchets moved by different amounts, which is the reason to have both.** Slice blocking nodes
+**3,027 → 2,746**, exactly the 281; slice method bodies fully in fragment **5 of 92, unchanged**. The
+symbols are overwhelmingly in class-body `private_constant :X` calls and `sig` declarations, not
+inside method bodies that were otherwise clean. A node-count ratchet measures progress through the
+file; a method-body ratchet measures progress toward a *verdict*. They will disagree often and the
+disagreement is information.
+
+**And the tool needed updating in the same commit**, which is the maintenance discipline it was built
+with: `SUPPORTED` is a hand-maintained copy of `infer`'s match arms, so a new rule means a new entry
+*and* a new `--self-test` case. The first run after this rule landed still reported `sym` as MISSING,
+which is exactly the drift the self-test exists to make loud rather than silent.

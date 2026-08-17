@@ -70,6 +70,14 @@ theorem step_ok {D : Decls} {m : Machine} (h : Inv D m) : StepOk D (stepFn m) :=
         (plainGrow_alloc m.heap _ (by simp))
         rfl rfl rfl
         (valueTy_alloc_fresh (by simp) rfl hstr.1 hstr.2) hk
+    -- **The symbol literal** (L159). Identical to the four immediate cases above,
+    -- which is the point: the slice's third-largest blocker by node count cost a
+    -- rule of one line and a case of three, because `Ty.sym` was already there and
+    -- `evalExpr` writes no heap.
+    case sym s =>
+      simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
+      obtain ⟨rfl, rfl⟩ := hinf
+      exact inv_value hfs htab hhook hsat hstr hcls hbot rfl hk
     case var k x =>
       cases k
       case lvar =>

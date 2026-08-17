@@ -159,6 +159,19 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false) : Option (Ty �
   -- `StrClsOk` — *the boot `String` id is a class named `"String"`* — which is
   -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound (L149).
   | .str _ => some (.cls "String", Γ)
+  -- **A symbol literal** (L159). `Ty.sym` has existed since P0 — a `def`
+  -- evaluates to one — and this is the rule for *writing* one, which nothing had
+  -- needed until the slice was measured: `homebrew/fragment-gap.py` ranks `sym`
+  -- third by nodes (**281**) and joint-first by files (**all 8**), against a rule
+  -- that is one line and a consecution case that is four. Immediate, like the
+  -- other literals: `evalExpr` answers `.value (.sym s)` with no heap write
+  -- (`Interp.lean:127`), so nothing is owed beyond `ValueTy … .sym`, which is
+  -- `rfl`.
+  --
+  -- Not added to `defTy`, following L151's precedent for `.str`: widening the
+  -- *refutation* pass is a separate decision with a separate guard
+  -- (`reject ⇒ srb rejects` is a difftest direction, not a theorem).
+  | .sym _ => some (.sym, Γ)
   | .var .lvar x => (envGet? Γ x).map (fun τ => (τ, Γ))
   | .vasgn .lvar x rhs =>
     match infer D Γ rhs top with
