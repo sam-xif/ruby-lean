@@ -107,7 +107,11 @@ def main (args : List String) : IO UInt32 := do
         -- It is deliberately *not* a difftest signal: comparing inferred types
         -- against `T.reveal_type` tests neither direction that matters
         -- (`typed-portion-safety.md` §8).
-        let ty := match Types.infer (Types.declsOf prog) [] prog with
+        -- `top := true`, matching `check` (L155). Two calls that can disagree is a
+        -- bug waiting to be read as a checker inconsistency: without the flag this
+        -- one refuses `class C … end`, so a program `check` accepts came back with
+        -- an empty type. Display-only, but the display is what a reader trusts.
+        let ty := match Types.infer (Types.declsOf prog) [] prog true with
           | some (t, _) => match t with
             | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
             -- `def` evaluates to the method name.

@@ -5725,3 +5725,24 @@ commit accepts no new programs, and `--check` over the 1,227 cached bootstraptes
 applies here too: the flat number is *not* evidence that the corpus lacks the construct.) That is L141's shape exactly: the
 machinery lands, proved, one rung before the thing that inhabits it. `check-proofs.sh` green and
 axiom-clean; tier-0 **992 agree, 0 disagree**.
+
+## L158 — `--check`'s displayed type was computed by a second, un-flagged call
+
+A one-line repair, recorded because the shape of the defect is worth knowing. `Main.lean` computes
+the verdict with `Types.check prog` and the *displayed type* with a separate
+`Types.infer (declsOf prog) [] prog`. L155 gave `infer` a `top` flag that `check` passes as `true`
+and the default leaves `false`, so the two calls silently diverged: `class String; def shout; …; end`
+returned `{"verdict":"accept"}` with **no type**, because the display call refused the very rule the
+verdict call had used.
+
+No soundness or verdict consequence — the field is documented as a development aid and explicitly not
+a difftest signal — and no corpus figure moves (`--check` byte-identical, 36 / 1,189 / 0), because
+the flag can only *add* acceptances and no bootstraptest verdict moved. But it is the kind of defect
+that reads as a checker inconsistency to anyone looking at the output, which is what the field is
+for.
+
+**The lesson is about the shape, not the line.** A displayed value recomputed by a second call to the
+same function is a duplicate of the decision, and a duplicate drifts the moment the function grows a
+parameter. Found by being asked what `infer` does on a file with no driver code, and noticing the
+class-body cases printed no type where a bare `def` printed `Symbol` — i.e. by *reading the output of
+an example*, which is the same move `egClassBody` exists to enable.
