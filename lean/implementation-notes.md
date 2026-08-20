@@ -6371,3 +6371,93 @@ parameters blocks 67 slice bodies and this blocks none of the ones that are othe
 this is the first rung in the initiative where that was **predicted from the code rather than
 measured hopefully**: nothing in `Types/Core.lean` changed, and the new module is not imported
 by anything on the verdict path.
+
+
+## L166 — open self: typing a method body against an unresolved receiver, and proving it factors
+
+`homebrew/assertion-language.md` §4.3, §7.2's row case, §7.3, §12 **R4**. The rung the ledger
+ranks highest among those with a metatheory cost, because the fourteen `vcall`-blocked slice
+bodies are all one shape:
+
+```ruby
+def hash
+  value.hash          # `value` is a user-defined accessor with no declared row
+end
+```
+
+`RubyCore/Types/OpenSelf.lean` types this **with no row for `value` at all**, and emits the row
+it would need as a precondition on its own class. `RubyCore/Proof/Static/OpenSelf.lean` proves
+the two theorems that make running it safe.
+
+### The statement, and why it is the one that costs nothing
+
+```lean
+theorem inferOpen_factors (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls) :
+    Factors D θ stF ctx Γ e (inferOpen D Γ e ctx s)
+```
+
+unfolded at `.ok`: *if the open run succeeded and `θ` satisfies the residual store, then nominal
+`infer` accepts the same expression at the substituted type.* **Open-self typing reduces to
+nominal typing.**
+
+So `infer` is untouched, `KontOk` gains no constructor, and `step_ok` gains no case.
+`HANDOFF.md` constraint 4 — *you cannot land the checker first and the proof later* — does not
+fire, because there is no new checker on the soundness path: `inferOpen` is a **front end** whose
+every accept is re-derived as an `infer` accept. That is §8.4's certifying-not-trusted stance,
+applied to the inference function rather than to the entailment, and it is the second time this
+session that a rung priced as expensive turned out to want a *reduction* rather than an
+extension (L165 is the first).
+
+`userConforms_of_inferBody` is the payoff in the metatheory's own currency: `UserConforms` — the
+clause L157 introduced and L163 first inhabited, *the checker's own verdict on a body inside the
+soundness invariant* — is discharged by an open-self run plus a checked substitution.
+
+### §7.5's owed lemma, and the definition it forced
+
+`inferOpen_mono`: **the store only ever grows.** §7.5 states it as the reason `Σ₁ ⊎ Σ₂` can be a
+plain union with no side condition, and names L161 (`infer` monotone in the table) as the shape.
+It is needed in every case of the factoring theorem, because a subexpression's requirements must
+still be readable at the store the whole body ends at.
+
+It is also what forced `Row.insert` to prepend rather than sort (L165): with a sorted insert the
+lemma is **false** unless a sortedness invariant is threaded through `inferOpen`, since a
+prepended duplicate shadows a later entry. *A monotonicity lemma is a good test of a data
+structure's operations — it fails first, and for the right reason.*
+
+### What `inferOpen` does **not** do, and each refusal is `infer`'s, not rows'
+
+* **`def` with parameters.** `infer`'s own `def` rule requires `params.isEmpty`, so §7.3's `Γ_b`
+  has nothing to factor *to*: the theorem's conclusion would be about a nominal judgement that
+  does not exist. `bodyReports` names the refusal `def-params` rather than letting it surface as
+  an unbound local read — and that is the single largest number the new census reports
+  (**67 of 112** slice bodies; see L167).
+* **`def` and `class` inside a body.** `infer`'s `def` rule already requires `defFree body`
+  (L161's `infer_mono` hypothesis), so a body that declares a method is outside the fragment
+  already. That is what keeps `D` fixed across `inferOpen`, and therefore what lets the theorem's
+  conclusion mention one table.
+* **A literal `self` receiver.** Copied from L164 verbatim. An arm that differs from `infer`'s
+  for no reason is an arm whose proof case has to be invented.
+
+### The proof's mechanics, worth recording because they are reusable
+
+The functional induction Lean generates for a mutual well-founded definition,
+`inferOpen.induct`, is reachable as `induction Γ, e, s using inferOpen.induct (motive2 := …)
+(motive3 := …)`. Two things made the ~50 cases tractable:
+
+1. **State the conclusion as a predicate on the *result*** (`Factors`), not as three
+   universally-quantified components. Twenty-odd arms answer `.missing` or `.outOfFragment`, and
+   with the predicate they discharge *definitionally*; with `∀ τ Γ' s', … = .ok τ Γ' s' → …` each
+   one needs its own contradiction.
+2. **Write the residual cases as a `first` chain of name-free tactics.** `rename_i` names the
+   induction hypotheses from the end; every side condition is `(by assumption)`, so no case's
+   script depends on an inaccessible name. Ordering matters — a `split`-based alternative placed
+   before the send cases will fire on them and produce a mess that the later alternatives cannot
+   clean up.
+
+### The lesson about `dsimp only`
+
+`rw [h] at goal` where `h` rewrites a `match` scrutinee leaves the `match` unreduced, and the
+*next* `rw` then fails to find its pattern. Every multi-step rewrite in this file needs a
+`dsimp only` between the steps. Cheap once known and three wasted attempts before that.
+
+`--check` byte-identical at 38 / 1,187 / 0.

@@ -51,6 +51,7 @@ import RubyCore.Proof.SorbetConcrete
 import RubyCore.Proof.AncestorsGrow
 import RubyCore.Proof.Static.Mono
 import RubyCore.Proof.Static.Assn
+import RubyCore.Proof.Static.OpenSelf
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -75,6 +76,13 @@ import RubyCore.Proof.Static.Assn
 #print axioms RubyCore.Proof.Static.entail_sound
 #print axioms RubyCore.Proof.Static.assn_sound_from
 #print axioms RubyCore.Proof.Static.assn_check_sound
+-- R4 (open self). `inferOpen_mono` is §7.5's owed monotonicity lemma;
+-- `inferOpen_factors` is the factoring theorem — open-self typing reduces to
+-- nominal typing — and `userConforms_of_inferBody` lands it in the invariant's
+-- own currency.
+#print axioms RubyCore.Proof.Static.inferOpen_mono
+#print axioms RubyCore.Proof.Static.inferOpen_factors
+#print axioms RubyCore.Proof.Static.userConforms_of_inferBody
 LEAN
 
 echo "== axioms"
