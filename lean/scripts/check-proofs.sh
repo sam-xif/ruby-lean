@@ -50,6 +50,7 @@ import RubyCore.Proof.T5Loop
 import RubyCore.Proof.SorbetConcrete
 import RubyCore.Proof.AncestorsGrow
 import RubyCore.Proof.Static.Mono
+import RubyCore.Proof.Static.Assn
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -65,6 +66,15 @@ import RubyCore.Proof.Static.Mono
 #print axioms RubyCore.Proof.Static.DeclsOk_grow
 #print axioms RubyCore.Proof.Static.inv_grow_value
 #print axioms RubyCore.Proof.Static.infer_mono
+-- The assertion language (L165). `denote_declAssn` is the faithfulness theorem —
+-- `⟦declAssn D⟧ h ↔ DeclsOk D h`, both directions — and it is what closes
+-- `assertion-language.md` §9.3's honest weak point for the declaration fragment:
+-- the syntax-to-semantics map is *checked*, not merely defined. `assn_sound_from`
+-- is the invariant restated over it, inheriting every consecution case.
+#print axioms RubyCore.Proof.Static.denote_declAssn
+#print axioms RubyCore.Proof.Static.entail_sound
+#print axioms RubyCore.Proof.Static.assn_sound_from
+#print axioms RubyCore.Proof.Static.assn_check_sound
 LEAN
 
 echo "== axioms"

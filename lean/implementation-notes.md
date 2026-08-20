@@ -6220,3 +6220,154 @@ PARTIAL — blocking — even though an occurrence inside a method body of a reo
 admitted, because the census cannot tell which it is from the node alone. **A ratchet that cannot
 distinguish the admitted case from the refused one should count it as refused**; the alternative
 reads as progress the checker has not made.
+
+
+## L165 — an assertion language, and the faithfulness theorem that makes it free
+
+`homebrew/assertion-language.md` R1's datatype half, plus §9's Layer 2 and the soundness
+result §12 prices as R5. `PLAN.md` D11 records the decision; this records what it cost and
+what came out different from the proposal.
+
+Two files. `RubyCore/Types/Assn.lean` is Layer 3 — `ATy`, `ASig`, `Row`, `Assn`, `Store`,
+`entail`, `dischargeNom`/`dischargeRow`, the printer — all decidable, all untrusted, and none
+of it linked into any verdict. `RubyCore/Proof/Static/Assn.lean` is Layer 2: `denote` (`⟦·⟧`),
+`RowsOk`, and four theorems.
+
+### The result worth reading first, because it changes the shape of the rung
+
+```lean
+theorem denote_declAssn : denote D θ (declAssn D) h ↔ DeclsOk D h
+```
+
+An **`iff`**, over the artifact `Inv` already carries. §9.3 says the honest weak point of the
+whole approach is that `⟦·⟧` is *"a definition, and nothing checks that it means what it is
+supposed to"*. For the declaration fragment, this checks it — and then does something the
+proposal did not anticipate:
+
+`InvA` (the invariant with a *certificate* `P` where `DeclsOk F` stood) is proved **equal** to
+`Inv`, so `assn_sound_from` is `sound_from ∘ invA_iff_inv.mp` and **not one consecution case
+re-opens.** §12 prices R5 as *"large: every closed consecution case re-opens"* and constraint 4
+says that cannot be done incrementally. Both are true of the R5 the document imagines — one
+that *changes* `Inv`'s content. Neither is true of a re-notation whose faithfulness is proved,
+because a proposition equal to the old one needs no new preservation argument.
+
+**The transferable lesson:** *when a rung is priced as "re-open everything", ask whether the new
+statement is equivalent to the old one rather than stronger.* The price is for strength, not for
+notation, and this rung wanted only notation.
+
+### Three departures from §6's grammar, each forced
+
+1. **`Ty` did not gain a `var α` arm.** §6 writes one. Adding it re-opens every `match` on `Ty`
+   in the metatheory — `TyClass`, `tyClassNames`, `valueTy?`, `Static/Mono.lean`'s 42 cases —
+   for a constructor **no value can inhabit**. `ATy := nom Ty | var TyVar` lives in the
+   assertion language only, so the nominal fragment of `Assn` mentions exactly today's `Ty`,
+   which is what makes `⟦·⟧`'s atoms literally the existing predicates.
+
+2. **`C ▷ n : σ` is keyed by `Ty`, not by a class name**, and this is the difference between a
+   faithful map and a lossy one. §6 says the arm "is today's `Decls` entry" — but what `DeclsOk`
+   quantifies over is `declFor D τ n`, keyed by a **type**, and the two are not in bijection:
+   `Ty.bool` is *two* classes and demands they agree, while `Ty.cls "Integer"` is *no* classes
+   at all (`tyClassNames` subtracts the ground names). A name-keyed atom expresses neither, so
+   `denote_declAssn` would have been an implication one way and false the other.
+   `Assn.declC c n σ := .decl (nomTy c) n σ` is the class-name spelling, kept because that is
+   what §11 prints.
+
+3. **`A * A`, `p.@x ↦ τ`, `C ▷ᵂ n`, `closed α` are absent, not stubbed.** §6.5 asks that they be
+   *recorded* so a later grammar is not incompatible; the record is the document. A constructor
+   with no `⟦·⟧` is new unchecked surface for zero benefit, which is the cost side of §1's own
+   ledger.
+
+### The enumeration, which is where the work was
+
+`DeclsOk` quantifies over `declFor D τ n` for **every** `τ`, of which there are infinitely many
+(`Ty.cls` takes a `String`). `declAtoms D` is a finite list. `mem_declAtoms_iff` — the
+biconditional — joins them, and it rests on exactly three clauses of `tyClassNames`: the ground
+arms are keyed at *their* class names; `.cls c` is empty when `c` is a ground name, so no `.cls`
+atom duplicates a ground one; and every other `.cls c` with a declaration has `c` among the
+table's keys, because `declOf?` reads `declsFor`, which reads `D.find?`. Getting the list right
+is a fact about `tyClassNames`, not about assertions — which is why the enumeration is over
+`declTys D` (four ground arms, plus one per table key) and not over the rows.
+
+### `Row.insert` prepends, and that is `addRow`'s argument again
+
+The first version placed entries **in order**, to make §8.1's normal form a property of the
+representation. It was withdrawn: sorted insert needs a sortedness invariant threaded through
+every recursion of `inferOpen` before monotonicity (L166) can be stated, and without it the
+lemma is **false** — a prepended duplicate shadows a later entry at a different signature.
+Prepend-shadowing is what `Types/Decls.lean`'s `addRow` does, for the reason it gives: `get?`
+reads `List.find?`, which stops at the first hit, so the only fact any proof needs is
+`List.find?`'s own equation. §8.1's normal form survives as `Row.normalize`, used by `render`,
+which is where a canonical form is actually wanted — comparing and printing rows, not looking
+them up.
+
+### `entail_sound`, and the shape of its statement
+
+§9.2's fourth owed item, and it needed one non-obvious move: `induction Q` reverts the three
+premises (they mention `Q`), and every case then carries a *dependent* `match`. Stating them as
+arguments after `∀ Q` — `entail_sound'` — makes each case introduce its own. **The shape of a
+statement is doing real work whenever an induction reverts a hypothesis that mentions the
+target.**
+
+### What this does **not** prove, which is the first thing to say about it
+
+**No new program is known not to type-stick.** `assn_check_sound`'s `¬ typeStuck` conjunct is
+`check_sound` verbatim — a conjunction, not a chain — and `assn_sound_from` is `sound_from`
+re-plumbed through `invA_iff_inv`. The set is exactly `{p | check p = accept}`, which is why
+`--check` is byte-identical. The theorem's docstring said *"⇒ there is a certificate ⇒ no
+reachable outcome is type-stuck"* and the second `⇒` was not a derivation; it has been rewritten
+to warn against exactly that misreading.
+
+What faithfulness buys is **negative**, and that is the honest framing: an equality cannot be
+weaker than what it equals, so §9.3's failure mode — *"if `⟦p ~ n : σ⟧` is subtly weaker than
+'this dispatch does not type-stick', the theorem stays true and stops being about anything"* — is
+ruled out for the declaration fragment rather than merely argued against. A re-notation whose
+faithfulness is unproved is precisely the thing that could quietly stop being about anything.
+
+Also unproduced: **§9.2's third obligation**, `RowsOk P h → require(...) = some (β,_) → ¬ (that
+send type-sticks)`. There is no such lemma. The equivalent fact is fused into `step_ok`'s case
+analysis for the rules that already exist, which is where `safe` is discharged. Adequate for what
+is built; worth knowing that the assertion language owns no does-not-stick lemma of its own.
+
+### What is still unchecked, said out loud
+
+`denote_declAssn` closes §9.3 for the **declaration** fragment. It says nothing about the
+requirement and obligation arms, whose `⟦·⟧` is still a definition — mitigated only by §9.1's
+own advice, that the atoms are `EntryOk` and nothing new. A reader who wants to attack this
+should attack `denote`'s `req`/`obl` arms, and the honest answer is that they are the same
+`EntryOk` at a substituted type.
+
+### R2, stated and not taken
+
+`declaresIn D c name` is in the file, with `declaresIn_of_declaresName` — the one direction that
+is free. `infer` still reads the **name-global** `declaresName`, deliberately, and the reason is
+now a measurement rather than a scheduling preference.
+
+**R2 is worth ~nothing on the current fragment, and four minutes with the binary says so.**
+`infer`'s `class'` rule admits only `reopenableClasses = ["String"]`, so a program in the
+fragment **cannot contain two classes**:
+
+```
+class String; def a; 1; end; def b; 2; end; end   ⇒ accept
+class String; def a; 1; end; def a; 2; end; end   ⇒ unknown   (same class — the class-relative
+                                                    guard refuses it too)
+class Integer; def q; 1; end; end                 ⇒ unknown   (not reopenable)
+```
+
+The entire difference class-relativity makes is `def <n>` on `String` for the four names
+`baseDecls` puts on `Integer` (`+`, `-`, `*`, `zero?`). `HANDOFF.md` has called this *the
+current binding item* for two sessions, reasoning from the slice's `to_s`-on-eight-`Token`-
+classes shape — which is real and is gated behind the **allocating** `class'` branch, not
+behind the ancestors argument. **A blocker measured on the *target* can be inert on the
+*fragment*, and the fragment is what the rule runs against.** Swapping the guard is also a rule
+change, hence constraint 4's atomic unit. What rows buy here is exactly what
+§13.5 says and no more — the *obligation* becomes writable per `(class, name)`, which is what
+`Assn.obl`/`dischargeRow` already are, so two classes each defining `to_s` do not collide in an
+assertion. The heap-side argument (`ResolvesAt_defineMethod`'s `mname ≠ name` over an arbitrary
+dispatch class, which a class-relative version has to replace with *the defining class is not
+among `k`'s ancestors*) is untouched and still owed. L167's census then demoted it: `def`-with-
+parameters blocks 67 slice bodies and this blocks none of the ones that are otherwise in reach.
+
+`--check` is byte-identical at **38 / 1,187 / 0** over the 1,227 cached bootstraptest ASTs, and
+this is the first rung in the initiative where that was **predicted from the code rather than
+measured hopefully**: nothing in `Types/Core.lean` changed, and the new module is not imported
+by anything on the verdict path.
