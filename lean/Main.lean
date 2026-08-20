@@ -11,6 +11,7 @@ import RubyCore.Obs
 import RubyCore.Types.Fragment
 import RubyCore.Types.Core
 import RubyCore.Types.SigRead
+import RubyCore.Types.OpenSelf
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -62,6 +63,20 @@ def main (args : List String) : IO UInt32 := do
   -- from `--check`: reading a declared type is unblocked, whereas concluding
   -- safety about a machine that executes the `T` shim is not (poc doc §8.3).
   let sigsOnly := args.contains "--sigs"
+  -- `--assn`: the per-method-body report of `homebrew/assertion-language.md` §11
+  -- (rung R1), and the third ratchet §12 R3 asks for. Static, like `--check`.
+  --
+  -- Two things distinguish it from `--check`. It is **per body** rather than
+  -- whole-program, which is the gradient §1's ledger wants — a slice file reads
+  -- `unknown` under `--check` until the fragment covers all of it and then flips.
+  -- And an `unknown` **carries the atom it wanted**: `needed` is the requirement
+  -- `require` could not discharge, where today `unknown` carries no information
+  -- at all and the gap has to be reconstructed by `fragment-gap.py`'s
+  -- hand-maintained census of `infer`'s match arms — which has been wrong twice.
+  --
+  -- It changes **no verdict**. `--check` is untouched, and this is a second,
+  -- additive query over the same AST.
+  let assnOnly := args.contains "--assn"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -97,6 +112,37 @@ def main (args : List String) : IO UInt32 := do
         IO.println (Lean.Json.mkObj [
           ("sigs", Lean.Json.arr
             (decls.map (fun d => declJson d.1 d.2)).toArray)]).compress
+        return 0
+      if assnOnly then
+        let D := Types.declsOf prog
+        let rs := Types.bodyReports D "Object" prog
+        let c := Types.census rs
+        let one := fun (r : String × String × Types.BodyVerdict) =>
+          Lean.Json.mkObj ([
+            ("class", Lean.Json.str r.1),
+            ("method", Lean.Json.str r.2.1)] ++
+            (match r.2.2 with
+             | .acceptedUnder ret need rest =>
+               [("status", Lean.Json.str "accept"),
+                ("type", Lean.Json.str ret.render),
+                ("requires", Lean.Json.str need.render),
+                ("store", Lean.Json.str rest.render)]
+             | .blocked τ n ps =>
+               [("status", Lean.Json.str "unknown"),
+                ("needed", Lean.Json.str
+                  (τ.render ++ " ~ " ++ n ++ " : (" ++
+                    String.intercalate ", " (ps.map Types.ATy.render) ++ ") → _"))]
+             | .outOfFragment head =>
+               [("status", Lean.Json.str "unknown"),
+                ("out_of_fragment", Lean.Json.str head)]))
+        IO.println (Lean.Json.mkObj [
+          ("bodies", Lean.Json.arr (rs.map one).toArray),
+          ("census", Lean.Json.mkObj [
+            ("total", Lean.Json.num c.total),
+            ("accepted", Lean.Json.num c.accepted),
+            ("unconditional", Lean.Json.num c.unconditional),
+            ("blocked", Lean.Json.num c.blocked),
+            ("out_of_fragment", Lean.Json.num c.outOfFragment)])]).compress
         return 0
       if checkOnly then
         let verdict := match Types.check prog with

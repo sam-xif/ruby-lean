@@ -6461,3 +6461,87 @@ The functional induction Lean generates for a mutual well-founded definition,
 `dsimp only` between the steps. Cheap once known and three wasted attempts before that.
 
 `--check` byte-identical at 38 / 1,187 / 0.
+
+
+## L167 — `--assn`, and the third ratchet that says which wall the slice is behind
+
+`homebrew/assertion-language.md` §11 and §12 **R1**/**R3**. The cheapest benefit in §1's ledger
+and the only one that wanted no metatheory at all — and it immediately corrected the plan.
+
+### What `--assn` is
+
+A second static query beside `--check`, over the same AST. Where `--check` is whole-program and
+answers one word, `--assn` answers **per method body**, and an `unknown` **carries the atom it
+wanted**:
+
+```
+homebrew/vulns/semver.rb  Version#hash
+  accept : α2
+  requires: Version ⊒ ⟨ value : () → α1 ⟩
+  and:      α1 ~ hash : () → α2
+```
+
+That is §4.3's principal type, printed. Note the second line: a body whose return type is still a
+*variable* is **not** a failure — it is a body whose type is determined by its precondition, and
+saying so is the per-method-body gradient §1's ledger asks for. `BodyVerdict.acceptedUnder`
+therefore carries an `ATy`, not a `Ty`; the first version carried a `Ty` and reported `def get;
+value; end` as **blocked**, which is precisely the information-free `unknown` this rung exists to
+retire.
+
+`check`'s verdict is unchanged, and `--check` is byte-identical at 38 / 1,187 / 0.
+
+### The third ratchet, and the finding
+
+`fragment-gap.py` grew the number `HANDOFF.md` §Not on the critical path has been asking for
+since the fourteenth session — *method bodies whose every send resolves* — except that it is not
+computed by the tool at all. It is read out of `rubycore --assn`. **`SUPPORTED` has been wrong
+twice from drift, and a ratchet computed by the artifact it measures cannot drift from it.**
+
+On the slice, over 112 `def`s (the two hand censuses said 92, because they did not descend into
+singleton defs or defs inside blocks):
+
+| | |
+|---|---|
+| accepted, under a stated precondition | **16** |
+| …of which unconditional (empty row) | 5 |
+| refused with a named missing atom | 0 |
+| out of fragment | 96 |
+
+and the census of *why*, which is the finding:
+
+```
+67  def-params          9  send-0-args        4  send-with-block
+ 3  ivar                3  const              3  array
+ 2  selfRecv            1  super              1  send-2-args …
+```
+
+**`def` with parameters is 67 of 112 — three times every other blocker combined, and no document
+in this initiative had it anywhere near the top.** The fourteenth session ranked by nodes and put
+`const` first (868 nodes); the fifteenth ranked by method bodies freed and put `vcall` first (14).
+Both were ranking *constructs inside bodies*. The ratchet that asks the checker directly says the
+binding constraint is the **shape of the `def` rule itself** — `params.isEmpty`, in
+`Types/Core.lean`, unchanged since P0 and never costed.
+
+That is the third variant of the same process lesson, and the sharpest: **L159's was *measure the
+thing the criterion is stated over*; L164's was *measure it with the ratchet that predicts the
+verdict*; this one is *have the artifact compute the ratchet, because the copy will disagree with
+it and the copy will be wrong.*** The tool's own `SUPPORTED`-based number for the same slice is
+**5 of 92** — a deliberate understatement (it cannot tell a method-body `self` from a class-body
+one), and a reader comparing 5 against 16 has no way to know which is the honest one without
+reading both implementations.
+
+### Why the number moved down mid-session, and why that is the report working
+
+The first run of the census reported **18** accepted. It was wrong: two bodies took parameters
+and never read them, so nothing in the body was outside the fragment even though `infer`'s `def`
+rule refuses the definition. Naming the refusal at the `def` node (`def-params`) rather than
+letting it surface as an unbound local read fixed the count to 16 **and** produced the 67 above.
+*A census that classifies at the wrong node reports the right total and the wrong reason, and the
+reason is the whole product.*
+
+### Scope, stated
+
+`--assn` reports; it does not decide. `bodyVerdict` runs `inferOpen`, whose accepts are backed by
+`inferOpen_factors` (L166) **only once a substitution is supplied and checked** — the tool does
+not solve for one, so an `accept` here is *"types under this precondition"*, not *"is safe"*. The
+solver is the missing piece, it is Layer 3, and §8.3's bi-abduction is where it goes.
