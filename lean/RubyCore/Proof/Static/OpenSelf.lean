@@ -549,6 +549,39 @@ theorem inferBody_sound {D : Decls} {c : String} {body : Expr} {τ : ATy} {Γ' :
   rw [hb] at this
   simpa [substEnv] using this (StoreLe.refl _)
 
+/-- **The parameter-open form** (L168), and it is the same theorem: the factoring
+    theorem was quantified over `Γ` from the start, so binding parameters to fresh
+    variables costs it nothing.
+
+    Read the conclusion for exactly what it says and no more. The nominal
+    judgement it lands in is `infer` **on the body**, in the environment the
+    substitution gives the parameters — a judgement that exists today and is the
+    one `infer`'s `def` arm would consult if it had parameters. It is *not* an
+    `infer` accept of the `def`, because that arm requires `params.isEmpty`
+    (`Types/Core.lean`). That gap is why `bodyVerdictWith` reports these bodies
+    under their own constructor and their own census column: the body's typing is
+    settled, its declaration is not, and merging the two counts would read as an
+    accept-rate `check` does not have. -/
+theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : Expr}
+    {Γb Γ' : AEnv} {τ : ATy} {s' : OState} {θ : TyVar → Ty}
+    (hb : inferBodyWith D c ps body = some (Γb, .ok τ Γ' s'))
+    (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
+    infer D (substEnv θ Γb) body false { cls := c, selfCls := some c }
+      = some (τ.subst θ, substEnv θ Γ', D) := by
+  unfold inferBodyWith at hb
+  cases hop : openParams ps 1 with
+  | none => rw [hop] at hb; simp at hb
+  | some pf =>
+    obtain ⟨Γ₀, f⟩ := pf
+    rw [hop] at hb
+    simp only [Option.some.injEq, Prod.mk.injEq] at hb
+    obtain ⟨hΓ, hrun⟩ := hb
+    subst hΓ
+    have := inferOpen_factors D { cls := c, self := 0 } θ s'.st hsat hself
+      Γ₀ body { st := {}, fresh := f }
+    rw [hrun] at this
+    exact this (StoreLe.refl _)
+
 /-- **The invariant's user-method clause, discharged by open-self inference.** -/
 theorem userConforms_of_inferBody {D : Decls} {c : String} {md : MethodDef}
     {d : MethodDecl} {τ : ATy} {Γ' : AEnv} {s' : OState} {θ : TyVar → Ty}
@@ -604,6 +637,52 @@ theorem egRow_nominal :
   have := inferBody_sound egRow_open egRow_sat (by rfl)
   simpa [substEnv, egTheta] using this
 
+/-! ## 8b. §7.3's `Γ_b`, end to end (L168)
+
+The same four layers over a body with a **parameter**, which is the shape 58 of
+the slice's 112 method bodies have (`homebrew/fragment-gap.py`'s third ratchet).
+The point of the witness is which layer moved: `inferOpen` is unchanged, the
+factoring theorem is unchanged, and the nominal judgement the parameter lands in
+is `infer` at a *non-empty* environment — the one `infer` has always had. -/
+
+/-- `def eq?(other) = other.zero?` — a parameter in receiver position, so the
+    requirement is recorded against the **parameter's** variable and the residual
+    row on `self` is empty. That is the case §7.3's `Γ_b` is for, and it is the
+    one a class-level precondition cannot express. -/
+def egParamBody : Expr := .send (some (.var .lvar "other")) "zero?" [] none
+
+def egParamStore : Store :=
+  { rows := [(1, { entries := [("zero?", { params := [], ret := .var 2 })] })] }
+
+theorem egParam_open :
+    inferBodyWith baseDecls "String" [.req "other"] egParamBody
+      = some ([("other", .var 1)], .ok (.var 2) [("other", .var 1)]
+          { st := egParamStore, fresh := 3 }) := by
+  simp [inferBodyWith, openParams, egParamBody, egParamStore, inferOpen, isSelf,
+    requireRow, Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty,
+    aenvGet?]
+
+/-- The solver's answer: the parameter is an `Integer`, and `zero?` returns a
+    `Boolean`. Note `θ 0` is still constrained — `self`'s variable exists whether
+    or not the body mentions it. -/
+def egParamTheta : TyVar → Ty
+  | 0 => .cls "String"
+  | 1 => .int
+  | _ => .bool
+
+theorem egParam_sat : SatStore baseDecls egParamTheta egParamStore :=
+  satStoreB_sound (by decide)
+
+/-- **Nominal `infer` accepts the body at `other : Integer`.** Obtained from
+    `inferBodyWith_sound`, not by running `infer` — and note what it is *not*: an
+    accept of the enclosing `def`, whose rule still requires `params.isEmpty`. -/
+theorem egParam_nominal :
+    infer baseDecls [("other", Ty.int)] egParamBody false
+        { cls := "String", selfCls := some "String" }
+      = some (.bool, [("other", Ty.int)], baseDecls) := by
+  have := inferBodyWith_sound egParam_open egParam_sat (by rfl)
+  simpa [substEnv, egParamTheta] using this
+
 /-! ## 9. Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Static.inferOpen_factors' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -613,6 +692,14 @@ theorem egRow_nominal :
 /-- info: 'RubyCore.Proof.Static.userConforms_of_inferBody' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms userConforms_of_inferBody
+
+/-- info: 'RubyCore.Proof.Static.inferBodyWith_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms inferBodyWith_sound
+
+/-- info: 'RubyCore.Proof.Static.egParam_nominal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egParam_nominal
 
 end Static
 end Proof

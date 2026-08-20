@@ -6545,3 +6545,112 @@ reason is the whole product.*
 `inferOpen_factors` (L166) **only once a substitution is supplied and checked** — the tool does
 not solve for one, so an `accept` here is *"types under this precondition"*, not *"is safe"*. The
 solver is the missing piece, it is Layer 3, and §8.3's bi-abduction is where it goes.
+
+## L168 — `def` with parameters, open: the 67-body wall, and what was behind it
+
+`homebrew/assertion-language.md` §7.3's `Γ_b`, and the item `HANDOFF.md` §The next commit named
+after L167's ratchet reordered the work: **`def` with parameters is 67 of the slice's 112 method
+bodies**, three times every other blocker combined.
+
+It is landed the way R4 was — **untrusted front end, proved to factor, `check` untouched** — and
+the census it produces is the finding, because it is not the one the 67 predicted.
+
+### The wall was in the rule, not in the body, and the refusal said so
+
+`bodyReports` refused a parameterised `def` with a comment that is worth quoting, because it is
+half right:
+
+> **A `def` with parameters is refused here, not by rows.** `infer`'s own `def` rule requires
+> `params.isEmpty`, so §7.3's `Γ_b` — declared parameters, or fresh variables — has nothing to
+> factor *to*: the factoring theorem's conclusion would be about a nominal judgement that does not
+> exist.
+
+True of the `def` **rule**. False of the **body** — and `inferOpen_factors` had said so since
+L166, in its own statement:
+
+```lean
+theorem inferOpen_factors (D) (ctx) (θ) (stF) (hsat) (hself) (Γ : AEnv) (e : Expr) (s) :
+    Factors D θ stF ctx Γ e (inferOpen D Γ e ctx s)
+```
+
+`Γ` is universally quantified. It always was; the empty environment was a *caller's* choice in
+`inferBody`, not a hypothesis of the theorem. So binding each required positional parameter to a
+fresh type variable and running the body in that environment factors through
+`infer D (substEnv θ Γ_b) body`, a nominal judgement that exists today —
+`inferBodyWith_sound`, whose whole proof is one instantiation of L166's theorem plus the two
+`Option` destructurings that read `openParams`' answer. **Eleven lines, first attempt, axiom-clean.**
+
+What still does not exist is the `def` rule that installs the row, and that is why the verdict has
+its own constructor (`BodyVerdict.acceptedOpenParams`), its own JSON key (`open_params`) and its
+own census column (`pacc`) instead of joining `accepted`. The distinction is exact and worth
+keeping in that shape: `acceptedUnder` factors through `infer` **at the empty environment**, which
+is the environment `infer`'s own `def` arm checks a zero-parameter body in, so it is one
+substitution away from the judgement `check` uses; `acceptedOpenParams` factors through `infer` on
+the **body** and through no `def` rule at all. Merging them would report an accept-rate the checker
+does not have.
+
+**Required positional parameters only.** The other seven arms of `Param` are refused **by kind** —
+`def-params-opt`, `-key`, `-rest`, `-kwrest`, `-block` — because each is a different binding rule
+in `enterUserMethod` (`Interp/Support.lean:452`) and an optional's default is an expression
+evaluated in the callee frame, which is a second body rather than a type. Nine slice bodies are
+behind those five kinds, and the census can now say which.
+
+### The finding: 67 bodies were behind the wall, and 3 of them were behind only that
+
+| | before | after |
+|---|---|---|
+| accepted (zero-parameter, precondition on its own class) | 16 | 16 |
+| accepted with **parameters open** | — | **3** |
+| refused with a named missing atom | 0 | 2 |
+| out of fragment | 96 | 91 |
+
+Five bodies moved, of the 67 the ratchet counted. The other 62 are still `unknown`, each now
+reporting **the construct inside its own body** that stopped it, and the census that results is
+almost unrecognisable beside L167's:
+
+```
+16  const           11  send-0-args      9  send-with-block   8  send-2-args
+ 8  return           6  array            4  ivar              4  send-1-args
+ 4  def-params-key   3  if               3  iasgn             3  super
+ 2  selfRecv         2  begin            2  def-params-rest   2  def-params-opt
+ 1  gvar             1  zsuper           1  def-params-kwrest 1  def-params-block
+```
+
+**`const` — which L167 measured at 3 and this file demoted twice on that basis — is 16 and back at
+the top.** `send-with-block` is 9 rather than 4. `ivar` and `iasgn` together are 7 rather than 3.
+Every one of those numbers went *up* when a blocker in front of them was removed, and that is the
+lesson:
+
+> **A census that classifies at the outermost node reports a blocker's count as an upper bound on
+> what removing it buys — and simultaneously *understates* every blocker it hides.** `def-params`
+> was worth 67 as a refusal and 3 as an accept, because it sat in front of sixteen other walls. The
+> two are different questions and L167's table answered only the first.
+
+That is the fourth variant of this initiative's recurring process lesson, and the first one that is
+about *depth* rather than about which ratchet to read. The repair is not a different ratchet: it is
+to read a blocker's count as *bodies this refusal is the outermost cause of* and to expect the
+distribution behind it to be unknown until the refusal is lifted. There is no way to compute the
+second number without lifting the first.
+
+### Scope, stated as narrowly as L167's
+
+`--assn` reports; it does not decide. An `accept (params open)` means *this body types, given these
+parameter types and this precondition on its class*, with the substitution still unsupplied — and
+in addition it means *no `def` rule accepts the enclosing definition*. `check` is byte-identical at
+**38 / 1,187 / 0** over the 1,227 cached bootstraptest ASTs, which is the twelfth check and is what
+"inert in the checker" is verified by.
+
+### The checks
+
+`check-proofs.sh` green (24 theorems, `propext`/`Classical.choice`/`Quot.sound` only — two new
+`#print axioms` lines: `inferBodyWith_sound` and the end-to-end `egParam_nominal`); `--check`
+byte-identical; `--assn` smoke 1,225 clean / 2 decode gates over the same ASTs; `fragment-gap.py
+--self-test` all agree; desugar bootstraptest 1,227 agree / 0 disagree / 77 out-of-fragment. No
+rule changed, so the execution tiers cannot move — but the binary relinked, so the two cheap ones
+were run rather than argued.
+
+### Also in this commit
+
+`fragment-gap.py --assn-dump`: §11's report for **every** method body in the slice, one block per
+`def`, in source order. The aggregate ratchet says how many; this says *which*, and it is the
+artifact `homebrew/slice-verdict.md` is generated from.

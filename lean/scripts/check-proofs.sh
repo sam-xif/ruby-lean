@@ -83,6 +83,14 @@ import RubyCore.Proof.Static.OpenSelf
 #print axioms RubyCore.Proof.Static.inferOpen_mono
 #print axioms RubyCore.Proof.Static.inferOpen_factors
 #print axioms RubyCore.Proof.Static.userConforms_of_inferBody
+-- L168 — the parameter-open form. Same theorem, instantiated at a non-empty `Γ`:
+-- `inferOpen_factors` was quantified over the environment from the start, so §7.3's
+-- `Γ_b` costs the metatheory nothing. `egParam_nominal` is the end-to-end witness —
+-- open run, solver's `θ`, `satStoreB` check, nominal `infer` accept — kept in the
+-- audit because it is the only place the four layers are exercised together over a
+-- body with a parameter.
+#print axioms RubyCore.Proof.Static.inferBodyWith_sound
+#print axioms RubyCore.Proof.Static.egParam_nominal
 LEAN
 
 echo "== axioms"

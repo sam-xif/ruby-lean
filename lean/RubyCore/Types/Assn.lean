@@ -598,6 +598,25 @@ inductive BodyVerdict where
       `value` is declared — and printing it is the per-method-body gradient §1's
       ledger asks for. -/
   | acceptedUnder (ret : ATy) (need : Row) (rest : Assn)
+  /-- **The body types with its parameters open** (L168). Identical to
+      `acceptedUnder` except that the body was checked in a *non-empty*
+      environment: each required positional parameter is bound to a fresh type
+      variable, listed in `params`, and the store's requirements on those
+      variables are the parameters' preconditions.
+
+      Kept a separate constructor rather than folded into `acceptedUnder`, and the
+      reason is the honesty the census exists for. `acceptedUnder` factors through
+      a nominal `infer` run **at the empty environment**, which is the environment
+      `infer`'s own `def` rule checks a zero-parameter body in — so its accept is
+      one substitution away from the nominal judgement `check` uses. This one
+      factors through `infer` at `substEnv θ Γ_b` (`inferBodyWith_sound`), which
+      is a nominal judgement about the *body* and not about any `def` rule that
+      exists: `infer`'s `def` arm still requires `params.isEmpty`. So a body
+      reported here is a body whose typing is settled and whose **declaration** is
+      not, and a census that merged the two would read as an accept-rate the
+      checker does not have. -/
+  | acceptedOpenParams (ret : ATy) (need : Row) (rest : Assn)
+      (params : List (String × ATy))
   /-- The body does not type, and here is the atom that stopped it. -/
   | blocked (τ : ATy) (n : String) (params : List ATy)
   /-- Outside `infer`'s domain — the construct census's `unknown`. -/
@@ -609,6 +628,14 @@ def explain (D : Decls) (c : String) (v : BodyVerdict) : String :=
   match v with
   | .acceptedUnder ret need rest =>
     let base := s!"accept : {ret.render}"
+    let r1 := if need.entries.isEmpty then base
+              else base ++ s!"\n  requires: {c} ⊒ {need.render}"
+    match rest with
+    | .emp => r1
+    | _ => r1 ++ s!"\n  and:      {rest.render}"
+  | .acceptedOpenParams ret need rest ps =>
+    let pl := String.intercalate ", " (ps.map fun e => e.1 ++ " : " ++ e.2.render)
+    let base := s!"accept : {ret.render}\n  params:   ({pl})"
     let r1 := if need.entries.isEmpty then base
               else base ++ s!"\n  requires: {c} ⊒ {need.render}"
     match rest with

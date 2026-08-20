@@ -127,6 +127,22 @@ def main (args : List String) : IO UInt32 := do
                 ("type", Lean.Json.str ret.render),
                 ("requires", Lean.Json.str need.render),
                 ("store", Lean.Json.str rest.render)]
+             -- **Parameters open** (L168). `open_params` is printed rather than
+             -- inferred from the presence of `params`, because a reader of the
+             -- JSON must be able to tell this accept from `acceptedUnder`'s
+             -- without knowing that only one of the two can carry parameters:
+             -- the two factor through *different* nominal judgements, and only
+             -- the latter's is one `check` uses.
+             | .acceptedOpenParams ret need rest ps =>
+               [("status", Lean.Json.str "accept"),
+                ("open_params", Lean.Json.bool true),
+                ("params", Lean.Json.arr
+                  (ps.map (fun e => Lean.Json.mkObj
+                    [("name", Lean.Json.str e.1),
+                     ("type", Lean.Json.str e.2.render)])).toArray),
+                ("type", Lean.Json.str ret.render),
+                ("requires", Lean.Json.str need.render),
+                ("store", Lean.Json.str rest.render)]
              | .blocked τ n ps =>
                [("status", Lean.Json.str "unknown"),
                 ("needed", Lean.Json.str
@@ -140,6 +156,7 @@ def main (args : List String) : IO UInt32 := do
           ("census", Lean.Json.mkObj [
             ("total", Lean.Json.num c.total),
             ("accepted", Lean.Json.num c.accepted),
+            ("accepted_params", Lean.Json.num c.acceptedParams),
             ("unconditional", Lean.Json.num c.unconditional),
             ("blocked", Lean.Json.num c.blocked),
             ("out_of_fragment", Lean.Json.num c.outOfFragment)])]).compress

@@ -254,6 +254,87 @@ def bodyVerdict (D : Decls) (c : String) (body : Expr) : BodyVerdict :=
   | .missing τ n ps => .blocked τ n ps
   | .outOfFragment head => .outOfFragment head
 
+/-! ## 3a. §7.3's `Γ_b` — parameters, open (L168)
+
+`fragment-gap.py`'s third ratchet, on its first run, said the slice's largest
+single blocker is **`def` with parameters — 67 of its 112 method bodies**, three
+times every other blocker combined (`homebrew/HANDOFF.md` §The measurement that
+reordered the work — again). Neither of the two earlier rankings had it anywhere,
+because both rank constructs *inside* bodies and this is the shape of a **rule**.
+
+What blocked it is written in `bodyReports`' old comment: §7.3's `Γ_b` had
+"nothing to factor to", since `infer`'s `def` arm requires `params.isEmpty`. That
+is right about the `def` **rule** and wrong about the **body**:
+`inferOpen_factors` is quantified over `Γ` — it always was — so an open run with
+parameters bound to fresh variables factors through `infer` at
+`substEnv θ Γ_b`, which is a nominal judgement that exists today
+(`Proof/Static/OpenSelf.lean` `inferBodyWith_sound`). What does *not* exist is the
+`def` rule that would install the row, and that is why the verdict has its own
+constructor (`BodyVerdict.acceptedOpenParams`) and its own census column rather
+than joining `accepted`.
+
+So this rung is the same stance R4 took, one argument along: **untrusted front
+end, proved to factor, `check` untouched.** It adds no `KontOk` constructor, no
+consecution case, and no arm to `infer`.
+
+**Required positional parameters only.** `Param` has eight arms and the other
+seven are refused by name, because each is a *different* binding rule in
+`enterUserMethod` (`Interp/Support.lean:452`) and an optional's default is an
+expression evaluated in the callee frame — a second body, not a type. Refusing
+them by kind rather than in bulk is what keeps the census able to say which wall
+the remaining bodies are behind. -/
+
+/-- Which arm of `Param` this is, for the `out of fragment:` line. -/
+def paramKind : Param → String
+  | .req _ => "req" | .opt _ _ => "opt" | .rest _ => "rest"
+  | .key _ _ => "key" | .kwrest _ => "kwrest" | .block _ => "block"
+  | .fwd => "fwd" | .destr _ => "destr"
+
+/-- The first parameter that is not a required positional, by kind. `none` when
+    every parameter is one, which is exactly when `openParams` succeeds. -/
+def firstNonReq : List Param → Option String
+  | [] => none
+  | .req _ :: rest => firstNonReq rest
+  | p :: _ => some (paramKind p)
+
+/-- §7.3's `Γ_b = ∅[x₁ ↦ τ₁, …, x_k ↦ τ_k]`, in the *"or fresh vars"* case the
+    rule's parenthetical allows: one fresh variable per parameter, in source
+    order, and the counter left where the body's own `require`s continue from.
+
+    Variables start at `1` because `0` is `self` (`inferBody`'s convention), so a
+    parameter's variable can never be confused with the receiver's — which matters
+    for `residualRow`, whose whole content is *the row on `self`*. -/
+def openParams : List Param → TyVar → Option (AEnv × TyVar)
+  | [], f => some ([], f)
+  | .req x :: rest, f =>
+    match openParams rest (f + 1) with
+    | some (Γ, f') => some ((x, .var f) :: Γ, f')
+    | none => none
+  | _, _ => none
+
+/-- Type one method body of class `c` with its parameters bound to fresh
+    variables. `none` when a parameter is not a required positional. -/
+def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
+    Option (AEnv × OResult) :=
+  match openParams ps 1 with
+  | some (Γb, f) =>
+    some (Γb, inferOpen D Γb body { cls := c, self := 0 } { st := {}, fresh := f })
+  | none => none
+
+/-- §11's per-body verdict for a `def` with parameters. Delegates to
+    `bodyVerdict` when there are none, so the zero-parameter census column keeps
+    exactly the meaning it had. -/
+def bodyVerdictWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
+    BodyVerdict :=
+  if ps.isEmpty then bodyVerdict D c body else
+  match inferBodyWith D c ps body with
+  | none => .outOfFragment ("def-params-" ++ (firstNonReq ps).getD "?")
+  | some (Γb, .ok τ _ s) =>
+    .acceptedOpenParams τ (residualRow { cls := c, self := 0 } s)
+      ((closeBody { cls := c, self := 0 } s).toAssn) Γb
+  | some (_, .missing τ n args) => .blocked τ n args
+  | some (_, .outOfFragment head) => .outOfFragment head
+
 /-! ## 3b. §11 and R3 — the per-body census, as an output of the checker
 
 `fragment-gap.py`'s two ratchets are *progress through the files* and *progress
@@ -273,19 +354,19 @@ mutual
 
 def bodyReports (D : Decls) (cls : String) (e : Expr) : List (String × String × BodyVerdict) :=
   match e with
-  -- **A `def` with parameters is refused here, not by rows.** `infer`'s own `def`
-  -- rule requires `params.isEmpty` (`Types/Core.lean`), so §7.3's `Γ_b` — declared
-  -- parameters, or fresh variables — has nothing to factor *to*: the factoring
-  -- theorem's conclusion would be about a nominal judgement that does not exist.
-  -- Naming the reason keeps the census honest about which wall a body is behind.
-  | .def' n ps body =>
-    [(cls, n, if ps.isEmpty then bodyVerdict D cls body else .outOfFragment "def-params")]
+  -- **A `def` with parameters is typed with its parameters open** (L168), and the
+  -- verdict says so: `acceptedOpenParams`, a separate constructor and a separate
+  -- census column, because it factors through `infer` at `substEnv θ Γ_b` and not
+  -- through any `def` rule (`inferBodyWith`'s header). Until L168 this arm was
+  -- refused outright on the grounds that §7.3's `Γ_b` had nothing to factor to —
+  -- true of the rule, false of the body, since `inferOpen_factors` is quantified
+  -- over `Γ`. A parameter that is not a required positional is still refused, **by
+  -- kind**, so the census can say which binding rule the body is behind.
+  | .def' n ps body => [(cls, n, bodyVerdictWith D cls ps body)]
   -- A singleton definition installs on the eigenclass, which is a different key;
   -- reported under the same class name with `self.` prefixed so the count is
   -- complete and the distinction is visible rather than silent.
-  | .defs _ n ps body =>
-    [(cls, "self." ++ n,
-      if ps.isEmpty then bodyVerdict D cls body else .outOfFragment "def-params")]
+  | .defs _ n ps body => [(cls, "self." ++ n, bodyVerdictWith D cls ps body)]
   | .class' name _ body => bodyReports D name body
   | .scopedClass _ name body => bodyReports D name body
   | .module' name body => bodyReports D name body
@@ -316,6 +397,10 @@ structure BodyCensus where
   total : Nat := 0
   /-- Typed, under some precondition on the defining class. -/
   accepted : Nat := 0
+  /-- Typed **with parameters open** (L168) — the body's typing is settled and its
+      declaration is not. Counted apart from `accepted` for the reason
+      `BodyVerdict.acceptedOpenParams` is a separate constructor. -/
+  acceptedParams : Nat := 0
   /-- Typed with an **empty** residual row — no obligation at all. -/
   unconditional : Nat := 0
   /-- Refused with a named missing atom (§11's `needed:` line). -/
@@ -329,6 +414,10 @@ def census (rs : List (String × String × BodyVerdict)) : BodyCensus :=
     match r.2.2 with
     | .acceptedUnder _ need rest =>
       { c with total := c.total + 1, accepted := c.accepted + 1,
+               unconditional := c.unconditional +
+                 (if need.entries.isEmpty && rest == .emp then 1 else 0) }
+    | .acceptedOpenParams _ need rest _ =>
+      { c with total := c.total + 1, acceptedParams := c.acceptedParams + 1,
                unconditional := c.unconditional +
                  (if need.entries.isEmpty && rest == .emp then 1 else 0) }
     | .blocked _ _ _ => { c with total := c.total + 1, blocked := c.blocked + 1 }
@@ -407,5 +496,32 @@ example : inferBody baseDecls "Version" (.send (some (.int 1)) "/" [.int 2] none
     = .missing (.nom .int) "/" [.nom .int] := by
   simp [inferBody, inferOpen, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
+
+
+/-! ### L168's capability, asserted in the build
+
+`HANDOFF.md`'s norm: the corpus cannot witness a `--assn` verdict, so the
+capability is asserted here or it is not asserted at all. -/
+
+/-- **A parameter kind that is not a required positional is refused by name.**
+    The kind is in the verdict because the census's whole value is in *which*
+    wall a body is behind — nine of the slice's bodies are behind these four
+    kinds, and an `outOfFragment "def-params"` could not say which. -/
+example :
+    bodyVerdictWith baseDecls "String" [.opt "a" (.int 1)] (.int 1)
+      = .outOfFragment "def-params-opt" := by
+  simp [bodyVerdictWith, inferBodyWith, openParams, firstNonReq, paramKind]
+
+/-- …and the `block` kind, which is the one `&blk` takes. -/
+example :
+    bodyVerdictWith baseDecls "String" [.req "a", .block (some "b")] (.int 1)
+      = .outOfFragment "def-params-block" := by
+  simp [bodyVerdictWith, inferBodyWith, openParams, firstNonReq, paramKind]
+
+/-- **`Γ_b`, in order, one fresh variable each, starting above `self`'s.** The
+    offset is what keeps `residualRow` — whose entire content is the row on
+    `self` — from reading a parameter's row. -/
+example : openParams [.req "a", .req "b"] 1 = some ([("a", .var 1), ("b", .var 2)], 3) := by
+  simp [openParams]
 
 end RubyCore.Types
