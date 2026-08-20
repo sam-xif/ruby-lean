@@ -328,18 +328,31 @@ class FragmentChecker:
 
 @dataclass(frozen=True)
 class CheckResultLean:
-    """`rubycore --check`: the P0 static checker's verdict
+    """`rubycore --check`: the static checker's answer
     (`lean/RubyCore/Types/Core.lean`).
 
-    `accept` is licensed by `Proof/StaticSoundness.check_sound`; `reject` is a
-    claim about our rules only and carries no theorem; `unknown` claims nothing.
+    Two readings, and the distinction is D12's:
+
+    * `decision` — **total**, `accept` or `reject`, never `unknown`. This is what
+      `PLAN.md` §1 criterion 2 is stated over. `accept` is licensed by
+      `Proof/Static.decision_sound_withPrelude`; `reject` says *the checker did
+      not certify this program* and carries no claim about the program at all.
+    * `verdict`/`basis` — the **epistemic** reading, unchanged in meaning and in
+      value from before D12: `refuted` is *our rules refute this* (the only cell
+      the `srb` comparison's pinned zero is about) and `uncertified` is *the
+      fragment escaped*. Consumers that compare against `srb`, and the tier-4
+      corpus's declared verdicts, read this one — collapsing the two would retire
+      that comparison silently.
     """
 
-    verdict: str  # accept | reject | unknown
+    verdict: str  # accept | reject | unknown  — the epistemic reading
     inferred_type: str | None
+    decision: str | None = None  # accept | reject  — D12's total reading
+    basis: str | None = None  # certified | refuted | uncertified
 
     def to_json(self) -> dict:
-        return {"verdict": self.verdict, "type": self.inferred_type}
+        return {"verdict": self.verdict, "type": self.inferred_type,
+                "decision": self.decision, "basis": self.basis}
 
 
 class StaticChecker:
@@ -380,7 +393,8 @@ class StaticChecker:
             d = _json.loads(lean.stdout)
         except ValueError:
             return None
-        return CheckResultLean(str(d["verdict"]), d.get("type"))
+        return CheckResultLean(str(d["verdict"]), d.get("type"),
+                               d.get("decision"), d.get("basis"))
 
 
 class SigReader:

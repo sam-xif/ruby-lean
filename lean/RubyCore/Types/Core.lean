@@ -43,7 +43,16 @@ perfectly safe. That asymmetry is inherent (`typed-portion-safety.md` §8.1) and
 is why the guard on `reject` is a difftest direction — `reject ⇒ srb rejects` —
 rather than a Lean theorem. Verified for the cases below [V].
 
-**Bias toward `unknown`.** Every source of doubt resolves to `unknown`:
+**D12 renames the parts of that sentence without changing any of them.** The
+reported decision is total — `accept` or `reject` — and `reject` means *the
+checker did not certify this program*, which claims nothing at all. The verdict
+above is retained as the decision's **basis**: `refuted` is the paragraph you have
+just read (our rules refute, guarded by `reject ⇒ srb rejects`), `uncertified` is
+the abstention below. Only the first has ever had an obligation, which is why the
+two are not collapsed. See `decisionOf` and the §D12 note at the file's end.
+
+**Bias toward `uncertified`** (called `unknown` above and everywhere before D12).
+**Every source of doubt resolves to it**:
 a receiver or argument whose type is not *unconditional*, a method absent from
 the declaration table, or any expression outside the fragment's spine.
 -/
@@ -520,9 +529,17 @@ termination_by sizeOf t + sizeOf els
 
 end
 
-/-- The verdict lattice. `accept` is backed by `check_sound`; `reject` is backed
-    by the difftest direction `reject ⇒ srb rejects` (not by a theorem — see the
-    refutation-pass header); `unknown` claims nothing and is the default. -/
+/-- The **epistemic** verdict — what the checker knows, in three values.
+
+    `accept` is backed by `check_sound`. `reject` says *our rules refute this
+    program*; the difftest direction `reject ⇒ srb rejects` is the guard on it
+    (not a theorem — see the refutation-pass header). `unknown` claims nothing.
+
+    **This is no longer what the tool reports** (D12). It is the *basis* of the
+    reported decision, and it is kept in exactly this shape because "our rules
+    refute this" and "the fragment escaped" are different facts, only the first
+    has ever been compared against `srb`, and collapsing them would retire that
+    comparison silently. `Decision`/`basisOf` below are the reported reading. -/
 inductive Verdict where
   | accept
   | reject
@@ -540,6 +557,76 @@ def check (p : Expr) : Verdict :=
   match infer (declsOf p) [] p true { cls := "Object" } with
   | some _ => .accept
   | none => if illTyped (declsOf p) p then .reject else .unknown
+
+/-! ## D12 — the decision is total, and what `reject` does and does not claim
+
+`PLAN.md` §1 criterion 2 asks for *`accept` or `reject`, never `unknown`*, and D5
+says *either verdict is a result; `unknown` is not*. Both are satisfiable today,
+and the reason is the **asymmetry of the guarantee**:
+
+* `accept` is a claim about the *program* — `check_sound` and its prelude-booted
+  instances conclude that no reachable outcome is type-stuck.
+* `reject` is a claim about the *checker*: **we did not certify this program.** It
+  does **not** say the program type-sticks, and no theorem or difftest direction
+  needs it to. A rejected program may run perfectly.
+
+So the decision is total by construction, with soundness untouched: `accept` iff
+`check p = .accept`, the same predicate every theorem is stated over
+(`decision_accept_iff`). What the three-valued `Verdict` becomes is the
+**basis** — *why* this is a reject — and it is retained rather than collapsed:
+
+| basis | reading | who consumes it |
+|---|---|---|
+| `certified` | `check_sound` applies | the theorem |
+| `refuted` | our rules positively refute the program | the `srb` comparison's pinned zero (`difftest/checker_relation.py`) |
+| `uncertified` | the fragment escaped; no claim either way | the false-negative metric — the thing to minimize |
+
+**The quality metric is therefore false negatives, not `unknown`s.** A checker
+that rejects everything is total and useless, so the number that matters is how
+much of the target it *certifies* — `homebrew/slice-verdict.md` is where that is
+tracked, per method body, with the assertion language as the triage of each
+`uncertified`.
+-/
+
+/-- D12's reported verdict: total, two-valued. -/
+inductive Decision where
+  | accept
+  | reject
+deriving DecidableEq, Repr, Inhabited
+
+/-- Why a decision is what it is. See the table above. -/
+inductive Basis where
+  | certified
+  | refuted
+  | uncertified
+deriving DecidableEq, Repr, Inhabited
+
+/-- **The decision, and its basis.** Total: every program gets `accept` or
+    `reject`. Defined *over* `check` rather than replacing it, so that no theorem
+    changes and the epistemic reading stays available to the consumers that need
+    it (the `srb` relation, the tier-4 declared verdicts). -/
+def decisionOf (p : Expr) : Decision × Basis :=
+  match check p with
+  | .accept => (.accept, .certified)
+  | .reject => (.reject, .refuted)
+  | .unknown => (.reject, .uncertified)
+
+/-- The bridge every soundness statement is read through: the total verdict's
+    `accept` is *the same predicate* `check_sound` is stated over. Proved rather
+    than asserted, because it is the one place where making the verdict total
+    could have quietly weakened the theorem. -/
+theorem decision_accept_iff (p : Expr) :
+    (decisionOf p).1 = .accept ↔ check p = .accept := by
+  unfold decisionOf
+  cases h : check p <;> simp [h]
+
+/-- …and the corresponding fact about the basis, which is what makes the table
+    above a definition rather than a comment: an accepting decision is always
+    `certified`, so a reader cannot see `accept` paired with anything else. -/
+theorem decision_accept_certified {p : Expr} (h : (decisionOf p).1 = .accept) :
+    (decisionOf p).2 = .certified := by
+  unfold decisionOf at h ⊢
+  cases hc : check p <;> simp [hc] at h ⊢
 
 /-! ## Worked verdicts
 

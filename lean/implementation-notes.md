@@ -6654,3 +6654,93 @@ were run rather than argued.
 `fragment-gap.py --assn-dump`: §11's report for **every** method body in the slice, one block per
 `def`, in source order. The aggregate ratchet says how many; this says *which*, and it is the
 artifact `homebrew/slice-verdict.md` is generated from.
+
+## L169 — D12: the verdict is total, and the criterion is met by reading the guarantee correctly
+
+`PLAN.md` D12 (and D13, which is a direction rather than a rung). The whole change is 60 lines of
+Lean, two of them load-bearing, and it closes `PLAN.md` §1 criterion 2 — *`rubycore --check` returns
+`accept` or `reject`, never `unknown`* — which L168's measurement had just priced at ~20 rungs and
+two structural walls away.
+
+### What was wrong, and it was a reading rather than a measurement
+
+L168's report said a whole-fragment decision was unreachable and that `reject` was "not an
+alternative route: it would claim the slice type-sticks". **That second clause is false**, and Sam's
+correction is the whole of this commit: the soundness statement is **one-directional**.
+`check_sound` says *`accept` ⇒ no reachable outcome is type-stuck*. Nothing anywhere says, or needs
+to say, anything about a `reject`. So `reject` may honestly mean **the checker did not certify this
+program** — a claim about the checker — and a rejected program may run perfectly. Completeness is not
+part of the guarantee; it is the quality metric.
+
+Once that is said, the criterion costs nothing:
+
+```lean
+def decisionOf (p : Expr) : Decision × Basis :=
+  match check p with
+  | .accept  => (.accept, .certified)
+  | .reject  => (.reject, .refuted)
+  | .unknown => (.reject, .uncertified)
+
+theorem decision_accept_iff (p) : (decisionOf p).1 = .accept ↔ check p = .accept
+```
+
+`decision_accept_iff` is the two lines that matter: the reported `accept` is **the same predicate**
+every existing theorem is stated over, so no theorem moved, and `decision_sound_withPrelude` is
+`check_sound_withPrelude` composed with it. `decision_accept_certified` makes the pairing total the
+other way — an accepting decision is never anything but `certified`, so a reader cannot see the two
+disagree.
+
+### The thing that had to be preserved, and would have been destroyed by a collapse
+
+`unknown` and `reject` are **different facts** — *the fragment escaped* and *our rules refute this* —
+and only the second has ever carried an obligation: `difftest/checker_relation.py`'s pinned zero
+`check-reject-disagreement` (*"we rejected and srb found nothing"*). Collapsing them into one
+reported word would have turned all 1,187 bootstraptest abstentions into violations of that zero and
+retired the guard while leaving it in the report reading 0 — the exact failure mode
+`test_every_pinned_zero_is_reachable` exists to prevent.
+
+So the three-valued verdict is **retained as the basis**, `--check` emits all three fields
+(`decision`, `basis`, `verdict`), and the guard is written into the docstring of the function that
+must not be fed the wrong one. **Additive: no consumer breaks**, the tier-4 corpus's declared
+verdicts keep their meaning, and the `verdict` column of the twelfth check is byte-identical.
+
+| | |
+|---|---|
+| `--check` over 1,227 cached ASTs | 38 `accept`/`certified`, 1,189 `reject`/`uncertified`, **0 `refuted`**; the `verdict` field byte-identical at 38 / 1,187 / 0 |
+| the eight slice files | `reject` / `uncertified`, every one |
+| the linked slice program (2,159 lines, all eight files) | `reject` / `uncertified`, with 118 / 19 / 2 / 97 per-body assertion output |
+
+**Zero `refuted` in either corpus is worth reading.** The refutation pass never fires on real code;
+every reject we produce today is an abstention. That is the honest shape of the result, and it is why
+the metric had to be restated rather than declared satisfied.
+
+### What replaces the criterion
+
+A checker that rejects everything satisfies D12 and is worthless, so §1 now carries the metric
+instead: **method bodies certified-modulo-precondition (19 of 118 on the linked slice) and files
+accepted (0 of 8)**, both read out of the binary. `homebrew/slice-verdict.md` is the tracker and the
+triage: for `basis = uncertified` the assertion-language output names what stopped each body, which is
+the *false-negative* triage §1's second bullet always asked for — a replayed counterexample trace is
+owed only by a `refuted`.
+
+### D13, and why it is here rather than in a rung
+
+Sam's second instruction — build a type system that captures **Ruby's duck typing and control flow**,
+and re-engage Sorbet later as a comparison or as a consumer of the facts we collect — is a plan
+change, so it is D13 in `PLAN.md` §3 rather than an L-entry. Its immediate effect on the rung order is
+recorded in `slice-verdict.md` §5: unions/nilable and occurrence typing move **ahead** of the
+class-object arm of `Ty`, because the slice's remaining bodies are blocked by duck-typed idiom
+(`case`/`when` narrowing, nilable returns, accessors with no declaration) rather than by missing
+nominal machinery — and rows already type the last of those with no declaration at all.
+
+### Checks
+
+`check-proofs.sh` green, **25** theorems, `propext`/`Classical.choice`/`Quot.sound` only (one new
+line: `decision_sound_withPrelude`); `--check` `verdict` byte-identical; `--assn` smoke 1,225 clean /
+2 decode gates; `fragment-gap.py --self-test` all agree; `difftest` pytest 162 passed, **1
+pre-existing failure unrelated to this commit** — `test_no_unsoundness_witness_is_in_the_fragment`
+reports `escape-hatches/002.rb` (a `define_method` displacing a `sig`-checked method) as in-fragment.
+It fails identically on the pre-commit tree, and it is the D10-era disagreement `HANDOFF.md` records
+on purpose (`Fragment.lean` admits the metaprogramming; the *checker* is what refuses it) encoded as a
+pre-D10 assertion. **Left failing and reported rather than weakened** — retargeting a safety guard at
+`theorem_scope` is a decision, not a cleanup.

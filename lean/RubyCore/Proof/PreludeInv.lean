@@ -204,6 +204,23 @@ theorem check_sound_withPrelude {p : Expr} {m₀ : Machine}
     subst hb
     exact check_sound_on hchk hcert
 
+/-- **D12's headline, and the reason making the verdict total costs nothing.**
+    The same theorem as `check_sound_withPrelude`, stated over the *reported*
+    decision: an `accept` from `decisionOf` licenses type-safety-by-reachability
+    at the heap the interpreter really starts from.
+
+    Read what is *not* here, because it is the content of D12: there is no
+    theorem about `reject`, and none is wanted. `reject` says the checker did not
+    certify the program — a claim about the checker, not about the program — so
+    the asymmetry that makes the decision total is the same asymmetry that keeps
+    it sound. -/
+theorem decision_sound_withPrelude {p : Expr} {m₀ : Machine}
+    (hchk : (Types.decisionOf p).1 = .accept)
+    (hb : Prelude.initWithPrelude p = .ok m₀)
+    (hcert : heapOkB m₀.heap = true) :
+    ∀ r, ReachableResult m₀ r → ¬ typeStuck r :=
+  check_sound_withPrelude ((Types.decision_accept_iff p).mp hchk) hb hcert
+
 /-! ## 3. The preservation route
 
 The heap half carried across arbitrary steps of phase 1, with the hand-off at the
@@ -340,6 +357,10 @@ hypothesis the harness checks at boot is not the compiler proving anything).
 /-- info: 'RubyCore.Proof.Static.check_sound_withPrelude'' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms check_sound_withPrelude'
+
+/-- info: 'RubyCore.Proof.Static.decision_sound_withPrelude' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms decision_sound_withPrelude
 
 end Static
 end Proof

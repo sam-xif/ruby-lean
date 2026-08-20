@@ -162,6 +162,24 @@ def main (args : List String) : IO UInt32 := do
             ("out_of_fragment", Lean.Json.num c.outOfFragment)])]).compress
         return 0
       if checkOnly then
+        -- **D12: the reported verdict is total** — `decision` is `accept` or
+        -- `reject`, never `unknown`, which is `PLAN.md` §1 criterion 2's own
+        -- wording and D5's *either verdict is a result*. `reject` claims the
+        -- checker did not certify the program, **not** that the program fails.
+        --
+        -- `verdict` and `basis` are kept beside it rather than replaced, and that
+        -- is the whole design: `refuted` (our rules refute) and `uncertified`
+        -- (the fragment escaped) are different facts, only the first is what the
+        -- `srb` comparison's pinned zero is about, and the tier-4 corpus declares
+        -- the three-valued reading. Additive, so no consumer breaks.
+        let d := Types.decisionOf prog
+        let decision := match d.1 with
+          | .accept => "accept"
+          | .reject => "reject"
+        let basis := match d.2 with
+          | .certified => "certified"
+          | .refuted => "refuted"
+          | .uncertified => "uncertified"
         let verdict := match Types.check prog with
           | .accept => "accept"
           | .reject => "reject"
@@ -185,7 +203,9 @@ def main (args : List String) : IO UInt32 := do
             | .cls n => n
           | none => ""
         IO.println (Lean.Json.mkObj
-          ([("verdict", Lean.Json.str verdict)] ++
+          ([("decision", Lean.Json.str decision),
+            ("basis", Lean.Json.str basis),
+            ("verdict", Lean.Json.str verdict)] ++
            (if ty == "" then [] else [("type", Lean.Json.str ty)]))).compress
         return 0
       if fragmentOnly then

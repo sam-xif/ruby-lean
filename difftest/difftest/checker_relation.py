@@ -107,6 +107,15 @@ def relate(
 ) -> str:
     """Classify one program into a `CHECK_CELLS` key.
 
+    **`verdict` is the epistemic reading — `CheckResultLean.verdict`, not
+    `.decision`.** D12 made the reported decision total (`accept`/`reject`, never
+    `unknown`); this function must keep seeing the three-valued basis, because its
+    `check-reject-disagreement` cell is the pinned zero for *our rules refute this
+    program* and a `reject` that merely means *not certified* has no such
+    obligation. Feeding `.decision` in here would turn every abstention into a
+    violation and the pinned zero into noise. `sorbet.py`'s docstring has the
+    table.
+
     `verdict is None` means the pipeline could not produce one.
 
     Precedence note: on an `accept` where CRuby raised a type-family error *and*

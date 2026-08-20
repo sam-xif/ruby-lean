@@ -57,6 +57,10 @@ import RubyCore.Proof.Static.OpenSelf
 #print axioms RubyCore.Proof.Static.check_sound
 #print axioms RubyCore.Proof.Static.check_sound_withPrelude
 #print axioms RubyCore.Proof.Static.check_sound_withPrelude'
+-- D12 — the *reported* verdict's soundness. `decisionOf`'s `accept` is the same
+-- predicate `check_sound` is stated over (`decision_accept_iff`), which is the
+-- one-line reason making the verdict total moved no theorem.
+#print axioms RubyCore.Proof.Static.decision_sound_withPrelude
 #print axioms RubyCore.Proof.Step.sound
 #print axioms RubyCore.Proof.Step.complete
 #print axioms RubyCore.Proof.Step.deterministic
