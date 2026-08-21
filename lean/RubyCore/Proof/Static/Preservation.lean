@@ -116,9 +116,9 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       · rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
         exact hcr
-      -- L198: `userFrame` builds a `.method` frame, so the left disjunct holds and the
-      -- callee's context may declare a return type.
-      · exact Or.inl (by rw [getD_push_lt_self]; rfl)
+      -- L198/L200: `userFrame` builds a `.method` frame, and the caller's context is
+      -- right there on the list — so the callee's context may declare a return type.
+      · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
@@ -349,6 +349,68 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · exact absurd hinf (by simp)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
+    -- **`return e`** (L200), and the two arms are two different machines: with an
+    -- expression the step pushes `jumpValK .retK` and the jump happens at the
+    -- delivery; bare, `evalExpr` calls `doReturn` outright and the *jump* is the new
+    -- control. Both spend `StackCtx`'s L198/L200 clause — a declared return type means
+    -- a `.method` frame with a caller — which is what `returnTarget` reads.
+    case ret e =>
+      simp only [infer] at hinf
+      split at hinf
+      · next σ hret =>
+        cases hst : m.stack with
+        | nil => exact absurd hst hf.1
+        | cons fid fids =>
+          have hsc2 := hsc
+          rw [hst] at hsc2
+          rcases hsc2.2.2.2.2.2.1 with ⟨hkind, hcs⟩ | hnone
+          · -- `Γs ≠ []`, and `fids ≠ []` with it: `StackCtx` pairs the two lists, so a
+            -- non-empty context tail forces a non-empty frame tail.
+            have hne : Γs ≠ [] := by
+              intro hq; rw [hq] at hcs; simp at hcs
+            have hfne : fids ≠ [] := by
+              intro hq
+              rw [hq] at hsc2
+              have htl := hsc2.2.2.2.2.2.2
+              cases hΓ : Γs.map Prod.fst with
+              | nil => exact absurd hΓ hcs
+              | cons a b => rw [hΓ] at htl; exact absurd htl (by simp [StackCtx])
+            have hrt : Interp.returnTarget m = fid := by
+              have hh : m.stack.headD 0 = fid := by rw [hst]; rfl
+              simp only [Interp.returnTarget, hh, hkind]
+            have hff : firstFrameK m.kont = some fid := by
+              refine firstFrameK_of_labels m.kont fid fids.dropLast ?_
+              rw [hks, hst, dropLast_cons_ne hfne]
+            cases e with
+            | some e' =>
+              dsimp only at hinf
+              cases he : infer D Γ e' Γs.isEmpty ctx with
+              | none => rw [he] at hinf; exact absurd hinf (by simp)
+              | some r =>
+                obtain ⟨τe, Γ₁, D₁⟩ := r
+                rw [he] at hinf
+                dsimp only at hinf
+                by_cases hsub : subTy τe σ = true
+                · rw [if_pos hsub] at hinf
+                  simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+                  obtain ⟨rfl, rfl, rfl⟩ := hinf
+                  exact inv_push hfs htab hsc hhook hsat hstr hcls hbot
+                    (by simpa [frameKLabels] using hks) he
+                    (KontOk.retValK hret hsub hk)
+                · rw [if_neg hsub] at hinf; exact absurd hinf (by simp)
+            | none =>
+              dsimp only at hinf
+              by_cases hsub : subTy Ty.nilT σ = true
+              · rw [if_pos hsub] at hinf
+                simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+                obtain ⟨rfl, rfl, rfl⟩ := hinf
+                simp only [evalExpr, Interp.doReturn, hrt,
+                  show m.stack.contains fid = true from by simp [hst]]
+                exact ⟨hhook, hsat, hstr, hcls, hbot, hks, D, ctx, Γ, Γs, htab, hfs, hsc,
+                  ⟨σ, ⟨.nilT, rfl, hsub⟩, KontOk.retOk hk hne σ hret, hff⟩⟩
+              · rw [if_neg hsub] at hinf; exact absurd hinf (by simp)
+          · rw [hnone] at hret; exact absurd hret (by simp)
+      · exact absurd hinf (by simp)
     case seq es =>
       simp only [infer] at hinf
       cases es with
@@ -1015,6 +1077,36 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
                     = k from hkt]
              exact KontOk.heap_congr hag hk'⟩
+    -- **`return e`'s value has arrived** (L200). `applyKont`'s `jumpValK .retK` arm is
+    -- `doReturn`, so this case *creates* the jump — and everything it needs is already
+    -- in hand: `StackCtx`'s L198/L200 clause makes `returnTarget` the stack's head,
+    -- L199's clause makes that head the innermost `frameK`'s label, and
+    -- `KontOk.retOk` turns the tail's `KontOk` into the `RetOk` the unwinding wants.
+    | @retValK _ _ _ _ _ _ τ'' σ k hret hsub hk' =>
+      cases hst : m.stack with
+      | nil => exact absurd hst hf.1
+      | cons fid fids =>
+        rw [hst] at hbot hfs hsc hks
+        rcases hsc.2.2.2.2.2.1 with ⟨hkind, hcs⟩ | hnone
+        · have hne : Γs ≠ [] := by intro hq; rw [hq] at hcs; simp at hcs
+          have hfne : fids ≠ [] := by
+            intro hq
+            rw [hq] at hsc
+            have htl := hsc.2.2.2.2.2.2
+            cases hΓ : Γs.map Prod.fst with
+            | nil => exact absurd hΓ hcs
+            | cons a b => rw [hΓ] at htl; exact absurd htl (by simp [StackCtx])
+          have hff : firstFrameK k = some fid := by
+            refine firstFrameK_of_labels k fid fids.dropLast ?_
+            rw [show frameKLabels k = (fid :: fids).dropLast from by
+              simpa [frameKLabels] using hks, dropLast_cons_ne hfne]
+          simp only [Interp.doReturn, Interp.returnTarget, List.headD_cons, hkind]
+          rw [if_pos (show ((fid :: fids).contains fid) = true from by simp)]
+          refine ⟨hhook, hsat, hstr, hcls, hbot, ?_, D, ctx, Γ, Γs, htab, hfs, hsc,
+            ⟨σ, ValueTy.weaken hv hsub, KontOk.retOk hk' hne σ hret, hff⟩⟩
+          show frameKLabels k = (fid :: fids).dropLast
+          simpa [frameKLabels] using hks
+        · rw [hnone] at hret; exact absurd hret (by simp)
     | @ifK _ _ _ _ _ _ _ t els τ' τw Γ' k hif hsw hk' =>
       cases els with
       -- **L193: the branch's own type is *below* the join, so each side goes through
@@ -1177,8 +1269,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
             exact hcr
-          -- L198: `userFrame`'s kind.
-          · exact Or.inl (by rw [getD_push_lt_self]; rfl)
+          -- L198/L200: `userFrame`'s kind, and the caller is on the list.
+          · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
@@ -1289,9 +1381,66 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) he
           (KontOk.argsK (psacc := psacc ++ [τp]) hrv (ValuesTy_snoc hva hv hst) hs1
             hrest' hs2 (by simpa using hsg) hsw hk')
-  · -- ## control = jump: excluded by `CtlOk`
+  · -- ## control = jump — **inhabited since L200, and only by `.retJ`**
+    --
+    -- The unwinding is two cases and both are read off `RetOk`. Every kont the fragment
+    -- stacks except `frameK` is *transparent* to a `.retJ` — `unwind`'s catch-all
+    -- passes a jump on unchanged and the two loop markers pass a `.retJ` on explicitly
+    -- — so `skip` is one lemma application; and at the `frameK` the target matches,
+    -- because L199's clause says the label *is* the stack's head and `firstFrameK`
+    -- carries that through the transparent prefix.
     rw [hctl] at hc
-    exact hc.elim
+    cases j with
+    | retJ v target =>
+      obtain ⟨σ, hv, hro, hff⟩ := hc
+      simp only [stepFn, hctl]
+      generalize hK : m.kont = K at hro hff hks ⊢
+      cases hro with
+      | skip hκ hro' =>
+        rw [unwind_ret_transparent (m := m) hκ hK]
+        refine ⟨hhook, hsat, hstr, hcls, hbot, ?_, D, ctx, Γ, Γs, htab, hfs, hsc,
+          ⟨σ, hv, hro', ?_⟩⟩
+        · simp only [withCtl]
+          rw [← hks, frameKLabels_transparent hκ]
+        · simp only [withCtl]
+          rw [← hff, firstFrameK_transparent hκ]
+      | here hsubf hkf =>
+        rename_i τf fid kf
+        -- The target *is* this frame: `firstFrameK (frameK fid :: kf) = some fid`.
+        have htg : target = fid := by simpa [firstFrameK] using hff.symm
+        subst htg
+        rw [show Interp.unwind m (.retJ v target)
+              = .next (Interp.withCtl
+                  { m with kont := kf, stack := m.stack.tail } (.value v)) from by
+          unfold Interp.unwind
+          rw [hK]
+          simp only [beq_self_eq_true, if_true, Interp.withCtl]]
+        -- **The stack has at least two entries**, and `hks` is what says so: the
+        -- continuation has a `frameK`, so `m.stack.dropLast` is a cons.
+        cases hst : m.stack with
+        | nil => rw [hst] at hks; simp [frameKLabels] at hks
+        | cons f0 t =>
+          cases ht : t with
+          | nil => rw [hst, ht] at hks; simp [frameKLabels] at hks
+          | cons f1 rest =>
+            have hlab : frameKLabels kf = m.stack.tail.dropLast := by
+              have hq := hks
+              simp only [frameKLabels] at hq
+              rw [hst, ht] at hq ⊢
+              simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
+              simpa using hq.2
+            rw [hst, ht] at hbot hfs hsc hlab
+            cases hΓ : Γs with
+            | nil =>
+              rw [hΓ] at hfs
+              exact absurd hfs.2.2.2 (by simp [FramesOk])
+            | cons cΓb Γsb =>
+              obtain ⟨c', Γ'⟩ := cΓb
+              rw [hΓ] at hfs hsc hkf
+              exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+                D, c', Γ', Γsb, htab, hfs.tail, StackCtx.tail hsc,
+                ⟨τf, ValueTy.weaken hv hsubf, hkf⟩⟩
+    | _ => exact hc.elim
 end Static
 end Proof
 end RubyCore

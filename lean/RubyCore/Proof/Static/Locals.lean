@@ -532,7 +532,11 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- it needs to. Vacuous at a class body and at toplevel, both of which declare
       -- no return type; established at `user_dispatch`'s push, where `userFrame`
       -- builds a `.method` frame.
-      ((frames.getD fid default).kind = .method ∨ c.ret = none) ∧
+      -- **L200 strengthens this**: a context that declares a return type is a method
+      -- activation *and* has a caller. The second half is what lets `KontOk.retOk`
+      -- apply `infer_table_ret` — that lemma needs `top = false`, and `top` is
+      -- `Γs.isEmpty` at every `KontOk` constructor, so the tail has to be non-empty.
+      (((frames.getD fid default).kind = .method ∧ cs ≠ []) ∨ c.ret = none) ∧
       StackCtx h frames fids cs
   | _, _ => False
 

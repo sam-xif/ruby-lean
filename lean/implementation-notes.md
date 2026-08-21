@@ -8879,3 +8879,94 @@ clause, and deleting it would lose the measurement that `RetTransparent` records
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
 **byte-identical** (51/1,174/0); `fragment-gap.py` **48**, unchanged — a scaffolding commit, said
 plainly.
+
+---
+
+## L200 — `return`, and `CtlOk`'s `.jump` becomes inhabited
+
+Out of fragment **48 → 48** (the *open* front end is the second half, next commit), `--check`
+byte-identical. But the metatheory is complete: **`invariant_sound` now covers a `.retJ` in
+flight** — the first jump the machine can produce inside the fragment — and it is axiom-clean.
+
+### The one guard that made it possible
+
+```lean
+-- infer's `def'` arm, on the row-adding branch
+… ∧ ctx.ret.isNone
+```
+
+L199 ended blocked on this: after the unwinding pops to the frame, `Inv` needs a `DeclsOk` at the
+table the **deep** `KontOk` carries, and `KontOk`'s constructors *thread* the table
+(`seqCons`'s premise sits at `inferSeq`'s **output**). `DeclsOk` is neither monotone nor antitone in
+the table, so it can only be carried — or the chain has to be **table-constant**.
+
+At `top = false` the only arm that grows the table is `def`'s row (`class'` needs `top = true`). So
+refusing that row when the enclosing method declares a return type makes the table constant along
+every chain inside such a body, and `infer_table_ret` (plus the three list-induction siblings) proves
+it. The guard is **free** — no shipped table declares a return type (L198: `def` supplies `r = none`,
+`some d.ret` waits for W8's `sig`) — and it refuses the *row*, not the program.
+
+Recorded because it is the second time the shape has appeared: **a fact a proof needs from a
+judgement is often cheaper as a guard on the rule than as a clause on the judgement.** L191 said the
+same thing about `plainRecv`'s `!frozen`.
+
+### What the rung is made of
+
+* **`FrameCtx.ret`** (L198), the *declared* return type, which is what makes `return e` local.
+* **`KontOk.frameK`'s agreement** (L198): `∀ σ, cΓ.1.ret = some σ → subTy σ τ`.
+* **`KontOk.nil`'s `ret = none`** (L198): an empty continuation means no enclosing method.
+* **`StackCtx`'s clause**: `(kind = .method ∧ cs ≠ []) ∨ c.ret = none` — the whole frame-side cost.
+  `returnTarget` answers the stack head for every kind *except* `.block`, and `cs ≠ []` is what makes
+  `infer_table_ret` applicable (its `top` is `Γs.isEmpty`).
+* **`frameKLabels m.kont = m.stack.dropLast`** (L199) — one push writes both a stack entry and a
+  `frameK`. Read backwards it says the `frameK`'s label *is* the stack's head, which is what
+  `doReturn`'s target must be matched against.
+* **`RetOk`**, indexed by the **callers'** environment stack rather than this activation's — the head
+  is the frame the jump is about to leave and nothing about it survives the pop, which is what lets
+  `skip` keep the index fixed while `KontOk`'s own head changes at every transparent constructor.
+* **`KontOk.retOk`**, deriving `RetOk` from a `KontOk` derivation, so no `Inv` conjunct had to be
+  added and re-established at forty push sites. That was the design's whole economy.
+* **`KontOk.retValK`**, carrying a `KontOk` and *not* a `RetOk` — `RetOk` is defined over `KontOk`
+  derivations, so the other choice makes the two mutually inductive.
+
+### The rule, and why its answer type is free
+
+```lean
+| .ret e => match ctx.ret with
+  | some σ => match e with
+    | some e' => match infer D Γ e' top ctx with
+                 | some (τ, Γ₁, D₁) => if subTy τ σ then some (.nilT, Γ₁, D₁) else none
+                 | none => none
+    | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
+  | none => none
+```
+
+The value never reaches this continuation — the machine jumps — so **any** answer is sound;
+`KontOk.retValK`'s conclusion index is the *returned* type, not this one. `.nilT` is the honest
+reading and it composes: `return X if c` joins with the missing `else`'s `nil` to `nilT` rather than
+to a nilable.
+
+### The consecution, and the measurement that made it cheap
+
+Three cases. The `.ret` **eval** case is two machines — with an expression the step pushes
+`jumpValK .retK`; bare, `evalExpr` calls `doReturn` outright and the *jump* is the new control. The
+`jumpValK .retK` **delivery** creates the jump. And the `.jump` branch is the unwinding, which is
+**two cases** rather than thirteen: `RetTransparent` is a read-off of `unwind` — its catch-all passes
+a jump on unchanged and its two loop markers pass a `.retJ` on explicitly — so all nine kont shapes
+the fragment stacks are one lemma (`unwind_ret_transparent`, nine `simp`s) and `frameK` is the only
+real case. The expensive-looking half of this rung was the cheap half, as L199 predicted.
+
+### What is left, and it is the *only* thing left
+
+The **open front end**. `inferOpen` has no `.ret` arm, so the 21 bodies are still out of fragment.
+The design is settled and it is the accumulator: `OState` gains `rets : List ATy`, `inferOpen`'s
+`.ret` records the returned type and answers `.nom .nilT`, `inferBody` requires every recorded type
+to equal the body's answer, and `Factors` gains a `retF : Ty` parameter with the premise
+`∀ a ∈ s'.rets, a.subst θ = retF` — the same shape as the `StoreLe s'.st stF` premise it already
+carries. `inferBodyWith_sound` instantiates `retF := τ.subst θ`.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` **byte-identical** (51/1,174/0) — the rule can only fire at `ctx.ret.isSome`, which no
+`check` entry point produces; `--assn` smoke 1,227 clean; `--self-test` all agree.

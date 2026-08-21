@@ -53,6 +53,159 @@ set_option maxRecDepth 100000
 set_option maxHeartbeats 1000000
 set_option linter.unusedSimpArgs false
 
+/-- **Table stability from the *context* rather than from the expression** (L200).
+
+    `infer_mono_all` below already proves `D₀ = D`, but only under `defFree e` — and
+    `defFree` is not available where it is needed: `KontOk`'s constructors carry the
+    `infer`/`inferSeq`/`inferArgs` equations *without* it, so an induction walking a
+    continuation chain (`KontOk.retOk`) cannot use that half.
+
+    `ctx.ret.isSome` is available there, because that is exactly the hypothesis a
+    `return` rule fires under. And it suffices: at `top = false` the **only** arm that
+    grows the table is `def`'s row, `class'` needing `top = true` — so L200's
+    `ctx.ret.isNone` guard on that row makes the table constant along every chain
+    inside a body that declares a return type.
+
+    Same induction shape as `infer_mono_all` and a much weaker conclusion, so the
+    uniform block carries it. -/
+theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : FrameCtx),
+    ctx.ret.isSome = true → top = false → ∀ τ Γ' D₀,
+      infer D Γ e top ctx = some (τ, Γ', D₀) → D₀ = D := by
+  intro D Γ e top ctx
+  induction D, Γ, e, top, ctx using infer.induct with
+  | motive2 Da Γa ta elsa topa ctxa =>
+    exact ctxa.ret.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferIf Da Γa ta elsa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive3 Da Γa esa topa ctxa =>
+    exact ctxa.ret.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive4 Da Γa esa topa ctxa =>
+    exact ctxa.ret.isSome = true → topa = false → ∀ τs Γ' D₀,
+      inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
+  -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
+  -- branch's and the join's guard has to be split before either IH is usable.
+  | case66 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+    intro hret htop τ Γ' D₀ h
+    obtain ⟨hΓ, hD⟩ := hagree
+    simp only [inferIf, hT, hE] at h
+    rw [if_pos (by exact ⟨hΓ, hD⟩)] at h
+    simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+    obtain ⟨τj, -, -, -, rfl⟩ := h
+    exact ih2 hret htop _ _ _ hT
+  | _ =>
+    intro hret htop τ Γ' D₀ h
+    first
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, htop]; done)
+      | (simp_all only [infer, inferIf, inferSeq, inferArgs, Option.some.injEq,
+           Prod.mk.injEq, reduceCtorEq]; done)
+      | (simp_all [infer, inferIf, inferSeq, inferArgs, htop, hret]; done)
+      | (rename_i ih1
+         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs] using h))
+      | (rename_i ih2 ih1
+         first
+           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h)
+           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h))
+      -- a local read: the arm answers the input table outright, so unfolding the
+      -- `Option.map` is the whole case.
+      | (revert h; simp +contextual [infer]; done)
+      | (revert h; simp +contextual [inferIf]; done)
+      -- the `def` arm's **no-row** branch (L200's guard is one of the six conjuncts
+      -- that can fail): the arm answers the input table, and `params.isEmpty` and the
+      -- body's own stability check are already in context, so what is left is to
+      -- compute the `if`s away rather than to reason.
+      -- the `def` arm's **no-row** branch, where L200's guard is one of the six
+      -- conjuncts that can fail: the arm answers the input table, so the case is three
+      -- `if`s computed away rather than anything about types.
+      | (simp only [infer] at h
+         split at h <;> split at h <;> split at h <;> simp_all)
+      | (simp only [infer] at h
+         split at h <;> split at h <;> simp_all)
+
+/-- The three siblings, and they are **list inductions rather than a second
+    `infer.induct`**: `inferSeq`/`inferArgs` are `infer` threaded along a list and
+    `inferIf` is two `infer`s plus a join, so each one composes the theorem above with
+    itself. That is the whole reason to have proved the `infer` case separately. -/
+theorem inferIf_table_ret {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls} (hret : ctx.ret.isSome = true)
+    (htop : top = false) (h : inferIf D Γ t els top ctx = some (τ, Γ', D₀)) : D₀ = D := by
+  unfold inferIf at h
+  cases els with
+  | none =>
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      rw [ht] at h
+      dsimp only at h
+      split at h
+      · rename_i hq
+        simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+        obtain ⟨τj, -, -, -, rfl⟩ := h
+        rfl
+      · simp at h
+  | some e =>
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      rw [ht] at h
+      dsimp only at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r' =>
+        obtain ⟨τe, Γe, De⟩ := r'
+        rw [he] at h
+        dsimp only at h
+        split at h
+        · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+          obtain ⟨τj, -, -, -, rfl⟩ := h
+          exact infer_table_ret D Γ t top ctx hret htop _ _ _ ht
+        · simp at h
+
+theorem inferSeq_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, ctx.ret.isSome = true → top = false →
+    inferSeq D Γ es top ctx = some (τ, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, _, h => by
+      simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | [e], D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      simp only [inferSeq] at h; exact infer_table_ret D Γ e top ctx hret htop _ _ _ h
+  | e :: e₂ :: rest, D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      simp only [inferSeq] at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        have hD : D₁ = D := infer_table_ret D Γ e top ctx hret htop _ _ _ he
+        subst hD
+        exact inferSeq_table_ret hret htop h
+
+theorem inferArgs_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, ctx.ret.isSome = true →
+    top = false → inferArgs D Γ es top ctx = some (τs, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τs, Γ', D₀, _, _, h => by
+      simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | e :: rest, Dq, Γ, top, ctx, τs, Γ', D₀, hret, htop, h => by
+      simp only [inferArgs] at h
+      cases he : infer Dq Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        have hD : D₁ = Dq := infer_table_ret Dq Γ e top ctx hret htop _ _ _ he
+        subst hD
+        dsimp only at h
+        cases hr : inferArgs D₁ Γ₁ rest top ctx with
+        | none => rw [hr] at h; simp at h
+        | some r' =>
+          obtain ⟨τr, Γ₂, D₂⟩ := r'
+          rw [hr] at h
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, -, rfl⟩ := h
+          exact inferArgs_table_ret hret htop hr
+
 /-- **Monotonicity, with the table-stability half it needs.** Proved by the
     functional induction `infer` generates, so the case list is the rule list and
     every out-of-fragment head is discharged by its own `none`. -/
@@ -228,7 +381,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case60 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case66 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -240,7 +393,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin]⟩
-  | case63 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case69 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -250,17 +403,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hjoin]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case66 D Γ top ctx =>
+  | case72 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case67 D Γ top ctx e ih =>
+  | case73 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case68 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case74 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -277,12 +430,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case70 D Γ top ctx =>
+  | case76 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case71 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case77 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -303,6 +456,38 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       | (simp only [infer, Option.some.injEq, Prod.mk.injEq] at h
          obtain ⟨rfl, rfl, rfl⟩ := h
          exact ⟨rfl, by simp [infer]⟩)
+      -- **`return e`** (L200), both arms. `ctx.ret` is not the declaration table, so
+      -- the guard and the `subTy` check transport untouched and what is left is the
+      -- returned expression's IH — `case13`'s shape.
+      | (rename_i ih1
+         revert h
+         simp only [infer]
+         split
+         · rename_i hret
+           split
+           · rename_i hq
+             split
+             · rename_i hsub
+               intro hq2
+               simp only [Option.some.injEq, Prod.mk.injEq] at hq2
+               obtain ⟨rfl, rfl, rfl⟩ := hq2
+               obtain ⟨rfl, hm⟩ := ih1 F' hs (by simpa [defFree] using hdf) _ _ _ hq
+               exact ⟨rfl, by simp [infer, hret, hm, hsub]⟩
+             · simp
+           · simp
+         · simp)
+      | (revert h
+         simp only [infer]
+         split
+         · rename_i hret
+           split
+           · rename_i hsub
+             intro hq2
+             simp only [Option.some.injEq, Prod.mk.injEq] at hq2
+             obtain ⟨rfl, rfl, rfl⟩ := hq2
+             exact ⟨rfl, by simp [infer, hret, hsub]⟩
+           · simp
+         · simp)
       -- No fallback: every case is closed above or by one of the four uniform
       -- tactics, and there is deliberately no `sorry` arm to hide a case the next
       -- widening adds. A new `infer` rule breaks this proof, which is the same

@@ -174,6 +174,12 @@ def defFree (e : Expr) : Bool :=
   -- catchall's vacuous `true`. A predicate that is vacuous *because* the head is
   -- out of the fragment stops being vacuous the moment the head is admitted.
   | .array es => defFreeAll es
+  -- **L200.** Same reason as `.array`'s, one rung later: `infer`'s `.ret` arm threads
+  -- the table through the returned expression, so a `def` in there really does change
+  -- it and `infer_mono`'s `D₀ = D` half would be false with the catch-all's vacuous
+  -- `true` left in place. Third time this exact trap has been walked into
+  -- (`.array` at L174, `.vasgn .ivar` at L191), which is why it is a comment.
+  | .ret e => match e with | some e' => defFree e' | none => true
   -- Every other head is either a leaf or outside `infer`'s domain, where the
   -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
   -- can be satisfied.
@@ -572,8 +578,22 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           -- never about (`Types/Decls.lean`'s note on that subtraction).
           -- `DeclsOk_addRow` says so in its hypotheses; this is the rule keeping
           -- them true.
+          -- **`ctx.ret.isNone`** (L200), and it costs nothing while buying the last
+          -- fact the `return` rule needs. A `def` is the *only* arm that grows the
+          -- table at `top = false` (`class'` needs `top = true`), so refusing the row
+          -- when the enclosing method declares a return type makes the table
+          -- **constant along every continuation chain inside such a body** — which is
+          -- what `KontOk.retOk` needs and could not get from `defFree`, because
+          -- `KontOk`'s constructors carry the `infer` equations without it.
+          --
+          -- Free: no shipped table declares a return type (L198 — `def` supplies
+          -- `r = none`, and `some d.ret` waits for W8's `sig`). And it *refuses the
+          -- row*, not the program: the `else` branch below still types the `def`, it
+          -- just declares nothing — which `UserConforms`' `defFree` was already doing
+          -- to such a body anyway.
           if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
-              groundClassNames.contains ctx.cls = false ∧ defFree body = true then
+              groundClassNames.contains ctx.cls = false ∧ defFree body = true ∧
+              ctx.ret.isNone then
             some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
           else some (.sym, Γ, D)
         else none
@@ -639,6 +659,33 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | some (_, Γ₂, D₂) => if Γ₂ = Γ ∧ D₂ = D then some (.nilT, Γ, D) else none
         | none => none
       else none
+    | none => none
+  -- **`return e`** (L200), and it is a *guard* plus a conformance check.
+  --
+  -- The guard is `ctx.ret`: a `return` has a target only inside a method activation
+  -- that declares a return type, and a class body or the toplevel declares none — the
+  -- desugarer gates a toplevel `return` for the same reason. `StackCtx`'s L198/L200
+  -- clause is what turns `ret.isSome` into *this frame is a `.method` with a caller*,
+  -- which is what `returnTarget` (`Interp/Support.lean:349`) needs.
+  --
+  -- The check is `subTy τ σ` against the **declared** type, which is what makes the
+  -- rule local: it never needs to know what the rest of the body will answer.
+  --
+  -- **The answer is `.nilT`, and it is free**: the value never reaches this
+  -- continuation — the machine jumps — so any answer is sound, and `KontOk.retValK`'s
+  -- conclusion index is the *returned* type rather than this one. `.nilT` is the
+  -- honest reading (*nothing comes back here*) and it composes well: `return X if c`
+  -- joins with the missing `else`'s `nil` to `nilT` rather than to a nilable.
+  | .ret e =>
+    match ctx.ret with
+    | some σ =>
+      match e with
+      | some e' =>
+        match infer D Γ e' top ctx with
+        | some (τ, Γ₁, D₁) => if subTy τ σ then some (.nilT, Γ₁, D₁) else none
+        | none => none
+      -- A bare `return` yields `nil`, so the declared type has to admit it.
+      | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
     | none => none
   | _ => none
 termination_by sizeOf e

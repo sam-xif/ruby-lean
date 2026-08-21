@@ -231,6 +231,32 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       -- callee's declared return is below the index, not equal to it.
       (∀ σ, cΓ.1.ret = some σ → subTy σ τ = true) →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
+  /-- **`return e`, with the value in flight** (L200). Three premises, each spent in a
+      different place: `c.ret = some σ` is what the target is read through, `subTy τ σ`
+      is the rule's own conformance check, and the tail's `KontOk` is what
+      `KontOk.retOk` turns into the `RetOk` the unwinding consumes.
+
+      It carries a **`KontOk`** and not a `RetOk`, and that is not an accident: `RetOk`
+      is defined *over* `KontOk` derivations, so a `RetOk` premise here would make the
+      two mutually inductive. Deriving it at the delivery costs one lemma application. -/
+  | retValK {D h c Γ Γs τ τ' σ k} :
+      c.ret = some σ → subTy τ σ = true →
+      KontOk D h ((c, Γ) :: Γs) τ' k →
+      KontOk D h ((c, Γ) :: Γs) τ (.jumpValK .retK :: k)
+
+/-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
+    push writes both a stack entry and a `frameK`, and one pop removes both, so the
+    two lists move together — this is that fact, made checkable.
+
+    It is the *one* thing the `return` rule needed that nothing carried (L198 §What is
+    still missing). `doReturn` targets `returnTarget m`, which is the frame stack's
+    head; `unwind`'s `frameK fid` case compares that against the **kont's** label. With
+    no relation between the two, a matching `frameK` cannot be produced and the
+    consecution has no case to be in. -/
+def frameKLabels : List Kont → List FrameId
+  | [] => []
+  | .frameK fid :: k => fid :: frameKLabels k
+  | _ :: k => frameKLabels k
 
 /-- **The konts a `.retJ` passes straight through** (L199). Not a judgement: it is a
     read-off of `unwind` (`Interp/Kont.lean`), whose **catch-all** propagates a jump
@@ -256,33 +282,103 @@ def firstFrameK : List Kont → Option FrameId
   | .frameK fid :: _ => some fid
   | _ :: k => firstFrameK k
 
-/-- **A `.retJ` in flight is well-typed for where it will land** (L199): every kont
+/-- The first label of `frameKLabels` *is* `firstFrameK` — the bridge between L199's
+    list-shaped clause and the single id `unwind` compares against. -/
+theorem firstFrameK_of_labels : ∀ (k : List Kont) (fid : FrameId) (rest : List FrameId),
+    frameKLabels k = fid :: rest → firstFrameK k = some fid := by
+  intro k
+  induction k with
+  | nil => intro fid rest h; simp [frameKLabels] at h
+  | cons κ k ih =>
+    intro fid rest h
+    cases κ with
+    | frameK f =>
+      simp only [frameKLabels, List.cons.injEq] at h
+      simp [firstFrameK, h.1]
+    | _ => exact (by simpa [firstFrameK] using ih fid rest (by simpa [frameKLabels] using h))
+
+/-- **A `.retJ` in flight is well-typed for where it will land** (L200): every kont
     above the innermost `frameK` is transparent to it, and that `frameK` resumes a
     caller whose continuation accepts the declared return type.
 
-    **Stated and not yet consumed**, which is the honest place to leave it: the design
-    is that this is *derived* from a `KontOk` derivation (L198's `frameK` agreement and
-    `nil`'s `ret = none` premise exist for exactly that induction, and the induction
-    itself goes through). What stops the `return` rule from landing is one step further
-    on — see the note in `implementation-notes.md` L199 §What is still missing: after
-    the unwinding pops to the frame, `Inv` needs a `DeclsOk` at the table the
-    **deep** `KontOk` carries, and `KontOk`'s constructors thread the table (a
-    `seqCons`'s premise sits at `inferSeq`'s *output* table). `DeclsOk` is neither
-    monotone nor antitone in the table, so it has to be carried rather than recovered.
-
-    Left in the file rather than deleted because the shape is right and the remaining
-    obligation is one clause; deleting it would lose the reason `RetTransparent` is a
-    read-off of `unwind` rather than a judgement. -/
+    The table is **fixed** across `skip`, which is what makes the popped machine's
+    `Inv` usable: `DeclsOk` is neither monotone nor antitone in the table, so arriving
+    at the `frameK` with a *different* table would leave nothing to build `Inv` from.
+    `infer_table_ret` is what pays for it, and L200's `def`-row guard is what makes
+    that lemma true. -/
 inductive RetOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kont → Prop where
-  | here {D h cΓ cΓ' Γs σ τ fid k} :
-      subTy σ τ = true → KontOk D h (cΓ' :: Γs) τ k →
-      RetOk D h (cΓ :: cΓ' :: Γs) σ (.frameK fid :: k)
-  | skip {D h cΓ Γs σ κ k} :
-      RetTransparent κ → RetOk D h (cΓ :: Γs) σ k →
-      RetOk D h (cΓ :: Γs) σ (κ :: k)
+  | here {D h Γs σ τ fid k} :
+      subTy σ τ = true → KontOk D h Γs τ k → RetOk D h Γs σ (.frameK fid :: k)
+  | skip {D h Γs σ κ k} :
+      RetTransparent κ → RetOk D h Γs σ k → RetOk D h Γs σ (κ :: k)
 
-/-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
-    are not in the fragment, so no step can produce one. -/
+/-- **`RetOk`, derived** (L200) — the lemma L198's two `KontOk` premises and L200's
+    `def`-row guard exist for.
+
+    Recursion on the *kont list* rather than on the derivation, because the derivation's
+    shape is determined by the list's head and `frameK`'s premise sits at a shorter
+    environment stack. Two hypotheses, each spent once: `KontOk.nil`'s `ret = none`
+    refutes the empty continuation, and `Γs ≠ []` makes `infer_table_ret` applicable —
+    every constructor's `infer` equation is at `top = Γs.isEmpty`, and the lemma needs
+    `top = false`. `StackCtx`'s L200 clause is where that non-emptiness comes from. -/
+theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {τ : Ty}, KontOk D h ((c, Γ) :: Γs) τ k →
+    Γs ≠ [] → ∀ σ, c.ret = some σ → RetOk D h Γs σ k
+  | [], _, _, c, Γ, Γs, _, hk, _, σ, hσ => by
+      cases hk with
+      | nil hr => exact absurd (hr (c, Γ) Γs rfl) (by rw [hσ]; simp)
+  | κ :: k, D, h, c, Γ, Γs, τ, hk, hne, σ, hσ => by
+      have htop : Γs.isEmpty = false := by simpa using hne
+      cases hk with
+      | seqNil hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | seqCons hs hw hk' =>
+          have hq : _ = D := inferSeq_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | asgn hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | asgnIvar hsc hw hcf hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | ifK hi hw hk' =>
+          have hq : _ = D := inferIf_table_ret (ctx := c) (by rw [hσ]; simp) htop hi
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | whileCond hl hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | whileBody hl hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | recvK ha hsg hsub hw hk' =>
+          have hq : _ = D := inferArgs_table_ret (ctx := c) (by rw [hσ]; simp) htop ha
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | recvK0 hsg hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | argsK hv hva hst hia hsr hsg hw hk' =>
+          have hq : _ = D := inferArgs_table_ret (ctx := c) (by rw [hσ]; simp) htop hia
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | arrK hs hw hk' =>
+          have hq : _ = D := inferSeq_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | retValK hr hs hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | frameK hrt hk' => exact RetOk.here (hrt σ hσ) hk'
+
+@[simp] theorem frameKLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
+    frameKLabels (κ :: k) = frameKLabels k := by
+  cases κ <;> simp_all [RetTransparent, frameKLabels]
+
+@[simp] theorem firstFrameK_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
+    firstFrameK (κ :: k) = firstFrameK k := by
+  cases κ <;> simp_all [RetTransparent, firstFrameK]
+
+/-- **`unwind` propagates a `.retJ` through every transparent kont** (L200), which is
+    a computation rather than an argument: `unwind`'s catch-all passes a jump on
+    unchanged and the two loop markers pass a `.retJ` on explicitly. Nine cases, each a
+    `simp` — this is the measurement `RetTransparent` records, cashed. -/
+theorem unwind_ret_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Value}
+    {t : FrameId} (hκ : RetTransparent κ) (hkm : m.kont = κ :: k) :
+    Interp.unwind m (.retJ v t)
+      = .next (Interp.withCtl { m with kont := k } (.jump (.retJ v t))) := by
+  unfold Interp.unwind
+  rw [hkm]
+  cases κ <;> simp_all [RetTransparent, Interp.withCtl]
+
 def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     (m : Machine) : Prop :=
   match m.ctl with
@@ -297,6 +393,19 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     ∃ τ τ' Γ' D', infer D Γ e Γs.isEmpty c = some (τ, Γ', D') ∧ subTy τ τ' = true ∧
       KontOk D' m.heap ((c, Γ') :: Γs) τ' m.kont
   | .value v => ∃ τ, ValueTy m.heap v τ ∧ KontOk D m.heap ((c, Γ) :: Γs) τ m.kont
+  -- **A `return` in flight** (L200), and the arm has exactly the three things `unwind`
+  -- reads: the value's type, that every kont above the innermost `frameK` is
+  -- transparent to a `.retJ` and that `frameK` accepts the type (`RetOk`), and that the
+  -- jump's *target* is that `frameK`'s label — which L199's clause is what supplies.
+  | .jump (.retJ v target) =>
+    -- `RetOk` is indexed by the **callers'** environment stack, not by this
+    -- activation's: the head is the frame the jump is about to leave, and nothing about
+    -- it survives the pop. That indexing is what lets `skip` keep the index fixed while
+    -- `KontOk`'s own head changes at every transparent constructor.
+    ∃ σ, ValueTy m.heap v σ ∧ RetOk D m.heap Γs σ m.kont ∧
+      firstFrameK m.kont = some target
+  -- The other four jumps stay excluded: `break`/`next`/`retry`/`redo`/`raise`/`throw`
+  -- are not in the fragment, so no step can produce one.
   | .jump _ => False
 
 /-- **Transport of the continuation judgement.** The other half of L137's cost:
@@ -324,6 +433,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
       exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg hw (ih ha)
   | arrK hs hw _ ih => intro ha; exact .arrK hs hw (ih ha)
   | frameK hr _ ih => intro ha; exact .frameK hr (ih ha)
+  | retValK hr hs _ ih => intro ha; exact .retValK hr hs (ih ha)
 
 /-- The shape every call site reads. `heap_congr'` takes the heap agreement
     *after* the derivation because the induction generalizes the heap index, and
@@ -333,20 +443,6 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     {D : Decls} {Γs : List (FrameCtx × Env)} {τ : Ty} {k : List Kont}
     (hk : KontOk D h Γs τ k) : KontOk D h' Γs τ k :=
   KontOk.heap_congr' hk ha
-
-/-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
-    push writes both a stack entry and a `frameK`, and one pop removes both, so the
-    two lists move together — this is that fact, made checkable.
-
-    It is the *one* thing the `return` rule needed that nothing carried (L198 §What is
-    still missing). `doReturn` targets `returnTarget m`, which is the frame stack's
-    head; `unwind`'s `frameK fid` case compares that against the **kont's** label. With
-    no relation between the two, a matching `frameK` cannot be produced and the
-    consecution has no case to be in. -/
-def frameKLabels : List Kont → List FrameId
-  | [] => []
-  | .frameK fid :: k => fid :: frameKLabels k
-  | _ :: k => frameKLabels k
 
 /-- `dropLast` past a cons, which needs the tail non-empty — the bottom activation is
     the one entry with no `frameK`, so this is where that asymmetry is paid. -/
@@ -488,7 +584,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb,
-            Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2.1, hrow.2.2.2.2⟩⟩
+            Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2.1, hrow.2.2.2.2.1⟩⟩
         · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb, Or.inl rfl⟩
