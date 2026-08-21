@@ -10504,3 +10504,68 @@ cheap once it lands. And Wall 1 needs it too, which moves it from "after the wal
 
 Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
 third ratchet **24**.
+
+## L221 — `next`, second attempt: the flag belongs on `OState`, not `OCtx`, and L220's blocker dissolves
+
+Out of fragment **24 → 24**. Reverted again, and this entry supersedes L220's conclusion: the
+`ctx`-generalization L220 said was the prerequisite is **not needed**. What is left is smaller and
+localized, and it is written down precisely.
+
+### L220's blocker was self-inflicted
+
+L220 put `inLoop` on `FrameCtx`/`OCtx`, which made it vary within an activation, which broke
+`inferOpen.induct`'s fixed-`ctx` form, which forced `hself` into the motive. All true — and avoidable.
+
+**`OState` is already an induction target.** Put the flag there and `ctx` stays fixed:
+
+```lean
+structure OState where
+  st : Store := {}
+  inLoop : Bool := false   -- L221
+  …
+-- and the motives become
+(motive2 := fun Γ t els s => FactorsIf D θ stF retF ctx s.inLoop Γ t els (inferOpenIf … ctx s))
+```
+
+`Factors`/`FactorsIf`/`FactorsSeq`/`FactorsArgs` take the flag as a parameter and feed it to the
+nominal context; `motive1` is *inferred* from the goal, so no `revert`, no implication in any motive,
+and **`inferOpen_mono` and `inferOpen_rets` are untouched**. The nominal side keeps
+`FrameCtx.inLoop` — `Mono.lean` already has `ctx` as an induction target, so a varying context is free
+there.
+
+> **When a rule needs a flag that varies within a body, put it where the induction already
+> generalizes.** For `inferOpen` that is the *state*, not the context. L220 spent a session's worth of
+> analysis concluding the opposite.
+
+All of this built: the two structures, both `.while'` arms, `KontOk`'s loop constructors clearing the
+flag, `KontOk.frameK`'s `cΓ.1.inLoop = false` premise, `stackCtx_inLoop`/`'` (both `rfl` — `StackCtx`
+reads none of the five fields), the eleven `Preservation` sites, and a new
+`inferOpen_inLoop` (*the flag is preserved*, `inferOpen_rets`' shape).
+
+### What is left, and it is one thing
+
+`inferOpen_factors`' uniform block does not close the `.while'` case. Both IHs are now at
+`inLoop := true` **syntactically** (the body's sub-call re-states the flag rather than inheriting it,
+precisely so that they are), and the goal is `infer`'s while arm at the same flag — so the mathematics
+lines up. What does not is the *store bound*: the generic two-subexpression alternatives are keyed to
+helpers (`storeLe_subSeq`, `rets_subSeq`) whose shapes assume the sub-call's state is the plain
+threaded one, and it is now `{ s with inLoop := true }`. The fix is a `storeLe_subWhile`/`rets_subWhile`
+pair and one alternative in the block — the same thing L175 and L193b each added once.
+
+**And `inferOpen_inLoop` cannot be a `simp` lemma**, which is worth knowing before reaching for it: its
+left-hand side is `s'.inLoop` with `s'` universally quantified, i.e. a bare variable, so `simp` will not
+use it as a rewrite. Every place it is needed wants it applied by hand — which is why the body's
+sub-call restates the flag instead.
+
+### Two attempts, two designs, and the honest score
+
+L220 (flag on the context) hit a motive problem and was reverted. L221 (flag on the state) dissolves
+that problem and gets to a single missing helper pair in one tactic block. **The rung is not done and I
+am not going to finish it by iterating blind on that block** — it is the most delicate proof in the
+project and I have now perturbed it twice. What the next session needs is written above and is roughly
+an afternoon: two store-bound helpers and one alternative.
+
+### Checks
+
+Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
+third ratchet **24**.
