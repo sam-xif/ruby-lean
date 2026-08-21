@@ -351,6 +351,50 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- **A float literal** (L202), and it is here for `infer`'s reason: the only case
   -- after it in `inferOpen.induct` is the catch-all, so no existing case number moves.
   | .flt _ => .ok (.nom .float) Γ s
+  -- **`super(args)`** (L213), and it is the *nominal-receiver* send arm's shape at a
+  -- different table: the class is known (it is `ctx.cls`, the class the body is written
+  -- in), so there is no row to *record* — a `super` cannot constrain a type variable,
+  -- because its receiver is `self` and its target is fixed by the chain. So an
+  -- undeclared `(class, method)` pair is a **needed declaration**, rendered
+  -- `T.class_of(C) ~ super:m`, exactly as `::n`'s miss is.
+  --
+  -- Placed after `.flt` for the same reason `.flt` is placed where it is.
+  --
+  -- **Split by arity, like the nominal rule**, and for the discipline's reason rather
+  -- than the machine's: `inferOpen_factors` is indexed by `inferOpen.induct`'s cases,
+  -- and a single arm over `args` would have to case-split on the list *inside* the
+  -- proof to reach the two nominal arms. One open arm per nominal arm keeps the
+  -- factoring one rewrite each.
+  | .super' [] none =>
+    match ctx.meth with
+    | some mn =>
+      if mn ≠ "" then
+        match superDecl? D ctx.cls mn with
+        | some dd =>
+          if dd.params.isEmpty then .ok (.nom dd.ret) Γ s
+          else .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) []
+        | none => .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) []
+      else .outOfFragment "super-outside-method"
+    | none => .outOfFragment "super-outside-method"
+  | .super' (arg :: args) none =>
+    match ctx.meth with
+    | some mn =>
+      if mn ≠ "" then
+        match inferOpenArgs D Γ (arg :: args) ctx s with
+        | .ok τs Γ₁ s₁ =>
+          match superDecl? D ctx.cls mn with
+          -- `==` against the declared list, not `subATy`, for the nominal-receiver
+          -- arm's reason (L175): the open side has no substitution yet, so a *witness*
+          -- that the argument types are below the declared ones is not available —
+          -- equality is, and `ATy.subst_nom_comp` is what makes the factoring see it.
+          | some dd =>
+            if τs == dd.params.map ATy.nom then .ok (.nom dd.ret) Γ₁ s₁
+            else .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) τs
+          | none => .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) τs
+        | .missing τ n ps => .missing τ n ps
+        | .outOfFragment h => .outOfFragment h
+      else .outOfFragment "super-outside-method"
+    | none => .outOfFragment "super-outside-method"
   | _ => .outOfFragment (headName e)
 termination_by sizeOf e
 

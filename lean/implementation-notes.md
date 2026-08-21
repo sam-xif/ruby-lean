@@ -9892,3 +9892,94 @@ the type-stuck outcome the checker exists to exclude.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); third ratchet **30**; tier 0 and tier slice green, and the
 regressions corpus re-run because `Interp/Send.lean` was touched.
+
+## L213 — the open front end for `super`: 30 → 26, and the fifth ratchet reprices `zsuper` from 2 to 9
+
+Out of fragment **30 → 26**, `--check` byte-identical (56 / 1,169 / 0), `--assn` 1,225 clean / 2
+decode gates. The four bodies L212's rule was built for have crossed, and all four report a **needed
+declaration**:
+
+```
+NullToken#initialize      needed: NullToken ~ super:initialize : (NilClass) → _
+StringToken#initialize     needed: StringToken ~ super:initialize : (α2) → _
+NumericToken#initialize    needed: NumericToken ~ super:initialize : (α2) → _
+RegexParser#initialize     needed: RegexParser ~ super:initialize : () → _
+```
+
+Four for four — this file had `RegexParser#initialize` down as possibly behind a second blocker and it
+was not.
+
+### The arm, and why it is *split by arity*
+
+`inferOpen`'s `.super'` arm is the **nominal-receiver send arm's shape at a different table**: the
+class is known (it is `ctx.cls`, the class the body is written in), so unlike a send there is no row
+to *record* in the store — a `super` cannot constrain a type variable, because its receiver is `self`
+and its target is fixed by the chain. An undeclared pair is therefore a needed declaration outright.
+
+The first draft had **one** arm over `args`. It built and the census moved, and then
+`inferOpen_factors` failed at `case64` with *"`split` failed: could not split an `if` or `match`"* —
+because nominal `infer` has **two** `super` arms and a single open arm has to case-split on the list
+*inside* the proof to reach them. Splitting the open arm by arity to mirror the nominal rule made
+both new cases close under the existing uniform `simp_all` block with **no new alternative**.
+
+> **A front-end arm should be indexed the way the nominal rule is indexed.** That is the same
+> discipline as "no `infer` arm the preservation proof is not indexed by" (constraint 4), stated for
+> the factoring theorem — and here it was the difference between zero proof work and a new
+> alternative in the hardest tactic block in the project.
+
+`== dd.params.map ATy.nom` rather than `subATy`, for the nominal-receiver send arm's reason (L175):
+the open side has no substitution yet, so a *witness* that the argument types are below the declared
+ones is not available; equality is, and `ATy.subst_nom_comp` is what lets the factoring see it.
+
+### `fragment-gap.py`: two mirrors, and the fifth ratchet's answer changed
+
+`shape_super` (the per-construct census) and `_body_blockers`' `super` case (the blocker-set ratchet)
+both admit `super` now, refusing only a literal block on the `super` itself and a splat/kwargs/fwd
+argument. Three `--self-test` rows were added, and they pin **two different reasons** for `unknown`:
+at toplevel `--check` passes `meth = none` so the rule cannot fire at all, and inside a `def` the
+`supers` table is empty so the body needs a declaration. Both rows staying `unknown` is what makes
+the PARTIAL classification honest.
+
+### And the fifth ratchet says something the fifth ratchet's own docstring does not
+
+```
+bodies whose blocker set is a SINGLETON — each is a body one rung frees:
+    9  {zsuper}     1  {next}     1  {hash}     1  {begin}
+```
+
+`zsuper` is **2** in the third ratchet and **9** here, and the first reading of that — *"L207 priced
+the value wrong by a factor of four, do `zsuper` next, it frees nine"* — **was written into this file
+and is wrong.** Checking the nine bodies against `--assn-dump` is what caught it:
+
+```
+AlphaToken#<=> … PostToken#<=>   (6)   needed: T.class_of(Object) ~ ::Token : () → _
+Version#respond_to?              (1)   needed: Array ~ include? : (α1) → _
+Version#==, Version#freeze       (2)   out of fragment: zsuper
+```
+
+**Seven of the nine are already in the `needed:` column, not in `oof`.** `inferOpen` short-circuits at
+the first `.missing`, so a body with an early needed atom and a later out-of-fragment construct is
+reported as `needed` — while its blocker *set* still contains the construct. So landing `zsuper` moves
+**oof 26 → 24**, and moves nothing out of `needed`.
+
+> **The fifth ratchet measures freedom from the *rule set*, not freedom from `oof`, and the two
+> diverge once the `needed:` column is large.** At 64 needed against 26 oof that divergence is now the
+> common case, and the ratchet's own header — *"each is a body one rung frees"* — reads as a promise
+> about `oof` that it cannot keep. Header corrected in `fragment-gap.py`.
+
+What the 9 *does* measure is worth having, and it is the better number for a **whole-file** verdict:
+after `zsuper`, nine bodies are entirely inside `infer`'s domain and blocked only on **declarations**.
+`{zsuper}` is still the right next rung on that reading — the next-largest singleton is one — but the
+census will move by 2, and a claim of 9 would have been a false prediction the next session would have
+had to eat.
+
+> **`zsuper` is next.** `FrameCtx.params : List Ty` plus a `StackCtx` clause relating declared types
+> to a frame's `runParams`/locals — a list against a store, which is harder than `meth`'s string
+> against a string. **Expected: oof 26 → 24, and nine bodies whose only remaining obstacle is the
+> declaration table.** Write both numbers down before starting so the outcome is checkable.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical; `--assn` 0 failures outside the two decode gates; third ratchet **26**, `--self-test`
+all agree; tier 0 and tier slice green.
