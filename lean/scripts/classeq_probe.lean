@@ -86,5 +86,26 @@ def main : IO UInt32 := do
         IO.println s!"  {nm}: deferTwin? = {d.isSome}"
         if d.isSome then bad := bad + 1
       | _ => pure ()
+    -- **And over *every* class object**, not just the keyable ones: a row
+    -- hard-wired at `declFor`'s `.clsOf` arm — which is how a `Module#===` row can
+    -- avoid needing a table key at all — obliges `EntryOk` at every name, so the
+    -- resolution has to hold for all 87 rather than for the 7 above.
+    let mut allBad := 0
+    for k in [0:h.objs.size] do
+      match h.classPayload? k with
+      | none => pure ()
+      | some _ =>
+        let dk := classOf h (.ref k)
+        match Proof.Static.lookupIn h dk "===" with
+        | none => allBad := allBad + 1
+        | some (owner, md) =>
+          let shadow := crubyShadow h ((ancestors h dk).takeWhile (· != owner)) "==="
+          if !(md.builtin == some "Module#===" && !md.undefined &&
+               md.visibility == Visibility.pub && !md.fromPrelude && shadow.isNone) then
+            IO.println s!"  NOT WITNESSABLE: {className h k} (id {k}), owner \
+{className h owner}, builtin {md.builtin}, fromPrelude {md.fromPrelude}, shadow {shadow}"
+            allBad := allBad + 1
+    IO.println s!"\nclass objects (all {h.objs.size} ids scanned) whose `===` does not \
+resolve to the builtin (want 0): {allBad}"
     IO.println s!"\nkeyable classes whose `===` row is not witnessable (want 0): {bad}"
-    return if bad == 0 then 0 else 1
+    return if bad == 0 && allBad == 0 then 0 else 1

@@ -7904,3 +7904,56 @@ established to state as a working rule:
 
 `check-proofs.sh` green with the new section, 29 theorems, axiom-clean. No SUT or metatheory change, so
 no verdict diff is owed and none is claimed.
+
+## L187 — the key space turns out to be avoidable, and two measurements say so
+
+L186 asked whether a `Module#===` row is witnessable at the seven *keyable* class objects. Two
+extensions of the same probe answer the design question L184 left open — what key a singleton row
+hangs off — by showing it does not need one.
+
+### The measurements
+
+* **All 87 class objects** resolve `===` to the `Module#===` builtin with `undefined = false`, `.pub`,
+  `fromPrelude = false` and `crubyShadow = none`. Not just the seven: every id in the booted heap with
+  a class payload, scanned.
+* **The slice never writes `def ===`** — checked over all eight files.
+
+### Why that removes the key space
+
+L184 left `tyClassNames (.clsOf n) = []` because a row on `.clsOf "String"` (a singleton method) and a
+row on `.cls "String"` (an instance method) need different keys in one table, and both candidate keys
+cost something: the eigenclass's name does not exist for 60 of 87 class objects, and a prefixed key
+obliges `DeclsOk_addRow` to know the prefix is unreachable.
+
+**A row that is the same for every class needs no key.** `declFor`'s `.clsOf` arm can answer
+`{params := [.any], ret := .bool}` at `"==="` directly — a *hard-wired* declaration rather than a
+tabulated one. The first measurement is what makes that sound: the obligation becomes uniform over
+every `n`, and the resolution holds uniformly.
+
+The price is exactly two things, and the second measurement makes the first free:
+
+1. **`declaresName` must report `"==="`.** `DeclsOk_defineMethod`'s side condition is `mname ≠ name`,
+   and a hard-wired row is not in `D.rows` for `declaresName` to find — so without this a `def ===`
+   would be admitted and the lemma's precondition would not cover the row. Refusing `def ===`
+   program-wide costs the slice nothing.
+2. **`DeclsOk` obliges `EntryOk` at every `.clsOf n`**, so the resolution has to become a heap
+   conjunct — `ClassEqOk h : ∀ k, (classPayload? k).isSome → ResolvesAt h (classOf h (.ref k)) "===" "Module#==="`
+   — decided by a bounded scan in `heapOkB` (`classOkB`'s pattern) and preserved across `alloc`
+   (`PlainGrow` pins the payloads, `ancestors_congr_grow` the walk) and `defineMethod`
+   (`name ≠ "==="`, from item 1).
+
+`ConformsAt` needs no new clause at all: `Builtins/Modules.lean:37` answers `.ok (.bool (isA …)) m`
+with the machine unchanged whenever the receiver's `classPayload?` is `isSome`, and that is
+`classRecv`'s own clause, already carried by L185.
+
+### The pattern, one more time
+
+This is the second time in three commits that a measurement **removed** a design problem rather than
+answering it. L179 removed an ordering (the constant table was cheap and worthless); this one removes a
+key space (the row is uniform, so there is nothing to key). Both were found by asking what the artifact
+contains rather than what the clause should say — and neither took an hour.
+
+### Checks
+
+`check-proofs.sh` green, 29 theorems, axiom-clean; `classeq_probe` now scans every class object and
+exits 0. No SUT or metatheory change, so no verdict diff is owed and none is claimed.
