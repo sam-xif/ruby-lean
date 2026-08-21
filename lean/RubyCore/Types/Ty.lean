@@ -330,6 +330,35 @@ abbrev Env := List (String × Ty)
 def envGet? (Γ : Env) (x : String) : Option Ty :=
   (Γ.find? (·.1 == x)).map (·.2)
 
+/-- **One environment is weaker than another** (L218): every binding the first records,
+    the second records at the same type. A *lower bound* relation, and that direction is
+    the one `FrameConforms` needs — it reads `Γ` as "these locals are at least these
+    types", so dropping bindings weakens the claim.
+
+    `begin`/`rescue` is what wants it. The region's two exits leave different
+    environments — the body may have assigned locals the handler never sees — so the
+    type of the whole region can only be stated at an environment **both** paths
+    guarantee, which is the entry one. -/
+def SubEnv (Γ Γ' : Env) : Prop :=
+  ∀ x τ, envGet? Γ x = some τ → envGet? Γ' x = some τ
+
+/-- The decidable form the rule checks. -/
+def subEnvB (Γ Γ' : Env) : Bool :=
+  Γ.all fun e => envGet? Γ' e.1 == some e.2
+
+theorem subEnvB_sound {Γ Γ' : Env} (h : subEnvB Γ Γ' = true) : SubEnv Γ Γ' := by
+  intro x τ hx
+  unfold envGet? at hx
+  simp only [Option.map_eq_some_iff] at hx
+  obtain ⟨e, he, hτ⟩ := hx
+  have hp := List.find?_some he
+  simp only [beq_iff_eq] at hp
+  have := List.all_eq_true.mp h e (List.mem_of_find?_eq_some he)
+  simp only [beq_iff_eq] at this
+  rw [← hp, ← hτ]; exact this
+
+theorem SubEnv.refl (Γ : Env) : SubEnv Γ Γ := fun _ _ h => h
+
 def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
   | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ

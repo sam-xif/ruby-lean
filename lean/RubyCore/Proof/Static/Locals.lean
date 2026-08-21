@@ -726,6 +726,24 @@ theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     · simpa [curFid, hst] using hlt
     · simpa [curFrame, curFid, hst] using hc
 
+/-- **Conformance narrows with the environment** (L218). `FrameConforms`' third clause is
+    a `∀` over `Γ`'s lookups, so a weaker `Γ` is a weaker claim and the lemma is one
+    composition. What it is for: `begin`/`rescue`'s two exits leave different
+    environments — the body may have assigned locals the handler never sees — so the
+    region is typed at the *entry* environment and the delivery has to weaken the body's. -/
+theorem FrameConforms.narrow {h : Heap} {Γ Γ' : Env} {f : Frame}
+    (hs : SubEnv Γ Γ') (hc : FrameConforms h Γ' f) : FrameConforms h Γ f :=
+  ⟨hc.1, hc.2.1, fun x τ hx => hc.2.2 x τ (hs x τ hx)⟩
+
+/-- **And the stack's head narrows** (L218) — the only position a region needs, because a
+    `begin` is inside one activation and the callers' environments are untouched. -/
+theorem FramesOk.narrowHead {hp : Heap} {frames : Array Frame} :
+    ∀ {st : List FrameId} {Γ Γ' : Env} {Γs : List Env}, SubEnv Γ Γ' →
+      FramesOk hp frames st (Γ' :: Γs) → FramesOk hp frames st (Γ :: Γs)
+  | [], _, _, _, _, hf => absurd hf (by simp [FramesOk])
+  | _ :: _, _, _, _, hs, hf =>
+      ⟨hf.1, hf.2.1, FrameConforms.narrow hs hf.2.2.1, hf.2.2.2⟩
+
 /-- Popping the innermost activation: a suffix of a conforming stack conforms. -/
 theorem FramesOk.tail {hp : Heap} {frames : Array Frame} {fids : List FrameId} {Γ : Env}
     {Γs : List Env} (h : FramesOk hp frames fids (Γ :: Γs)) :
@@ -1045,11 +1063,20 @@ def TypeAgree (h h' : Heap) : Prop :=
     -- land rather than empty the list and raise. Nothing in the fragment reads a chain
     -- out of a frame yet, which is why the clause arrives with `super` and why it is
     -- worth landing on its own: it is inert until then.
-    (∀ k, k < h.objs.size → ancestors h' k = ancestors h k)
+    -- **L218 drops the bound and adds the size**, and both are free at every instance:
+    -- `PlainGrow.ancestors_eq`, `ancestors_defineMethod`, `IvarOnly.ancestors_eq` and
+    -- `ancestors_congr` are all `∀ k` already, and every transport either grows the heap
+    -- or leaves its size alone. What needed the strengthening is `isTypeError`'s
+    -- transport (`begin`/`rescue`): its `isA` reads `ancestors h (classOf h exc)`, and a
+    -- `.ref` whose id is in the *old* bounds still needs its class's chain — which may
+    -- be a class the old heap did not have — plus `h.objs.size ≤ h'.objs.size` to carry
+    -- the bound itself forward.
+    (∀ k, ancestors h' k = ancestors h k) ∧
+    h.objs.size ≤ h'.objs.size
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp,
-   fun _ _ hc => hc, fun _ _ => Eq.refl _⟩
+   fun _ _ hc => hc, fun _ => Eq.refl _, Nat.le_refl _⟩
 
 /-- **Transport across a frame-array rewrite**, the counterpart of
     `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
@@ -1218,7 +1245,8 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     -- L208's sixth clause. `defineMethod` moves no `clsShape` and no id, so the walk
     -- is congruent at *every* id — `ancestors_defineMethod`, which the constant-table
     -- lemmas beside it already use.
-    fun k _ => ancestors_defineMethod h cls k name md⟩
+    fun k => ancestors_defineMethod h cls k name md,
+    by rw [objs_size_defineMethod]; exact Nat.le_refl _⟩
 
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
     for.** One fact does all four clauses: `Array.push` leaves every existing
@@ -1235,9 +1263,9 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     (hget : ∀ o, o < h.objs.size → h'.get o = h.get o)
     -- L208: `get` agreement does **not** give this one (the fuel differs), so it is a
     -- hypothesis. Every caller has it from a lemma written for another consumer.
-    (hanc : ∀ k, k < h.objs.size → ancestors h' k = ancestors h k) : TypeAgree h h' := by
+    (hanc : ∀ k, ancestors h' k = ancestors h k) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
-    fun o ho hc => ?_, hanc⟩
+    fun o ho hc => ?_, hanc, hsz⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
   · simp only [Heap.classPayload?, hget k hk]
@@ -1322,7 +1350,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
     intro k; simp only [Heap.classPayload?, hpl k]
   refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_,
-    fun k _ => ?_⟩
+    fun k => ?_, ?_⟩
   · simp only [classOf, hei o, hkl o]
   · simp only [className, hcp k]
   · rw [hcp k]
@@ -1336,6 +1364,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     -- fuel — `ancestors_go_congr` with the size equation, which is `IvarOnly`'s
     -- `ancestors_eq` inlined at the four fields this lemma is stated over.
     exact ancestors_congr (fun j => by rw [hcp j]) hsz.symm k
+  · exact Nat.le_of_eq hsz
 
 /-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
     clause — `classPayload?` agrees at *every* id — is what resolution needs and the
@@ -1344,7 +1373,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     `TypeAgree` is the type judgement's vocabulary, not the heap's. -/
 theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h')
     (hsat : Saturated h) : TypeAgree h h' :=
-  typeAgree_of_get hg.size hg.get (fun k _ => hg.ancestors_eq hsat k)
+  typeAgree_of_get hg.size hg.get (fun k => hg.ancestors_eq hsat k)
 
 /-- **`alloc`'s transport, as a corollary** (L208 moved it below `typeAgree_of_plainGrow`
     and gave it saturation). The sixth clause is a chain fact, and the only route to a
@@ -1401,6 +1430,32 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
       · simp [valueTy?, hp, hc] at hσ
   | _ => simp_all [valueTy?]
 
+/-- **`isTypeError` transports** (L218) — the lemma `begin`/`rescue` needs and the reason
+    `TypeAgree`'s chain clause lost its bound.
+
+    `isA h exc k` is `k ∈ ancestors h (classOf h exc)`, so the transport is two rewrites:
+    the dispatch class (clause 1, at the value's own id) and its chain (clause 6, now
+    unrestricted). The bound on `exc` is the hypothesis, and it is the one thing neither
+    clause supplies — a `.ref` above the old size reads back as the *default* object,
+    which is not an exception, so a heap that grows can turn `¬ isTypeError` into
+    `isTypeError` at such an id. Immediates need nothing: their dispatch class is a `Boot`
+    id, heap-independent by definition. -/
+theorem isTypeError_congr {h h' : Heap} {exc : Value} (ha : TypeAgree h h')
+    (hb : ∀ o, exc = .ref o → o < h.objs.size)
+    (hne : ¬ isTypeError h exc) : ¬ isTypeError h' exc := by
+  intro hbad
+  refine hne ?_
+  obtain ⟨k, hk, hisa⟩ := hbad
+  refine ⟨k, hk, ?_⟩
+  have hco : classOf h' exc = classOf h exc := by
+    cases hev : exc with
+    | ref o => subst hev; exact ha.1 o (hb o rfl)
+    | bool b => cases b <;> rfl
+    | _ => rfl
+  unfold isA at hisa ⊢
+  rw [hco, ha.2.2.2.2.2.1] at hisa
+  exact hisa
+
 /-- **Transport across a heap-writing step.** The in-bounds clause is what makes
     it available: `TypeAgree` relativizes every one of its equalities to ids the
     old heap had (L143), so a predicate that names an `ObjId` has to say the id is
@@ -1436,7 +1491,7 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
               exact ha.1 o (valueTy_ref_lt hv)
           | bool b => cases b <;> rfl
           | _ => rfl
-        rw [hco, ha.2.2.2.2.2 _ (classOf_lt_of_mem_ancestors hs.1 hch)]
+        rw [hco, ha.2.2.2.2.2.1 _]
         exact hch
   | [], _ :: _, hs => hs.elim
   | _ :: _, [], hs => hs.elim

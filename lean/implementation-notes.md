@@ -10276,3 +10276,93 @@ konts enter `KontOk`. That is where the census moves (24 → 22).
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
 **24**. `Proof/`-only, so no `--check` diff is owed.
+
+## L218 — `begin`'s three prerequisites, and the measured reason the rung is not the kont arms
+
+Out of fragment **24 → 24**. Three pieces landed, all inert, all needed by `begin`/`rescue`; the rule
+itself is **not** here and the last section says exactly what stopped it. `--check` byte-identical.
+
+### 1. Environment narrowing, and the restriction it forces is the interesting part
+
+```lean
+def SubEnv (Γ Γ' : Env) : Prop := ∀ x τ, envGet? Γ x = some τ → envGet? Γ' x = some τ
+theorem FrameConforms.narrow  -- one composition: the third clause is a ∀ over Γ's lookups
+theorem FramesOk.narrowHead   -- the only position a region needs
+```
+
+A `begin`'s two exits leave **different environments** — the body may have assigned locals the handler
+never sees — so the region can only be typed at an environment both paths guarantee.
+
+And the entry environment is **not** it. Writing the `KontOk` arm is what showed why:
+
+```ruby
+x = 1
+begin;  x = "s";  raise;  rescue;  x;  end     # handler typed at the entry env reads x : Integer
+```
+
+The body may *reassign* a binding before raising, so a handler typed at the region's entry environment
+reads a stale type off a live frame. **The sound environment for a handler is a lower bound of every
+intermediate environment the body passes through**, and the only such bound the fragment can name
+without a dataflow analysis is `[]`. Both slice bodies are `… rescue Uncomparable; nil`, so `[]` costs
+them nothing — but it is a restriction to write down, not an approximation to fix later.
+
+### 2. `TypeAgree`'s chain clause loses its bound, and gains a size clause
+
+L208 added `∀ k, k < h.objs.size → ancestors h' k = ancestors h k`. The bound was never needed: every
+instance proves the unrestricted form already (`PlainGrow.ancestors_eq`, `ancestors_defineMethod`,
+`IvarOnly.ancestors_eq`, `ancestors_congr` are all `∀ k`). Dropping it, plus a seventh clause
+`h.objs.size ≤ h'.objs.size` — also free everywhere — is what makes this provable:
+
+```lean
+theorem isTypeError_congr (ha : TypeAgree h h') (hb : ∀ o, exc = .ref o → o < h.objs.size)
+    (hne : ¬ isTypeError h exc) : ¬ isTypeError h' exc
+```
+
+`isA h exc k` is `k ∈ ancestors h (classOf h exc)`, so it is two rewrites — the value's dispatch class
+and that class's chain. **The bound on `exc` is the one thing no clause supplies**: a `.ref` above the
+old size reads back as the *default* object, which is not an exception, so a growing heap can turn
+`¬ isTypeError` into `isTypeError` at such an id. Immediates need nothing — a `Boot` dispatch class is
+heap-independent.
+
+> **A relativized clause is worth re-reading when a new consumer arrives.** L208 wrote the bound in by
+> analogy with the five clauses above it, which *do* need it (they are about `h.get o`). The chain
+> clause never did.
+
+### 3. What stopped the rule, and it is not what the pricing said
+
+`slice-verdict.md` priced `begin` as "the rescue machinery, six kont arms". The kont arms were the
+*easy* part — three `KontOk` constructors (`beginBodyK`, `rescMatchK`, `rescueK`), their
+`heap_congr'`/`retOk`/`raiseOk` cases, `RetTransparent`/`RaiseTransparent` gaining the region konts
+guarded on `node.ens`, and two of the three value-delivery consecution cases all went in and built.
+Three findings came out of it, and the third is the blocker:
+
+* **`RetTransparent` and `RaiseTransparent` had to split.** L217 reused one for both and the note gave
+  a reason — both are the konts reaching `unwind`'s catch-all, which does not look at the jump. That
+  reason expires here: `beginBodyK` is transparent to a `.retJ` and **not** to a `.raiseJ`. The two
+  lists now differ in exactly that constructor.
+* **`unwind`'s transparency lemmas needed an `∃ ec`.** `rescueK`'s exit restores the outer `$!`, so the
+  machine it produces is not `{ m with kont := k }`. `Inv` reads no such field, so the honest statement
+  is *the kont pops and nothing the invariant looks at moves* — one existential, one `obtain` at each
+  of the two `skip` cases.
+* **The blocker: `RaiseOk` needs a *table*, and `KontOk` threads tables.** A caught raise resumes with
+  a value, so `CtlOk`'s raise arm has to carry a typed continuation — which means `RaiseOk`'s `caught`
+  constructor carries `infer` premises, which means `RaiseOk` is indexed by `Decls`. But
+  `KontOk.raiseOk` derives `RaiseOk` by induction over `KontOk`, and several `KontOk` constructors
+  hand the continuation a **different** table (`seqCons`, `ifK`, `recvK`, `argsK` all thread `D → D'`).
+  So the derived relation is at the *continuation's* table and the consumer needs it at the
+  invariant's, with no lemma saying the two agree.
+
+> **That is L200's problem, and L200 solved it** — `KontOk.retOk` composes with `infer_table_ret`,
+> *the table is constant along a continuation chain*, available because `ctx.ret.isSome` forces
+> `def`'s row-adding guard off. A raise has no analogous guard, so `begin` needs its own
+> table-stability lemma (the natural guard is the region body's `defFree`, giving
+> `infer_decls_stable`). **That is the next commit, and it is a lemma about `infer`, not about
+> exceptions** — which is why no amount of work on the rescue machinery was going to reach it.
+
+The rescue machinery is reverted rather than left half-built; this commit keeps only the three pieces
+that stand on their own and that the rung needs regardless.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
+**24**. `Types/Ty.lean` is touched, so the `--check` diff was run: byte-identical.
