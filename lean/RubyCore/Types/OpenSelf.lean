@@ -158,8 +158,10 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match inferOpen D Γ rhs ctx s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁
     | r => r
+  -- **A literal `self` receiver is admitted** (L172), and `inferOpen` gives it the
+  -- variable `ctx.self` — so `self.foo(x)` records a requirement on the definee's
+  -- class exactly as `foo(x)` does.
   | .send (some recv) mname [arg] none =>
-    if isSelf recv then .outOfFragment "selfRecv" else
     match inferOpen D Γ recv ctx s with
     | .ok τr Γ₁ s₁ =>
       match inferOpen D Γ₁ arg ctx s₁ with
@@ -178,7 +180,6 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
       | r => r
     | r => r
   | .send (some recv) mname [] none =>
-    if isSelf recv then .outOfFragment "selfRecv" else
     match inferOpen D Γ recv ctx s with
     | .ok τr Γ₁ s₁ =>
       match τr with

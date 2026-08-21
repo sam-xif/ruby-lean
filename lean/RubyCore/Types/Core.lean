@@ -327,10 +327,8 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match infer D Γ rhs top ctx with
     | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
     | none => none
-  -- Binary send to a builtin, explicit receiver, no block. Every other send
-  -- shape — implicit self, wrong arity, a block, `vcall` — is `unknown`, which
-  -- is also what keeps `.self'` out of receiver position (see `KontOk.recvK`:
-  -- `evalExpr` picks the `.selfRecv` site *syntactically* for a literal `self`).
+  -- Binary send to a builtin, any receiver expression, no block. Wrong arity, a
+  -- block, or two or more arguments is still `unknown`.
   | .send (some recv) mname [arg] none =>
     -- **The signature is read after the argument, not before** (F1b.8). The three
     -- tests are independent — each failure is `none` — so the order is free, and
@@ -339,14 +337,15 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     -- left, and `KontOk.argsK`'s signature premise has to be readable there.
     -- Reading `sigOf` at the earlier table would make the kont carry a fact about
     -- a table nothing in the machine is at.
-    -- **A literal `self` receiver is excluded** (F1b.11), and it is a fact about
-    -- the machine rather than about types: `evalExpr` picks the send *site*
-    -- syntactically, so `self.foo` is a `.selfRecv` send and takes a different path
-    -- through `visError?` than `.explicit`. `KontOk.recvK` is stated at
-    -- `.explicit`, and `site_explicit` — which used to hold because `infer` refused
-    -- `self` outright — is what this guard keeps true. The zero-argument case is
-    -- covered by `vcall`, which is the same dispatch without the receiver.
-    if isSelf recv then none else
+    -- **A literal `self` receiver is admitted** (L172). F1b.11 excluded it, and the
+    -- reason was a fact about the machine rather than about types: `evalExpr` picks
+    -- the send *site* syntactically, so `self.foo` is a `.selfRecv` send and takes a
+    -- different path through `visError?` than `.explicit`. The guard that stood here
+    -- existed only because `KontOk.recvK` was stated at `.explicit`; the site is a
+    -- parameter now, and it is the *permissive* direction — `visError?` raises only
+    -- at `.explicit` — so nothing about dispatch changes for a `.pub` method, which
+    -- is all `ResolvesAt` admits. `self` in receiver position gets its type from
+    -- `infer`'s own `self'` arm, so a class body still refuses it.
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
       match infer D₁ Γ₁ arg top ctx with
@@ -367,7 +366,6 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
   -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
-    if isSelf recv then none else
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
       match sigOf D₁ τr mname with

@@ -367,6 +367,48 @@ theorem egSelf_safe :
     simp [check, egSelf, infer, declsOf, declaresName, baseDecls, reopenableClasses,
       defFree, defFreeAll, addRow, declsFor, isSelf])
 
+/-- **A literal `self` receiver** (L172) — `self.v`, which F1b.11 excluded and
+    which is now one more uniform branch.
+
+    ```ruby
+    class String
+      def v; 1; end
+      def g
+        self.v         # ⇒ Integer
+      end
+      "x".g
+    end
+    ```
+
+    The exclusion was a fact about the machine: `evalExpr` picks the send *site*
+    syntactically, so `self.v` is a `.selfRecv` send. `KontOk.recvK`/`recvK0` now
+    take the site as a **parameter**, and the difference between the two sites is
+    *permissive* — `visError?` raises only at `.explicit`, while `ResolvesAt` and
+    `ResolvesUser` demand `.pub` regardless — so a public method dispatches
+    identically at both and no dispatch lemma moved. `site_explicit` was withdrawn
+    in the same commit, together with the `isSelf` guard it was propping up. -/
+def egSelfRecv : Expr :=
+  .class' "String" none
+    (.seq [ .def' "v" [] (.int 1),
+            .def' "g" [] (.send (some .self') "v" [] none),
+            .send (some (.str "x")) "g" [] none ])
+
+theorem egSelfRecv_safe :
+    ∀ r, ReachableResult (Machine.init egSelfRecv) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egSelfRecv, infer, inferSeq, declsOf, declaresName, baseDecls,
+      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      declOf?, tyClassNames, groundClassNames, isSelf])
+
+/-- **…and a class body still refuses it**, for the reason it always did and not
+    for the guard's: in a class body `self` is the class object, `plainRecv`
+    excludes a class, and `infer`'s own `self'` arm answers `none`. The receiver's
+    *type* is what refuses this, not the send site. -/
+example : check (.class' "String" none (.send (some .self') "upcase" [] none))
+    = .unknown := by
+  simp [check, infer, illTyped, declsOf, reopenableClasses, isSelf, sigOf, declFor,
+    declOf?, declsFor, baseDecls, tyClassNames, groundClassNames]
+
 /-- And `self` at toplevel or in a class body is `unknown`, not accepted at some
     guessed type. -/
 example : check (.class' "String" none .self') = .unknown := by

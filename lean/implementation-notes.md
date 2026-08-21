@@ -6901,3 +6901,60 @@ time the remaining obstruction on a whole file is a declaration rather than a ru
 `--assn` smoke 1,225 clean / 2 decode gates. `fragment-gap.py --self-test` all agree, two new cases
 (`foo(1)` unknown for want of a row, `foo(1, 2)` unknown for want of a rule); `shape_send`'s
 receiverless arm now admits arities 0 and 1.
+
+## L172 — a literal `self` receiver, and the third `SendSite` parameter
+
+`selfRecv` was 2 of the slice's 89 remaining out-of-fragment bodies. It is the third rung in a row
+whose whole content is *this constructor's site index should have been a parameter*, and the third
+time the answer was one word.
+
+### What the exclusion actually was
+
+F1b.11 excluded `self.foo` and the comment recording it was precise about why: `evalExpr` picks the
+send **site** syntactically, so `self.foo` is a `.selfRecv` send while every other receiver is
+`.explicit`, and `KontOk.recvK`/`recvK0` were *stated* at `.explicit`. The guard `if isSelf recv then
+none` existed to keep `site_explicit` — *the site is always `.explicit` in the fragment* — true.
+
+Read what the two sites differ by, and the exclusion evaporates: `visError?`
+(`Interp/Dispatch.lean:325`) raises **only** at `.explicit`, so `.selfRecv` is the *permissive*
+direction, and `ResolvesAt`/`ResolvesUser` demand `.pub` regardless. A public method dispatches
+identically at both sites, and the dispatch lemmas have been site-polymorphic since L164. So:
+
+* `KontOk.recvK` and `KontOk.recvK0` take `{site : SendSite}`;
+* `infer`'s two `isSelf` guards are **deleted**, in both `infer` and `inferOpen`;
+* `site_explicit` is **withdrawn**, struck through in place with the reason — the third lemma in this
+  file's history (after `TypeAgree.symm` and `ResolvesTo_grow`) that was correct when written and made
+  pointless by a sharper later statement;
+* `infer_send_inv`/`infer_send0_inv` lose their `isSelf r = false` conjunct;
+* `step_ok`'s two send cases keep the `cases r` — `evalExpr`'s match on the receiver *expression* still
+  will not rewrite — but lose the refuted branch: `self` is one more uniform application of the same
+  constructor.
+
+**A class body still refuses `self.foo`, and for the right reason.** In a class body `self` is the
+class object, `plainRecv` excludes a class, and `infer`'s own `self'` arm answers `none`. What refuses
+it is the receiver's *type*, not the send site — which is the distinction the guard was blurring, and
+it is asserted as a checked fact beside the accepting witness.
+
+### The measurement, and it did not move the metric
+
+| | before | after |
+|---|---|---|
+| out of fragment | 89 | **89** |
+| `selfRecv` | 2 | **0** |
+| `const` | 16 | **18** |
+
+**The two bodies moved from `selfRecv` to `const`, and the total did not change.** That is the fourth
+run of L168's lesson and the first time it netted zero: a census classifies at the outermost blocking
+node, so lifting a refusal reveals the next one and the *ranking* changes while the *count* need not.
+The rung is still worth having — `self.foo` is admitted, and the two bodies' remaining obstruction is
+now named — but it is a reminder that **oof is a count of bodies, not of walls**, and the wall
+underneath these two is the largest one left.
+
+### Checks
+
+`check-proofs.sh` green, 28 theorems, axiom-clean (`egSelfRecv_safe` added). `--check` over the 1,227
+cached ASTs **byte-identical** to L171's capture (no bootstraptest program sends to a literal `self`
+inside a reopened core class with a declared row). `--assn` smoke 1,225 clean / 2 decode gates.
+`fragment-gap.py --self-test` all agree, two new cases (`self.v` accepted in a method body, `self.foo`
+unknown in a class body); `shape_send`'s *explicit `self` receiver* refusal is deleted, so the first
+ratchet's 16 nodes under it stop being counted as blocking.

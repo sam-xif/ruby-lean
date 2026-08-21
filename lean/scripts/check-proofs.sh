@@ -101,6 +101,11 @@ import RubyCore.Proof.Static.OpenSelf
 -- constructor and `visError?` is `none` for every site but `.explicit`.
 #print axioms RubyCore.Proof.Static.inv_implicit_send0
 #print axioms RubyCore.Proof.Static.egImplicitCall_safe
+-- L172 — a literal `self` receiver. `KontOk.recvK`/`recvK0` take the site as a
+-- parameter, `infer`'s `isSelf` guard is gone, and `site_explicit` was withdrawn
+-- with it. The witness is in the audit because the corpus cannot show that the
+-- `.selfRecv` path dispatches like the `.explicit` one.
+#print axioms RubyCore.Proof.Static.egSelfRecv_safe
 LEAN
 
 echo "== axioms"

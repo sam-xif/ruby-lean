@@ -105,29 +105,29 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary send**, and the only case where `SubDecls` is *used* rather than
   -- carried: the signature has to be readable at the bigger table, which is what
   -- the relation was defined to say.
-  | case16 D Γ top ctx recv mname arg hns τr Γ₁ D₁ hrecv Γ₂ D₂ τp τret hsig harg ihR ihA =>
+  | case15 D Γ top ctx recv mname arg τr Γ₁ D₁ hrecv Γ₂ D₂ τp τret hsig harg ihR ihA =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
     obtain ⟨rfl, hmA⟩ := ihA F' hs (by simp_all [defFree, defFreeAll]) _ _ _ harg
-    simp only [infer, hns, if_false, Bool.false_eq_true, hrecv, harg, hsig,
+    simp only [infer, hrecv, harg, hsig,
       Option.some.injEq, Prod.mk.injEq, if_pos rfl] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [infer, hns, hmR, hmA, SubDecls.sigOf_eq hs hsig]⟩
+    exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig]⟩
   -- **The zero-argument send.** Same shape, one fewer subexpression.
-  | case22 D Γ top ctx recv mname hns τr Γ₁ D₁ hrecv τret hsig ihR =>
+  | case20 D Γ top ctx recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
-    simp only [infer, hns, if_false, Bool.false_eq_true, hrecv, hsig,
+    simp only [infer, hrecv, hsig,
       Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [infer, hns, hmR, SubDecls.sigOf_eq hs hsig]⟩
+    exact ⟨rfl, by simp [infer, hmR, SubDecls.sigOf_eq hs hsig]⟩
   -- **The written receiverless call** (L170), `foo()`. Identical to `vcall`'s
   -- case — same receiver from the context, same `SubDecls.sigOf_eq` — which is
   -- the monotonicity half of the claim that the two rules differ only in a
   -- `SendSite`.
-  | case25 D Γ top ctx mname c hsome τret hsig =>
+  | case23 D Γ top ctx mname c hsome τret hsig =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hsome, hsig, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
@@ -135,7 +135,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary written receiverless call** (L171). One subexpression and the
   -- signature read at the table it leaves — the explicit unary send's case with
   -- the receiver supplied by the context instead of by an expression.
-  | case28 D Γ top ctx mname arg c hsome Γ₁ D₁ τp τret hsig harg ih =>
+  | case26 D Γ top ctx mname arg c hsome Γ₁ D₁ τp τret hsig harg ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmA⟩ := ih F' hs (by simp_all [defFree, defFreeAll]) _ _ _ harg
@@ -144,12 +144,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig]⟩
   -- `seq` is `inferSeq` definitionally, so this case is the third motive verbatim.
-  | case41 D Γ top ctx es ih =>
+  | case39 D Γ top ctx es ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     simp only [infer] at h ⊢
     exact ih F' hs hdf _ _ _ h
-  | case42 D Γ top ctx c t els τc Γ₁ D₁ hc ihC ihI =>
+  | case40 D Γ top ctx c t els τc Γ₁ D₁ hc ihC ihI =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree_if, Bool.and_eq_true] at hdf
     obtain ⟨⟨hc1, ht1⟩, he1⟩ := hdf
@@ -159,7 +159,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmI]⟩
   -- **The loop**, where the stability side conditions do the work: both come back
   -- as `rfl`s, so the table at `F'` is stable for the same reason it was at `F`.
-  | case44 D Γ top ctx c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
+  | case42 D Γ top ctx c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hstc
     obtain ⟨rfl, rfl⟩ := hstb
@@ -172,7 +172,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case50 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case48 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -184,7 +184,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE]⟩
-  | case53 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case51 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -192,17 +192,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case56 D Γ top ctx =>
+  | case54 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case57 D Γ top ctx e ih =>
+  | case55 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case58 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case56 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he

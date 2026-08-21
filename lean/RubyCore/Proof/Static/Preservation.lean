@@ -561,13 +561,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
           | none =>
-            obtain ⟨hns, τr, hr, hsg⟩ := infer_send0_inv hinf
+            obtain ⟨τr, hr, hsg⟩ := infer_send0_inv hinf
             simp only [evalExpr]
+            -- **The receiver is still case-split, and the site is no longer**
+            -- (L172). `evalExpr` picks the site by matching on the receiver
+            -- *expression*, and that match will not rewrite under `rw` — so the
+            -- split stays. What went away is the branch that had to be refuted:
+            -- `KontOk.recvK0` takes the site as a parameter, so `self` is one more
+            -- uniform branch rather than the rule's excluded case.
             cases r <;>
-              try exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK0 hsg hk)
-            -- The `self` receiver, refuted by the rule's own guard (F1b.11): the
-            -- site would be `.selfRecv`, which `KontOk.recvK0` does not describe.
-            exact absurd hns (by simp [isSelf])
+              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK0 hsg hk)
         | cons arg extra =>
           cases extra with
           | cons _ _ => exact absurd hinf (by simp [infer])
@@ -575,16 +578,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             cases blk with
             | some b => exact absurd hinf (by simp [infer])
             | none =>
-              obtain ⟨hns, τr, Γ₁, D₁, τp, hr, ha, hsg⟩ := infer_send_inv hinf
+              obtain ⟨τr, Γ₁, D₁, τp, hr, ha, hsg⟩ := infer_send_inv hinf
               -- `evalExpr` picks the send site by matching on the receiver
               -- *expression*, and that match will not rewrite under `rw`, so
-              -- force it to compute. Every branch but `self` is `.explicit`, and
-              -- the rule's guard refuses `self` — which since F1b.11 is a guard
-              -- rather than `infer` having no `self` rule at all.
+              -- force it to compute. Since L172 every branch — `self` included —
+              -- is the same `KontOk.recvK`, at whichever site the match produces.
               simp only [evalExpr]
               cases r <;>
-                try exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK ha hsg hk)
-              exact absurd hns (by simp [isSelf])
+                exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK ha hsg hk)
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, hv, hk⟩ := hc
@@ -697,7 +698,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- pairing the two: the caller's context is the second component of the list
       -- rather than a fact `frameK` has to be handed.
       exact StackCtx.tail hsc
-    | @recvK _ _ _ _ _ _ _ mname arg τp τret Γ₂ k ha hsg hk' =>
+    | @recvK _ _ _ _ _ _ _ mname arg τp τret Γ₂ k _ ha hsg hk' =>
       have hsp : ∀ e, arg ≠ .splat e := by
         rintro e rfl; exact absurd ha (by simp [infer])
       have hkw : ∀ es, arg ≠ .kwargs es := by
@@ -712,7 +713,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- ends where `argsK`'s does, one step earlier, and it is `entry_dispatch` at
     -- `args = []` rather than a second dispatch lemma. `ValuesTy _ [] []` is
     -- `trivial`, which is the whole of what the empty parameter list costs.
-    | @recvK0 _ _ _ _ _ _ mname τret k hsg hk' =>
+    | @recvK0 _ _ _ _ _ _ mname τret k _ hsg hk' =>
       dsimp only
       -- **The two witness kinds land different steps** (L157), which is why
       -- `EntryOk` is a disjunction and why this case is the first to case on it.

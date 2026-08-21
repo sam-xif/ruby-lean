@@ -108,13 +108,20 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       LoopOk D Γ c body Γs.isEmpty ctx → KontOk D h ((ctx, Γ) :: Γs) .nilT k →
       KontOk D h ((ctx, Γ) :: Γs) τ (.whileBodyK c body :: k)
   /-- The in-flight value is the **receiver** of a binary builtin send; the
-      argument expression runs next. The site is `.explicit` because `evalExpr`
-      picks it syntactically and `infer` rejects `self` in receiver position. -/
-  | recvK {D D₂ h c Γ Γs τ mname arg τp τret Γ₂ k} :
+      argument expression runs next.
+
+      **The site is a parameter** (L172), as `argsK`'s is (L171). `evalExpr` picks
+      it syntactically — `.selfRecv` for a literal `self` receiver and `.explicit`
+      for everything else — and the difference is *permissive*: `visError?` raises
+      only at `.explicit`, while `ResolvesAt`/`ResolvesUser` demand `.pub`
+      regardless. So a public method dispatches identically at both, the dispatch
+      lemmas have been site-polymorphic since L164, and `infer`'s `isSelf` guard —
+      which existed only to keep this constructor's `.explicit` true — is gone. -/
+  | recvK {D D₂ h c Γ Γs τ mname arg τp τret Γ₂ k} {site : SendSite} :
       infer D Γ arg Γs.isEmpty c = some (τp, Γ₂, D₂) →
       sigOf D₂ τ mname = some ([τp], τret) →
       KontOk D₂ h ((c, Γ₂) :: Γs) τret k →
-      KontOk D h ((c, Γ) :: Γs) τ (.recvK mname [arg] .none .explicit :: k)
+      KontOk D h ((c, Γ) :: Γs) τ (.recvK mname [arg] .none site :: k)
   /-- **A zero-argument send** (L152), and it is a separate constructor rather than
       `recvK` with an empty list because the two describe *different numbers of
       steps*. With an argument, `applyKont` pushes an `argsK` and the dispatch is a
@@ -123,10 +130,10 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       type. There is no `argsK` in the chain at all, and therefore no `ValueTy` stored
       in the kont — which is why this constructor, unlike `argsK`, does not read the
       heap. -/
-  | recvK0 {D h c Γ Γs τ mname τret k} :
+  | recvK0 {D h c Γ Γs τ mname τret k} {site : SendSite} :
       sigOf D τ mname = some ([], τret) →
       KontOk D h ((c, Γ) :: Γs) τret k →
-      KontOk D h ((c, Γ) :: Γs) τ (.recvK mname [] .none .explicit :: k)
+      KontOk D h ((c, Γ) :: Γs) τ (.recvK mname [] .none site :: k)
   /-- The in-flight value is the **argument**; the receiver is already a value
       carried by the kont, so its type is pinned by `ValueTy` rather than by
       `infer`.
@@ -278,13 +285,15 @@ theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
     obtain ⟨rfl, rfl⟩ := h
     rfl
 
-/-- `evalExpr` chooses the send site *syntactically* from the receiver
-    expression (`Interp.lean:2582`); `infer` rejects `self`, so the site is
-    always `.explicit` in the fragment. -/
-theorem site_explicit {r : Expr} (h : isSelf r = false) :
-    (match r with | .self' => SendSite.selfRecv | _ => SendSite.explicit) = .explicit := by
-  cases r <;> try rfl
-  exact absurd h (by simp [isSelf])
+-- ~~`site_explicit`~~ — **withdrawn at L172**, together with the hypothesis it
+-- needed. It said: *`evalExpr` chooses the send site syntactically, `infer`
+-- rejects `self`, so the site is always `.explicit` in the fragment.* The second
+-- clause stopped being true when `KontOk.recvK`/`recvK0` took the site as a
+-- **parameter** and the `isSelf` guard came out of the rule. It was propping up
+-- those constructors' `.explicit` index and nothing else, so it is unnecessary
+-- rather than false — the same shape as `TypeAgree.symm` (L147) and
+-- `ResolvesTo_grow` (L147): correct when written, and made pointless by a sharper
+-- later statement.
 
 /-- `Machine.currentFrame` and `curFrame` agree once the stack is non-empty. -/
 theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
@@ -354,20 +363,15 @@ theorem infer_class_inv {D D' : Decls} {Γ : Env} {name : String} {sup : Option 
 theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {τ : Ty}
     {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.send (some r) mname [] none) top ctx = some (τ, Γ', D')) :
-    isSelf r = false ∧
-      ∃ τr, infer D Γ r top ctx = some (τr, Γ', D') ∧ sigOf D' τr mname = some ([], τ) := by
+    ∃ τr, infer D Γ r top ctx = some (τr, Γ', D') ∧ sigOf D' τr mname = some ([], τ) := by
   simp only [infer] at h
-  split at h
-  case isTrue hns => exact absurd h (by simp)
-  rename_i hns
-  have hns' : isSelf r = false := by simpa using hns
   split at h
   · next τr Γ₁ D₁ hr =>
     split at h
     · next τret hsg =>
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl, rfl⟩ := h
-      exact ⟨hns', τr, hr, hsg⟩
+      exact ⟨τr, hr, hsg⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
@@ -376,15 +380,10 @@ theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {�
 theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {mname : String} {τ : Ty}
     {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.send (some r) mname [arg] none) top ctx = some (τ, Γ', D')) :
-    isSelf r = false ∧
-      ∃ τr Γ₁ D₁ τp, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
+    ∃ τr Γ₁ D₁ τp, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
       infer D₁ Γ₁ arg top ctx = some (τp, Γ', D') ∧
       sigOf D' τr mname = some ([τp], τ) := by
   simp only [infer] at h
-  split at h
-  case isTrue hns => exact absurd h (by simp)
-  rename_i hns
-  have hns' : isSelf r = false := by simpa using hns
   split at h
   · next τr Γ₁ D₁ hr =>
     split at h
@@ -395,7 +394,7 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {mname : String}
         · next hτ =>
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨hns', τr, Γ₁, D₁, τp, hr, hτ ▸ ha, hτ ▸ hsg⟩
+          exact ⟨τr, Γ₁, D₁, τp, hr, hτ ▸ ha, hτ ▸ hsg⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
