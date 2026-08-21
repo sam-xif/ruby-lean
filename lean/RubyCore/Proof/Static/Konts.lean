@@ -436,6 +436,72 @@ theorem unwind_ret_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Va
   rw [hkm]
   cases κ <;> simp_all [RetTransparent, Interp.withCtl]
 
+/-- **And the same for a `.raiseJ`** (L217) — the *same* nine cases and the same `simp`,
+    because `unwind`'s catch-all does not look at the jump. Stated as a twin rather than
+    by generalizing over the jump, because the `while` arms *do* look: `.brkJ`/`.nxtJ`/
+    `.redoJ` are special there and a generalized lemma would need a side condition
+    excluding exactly them, which is longer than the twin. -/
+theorem unwind_raise_transparent {m : Machine} {κ : Kont} {k : List Kont} {exc : Value}
+    (hκ : RetTransparent κ) (hkm : m.kont = κ :: k) :
+    Interp.unwind m (.raiseJ exc)
+      = .next (Interp.withCtl { m with kont := k } (.jump (.raiseJ exc))) := by
+  unfold Interp.unwind
+  rw [hkm]
+  cases κ <;> simp_all [RetTransparent, Interp.withCtl]
+
+/-- **A raise crosses a `frameK` by popping the activation** (L217) — `unwind`'s
+    `frameK` arm at `.raiseJ`, which is one line of the interpreter and needs no
+    agreement between the jump and the frame (contrast `.retJ`, whose arm compares the
+    target against the label). -/
+theorem unwind_raise_frameK {m : Machine} {fid : FrameId} {k : List Kont} {exc : Value}
+    (hkm : m.kont = .frameK fid :: k) :
+    Interp.unwind m (.raiseJ exc)
+      = .next (Interp.withCtl { m with kont := k, stack := m.stack.tail }
+          (.jump (.raiseJ exc))) := by
+  unfold Interp.unwind
+  rw [hkm]
+
+/-- **The konts a propagating raise walks, and how the frame stack shrinks under it**
+    (L217). `RetOk`'s shape with the type removed.
+
+    `RetTransparent` is reused rather than duplicated, and that reuse is a fact about
+    `unwind` rather than a convenience: the konts it lists are exactly the ones that hit
+    `unwind`'s **catch-all** (or the `while` arm's `_`), and that catch-all does not look
+    at the jump — so a kont transparent to a `.retJ` is transparent to a `.raiseJ` for
+    the same one line of the interpreter. `frameK` is the one that is not, and it is the
+    `pop` constructor. -/
+inductive RaiseOk : List (FrameCtx × Env) → List Kont → Prop where
+  | nil {Γs} : RaiseOk Γs []
+  | skip {Γs κ k} : RetTransparent κ → RaiseOk Γs k → RaiseOk Γs (κ :: k)
+  | pop {cΓ Γs k fid} : RaiseOk Γs k → RaiseOk (cΓ :: Γs) (.frameK fid :: k)
+
+/-- **`RaiseOk`, derived from `KontOk`** — the counterpart of `KontOk.retOk` (L200), and
+    cheaper for the reason `RaiseOk` is cheaper: no `top = false`, no `c.ret`, no
+    `infer_table_ret` composition, because there is no type to line up. Every `KontOk`
+    constructor is either a `RetTransparent` kont or `frameK`, which is why the induction
+    is one line per constructor. -/
+theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {τ : Ty}, KontOk D h ((c, Γ) :: Γs) τ k → RaiseOk Γs k
+  | [], _, _, _, _, _, _, _ => RaiseOk.nil
+  | κ :: k, D, h, c, Γ, Γs, τ, hk => by
+      cases hk with
+      | seqNil hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | seqCons hs hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | asgn hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | asgnIvar hsc hw hcf hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | ifK hi hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | whileCond hl hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | whileBody hl hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | recvK ha hsg hsub hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | recvK0 hsg hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | argsK hv hva hst hia hsr hsg hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | superArgsK hva hst hia hsr hmt hmn hrow hps hrt hw hk' =>
+          exact .skip trivial (KontOk.raiseOk hk')
+      | arrK hs hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | cpathK hb hsc hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | retValK hr hs hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | frameK hrt hk' => exact .pop (KontOk.raiseOk hk')
+
 def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     (m : Machine) : Prop :=
   match m.ctl with
@@ -461,8 +527,36 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     -- `KontOk`'s own head changes at every transparent constructor.
     ∃ σ, ValueTy m.heap v σ ∧ RetOk D m.heap Γs σ m.kont ∧
       firstFrameK m.kont = some target
-  -- The other four jumps stay excluded: `break`/`next`/`retry`/`redo`/`raise`/`throw`
-  -- are not in the fragment, so no step can produce one.
+  -- **A raise in flight** (L217), and the arm is *one conjunct* — which is the
+  -- surprise, so read why before adding to it.
+  --
+  -- `typeStuck` fires only on an uncaught **type** error (`Proof/TypeSafety.lean`), and
+  -- L216 made `StepOk` agree. So a propagating user exception owes nothing about a
+  -- *type*: `unwind` carries it through every transparent kont unchanged, pops one frame
+  -- at each `frameK`, and turns it into `.uncaught` at `[]`, which `StepOk` now admits
+  -- exactly when this conjunct holds. The heap never moves along that path, so the
+  -- conjunct is preserved by every one of those steps for free.
+  --
+  -- **`RaiseOk` is the second conjunct, and the first draft did without it and was
+  -- wrong.** The tempting argument is that a raise owes nothing about the continuation,
+  -- so `frameKLabels` and `StackCtx` alone should carry the pops. What that misses is
+  -- that `CtlOk`'s jump arm has **no `KontOk`**, so nothing bounds which konts are on
+  -- the stack — and `unwind` does not propagate a raise through all of them.
+  -- `definedGuardK` turns it into `.next (withCtl m (.value .nil))`, at which point
+  -- `CtlOk` wants a `KontOk` for the continuation and there is none to be had. So the
+  -- stack has to be *known* to be raise-propagating, which is what this relation says.
+  --
+  -- Unlike `RetOk` it carries no type — a propagating raise has no value the receiving
+  -- kont must accept — so it is indexed by the environment stack and the konts alone.
+  --
+  -- What this arm does not yet support is a raise being **caught**: a handler resumes
+  -- with `.value v` and would need a `KontOk` below it. That is the `begin`/`rescue`
+  -- rung, and it is where `RaiseOk` grows a third constructor
+  -- (*a handler typed at τ*). Stated so the next commit does not read the absence as an
+  -- oversight.
+  | .jump (.raiseJ exc) => ¬ isTypeError m.heap exc ∧ RaiseOk Γs m.kont
+  -- The other jumps stay excluded: `break`/`next`/`retry`/`redo`/`throw` are not in the
+  -- fragment, so no step can produce one.
   | .jump _ => False
 
 /-- **Transport of the continuation judgement.** The other half of L137's cost:

@@ -1804,6 +1804,54 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
                 D, c', Γ', Γsb, htab, hfs.tail, StackCtx.tail hsc,
                 ⟨τf, ValueTy.weaken hv hsubf, hkf⟩⟩
+    -- **A raise in flight** (L217), and it is the shortest jump case in the file:
+    -- `unwind` never inspects the *value*, so there is no type to line up and no
+    -- `frameK` agreement to spend. `RaiseOk` was destructured before the `stepFn`
+    -- unfold for `RetOk`'s reason — the relation's shape is what picks the kont.
+    | raiseJ exc =>
+      obtain ⟨hne, hro⟩ := hc
+      simp only [stepFn, hctl]
+      generalize hK : m.kont = K at hro hks ⊢
+      cases hro with
+      | nil =>
+        -- `[]`: the raise escapes to `.uncaught`, and `StepOk`'s L216 clause *is* the
+        -- hypothesis — which is the whole content of that commit, cashed here.
+        rw [show Interp.unwind m (.raiseJ exc) = .uncaught exc m from by
+          unfold Interp.unwind; rw [hK]]
+        exact hne
+      | skip hκ hro' =>
+        -- A transparent kont: pop it, keep the jump, and every conjunct is at the same
+        -- heap, frames and stack — so only `frameKLabels` moves.
+        rw [unwind_raise_transparent (m := m) hκ hK]
+        refine ⟨hhook, hsat, hstr, hcls, hbot, ?_, D, ctx, Γ, Γs, htab, hfs, hsc,
+          ⟨hne, hro'⟩⟩
+        simp only [withCtl]
+        rw [← hks, frameKLabels_transparent hκ]
+      | pop hro' =>
+        -- A `frameK`: the activation goes with it, and `RaiseOk.pop` handed over the
+        -- caller's environment — so this case is `RetOk.here`'s bookkeeping without the
+        -- type agreement, and without the `firstFrameK` target match.
+        rename_i cΓ Γs' kf fid
+        rw [unwind_raise_frameK (m := m) hK]
+        -- **The stack has at least two entries**, and `hks` is what says so, exactly as
+        -- in the `.retJ` case: the continuation has a `frameK`, so `m.stack.dropLast` is
+        -- a cons.
+        cases hst : m.stack with
+        | nil => rw [hst] at hks; simp [frameKLabels] at hks
+        | cons f0 t =>
+          cases ht : t with
+          | nil => rw [hst, ht] at hks; simp [frameKLabels] at hks
+          | cons f1 rest =>
+            have hlab : frameKLabels kf = m.stack.tail.dropLast := by
+              have hq := hks
+              simp only [frameKLabels] at hq
+              rw [hst, ht] at hq ⊢
+              simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
+              simpa using hq.2
+            rw [hst, ht] at hbot hfs hsc hlab
+            obtain ⟨c', Γ'⟩ := cΓ
+            exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+              D, c', Γ', Γs', htab, hfs.tail, StackCtx.tail hsc, ⟨hne, hro'⟩⟩
     | _ => exact hc.elim
 end Static
 end Proof

@@ -10205,3 +10205,74 @@ Then the `raise`/`begin` rules, which is where the census moves (24 → 22).
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
 **24**, unchanged. No `--check` diff owed (`Proof/`-only).
+
+## L217 — `CtlOk` admits a propagating raise, and the first draft of the arm was wrong
+
+Out of fragment **24 → 24**, `Proof/`-only. The second of three for `begin`, and still inert — no rule
+produces a `.raiseJ` yet, so the arm is proved and unreachable.
+
+```lean
+| .jump (.raiseJ exc) => ¬ isTypeError m.heap exc ∧ RaiseOk Γs m.kont
+```
+
+### The first draft had only the first conjunct, and the argument for it was seductive
+
+*A propagating raise owes nothing about the continuation — it carries no value the receiving kont has
+to accept — so `frameKLabels` and `StackCtx`, which `Inv` already has, should carry the pops on their
+own.* Every clause of that is true and the conclusion is false. **`CtlOk`'s jump arm has no `KontOk`**,
+so nothing bounds which konts are on the stack — and `unwind` does not propagate a raise through all
+of them. `definedGuardK` turns it into `.next (withCtl m (.value .nil))` (an exception while evaluating
+a `defined?` operand makes it `nil`), at which point `CtlOk` wants a `KontOk` for the continuation and
+there is none to be had.
+
+So the stack has to be *known* to be raise-propagating. Found by writing the case and reading the
+goal, not by reasoning about it.
+
+> **"This jump carries no type" does not imply "this jump needs no continuation invariant."** The two
+> obligations are independent: `RetOk` exists for the *type* agreement at a `frameK`, and `RaiseOk`
+> exists for the *shape* of the stack. Dropping the type does not drop the shape.
+
+### `RaiseOk`, and it is cheaper than `RetOk` in every dimension but existence
+
+```lean
+inductive RaiseOk : List (FrameCtx × Env) → List Kont → Prop where
+  | nil  {Γs}       : RaiseOk Γs []
+  | skip {Γs κ k}   : RetTransparent κ → RaiseOk Γs k → RaiseOk Γs (κ :: k)
+  | pop  {cΓ Γs k fid} : RaiseOk Γs k → RaiseOk (cΓ :: Γs) (.frameK fid :: k)
+```
+
+No `Decls`, no `Heap`, no type — it is a statement about the *shape* of `(Γs, kont)` and nothing else.
+`KontOk.raiseOk` derives it, one line per `KontOk` constructor, with none of `KontOk.retOk`'s
+machinery (no `top = false`, no `c.ret`, no `infer_table_ret` composition) because there is no type to
+line up.
+
+**`RetTransparent` is reused rather than duplicated, and the reuse is a fact about the interpreter**:
+the konts it lists are exactly the ones that reach `unwind`'s **catch-all** (or the `while` arm's `_`),
+and that catch-all does not look at the jump. So a kont transparent to a `.retJ` is transparent to a
+`.raiseJ` *for the same one line of `unwind`*. `unwind_raise_transparent` is `unwind_ret_transparent`'s
+twin for that reason — stated as a twin rather than generalized over the jump, because the `while` arms
+*do* inspect it (`.brkJ`/`.nxtJ`/`.redoJ` are special there) and the side condition excluding exactly
+those is longer than the twin.
+
+### The consecution case is the shortest jump case in the file
+
+Three constructors, and `RaiseOk`'s shape picks the kont:
+
+* `nil` — `unwind` answers `.uncaught exc m`, and **L216's `StepOk` clause is the hypothesis**. That
+  commit's whole content, cashed in one line.
+* `skip` — pop the kont, keep the jump; heap, frames and stack all unmoved, so only `frameKLabels`
+  moves and `frameKLabels_transparent` moves it.
+* `pop` — `RetOk.here`'s bookkeeping minus the type agreement and minus the `firstFrameK` target
+  match: the stack has two entries (because the continuation has a `frameK`, so `m.stack.dropLast` is
+  a cons), and `RaiseOk.pop` has already handed over the caller's environment.
+
+### What is still owed
+
+A raise being **caught**. A handler resumes with `.value v` and needs a `KontOk` below it, which this
+arm does not carry — so `RaiseOk` grows a fourth constructor (*a handler typed at τ*) when the rescue
+konts enter `KontOk`. That is where the census moves (24 → 22).
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
+**24**. `Proof/`-only, so no `--check` diff is owed.
