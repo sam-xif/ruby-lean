@@ -141,11 +141,11 @@ why the side condition is discharged from `infer` succeeding rather than
 carried by the caller.
 -/
 
-theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value}
-    {site : SendSite} {mname : String}
+theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value} {acc : List Value}
+    {rest : List Expr} {site : SendSite} {mname : String}
     (hsplat : ∀ e, arg ≠ .splat e) (hkw : ∀ es, arg ≠ .kwargs es) (hfwd : arg ≠ .fwd) :
-    startArgs m recv site mname [] [arg] .none
-      = .next (withKont m (.eval arg) (.argsK recv site mname [] [] .none)) := by
+    startArgs m recv site mname acc (arg :: rest) .none
+      = .next (withKont m (.eval arg) (.argsK recv site mname acc rest .none)) := by
   cases arg <;> simp_all [startArgs]
 
 /-! ## 4. Surviving a user `def`

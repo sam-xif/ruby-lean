@@ -99,6 +99,18 @@ inductive OResult where
   | outOfFragment (head : String)
 deriving Repr
 
+/-- The argument traversal's answer (L175). A separate type from `OResult`
+    because it carries a *list* of types — and it keeps the failure as an
+    `OResult` rather than collapsing it, because §11's whole value is in *which*
+    construct inside an argument stopped the body. -/
+inductive OArgs where
+  | ok (τs : List ATy) (Γ : AEnv) (s : OState)
+  /-- The requirement one argument could not meet, forwarded verbatim. -/
+  | missing (τ : ATy) (n : String) (params : List ATy)
+  /-- The construct inside one argument that left the fragment. -/
+  | outOfFragment (head : String)
+deriving Repr
+
 /-! ## 2. `inferOpen`
 
 Arm for arm, `Types/Core.lean`'s `infer`, with two differences and no others:
@@ -147,13 +159,14 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- **The unary written receiverless call** (L171). One subexpression, then the
   -- requirement on `ctx.self` — the `vcall` arm's shape with an argument, and the
   -- receiver is still the variable that stands for `self`.
-  | .send none mname [arg] none =>
-    match inferOpen D Γ arg ctx s with
-    | .ok τa Γ₁ s₁ =>
-      match requireRow s₁.st ctx.self mname [τa] s₁.fresh with
+  | .send none mname (arg :: args) none =>
+    match inferOpenArgs D Γ (arg :: args) ctx s with
+    | .ok τs Γ₁ s₁ =>
+      match requireRow s₁.st ctx.self mname τs s₁.fresh with
       | some (τ, st') => .ok τ Γ₁ { st := st', fresh := s₁.fresh + 1 }
-      | none => .missing (.var ctx.self) mname [τa]
-    | r => r
+      | none => .missing (.var ctx.self) mname τs
+    | .missing τ n ps => .missing τ n ps
+    | .outOfFragment h => .outOfFragment h
   | .vasgn .lvar x rhs =>
     match inferOpen D Γ rhs ctx s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁
@@ -161,23 +174,28 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- **A literal `self` receiver is admitted** (L172), and `inferOpen` gives it the
   -- variable `ctx.self` — so `self.foo(x)` records a requirement on the definee's
   -- class exactly as `foo(x)` does.
-  | .send (some recv) mname [arg] none =>
+  -- **Any positive arity** (L175), mirroring `infer`'s arm: the argument list is
+  -- traversed by `inferOpenArgs` and matched against the whole parameter list, or
+  -- — on a variable receiver — recorded as a row requirement with that many
+  -- parameters.
+  | .send (some recv) mname (arg :: args) none =>
     match inferOpen D Γ recv ctx s with
     | .ok τr Γ₁ s₁ =>
-      match inferOpen D Γ₁ arg ctx s₁ with
-      | .ok τa Γ₂ s₂ =>
+      match inferOpenArgs D Γ₁ (arg :: args) ctx s₁ with
+      | .ok τs Γ₂ s₂ =>
         match τr with
         | .nom t =>
           match sigOf D t mname with
-          | some ([τp], τret) =>
-            if τa == .nom τp then .ok (.nom τret) Γ₂ s₂
-            else .missing (.nom t) mname [τa]
-          | _ => .missing (.nom t) mname [τa]
+          | some (ps, τret) =>
+            if τs == ps.map ATy.nom then .ok (.nom τret) Γ₂ s₂
+            else .missing (.nom t) mname τs
+          | none => .missing (.nom t) mname τs
         | .var α =>
-          match requireRow s₂.st α mname [τa] s₂.fresh with
+          match requireRow s₂.st α mname τs s₂.fresh with
           | some (τ, st') => .ok τ Γ₂ { st := st', fresh := s₂.fresh + 1 }
-          | none => .missing (.var α) mname [τa]
-      | r => r
+          | none => .missing (.var α) mname τs
+      | .missing τ n ps => .missing τ n ps
+      | .outOfFragment h => .outOfFragment h
     | r => r
   | .send (some recv) mname [] none =>
     match inferOpen D Γ recv ctx s with
@@ -229,6 +247,22 @@ def inferOpenSeq (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (s : OSta
     match inferOpen D Γ e ctx s with
     | .ok _ Γ₁ s₁ => inferOpenSeq D Γ₁ rest ctx s₁
     | r => r
+termination_by sizeOf es
+
+/-- The argument list, left to right, threading the environment and the store.
+    `startArgs`' own loop, in open-self mode. -/
+def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (s : OState) :
+    OArgs :=
+  match es with
+  | [] => .ok [] Γ s
+  | e :: rest =>
+    match inferOpen D Γ e ctx s with
+    | .ok τ Γ₁ s₁ =>
+      match inferOpenArgs D Γ₁ rest ctx s₁ with
+      | .ok τs Γ₂ s₂ => .ok (τ :: τs) Γ₂ s₂
+      | r => r
+    | .missing τ n ps => .missing τ n ps
+    | .outOfFragment h => .outOfFragment h
 termination_by sizeOf es
 
 def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OCtx)
@@ -540,7 +574,7 @@ def egOpenHashStore : Store :=
 
 example : inferBody baseDecls "Version" egOpenHashBody
     = .ok (.var 2) [] { st := egOpenHashStore, fresh := 3 } := by
-  simp [inferBody, egOpenHashBody, egOpenHashStore, inferOpen, isSelf, requireRow,
+  simp [inferBody, egOpenHashBody, egOpenHashStore, inferOpen, inferOpenArgs, isSelf, requireRow,
     Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty]
 
 /-- §7.3's `R = Σ'(α)` — the method's precondition on its own class. -/
@@ -566,7 +600,7 @@ example : inferBody baseDecls "Version" (.int 1) = .ok (.nom .int) [] { fresh :=
 /-- A nominal receiver still goes through the table, unchanged: `1 + 2`. -/
 example : inferBody baseDecls "Version" (.send (some (.int 1)) "+" [.int 2] none)
     = .ok (.nom .int) [] { fresh := 1 } := by
-  simp [inferBody, inferOpen, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
+  simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
 
 /-- And a nominal receiver the table refuses is `missing`, **with the atom** —
@@ -574,7 +608,7 @@ example : inferBody baseDecls "Version" (.send (some (.int 1)) "+" [.int 2] none
     This is the whole of R1's benefit, and it costs no metatheory. -/
 example : inferBody baseDecls "Version" (.send (some (.int 1)) "/" [.int 2] none)
     = .missing (.nom .int) "/" [.nom .int] := by
-  simp [inferBody, inferOpen, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
+  simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
 
 
@@ -644,6 +678,6 @@ example :
 example :
     bodyVerdictWith baseDecls "String" [.opt "a" (.var .ivar "@x")] (.int 1)
       = .outOfFragment "def-params-dflt" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, firstUnbound, headName]
+  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
 
 end RubyCore.Types

@@ -7149,3 +7149,95 @@ transition. `--assn` smoke 1,227 clean. `fragment-gap.py --self-test` all agree,
 only refusal. Three new checked examples in the build — the non-empty literal, the **empty** one (a
 different number of steps: `continueArray _ [] []` allocates with no `arrK` pushed, which is why
 `recvK0` is a separate constructor from `recvK` too), and the refused splat.
+
+## L175 — sends at any arity: `inferArgs`, and `KontOk.argsK` grows an accumulator
+
+`send-2-args` was 15 of the slice's 85 remaining out-of-fragment bodies, and it had been named as a
+rung since L152 with its price already written down: *`ValuesTy` threaded through a **list** of
+argument continuations rather than a single one.* That is exactly what it cost, and the rung is the
+general one — **any positive arity**, not two — because `startArgs` is a loop and a fixed-arity rule
+would have to be re-cut for three.
+
+### The four pieces
+
+1. **`inferArgs`, a fourth mutual function.** A send needs the arguments' **types**, in order, to
+   match against the signature's parameter list, where an array literal (L174) and a statement
+   sequence each need only the threading. So `inferSeq` cannot be reused and `inferArgs` is its own
+   traversal — mirroring `startArgs`' loop arm for arm and refusing nothing by name, since `.splat`,
+   `.kwargs` and `.fwd` have no `infer` arm.
+2. **`KontOk.recvK` over a list.** `inferArgs D Γ (arg :: args) … = some (τs, Γ₂, D₂)` and
+   `sigOf D₂ τ mname = some (τs, τret)` — the whole parameter list, read at the table the **last**
+   argument leaves.
+3. **`KontOk.argsK` grows an accumulator.** The kont stores already-evaluated values and unevaluated
+   program, and the constructor now says so on both sides:
+   ```lean
+   ValueTy h recv τr → ValuesTy h acc τacc →
+   inferArgs D Γ rest Γs.isEmpty c = some (τrest, Γ', D') →
+   sigOf D' τr mname = some (τacc ++ τ :: τrest, τret) → …
+   ```
+   **The signature is split at the in-flight value's position**, which is the shape that makes each
+   step a one-line rewrite: one value moves from `rest` to `acc`, and `τacc ++ τ :: τrest` moves with
+   it by `List.append_assoc`. `ValuesTy_snoc` is the value half.
+4. **`inferOpenArgs`, and `OArgs`.** The open front end needs the same traversal. Its answer is a
+   *list* of types, so it cannot be an `OResult` — and the failure is kept as its own two
+   constructors rather than wrapped, because §11's whole value is in **which** construct inside an
+   argument stopped the body. A first draft wrapped the failure as `OArgs.bad (r : OResult)`; that
+   made `OArgs.bad (.ok …)` a reachable *shape* the proofs had to refute, and it was withdrawn for
+   the arms that cannot lie.
+
+### The user arm is still refuted by arithmetic, and now at every arity
+
+`step_ok`'s final-argument case refutes `UserEntryOk` because `UserConforms` requires
+`d.params = []` while this declaration's is `τacc ++ [τ]` — and a snoc is never `[]`. So **a send
+with arguments is a builtin send, necessarily, at any arity**, and the refutation did not get harder
+when the list did. That is the same L152 argument with `[τ]` generalized, and it is worth noting that
+it is the *shape* of the parameter list rather than its length that does the work.
+
+### What the factoring proof cost, and the lesson about `simp_all`
+
+`Proof/Static/OpenSelf.lean`'s two theorems are single uniform `| _ =>` tactics over ~60 cases, and
+this rung added a fourth motive to both. `inferOpen_mono` took one line. `inferOpen_factors` took
+five alternatives and one **non-obvious** fact:
+
+> **`inferOpenArgs` must be kept *out* of the factoring proof's `simp_all` list.** Unfolding it there
+> destroys the defining equation `inferOpenArgs D Γ₁ args ctx s₁ = .ok τs Γ' s'`, and the send
+> alternatives need exactly that equation to push their store bound back to the *receiver*
+> (`storeLe_subArgs`). Without it there is no route from `s₁` to the final store at all — the bound
+> is not recoverable from anything else in the context.
+
+So the traversal's own two cases split on the answer and unfold it locally, which is one alternative,
+and the send cases keep their equation. Two residual side goals are discharged after the block rather
+than inside each alternative — the `requireRow` step's own `StoreLe`, and the list equation the split
+leaves behind — because folding them in made every alternative a different shape.
+
+The other lesson is one this file has recorded three times in a different guise: **when a `simp_all`
+does too much, the fix is to take a definition *out* of its list, not to add lemmas to it.** The two
+minutes spent reading the failing goal's *context* (the equation was gone) beat any number of
+attempts at strengthening the tactic.
+
+### The measurement
+
+| | before | after |
+|---|---|---|
+| out of fragment | 85 | **84** |
+| `send-2-args` | 15 | **0** |
+| `const` | 19 | **28** |
+| `return` | 20 | 21 |
+| refused with a named atom | 7 | **8** |
+
+Fifteen bodies moved and one came out, which is the pattern by now — but read where they went:
+**`const` is 28 of the remaining 84**, a third of the whole census and more than twice the next
+blocker. The class-object arm of `Ty` plus a constant table is now unambiguously the binding item,
+which is what D13 predicted would happen once the duck-typed spine was in.
+
+`--check` is **byte-identical**: `baseDecls` has no two-parameter row, so no *program* can reach the
+new arity yet — the L157/L171 situation, and the capability is asserted against `infer` at a
+hand-built table instead.
+
+### Checks
+
+`check-proofs.sh` green, 29 theorems, axiom-clean. `--check` byte-identical to L174's capture.
+`--assn` smoke 1,227 clean. `fragment-gap.py --self-test` all agree, with `shape_send`'s arity
+refusal replaced by a *splat/kwargs/fwd* refusal and two new cases. Two new checked examples in
+`Proof/StaticSoundness.lean`: a two-argument send accepted against a two-parameter row, and an arity
+mismatch refused by the same list equality.

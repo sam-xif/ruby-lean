@@ -71,6 +71,13 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
       ∀ τ Γ' D₀, inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) →
         D₀ = Da ∧ inferSeq F' Γa esa topa ctxa = some (τ, Γ', F')
+  -- **The argument list** (L175). Same statement, at the fourth motive: the send
+  -- rules need the arguments' *types* in order, so `inferArgs` is a separate
+  -- traversal from `inferSeq` and needs its own monotonicity.
+  | motive4 Da Γa esa topa ctxa =>
+    exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
+      ∀ τs Γ' D₀, inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) →
+        D₀ = Da ∧ inferArgs F' Γa esa topa ctxa = some (τs, Γ', F')
   -- **A local read.** The table appears only as the third component of the answer.
   | case7 D Γ top ctx x =>
     intro F' hs hdf τ Γ' D₀ h
@@ -105,12 +112,13 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary send**, and the only case where `SubDecls` is *used* rather than
   -- carried: the signature has to be readable at the bigger table, which is what
   -- the relation was defined to say.
-  | case15 D Γ top ctx recv mname arg τr Γ₁ D₁ hrecv Γ₂ D₂ τp τret hsig harg ihR ihA =>
+  | case15 D Γ top ctx recv mname arg args τr Γ₁ D₁ hrecv Γ₂ D₂ ps τret hsig hargs
+      ihR ihA =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
-    obtain ⟨rfl, hmA⟩ := ihA F' hs (by simp_all [defFree, defFreeAll]) _ _ _ harg
-    simp only [infer, hrecv, harg, hsig,
+    obtain ⟨rfl, hmA⟩ := ihA F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hargs
+    simp only [infer, hrecv, hargs, hsig,
       Option.some.injEq, Prod.mk.injEq, if_pos rfl] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig]⟩
@@ -135,11 +143,11 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary written receiverless call** (L171). One subexpression and the
   -- signature read at the table it leaves — the explicit unary send's case with
   -- the receiver supplied by the context instead of by an expression.
-  | case26 D Γ top ctx mname arg c hsome Γ₁ D₁ τp τret hsig harg ih =>
+  | case26 D Γ top ctx mname arg args c hsome Γ₁ D₁ ps τret hsig hargs ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
-    obtain ⟨rfl, hmA⟩ := ih F' hs (by simp_all [defFree, defFreeAll]) _ _ _ harg
-    simp only [infer, hsome, harg, hsig, Option.some.injEq, Prod.mk.injEq,
+    obtain ⟨rfl, hmA⟩ := ih F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hargs
+    simp only [infer, hsome, hargs, hsig, Option.some.injEq, Prod.mk.injEq,
       if_pos rfl] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig]⟩
@@ -222,12 +230,32 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       simp only [inferSeq, he] at h
       obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll]) _ _ _ h
       exact ⟨rfl, by simp [inferSeq, hmE, hmR]⟩
+  -- **`inferArgs`' three arms** (L175), mirroring `startArgs`' loop. The `[]` arm
+  -- is a `rfl`; the recursive arm is the only place two IHs of *different* motives
+  -- meet, and the reason it needs both is that an argument may itself be a send.
+  -- **`inferArgs`' two accepting arms** (L175), mirroring `startArgs`' loop. The
+  -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
+  -- motives meet, and the reason it needs both is that an argument may itself be a
+  -- send.
+  | case60 D Γ top ctx =>
+    intro F' hs hdf τs Γ' D₀ h
+    simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by simp [inferArgs]⟩
+  | case61 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+    intro F' hs hdf τs' Γ' D₀ h
+    simp only [defFreeAll, Bool.and_eq_true] at hdf
+    obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
+    obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll]) _ _ _ hrest
+    simp only [inferArgs, he, hrest, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by simp [inferArgs, hmE, hmR]⟩
   | _ =>
     intro F' hs hdf τ Γ' D₀ h
     first
-      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq]; done)
-      | (exfalso; simp_all only [infer, inferIf, inferSeq, reduceCtorEq]; done)
-      | (exfalso; simp_all [infer, inferIf, inferSeq, defFree, defFreeAll]; done)
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs]; done)
+      | (exfalso; simp_all only [infer, inferIf, inferSeq, inferArgs, reduceCtorEq]; done)
+      | (exfalso; simp_all [infer, inferIf, inferSeq, inferArgs, defFree, defFreeAll]; done)
       -- The `self`-receiver guard's negative branch, and the arms under it: `infer`
       -- answers `none` outright, so the hypothesis is refuted by computing the
       -- guard rather than by anything about types (F1b.11).

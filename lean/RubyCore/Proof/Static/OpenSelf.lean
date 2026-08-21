@@ -250,10 +250,15 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (s : OSta
     (motive2 := fun Γ t els s => ∀ τ Γ' s',
         inferOpenIf D Γ t els ctx s = .ok τ Γ' s' → StoreLe s.st s'.st)
     (motive3 := fun Γ es s => ∀ τ Γ' s',
-        inferOpenSeq D Γ es ctx s = .ok τ Γ' s' → StoreLe s.st s'.st) with
+        inferOpenSeq D Γ es ctx s = .ok τ Γ' s' → StoreLe s.st s'.st)
+    -- **L175's argument traversal.** Same statement at the fourth motive; the send
+    -- arms' chain is now `inferOpen recv → inferOpenArgs → requireRow`, so the
+    -- transitivity alternatives below gained one link.
+    (motive4 := fun Γ es s => ∀ τs Γ' s',
+        inferOpenArgs D Γ es ctx s = .ok τs Γ' s' → StoreLe s.st s'.st) with
   | _ =>
     intros
-    simp_all [inferOpen, inferOpenSeq, inferOpenIf]
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs]
     try (rename_i hh; obtain ⟨-, -, rfl⟩ := hh)
     first
       | done
@@ -359,6 +364,40 @@ theorem storeLe_subSeq {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
     StoreLe s.st stF :=
   StoreLe.trans (inferOpenSeq_mono D ctx es Γ s τ Γ' s' h) hle
 
+/-- The argument list's monotonicity (L175), by list induction on top of
+    `inferOpen_mono` — `inferOpenSeq_mono`'s twin, and needed for the same reason:
+    a send's store bound has to reach its arguments. -/
+theorem inferOpenArgs_mono (D : Decls) (ctx : OCtx) :
+    ∀ (es : List Expr) (Γ : AEnv) (s : OState) τs Γ' s',
+      inferOpenArgs D Γ es ctx s = .ok τs Γ' s' → StoreLe s.st s'.st := by
+  intro es
+  induction es with
+  | nil => intro Γ s τs Γ' s' h; unfold inferOpenArgs at h; cases h; exact StoreLe.refl _
+  | cons e rest ih =>
+    intro Γ s τs Γ' s' h
+    unfold inferOpenArgs at h
+    cases he : inferOpen D Γ e ctx s with
+    | ok τ₁ Γ₁ s₁ =>
+      rw [he] at h
+      dsimp only at h
+      cases hr : inferOpenArgs D Γ₁ rest ctx s₁ with
+      | ok τs₂ Γ₂ s₂ =>
+        rw [hr] at h
+        simp only [OArgs.ok.injEq] at h
+        obtain ⟨-, -, rfl⟩ := h
+        exact StoreLe.trans (inferOpen_mono D ctx Γ e s τ₁ Γ₁ s₁ he)
+          (ih Γ₁ s₁ τs₂ Γ₂ s₂ hr)
+      | missing _ _ _ => rw [hr] at h; simp at h
+      | outOfFragment _ => rw [hr] at h; simp at h
+    | missing _ _ _ => rw [he] at h; simp at h
+    | outOfFragment _ => rw [he] at h; simp at h
+
+theorem storeLe_subArgs {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
+    {s s' : OState} {τs : List ATy} {Γ' : AEnv} {stF : Store}
+    (h : inferOpenArgs D Γ es ctx s = .ok τs Γ' s') (hle : StoreLe s'.st stF) :
+    StoreLe s.st stF :=
+  StoreLe.trans (inferOpenArgs_mono D ctx es Γ s τs Γ' s' h) hle
+
 /-! ### Substitution, as simp lemmas
 
 Stated rather than unfolded, so the induction's goals stay in terms of `substEnv`
@@ -367,6 +406,12 @@ and `ATy.subst` and the environment lemmas above can fire. -/
 @[simp] theorem ATy.subst_nom (θ : TyVar → Ty) (τ : Ty) : (ATy.nom τ).subst θ = τ := rfl
 
 @[simp] theorem ATy.subst_var (θ : TyVar → Ty) (α : TyVar) : (ATy.var α).subst θ = θ α := rfl
+
+/-- The list form (L175): a send's *nominal* branch compares the open argument
+    types against `ps.map ATy.nom`, so the substituted list is `ps` itself. Stated
+    as a `simp` lemma because the composition is what the goal is left holding. -/
+@[simp] theorem ATy.subst_nom_comp (θ : TyVar → Ty) :
+    (ATy.subst θ ∘ ATy.nom) = id := by funext t; rfl
 
 /-! ## 5. The factoring theorem — R4's soundness
 
@@ -405,16 +450,28 @@ def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : 
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
+/-- And the argument list's (L175). The only one whose conclusion is about a *list*
+    of types, which is exactly why `inferArgs` is a separate traversal from
+    `inferSeq`. -/
+def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : AEnv)
+    (es : List Expr) : OArgs → Prop
+  | .ok τs Γ' s' => StoreLe s'.st stF →
+      inferArgs D (substEnv θ Γ) es false { cls := ctx.cls, selfCls := some ctx.cls }
+        = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
+  | _ => True
+
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (s : OState) :
     Factors D θ stF ctx Γ e (inferOpen D Γ e ctx s) := by
   induction Γ, e, s using inferOpen.induct (D := D) (ctx := ctx)
     (motive2 := fun Γ t els s => FactorsIf D θ stF ctx Γ t els (inferOpenIf D Γ t els ctx s))
-    (motive3 := fun Γ es s => FactorsSeq D θ stF ctx Γ es (inferOpenSeq D Γ es ctx s)) with
+    (motive3 := fun Γ es s => FactorsSeq D θ stF ctx Γ es (inferOpenSeq D Γ es ctx s))
+    (motive4 := fun Γ es s => FactorsArgs D θ stF ctx Γ es (inferOpenArgs D Γ es ctx s)) with
   | _ =>
-    simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf, FactorsSeq,
-      infer, inferSeq, inferIf, substEnv_aenvSet, hself]
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf,
+      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs, substEnv_aenvSet,
+      hself]
     all_goals (try intro hle)
     all_goals (try simp_all)
     all_goals (
@@ -438,6 +495,86 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
+        -- **receiver, then the argument list** (L175), nominal receiver. Two
+        -- variants, because `simp_all` may already have instantiated the argument
+        -- list's IH with the bound it could find.
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           dsimp only
+           rw [ih1]
+           simp_all)
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           dsimp only
+           rw [ih1 (by assumption)]
+           simp_all)
+        -- **receiver, argument list, then the row requirement** (L175), variable
+        -- receiver.
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption)
+                     (storeLe_subReq (by assumption) (by assumption)))]
+           dsimp only
+           rw [ih1]
+           dsimp only
+           rw [requireRow_sat (by assumption) (by assumption) hsat]
+           simp)
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption)
+                     (storeLe_subReq (by assumption) (by assumption)))]
+           dsimp only
+           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           dsimp only
+           rw [requireRow_sat (by assumption) (by assumption) hsat]
+           simp)
+        -- **the argument list, then the row requirement on `self`** (L175): the
+        -- written receiverless call at positive arity.
+        | (rename_i ih1
+           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           dsimp only
+           rw [← hself, requireRow_sat (by assumption) (by assumption) hsat]
+           simp)
+        | (rename_i ih1
+           rw [ih1]
+           dsimp only
+           rw [← hself, requireRow_sat (by assumption) (by assumption) hsat]
+           simp)
+        -- **`inferOpenArgs`' own two arms** (L175). `inferOpenArgs` is deliberately
+        -- *not* in the `simp_all` list above: unfolding it there destroys the
+        -- defining equation, and the send cases need that equation to push their
+        -- store bound back through the argument list (`storeLe_subArgs`). So the
+        -- traversal's own cases split on the answer and unfold it here instead.
+        | (split
+           all_goals (first
+             | simp
+             | (rename_i heq
+                simp only [inferOpenArgs] at heq
+                intro hle
+                simp_all
+                -- the recursive arm's residue: the head's IH (still an
+                -- implication, discharged by the tail's monotonicity) and then the
+                -- tail's, which `simp_all` has already instantiated.
+                try (rename_i ih2 ih1
+                     rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+                     dsimp only
+                     rw [ih1]
+                     simp_all
+                     -- the list equation the split left behind
+                     try (rw [← heq.1]; simp)))
+             | (rename_i heq
+                simp only [inferOpenArgs] at heq
+                simp_all)))
+        -- **one argument, then the rest of the list** (L175): `inferArgs`' own
+        -- recursive arm.
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           dsimp only
+           rw [ih1]
+           simp_all)
+        | (rename_i ih2 ih1
+           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           dsimp only
+           rw [ih1 (by assumption)]
+           simp_all)
         -- **one subexpression, then the row requirement on `self`** (L171): the
         -- unary written receiverless call, `foo(x)`. Same shape as the line above
         -- with `← hself` in front, because the receiver is `ctx.self` and the
@@ -478,12 +615,19 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
                 dsimp only
                 rw [heq] at ih1
                 exact ih1 hle)))
+        | (trace_state; fail)
         -- the join's own refusal: the guard is false, so the arm is `True`
         | (split <;>
              (first
                | done
                | simp
                | (rename_i heq; split at heq <;> simp_all))))
+    -- **A residual store bound** (L175). The variable-receiver send at positive
+    -- arity leaves exactly one side goal — the `requireRow` step's own `StoreLe` —
+    -- because the alternative that rewrote the rest of the arm could not name it.
+    -- Discharged here rather than inside the alternative, so the alternatives stay
+    -- one shape each.
+    all_goals (try exact storeLe_subReq (by assumption) (by assumption))
 
 /-! ## 6. The decidable side — §8.2's discharge, and what it buys
 

@@ -335,42 +335,40 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     | none => none
   -- Binary send to a builtin, any receiver expression, no block. Wrong arity, a
   -- block, or two or more arguments is still `unknown`.
-  | .send (some recv) mname [arg] none =>
-    -- **The signature is read after the argument, not before** (F1b.8). The three
+  | .send (some recv) mname (arg :: args) none =>
+    -- **The signature is read after the arguments, not before** (F1b.8). The three
     -- tests are independent — each failure is `none` — so the order is free, and
-    -- what fixes it is the *continuation*: an `argsK` exists once both receiver and
-    -- argument have run, so the table it is indexed by is the one the argument
-    -- left, and `KontOk.argsK`'s signature premise has to be readable there.
-    -- Reading `sigOf` at the earlier table would make the kont carry a fact about
-    -- a table nothing in the machine is at.
+    -- what fixes it is the *continuation*: an `argsK` exists once the receiver and
+    -- some prefix of the arguments have run, so the table it is indexed by is the
+    -- one that prefix left, and `KontOk.argsK`'s signature premise has to be
+    -- readable at the table the **last** argument leaves.
+    --
     -- **A literal `self` receiver is admitted** (L172). F1b.11 excluded it, and the
     -- reason was a fact about the machine rather than about types: `evalExpr` picks
     -- the send *site* syntactically, so `self.foo` is a `.selfRecv` send and takes a
-    -- different path through `visError?` than `.explicit`. The guard that stood here
-    -- existed only because `KontOk.recvK` was stated at `.explicit`; the site is a
-    -- parameter now, and it is the *permissive* direction — `visError?` raises only
-    -- at `.explicit` — so nothing about dispatch changes for a `.pub` method, which
-    -- is all `ResolvesAt` admits. `self` in receiver position gets its type from
-    -- `infer`'s own `self'` arm, so a class body still refuses it.
+    -- different path through `visError?` than `.explicit`.
+    --
+    -- **Any positive arity** (L175). `startArgs` walks the argument list one at a
+    -- time, pushing one `argsK` per argument, so the rule's shape is `inferArgs` —
+    -- the list of argument *types*, in order, matched against the whole parameter
+    -- list. The zero-argument case is a separate arm because it is a different
+    -- number of steps: `startArgs … [] []` is `finishSend`, so no `argsK` is pushed
+    -- at all (`KontOk.recvK0`).
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
-      match infer D₁ Γ₁ arg top ctx with
-      | some (τa, Γ₂, D₂) =>
+      match inferArgs D₁ Γ₁ (arg :: args) top ctx with
+      | some (τs, Γ₂, D₂) =>
         match sigOf D₂ τr mname with
-        | some ([τp], τret) => if τa = τp then some (τret, Γ₂, D₂) else none
-        | _ => none
+        | some (ps, τret) => if τs = ps then some (τret, Γ₂, D₂) else none
+        | none => none
       | none => none
     | none => none
-  -- **A zero-argument send** (L152). Split from the unary rule rather than folded
-  -- into it, because the two are *different machine shapes*: with an argument the
-  -- receiver's `recvK` pushes an `argsK` and dispatch happens a step later, while
-  -- with none `applyKont` runs `startArgs … [] []`, which is `finishSend` — so the
-  -- send completes in the `recvK` step itself and needs its own `KontOk`
+  -- **A zero-argument send** (L152). Split from the positive-arity rule rather than
+  -- folded into it, because the two are *different machine shapes*: with arguments
+  -- the receiver's `recvK` pushes an `argsK` and dispatch happens a step later,
+  -- while with none `applyKont` runs `startArgs … [] []`, which is `finishSend` — so
+  -- the send completes in the `recvK` step itself and needs its own `KontOk`
   -- constructor and its own consecution case (`KontOk.recvK0`).
-  --
-  -- Every send in the fragment is now zero- or one-argument; two or more is still
-  -- `unknown`, and stays so until `ValuesTy` is threaded through a list of argument
-  -- continuations rather than a single one.
   | .send (some recv) mname [] none =>
     match infer D Γ recv top ctx with
     | some (τr, Γ₁, D₁) =>
@@ -378,14 +376,12 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ₁, D₁)
       | _ => none
     | none => none
-  -- **A written receiverless call, zero arguments** (L170): `foo()` where `.vcall`
-  -- is `foo`. The *typing* is the `vcall` rule verbatim — same receiver (the
-  -- frame's `self`), same table read, same one step — and the *machine* difference
-  -- is one `SendSite` constructor: `evalExpr` answers both with
-  -- `startArgs m self site mname [] []`, which is `finishSend`, and `visError?`
-  -- is `none` for every site but `.explicit`. So this arm adds **no `KontOk`
-  -- constructor**; `inv_implicit_send0` is L164's consecution case quantified over
-  -- the site and this is its second caller.
+  -- **A written receiverless call** (L170/L171/L175): `foo`, `foo()`, `foo(x, y)`.
+  -- The *typing* is the `vcall` rule with an argument list — same receiver (the
+  -- frame's `self`), same table read — and the *machine* difference is one
+  -- `SendSite` constructor: `evalExpr` answers both with
+  -- `startArgs m self site mname [] args`, and `visError?` is `none` for every site
+  -- but `.explicit`.
   --
   -- Kept as its own arm rather than folded into `.vcall`'s because the two are
   -- different `Expr` constructors and `step_ok`'s case analysis splits on the
@@ -398,29 +394,18 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ, D)
       | _ => none
     | none => none
-  -- **A written receiverless call with one argument** (L171). Unlike the
-  -- zero-argument case this one *does* push a continuation — `startArgs` pushes
-  -- `.argsK self .implicit mname [] []` and evaluates the argument — but it pushes
-  -- the **same** continuation the explicit unary send's `recvK` pushes one step
-  -- later, at a different site. So the rung is a `SendSite` parameter on
-  -- `KontOk.argsK` and nothing else: no new constructor, and the `argsK`
-  -- consecution case never mentions the site (`entry_dispatch` has been
-  -- site-polymorphic since L164).
-  --
-  -- **There is no `recvK` in this chain**, and that is what makes the rule's shape
-  -- differ from the explicit one: the receiver is already a value, so the argument
-  -- is evaluated in *this* step and the answer's environment and table are the
-  -- ones the argument leaves. `KontOk.argsK` is indexed by those, which is exactly
-  -- what `CtlOk` hands it — so the signature is read at `D₁`, after the argument,
-  -- for L160's reason.
-  | .send none mname [arg] none =>
+  -- The same, with arguments. **There is no `recvK` in this chain** — the receiver
+  -- is already a value — so the arguments run starting in *this* step and the
+  -- answer's environment and table are the ones the last argument leaves, which is
+  -- exactly what `CtlOk` then hands `KontOk.argsK`.
+  | .send none mname (arg :: args) none =>
     match ctx.selfCls with
     | some c =>
-      match infer D Γ arg top ctx with
-      | some (τa, Γ₁, D₁) =>
+      match inferArgs D Γ (arg :: args) top ctx with
+      | some (τs, Γ₁, D₁) =>
         match sigOf D₁ (.cls c) mname with
-        | some ([τp], τret) => if τa = τp then some (τret, Γ₁, D₁) else none
-        | _ => none
+        | some (ps, τret) => if τs = ps then some (τret, Γ₁, D₁) else none
+        | none => none
       | none => none
     | none => none
   -- **An array literal** (L174), and it is L151's string-literal producer with a
@@ -580,6 +565,29 @@ def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
     | none => none
 termination_by sizeOf es
 
+/-- **The argument list of a send** (L175), and the reason it is a *fourth*
+    mutual function rather than a use of `inferSeq`: a send needs the arguments'
+    **types**, in order, to match against the signature's parameter list, where an
+    array literal and a statement sequence each need only the threading.
+
+    Mirrors `startArgs`' own loop (`Interp/Send.lean:455`) arm for arm — one
+    argument at a time, left to right, threading both the environment and the
+    table — and refuses nothing by name: `.splat`, `.kwargs` and `.fwd` have no
+    `infer` arm, so they answer `none` here and the consecution cases recover *not
+    a splat* from the argument's own accepting judgement. -/
+def inferArgs (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
+    (ctx : FrameCtx := { cls := "Object" }) : Option (List Ty × Env × Decls) :=
+  match es with
+  | [] => some ([], Γ, D)
+  | e :: rest =>
+    match infer D Γ e top ctx with
+    | some (τ, Γ₁, D₁) =>
+      match inferArgs D₁ Γ₁ rest top ctx with
+      | some (τs, Γ₂, D₂) => some (τ :: τs, Γ₂, D₂)
+      | none => none
+    | none => none
+termination_by sizeOf es
+
 /-- The `if` join, factored out because `KontOk.ifK` must agree with it
     branch-for-branch. No union type in P0, so the two arms must agree on both
     the type and the environment; a missing `else` contributes `nil` and no
@@ -709,11 +717,11 @@ with `srb` [V, 0.6.13405].
 
 /-- `1 + nil` — srb 7002. The motivating case. -/
 example : check (.send (some (.int 1)) "+" [.nil] none) = .reject := by
-  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 + true` — srb 7002. -/
 example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
-  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- **Rejected, and perfectly safe.** `if false then 1 + nil else 0 end` runs to
     `0`. `reject` claims our rules refute the program, *not* that it fails —
@@ -723,25 +731,25 @@ example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
 example :
     check (.if' .fls (.send (some (.int 1)) "+" [.nil] none) (some (.int 0)))
       = .reject := by
-  simp [check, infer, inferIf, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, inferIf, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 / 2` — srb *accepts*; `/` is absent from the table, so we abstain. This
     is the case that makes "absent ⇒ no opinion" mandatory rather than merely
     conservative: rejecting here would break `reject ⇒ srb rejects`. -/
 example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
-  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1.foo(2)` — srb 7003. We abstain: the table cannot distinguish "no such
     method" from "method we have not tabulated". Incompleteness. -/
 example : check (.send (some (.int 1)) "foo" [.int 2] none) = .unknown := by
-  simp [check, infer, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `q = 1; q + nil` — srb 7002. We abstain because `defTy` has no environment,
     so a local has no unconditional type. The obvious next widening. -/
 example :
     check (.seq [ .vasgn .lvar "q" (.int 1),
                   .send (some (.var .lvar "q")) "+" [.nil] none ]) = .unknown := by
-  simp [check, infer, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
+  simp [check, infer, inferArgs, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
     sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf, envSet, envGet?]
 
 end RubyCore.Types
