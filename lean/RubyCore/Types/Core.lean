@@ -180,6 +180,12 @@ def defFree (e : Expr) : Bool :=
   -- `true` left in place. Third time this exact trap has been walked into
   -- (`.array` at L174, `.vasgn .ivar` at L191), which is why it is a comment.
   | .ret e => match e with | some e' => defFree e' | none => true
+  -- **L205.** Fourth time (`.array` L174, `.vasgn .ivar` L191, `.ret` L200): `infer`'s
+  -- `.cpath (some base)` arm threads the table through the base, so a `def` in there
+  -- really does change it and `infer_mono`'s `D₀ = D` half would be **false** with the
+  -- catch-all's vacuous `true` left in place. `infer_mono_all`'s new case is what found
+  -- it, one minute after the arm was written.
+  | .cpath base _ => match base with | some b => defFree b | none => true
   -- Every other head is either a leaf or outside `infer`'s domain, where the
   -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
   -- can be satisfied.
@@ -704,6 +710,22 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match constTy? D n with
     | some τ => some (τ, Γ, D)
     | none => none
+  -- **`C::n`, a scoped constant read** (L205), and it is the *other* lookup: where
+  -- `::n` is `Object`'s own table, this is `constLookupFrom` — the ancestors walk from
+  -- the class object the base evaluates to (`Interp/Kont.lean`'s `.cpathK`).
+  --
+  -- The base must type at a **class object**, which is the only `Ty` a namespace can
+  -- have, and `.clsOf`'s name is the table key. Everything else about the delivery —
+  -- that the container is a class, that the constant is not `private_constant`, that
+  -- the walk finds a value of the declared type — is `ScopedConstOk`, carried on the
+  -- `cpathK` continuation rather than re-derived at the delivery.
+  | .cpath (some base) n =>
+    match infer D Γ base top ctx with
+    | some (.clsOf cname, Γ₁, D₁) =>
+      match scopedConstTy? D₁ cname n with
+      | some τ => some (τ, Γ₁, D₁)
+      | none => none
+    | _ => none
   -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
   -- inserting an arm shifts every later case number in `infer.induct`, and the only
   -- case after this one is the catch-all. The rule itself is `.int`'s verbatim, and

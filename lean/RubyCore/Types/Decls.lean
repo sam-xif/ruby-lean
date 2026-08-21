@@ -97,6 +97,21 @@ structure Decls where
       `@x = e` freely because nothing claimed anything about ivars, and a row is
       exactly such a claim. -/
   ivars : List ((String × String) × Ty) := []
+  /-- **class name × constant name → the type of its value** (L205), for a *scoped*
+      read `C::n`.
+
+      The fourth table, and it is a separate one from `consts` rather than a key
+      convention inside it because the two are read by different rules against
+      different heap facts: `constTy?` answers `::n`, which is `Object`'s own table
+      (L203), while this answers `C::n`, which is `constLookupFrom` — the **ancestors**
+      walk from the class object named `C`. Two lookups, two clauses.
+
+      `ScopedConstOk` (`Proof/Static/Decls.lean`) is what a row here obliges, and it is
+      quantified over **every** class object of that name for `IvarOk`'s reason: the
+      rule has a name, not an id, and only `ClassOk`'s uniqueness clause ties a name to
+      one id — and that clause covers the *readable* names, not every name a program
+      can write. -/
+  scopedConsts : List ((String × String) × Ty) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
@@ -109,6 +124,11 @@ def constTy? (D : Decls) (n : String) : Option Ty :=
     rule (L196). -/
 def ivarTy? (D : Decls) (cls x : String) : Option Ty :=
   (D.ivars.find? (·.1 == (cls, x))).map (·.2)
+
+/-- The declared type of `C::n`, or `none` for "not declared" — reported as a missing
+    *declaration* by the open front end (L205), exactly as `ivarTy?`'s miss is. -/
+def scopedConstTy? (D : Decls) (cls n : String) : Option Ty :=
+  (D.scopedConsts.find? (·.1 == (cls, n))).map (·.2)
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
@@ -248,13 +268,16 @@ def SubDecls (F F' : Decls) : Prop :=
   F.consts = F'.consts ∧
   -- L196: and the ivar table, for the constant table's reason — the read rule takes
   -- its answer out of it.
-  F.ivars = F'.ivars
+  F.ivars = F'.ivars ∧
+  -- L205: and the scoped-constant table, same reason again.
+  F.scopedConsts = F'.scopedConsts
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl⟩
+theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
     SubDecls F F'' :=
-  ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1, h₁.2.2.trans h₂.2.2⟩
+  ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1,
+    h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.trans h₂.2.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
@@ -264,7 +287,12 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
 /-- And the ivar table's (L196). -/
 @[simp] theorem SubDecls.ivarTy_eq {F F' : Decls} (hs : SubDecls F F') (c x : String) :
     ivarTy? F' c x = ivarTy? F c x := by
-  unfold ivarTy?; rw [hs.2.2]
+  unfold ivarTy?; rw [hs.2.2.1]
+
+/-- And the scoped-constant table's (L205). -/
+@[simp] theorem SubDecls.scopedConstTy_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
+    scopedConstTy? F' c n = scopedConstTy? F c n := by
+  unfold scopedConstTy?; rw [hs.2.2.2]
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}

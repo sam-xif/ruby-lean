@@ -488,6 +488,8 @@ def InvA (m : Machine) : Prop :=
       -- rung.
       (∀ n τ, constTy? F n = some τ → ConstOk m.heap n τ) ∧
       (∀ c x τ, ivarTy? F c x = some τ → IvarOk m.heap c x τ) ∧
+      -- L205's fourth half, carried beside the other two for the same reason.
+      (∀ c n τ, scopedConstTy? F c n = some τ → ScopedConstOk m.heap c n τ) ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
       CtlOk F c Γ Γs m
@@ -497,11 +499,12 @@ def InvA (m : Machine) : Prop :=
     faithfulness is spent. -/
 theorem invA_iff_inv {m : Machine} : InvA m ↔ Inv m := by
   constructor
-  · rintro ⟨h1, h2, h3, h4, h5, h6, F, P, θ, c, Γ, Γs, hcert, hcst, hiv, hf, hs, hctl⟩
-    exact ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, ⟨hcert.declsOk, hcst, hiv⟩, hf, hs, hctl⟩
+  · rintro ⟨h1, h2, h3, h4, h5, h6, F, P, θ, c, Γ, Γs, hcert, hcst, hiv, hsco, hf, hs, hctl⟩
+    exact ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, ⟨hcert.declsOk, hcst, hiv, hsco⟩,
+      hf, hs, hctl⟩
   · rintro ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, hok, hf, hs, hctl⟩
     exact ⟨h1, h2, h3, h4, h5, h6, F, declAssn F, fun _ => .int, c, Γ, Γs,
-      certifies_declAssn hok.1, hok.2.1, hok.2.2, hf, hs, hctl⟩
+      certifies_declAssn hok.1, hok.2.1, hok.2.2.1, hok.2.2.2, hf, hs, hctl⟩
 
 /-- **Soundness of the assertion-language invariant**, inherited rather than
     re-proved. Every consecution case `Static/Preservation.lean` already closes is

@@ -514,6 +514,74 @@ theorem ivarOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Metho
 def MethodRowsOk (D : Decls) (h : Heap) : Prop :=
   ∀ τr mname d, declFor D τr mname = some d → EntryOk D h τr mname d
 
+/-- **What one scoped-constant row obliges** (L205), and the two quantifiers are the
+    content.
+
+    `∀ o` for `IvarOk`'s reason: the rule is keyed on a **name**, and only `ClassOk`'s
+    uniqueness clause ties a name to one id — over the *readable* names, not over every
+    name a program can write. So a row on `(C, n)` claims something about every class
+    object named `C` at once.
+
+    The second conjunct is the `private_constant` gate (L104), and it has to be here
+    rather than at the delivery for `KontOk.asgnIvar`'s reason: it is a fact about the
+    heap that the *rule* cannot see, so the declaration is what carries it.
+
+    `constLookupFrom` rather than `constOwn`, because that is what the machine does —
+    `.cpathK` walks the container's **ancestors** (`Interp/Kont.lean:130`), so a
+    constant inherited from a superclass is visible through `C::n` and the clause has
+    to be about the walk, not about one table. -/
+def ScopedConstOk (h : Heap) (c n : String) (τ : Ty) : Prop :=
+  ∀ o, (h.classPayload? o).isSome → className h o = c →
+    ((ancestors h o).all fun a =>
+        match h.classPayload? a with
+        | some cp => !cp.privateConsts.contains n
+        | none => true) = true ∧
+    ∃ v, constLookupFrom h o n = some v ∧ ValueTy h v τ
+
+/-- **`ScopedConstOk` across an allocation** (L205). Every clause is pinned by a
+    `PlainGrow` field: `classPayload?` at every id (so both the constant tables and the
+    `private_constant` lists), `className`, the ancestor walk (with saturation), and
+    `ValueTy` by `typeAgree_of_plainGrow`. -/
+theorem scopedConstOk_grow {h h' : Heap} {c n : String} {τ : Ty} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hs : ScopedConstOk h c n τ) : ScopedConstOk h' c n τ := by
+  intro o ho hcn
+  rw [hg.payload] at ho
+  rw [hg.className_eq] at hcn
+  obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
+  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg) hty⟩
+  · rw [hg.ancestors_eq hsat]
+    simp only [hg.payload]
+    exact hpriv
+  · rw [constLookupFrom_congr (fun j => by rw [hg.payload]) (hg.ancestors_eq hsat o)]
+    exact hv
+
+/-- **And across a `def`** (L205) — `constLookupFrom_defineMethod` and
+    `privateConsts_defineMethod` are the two halves, both written for this clause. -/
+theorem scopedConstOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} {c n : String} {τ : Ty} (hs : ScopedConstOk h c n τ) :
+    ScopedConstOk (defineMethod h cls name md) c n τ := by
+  intro o ho hcn
+  rw [classPayload?_isSome_defineMethod] at ho
+  rw [className_defineMethod] at hcn
+  obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
+  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_defineMethod h cls name md) hty⟩
+  · rw [ancestors_defineMethod]
+    refine List.all_eq_true.mpr fun a ha => ?_
+    have hpa := List.all_eq_true.mp hpriv a ha
+    have hc := privateConsts_defineMethod h cls a name md
+    cases h1 : (defineMethod h cls name md).classPayload? a with
+    | none => simp [h1]
+    | some cp' =>
+      cases h2 : h.classPayload? a with
+      | none => rw [h1, h2] at hc; exact absurd hc (by simp)
+      | some cp =>
+        rw [h1, h2] at hc
+        simp only [Option.map_some, Option.some.injEq] at hc
+        rw [h2] at hpa
+        simpa [h1, hc] using hpa
+  · rw [constLookupFrom_defineMethod]
+    exact hv
+
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
     That absence is the whole content of D10. -/
@@ -527,7 +595,9 @@ def DeclsOk (D : Decls) (h : Heap) : Prop :=
   (∀ n τ, constTy? D n = some τ → ConstOk h n τ) ∧
   -- L196's third half. Same reason as the second: `Inv` ∃-quantifies the table, so a
   -- table-indexed heap claim belongs here rather than in a new conjunct.
-  (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ)
+  (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ) ∧
+  -- L205's fourth half, for the third's reason.
+  (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h c n τ)
 
 /-! ## 2. The uniform dispatch step
 
@@ -741,9 +811,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
-  -- L195/L196: `SubDecls` is a triple now, and `addRow` touches `rows` only — so both
-  -- table halves are `rfl`.
-  refine ⟨?_, rfl, rfl⟩
+  -- L195/L196/L205: `SubDecls` is a quadruple now, and `addRow` touches `rows` only —
+  -- so all three table halves are `rfl`.
+  refine ⟨?_, rfl, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -939,13 +1009,14 @@ clause deleted the obligation. -/
 theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hd : DeclsOk D h) (hfresh : declaresName D name = false) :
     DeclsOk D (defineMethod h cls name md) := by
-  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
+    fun c nn τ hn => scopedConstOk_defineMethod (hd.2.2.2 c nn τ hn)⟩
   case refine_2 =>
     -- L195: a method-table write moves neither `constOwn` nor any field `ValueTy`
     -- reads, so the constant half is `consts_defineMethod` plus `ValueTy.congr` at
     -- `typeAgree_defineMethod` — the two lemmas L156 and L137 already wrote.
     exact constOk_defineMethod (hd.2.1 n τ hn)
-  case refine_3 => exact ivarOk_defineMethod (hd.2.2 c x τ hn)
+  case refine_3 => exact ivarOk_defineMethod (hd.2.2.1 c x τ hn)
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq
@@ -990,13 +1061,15 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     DeclsOk (addRow D c name { params := [], ret := τb }) (defineMethod h cls name md) := by
   have hsub : SubDecls D (addRow D c name { params := [], ret := τb }) :=
     subDecls_addRow hfresh
-  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
+    fun c nn τ hn => scopedConstOk_defineMethod
+      (hd.2.2.2 c nn τ (by simpa [scopedConstTy?, addRow] using hn))⟩
   case refine_2 =>
     -- `addRow` leaves `consts` alone, so the row's obligation is the old one at the
     -- new heap — which is `DeclsOk_defineMethod`'s constant half.
     exact constOk_defineMethod (hd.2.1 n τ (by simpa [constTy?, addRow] using hn))
   case refine_3 =>
-    exact ivarOk_defineMethod (hd.2.2 c x τ (by simpa [ivarTy?, addRow] using hn))
+    exact ivarOk_defineMethod (hd.2.2.1 c x τ (by simpa [ivarTy?, addRow] using hn))
   intro τr mname decl hdecl
   -- Two facts about the new table at the *written* name, and everything about the
   -- new row follows from them: `c` has it, and no other class does.
@@ -1206,7 +1279,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
   refine ⟨?_, fun n τ hn => constOk_grow hg (hd.2.1 n τ hn),
-    fun c x τ hn => ivarOk_grow hg (hd.2.2 c x τ hn)⟩
+    fun c x τ hn => ivarOk_grow hg (hd.2.2.1 c x τ hn),
+    fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2 c nn τ hn)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
@@ -2018,7 +2092,9 @@ theorem constsOk_of_constsOkB {h : Heap} {D : Decls} (hb : constsOkB h D.consts 
     which every caller of this lemma has in hand. -/
 theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
     DeclsOk baseDecls h := by
-  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
+    -- L205: and the fourth, empty for the third's reason and stated the same way.
+    fun c nn τ hn => absurd hn (by simp [scopedConstTy?, baseDecls])⟩
   case refine_2 => exact constOk_of_classOk hcls hn
   -- `baseDecls.ivars` is empty, so the third half is vacuous — and stating it as a
   -- refutation of the lookup rather than as `trivial` is what will break here the
@@ -2171,14 +2247,33 @@ theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ
   rw [hi.constOwn_eq]
   exact hsole j (by rw [hi.classPayload] at hj; exact hj) hjo
 
-/-- **Only the first two halves** (L196), and the omission is the rung: `IvarOnly`
-    says an ivar write is invisible, and `DeclsOk`'s third half is *about* ivars. The
-    `@x = e` consecution case has to re-establish that half from the rule's own
-    conformance check, which is why the rule has one. -/
+/-- **And the scoped-constant clause** (L205), which `IvarOnly` carries for `constOk`'s
+    reason: `consts` and `privateConsts` are fields of a *class payload*, and an ivar
+    write moves no payload anywhere. -/
+theorem scopedConstOk (hi : IvarOnly h h') {c n : String} {τ : Ty}
+    (hs : ScopedConstOk h c n τ) : ScopedConstOk h' c n τ := by
+  intro o ho hcn
+  rw [hi.classPayload] at ho
+  rw [hi.className_eq] at hcn
+  obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
+  refine ⟨?_, v, ?_, ValueTy.congr
+    (typeAgree_of_fields hi.size.symm hi.klass hi.eigen hi.payload hi.frozen) hty⟩
+  · rw [hi.ancestors_eq]
+    simp only [hi.classPayload]
+    exact hpriv
+  · rw [constLookupFrom_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq o)]
+    exact hv
+
+/-- **Only three of the four halves** (L196, L205), and the omission is the rung:
+    `IvarOnly` says an ivar write is invisible, and `DeclsOk`'s *ivar* half is the one
+    that is *about* ivars. The `@x = e` consecution case has to re-establish that half
+    from the rule's own conformance check, which is why the rule has one. -/
 theorem rowsAndConsts (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) :
-    MethodRowsOk D h' ∧ ∀ n τ, constTy? D n = some τ → ConstOk h' n τ :=
+    MethodRowsOk D h' ∧ (∀ n τ, constTy? D n = some τ → ConstOk h' n τ) ∧
+      ∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h' c n τ :=
   ⟨fun τr mname d hf => hi.entryOk (hd.1 τr mname d hf),
-   fun n τ hn => hi.constOk (hd.2.1 n τ hn)⟩
+   fun n τ hn => hi.constOk (hd.2.1 n τ hn),
+   fun c n τ hn => hi.scopedConstOk (hd.2.2.2 c n τ hn)⟩
 
 theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,

@@ -271,7 +271,23 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
             (ValueTy.weaken hty hsubw) hk
         · exact absurd hinf (by simp)
-      | some b => simp only [infer] at hinf; contradiction
+      -- **`C::n`** (L205): `evalExpr` pushes `.cpathK n` on the base, and the rule's
+      -- two reads — the base's class-object type and the table's row — are exactly
+      -- `KontOk.cpathK`'s two premises. Nothing about the container's heap is settled
+      -- here; `ScopedConstOk` is what the delivery consumes.
+      | some b =>
+        simp only [infer] at hinf
+        split at hinf
+        · next cname Γ₁ D₁ hbase =>
+          split at hinf
+          · next σ hsco =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+            obtain ⟨rfl, rfl, rfl⟩ := hinf
+            exact inv_push hfs htab hsc hhook hsat hstr hcls hbot
+              (by simp [frameKLabels, hks]) hbase
+              (KontOk.cpathK (by simp) hsco hsubw hk)
+          · exact absurd hinf (by simp)
+        · exact absurd hinf (by simp)
     case var k x =>
       cases k
       case lvar =>
@@ -327,7 +343,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             cases hfind : ((m.heap.get o).ivars.find? (·.1 == x)).map Prod.snd with
             | none => simpa [hfind] using ValueTy.weaken (ValueTy.exact rfl) (by simp)
             | some v =>
-              have := htab.2.2 sc x σ hiv o hlt hcn v hfind
+              have := htab.2.2.1 sc x σ hiv o hlt hcn v hfind
               simpa [hfind] using ValueTy.weaken this (by simp)
           · exact absurd hinf (by simp)
         · exact absurd hinf (by simp)
@@ -997,6 +1013,60 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- cheapest heap-writing rule in the fragment, and it is cheap for a reason worth
     -- stating: the invariant is about *dispatch and names*, and an instance-variable
     -- table is neither.
+    -- **`C::n`, at the delivery** (L205). Three steps and each is one hypothesis read
+    -- out: the in-flight value is a class object (so `cpathContainer` succeeds and the
+    -- container's name is the table key), the constant is not `private_constant`, and
+    -- the walk finds a value of the declared type. All three live in `ScopedConstOk`,
+    -- which is why this case establishes nothing about the heap — it only reads.
+    | @cpathK _ _ _ _ _ _ τw cname n σ k hb hsco hsw hk' =>
+      -- The value is a class object, and its *own* name is the key (`valueTy?`'s class
+      -- arm, L185) — so the container the machine resolves and the class the table was
+      -- read at are the same object, with no uniqueness clause needed.
+      have hvc : ValueTy m.heap v (.clsOf cname) := ValueTy.weaken hv hb
+      obtain ⟨o, rfl⟩ : ∃ o, v = .ref o := by
+        cases hsv : v with
+        | ref o' => exact ⟨o', rfl⟩
+        | _ => rw [hsv] at hvc; simp_all [ValueTy, valueTy?, subTy]
+      have hcr : classRecv m.heap o = true := valueTy_ref_class hvc
+      have hpay : (m.heap.classPayload? o).isSome := by
+        unfold classRecv at hcr
+        simp only [Bool.and_eq_true] at hcr
+        exact hcr.2
+      have hcn : className m.heap o = cname := by
+        rcases valueTy_ref_inv hvc with ⟨-, hs⟩ | ⟨-, hs⟩
+        · exact absurd hs (by simp [subTy])
+        · simpa using (subTy_atomic (τ := Ty.clsOf cname) (by simp) (by simp)).mp hs
+      obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2 cname n σ hsco o hpay hcn
+      have hcont : Interp.cpathContainer { m with kont := k } (.ref o) = .ok o := by
+        unfold Interp.cpathContainer
+        simp [hpay]
+      simp only [hcont, hcv]
+      -- The `private_constant` gate is `ScopedConstOk`'s first conjunct, and it is what
+      -- makes the *miss* path unreachable rather than something to reason about.
+      -- **The `private_constant` gate** (L104), and it is refuted rather than computed.
+      -- `split` on the machine's own `if` keeps the goal's term — restating it here as
+      -- an equation does *not* work, because a `match` in a fresh syntactic position
+      -- compiles to its own auxiliary and the two are not the same function even
+      -- though they print alike. So the hit branch is closed by its own equation and
+      -- the miss branch by `ScopedConstOk`'s first conjunct.
+      split
+      · rename_i _x cv' heq
+        split at heq
+        · exact absurd heq (by simp)
+        · simp only [Option.some.injEq] at heq
+          subst heq
+          exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+            (by simpa [frameKLabels] using hks) (ValueTy.weaken hcty hsw) hk'
+      · rename_i _x heq
+        exfalso
+        split at heq
+        · rename_i hcond
+          simp only [List.any_eq_true] at hcond
+          obtain ⟨a, ha, hcon⟩ := hcond
+          have hpa := List.all_eq_true.mp hpriv a ha
+          revert hcon hpa
+          cases m.heap.classPayload? a <;> simp
+        · exact absurd heq (by simp)
     | @asgnIvar _ _ _ _ _ _ τw x k hsome hsw hcf hk' =>
       obtain ⟨sc, hsc'⟩ := Option.isSome_iff_exists.mp hsome
       have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
@@ -1058,7 +1128,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
                  = m.stack from hstk]
            simpa [frameKLabels] using hks,
-        D, ctx, Γ, Γs, ⟨(hi.rowsAndConsts htab).1, (hi.rowsAndConsts htab).2, ?_⟩,
+        D, ctx, Γ, Γs, ⟨(hi.rowsAndConsts htab).1, (hi.rowsAndConsts htab).2.1, ?_,
+          (hi.rowsAndConsts htab).2.2⟩,
         ?_, ?_, ?_⟩
       · -- **L196: the one half `IvarOnly` cannot carry**, because it is the half that
         -- is *about* ivars. What re-establishes it is the rule's own conformance
@@ -1095,10 +1166,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [bindIvar_ivars_self (m := { m with kont := k }) hsf hltO,
               List.find?_cons_of_neg (by simpa using fun hq => hxx hq.symm),
               find?_filter_ne _ hxx] at hv'
-            exact ValueTy.congr hag (htab.2.2 _ x' σ' hiv' o ho' hcnO v' hv')
+            exact ValueTy.congr hag (htab.2.2.1 _ x' σ' hiv' o ho' hcnO v' hv')
         · rw [bindIvar_get_ne (m := { m with kont := k }) hsf hoo] at hcn' hv'
           rw [hi.className_eq] at hcn'
-          exact ValueTy.congr hag (htab.2.2 c' x' σ' hiv' o' ho' hcn' v' hv')
+          exact ValueTy.congr hag (htab.2.2.1 c' x' σ' hiv' o' ho' hcn' v' hv')
       · show FramesOk _ (bindIvar { m with kont := k } x v).frames
           (bindIvar { m with kont := k } x v).stack (Γ :: Γs.map Prod.snd)
         rw [hfr, hstk]; exact FramesOk.heap_congr hag hfs

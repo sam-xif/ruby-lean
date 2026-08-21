@@ -329,6 +329,19 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match constTy? D n with
     | some τ => .ok (.nom τ) Γ s
     | none => .missing (.nom (.clsOf "Object")) ("::" ++ n) []
+  -- **`C::n`** (L205). The base has to resolve to a *class object* — a type variable
+  -- is refused rather than constrained, because the store's requirements are rows and
+  -- "is the class object named `C`" is not a row — and an undeclared pair is a needed
+  -- declaration, rendered at the container's type so the atom says which namespace it
+  -- is about.
+  | .cpath (some base) n =>
+    match inferOpen D Γ base ctx s with
+    | .ok (.nom (.clsOf cname)) Γ₁ s₁ =>
+      match scopedConstTy? D cname n with
+      | some τ => .ok (.nom τ) Γ₁ s₁
+      | none => .missing (.nom (.clsOf cname)) ("::" ++ n) []
+    | .ok _ _ _ => .outOfFragment "cpath-base"
+    | r => r
   -- **A float literal** (L202), and it is here for `infer`'s reason: the only case
   -- after it in `inferOpen.induct` is the catch-all, so no existing case number moves.
   | .flt _ => .ok (.nom .float) Γ s

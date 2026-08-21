@@ -125,6 +125,30 @@ theorem consts_defineMethod (h : Heap) (cls k : ObjId) (name : String)
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 
+/-- **And the `private_constant` list** (L205), by the same three-way split.
+    `ScopedConstOk`'s first conjunct reads it, so a `def` inside the very class whose
+    constant is being read through `C::n` is the case that makes it non-trivial —
+    `consts_defineMethod`'s reason, one field over. -/
+theorem privateConsts_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).map ClassPayload.privateConsts
+      = (h.classPayload? k).map ClassPayload.privateConsts := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
 /-- `constOwn` reads a class's own constant table and nothing else, so it inherits
     `consts_defineMethod` directly. -/
 theorem constOwn_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
@@ -317,6 +341,42 @@ theorem ancestors_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     ancestors (defineMethod h cls name md) k = ancestors h k :=
   ancestors_congr (fun j => shape_defineMethod h cls j name md)
     (objs_size_defineMethod h cls name md) k
+
+/-- **`constLookupFrom` under a congruence of the own-tables** (L205), by induction on
+    the walk. Stated over an arbitrary pair of heaps because both transports need it —
+    `defineMethod` (below) and `PlainGrow` (`Static/Decls.lean`) — and each supplies
+    the two hypotheses from a lemma it already had. -/
+theorem constLookupFrom_congr {h h' : Heap} {k : ObjId} {n : String}
+    (hc : ∀ j, (h'.classPayload? j).map ClassPayload.consts
+               = (h.classPayload? j).map ClassPayload.consts)
+    (hanc : ancestors h' k = ancestors h k) :
+    constLookupFrom h' k n = constLookupFrom h k n := by
+  unfold constLookupFrom
+  rw [hanc]
+  induction ancestors h k with
+  | nil => rfl
+  | cons a rest ih =>
+    have hca := hc a
+    cases h1 : h'.classPayload? a with
+    | none =>
+      cases h2 : h.classPayload? a with
+      | none => simp [List.firstM, h1, h2, ih]
+      | some c => rw [h1, h2] at hca; exact absurd hca (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? a with
+      | none => rw [h1, h2] at hca; exact absurd hca (by simp)
+      | some c =>
+        rw [h1, h2] at hca
+        simp only [Option.map_some, Option.some.injEq] at hca
+        simp [List.firstM, h1, h2, hca, ih]
+
+/-- `constLookupFrom` is the ancestor walk over the classes' *own* constant tables, so
+    it inherits both `ancestors_defineMethod` and `consts_defineMethod` (L205). -/
+theorem constLookupFrom_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
+    (md : MethodDef) :
+    constLookupFrom (defineMethod h cls name md) k n = constLookupFrom h k n :=
+  constLookupFrom_congr (fun j => consts_defineMethod h cls j name md)
+    (ancestors_defineMethod h cls k name md)
 
 /-- **`defineMethod` does not turn an object into a class, or out of being one.**
     A corollary of `shape_defineMethod` that two callers now need — the third

@@ -9287,3 +9287,93 @@ they push down is opaque to them, which is the property that made L201's design 
 1,227 clean; `--self-test` all agree (two new rows pinning the join's new boundary: an `elsif`
 chain accepts, an `elsif` with two unrelated arms still does not); slice-driver 72 lines IDENTICAL;
 third ratchet **35**, and `if` drops 5 → 4.
+
+## L205 — `C::n`, the fourth table, and the first `KontOk` arm since L175
+
+Out of fragment **35 → 31** — all four remaining `cpath` bodies — and `--check` is byte-identical
+(56/1,169/0), because `baseDecls.scopedConsts` is empty and no bootstraptest program declares one.
+
+This is L196's rung at a different lookup, and stating the difference is the point:
+
+| | `constTy?` (L195/L203) | `scopedConstTy?` (L205) |
+|---|---|---|
+| key | name | class name × name |
+| the machine's read | `constLookup` = `Object`'s **own** table | `constLookupFrom` = the container's **ancestors** |
+| the clause | `ConstOk` (+ sole ownership) | `ScopedConstOk` (+ the `private_constant` gate) |
+| the kont | none — no subexpression | **`cpathK`** — the base is evaluated first |
+
+### `ScopedConstOk`, and why both its quantifiers are there
+
+```lean
+def ScopedConstOk (h : Heap) (c n : String) (τ : Ty) : Prop :=
+  ∀ o, (h.classPayload? o).isSome → className h o = c →
+    ((ancestors h o).all fun a => match h.classPayload? a with
+        | some cp => !cp.privateConsts.contains n | none => true) = true ∧
+    ∃ v, constLookupFrom h o n = some v ∧ ValueTy h v τ
+```
+
+* **`∀ o`** for `IvarOk`'s reason: the rule is keyed on a *name*, and only `ClassOk`'s uniqueness
+  clause ties a name to one id — over the *readable* names, not over every name a program can
+  write. So a row claims something about every class object of that name at once.
+* **The `private_constant` conjunct** because `.cpathK` consults that gate (L104) and the *rule*
+  cannot see it. Same division of labour as `KontOk.asgnIvar`'s conformance premise: a heap fact
+  the rule needs is carried by the declaration.
+* **`constLookupFrom`, not `constOwn`**, because that is what the machine does — a constant
+  inherited from a superclass *is* visible through `C::n`.
+
+Three transports, each a copy of the constant half's: `scopedConstOk_grow` (every clause pinned by a
+`PlainGrow` field, with `ancestors_eq` needing saturation), `scopedConstOk_defineMethod`, and
+`IvarOnly.scopedConstOk`. Two new `HeapFacts` lemmas underneath them —
+`privateConsts_defineMethod` (`consts_defineMethod` one field over) and **`constLookupFrom_congr`**,
+an induction on the walk stated over an arbitrary pair of heaps because all three transports need
+it.
+
+### `KontOk.cpathK` — the first new continuation arm since L175
+
+```lean
+  | cpathK {D h c Γ Γs τ τw cname n σ k} :
+      subTy τ (.clsOf cname) = true → scopedConstTy? D cname n = some σ →
+      subTy σ τw = true →
+      KontOk D h ((c, Γ) :: Γs) τw k →
+      KontOk D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
+```
+
+The in-flight value is the **base**, and the premise that matters is that its type is a class
+object. Everything the *delivery* needs about the heap is in `DeclsOk`, so this arm carries no heap
+fact — the difference from `asgnIvar`, which does, is that this rule reads the table where that one
+writes the heap.
+
+The arm cost exactly the four places `HANDOFF.md` constraint 4 says it must: `KontOk.retOk` (one
+transparent case, and it needs no `_table_ret` composition because the arm does not thread the
+table), `KontOk.heap_congr'`, `RetTransparent` (`.cpathK` is one of `unwind`'s catch-all shapes, so a
+`.retJ` passes straight through), and `step_ok`'s two cases.
+
+### A proof note worth keeping: a restated `match` is a different function
+
+The delivery's `private_constant` gate could not be discharged by stating the equation
+
+```lean
+have hgate : ((ancestors m.heap o).any fun a => match … with …) = false := …
+simp only [hgate]      -- "simp made no progress"
+```
+
+because **a `match` in a fresh syntactic position compiles to its own auxiliary definition**, so
+`hgate`'s lambda and the goal's are not the same function even though they pretty-print identically.
+The fix is to `split` on the machine's *own* `if` and keep the goal's term: the hit branch is then
+closed by its own equation (`none = some cv` is absurd) and the miss branch by `ScopedConstOk`'s
+first conjunct. Same lesson as L193's "`rw` inside a match scrutinee", one layer down.
+
+### The trap, caught by the proof again
+
+`defFree` needed a `.cpath` arm — **the fourth time** (`.array` L174, `.vasgn .ivar` L191, `.ret`
+L200): the rule threads the table through the base, so a `def` in there really does change it and
+`infer_mono`'s `D₀ = D` half is *false* with the catch-all's vacuous `true` left in place.
+`infer_mono_all`'s new case is what found it, one minute after the arm was written. The rule is now
+in `implementation-notes.md` four times; it belongs in `HANDOFF.md`'s constraint list.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` byte-identical (56/1,169/0); `--assn` smoke 1,227 clean; `--self-test` all agree (two
+rows re-read: `Float::NAN` is now a missing *declaration*, and `x::NAN` is the new `cpath-base`
+refusal); slice-driver 72 lines IDENTICAL; third ratchet **31**.

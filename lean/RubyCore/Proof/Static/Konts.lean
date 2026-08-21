@@ -243,6 +243,23 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       c.ret = some σ → subTy τ σ = true →
       KontOk D h ((c, Γ) :: Γs) τ' k →
       KontOk D h ((c, Γ) :: Γs) τ (.jumpValK .retK :: k)
+  /-- **`C::n`, with the namespace in flight** (L205).
+
+      The in-flight value is the *base*, and the premise that matters is that its type
+      is a **class object**: `.clsOf cname` is the only `Ty` a namespace can have, and
+      the name is the table key. `subTy τ (.clsOf cname)` rather than `τ = .clsOf cname`
+      for L193's reason — every constructor's index is decoupled from what it stores, so
+      a value delivered at a weakened type still lands.
+
+      Nothing about the container's *heap* is carried here: that is `ScopedConstOk`,
+      which `DeclsOk` supplies at the delivery. The difference from `asgnIvar` — which
+      does carry a conformance premise — is that this rule reads the table where that
+      one writes the heap, so the delivery re-establishes nothing. -/
+  | cpathK {D h c Γ Γs τ τw cname n σ k} :
+      subTy τ (.clsOf cname) = true → scopedConstTy? D cname n = some σ →
+      subTy σ τw = true →
+      KontOk D h ((c, Γ) :: Γs) τw k →
+      KontOk D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
 
 /-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
     push writes both a stack entry and a `frameK`, and one pop removes both, so the
@@ -273,6 +290,9 @@ def RetTransparent : Kont → Prop
   | .argsK .. => True
   | .arrK .. => True
   | .jumpValK _ => True
+  -- L205: `unwind`'s catch-all, like the nine above — a `.cpathK` on the stack has no
+  -- opinion about a jump, so a `.retJ` passes straight through it.
+  | .cpathK _ => True
   | _ => False
 
 /-- The label of the innermost activation's `frameK`. With L199's clause this is the
@@ -357,6 +377,9 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           subst hq
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | retValK hr hs hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      -- L205: the table is untouched (the arm *reads* `scopedConsts`), so this is the
+      -- plain transparent case — no `_table_ret` composition needed.
+      | cpathK hb hsc hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | frameK hrt hk' => exact RetOk.here (hrt σ hσ) hk'
 
 @[simp] theorem frameKLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
@@ -428,6 +451,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | whileBody hl hw _ ih => intro ha; exact .whileBody hl hw (ih ha)
   | recvK hsg ha' hsub hw _ ih => intro ha; exact .recvK hsg ha' hsub hw (ih ha)
   | recvK0 hsg hw _ ih => intro ha; exact .recvK0 hsg hw (ih ha)
+  | cpathK hb hsc hw _ ih => intro ha; exact .cpathK hb hsc hw (ih ha)
   | argsK hv hva hst hia hsr hsg hw _ ih =>
       intro ha
       exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg hw (ih ha)
