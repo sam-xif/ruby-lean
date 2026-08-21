@@ -416,9 +416,9 @@ def ConstOk (h : Heap) (n : String) (τ : Ty) : Prop :=
     id, so `constOwn` is unmoved at every id, and `ValueTy` transports by
     `typeAgree_of_plainGrow`. -/
 theorem constOk_grow {h h' : Heap} {n : String} {τ : Ty} (hg : PlainGrow h h')
-    (hc : ConstOk h n τ) : ConstOk h' n τ := by
+    (hsat : Saturated h) (hc : ConstOk h n τ) : ConstOk h' n τ := by
   obtain ⟨v, hv, hty, hsole⟩ := hc
-  refine ⟨v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg) hty, fun j hj hjo => ?_⟩
+  refine ⟨v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat) hty, fun j hj hjo => ?_⟩
   · unfold constOwn at hv ⊢; rw [hg.payload]; exact hv
   · unfold constOwn at hsole ⊢
     rw [hg.payload]
@@ -483,11 +483,11 @@ theorem get_defineMethod_fields (h : Heap) (cls : ObjId) (name : String)
     the old heap did not have, so the hypothesis cannot supply it — `PlainGrow`'s
     `get`-agreement below the old size is what bounds the quantifier back. -/
 theorem ivarOk_grow {h h' : Heap} {c x : String} {τ : Ty} (hg : PlainGrow h h')
-    (hi : IvarOk h c x τ) : IvarOk h' c x τ := by
+    (hsat : Saturated h) (hi : IvarOk h c x τ) : IvarOk h' c x τ := by
   intro o ho hcn v hv
   by_cases hb : o < h.objs.size
   · rw [hg.get o hb] at hcn hv
-    exact ValueTy.congr (typeAgree_of_plainGrow hg)
+    exact ValueTy.congr (typeAgree_of_plainGrow hg hsat)
       (hi o hb (by rwa [hg.className_eq] at hcn) v hv)
   · -- Above the old size the object has no ivars at all, so the read is `none` and
     -- the hypothesis `hv` is contradictory.
@@ -548,7 +548,7 @@ theorem scopedConstOk_grow {h h' : Heap} {c n : String} {τ : Ty} (hg : PlainGro
   rw [hg.payload] at ho
   rw [hg.className_eq] at hcn
   obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
-  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg) hty⟩
+  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat) hty⟩
   · rw [hg.ancestors_eq hsat]
     simp only [hg.payload]
     exact hpriv
@@ -1278,8 +1278,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     starts from (`saturatedB`, checked by `check-proofs.sh`). -/
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
-  refine ⟨?_, fun n τ hn => constOk_grow hg (hd.2.1 n τ hn),
-    fun c x τ hn => ivarOk_grow hg (hd.2.2.1 c x τ hn),
+  refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
+    fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2 c nn τ hn)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩

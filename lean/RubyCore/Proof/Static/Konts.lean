@@ -919,7 +919,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : ValueTy m'.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
     Inv (withCtl m' (.value v)) := by
-  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
+  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
   refine ⟨NoHook_grow hg hsat hh,
     Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
     ClassOk_grow hg hsat hcls,

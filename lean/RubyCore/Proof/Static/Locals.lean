@@ -967,11 +967,27 @@ def TypeAgree (h h' : Heap) : Prop :=
     -- `PlainGrow`'s *nothing became a class* pins the payload and `defineMethod`
     -- rewrites `methods` — and stated here rather than derived at the use site for
     -- the fourth time, which is `plainRecv`'s own pattern.
-    (∀ o, o < h.objs.size → classRecv h o = true → classRecv h' o = true)
+    (∀ o, o < h.objs.size → classRecv h o = true → classRecv h' o = true) ∧
+    -- **L208's sixth clause: an old id's ancestor chain is unmoved.**
+    --
+    -- It is a *clause* rather than a consequence because it cannot be a consequence:
+    -- the five above are all functions of `h.get o`, and `ancestors` is **not** — it is
+    -- fuel-bounded by `objs.size + 1` (L73, so that dispatch stays kernel-reducible),
+    -- so an allocating step changes the fuel and the congruence needs **saturation** to
+    -- bridge it (`Proof/AncestorsGrow.lean` is that bridge). `typeAgree_of_get`
+    -- therefore takes it as a hypothesis rather than proving it, and
+    -- `typeAgree_of_plainGrow` takes `Saturated h`.
+    --
+    -- What needs it: a frame-side fact about a *chain* — `StackCtx`'s
+    -- `defmod ∈ ancestors (classOf self)`, which is what makes `doSuper`'s `dropWhile`
+    -- land rather than empty the list and raise. Nothing in the fragment reads a chain
+    -- out of a frame yet, which is why the clause arrives with `super` and why it is
+    -- worth landing on its own: it is inert until then.
+    (∀ k, k < h.objs.size → ancestors h' k = ancestors h k)
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp,
-   fun _ _ hc => hc⟩
+   fun _ _ hc => hc, fun _ _ => Eq.refl _⟩
 
 /-- **Transport across a frame-array rewrite**, the counterpart of
     `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
@@ -1122,7 +1138,11 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
             · simp [Heap.setClassPayload, Heap.set]
             · rfl,
         classPayload?_isSome_defineMethod h cls o name md]
-      exact hc⟩
+      exact hc,
+    -- L208's sixth clause. `defineMethod` moves no `clsShape` and no id, so the walk
+    -- is congruent at *every* id — `ancestors_defineMethod`, which the constant-table
+    -- lemmas beside it already use.
+    fun k _ => ancestors_defineMethod h cls k name md⟩
 
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
     for.** One fact does all four clauses: `Array.push` leaves every existing
@@ -1136,9 +1156,12 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     producer's consecution case can use it after destructuring; `alloc` is
     literally `(h.objs.size, ⟨h.objs.push obj⟩)`. -/
 theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
-    (hget : ∀ o, o < h.objs.size → h'.get o = h.get o) : TypeAgree h h' := by
+    (hget : ∀ o, o < h.objs.size → h'.get o = h.get o)
+    -- L208: `get` agreement does **not** give this one (the fuel differs), so it is a
+    -- hypothesis. Every caller has it from a lemma written for another consumer.
+    (hanc : ∀ k, k < h.objs.size → ancestors h' k = ancestors h k) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
-    fun o ho hc => ?_⟩
+    fun o ho hc => ?_, hanc⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
   · simp only [Heap.classPayload?, hget k hk]
@@ -1222,7 +1245,8 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     (hfz : ∀ o, (h'.get o).frozen = (h.get o).frozen) : TypeAgree h h' := by
   have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
     intro k; simp only [Heap.classPayload?, hpl k]
-  refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_⟩
+  refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_,
+    fun k _ => ?_⟩
   · simp only [classOf, hei o, hkl o]
   · simp only [className, hcp k]
   · rw [hcp k]
@@ -1232,19 +1256,29 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   · unfold classRecv at hc ⊢
     rw [hcp o, ← hsz]
     exact hc
-
-theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push obj⟩ :=
-  typeAgree_of_get (by simp) (fun o ho => by
-    simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
-      if_neg (Nat.ne_of_lt ho)])
+  · -- L208: an ivar write moves no `clsShape`, so the walk is congruent at the *same*
+    -- fuel — `ancestors_go_congr` with the size equation, which is `IvarOnly`'s
+    -- `ancestors_eq` inlined at the four fields this lemma is stated over.
+    exact ancestors_congr (fun j => by rw [hcp j]) hsz.symm k
 
 /-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
     clause — `classPayload?` agrees at *every* id — is what resolution needs and the
     type transport does not, so the type half of a producer's step is discharged by
     the two weaker fields. Recorded here rather than in `Proof/HeapGrow.lean` because
     `TypeAgree` is the type judgement's vocabulary, not the heap's. -/
-theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h') : TypeAgree h h' :=
-  typeAgree_of_get hg.size hg.get
+theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h')
+    (hsat : Saturated h) : TypeAgree h h' :=
+  typeAgree_of_get hg.size hg.get (fun k _ => hg.ancestors_eq hsat k)
+
+/-- **`alloc`'s transport, as a corollary** (L208 moved it below `typeAgree_of_plainGrow`
+    and gave it saturation). The sixth clause is a chain fact, and the only route to a
+    chain fact across a *growing* heap is `PlainGrow.ancestors_eq`, which needs
+    `Saturated h` — so the direct `typeAgree_of_get` proof this lemma used to have
+    cannot be reconstructed from `Array.push` alone. -/
+theorem typeAgree_alloc (h : Heap) (obj : Object) (hsat : Saturated h)
+    (hnc : ∀ c, obj.payload ≠ .cls c) (hiv : obj.ivars = []) :
+    TypeAgree h ⟨h.objs.push obj⟩ :=
+  typeAgree_of_plainGrow (plainGrow_alloc h obj hnc hiv) hsat
 
 /-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
     reads three of `TypeAgree`'s four clauses, which is what L137 threaded the
@@ -1277,7 +1311,7 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
       · -- A class receiver is not a plain one, so the `if` chain takes the second
         -- branch in `h'` too — `plainRecv` refuses a `.cls` payload and `classRecv`
         -- *is* having one.
-        have hc' : classRecv h' o = true := ha.2.2.2.2 o hb hc
+        have hc' : classRecv h' o = true := ha.2.2.2.2.1 o hb hc
         have hnp : plainRecv h' o = false := by
           unfold classRecv at hc'
           unfold plainRecv

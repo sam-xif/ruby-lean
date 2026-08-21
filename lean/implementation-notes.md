@@ -9510,3 +9510,66 @@ priced separately rather than assumed to come along. `HANDOFF.md` §The next com
 
 `lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
 `--check` byte-identical (56/1,169/0); third ratchet **30**, unchanged — nothing reads the field yet.
+
+## L208 — `TypeAgree`'s sixth clause: a chain fact in the transport, and the price was 4 sites, not 25
+
+Out of fragment **30 → 30**, third ratchet byte-identical. `Proof/`-only, so no `--check` diff is
+owed (the binary cannot move) — and `lake build` was run anyway, because the working tree had a
+half-applied version of this change in it and "not linked" is an argument, not a check.
+
+This is the first step of the `super` rung, landed **alone** because HANDOFF said to: every later
+frame-side fact about a *chain* needs it, and it is inert until one exists.
+
+### What the clause is, and why it cannot be a consequence
+
+```lean
+-- L208's sixth clause: an old id's ancestor chain is unmoved.
+(∀ k, k < h.objs.size → ancestors h' k = ancestors h k)
+```
+
+`TypeAgree`'s other five clauses are all functions of `h.get o`, so `typeAgree_of_get` proves them
+from `get`-agreement below the old size. `ancestors` is **not** such a function: it is fuel-bounded
+by `objs.size + 1` (L73, so that dispatch stays kernel-reducible), so an allocating step changes the
+fuel and the congruence needs **saturation** to bridge it (`Proof/AncestorsGrow.lean`).
+
+So the clause enters as a *hypothesis* on `typeAgree_of_get` — `hanc` — and every caller already had
+it from a lemma written for another consumer:
+
+| lemma | the sixth clause's witness |
+|---|---|
+| `typeAgree_of_get` | hypothesis (it cannot prove it) |
+| `typeAgree_of_plainGrow` | `PlainGrow.ancestors_eq hsat` — hence the new `Saturated h` argument |
+| `typeAgree_defineMethod` | `ancestors_defineMethod` (L156, written for `constLookupFrom`) |
+| `typeAgree_of_fields` | `ancestors_congr` at the same fuel (`hsz` is an *equality* here) |
+| `typeAgree_alloc` | now a corollary of `typeAgree_of_plainGrow`, and moved below it |
+
+### The measurement, and it corrects HANDOFF
+
+HANDOFF §The next commit item 3 said the `Saturated h` hypothesis "has to be threaded through
+`typeAgree_of_plainGrow`'s **25 call sites** — including `constOk_grow`, `ivarOk_grow` and
+`KontOk.heap_congr'`". **The real number is 4**, and two of the four already had `Saturated` in
+scope:
+
+* `constOk_grow` and `ivarOk_grow` — signatures gained `(hsat : Saturated h)`, one caller each
+  (`DeclsOk_grow`, which already had it);
+* `scopedConstOk_grow` (L205) and `inv_grow_value` — **free**, both already carry `hsat` because
+  `hg.ancestors_eq hsat` was already load-bearing in them for a *different* clause;
+* `KontOk.heap_congr'` — **untouched**. It takes a `TypeAgree` and does not build one.
+
+The over-estimate came from counting `typeAgree_of_plainGrow`'s *uses* as places that would need a
+new hypothesis, when the interesting question is which of them lack `Saturated` — and the answer is
+that a heap clause needing saturation is *already* the norm on the growing path, so the third rung
+of `super` is where saturation gets threaded, not this one. **The transferable rule: a hypothesis's
+price is the call sites that do not already have it, and the L205 constant work paid most of them.**
+
+The rest of the diff is arithmetic, not argument: three anonymous constructors gained a sixth
+component, and the *one* place that projected the fifth clause positionally
+(`ValueTy.congr`'s class branch, `ha.2.2.2.2`) became `ha.2.2.2.2.1`. That single site is the
+evidence for the design norm this file has stated twice: clauses go on the **end**, so an append
+renumbers exactly the accessors of the clause that used to be last.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**,
+`heapOkB`/`saturatedB` still hold at the booted heap; third ratchet **30**, unchanged and
+byte-identical — nothing reads the clause yet.
