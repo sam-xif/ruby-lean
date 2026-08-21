@@ -93,6 +93,14 @@ set_option maxRecDepth 100000
     receiver's dispatch class and therefore needs that class to *be* a class. -/
 def plainRecv (h : Heap) (o : ObjId) : Bool :=
   o < h.objs.size && (h.classPayload? (h.get o).klass).isSome && (h.get o).eigen.isNone &&
+    -- **Not frozen** (L191), and it is `plainRecv`'s fifth clause for the fifth time
+    -- the same reason: *a side condition a later rung has to derive at the use site
+    -- is cheaper in the judgement.* The use site is `@x = e`, whose `applyKont` arm
+    -- raises `FrozenError` — a `.jump`, which `CtlOk` refuses outright — when the
+    -- frame's `self` is frozen (`Interp/Kont.lean:35`). Immediates are frozen too,
+    -- which is why the rule needs a `.ref` self and gets one from `StackCtx`'s
+    -- `selfCls` clause.
+    !(h.get o).frozen &&
     (match (h.get o).payload with
      | .proc _ => false
      | .hsh _ => false
@@ -243,7 +251,7 @@ theorem plainRecv_classOf {h : Heap} {o : ObjId} (hp : plainRecv h o = true) :
     classOf h (.ref o) = (h.get o).klass := by
   unfold plainRecv at hp
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hp
-  simp only [classOf, hp.1.2]
+  simp only [classOf, hp.1.1.2]
 
 /-- **A plain receiver's class is a class** (L147). The clause `plainRecv` gained,
     read back out at the composite the resolution clause is indexed by. -/
@@ -252,7 +260,7 @@ theorem valueTy_ref_klass_isSome {h : Heap} {o : ObjId}
   rw [plainRecv_classOf hp]
   unfold plainRecv at hp
   simp only [Bool.and_eq_true] at hp
-  exact hp.1.1.2
+  exact hp.1.1.1.2
 
 /-- **And therefore is an id the heap actually has**, since `classPayload?` answers
     `none` out of bounds. This is the L143 clause, now a consequence rather than a
@@ -1065,8 +1073,8 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     unfold plainRecv at hp ⊢
     rw [hget o ho]
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hp ⊢
-    obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hp
-    refine ⟨⟨⟨Nat.lt_of_lt_of_le h1 hsz, ?_⟩, h3⟩, h4⟩
+    obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, hfz⟩, h4⟩ := hp
+    refine ⟨⟨⟨⟨Nat.lt_of_lt_of_le h1 hsz, ?_⟩, h3⟩, hfz⟩, h4⟩
     -- L147: the class clause transports because being a class puts the id *in
     -- bounds* (`classPayload?_isSome_lt`), which is where `get` agreement applies.
     have hb : (h.get o).klass < h.objs.size := classPayload?_isSome_lt h2
@@ -1080,6 +1088,51 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     refine ⟨⟨⟨Nat.lt_of_lt_of_le hc.1.1.1 hsz, hc.1.1.2⟩, hc.1.2⟩, ?_⟩
     simp only [Heap.classPayload?, hget o ho]
     exact hc.2
+
+/-- The four field facts, for `bindIvar` specifically (L191). `Heap.set` rewrites one
+    slot with an object that differs from it in `ivars` alone, and `Array.set!` leaves
+    the size where it was. -/
+theorem bindIvar_fields {m : Machine} {x : String} {v : Value} :
+    IvarOnly m.heap (bindIvar m x v).heap := by
+  unfold bindIvar
+  cases hs : m.currentFrame.self with
+  | ref o =>
+    refine ⟨by simp [Heap.set], ?_, ?_, ?_, ?_⟩ <;>
+      (intro j
+       by_cases hj : j = o
+       · subst hj
+         by_cases hb : j < m.heap.objs.size
+         · simp only [Heap.get, Heap.set]
+           rw [objs_getD_set!_self _ _ _ hb]
+         · simp only [Heap.get, Heap.set]
+           rw [objs_getD_set!_oob _ _ _ hb]
+       · simp only [Heap.get, Heap.set]
+         rw [objs_getD_set!_ne _ _ _ _ hj])
+  | _ => exact ⟨rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl⟩
+
+/-- **A write that touches only `ivars`** (L191). Every function `TypeAgree` reads —
+    `classOf`, `className`, `classPayload?`, `plainRecv`, `classRecv` — is a function
+    of `{size, klass, eigen, payload, frozen}`, and an instance-variable write moves
+    none of them. Stated over those four fields rather than over `get`, because
+    `get` *does* change at the written id: that is the whole difference between this
+    lemma and `typeAgree_of_get`. -/
+theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
+    (hkl : ∀ o, (h'.get o).klass = (h.get o).klass)
+    (hei : ∀ o, (h'.get o).eigen = (h.get o).eigen)
+    (hpl : ∀ o, (h'.get o).payload = (h.get o).payload)
+    (hfz : ∀ o, (h'.get o).frozen = (h.get o).frozen) : TypeAgree h h' := by
+  have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
+    intro k; simp only [Heap.classPayload?, hpl k]
+  refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_⟩
+  · simp only [classOf, hei o, hkl o]
+  · simp only [className, hcp k]
+  · rw [hcp k]
+  · unfold plainRecv at hp ⊢
+    rw [hkl o, hei o, hpl o, hfz o, hcp _, ← hsz]
+    exact hp
+  · unfold classRecv at hc ⊢
+    rw [hcp o, ← hsz]
+    exact hc
 
 theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push obj⟩ :=
   typeAgree_of_get (by simp) (fun o ho => by

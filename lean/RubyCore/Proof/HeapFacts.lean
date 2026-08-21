@@ -60,6 +60,16 @@ theorem objs_getD_set!_ne (a : Array Object) (i j : Nat) (o : Object) (h : j ≠
   · simp only [Array.getD]
     rw [dif_neg (hsz ▸ hj), dif_neg hj]
 
+/-- The third case of a `set!` read, needed once a write happens at an id the
+    caller has not bounded (L191: `bindIvar`'s `self` is a `Value`, and nothing in
+    the fragment says the reference is in range). Out of bounds `set!` is the
+    identity and `getD` is `default` on both sides. -/
+theorem objs_getD_set!_oob (a : Array Object) (i : Nat) (o : Object)
+    (h : ¬ i < a.size) : (a.set! i o).getD i default = a.getD i default := by
+  have hsz : (a.set! i o).size = a.size := by simp [Array.set!]
+  simp only [Array.getD]
+  rw [dif_neg (hsz ▸ h), dif_neg h]
+
 /-- The companion of `objs_getD_set!_ne` at the written index. Needed by F1b's
     `Static.plainRecv_defineMethod`, which has to read the payload `defineMethod`
     just wrote rather than only the ones it left alone. -/
@@ -225,6 +235,73 @@ theorem ancestors_congr {h h' : Heap} (hs : ShapeAgree h h')
     ancestors h' k = ancestors h k := by
   unfold ancestors
   rw [hsz, ancestors_go_congr hs hsz]
+
+/-! ## L191: a write that touches only `ivars`
+
+`bindIvar` (`Interp/Support.lean:36`) rewrites one slot with an object differing
+from it in `ivars` alone, and **no predicate in `Inv` reads `ivars`** — the
+invariant is about dispatch (`classOf`/`ancestors`/`lookup`) and about names
+(`className`/`constOwn`), and an instance-variable table is neither.
+
+So the transport is not `ShapeAgree`-shaped: it is stronger *and* cheaper. Whole
+`ClassPayload`s are pointwise equal, not merely shape-equal, so every heap
+function below is congruent by a rewrite rather than by an induction — the one
+induction (`ancestors`) is borrowed from the block above.
+
+Stated as a bundle rather than as five hypotheses per lemma for the reason
+`ShapeAgree` is an abbreviation: the caller proves it once (`Static.bindIvar_fields`)
+and every consumer names it. -/
+
+/-- Every field of every object that the invariant can see, unmoved. -/
+structure IvarOnly (h h' : Heap) : Prop where
+  size : h'.objs.size = h.objs.size
+  klass : ∀ o, (h'.get o).klass = (h.get o).klass
+  eigen : ∀ o, (h'.get o).eigen = (h.get o).eigen
+  payload : ∀ o, (h'.get o).payload = (h.get o).payload
+  frozen : ∀ o, (h'.get o).frozen = (h.get o).frozen
+
+namespace IvarOnly
+
+variable {h h' : Heap}
+
+theorem classPayload (hi : IvarOnly h h') (k : ObjId) :
+    h'.classPayload? k = h.classPayload? k := by
+  simp only [Heap.classPayload?, hi.payload k]
+
+theorem shape (hi : IvarOnly h h') : ShapeAgree h h' :=
+  fun k => by rw [hi.classPayload k]
+
+theorem ancestors_eq (hi : IvarOnly h h') (k : ObjId) : ancestors h' k = ancestors h k :=
+  ancestors_congr hi.shape hi.size k
+
+theorem className_eq (hi : IvarOnly h h') (k : ObjId) : className h' k = className h k := by
+  simp only [className, hi.classPayload k]
+
+theorem classOf_eq (hi : IvarOnly h h') (v : Value) : classOf h' v = classOf h v := by
+  cases v with
+  | ref o => simp only [classOf, hi.eigen o, hi.klass o]
+  | bool b => cases b <;> rfl
+  | _ => rfl
+
+theorem lookup_go_eq (hi : IvarOnly h h') (mname : String) :
+    ∀ l, lookup.go h' mname l = lookup.go h mname l := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons k rest ih =>
+    unfold lookup.go
+    rw [hi.classPayload k, ih]
+
+theorem lookup_eq (hi : IvarOnly h h') (v : Value) (mname : String) :
+    lookup h' v mname = lookup h v mname := by
+  unfold lookup
+  rw [hi.classOf_eq v, hi.ancestors_eq _, hi.lookup_go_eq mname]
+
+theorem constOwn_eq (hi : IvarOnly h h') (cls : ObjId) (name : String) :
+    constOwn h' cls name = constOwn h cls name := by
+  simp only [constOwn, hi.classPayload cls]
+
+end IvarOnly
 
 /-! ## `defineMethod` instances -/
 

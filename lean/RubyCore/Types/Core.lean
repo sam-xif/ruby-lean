@@ -333,6 +333,26 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match infer D Γ rhs top ctx with
     | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
     | none => none
+  -- **`@x = e`** (L191). The rule is a *guard* plus the right-hand side's own
+  -- answer, and the guard is `selfCls`.
+  --
+  -- Why that guard and not something about `x`: `applyKont`'s ivar arm raises
+  -- `FrozenError` when the frame's `self` is frozen — and when it is an *immediate*,
+  -- since those are frozen (`Interp/Kont.lean:35`) — and a raise is a `.jump`, which
+  -- `CtlOk` refuses outright. So admitting the write means knowing `self` is a plain
+  -- unfrozen reference. `selfCls = some c` is exactly that, via `StackCtx`'s F1b.11
+  -- clause and `plainRecv`'s L191 one: a class body or the toplevel answers `none`
+  -- here, and both are frames where `self` is a class object rather than an instance.
+  --
+  -- **The environment does not move.** The invariant tracks locals, not instance
+  -- variables, so there is nothing to record — and that asymmetry is also why the
+  -- matching *read* `@x` stays out of the fragment: a write needs only that it does
+  -- not raise, while a read needs a type to answer with, which would take a
+  -- per-class ivar table this judgement does not have.
+  | .vasgn .ivar _ rhs =>
+    match ctx.selfCls with
+    | some _ => infer D Γ rhs top ctx
+    | none => none
   -- Binary send to a builtin, any receiver expression, no block. Wrong arity, a
   -- block, or two or more arguments is still `unknown`.
   | .send (some recv) mname (arg :: args) none =>

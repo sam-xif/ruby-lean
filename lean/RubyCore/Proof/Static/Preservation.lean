@@ -145,7 +145,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
         (plainGrow_alloc m.heap _ (by simp))
         rfl rfl rfl
-        (valueTy_alloc_fresh (by simp) rfl hstr.1.1 hstr.1.2) hk
+        (valueTy_alloc_fresh (by simp) rfl rfl hstr.1.1 hstr.1.2) hk
     -- **The symbol literal** (L159). Identical to the four immediate cases above,
     -- which is the point: the slice's third-largest blocker by node count cost a
     -- rule of one line and a case of three, because `Ty.sym` was already there and
@@ -252,6 +252,17 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           simp only [Option.some.injEq, Prod.mk.injEq] at hinf
           obtain ⟨rfl, rfl, rfl⟩ := hinf
           exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hrhs (KontOk.asgn hk)
+        · exact absurd hinf (by simp)
+      -- **`@x = e`** (L191). `evalExpr` pushes the same shape as the local-variable
+      -- write and the rule answers the rhs's own type, so the case is `lvar`'s minus
+      -- the `envSet` — the guard is carried into `KontOk.asgnIvar`, which is where
+      -- the *delivery* case will spend it.
+      case ivar =>
+        simp only [infer] at hinf
+        split at hinf
+        · next sc hsome =>
+          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hinf
+            (KontOk.asgnIvar (by rw [hsome]; rfl) hk)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case seq es =>
@@ -581,7 +592,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
             (plainGrow_alloc m.heap _ (by simp))
             rfl rfl rfl
-            (valueTy_alloc_fresh (by simp) rfl hstr.2.1 hstr.2.2) hk
+            (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hk
         | cons e rest =>
           -- The head runs next. Its own accepting judgement is what refutes
           -- `continueArray`'s splat arm — the `recvK` case's `hsp` move.
@@ -762,6 +773,79 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
+    -- **`@x = e`, delivered** (L191), and the whole case is one refutation plus one
+    -- transport.
+    --
+    -- *The refutation.* `applyKont`'s ivar arm has two raising branches — an
+    -- immediate `self` and a frozen one — and a raise is a `.jump`, which `CtlOk`
+    -- refuses. `KontOk.asgnIvar`'s premise closes both at once: `selfCls = some sc`
+    -- gives the frame's `self` a *class* type (`StackCtx`'s F1b.11 clause), a class
+    -- type is only inhabited by a `.ref` at a `plainRecv` id
+    -- (`valueTy_ref_plain`), and `plainRecv`'s L191 clause is `¬ frozen`.
+    --
+    -- *The transport.* The step writes `ivars` and nothing else, and no predicate in
+    -- `Inv` reads `ivars` — so every conjunct crosses by `IvarOnly`
+    -- (`Proof/Static/Decls.lean` §8) with no case analysis at all. That is the
+    -- cheapest heap-writing rule in the fragment, and it is cheap for a reason worth
+    -- stating: the invariant is about *dispatch and names*, and an instance-variable
+    -- table is neither.
+    | @asgnIvar _ _ _ _ _ _ x k hsome hk' =>
+      obtain ⟨sc, hsc'⟩ := Option.isSome_iff_exists.mp hsome
+      have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
+        cases hst : m.stack with
+        | nil => exact absurd hst hf.1
+        | cons fid fids =>
+          have hsc2 := hsc
+          rw [hst] at hsc2
+          have := hsc2.2.2.2.1 sc hsc'
+          rw [show m.currentFrame = m.frames.getD fid default by
+            simp [Machine.currentFrame, hst]]
+          exact this
+      obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
+        cases hsv : m.currentFrame.self with
+        | ref o' => exact ⟨o', rfl⟩
+        | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?]
+      have hpl : plainRecv m.heap o = true := valueTy_ref_plain (hsf ▸ hself)
+      have hfz : (m.heap.get o).frozen = false := by
+        unfold plainRecv at hpl
+        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hpl
+        exact hpl.1.2
+      show StepOk (match m.currentFrame.self with
+        | .ref o' =>
+          if (m.heap.get o').frozen then _ else
+            .next (withCtl (bindIvar { m with kont := k } x v) (.value v))
+        | selfV => _)
+      rw [hsf]
+      simp only [hfz, if_false]
+      have hi : IvarOnly m.heap (bindIvar { m with kont := k } x v).heap :=
+        bindIvar_fields (m := { m with kont := k })
+      have hag := hi.typeAgree
+      have hfr : (bindIvar { m with kont := k } x v).frames = m.frames := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      have hstk : (bindIvar { m with kont := k } x v).stack = m.stack := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      have hkt : (bindIvar { m with kont := k } x v).kont = k := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      refine ⟨hi.noHook hhook, hi.saturated hsat, hi.litClsOk hstr, hi.classOk hcls,
+        by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+                 = m.frames from hfr,
+              show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
+                 = m.stack from hstk]
+           exact hbot,
+        D, ctx, Γ, Γs, hi.declsOk htab, ?_, ?_, ?_⟩
+      · show FramesOk _ (bindIvar { m with kont := k } x v).frames
+          (bindIvar { m with kont := k } x v).stack (Γ :: Γs.map Prod.snd)
+        rw [hfr, hstk]; exact FramesOk.heap_congr hag hfs
+      · show StackCtx _ (bindIvar { m with kont := k } x v).frames
+          (bindIvar { m with kont := k } x v).stack (ctx :: Γs.map Prod.fst)
+        rw [hfr, hstk]; exact StackCtx.heap_congr hag hsc
+      · exact ⟨τ, ValueTy.congr hag hv,
+          by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
+                    = k from hkt]
+             exact KontOk.heap_congr hag hk'⟩
     | @ifK _ _ _ _ _ _ _ t els τ' Γ' k hif hk' =>
       cases els with
       | some e₂ =>
@@ -914,7 +998,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           hfs htab hsc hhook hsat hstr hcls hbot
           (plainGrow_alloc m.heap _ (by simp))
           rfl rfl rfl
-          (valueTy_alloc_fresh (by simp) rfl hstr.2.1 hstr.2.2) hk'
+          (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hk'
       -- A head to run: push the next `arrK`. Split on the *tail* because
       -- `inferSeq`'s `[e]` arm is `infer` and its `e :: rest` arm is not — the same
       -- three-way shape `seqCons` splits on, for the same reason.

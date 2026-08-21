@@ -176,6 +176,12 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match inferOpen D Γ rhs ctx s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁
     | r => r
+  -- **`@x = e`** (L191). No guard here, and none is needed: `inferOpen` only ever
+  -- runs on a *method body*, so the nominal context it factors into always has
+  -- `selfCls = some ctx.cls` (`Factors`) — the open front end's `self` is a type
+  -- variable precisely because there is one. So the arm is the right-hand side's
+  -- answer, unchanged, and the factoring case is "one subexpression".
+  | .vasgn .ivar _ rhs => inferOpen D Γ rhs ctx s
   -- **A literal `self` receiver is admitted** (L172), and `inferOpen` gives it the
   -- variable `ctx.self` — so `self.foo(x)` records a requirement on the definee's
   -- class exactly as `foo(x)` does.

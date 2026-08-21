@@ -1711,5 +1711,112 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   | clsOf n => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
+
+/-! ## 8. L191: transporting the invariant across an `ivars`-only write
+
+`@x = e` is the first admitted rule whose step **writes the heap without allocating**.
+`PlainGrow` is the wrong shape for it — nothing grows — and `TypeAgree` alone is not
+enough, because `DeclsOk` reads the method table and `ClassOk` reads the constant
+tables, neither of which `TypeAgree` mentions.
+
+`IvarOnly` (`Proof/HeapFacts.lean`) is the right shape, and every transport below is
+the same two-line proof: rewrite the heap function by its congruence and hand back
+the hypothesis. That there is nothing harder here is the point of the rule — an
+instance-variable table is invisible to the invariant, which is why the ivar
+*write* is admissible while the ivar *read* (which needs a type for what comes
+back) is not.
+-/
+
+open Static Interp Types
+
+namespace IvarOnly
+
+variable {h h' : Heap}
+
+theorem crubyShadow_eq (hi : IvarOnly h h') (chain : List ObjId) (mname : String) :
+    crubyShadow h' chain mname = crubyShadow h chain mname := by
+  simp only [crubyShadow, hi.className_eq]
+
+theorem lookupIn_eq (hi : IvarOnly h h') (k : ObjId) (mname : String) :
+    lookupIn h' k mname = lookupIn h k mname := by
+  simp only [lookupIn, hi.ancestors_eq, hi.lookup_go_eq]
+
+theorem resolvesAt (hi : IvarOnly h h') {k : ObjId} {mname bid : String}
+    (hr : ResolvesAt h k mname bid) : ResolvesAt h' k mname bid := by
+  obtain ⟨owner, md, hl, hb, hu, hv, hp, hsh⟩ := hr
+  exact ⟨owner, md, by rw [hi.lookupIn_eq]; exact hl, hb, hu, hv, hp,
+    by rw [hi.crubyShadow_eq, hi.ancestors_eq]; exact hsh⟩
+
+theorem resolvesUser (hi : IvarOnly h h') {k : ObjId} {mname : String} {md : MethodDef}
+    (hr : ResolvesUser h k mname md) : ResolvesUser h' k mname md := by
+  obtain ⟨owner, hl, hb, hu, hv, hps, hdc, hcf, hown, hsh, hcref⟩ := hr
+  refine ⟨owner, by rw [hi.lookupIn_eq]; exact hl, hb, hu, hv, hps, hdc, hcf,
+    by rw [hi.classPayload]; exact hown, ?_, hcref⟩
+  rw [hi.crubyShadow_eq, hi.ancestors_eq]
+  exact hsh
+
+/-- Backwards, because `EntryOk`'s resolution clause is a hypothesis about the
+    *new* heap's dispatch classes discharged from the old heap's. -/
+theorem tyClass (hi : IvarOnly h h') {τ : Ty} {k : ObjId} (ht : TyClass h' τ k) :
+    TyClass h τ k := by
+  cases τ with
+  | cls n => exact ⟨by rw [← hi.classPayload]; exact ht.1, by rw [← hi.className_eq]; exact ht.2⟩
+  | clsOf n =>
+    obtain ⟨o, hcp, hnm, hk⟩ := ht
+    exact ⟨o, by rw [← hi.classPayload]; exact hcp, by rw [← hi.className_eq]; exact hnm,
+      by rw [← hi.classOf_eq]; exact hk⟩
+  | any => exact ht.elim
+  | _ => exact ht
+
+theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}
+    {d : MethodDecl} (he : EntryOk D h τr mname d) : EntryOk D h' τr mname d := by
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, rfl, hres, hown, hconf⟩
+  · exact Or.inl ⟨bid, fun k hk => hi.resolvesAt (hres k (hi.tyClass hk)), hconf⟩
+  · exact Or.inr ⟨md, c, rfl, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
+      by rw [hi.className_eq]; exact hown, hconf⟩
+
+theorem declsOk (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) : DeclsOk D h' :=
+  fun τr mname d hf => hi.entryOk (hd τr mname d hf)
+
+theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
+  ⟨by rw [hi.classPayload]; exact hn.1,
+   fun k hk => by rw [hi.lookup_eq]; exact hn.2 k (by rw [← hi.classPayload]; exact hk)⟩
+
+theorem litClsOk (hi : IvarOnly h h') (hs : LitClsOk h) : LitClsOk h' :=
+  ⟨⟨by rw [hi.classPayload]; exact hs.1.1, by rw [hi.className_eq]; exact hs.1.2⟩,
+   ⟨by rw [hi.classPayload]; exact hs.2.1, by rw [hi.className_eq]; exact hs.2.2⟩⟩
+
+theorem saturated (hi : IvarOnly h h') (hs : Saturated h) : Saturated h' := by
+  refine ⟨fun mo => ?_, fun k => ?_⟩
+  · rw [hi.size, modAncestors_go_congr hi.shape, modAncestors_go_congr hi.shape]
+    exact hs.1 mo
+  · rw [hi.size, ancestors_go_congr hi.shape hi.size, ancestors_go_congr hi.shape hi.size]
+    exact hs.2 k
+
+theorem noShadowBefore (hi : IvarOnly h h') {k : ObjId} (hn : NoShadowBefore h k) :
+    NoShadowBefore h' k := by
+  refine ⟨by rw [hi.ancestors_eq]; exact hn.1, fun j hj cp hcp => ?_⟩
+  rw [hi.ancestors_eq] at hj
+  exact hn.2 j hj cp (by rw [← hi.classPayload]; exact hcp)
+
+theorem classOk (hi : IvarOnly h h') (hc : ClassOk h) : ClassOk h' := by
+  refine ⟨by rw [hi.className_eq]; exact hc.1, hi.noShadowBefore hc.2.1, fun n hn => ?_⟩
+  obtain ⟨k, cp, hco, hcp, hmod, hnm, huniq, hhd, hnsb, hre, hma, hsole⟩ := hc.2.2 n hn
+  refine ⟨k, cp, by rw [hi.constOwn_eq]; exact hco, by rw [hi.classPayload]; exact hcp,
+    hmod, by rw [hi.className_eq]; exact hnm, ?_, by rw [hi.ancestors_eq]; exact hhd,
+    hi.noShadowBefore hnsb, hre, hma, ?_⟩
+  · intro j hj hjn
+    exact huniq j (by rw [← hi.classPayload]; exact hj) (by rw [← hi.className_eq]; exact hjn)
+  · intro j hj
+    rw [hi.constOwn_eq]
+    exact hsole j (by rw [hi.classPayload] at hj; exact hj)
+
+/-- And the value judgement's own transport, which is `typeAgree_of_fields` at this
+    bundle. Stated here rather than beside that lemma so `hi.typeAgree` resolves. -/
+theorem typeAgree (hi : IvarOnly h h') : TypeAgree h h' :=
+  typeAgree_of_fields hi.size.symm hi.klass hi.eigen hi.payload hi.frozen
+
+end IvarOnly
+
 end Proof
 end RubyCore

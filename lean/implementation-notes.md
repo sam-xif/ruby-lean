@@ -8145,3 +8145,94 @@ should be replaced by.
 ### Checks
 
 Reporting only. `--self-test` all agree; `--check` unchanged; nothing in the SUT or metatheory moved.
+
+---
+
+## L191 — `@x = e`, and the transport for a heap write that allocates nothing
+
+Out of fragment **79 → 78**, and one more `pacc` body (3 → 4). One singleton set retired
+(`{ivar-asgn}`), and the rung's real yield is combinatorial rather than singular: `ivar-asgn`
+appears in three of the top-five entries of L190's marginal-value table.
+
+### The rule
+
+`infer`'s `.vasgn .ivar` arm is a **guard plus the right-hand side's own answer**:
+
+```lean
+| .vasgn .ivar _ rhs =>
+  match ctx.selfCls with
+  | some _ => infer D Γ rhs top ctx
+  | none => none
+```
+
+The guard is the whole design decision, and it is read off the machine rather than chosen.
+`applyKont`'s ivar arm (`Interp/Kont.lean:35`) raises `FrozenError` in *two* branches — a frozen
+`.ref` self, and an immediate self, since immediates are frozen — and a raise is a `.jump`, which
+`CtlOk` refuses outright. So admitting the write means knowing `self` is a plain unfrozen
+reference. `selfCls = some c` is exactly that, through two facts that were already in place:
+`StackCtx`'s F1b.11 clause gives the frame's `self` the type `.cls c`, and `valueTy_ref_plain`
+turns a class type into `plainRecv`.
+
+**`plainRecv` therefore gained a fifth clause, `!frozen`** — and it is the fifth clause for the
+fifth time the same reason: *a side condition a later rung has to derive at the use site is
+cheaper in the judgement.* The knock-on was projection arity (`hp.1.1.2`, `hp.1.1.1.2`) and one
+new hypothesis on `valueTy_alloc_fresh`, whose call sites pass `rfl` — a literal allocates
+unfrozen.
+
+**The environment does not move**, and the asymmetry that buys is worth stating: the invariant
+tracks locals, not instance variables, so a write has nothing to record — while the matching
+*read* `@x` needs a type to answer with, which would take a per-class ivar table this judgement
+does not have. That is why `ivar-asgn` came in at this rung and `ivar-read` did not.
+
+### The transport, which is the actual cost
+
+`@x = e` is the **first admitted rule whose step writes the heap without allocating**. `PlainGrow`
+is the wrong shape (nothing grows) and `TypeAgree` alone is not enough: `DeclsOk` reads the method
+table and `ClassOk` reads the constant tables, and `TypeAgree` mentions neither.
+
+So `Proof/HeapFacts.lean` gained a bundle,
+
+```lean
+structure IvarOnly (h h' : Heap) : Prop where
+  size : h'.objs.size = h.objs.size
+  klass eigen payload frozen : ∀ o, …
+```
+
+— *every field of every object the invariant can see, unmoved* — and `Proof/Static/Decls.lean` §8
+transports the whole invariant across it: `noHook`, `saturated`, `litClsOk`, `classOk`,
+`noShadowBefore`, `declsOk` (through `entryOk`/`resolvesAt`/`resolvesUser`/`tyClass`) and
+`typeAgree`. Each is two lines, because whole `ClassPayload`s are pointwise *equal* rather than
+merely shape-equal, so `ancestors`/`lookup`/`className`/`constOwn` are congruent by rewriting.
+
+**The lemma is stated over the four fields rather than over `get`**, and that is the one thing
+here that could not be borrowed: `typeAgree_of_get` needs `h'.get o = h.get o` at every in-bounds
+`o`, which is *false at the written id* — the ivars differ. That difference is the entire content
+of the new `typeAgree_of_fields`.
+
+Three small facts fell out on the way: `objs_getD_set!_oob` (the third case of a `set!` read,
+needed because `bindIvar`'s `self` is a `Value` and nothing in the fragment bounds the reference),
+and `IvarOnly.lookupIn_eq`/`crubyShadow_eq`, which live in `Static/Decls.lean` rather than
+`HeapFacts.lean` because `HeapFacts` imports only `RubyCore.Heap` and `crubyShadow` is `Interp`'s.
+
+### What the delivery case is
+
+One refutation and one transport, with no case analysis on the heap at all — the cheapest
+heap-writing rule in the fragment, and cheap for a reason worth keeping: **the invariant is about
+dispatch and names, and an instance-variable table is neither.**
+
+### The renumbering, again
+
+`infer` gained an arm, so `infer.induct`'s positional cases moved: the new arm is 15/16, and every
+`Mono.lean` case at 15 or above shifted **+2**. Recovery was L189's cheaper procedure rather than
+HANDOFF's `trace` one — `#check @RubyCore.Types.infer.induct`, pipe the pretty-printed type through
+a paren-matching split, and read the alternatives off in order with their conclusion `Expr`
+constructor. That prints the offset directly instead of inferring it from error messages.
+
+### Checks
+
+`lake build Metatheory` green; `check-proofs.sh` all theorems axiom-clean at
+`propext + Classical.choice + Quot.sound`; `--check` **39 / 1,186 / 0** — the transition against the
+stale `/tmp/check-after.txt` is L174's `test_syntax_097`, already accounted for, so this rung is
+inert in the checker; `--assn` smoke 1,227 clean / 0 fail; `fragment-gap.py --self-test` all agree
+(two new rows: the write inside a method body accepts, the same write at toplevel is `unknown`
+because `selfCls` is `none` there). The interpreter is untouched, so no difftest tier can move.

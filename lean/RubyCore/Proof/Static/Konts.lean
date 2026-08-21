@@ -95,6 +95,15 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
   | asgn {D h c Γ Γs τ x k} :
       KontOk D h ((c, envSet Γ x τ) :: Γs) τ k →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
+  /-- **`@x = e`, with the value in flight** (L191). One premise beyond the tail, and
+      it is the *frame context's* rather than the heap's: `selfCls` being inhabited is
+      what the consecution case turns — through `StackCtx` and `plainRecv` — into
+      "the write does not raise `FrozenError`". No binding moves, so the tail is
+      typed in the same environment. -/
+  | asgnIvar {D h c Γ Γs τ x k} :
+      c.selfCls.isSome = true →
+      KontOk D h ((c, Γ) :: Γs) τ k →
+      KontOk D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
   /-- The in-flight value is the condition; either branch may run next, so the
       join must be the one `inferIf` computed. -/
   | ifK {D D' h c Γ Γs τ t els τ' Γ' k} :
@@ -217,6 +226,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | seqNil _ ih => intro ha; exact .seqNil (ih ha)
   | seqCons hs _ ih => intro ha; exact .seqCons hs (ih ha)
   | asgn _ ih => intro ha; exact .asgn (ih ha)
+  | asgnIvar hsc _ ih => intro ha; exact .asgnIvar hsc (ih ha)
   | ifK hi _ ih => intro ha; exact .ifK hi (ih ha)
   | whileCond hl _ ih => intro ha; exact .whileCond hl (ih ha)
   | whileBody hl _ ih => intro ha; exact .whileBody hl (ih ha)
@@ -559,6 +569,11 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     (hpl : (∀ c, obj.payload ≠ .proc c) ∧ (∀ xs, obj.payload ≠ .hsh xs) ∧
            (∀ c, obj.payload ≠ .cls c))
     (he : obj.eigen = none)
+    -- L191: `plainRecv` refuses a frozen object, and every literal producer
+    -- allocates an unfrozen one (`allocStr`/`allocArr` leave the field at its
+    -- default). A hypothesis rather than a derivation, because the lemma is stated
+    -- at an abstract `obj`.
+    (hfz : obj.frozen = false)
     (hk : (h.classPayload? obj.klass).isSome)
     (hn : className h obj.klass = n) :
     ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
@@ -576,7 +591,7 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     case proc c => exact absurd hp (hproc c)
     case hsh xs => exact absurd hp (hhsh xs)
     case cls c => exact absurd hp (hnc c)
-    all_goals simp [hlt, hk]
+    all_goals simp [hlt, hk, hfz]
   show valueTy? _ _ = _
   simp only [valueTy?, hplain, if_true]
   rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass, hn]
