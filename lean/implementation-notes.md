@@ -9201,3 +9201,89 @@ unification, so the next constant-shaped rule costs nothing here.
 `--assn` smoke 1,227 clean; `--self-test` all agree (three new rows: `::String` accepts, `::Regexp`
 is a missing *declaration*, `Float::NAN` is still out); slice-driver 72 lines IDENTICAL; third
 ratchet **36**.
+
+## L204 — the join absorbs a nilable, and the `return` check becomes subtyping
+
+Out of fragment **36 → 35**, `--check` **52 → 56** (four transitions, all
+`unknown → accept`, all typed `T.nilable(Integer)`, none the other way). **`vulns/cvss.rb` is the
+second slice file with no out-of-fragment body.**
+
+One rung, two halves, and they are the same defect seen from two sides: *the fragment's joins were
+stricter than the judgement they factor into*.
+
+### Half one — `joinTy`'s fourth case, which was already in the type language
+
+```lean
+-- before: three cases and then `none`
+else if τ == .nilT then some (.nilable σ) else none
+-- after
+else if σ == .nilable τ then some σ
+else if τ == .nilable σ then some τ
+else none
+```
+
+The measurement that asked for it is one slice method:
+
+```ruby
+def self.severity(vector)
+  score = base_score(vector)
+  return if score.nil?
+  if score >= 9.0 then :critical
+  elsif score >= 7.0 then :high
+  … end                      # no final `else`
+end
+```
+
+The inner `elsif` chain answers `Symbol` on one arm and `nil` on the missing one, so it joins to
+`T.nilable(Symbol)`; the *next* level up then has to join `T.nilable(Symbol)` with `nil`'s
+`Symbol` sibling, and the three old cases refused it. **The least upper bound was already
+expressible** — `nilable τ` — and `subTy` already admits both sides of it (`subTy_refl` for the
+nilable, `subTy`'s third disjunct for the other). So this is not a widening of the type language,
+it is the fourth case of a function that had three.
+
+Written as two `if`s rather than a `match σ, τ` on purpose, and the reason is a bug the first
+draft had: `match .nilable A, .nilable (.nilable A)` takes the *first* arm and answers `none`,
+while the order-independent form answers the second. Two little structural lemmas
+(`ne_nilable_self`, `ne_nilable_self2`) discharge the branches that have to be refuted, and
+`joinTy_absorb`/`joinTy_absorb'` package the equation `joinATy_subst`'s two new cases need at a
+type the tactic cannot name.
+
+### Half two — `subATy`, and the check the nominal rule never asked for
+
+L201 checked *every collected `return` type equals the body's answer*. The nominal rule asks for
+`subTy τ σ`. So the open side was strictly stricter than what it factors into, and `severity` —
+which returns `nil` from a guard clause and `T.nilable(Symbol)` from its tail — was refused for a
+`return-join` that is not a disagreement at all.
+
+```lean
+def subATy (a b : ATy) : Bool :=
+  if a == b then true
+  else match b with
+    | .nilOf b' => a == .nom .nilT || a == b'
+    | .nom (.nilable τ') => a == .nom .nilT || a == .nom τ'
+    | _ => false
+```
+
+Three cases beyond reflexivity, one per disjunct of `subTy`'s `nilable` clause, and the theorem
+that makes them usable is `subATy_subst`: **sound at every `θ`**. That is the requirement the open
+front end always imposes — it commits before a substitution exists — and it is why `subATy` is a
+syntactic approximation rather than a call to `subTy` on the substituted types.
+
+The metatheory change is one line of `Factors`:
+
+```lean
+| .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) → …
+```
+
+and it made the `.ret` case *easier*, because `subTy (τ.subst θ) retF` is now literally the premise
+where before it was an equation the case had to turn into one. `rets_of_all` is two lines
+(`subATy_subst ∘ List.all_eq_true.mp`), `rets_sub`'s four transports are untouched — the predicate
+they push down is opaque to them, which is the property that made L201's design worth having.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` 52 → **56**, read by transition (four `unknown → accept`, zero reverse); `--assn` smoke
+1,227 clean; `--self-test` all agree (two new rows pinning the join's new boundary: an `elsif`
+chain accepts, an `elsif` with two unrelated arms still does not); slice-driver 72 lines IDENTICAL;
+third ratchet **35**, and `if` drops 5 → 4.

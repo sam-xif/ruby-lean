@@ -143,6 +143,18 @@ def joinTy (σ τ : Ty) : Option Ty :=
   if σ == τ then some σ
   else if σ == .nilT then some (.nilable τ)
   else if τ == .nilT then some (.nilable σ)
+  -- **The nilable is absorbed** (L204), and this is not a widening of the *type*
+  -- language — it is the fourth and last case that already has an answer in it.
+  -- `nilable τ` and `τ` have a least upper bound, `nilable τ`, and it is the one
+  -- `subTy` already admits both sides of (`subTy_refl` and `subTy_mkNilable`).
+  --
+  -- The measurement that asked for it: an `if/elsif` chain with no final `else`
+  -- answers `nilable Symbol` on the inner arm and `Symbol` on the outer one, and the
+  -- three cases above refuse *that* — so the slice's `CVSS.severity`, a plain
+  -- four-way `elsif` over a score, was out of fragment for a join the fragment
+  -- already had the type for.
+  else if σ == .nilable τ then some σ
+  else if τ == .nilable σ then some τ
   else none
 
 /-- Pointwise, at the arity the signature declares. A length mismatch is `false`,
@@ -242,6 +254,35 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
   · subst h; simp
   · simp [h, subTy]
 
+/-- **The absorption, packaged for `apply`** (L204). `joinATy_subst`'s two new cases
+    need exactly this equation at a type the tactic cannot name (the match's binder is
+    inaccessible), so stating it as a lemma is what lets unification supply it. Both
+    branches of `mkNilable` are here: at `nilT` the join is `joinTy`'s *first* branch
+    (the two sides are equal), otherwise it is the absorption arm. -/
+@[simp] theorem joinTy_absorb (X : Ty) : joinTy (mkNilable X) X = some (mkNilable X) := by
+  unfold mkNilable
+  by_cases h : X = Ty.nilT
+  · subst h; simp [joinTy]
+  · simp [joinTy, h, Ne.symm h]
+
+/-- `nilable` is not a fixed point of itself — needed by `joinTy_absorb'`, whose first
+    branch has to be refuted at `X` against `nilable X`. One structural induction. -/
+theorem ne_nilable_self : ∀ (X : Ty), ¬ (X = .nilable X)
+  | .nilable Y => by simpa using ne_nilable_self Y
+  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float => by simp
+
+/-- And the once-nested form, which `joinTy_absorb'`'s *first* branch needs refuted.
+    Same induction. -/
+theorem ne_nilable_self2 : ∀ (X : Ty), ¬ (X = .nilable (.nilable X))
+  | .nilable Y => by simpa using ne_nilable_self2 Y
+  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float => by simp
+
+@[simp] theorem joinTy_absorb' (X : Ty) : joinTy X (mkNilable X) = some (mkNilable X) := by
+  unfold mkNilable
+  by_cases h : X = Ty.nilT
+  · subst h; simp [joinTy]
+  · simp [joinTy, h, Ne.symm h, ne_nilable_self X, ne_nilable_self2 X]
+
 /-- Both sides of a join are below it. The join rule's whole soundness content, and
     the reason it is two lines: `joinTy` answers only the two shapes it can justify. -/
 theorem joinTy_sub {σ τ τj : Ty} (h : joinTy σ τ = some τj) :
@@ -264,7 +305,22 @@ theorem joinTy_sub {σ τ τj : Ty} (h : joinTy σ τ = some τj) :
         simp only [Option.some.injEq] at h
         subst h; subst hn
         exact ⟨by simp [subTy], by simp [subTy]⟩
-      · exact absurd h (by simp)
+      · -- L204's two absorption arms, and each is one clause of `subTy` on each side:
+        -- `subTy (.nilable τ) (.nilable τ)` is `subTy`'s second disjunct and
+        -- `subTy τ (.nilable τ)` its third.
+        split at h
+        · rename_i hg
+          simp only [beq_iff_eq] at hg
+          simp only [Option.some.injEq] at h
+          subst h; subst hg
+          exact ⟨by simp [subTy], by simp [subTy]⟩
+        · split at h
+          · rename_i hg
+            simp only [beq_iff_eq] at hg
+            simp only [Option.some.injEq] at h
+            subst h; subst hg
+            exact ⟨by simp [subTy], by simp [subTy]⟩
+          · exact absurd h (by simp)
 
 /-- Local-variable typing environment. Order is canonical (`envSet` replaces in
     place) so that environment *equality* is a usable check — the `if`-merge and

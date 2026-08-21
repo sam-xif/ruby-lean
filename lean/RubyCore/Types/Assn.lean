@@ -154,7 +154,54 @@ def joinATy (a b : ATy) : Option ATy :=
   if a == b then some a
   else if a == .nom .nilT then some (.nilOf b)
   else if b == .nom .nilT then some (.nilOf a)
+  -- **L204's absorption**, and it mirrors `joinTy`'s arm for arm — which is what
+  -- `joinATy_subst` needs, since the two functions have to agree pointwise under
+  -- substitution and `ATy.subst`'s `nilOf` arm is `mkNilable`.
+  else if a == .nilOf b then some a
+  else if b == .nilOf a then some b
   else none
+
+/-- **Is `a` below `b` *at every* substitution?** (L204) — a sound, decidable
+    approximation, and the only place it is used is `inferBody`'s `return` check.
+
+    L201 checked that every collected `return` type is **equal** to the body's answer,
+    which is what made `CVSS.severity` — an `if/elsif` chain with a guard clause in
+    front of it — out of fragment: the guard contributes `nil` and the chain answers
+    `T.nilable(Symbol)`, and those are not equal. They *are* in the subtype relation,
+    and the nominal rule already asks for `subTy τ σ` rather than equality, so the open
+    side was strictly stricter than the judgement it factors into.
+
+    Three cases beyond reflexivity, each matching one disjunct of `subTy`'s `nilable`
+    clause, and each sound at **every** `θ` — which is the requirement, since the open
+    side commits before `θ` exists. -/
+def subATy (a b : ATy) : Bool :=
+  if a == b then true
+  else match b with
+    | .nilOf b' => a == .nom .nilT || a == b'
+    | .nom (.nilable τ') => a == .nom .nilT || a == .nom τ'
+    | _ => false
+
+/-- **And it is sound at every substitution** — `subATy`'s whole reason to exist. -/
+theorem subATy_subst {a b : ATy} {θ : TyVar → Ty} (h : subATy a b = true) :
+    subTy (a.subst θ) (b.subst θ) = true := by
+  unfold subATy at h
+  split at h
+  · rename_i heq
+    simp only [beq_iff_eq] at heq
+    subst heq
+    simp
+  · split at h
+    · rename_i b' _
+      simp only [Bool.or_eq_true, beq_iff_eq] at h
+      rcases h with rfl | rfl
+      · simpa [ATy.subst] using subTy_nilT_mkNilable (ATy.subst θ b')
+      · simpa [ATy.subst] using subTy_mkNilable (ATy.subst θ a)
+    · rename_i τ' _
+      simp only [Bool.or_eq_true, beq_iff_eq] at h
+      rcases h with rfl | rfl
+      · simp [ATy.subst, subTy]
+      · simp [ATy.subst, subTy]
+    · exact absurd h (by simp)
 
 /-- **The two joins agree under substitution**, which is the whole reason `mkNilable`
     exists: at `θ α = NilClass` the open side has emitted `nilOf α` while the nominal
@@ -180,7 +227,24 @@ theorem joinATy_subst {a b c : ATy} {θ : TyVar → Ty} (h : joinATy a b = some 
         simp only [Option.some.injEq] at h
         subst h; subst hn
         simp [ATy.subst]
-      · exact absurd h (by simp)
+      · -- **L204: the two absorption arms**, and `joinTy_absorb`/`joinTy_absorb'` are
+        -- stated for exactly this step. `(.nilOf x).subst θ` is `mkNilable (x.subst θ)`,
+        -- and the equation the goal wants is `joinTy (mkNilable X) X = some (mkNilable X)`
+        -- at an `X` the tactic cannot name — the match's binder is inaccessible — so the
+        -- lemma is applied with `_` and unification supplies it.
+        split at h
+        · rename_i hg
+          simp only [beq_iff_eq] at hg
+          simp only [Option.some.injEq] at h
+          subst h; subst hg
+          exact joinTy_absorb (ATy.subst θ _)
+        · split at h
+          · rename_i hg
+            simp only [beq_iff_eq] at hg
+            simp only [Option.some.injEq] at h
+            subst h; subst hg
+            exact joinTy_absorb' (ATy.subst θ _)
+          · exact absurd h (by simp)
 
 def ASig.subst (θ : TyVar → Ty) (σ : ASig) : Sig :=
   { params := σ.params.map (ATy.subst θ), ret := ATy.subst θ σ.ret }

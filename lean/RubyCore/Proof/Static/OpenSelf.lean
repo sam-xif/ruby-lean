@@ -559,25 +559,29 @@ subexpressions', because `rets` only grows too. -/
 theorem rets_sub {D : Decls} {ctx : OCtx} {Γ : AEnv} {e : Expr} {s s' : OState}
     {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpen D Γ e ctx s = .ok τ Γ' s')
-    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+    (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
+    ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpen_rets D ctx Γ e s τ Γ' s' h a ha)
 
 theorem rets_subIf {D : Decls} {ctx : OCtx} {Γ : AEnv} {t : Expr} {els : Option Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenIf D Γ t els ctx s = .ok τ Γ' s')
-    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+    (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
+    ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenIf_rets D ctx Γ t els s τ Γ' s' h a ha)
 
 theorem rets_subSeq {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenSeq D Γ es ctx s = .ok τ Γ' s')
-    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+    (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
+    ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenSeq_rets D ctx es Γ s τ Γ' s' h a ha)
 
 theorem rets_subArgs {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τs : List ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenArgs D Γ es ctx s = .ok τs Γ' s')
-    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+    (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
+    ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenArgs_rets D ctx es Γ s τs Γ' s' h a ha)
 
 /-! ### Substitution, as simp lemmas
@@ -611,7 +615,7 @@ induction's cases reduce by `simp` alone: an arm that answers `.missing` or
 those. -/
 def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
     (Γ : AEnv) (e : Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       infer D (substEnv θ Γ) e false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
@@ -621,7 +625,7 @@ def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCt
     the conclusion names. -/
 def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
     (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferIf D (substEnv θ Γ) t els false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
@@ -629,7 +633,7 @@ def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : O
 
 def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
     (Γ : AEnv) (es : List Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferSeq D (substEnv θ Γ) es false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
@@ -640,7 +644,7 @@ def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : 
     `inferSeq`. -/
 def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
     (Γ : AEnv) (es : List Expr) : OArgs → Prop
-  | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+  | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferArgs D (substEnv θ Γ) es false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
@@ -908,11 +912,10 @@ currency rather than beside it. -/
     (L201). The check is a `List.all` over the collected types; the premise is a
     membership statement about their substitutions. One `beq` step apart. -/
 theorem rets_of_all {rets : List ATy} {τ : ATy} {θ : TyVar → Ty}
-    (h : rets.all (· == τ) = true) : ∀ a ∈ rets, ATy.subst θ a = τ.subst θ := by
+    (h : rets.all (fun a => subATy a τ) = true) :
+    ∀ a ∈ rets, subTy (ATy.subst θ a) (τ.subst θ) = true := by
   intro a ha
-  have := List.all_eq_true.mp h a ha
-  simp only [beq_iff_eq] at this
-  rw [this]
+  exact subATy_subst (List.all_eq_true.mp h a ha)
 
 /-- The body-level factoring theorem, at the store the body ends at.
 

@@ -418,7 +418,8 @@ def inferBody (D : Decls) (c : String) (body : Expr) : OResult :=
   -- nothing a *declaration* could supply would fix it; the two types simply differ, and
   -- joining them would need the union this fragment does not have.
   match inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 } with
-  | .ok τ Γ' s => if s.rets.all (· == τ) then .ok τ Γ' s else .outOfFragment "return-join"
+  | .ok τ Γ' s =>
+    if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
   | r => r
 
 /-- §11's per-body verdict, as an output of the checker rather than a duplicate of
@@ -552,7 +553,9 @@ def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
   | some (Γb, s) =>
     -- L201's check, at the parameterized entry point too.
     some (Γb, match inferOpen D Γb body ctx s with
-      | .ok τ Γ' s' => if s'.rets.all (· == τ) then .ok τ Γ' s' else .outOfFragment "return-join"
+      | .ok τ Γ' s' =>
+        if s'.rets.all (fun a => subATy a τ) then .ok τ Γ' s'
+        else .outOfFragment "return-join"
       | r => r)
   | none => none
 
