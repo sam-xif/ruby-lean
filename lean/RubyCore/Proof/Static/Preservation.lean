@@ -70,7 +70,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       have := hsc.2.2.2.1 c hsome
       rw [show m.currentFrame = m.frames.getD fid default by
         simp [Machine.currentFrame, hst]]
-      exact this
+      exact this.1
   rcases htab.1 _ mname _ (sigOf_declFor hsg) with hbi |
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, hw, hstep⟩ :=
@@ -108,13 +108,20 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         simp only [Option.some.injEq] at hsc'
         subst hsc'
         rw [getD_push_lt_self]
-        show ValueTy m.heap m.currentFrame.self (.cls cu)
+        show ValueTy m.heap m.currentFrame.self (.cls cu) ∧
+          (userFrame m.currentFrame.self mdu mname).defmod ∈
+            ancestors m.heap (classOf m.heap m.currentFrame.self)
         have hcu : c = cu := by simpa using htys
-        exact hcu ▸ hself
+        -- **L209: and the chain half is `ResolvesUser`'s eleventh clause, spent
+        -- here.** `userFrame` sets `defmod := md.owner`, and the row's resolution says
+        -- that owner is on the receiver's chain — which is the fact `doSuper`'s
+        -- `dropWhile` needs and the one thing the walk cannot recover for itself.
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch⟩ := hru
+        exact ⟨hcu ▸ hself, hch⟩
       -- **L189: the callee's lexical scope**, which `ResolvesUser` carries — the
       -- ninth clause it grew for exactly this push.
       · rw [getD_push_lt_self]
-        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _⟩ := hru
         exact hcr
       -- L198/L200: `userFrame` builds a `.method` frame, and the caller's context is
       -- right there on the list — so the callee's context may declare a return type.
@@ -198,7 +205,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have := hsc.2.2.2.1 c hsome
           rw [show m.currentFrame = m.frames.getD fid default by
             simp [Machine.currentFrame, hst]]
-          exact this
+          exact this.1
       · exact absurd hinf (by simp)
     -- **The implicit-self send** (F1b.11), and it is the only send case with no
     -- continuation: `evalExpr` goes straight to `startArgs … [] []`, which is
@@ -323,7 +330,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 have := hsc2.2.2.2.1 sc hsome
                 rw [show m.currentFrame = m.frames.getD fid default by
                   simp [Machine.currentFrame, hst]]
-                exact this
+                exact this.1
             obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
               cases hsv : m.currentFrame.self with
               | ref o' => exact ⟨o', rfl⟩
@@ -755,7 +762,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               rw [hdefk]; exact huniq₀ k htc.1 htc.2
             subst hk
             refine ⟨(curFrame m).defmod, ?_, hb, hu, hvs, hpar, hdec, hcap,
-              by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_, hcref⟩
+              by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_, hcref,
+              -- L209: the definee is the head of its own chain (`ClassOk`'s reopen
+              -- clause, already destructured as `hrest`), and `md.owner` *is* the
+              -- definee at the step that installs it — so `super`'s chain clause is
+              -- free here and needs no new fact about `lookup`.
+              by rw [hown, hrest]; exact List.mem_cons_self ..⟩
             · show lookup.go _ name (ancestors _ _) = _
               rw [hrest]
               exact lookup_go_defineMethod_self m.heap _ name md hdo rest
@@ -860,7 +872,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 have := hsc.2.2.2.1 c hsome
                 rw [show m.currentFrame = m.frames.getD fid default by
                   simp [Machine.currentFrame, hst]]
-                exact this
+                exact this.1
             have hsp : ∀ e, arg ≠ .splat e := by
               rintro e rfl; exact absurd he (by simp [infer])
             have hkw : ∀ es, arg ≠ .kwargs es := by
@@ -1089,7 +1101,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have := hsc2.2.2.2.1 sc hsc'
           rw [show m.currentFrame = m.frames.getD fid default by
             simp [Machine.currentFrame, hst]]
-          exact this
+          exact this.1
       obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
         cases hsv : m.currentFrame.self with
         | ref o' => exact ⟨o', rfl⟩
@@ -1378,10 +1390,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq] at hsc'
             subst hsc'
             rw [getD_push_lt_self]
-            exact hv
+            -- L209: as at the self-send push — `userFrame`'s definee is `md.owner`
+            -- and the row's resolution puts it on the receiver's chain.
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch⟩ := hru
+            exact ⟨hv, hch⟩
           -- L189: `ResolvesUser`'s tenth clause, spent here.
           · rw [getD_push_lt_self]
-            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _⟩ := hru
             exact hcr
           -- L198/L200: `userFrame`'s kind, and the caller is on the list.
           · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩

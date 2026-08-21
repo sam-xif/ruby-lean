@@ -9573,3 +9573,84 @@ renumbers exactly the accessors of the clause that used to be last.
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**,
 `heapOkB`/`saturatedB` still hold at the booted heap; third ratchet **30**, unchanged and
 byte-identical — nothing reads the clause yet.
+
+## L209 — the chain fact reaches the frame: `ResolvesUser`'s eleventh clause and `StackCtx`'s fifth, extended
+
+Out of fragment **30 → 30**, third ratchet byte-identical, `Proof/`-only. `super`'s second
+prerequisite, and — like L207 and L208 before it — inert: nothing reads either clause yet.
+
+### What was owed
+
+`doSuper` (`Interp/Send.lean:260`) walks
+
+```lean
+(ancestors m.heap (classOf m.heap f.self)).dropWhile (· != f.defmod) |>.drop 1
+```
+
+so if the frame's definee is **not on** the receiver's dispatch chain, `dropWhile` consumes the whole
+list and `doSuper` raises `NoMethodError` — type-stuck, which is what the checker exists to rule out.
+The fact is therefore owed at the frame, and it has to *cross the call* the way L189's `cref` clause
+does.
+
+### Two clauses, and the design decision is where to put the second
+
+1. **`ResolvesUser` gains `md.owner ∈ ancestors h k`** (clause 11). *Not* derivable from clause 1 —
+   and the gap is one the existential hides: `lookupIn h k mname = some (owner, md)` gives
+   `owner ∈ ancestors h k` (a `lookup.go` induction), but the frame is built with **`md.owner`**, and
+   nothing in the fragment pins the two together. Stating it costs one line at the *only* production
+   site (the `def` consecution), where `md.owner = defmod` by construction and `ClassOk`'s reopen
+   clause already gives `hrest : ancestors … defmod = defmod :: rest`. All three transports
+   (`_grow`, `_defineMethod`, `IvarOnly.resolvesUser`) discharge it with the `ancestors` rewrite they
+   already perform for the shadow clause.
+
+2. **`StackCtx`'s `selfCls` clause gains the chain fact as a second conjunct** — rather than a new
+   clause of its own, and the guard is the whole reason:
+
+   > The transport needs `classOf h' self = classOf h self`, which for a `.ref o` needs
+   > `o < h.objs.size` — and `ValueTy h self (.cls sc)`, the clause's *first* conjunct, is exactly
+   > that fact (`valueTy_ref_lt`). Free-standing, the chain clause would have had to carry a bound of
+   > its own. Attached, it carries none.
+
+   And the guard is right on its merits: a class body says `selfCls = none` and owes neither half,
+   which is correct — there `self` is the class object, `defmod` is the class, and a class is not on
+   its own eigenclass's chain. **This is the second time the *pairing* of a new clause with an
+   existing one was cheaper than a new conjunct** (L193's subsumptive `ValueTy` absorbing four of
+   `ClassOk`'s was the first).
+
+### The bound came out of the membership, which is the finding worth keeping
+
+The chain congruence also needs `classOf h self < h.objs.size`, and *nothing* was going to supply it
+— until the definition of `ancestors` did:
+
+```lean
+theorem classOf_lt_of_mem_ancestors (hd : (h.classPayload? d).isSome) (hm : d ∈ ancestors h k) :
+    k < h.objs.size
+```
+
+`ancestors.go`'s `classPayload? = none` arm returns `[k]`, so a **non-class** id's chain is the
+singleton `[k]` (`ancestors_of_not_class`, new in `Proof/HeapFacts.lean`). So either `k` is a class —
+bound by `classPayload?_isSome_lt` — or the member *is* `k`, and the member is a class by hypothesis,
+which contradicts `k` not being one. **Membership in a chain bounds the chain's root**, and the
+second case is vacuous rather than proved. `StackCtx`'s own first clause supplies `hd`.
+
+### What it cost, itemized
+
+| site | change |
+|---|---|
+| `ResolvesUser` | one clause; three transports gained one rewrite each |
+| the `def` consecution | one line (`rw [hown, hrest]`) |
+| `StackCtx` | one conjunct inside clause 5 |
+| `StackCtx_congr` | the clause now spends **two** frame agreements (`self` and `defmod`) where it spent one |
+| `StackCtx.heap_congr` | the new work: a `cases` on the self value (immediates are `rfl` — a `Boot` dispatch class is heap-independent), then the two rewrites |
+| the two user pushes | `⟨hv, hch⟩` where they had `hv`, `hch` from `ResolvesUser`'s new clause |
+| five `hself` derivations | `exact this.1` |
+
+Nothing else moved, and in particular **`TypeAgree` did not have to grow again**: L208's sixth clause
+is exactly what `heap_congr` spends here, one commit after it landed inert. That is the check on
+L208's framing — a transport clause landed for a named future consumer, and the consumer used it
+unchanged.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**; third
+ratchet **30**, byte-identical. No `--check` diff owed (`Proof/`-only, not linked into the binary).

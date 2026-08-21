@@ -262,7 +262,21 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     -- Heap-independent, so both transports carry it for free; established by the `def`
     -- step from the defining frame's own clause, since `evalExpr` sets
     -- `cref := m.currentFrame.cref` (`Interp.lean:228`).
-    Boot.objectId ∈ md.cref
+    Boot.objectId ∈ md.cref ∧
+    -- **L209: the definee is on the dispatch chain it was found from.** `super`'s
+    -- whole frame-side cost, and it crosses the call here for the same reason the
+    -- `cref` clause does: the callee's frame takes `defmod := md.owner`, and
+    -- `doSuper` walks `(ancestors h (classOf h self)).dropWhile (· != defmod)` — which
+    -- empties the list, and raises `NoMethodError`, if the definee is *not* on it.
+    --
+    -- Not derivable from `lookupIn h k mname = some (owner, md)` above, and the reason
+    -- is a gap the existential hides: `lookup.go` returns a member of the list it
+    -- walked, so *`owner`* is on the chain, but the frame is built with **`md.owner`**
+    -- and nothing in the fragment pins the two together. So it is stated, and the one
+    -- production site (`def`'s consecution, where `md.owner = defmod` by construction
+    -- and `ClassOk`'s head clause puts `defmod` first on its own chain) has it for
+    -- free.
+    md.owner ∈ ancestors h k
 
 /-- **Conformance for a user method is discharged by the checker, not by running
     anything**: the body infers at the declared return type in the environment
@@ -909,11 +923,15 @@ theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
 theorem ResolvesUser_grow {h h' : Heap} {k : ObjId} {mname : String} {md : MethodDef}
     (hg : PlainGrow h h') (hsat : Saturated h)
     (hr : ResolvesUser h k mname md) : ResolvesUser h' k mname md := by
-  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw⟩ := hr
-  refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap, by rw [hg.payload]; exact hown, ?_⟩
+  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw, hcref, hchain⟩ := hr
+  refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap, by rw [hg.payload]; exact hown, ?_,
+    hcref, ?_⟩
   · unfold lookupIn at hlook ⊢
     rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
   · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
+  · -- L209: the chain itself, and `PlainGrow.ancestors_eq` is the same fact the two
+    -- clauses above already spend.
+    rw [hg.ancestors_eq hsat]; exact hchain
 
 /-- **And across a `def` of a different name** — the same name-disjointness
     `ResolvesAt_defineMethod` needs, since a write to an existing table can displace
@@ -922,13 +940,14 @@ theorem ResolvesUser_defineMethod {h : Heap} {k : ObjId} {mname : String}
     {md : MethodDef} {cls : ObjId} {name : String} {md' : MethodDef}
     (hr : ResolvesUser h k mname md) (hne : ¬ (mname = name)) :
     ResolvesUser (defineMethod h cls name md') k mname md := by
-  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw⟩ := hr
+  obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw, hcref, hchain⟩ := hr
   refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap,
-    by rw [classPayload?_isSome_defineMethod]; exact hown, ?_⟩
+    by rw [classPayload?_isSome_defineMethod]; exact hown, ?_, hcref, ?_⟩
   · unfold lookupIn at hlook ⊢
     rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md' hne]
     exact hlook
   · rw [ancestors_defineMethod, crubyShadow_defineMethod]; exact hbtw
+  · rw [ancestors_defineMethod]; exact hchain
 
 /-- The `defineMethod` case, class-indexed. Same proof as the receiver-shaped one it
     replaces, with `classOf_defineMethod` no longer needed — a class id is not a
@@ -2211,9 +2230,9 @@ theorem resolvesAt (hi : IvarOnly h h') {k : ObjId} {mname bid : String}
 
 theorem resolvesUser (hi : IvarOnly h h') {k : ObjId} {mname : String} {md : MethodDef}
     (hr : ResolvesUser h k mname md) : ResolvesUser h' k mname md := by
-  obtain ⟨owner, hl, hb, hu, hv, hps, hdc, hcf, hown, hsh, hcref⟩ := hr
+  obtain ⟨owner, hl, hb, hu, hv, hps, hdc, hcf, hown, hsh, hcref, hchain⟩ := hr
   refine ⟨owner, by rw [hi.lookupIn_eq]; exact hl, hb, hu, hv, hps, hdc, hcf,
-    by rw [hi.classPayload]; exact hown, ?_, hcref⟩
+    by rw [hi.classPayload]; exact hown, ?_, hcref, by rw [hi.ancestors_eq]; exact hchain⟩
   rw [hi.crubyShadow_eq, hi.ancestors_eq]
   exact hsh
 

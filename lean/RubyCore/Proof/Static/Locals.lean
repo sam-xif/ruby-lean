@@ -317,6 +317,22 @@ theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} (hp : plainRecv h o = true) 
     classOf h (.ref o) < h.objs.size :=
   classPayload?_isSome_lt (valueTy_ref_klass_isSome hp)
 
+/-- **Membership in a chain bounds the chain's root** (L209), and it is what lets the
+    `StackCtx` chain clause carry its own bound rather than being handed one.
+
+    If `k` is a class the bound is `classPayload?_isSome_lt`. If it is not, its chain is
+    `[k]`, so the member *is* `k` — and the member is a class by hypothesis, which
+    contradicts `k` not being one. So the second case is vacuous rather than proved. -/
+theorem classOf_lt_of_mem_ancestors {h : Heap} {k d : ObjId}
+    (hd : (h.classPayload? d).isSome) (hm : d ∈ ancestors h k) : k < h.objs.size := by
+  cases hp : h.classPayload? k with
+  | some cp => exact classPayload?_isSome_lt (by rw [hp]; simp)
+  | none =>
+      rw [ancestors_of_not_class hp] at hm
+      simp only [List.mem_singleton] at hm
+      rw [hm, hp] at hd
+      exact absurd hd (by simp)
+
 /-- **A typed `.ref` is not typed at a *ground* type.** L146's statement was the
     positive one — *a `.ref`'s type is a class type* — and L193 made that false: the
     relation admits `.any` and `.nilable` above the exact type. The negative form is
@@ -512,8 +528,18 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- gives it no type. The fact is not new work at the push — `user_dispatch`
       -- already has it as the send's own `ValueTy` on the receiver — it is the
       -- *carrying* of it across the body's steps that this clause is.
+      -- **L209 adds the chain fact to this clause rather than beside it**, and the
+      -- guard is what makes it transportable: `super`'s obligation is
+      -- `defmod ∈ ancestors h (classOf h self)`, whose transport needs `self`'s id in
+      -- bounds to move `classOf` — and `ValueTy h self (.cls sc)` is exactly that fact
+      -- (`valueTy_ref_lt`). Stated free-standing it would have needed a bound of its
+      -- own; stated here it is free. A class body says `selfCls = none` and owes
+      -- neither half, which is right: `self` is the class object there, `defmod` is the
+      -- class, and the class is not on its own eigenclass's chain.
       (∀ sc, c.selfCls = some sc →
-        ValueTy h (frames.getD fid default).self (.cls sc)) ∧
+        ValueTy h (frames.getD fid default).self (.cls sc) ∧
+        (frames.getD fid default).defmod ∈
+          ancestors h (classOf h (frames.getD fid default).self)) ∧
       -- **`Object` is on the frame's lexical constant scope** (L189), and it is the
       -- *whole* frame-side cost of the `.const` read rule. `evalExpr`'s `.const` walks
       -- `cref` before the ancestors (artifact 03 §4), and `ClassOk`'s sole-owner
@@ -1019,7 +1045,10 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
-      · rw [hsf fid (List.mem_cons_self ..)]; exact hs.2.2.2.1
+      · -- L209: the clause now reads `defmod` as well as `self`, so it spends *two* of
+        -- the agreements rather than one.
+        rw [hsf fid (List.mem_cons_self ..), hd fid (List.mem_cons_self ..)]
+        exact hs.2.2.2.1
       · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
       · rw [hkd fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.1
       · rw [hmt fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.2.1
@@ -1339,11 +1368,29 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
   | fid :: fids, c :: cs, hs => by
       have hlt : (frames.getD fid default).defmod < h.objs.size :=
         classPayload?_isSome_lt hs.1
-      refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ValueTy.congr ha (hs.2.2.2.1 sc hsc),
+      refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ?_,
         hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1,
         StackCtx.heap_congr ha hs.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
+      · -- **L209: the chain half, and this is what `TypeAgree`'s sixth clause is for.**
+        -- Two rewrites, each needing its own bound, and both bounds come out of facts
+        -- the clause already carries: `self`'s id from `valueTy_ref_lt` (an immediate
+        -- has a `Boot` dispatch class, which is heap-independent, so those arms are
+        -- `rfl`), and the dispatch class's id from `classOf_lt_of_mem_ancestors` —
+        -- membership *is* the bound, because a non-class id's chain is the singleton.
+        obtain ⟨hv, hch⟩ := hs.2.2.2.1 sc hsc
+        refine ⟨ValueTy.congr ha hv, ?_⟩
+        have hco : classOf h' (frames.getD fid default).self
+            = classOf h (frames.getD fid default).self := by
+          cases hsv : (frames.getD fid default).self with
+          | ref o =>
+              rw [hsv] at hv
+              exact ha.1 o (valueTy_ref_lt hv)
+          | bool b => cases b <;> rfl
+          | _ => rfl
+        rw [hco, ha.2.2.2.2.2 _ (classOf_lt_of_mem_ancestors hs.1 hch)]
+        exact hch
   | [], _ :: _, hs => hs.elim
   | _ :: _, [], hs => hs.elim
 

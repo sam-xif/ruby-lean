@@ -260,6 +260,17 @@ theorem ancestors_congr {h h' : Heap} (hs : ShapeAgree h h')
   unfold ancestors
   rw [hsz, ancestors_go_congr hs hsz]
 
+/-- **A non-class id's chain is the singleton** (L209). Immediate from the `go`
+    definition — the `classPayload? = none` arm returns `[k]`, and the dedup `foldl`
+    over a one-element list is that list — but worth naming, because it is what turns
+    *membership in a chain* into *the chain's root is in bounds* below. -/
+theorem ancestors_of_not_class {h : Heap} {k : ObjId}
+    (hk : h.classPayload? k = none) : ancestors h k = [k] := by
+  unfold ancestors
+  rw [show ancestors.go h k (h.objs.size + 1) = [k] from by
+    simp [ancestors.go, hk]]
+  simp
+
 /-! ## L191: a write that touches only `ivars`
 
 `bindIvar` (`Interp/Support.lean:36`) rewrites one slot with an object differing
