@@ -8456,3 +8456,73 @@ goal that never prints inside the chain is a goal the chain created.**
 **byte-identical to L193** (51/1,174/0) — the nominal rule's behaviour is unchanged, only its
 spelling; `--assn` smoke 1,227 clean / 0 fail; `--self-test` all agree; `fragment-gap.py` **74** out
 of fragment with `if` down to 2. Interpreter untouched.
+
+---
+
+## L194 — the read table and the reopen table are not the same table
+
+**Out of fragment 74 → 74.** This rung moves no bodies, and it is committed anyway because it
+separates two rules that had been sharing one obligation set, adds the one name that separation
+admits at the boot heap (`Float`), and — the actual product — **prices the name that matters**.
+
+### The two clause sets
+
+`class C … end` and a read of `C` are different rules. The reopen must know the object is a class
+and not a **module**, that its ancestor chain **starts at itself** (a `def` in the body has to land
+where `lookup` finds it), and that nothing before `Object` on its chain owns a constant
+(**`NoShadowBefore`** — a constant read *inside* the body has to reach the toplevel table). The read
+of `C`'s own name needs none of those: only that the name is in `Object`'s own table, uniquely, at a
+legal receiver, and that no other class object owns it.
+
+Until now the read was built on top of the reopen's table, so it inherited three clauses it does not
+use. `ClassOk` is now quantified over `readableClasses` with the reopen triple behind
+`n ∈ reopenableClasses`. **One block, not two**, and deliberately: two blocks would double every
+`ClassOk` transport (`_grow`, `_defineMethod`, `IvarOnly.classOk`), and the transports *are* the cost
+of this predicate.
+
+`scripts/reopen_probe.lean` now decides both sets per candidate — the fifth probe extension whose
+output changed the design rather than confirming it.
+
+### What `T` costs, which is the point of the commit
+
+The measurement said `T` alone frees **six** method bodies: it is the slice's most-read constant by a
+factor of five (259 occurrences, `T.let`/`T.must`/`T.nilable`) and, being a **module**, it can never
+be reopenable — so the split above is exactly what would let it in. It passes all four read clauses
+at the prelude-booted heap.
+
+**And it cannot go in the table.** `T` is defined by `sorbet-runtime`, so it exists only at the
+*prelude-booted* heap, while `check_sound` runs at `Machine.init p` — the bare boot heap, where
+`decide (classOkB Boot.initHeap)` is what establishes `Inv`. A table entry naming an absent constant
+makes `ClassOk` **false** there, and `check_sound` becomes unprovable. Measured, not guessed: adding
+`T` turned that `decide` red immediately, and removing it turned it green.
+
+The rule cannot dodge it either. `infer` is a pure function of the program, so it cannot ask whether
+the constant is present; and weakening `ClassOk`'s clause to *present-and-good ∨ absent-everywhere*
+does not help, because the absent case makes the read raise `NameError` — a `.jump`, which `CtlOk`
+refuses. **Typing `T` requires the prelude, and any rule that types it unconditionally is unsound at
+the boot heap.**
+
+So the next rung is structural, and its shape is already visible in the code: **the readable-constant
+table belongs in `Decls`**, whose unused `consts` field (added at L179 and never populated) is
+exactly the slot. `Inv` already ∃-quantifies the table and carries `DeclsOk D h`, so no invariant
+parameterization is needed — `declsOf p` keeps a boot-safe `consts` for `check_sound`, and the
+`--assn` route, whose soundness (`inferBodyWith_sound`) is *already* parameterized by `D`, passes a
+prelude-aware one. What moves is ~7 clauses from `ClassOk` into `DeclsOk`, plus that predicate's
+three transports.
+
+### `Float`, and why it is the only name this commit adds
+
+`Float` owns `NAN` and `INFINITY`, so `NoShadowBefore` fails and it can never be reopened; reading
+the *name* `Float` never enters a `Float` frame, so the read does not care. It is boot-safe, so it
+goes in. `Comparable` and `Kernel` are free by the same measurement and are **not** added: nothing in
+the slice reads them, and a row with no call site is the speculative clause L191 warned about.
+`Array`/`Hash`/`Range` are refused — `T::Array` and friends own those names, so sole ownership fails
+— and `Regexp` is refused because `classRecv` excludes its id (L106).
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, `heapOkB` true at the
+prelude-booted heap and `classOkB Boot.initHeap` still `decide`-able; `--check` **byte-identical**
+(51/1,174/0); `--assn` smoke 1,227 clean; `--self-test` all agree; difftest at baseline (tier 0
+992/0, slice 351/0/1, regressions 35 held / 2 known-open). `fragment-gap.py` grew a `READABLE` set
+beside `REOPENABLE`, which is the mirror of the same split.

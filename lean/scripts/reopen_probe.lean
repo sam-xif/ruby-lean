@@ -56,7 +56,11 @@ def main : IO UInt32 := do
           let sole := (List.range h.objs.size).all fun j =>
             !((h.classPayload? j).isSome && j != Boot.objectId) || (constOwn h j nm).isNone
           let ok := !mod && nmok && uniq && head && nsb && idok && sole
-          IO.println s!"{nm}  {ok}  module={mod} name={nmok} uniq={uniq} head={head} noShadow={nsb} idok={idok} sole={sole}"
+          -- L194: the *read* rule's clause set, which drops `isModule`, `head` and
+          -- `NoShadowBefore`.
+          let readOk := nmok && uniq && idok && sole
+          IO.println s!"{nm}  reopen={ok}  read={readOk}  module={mod} name={nmok} \
+uniq={uniq} head={head} noShadow={nsb} idok={idok} sole={sole}"
         | none => IO.println s!"{nm}  false  constant is not a class"
       | _ => IO.println s!"{nm}  false  not a class constant of Object"
     return 0

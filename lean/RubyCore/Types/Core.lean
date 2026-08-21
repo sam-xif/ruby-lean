@@ -431,9 +431,11 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- **A constant read** (L189), and it is the first `Expr` head to *produce* a
   -- class-object type — the arm L184/L185 built with no producer.
   --
-  -- Restricted to `reopenableClasses`, and the restriction is the same table the
-  -- `class'` rule reads, for a stronger reason: every row of it is a promise
-  -- `ClassOk` keeps, and this rule needs **four** of those promises —
+  -- Restricted to `readableClasses`, which since L194 is a *superset* of the table
+  -- the `class'` rule reads: a read needs strictly fewer of `ClassOk`'s promises than
+  -- a reopen, and the two names that difference admits (`T`, a module; `Float`, whose
+  -- own constants break `NoShadowBefore`) are worth seven method bodies of the slice.
+  -- This rule needs **four** promises —
   -- `constOwn Object n` answers a class object, that object is named `n`, it is not
   -- one of the two ids `invoke` dispatches singleton families from, and **`Object`
   -- is its sole owner** (L189's clause). The last is what makes the rule need no
@@ -445,7 +447,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- adds **no `KontOk` constructor** — the third rule in the fragment with that
   -- property, after `.self'` and `.vcall`.
   | .const n =>
-    if reopenableClasses.contains n then some (.clsOf n, Γ, D) else none
+    if readableClasses.contains n then some (.clsOf n, Γ, D) else none
   -- **An array literal** (L174), and it is L151's string-literal producer with a
   -- list in front of it: `continueArray` evaluates the elements left to right and
   -- then `Builtins.allocArr`s one fresh plain `Array` — the *same* `Heap.alloc` of

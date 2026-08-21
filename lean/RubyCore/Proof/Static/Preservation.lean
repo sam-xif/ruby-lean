@@ -208,7 +208,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       · next hre =>
         simp only [Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl, rfl⟩ := hinf
-        obtain ⟨k, cp, hconst, hpay, hmod, hnm, huniq, hhead, hns, hrx, hmt, hsole⟩ :=
+        obtain ⟨k, cp, hconst, hpay, hnm, huniq, hrx, hmt, hsole, -⟩ :=
           hcls.2.2 n (List.mem_of_elem_eq_true hre)
         -- `Object` is on the frame's cref (`StackCtx`, L189), so the *lexical* phase
         -- cannot miss — and sole ownership makes whatever it hits `Object`'s. The
@@ -332,8 +332,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rw [currentFrame_eq hf.1]; exact BottomObj_curFrame hst hbot
       -- `ClassOk` at this name: the constant is there, it is a class, and it is not
       -- a module — the three tests `enterClassBody` applies before `pushFrame`.
-      obtain ⟨k, cp, hconst, hpay, hmod, hnm, huniq⟩ :=
-        hcls.2.2 name (List.mem_of_elem_eq_true hmem)
+      obtain ⟨k, cp, hconst, hpay, hnm, huniq, -, -, -, hreop⟩ :=
+        hcls.2.2 name (readable_of_reopenable (List.mem_of_elem_eq_true hmem))
+      obtain ⟨hmod, -, -⟩ := hreop (List.mem_of_elem_eq_true hmem)
       -- **L189: the enclosing frame's lexical scope**, which the pushed frame
       -- inherits because `enterClassBody` *prepends*.
       have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
@@ -506,9 +507,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             ancestors (defineMethod m.heap (curFrame m).defmod name md)
               (curFrame m).defmod = (curFrame m).defmod :: rest := by
           intro md
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀, _, _, _, _⟩ :=
+          obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, hreop₀⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
-              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
+              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+              (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
+          obtain ⟨-, hhead₀, -⟩ := hreop₀ (List.mem_of_elem_eq_true hmemctx)
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo)
               (by rw [className_defineMethod]; exact hctx)
@@ -535,9 +538,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             -- `def` rule now tests it and this is a hypothesis rather than a
             -- computation.
             exact hdf.1
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _, _, _, _, _⟩ :=
+          obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, _⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
-              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
+              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+              (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
           have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
               (curFrame m).defmod = ctx.cls := by rw [className_defineMethod]; exact hctx
           have hdefk : (curFrame m).defmod = k₀ :=

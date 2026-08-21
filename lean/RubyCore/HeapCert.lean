@@ -100,32 +100,37 @@ def classOkB (h : Heap) : Bool :=
   (className h Boot.objectId == "Object") &&
   -- L178, at `Object` itself: the toplevel frame's definee.
   noShadowBeforeB h Boot.objectId &&
-  Types.reopenableClasses.all fun n =>
+  -- L194: quantified over the *read* table, with the reopen-only clauses guarded by
+  -- membership in the smaller one — mirroring `ClassOk`'s own shape.
+  Types.readableClasses.all fun n =>
     match constOwn h Boot.objectId n with
     | some (.ref k) =>
       match h.classPayload? k with
       | some cp =>
-        !cp.isModule && className h k == n &&
+        className h k == n &&
           -- The uniqueness clause (F1b.9). Quadratic in the class objects only if
           -- every name is in the table; `reopenableClasses` has one row, so this is
           -- one linear scan per row. `scripts/names_probe.lean` reports the general
           -- fact this restricts.
           ((List.range h.objs.size).all fun j =>
             !((h.classPayload? j).isSome && className h j == n) || j == k) &&
-          -- F1b.10: the chain starts at the class, so a `def` on it is what
-          -- `lookup` finds. `prepends` come first in `ancestors`, so this is a
-          -- real condition and not a restatement.
-          ((ancestors h k).head? == some k) &&
-          -- L178, at this class: a method body of it is the other frame a
-          -- constant read can happen in.
-          noShadowBeforeB h k &&
           -- L189's two clauses for the `.const` read: the class object is a legal
           -- receiver, and `Object` is the sole owner of a constant of this name —
           -- the second is what makes a `cref` clause unnecessary.
           (k != Boot.regexpId) && (k != Boot.mathId) &&
           ((List.range h.objs.size).all fun j =>
             !((h.classPayload? j).isSome && j != Boot.objectId) ||
-              (constOwn h j n).isNone)
+              (constOwn h j n).isNone) &&
+          -- L194: the three the *reopen* rule needs, decided only where it applies.
+          (!Types.reopenableClasses.contains n ||
+            (!cp.isModule &&
+              -- F1b.10: the chain starts at the class, so a `def` on it is what
+              -- `lookup` finds. `prepends` come first in `ancestors`, so this is a
+              -- real condition and not a restatement.
+              ((ancestors h k).head? == some k) &&
+              -- L178, at this class: a method body of it is the other frame a
+              -- constant read can happen in.
+              noShadowBeforeB h k))
       | none => false
     | _ => false
 

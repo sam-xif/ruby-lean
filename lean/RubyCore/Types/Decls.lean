@@ -290,6 +290,44 @@ def reopenableClasses : List String :=
    "ZeroDivisionError", "FrozenError", "StopIteration", "RangeError",
    "LocalJumpError"]
 
+/-- **The names the `.const` *read* rule admits** (L194) — a *superset* of
+    `reopenableClasses`, because the read needs strictly fewer facts than the reopen.
+
+`class C … end` must know the object is a class and not a module, that its ancestor
+chain starts at itself (a `def` in the body has to land where `lookup` finds it), and
+that nothing before `Object` on its chain owns a constant (a constant read *inside*
+the body has to reach the toplevel table). **A read of `C` itself needs none of
+those** — only that the name is in `Object`'s own table, uniquely, at a legal
+receiver, and that no other class object owns the name.
+
+Splitting the two is worth **seven method bodies** of the slice, and both entries
+below are there because a measurement put them there
+(`scripts/reopen_probe.lean` decides both clause sets per candidate):
+
+* **`T`** is the slice's most-read constant by a factor of five — 259 occurrences,
+  `T.let`/`T.must`/`T.nilable` — and it is a **module**, so it can never be
+  reopenable. Six bodies.
+* **`Float`** owns `NAN` and `INFINITY`, so something in front of `Object` on its
+  chain owns a constant and `NoShadowBefore` fails. That clause is about reading
+  constants from *inside* `Float`, which reading the name `Float` does not do. One
+  body.
+
+`Comparable` and `Kernel` are also free by the same measurement and are **not** here:
+nothing in the slice reads them, and a row with no call site is the speculative clause
+L191 warned about. `Array`, `Hash` and `Range` are refused — `T::Array` and friends
+own those names too, so sole ownership fails — and `Regexp` is refused because
+`classRecv` excludes its id (L106). -/
+def readableClasses : List String :=
+  reopenableClasses ++ ["Float"]
+
+/-- Every reopenable name is readable — the inclusion `ClassOk`'s consumers use to
+    read the reopen clauses out of the one quantified block. `simp` proves it because
+    the table is a literal `++`. -/
+theorem readable_of_reopenable {n : String} (h : n ∈ reopenableClasses) :
+    n ∈ readableClasses := by
+  unfold readableClasses
+  exact List.mem_append_left _ h
+
 /-- The declarations in force while checking `p`.
 
     A function of the program, and constant today: no construct in `infer`'s

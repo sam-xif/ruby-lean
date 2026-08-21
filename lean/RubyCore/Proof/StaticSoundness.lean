@@ -200,13 +200,13 @@ def egClassBody : Expr :=
   .class' "String" none (.def' "shout" [] (.int 1))
 
 example : check egClassBody = .accept := by
-  simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
+  simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses, groundClassNames,
     defFree, defFreeAll, addRow, declsFor, isSelf]
 
 theorem egClassBody_safe :
     ∀ r, ReachableResult (Machine.init egClassBody) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
+    simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses, groundClassNames,
       defFree, defFreeAll, addRow, declsFor, isSelf])
 
 /-- **The first accepted program with a user-method call** (F1b.10):
@@ -238,14 +238,14 @@ def egUserCall : Expr :=
 
 example : check egUserCall = .accept := by
   simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
-    reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+    readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
     declOf?, tyClassNames, groundClassNames, isSelf]
 
 theorem egUserCall_safe :
     ∀ r, ReachableResult (Machine.init egUserCall) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
-      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
 /-- **A method calling another method of the same class, by implicit self**
@@ -282,7 +282,7 @@ theorem egVcall_safe :
     ∀ r, ReachableResult (Machine.init egVcall) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egVcall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
-      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
 /-- **The written receiverless call** (L170) — `v()` where `egVcall` writes `v`.
@@ -319,7 +319,7 @@ theorem egImplicitCall_safe :
     ∀ r, ReachableResult (Machine.init egImplicitCall) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egImplicitCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
-      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
 /-- **With an argument the rule exists** (L171) **and no program can reach it.**
@@ -331,7 +331,7 @@ theorem egImplicitCall_safe :
 example : check (.class' "String" none (.def' "g" [] (.send none "value" [.int 1] none)))
     = .unknown := by
   simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, declaresName, baseDecls,
-    reopenableClasses, defFree, defFreeAll, isSelf, sigOf, declFor, declOf?, declsFor,
+    readableClasses, reopenableClasses, defFree, defFreeAll, isSelf, sigOf, declFor, declOf?, declsFor,
     tyClassNames, groundClassNames]
 
 /-- **The rule reads the row when there is one.** A `String#plus : (Integer) →
@@ -410,7 +410,7 @@ theorem egConst_safe :
     ∀ r, ReachableResult (Machine.init egConst) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egConst, infer, inferArgs, subTys, subTy, inferSeq, illTyped,
-      illTypedAny, declsOf, declaresName, baseDecls, reopenableClasses,
+      illTypedAny, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses,
       groundClassNames, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, isSelf])
 
@@ -419,7 +419,7 @@ theorem egConst_safe :
     could not promise anything about it, which is what the table's membership test
     is enforcing. -/
 example : check (.class' "String" none (.def' "k" [] (.const "Token"))) = .unknown := by
-  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, reopenableClasses,
+  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses,
     groundClassNames, defFree, defFreeAll, isSelf]
 
 /-- **The class-object *producer*** (L185): `valueTy?` now gives a class object a
@@ -523,7 +523,7 @@ def egSelf : Expr :=
 theorem egSelf_safe :
     ∀ r, ReachableResult (Machine.init egSelf) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egSelf, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
+    simp [check, egSelf, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses, groundClassNames,
       defFree, defFreeAll, addRow, declsFor, isSelf])
 
 /-- **A literal `self` receiver** (L172) — `self.v`, which F1b.11 excluded and
@@ -556,7 +556,7 @@ theorem egSelfRecv_safe :
     ∀ r, ReachableResult (Machine.init egSelfRecv) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egSelfRecv, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
-      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
 /-- **…and a class body still refuses it**, for the reason it always did and not
@@ -565,13 +565,13 @@ theorem egSelfRecv_safe :
     *type* is what refuses this, not the send site. -/
 example : check (.class' "String" none (.send (some .self') "upcase" [] none))
     = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, groundClassNames, isSelf, sigOf, declFor,
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, readableClasses, reopenableClasses, groundClassNames, isSelf, sigOf, declFor,
     declOf?, declsFor, baseDecls, tyClassNames, groundClassNames]
 
 /-- And `self` at toplevel or in a class body is `unknown`, not accepted at some
     guessed type. -/
 example : check (.class' "String" none .self') = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, groundClassNames, isSelf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, readableClasses, reopenableClasses, groundClassNames, isSelf]
 
 /-- **A toplevel `def` declares nothing, and the call is `unknown`** — which is
     not a limitation of the rule but of Ruby: `Interp.lean:225` makes a toplevel
