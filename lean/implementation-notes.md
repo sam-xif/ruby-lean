@@ -8970,3 +8970,96 @@ carries. `inferBodyWith_sound` instantiates `retF := τ.subst θ`.
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
 `--check` **byte-identical** (51/1,174/0) — the rule can only fire at `ctx.ret.isSome`, which no
 `check` entry point produces; `--assn` smoke 1,227 clean; `--self-test` all agree.
+
+## L201 — the open front end for `return`, and the premise that is a second `StoreLe`
+
+Out of fragment **48 → 41**, `--check` byte-identical (51/1,174/0). `return` disappears from the
+third ratchet's census; the `needed:` column goes 43 → 50, which is the whole story of the rung —
+seven bodies stopped being refused for *no rule* and started being refused for *no declaration*.
+
+The design is the one L200 wrote down, unchanged, and it landed in the shape it predicted.
+
+### The accumulator
+
+```lean
+structure OState where … rets : List ATy := []
+
+| .ret e => match e with
+  | some e' => match inferOpen D Γ e' ctx s with
+    | .ok τ Γ₁ s₁ => .ok (.nom .nilT) Γ₁ { s₁ with rets := τ :: s₁.rets }
+    | r => r
+  | none => .ok (.nom .nilT) Γ { s with rets := .nom .nilT :: s.rets }
+```
+
+and the check, at both body entry points:
+
+```lean
+| .ok τ Γ' s => if s.rets.all (· == τ) then .ok τ Γ' s else .outOfFragment "return-join"
+```
+
+**The check can only live here.** The pass meets a `return` before it knows the tail's type, and a
+disagreement is `outOfFragment` rather than `missing`: no *declaration* would fix it — the two types
+simply differ, and joining them needs a union this fragment does not have. That is the honest
+verdict, and it is why the third ratchet's census is trustworthy at this rung: `return-join` would
+show up as its own atom if any slice body had two disagreeing returns. None does.
+
+### The bug the metatheory caught, before the proof was finished
+
+Writing `inferOpen_rets` — `rets` only grows — printed a goal that could not close at the
+`requireRow` arms. Five of them rebuilt the state as
+
+```lean
+{ st := st', fresh := s.fresh + 1 }        -- rets silently reset to the default []
+```
+
+instead of `{ s with … }`. Every `return` inside a method call's receiver or argument list was being
+*dropped*, so a body like `def f; g(return 1); end` would have typed with an unchecked return. The
+executable half was already green and the metric had already moved; the lemma is what found it. This
+is the second time in this file a monotonicity lemma has paid for itself before its theorem did
+(L175's `StoreLe`), and the reason is the same: **the lemma states the invariant the state's users
+assume and the state's producers were never asked to keep.**
+
+### `Factors` gains a second premise, and that is the entire proof
+
+```lean
+| .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+    infer D (substEnv θ Γ) e false
+        { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF } = …
+```
+
+Read the second premise beside the first: they are the same *kind* of hypothesis — a bound on the
+arm's output that the arm's subexpressions inherit because the thing bounded only grows. So the
+factoring theorem's uniform block needed exactly what L175's needed: four `rets_sub*` transports
+(`rets_sub`, `rets_subIf`, `rets_subSeq`, `rets_subArgs`) built on four monotonicity lemmas
+(`inferOpen_rets` and its three traversal siblings), and one extra argument at each IH site.
+
+Two mechanical notes, both worth keeping because they will recur at the next premise:
+
+* **`simp_all` sometimes discharges the new premise itself** and sometimes does not, so the IH is
+  applied with two arguments in some cases and one in others. Every site is now
+  `first | rw [ih X Y] | rw [ih X]`. Guessing which shape a case has is not worth a case number;
+  offering both is free.
+* **The nominal context in the conclusion is now `ret := some retF`**, so the three worked examples
+  (`egRow_nominal`, `egParam_nominal`) and `inferBody_sound`'s statement carry it. With no `return`
+  in the body nominal `infer` never reads `ctx.ret`, so this weakens nothing that held before.
+
+### What `UserConforms` gets, and why the clause finally has both halves
+
+L198 discharged the invariant's user-method clause with `r = none` — a row whose body contains no
+`return`. It now discharges it with `r = some d.ret`:
+
+```lean
+⟨hp, hdf, ⟨substEnv θ Γ', some d.ret,
+  by rw [← hret]; exact inferBody_sound hb hsat hself,
+  fun _ h => by simpa using h.symm⟩⟩
+```
+
+and the clause's side condition (`∀ σ, r = some σ → σ = d.ret`) is `hret` itself — the hypothesis
+that the body's inferred type *is* the declared return. So the open front end now discharges the
+clause for bodies that return, which was the one thing L200 left owing.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` byte-identical (51/1,174/0); `--assn` smoke 1,227 clean; `--self-test` all agree;
+slice-driver 72 lines IDENTICAL; third ratchet **41**.

@@ -269,6 +269,60 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (s : OSta
       | exact StoreLe.trans (StoreLe.trans (by assumption) (by assumption))
           (requireRow_mono (by assumption))
       | (rename_i ha; split at ha <;> simp_all)
+      -- L201: the `return` arms record in `rets` and leave the store where it was, so
+      -- the bound is the sub-expression's own (or reflexivity for a bare `return`).
+      | (exact StoreLe.refl _)
+      | (rename_i ha; exact ha)
+
+/-- **And `rets` is monotone too** (L201), for the store's reason: a recorded return
+    type is a positive fact, so the list only grows. Subset rather than sublist because
+    that is all the consumer needs — `Factors`' premise is about *membership* in the
+    final state's list, and the composition at every compound arm is exactly this
+    lemma, the way `StoreLe` is for the store.
+
+    Same induction, same uniform block, and the same discipline: adding an arm to
+    `inferOpen` re-opens both proofs. -/
+theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (s : OState) :
+    ∀ τ Γ' s', inferOpen D Γ e ctx s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
+  induction Γ, e, s using inferOpen.induct (D := D) (ctx := ctx)
+    (motive2 := fun Γ t els s => ∀ τ Γ' s',
+        inferOpenIf D Γ t els ctx s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets)
+    (motive3 := fun Γ es s => ∀ τ Γ' s',
+        inferOpenSeq D Γ es ctx s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets)
+    (motive4 := fun Γ es s => ∀ τs Γ' s',
+        inferOpenArgs D Γ es ctx s = .ok τs Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets) with
+  | _ =>
+    intros
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs]
+    try (rename_i hh; obtain ⟨-, -, rfl⟩ := hh)
+    first
+      | done
+      | assumption
+      | (exact List.mem_cons_of_mem _ (by assumption))
+      | (exact (by assumption : ∀ x ∈ _, x ∈ _) _ (by assumption))
+      | (rename_i hx ha; exact ha _ hx)
+      | (rename_i hx hb ha; exact hb _ (ha _ hx))
+      | (rename_i hx hc hb ha; exact hc _ (hb _ (ha _ hx)))
+      | (rename_i hx ha; exact List.mem_cons_of_mem _ (ha _ hx))
+      | (rename_i hx ha hb; exact hb _ (ha _ hx))
+      | (rename_i hy hx ha; split at ha <;> simp_all)
+      -- the `requireRow` arms: the state is rebuilt with `rets` carried, so the
+      -- membership is the hypothesis after one `obtain`.
+      | (rename_i hx hq; obtain ⟨-, -, rfl⟩ := hq; exact hx)
+      | (rename_i hq hx; obtain ⟨-, -, rfl⟩ := hq; exact hx)
+      -- **The arms whose answer `simp_all` left as an unsplit equation** (L201),
+      -- with the membership hypothesis *after* it — so the `obtain` has to name
+      -- two, and the composition is then read off by unification.
+      | (rename_i hh hmem
+         obtain ⟨-, -, rfl⟩ := hh
+         dsimp only
+         first
+           | exact hmem
+           | exact List.mem_cons_of_mem _ hmem
+           | exact (by assumption : ∀ x, x ∈ _ → x ∈ _) _ hmem
+           | exact List.mem_cons_of_mem _ ((by assumption : ∀ x, x ∈ _ → x ∈ _) _ hmem)
+           | (rename_i ih1 ih2; exact ih1 _ (ih2 _ hmem))
+           | (rename_i ih2 ih1; exact ih1 _ (ih2 _ hmem)))
 
 /-- The `if`-join's monotonicity, from the main lemma: `inferOpenIf` is not
     recursive, it only calls `inferOpen`. -/
@@ -404,6 +458,128 @@ theorem storeLe_subArgs {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
     StoreLe s.st stF :=
   StoreLe.trans (inferOpenArgs_mono D ctx es Γ s τs Γ' s' h) hle
 
+/-- The `if`-join's `rets` monotonicity — `inferOpenIf_mono`'s twin (L201). -/
+theorem inferOpenIf_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (t : Expr)
+    (els : Option Expr) (s : OState) :
+    ∀ τ Γ' s', inferOpenIf D Γ t els ctx s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
+  intro τ Γ' s' h
+  unfold inferOpenIf at h
+  cases els with
+  | some e =>
+    dsimp only at h
+    cases ht : inferOpen D Γ t ctx s with
+    | ok τt Γt st =>
+      rw [ht] at h
+      dsimp only at h
+      cases he : inferOpen D Γ e ctx st with
+      | ok τe Γe se =>
+        rw [he] at h
+        dsimp only at h
+        split at h
+        · split at h
+          · simp only [OResult.ok.injEq] at h
+            obtain ⟨-, -, rfl⟩ := h
+            exact fun x hx => inferOpen_rets D ctx Γ e st τe Γe se he x
+              (inferOpen_rets D ctx Γ t s τt Γt st ht x hx)
+          · simp at h
+        · simp at h
+      | missing _ _ _ => rw [he] at h; simp at h
+      | outOfFragment _ => rw [he] at h; simp at h
+    | missing _ _ _ => rw [ht] at h; simp at h
+    | outOfFragment _ => rw [ht] at h; simp at h
+  | none =>
+    dsimp only at h
+    cases ht : inferOpen D Γ t ctx s with
+    | ok τt Γt st =>
+      rw [ht] at h
+      dsimp only at h
+      split at h
+      · split at h
+        · simp only [OResult.ok.injEq] at h
+          obtain ⟨-, -, rfl⟩ := h
+          exact inferOpen_rets D ctx Γ t s τt Γt st ht
+        · simp at h
+      · simp at h
+    | missing _ _ _ => rw [ht] at h; simp at h
+    | outOfFragment _ => rw [ht] at h; simp at h
+
+/-- The sequence's (L201). -/
+theorem inferOpenSeq_rets (D : Decls) (ctx : OCtx) :
+    ∀ (es : List Expr) (Γ : AEnv) (s : OState) τ Γ' s',
+      inferOpenSeq D Γ es ctx s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
+  intro es
+  induction es with
+  | nil => intro Γ s τ Γ' s' h; unfold inferOpenSeq at h; cases h; exact fun x hx => hx
+  | cons e rest ih =>
+    intro Γ s τ Γ' s' h
+    unfold inferOpenSeq at h
+    cases rest with
+    | nil => exact inferOpen_rets D ctx Γ e s τ Γ' s' h
+    | cons e2 rest2 =>
+      dsimp only at h
+      cases he : inferOpen D Γ e ctx s with
+      | ok τ₁ Γ₁ s₁ =>
+        rw [he] at h
+        dsimp only at h
+        exact fun x hx => ih Γ₁ s₁ τ Γ' s' h x (inferOpen_rets D ctx Γ e s τ₁ Γ₁ s₁ he x hx)
+      | missing _ _ _ => rw [he] at h; simp at h
+      | outOfFragment _ => rw [he] at h; simp at h
+
+/-- And the argument list's (L201). -/
+theorem inferOpenArgs_rets (D : Decls) (ctx : OCtx) :
+    ∀ (es : List Expr) (Γ : AEnv) (s : OState) τs Γ' s',
+      inferOpenArgs D Γ es ctx s = .ok τs Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
+  intro es
+  induction es with
+  | nil => intro Γ s τs Γ' s' h; unfold inferOpenArgs at h; cases h; exact fun x hx => hx
+  | cons e rest ih =>
+    intro Γ s τs Γ' s' h
+    unfold inferOpenArgs at h
+    cases he : inferOpen D Γ e ctx s with
+    | ok τ₁ Γ₁ s₁ =>
+      rw [he] at h
+      dsimp only at h
+      cases hr : inferOpenArgs D Γ₁ rest ctx s₁ with
+      | ok τs₂ Γ₂ s₂ =>
+        rw [hr] at h
+        simp only [OArgs.ok.injEq] at h
+        obtain ⟨-, -, rfl⟩ := h
+        exact fun x hx => ih Γ₁ s₁ τs₂ Γ₂ s₂ hr x (inferOpen_rets D ctx Γ e s τ₁ Γ₁ s₁ he x hx)
+      | missing _ _ _ => rw [hr] at h; simp at h
+      | outOfFragment _ => rw [hr] at h; simp at h
+    | missing _ _ _ => rw [he] at h; simp at h
+    | outOfFragment _ => rw [he] at h; simp at h
+
+/-! ### Pushing the *return* bound down to a subexpression (L201)
+
+`storeLe_sub`'s twin, for the second premise the factoring theorem now carries:
+whatever bounds the *node*'s collected `return` types also bounds its
+subexpressions', because `rets` only grows too. -/
+
+theorem rets_sub {D : Decls} {ctx : OCtx} {Γ : AEnv} {e : Expr} {s s' : OState}
+    {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
+    (h : inferOpen D Γ e ctx s = .ok τ Γ' s')
+    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+  fun a ha => hr a (inferOpen_rets D ctx Γ e s τ Γ' s' h a ha)
+
+theorem rets_subIf {D : Decls} {ctx : OCtx} {Γ : AEnv} {t : Expr} {els : Option Expr}
+    {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
+    (h : inferOpenIf D Γ t els ctx s = .ok τ Γ' s')
+    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+  fun a ha => hr a (inferOpenIf_rets D ctx Γ t els s τ Γ' s' h a ha)
+
+theorem rets_subSeq {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
+    {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
+    (h : inferOpenSeq D Γ es ctx s = .ok τ Γ' s')
+    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+  fun a ha => hr a (inferOpenSeq_rets D ctx es Γ s τ Γ' s' h a ha)
+
+theorem rets_subArgs {D : Decls} {ctx : OCtx} {Γ : AEnv} {es : List Expr}
+    {s s' : OState} {τs : List ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
+    (h : inferOpenArgs D Γ es ctx s = .ok τs Γ' s')
+    (hr : ∀ a ∈ s'.rets, ATy.subst θ a = retF) : ∀ a ∈ s.rets, ATy.subst θ a = retF :=
+  fun a ha => hr a (inferOpenArgs_rets D ctx es Γ s τs Γ' s' h a ha)
+
 /-! ### Substitution, as simp lemmas
 
 Stated rather than unfolded, so the induction's goals stay in terms of `substEnv`
@@ -433,36 +609,40 @@ three universally-quantified components, which is what lets the functional
 induction's cases reduce by `simp` alone: an arm that answers `.missing` or
 `.outOfFragment` discharges its case definitionally, and there are twenty-odd of
 those. -/
-def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : AEnv)
-    (e : Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF →
-      infer D (substEnv θ Γ) e false { cls := ctx.cls, selfCls := some ctx.cls }
+def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
+    (Γ : AEnv) (e : Expr) : OResult → Prop
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+      infer D (substEnv θ Γ) e false
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
 /-- The `inferIf`/`inferSeq` forms, which differ only in which nominal function
     the conclusion names. -/
-def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : AEnv)
-    (t : Expr) (els : Option Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF →
-      inferIf D (substEnv θ Γ) t els false { cls := ctx.cls, selfCls := some ctx.cls }
+def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
+    (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+      inferIf D (substEnv θ Γ) t els false
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
-def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : AEnv)
-    (es : List Expr) : OResult → Prop
-  | .ok τ Γ' s' => StoreLe s'.st stF →
-      inferSeq D (substEnv θ Γ) es false { cls := ctx.cls, selfCls := some ctx.cls }
+def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
+    (Γ : AEnv) (es : List Expr) : OResult → Prop
+  | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+      inferSeq D (substEnv θ Γ) es false
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
 /-- And the argument list's (L175). The only one whose conclusion is about a *list*
     of types, which is exactly why `inferArgs` is a separate traversal from
     `inferSeq`. -/
-def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ : AEnv)
-    (es : List Expr) : OArgs → Prop
-  | .ok τs Γ' s' => StoreLe s'.st stF →
-      inferArgs D (substEnv θ Γ) es false { cls := ctx.cls, selfCls := some ctx.cls }
+def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
+    (Γ : AEnv) (es : List Expr) : OArgs → Prop
+  | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, a.subst θ = retF) →
+      inferArgs D (substEnv θ Γ) es false
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
@@ -478,18 +658,23 @@ theorem mkNilable_join {a c : ATy} {θ : TyVar → Ty}
   simpa using h1
 
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
-    (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
+    (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (s : OState) :
-    Factors D θ stF ctx Γ e (inferOpen D Γ e ctx s) := by
+    Factors D θ stF retF ctx Γ e (inferOpen D Γ e ctx s) := by
   induction Γ, e, s using inferOpen.induct (D := D) (ctx := ctx)
-    (motive2 := fun Γ t els s => FactorsIf D θ stF ctx Γ t els (inferOpenIf D Γ t els ctx s))
-    (motive3 := fun Γ es s => FactorsSeq D θ stF ctx Γ es (inferOpenSeq D Γ es ctx s))
-    (motive4 := fun Γ es s => FactorsArgs D θ stF ctx Γ es (inferOpenArgs D Γ es ctx s)) with
+    (motive2 := fun Γ t els s =>
+      FactorsIf D θ stF retF ctx Γ t els (inferOpenIf D Γ t els ctx s))
+    (motive3 := fun Γ es s => FactorsSeq D θ stF retF ctx Γ es (inferOpenSeq D Γ es ctx s))
+    (motive4 := fun Γ es s =>
+      FactorsArgs D θ stF retF ctx Γ es (inferOpenArgs D Γ es ctx s)) with
   | _ =>
     simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf,
       FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs,
       substEnv_aenvSet, hself]
     all_goals (try intro hle)
+    -- L201's second premise: the collected `return` types all agree with the
+    -- body's, pushed down to the subexpressions by `rets_sub` below.
+    all_goals (try intro hr)
     -- L193b: `joinATy_subst` is a *conditional* rewrite whose hypothesis is in the
     -- context, so `simp_all` can discharge it and close the join cases here. It has
     -- to be in this set rather than in the alternative block below, because
@@ -512,13 +697,13 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
         | (rw [requireRow_sat (by assumption) (by assumption) hsat]; simp)
         -- one subexpression, nominal receiver
         | (rename_i ih1
-           rw [ih1 (storeLe_sub (by assumption) (by assumption))]; simp_all)
+           (first | rw [ih1 (storeLe_sub (by assumption) (by assumption)) (rets_sub (by assumption) (by assumption))] | rw [ih1 (storeLe_sub (by assumption) (by assumption))]); simp_all)
         -- two subexpressions, nominal receiver
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_sub (by assumption) (by assumption))]; simp_all)
+           (first | rw [ih2 (storeLe_sub (by assumption) (by assumption)) (rets_sub (by assumption) (by assumption))] | rw [ih2 (storeLe_sub (by assumption) (by assumption))]); simp_all)
         -- receiver, then the row requirement (zero-argument send on `var α`)
         | (rename_i ih1
-           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           (first | rw [ih1 (storeLe_subReq (by assumption) (by assumption)) (by assumption)] | rw [ih1 (storeLe_subReq (by assumption) (by assumption))])
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
@@ -526,37 +711,35 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
         -- variants, because `simp_all` may already have instantiated the argument
         -- list's IH with the bound it could find.
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (by assumption)) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (by assumption))])
            dsimp only
            rw [ih1]
            simp_all)
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (by assumption)) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (by assumption))])
            dsimp only
-           rw [ih1 (by assumption)]
+           (first | rw [ih1 (by assumption) (by assumption)] | rw [ih1 (by assumption)])
            simp_all)
         -- **receiver, argument list, then the row requirement** (L175), variable
         -- receiver.
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption)
-                     (storeLe_subReq (by assumption) (by assumption)))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (storeLe_subReq (by assumption) (by assumption))) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (storeLe_subReq (by assumption) (by assumption)))])
            dsimp only
            rw [ih1]
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption)
-                     (storeLe_subReq (by assumption) (by assumption)))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (storeLe_subReq (by assumption) (by assumption))) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (storeLe_subReq (by assumption) (by assumption)))])
            dsimp only
-           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           (first | rw [ih1 (storeLe_subReq (by assumption) (by assumption)) (by assumption)] | rw [ih1 (storeLe_subReq (by assumption) (by assumption))])
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
         -- **the argument list, then the row requirement on `self`** (L175): the
         -- written receiverless call at positive arity.
         | (rename_i ih1
-           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           (first | rw [ih1 (storeLe_subReq (by assumption) (by assumption)) (by assumption)] | rw [ih1 (storeLe_subReq (by assumption) (by assumption))])
            dsimp only
            rw [← hself, requireRow_sat (by assumption) (by assumption) hsat]
            simp)
@@ -575,13 +758,13 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
              | simp
              | (rename_i heq
                 simp only [inferOpenArgs] at heq
-                intro hle
+                intro hle hr
                 simp_all
                 -- the recursive arm's residue: the head's IH (still an
                 -- implication, discharged by the tail's monotonicity) and then the
                 -- tail's, which `simp_all` has already instantiated.
                 try (rename_i ih2 ih1
-                     rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+                     (first | rw [ih2 (storeLe_subArgs (by assumption) (by assumption)) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (by assumption))])
                      dsimp only
                      rw [ih1]
                      simp_all
@@ -593,30 +776,29 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
         -- **one argument, then the rest of the list** (L175): `inferArgs`' own
         -- recursive arm.
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (by assumption)) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (by assumption))])
            dsimp only
            rw [ih1]
            simp_all)
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_subArgs (by assumption) (by assumption))]
+           (first | rw [ih2 (storeLe_subArgs (by assumption) (by assumption)) (rets_subArgs (by assumption) (by assumption))] | rw [ih2 (storeLe_subArgs (by assumption) (by assumption))])
            dsimp only
-           rw [ih1 (by assumption)]
+           (first | rw [ih1 (by assumption) (by assumption)] | rw [ih1 (by assumption)])
            simp_all)
         -- **one subexpression, then the row requirement on `self`** (L171): the
         -- unary written receiverless call, `foo(x)`. Same shape as the line above
         -- with `← hself` in front, because the receiver is `ctx.self` and the
         -- nominal rule reads `sigOf D (.cls ctx.cls)`.
         | (rename_i ih1
-           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           (first | rw [ih1 (storeLe_subReq (by assumption) (by assumption)) (by assumption)] | rw [ih1 (storeLe_subReq (by assumption) (by assumption))])
            dsimp only
            rw [← hself, requireRow_sat (by assumption) (by assumption) hsat]
            simp)
         -- receiver, argument, then the row requirement (unary send on `var α`)
         | (rename_i ih2 ih1
-           rw [ih2 (storeLe_sub (by assumption)
-                     (storeLe_subReq (by assumption) (by assumption)))]
+           (first | rw [ih2 (storeLe_sub (by assumption) (storeLe_subReq (by assumption) (by assumption))) (rets_sub (by assumption) (by assumption))] | rw [ih2 (storeLe_sub (by assumption) (storeLe_subReq (by assumption) (by assumption)))])
            dsimp only
-           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           (first | rw [ih1 (storeLe_subReq (by assumption) (by assumption)) (by assumption)] | rw [ih1 (storeLe_subReq (by assumption) (by assumption))])
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
@@ -626,22 +808,22 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
            all_goals (first
              | simp
              | (rename_i heq
-                intro hle
-                rw [ih2 (storeLe_subIf heq hle)]
+                intro hle hr
+                (first | rw [ih2 (storeLe_subIf heq hle) (rets_subIf heq hr)] | rw [ih2 (storeLe_subIf heq hle)])
                 dsimp only
                 rw [heq] at ih1
-                exact ih1 hle)))
+                (first | exact ih1 hle hr | exact ih1 hle))))
         -- a statement, then the rest of the sequence
         | (rename_i ih2 ih1
            split
            all_goals (first
              | simp
              | (rename_i heq
-                intro hle
-                rw [ih2 (storeLe_subSeq heq hle)]
+                intro hle hr
+                (first | rw [ih2 (storeLe_subSeq heq hle) (rets_subSeq heq hr)] | rw [ih2 (storeLe_subSeq heq hle)])
                 dsimp only
                 rw [heq] at ih1
-                exact ih1 hle)))
+                (first | exact ih1 hle hr | exact ih1 hle))))
         | (trace_state; fail)
         -- the join's own refusal: the guard is false, so the arm is `True`
         | (split <;>
@@ -722,18 +904,46 @@ body with no row for its own class's accessors, produce `θ`, check the store, a
 the invariant's clause follows. That is R4 landing in the metatheory's own
 currency rather than beside it. -/
 
-/-- The body-level factoring theorem, at the store the body ends at. -/
+/-- **`inferBody`'s own `return` check, in the currency the factoring theorem wants**
+    (L201). The check is a `List.all` over the collected types; the premise is a
+    membership statement about their substitutions. One `beq` step apart. -/
+theorem rets_of_all {rets : List ATy} {τ : ATy} {θ : TyVar → Ty}
+    (h : rets.all (· == τ) = true) : ∀ a ∈ rets, ATy.subst θ a = τ.subst θ := by
+  intro a ha
+  have := List.all_eq_true.mp h a ha
+  simp only [beq_iff_eq] at this
+  rw [this]
+
+/-- The body-level factoring theorem, at the store the body ends at.
+
+    **L201 adds the return target to the conclusion**: the nominal context is now
+    `ret := some (τ.subst θ)` — the body's own answer type. That is exactly the
+    reading `inferBody`'s check enforces on the open side (`every collected return
+    type equals the body's`), so the two halves say the same thing and the
+    `return`-free case is unaffected: with no `return` in the body the nominal
+    `infer` never reads `ctx.ret`. -/
 theorem inferBody_sound {D : Decls} {c : String} {body : Expr} {τ : ATy} {Γ' : AEnv}
     {s' : OState} {θ : TyVar → Ty}
     (hb : inferBody D c body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
-    infer D [] body false { cls := c, selfCls := some c }
+    infer D [] body false { cls := c, selfCls := some c, ret := some (τ.subst θ) }
       = some (τ.subst θ, substEnv θ Γ', D) := by
-  have := inferOpen_factors D { cls := c, self := 0 } θ s'.st hsat hself
+  have hf := inferOpen_factors D { cls := c, self := 0 } θ s'.st (τ.subst θ) hsat hself
     [] body { st := {}, fresh := 1 }
   unfold inferBody at hb
-  rw [hb] at this
-  simpa [substEnv] using this (StoreLe.refl _)
+  cases hop : inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 } with
+  | ok τ₀ Γ₀ s₀ =>
+    rw [hop] at hb
+    dsimp only at hb
+    split at hb
+    · rename_i hall
+      simp only [OResult.ok.injEq] at hb
+      obtain ⟨rfl, rfl, rfl⟩ := hb
+      rw [hop] at hf
+      simpa [substEnv] using hf (StoreLe.refl _) (rets_of_all hall)
+    · simp at hb
+  | missing _ _ _ => rw [hop] at hb; simp at hb
+  | outOfFragment _ => rw [hop] at hb; simp at hb
 
 /-- **The parameter-open form** (L168), and it is the same theorem: the factoring
     theorem was quantified over `Γ` from the start, so binding parameters to fresh
@@ -752,7 +962,8 @@ theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : E
     {Γb Γ' : AEnv} {τ : ATy} {s' : OState} {θ : TyVar → Ty}
     (hb : inferBodyWith D c ps body = some (Γb, .ok τ Γ' s'))
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
-    infer D (substEnv θ Γb) body false { cls := c, selfCls := some c }
+    infer D (substEnv θ Γb) body false
+        { cls := c, selfCls := some c, ret := some (τ.subst θ) }
       = some (τ.subst θ, substEnv θ Γ', D) := by
   unfold inferBodyWith at hb
   dsimp only at hb
@@ -764,10 +975,21 @@ theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : E
     simp only [Option.some.injEq, Prod.mk.injEq] at hb
     obtain ⟨hΓ, hrun⟩ := hb
     subst hΓ
-    have := inferOpen_factors D { cls := c, self := 0 } θ s'.st hsat hself
+    have hf := inferOpen_factors D { cls := c, self := 0 } θ s'.st (τ.subst θ) hsat hself
       Γ₀ body s₀
-    rw [hrun] at this
-    exact this (StoreLe.refl _)
+    cases hr : inferOpen D Γ₀ body { cls := c, self := 0 } s₀ with
+    | ok τ₀ Γ₁ s₁ =>
+      rw [hr] at hrun
+      dsimp only at hrun
+      split at hrun
+      · rename_i hall
+        simp only [OResult.ok.injEq] at hrun
+        obtain ⟨rfl, rfl, rfl⟩ := hrun
+        rw [hr] at hf
+        exact hf (StoreLe.refl _) (rets_of_all hall)
+      · simp at hrun
+    | missing _ _ _ => rw [hr] at hrun; simp at hrun
+    | outOfFragment _ => rw [hr] at hrun; simp at hrun
 
 /-- **The invariant's user-method clause, discharged by open-self inference.** -/
 theorem userConforms_of_inferBody {D : Decls} {c : String} {md : MethodDef}
@@ -776,11 +998,12 @@ theorem userConforms_of_inferBody {D : Decls} {c : String} {md : MethodDef}
     (hb : inferBody D c md.body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c)
     (hret : τ.subst θ = d.ret) : UserConforms D c md d :=
-  -- L198: `r = none` — the open front end checks the body with no return target, so
-  -- the row it discharges is one whose body contains no `return`. A `sig`-declared
-  -- row is the case that supplies `some d.ret`, and it is `PLAN.md` W8.
-  ⟨hp, hdf, ⟨substEnv θ Γ', none, by rw [← hret]; exact inferBody_sound hb hsat hself,
-    fun _ h => absurd h (by simp)⟩⟩
+  -- L201: `r = some d.ret` — the open front end now checks the body *against its own
+  -- answer type*, so the row it discharges is one whose `return`s all agree with the
+  -- declared return, and the clause's side condition is `hret` itself.
+  ⟨hp, hdf, ⟨substEnv θ Γ', some d.ret,
+    by rw [← hret]; exact inferBody_sound hb hsat hself,
+    fun _ h => by simpa using h.symm⟩⟩
 
 /-! ## 8. §4.3, end to end
 
@@ -823,7 +1046,8 @@ theorem egRow_sat : SatStore egRowD egTheta egRowStore :=
 /-- **And therefore nominal `infer` accepts the body**, at `Boolean`. Obtained
     from the factoring theorem, not by running `infer`. -/
 theorem egRow_nominal :
-    infer egRowD [] egRowBody false { cls := "String", selfCls := some "String" }
+    infer egRowD [] egRowBody false
+        { cls := "String", selfCls := some "String", ret := some .bool }
       = some (.bool, [], egRowD) := by
   have := inferBody_sound egRow_open egRow_sat (by rfl)
   simpa [substEnv, egTheta] using this
@@ -869,7 +1093,7 @@ theorem egParam_sat : SatStore baseDecls egParamTheta egParamStore :=
     accept of the enclosing `def`, whose rule still requires `params.isEmpty`. -/
 theorem egParam_nominal :
     infer baseDecls [("other", Ty.int)] egParamBody false
-        { cls := "String", selfCls := some "String" }
+        { cls := "String", selfCls := some "String", ret := some .bool }
       = some (.bool, [("other", Ty.int)], baseDecls) := by
   have := inferBodyWith_sound egParam_open egParam_sat (by rfl)
   simpa [substEnv, egParamTheta] using this

@@ -85,6 +85,16 @@ deriving DecidableEq, Repr, Inhabited
 structure OState where
   st : Store := {}
   fresh : TyVar := 0
+  /-- **The types every `return` in this body handed back** (L201), newest first.
+
+      A body's return type is what the *tail* answers, and a `return e` has to agree
+      with it — but the open pass meets the `return` before it knows the tail. So the
+      pass **accumulates** and `inferBody` checks at the end, which is the same shape
+      the store already has: `Factors`' `StoreLe s'.st stF` premise is a fact about the
+      *final* state, and this adds a second one beside it.
+
+      `List ATy` and not `Ty`: a returned type may still be a variable. -/
+  rets : List ATy := []
 deriving Repr, Inhabited
 
 /-- The judgement's answer. Three constructors rather than an `Option`, because
@@ -172,7 +182,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- read at all: the requirement goes into the row on `ctx.self`.
   | .vcall mname =>
     match requireRow s.st ctx.self mname [] s.fresh with
-    | some (τ, st') => .ok τ Γ { st := st', fresh := s.fresh + 1 }
+    | some (τ, st') => .ok τ Γ { s with st := st', fresh := s.fresh + 1 }
     | none => .missing (.var ctx.self) mname []
   -- **The written receiverless call** (L170), `foo()` — the `vcall` arm's twin,
   -- and the same requirement on `ctx.self`. `infer`'s new arm reads
@@ -180,7 +190,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- theorem's case is the `vcall` case verbatim.
   | .send none mname [] none =>
     match requireRow s.st ctx.self mname [] s.fresh with
-    | some (τ, st') => .ok τ Γ { st := st', fresh := s.fresh + 1 }
+    | some (τ, st') => .ok τ Γ { s with st := st', fresh := s.fresh + 1 }
     | none => .missing (.var ctx.self) mname []
   -- **The unary written receiverless call** (L171). One subexpression, then the
   -- requirement on `ctx.self` — the `vcall` arm's shape with an argument, and the
@@ -189,7 +199,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match inferOpenArgs D Γ (arg :: args) ctx s with
     | .ok τs Γ₁ s₁ =>
       match requireRow s₁.st ctx.self mname τs s₁.fresh with
-      | some (τ, st') => .ok τ Γ₁ { st := st', fresh := s₁.fresh + 1 }
+      | some (τ, st') => .ok τ Γ₁ { s₁ with st := st', fresh := s₁.fresh + 1 }
       | none => .missing (.var ctx.self) mname τs
     | .missing τ n ps => .missing τ n ps
     | .outOfFragment h => .outOfFragment h
@@ -220,6 +230,20 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- point of the rung, because that is the category the census counts separately.
   -- The printed atom is `α ~ @x : () → σ`, and the `@` is what says which kind of
   -- declaration is wanted.
+  -- **`return e`** (L201). The pass records the returned type and answers `.nom .nilT`
+  -- — the value never reaches this continuation, so the answer is free and `.nilT` is
+  -- what the nominal rule answers too. What makes the record *checkable* is
+  -- `inferBody`, which compares every entry against the body's own answer.
+  --
+  -- A bare `return` records `nilT`, which is exactly what the nominal rule's
+  -- `subTy .nilT σ` check reads.
+  | .ret e =>
+    match e with
+    | some e' =>
+      match inferOpen D Γ e' ctx s with
+      | .ok τ Γ₁ s₁ => .ok (.nom .nilT) Γ₁ { s₁ with rets := τ :: s₁.rets }
+      | r => r
+    | none => .ok (.nom .nilT) Γ { s with rets := .nom .nilT :: s.rets }
   | .var .ivar x =>
     match ivarTy? D ctx.cls x with
     | some σ => .ok (.nom (mkNilable σ)) Γ s
@@ -245,7 +269,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
           | none => .missing (.nom t) mname τs
         | .var α =>
           match requireRow s₂.st α mname τs s₂.fresh with
-          | some (τ, st') => .ok τ Γ₂ { st := st', fresh := s₂.fresh + 1 }
+          | some (τ, st') => .ok τ Γ₂ { s₂ with st := st', fresh := s₂.fresh + 1 }
           | none => .missing (.var α) mname τs
         -- **A nilable receiver is refused, not recorded** (L193b), and the label says
         -- which rule is missing rather than which row: no row can ever be promised on
@@ -266,7 +290,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
         | _ => .missing (.nom t) mname []
       | .var α =>
         match requireRow s₁.st α mname [] s₁.fresh with
-        | some (τ, st') => .ok τ Γ₁ { st := st', fresh := s₁.fresh + 1 }
+        | some (τ, st') => .ok τ Γ₁ { s₁ with st := st', fresh := s₁.fresh + 1 }
         | none => .missing (.var α) mname []
       | .nilOf _ => .outOfFragment "nilable-receiver"
     | r => r
@@ -375,7 +399,14 @@ def closeBody (ctx : OCtx) (s : OState) : Store := s.st.closeAt ctx.self ctx.cls
 /-- Type one method body of class `c`, in open-self mode. `α := 0` and the fresh
     counter starts above it, which is the only bookkeeping the caller owes. -/
 def inferBody (D : Decls) (c : String) (body : Expr) : OResult :=
-  inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 }
+  -- **L201: the accumulated `return` types are checked here**, against the body's own
+  -- answer, and this is the only place the check *can* be — the pass meets a `return`
+  -- before it knows the tail. A disagreement is `outOfFragment` rather than `missing`:
+  -- nothing a *declaration* could supply would fix it; the two types simply differ, and
+  -- joining them would need the union this fragment does not have.
+  match inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 } with
+  | .ok τ Γ' s => if s.rets.all (· == τ) then .ok τ Γ' s else .outOfFragment "return-join"
+  | r => r
 
 /-- §11's per-body verdict, as an output of the checker rather than a duplicate of
     it. This is R1's third-ratchet feed and R3's input. -/
@@ -505,7 +536,11 @@ def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
     Option (AEnv × OResult) :=
   let ctx : OCtx := { cls := c, self := 0 }
   match openParams D ctx ps [] { st := {}, fresh := 1 } with
-  | some (Γb, s) => some (Γb, inferOpen D Γb body ctx s)
+  | some (Γb, s) =>
+    -- L201's check, at the parameterized entry point too.
+    some (Γb, match inferOpen D Γb body ctx s with
+      | .ok τ Γ' s' => if s'.rets.all (· == τ) then .ok τ Γ' s' else .outOfFragment "return-join"
+      | r => r)
   | none => none
 
 /-- §11's per-body verdict for a `def` with parameters. Delegates to
