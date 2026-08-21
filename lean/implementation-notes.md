@@ -10569,3 +10569,63 @@ an afternoon: two store-bound helpers and one alternative.
 
 Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
 third ratchet **24**.
+
+## L222 — `next`, third attempt: the flag must be an explicit parameter, and that is now measured
+
+Out of fragment **24 → 24**. Reverted. Three designs across L220–L222; this names the fourth and says
+why the first three fail, so the next session starts on the right one.
+
+| design | where the flag lives | why it fails |
+|---|---|---|
+| L220 | `FrameCtx` / `OCtx` | varies within an activation, which breaks `inferOpen.induct`'s **fixed-`ctx`** form; generalizing `ctx` moves `hself` into the motive and twelve cases lose their binder |
+| L221/L222 | `OState` | `s` *is* an induction target, so `ctx` stays fixed and the motives are clean — **but `Factors` then reads the flag off a state, and every multi-subexpression arm has its IHs at *different* states** |
+| **the right one** | an explicit parameter of `inferOpen`/`inferOpenIf`/`inferOpenSeq`/`inferOpenArgs` | — |
+
+### What the third attempt proved
+
+Everything except one tactic block built: both structures, both `.while'` arms, `KontOk`'s loop
+constructors clearing the flag, `KontOk.frameK`'s `cΓ.1.inLoop = false` premise, `stackCtx_inLoop`/`'`
+(both `rfl`), the eleven `Preservation` sites, `inferOpen_inLoop`, and `Factors`' new parameter.
+
+Then `inferOpen_factors` failed — and **not only at `.while'`**. Reading the trace the block already
+emits (rather than guessing at `rename_i` arity, which is what the earlier attempts did) shows a
+**send** case:
+
+```
+ih2 : … infer D (substEnv θ Γ) recv false { …, inLoop := s✝.inLoop } = some (t, …)
+ih1 : (match … inferOpenArgs D Γ₁ (arg :: args) ctx s₁ … )      -- at s₁, not s
+```
+
+The receiver's IH is at the *input* state's flag and the arguments' at the *intermediate* state's.
+`inferOpen_inLoop` says those are equal but **not syntactically** — and it cannot be a `simp` lemma
+(its LHS is `s'.inLoop` with `s'` universally quantified, a bare variable). Restating the flag at each
+sub-call, which is what fixed `.while'`, would mean doing it in forty places.
+
+> **A derived index is not an index.** Reading the flag off a threaded state makes `Factors` mention a
+> *different expression* at every nesting depth, and a uniform tactic block cannot absorb that. An
+> induction needs its varying data as a **parameter**, not as a projection of another parameter.
+
+### The fourth design
+
+```lean
+def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Bool) (s : OState) : OResult
+induction Γ, e, il, s using inferOpen.induct (D := D) (ctx := ctx)
+  (motive2 := fun Γ t els il s => FactorsIf D θ stF retF ctx il Γ t els (inferOpenIf … il s))
+```
+
+Every IH then mentions the flag *as a variable*, `.while'` passes `true`, every other arm passes `il`
+unchanged, and the uniform block sees the shape it sees today. `hself` stays a hypothesis (`ctx` is
+still fixed), `inferOpen_mono`/`inferOpen_rets` need only their motive signatures, and
+`inferOpen_inLoop` is not needed at all. ~40 mechanical edits in `Types/OpenSelf.lean` plus targets and
+motives in three proofs, and no new mathematics.
+
+### Method note, since it cost two of the three attempts
+
+I iterated against build errors instead of reading the goal the block already prints.
+`| (trace_state; fail)` has been in that `first` block since L175. Reading it first identified the real
+defect in one build instead of five.
+
+### Checks
+
+Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
+third ratchet **24**.
