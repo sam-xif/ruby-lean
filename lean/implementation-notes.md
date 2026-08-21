@@ -7585,3 +7585,59 @@ one had already changed a design:
 
 `--consts` is a reporting extension; `fragment-gap.py --self-test` still agrees. Nothing in the SUT or
 the metatheory changed, so no verdict diff is owed and none is claimed.
+
+## L182 — the shortest path to `const`, and why it is four rungs in a forced order
+
+The last three entries are measurements; this is the plan they add up to, written down because the
+sequencing is **forced** rather than chosen and because three of the four rungs move the census by
+zero. `slice-verdict.md` §4a is the table; this is the reasoning.
+
+### The chain
+
+1. **A top type `Ty.any`**, with `subTy` at *argument positions only*.
+2. **The class-object arm `Ty.clsOf n`** (L180's price: the transport clause across eigenclass
+   materialization, not the constructor).
+3. **A `Module#===` row** on that arm.
+4. **Narrowing** on `===` — D13's occurrence typing.
+
+### Why the order is forced, and it is rung 3 that forces it
+
+`Module#===`'s signature is `(Object) → Boolean`. Give it a *concrete* parameter and `case x when String`
+types only when `x` is already known to be a `String` — which is exactly the case the program is
+testing. The row is useless rather than merely weak, so the top type is not an optimisation of rung 3,
+it is its precondition. And rung 2 without rung 3 types no call site at all: a class object with a type
+but no rows is L141's `Ty.cls` situation, which accepted no new programs for ten rungs.
+
+### The trap in rung 1, and it is worth naming before someone falls into it
+
+The tempting move is to make `ValueTy` a **relation** — `valueTy? h v = some τ` becomes
+`ValueTy h v τ` with a `.any`/union arm — so a value can have several types. That is what
+unions/nilable genuinely need (and `if`, and `begin`), and its price is real: `CtlOk`'s eval case has to
+admit a *supertype* of what `infer` computed, which threads a `Sub` through all **39**
+`inv_value`/`inv_push`/`inv_eval` call sites in `Proof/Static/Preservation.lean`.
+
+**A top type at argument positions needs none of that.** The observation is that imprecision only has
+to live where a *declared parameter* does:
+
+* `ValuesTy` weakens from `valueTy? h v = some τ` to `∃ σ, valueTy? h v = some σ ∧ subTy σ τ` — and for
+  a concrete `τ` those are the same proposition, so the three `baseDecls` rows' conformance proofs see
+  an identical hypothesis;
+* `KontOk.recvK`/`argsK` carry a pointwise `subTy` where they carry an equality, which for `argsK`
+  means the *parameter* list is what gets split at the in-flight value's position rather than the
+  inferred list;
+* **`CtlOk` does not change at all** — the in-flight value keeps its exact type, and `inv_value` and
+  friends keep their signatures.
+
+23 `ValuesTy` mentions, few consumers. That is the whole of rung 1.
+
+### Why this is written as a plan rather than built
+
+Three of the four rungs move the census by **zero**, and the fourth needs all three. Landing rung 1 or
+2 alone is legitimate (`HANDOFF.md`'s *land it inert* norm, and L141/L157/L171/L176 all did it) but it
+is not progress on the metric, and the thing a reader needs before starting is *which* four and *why
+that order* — which is what the last four entries measured and what this one records.
+
+### Checks
+
+Documentation only. `check-proofs.sh` green, 29 theorems, axiom-clean; `--check` unchanged at
+39 / 1,186 / 0; `--self-test` all agree.
