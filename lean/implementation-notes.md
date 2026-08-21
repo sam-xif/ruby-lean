@@ -8681,3 +8681,62 @@ cannot move; `--assn` smoke 1,227 clean; `--self-test` all agree; `fragment-gap.
 fragment, and `_body_blockers` no longer counts `ivar-read`. One example had to be rewritten: a
 `def`-default witness that relied on an ivar read being out of the fragment now uses a global read,
 which is the kind of churn a widening should cause.
+
+---
+
+## L197 — a constant the table does not carry is a missing *declaration*
+
+Out of fragment **65 → 48**, `needed:` 26 → 43, `--check` **byte-identical**. One arm of
+`inferOpen`, and it is the third application of the same correction:
+
+```lean
+| .const n => match constTy? D n with
+              | some τ => .ok (.nom τ) Γ s
+              | none => .missing (.nom (.clsOf "Object")) ("::" ++ n) []
+```
+
+`infer` **has** a `.const` rule — L189 wrote it and L195 keyed it on `D.consts` — so a name the
+table does not carry is refused by the **table**, not by the rule set. That is the category the
+census counts separately, and reporting it as *out of fragment* was simply wrong once L195 moved the
+table into `Decls`. The `::` prefix is `@`'s from L196: the atom vocabulary is method rows, so a
+marker is what says which kind of declaration is wanted, and the receiver is `T.class_of(Object)`
+because that is literally what `ConstOk` obliges (`constOwn h Boot.objectId n`).
+
+### What it does not claim, stated because one name in the slice makes the difference visible
+
+`Regexp` can **never** be declared: `ConstOk` wants `ValueTy h v (.clsOf "Regexp")` and `classRecv`
+excludes `Boot.regexpId` (L106). So this reports a requirement that no heap satisfies.
+
+That is not a new kind of dishonesty, and the reason is worth writing down rather than glossing:
+**the `needed:` category has never claimed satisfiability.** `slice-verdict.md` §1 says an `accept`
+reads *types under this precondition*, never *is safe*, and no solver supplies a `θ`; the same
+reading applies to a requirement. `vulns/semver.rb`'s long-standing `α0 ~ parse : (α2) → _` has
+exactly the same character — a row nothing supplies, which may or may not be satisfiable by any
+builtin. Treating the constant case as special would be *less* honest than treating it like every
+other missing declaration.
+
+### What this leaves, and it is now clean
+
+The remaining 48 are all genuinely **rule**-shaped, and the census reads as a to-do list rather than
+a mixture:
+
+```
+21  return    10  send-with-block    4  super    3  cpath
+ 3  splat      2  if                 2  begin    1  gvar
+ 1  zsuper     1  nilable-receiver
+```
+
+And the `--sets` singleton list changed shape with it: **`{return}` is now 14 bodies** (it was 4),
+because `const` is no longer co-blocking them. `return` is the next rung by a factor of three, and
+the number to beat is 21.
+
+`gvar` is the one remaining line that *could* be a declaration rather than a rule — `Decls.globals`,
+the fourth table — but globals live in `m.globals` rather than the heap, so the clause cannot ride
+`DeclsOk`'s transports and would need a new `Inv` conjunct. One body; not worth it yet, and recorded
+so the next reader does not re-derive it.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
+**byte-identical** (51/1,174/0) — only the open front end moved; `--assn` smoke 1,227 clean;
+`--self-test` all agree; `fragment-gap.py` **48**, and `_body_blockers` no longer counts `const`.

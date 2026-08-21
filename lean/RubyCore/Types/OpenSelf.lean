@@ -148,7 +148,26 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   | .const n =>
     match constTy? D n with
     | some τ => .ok (.nom τ) Γ s
-    | none => .outOfFragment "const"
+    -- **A missing *declaration*, not a missing rule** (L197), and it is the same
+    -- correction L196 made for `@x`: `infer` has a `.const` arm (L189, table-keyed
+    -- since L195), so a name the table does not carry is refused by the **table**,
+    -- which is the category the census counts separately.
+    --
+    -- The `::` prefix is `@`'s: the atom vocabulary is method rows, so the marker is
+    -- what says which kind of declaration is wanted. The receiver is
+    -- `T.class_of(Object)` because that is literally what `ConstOk` obliges —
+    -- `constOwn h Boot.objectId n` — so the printed atom reads *Object must declare
+    -- the constant `n`*.
+    --
+    -- **What this does *not* claim** is that the declaration is satisfiable, and one
+    -- name in the slice shows the difference: `Regexp` can never be declared, because
+    -- `ConstOk` wants `ValueTy h v (.clsOf "Regexp")` and `classRecv` excludes
+    -- `Boot.regexpId` (L106). The `needed:` category has never claimed satisfiability
+    -- — `slice-verdict.md` §1 says an accept reads *types under this precondition*,
+    -- never *is safe*, and the same reading applies to a requirement. Treating the
+    -- constant case as special would be *less* honest than treating it like every
+    -- other missing declaration.
+    | none => .missing (.nom (.clsOf "Object")) ("::" ++ n) []
   -- **The `vcall`** — §4.3's construct, and the one the ledger is about. No table
   -- read at all: the requirement goes into the row on `ctx.self`.
   | .vcall mname =>
