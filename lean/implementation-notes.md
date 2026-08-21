@@ -8807,3 +8807,75 @@ rung is the cheap half.
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
 **byte-identical** (51/1,174/0) — no rule changed, only what the invariant carries; `fragment-gap.py`
 **48**, unchanged, which is the honest reading of a scaffolding commit.
+
+---
+
+## L199 — the kont/stack correspondence, which is the thing L198 named as missing
+
+Out of fragment **48 → 48**, `--check` byte-identical. L198 ended by naming exactly one missing
+fact; this commit adds it, and then finds the *next* one — which is the honest sequence for a rung
+this size.
+
+### The clause
+
+```lean
+def frameKLabels : List Kont → List FrameId
+  | [] => [] | .frameK fid :: k => fid :: frameKLabels k | _ :: k => frameKLabels k
+
+-- new conjunct of `Inv`, beside `BottomObj`
+frameKLabels m.kont = m.stack.dropLast
+```
+
+One frame push writes both a stack entry and a `frameK`, and one pop removes both, so the two lists
+move together. `dropLast` because the **bottom activation has no `frameK`** — `Machine.init` pushes
+it and the continuation starts empty — and that asymmetry is where `dropLast_cons_ne` gets spent.
+
+It sits **outside** `Inv`'s existential, beside `BottomObj`, for `BottomObj`'s reason: it mentions no
+`Decls` and no `Ty`. That also made it cheap: the five `inv_*` helpers take it as a hypothesis and
+the ~35 call sites pass either `hks` (the continuation is unchanged) or
+`(by simpa [frameKLabels] using hks)` (a transparent kont was pushed or popped) — one line each.
+
+**And reading it backwards is the payoff**: at the `frameK` delivery case it says `fid` *is* the
+stack's head, which is precisely what `doReturn`'s target has to be matched against. That derivation
+is now in the file (`hst2`/`hlab` in the `frameK` case).
+
+### Also landed, stated and unconsumed
+
+`RetTransparent`, `firstFrameK`, `RetOk`. `RetTransparent` is a **read-off of `unwind`**, not a
+judgement: `unwind`'s catch-all (`Interp/Kont.lean:457`) propagates a jump unchanged, and its two
+loop markers propagate a `.retJ` explicitly, so all nine kont shapes the fragment stacks are
+transparent to a return and `frameK` is the one that is not. Measured, and it is what makes the
+consecution's expensive-looking half cheap.
+
+The `KontOk.retOk` induction — deriving `RetOk` from a `KontOk` derivation, which is what L198's two
+new `KontOk` premises exist for — **goes through**: recursion on the kont list, one line per
+constructor, `nil` discharged by `KontOk.nil`'s `ret = none`.
+
+### What is still missing, named exactly (again)
+
+**A `DeclsOk` at the table the deep `KontOk` carries.** `KontOk`'s constructors *thread* the table —
+`seqCons`'s premise sits at `inferSeq`'s **output** table, not its input — so walking down a chain of
+transparent konts to the `frameK` arrives at a table that is not the one `Inv` currently carries.
+After the unwinding pops to that frame, `Inv` needs `DeclsOk` at *that* table, and `DeclsOk` is
+neither monotone nor antitone in the table (`UserConforms` reads it through `infer`) — so it cannot
+be recovered, only carried.
+
+Two ways out, and the choice is a real one:
+
+* **Carry it**: add `DeclsOk D h` to the `KontOk` constructors that change the table. Local, but it
+  puts a heap predicate inside a judgement that has so far been heap-light, and every construction
+  site pays.
+* **Prove the chain is table-constant**: `UserConforms` already requires `defFree md.body`, and the
+  class-body rule already carries stability conditions, so along every chain the fragment can build
+  the table *is* constant. That is the smaller change and the better one, and it wants a lemma of the
+  shape *`infer` on a `defFree` expression leaves the table alone* — which is `infer_mono`'s sibling
+  and probably its proof.
+
+`RetOk` is left in the file rather than deleted: the shape is right, the remaining obligation is one
+clause, and deleting it would lose the measurement that `RetTransparent` records.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
+**byte-identical** (51/1,174/0); `fragment-gap.py` **48**, unchanged — a scaffolding commit, said
+plainly.

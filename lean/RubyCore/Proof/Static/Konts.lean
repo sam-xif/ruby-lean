@@ -232,6 +232,55 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       (∀ σ, cΓ.1.ret = some σ → subTy σ τ = true) →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
 
+/-- **The konts a `.retJ` passes straight through** (L199). Not a judgement: it is a
+    read-off of `unwind` (`Interp/Kont.lean`), whose **catch-all** propagates a jump
+    unchanged and whose two loop markers propagate a `.retJ` explicitly. All nine kont
+    shapes the fragment stacks are in here; `frameK` is the one that is not, and it is
+    the one that consumes the jump. -/
+def RetTransparent : Kont → Prop
+  | .seqK _ => True
+  | .asgnK _ _ => True
+  | .ifK _ _ => True
+  | .whileCondK _ _ => True
+  | .whileBodyK _ _ => True
+  | .recvK .. => True
+  | .argsK .. => True
+  | .arrK .. => True
+  | .jumpValK _ => True
+  | _ => False
+
+/-- The label of the innermost activation's `frameK`. With L199's clause this is the
+    frame stack's head, which is what `doReturn` targets. -/
+def firstFrameK : List Kont → Option FrameId
+  | [] => none
+  | .frameK fid :: _ => some fid
+  | _ :: k => firstFrameK k
+
+/-- **A `.retJ` in flight is well-typed for where it will land** (L199): every kont
+    above the innermost `frameK` is transparent to it, and that `frameK` resumes a
+    caller whose continuation accepts the declared return type.
+
+    **Stated and not yet consumed**, which is the honest place to leave it: the design
+    is that this is *derived* from a `KontOk` derivation (L198's `frameK` agreement and
+    `nil`'s `ret = none` premise exist for exactly that induction, and the induction
+    itself goes through). What stops the `return` rule from landing is one step further
+    on — see the note in `implementation-notes.md` L199 §What is still missing: after
+    the unwinding pops to the frame, `Inv` needs a `DeclsOk` at the table the
+    **deep** `KontOk` carries, and `KontOk`'s constructors thread the table (a
+    `seqCons`'s premise sits at `inferSeq`'s *output* table). `DeclsOk` is neither
+    monotone nor antitone in the table, so it has to be carried rather than recovered.
+
+    Left in the file rather than deleted because the shape is right and the remaining
+    obligation is one clause; deleting it would lose the reason `RetTransparent` is a
+    read-off of `unwind` rather than a judgement. -/
+inductive RetOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kont → Prop where
+  | here {D h cΓ cΓ' Γs σ τ fid k} :
+      subTy σ τ = true → KontOk D h (cΓ' :: Γs) τ k →
+      RetOk D h (cΓ :: cΓ' :: Γs) σ (.frameK fid :: k)
+  | skip {D h cΓ Γs σ κ k} :
+      RetTransparent κ → RetOk D h (cΓ :: Γs) σ k →
+      RetOk D h (cΓ :: Γs) σ (κ :: k)
+
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
     are not in the fragment, so no step can produce one. -/
 def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
@@ -285,6 +334,28 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     (hk : KontOk D h Γs τ k) : KontOk D h' Γs τ k :=
   KontOk.heap_congr' hk ha
 
+/-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
+    push writes both a stack entry and a `frameK`, and one pop removes both, so the
+    two lists move together — this is that fact, made checkable.
+
+    It is the *one* thing the `return` rule needed that nothing carried (L198 §What is
+    still missing). `doReturn` targets `returnTarget m`, which is the frame stack's
+    head; `unwind`'s `frameK fid` case compares that against the **kont's** label. With
+    no relation between the two, a matching `frameK` cannot be produced and the
+    consecution has no case to be in. -/
+def frameKLabels : List Kont → List FrameId
+  | [] => []
+  | .frameK fid :: k => fid :: frameKLabels k
+  | _ :: k => frameKLabels k
+
+/-- `dropLast` past a cons, which needs the tail non-empty — the bottom activation is
+    the one entry with no `frameK`, so this is where that asymmetry is paid. -/
+theorem dropLast_cons_ne {α : Type} {a : α} {l : List α} (h : l ≠ []) :
+    (a :: l).dropLast = a :: l.dropLast := by
+  cases l with
+  | nil => exact absurd rfl h
+  | cons b t => simp
+
 /-- **The invariant** handed to `invariant_sound_from`.
 
     **`Saturated` is the third heap conjunct since L148**, and it is here for one
@@ -330,6 +401,12 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
 def Inv (m : Machine) : Prop :=
   NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
+    -- **L199: the frame stack and the continuation's `frameK`s are the same list**,
+    -- modulo the bottom activation, which is pushed by `Machine.init` and has no
+    -- `frameK`. A machine fact rather than a typing one — it mentions no `Decls` and
+    -- no `Ty` — which is why it sits out here beside `BottomObj` rather than inside
+    -- the existential.
+    frameKLabels m.kont = m.stack.dropLast ∧
     ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
@@ -570,10 +647,11 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ m.kont) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
    ⟨τ, τ, Γ', F', hinf, by simp, hk⟩⟩
 
 /-- **The same, at a *wider* continuation** (L193) — `inv_eval` with the identity
@@ -585,11 +663,13 @@ theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' m.kont) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+   ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
 
 theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {v : Value} {τ : Ty}
@@ -597,9 +677,10 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels m.kont = m.stack.dropLast)
     (hv : ValueTy m.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
     Inv (withCtl m (.value v)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, hv, hk⟩⟩
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
@@ -607,10 +688,11 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ (k :: m.kont)) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
    ⟨τ, τ, Γ', F', hinf, by simp, hk⟩⟩
 
 /-- **`inv_push` at a wider continuation** (L193), the `inv_eval_sub` of the
@@ -622,11 +704,13 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' (k :: m.kont)) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+   ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
     (L151). This is the *value* half of a producer's obligation — the half
@@ -709,6 +793,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
+    (hks : frameKLabels m.kont = m.stack.dropLast)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : ValueTy m'.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
@@ -718,6 +803,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
+    show frameKLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]

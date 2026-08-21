@@ -119,6 +119,9 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
     -- `Inv` because it changes along the run; this is where it is pinned, and the
     -- `DeclsOk` obligation is the one F1a already discharged.
+    -- L199: `Machine.init` builds one frame and an empty continuation, so both lists
+    -- are trivial — `[] = [0].dropLast`.
+    (by simp [Machine.init, Machine.initOn, frameKLabels]),
     declsOf p, { cls := "Object" }, [], [],
     tableOk_declsOk tableOk_initHeap classOk_initHeap, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
