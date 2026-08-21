@@ -7472,3 +7472,66 @@ replaces.
 
 Nothing in the SUT or the metatheory changed; `--consts` is a new reporting flag on the census tool and
 `fragment-gap.py --self-test` still agrees. No verdict diff is owed and none is claimed.
+
+## L180 — the class-object arm, priced by measurement: the constructor is not the cost
+
+L179 showed the class-object arm gates all 28 of the slice's `const` bodies. This is the measurement
+that has to come before it, and — fifth in a row — it says the arm's cost is **not** where it looks.
+
+### The question
+
+The arm would be `Ty.clsObj n` = *the class object named `n`*. `EntryOk` is stated over
+`∀ k, TyClass h τ k → ResolvesAt h k mname bid`, so the arm's `TyClass` must name **the id dispatch
+walks from** — which for a `.ref` is `classOf`:
+
+```lean
+match (h.get o).eigen with | some e => e | none => (h.get o).klass
+```
+
+i.e. the eigenclass when one has been materialized, and `Class`/`Module` when one has not.
+
+### The measurement
+
+```
+class/module objects: 87     with a materialized eigenclass: 27     without: 60
+Object  ✓  #<Class:Object>   ancestors [45, 44, 3, 2, 1]…
+String  ✓  #<Class:String>   Array ✓   Regexp ✓
+Integer ✗  Class             ancestors [3, 2, 1, 33, 0]…
+Float   ✗  Class             Hash  ✗   Symbol ✗
+```
+
+**Two findings, both about the clause rather than the constructor.**
+
+1. **The eigenclass is not always there — and the split runs straight through the classes the slice
+   uses.** `String`, `Array`, `Regexp` and `Object` have one; `Integer`, `Float`, `Hash` and `Symbol`
+   do not, and dispatch for those goes through `Class`. So `TyClass (.clsObj n) k` cannot be *the
+   eigenclass of the class named `n`* — that is not total, and stating it uniformly would be
+   unprovable for 60 of 87 class objects. It has to be **whatever `classOf` says**, carried.
+2. **Carrying it is the price.** `eigenclassOf` mutates `eigen` on an **existing** id, so a step that
+   materializes `Integer`'s eigenclass moves `classOf (.ref Integer)` from `Class` to a fresh id and
+   **falsifies any stored fact about it**. That is `HANDOFF.md` §What is not next item 1 —
+   *`TypeAgree`'s first clause is false as stated because `eigenclassOf.go` mutates `eigen` on existing
+   ids* — arriving at the class-object arm rather than at the allocating `class'` branch it was written
+   for. It is also, read the other way, *why `plainRecv` excludes classes at all*: the exclusion was
+   buying exactly this. Nothing in today's fragment materializes an eigenclass (`defs`, `sclass`,
+   `singleton_class` are all out of `infer`'s domain), so the clause is establishable — but it is a
+   clause, and it is the arm's real cost.
+
+So the arm is: one `Ty` constructor (cheap), a `valueTy?` arm (cheap), a `TyClass` arm that names
+`classOf` (cheap), and a **transport clause across eigenclass materialization** plus `entry_dispatch`
+surviving `invoke`'s receiver-shape special cases for a `.cls` payload (the whole cost). Same shape as
+the producer's bill (L142–L149): four items named, three of them small, and the pricing is what tells
+you which.
+
+### The ratchet the probe leaves behind
+
+The probe is mostly a report — there is no clause to ratchet yet — but one fact today's design rests on
+is checkable and is now checked: **no class object is `plainRecv`.** `valueTy?` types a `.ref` only
+when `plainRecv`, and `entry_dispatch` discharges `invoke`'s three receiver-shape special cases from
+exactly that. A class object that became `plainRecv` would make the dispatch lemma false and nothing
+else in the build would notice. It is `check-proofs.sh`'s sixth measurement section.
+
+### Checks
+
+`check-proofs.sh` green with the new section, 29 theorems, axiom-clean. Nothing in the SUT changed; no
+verdict diff is owed and none is claimed.

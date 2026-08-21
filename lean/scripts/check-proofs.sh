@@ -169,4 +169,16 @@ if ! lake env lean --run scripts/consts_probe.lean; then
   exit 1
 fi
 
+# L180's measurement for the class-object arm — the rung L179 showed gates all 28
+# `const` bodies. Mostly a report (the eigenclass split is heterogeneous and there
+# is no clause to ratchet yet), but the *one* fact today's design rests on is a
+# ratchet: `valueTy?` types a `.ref` only when `plainRecv`, and `entry_dispatch`
+# discharges `invoke`'s three receiver-shape special cases from exactly that. A
+# class object that became `plainRecv` would falsify the dispatch lemma silently.
+echo "== L180 measurement (no class object is plainRecv)"
+if ! lake env lean --run scripts/classobj_probe.lean; then
+  echo "FAIL: a class object is plainRecv — entry_dispatch's receiver split is unsound"
+  exit 1
+fi
+
 echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap; class names are unique"
