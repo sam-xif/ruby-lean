@@ -181,4 +181,17 @@ if ! lake env lean --run scripts/classobj_probe.lean; then
   exit 1
 fi
 
+# L186's measurement for rung 3: is a `Module#===` row on the class-object arm
+# *witnessable*? Both of `DeclsOk`'s obligations are heap facts about the class
+# object's dispatch chain, and the hazard is real — `prelude/prelude.rb:44` defines
+# `Object#===` in Ruby (so `fromPrelude = true`, which `ResolvesAt` refuses) and
+# `Object` is on every class object's chain. The row survives only because `Module`
+# comes first, which is an ordering fact about `ancestors` and not something the
+# type language can promise. Ratcheted, because a prelude change could reorder it.
+echo "== L186 measurement (a Module#=== row on the class-object arm is witnessable)"
+if ! lake env lean --run scripts/classeq_probe.lean; then
+  echo "FAIL: `===` on a class object no longer resolves to the Module#=== builtin"
+  exit 1
+fi
+
 echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap; class names are unique"

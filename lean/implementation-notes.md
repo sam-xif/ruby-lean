@@ -7845,3 +7845,62 @@ notice a `ValueTy` arm typing something it should not). `--check` byte-identical
 `--self-test` all agree. Four new checked examples: `String`'s class object is typed
 `T.class_of(String)` at the booted heap, the two arms are disjoint there, and both special-cased
 receiver ids are refused.
+
+## L186 — is the row witnessable? Measured, and the hazard was real
+
+Rungs 1 and 2 of `slice-verdict.md` §4a are built (L183, L184/L185). Rung 3 is the row they exist
+for — `Module#===`, 123 of the slice's 337 receiver-position constant occurrences and the only large
+population behind neither wall (L181). This is the measurement that has to come before writing it,
+sixth in the sequence, and like the five before it the answer was not obvious.
+
+### What `DeclsOk` obliges of a row on `.clsOf n`, and why neither half is about types
+
+1. **`ResolvesAt h k "===" bid`** at `k = classOf h (.ref o)` — the eigenclass when there is one and
+   `Class` otherwise (L180). Needs `lookupIn` to find a *builtin* with `undefined = false`,
+   `visibility = .pub` and **`fromPrelude = false`**, and needs `crubyShadow` to answer `none` over the
+   chain in front of the owner.
+2. **`ConformsAt`** — `Builtins.run bid recv [b] m = .ok w m`, the machine unchanged.
+
+### The hazard, and it is not hypothetical
+
+> **`prelude/prelude.rb:44` defines `Object#===` in Ruby.** That makes it `fromPrelude = true`, which
+> `ResolvesAt` refuses outright — and `Object` is on *every* class object's dispatch chain. So the row
+> is witnessable only if `Module`'s builtin `===` comes **first**, which is an ordering fact about
+> `ancestors` and nothing the type language can promise.
+
+It does. Measured over all seven keyable class objects:
+
+```
+Array (class object 11): dispatch class 48 (#<Class:Array>)
+  owner = 2 (Module)   builtin = some Module#===   fromPrelude = false   .pub
+  chain before owner = [48, 45, 44, 3]             crubyShadow = none
+Integer (class object 7): dispatch class 3 (Class)
+  owner = 2 (Module)   … chain before owner = [3]  crubyShadow = none
+the prelude's Object#===: builtin = none, fromPrelude = true      ← behind Module, never wins
+ConformsAt's side condition: deferTwin? = false for all seven
+```
+
+Both shapes L180 found are covered — the four classes with an eigenclass and the three without — and
+`Module` precedes `Object` on both. `Builtins/Modules.lean:37` gives the conformance half by
+construction: `isA` reads the heap and writes nothing, so `run … m = .ok (.bool …) m` with the machine
+unchanged, *provided* the receiver's `classPayload?` is `isSome` — which is `classRecv`'s own clause,
+already carried by L185.
+
+**Ratcheted rather than reported**, unlike L180's, because the thing it establishes is exactly the kind
+a prelude change can silently reorder: it is `check-proofs.sh`'s seventh measurement section.
+
+### The sequence, and what it is worth
+
+Six probes, each written because the previous one had already changed something: L177 changed a clause,
+L179 an ordering, L180 what a rung's cost is, L181 which row, L186 whether that row exists at all.
+Every one of them is under an hour of `IO` and none is a proof. The pattern is now well enough
+established to state as a working rule:
+
+> **A rung's risk is almost never in the statement you are about to write; it is in a fact about the
+> artifact that you are about to assume.** Measure that fact first. The measurement is cheap, and four
+> of the six changed the design.
+
+### Checks
+
+`check-proofs.sh` green with the new section, 29 theorems, axiom-clean. No SUT or metatheory change, so
+no verdict diff is owed and none is claimed.
