@@ -444,6 +444,52 @@ theorem unwind_ret_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Va
   rw [hkm]
   cases κ <;> simp_all [RetTransparent, Interp.withCtl]
 
+/-- **The konts a `next` passes through unchanged** (L225), and it is the *second* such
+    list. The difference from `RetTransparent` is one fact about `unwind`: its `while` arm
+    handles `.brkJ`/`.nxtJ`/`.redoJ` **specially** and passes everything else to the
+    catch-all. So a loop kont is transparent to a `.retJ` and is a `next`'s **terminator**,
+    which is the whole point of `NxtOk` below. `frameK` is in neither list. -/
+def NxtTransparent : Kont → Prop
+  | .seqK _ => True
+  | .asgnK _ _ => True
+  | .ifK _ _ => True
+  | .recvK .. => True
+  | .argsK .. => True
+  | .superArgK .. => True
+  | .arrK .. => True
+  | .jumpValK _ => True
+  | .cpathK _ => True
+  | _ => False
+
+theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Value}
+    (hκ : NxtTransparent κ) (hkm : m.kont = κ :: k) :
+    Interp.unwind m (.nxtJ v)
+      = .next (Interp.withCtl { m with kont := k } (.jump (.nxtJ v))) := by
+  unfold Interp.unwind
+  rw [hkm]
+  cases κ <;> simp_all [NxtTransparent, Interp.withCtl]
+
+@[simp] theorem frameKLabels_nxt_transparent {κ : Kont} {k : List Kont}
+    (h : NxtTransparent κ) : frameKLabels (κ :: k) = frameKLabels k := by
+  cases κ <;> simp_all [NxtTransparent, frameKLabels]
+
+/-- **`unwind` restarts the loop at its condition** (L225) — `unwind`'s `whileCondK`/
+    `whileBodyK` arm at `.nxtJ`, which is one line of the interpreter: pop the loop kont,
+    push a fresh `whileCondK`, and evaluate the condition. -/
+theorem unwind_nxt_loopCond {m : Machine} {c body : Expr} {k : List Kont} {v : Value}
+    (hkm : m.kont = .whileCondK c body :: k) :
+    Interp.unwind m (.nxtJ v)
+      = .next (Interp.withKont { m with kont := k } (.eval c) (.whileCondK c body)) := by
+  unfold Interp.unwind
+  rw [hkm]
+
+theorem unwind_nxt_loopBody {m : Machine} {c body : Expr} {k : List Kont} {v : Value}
+    (hkm : m.kont = .whileBodyK c body :: k) :
+    Interp.unwind m (.nxtJ v)
+      = .next (Interp.withKont { m with kont := k } (.eval c) (.whileCondK c body)) := by
+  unfold Interp.unwind
+  rw [hkm]
+
 /-- **And the same for a `.raiseJ`** (L217) — the *same* nine cases and the same `simp`,
     because `unwind`'s catch-all does not look at the jump. Stated as a twin rather than
     by generalizing over the jump, because the `while` arms *do* look: `.brkJ`/`.nxtJ`/

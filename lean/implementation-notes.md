@@ -10748,3 +10748,54 @@ Unchanged in shape from L223, plus the environment premise:
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); third ratchet **24**.
+
+## L225 — `next`'s transparency layer, and the finding: it hits `begin`'s wall, so the two share a fix
+
+Out of fragment **24 → 24**. `NxtTransparent` and its three `unwind` lemmas are in and proved; `NxtOk`
+is designed, written, and **withdrawn**, because it runs into the wall L218 measured for `begin`. That
+those two blockers are the *same* blocker is the news.
+
+### What landed
+
+```lean
+def NxtTransparent : Kont → Prop       -- RetTransparent minus the two loop konts
+theorem unwind_nxt_transparent         -- pop the kont, keep the jump
+theorem unwind_nxt_loopCond            -- pop the loop kont, push a fresh whileCondK, eval c
+theorem unwind_nxt_loopBody            -- the same, from the body side
+theorem frameKLabels_nxt_transparent
+```
+
+Three transparency lists now exist and the differences are all facts about `unwind`: `RetTransparent`
+is the konts reaching the catch-all **plus** the loop konts (a `.retJ` passes through a loop);
+`RaiseTransparent` is that minus `beginBodyK`; `NxtTransparent` is that minus the two **loop** konts,
+which are a `next`'s *terminators*. `frameK` is in none of them.
+
+### `NxtOk` is right and unprovable-from-`KontOk` today
+
+The relation is `RetOk`'s third sibling with no `pop` and no `nil` — a `.nxtJ` at `[]` is `.stuck` and
+at a `frameK` is `.unsupported`, and L224's `frameK` premise (`callee's inLoop = none`) is exactly what
+**refutes** the second. Its two `loop` constructors carry `KontOk.whileCond`'s premises.
+
+`KontOk.nxtOk` then breaks in two places, and the second is the wall:
+
+1. **`KontOk.nil` needs an `inLoop = none` premise** — it has `ret = none` (L198) and nothing about
+   loops, so the empty-continuation case cannot be refuted. Free to add, true at every construction
+   site (the outermost continuation is not inside a loop).
+2. **`NxtOk` is indexed by `Decls` and `KontOk` threads tables.** `LoopOk` needs a table, so `NxtOk`
+   carries one; but `KontOk.seqCons`/`ifK`/`recvK`/`argsK` hand the continuation a *different* table,
+   so the derived relation is at the chain's deepest table and `CtlOk` needs it at the invariant's.
+
+> **That is exactly L218's blocker for `begin`, and the fix is one lemma for both**: the analogue of
+> L200's `infer_table_ret` — *the table is constant along a continuation chain* — under a guard that
+> makes it available. L200's guard was `ctx.ret.isSome`, available because `def`'s row branch requires
+> `ctx.ret.isNone`. For loops the guard is `ctx.inLoop.isSome`, and making it available means adding
+> `ctx.inLoop.isNone` to `def`'s row branch — free, because a `def` that adds a row inside a loop body
+> makes the body table-unstable and `LoopOk` refuses it anyway.
+
+So the two blocked rungs — `begin` (2 bodies) and `next` (1, with `break`/`redo` behind the same
+channel) — are **one commit apart**, not two independent problems. That is worth more than either body.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
+**24**. `Proof/`-only.
