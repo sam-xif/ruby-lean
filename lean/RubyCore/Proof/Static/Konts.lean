@@ -105,6 +105,11 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       typed in the same environment. -/
   | asgnIvar {D h c Γ Γs τ τw x k} :
       c.selfCls.isSome = true → subTy τ τw = true →
+      -- **L196: the write conforms to whatever the table declares.** Carried on the
+      -- continuation rather than re-derived at the delivery, because the delivery is
+      -- where `DeclsOk`'s ivar half has to be re-established and this is the only
+      -- fact that can do it.
+      (∀ cn σ, c.selfCls = some cn → ivarTy? D cn x = some σ → subTy τ σ = true) →
       KontOk D h ((c, Γ) :: Γs) τw k →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
   /-- The in-flight value is the condition; either branch may run next, so the
@@ -243,7 +248,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | seqNil hw _ ih => intro ha; exact .seqNil hw (ih ha)
   | seqCons hs hw _ ih => intro ha; exact .seqCons hs hw (ih ha)
   | asgn hw _ ih => intro ha; exact .asgn hw (ih ha)
-  | asgnIvar hsc hw _ ih => intro ha; exact .asgnIvar hsc hw (ih ha)
+  | asgnIvar hsc hw hcf _ ih => intro ha; exact .asgnIvar hsc hw hcf (ih ha)
   | ifK hi hw _ ih => intro ha; exact .ifK hi hw (ih ha)
   | whileCond hl hw _ ih => intro ha; exact .whileCond hl hw (ih ha)
   | whileBody hl hw _ ih => intro ha; exact .whileBody hl hw (ih ha)
@@ -634,11 +639,14 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     -- default). A hypothesis rather than a derivation, because the lemma is stated
     -- at an abstract `obj`.
     (hfz : obj.frozen = false)
+    -- L196: and no instance variables, for `PlainGrow`'s new clause — same shape and
+    -- the same reason (`allocStr`/`allocArr` leave the field at its default).
+    (hiv : obj.ivars = [])
     (hk : (h.classPayload? obj.klass).isSome)
     (hn : className h obj.klass = n) :
     ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
   obtain ⟨hproc, hhsh, hnc⟩ := hpl
-  have hg : PlainGrow h ⟨h.objs.push obj⟩ := plainGrow_alloc h obj hnc
+  have hg : PlainGrow h ⟨h.objs.push obj⟩ := plainGrow_alloc h obj hnc hiv
   -- The fresh id reads back as the object that was pushed; everything else is a
   -- rewrite through `PlainGrow`, which pins `classPayload?` at *every* id.
   have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by

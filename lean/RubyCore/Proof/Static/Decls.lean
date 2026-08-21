@@ -412,6 +412,77 @@ theorem constOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Meth
   rw [constOwn_defineMethod]
   exact hsole j (by rw [← classPayload?_isSome_defineMethod]; exact hj) hjo
 
+/-- **What one instance-variable row obliges** (L196), and the quantifier is the
+    whole content: **every** object of the class, not one receiver.
+
+    An ivar read has no receiver to constrain — `@x` reads the frame's `self`, and the
+    invariant knows only its *class* (`StackCtx`'s `selfCls` clause). So a row on
+    `(c, @x)` is a claim about every instance of `c` at once, which is what makes the
+    *write* rule owe a conformance check: L191 admitted `@x = e` freely precisely
+    because nothing claimed anything about ivars.
+
+    **`none` is admitted, and that is not laxity.** An unset instance variable reads as
+    `nil` in Ruby, so the read rule answers `mkNilable τ` rather than `τ` and the
+    clause has nothing to say about an absent entry. Tracking definite assignment is
+    what would let the read answer `τ`, and it is a different rung (`initialize`, and
+    therefore Wall 2). -/
+def IvarOk (h : Heap) (c x : String) (τ : Ty) : Prop :=
+  ∀ o, o < h.objs.size → className h (h.get o).klass = c →
+    ∀ v, ((h.get o).ivars.find? (·.1 == x)).map Prod.snd = some v → ValueTy h v τ
+
+/-- `defineMethod` writes one object's **payload**; `ivars` and `klass` are different
+    fields of the same structure, so both are unmoved at every id (L196). -/
+theorem get_defineMethod_fields (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (o : ObjId) :
+    ((defineMethod h cls name md).get o).ivars = (h.get o).ivars ∧
+    ((defineMethod h cls name md).get o).klass = (h.get o).klass := by
+  unfold defineMethod
+  cases hc : h.classPayload? cls with
+  | none => exact ⟨rfl, rfl⟩
+  | some c =>
+    by_cases ho : o = cls
+    · subst ho
+      by_cases hb : o < h.objs.size
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_self _ _ _ hb]
+        exact ⟨rfl, rfl⟩
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_oob _ _ _ hb]
+        exact ⟨rfl, rfl⟩
+    · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ ho]
+      exact ⟨rfl, rfl⟩
+
+/-- **`IvarOk` across an allocation** (L196). Two things to say and they are the two
+    halves of `PlainGrow`: at an *old* id nothing moved (`className`, the `ivars`
+    list) and `ValueTy` transports; at the **fresh** id the clause is about an object
+    the old heap did not have, so the hypothesis cannot supply it — `PlainGrow`'s
+    `get`-agreement below the old size is what bounds the quantifier back. -/
+theorem ivarOk_grow {h h' : Heap} {c x : String} {τ : Ty} (hg : PlainGrow h h')
+    (hi : IvarOk h c x τ) : IvarOk h' c x τ := by
+  intro o ho hcn v hv
+  by_cases hb : o < h.objs.size
+  · rw [hg.get o hb] at hcn hv
+    exact ValueTy.congr (typeAgree_of_plainGrow hg)
+      (hi o hb (by rwa [hg.className_eq] at hcn) v hv)
+  · -- Above the old size the object has no ivars at all, so the read is `none` and
+    -- the hypothesis `hv` is contradictory.
+    rw [hg.freshIvars o (by omega)] at hv
+    exact absurd hv (by simp)
+
+/-- **And across a `def`.** `setClassPayload` writes one object's payload; `ivars` is
+    a different field of `Object`, so the list is unmoved at every id, and `className`
+    is `clsName_defineMethod`'s. -/
+theorem ivarOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    {c x : String} {τ : Ty} (hi : IvarOk h c x τ) :
+    IvarOk (defineMethod h cls name md) c x τ := by
+  intro o ho hcn v hv
+  rw [objs_size_defineMethod] at ho
+  obtain ⟨hiv, hkl⟩ := get_defineMethod_fields h cls name md o
+  rw [hiv] at hv
+  rw [hkl, className_defineMethod] at hcn
+  exact ValueTy.congr (typeAgree_defineMethod h cls name md) (hi o ho hcn v hv)
+
 /-- The **method** half, named because the assertion language has atoms for exactly
     it: `declAssn`'s denotation is `RowsOk`, not `DeclsOk`, and since L195 those are
     different propositions. Giving the constant half an atom is the assertion
@@ -429,7 +500,10 @@ def DeclsOk (D : Decls) (h : Heap) : Prop :=
   -- declared at all — the boot-safe table and the prelude-aware one are then two
   -- tables, each sound at the heap it describes, rather than one global list that has
   -- to be true everywhere.
-  (∀ n τ, constTy? D n = some τ → ConstOk h n τ)
+  (∀ n τ, constTy? D n = some τ → ConstOk h n τ) ∧
+  -- L196's third half. Same reason as the second: `Inv` ∃-quantifies the table, so a
+  -- table-indexed heap claim belongs here rather than in a new conjunct.
+  (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ)
 
 /-! ## 2. The uniform dispatch step
 
@@ -640,9 +714,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
-  -- L195: `SubDecls` is a pair now, and `addRow` touches `rows` only — so the
-  -- constant half is `rfl`.
-  refine ⟨?_, rfl⟩
+  -- L195/L196: `SubDecls` is a triple now, and `addRow` touches `rows` only — so both
+  -- table halves are `rfl`.
+  refine ⟨?_, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -837,12 +911,13 @@ clause deleted the obligation. -/
 theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hd : DeclsOk D h) (hfresh : declaresName D name = false) :
     DeclsOk D (defineMethod h cls name md) := by
-  refine ⟨?_, fun n τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
   case refine_2 =>
     -- L195: a method-table write moves neither `constOwn` nor any field `ValueTy`
     -- reads, so the constant half is `consts_defineMethod` plus `ValueTy.congr` at
     -- `typeAgree_defineMethod` — the two lemmas L156 and L137 already wrote.
-    exact constOk_defineMethod (hd.2 n τ hn)
+    exact constOk_defineMethod (hd.2.1 n τ hn)
+  case refine_3 => exact ivarOk_defineMethod (hd.2.2 c x τ hn)
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq
@@ -887,11 +962,13 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     DeclsOk (addRow D c name { params := [], ret := τb }) (defineMethod h cls name md) := by
   have hsub : SubDecls D (addRow D c name { params := [], ret := τb }) :=
     subDecls_addRow hfresh
-  refine ⟨?_, fun n τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
   case refine_2 =>
     -- `addRow` leaves `consts` alone, so the row's obligation is the old one at the
     -- new heap — which is `DeclsOk_defineMethod`'s constant half.
-    exact constOk_defineMethod (hd.2 n τ (by simpa [constTy?, addRow] using hn))
+    exact constOk_defineMethod (hd.2.1 n τ (by simpa [constTy?, addRow] using hn))
+  case refine_3 =>
+    exact ivarOk_defineMethod (hd.2.2 c x τ (by simpa [ivarTy?, addRow] using hn))
   intro τr mname decl hdecl
   -- Two facts about the new table at the *written* name, and everything about the
   -- new row follows from them: `c` has it, and no other class does.
@@ -1087,7 +1164,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     starts from (`saturatedB`, checked by `check-proofs.sh`). -/
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
-  refine ⟨?_, fun n τ hn => constOk_grow hg (hd.2 n τ hn)⟩
+  refine ⟨?_, fun n τ hn => constOk_grow hg (hd.2.1 n τ hn),
+    fun c x τ hn => ivarOk_grow hg (hd.2.2 c x τ hn)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
@@ -1899,8 +1977,12 @@ theorem constsOk_of_constsOkB {h : Heap} {D : Decls} (hb : constsOkB h D.consts 
     which every caller of this lemma has in hand. -/
 theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
     DeclsOk baseDecls h := by
-  refine ⟨?_, fun n τ hn => ?_⟩
+  refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_⟩
   case refine_2 => exact constOk_of_classOk hcls hn
+  -- `baseDecls.ivars` is empty, so the third half is vacuous — and stating it as a
+  -- refutation of the lookup rather than as `trivial` is what will break here the
+  -- moment a row lands, which is the point.
+  case refine_3 => exact absurd hn (by simp [ivarTy?, baseDecls])
   intro τr mname d hd
   -- Only `Integer` has declarations, and only three names on it, so the table
   -- lookup either pins `mname` or refutes `hd`.
@@ -2043,9 +2125,14 @@ theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ
   rw [hi.constOwn_eq]
   exact hsole j (by rw [hi.classPayload] at hj; exact hj) hjo
 
-theorem declsOk (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) : DeclsOk D h' :=
+/-- **Only the first two halves** (L196), and the omission is the rung: `IvarOnly`
+    says an ivar write is invisible, and `DeclsOk`'s third half is *about* ivars. The
+    `@x = e` consecution case has to re-establish that half from the rule's own
+    conformance check, which is why the rule has one. -/
+theorem rowsAndConsts (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) :
+    MethodRowsOk D h' ∧ ∀ n τ, constTy? D n = some τ → ConstOk h' n τ :=
   ⟨fun τr mname d hf => hi.entryOk (hd.1 τr mname d hf),
-   fun n τ hn => hi.constOk (hd.2 n τ hn)⟩
+   fun n τ hn => hi.constOk (hd.2.1 n τ hn)⟩
 
 theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,

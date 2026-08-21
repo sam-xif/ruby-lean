@@ -213,6 +213,18 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
   · subst h; simp [joinTy, mkNilable]
   · simp [joinTy, mkNilable, h]
 
+@[simp] theorem subTy_nilT_mkNilable (τ : Ty) : subTy .nilT (mkNilable τ) = true := by
+  unfold mkNilable
+  by_cases h : τ = Ty.nilT
+  · subst h; simp
+  · simp [h, subTy]
+
+@[simp] theorem subTy_mkNilable (τ : Ty) : subTy τ (mkNilable τ) = true := by
+  unfold mkNilable
+  by_cases h : τ = Ty.nilT
+  · subst h; simp
+  · simp [h, subTy]
+
 /-- Both sides of a join are below it. The join rule's whole soundness content, and
     the reason it is two lines: `joinTy` answers only the two shapes it can justify. -/
 theorem joinTy_sub {σ τ τj : Ty} (h : joinTy σ τ = some τj) :

@@ -55,18 +55,38 @@ structure PlainGrow (h h' : Heap) : Prop where
   get : ∀ o, o < h.objs.size → h'.get o = h.get o
   /-- And nothing anywhere became a class. -/
   payload : ∀ k, h'.classPayload? k = h.classPayload? k
+  /-- **And a fresh object has no instance variables** (L196). Not hygiene: `IvarOk`
+      is quantified over *every* object of a class, so an allocation could break a row
+      by producing an instance with a badly-typed `@x`, and nothing else in `PlainGrow`
+      bounds the fresh slots. Every allocation the fragment performs is a *literal* —
+      a String or an Array — and a literal has no ivars, so the clause is `rfl` at both
+      call sites; it is a clause rather than a free consequence because `Class.new`
+      (Wall 2) is where it stops being one. -/
+  freshIvars : ∀ o, h.objs.size ≤ o → (h'.get o).ivars = []
 
 /-- Pushing a non-class object is an instance. The `payload` clause is where the
     non-class hypothesis is spent: at the fresh id both heaps answer `none`, in one
     case because the object is not a class and in the other because it is not
     there. -/
-theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ .cls c) :
+theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ .cls c)
+    (hiv : obj.ivars = []) :
     PlainGrow h ⟨h.objs.push obj⟩ := by
   have hget : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
     intro o ho
     simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
       if_neg (Nat.ne_of_lt ho)]
-  refine ⟨by simp, hget, fun k => ?_⟩
+  refine ⟨by simp, hget, fun k => ?_, fun o ho => ?_⟩
+  case refine_2 =>
+    -- Above the old size there is exactly one inhabited slot, and it is `obj`;
+    -- anything higher reads `default`, whose `ivars` is `[]` too.
+    by_cases he : o = h.objs.size
+    · subst he
+      rw [show (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj from by
+        simp [Heap.get, Array.getD_eq_getD_getElem?]]
+      exact hiv
+    · have hb : ¬ o < (h.objs.push obj).size := by simp; omega
+      simp only [Heap.get, Array.getD, dif_neg hb]
+      rfl
   by_cases hk : k < h.objs.size
   · simp only [Heap.classPayload?, hget k hk]
   · rw [classPayload?_oob h k hk]

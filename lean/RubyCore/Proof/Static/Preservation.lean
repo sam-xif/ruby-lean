@@ -147,9 +147,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
       exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
-        (plainGrow_alloc m.heap _ (by simp))
+        (plainGrow_alloc m.heap _ (by simp) rfl)
         rfl rfl rfl
-        (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.1.1 hstr.1.2) hsubw) hk
+        (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.1.1 hstr.1.2) hsubw) hk
     -- **The symbol literal** (L159). Identical to the four immediate cases above,
     -- which is the point: the slice's third-largest blocker by node count cost a
     -- rule of one line and a case of three, because `Ty.sym` was already there and
@@ -212,7 +212,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- of `ClassOk`'s promises and rebuild `ValueTy` from them; `DeclsOk`'s
         -- constant half *is* that value judgement, so what is left is the frame's
         -- `cref` membership and one `constRead_sole`.
-        obtain ⟨v, hconst, hty, hsole⟩ := htab.2 n _ hre
+        obtain ⟨v, hconst, hty, hsole⟩ := htab.2.1 n _ hre
         -- `Object` is on the frame's cref (`StackCtx`, L189), so the *lexical* phase
         -- cannot miss — and sole ownership makes whatever it hits `Object`'s. The
         -- ancestor walk is never reached.
@@ -239,6 +239,56 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         obtain ⟨rfl, rfl, rfl⟩ := heq
         exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
           (ValueTy.weaken (hl x _ hg) hsubw) hk
+      -- **`@x`** (L196), and the case is two branches of `evalExpr` against the two
+      -- disjuncts `mkNilable` was chosen for: the ivar is set, and `IvarOk` types what
+      -- is there; or it is unset and `evalExpr` answers `nil`, which `mkNilable`
+      -- admits. `StackCtx`'s `selfCls` clause is what turns the frame's `self` into a
+      -- `.ref` whose class the table can be read at.
+      case ivar =>
+        simp only [infer] at hinf
+        split at hinf
+        · next sc hsome =>
+          split at hinf
+          · next σ hiv =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+            obtain ⟨rfl, rfl, rfl⟩ := hinf
+            have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
+              cases hst : m.stack with
+              | nil => exact absurd hst hf.1
+              | cons fid fids =>
+                have hsc2 := hsc
+                rw [hst] at hsc2
+                have := hsc2.2.2.2.1 sc hsome
+                rw [show m.currentFrame = m.frames.getD fid default by
+                  simp [Machine.currentFrame, hst]]
+                exact this
+            obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
+              cases hsv : m.currentFrame.self with
+              | ref o' => exact ⟨o', rfl⟩
+              | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?, subTy]
+            have hpl : plainRecv m.heap o = true := valueTy_ref_plain (hsf ▸ hself)
+            -- The class the table is keyed at: `plainRecv` says dispatch goes through
+            -- `klass`, and `hself` names that class.
+            have hcn : className m.heap (m.heap.get o).klass = sc := by
+              have := valueTy_ref_inv (hsf ▸ hself)
+              rcases this with ⟨-, hs⟩ | ⟨hc, hs⟩
+              · have := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
+                rw [plainRecv_classOf hpl] at this
+                simpa using this
+              · exact absurd hs (by simp [subTy])
+            have hlt : o < m.heap.objs.size := by
+              unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
+              simpa using hpl.1.1.1.1
+            simp only [evalExpr, hsf]
+            refine inv_value hfs htab hsc hhook hsat hstr hcls hbot
+              (ValueTy.weaken ?_ hsubw) hk
+            cases hfind : ((m.heap.get o).ivars.find? (·.1 == x)).map Prod.snd with
+            | none => simpa [hfind] using ValueTy.weaken (ValueTy.exact rfl) (by simp)
+            | some v =>
+              have := htab.2.2 sc x σ hiv o hlt hcn v hfind
+              simpa [hfind] using ValueTy.weaken this (by simp)
+          · exact absurd hinf (by simp)
+        · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case vasgn k x rhs =>
       cases k
@@ -258,8 +308,35 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [infer] at hinf
         split at hinf
         · next sc hsome =>
-          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hinf
-            (KontOk.asgnIvar (by rw [hsome]; rfl) hsubw hk)
+          split at hinf
+          · next τr Γ₁ D₁ hrhs =>
+            split at hinf
+            · next σ hiv =>
+              split at hinf
+              · next hsub =>
+                simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+                obtain ⟨rfl, rfl, rfl⟩ := hinf
+                exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hrhs
+                  (KontOk.asgnIvar (by rw [hsome]; rfl) hsubw
+                    (fun cn σ' hcn hiv' => by
+                      rw [hsome, Option.some.injEq] at hcn
+                      subst hcn
+                      rw [hiv] at hiv'
+                      simp only [Option.some.injEq] at hiv'
+                      subst hiv'
+                      exact hsub) hk)
+              · exact absurd hinf (by simp)
+            · next hiv =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+              obtain ⟨rfl, rfl, rfl⟩ := hinf
+              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hrhs
+                (KontOk.asgnIvar (by rw [hsome]; rfl) hsubw
+                  (fun cn σ' hcn hiv' => by
+                    rw [hsome, Option.some.injEq] at hcn
+                    subst hcn
+                    rw [hiv] at hiv'
+                    exact absurd hiv' (by simp)) hk)
+          · exact absurd hinf (by simp)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case seq es =>
@@ -592,9 +669,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨-, rfl, rfl⟩ := hseq
           simp only [continueArray, Builtins.allocArr]
           exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
-            (plainGrow_alloc m.heap _ (by simp))
+            (plainGrow_alloc m.heap _ (by simp) rfl)
             rfl rfl rfl
-            (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hsubw)
+            (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1 hstr.2.2) hsubw)
             hk
         | cons e rest =>
           -- The head runs next. Its own accepting judgement is what refutes
@@ -795,7 +872,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- cheapest heap-writing rule in the fragment, and it is cheap for a reason worth
     -- stating: the invariant is about *dispatch and names*, and an instance-variable
     -- table is neither.
-    | @asgnIvar _ _ _ _ _ _ τw x k hsome hsw hk' =>
+    | @asgnIvar _ _ _ _ _ _ τw x k hsome hsw hcf hk' =>
       obtain ⟨sc, hsc'⟩ := Option.isSome_iff_exists.mp hsome
       have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
         cases hst : m.stack with
@@ -816,6 +893,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         unfold plainRecv at hpl
         simp only [Bool.and_eq_true, Bool.not_eq_true'] at hpl
         exact hpl.1.2
+      -- L196: the class the ivar table is keyed at, and the bound the scan needs.
+      have hcnO : className m.heap (m.heap.get o).klass = sc := by
+        rcases valueTy_ref_inv (hsf ▸ hself) with ⟨-, hs⟩ | ⟨hc, hs⟩
+        · have hq := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
+          rw [plainRecv_classOf hpl] at hq
+          simpa using hq
+        · exact absurd hs (by simp [subTy])
+      have hltO : o < m.heap.objs.size := by
+        unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
+        simpa using hpl.1.1.1.1
       show StepOk (match m.currentFrame.self with
         | .ref o' =>
           if (m.heap.get o').frozen then _ else
@@ -841,7 +928,47 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
                  = m.stack from hstk]
            exact hbot,
-        D, ctx, Γ, Γs, hi.declsOk htab, ?_, ?_, ?_⟩
+        D, ctx, Γ, Γs, ⟨(hi.rowsAndConsts htab).1, (hi.rowsAndConsts htab).2, ?_⟩,
+        ?_, ?_, ?_⟩
+      · -- **L196: the one half `IvarOnly` cannot carry**, because it is the half that
+        -- is *about* ivars. What re-establishes it is the rule's own conformance
+        -- check, and the case splits three ways: a different object (the write missed
+        -- it), the same object at a different name (the `filter`/`cons` missed it), or
+        -- the written slot itself, where the row's type is the one the rule checked
+        -- against — the classes agree because both name `sc`.
+        intro c' x' σ' hiv' o' ho0 hcn' v' hv'
+        have hsz : (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap.objs.size
+            = m.heap.objs.size := hi.size
+        have ho' : o' < m.heap.objs.size := by omega
+        -- `withCtl` is a structure update, so its `.heap` is the written one — but only
+        -- definitionally, and `rw` needs it syntactically.
+        simp only [withCtl] at hcn' hv'
+        by_cases hoo : o' = o
+        · -- The written object. Its class is `sc` on both sides, so `c' = sc` — and
+          -- then the row's type is the one the rule checked against.
+          have hcls' : c' = sc := by
+            rw [← hcn', hoo,
+              show ((bindIvar { m with kont := k } x v).heap.get o).klass
+                = (m.heap.get o).klass from hi.klass o, hi.className_eq]
+            exact hcnO
+          subst hcls'
+          rw [hoo] at hv' ho'
+          by_cases hxx : x' = x
+          · subst hxx
+            have hvv : v' = v := by
+              rw [bindIvar_ivars_self (m := { m with kont := k }) hsf hltO] at hv'
+              simpa using hv'.symm
+            subst hvv
+            exact ValueTy.congr hag (ValueTy.weaken hv (hcf _ σ' hsc' hiv'))
+          · -- A different name: the head is `x` and the tail is the old list with `x`
+            -- filtered out, so the lookup reads the old value.
+            rw [bindIvar_ivars_self (m := { m with kont := k }) hsf hltO,
+              List.find?_cons_of_neg (by simpa using fun hq => hxx hq.symm),
+              find?_filter_ne _ hxx] at hv'
+            exact ValueTy.congr hag (htab.2.2 _ x' σ' hiv' o ho' hcnO v' hv')
+        · rw [bindIvar_get_ne (m := { m with kont := k }) hsf hoo] at hcn' hv'
+          rw [hi.className_eq] at hcn'
+          exact ValueTy.congr hag (htab.2.2 c' x' σ' hiv' o' ho' hcn' v' hv')
       · show FramesOk _ (bindIvar { m with kont := k } x v).frames
           (bindIvar { m with kont := k } x v).stack (Γ :: Γs.map Prod.snd)
         rw [hfr, hstk]; exact FramesOk.heap_congr hag hfs
@@ -1018,9 +1145,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [continueArray, Builtins.allocArr]
         exact inv_grow_value (m := { m with kont := k })
           hfs htab hsc hhook hsat hstr hcls hbot
-          (plainGrow_alloc m.heap _ (by simp))
+          (plainGrow_alloc m.heap _ (by simp) rfl)
           rfl rfl rfl
-          (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hsw)
+          (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1 hstr.2.2) hsw)
           hk'
       -- A head to run: push the next `arrK`. Split on the *tail* because
       -- `inferSeq`'s `[e]` arm is `infer` and its `e :: rest` arm is not — the same

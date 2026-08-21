@@ -1152,6 +1152,30 @@ theorem bindIvar_fields {m : Machine} {x : String} {v : Value} :
          rw [objs_getD_set!_ne _ _ _ _ hj])
   | _ => exact ⟨rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl⟩
 
+/-- **What `bindIvar` writes, read back** (L196). Three facts, and they are the three
+    cases the `@x = e` consecution splits on now that a row can claim something about
+    the slot: another object is untouched, the written object's *other* names read the
+    old list (the `filter` removes only `x`), and the written name reads the new value.
+
+    `find?_filter_ne` is reused rather than reproved — it was written at F1a for the
+    *method* table, which is the same association-list shape. -/
+theorem bindIvar_get_ne {m : Machine} {x : String} {v : Value} {o o' : ObjId}
+    (hsf : m.currentFrame.self = .ref o) (hne : o' ≠ o) :
+    (bindIvar m x v).heap.get o' = m.heap.get o' := by
+  unfold bindIvar
+  rw [hsf]
+  simp only [Heap.get, Heap.set]
+  rw [objs_getD_set!_ne _ _ _ _ hne]
+
+theorem bindIvar_ivars_self {m : Machine} {x : String} {v : Value} {o : ObjId}
+    (hsf : m.currentFrame.self = .ref o) (hb : o < m.heap.objs.size) :
+    ((bindIvar m x v).heap.get o).ivars
+      = (x, v) :: (m.heap.get o).ivars.filter (·.1 != x) := by
+  unfold bindIvar
+  rw [hsf]
+  simp only [Heap.get, Heap.set]
+  rw [objs_getD_set!_self _ _ _ hb]
+
 /-- **A write that touches only `ivars`** (L191). Every function `TypeAgree` reads —
     `classOf`, `className`, `classPayload?`, `plainRecv`, `classRecv` — is a function
     of `{size, klass, eigen, payload, frozen}`, and an instance-variable write moves

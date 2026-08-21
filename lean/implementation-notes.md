@@ -8604,3 +8604,80 @@ because it has to call `valueTy?`) plus `constsOkB_sound`/`constsOk_of_constsOkB
 decides both constant tables at the booted heap; `--check` **byte-identical** (51/1,174/0); `--assn`
 smoke 1,227 clean; `--self-test` all agree; `fragment-gap.py` **69** out of fragment, `const` 22 → 17,
 `{const}` singletons 8 → 5. Interpreter untouched.
+
+---
+
+## L196 — instance variables become a declared table, and `nilable` pays a second time
+
+Out of fragment **69 → 65**, `needed:` 22 → 26, `--check` **byte-identical**. The whole `ivar` line
+of the `--assn` histogram is gone: four bodies moved from *no rule* to *no declaration*.
+
+### Both halves of the read are forced by the machine
+
+```lean
+| .var .ivar x =>
+  match ctx.selfCls with
+  | some c => match ivarTy? D c x with
+              | some σ => some (mkNilable σ, Γ, D)
+              | none => none
+  | none => none
+```
+
+`selfCls`, because `evalExpr` reads the *frame's* `self` (`Interp.lean:139`) and the invariant knows
+that object only by its class — which is why `IvarOk` is quantified over **every instance** of the
+class rather than over a receiver. And **`mkNilable`**, because an unset ivar reads as `nil`:
+`evalExpr` ends `.getD .nil`, so the type has to admit it. Answering `σ` would be unsound; answering
+it *soundly* needs definite-assignment tracking through `initialize`, which is Wall 2's rung.
+
+That is L193's `nilable` paying for itself a second time, in a rule that has nothing to do with `if`.
+Worth recording as the shape of a good type-language rung: **it gets used by rules that did not ask
+for it.**
+
+### The write stopped being free, and that is the rung's real content
+
+L191 admitted `@x = e` with no check on the value, and it *could*, because nothing in the invariant
+claimed anything about instance variables. A row is exactly such a claim, so the write now checks
+`subTy τ σ` when the ivar is declared — and an undeclared one is still free, because there is no row
+to break.
+
+`KontOk.asgnIvar` carries the conformance to the delivery, which is where `DeclsOk`'s third half has
+to be re-established. **That half is the one `IvarOnly` cannot carry** — L191's transport says an
+ivar write is invisible, and this clause is *about* ivars — so `IvarOnly.declsOk` was split into
+`rowsAndConsts`, and the `@x = e` case proves the third half itself. Three sub-cases, and they are
+exactly the three ways `bindIvar` can miss a row:
+
+* **another object** — `bindIvar_get_ne`;
+* **the same object, another name** — the head is `x` and the tail is the old list with `x` filtered
+  out, so `find?_filter_ne` (written at F1a for the *method* table, reused here) reads the old value;
+* **the written slot** — the classes agree because both name `sc`, so the row's type *is* the one the
+  rule checked against.
+
+### One clause fell out of `PlainGrow`
+
+`IvarOk` quantifies over every object of a class, so an **allocation** could break a row by producing
+an instance with a badly-typed `@x` — and nothing in `PlainGrow` bounded the fresh slots.
+`freshIvars` is the new clause: every allocation the fragment performs is a *literal*, and a literal
+has no ivars, so it is `rfl` at both call sites. It is a clause rather than a free consequence because
+`Class.new` (Wall 2) is where it stops being one.
+
+### Where the honesty is
+
+* The **open** front end refuses a write to a *declared* ivar (`iasgn-declared`), because the nominal
+  check is `subTy τ σ` and `τ` may be a type *variable* there. Nothing is lost today (no shipped
+  table has an ivar row) and the fix is the constraint machinery the row mechanism already has.
+* `baseDecls.ivars` is **empty**, so no shipped table takes the read rule's accepting branch. The rule
+  is not unreachable-with-a-proof-attached — `step_ok` is quantified over every table — but the report
+  side is pinned at a table that *has* a row (`bodyVerdictWith { baseDecls with ivars := … }` answers
+  `T.nilable(Integer)`), because that is the branch a reader would not otherwise see. A shipped row
+  would need what `T`'s needed: a certificate deciding `IvarOk` at the heap, in `constsOkB`'s shape.
+* `SubDecls` now requires `ivars` equality too, for `consts`' reason: the read takes its answer *out
+  of* the table.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
+**byte-identical** (51/1,174/0) — with an empty ivar table both new arms refuse, so the checker
+cannot move; `--assn` smoke 1,227 clean; `--self-test` all agree; `fragment-gap.py` **65** out of
+fragment, and `_body_blockers` no longer counts `ivar-read`. One example had to be rewritten: a
+`def`-default witness that relied on an ivar read being out of the fragment now uses a global read,
+which is the kind of churn a widening should cause.

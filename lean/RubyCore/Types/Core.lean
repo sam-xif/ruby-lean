@@ -349,9 +349,40 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- matching *read* `@x` stays out of the fragment: a write needs only that it does
   -- not raise, while a read needs a type to answer with, which would take a
   -- per-class ivar table this judgement does not have.
-  | .vasgn .ivar _ rhs =>
+  | .vasgn .ivar x rhs =>
     match ctx.selfCls with
-    | some _ => infer D Γ rhs top ctx
+    | some c =>
+      match infer D Γ rhs top ctx with
+      | some (τ, Γ₁, D₁) =>
+        -- **L196: a declared ivar constrains the write.** L191 admitted `@x = e`
+        -- freely, and could, because nothing claimed anything about instance
+        -- variables. `D.ivars` is exactly such a claim — quantified over *every*
+        -- object of the class, since an ivar read has no receiver to constrain — so
+        -- the write owes conformance to it. An **undeclared** ivar is still free:
+        -- there is no row to break.
+        match ivarTy? D₁ c x with
+        | some σ => if subTy τ σ then some (τ, Γ₁, D₁) else none
+        | none => some (τ, Γ₁, D₁)
+      | none => none
+    | none => none
+  -- **An instance-variable read** (L196), and the two halves of the answer are both
+  -- forced by the machine.
+  --
+  -- `selfCls` because `evalExpr` reads the frame's `self` (`Interp.lean:139`), and
+  -- the invariant knows that object only by its class — which is why `IvarOk` is
+  -- quantified over every instance rather than over a receiver.
+  --
+  -- **`mkNilable`**, because an *unset* ivar reads as `nil`: `evalExpr` ends
+  -- `.getD .nil`, so the type has to admit it. Answering `σ` would be unsound and
+  -- answering it *soundly* needs definite-assignment tracking through `initialize`,
+  -- which is Wall 2's rung. This is where L193's `nilable` pays for itself a second
+  -- time, in a rule that has nothing to do with `if`.
+  | .var .ivar x =>
+    match ctx.selfCls with
+    | some c =>
+      match ivarTy? D c x with
+      | some σ => some (mkNilable σ, Γ, D)
+      | none => none
     | none => none
   -- Binary send to a builtin, any receiver expression, no block. Wrong arity, a
   -- block, or two or more arguments is still `unknown`.

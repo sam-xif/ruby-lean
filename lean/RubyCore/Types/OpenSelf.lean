@@ -183,7 +183,28 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- `selfCls = some ctx.cls` (`Factors`) — the open front end's `self` is a type
   -- variable precisely because there is one. So the arm is the right-hand side's
   -- answer, unchanged, and the factoring case is "one subexpression".
-  | .vasgn .ivar _ rhs => inferOpen D Γ rhs ctx s
+  | .vasgn .ivar x rhs =>
+    match inferOpen D Γ rhs ctx s with
+    | .ok τ Γ₁ s₁ =>
+      -- **A *declared* ivar is refused here** (L196), and the reason is the open
+      -- setting rather than the rule: the nominal write checks `subTy τ σ`, and `τ`
+      -- may be a type *variable* at this point, so there is nothing to decide against.
+      -- The undeclared case is L191's rule unchanged. Nothing is lost today — no
+      -- table the tool ships has an ivar row — and what would fix it is the same
+      -- constraint the row mechanism already has for method signatures.
+      match ivarTy? D ctx.cls x with
+      | some _ => .outOfFragment "iasgn-declared"
+      | none => .ok τ Γ₁ s₁
+    | r => r
+  -- **`@x`** (L196). Declared, and the read is the nominal rule's; undeclared, and it
+  -- is a **missing declaration** rather than a missing rule — which is the whole
+  -- point of the rung, because that is the category the census counts separately.
+  -- The printed atom is `α ~ @x : () → σ`, and the `@` is what says which kind of
+  -- declaration is wanted.
+  | .var .ivar x =>
+    match ivarTy? D ctx.cls x with
+    | some σ => .ok (.nom (mkNilable σ)) Γ s
+    | none => .missing (.var ctx.self) ("@" ++ x) []
   -- **A literal `self` receiver is admitted** (L172), and `inferOpen` gives it the
   -- variable `ctx.self` — so `self.foo(x)` records a requirement on the definee's
   -- class exactly as `foo(x)` does.
@@ -707,10 +728,43 @@ example :
 
 /-- And a body whose *default* is out of the fragment is refused too, with the
     census's `dflt` marker — the parameter kinds are all bound, so what stopped it
-    is an expression rather than a binding rule. -/
+    is an expression rather than a binding rule.
+
+    The witness was an **ivar read** until L196 admitted one; a global read is the
+    replacement, and the substitution is the kind of churn a widening should cause. -/
 example :
-    bodyVerdictWith baseDecls "String" [.opt "a" (.var .ivar "@x")] (.int 1)
+    bodyVerdictWith baseDecls "String" [.opt "a" (.var .gvar "$x")] (.int 1)
       = .outOfFragment "def-params-dflt" := by
   simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
+
+/-! ### L196's two branches, both exercised
+
+`baseDecls.ivars` is **empty**, so no table the tool ships takes the read rule's
+accepting branch. The rule is not unreachable-code-with-a-proof-attached — `step_ok`
+is quantified over every table — but the *report* side is worth pinning at a table
+that has a row, because that is the branch a reader will not otherwise see.
+
+A shipped row would need what `T`'s did: a certificate deciding `IvarOk` at the heap
+(`constsOkB`'s shape). Nothing needs one yet, which is why there is none.
+-/
+
+/-- **Undeclared: a missing declaration**, and the `@` in the atom's name says which
+    kind. This is the verdict the slice's four ivar-reading bodies now get, and the
+    reason the census moved. -/
+example :
+    bodyVerdictWith baseDecls "String" [] (.var .ivar "@n")
+      = .blocked (.var 0) "@@n" [] := by
+  simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, baseDecls]
+
+/-- **Declared: `T.nilable(Integer)`, not `Integer`.** An unset ivar reads as `nil`
+    (`Interp.lean:142` ends `.getD .nil`), so the answer has to admit it — L193's
+    `nilable` paying for itself in a rule that has nothing to do with `if`. -/
+example :
+    bodyVerdictWith { baseDecls with ivars := [(("String", "@n"), Ty.int)] } "String" []
+        (.var .ivar "@n")
+      = .acceptedUnder (.nom (.nilable .int)) Row.empty .emp := by
+  simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, mkNilable,
+    residualRow, closeBody, Store.toAssn, Store.rowOf, Store.closeAt, Assn.all,
+    Row.empty]
 
 end RubyCore.Types

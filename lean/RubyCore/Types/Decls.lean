@@ -83,12 +83,32 @@ structure Decls where
       a list of names: `HEAD_VERSION_REGEX : Regexp` is the *same rule* at a different
       type, which is the next population after `T`. -/
   consts : List (String × Ty) := []
+  /-- **class name × instance-variable name → the type of its contents** (L196).
+
+      The third table, and it is here rather than in a new `Inv` conjunct for
+      `consts`' reason: `DeclsOk` is already threaded and already transported, so a
+      *declaration* costs nothing that the two existing halves have not paid for.
+
+      Read the clause it obliges (`Proof/Static/Decls.lean`'s `IvarOk`) before adding
+      a row: it is quantified over **every object of the class**, not over one
+      receiver, because an ivar read has no receiver to constrain — `@x` reads the
+      frame's `self`, and the invariant does not know which object that is beyond its
+      class. That is also why the *write* rule now checks conformance: L191 admitted
+      `@x = e` freely because nothing claimed anything about ivars, and a row is
+      exactly such a claim. -/
+  ivars : List ((String × String) × Ty) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
     shape at the constant table. -/
 def constTy? (D : Decls) (n : String) : Option Ty :=
   (D.consts.find? (·.1 == n)).map (·.2)
+
+/-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
+    which the read rule reports as a *missing declaration* rather than as a missing
+    rule (L196). -/
+def ivarTy? (D : Decls) (cls x : String) : Option Ty :=
+  (D.ivars.find? (·.1 == (cls, x))).map (·.2)
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
@@ -221,17 +241,26 @@ def SubDecls (F F' : Decls) : Prop :=
   -- unprovable. Nothing in the fragment grows `consts` — there is no `casgn` rule —
   -- so equality costs nothing today and `casgn` will have to say what it means for a
   -- constant to be *added*, which is a real question about shadowing.
-  F.consts = F'.consts
+  F.consts = F'.consts ∧
+  -- L196: and the ivar table, for the constant table's reason — the read rule takes
+  -- its answer out of it.
+  F.ivars = F'.ivars
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl⟩
+theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
-    SubDecls F F'' := ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.trans h₂.2⟩
+    SubDecls F F'' :=
+  ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1, h₁.2.2.trans h₂.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
     constTy? F' n = constTy? F n := by
-  unfold constTy?; rw [hs.2]
+  unfold constTy?; rw [hs.2.1]
+
+/-- And the ivar table's (L196). -/
+@[simp] theorem SubDecls.ivarTy_eq {F F' : Decls} (hs : SubDecls F F') (c x : String) :
+    ivarTy? F' c x = ivarTy? F c x := by
+  unfold ivarTy?; rw [hs.2.2]
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}
