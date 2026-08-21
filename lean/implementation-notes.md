@@ -10689,3 +10689,62 @@ three from one `match`.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); third ratchet **24**.
+
+## L224 — the channel carries the loop's *environment*, and that is the one way `next` costs more than `return`
+
+Out of fragment **24 → 24**, `--check` byte-identical, axiom-clean. A one-type change to L223's
+channel: `Bool` → `Option Env` (nominal) and `Option AEnv` (open).
+
+### Why a flag is not enough
+
+`return` and `next` look like the same rung and are not, and the difference is the *frame*:
+
+* a `return` **pops** the activation, so `RetOk` owes nothing about the environment — whatever the
+  body had assigned goes with the frame;
+* a `next` **restarts the loop in the same frame**. `unwind`'s `whileCondK` arm re-enters the
+  *condition*, which `infer`'s `.while'` arm typed at the loop's **entry** environment — while the
+  `next` may fire part-way through the body, at a richer one.
+
+So the rule owes `SubEnv Γloop Γcur` (L218's relation, now with its first consumer), and it can only
+check that if it knows `Γloop`. Hence the channel carries the environment, not a flag:
+
+```lean
+inLoop : Option Env := none        -- FrameCtx
+(il : Option AEnv)                 -- inferOpen & friends
+```
+
+`infer`'s and `inferOpen`'s `.while'` arms pass `some Γ`; `KontOk`'s loop constructors are indexed at
+`{ ctx with inLoop := some Γ }` and hand the enclosing context down; `KontOk.frameK` requires the
+callee's `inLoop = none`.
+
+> **Two jumps with the same shape can have different obligations, and the discriminator is whether the
+> jump crosses a frame.** `RetOk` and `RaiseOk` both cross one and neither mentions an environment;
+> `NxtOk` will not cross one, and that is exactly why it must.
+
+### One incidental improvement
+
+The `while` push site in `step_ok` no longer names the context at all. `inv_push`'s `c` is determined
+by unification from `hcnd`'s own type — `infer`'s `.while'` arm *names the loop's environment* in the
+context it types the condition at — so `(c := …)` came out and with it a dependence on which of
+`Γ`/`Γ₁`/`Γ₂` survived the case's `obtain ⟨rfl, rfl⟩`. That had been the previous build failure.
+
+### What is left for `next`
+
+Unchanged in shape from L223, plus the environment premise:
+
+* `NxtTransparent` — the `KontOk`-admitted konts minus `frameK` and minus the two loop konts (which
+  are the *terminators*, not transparent);
+* `NxtOk`, two constructors: `loop` carrying the loop's `LoopOk`, `subTy .nilT τw`, the enclosing
+  `KontOk`, **and `SubEnv Γloop Γcur`**; `skip` for the transparent konts. No `nil` and no `pop` — a
+  `.nxtJ` at `[]` is `.stuck` and at a `frameK` is `.unsupported`, and both are refuted rather than
+  handled (`ctx.inLoop = some _` against `frameK`'s `= none`);
+* `CtlOk`'s `.jump (.nxtJ v)` case, `KontOk.nxtOk`, then the nominal and open rules.
+
+`break` and `redo` come from the same channel — `unwind`'s `whileCondK` arm answers all three from one
+`match` — and `break` additionally needs the loop's *result* type, which is `.nilT` by
+`KontOk.whileCond`'s second premise.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); third ratchet **24**.

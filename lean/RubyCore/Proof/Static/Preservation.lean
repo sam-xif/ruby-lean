@@ -534,7 +534,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               obtain ⟨rfl, rfl⟩ := hΓ₂
               simp only [Option.some.injEq, Prod.mk.injEq] at hinf
               obtain ⟨rfl, rfl, rfl⟩ := hinf
-              exact inv_push (c := { ctx with inLoop := true }) hfs htab
+              -- L224: `c` is determined by `hcnd`'s own type (`infer`'s `.while'` arm names
+              -- the loop's environment in the context it types the condition at), so it is
+              -- left to unification rather than written out.
+              exact inv_push hfs htab
                 (stackCtx_inLoop hsc) hhook hsat hstr hcls hbot
                 (by simp [frameKLabels, hks]) hcnd
                 (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hsubw hk)

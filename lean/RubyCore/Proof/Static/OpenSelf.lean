@@ -319,7 +319,7 @@ Proved by the functional induction the mutual definition generates, so the case
 split is exactly `inferOpen`'s own and no case can be forgotten: adding an arm to
 `inferOpen` re-opens this proof, which is `HANDOFF.md` constraint 4's discipline
 applied inside the untrusted layer. -/
-theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Bool)
+theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Option AEnv)
     (s : OState) :
     ∀ τ Γ' s', inferOpen D Γ e ctx il s = .ok τ Γ' s' → StoreLe s.st s'.st := by
   induction Γ, e, il, s using inferOpen.induct (D := D) (ctx := ctx)
@@ -364,7 +364,7 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Boo
 
     Same induction, same uniform block, and the same discipline: adding an arm to
     `inferOpen` re-opens both proofs. -/
-theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Bool)
+theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Option AEnv)
     (s : OState) :
     ∀ τ Γ' s', inferOpen D Γ e ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
   induction Γ, e, il, s using inferOpen.induct (D := D) (ctx := ctx)
@@ -409,7 +409,7 @@ theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Boo
 
 /-- The `if`-join's monotonicity, from the main lemma: `inferOpenIf` is not
     recursive, it only calls `inferOpen`. -/
-theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (il : Bool) (Γ : AEnv) (t : Expr)
+theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (il : Option AEnv) (Γ : AEnv) (t : Expr)
     (els : Option Expr) (s : OState) :
     ∀ τ Γ' s', inferOpenIf D Γ t els ctx il s = .ok τ Γ' s' → StoreLe s.st s'.st := by
   intro τ Γ' s' h
@@ -460,7 +460,7 @@ theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (il : Bool) (Γ : AEnv) (t : E
     | outOfFragment _ => rw [ht] at h; simp at h
 
 /-- The statement sequence's, by induction on the list. -/
-theorem inferOpenSeq_mono (D : Decls) (ctx : OCtx) (il : Bool) :
+theorem inferOpenSeq_mono (D : Decls) (ctx : OCtx) (il : Option AEnv) :
     ∀ (es : List Expr) (Γ : AEnv) (s : OState) τ Γ' s',
       inferOpenSeq D Γ es ctx il s = .ok τ Γ' s' → StoreLe s.st s'.st := by
   intro es
@@ -488,7 +488,7 @@ The shape every case of the factoring theorem needs, stated so that the tactic
 can find it by unification alone: whatever store bounds the *node*'s output also
 bounds its subexpressions', because the store only grows. -/
 
-theorem storeLe_sub {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {e : Expr} {s s' : OState}
+theorem storeLe_sub {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {e : Expr} {s s' : OState}
     {τ : ATy} {Γ' : AEnv} {stF : Store}
     (h : inferOpen D Γ e ctx il s = .ok τ Γ' s') (hle : StoreLe s'.st stF) :
     StoreLe s.st stF :=
@@ -499,13 +499,13 @@ theorem storeLe_subReq {st st' stF : Store} {α : TyVar} {n : String} {args : Li
     (hle : StoreLe st' stF) : StoreLe st stF :=
   StoreLe.trans (requireRow_mono h) hle
 
-theorem storeLe_subIf {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {t : Expr}
+theorem storeLe_subIf {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {t : Expr}
     {els : Option Expr} {s s' : OState} {τ : ATy} {Γ' : AEnv} {stF : Store}
     (h : inferOpenIf D Γ t els ctx il s = .ok τ Γ' s') (hle : StoreLe s'.st stF) :
     StoreLe s.st stF :=
   StoreLe.trans (inferOpenIf_mono D ctx il Γ t els s τ Γ' s' h) hle
 
-theorem storeLe_subSeq {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {es : List Expr}
+theorem storeLe_subSeq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {stF : Store}
     (h : inferOpenSeq D Γ es ctx il s = .ok τ Γ' s') (hle : StoreLe s'.st stF) :
     StoreLe s.st stF :=
@@ -514,7 +514,7 @@ theorem storeLe_subSeq {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {es : Li
 /-- The argument list's monotonicity (L175), by list induction on top of
     `inferOpen_mono` — `inferOpenSeq_mono`'s twin, and needed for the same reason:
     a send's store bound has to reach its arguments. -/
-theorem inferOpenArgs_mono (D : Decls) (ctx : OCtx) (il : Bool) :
+theorem inferOpenArgs_mono (D : Decls) (ctx : OCtx) (il : Option AEnv) :
     ∀ (es : List Expr) (Γ : AEnv) (s : OState) τs Γ' s',
       inferOpenArgs D Γ es ctx il s = .ok τs Γ' s' → StoreLe s.st s'.st := by
   intro es
@@ -539,14 +539,14 @@ theorem inferOpenArgs_mono (D : Decls) (ctx : OCtx) (il : Bool) :
     | missing _ _ _ => rw [he] at h; simp at h
     | outOfFragment _ => rw [he] at h; simp at h
 
-theorem storeLe_subArgs {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {es : List Expr}
+theorem storeLe_subArgs {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τs : List ATy} {Γ' : AEnv} {stF : Store}
     (h : inferOpenArgs D Γ es ctx il s = .ok τs Γ' s') (hle : StoreLe s'.st stF) :
     StoreLe s.st stF :=
   StoreLe.trans (inferOpenArgs_mono D ctx il es Γ s τs Γ' s' h) hle
 
 /-- The `if`-join's `rets` monotonicity — `inferOpenIf_mono`'s twin (L201). -/
-theorem inferOpenIf_rets (D : Decls) (ctx : OCtx) (il : Bool) (Γ : AEnv) (t : Expr)
+theorem inferOpenIf_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) (Γ : AEnv) (t : Expr)
     (els : Option Expr) (s : OState) :
     ∀ τ Γ' s', inferOpenIf D Γ t els ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
   intro τ Γ' s' h
@@ -591,7 +591,7 @@ theorem inferOpenIf_rets (D : Decls) (ctx : OCtx) (il : Bool) (Γ : AEnv) (t : E
     | outOfFragment _ => rw [ht] at h; simp at h
 
 /-- The sequence's (L201). -/
-theorem inferOpenSeq_rets (D : Decls) (ctx : OCtx) (il : Bool) :
+theorem inferOpenSeq_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
     ∀ (es : List Expr) (Γ : AEnv) (s : OState) τ Γ' s',
       inferOpenSeq D Γ es ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
   intro es
@@ -613,7 +613,7 @@ theorem inferOpenSeq_rets (D : Decls) (ctx : OCtx) (il : Bool) :
       | outOfFragment _ => rw [he] at h; simp at h
 
 /-- And the argument list's (L201). -/
-theorem inferOpenArgs_rets (D : Decls) (ctx : OCtx) (il : Bool) :
+theorem inferOpenArgs_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
     ∀ (es : List Expr) (Γ : AEnv) (s : OState) τs Γ' s',
       inferOpenArgs D Γ es ctx il s = .ok τs Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
   intro es
@@ -643,28 +643,28 @@ theorem inferOpenArgs_rets (D : Decls) (ctx : OCtx) (il : Bool) :
 whatever bounds the *node*'s collected `return` types also bounds its
 subexpressions', because `rets` only grows too. -/
 
-theorem rets_sub {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {e : Expr} {s s' : OState}
+theorem rets_sub {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {e : Expr} {s s' : OState}
     {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpen D Γ e ctx il s = .ok τ Γ' s')
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
     ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpen_rets D ctx Γ e il s τ Γ' s' h a ha)
 
-theorem rets_subIf {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {t : Expr} {els : Option Expr}
+theorem rets_subIf {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {t : Expr} {els : Option Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenIf D Γ t els ctx il s = .ok τ Γ' s')
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
     ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenIf_rets D ctx il Γ t els s τ Γ' s' h a ha)
 
-theorem rets_subSeq {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {es : List Expr}
+theorem rets_subSeq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenSeq D Γ es ctx il s = .ok τ Γ' s')
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
     ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenSeq_rets D ctx il es Γ s τ Γ' s' h a ha)
 
-theorem rets_subArgs {D : Decls} {ctx : OCtx} {il : Bool} {Γ : AEnv} {es : List Expr}
+theorem rets_subArgs {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τs : List ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
     (h : inferOpenArgs D Γ es ctx il s = .ok τs Γ' s')
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
@@ -701,31 +701,34 @@ induction's cases reduce by `simp` alone: an arm that answers `.missing` or
 `.outOfFragment` discharges its case definitionally, and there are twenty-odd of
 those. -/
 def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
-    (il : Bool) (Γ : AEnv) (e : Expr) : OResult → Prop
+    (il : Option AEnv) (Γ : AEnv) (e : Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       infer D (substEnv θ Γ) e false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
-            params := ctx.params.map (List.map (ATy.subst θ)), inLoop := il }
+            params := ctx.params.map (List.map (ATy.subst θ)),
+            inLoop := il.map (substEnv θ) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
 /-- The `inferIf`/`inferSeq` forms, which differ only in which nominal function
     the conclusion names. -/
 def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
-    (il : Bool) (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
+    (il : Option AEnv) (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferIf D (substEnv θ Γ) t els false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
-            params := ctx.params.map (List.map (ATy.subst θ)), inLoop := il }
+            params := ctx.params.map (List.map (ATy.subst θ)),
+            inLoop := il.map (substEnv θ) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
 def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
-    (il : Bool) (Γ : AEnv) (es : List Expr) : OResult → Prop
+    (il : Option AEnv) (Γ : AEnv) (es : List Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferSeq D (substEnv θ Γ) es false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
-            params := ctx.params.map (List.map (ATy.subst θ)), inLoop := il }
+            params := ctx.params.map (List.map (ATy.subst θ)),
+            inLoop := il.map (substEnv θ) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -733,11 +736,12 @@ def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : 
     of types, which is exactly why `inferArgs` is a separate traversal from
     `inferSeq`. -/
 def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
-    (il : Bool) (Γ : AEnv) (es : List Expr) : OArgs → Prop
+    (il : Option AEnv) (Γ : AEnv) (es : List Expr) : OArgs → Prop
   | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferArgs D (substEnv θ Γ) es false
           { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
-            params := ctx.params.map (List.map (ATy.subst θ)), inLoop := il }
+            params := ctx.params.map (List.map (ATy.subst θ)),
+            inLoop := il.map (substEnv θ) }
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
@@ -765,7 +769,7 @@ theorem mkNilable_joinOpen {D : Decls} {θ : TyVar → Ty} {stF st st' : Store} 
 
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
-    (Γ : AEnv) (e : Expr) (il : Bool) (s : OState) :
+    (Γ : AEnv) (e : Expr) (il : Option AEnv) (s : OState) :
     Factors D θ stF retF ctx il Γ e (inferOpen D Γ e ctx il s) := by
   induction Γ, e, il, s using inferOpen.induct (D := D) (ctx := ctx)
     (motive2 := fun Γ t els il s =>
@@ -1072,10 +1076,10 @@ theorem inferBody_sound {D : Decls} {c mname : String} {body : Expr} {τ : ATy} 
         params := some [] }
       = some (τ.subst θ, substEnv θ Γ', D) := by
   have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname, params := some [] } θ s'.st
-    (τ.subst θ) hsat hself [] body false { st := {}, fresh := 1 }
+    (τ.subst θ) hsat hself [] body none { st := {}, fresh := 1 }
   unfold inferBody at hb
   cases hop : inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
-      false { st := {}, fresh := 1 } with
+      none { st := {}, fresh := 1 } with
   | ok τ₀ Γ₀ s₀ =>
     rw [hop] at hb
     dsimp only at hb
@@ -1124,10 +1128,10 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
     subst hΓ
     have hf := inferOpen_factors D
       { cls := c, self := 0, meth := some mname, params := openParamTys ps } θ s'.st
-      (τ.subst θ) hsat hself Γ₀ body false s₀
+      (τ.subst θ) hsat hself Γ₀ body none s₀
     cases hr : inferOpen D Γ₀ body
         ({ cls := c, self := 0, meth := some mname, params := openParamTys ps } : OCtx)
-        false s₀ with
+        none s₀ with
     | ok τ₀ Γ₁ s₁ =>
       rw [hr] at hrun
       dsimp only at hrun

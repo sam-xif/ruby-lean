@@ -132,13 +132,13 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
   -- property of the derivation — what a `next` rule needs to *refute* the frameK position,
   -- where `unwind` answers `.unsupported`.
   | whileCond {D h ctx Γ Γs τ τw c body k} :
-      LoopOk D Γ c body Γs.isEmpty { ctx with inLoop := true } → subTy .nilT τw = true →
+      LoopOk D Γ c body Γs.isEmpty { ctx with inLoop := some Γ } → subTy .nilT τw = true →
       KontOk D h ((ctx, Γ) :: Γs) τw k →
-      KontOk D h (({ ctx with inLoop := true }, Γ) :: Γs) τ (.whileCondK c body :: k)
+      KontOk D h (({ ctx with inLoop := some Γ }, Γ) :: Γs) τ (.whileCondK c body :: k)
   | whileBody {D h ctx Γ Γs τ τw c body k} :
-      LoopOk D Γ c body Γs.isEmpty { ctx with inLoop := true } → subTy .nilT τw = true →
+      LoopOk D Γ c body Γs.isEmpty { ctx with inLoop := some Γ } → subTy .nilT τw = true →
       KontOk D h ((ctx, Γ) :: Γs) τw k →
-      KontOk D h (({ ctx with inLoop := true }, Γ) :: Γs) τ (.whileBodyK c body :: k)
+      KontOk D h (({ ctx with inLoop := some Γ }, Γ) :: Γs) τ (.whileBodyK c body :: k)
   /-- The in-flight value is the **receiver** of a binary builtin send; the
       argument expression runs next.
 
@@ -264,7 +264,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       (∀ σ, cΓ.1.ret = some σ → subTy σ τ = true) →
       -- **L222: the callee is not inside a loop** — free at every push, and the other half
       -- of the guarantee above.
-      cΓ.1.inLoop = false →
+      cΓ.1.inLoop = none →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
   /-- **`return e`, with the value in flight** (L200). Three premises, each spent in a
       different place: `c.ret = some σ` is what the target is read through, `subTy τ σ`
@@ -800,7 +800,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added"
       ∧ ∃ τb Γb, infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := false }
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := none }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧

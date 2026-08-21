@@ -435,9 +435,16 @@ structure FrameCtx where
       Unlike the other four fields it varies *within* an activation: `infer`'s `.while'` arm
       sets it, `KontOk`'s loop constructors clear it on the way down, and `KontOk.frameK`
       requires it clear on the callee. Free on the nominal side because `Mono.lean` already
-      has `ctx` as an induction target; the open side carries the same flag as an explicit
-      **parameter** of `inferOpen`, for the reason recorded there. -/
-  inLoop : Bool := false
+      has `ctx` as an induction target; the open side carries the same channel as an explicit
+      **parameter** of `inferOpen`, for the reason recorded there.
+
+      **It carries the loop's *environment*, not just a flag** (L224), and that is the one
+      way `next` costs more than `return` did. A `return` pops the frame, so `RetOk` owes
+      nothing about the environment; a `next` restarts the loop **in the same frame**, and
+      the condition is typed at the loop's entry environment while the `next` may fire
+      part-way through the body at a richer one. So the rule owes `SubEnv Γloop Γcur`, which
+      it can only check if it knows `Γloop` — hence `Option Env` and not `Bool`. -/
+  inLoop : Option Env := none
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

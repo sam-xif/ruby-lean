@@ -150,7 +150,7 @@ Everything else, including `isSelf`'s exclusion of a literal `self` receiver
 and an arm that differs for no reason is an arm whose proof has to be invented. -/
 mutual
 
-def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Bool) (s : OState) : OResult :=
+def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv) (s : OState) : OResult :=
   match e with
   | .int _ => .ok (.nom .int) Γ s
   | .tru => .ok (.nom .bool) Γ s
@@ -333,10 +333,10 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Bool) (s : O
     -- three open-self inductions (generalizing it moves `hself` into the motive), and a flag
     -- read off `s` makes every multi-subexpression arm's IHs mention a *different expression*.
     -- A parameter is an induction target, so every IH mentions it as a variable.
-    match inferOpen D Γ c ctx true s with
+    match inferOpen D Γ c ctx (some Γ) s with
     | .ok _ Γ₁ s₁ =>
       if Γ₁ = Γ then
-        match inferOpen D Γ body ctx true s₁ with
+        match inferOpen D Γ body ctx (some Γ) s₁ with
         | .ok _ Γ₂ s₂ => if Γ₂ = Γ then .ok (.nom .nilT) Γ s₂ else .outOfFragment "while"
         | r => r
       else .outOfFragment "while"
@@ -430,7 +430,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Bool) (s : O
   | _ => .outOfFragment (headName e)
 termination_by sizeOf e
 
-def inferOpenSeq (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Bool)
+def inferOpenSeq (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Option AEnv)
     (s : OState) : OResult :=
   match es with
   | [] => .ok (.nom .nilT) Γ s
@@ -443,7 +443,7 @@ termination_by sizeOf es
 
 /-- The argument list, left to right, threading the environment and the store.
     `startArgs`' own loop, in open-self mode. -/
-def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Bool)
+def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Option AEnv)
     (s : OState) : OArgs :=
   match es with
   | [] => .ok [] Γ s
@@ -458,7 +458,7 @@ def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Bo
 termination_by sizeOf es
 
 def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OCtx)
-    (il : Bool) (s : OState) : OResult :=
+    (il : Option AEnv) (s : OState) : OResult :=
   match els with
   | some e =>
     match inferOpen D Γ t ctx il s with
@@ -516,7 +516,7 @@ def inferBody (D : Decls) (c mname : String) (body : Expr) : OResult :=
   -- nothing a *declaration* could supply would fix it; the two types simply differ, and
   -- joining them would need the union this fragment does not have.
   match inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
-      false { st := {}, fresh := 1 } with
+      none { st := {}, fresh := 1 } with
   | .ok τ Γ' s =>
     if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
   | r => r
@@ -633,11 +633,11 @@ def openParams (D : Decls) (ctx : OCtx) : List Param → AEnv → OState →
     openParams D ctx rest (Γ ++ [(x, .var s.fresh)]) { s with fresh := s.fresh + 1 }
   | .opt x d :: rest, Γ, s =>
     -- L222: a parameter default is not inside the method's loops.
-    match inferOpen D Γ d ctx false s with
+    match inferOpen D Γ d ctx none s with
     | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
     | _ => none
   | .key x (some d) :: rest, Γ, s =>
-    match inferOpen D Γ d ctx false s with
+    match inferOpen D Γ d ctx none s with
     | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
     | _ => none
   | .fwd :: _, _, _ => none
@@ -675,7 +675,7 @@ def inferBodyWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr)
   match openParams D ctx ps [] { st := {}, fresh := 1 } with
   | some (Γb, s) =>
     -- L201's check, at the parameterized entry point too.
-    some (Γb, match inferOpen D Γb body ctx false s with
+    some (Γb, match inferOpen D Γb body ctx none s with
       | .ok τ Γ' s' =>
         if s'.rets.all (fun a => subATy a τ) then .ok τ Γ' s'
         else .outOfFragment "return-join"
