@@ -186,6 +186,14 @@ def defFree (e : Expr) : Bool :=
   -- catch-all's vacuous `true` left in place. `infer_mono_all`'s new case is what found
   -- it, one minute after the arm was written.
   | .cpath base _ => match base with | some b => defFree b | none => true
+  -- **L212.** Fifth time (`.array` L174, `.vasgn .ivar` L191, `.ret` L200, `.cpath`
+  -- L205): `infer`'s `.super'` arm threads the table through the arguments via
+  -- `inferArgs`, so a `def` in one really does change it and `infer_mono`'s `D₀ = D`
+  -- half would be **false** with the catch-all's vacuous `true` left in place. Written
+  -- with the arm rather than after `infer_mono_all` complained, which is the first time
+  -- that has happened.
+  | .super' args blk =>
+    defFreeAll args && (match blk with | some b => defFree b | none => true)
   -- Every other head is either a leaf or outside `infer`'s domain, where the
   -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
   -- can be satisfied.
@@ -739,7 +747,59 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- case after this one is the catch-all. The rule itself is `.int`'s verbatim, and
   -- what it buys is measured in `implementation-notes.md`: three slice bodies stop
   -- being out of fragment and start naming a declaration they need.
+  -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
+  -- inserting an arm shifts every later case number in `infer.induct`.
   | .flt _ => some (.float, Γ, D)
+  -- **`super(args)`** (L212), placed *last* for `.flt`'s reason (L202): inserting an
+  -- arm shifts every later case number in `infer.induct`, and `Proof/Static/Mono.lean`
+  -- addresses its cases by number. Measured — the arms were written beside `.send`
+  -- first, and `Mono.lean` broke at nine places.
+  --
+  -- The whole rule is *which table to read*. The name
+  -- comes off the context (`ctx.meth`, L210's channel) rather than out of the
+  -- expression, because `super` does not name its target: `doSuper` re-dispatches the
+  -- **running** method starting after the frame's definee. So the key is the pair
+  -- `(ctx.cls, mn)` and the table is `supers`, which is why that table exists.
+  --
+  -- Three guards, each paying for one thing `doSuper` can do that is not a value:
+  --
+  -- * `ctx.meth = some mn` — outside a method body there is no name to re-dispatch,
+  --   and `doSuper` answers `.unsupported`.
+  -- * `mn ≠ ""` — the empty name is `doSuper`'s own *"super outside a method"* test
+  --   (`Interp/Send.lean:263`), and `StepOk` refuses `.unsupported`, so the rule has
+  --   to rule it out rather than hope no row is keyed there.
+  -- * `subTys τs d.params` — the arity and the argument types, exactly as a send's.
+  --
+  -- **Bare `super` (`.zsuper`) is *not* this rule**, and the reason is not laziness:
+  -- it forwards the enclosing method's *parameter values*, so its argument types are
+  -- the parameters' declared types, and neither `FrameCtx` nor `Γ` says which locals
+  -- are parameters (L207, finding 2). That needs a second channel.
+  | .super' [] none =>
+    match ctx.meth with
+    | some mn =>
+      if mn ≠ "" then
+        match superDecl? D ctx.cls mn with
+        | some d => if d.params.isEmpty then some (d.ret, Γ, D) else none
+        | none => none
+      else none
+    | none => none
+  -- The positive-arity form. **The table is read after the arguments** for the
+  -- `.send`-arm reason (F1b.8): a `superArgK` exists once some prefix of the arguments
+  -- has run, so `KontOk.superArgsK`'s signature premise has to be readable at the
+  -- table the *last* argument leaves. `SubDecls` pins `supers` equal, so the two
+  -- readings agree — but the rule is written at the one the continuation can state.
+  | .super' (arg :: args) none =>
+    match ctx.meth with
+    | some mn =>
+      if mn ≠ "" then
+        match inferArgs D Γ (arg :: args) top ctx with
+        | some (τs, Γ₁, D₁) =>
+          match superDecl? D₁ ctx.cls mn with
+          | some d => if subTys τs d.params then some (d.ret, Γ₁, D₁) else none
+          | none => none
+        | none => none
+      else none
+    | none => none
   | _ => none
 termination_by sizeOf e
 

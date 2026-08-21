@@ -135,7 +135,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         subst hmn
         rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-        simp [userFrame, hsn]
+        exact ⟨by simp [userFrame, hsn], rfl, rfl⟩
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
@@ -851,6 +851,80 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_push hfs htab hsc hhook hsat hstr hcls hbot (by simp [frameKLabels, hks]) he
             (KontOk.arrK hrest hsubw hk)
       · exact absurd hinf (by simp)
+    -- **`super(args)`** (L212). Two shapes, and they are the *receiverless send*'s two
+    -- shapes with the receiver replaced by the frame's own `self`: with no arguments
+    -- `startSuperArgs` is `doSuper` outright, and with one the machine pushes a
+    -- `superArgK` and runs the argument.
+    --
+    -- Everything `super_dispatch` wants about the frame is a `StackCtx` clause, and the
+    -- clause that does the work is L209's: without `defmod ∈ ancestors (classOf self)`
+    -- the `dropWhile` empties the list and `doSuper` raises `NoMethodError`.
+    case super' args blk =>
+      cases blk with
+      | some b => exact absurd hinf (by simp [infer])
+      | none =>
+        -- The frame facts, read off `StackCtx` once and shared by both shapes.
+        cases hst : m.stack with
+        | nil => exact absurd hst hf.1
+        | cons fid fids =>
+          have hsc' := hsc
+          rw [hst] at hsc'
+          have hcur : m.frames.getD fid default = m.frames.getD (methodFrameOf m) default := by
+            have hkd : (m.frames.getD fid default).kind = .method := by
+              cases hmn : ctx.meth with
+              | none =>
+                -- Both rules require `ctx.meth = some mn`, so this branch is refuted by
+                -- the rule rather than by the machine.
+                exfalso
+                cases args with
+                | nil => obtain ⟨-, -, mn, dd, hm, -, -, -, -⟩ := infer_super0_inv hinf
+                         rw [hmn] at hm; exact absurd hm (by simp)
+                | cons a r => obtain ⟨mn, -, -, hm, -, -, -, -, -⟩ := infer_super_inv hinf
+                              rw [hmn] at hm; exact absurd hm (by simp)
+              | some mn => exact (hsc'.2.2.2.2.2.2.1 mn hmn).2.1
+            simp only [methodFrameOf, hst, List.headD_cons, hkd]
+          have hcls' : ∀ mn, ctx.meth = some mn →
+              (m.frames.getD (methodFrameOf m) default).meth = mn ∧
+              (m.heap.classPayload?
+                (m.frames.getD (methodFrameOf m) default).defmod).isSome ∧
+              className m.heap (m.frames.getD (methodFrameOf m) default).defmod = ctx.cls ∧
+              (m.frames.getD (methodFrameOf m) default).defmod ∈
+                ancestors m.heap
+                  (classOf m.heap (m.frames.getD (methodFrameOf m) default).self) ∧
+              ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self
+                (.cls ctx.cls) := by
+            intro mn hmn
+            obtain ⟨hm, -, hself⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
+            obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
+            rw [← hcur]
+            exact ⟨hm, hsc'.1, hsc'.2.1, hch, hty⟩
+          cases args with
+          | nil =>
+            obtain ⟨rfl, rfl, mn, dd, hmn, hne, hrow, hps, rfl⟩ := infer_super0_inv hinf
+            obtain ⟨hm, hdp, hdn, hch, hty⟩ := hcls' mn hmn
+            obtain ⟨w, hw, hstep⟩ :=
+              super_dispatch (m := m) (args := []) (blk := methodBlk m) hne
+                (htab.2.2.2.2 _ _ _ hrow) hm hdp hdn hch hty (by rw [hps]; trivial)
+            simp only [evalExpr, startSuperArgs]
+            rw [hstep]
+            exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
+              (ValueTy.weaken hw hsubw) hk
+          | cons arg extra =>
+            obtain ⟨mn, τs, dd, hmn, hne, hargs, hrow, hsub, rfl⟩ := infer_super_inv hinf
+            obtain ⟨τe, Γ₁, D₁, τrest, rfl, he, hrest⟩ := inferArgs_cons_inv hargs
+            obtain ⟨τp, psrest, hpeq, hs1, hs2⟩ := subTys_cons_inv hsub
+            have hsp : ∀ e, arg ≠ .splat e := by
+              rintro e rfl; exact absurd he (by simp [infer])
+            have hkw : ∀ es, arg ≠ .kwargs es := by
+              rintro es rfl; exact absurd he (by simp [infer])
+            have hfw : arg ≠ .fwd := by
+              rintro rfl; exact absurd he (by simp [infer])
+            simp only [evalExpr]
+            rw [startSuperArgs_plain hsp hkw hfw]
+            exact inv_push hfs htab hsc hhook hsat hstr hcls hbot
+              (by simp [frameKLabels, hks]) he
+              (KontOk.superArgsK (psacc := []) trivial hs1 hrest hs2 hmn hne hrow
+                hpeq rfl hsubw hk)
     case send recv mname args blk =>
       cases recv with
       -- **The written receiverless call** (L170). `evalExpr` answers
@@ -1417,7 +1491,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             subst hmn
             rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-            simp [userFrame, hsn]
+            exact ⟨by simp [userFrame, hsn], rfl, rfl⟩
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
@@ -1471,6 +1545,63 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) he
               (KontOk.arrK hs hsw hk')
           · exact absurd hs (by simp)
+    -- **A `super` argument has arrived** (L212), and it is `argsK`'s case with the
+    -- receiver read out of the frame instead of out of the kont. The frame facts are
+    -- re-derived here rather than threaded through the continuation, because `StackCtx`
+    -- is indexed by the machine and this step changes neither `frames` nor `stack`.
+    | @superArgsK _ _ _ _ _ _ _ mname psacc τp τrest psrest τret τw acc rest Γ' k blk dd
+        hva hst hrest hsr hmn hne hrow hpeq hret hsw hk' =>
+      have hfacts : (m.frames.getD (methodFrameOf m) default).meth = mname ∧
+          (m.heap.classPayload?
+            (m.frames.getD (methodFrameOf m) default).defmod).isSome ∧
+          className m.heap (m.frames.getD (methodFrameOf m) default).defmod = ctx.cls ∧
+          (m.frames.getD (methodFrameOf m) default).defmod ∈
+            ancestors m.heap
+              (classOf m.heap (m.frames.getD (methodFrameOf m) default).self) ∧
+          ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self (.cls ctx.cls) := by
+        cases hst' : m.stack with
+        | nil => exact absurd hst' hf.1
+        | cons fid fids =>
+          have hsc' := hsc
+          rw [hst'] at hsc'
+          obtain ⟨hm, hkd, hself⟩ := hsc'.2.2.2.2.2.2.1 mname hmn
+          obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
+          have hcur : m.frames.getD fid default
+              = m.frames.getD (methodFrameOf m) default := by
+            simp only [methodFrameOf, hst', List.headD_cons, hkd]
+          rw [← hcur]
+          exact ⟨hm, hsc'.1, hsc'.2.1, hch, hty⟩
+      obtain ⟨hm, hdp, hdn, hch, hty⟩ := hfacts
+      cases rest with
+      | nil =>
+        simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at hrest
+        obtain ⟨rfl, rfl, rfl⟩ := hrest
+        have hpr : psrest = [] := subTys_nil_inv hsr
+        subst hpr
+        dsimp only
+        obtain ⟨w, hw, hstep⟩ :=
+          super_dispatch (m := { m with kont := k }) (args := acc ++ [v]) (blk := blk)
+            hne (htab.2.2.2.2 _ _ _ hrow) hm hdp hdn hch hty
+            (by rw [hpeq]; exact ValuesTy_snoc hva hv hst)
+        rw [show startSuperArgs { m with kont := k } (acc ++ [v]) [] blk
+            = doSuper { m with kont := k } (acc ++ [v]) blk from rfl, hstep]
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+          (by simpa [frameKLabels] using hks) (ValueTy.weaken (hret ▸ hw) hsw) hk'
+      | cons e rest' =>
+        obtain ⟨τe, Γ₁, D₁, τrest', rfl, he, hrest'⟩ := inferArgs_cons_inv hrest
+        obtain ⟨τp', psrest', rfl, hs1, hs2⟩ := subTys_cons_inv hsr
+        have hsp : ∀ x, e ≠ .splat x := by
+          rintro x rfl; exact absurd he (by simp [infer])
+        have hkw : ∀ es, e ≠ .kwargs es := by
+          rintro es rfl; exact absurd he (by simp [infer])
+        have hfw : e ≠ .fwd := by
+          rintro rfl; exact absurd he (by simp [infer])
+        dsimp only
+        rw [startSuperArgs_plain hsp hkw hfw]
+        exact inv_push (m := { m with kont := k })
+          hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) he
+          (KontOk.superArgsK (psacc := psacc ++ [τp]) (ValuesTy_snoc hva hv hst) hs1
+            hrest' hs2 hmn hne hrow (by rw [hpeq]; simp) hret hsw hk')
     | @argsK _ _ _ _ _ _ _ mname recv τr psacc τp τrest psrest τret τw acc rest Γ' k _
         hrv hva hst hrest hsr hsg hsw hk' =>
       cases rest with

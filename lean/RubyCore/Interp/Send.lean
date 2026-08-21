@@ -252,6 +252,17 @@ where
     let (args, m) := appendKwHash m args kw
     dispatchMiss m recv implicit mname args blk
 
+/-- The method `super` re-dispatches to: the first entry for `mname` strictly *after*
+    `dm` on `k`'s ancestor chain. Named rather than inlined into `doSuper` (L212) so
+    that the static invariant's `SuperOk` clause and the dispatch lemma can refer to
+    the same function instead of to a copy of it — a copy is what made `rw` fail, and
+    the fix belongs here rather than in a proof that has to reproduce the shape. -/
+def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
+  ((ancestors h k).dropWhile (· != dm) |>.drop 1).firstM fun c =>
+    match h.classPayload? c with
+    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
+    | none => none
+
 /-- Super-dispatch (artifact 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
     forwarding/passing `blk`. A miss raises `NoMethodError "super: no superclass
@@ -263,12 +274,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
   if f.meth == "" then .unsupported "super outside a method"
   else
     let self := f.self
-    let after := (ancestors m.heap (classOf m.heap self)).dropWhile (· != f.defmod) |>.drop 1
-    let found : Option (ObjId × MethodDef) := after.firstM fun c =>
-      match m.heap.classPayload? c with
-      | some cp => (cp.methods.find? (·.1 == f.meth)).map (fun (_, md) => (c, md))
-      | none => none
-    match found with
+    match superFound m.heap (classOf m.heap self) f.defmod f.meth with
     | some (_, md) =>
       match md.builtin with
       | some bid =>

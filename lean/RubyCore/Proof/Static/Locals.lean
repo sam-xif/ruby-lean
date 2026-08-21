@@ -572,7 +572,22 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- whole frame-side cost, and it is `selfCls`'s clause in shape: the fact is not
       -- new work at the push — `user_dispatch` builds the frame with exactly this
       -- `meth` — it is the *carrying* of it across the body's steps.
-      (∀ mn, c.meth = some mn → (frames.getD fid default).meth = mn) ∧
+      -- **L212 adds `kind = .method`** to this clause, and it is `doSuper`'s second
+      -- frame read: it starts from `methodFrameOf m`, which is the stack head *unless*
+      -- that frame is a `.block`, in which case it walks to `home`. So a context that
+      -- names a method has to say the activation is not a block, exactly as L198's
+      -- `ret` clause does for `returnTarget` — and for the same reason, `userFrame`
+      -- builds a `.method` frame so it is free at the push.
+      -- **And a third conjunct, purely about the context** (L212): a method activation
+      -- is one whose `self` is an instance of the class the body is written in. That is
+      -- what `infer`'s `def` arm builds (`selfCls := some ctx.cls`) and what the push
+      -- builds (`{cls := cu, selfCls := some cu}`), and it is here rather than as a
+      -- guard in the `super` rule because the rule does not need to *know* it — the
+      -- consecution case does, to turn the definee's name into the receiver's type.
+      (∀ mn, c.meth = some mn →
+        (frames.getD fid default).meth = mn ∧
+        (frames.getD fid default).kind = .method ∧
+        c.selfCls = some c.cls) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -1051,7 +1066,10 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
         exact hs.2.2.2.1
       · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
       · rw [hkd fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.1
-      · rw [hmt fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.2.1
+      · -- L212: the clause reads `kind` as well as `meth`, so it spends both
+        -- agreements — `StackCtx_congr`'s fifth and sixth.
+        rw [hmt fid (List.mem_cons_self ..), hkd fid (List.mem_cons_self ..)]
+        exact hs.2.2.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 

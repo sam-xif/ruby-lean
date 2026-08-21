@@ -9803,3 +9803,92 @@ direction.
 `--check` over the 1,227 cached ASTs **56 accept / 1,169 unknown / 0 reject**, byte-identical to
 L207's; `--assn` 1,225 clean / 2 decode gates; third ratchet **30**, `--self-test` all agree;
 `difftest --tier 0` 992 agree / 0 disagree, `--tier slice` 351 / 0.
+
+## L212 — the `super` rule, and it is the first new *dispatch* since L157
+
+Out of fragment **30 → 30** (the open front end is L213), `--check` byte-identical at
+**56 / 1,169 / 0**. The rule, its two consecution cases, a new `KontOk` constructor and a new
+dispatch lemma — and it accepts nothing yet, because the `supers` table is empty and only its builtin
+arm exists (L211). What it buys is that the *next* commit can report a **needed declaration** for a
+rule that is actually there.
+
+### The rule
+
+```lean
+| .super' [] none | .super' (arg :: args) none =>
+  -- ctx.meth = some mn, mn ≠ "", superDecl? D ctx.cls mn = some d, arity/types match
+```
+
+Two arms for the reason `.send`'s two are two: **different numbers of machine steps.**
+`startSuperArgs m [] [] blk` *is* `doSuper` (dispatch happens in this step, no continuation), while
+`startSuperArgs m [] (arg :: rest) blk` pushes a `superArgK`.
+
+Three guards, each paying for a `doSuper` answer that is not a value:
+
+* `ctx.meth = some mn` — L210's channel, and without it there is no name to re-dispatch;
+* **`mn ≠ ""`** — `doSuper`'s own *"super outside a method"* test, which answers `.unsupported`, and
+  `StepOk .unsupported = False`. So the rule has to *rule it out* rather than assume no row is keyed
+  at the empty name. Cheap, and the kind of thing that is only visible from the interpreter's source;
+* `subTys τs d.params` — the send's own check.
+
+### Placement, measured
+
+The arms are **last** in `infer`'s match, for `.flt`'s reason (L202) — and this time the cost of
+getting it wrong was measured rather than predicted. Written beside `.send`, they shifted
+`infer.induct`'s case numbering by **11** and `Proof/Static/Mono.lean` broke at nine places; moved to
+the end, only the `inferIf`/`inferSeq`/`inferArgs` alternatives moved (they are numbered *after* every
+`infer` arm, so any new arm shifts them). Recovery was the trick the file's own note describes, made
+cheap: `| caseN a1 … a20 => sorry` for a whole *range* of N in one build reports every alternative's
+arity at once, and the arities identify the alternatives (17 = `inferIf`'s else arm, 4 = a `nil`).
+**That is a better recovery than the note's "read the list off a trace".**
+
+`defFree` gained a `.super'` arm — the fifth time (`.array` L174, `.vasgn .ivar` L191, `.ret` L200,
+`.cpath` L205) — and this time it was written *with* the rule instead of after `infer_mono_all`
+complained.
+
+### `superFound` moved into the interpreter, and that is the finding
+
+`SuperOk` (L211) named `doSuper`'s walk as a copy of it in `Proof/Static/Decls.lean`. The copy was
+character-for-character the same and **`rw` still would not fire**: `unfold doSuper` eta-reduces
+`fun (_, md) => (c, md)` to `fun x => (c, x.snd)`, and after chasing that, the two terms printed
+identically and still did not unify.
+
+So `superFound` now lives in `Interp/Send.lean` and `doSuper` *calls* it. The proof references the
+same constant the interpreter does, and `rw [hf]` is one rewrite.
+
+> **A definition the proof needs to name belongs in the code, not in a copy beside the proof.** The
+> refactor is behaviour-preserving by construction (`doSuper`'s body is unchanged modulo the `let`),
+> and it is the second time a proof-side duplicate of an interpreter expression has cost more than
+> naming it would have.
+
+### `KontOk.superArgsK`, and what it does *not* carry
+
+`argsK` with the receiver removed: no stored receiver, no `sigOf`. The signature comes out of the
+`supers` table at `(c.cls, mname)`, so the *context's* `meth` is a premise of the constructor rather
+than a field of the kont — which is what ties the kont's signature to the activation `doSuper` will
+read. `blk` is stored by the machine and mentioned nowhere in the constructor, for `arrK`'s reason at
+a different field: the builtin arm ignores it, and the user arm is not in the fragment.
+
+`RetTransparent` gained `.superArgK` (a pending `super` argument has no opinion about a `.retJ`), and
+`KontOk.retOk`/`heap_congr'` each gained a one-line case.
+
+### `super_dispatch` is *cheaper* than `entry_dispatch`, and the reason is worth knowing
+
+**`doSuper` has no gates.** It goes straight from `found` to `md.builtin`, where `invoke` first walks
+receiver shapes, `invokeMaybeNew`, visibility and the CRuby shadow table. So there is no
+`valueTy_shapes` case split at all and the receiver stays abstract — the lemma is fifteen lines where
+`entry_dispatch` is a hundred.
+
+Everything about the frame is a hypothesis, because everything about the frame is a `StackCtx` clause
+at the call site: the running name (L207/L210), the definee's name and class-ness (L154), that the
+activation is not a block (L212, added to the `meth` clause for `returnTarget`'s reason at
+`methodFrameOf`), that `self` is an instance of the class the body is written in (L212, the third
+conjunct of the same clause), and **that the definee is on the receiver's chain (L209)** — the one
+without which `dropWhile` empties the list and `doSuper` raises `NoMethodError`, which is precisely
+the type-stuck outcome the checker exists to exclude.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); third ratchet **30**; tier 0 and tier slice green, and the
+regressions corpus re-run because `Interp/Send.lean` was touched.

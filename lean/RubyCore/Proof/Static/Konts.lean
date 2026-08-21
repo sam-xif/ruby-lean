@@ -185,6 +185,33 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       subTy τret τw = true →
       KontOk D' h ((c, Γ') :: Γs) τw k →
       KontOk D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
+  /-- **A `super` argument in flight** (L212), and it is `argsK` with the receiver
+      taken out. `doSuper` re-dispatches the *frame's* method on the *frame's* `self`,
+      so there is no stored receiver and no `sigOf`: the signature comes out of the
+      `supers` table at the pair `(c.cls, mname)`, which is why the context's own
+      `meth` is a premise rather than the kont's payload.
+
+      `blk` is stored by the machine and mentioned nowhere here, for `arrK`'s reason at
+      a different field: the builtin arm of `SuperOk` ignores it (`Builtins.run` takes
+      no block), and the user arm — which would not — is not in the fragment.
+
+      The two `super`-specific premises are the guards the eval rule checks and the
+      dispatch lemma spends: `c.meth = some mname` ties the kont's signature to the
+      activation `doSuper` will read, and `mname ≠ ""` refuses `doSuper`'s
+      *"super outside a method"* answer, which is `.unsupported` and therefore stuck. -/
+  | superArgsK {D D' h c Γ Γs τ mname psacc τp τrest psrest τret τw acc rest Γ' k blk dd} :
+      ValuesTy h acc psacc →
+      subTy τ τp = true →
+      inferArgs D Γ rest Γs.isEmpty c = some (τrest, Γ', D') →
+      subTys τrest psrest = true →
+      c.meth = some mname →
+      mname ≠ "" →
+      superDecl? D' c.cls mname = some dd →
+      dd.params = psacc ++ τp :: psrest →
+      dd.ret = τret →
+      subTy τret τw = true →
+      KontOk D' h ((c, Γ') :: Γs) τw k →
+      KontOk D h ((c, Γ) :: Γs) τ (.superArgK acc rest blk :: k)
   /-- **An array literal's element** (L174). The in-flight value is one element;
       the remaining elements run next, and when they are gone `continueArray`
       allocates — so the continuation `k` is typed at `.cls "Array"` and the
@@ -288,6 +315,9 @@ def RetTransparent : Kont → Prop
   | .whileBodyK _ _ => True
   | .recvK .. => True
   | .argsK .. => True
+  -- L212: `unwind`'s catch-all again — a pending `super` argument has no opinion
+  -- about a jump.
+  | .superArgK .. => True
   | .arrK .. => True
   | .jumpValK _ => True
   -- L205: `unwind`'s catch-all, like the nine above — a `.cpathK` on the stack has no
@@ -372,6 +402,10 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           have hq : _ = D := inferArgs_table_ret (ctx := c) (by rw [hσ]; simp) htop hia
           subst hq
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | superArgsK hva hst hia hsr hmt hmn hrow hps hrt hw hk' =>
+          have hq : _ = D := inferArgs_table_ret (ctx := c) (by rw [hσ]; simp) htop hia
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | arrK hs hw hk' =>
           have hq : _ = D := inferSeq_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
           subst hq
@@ -452,6 +486,9 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | recvK hsg ha' hsub hw _ ih => intro ha; exact .recvK hsg ha' hsub hw (ih ha)
   | recvK0 hsg hw _ ih => intro ha; exact .recvK0 hsg hw (ih ha)
   | cpathK hb hsc hw _ ih => intro ha; exact .cpathK hb hsc hw (ih ha)
+  | superArgsK hva hst hia hsr hmt hmn hrow hps hrt hw _ ih =>
+      intro ha
+      exact .superArgsK (ValuesTy.congr ha hva) hst hia hsr hmt hmn hrow hps hrt hw (ih ha)
   | argsK hv hva hst hia hsr hsg hw _ ih =>
       intro ha
       exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg hw (ih ha)
@@ -580,6 +617,56 @@ theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
   cases hst : m.stack with
   | nil => exact absurd hst hne
   | cons fid _ => simp [Machine.currentFrame, curFrame, curFid, hst]
+
+/-- Inversion for the two `super` rules (L212). Split by arity for the reason the rules
+    are: `startSuperArgs … []` is `doSuper` outright (one step, no continuation) while
+    the positive-arity form pushes a `superArgK`. -/
+theorem infer_super0_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ctx : FrameCtx}
+    (h : infer D Γ (.super' [] none) top ctx = some (τ, Γ', D')) :
+    Γ' = Γ ∧ D' = D ∧ ∃ mn dd, ctx.meth = some mn ∧ mn ≠ "" ∧
+      superDecl? D ctx.cls mn = some dd ∧ dd.params = [] ∧ τ = dd.ret := by
+  simp only [infer] at h
+  split at h
+  · next mn hmn =>
+    split at h
+    · next hne =>
+      split at h
+      · next dd hrow =>
+        split at h
+        · next hemp =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨rfl, rfl, mn, dd, hmn, hne, hrow, List.isEmpty_iff.mp hemp, rfl⟩
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+theorem infer_super_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ctx : FrameCtx}
+    {arg : Expr} {args : List Expr}
+    (h : infer D Γ (.super' (arg :: args) none) top ctx = some (τ, Γ', D')) :
+    ∃ mn τs dd, ctx.meth = some mn ∧ mn ≠ "" ∧
+      inferArgs D Γ (arg :: args) top ctx = some (τs, Γ', D') ∧
+      superDecl? D' ctx.cls mn = some dd ∧ subTys τs dd.params = true ∧ τ = dd.ret := by
+  simp only [infer] at h
+  split at h
+  · next mn hmn =>
+    split at h
+    · next hne =>
+      split at h
+      · next τs Γ₁ D₁ hargs =>
+        split at h
+        · next dd hrow =>
+          split at h
+          · next hsub =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact ⟨mn, τs, dd, hmn, hne, hargs, hrow, hsub, rfl⟩
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
 
 /-- Inversion for the `def` rule. -/
 theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List Param}

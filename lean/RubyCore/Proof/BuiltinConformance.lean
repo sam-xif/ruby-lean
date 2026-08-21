@@ -148,6 +148,15 @@ theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value} {acc : List Va
       = .next (withKont m (.eval arg) (.argsK recv site mname acc rest .none)) := by
   cases arg <;> simp_all [startArgs]
 
+/-- The same, for `super` (L212). `startSuperArgs` has `startArgs`' three refusals —
+    a splat, keywords, and `...` forwarding — and no receiver or site to carry. -/
+theorem startSuperArgs_plain {m : Machine} {arg : Expr} {acc : List Value}
+    {rest : List Expr} {blk : Option Value}
+    (hsplat : ∀ e, arg ≠ .splat e) (hkw : ∀ es, arg ≠ .kwargs es) (hfwd : arg ≠ .fwd) :
+    startSuperArgs m acc (arg :: rest) blk
+      = .next (withKont m (.eval arg) (.superArgK acc rest blk)) := by
+  cases arg <;> simp_all [startSuperArgs]
+
 /-! ## 4. Surviving a user `def`
 
 `IntBuiltinResolves` is a *heap* condition, so any step that writes the method

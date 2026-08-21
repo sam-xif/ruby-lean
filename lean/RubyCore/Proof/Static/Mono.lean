@@ -84,7 +84,7 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case72 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case83 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -342,6 +342,30 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp only [infer, hs.constTy_eq n, hre]⟩
+  -- **`super()`** (L212). The answer comes out of the `supers` table, so the case
+  -- *uses* `SubDecls` — through its fifth half, which is an equality (`superDecl_eq`).
+  -- Same shape as `.const`'s (case39): no IH, one table read, two guards to recompute.
+  | case71 D Γ top ctx mn hmeth hne dd hrow hemp =>
+    intro F' hs hdf τ Γ' D₀ h
+    rw [show infer D Γ (.super' [] none) top ctx = some (dd.ret, Γ, D) from by
+      simp only [infer, hmeth, hrow, if_pos hne, if_pos hemp]] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by
+      simp only [infer, hmeth, hs.superDecl_eq, hrow, if_pos hne, if_pos hemp]⟩
+  -- **`super(args)`** (L212). The argument list's IH plus the same table read, and the
+  -- read is at the table the *last* argument leaves — which is why the IH's `D₀ = D`
+  -- half has to be spent before `superDecl_eq` can fire.
+  | case76 D Γ top ctx arg args mn hmeth hne τs Γ₂ D₂ hargs dd hrow hsub ih =>
+    intro F' hsb hdf τ Γ' D₀ h
+    simp only [defFree, Bool.and_eq_true] at hdf
+    obtain ⟨rfl, hm⟩ := ih F' hsb (by simp_all [defFree]) _ _ _ hargs
+    rw [show infer D₂ Γ (.super' (arg :: args) none) top ctx = some (dd.ret, Γ₂, D₂) from by
+      simp only [infer, hmeth, hargs, hrow, if_pos hne, if_pos hsub]] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by
+      simp only [infer, hmeth, hm, hsb.superDecl_eq, hrow, if_pos hne, if_pos hsub]⟩
   -- **An array literal** (L174). The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.
@@ -381,7 +405,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case72 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case83 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -393,7 +417,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin]⟩
-  | case75 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case86 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -403,17 +427,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hjoin]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case78 D Γ top ctx =>
+  | case89 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case79 D Γ top ctx e ih =>
+  | case90 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case80 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case91 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -430,12 +454,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case82 D Γ top ctx =>
+  | case93 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case83 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case94 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he

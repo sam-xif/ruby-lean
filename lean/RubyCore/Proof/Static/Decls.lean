@@ -618,16 +618,6 @@ clause has to be quantified over every class object of that name and every chain
 class is on, which is `IvarOk`'s shape at a chain instead of at an object.
 -/
 
-/-- `doSuper`'s target, factored out of the rule so that the invariant and the
-    dispatch lemma can name the same thing. Deliberately written to match
-    `Interp/Send.lean:266-270` symbol for symbol: `dropWhile (· != dm)` then `drop 1`,
-    then `firstM` over the payloads. -/
-def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
-  (((ancestors h k).dropWhile (· != dm)).drop 1).firstM fun c =>
-    match h.classPayload? c with
-    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
-    | none => none
-
 /-- **What one `supers` row obliges** (L211). Stated over the **pair** (a class *name*
     and a chain) rather than over one class, which is what avoids needing `ClassOk`'s
     uniqueness clause: uniqueness covers `readableClasses`, and every `super` in the
@@ -879,6 +869,38 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
   simp only [startArgs, finishSend, hinv]
   simp [enterUserMethod, classifyFull, hpar, hdec, hcap, userFrame, withCtl,
     appendKwHash]
+
+/-- **The `super` dispatch step** (L212), and it is *cheaper* than
+    `entry_dispatch` for a reason worth knowing: **`doSuper` has no gates.** It goes
+    straight from `found` to `md.builtin`, where `invoke` walks receiver shapes,
+    `invokeMaybeNew`, visibility and the CRuby shadow table first — so there is no
+    `valueTy_shapes` case split here at all, and the receiver stays abstract.
+
+    Everything about the frame is a hypothesis, because everything about the frame is a
+    `StackCtx` clause at the call site: the running name (L207/L210), the definee's name
+    (L154), that it is a class (L154), and that it is on the receiver's chain (L209).
+    The last one is what makes `dropWhile` land rather than empty the list — without it
+    `doSuper` raises `NoMethodError`, which is exactly the type-stuck outcome. -/
+theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
+    {args : List Value} {blk : Option Value}
+    (hne : mname ≠ "")
+    (hsup : SuperOk m.heap c mname d)
+    (hfm : (m.frames.getD (methodFrameOf m) default).meth = mname)
+    (hdp : (m.heap.classPayload? (m.frames.getD (methodFrameOf m) default).defmod).isSome)
+    (hdn : className m.heap (m.frames.getD (methodFrameOf m) default).defmod = c)
+    (hch : (m.frames.getD (methodFrameOf m) default).defmod ∈
+      ancestors m.heap (classOf m.heap (m.frames.getD (methodFrameOf m) default).self))
+    (hrv : ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self (.cls c))
+    (hargs : ValuesTy m.heap args d.params) :
+    ∃ w, ValueTy m.heap w d.ret ∧ doSuper m args blk = .next (withCtl m (.value w)) := by
+  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hsup _ _ hdp hdn hch
+  obtain ⟨-, -, -, hcf⟩ := hconf
+  obtain ⟨hdefer, w, hw, hrun⟩ := hcf m _ args hrv hargs
+  refine ⟨w, hw, ?_⟩
+  unfold doSuper
+  simp only []
+  rw [hfm, hf]
+  simp only [hb, appendKwHash, hrun, beq_iff_eq, if_neg hne, List.isEmpty_nil, if_true]
 
 /-! ## 3. Preservation: the additive step is free
 
