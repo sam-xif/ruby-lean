@@ -1056,6 +1056,68 @@ very step that would need it — but **present and a non-module class**, which e
 step in the fragment leaves alone.
 -/
 
+/-- **Nothing strictly in front of `Object` on `k`'s ancestor chain owns a
+    constant** — and `Object` is on the chain at all (L178).
+
+    This is the clause `scripts/consts_probe.lean` measured (L177), and it is
+    stated over the **reach** rather than over the heap because the obvious
+    version is *false*: five names are owned by both `Object` and `T` at the
+    prelude-booted heap (`Struct`, `Enumerable`, `Range`, `Hash`, `Array`), so
+    *no class other than `Object` owns this name* would be unprovable rather
+    than merely strong. The population this quantifies over is
+    `{String, Comparable}` and it owns **0** constants.
+
+    Why it is what a name-keyed constant table needs: a constant *read* is
+    artifact 03 §4's two phases — lexical over the frame's `cref`, then
+    inheritance over `ancestors h defmod` — so a table keyed on the name alone
+    is sound only if that walk reaches the class the table is about. Both
+    clauses here are one half of that: `Object` is reachable, and nothing gets
+    there first. -/
+def NoShadowBefore (h : Heap) (k : ObjId) : Prop :=
+  Boot.objectId ∈ ancestors h k ∧
+    ∀ j ∈ (ancestors h k).takeWhile (· != Boot.objectId),
+      ∀ cp, h.classPayload? j = some cp → cp.consts = []
+
+theorem noShadowBeforeB_sound {h : Heap} {k : ObjId} (hb : noShadowBeforeB h k = true) :
+    NoShadowBefore h k := by
+  simp only [noShadowBeforeB, Bool.and_eq_true, List.all_eq_true] at hb
+  refine ⟨List.mem_of_elem_eq_true (by simpa using hb.1), fun j hj cp hcp => ?_⟩
+  have := hb.2 j (by simpa using hj)
+  rw [hcp] at this
+  simpa using this
+
+/-- **`NoShadowBefore` survives an allocating step.** `PlainGrow` pins
+    `classPayload?` at every id and `ancestors_congr_grow` pins the walk, so both
+    conjuncts transport by the same two rewrites `ClassOk`'s other clauses use. -/
+theorem NoShadowBefore_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    {k : ObjId} (hn : NoShadowBefore h k) : NoShadowBefore h' k := by
+  obtain ⟨hmem, hno⟩ := hn
+  refine ⟨by rw [ancestors_congr_grow hg.shapeAgree hg.size hsat]; exact hmem,
+    fun j hj cp hcp => ?_⟩
+  rw [ancestors_congr_grow hg.shapeAgree hg.size hsat] at hj
+  rw [hg.payload] at hcp
+  exact hno j hj cp hcp
+
+/-- **And a `def`.** `defineMethod` writes `methods`; the walk reads `clsShape`
+    and this clause reads `consts`, and `consts_defineMethod` (L156) is exactly the
+    lemma that says the second is untouched — including at the definee itself,
+    which is the case that makes it worth having. -/
+theorem NoShadowBefore_defineMethod {h : Heap} {cls k : ObjId} {name : String}
+    {md : MethodDef} (hn : NoShadowBefore h k) :
+    NoShadowBefore (defineMethod h cls name md) k := by
+  obtain ⟨hmem, hno⟩ := hn
+  refine ⟨by rw [ancestors_defineMethod]; exact hmem, fun j hj cp hcp => ?_⟩
+  rw [ancestors_defineMethod] at hj
+  have hcs := consts_defineMethod h cls j name md
+  rw [hcp] at hcs
+  cases hp : h.classPayload? j with
+  | none => rw [hp] at hcs; simp at hcs
+  | some cp' =>
+    rw [hp] at hcs
+    simp only [Option.map_some, Option.some.injEq] at hcs
+    rw [hcs]
+    exact hno j hj cp' hp
+
 /-- **Every reopenable class name really names a reopenable class**: `Object`'s own
     constant table binds it to a class object that is not a module.
 
@@ -1076,6 +1138,11 @@ def ClassOk (h : Heap) : Prop :=
   -- conjunct of `Inv` because it is the same kind of fact as the rows below and
   -- `classOkB` decides it in the same pass.
   className h Boot.objectId = "Object" ∧
+  -- **L178, at `Object` itself** — the other frame a constant read can happen in
+  -- is the toplevel one, whose definee is `Object` (`BottomObj`). Not automatic:
+  -- `ancestors` puts `prepends` first, so a module prepended to `Object` and
+  -- owning a constant would shadow the toplevel table.
+  NoShadowBefore h Boot.objectId ∧
   ∀ n ∈ reopenableClasses, ∃ k cp,
     constOwn h Boot.objectId n = some (.ref k) ∧
     h.classPayload? k = some cp ∧ cp.isModule = false ∧
@@ -1098,13 +1165,19 @@ def ClassOk (h : Heap) : Prop :=
     -- just installed — and the row's `ResolvesUser` would be false. Measured at the
     -- booted heap by `scripts/names_probe.lean` (`ancestors String = [9, 40, 1, …]`)
     -- before it was assumed.
-    (ancestors h k).head? = some k
+    (ancestors h k).head? = some k ∧
+    -- **L178: the constant-table clause, at this class.** A method body of a
+    -- reopenable class is one of the two frames a constant read can happen in, and
+    -- `NoShadowBefore` is what makes the read reach `Object`'s table. Folded in
+    -- here for `className h Boot.objectId`'s own reason — it is the same kind of
+    -- fact as the rows around it and `classOkB` decides it in the same pass.
+    NoShadowBefore h k
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
 theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
   simp only [classOkB, Bool.and_eq_true, beq_iff_eq] at hb
-  refine ⟨hb.1, ?_⟩
+  refine ⟨hb.1.1, noShadowBeforeB_sound hb.1.2, ?_⟩
   intro n hn
   have := List.all_eq_true.mp hb.2 n hn
   revert this
@@ -1119,8 +1192,9 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
         intro hm
         simp only [hc, hp, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
           List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hm
-        obtain ⟨⟨⟨hmod, hnm⟩, huniq⟩, hhead⟩ := hm
-        refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_, hhead⟩
+        obtain ⟨⟨⟨⟨hmod, hnm⟩, huniq⟩, hhead⟩, hns⟩ := hm
+        refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_, hhead,
+          noShadowBeforeB_sound hns⟩
         -- The bound comes from the payload, exactly as `StackCtx`'s does
         -- (`classPayload?_isSome_lt`), so the `List.range` scan really is a scan
         -- over every id that can satisfy the hypothesis.
@@ -1138,12 +1212,14 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
     the same one-line argument `LitClsOk_grow` makes, for the same reason. -/
 theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hc : ClassOk h) : ClassOk h' := by
-  refine ⟨by rw [hg.className_eq]; exact hc.1, ?_⟩
+  refine ⟨by rw [hg.className_eq]; exact hc.1,
+    NoShadowBefore_grow hg hsat hc.2.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6⟩ := hc.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7⟩ := hc.2.2 n hn
   refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
     by rw [hg.payload]; exact h2, h3, ?_, fun j hj hjn => ?_,
-    by rw [ancestors_congr_grow hg.shapeAgree hg.size hsat]; exact h6⟩
+    by rw [ancestors_congr_grow hg.shapeAgree hg.size hsat]; exact h6,
+    NoShadowBefore_grow hg hsat h7⟩
   -- `PlainGrow` pins `classPayload?` at every id and `className` with it, so both
   -- new clauses transport by the same rewrite the old ones do.
   · rw [hg.className_eq]; exact h4
@@ -1155,9 +1231,10 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     neither. -/
 theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : ClassOk h) : ClassOk (defineMethod h cls name md) := by
-  refine ⟨by rw [className_defineMethod]; exact hc.1, ?_⟩
+  refine ⟨by rw [className_defineMethod]; exact hc.1,
+    NoShadowBefore_defineMethod hc.2.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6⟩ := hc.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7⟩ := hc.2.2 n hn
   refine ⟨k, ?_⟩
   rw [constOwn_defineMethod h cls Boot.objectId name n md]
   -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
@@ -1166,7 +1243,8 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   cases hk : (defineMethod h cls name md).classPayload? k with
   | none => rw [hk, h2] at hsh; exact absurd hsh (by simp)
   | some cp' =>
-    refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_, ?_⟩
+    refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_, ?_,
+      NoShadowBefore_defineMethod h7⟩
     -- `isModule` is not in `clsShape`, but it *is* in `clsName_defineMethod` — L124
     -- put it there because the anonymous-class fallback renders by it. Reused rather
     -- than reproved.

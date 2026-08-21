@@ -268,7 +268,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- `ClassOk` at this name: the constant is there, it is a class, and it is not
       -- a module — the three tests `enterClassBody` applies before `pushFrame`.
       obtain ⟨k, cp, hconst, hpay, hmod, hnm, huniq⟩ :=
-        hcls.2 name (List.mem_of_elem_eq_true hmem)
+        hcls.2.2 name (List.mem_of_elem_eq_true hmem)
       simp only [evalExpr, enterClassBody, hdefmod, hconst, hpay, hmod, withKont]
       -- What is left is `pushFrame`, and it is a frame push on an untouched heap.
       have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
@@ -420,9 +420,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             ancestors (defineMethod m.heap (curFrame m).defmod name md)
               (curFrame m).defmod = (curFrame m).defmod :: rest := by
           intro md
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀⟩ :=
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀, _⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
-              (cls := (curFrame m).defmod) hcls).2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
+              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo)
               (by rw [className_defineMethod]; exact hctx)
@@ -450,9 +450,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             intro hh
             rw [hh]
             decide
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _⟩ :=
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _, _⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
-              (cls := (curFrame m).defmod) hcls).2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
+              (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
           have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
               (curFrame m).defmod = ctx.cls := by rw [className_defineMethod]; exact hctx
           have hdefk : (curFrame m).defmod = k₀ :=

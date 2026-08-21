@@ -77,6 +77,16 @@ def noHookB (h : Heap) : Bool :=
   (List.range h.objs.size).all fun k =>
     (h.classPayload? k).isNone || (lookup h (.ref k) "method_added").isNone
 
+/-- L178's constant-table clause, decided. The `takeWhile` is the population
+    `scripts/consts_probe.lean` measured: `{String, Comparable}` on the slice's
+    admitted chains, not the heap's 87 class objects. -/
+def noShadowBeforeB (h : Heap) (k : ObjId) : Bool :=
+  (ancestors h k).contains Boot.objectId &&
+    ((ancestors h k).takeWhile (· != Boot.objectId)).all fun j =>
+      match h.classPayload? j with
+      | some cp => cp.consts.isEmpty
+      | none => true
+
 /-- Executable form of `ClassOk` (L156): every reopenable class name is bound, in
     `Object`'s **own** constant table, to a class object that is not a module.
 
@@ -88,6 +98,8 @@ def noHookB (h : Heap) : Bool :=
     the wrong lookup would be worse than none. -/
 def classOkB (h : Heap) : Bool :=
   (className h Boot.objectId == "Object") &&
+  -- L178, at `Object` itself: the toplevel frame's definee.
+  noShadowBeforeB h Boot.objectId &&
   Types.reopenableClasses.all fun n =>
     match constOwn h Boot.objectId n with
     | some (.ref k) =>
@@ -103,7 +115,10 @@ def classOkB (h : Heap) : Bool :=
           -- F1b.10: the chain starts at the class, so a `def` on it is what
           -- `lookup` finds. `prepends` come first in `ancestors`, so this is a
           -- real condition and not a restatement.
-          ((ancestors h k).head? == some k)
+          ((ancestors h k).head? == some k) &&
+          -- L178, at this class: a method body of it is the other frame a
+          -- constant read can happen in.
+          noShadowBeforeB h k
       | none => false
     | _ => false
 

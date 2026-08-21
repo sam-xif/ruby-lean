@@ -7365,3 +7365,56 @@ reach, and only a measurement tells you which. The general form, worth having in
 
 `check-proofs.sh` green with the new section, 29 theorems, axiom-clean. Nothing in the SUT changed, so
 no verdict diff is owed — and none is claimed.
+
+## L178 — L177's clause, carried: `ClassOk` gains `NoShadowBefore`
+
+The measurement is L177's; this is the clause it produced, landed in the invariant and decided by the
+same certificate `ClassOk` already had. Inert — nothing reads it yet, and the rule that will is the
+next commit.
+
+### The clause, and why it is stated over a chain rather than over the heap
+
+```lean
+def NoShadowBefore (h : Heap) (k : ObjId) : Prop :=
+  Boot.objectId ∈ ancestors h k ∧
+    ∀ j ∈ (ancestors h k).takeWhile (· != Boot.objectId),
+      ∀ cp, h.classPayload? j = some cp → cp.consts = []
+```
+
+Both conjuncts are one half of *a constant read reaches `Object`'s table*: `Object` is on the chain,
+and nothing gets there first. The `takeWhile` is the whole point — L177 measured that the population
+it quantifies over is `{String, Comparable}` (which owns 0 constants) where the heap has 87 class
+objects and five names owned by both `Object` and `T`. Stated over the heap the clause is **false**;
+stated over the chain it is a `decide`.
+
+It goes **into `ClassOk`** rather than becoming `Inv`'s eighth conjunct, and for the reason `ClassOk`'s
+own docstring already gives about `className h Boot.objectId = "Object"`: it is the same kind of fact
+as the rows around it and `classOkB` decides it in the same pass. Two instances — at `Boot.objectId`
+(the toplevel frame's definee, `BottomObj`) and at each reopenable class's object (a method body's).
+Those are exactly the two definees a fragment frame can have.
+
+### What it cost
+
+| | |
+|---|---|
+| `Proof/Static/Decls.lean` | the definition, `noShadowBeforeB_sound`, and **two transport lemmas** |
+| `HeapCert.lean` | `noShadowBeforeB`, folded into `classOkB` at both instances |
+| `Proof/Static/Preservation.lean` | four `.2` → `.2.2` and two `obtain` patterns |
+
+The two transports are the interesting part, and each is one rewrite:
+
+* **allocation** — `PlainGrow` pins `classPayload?` at every id and `ancestors_congr_grow` pins the
+  walk (on `Saturated`, L144), so both conjuncts move by the rewrites `ClassOk`'s other clauses
+  already use;
+* **`def`** — `ancestors_defineMethod` for the walk, and `consts_defineMethod` for the payload. That
+  second lemma was written at L156 *for `ClassOk`*, with a docstring saying it exists because a `def`
+  in the body of the very class being reopened is the non-trivial case. It is the exactly-right lemma
+  two rungs early, which is worth noting: **a lemma written for one clause because the author asked
+  what the step touches tends to be the one the next clause needs.**
+
+### Checks
+
+`--check` **byte-identical** at 39 / 1,186 / 0. `check-proofs.sh` green, 29 theorems, axiom-clean —
+and note `classOkB` is inside `heapOkB`, so F0's certificate now decides the new clauses too, at both
+the bare boot heap (`by decide`, in `heapOk_initHeap`) and the prelude-booted one (`heapok_probe`,
+which now prints them). `consts_probe` still exits 0.

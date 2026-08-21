@@ -78,6 +78,15 @@ method_added (want 0): {hookBad.length}"
     IO.println s!"  Array is a class = \
 {(h.classPayload? Boot.arrayId).isSome}\n  className Array = \
 {className h Boot.arrayId}"
+    -- L178's two `ClassOk` clauses, reported beside the certificate that decides
+    -- them: `Object` is on the chain of every keyable class, and nothing in front
+    -- of it owns a constant. `consts_probe.lean` is the same measurement in full.
+    IO.println s!"\nClassOk (L178): noShadowBefore Object = {noShadowBeforeB h Boot.objectId}"
+    for n in RubyCore.Types.reopenableClasses do
+      match constOwn h Boot.objectId n with
+      | some (.ref k) =>
+        IO.println s!"  noShadowBefore {n} = {noShadowBeforeB h k}"
+      | _ => IO.println s!"  {n} is not a constant of Object"
     let ok := heapOkB h
     IO.println s!"\nheapOkB (prelude-booted): {ok}"
     return if ok then 0 else 1
