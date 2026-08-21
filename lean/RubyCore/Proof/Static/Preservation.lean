@@ -871,18 +871,15 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           split at hif
           · rename_i hagree
             obtain ⟨rfl, rfl⟩ := hagree
-            split at hif
-            · rename_i τj hjoin
-              simp only [Option.some.injEq, Prod.mk.injEq] at hif
-              obtain ⟨rfl, rfl, rfl⟩ := hif
-              by_cases hb : v.truthy
-              · simp only [hb, if_true]
-                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
-                  (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
-              · simp only [hb]
-                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot he
-                  (subTy_trans (joinTy_sub hjoin).2 hsw) hk'
-            · exact absurd hif (by simp)
+            simp only [Option.map_eq_some_iff, Prod.mk.injEq] at hif
+            obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := hif
+            by_cases hb : v.truthy
+            · simp only [hb, if_true]
+              exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
+                (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+            · simp only [hb]
+              exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot he
+                (subTy_trans (joinTy_sub hjoin).2 hsw) hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
       | none =>
@@ -892,19 +889,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           split at hif
           · rename_i hnil
             obtain ⟨rfl, rfl⟩ := hnil
-            split at hif
-            · rename_i τj hjoin
-              simp only [Option.some.injEq, Prod.mk.injEq] at hif
-              obtain ⟨rfl, rfl, rfl⟩ := hif
-              by_cases hb : v.truthy
-              · simp only [hb, if_true]
-                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
-                  (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
-              · simp only [hb]
-                exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
-                  (ValueTy.weaken (ValueTy.exact rfl)
-                    (subTy_trans (joinTy_sub hjoin).2 hsw)) hk'
-            · exact absurd hif (by simp)
+            simp only [Option.map_eq_some_iff, Prod.mk.injEq] at hif
+            obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := hif
+            by_cases hb : v.truthy
+            · simp only [hb, if_true]
+              exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
+                (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+            · simp only [hb]
+              exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+                (ValueTy.weaken (ValueTy.exact rfl)
+                  (subTy_trans (joinTy_sub hjoin).2 hsw)) hk'
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
     | @whileCond _ _ _ _ _ _ τw c body k hloop hsw hk' =>

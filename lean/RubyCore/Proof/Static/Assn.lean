@@ -244,9 +244,16 @@ trivially rather than vacuously. -/
 
 theorem ATy.subst_of_toNom? {θ : TyVar → Ty} {a : ATy} {τ : Ty}
     (h : a.toNom? = some τ) : a.subst θ = τ := by
-  cases a with
+  induction a generalizing τ with
   | nom τ' => simp [ATy.toNom?] at h; simp [ATy.subst, h]
   | var α => simp [ATy.toNom?] at h
+  -- L193b: `toNom?` normalizes on the way out and `subst` normalizes on the way
+  -- down, which is exactly what makes this arm an application of the IH rather than
+  -- a second definition to keep in step.
+  | nilOf a ih =>
+    simp only [ATy.toNom?, Option.map_eq_some_iff] at h
+    obtain ⟨σ, hσ, rfl⟩ := h
+    simp [ATy.subst, ih hσ]
 
 theorem ATy.map_subst_of_nomList? {θ : TyVar → Ty} :
     ∀ {ps : List ATy} {qs : List Ty}, ATy.nomList? ps = some qs →
@@ -308,6 +315,7 @@ theorem dischargeAll_sound {D : Decls} {θ : TyVar → Ty} {h : Heap} {A : Assn}
   have hthis := (List.all_eq_true.mp h1) r hr
   cases hty : r.1 with
   | var α => rw [hty] at hthis; simp at hthis
+  | nilOf a => rw [hty] at hthis; simp at hthis
   | nom τ =>
     rw [hty] at hthis
     cases hn : r.2.2.toNom? with
@@ -384,6 +392,7 @@ theorem entail_sound' {D : Decls} {θ : TyVar → Ty} {h : Heap} {P : Assn}
     | some σn =>
       cases aτ with
       | var α => rw [hn] at h2; simp at h2
+      | nilOf a => rw [hn] at h2; simp at h2
       | nom τ =>
         rw [hn] at h2
         show EntryOk D h ((ATy.nom τ).subst θ) n (σ.subst θ)

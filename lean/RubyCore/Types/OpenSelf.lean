@@ -205,6 +205,12 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
           match requireRow s₂.st α mname τs s₂.fresh with
           | some (τ, st') => .ok τ Γ₂ { st := st', fresh := s₂.fresh + 1 }
           | none => .missing (.var α) mname τs
+        -- **A nilable receiver is refused, not recorded** (L193b), and the label says
+        -- which rule is missing rather than which row: no row can ever be promised on
+        -- a nilable — the receiver may be `nil` — which is `tyClassNames .nilable = []`
+        -- arriving in the front end. What this position wants is *narrowing*
+        -- (`x.nil?`, `if x`), and that is `PLAN.md` W5 T3.
+        | .nilOf _ => .outOfFragment "nilable-receiver"
       | .missing τ n ps => .missing τ n ps
       | .outOfFragment h => .outOfFragment h
     | r => r
@@ -220,6 +226,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
         match requireRow s₁.st α mname [] s₁.fresh with
         | some (τ, st') => .ok τ Γ₁ { st := st', fresh := s₁.fresh + 1 }
         | none => .missing (.var α) mname []
+      | .nilOf _ => .outOfFragment "nilable-receiver"
     | r => r
   -- A body that declares a method is outside the fragment already (`infer`'s own
   -- `defFree` requirement); refusing here keeps the factoring theorem's `D` fixed.
@@ -283,13 +290,26 @@ def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OC
     match inferOpen D Γ t ctx s with
     | .ok τt Γt st =>
       match inferOpen D Γ e ctx st with
-      | .ok τe Γe se => if τt = τe ∧ Γt = Γe then .ok τe Γe se else .outOfFragment "if"
+      | .ok τe Γe se =>
+        -- L193b, mirroring `inferIf`: the types are *joined*, the environments are
+        -- still compared. `joinATy` is the only difference from the nominal rule, and
+        -- the reason it exists rather than `joinTy` being reused is that this side
+        -- joins against a type *variable*.
+        if Γt = Γe then
+          match joinATy τt τe with
+          | some τj => .ok τj Γe se
+          | none => .outOfFragment "if"
+        else .outOfFragment "if"
       | r => r
     | r => r
   | none =>
     match inferOpen D Γ t ctx s with
     | .ok τt Γt st =>
-      if τt = .nom Ty.nilT ∧ Γt = Γ then .ok (.nom .nilT) Γ st else .outOfFragment "if"
+      if Γt = Γ then
+        match joinATy τt (.nom Ty.nilT) with
+        | some τj => .ok τj Γ st
+        | none => .outOfFragment "if"
+      else .outOfFragment "if"
     | r => r
 termination_by sizeOf t + sizeOf els
 

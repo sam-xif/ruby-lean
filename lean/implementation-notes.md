@@ -8396,3 +8396,63 @@ individually (`1 && 2 && 3 && nil`, `if true then 1 end`, `1if true` — all now
 `T.nilable(Integer)`); `--assn` smoke 1,227 clean / 0 fail; `fragment-gap.py --self-test` all agree,
 with three new rows pinning the join's *boundary* (one-armed `if` accepts, `nil` else-arm accepts,
 `Integer`/`Symbol` arms still refuse). The interpreter is untouched, so no difftest tier can move.
+
+---
+
+## L193b — the open front end joins too
+
+Out of fragment **76 → 74**, and the `if` line of the `--assn` histogram drops from **7 to 2**.
+`--check` is byte-identical to L193: this commit moves the *open* judgement only.
+
+### `ATy.nilOf`, and the one instantiation that forced `mkNilable`
+
+The open front end joins against a type **variable** — `raise ArgumentError, "…" unless c` records a
+row requirement on `self` whose return type is a fresh `α`, and the missing arm is `nil` — so it has
+to be able to say *`α` or nil* before it knows what `α` is. Hence one new `ATy` arm.
+
+The subtle part is not the arm, it is that the two joins have to **agree under substitution**, and
+naively they do not:
+
+```
+joinATy (nom nilT) (var α)  =  nilOf (var α)      -- subst at θα = NilClass → nilable NilClass
+joinTy  nilT       NilClass =  NilClass                                     -- ≠
+```
+
+One instantiation, and `inferOpen_factors` would have been false. `mkNilable` — `nilable nilT`
+normalized to `nilT` — is what closes it, and `joinATy_subst` is the lemma that says so. Worth
+recording as the shape of the hazard: *an open judgement and a nominal one can agree at every
+example and disagree at one substitution*, and only the factoring theorem finds it.
+
+A nilable **receiver** is refused, with its own label (`nilable-receiver`, one body): no row can
+ever be promised on a type whose values may be `nil`, which is `tyClassNames .nilable = []`
+arriving in the front end. What that position wants is *narrowing* (`x.nil?`, `if x`), W5 T3.
+
+### `Option.map` instead of a `match`, and why
+
+`inferIf` now ends `(joinTy τt τe).map (fun τj => (τj, Γt, Dt))` rather than matching on `joinTy`.
+That is not style: the factoring proof has to rewrite `joinTy`'s *result* under the binder, and a
+rewrite inside a `match` **scrutinee** is exactly the shape `rw` refuses ("motive is not type
+correct"). One combinator, and `joinATy_subst` goes straight in. The `Option.map` form also removes
+the join's own case from `infer.induct`, so `Mono.lean`'s positional numbers went back to L192's.
+
+### Two hours lost to one wrong assumption, worth writing down
+
+The join case would not close, and every attempt to fix it inside `inferOpen_factors`' uniform
+`first` block failed. The assumption was that the goal reaching that block was the join equation.
+It was not: at the moment `first` runs, the goal is still the whole `FactorsIf`, and it is the
+*two-subexpression* alternative — which ends in `simp_all` — that reduces `inferIf` and leaves the
+join equation **behind**, as a residual. `first` had already committed.
+
+The diagnosis came from `all_goals (trace_state)` placed **after** the block rather than inside it:
+inside, the case never printed, which is the fact that identified it. The fix is one line next to
+the `StoreLe` residual that L175 discharged the same way, and the file already said why that shape
+exists — *discharged here rather than inside the alternative, so the alternatives stay one shape
+each*. The lesson is narrower and more useful than "read the goal": **in a `first`-chain proof, a
+goal that never prints inside the chain is a goal the chain created.**
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
+**byte-identical to L193** (51/1,174/0) — the nominal rule's behaviour is unchanged, only its
+spelling; `--assn` smoke 1,227 clean / 0 fail; `--self-test` all agree; `fragment-gap.py` **74** out
+of fragment with `if` down to 2. Interpreter untouched.

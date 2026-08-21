@@ -195,6 +195,24 @@ theorem subTys_cons_inv {σ : Ty} {σs ps : List Ty} (h : subTys (σ :: σs) ps 
     simp only [subTys, Bool.and_eq_true] at h
     exact ⟨τp, psrest, rfl, h.1, h.2⟩
 
+/-- **`nilable` normalized at `nilT`** (L193b). `nilable nilT` and `nilT` denote the
+    same set of values, and the *open* front end is why the difference has to be
+    collapsed rather than tolerated: it joins against a type **variable**, so it
+    cannot see whether the other side is `nil` and must emit `nilOf α`; the nominal
+    join, at a substituted `α = nilT`, answers `nilT`. Without this the two would
+    disagree at exactly one instantiation and `inferOpen_factors` would be false. -/
+def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
+
+@[simp] theorem joinTy_nilT_left (τ : Ty) : joinTy .nilT τ = some (mkNilable τ) := by
+  by_cases h : τ = Ty.nilT
+  · subst h; simp [joinTy, mkNilable]
+  · simp [joinTy, mkNilable, h, Ne.symm h]
+
+@[simp] theorem joinTy_nilT_right (τ : Ty) : joinTy τ .nilT = some (mkNilable τ) := by
+  by_cases h : τ = Ty.nilT
+  · subst h; simp [joinTy, mkNilable]
+  · simp [joinTy, mkNilable, h]
+
 /-- Both sides of a join are below it. The join rule's whole soundness content, and
     the reason it is two lines: `joinTy` answers only the two shapes it can justify. -/
 theorem joinTy_sub {σ τ τj : Ty} (h : joinTy σ τ = some τj) :

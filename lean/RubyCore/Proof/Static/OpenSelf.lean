@@ -289,10 +289,14 @@ theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (t : Expr)
         rw [he] at h
         dsimp only at h
         split at h
-        · simp only [OResult.ok.injEq] at h
-          obtain ⟨-, -, rfl⟩ := h
-          exact StoreLe.trans (inferOpen_mono D ctx Γ t s τt Γt st ht)
-            (inferOpen_mono D ctx Γ e st τe Γe se he)
+        · -- L193b adds the join's own split; both accepting arms leave `se` alone,
+          -- so the store bound is the same composition it was.
+          split at h
+          · simp only [OResult.ok.injEq] at h
+            obtain ⟨-, -, rfl⟩ := h
+            exact StoreLe.trans (inferOpen_mono D ctx Γ t s τt Γt st ht)
+              (inferOpen_mono D ctx Γ e st τe Γe se he)
+          · simp at h
         · simp at h
       | missing _ _ _ => rw [he] at h; simp at h
       | outOfFragment _ => rw [he] at h; simp at h
@@ -305,9 +309,11 @@ theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (t : Expr)
       rw [ht] at h
       dsimp only at h
       split at h
-      · simp only [OResult.ok.injEq] at h
-        obtain ⟨-, -, rfl⟩ := h
-        exact inferOpen_mono D ctx Γ t s τt Γt st ht
+      · split at h
+        · simp only [OResult.ok.injEq] at h
+          obtain ⟨-, -, rfl⟩ := h
+          exact inferOpen_mono D ctx Γ t s τt Γt st ht
+        · simp at h
       · simp at h
     | missing _ _ _ => rw [ht] at h; simp at h
     | outOfFragment _ => rw [ht] at h; simp at h
@@ -460,6 +466,17 @@ def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (ctx : OCtx) (Γ :
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
+/-- **The `if` join's factoring step, packaged so `apply` can unify it** (L193b).
+    `rw [joinATy_subst (by assumption)]` cannot work inside the uniform tactic block:
+    `rw` elaborates its term before touching the goal, so `a`/`b`/`c` are still
+    metavariables when `assumption` runs. Stating the whole equation lets `apply`
+    fix them from the goal and leaves exactly the hypothesis to be found. -/
+theorem mkNilable_join {a c : ATy} {θ : TyVar → Ty}
+    (h : joinATy a (.nom .nilT) = some c) : mkNilable (a.subst θ) = c.subst θ := by
+  have h1 := joinATy_subst (θ := θ) h
+  rw [show (ATy.nom Ty.nilT).subst θ = Ty.nilT from rfl, joinTy_nilT_right] at h1
+  simpa using h1
+
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (s : OState) :
@@ -470,13 +487,23 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     (motive4 := fun Γ es s => FactorsArgs D θ stF ctx Γ es (inferOpenArgs D Γ es ctx s)) with
   | _ =>
     simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf,
-      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs, joinTy,
+      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs,
       substEnv_aenvSet, hself]
     all_goals (try intro hle)
-    all_goals (try simp_all)
+    -- L193b: `joinATy_subst` is a *conditional* rewrite whose hypothesis is in the
+    -- context, so `simp_all` can discharge it and close the join cases here. It has
+    -- to be in this set rather than in the alternative block below, because
+    -- `simp_all` is what leaves those goals in the first place.
+    all_goals (try simp_all [joinATy_subst])
     all_goals (
       first
         | done
+        -- **the `if` join** (L193b), both arms. The IHs are already applied by
+        -- `simp_all`; what is left is that the *open* join and the *nominal* one agree
+        -- under substitution, which is `joinATy_subst` and nothing else. Two variants
+        -- because the one-armed `if` leaves the goal as a bare type equation.
+        | (exact joinATy_subst (by assumption))
+        | (rw [mkNilable_join (θ := θ) ‹joinATy _ _ = some _›]; done)
         -- a local read: the environment lemma, and nothing else
         | exact aenvGet_subst (by assumption)
         -- a `vcall`: the requirement on `self`, discharged at the definee's class
@@ -628,6 +655,12 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     -- Discharged here rather than inside the alternative, so the alternatives stay
     -- one shape each.
     all_goals (try exact storeLe_subReq (by assumption) (by assumption))
+    -- **And a residual *join*** (L193b), for exactly the reason above and found the
+    -- same way: the two-subexpression alternative ends in `simp_all`, which reduces
+    -- `inferIf` and leaves the join equation standing. It is a residual rather than an
+    -- alternative because at the moment `first` runs, the goal is still the whole
+    -- `FactorsIf` — the join equation does not exist yet.
+    all_goals (try exact joinATy_subst (by assumption))
 
 /-! ## 6. The decidable side — §8.2's discharge, and what it buys
 

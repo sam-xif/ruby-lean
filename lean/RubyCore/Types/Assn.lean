@@ -62,6 +62,12 @@ abbrev TyVar := Nat
 inductive ATy where
   | nom (τ : Ty)
   | var (α : TyVar)
+  /-- **`nilable` of an open type** (L193b). The one arm `ATy` needs that `Ty` cannot
+      supply by embedding: the open front end joins against a *variable*, so it has
+      to say "`α` or `nil`" before it knows what `α` is. `subst` normalizes it
+      (`mkNilable`), which is what keeps the open and nominal joins in step at the
+      one instantiation where they would otherwise differ, `α = NilClass`. -/
+  | nilOf (a : ATy)
 deriving DecidableEq, Repr, Inhabited
 
 /-- The class names the four ground arms of `Ty` denote, inverted: the `Ty` a
@@ -101,6 +107,8 @@ def tyName : Ty → String
 def ATy.render : ATy → String
   | .nom τ => tyName τ
   | .var α => s!"α{α}"
+  -- L193b, in the source's own vocabulary as `tyName`'s nilable arm is.
+  | .nilOf a => "T.nilable(" ++ ATy.render a ++ ")"
 
 /-! ## 2. Signatures and rows -/
 
@@ -133,6 +141,41 @@ deriving DecidableEq, Repr, Inhabited
 def ATy.subst (θ : TyVar → Ty) : ATy → Ty
   | .nom τ => τ
   | .var α => θ α
+  | .nilOf a => mkNilable (ATy.subst θ a)
+
+/-- The **open** join (L193b): `joinTy`'s shape, one level up. Equal sides join to
+    themselves; a `nil` on either side wraps the other; anything else refuses. -/
+def joinATy (a b : ATy) : Option ATy :=
+  if a == b then some a
+  else if a == .nom .nilT then some (.nilOf b)
+  else if b == .nom .nilT then some (.nilOf a)
+  else none
+
+/-- **The two joins agree under substitution**, which is the whole reason `mkNilable`
+    exists: at `θ α = NilClass` the open side has emitted `nilOf α` while the nominal
+    side answers `NilClass`, and normalization is what makes those the same type. -/
+theorem joinATy_subst {a b c : ATy} {θ : TyVar → Ty} (h : joinATy a b = some c) :
+    joinTy (a.subst θ) (b.subst θ) = some (c.subst θ) := by
+  unfold joinATy at h
+  split at h
+  · rename_i heq
+    simp only [beq_iff_eq] at heq
+    simp only [Option.some.injEq] at h
+    subst h; subst heq
+    simp [joinTy]
+  · split at h
+    · rename_i hn
+      simp only [beq_iff_eq] at hn
+      simp only [Option.some.injEq] at h
+      subst h; subst hn
+      simp [ATy.subst]
+    · split at h
+      · rename_i hn
+        simp only [beq_iff_eq] at hn
+        simp only [Option.some.injEq] at h
+        subst h; subst hn
+        simp [ATy.subst]
+      · exact absurd h (by simp)
 
 def ASig.subst (θ : TyVar → Ty) (σ : ASig) : Sig :=
   { params := σ.params.map (ATy.subst θ), ret := ATy.subst θ σ.ret }
@@ -146,6 +189,10 @@ def Sig.toA (σ : Sig) : ASig := { params := σ.params.map .nom, ret := .nom σ.
 def ATy.toNom? : ATy → Option Ty
   | .nom τ => some τ
   | .var _ => none
+  -- L193b: closed exactly when its payload is, and normalized on the way out so
+  -- that `toNom?` and `subst` agree — a row compared against the table has to be
+  -- the type `subst` would have produced.
+  | .nilOf a => (ATy.toNom? a).map mkNilable
 
 def ATy.nomList? : List ATy → Option (List Ty)
   | [] => some []

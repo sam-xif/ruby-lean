@@ -655,11 +655,12 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
       -- `namespace = nil if c` binds a local in one branch only, and merging that
       -- needs `Env` to become a lattice, which `KontOk`'s environment *equality*
       -- (read by every `frameK`) does not yet tolerate.
-      if Γt = Γe ∧ Dt = De then
-        match joinTy τt τe with
-        | some τj => some (τj, Γt, Dt)
-        | none => none
-      else none
+      -- `Option.map` rather than a `match` on purpose (L193b): the factoring proof
+      -- has to rewrite `joinTy`'s *result* under this binder, and a rewrite inside a
+      -- `match` scrutinee is exactly the shape `rw` refuses ("motive is not type
+      -- correct"). One combinator instead of one match, and the open side's
+      -- `joinATy_subst` goes straight in.
+      if Γt = Γe ∧ Dt = De then (joinTy τt τe).map (fun τj => (τj, Γt, Dt)) else none
     | _, _ => none
   | none =>
     match infer D Γ t top ctx with
@@ -667,11 +668,7 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
       -- No `else` means the missing branch yields `nil`, so this is the same join
       -- against `.nilT` — and it is the shape that pays for the rung, since
       -- `raise … if c` is a one-armed `if` whose arm is not `nil`.
-      if Γt = Γ ∧ Dt = D then
-        match joinTy τt .nilT with
-        | some τj => some (τj, Γ, D)
-        | none => none
-      else none
+      if Γt = Γ ∧ Dt = D then (joinTy τt .nilT).map (fun τj => (τj, Γ, D)) else none
     | none => none
 termination_by sizeOf t + sizeOf els
 
