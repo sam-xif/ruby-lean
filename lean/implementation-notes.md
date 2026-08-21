@@ -10366,3 +10366,79 @@ that stand on their own and that the rung needs regardless.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
 **24**. `Types/Ty.lean` is touched, so the `--check` diff was run: byte-identical.
+
+## L219 — every remaining body priced to a named theorem, and the `if` refusal diagnosed
+
+Out of fragment **24 → 24**. No code; a measurement, and it is the one this initiative has been
+missing: until now the remaining census was priced by *construct*, which is what L192's rule warns
+against. Priced by **the theorem each one needs**, the board reads differently.
+
+### The `if` refusal is an environment mismatch, and it is caused by desugaring temporaries
+
+`Token.self.from` was the last `if` in the census and this file had it down as *"needs unification"*
+(from L175's reading of `in_interval?`). It does not. Reproduced and bisected:
+
+```ruby
+return NULL_TOKEN if val.nil? || (val.respond_to?(:null?) && val.null?)   # -> out of fragment: if
+return NULL_TOKEN if val.nil? || val.null?                                 # -> accept
+val.respond_to?(:null?) && val.null?                                       # -> accept
+```
+
+`a || (b && c)` desugars to nested `if`s over three temporaries (`__dt_t1/2/3`), and the outer `if`'s
+**else** arm assigns one the then arm does not. Minimal witness, and it is nothing to do with
+unification or with `case`:
+
+```ruby
+if c then 1 else z = 2; z end     # -> out of fragment: if
+if c then z = 1; z else z = 2; z end   # -> accept
+```
+
+`inferOpenIf` refuses when `Γt ≠ Γe` (`Types/OpenSelf.lean`), and that is the whole refusal.
+
+**And relaxing it is not local.** The obvious fix — answer the two arms' *meet* and narrow with L218's
+`FramesOk.narrowHead` — does not close: `applyKont`'s `ifK` evaluates the chosen branch against the
+continuation `k` **directly**, so `CtlOk` needs `KontOk … ((c, Γbranch) :: Γs) … k` while `KontOk.ifK`
+registered `k` at the meet. Weakening a `KontOk`'s environment index needs `infer` to be
+*environment*-monotone with a **related** answer environment:
+
+```lean
+SubEnv Γ Γ' → infer D Γ e … = some (τ, Γ₁, D₁) →
+  ∃ Γ₁', infer D Γ' e … = some (τ, Γ₁', D₁) ∧ SubEnv Γ₁ Γ₁'
+```
+
+which is `infer_mono`'s shape at `Env` instead of `Decls` — a 40-case induction with the template
+already in `Proof/Static/Mono.lean`. Storing *two* continuations in `KontOk.ifK` (one per branch
+environment) was tried on paper and pushes the same problem up: the `if`'s own continuation was
+registered at one environment.
+
+> **Two of the four one-body rungs were mispriced in the same direction**, and both by inheriting a
+> reading from an earlier session instead of running the body. `if` is not unification; `hash` is not a
+> `Ty` arm.
+
+### The board, priced by theorem
+
+| construct | bodies | the theorem it needs |
+|---|---|---|
+| `send-with-block` | 15 | the block subsystem. Typing one `xs.map { }` types the **prelude's** `Enumerable#map`, which is Ruby containing `yield`, `block_given?`, a nested block send and `Array#push`. Not decomposable into a cheap first rung |
+| `splat` | 3 | **three** theorems: a signature match that survives unknown arity; multiple assignment; and a new `Inv` conjunct *class `Array` ⇒ `.arr` payload* (with a boot certificate and transports) for **one** body |
+| `begin` | 2 | table stability along a `KontOk` chain — L200's `infer_table_ret` **without its guard** (`ctx.ret.isSome` is what made that one available). L218 has the measurement |
+| `if` | 1 | `infer` environment-monotonicity (above) |
+| `gvar` | 1 | a globals clause on `Inv`, ~50 call sites of threading |
+| `next` | 1 | a loop-control channel in `CtlOk`, `.nxtJ`'s analogue of L200's `.retJ` |
+| `hash` | 1 | `plainRecv` **excludes** a `.hsh` payload, so a hash literal's value has no type at all — L185's class-arm work again, not a `Ty` arm |
+
+**Seven theorems, and no two of them share machinery.** That is the honest shape of `oof → 0`: it is
+not a long tail of small rungs, it is seven independent pieces of which the largest is a subsystem.
+Three of the seven (`begin`, `if`, and the array-element `splat`) now have their statement written
+down, which is the difference between this entry and a status report.
+
+### What is *not* the obstacle
+
+Worth recording because two sessions have now looked for it: there is no construct here the approach
+cannot decide. Every one of the seven has a stateable rule and a stateable consecution case; what they
+cost is proof, not design. The nearest thing to a design problem is `hash`, where the *value* has no
+type — and that is L185's problem, already solved once for class objects.
+
+### Checks
+
+No code changed. Third ratchet **24**; `--check` untouched.
