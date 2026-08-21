@@ -30,6 +30,21 @@ is `False`, which is exactly progress.
 def StepOk : StepResult → Prop
   | .next m' => Inv m'
   | .done _ _ => True
+  -- **L216: an uncaught exception is admitted when it is not a *type* error.**
+  --
+  -- `typeStuck` has always been `.uncaught exc m => isTypeError m.heap exc`
+  -- (`Proof/TypeSafety.lean`) — an uncaught `ArgumentError` from user code is a
+  -- perfectly good Ruby outcome and the metatheorem never claimed otherwise. `StepOk`
+  -- was nevertheless refusing `.uncaught` outright, which is *stronger than the
+  -- theorem needs* and is exactly what makes `raise` unstateable: no rule can produce a
+  -- jump the bundle forbids.
+  --
+  -- So this clause is a weakening, and the headline theorem does not move: `Inv` is
+  -- unchanged, `consecution` is unchanged, and `safety`'s obligation
+  -- (`¬ aboutToTypeStick`) is *this clause* at the `.uncaught` branch rather than a
+  -- vacuous one. What it buys is that `CtlOk` can admit `.raiseJ`, which `begin`/`rescue`
+  -- and `raise` both need.
+  | .uncaught exc m => ¬ isTypeError m.heap exc
   | _ => False
 
 /-! ### The implicit-self dispatch, shared by every receiverless send

@@ -55,8 +55,9 @@ theorem consecution (m m' : Machine) (h : Inv m) (hs : SmallStep m m') :
   exact hok
 
 /-- Progress: a machine satisfying `Inv` is never one step from a type error.
-    Every `StepResult` other than `.next`/`.done` is `False` under `StepOk`, so
-    `.uncaught` in particular is unreachable. -/
+    Every `StepResult` other than `.next`/`.done`/`.uncaught` is `False` under `StepOk`;
+    **`.uncaught` is admitted since L216 and carries `¬ isTypeError` directly**, which is
+    this theorem's conclusion at that branch rather than a vacuous refutation. -/
 theorem safety (m : Machine) (h : Inv m) : ¬ aboutToTypeStick m := by
   intro hbad
   have hok := step_ok h
@@ -64,7 +65,7 @@ theorem safety (m : Machine) (h : Inv m) : ¬ aboutToTypeStick m := by
   cases hr : stepFn m with
   | next m' => rw [hr] at hbad; exact hbad
   | done v m' => rw [hr] at hbad; exact hbad
-  | uncaught exc m' => rw [hr] at hok; exact hok
+  | uncaught exc m' => rw [hr] at hok hbad; exact hok hbad
   | unsupported r => rw [hr] at hbad; exact hbad
   | stuck msg => rw [hr] at hbad; exact hbad
 

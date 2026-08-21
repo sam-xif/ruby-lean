@@ -10147,3 +10147,61 @@ still behind it.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (run anyway, though `Proof/`-only owes no diff); third ratchet **24**, unchanged.
+
+## L216 — `StepOk` admits a non-type-error `.uncaught`, and the strengthening it had was not load-bearing
+
+Out of fragment **24 → 24**, `Proof/`-only, and the headline theorem is *unchanged*. One clause, one
+one-line proof edit, and the whole metatheory went through with nothing else touched — which is the
+finding.
+
+### What was in the way of `raise`
+
+`typeStuck` has always been
+
+```lean
+def typeStuck : StepResult → Prop
+  | .uncaught exc m => isTypeError m.heap exc
+  | _ => False
+```
+
+— an uncaught **user** exception is not type-stuck, and `invariant_sound` never claimed otherwise. But
+`StepOk` was refusing `.uncaught` outright (`| _ => False`), which is *stronger than the theorem needs*
+and is exactly what makes `raise` unstateable: no rule can produce a jump the bundle forbids, so
+`CtlOk`'s `.jump _ => False` could never be relaxed and `begin`/`rescue` had nowhere to start.
+
+```lean
+  | .uncaught exc m => ¬ isTypeError m.heap exc
+```
+
+### Why it costs nothing
+
+`StepOk` is not the theorem; it is the bundle `step_ok` proves so that the 48-way `Kont` split happens
+once instead of twice. The two consumers are in `Proof/StaticSoundness.lean`:
+
+* `consecution` reads only the `.next` case — **unchanged**;
+* `safety` proves `¬ aboutToTypeStick`, i.e. `¬ typeStuck (stepFn m)`, and its `.uncaught` branch went
+  from `exact hok` (with `hok : False`) to `exact hok hbad`. The new clause **is** that branch's
+  obligation rather than a vacuous refutation of it.
+
+`Inv` did not move, so `invariant_sound`/`check_sound`/`assn_sound_from` are the same statements.
+
+And the existing raising branches did not need touching: they are closed by showing the step
+unreachable (the rule's guards), not by `StepOk` being `False` there — so weakening the goal from
+`False` to `¬ isTypeError` left every one of them proved. **That is the evidence the strengthening was
+carrying nothing**: if any branch had been relying on it, the build would have said so.
+
+> **Check what the theorem needs before assuming the bundle should match it.** `StepOk` had been
+> strictly stronger than `safety`'s obligation since F1a, and the cost of that surplus was not a proof
+> — it was a *rule that could not be written*.
+
+### What is still owed for `begin`/`rescue`
+
+This is the first of three. Next: `CtlOk` gains a `.jump (.raiseJ exc)` case (`¬ isTypeError` plus a
+`RaiseOk`-style relation tracking that each `frameK` the jump passes pops one environment — `RetOk`'s
+shape at L200, minus the type, since a propagating raise carries no value type the continuation reads).
+Then the `raise`/`begin` rules, which is where the census moves (24 → 22).
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
+**24**, unchanged. No `--check` diff owed (`Proof/`-only).
