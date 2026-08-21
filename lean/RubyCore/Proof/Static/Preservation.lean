@@ -70,7 +70,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       rw [show m.currentFrame = m.frames.getD fid default by
         simp [Machine.currentFrame, hst]]
       exact this
-  rcases htab _ mname _ (sigOf_declFor hsg) with hbi |
+  rcases htab.1 _ mname _ (sigOf_declFor hsg) with hbi |
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, hw, hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
@@ -205,11 +205,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     case const n =>
       simp only [infer] at hinf
       split at hinf
-      · next hre =>
+      · next τc hre =>
         simp only [Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl, rfl⟩ := hinf
-        obtain ⟨k, cp, hconst, hpay, hnm, huniq, hrx, hmt, hsole, -⟩ :=
-          hcls.2.2 n (List.mem_of_elem_eq_true hre)
+        -- **L195: the whole case is now the table's own clause.** It used to read six
+        -- of `ClassOk`'s promises and rebuild `ValueTy` from them; `DeclsOk`'s
+        -- constant half *is* that value judgement, so what is left is the frame's
+        -- `cref` membership and one `constRead_sole`.
+        obtain ⟨v, hconst, hty, hsole⟩ := htab.2 n _ hre
         -- `Object` is on the frame's cref (`StackCtx`, L189), so the *lexical* phase
         -- cannot miss — and sole ownership makes whatever it hits `Object`'s. The
         -- ancestor walk is never reached.
@@ -224,21 +227,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [hcur]; exact hsc'.2.2.2.2.1
           simp only [evalExpr]
           rw [constRead_sole hcref hconst hsole]
-          refine inv_value hfs htab hsc hhook hsat hstr hcls hbot
-            (ValueTy.weaken ?_ hsubw) hk
-          -- `ValueTy` at the class-object arm: `classRecv` from `ClassOk`'s payload
-          -- and two id clauses, and the name from `className h k = n`.
-          show ValueTy m.heap (.ref k) (.clsOf n)
-          have hlt : k < m.heap.objs.size := classPayload?_isSome_lt (by rw [hpay]; simp)
-          have hcr : classRecv m.heap k = true := by
-            unfold classRecv
-            simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq]
-            exact ⟨⟨⟨hlt, hrx⟩, hmt⟩, by rw [hpay]; simp⟩
-          have hnp : plainRecv m.heap k = false := by
-            unfold plainRecv
-            unfold Heap.classPayload? at hpay
-            cases hp : (m.heap.get k).payload <;> simp_all
-          simp [ValueTy, valueTy?, hnp, hcr, hnm]
+          exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+            (ValueTy.weaken hty hsubw) hk
       · exact absurd hinf (by simp)
     case var k x =>
       cases k
@@ -956,7 +946,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       dsimp only
       -- **The two witness kinds land different steps** (L157), which is why
       -- `EntryOk` is a disjunction and why this case is the first to case on it.
-      rcases htab τ mname _ (sigOf_declFor hsg) with hbi |
+      rcases htab.1 τ mname _ (sigOf_declFor hsg) with hbi |
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
       · obtain ⟨w, hw, hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
@@ -1087,7 +1077,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- with arguments is a builtin send, necessarily — at every arity.
         have hbi : BuiltinEntryOk m.heap τr mname
             { params := psacc ++ [τp], ret := τret } := by
-          rcases htab τr mname _ (sigOf_declFor (by simpa using hsg)) with
+          rcases htab.1 τr mname _ (sigOf_declFor (by simpa using hsg)) with
             hb | ⟨_, _, _, _, _, hdp, _, _⟩
           · exact hb
           · exact absurd hdp (by simp)

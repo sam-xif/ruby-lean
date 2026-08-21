@@ -64,7 +64,7 @@ which is why it is a report rather than a failure — and the moment
 open RubyCore
 open RubyCore.Interp
 
-def main : IO UInt32 := do
+def namesMain : IO UInt32 := do
   match Prelude.boot with
   | .error e => IO.eprintln s!"prelude boot failed: {e}"; return 1
   | .ok mp =>
@@ -167,3 +167,41 @@ def main : IO UInt32 := do
       else if !(who[0]!.startsWith "Object ") then ambiguous := ambiguous + 1
     IO.println s!"  names not owned by Object alone (want 0): {ambiguous}"
     return if hazards.isEmpty && unreachable == 0 && ambiguous == 0 then 0 else 1
+
+/-!
+## L195 — the `preludeDecls` constant table, decided
+
+`--assn` reports against `preludeDecls`, whose extra row is **`T`**. That row is a
+claim about the *prelude-booted* heap — `T` does not exist at the boot one — and the
+kernel cannot check it, because `Prelude.program` is `Lean.Json.parse Prelude.json`
+and that does not reduce (L135). So it is decided by running `constsOkB`, the same
+way `heapOkB` decides `TableOk`/`NoHook`/`Saturated`/`ClassOk`.
+
+`constsOkB` is imported rather than re-implemented (it lives in
+`Proof/Static/Decls.lean` because it has to call `valueTy?`), so the predicate this
+probe computes is *the* one `constsOk_of_constsOkB` turns into the invariant's clause.
+-/
+
+def tableMain : IO UInt32 := do
+  match Prelude.boot with
+  | .error e => IO.eprintln s!"prelude boot failed: {e}"; return 1
+  | .ok mp =>
+    let h := mp.heap
+    IO.println "\n== L195: preludeDecls' constant table at the booted heap"
+    for e in RubyCore.Types.preludeConsts do
+      let own := constOwn h Boot.objectId e.1
+      let ty := own.bind (fun v => Proof.Static.valueTy? h v)
+      let sole := (List.range h.objs.size).all fun j =>
+        !((h.classPayload? j).isSome && j != Boot.objectId) || (constOwn h j e.1).isNone
+      IO.println s!"  {e.1}: present={own.isSome} valueTy={repr ty} want={repr e.2} \
+sole={sole}"
+    let okB := Proof.Static.constsOkB h RubyCore.Types.preludeConsts
+    let okBase := Proof.Static.constsOkB h RubyCore.Types.baseConsts
+    IO.println s!"\nconstsOkB baseConsts    (want true): {okBase}"
+    IO.println s!"constsOkB preludeConsts (want true): {okB}"
+    return if okB && okBase then 0 else 1
+
+def main : IO UInt32 := do
+  let a ← namesMain
+  let b ← tableMain
+  return if a == 0 && b == 0 then 0 else 1

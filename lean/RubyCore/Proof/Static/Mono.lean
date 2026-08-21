@@ -161,15 +161,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig, hsub]⟩
   -- **A constant read** (L189). The table appears only as the third component of
-  -- the answer, exactly as a local read's does — the rule reads `reopenableClasses`,
-  -- which is not the declaration table.
-  | case33 D Γ top ctx n hre =>
+  -- the answer, exactly as a local read's does.
+  -- **L195: the answer comes out of the table**, so this case now *uses* `SubDecls`
+  -- — through its constant half, which is an equality. Before, the rule read a global
+  -- list and the case was as inert as a literal's.
+  | case33 D Γ top ctx n τc hre =>
     intro F' hs hdf τ Γ' D₀ h
-    rw [show infer D Γ (.const n) top ctx = some (.clsOf n, Γ, D) from by
-      simp only [infer, hre, if_true]] at h
+    rw [show infer D Γ (.const n) top ctx = some (τc, Γ, D) from by
+      simp only [infer, hre]] at h
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp only [infer, hre, if_true]⟩
+    exact ⟨rfl, by simp only [infer, hs.constTy_eq n, hre]⟩
   -- **An array literal** (L174). The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.

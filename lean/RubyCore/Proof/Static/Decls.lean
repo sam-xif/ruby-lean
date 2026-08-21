@@ -372,11 +372,64 @@ theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Valu
     (hrv : ValueTy h recv τr) : ResolvesTo h recv mname bid :=
   resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass ha hn hrv))
 
+/-- **What one constant row obliges** (L195), and it is three conjuncts where
+    `ClassOk`'s class-object block carried seven — because `ValueTy h v (.clsOf n)`
+    *already* says "a class-object receiver named `n`" (`classRecv` plus the name),
+    so `classPayload?`, `className`, `k ≠ regexpId` and `k ≠ mathId` are all inside
+    it. Stating it over `ValueTy` rather than over the class-object shape is also what
+    makes the *next* population free: a non-class constant is this same clause at a
+    different `Ty`.
+
+    The third conjunct is L189's, unchanged and still load-bearing: `evalExpr`'s
+    `.const` walks the frame's `cref` **before** the ancestors, and sole ownership is
+    what makes any `cref` hit `Object`'s whatever the `cref` is (`constRead_sole`). It
+    is why the rule needs no frame clause beyond `Object ∈ cref`. -/
+def ConstOk (h : Heap) (n : String) (τ : Ty) : Prop :=
+  ∃ v, constOwn h Boot.objectId n = some v ∧ ValueTy h v τ ∧
+    (∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none)
+
+/-- **`ConstOk` across an allocation.** `PlainGrow` pins `classPayload?` at every
+    id, so `constOwn` is unmoved at every id, and `ValueTy` transports by
+    `typeAgree_of_plainGrow`. -/
+theorem constOk_grow {h h' : Heap} {n : String} {τ : Ty} (hg : PlainGrow h h')
+    (hc : ConstOk h n τ) : ConstOk h' n τ := by
+  obtain ⟨v, hv, hty, hsole⟩ := hc
+  refine ⟨v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg) hty, fun j hj hjo => ?_⟩
+  · unfold constOwn at hv ⊢; rw [hg.payload]; exact hv
+  · unfold constOwn at hsole ⊢
+    rw [hg.payload]
+    exact hsole j (by rw [← hg.payload]; exact hj) hjo
+
+/-- **And across a `def`.** `consts_defineMethod` (L156) is the constant-table half
+    and `typeAgree_defineMethod` (L137) the value half; both were written for other
+    consumers, which is the evidence that the clause is stated at the right level. -/
+theorem constOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    {n : String} {τ : Ty} (hc : ConstOk h n τ) :
+    ConstOk (defineMethod h cls name md) n τ := by
+  obtain ⟨v, hv, hty, hsole⟩ := hc
+  refine ⟨v, by rw [constOwn_defineMethod]; exact hv,
+    ValueTy.congr (typeAgree_defineMethod h cls name md) hty, fun j hj hjo => ?_⟩
+  rw [constOwn_defineMethod]
+  exact hsole j (by rw [← classPayload?_isSome_defineMethod]; exact hj) hjo
+
+/-- The **method** half, named because the assertion language has atoms for exactly
+    it: `declAssn`'s denotation is `RowsOk`, not `DeclsOk`, and since L195 those are
+    different propositions. Giving the constant half an atom is the assertion
+    language's own next rung. -/
+def MethodRowsOk (D : Decls) (h : Heap) : Prop :=
+  ∀ τr mname d, declFor D τr mname = some d → EntryOk D h τr mname d
+
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
     That absence is the whole content of D10. -/
 def DeclsOk (D : Decls) (h : Heap) : Prop :=
-  ∀ τr mname d, declFor D τr mname = some d → EntryOk D h τr mname d
+  MethodRowsOk D h ∧
+  -- L195: the constant table's half. `Inv` already ∃-quantifies `D`, so putting the
+  -- obligation here rather than in `ClassOk` is what lets a *prelude-only* name be
+  -- declared at all — the boot-safe table and the prelude-aware one are then two
+  -- tables, each sound at the heap it describes, rather than one global list that has
+  -- to be true everywhere.
+  (∀ n τ, constTy? D n = some τ → ConstOk h n τ)
 
 /-! ## 2. The uniform dispatch step
 
@@ -587,6 +640,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
+  -- L195: `SubDecls` is a pair now, and `addRow` touches `rows` only — so the
+  -- constant half is `rfl`.
+  refine ⟨?_, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -781,6 +837,12 @@ clause deleted the obligation. -/
 theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hd : DeclsOk D h) (hfresh : declaresName D name = false) :
     DeclsOk D (defineMethod h cls name md) := by
+  refine ⟨?_, fun n τ hn => ?_⟩
+  case refine_2 =>
+    -- L195: a method-table write moves neither `constOwn` nor any field `ValueTy`
+    -- reads, so the constant half is `consts_defineMethod` plus `ValueTy.congr` at
+    -- `typeAgree_defineMethod` — the two lemmas L156 and L137 already wrote.
+    exact constOk_defineMethod (hd.2 n τ hn)
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq
@@ -795,7 +857,7 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   -- L157: two arms now, and the *same* argument twice. `UserConforms` mentions no
   -- heap either — it is a fact about `infer` and a body — so both conformance halves
   -- pass through and only the resolution halves transport.
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
+  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
   · exact Or.inr ⟨mdu, cu, htys,
@@ -825,6 +887,11 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     DeclsOk (addRow D c name { params := [], ret := τb }) (defineMethod h cls name md) := by
   have hsub : SubDecls D (addRow D c name { params := [], ret := τb }) :=
     subDecls_addRow hfresh
+  refine ⟨?_, fun n τ hn => ?_⟩
+  case refine_2 =>
+    -- `addRow` leaves `consts` alone, so the row's obligation is the old one at the
+    -- new heap — which is `DeclsOk_defineMethod`'s constant half.
+    exact constOk_defineMethod (hd.2 n τ (by simpa [constTy?, addRow] using hn))
   intro τr mname decl hdecl
   -- Two facts about the new table at the *written* name, and everything about the
   -- new row follows from them: `c` has it, and no other class does.
@@ -989,7 +1056,7 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         | some d0 =>
           rw [hd0] at hdecl
           simpa only [hsame] using hdecl
-    rcases hd τr mname decl hold with ⟨bid, hres, hconf⟩ |
+    rcases hd.1 τr mname decl hold with ⟨bid, hres, hconf⟩ |
       ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
     · exact Or.inl ⟨bid,
         fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hmn, hconf⟩
@@ -1020,8 +1087,9 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     starts from (`saturatedB`, checked by `check-proofs.sh`). -/
 theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
+  refine ⟨?_, fun n τ hn => constOk_grow hg (hd.2 n τ hn)⟩
   intro τr mname decl hdecl
-  rcases hd τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
+  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
   · exact Or.inr ⟨mdu, cu, htys,
@@ -1711,7 +1779,128 @@ theorem declFor_baseDecls_cls (n mname : String) :
       · simpa using he
     simp [declOf?, declsFor, baseDecls, hne]
 
-theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
+/-- The class-object constant table, read backwards. A list induction, isolated
+    because the table is a `map` and the lookup is a `find?` — the two do not compose
+    by `simp` alone. -/
+theorem constTy?_clsOf_inv : ∀ {ns : List String} {n : String} {τ : Ty},
+    ((ns.map (fun m => (m, Ty.clsOf m))).find? (·.1 == n)).map (·.2) = some τ →
+      n ∈ ns ∧ τ = .clsOf n
+  | [], _, _, h => by simp at h
+  | a :: as, n, τ, h => by
+    simp only [List.map_cons, List.find?_cons] at h
+    by_cases hae : a = n
+    · subst hae
+      simp only [beq_self_eq_true, if_true, Option.map_some, Option.some.injEq] at h
+      exact ⟨List.mem_cons_self, h.symm⟩
+    · rw [show ((a, Ty.clsOf a).1 == n) = false from by simpa using hae] at h
+      simp only [Bool.false_eq_true, if_false] at h
+      obtain ⟨h1, h2⟩ := constTy?_clsOf_inv h
+      exact ⟨List.mem_cons_of_mem _ h1, h2⟩
+
+/-- **`ClassOk` read out at one `baseConsts` entry** (L195). The entry's type is
+    `.clsOf n` by construction, and `ValueTy h (.ref k) (.clsOf n)` is `classRecv` plus
+    the name — which is what `ClassOk`'s payload clause, its two id clauses and its
+    `className` clause say between them. So this lemma is the L194 clause set,
+    repackaged as a value judgement, and it is the reason the new `DeclsOk` half is
+    three conjuncts rather than seven. -/
+theorem constOk_of_classOk {h : Heap} {n : String} {τ : Ty} (hcls : ClassOk h)
+    (hn : constTy? baseDecls n = some τ) :
+    ConstOk h n τ := by
+  -- The lookup pins both the membership and the type, because `baseConsts` is
+  -- `readableClasses.map (fun n => (n, .clsOf n))`.
+  have hmem : n ∈ readableClasses ∧ τ = .clsOf n :=
+    constTy?_clsOf_inv (by
+      unfold constTy? at hn
+      rw [show baseDecls.consts = baseConsts from rfl, baseConsts] at hn
+      exact hn)
+  obtain ⟨hmem, rfl⟩ := hmem
+  obtain ⟨k, cp, hco, hpay, hnm, -, hrx, hmt, hsole, -⟩ := hcls.2.2 n hmem
+  have hlt : k < h.objs.size := classPayload?_isSome_lt (by rw [hpay]; simp)
+  refine ⟨.ref k, hco, ValueTy.exact ?_, hsole⟩
+  have hcr : classRecv h k = true := by
+    unfold classRecv
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq]
+    exact ⟨⟨⟨hlt, hrx⟩, hmt⟩, by rw [hpay]; simp⟩
+  have hnp : plainRecv h k = false := by
+    unfold plainRecv
+    unfold Heap.classPayload? at hpay
+    cases hp : (h.get k).payload <;> simp_all
+  simp [valueTy?, hnp, hcr, hnm]
+
+/-- **The constant table's obligation, decided** (L195). Lives in `Proof/` rather
+    than in `HeapCert.lean` — where `heapOkB` and `classOkB` live — for one reason:
+    it has to call `valueTy?`, and that is `Proof/Static/Locals.lean`'s. The
+    one-definition-two-readers rule then says the probe must import *this* rather
+    than re-implement it, which `scripts/consts_probe.lean` does.
+
+    Why a certificate at all, when nothing consumes it yet: `preludeDecls` is the
+    table `--assn` reports against, and its `T` row is a claim about the
+    prelude-booted heap that the kernel cannot check (`Lean.Json.parse` does not
+    reduce, L135). A row asserted and not decided is exactly what `reopen_probe`
+    exists to prevent. -/
+def constsOkB (h : Heap) (cs : List (String × Ty)) : Bool :=
+  cs.all fun e =>
+    match constOwn h Boot.objectId e.1 with
+    | none => false
+    | some v =>
+      (match valueTy? h v with
+       | none => false
+       | some σ => subTy σ e.2) &&
+      (List.range h.objs.size).all fun j =>
+        !((h.classPayload? j).isSome && j != Boot.objectId) || (constOwn h j e.1).isNone
+
+theorem constsOkB_sound {h : Heap} {cs : List (String × Ty)}
+    (hb : constsOkB h cs = true) : ∀ n τ, (n, τ) ∈ cs → ConstOk h n τ := by
+  intro n τ hmem
+  have he := List.all_eq_true.mp hb (n, τ) hmem
+  revert he
+  cases hc : constOwn h Boot.objectId n with
+  | none => simp [hc]
+  | some v =>
+    intro he
+    simp only [hc, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
+      Bool.not_eq_true'] at he
+    refine ⟨v, hc, ?_, fun j hj hjo => ?_⟩
+    · cases hv : valueTy? h v with
+      | none => rw [hv] at he; exact absurd he.1 (by simp)
+      | some σ =>
+        rw [hv] at he
+        exact ⟨σ, hv, by simpa using he.1⟩
+    · -- The bound comes from the payload, so the `List.range` scan really does cover
+      -- every id the hypothesis can name (`classPayload?_isSome_lt`).
+      have hlt : j < h.objs.size := classPayload?_isSome_lt hj
+      rcases he.2 j (List.mem_range.mpr hlt) with hno | hnone
+      · exact absurd (by simp [hj, hjo] :
+          ((h.classPayload? j).isSome && j != Boot.objectId) = true) (by rw [hno]; simp)
+      · simpa using hnone
+
+/-- The form the invariant reads: `constTy?` rather than membership. -/
+theorem constsOk_of_constsOkB {h : Heap} {D : Decls} (hb : constsOkB h D.consts = true)
+    {n : String} {τ : Ty} (hn : constTy? D n = some τ) : ConstOk h n τ := by
+  refine constsOkB_sound hb n τ ?_
+  unfold constTy? at hn
+  cases hf : D.consts.find? (·.1 == n) with
+  | none => rw [hf] at hn; exact absurd hn (by simp)
+  | some e =>
+    rw [hf] at hn
+    simp only [Option.map_some, Option.some.injEq] at hn
+    have hmem := List.mem_of_find?_eq_some hf
+    have hname : e.1 = n := by
+      have := List.find?_some hf
+      simpa using this
+    rw [show (n, τ) = e from by rw [← hname, ← hn]]
+    exact hmem
+
+/-- **The bridge, with one new hypothesis** (L195). `baseDecls.consts` is
+    `readableClasses` mapped to class-object types, and `ClassOk` is exactly the
+    predicate that says those names are there, at legal receivers, solely owned — so
+    the constant half is `ClassOk` read out rather than anything new. The hypothesis
+    is not a widening of the trust base: `ClassOk` was already a conjunct of `HeapOk`,
+    which every caller of this lemma has in hand. -/
+theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
+    DeclsOk baseDecls h := by
+  refine ⟨?_, fun n τ hn => ?_⟩
+  case refine_2 => exact constOk_of_classOk hcls hn
   intro τr mname d hd
   -- Only `Integer` has declarations, and only three names on it, so the table
   -- lookup either pins `mname` or refutes `hd`.
@@ -1845,8 +2034,18 @@ theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}
   · exact Or.inr ⟨md, c, rfl, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
       by rw [hi.className_eq]; exact hown, hconf⟩
 
+theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ) :
+    ConstOk h' n τ := by
+  obtain ⟨v, hv, hty, hsole⟩ := hc
+  refine ⟨v, by rw [hi.constOwn_eq]; exact hv,
+    ValueTy.congr (typeAgree_of_fields hi.size.symm hi.klass hi.eigen hi.payload hi.frozen)
+      hty, fun j hj hjo => ?_⟩
+  rw [hi.constOwn_eq]
+  exact hsole j (by rw [hi.classPayload] at hj; exact hj) hjo
+
 theorem declsOk (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) : DeclsOk D h' :=
-  fun τr mname d hf => hi.entryOk (hd τr mname d hf)
+  ⟨fun τr mname d hf => hi.entryOk (hd.1 τr mname d hf),
+   fun n τ hn => hi.constOk (hd.2 n τ hn)⟩
 
 theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,

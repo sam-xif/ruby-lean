@@ -67,10 +67,28 @@ deriving DecidableEq, Repr, Inhabited
 structure Decls where
   /-- class name → method name → declared signature. -/
   rows : List (String × List (String × MethodDecl)) := []
-  /-- constant name → the type of its value. **Empty until a rule populates it**;
-      L176 is the threading and nothing reads this field yet. -/
+  /-- constant name → the type of its value.
+
+      **Populated and read since L195.** L176 threaded the field and left it empty;
+      what made it necessary was `T`. The `.const` read rule was keyed on a *global*
+      list (`readableClasses`), and a global list cannot admit a name that exists only
+      at the prelude-booted heap: `check_sound` establishes `Inv` at `Machine.init p`,
+      the bare boot heap, where an entry naming an absent constant makes its
+      obligation false. Measured at L194, not guessed.
+
+      A **declaration** has no such problem, because `Inv` already ∃-quantifies the
+      table and ties it to the heap with `DeclsOk`. So the boot-safe table and the
+      prelude-aware one are two tables rather than two rule sets, and each is sound at
+      the heap it describes. That is also why this is `List (String × Ty)` rather than
+      a list of names: `HEAD_VERSION_REGEX : Regexp` is the *same rule* at a different
+      type, which is the next population after `T`. -/
   consts : List (String × Ty) := []
 deriving DecidableEq, Repr, Inhabited
+
+/-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
+    shape at the constant table. -/
+def constTy? (D : Decls) (n : String) : Option Ty :=
+  (D.consts.find? (·.1 == n)).map (·.2)
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
@@ -195,12 +213,25 @@ def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
     to be monotone in the table — which it is **not** (`declaresName` is
     name-global, so a new row refuses a `def` of that name). -/
 def SubDecls (F F' : Decls) : Prop :=
-  ∀ τ mname d, declFor F τ mname = some d → declFor F' τ mname = some d
+  (∀ τ mname d, declFor F τ mname = some d → declFor F' τ mname = some d) ∧
+  -- **The constant table is *equal*, not merely contained** (L195), and it is worth
+  -- saying why the weaker relation would be wrong rather than just unnecessary: the
+  -- `.const` rule reads the type *out of* the table, so a `F'` that answered a
+  -- different type at the same name would make `infer_mono` false, not just
+  -- unprovable. Nothing in the fragment grows `consts` — there is no `casgn` rule —
+  -- so equality costs nothing today and `casgn` will have to say what it means for a
+  -- constant to be *added*, which is a real question about shadowing.
+  F.consts = F'.consts
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := fun _ _ _ h => h
+theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
-    SubDecls F F'' := fun τ m d h => h₂ τ m d (h₁ τ m d h)
+    SubDecls F F'' := ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.trans h₂.2⟩
+
+/-- The constant-table form, which is what the `.const` rule reads. -/
+theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
+    constTy? F' n = constTy? F n := by
+  unfold constTy?; rw [hs.2]
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}
@@ -209,45 +240,7 @@ theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname :
   unfold sigOf at h ⊢
   cases hd : declFor F τ mname with
   | none => rw [hd] at h; exact absurd h (by simp)
-  | some d => rw [hs τ mname d hd]; rw [hd] at h; exact h
-
-/-- **A row, added.** Prepending shadows: `declsFor` reads `D.find?`, which stops
-    at the first entry for the class, so the new entry carries the class's old rows
-    plus the new one and every other class is found further down unchanged.
-
-    The alternative — rewriting the existing entry in place — needs a `List.map`
-    whose `find?` behaviour is a lemma; this way the only fact anything needs is
-    `List.find?`'s own equation. -/
-def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
-  { D with rows := (cls, (name, d) :: declsFor D cls) :: D.rows }
-
-/-! ## The base table
-
-`static-soundness-poc.md` §5's builtin signatures, as declarations. Every entry
-is a **proof obligation** — `Proof/Static/Decls.lean`'s `DeclsOk` is what the
-invariant carries, and `tableOk_declsOk` is the proof for these three. Entries
-whose conformance is not proved may not appear; the notable absences and their
-reasons are unchanged from P0 (`/` and `%` raise `ZeroDivisionError`, `**` makes
-a Rational, and the `Float` promotions would need the argument type unpinned).
--/
-
-def baseDecls : Decls := { rows :=
-  [("Integer",
-    [("+", { params := [.int], ret := .int }),
-     ("-", { params := [.int], ret := .int }),
-     ("*", { params := [.int], ret := .int }),
-     -- **The first nullary row** (L152), and it is here to *exercise* the zero-arity
-     -- rule rather than for its own sake: without a row whose `params` is `[]`,
-     -- `sigOf` never answers `some ([], _)` and the new `infer` arm, `KontOk.recvK0`
-     -- and its consecution case would all be unreachable code with a proof attached.
-     -- `zero?` was picked over `even?`/`abs` for two measured reasons. Constraint 2:
-     -- `declaresName` is name-global, so every row added here refuses `def <name>`
-     -- program-wide — and `def zero?` appears in **0** of the 1,227 bootstraptest
-     -- programs. And resolution: `ResolvesAt` requires `fromPrelude = false`, while
-     -- `abs` is defined **twice** in `prelude/prelude.rb`, so its row would be
-     -- unwitnessable at the prelude-booted heap even though it is fine at the boot
-     -- one. Check both before adding a row, not just the first.
-     ("zero?", { params := [], ret := .bool })])] }
+  | some d => rw [hs.1 τ mname d hd]; rw [hd] at h; exact h
 
 /-! ## The reopenable classes
 
@@ -328,6 +321,73 @@ theorem readable_of_reopenable {n : String} (h : n ∈ reopenableClasses) :
   unfold readableClasses
   exact List.mem_append_left _ h
 
+/-- **The boot-safe constant table.** Every name is a class object that exists in
+    `Boot.initHeap`, so `ClassOk` supplies the obligation and `check_sound` is
+    unaffected. -/
+def baseConsts : List (String × Ty) :=
+  readableClasses.map (fun n => (n, Ty.clsOf n))
+
+/-- **The prelude-aware table** (L195), which is what the *tool* reports against:
+    the model the difftest SUT runs, and the heap `--assn` describes, is the
+    prelude-booted one.
+
+    One extra row, and it is the whole point: **`T`** — `sorbet-runtime`'s namespace,
+    the slice's most-read constant by a factor of five (259 occurrences of
+    `T.let`/`T.must`/`T.nilable`), and a *module*, so it can never be reopenable.
+    `scripts/reopen_probe.lean` decides its four read clauses and
+    `scripts/consts_probe.lean` decides this table's obligation at the booted heap;
+    `check-proofs.sh` runs both, so the row is certified rather than assumed. -/
+def preludeConsts : List (String × Ty) :=
+  baseConsts ++ [("T", Ty.clsOf "T")]
+
+/-- **A row, added.** Prepending shadows: `declsFor` reads `D.find?`, which stops
+    at the first entry for the class, so the new entry carries the class's old rows
+    plus the new one and every other class is found further down unchanged.
+
+    The alternative — rewriting the existing entry in place — needs a `List.map`
+    whose `find?` behaviour is a lemma; this way the only fact anything needs is
+    `List.find?`'s own equation. -/
+def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
+  { D with rows := (cls, (name, d) :: declsFor D cls) :: D.rows }
+
+/-! ## The base table
+
+`static-soundness-poc.md` §5's builtin signatures, as declarations. Every entry
+is a **proof obligation** — `Proof/Static/Decls.lean`'s `DeclsOk` is what the
+invariant carries, and `tableOk_declsOk` is the proof for these three. Entries
+whose conformance is not proved may not appear; the notable absences and their
+reasons are unchanged from P0 (`/` and `%` raise `ZeroDivisionError`, `**` makes
+a Rational, and the `Float` promotions would need the argument type unpinned).
+-/
+
+-- L195: `consts` is folded into `baseDecls` rather than layered on with a structure
+-- update. `infer` reads `D.consts`, so `EntryOk baseDecls` and `EntryOk` at an updated
+-- table are *different* propositions, and every `baseDecls` lemma would have had to be
+-- restated at the update.
+def baseDecls : Decls := { consts := baseConsts, rows :=
+  [("Integer",
+    [("+", { params := [.int], ret := .int }),
+     ("-", { params := [.int], ret := .int }),
+     ("*", { params := [.int], ret := .int }),
+     -- **The first nullary row** (L152), and it is here to *exercise* the zero-arity
+     -- rule rather than for its own sake: without a row whose `params` is `[]`,
+     -- `sigOf` never answers `some ([], _)` and the new `infer` arm, `KontOk.recvK0`
+     -- and its consecution case would all be unreachable code with a proof attached.
+     -- `zero?` was picked over `even?`/`abs` for two measured reasons. Constraint 2:
+     -- `declaresName` is name-global, so every row added here refuses `def <name>`
+     -- program-wide — and `def zero?` appears in **0** of the 1,227 bootstraptest
+     -- programs. And resolution: `ResolvesAt` requires `fromPrelude = false`, while
+     -- `abs` is defined **twice** in `prelude/prelude.rb`, so its row would be
+     -- unwitnessable at the prelude-booted heap even though it is fine at the boot
+     -- one. Check both before adding a row, not just the first.
+     ("zero?", { params := [], ret := .bool })])] }
+
+/-- Changing `consts` leaves every method-table function alone, and the equality is
+    `rfl` — stated as a `simp` lemma so the `baseDecls` refutation lemmas apply to
+    `declsOf p` without an unfold (L195). -/
+@[simp] theorem declFor_consts (c : List (String × Ty)) (τ : Ty) (m : String) :
+    declFor { baseDecls with consts := c } τ m = declFor baseDecls τ m := rfl
+
 /-- The declarations in force while checking `p`.
 
     A function of the program, and constant today: no construct in `infer`'s
@@ -336,6 +396,17 @@ theorem readable_of_reopenable {n : String} (h : n ∈ reopenableClasses) :
     keeps that change local — the same argument L137 makes for heap-indexing a
     judgement whose arms do not yet read the heap. -/
 def declsOf (_p : Expr) : Decls := baseDecls
+
+/-- **The table `--assn` reports against** (L195). Same rows, one more constant, and
+    the difference is `T`. Placed here rather than inside `declsOf` because
+    `check_sound` establishes `Inv` at the *bare boot* heap, where `T` does not exist:
+    the boot-safe table and the prelude-aware one are two tables, each sound at the
+    heap it describes. `scripts/consts_probe.lean` decides this one's obligation at the
+    booted heap and `check-proofs.sh` runs it. -/
+def preludeDecls : Decls := { baseDecls with consts := preludeConsts }
+
+
+
 
 /-- P0's table, recovered. Kept as a checked fact rather than a comment so that
     "F1a accepts no new programs" has a witness in the build. -/

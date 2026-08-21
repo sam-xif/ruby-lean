@@ -221,8 +221,12 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
 
 §9.3's honest weak point, closed for the declaration fragment. -/
 
+/-- **`RowsOk`, not `DeclsOk`** (L195). `declAssn` enumerates the *method* rows —
+    `declAtoms` reads `D.rows` — so its denotation is the method half. The constant
+    half has no atom yet, and inventing one here would be an assertion the language
+    cannot print. -/
 theorem denote_declAssn {D : Decls} {θ : TyVar → Ty} {h : Heap} :
-    denote D θ (declAssn D) h ↔ DeclsOk D h := by
+    denote D θ (declAssn D) h ↔ MethodRowsOk D h := by
   unfold declAssn
   rw [denote_all]
   constructor
@@ -285,7 +289,7 @@ theorem dischargeNom_sound {D : Decls} {h : Heap} {τ : Ty} {n : String}
     {σ : Sig} (hok : DeclsOk D h) (hd : dischargeNom D τ n σ = true) :
     EntryOk D h τ n σ := by
   unfold dischargeNom at hd
-  exact hok τ n σ (by simpa using hd)
+  exact hok.1 τ n σ (by simpa using hd)
 
 theorem dischargeRow_sound {D : Decls} {θ : TyVar → Ty} {h : Heap} {c : String} {R : Row}
     (hok : DeclsOk D h) (hd : dischargeRow D c R = true) :
@@ -436,11 +440,11 @@ def Certifies (F : Decls) (θ : TyVar → Ty) (P : Assn) (h : Heap) : Prop :=
   denote F θ P h ∧ ∀ τ n d, declFor F τ n = some d → entailAtom P τ n d = true
 
 theorem Certifies.declsOk {F : Decls} {θ : TyVar → Ty} {P : Assn} {h : Heap}
-    (hc : Certifies F θ P h) : DeclsOk F h :=
+    (hc : Certifies F θ P h) : MethodRowsOk F h :=
   fun τ n d hdf => entailAtom_sound hc.1 (hc.2 τ n d hdf)
 
 /-- The canonical certificate: the table's own re-notation certifies it. -/
-theorem certifies_declAssn {F : Decls} {θ : TyVar → Ty} {h : Heap} (hok : DeclsOk F h) :
+theorem certifies_declAssn {F : Decls} {θ : TyVar → Ty} {h : Heap} (hok : MethodRowsOk F h) :
     Certifies F θ (declAssn F) h :=
   ⟨denote_declAssn.mpr hok,
    fun τ n d hdf => by
@@ -471,6 +475,13 @@ def InvA (m : Machine) : Prop :=
     ∃ (F : Decls) (P : Assn) (θ : TyVar → Ty) (c : FrameCtx) (Γ : Env)
       (Γs : List (FrameCtx × Env)),
       Certifies F θ P m.heap ∧
+      -- **The constant half, carried rather than certified** (L195). `Certifies` is
+      -- about the *assertion language*, and the language has atoms for method rows
+      -- only — `declAtoms` reads `D.rows`. So this conjunct sits beside the
+      -- certificate rather than inside it, and giving it an atom (so that a printed
+      -- assertion could carry a constant's type) is the assertion language's own next
+      -- rung.
+      (∀ n τ, constTy? F n = some τ → ConstOk m.heap n τ) ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
       CtlOk F c Γ Γs m
@@ -480,11 +491,11 @@ def InvA (m : Machine) : Prop :=
     faithfulness is spent. -/
 theorem invA_iff_inv {m : Machine} : InvA m ↔ Inv m := by
   constructor
-  · rintro ⟨h1, h2, h3, h4, h5, F, P, θ, c, Γ, Γs, hcert, hf, hs, hctl⟩
-    exact ⟨h1, h2, h3, h4, h5, F, c, Γ, Γs, hcert.declsOk, hf, hs, hctl⟩
+  · rintro ⟨h1, h2, h3, h4, h5, F, P, θ, c, Γ, Γs, hcert, hcst, hf, hs, hctl⟩
+    exact ⟨h1, h2, h3, h4, h5, F, c, Γ, Γs, ⟨hcert.declsOk, hcst⟩, hf, hs, hctl⟩
   · rintro ⟨h1, h2, h3, h4, h5, F, c, Γ, Γs, hok, hf, hs, hctl⟩
     exact ⟨h1, h2, h3, h4, h5, F, declAssn F, fun _ => .int, c, Γ, Γs,
-      certifies_declAssn hok, hf, hs, hctl⟩
+      certifies_declAssn hok.1, hok.2, hf, hs, hctl⟩
 
 /-- **Soundness of the assertion-language invariant**, inherited rather than
     re-proved. Every consecution case `Static/Preservation.lean` already closes is
@@ -517,7 +528,7 @@ theorem assn_check_sound {p : Expr} (hc : check p = .accept) :
   -- heap. `certifies_declAssn` turns it into a certificate; `check_sound` is
   -- unchanged and does the rest.
   exact ⟨⟨declAssn (declsOf p),
-          fun θ => certifies_declAssn (tableOk_declsOk tableOk_initHeap)⟩,
+          fun θ => certifies_declAssn (tableOk_declsOk tableOk_initHeap classOk_initHeap).1⟩,
          check_sound hc⟩
 
 /-! ## 8. Checked facts -/
@@ -527,7 +538,7 @@ theorem assn_check_sound {p : Expr} (hc : check p = .accept) :
     with a proof that it holds of a real heap. -/
 theorem certifies_base_initHeap (θ : TyVar → Ty) :
     Certifies baseDecls θ (declAssn baseDecls) Boot.initHeap :=
-  certifies_declAssn (tableOk_declsOk tableOk_initHeap)
+  certifies_declAssn (tableOk_declsOk tableOk_initHeap classOk_initHeap).1
 
 /-- An entailment used, end to end: the base table's assertion entails the
     requirement `Integer ~ + : (Integer) → Integer`, and `entail_sound` turns

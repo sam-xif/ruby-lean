@@ -431,11 +431,19 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- **A constant read** (L189), and it is the first `Expr` head to *produce* a
   -- class-object type — the arm L184/L185 built with no producer.
   --
-  -- Restricted to `readableClasses`, which since L194 is a *superset* of the table
-  -- the `class'` rule reads: a read needs strictly fewer of `ClassOk`'s promises than
-  -- a reopen, and the two names that difference admits (`T`, a module; `Float`, whose
-  -- own constants break `NoShadowBefore`) are worth seven method bodies of the slice.
-  -- This rule needs **four** promises —
+  -- **Keyed on the *table* since L195**, not on a global list, and that is what lets
+  -- `T` in: a global list cannot name a constant that exists only at the
+  -- prelude-booted heap, because `check_sound` establishes `Inv` at the bare boot one
+  -- (L194 measured the failure). A declaration has no such problem — `Inv` already
+  -- ∃-quantifies the table and `DeclsOk` ties it to the heap — so the boot-safe and
+  -- prelude-aware tables are two *tables*, each sound at the heap it describes.
+  --
+  -- It also generalizes for free: the type comes from the row rather than from the
+  -- name, so `HEAD_VERSION_REGEX : Regexp` is this same rule at a different `Ty`.
+  --
+  -- `DeclsOk`'s constant clause is three conjuncts, not the seven `ClassOk` carried,
+  -- because `ValueTy h v (.clsOf n)` *already* means "a class-object receiver named
+  -- `n`". What it needs is —
   -- `constOwn Object n` answers a class object, that object is named `n`, it is not
   -- one of the two ids `invoke` dispatches singleton families from, and **`Object`
   -- is its sole owner** (L189's clause). The last is what makes the rule need no
@@ -447,7 +455,9 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- adds **no `KontOk` constructor** — the third rule in the fragment with that
   -- property, after `.self'` and `.vcall`.
   | .const n =>
-    if readableClasses.contains n then some (.clsOf n, Γ, D) else none
+    match constTy? D n with
+    | some τ => some (τ, Γ, D)
+    | none => none
   -- **An array literal** (L174), and it is L151's string-literal producer with a
   -- list in front of it: `continueArray` evaluates the elements left to right and
   -- then `Builtins.allocArr`s one fresh plain `Array` — the *same* `Heap.alloc` of

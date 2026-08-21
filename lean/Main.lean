@@ -114,7 +114,14 @@ def main (args : List String) : IO UInt32 := do
             (decls.map (fun d => declJson d.1 d.2)).toArray)]).compress
         return 0
       if assnOnly then
-        let D := Types.declsOf prog
+        -- **`preludeDecls`, not `declsOf prog`** (L195). `--assn` reports about the
+        -- *prelude-booted* model — that is the heap the difftest SUT runs and the one
+        -- `heapOkB` certifies — so the table it reports against is the prelude-aware
+        -- one, whose extra row is `T`. `--check` keeps `declsOf prog`, because
+        -- `check_sound` is a statement about `Machine.init p` at the bare boot heap
+        -- where `T` does not exist. Two tables, each sound at the heap it describes;
+        -- see `Types/Decls.lean`'s `preludeDecls`.
+        let D := Types.preludeDecls
         let rs := Types.bodyReports D "Object" prog
         let c := Types.census rs
         let one := fun (r : String × String × Types.BodyVerdict) =>

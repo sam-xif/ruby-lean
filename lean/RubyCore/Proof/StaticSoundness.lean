@@ -80,6 +80,11 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
    -- fact about the method table, and a table entry does not know its own arity.
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
+/-- L195: named, because `tableOk_declsOk` now needs it too — the constant half of
+    `DeclsOk baseDecls` is `ClassOk` read out at a `baseConsts` entry. -/
+theorem classOk_initHeap : ClassOk Boot.initHeap :=
+  classOkB_sound (by decide : classOkB Boot.initHeap = true)
+
 /-- Initiation, for the machine `Machine.init` builds. -/
 theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
   -- `DeclsOk` is what the invariant carries now (F1a), and `tableOk_declsOk` is
@@ -105,8 +110,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L156's fifth heap conjunct: `Object`'s constant table binds every reopenable
     -- class name to a non-module class. A literal heap, so `decide` — and the reason
     -- `reopenableClasses` is a table is that this is what a row costs.
-    (show ClassOk (Machine.init p).heap from
-      classOkB_sound (by decide : classOkB Boot.initHeap = true)),
+    (show ClassOk (Machine.init p).heap from classOk_initHeap),
     -- L155's sixth conjunct, and the only one that is not about the heap: the
     -- outermost activation's definee is `Object`. `Machine.init` builds exactly
     -- one frame and it is the toplevel one, so this is a computation on a literal.
@@ -115,7 +119,8 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
     -- `Inv` because it changes along the run; this is where it is pinned, and the
     -- `DeclsOk` obligation is the one F1a already discharged.
-    declsOf p, { cls := "Object" }, [], [], tableOk_declsOk tableOk_initHeap, ?_, ?_, ?_⟩
+    declsOf p, { cls := "Object" }, [], [],
+    tableOk_declsOk tableOk_initHeap classOk_initHeap, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
     -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
@@ -176,10 +181,10 @@ def egIf : Expr :=
          .if' .tru (.var .lvar "x") (some (.int 0)) ]
 
 example : check egIf = .accept := by
-  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, envSet, envGet?, declsOf, isSelf]
+  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf]
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, envSet, envGet?, declsOf, isSelf])
+  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf])
 
 /-- **A reopened class carrying a user-defined method** (L156):
 
@@ -410,7 +415,8 @@ theorem egConst_safe :
     ∀ r, ReachableResult (Machine.init egConst) r → ¬ typeStuck r :=
   check_sound (by
     simp [check, egConst, infer, inferArgs, subTys, subTy, inferSeq, illTyped,
-      illTypedAny, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses,
+      illTypedAny, declsOf, declaresName, baseDecls, constTy?, baseConsts,
+      readableClasses, reopenableClasses,
       groundClassNames, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, isSelf])
 
@@ -419,7 +425,8 @@ theorem egConst_safe :
     could not promise anything about it, which is what the table's membership test
     is enforcing. -/
 example : check (.class' "String" none (.def' "k" [] (.const "Token"))) = .unknown := by
-  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, readableClasses, reopenableClasses,
+  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, constTy?, baseConsts,
+    readableClasses, reopenableClasses,
     groundClassNames, defFree, defFreeAll, isSelf]
 
 /-- **The class-object *producer*** (L185): `valueTy?` now gives a class object a

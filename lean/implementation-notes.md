@@ -8526,3 +8526,81 @@ prelude-booted heap and `classOkB Boot.initHeap` still `decide`-able; `--check` 
 (51/1,174/0); `--assn` smoke 1,227 clean; `--self-test` all agree; difftest at baseline (tier 0
 992/0, slice 351/0/1, regressions 35 held / 2 known-open). `fragment-gap.py` grew a `READABLE` set
 beside `REOPENABLE`, which is the mirror of the same split.
+
+---
+
+## L195 — the constant table becomes a declaration, and `T` gets in
+
+Out of fragment **74 → 69**, `needed:` 17 → 22, and `--check` **byte-identical**. L194 priced this
+and said the slot already existed; this is the commit that uses it.
+
+### The move
+
+`.const n` no longer tests a global list. It reads `D.consts`:
+
+```lean
+| .const n => match constTy? D n with | some τ => some (τ, Γ, D) | none => none
+```
+
+and `DeclsOk` grew a second half:
+
+```lean
+def ConstOk (h : Heap) (n : String) (τ : Ty) : Prop :=
+  ∃ v, constOwn h Boot.objectId n = some v ∧ ValueTy h v τ ∧
+    (∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none)
+```
+
+**Three conjuncts where `ClassOk`'s block carried seven**, and the reason is that `ValueTy h v
+(.clsOf n)` *already* says "a class-object receiver named `n`" — `classPayload?`, `className`,
+`k ≠ regexpId`, `k ≠ mathId` are all inside it. The `.const` case of `step_ok` went from twenty lines
+rebuilding that value judgement to **one line consuming it**. That is the signal the clause is stated
+at the right level: L193's subsumptive `ValueTy` is what made it possible, two commits earlier and
+for a different reason.
+
+The third conjunct is L189's, unchanged and still load-bearing: sole ownership is what makes any
+`cref` hit `Object`'s, whatever the `cref` is, so the rule still needs no frame clause beyond
+`Object ∈ cref`.
+
+### Why this admits `T` and a global list could not
+
+`Inv` **already ∃-quantifies the table** and ties it to the heap with `DeclsOk`. So the boot-safe
+table and the prelude-aware one are two *tables*, each sound at the heap it describes — where a
+global list has to be true everywhere, including at `Machine.init p`, where `T` does not exist.
+
+* `declsOf p = baseDecls`, whose `consts` is `readableClasses` mapped to class-object types.
+  `check_sound`, `check_sound_withPrelude`, `check_sound_withPrelude'` and `--check` are **all
+  unchanged**; `tableOk_declsOk` gained one hypothesis (`ClassOk h`, already a conjunct of `HeapOk`,
+  so no caller had to find it) and reads the constant half out of it.
+* `preludeDecls` adds `("T", .clsOf "T")`, and `--assn` reports against it — because the heap
+  `--assn` describes *is* the prelude-booted one, the same heap the difftest SUT runs and `heapOkB`
+  certifies.
+
+**And the extra row is decided, not asserted.** `constsOkB` (in `Proof/` rather than `HeapCert.lean`,
+because it has to call `valueTy?`) plus `constsOkB_sound`/`constsOk_of_constsOkB`;
+`scripts/consts_probe.lean` runs it at the booted heap and `check-proofs.sh` fails on it. Measured:
+`T` present, typed `.clsOf "T"`, solely owned — and `constsOkB` `true` for both tables.
+
+### Three things the move forced, each worth knowing
+
+1. **`SubDecls` now requires `consts` *equality*.** The `.const` rule reads a type *out of* the
+   table, so an `F'` answering a different type at the same name would make `infer_mono` **false**,
+   not merely unprovable. Nothing grows `consts` today (there is no `casgn` rule), so equality costs
+   nothing — and `casgn` will have to say what adding a constant *means*, which is a real question
+   about shadowing rather than a formality.
+2. **`declAssn`'s denotation is `MethodRowsOk`, not `DeclsOk`.** `declAtoms` reads `D.rows`, so the
+   assertion language has atoms for the method half only. `InvA` carries the constant half beside the
+   certificate rather than inside it, and `invA_iff_inv` still holds. Giving constants an atom — so a
+   *printed* assertion could carry one — is the assertion language's own next rung.
+3. **`baseDecls` carries `consts` directly, not `{ baseDecls with consts := … }`.** Because `infer`
+   reads `D.consts`, `EntryOk baseDecls` and `EntryOk` at an updated table are different
+   propositions, and every `baseDecls` lemma would have had to be restated. Folding the field in
+   (which meant moving `reopenableClasses`/`readableClasses` above it) made that churn vanish. Worth
+   recording as a rule: **when a definition starts reading a field, structure updates of it stop
+   being invisible.**
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean and `consts_probe` now
+decides both constant tables at the booted heap; `--check` **byte-identical** (51/1,174/0); `--assn`
+smoke 1,227 clean; `--self-test` all agree; `fragment-gap.py` **69** out of fragment, `const` 22 → 17,
+`{const}` singletons 8 → 5. Interpreter untouched.
