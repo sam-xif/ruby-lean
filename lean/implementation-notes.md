@@ -9377,3 +9377,87 @@ in `implementation-notes.md` four times; it belongs in `HANDOFF.md`'s constraint
 `--check` byte-identical (56/1,169/0); `--assn` smoke 1,227 clean; `--self-test` all agree (two
 rows re-read: `Float::NAN` is now a missing *declaration*, and `x::NAN` is the new `cpath-base`
 refusal); slice-driver 72 lines IDENTICAL; third ratchet **31**.
+
+## L206 — the store learns equalities, and the join stops refusing
+
+Out of fragment **31 → 30**, `--check` **byte-identical** (56/1,169/0) — the whole rung is in the
+*open* front end, which is off the soundness path by construction (`inferOpen_factors` is what
+connects it, and that theorem is what changed).
+
+Read the census movement carefully, because the net −1 hides the rung's actual size: **`if` went
+4 → 1** and `send-with-block` went **14 → 15**. Three of the four bodies the join was blocking
+moved past it and hit a *block*. That is L170–L173's lesson again — *a front-end lift moves the
+ranking, not the count* — and it is the reason to read `--sets` rather than the census when picking
+the next rung.
+
+### What was actually wrong
+
+`joinATy α τ` was `none`. But the open front end's entire method is *record a requirement and let
+the validator check it*, and "α must be Integer" is a requirement like any other. Refusing the body
+was strictly weaker than what the checker can say.
+
+```lean
+structure Store where
+  … ; eqs : List (TyVar × ATy) := []
+
+def joinOpen (st : Store) (a b : ATy) : Option (ATy × Store) :=
+  match joinATy a b with
+  | some c => some (c, st)
+  | none => match a, b with
+    | .var α, _ => some (b, st.addEq α b)
+    | _, .var β => some (a, st.addEq β a)
+    | _, _ => none
+```
+
+and the payoff is visible in one `--assn` line:
+
+```
+class String; def f; if true then value else 1 end; end; end
+  accept : Integer     store: String ⊒ ⟨ value : () → α1 ⟩ ∧ α1 = Integer
+```
+
+The body **types**, at `Integer`, under a precondition that now includes a *pin*. Before, it was
+`out of fragment: if`.
+
+### The equality is a different kind of atom, and the assertion language had to say so
+
+`Store`'s other three fields are capability requirements — *this type can do that*. An equality is
+not: it says the solver has no freedom left at `α`. Three consequences, each a small edit:
+
+* **`Assn.eqv α a`** is a new atom, and its `denote` is the **first that does not mention the
+  heap**: `θ α = a.subst θ`. That is exactly what `satStoreB` decides.
+* **`entail` gained a fourth list** (`Assn.eqAtoms`) and a fourth conjunct, because an equality
+  cannot be *derived* from a heap fact — the antecedent has to contain it. Without that,
+  `entail_sound` would be false at the new atom, which is the kind of hole the four-list shape
+  exists to prevent.
+* **`StoreLe` and `SatStore` are pairs now.** `addEq` only prepends, so the `eqs` half is monotone
+  for `rows`' reason, and `SatStore.mono`/`satStoreB_sound` are one component wider.
+
+### The factoring theorem's join step
+
+```lean
+theorem joinOpen_subst (h : Store.joinOpen st a b = some (c, st'))
+    (hle : StoreLe st' stF) (hsat : SatStore D θ stF) :
+    joinTy (a.subst θ) (b.subst θ) = some (c.subst θ)
+```
+
+Where `joinATy` answered, this *is* `joinATy_subst`. Where it did not, the recorded equality makes
+the **nominal join's first branch** fire — `θ α = b.subst θ`, so the two sides are equal and the
+join is reflexivity. One sentence, and it is the whole soundness argument for the rung: *a refusal
+became a condition on `θ`, discharged by the validator instead of by the checker.*
+
+Two mechanical notes:
+
+* The join now **grows the store**, so `inferOpen_mono` and `inferOpenIf_mono` gained a
+  `joinOpen_mono` link, and the factoring theorem's join cases gained three composed hypotheses
+  (`hle2`/`hle3`/`hr2`) before `simp_all` — the bounds the IHs need are one `joinOpen_mono` further
+  away than they were, and `simp_all` cannot find a `trans` on its own.
+* `joinTy_of_eq`/`joinTy_of_eq'` and `mkNilable_joinOpen` exist for `mkNilable_join`'s reason
+  (L193b): the goal is a bare type equation at a variable the tactic cannot name, so the equation
+  has to be handed over as a lemma and let unification supply the binder.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` byte-identical (56/1,169/0); `--assn` smoke 1,227 clean; `--self-test` all agree;
+slice-driver 72 lines IDENTICAL; third ratchet **30**, `if` 4 → **1**.

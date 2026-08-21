@@ -71,23 +71,98 @@ set_option maxRecDepth 100000
     and the reason is that the store only ever grows"*. -/
 structure StoreLe (st st' : Store) : Prop where
   get : ∀ α n σ, (st.rowOf α).get? n = some σ → (st'.rowOf α).get? n = some σ
+  /-- **And every equality requirement survives** (L206). The second field for the
+      second field of `Store`, and monotone for the same reason: `addEq` only
+      prepends, so a later store asks for at least as much. -/
+  eqs : ∀ p, p ∈ st.eqs → p ∈ st'.eqs
 
-theorem StoreLe.refl (st : Store) : StoreLe st st := ⟨fun _ _ _ h => h⟩
+theorem StoreLe.refl (st : Store) : StoreLe st st := ⟨fun _ _ _ h => h, fun _ h => h⟩
 
 theorem StoreLe.trans {a b c : Store} (h₁ : StoreLe a b) (h₂ : StoreLe b c) :
-    StoreLe a c := ⟨fun α n σ h => h₂.get α n σ (h₁.get α n σ h)⟩
+    StoreLe a c :=
+  ⟨fun α n σ h => h₂.get α n σ (h₁.get α n σ h), fun p h => h₂.eqs p (h₁.eqs p h)⟩
 
 /-- **A substitution satisfies a store**: every requirement it records is met by
     the table at the substituted receiver type. This is exactly what
     `dischargeRow`/`dischargeNom` decide over one class; `satStoreB` (§6) decides it
     over a whole store, and `satStoreB_sound` is the bridge. -/
 def SatStore (D : Decls) (θ : TyVar → Ty) (st : Store) : Prop :=
-  ∀ α n σ, (st.rowOf α).get? n = some σ →
-    sigOf D (θ α) n = some (σ.params.map (ATy.subst θ), σ.ret.subst θ)
+  (∀ α n σ, (st.rowOf α).get? n = some σ →
+    sigOf D (θ α) n = some (σ.params.map (ATy.subst θ), σ.ret.subst θ)) ∧
+  -- **L206's equalities.** Not a capability but a *pin*: the join recorded that `α` has
+  -- no freedom left, and this is where the solver's choice is held to it.
+  (∀ α a, (α, a) ∈ st.eqs → θ α = a.subst θ)
 
 theorem SatStore.mono {D : Decls} {θ : TyVar → Ty} {st st' : Store}
     (hle : StoreLe st st') (hs : SatStore D θ st') : SatStore D θ st :=
-  fun α n σ h => hs α n σ (hle.get α n σ h)
+  ⟨fun α n σ h => hs.1 α n σ (hle.get α n σ h), fun α a h => hs.2 α a (hle.eqs _ h)⟩
+
+/-- **`addEq` only grows the store** (L206) — the `rows` half is untouched (a record
+    update at a different field) and the `eqs` half gains one entry. -/
+theorem storeLe_addEq (st : Store) (α : TyVar) (a : ATy) : StoreLe st (st.addEq α a) := by
+  unfold Store.addEq
+  split
+  · exact StoreLe.refl _
+  · exact ⟨fun _ _ _ h => h, fun _ hp => List.mem_cons_of_mem _ hp⟩
+
+/-- **And so does the join** (L206). Two of `joinOpen`'s three answers leave the store
+    alone; the third is one `addEq`. -/
+theorem joinOpen_mono {st st' : Store} {a b c : ATy}
+    (h : Store.joinOpen st a b = some (c, st')) : StoreLe st st' := by
+  unfold Store.joinOpen at h
+  split at h
+  · simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    exact StoreLe.refl _
+  · split at h <;>
+      first
+        | (simp only [Option.some.injEq, Prod.mk.injEq] at h
+           obtain ⟨-, rfl⟩ := h
+           exact storeLe_addEq _ _ _)
+        | exact absurd h (by simp)
+
+/-- **The equality the join just recorded is in the store it produced** (L206) — one
+    `split` on `addEq`'s idempotence guard. -/
+theorem mem_addEq (st : Store) (α : TyVar) (a : ATy) : (α, a) ∈ (st.addEq α a).eqs := by
+  unfold Store.addEq
+  split
+  · rename_i hc; simpa using List.mem_of_elem_eq_true (by simpa using hc)
+  · exact List.mem_cons_self
+
+/-- The two shapes the recorded equality is spent at, stated so the case can be one
+    `exact` and unification can supply `α` and `c` from the goal. -/
+theorem joinTy_of_eq {θ : TyVar → Ty} {α : TyVar} {c : ATy} (h : θ α = c.subst θ) :
+    joinTy (θ α) (c.subst θ) = some (c.subst θ) := by rw [h]; simp [joinTy]
+
+theorem joinTy_of_eq' {θ : TyVar → Ty} {β : TyVar} {c : ATy} (h : θ β = c.subst θ) :
+    joinTy (c.subst θ) (θ β) = some (c.subst θ) := by rw [h]; simp [joinTy]
+
+/-- **`joinOpen` agrees with `joinTy` under a satisfying substitution** (L206) — the
+    factoring theorem's join step, and the reason the store carries equalities at all.
+
+    Where `joinATy` answered, this is `joinATy_subst`. Where it did not, the answer came
+    with a *requirement*, and the requirement is exactly what makes the nominal join's
+    **first** branch fire: `θ α = b.subst θ`, so the two sides are equal and the join is
+    reflexivity. That is the whole content of the rung — a refusal turned into a
+    condition on `θ`, discharged by the validator rather than by the checker. -/
+theorem joinOpen_subst {D : Decls} {θ : TyVar → Ty} {stF st st' : Store} {a b c : ATy}
+    (h : Store.joinOpen st a b = some (c, st'))
+    (hle : StoreLe st' stF) (hsat : SatStore D θ stF) :
+    joinTy (a.subst θ) (b.subst θ) = some (c.subst θ) := by
+  unfold Store.joinOpen at h
+  split at h
+  · rename_i c' hj
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    exact joinATy_subst hj
+  · split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact joinTy_of_eq (hsat.2 _ _ (hle.eqs _ (mem_addEq _ _ _)))
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact joinTy_of_eq' (hsat.2 _ _ (hle.eqs _ (mem_addEq _ _ _)))
+    · exact absurd h (by simp)
 
 /-! ## 2. Rows and the store, mechanically -/
 
@@ -149,7 +224,7 @@ theorem requireRow_mono {st st' : Store} {α : TyVar} {n : String} {args : List 
       rw [hi] at h
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨-, rfl⟩ := h
-      refine ⟨fun β m σ' hm => ?_⟩
+      refine ⟨fun β m σ' hm => ?_, fun p hp => hp⟩
       by_cases hb : β = α
       · subst hb
         rw [Store.rowOf_setRow_self]
@@ -173,7 +248,7 @@ theorem requireRow_sat {D : Decls} {θ : TyVar → Ty} {st st' stF : Store} {α 
     · rw [if_pos hp] at h
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      have := hsat α n σ (hle.get α n σ hg)
+      have := hsat.1 α n σ (hle.get α n σ hg)
       rw [this]
       have : σ.params = args := by simpa using hp
       rw [this]
@@ -199,7 +274,7 @@ theorem requireRow_sat {D : Decls} {θ : TyVar → Ty} {st st' stF : Store} {α 
         refine hle.get α n _ ?_
         rw [Store.rowOf_setRow_self]
         exact hin
-      exact hsat α n _ hstF
+      exact hsat.1 α n _ hstF
 
 /-! ## 3. Environments under a substitution -/
 
@@ -273,6 +348,12 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (s : OSta
       -- the bound is the sub-expression's own (or reflexivity for a bare `return`).
       | (exact StoreLe.refl _)
       | (rename_i ha; exact ha)
+      -- **L206: the `if`-join may now grow the store**, so the two `inferOpenIf` arms
+      -- gain a link — `joinOpen_mono` — at the end of their chain.
+      | exact StoreLe.trans (by assumption) (joinOpen_mono (by assumption))
+      | exact StoreLe.trans (StoreLe.trans (by assumption) (by assumption))
+          (joinOpen_mono (by assumption))
+      | exact joinOpen_mono (by assumption)
 
 /-- **And `rets` is monotone too** (L201), for the store's reason: a recorded return
     type is a positive fact, so the list only grows. Subset rather than sublist because
@@ -345,11 +426,14 @@ theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (t : Expr)
         split at h
         · -- L193b adds the join's own split; both accepting arms leave `se` alone,
           -- so the store bound is the same composition it was.
+          -- L206: and the join's own step, which may record an equality.
           split at h
-          · simp only [OResult.ok.injEq] at h
+          · rename_i hj
+            simp only [OResult.ok.injEq] at h
             obtain ⟨-, -, rfl⟩ := h
             exact StoreLe.trans (inferOpen_mono D ctx Γ t s τt Γt st ht)
-              (inferOpen_mono D ctx Γ e st τe Γe se he)
+              (StoreLe.trans (inferOpen_mono D ctx Γ e st τe Γe se he)
+                (joinOpen_mono hj))
           · simp at h
         · simp at h
       | missing _ _ _ => rw [he] at h; simp at h
@@ -364,9 +448,10 @@ theorem inferOpenIf_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (t : Expr)
       dsimp only at h
       split at h
       · split at h
-        · simp only [OResult.ok.injEq] at h
+        · rename_i hj
+          simp only [OResult.ok.injEq] at h
           obtain ⟨-, -, rfl⟩ := h
-          exact inferOpen_mono D ctx Γ t s τt Γt st ht
+          exact StoreLe.trans (inferOpen_mono D ctx Γ t s τt Γt st ht) (joinOpen_mono hj)
         · simp at h
       · simp at h
     | missing _ _ _ => rw [ht] at h; simp at h
@@ -661,6 +746,17 @@ theorem mkNilable_join {a c : ATy} {θ : TyVar → Ty}
   rw [show (ATy.nom Ty.nilT).subst θ = Ty.nilT from rfl, joinTy_nilT_right] at h1
   simpa using h1
 
+/-- **The one-armed `if`, with the store** (L206) — `mkNilable_join`'s twin at
+    `joinOpen`, and stated for the same reason: the goal is a bare type equation, so the
+    equation has to be handed over rather than rewritten with. -/
+theorem mkNilable_joinOpen {D : Decls} {θ : TyVar → Ty} {stF st st' : Store} {a c : ATy}
+    (h : Store.joinOpen st a (.nom .nilT) = some (c, st'))
+    (hle : StoreLe st' stF) (hsat : SatStore D θ stF) :
+    mkNilable (a.subst θ) = c.subst θ := by
+  have h1 := joinOpen_subst h hle hsat
+  rw [show (ATy.nom Ty.nilT).subst θ = Ty.nilT from rfl, joinTy_nilT_right] at h1
+  simpa using h1
+
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (s : OState) :
@@ -683,10 +779,37 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     -- context, so `simp_all` can discharge it and close the join cases here. It has
     -- to be in this set rather than in the alternative block below, because
     -- `simp_all` is what leaves those goals in the first place.
-    all_goals (try simp_all [joinATy_subst])
+    -- L206: and `joinOpen_subst`, which is the same conditional rewrite with the
+    -- store's satisfaction as a second hypothesis — also in context, so also
+    -- dischargeable here.
+    all_goals (try simp_all [joinATy_subst, joinOpen_subst])
     all_goals (
       first
         | done
+        -- **The `if` join with a *recorded* equality** (L206). The store now changes at
+        -- the join, so the two IHs' bounds are one `joinOpen_mono` further away than
+        -- they were and `simp_all` cannot find them. Supplying the three composed
+        -- hypotheses first is all this case needs; `joinOpen_subst` then closes it as
+        -- `joinATy_subst` used to.
+        | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
+           have hle3 := storeLe_sub (by assumption) hle2
+           have hr2 := rets_sub (by assumption) hr
+           simp_all
+           exact joinOpen_subst (by assumption) hle hsat)
+        | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
+           have hle3 := storeLe_sub (by assumption) hle2
+           have hr2 := rets_sub (by assumption) hr
+           simp_all
+           exact mkNilable_joinOpen (by assumption) hle hsat)
+        | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
+           have hle3 := storeLe_sub (by assumption) hle2
+           have hr2 := rets_sub (by assumption) hr
+           simp_all)
+        | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
+           simp_all
+           exact joinOpen_subst (by assumption) hle hsat)
+        | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
+           simp_all)
         -- **the `if` join** (L193b), both arms. The IHs are already applied by
         -- `simp_all`; what is left is that the *open* join and the *nominal* one agree
         -- under substitution, which is `joinATy_subst` and nothing else. Two variants
@@ -858,8 +981,10 @@ any means, and the validator re-checks it by one `sigOf` lookup per row entry. -
     search, and no `*`-elimination — which is §9.4's reason a checker can be
     extracted at all. -/
 def satStoreB (D : Decls) (θ : TyVar → Ty) (st : Store) : Bool :=
-  st.rows.all fun r => r.2.entries.all fun e =>
-    sigOf D (θ r.1) e.1 == some (e.2.params.map (ATy.subst θ), e.2.ret.subst θ)
+  (st.rows.all fun r => r.2.entries.all fun e =>
+    sigOf D (θ r.1) e.1 == some (e.2.params.map (ATy.subst θ), e.2.ret.subst θ)) &&
+  -- L206: and the equalities, which is the half a `decide` can do in one step.
+  (st.eqs.all fun e => θ e.1 == e.2.subst θ)
 
 theorem rowOf_mem {st : Store} {α : TyVar} {n : String} {σ : ASig}
     (h : (st.rowOf α).get? n = some σ) :
@@ -891,11 +1016,17 @@ theorem rowOf_mem {st : Store} {α : TyVar} {n : String} {σ : ASig}
 
 theorem satStoreB_sound {D : Decls} {θ : TyVar → Ty} {st : Store}
     (hb : satStoreB D θ st = true) : SatStore D θ st := by
-  intro α n σ h
-  obtain ⟨R, hR, he⟩ := rowOf_mem h
-  have h1 := (List.all_eq_true.mp hb) (α, R) hR
-  have h2 := (List.all_eq_true.mp h1) (n, σ) he
-  simpa using h2
+  unfold satStoreB at hb
+  simp only [Bool.and_eq_true] at hb
+  refine ⟨fun α n σ h => ?_, fun α a hm => ?_⟩
+  · obtain ⟨R, hR, he⟩ := rowOf_mem h
+    have h1 := (List.all_eq_true.mp hb.1) (α, R) hR
+    have h2 := (List.all_eq_true.mp h1) (n, σ) he
+    simpa using h2
+  · -- L206: the equality half is a `List.all` over the same list the proposition
+    -- quantifies over, so it is one `all_eq_true` and a `beq`.
+    have := (List.all_eq_true.mp hb.2) (α, a) hm
+    simpa using this
 
 /-! ## 7. What R4 delivers to the metatheory
 

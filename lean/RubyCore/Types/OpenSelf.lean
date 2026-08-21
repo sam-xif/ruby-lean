@@ -388,8 +388,11 @@ def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OC
         -- the reason it exists rather than `joinTy` being reused is that this side
         -- joins against a type *variable*.
         if Γt = Γe then
-          match joinATy τt τe with
-          | some τj => .ok τj Γe se
+          -- L206: `joinOpen` rather than `joinATy` — the store is threaded because the
+          -- join may *record* a requirement (a variable pinned to the other arm's
+          -- type) rather than only answering one.
+          match Store.joinOpen se.st τt τe with
+          | some (τj, st') => .ok τj Γe { se with st := st' }
           | none => .outOfFragment "if"
         else .outOfFragment "if"
       | r => r
@@ -398,8 +401,8 @@ def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OC
     match inferOpen D Γ t ctx s with
     | .ok τt Γt st =>
       if Γt = Γ then
-        match joinATy τt (.nom Ty.nilT) with
-        | some τj => .ok τj Γ st
+        match Store.joinOpen st.st τt (.nom Ty.nilT) with
+        | some (τj, st') => .ok τj Γ { st with st := st' }
         | none => .outOfFragment "if"
       else .outOfFragment "if"
     | r => r

@@ -371,6 +371,14 @@ inductive Assn where
   | decl (τ : Ty) (n : String) (σ : Sig)
   | req (τ : ATy) (n : String) (σ : ASig)
   | obl (c : String) (R : Row)
+  /-- **`α = a`** (L206) — a *variable's* type pinned to another type, which is what an
+      `if` whose branches are an unresolved variable and something else needs.
+
+      It is an `Assn` atom rather than a `Row` entry because it is not a capability: it
+      says nothing about what `α` can *do*, only that the solver must send it
+      somewhere. Layer 3's three atom lists therefore ignore it — `entail` has nothing
+      to compare — and `denote` is the equation itself. -/
+  | eqv (α : TyVar) (a : ATy)
 deriving DecidableEq, Repr, Inhabited
 
 namespace Assn
@@ -395,6 +403,7 @@ def declAtoms : Assn → List (Ty × String × Sig)
   | .decl τ n σ => [(τ, n, σ)]
   | .req _ _ _ => []
   | .obl _ _ => []
+  | .eqv _ _ => []
 
 /-- The requirements — what the checker could not discharge locally. -/
 def reqAtoms : Assn → List (ATy × String × ASig)
@@ -403,6 +412,7 @@ def reqAtoms : Assn → List (ATy × String × ASig)
   | .decl _ _ _ => []
   | .req τ n σ => [(τ, n, σ)]
   | .obl _ _ => []
+  | .eqv _ _ => []
 
 /-- The class obligations. -/
 def oblAtoms : Assn → List (String × Row)
@@ -411,6 +421,18 @@ def oblAtoms : Assn → List (String × Row)
   | .decl _ _ _ => []
   | .req _ _ _ => []
   | .obl c R => [(c, R)]
+  | .eqv _ _ => []
+
+/-- **The equality atoms** (L206) — the fourth list, added for `entail`'s sake: an
+    `.eqv` denotes a condition on the *substitution*, so `entail` cannot derive one from
+    a heap fact and has to find it in the antecedent. -/
+def eqAtoms : Assn → List (TyVar × ATy)
+  | .emp => []
+  | .and A B => eqAtoms A ++ eqAtoms B
+  | .decl _ _ _ => []
+  | .req _ _ _ => []
+  | .obl _ _ => []
+  | .eqv α a => [(α, a)]
 
 def render : Assn → String
   | .emp => "emp"
@@ -418,6 +440,10 @@ def render : Assn → String
   | .decl τ n σ => tyName τ ++ " ▷ " ++ n ++ " : " ++ σ.render
   | .req τ n σ => τ.render ++ " ~ " ++ n ++ " : " ++ σ.render
   | .obl c R => c ++ " ⊒ " ++ R.render
+  -- L206: printed as an equation, because that is what it is. `α2 = Integer` reads as
+  -- a *precondition on the solver*, which is the same register the `requires:` line is
+  -- already in.
+  | .eqv α a => "α" ++ toString α ++ " = " ++ a.render
 
 end Assn
 
@@ -512,7 +538,10 @@ def entail (A B : Assn) : Bool :=
         o.2.entries.all fun e =>
           match e.2.toNom? with
           | some σ => entailAtom A (nomTy o.1) e.1 σ
-          | none => false)
+          | none => false) &&
+    -- L206: an equality is a condition on `θ`, so the only way to entail one is to have
+    -- it. `contains` and not a solve — `entail` compares assertions, it does not unify.
+    (B.eqAtoms.all fun e => A.eqAtoms.contains e)
 
 /-! ### R2, stated — class-relative `declares`
 
@@ -586,6 +615,19 @@ structure Store where
   rows : List (TyVar × Row) := []
   nom : List (Ty × String × Sig) := []
   obl : List (String × Row) := []
+  /-- **Equality requirements** (L206): `θ α` must be this type.
+
+      The store's other three fields are *capability* requirements — "this type can do
+      that". This one is not: it says the solver has no freedom left at `α`. It exists
+      because of the **join**: `if c then x else 1` where `x`'s type is still the
+      variable `α` has a least upper bound only if `α` is `Integer`, and refusing the
+      body is strictly weaker than saying so. Four of the slice's `if` refusals were
+      exactly this shape, all of them from `&&`/`||`/`case` desugarings.
+
+      It is a *requirement* and not an inference: nothing here solves for `α`. That is
+      the same division of labour `rows` has — `inferOpen` records, the (untrusted)
+      solver chooses `θ`, `satStoreB` checks. -/
+  eqs : List (TyVar × ATy) := []
 deriving DecidableEq, Repr, Inhabited
 
 namespace Store
@@ -610,7 +652,16 @@ def closeAt (st : Store) (α : TyVar) (c : String) : Store :=
   let R := st.rowOf α
   { rows := st.rows.filter (·.1 != α),
     nom := st.nom,
+    -- L206: the equalities are carried through unchanged. Closing `α` turns *its* row
+    -- into a named obligation; an equality about any variable — including `α` — is
+    -- still a condition on the substitution and belongs in the printed `and:` clause.
+    eqs := st.eqs,
     obl := if R.entries.isEmpty then st.obl else (c, R) :: st.obl }
+
+/-- Record `θ α = a`. Prepends, like `setRow`, and is idempotent on a duplicate so a
+    join inside a loop body cannot grow the store without bound (L206). -/
+def addEq (st : Store) (α : TyVar) (a : ATy) : Store :=
+  if st.eqs.contains (α, a) then st else { st with eqs := (α, a) :: st.eqs }
 
 def addNom (st : Store) (τ : Ty) (n : String) (σ : Sig) : Store :=
   if st.nom.contains (τ, n, σ) then st else { st with nom := (τ, n, σ) :: st.nom }
@@ -653,9 +704,33 @@ def toAssn (st : Store) : Assn :=
   Assn.all <|
     (st.rows.flatMap fun r => r.2.entries.map fun e => Assn.req (.var r.1) e.1 e.2) ++
     (st.nom.map fun r => Assn.req (.nom r.1) r.2.1 r.2.2.toA) ++
-    (st.obl.map fun o => Assn.obl o.1 o.2)
+    (st.obl.map fun o => Assn.obl o.1 o.2) ++
+    -- L206
+    (st.eqs.map fun e => Assn.eqv e.1 e.2)
 
 def render (st : Store) : String := st.toAssn.render
+
+/-- **The join, with the store** (L206) — `joinATy` plus the one case it could not
+    answer: a **type variable** against anything else.
+
+    `joinATy α τ` was `none`, and refusing the body was strictly weaker than what the
+    open front end can say, which is *`α` must be `τ`*. So this returns the join **and
+    the store it needs**, recording the equality; `satStoreB` checks it against the
+    solver's `θ`, and `joinTy (θ α) (τ.subst θ)` is then the first branch of the
+    nominal join. Two variables against each other are pinned the same way — the
+    answer is either one, since they are required equal.
+
+    Order matters in exactly one place: `a == b` is tried first (by `joinATy`), so a
+    variable joined with *itself* records nothing. -/
+def joinOpen (st : Store) (a b : ATy) : Option (ATy × Store) :=
+  match joinATy a b with
+  | some c => some (c, st)
+  | none =>
+    match a, b with
+    | .var α, _ => some (b, st.addEq α b)
+    | _, .var β => some (a, st.addEq β a)
+    | _, _ => none
+
 
 end Store
 

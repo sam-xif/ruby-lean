@@ -66,6 +66,11 @@ def denote (D : Decls) (θ : TyVar → Ty) : Assn → Heap → Prop
   | .decl τ n σ, h => EntryOk D h τ n σ
   | .req τ n σ, h => EntryOk D h (τ.subst θ) n (σ.subst θ)
   | .obl c R, h => ∀ e ∈ R.entries, EntryOk D h (nomTy c) e.1 (e.2.subst θ)
+  -- **L206**, and it is the first atom whose denotation does not mention the heap: an
+  -- equality is a condition on the *substitution*. That is what it is for — the join
+  -- recorded that `α` has no freedom left — and `satStoreB` is the decision procedure
+  -- for exactly this proposition.
+  | .eqv α a, _ => θ α = a.subst θ
 
 /-- §9.1's `⟦ var α ~ n : σ ⟧ h := ∀ θ, ⟦ θα ~ n : σ ⟧ h` — *universally closed at
     the method boundary*, applied to the whole assertion. This is the reading a
@@ -337,6 +342,28 @@ theorem dischargeAll_sound {D : Decls} {θ : TyVar → Ty} {h : Heap} {A : Assn}
 
 `entail_sound : entail P Q = true → ∀ m, ⟦P⟧ m → ⟦Q⟧ m`. -/
 
+/-- **The equality atoms, read out of a denotation** (L206) — `denote_of_mem_declAtoms`'s
+    sibling at the one atom whose content is about `θ` rather than about the heap. -/
+theorem denote_of_mem_eqAtoms {D : Decls} {θ : TyVar → Ty} {h : Heap} :
+    ∀ {A : Assn} {α : TyVar} {a : ATy},
+      denote D θ A h → (α, a) ∈ A.eqAtoms → θ α = a.subst θ := by
+  intro A
+  induction A with
+  | emp => intro _ _ _ hm; simp [Assn.eqAtoms] at hm
+  | and A B ihA ihB =>
+    intro α a hd hm
+    rcases List.mem_append.mp hm with hm | hm
+    · exact ihA hd.1 hm
+    · exact ihB hd.2 hm
+  | decl _ _ _ => intro _ _ _ hm; simp [Assn.eqAtoms] at hm
+  | req _ _ _ => intro _ _ _ hm; simp [Assn.eqAtoms] at hm
+  | obl _ _ => intro _ _ _ hm; simp [Assn.eqAtoms] at hm
+  | eqv β b =>
+    intro α a hd hm
+    simp only [Assn.eqAtoms, List.mem_singleton, Prod.mk.injEq] at hm
+    obtain ⟨rfl, rfl⟩ := hm
+    exact hd
+
 theorem denote_of_mem_declAtoms {D : Decls} {θ : TyVar → Ty} {h : Heap} :
     ∀ {A : Assn} {τ : Ty} {n : String} {σ : Sig},
       denote D θ A h → (τ, n, σ) ∈ A.declAtoms → EntryOk D h τ n σ := by
@@ -355,6 +382,7 @@ theorem denote_of_mem_declAtoms {D : Decls} {θ : TyVar → Ty} {h : Heap} :
     exact hd
   | req => intro _ _ _ _ hm; simp [Assn.declAtoms] at hm
   | obl => intro _ _ _ _ hm; simp [Assn.declAtoms] at hm
+  | eqv => intro _ _ _ _ hm; simp [Assn.declAtoms] at hm
 
 theorem entailAtom_sound {D : Decls} {θ : TyVar → Ty} {h : Heap} {A : Assn}
     {τ : Ty} {n : String} {σ : Sig}
@@ -378,20 +406,22 @@ theorem entail_sound' {D : Decls} {θ : TyVar → Ty} {h : Heap} {P : Assn}
           match e.2.toNom? with
           | some σ => entailAtom P (nomTy o.1) e.1 σ
           | none => false) = true →
+    -- L206's fourth list.
+    (Q.eqAtoms.all fun e => P.eqAtoms.contains e) = true →
     denote D θ Q h := by
   intro Q
   induction Q with
-  | emp => intro _ _ _; trivial
+  | emp => intro _ _ _ _; trivial
   | and A B ihA ihB =>
-    intro h1 h2 h3
-    simp only [Assn.declAtoms, Assn.reqAtoms, Assn.oblAtoms, List.all_append,
-      Bool.and_eq_true] at h1 h2 h3
-    exact ⟨ihA h1.1 h2.1 h3.1, ihB h1.2 h2.2 h3.2⟩
+    intro h1 h2 h3 h4
+    simp only [Assn.declAtoms, Assn.reqAtoms, Assn.oblAtoms, Assn.eqAtoms,
+      List.all_append, Bool.and_eq_true] at h1 h2 h3 h4
+    exact ⟨ihA h1.1 h2.1 h3.1 h4.1, ihB h1.2 h2.2 h3.2 h4.2⟩
   | decl τ n σ =>
-    intro h1 _ _
+    intro h1 _ _ _
     exact entailAtom_sound hp (by simpa [Assn.declAtoms] using h1)
   | req aτ n σ =>
-    intro _ h2 _
+    intro _ h2 _ _
     simp only [Assn.reqAtoms, List.all_cons, List.all_nil, Bool.and_true] at h2
     cases hn : σ.toNom? with
     | none => cases aτ <;> rw [hn] at h2 <;> simp at h2
@@ -405,7 +435,7 @@ theorem entail_sound' {D : Decls} {θ : TyVar → Ty} {h : Heap} {P : Assn}
         rw [ASig.subst_of_toNom? (θ := θ) hn]
         exact entailAtom_sound hp h2
   | obl c R =>
-    intro _ _ h3
+    intro _ _ h3 _
     simp only [Assn.oblAtoms, List.all_cons, List.all_nil, Bool.and_true] at h3
     intro e he'
     have h2 := (List.all_eq_true.mp h3) e he'
@@ -415,6 +445,13 @@ theorem entail_sound' {D : Decls} {θ : TyVar → Ty} {h : Heap} {P : Assn}
       rw [hn] at h2
       rw [ASig.subst_of_toNom? (θ := θ) hn]
       exact entailAtom_sound hp h2
+  -- **L206**: the only atom `entail` cannot *derive*, so it has to find it — and the
+  -- proof is `denote_of_mem_eqAtoms`, which is the fourth list's read-out.
+  | eqv α a =>
+    intro _ _ _ h4
+    simp only [Assn.eqAtoms, List.all_cons, List.all_nil, Bool.and_true,
+      List.elem_eq_mem, decide_eq_true_eq] at h4
+    exact denote_of_mem_eqAtoms hp h4
 
 /-- **`entail_sound`** — §9.2's item 4, and the reason Layer 3 can be untrusted:
     whatever search produced the entailment, the theorem is re-derived here from
@@ -422,9 +459,10 @@ theorem entail_sound' {D : Decls} {θ : TyVar → Ty} {h : Heap} {P : Assn}
 theorem entail_sound {D : Decls} {θ : TyVar → Ty} {h : Heap} {P Q : Assn}
     (he : entail P Q = true) (hp : denote D θ P h) : denote D θ Q h := by
   unfold entail at he
-  obtain ⟨he12, he3⟩ := Bool.and_eq_true .. |>.mp he
+  obtain ⟨he123, he4⟩ := Bool.and_eq_true .. |>.mp he
+  obtain ⟨he12, he3⟩ := Bool.and_eq_true .. |>.mp he123
   obtain ⟨he1, he2⟩ := Bool.and_eq_true .. |>.mp he12
-  exact entail_sound' hp Q he1 he2 he3
+  exact entail_sound' hp Q he1 he2 he3 he4
 
 /-! ## 7. The invariant, in assertion form — and soundness, inherited
 
