@@ -380,6 +380,30 @@ example : declFor baseDecls (.clsOf "String") "===" = none := by
 example : ∀ (D : Decls) (n mname : String), declFor D (.clsOf n) mname = none := by
   intro D n mname; simp [declFor, tyClassNames]
 
+/-- **The class-object *producer*** (L185): `valueTy?` now gives a class object a
+    type, and the facts worth asserting are which type and why the two `.ref` arms
+    are disjoint.
+
+    `String`'s class object is typed `T.class_of(String)` at the booted heap — the
+    class's *own* name, not `#<Class:String>` (its eigenclass) and not `Class` (what
+    `classOf` answers for a class with no eigenclass). L180 measured why it cannot
+    be either: 60 of the heap's 87 class objects have no eigenclass at all. -/
+example : valueTy? Boot.initHeap (.ref Boot.stringId) = some (.clsOf "String") := by
+  decide
+
+/-- **The two arms are disjoint**, because `plainRecv` refuses a `.cls` payload and
+    `classRecv` requires one — so the `if` chain can never take the wrong branch. -/
+example : plainRecv Boot.initHeap Boot.stringId = false := by decide
+
+/-- **The two receiver ids `invoke` special-cases are refused** (L185), which is
+    what lets `entry_dispatch`'s class case be a `simp`: `Regexp.escape`/`.quote`/
+    `.union` and the `Math.sqrt`/`exp`/`log` family are singleton methods dispatched
+    by receiver *id* (L106), so a type for those two objects would be a claim about
+    a step the dispatch lemma does not describe. -/
+example : classRecv Boot.initHeap Boot.regexpId = false := by decide
+
+example : classRecv Boot.initHeap Boot.mathId = false := by decide
+
 /-- **The top type as a declared parameter** (L183), which is what the arm exists
     for and the only way it can be exercised: `valueTy?` never produces `.any`, so
     nothing is *typed* by it and only a **row** can mention it.

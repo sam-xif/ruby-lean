@@ -7769,3 +7769,79 @@ what the step touches tends to be the one the next arm needs.**
 `--check` byte-identical at 39 / 1,186 / 0; `--assn` 1,227 clean; `check-proofs.sh` green, 29 theorems,
 axiom-clean; `--self-test` all agree. Two new checked examples (`declFor` is `none` at the arm, at every
 name and in every table). **Zero bodies**, as §4a says of rungs 1–3.
+
+## L185 — the class-object producer: `entry_dispatch` survives a class receiver
+
+L184 landed the type; this is the **producer** and its transport, which L180 said was where the cost
+is and L184's split confirmed by trying it the other way round. `valueTy?` now gives a class object a
+type, `TypeAgree` gains a fifth clause, and `entry_dispatch` handles a `.cls` payload instead of
+refuting it.
+
+### `classRecv`, and the three refusals that make the dispatch case a `simp`
+
+```lean
+def classRecv (h : Heap) (o : ObjId) : Bool :=
+  o < h.objs.size && o != Boot.regexpId && o != Boot.mathId && (h.classPayload? o).isSome
+```
+
+`invoke` intercepts a `.cls` receiver **three** times before `invokeDispatch`, and each interception is
+answered by a refusal the judgement carries rather than by an argument:
+
+| interception | refused by |
+|---|---|
+| `Regexp.escape`/`.quote`/`.union` — singleton methods dispatched by receiver *id* (L106) | `classRecv`: `o ≠ Boot.regexpId` |
+| the `Math.sqrt`/`exp`/`log` family, likewise | `classRecv`: `o ≠ Boot.mathId` |
+| `invokeMaybeNew`, which **allocates** instead of dispatching | `ConformsAt`: `mname ≠ "new"` |
+
+That is `plainRecv`'s pattern for the fourth and fifth time — *a side condition a later rung has to
+derive at the use site is cheaper in the judgement* — and it is what turns the class case of
+`entry_dispatch` into one `simp` beside the plain one. The `new` clause costs nothing (no row is named
+`new`) and `Class#new` is Wall 2's item regardless, since it allocates.
+
+**`classPayload?` rather than a payload match**, and the choice is not cosmetic: stated that way the
+`defineMethod` transport *is* `classPayload?_isSome_defineMethod` — the lemma `TypeAgree`'s third
+clause already uses — instead of a fresh argument about payload shapes.
+
+`eigen` is deliberately unconstrained, unlike `plainRecv`'s `eigen.isNone`. A class object legitimately
+has one (27 of 87 do) and its presence is exactly what `classOf` reads; that asymmetry is why the
+*type* is keyed on the class's own name while `TyClass` names `classOf`'s answer.
+
+### The lemma that stopped being true, and what replaced it
+
+> **`valueTy_ref_plain : ValueTy h (.ref o) τ → plainRecv h o = true` is false once a class object has
+> a type**, and its four consumers are the load-bearing chain L142–L149 spent a session on. This is
+> `Locals.lean`'s own lesson turned on itself: *an inversion principle is only as strong as the
+> definition it inverts.*
+
+The replacement is a **disjunction**, `valueTy_ref_inv`, with two arm-specific corollaries so that
+every consumer says which arm it is about:
+
+* `valueTy_ref_plain` survives, restated at `ValueTy h (.ref o) (.cls n)` — the type pins the arm;
+* `valueTy_ref_class` is its twin at `.clsOf n`;
+* `valueTy_ref_klass_isSome`/`_klass_lt` move from taking a `ValueTy` to taking a `plainRecv`, because
+  that is what they were ever about;
+* `valueTy_shapes`' fifth alternative becomes `plainRecv ∨ classRecv`;
+* `valueTy_ref_cls` becomes a disjunction of the two type shapes;
+* `user_dispatch`'s receiver type is **pinned to `.cls cn`** rather than abstract — every caller had
+  that shape already (`UserEntryOk` requires `τr = .cls c`), and pinning it is what keeps a class
+  *object* out of a lemma whose dispatch goes through `invokeDispatch`.
+
+`ValueTy.congr` splits into two branches that read *different* clauses of `TypeAgree`: the plain one
+needs `classOf` and `className` agreement at the **class** id, the class-object one needs `className`
+at `o` itself — because its type is keyed on the object's own name. That asymmetry is the arm in one
+sentence.
+
+### What it does not do
+
+**No `infer` rule produces a `.clsOf`**, so `--check` is byte-identical at 39 / 1,186 / 0 and the census
+is unchanged at 84. `tyClassNames (.clsOf n) = []` still, so no row can be read through it. Rung 2 of
+`slice-verdict.md` §4a is now complete — arm, producer, transport — and rung 3 is the key space plus a
+`Module#===` row.
+
+### Checks
+
+`check-proofs.sh` green, 29 theorems, axiom-clean; `alloc_probe` exits 0 (it is the probe that would
+notice a `ValueTy` arm typing something it should not). `--check` byte-identical; `--assn` 1,227 clean;
+`--self-test` all agree. Four new checked examples: `String`'s class object is typed
+`T.class_of(String)` at the booted heap, the two arms are disjoint there, and both special-cased
+receiver ids are refused.

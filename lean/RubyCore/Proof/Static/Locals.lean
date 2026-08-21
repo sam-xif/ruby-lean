@@ -99,6 +99,29 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
      | .cls _ => false
      | _ => true)
 
+/-- **A class-object receiver** (L185) — the shape `Ty.clsOf` types, and the dual
+    of `plainRecv`: the payload *is* a class, and the two receiver ids `invoke`
+    special-cases are excluded.
+
+    The exclusions are `plainRecv`'s move a fourth time — *a side condition a later
+    rung has to derive at the use site is cheaper in the judgement*. `invoke`
+    intercepts a `.cls` receiver twice before it reaches `invokeDispatch`
+    (`Interp/Send.lean:59`, `:69`): `Regexp.escape`/`.quote`/`.union` and the
+    `Math.sqrt`/`exp`/`log` family are singleton methods dispatched by receiver
+    **id**, because the boot heap installs builtins as *instance* methods and those
+    are not (L106). Refusing the two ids here is what lets `entry_dispatch`'s class
+    case be a `simp` rather than a case analysis over arms it must then refute.
+
+    `eigen` is deliberately **not** constrained, unlike `plainRecv`'s `eigen.isNone`:
+    a class object legitimately has one — 27 of the booted heap's 87 do
+    (`scripts/classobj_probe.lean`) — and its presence is exactly what `classOf`
+    reads. That is why the type is keyed on the class's *own* name while `TyClass`
+    names `classOf`'s answer; L180 measured that the two cannot be the same
+    string. -/
+def classRecv (h : Heap) (o : ObjId) : Bool :=
+  o < h.objs.size && o != Boot.regexpId && o != Boot.mathId &&
+    (h.classPayload? o).isSome
+
 /-- The type of a value **in a heap**, where P0 has one. `.flt` has none — the
     fragment has no Float type — and a `.ref` has one exactly when it is a
     receiver `invoke` dispatches uniformly (`plainRecv`).
@@ -119,16 +142,40 @@ def valueTy? (h : Heap) : Value → Option Ty
   | .nil => some .nilT
   -- `def` evaluates to the method name (`Interp.lean:2624`).
   | .sym _ => some .sym
-  | .ref o => if plainRecv h o then some (.cls (className h (classOf h (.ref o)))) else none
+  | .ref o =>
+    if plainRecv h o then some (.cls (className h (classOf h (.ref o))))
+    -- **L185's class-object arm.** Keyed on the object's *own* name, not on
+    -- `classOf`'s: a class object's dispatch chain is its eigenclass, or `Class`
+    -- when it has none, and neither of those names is one a declaration can hang
+    -- off (L180). `TyClass` is where `classOf` appears.
+    else if classRecv h o then some (.clsOf (className h o))
+    else none
   | _ => none
 
 def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
+
+/-- **The `.ref` arm, read backwards** (L185). Two branches now, so the inversion
+    is a disjunction and every consumer has to say which one it is about —
+    `Locals.lean`'s own lesson from L142 applies to itself here: *an inversion
+    principle is only as strong as the definition it inverts.* -/
+theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+    (plainRecv h o = true ∧ τ = .cls (className h (classOf h (.ref o)))) ∨
+      (classRecv h o = true ∧ τ = .clsOf (className h o)) := by
+  by_cases hp : plainRecv h o
+  · exact Or.inl ⟨hp, by simpa [ValueTy, valueTy?, hp] using hv.symm⟩
+  · by_cases hc : classRecv h o
+    · exact Or.inr ⟨hc, by simpa [ValueTy, valueTy?, hp, hc] using hv.symm⟩
+    · simp [ValueTy, valueTy?, hp, hc] at hv
 
 /-- Inversion at the `int` arm. Moved here from `Proof/Static/Konts.lean` in F1a:
     it is a fact about `ValueTy`, and `Proof/Static/Decls.lean` — which sits
     *below* `Konts.lean` now — needs it to build the base table's entries. -/
 theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v = .int a := by
-  cases v <;> simp_all [ValueTy, valueTy?]
+  cases v with
+  | ref o =>
+    exfalso
+    rcases valueTy_ref_inv h with ⟨-, hne⟩ | ⟨-, hne⟩ <;> exact absurd hne (by simp)
+  | _ => simp_all [ValueTy, valueTy?]
 
 /-- **Every value with a type is an immediate or a plain ref.** F1a's version of
     this said *immediate*, full stop, and that was what let
@@ -151,13 +198,13 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
     F1a measurement survives an abstract `.ref` receiver unchanged. -/
 theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) ∨
-      (∃ o, v = .ref o ∧ plainRecv h o = true) := by
+      (∃ o, v = .ref o ∧ (plainRecv h o = true ∨ classRecv h o = true)) := by
   cases v with
   | ref o =>
     refine Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩)))
-    by_cases hp : plainRecv h o
-    · exact hp
-    · simp [ValueTy, valueTy?, hp] at hv
+    rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨hc, -⟩
+    · exact Or.inl hp
+    · exact Or.inr hc
   | _ => simp_all [ValueTy, valueTy?]
 
 /-- **A typed `.ref` is an id the heap actually has.** The point of `plainRecv`'s
@@ -166,18 +213,26 @@ theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     and therefore hold across an `alloc`. -/
 theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
     o < h.objs.size := by
+  -- Both arms of the `.ref` case carry the bound: `plainRecv` as its first clause
+  -- and `classRecv` as its first clause too (L185).
   by_cases hb : o < h.objs.size
   · exact hb
-  · simp [ValueTy, valueTy?, plainRecv, hb] at hv
+  · simp [ValueTy, valueTy?, plainRecv, classRecv, hb] at hv
 
-/-- A typed `.ref` is a plain receiver. The `if` in the `.ref` arm, read
-    backwards; `valueTy_shapes` says the same thing inside a five-way disjunction
-    and the transport lemmas want it on its own. -/
-theorem valueTy_ref_plain {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
-    plainRecv h o = true := by
-  by_cases hp : plainRecv h o
+/-- A `.ref` typed at a **class type** is a plain receiver — the old
+    `valueTy_ref_plain`, restated at the arm it is about. -/
+theorem valueTy_ref_plain {h : Heap} {o : ObjId} {n : String}
+    (hv : ValueTy h (.ref o) (.cls n)) : plainRecv h o = true := by
+  rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨-, hne⟩
   · exact hp
-  · simp [ValueTy, valueTy?, hp] at hv
+  · exact absurd hne (by simp)
+
+/-- And a `.ref` typed at a **class-object type** is a class receiver. -/
+theorem valueTy_ref_class {h : Heap} {o : ObjId} {n : String}
+    (hv : ValueTy h (.ref o) (.clsOf n)) : classRecv h o = true := by
+  rcases valueTy_ref_inv hv with ⟨-, hne⟩ | ⟨hc, -⟩
+  · exact absurd hne (by simp)
+  · exact hc
 
 /-- **A plain receiver dispatches through its `klass` field.** `plainRecv`
     requires `eigen = none`, and that is the only case `classOf` distinguishes on
@@ -192,9 +247,8 @@ theorem plainRecv_classOf {h : Heap} {o : ObjId} (hp : plainRecv h o = true) :
 
 /-- **A plain receiver's class is a class** (L147). The clause `plainRecv` gained,
     read back out at the composite the resolution clause is indexed by. -/
-theorem valueTy_ref_klass_isSome {h : Heap} {o : ObjId} {τ : Ty}
-    (hv : ValueTy h (.ref o) τ) : (h.classPayload? (classOf h (.ref o))).isSome := by
-  have hp := valueTy_ref_plain hv
+theorem valueTy_ref_klass_isSome {h : Heap} {o : ObjId}
+    (hp : plainRecv h o = true) : (h.classPayload? (classOf h (.ref o))).isSome := by
   rw [plainRecv_classOf hp]
   unfold plainRecv at hp
   simp only [Bool.and_eq_true] at hp
@@ -210,19 +264,19 @@ theorem classPayload?_isSome_lt {h : Heap} {k : ObjId}
   · rw [classPayload?_oob h k hb] at hs
     exact absurd hs (by simp)
 
-theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} (hp : plainRecv h o = true) :
     classOf h (.ref o) < h.objs.size :=
-  classPayload?_isSome_lt (valueTy_ref_klass_isSome hv)
+  classPayload?_isSome_lt (valueTy_ref_klass_isSome hp)
 
 /-- **A typed `.ref` has a class type**, since that is the only arm that admits one.
     The contrapositive is what `DeclsOk_grow` needs (L146): a declaration at a
     *ground* type can only ever be about immediates, so an allocation cannot give it
     a new inhabitant. -/
 theorem valueTy_ref_cls {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
-    ∃ n, τ = .cls n := by
-  by_cases hp : plainRecv h o
-  · exact ⟨className h (classOf h (.ref o)), by simpa [ValueTy, valueTy?, hp] using hv.symm⟩
-  · simp [ValueTy, valueTy?, hp] at hv
+    (∃ n, τ = .cls n) ∨ (∃ n, τ = .clsOf n) := by
+  rcases valueTy_ref_inv hv with ⟨-, rfl⟩ | ⟨-, rfl⟩
+  · exact Or.inl ⟨_, rfl⟩
+  · exact Or.inr ⟨_, rfl⟩
 
 /-- **An immediate's type does not depend on the heap.** Four constant arms; stated
     as a transport in the direction `DeclsOk_grow` reads it, which is the direction
@@ -817,10 +871,17 @@ def TypeAgree (h h' : Heap) : Prop :=
   (∀ o, o < h.objs.size → classOf h' (.ref o) = classOf h (.ref o)) ∧
     (∀ k, k < h.objs.size → className h' k = className h k) ∧
     (∀ k, k < h.objs.size → (h'.classPayload? k).isSome = (h.classPayload? k).isSome) ∧
-    (∀ o, o < h.objs.size → plainRecv h o = true → plainRecv h' o = true)
+    (∀ o, o < h.objs.size → plainRecv h o = true → plainRecv h' o = true) ∧
+    -- **L185's fifth clause**, and it is the class-object arm's whole transport
+    -- bill: a class receiver stays one. Cheap for every step in the fragment —
+    -- `PlainGrow`'s *nothing became a class* pins the payload and `defineMethod`
+    -- rewrites `methods` — and stated here rather than derived at the use site for
+    -- the fourth time, which is `plainRecv`'s own pattern.
+    (∀ o, o < h.objs.size → classRecv h o = true → classRecv h' o = true)
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
-  ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp⟩
+  ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp,
+   fun _ _ hc => hc⟩
 
 /-- **Transport across a frame-array rewrite**, the counterpart of
     `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
@@ -941,7 +1002,23 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
   ⟨fun o _ => classOf_defineMethod h cls name md (.ref o),
     fun k _ => className_defineMethod h cls k name md,
     fun k _ => classPayload?_isSome_defineMethod h cls k name md,
-    fun o _ hp => (plainRecv_defineMethod h cls o name md).trans hp⟩
+    fun o _ hp => (plainRecv_defineMethod h cls o name md).trans hp,
+    -- L185's fifth clause. `defineMethod` writes `methods` inside a `.cls`
+    -- payload, so a class stays a class and the two receiver-id refusals are about
+    -- `o` alone — the same one-line argument the fourth clause makes.
+    -- L185's fifth clause. `defineMethod` writes `methods` *inside* a `.cls`
+    -- payload, so a class stays a class — which is exactly
+    -- `classPayload?_isSome_defineMethod`, the lemma the third clause already uses
+    -- — and the size and the two id comparisons are untouched.
+    fun o _ hc => by
+      unfold classRecv at hc ⊢
+      rw [show (defineMethod h cls name md).objs.size = h.objs.size from by
+            unfold defineMethod
+            split
+            · simp [Heap.setClassPayload, Heap.set]
+            · rfl,
+        classPayload?_isSome_defineMethod h cls o name md]
+      exact hc⟩
 
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
     for.** One fact does all four clauses: `Array.push` leaves every existing
@@ -956,7 +1033,8 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     literally `(h.objs.size, ⟨h.objs.push obj⟩)`. -/
 theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     (hget : ∀ o, o < h.objs.size → h'.get o = h.get o) : TypeAgree h h' := by
-  refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_⟩
+  refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
+    fun o ho hc => ?_⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
   · simp only [Heap.classPayload?, hget k hk]
@@ -973,6 +1051,14 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     have hb : (h.get o).klass < h.objs.size := classPayload?_isSome_lt h2
     simp only [Heap.classPayload?, hget _ hb]
     exact h2
+  · -- L185's clause, and the `get` agreement does all of it: `classRecv` reads the
+    -- bound, two id comparisons and the payload, and all four are functions of
+    -- `h.get o`.
+    unfold classRecv at hc ⊢
+    simp only [Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at hc ⊢
+    refine ⟨⟨⟨Nat.lt_of_lt_of_le hc.1.1.1 hsz, hc.1.1.2⟩, hc.1.2⟩, ?_⟩
+    simp only [Heap.classPayload?, hget o ho]
+    exact hc.2
 
 theorem typeAgree_alloc (h : Heap) (obj : Object) : TypeAgree h ⟨h.objs.push obj⟩ :=
   typeAgree_of_get (by simp) (fun o ho => by
@@ -1001,9 +1087,25 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     -- `valueTy?` itself (`plainRecv`'s two clauses read back out), so the
     -- transport is never asked about an id the old heap did not have.
     have hb : o < h.objs.size := valueTy_ref_lt hv
-    have hp : plainRecv h o = true := valueTy_ref_plain hv
-    have hk : classOf h (.ref o) < h.objs.size := valueTy_ref_klass_lt hv
-    simpa [ValueTy, valueTy?, hp, ha.2.2.2 o hb hp, ha.1 o hb, ha.2.1 _ hk] using hv
+    -- **Two branches since L185**, and they read different clauses of `TypeAgree`:
+    -- the plain one needs `classOf`/`className` agreement at the *class* id, the
+    -- class-object one needs only `className` at `o` itself — because its type is
+    -- keyed on the object's own name rather than on its dispatch class.
+    rcases valueTy_ref_inv hv with ⟨hp, rfl⟩ | ⟨hc, rfl⟩
+    · have hk : classOf h (.ref o) < h.objs.size := valueTy_ref_klass_lt hp
+      simp [ValueTy, valueTy?, ha.2.2.2.1 o hb hp, ha.1 o hb, ha.2.1 _ hk]
+    · -- A class receiver is not a plain one, so the `if` chain takes the second
+      -- branch in `h'` too — `plainRecv` refuses a `.cls` payload and `classRecv`
+      -- *is* having one.
+      have hc' : classRecv h' o = true := ha.2.2.2.2 o hb hc
+      have hnp : plainRecv h' o = false := by
+        unfold classRecv at hc'
+        unfold plainRecv
+        simp only [Bool.and_eq_true, Option.isSome_iff_exists] at hc' ⊢
+        obtain ⟨cp, hcp⟩ := hc'.2
+        unfold Heap.classPayload? at hcp
+        cases hpl : (h'.get o).payload <;> simp_all
+      simp [ValueTy, valueTy?, hnp, hc', ha.2.1 o hb]
   | _ => simp_all [ValueTy, valueTy?]
 
 /-- **Transport across a heap-writing step.** The in-bounds clause is what makes

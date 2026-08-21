@@ -776,6 +776,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       · -- The user branch: no value, a **frame**. `user_dispatch` supplies the step;
         -- the heap is untouched, so all five heap conjuncts pass straight through and
         -- what is left is the push and the callee's `CtlOk`.
+        -- L185: `user_dispatch` pins the receiver's type to the class arm, and
+        -- `UserEntryOk` supplies exactly that — `htys : τ = .cls cu` — so the
+        -- substitution is the whole adjustment.
+        subst htys
         have hru := hresu _ (valueTy_tyClass hv)
         have hown : (m.heap.classPayload? mdu.owner).isSome := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
@@ -807,8 +811,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [Option.some.injEq] at hsc'
             subst hsc'
             rw [getD_push_lt_self]
-            have hcu : τ = .cls cu := htys
-            exact hcu ▸ hv
+            exact hv
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.

@@ -168,11 +168,18 @@ theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
   | sym s => have : τ = .sym := by simpa [ValueTy, valueTy?] using hv.symm
              subst this; rfl
   | ref o =>
-    have hp := valueTy_ref_plain hv
-    have : τ = .cls (className h (classOf h (.ref o))) := by
-      simpa [ValueTy, valueTy?, hp] using hv.symm
-    subst this
-    exact ⟨valueTy_ref_klass_isSome hv, rfl⟩
+    -- **Two arms since L185**, and they land in different `TyClass` cases: a plain
+    -- receiver dispatches from its `klass` and its type names *that* class, while a
+    -- class object dispatches from `classOf` — its eigenclass, or `Class` when it
+    -- has none — and its type names the object's own class. The second is the whole
+    -- content of the class-object arm and the reason `TyClass` says `classOf`
+    -- rather than naming a chain.
+    rcases valueTy_ref_inv hv with ⟨hp, rfl⟩ | ⟨hc, rfl⟩
+    · exact ⟨valueTy_ref_klass_isSome hp, rfl⟩
+    · refine ⟨o, ?_, rfl, rfl⟩
+      unfold classRecv at hc
+      simp only [Bool.and_eq_true] at hc
+      exact hc.2
   | flt f => simp [ValueTy, valueTy?] at hv
 
 /-! ### Resolution to a **user-defined** method
@@ -288,6 +295,14 @@ def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Pr
 def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
   (mname == "send" || mname == "public_send" || mname == "__send__") = false ∧
   bid ≠ "Object#raise" ∧
+  -- **`new` is excluded** (L185), and it is the third of exactly this kind of
+  -- clause. `invoke` intercepts a `.cls` receiver at `invokeMaybeNew` when the name
+  -- is `"new"` (`Interp/Send.lean:106`) and allocates rather than dispatching, so a
+  -- row named `new` would be a claim about a step `entry_dispatch` does not
+  -- describe. Costs nothing — no row is named `new` — and it is what lets the
+  -- class-object receiver case be a `simp`. `Class#new` is Wall 2's item anyway
+  -- (`slice-verdict.md` §4a: it allocates).
+  mname ≠ "new" ∧
   ∀ (m : Machine) recv args, ValueTy m.heap recv τr → ValuesTy m.heap args d.params →
     (∀ h' : Heap, Builtins.deferTwin? h' bid recv args = none) ∧
     ∃ w, ValueTy m.heap w d.ret ∧ Builtins.run bid recv args m = .ok w m
@@ -351,7 +366,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     ∃ w, ValueTy m.heap w d.ret ∧
       startArgs m recv site mname args [] .none
         = .next (withCtl m (.value w)) := by
-  obtain ⟨bid, hres, hns, hraise, hconf⟩ := he
+  obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves hres hrv
   obtain ⟨hdefer, w, hw, hrun⟩ := hconf m recv args hrv hargs
   refine ⟨w, hw, ?_⟩
@@ -379,15 +394,35 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     -- `crubySingletonShadow`: that gate sits on `invoke`'s `md.builtin = none`
     -- branch (`Interp/Send.lean:246`) and `ResolvesTo` pins `md.builtin = some bid`,
     -- so F1a's measurement survives an abstract object receiver unchanged.
-    cases hpl : (m.heap.get o).payload
-    -- The three special shapes, refuted by `plainRecv` rather than reasoned about.
-    case proc => exact absurd hplain (by simp [plainRecv, hpl])
-    case hsh => exact absurd hplain (by simp [plainRecv, hpl])
-    case cls => exact absurd hplain (by simp [plainRecv, hpl])
-    -- Everything else is the uniform path, and identical to the immediate cases.
-    all_goals
-      simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
-        appendKwHash, hrun, hns, hdefer, hraise]
+    -- **Two shapes since L185**: a plain receiver, where the three special payload
+    -- arms are refuted, and a **class object**, where the payload *is* the arm
+    -- `plainRecv` used to refute — so it has to be walked instead. What walks it is
+    -- three refusals the judgement carries: `classRecv` excludes `Boot.regexpId`
+    -- and `Boot.mathId` (the two singleton families `invoke` dispatches by
+    -- receiver id, L106) and `ConformsAt` excludes `mname = "new"` (the
+    -- `invokeMaybeNew` interception). With those three, `invoke` falls through to
+    -- `invokeDispatch` exactly as a plain receiver does.
+    rcases hplain with hplain | hclass
+    · cases hpl : (m.heap.get o).payload
+      -- The three special shapes, refuted by `plainRecv` rather than reasoned about.
+      case proc => exact absurd hplain (by simp [plainRecv, hpl])
+      case hsh => exact absurd hplain (by simp [plainRecv, hpl])
+      case cls => exact absurd hplain (by simp [plainRecv, hpl])
+      -- Everything else is the uniform path, and identical to the immediate cases.
+      all_goals
+        simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
+          appendKwHash, hrun, hns, hdefer, hraise]
+    · have hc := hclass
+      unfold classRecv at hc
+      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq,
+        Option.isSome_iff_exists] at hc
+      obtain ⟨⟨⟨-, hrx⟩, hmt⟩, cp, hcp⟩ := hc
+      have hpl : (m.heap.get o).payload = .cls cp := by
+        unfold Heap.classPayload? at hcp
+        cases hp : (m.heap.get o).payload <;> simp_all
+      simp [invoke.invokeMaybeNew, invoke.invokeDispatch, hpl, hrx, hmt, hnew,
+        hlook, hb, hu, hbtw, hpre, visError?, hvis, appendKwHash, hrun, hns, hdefer,
+        hraise]
   all_goals
     simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
       appendKwHash, hrun, hns, hdefer, hraise]
@@ -412,10 +447,14 @@ set_option maxHeartbeats 1000000 in
     argument, so no common statement covers both — which is exactly what
     `HANDOFF.md` §constraint 1 predicted ("`entry_dispatch` splits in two, because
     the two branches have different step results"). -/
-theorem user_dispatch {m : Machine} {τr : Ty} {mname : String} {md : MethodDef}
+theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodDef}
     {recv : Value} {site : SendSite}
     (hres : ResolvesUser m.heap (classOf m.heap recv) mname md)
-    (hrv : ValueTy m.heap recv τr) :
+    -- **The receiver's type is pinned to the class arm** (L185). `UserEntryOk`
+    -- requires `τr = .cls c`, so every caller has this shape already — and pinning
+    -- it is what keeps the class-*object* receiver out of this lemma, where the
+    -- dispatch would go through `invokeMaybeNew` rather than `invokeDispatch`.
+    (hrv : ValueTy m.heap recv (.cls cn)) :
     startArgs m recv site mname [] [] .none
       = .next { m with frames := m.frames.push (userFrame recv md mname),
                        stack := m.frames.size :: m.stack,
@@ -439,8 +478,12 @@ theorem user_dispatch {m : Machine} {τr : Ty} {mname : String} {md : MethodDef}
     -- `.cls` refutation does double duty on this branch — it is also what makes
     -- `crubySingletonShadow`, the gate `ResolvesTo` never has to mention, answer
     -- `none`.
-    rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, hplain⟩
+    rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, -⟩
     case' inr.inr.inr.inr =>
+      -- L185: the receiver's type is `.cls cn`, which only `valueTy?`'s *plain*
+      -- branch produces — so the disjunction `valueTy_shapes` now returns is
+      -- narrowed back to `plainRecv` here rather than handled.
+      have hplain : plainRecv m.heap o = true := valueTy_ref_plain hrv
       cases hpl : (m.heap.get o).payload
       case proc c => exact absurd hplain (by simp [plainRecv, hpl])
       case hsh xs => exact absurd hplain (by simp [plainRecv, hpl])
@@ -1338,13 +1381,15 @@ theorem TableOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
 theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     (hres : IntBuiltinResolves h mname bid)
     (hns : (mname == "send" || mname == "public_send" || mname == "__send__") = false)
-    (hraise : bid ≠ "Object#raise")
+    (hraise : bid ≠ "Object#raise") (hnew : mname ≠ "new")
     (hrun : ∀ (x y : Int) (m' : Machine),
       Builtins.run bid (.int x) [.int y] m' = .ok (.int (op x y)) m')
     (hdefer : ∀ (h' : Heap) (x y : Int),
       Builtins.deferTwin? h' bid (.int x) [.int y] = none) :
     BuiltinEntryOk h .int mname { params := [.int], ret := .int } := by
-  refine ⟨bid, ?_, hns, hraise, ?_⟩
+  -- L185's `mname ≠ "new"` is `hnew`, a hypothesis rather than a `decide`, because
+  -- the lemma is stated at an abstract `mname`.
+  refine ⟨bid, ?_, hns, hraise, hnew, ?_⟩
   · -- L147: the clause is now indexed by the dispatch class, and `TyClass h .int k`
     -- *is* `k = Boot.integerId` — so the `valueTy_int` inversion and the
     -- `lookup_int_const`/`classOf_int` rewrites all go away. `IntBuiltinResolves` is
@@ -1380,14 +1425,16 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
     {f : Int → Value}
     (hres : IntBuiltinResolves h mname bid)
     (hns : (mname == "send" || mname == "public_send" || mname == "__send__") = false)
-    (hraise : bid ≠ "Object#raise")
+    (hraise : bid ≠ "Object#raise") (hnew : mname ≠ "new")
     (hty : ∀ (hp : Heap) (x : Int), ValueTy hp (f x) τret)
     (hrun : ∀ (x : Int) (m' : Machine),
       Builtins.run bid (.int x) [] m' = .ok (f x) m')
     (hdefer : ∀ (h' : Heap) (x : Int),
       Builtins.deferTwin? h' bid (.int x) [] = none) :
     BuiltinEntryOk h .int mname { params := [], ret := τret } := by
-  refine ⟨bid, ?_, hns, hraise, ?_⟩
+  -- L185's `mname ≠ "new"` is `hnew`, a hypothesis rather than a `decide`, because
+  -- the lemma is stated at an abstract `mname`.
+  refine ⟨bid, ?_, hns, hraise, hnew, ?_⟩
   · intro k hk
     subst hk
     exact hres
@@ -1429,7 +1476,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
       have : d = { params := [Ty.int], ret := Ty.int } := by
         simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
       subst this
-      exact Or.inl <| entryOk_int ht.1 (by decide) (by decide) run_int_add
+      exact Or.inl <| entryOk_int ht.1 (by decide) (by decide) (by decide) run_int_add
         (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
           Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
     · by_cases h2 : mname = "-"
@@ -1437,7 +1484,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
         have : d = { params := [Ty.int], ret := Ty.int } := by
           simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
         subst this
-        exact Or.inl <| entryOk_int ht.2.1 (by decide) (by decide) run_int_sub
+        exact Or.inl <| entryOk_int ht.2.1 (by decide) (by decide) (by decide) run_int_sub
           (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
             Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
       · by_cases h3 : mname = "*"
@@ -1445,7 +1492,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
           have : d = { params := [Ty.int], ret := Ty.int } := by
             simpa [declFor, tyClassNames, declOf?, declsFor, baseDecls] using hd.symm
           subst this
-          exact Or.inl <| entryOk_int ht.2.2.1 (by decide) (by decide) run_int_mul
+          exact Or.inl <| entryOk_int ht.2.2.1 (by decide) (by decide) (by decide) run_int_mul
             (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
               Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
         -- L152's nullary row, and the only line of this proof that differs in shape:
@@ -1460,7 +1507,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
             -- undetermined metavariable, since nothing in `ValueTy _ (f x) .bool`
             -- pins the function.
             exact Or.inl <| entryOk_int_nullary (f := fun x => .bool (x == 0))
-              ht.2.2.2 (by decide) (by decide)
+              ht.2.2.2 (by decide) (by decide) (by decide)
               (fun _ _ => rfl) run_int_zero
               (fun _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
                 Builtins.coerceDefer?, Builtins.toAryDefer?])
