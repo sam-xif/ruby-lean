@@ -205,6 +205,10 @@ def main (args : List String) : IO UInt32 := do
             -- declared *parameter* — so this arm is unreachable and rendered
             -- rather than gated, for the same reason `.cls` was before L151.
             | .any => "T.untyped"
+            -- L184's class-object arm. No producer yet, so unreachable and
+            -- rendered rather than gated, for the third time (`.cls` before L151,
+            -- `.any` at L183).
+            | .clsOf n => "T.class_of(" ++ n ++ ")"
           | none => ""
         IO.println (Lean.Json.mkObj
           ([("decision", Lean.Json.str decision),

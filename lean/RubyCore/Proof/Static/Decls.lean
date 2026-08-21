@@ -140,6 +140,18 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   -- exists to make the match total, and `False` is the honest content: no value is
   -- typed `any`, so no receiver arrives with it.
   | .any => False
+  -- **A class object dispatches from `classOf`, whatever `classOf` says** (L184),
+  -- and that phrasing is the measurement rather than a choice
+  -- (`scripts/classobj_probe.lean`): only 27 of the booted heap's 87 class objects
+  -- have a materialized eigenclass, and the split runs through the classes the
+  -- slice uses — `String`/`Array`/`Regexp` have one, `Integer`/`Float`/`Hash` do
+  -- not and dispatch through `Class`. So *the eigenclass of the class named `n`* is
+  -- not a total description and this cannot be stated that way.
+  --
+  -- The class object itself is pinned by name, which is what `ClassOk`'s uniqueness
+  -- clause makes single-valued for every name the table can be keyed on.
+  | .clsOf n => ∃ o, (h.classPayload? o).isSome ∧ className h o = n ∧
+      k = classOf h (.ref o)
 
 theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     TyClass h τ (classOf h v) := by
@@ -551,8 +563,9 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
       | exact key "TrueClass" ["FalseClass"] h
       | exact key "NilClass" [] h
       | exact key "Symbol" [] h
-      -- L183: `tyClassNames .any = []`, so `declFor` answers `none` and the
-      -- hypothesis is refuted by computing it.
+      -- L183/L184: `tyClassNames` is `[]` at the top type and at the class-object
+      -- arm, so `declFor` answers `none` and the hypothesis is refuted by
+      -- computing it.
       | exact absurd h (by simp [declFor, tyClassNames])
 
 /-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn** (L150): L147 moved its only caller
@@ -652,6 +665,14 @@ theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : Strin
   -- L183: both sides are `False`, and the arm is here because the two are not
   -- *syntactically* the same `False`.
   | any => exact absurd ht (by simp [TyClass])
+  -- L184: the witness's payload and name transport by the two rewrites the `.cls`
+  -- arm uses, and `classOf` by `classOf_defineMethod` — a method-table write moves
+  -- neither `eigen` nor `klass`.
+  | clsOf n =>
+    obtain ⟨o, ho, hn, hk⟩ := ht
+    exact ⟨o, by rw [← classPayload?_isSome_defineMethod h cls o name md]; exact ho,
+      by rw [← className_defineMethod h cls o name md]; exact hn,
+      by rw [hk, classOf_defineMethod]⟩
   | _ => exact ht
 
 theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
@@ -659,6 +680,14 @@ theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
   cases τr with
   | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
   | any => exact absurd ht (by simp [TyClass])
+  | clsOf n =>
+    obtain ⟨o, ho, hn, hk⟩ := ht
+    -- `o` is in `h`'s bounds because `PlainGrow` says **nothing became a class**:
+    -- the witness is a class in `h'`, so it was one in `h`, so it is in bounds.
+    have ho' : (h.classPayload? o).isSome := by rw [← hg.payload o]; exact ho
+    have hlt : o < h.objs.size := classPayload?_isSome_lt ho'
+    exact ⟨o, ho', by rw [← hg.className_eq o]; exact hn,
+      by rw [hk, hg.classOf_eq hlt]⟩
   | _ => exact ht
 
 /-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
@@ -796,6 +825,13 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         exfalso
         rw [show declFor (addRow D c mname { params := [], ret := τb }) .any mname = none from
           by simp [declFor, tyClassNames]] at hdecl
+        exact absurd hdecl (by simp)
+      -- L184: the same argument at the class-object arm, and for the same reason —
+      -- `tyClassNames` is `[]` there, so no key is read at all.
+      | clsOf n =>
+        exfalso
+        rw [show declFor (addRow D c mname { params := [], ret := τb }) (.clsOf n) mname
+            = none from by simp [declFor, tyClassNames]] at hdecl
         exact absurd hdecl (by simp)
       | sym =>
         exfalso
@@ -1444,8 +1480,10 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   -- one key, `"Integer"`, and `tyClassNames` subtracts it from the class arm's
   -- range, so a class type has no declarations in the base table by construction.
   | cls n => exact absurd hd (by rw [declFor_baseDecls_cls]; simp)
-  -- L183's top type: no class names, so no declarations, in any table.
+  -- L183's top type and L184's class-object arm: no class names, so no
+  -- declarations, in any table.
   | any => exact absurd hd (by simp [declFor, tyClassNames])
+  | clsOf n => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
 end Proof

@@ -7705,3 +7705,67 @@ census — which is exactly what that section says and why it was written before
 `fragment-gap.py --self-test` all agree. Four new checked examples: an `any` row accepting an
 `Integer`, the same row accepting a `String`, the arity check surviving, and a local bound through
 such a call getting the *return* type (the assertion that nothing is typed `any`).
+
+## L184 — the class-object arm's *type language*, and the split that stopped the rung from over-reaching
+
+`slice-verdict.md` §4a's rung 2, **cut in half on purpose**. `Ty.clsOf n` — *the class object named
+`n`* — exists, has a `TyClass`, and transports; what is deliberately not here is the **producer**
+(`valueTy?` still gives a class object no type) and the **rows**. The cut is the finding, so it goes
+first.
+
+### Why the rung was split, and how the split was chosen
+
+The natural rung is "add the arm, produce it, put a row on it". Attempting the producer first showed
+what it costs, and it is not where L180's measurement pointed:
+
+> **`valueTy?`'s `.ref` arm is inverted by four lemmas, and one of them stops being true.**
+> `valueTy_ref_plain : ValueTy h (.ref o) τ → plainRecv h o = true` is *false* once a class object has
+> a type, and its consumers are `valueTy_ref_klass_isSome`, `plainRecv_classOf`, `TypeAgree`'s fourth
+> clause and `entry_dispatch`'s receiver split — the load-bearing chain L142–L149 took a whole session
+> to get right. The producer is therefore a rung of its own, and `Locals.lean`'s own note says why in
+> as many words: *an inversion principle is only as strong as the definition it inverts.*
+
+So: the type language now, the producer and its transport next. That is `Ty.cls`'s history exactly —
+L141 added the arm with no producer and L151 added the producer ten rungs later — and the reason to
+repeat it is the same: the arm being present is what forces every *later* statement to be total over
+it, which is where the surprises are.
+
+### What landed
+
+| | |
+|---|---|
+| `Ty.clsOf (name : String)` | keyed on the class's **own** name, because `infer` cannot name an `ObjId` |
+| `tyClassNames (.clsOf n) = []` | **a decision, not a stub** — see below |
+| `TyClass h (.clsOf n) k` | `∃ o, (classPayload? o).isSome ∧ className h o = n ∧ k = classOf h (.ref o)` |
+| `TyClass_grow`, `TyClass_defineMethod` | one rewrite each, plus one real argument |
+| renderers | `T.class_of(n)`, in `--assn` and in `--check`'s `type` field |
+
+**`tyClassNames = []` is where the design decision is.** A row on `.clsOf "String"` is a *singleton*
+method (`def self.m`); a row on `.cls "String"` is an instance method. They need different keys in one
+table, and there are exactly two candidates:
+
+* the **eigenclass's name** (`#<Class:String>`) — unavailable, because L180 measured 60 of 87 class
+  objects with no eigenclass, so for most of them that name does not exist;
+* a **prefixed** key (`"%class:" ++ n`) — arithmetically fine, but it obliges every consumer that
+  quantifies over keys to know the prefix is unreachable, and `DeclsOk_addRow` is the one that asks:
+  it must *refute* a row at a key it did not write, and `¬ (c = "%class:" ++ n)` does not follow from
+  the hypotheses it has (`groundClassNames.contains c = false`).
+
+Leaving it `[]` makes `declFor D (.clsOf n) mname = none` for **every** `D`, `n` and `mname` — asserted
+as a checked fact — so `DeclsOk` obliges nothing and the key question belongs to rung 3, where the row
+that needs it lives.
+
+### The one real argument in the transport
+
+`TyClass_grow` goes *backwards* (`TyClass h' τ k → TyClass h τ k`), so the witness `o` has to be shown
+in `h`'s bounds. It is, and the reason is `PlainGrow`'s third clause — **nothing became a class**: the
+witness is a class in `h'`, so it was one in `h`, so `classPayload?_isSome_lt` puts it in bounds. That
+clause was added at L145 for the allocating producer's benefit and is doing a second job here, which is
+the same observation L178 made about `consts_defineMethod`: **a clause written because its author asked
+what the step touches tends to be the one the next arm needs.**
+
+### Checks
+
+`--check` byte-identical at 39 / 1,186 / 0; `--assn` 1,227 clean; `check-proofs.sh` green, 29 theorems,
+axiom-clean; `--self-test` all agree. Two new checked examples (`declFor` is `none` at the arm, at every
+name and in every table). **Zero bodies**, as §4a says of rungs 1–3.

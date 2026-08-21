@@ -358,6 +358,28 @@ example :
   simp [infer, inferArgs, subTys, subTy, addRow, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames, groundClassNames]
 
+/-- **The class-object arm, and what it does *not* yet do** (L184). `Ty.clsOf n` is
+    *the class object named `n`* — the receiver `Token.from(x)` and `case v when
+    String` send to — and this asserts the two facts that make it a type language
+    change rather than a rule:
+
+    * `tyClassNames (.clsOf n) = []`, so `declFor` answers `none` at it for every
+      method name and `DeclsOk` obliges nothing. That is `Ty.cls`'s exact position
+      between L141 and L163, and it is deliberate: a row on `.clsOf "String"` is a
+      *singleton* method while a row on `.cls "String"` is an instance method, so the
+      two need different keys in one table and picking that key is rung 3's problem
+      (`slice-verdict.md` §4a);
+    * `TyClass` names **whatever `classOf` says**, which is L180's measurement and
+      not a choice — 60 of the booted heap's 87 class objects have no materialized
+      eigenclass, so *the eigenclass of the class named `n`* is not a total
+      description. -/
+example : declFor baseDecls (.clsOf "String") "===" = none := by
+  simp [declFor, tyClassNames]
+
+/-- …and at every name, in every table, which is what makes the arm inert. -/
+example : ∀ (D : Decls) (n mname : String), declFor D (.clsOf n) mname = none := by
+  intro D n mname; simp [declFor, tyClassNames]
+
 /-- **The top type as a declared parameter** (L183), which is what the arm exists
     for and the only way it can be exercised: `valueTy?` never produces `.any`, so
     nothing is *typed* by it and only a **row** can mention it.

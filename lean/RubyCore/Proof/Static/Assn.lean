@@ -196,6 +196,8 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
       -- why `declTys` need not list `.any`: `declFor D .any n` is `none` for every
       -- `n`, so both sides of the biconditional are false there.
       | any => exact absurd hc (by simp [tyClassNames])
+      -- L184: same, at the class-object arm.
+      | clsOf n => exact absurd hc (by simp [tyClassNames])
       | cls c' =>
         -- `tyClassNames (.cls c')` is `[]` or `[c']`, and `c` is in it.
         have hcc : c = c' := by

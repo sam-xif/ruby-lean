@@ -65,6 +65,23 @@ inductive Ty where
       design, it is what unions and nilable need, and it is deliberately **not**
       this one. -/
   | any
+  /-- **The class object named `name`** (L184) — *the* class, not an instance of it.
+
+      `.cls C` means an instance of `C`; this is the receiver `Token.from(x)` and
+      `case v when String` send to. `slice-verdict.md` §4a prices it as rung 2 of
+      four, and L180's measurement says where the cost is: **not** here and not in
+      `valueTy?`, but in carrying `TyClass` — which must name *whatever `classOf`
+      says*, because only 27 of the booted heap's 87 class objects have a
+      materialized eigenclass and the split runs straight through the classes the
+      slice uses (`String`/`Array`/`Regexp` have one, `Integer`/`Float`/`Hash` do
+      not, and dispatch for those goes through `Class`).
+
+      **Keyed on the class's own name**, as `.cls` is, and for the same reason:
+      `infer` is a pure function of the program and cannot name an `ObjId`. The
+      table key it reads is *not* `name` though — see `tyClassNames`, which prefixes
+      it, because a row on `.clsOf "String"` (a singleton method) and a row on
+      `.cls "String"` (an instance method) are different declarations. -/
+  | clsOf (name : String)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below

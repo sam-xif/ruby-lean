@@ -90,6 +90,9 @@ def tyName : Ty → String
   -- same idea; the name is the *rendering* of a declared parameter position, since
   -- nothing is ever typed `any`.
   | .any => "T.untyped"
+  -- L184. `T.class_of(C)` is Sorbet's spelling; `C.class` would read as the
+  -- *metaclass*, which is not what the arm means.
+  | .clsOf n => "T.class_of(" ++ n ++ ")"
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ

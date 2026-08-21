@@ -130,6 +130,25 @@ def tyClassNames : Ty → List String
   -- `DeclsOk` never obliges anything at it and no send can use it as a receiver.
   -- The imprecision is in `subTy`, at the position a declared parameter occupies.
   | .any => []
+  -- **A class object has no declarations yet** (L184), and `[]` is a decision
+  -- rather than a stub: a row on `.clsOf "String"` is a **singleton** method
+  -- (`def self.m`) while a row on `.cls "String"` is an instance method, so the two
+  -- need *different keys in the same table* — and picking that key is rung 3's
+  -- problem, not this one's. Two candidates and why neither is free:
+  --
+  -- * the **eigenclass's name** (`#<Class:String>`) is not available:
+  --   `scripts/classobj_probe.lean` measures 60 of the booted heap's 87 class
+  --   objects with no eigenclass at all, so for most of them the name does not
+  --   exist;
+  -- * a **prefixed** key (`"%class:" ++ n`) works arithmetically but obliges every
+  --   consumer that quantifies over keys to know the prefix is unreachable —
+  --   `DeclsOk_addRow` is the one that asks, since it must refute a row at a key it
+  --   did not write.
+  --
+  -- Leaving it `[]` makes `declFor D (.clsOf n) mname = none` for every `mname`, so
+  -- `DeclsOk` obliges nothing at the arm and it is a *type* with no declarations —
+  -- exactly `Ty.cls`'s position between L141 and L163.
+  | .clsOf _ => []
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.
