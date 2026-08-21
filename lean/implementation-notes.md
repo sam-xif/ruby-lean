@@ -7535,3 +7535,53 @@ else in the build would notice. It is `check-proofs.sh`'s sixth measurement sect
 
 `check-proofs.sh` green with the new section, 29 theorems, axiom-clean. Nothing in the SUT changed; no
 verdict diff is owed and none is claimed.
+
+## L181 — which row the class-object arm needs first, and it is behind neither wall
+
+L179 said the class-object arm gates all 28 `const` bodies; L180 priced the arm (the transport clause,
+not the constructor). This is the third question in that sequence and the one that decides the *rung
+after* it: **once a class object has a type, which declaration row does the slice actually read
+through it?**
+
+`--consts` now groups constants in receiver position by the method called on them, because the method
+name decides which wall the row is behind:
+
+```
+123  ===        neither wall — a non-allocating `Module` builtin
+ 67  nilable    inside a `sig` block  ⇒ Wall 1
+ 56  new        Wall 2 — `ConformsAt`'s allocating conclusion
+ 42  let        Wall 1      27  untyped  Wall 1      17  must  Wall 1
+ 12  last_match             9  from                  8  any / fetch
+```
+
+**`===` is the largest by a factor of two, and it is the only large one behind neither wall.**
+`String.===` alone is 71 and the six `Token` subclasses are another 38 — which is `case x when String`
+and `when AlphaToken`, i.e. the `case`/`when` idiom, i.e. **exactly D13's occurrence typing**. So the
+sequence the measurements pick out is:
+
+1. the class-object arm (L180's price: a transport clause across eigenclass materialization, plus
+   `entry_dispatch` surviving `invoke`'s `.cls` receiver arms — which fall through to `invokeDispatch`
+   for every `mname ≠ "new"` outside `Boot.regexpId`/`Boot.mathId`, so the refusals are the
+   `send`/`public_send`/`raise` kind `ConformsAt` already carries);
+2. a `Module#===` row — non-allocating, so its `ConformsAt` is the shape that already works;
+3. narrowing on it, which is D13's dependency and `nontrivial-target.md` §5.3's P1′.
+
+And what *not* to start with, now with numbers: `.new` (56) is behind Wall 2, and the `T.*` family
+(161 across `nilable`/`let`/`untyped`/`must`/`any`) is behind Wall 1 because every one of them is
+inside a `sig` block. Between them that is 217 of the 337 receiver-position occurrences — so **two
+thirds of `const`'s receiver uses are behind the two walls**, and the third that is not is `===`.
+
+### The pattern these four measurements form
+
+L177 changed a clause. L179 changed an ordering. L180 changed what a rung's cost *is*. L181 picks the
+row. None of them is a proof, all four took under an hour, and each was written because the previous
+one had already changed a design:
+
+> **When a rung is large, the cheapest next move is usually a measurement, and the question to measure
+> is "what does the artifact actually contain", not "will my clause hold".** Four for four this
+> session.
+
+### Checks
+
+`--consts` is a reporting extension; `fragment-gap.py --self-test` still agrees. Nothing in the SUT or
+the metatheory changed, so no verdict diff is owed and none is claimed.
