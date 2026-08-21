@@ -7301,3 +7301,67 @@ field never changes; and `DeclsOk` mentions `declFor` only.
 
 `--check` over the 1,227 cached ASTs **byte-identical** at 39 / 1,186 / 0. `--assn` smoke 1,227 clean.
 `check-proofs.sh` green, 29 theorems, axiom-clean. `fragment-gap.py --self-test` all agree.
+
+## L177 — the constant table's measurement, and it changed the clause before the clause was written
+
+`HANDOFF.md` §The next commit prices `const`'s cheaper half as *a constant whose value is a plain
+object needs a table threaded exactly as `Decls` is*. L176 landed the threading. This is the
+measurement that has to come before the rule, and it is in this file for the reason the four earlier
+probes are: **it moved the design.**
+
+### The question, and why it is not the one the rung looks like
+
+A constant *read* is not one table lookup. `evalExpr`'s `.const` arm is artifact 03 §4's two phases:
+
+```
+cref.firstM (constOwn h · n)  |>.orElse  (fun _ => constLookupFrom h defmod n)
+```
+
+— lexical over the frame's `cref`, innermost first, then inheritance over `ancestors h defmod`. So a
+table keyed on the **name** alone is sound only if that whole walk, from every frame the fragment
+admits, reaches the one class the table is about. Two things can break it, and both are real:
+
+1. **Shadowing.** `X = 5` at toplevel writes `Object`'s constant table; `class String; Y = 7; end`
+   writes **String's** — and the model gets both right (checked by running it: `5` then `7`). So
+   shadowing is a possibility to be excluded, not a hypothetical.
+2. **`Object` not being reachable.** The inheritance phase finds `Object`'s table only if
+   `Object ∈ ancestors h defmod`.
+
+### What the probe found, and the correction
+
+> **The obvious clause is false.** *No class other than `Object` owns this name* fails at the
+> prelude-booted heap: **five names are owned by both `Object` and `T`** — `Struct`, `Enumerable`,
+> `Range`, `Hash`, `Array`. And `T` is the sorbet shim, which is what the slice's `sig` blocks are
+> made of, so this is not an exotic collision waiting in some corner of the prelude.
+
+The clause that is *true* is stated over the **reach**: nothing strictly in front of `Object` **on the
+definee's own ancestor chain** owns the name. And that population is two classes wide:
+
+```
+ancestors Object = [Object, Kernel, BasicObject]                    Object at 0
+ancestors String = [String, Comparable, Object, Kernel, BasicObject] Object at 2
+classes strictly in front of Object on an admitted chain: {String, Comparable}
+constants they own: 0
+```
+
+So the clause is a `decide` over **two** classes rather than over the heap's 87 class objects, and it
+is discharged at 0. `T` is not on any admitted chain, which is why the five names are a *report* rather
+than a failure — and the probe stops exiting 0 the moment `reopenableClasses` grows to something under
+`T`, which is the regression it exists to catch.
+
+**This is the fifth time a forty-line probe has changed a clause rather than confirmed one**
+(`alloc_probe` L142, `ancestors_probe` L144, `names_probe` L162, `heapok_probe`'s L153 hook shape, and
+now this), and the pattern in all five is the same: the clause that is easy to *state* quantifies over
+the whole heap, the clause that is *true* quantifies over the population the fragment can actually
+reach, and only a measurement tells you which. The general form, worth having in one sentence:
+
+> **Before proving a clause, compute the set it quantifies over.** If that set is the heap, ask what
+> the fragment can reach; the answer is usually much smaller, and the difference is the difference
+> between a `decide` and an induction.
+
+`scripts/consts_probe.lean` is in `check-proofs.sh` as its fifth measurement section.
+
+### Checks
+
+`check-proofs.sh` green with the new section, 29 theorems, axiom-clean. Nothing in the SUT changed, so
+no verdict diff is owed — and none is claimed.

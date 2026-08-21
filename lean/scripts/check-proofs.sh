@@ -156,4 +156,17 @@ if ! lake env lean --run scripts/names_probe.lean; then
   exit 1
 fi
 
+# L176's measurement for the constant-table rung. It is a *pre*-condition report,
+# not a theorem's certificate: the clause a name-keyed constant table needs is
+# "nothing strictly in front of Object on the definee's chain owns this name", and
+# this decides it over the two classes that population actually contains. It also
+# reports the five names Object and `T` both own, which is why the clause is stated
+# over the *reach* and not over every class object — get that wrong and the clause
+# is unprovable rather than merely strong.
+echo "== L176 measurement (a name-keyed constant table is not shadowed)"
+if ! lake env lean --run scripts/consts_probe.lean; then
+  echo "FAIL: a class in front of Object on an admitted chain owns a constant, or Object is unreachable"
+  exit 1
+fi
+
 echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap; class names are unique"
