@@ -83,11 +83,16 @@ def nomTy : String → Ty
   | "Integer" => .int
   | "NilClass" => .nilT
   | "Symbol" => .sym
+  -- L202: `Float` is a *ground* type now, so the name must not read as the class
+  -- arm — `groundClassNames` subtracts it there for the disjointness reason
+  -- `tyClassNames` states.
+  | "Float" => .float
   | c => .cls c
 
 /-- A `Ty`, rendered. Used by the printer, and the partial inverse of `nomTy`. -/
 def tyName : Ty → String
   | .int => "Integer"
+  | .float => "Float"
   | .bool => "Boolean"
   | .nilT => "NilClass"
   | .sym => "Symbol"
@@ -375,10 +380,11 @@ exactly right, and each is a clause of `tyClassNames`:
 def declNames (D : Decls) (τ : Ty) : List String :=
   (tyClassNames τ).flatMap fun c => (declsFor D c).map (·.1)
 
-/-- The types `declFor D` can answer `some` at: the four ground arms, and the
-    class arm at each key of the table. -/
+/-- The types `declFor D` can answer `some` at: the **five** ground arms (L202 added
+    `.float`), and the class arm at each key of the table. -/
 def declTys (D : Decls) : List Ty :=
-  Ty.int :: Ty.bool :: Ty.nilT :: Ty.sym :: D.rows.map (fun cd => Ty.cls cd.1)
+  Ty.int :: Ty.bool :: Ty.nilT :: Ty.sym :: Ty.float ::
+    D.rows.map (fun cd => Ty.cls cd.1)
 
 /-- **The graph of `declFor D`, as a list.** `Proof/Static/Assn.lean` proves
     `(τ,n,d) ∈ declAtoms D ↔ declFor D τ n = some d`, and that biconditional is

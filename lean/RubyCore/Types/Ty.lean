@@ -102,6 +102,21 @@ inductive Ty where
       `Env` equality (which the `if`-merge and the loop-stability condition both
       decide) usable. -/
   | nilable (τ : Ty)
+  /-- **A Float** (L202) — the fifth ground arm, and it is `.int`'s twin in every
+      clause that mentions it.
+
+      It costs what `.int` costs and nothing more, which is the whole reason it is
+      the rung after `return`: a float is an *immediate* value (`Value.flt`), so
+      `valueTy?` answers it without reading the heap, `TyClass` pins it to
+      `Boot.floatId` outright rather than through `classPayload?`, and
+      `tyClassNames` names one class. What it does **not** buy is any *send* — no
+      row in `baseDecls` is declared on it — so a body containing `1.5` moves from
+      *out of fragment* to *needing a declaration*, which is the same crossing
+      L195–L197 made for constants and ivars.
+
+      `--sets` is what picked it (L201): `{flt}` was a singleton blocker set for
+      three slice bodies, the only cheap entry left on the marginal-value table. -/
+  | float
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
@@ -176,6 +191,8 @@ theorem subTy_trans : ∀ {a b c : Ty}, subTy a b = true → subTy b c = true �
   | a, b, .cls n, hab, hbc => by
     simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
   | a, b, .clsOf n, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .float, hab, hbc => by
     simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
 
 @[simp] theorem subTys_refl : ∀ (ps : List Ty), subTys ps ps = true

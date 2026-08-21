@@ -130,9 +130,9 @@ def classRecv (h : Heap) (o : ObjId) : Bool :=
   o < h.objs.size && o != Boot.regexpId && o != Boot.mathId &&
     (h.classPayload? o).isSome
 
-/-- The type of a value **in a heap**, where P0 has one. `.flt` has none — the
-    fragment has no Float type — and a `.ref` has one exactly when it is a
-    receiver `invoke` dispatches uniformly (`plainRecv`).
+/-- The type of a value **in a heap**, where P0 has one. A `.ref` has one exactly
+    when it is a receiver `invoke` dispatches uniformly (`plainRecv`); every
+    immediate has one, `.flt` since L202.
 
     **Heap-indexed since L137, and the `.ref` arm is the first arm to use it**
     (F1b/T2). L137's note said a nominal class type "can only say what class a
@@ -146,6 +146,11 @@ def classRecv (h : Heap) (o : ObjId) : Bool :=
     table is actually walked from, not the one `Object#class` reports. -/
 def valueTy? (h : Heap) : Value → Option Ty
   | .int _ => some .int
+  -- **L202**, and it is the one arm that made `Ty.float` worth adding: a float is an
+  -- *immediate*, so this answers without reading the heap and every congruence lemma
+  -- below is untouched. The docstring above used to say "the fragment has no Float
+  -- type"; it has one now.
+  | .flt _ => some .float
   | .bool _ => some .bool
   | .nil => some .nilT
   -- `def` evaluates to the method name (`Interp.lean:2624`).
@@ -158,7 +163,6 @@ def valueTy? (h : Heap) : Value → Option Ty
     -- off (L180). `TyClass` is where `classOf` appears.
     else if classRecv h o then some (.clsOf (className h o))
     else none
-  | _ => none
 
 /-- **The value judgement, and since L193 it is a *relation*** — `v`'s exact type
     (which `valueTy?` still computes, unchanged) is *below* `τ`.
@@ -242,10 +246,11 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
     F1a measurement survives an abstract `.ref` receiver unchanged. -/
 theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) ∨
+      (∃ x, v = .flt x) ∨
       (∃ o, v = .ref o ∧ (plainRecv h o = true ∨ classRecv h o = true)) := by
   cases v with
   | ref o =>
-    refine Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩)))
+    refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩))))
     rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨hc, -⟩
     · exact Or.inl hp
     · exact Or.inr hc

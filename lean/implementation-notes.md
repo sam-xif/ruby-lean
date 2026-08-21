@@ -9063,3 +9063,64 @@ clause for bodies that return, which was the one thing L200 left owing.
 `lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
 `--check` byte-identical (51/1,174/0); `--assn` smoke 1,227 clean; `--self-test` all agree;
 slice-driver 72 lines IDENTICAL; third ratchet **41**.
+
+## L202 — the float literal, and a singleton that was not a move
+
+Out of fragment **41 → 41**. `--check` **51 → 52**, one transition (`test_literal_026`,
+`unknown → accept`, type `Float`). Read those two numbers together, because the second is the
+rung's whole delivery and the first is the finding.
+
+### What the rung is
+
+`Ty.float`, the fifth ground arm, and it is `.int`'s twin in every clause that mentions it:
+
+| site | `.int` | `.float` |
+|---|---|---|
+| `valueTy?` | `some .int` | `some .float` — a float is an *immediate*, so no heap is read |
+| `TyClass` | `k = Boot.integerId` | `k = Boot.floatId` |
+| `tyClassNames` | `["Integer"]` | `["Float"]` |
+| `groundClassNames` | `"Integer"` | `"Float"` — so `.cls "Float"` reads no row, by the disjointness argument `tyClassNames` states |
+| `infer` | `some (.int, Γ, D)` | `some (.float, Γ, D)` |
+| `declTys`/`declAtoms` | listed | listed |
+
+Nine proof sites, every one of them a copy: `valueTy_tyClass`'s new case is `rfl` (both sides are
+`Boot.floatId`), `valueTy_shapes` gains a disjunct and its two consumers one `inr` each,
+`declFor_declaresName` one `key "Float" []`, `addRow`'s ground-name refutation and
+`baseDecls`' `EntryOk` obligation one `simp` each, and `step_ok`'s `eval.flt` case is
+`inv_value … (ValueTy.exact rfl)` — the same line as `eval.int`. **No new transport lemma**,
+because the arm reads no heap.
+
+One placement note worth keeping: the `infer` and `inferOpen` arms are written **immediately before
+the catch-all**, not beside `.int`. The catch-all is one `induct` case, so inserting there shifts
+exactly the cases after it — the catch-all itself and the three list motives — and the renumbering
+was seven `caseNN`s in `Mono.lean` rather than fifty.
+
+### The finding, and it is a correction to L201's own recommendation
+
+L201's `--sets` reading said *`{flt}` is 3 bodies for a literal arm — the only cheap thing left*.
+It was **0 bodies**, and the reason is visible in the two ratchets side by side:
+
+> **`flt` never appeared in the third ratchet's census.** The census reports each body's *first*
+> refusal, and for all three of those bodies the first refusal was a **needed declaration** — they
+> were already counted in the 50, not in the 41. The mirror `--sets` walks knows only which
+> *constructs* `inferOpen` lacks a rule for; it does not model the row and declaration lookups, so
+> its blocker sets are coarser than the checker's verdicts.
+
+State the rule that follows, because it is the fourth variant of the same lesson (L168, L189, L201):
+
+> **Cross-read the singleton against the census.** A `--sets` singleton whose construct does *not*
+> appear in the `--assn` census is a body already blocked on a declaration — the rung is a real
+> widening, but the metric will not move. `{cpath}` 9, `{zsuper}` 9 and `{super}` 4 all *do* appear
+> in the census (9 / 2 / 4), which is what makes Wall 2's 22 a prediction rather than a hope.
+
+The rung was still worth committing on its own terms — a float literal is in the fragment now, the
+`--check` ratchet moved for the first time since L174, and `Ty` no longer has a hole where the
+slice's arithmetic lives. But it is booked at **0** against the goal.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` 51 → **52**, read by transition (one `unknown → accept`, no reverse); `--assn` smoke
+1,227 clean; `--self-test` all agree (one new row, `1.5`); slice-driver 72 lines IDENTICAL; tier-0
+992 agree / 0 disagree; tier-slice 351 agree / 0 disagree / 1 gated; third ratchet **41**,
+unchanged.

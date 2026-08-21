@@ -131,6 +131,10 @@ theorem resolvesTo_of_resolvesAt {h : Heap} {recv : Value} {mname bid : String}
 def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   match τ with
   | .int => k = Boot.integerId
+  -- L202: `.int`'s twin. A boot id, not a `classPayload?` obligation, which is what
+  -- makes the arm free in every transport lemma below (`TyClass_grow` and
+  -- `TyClass_defineMethod` both discharge the ground arms by `rfl`).
+  | .float => k = Boot.floatId
   | .bool => k = Boot.trueClassId ∨ k = Boot.falseClassId
   | .nilT => k = Boot.nilClassId
   | .sym => k = Boot.symbolId
@@ -198,7 +202,10 @@ theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
       unfold classRecv at hc
       simp only [Bool.and_eq_true] at hc
       exact hc.2
-  | flt f => simp [valueTy?] at hex
+  -- L202: the ground arm is a boot id on both sides, so the case is `rfl` once the
+  -- type equation is used. `classOf` answers `Boot.floatId` for a `.flt` by
+  -- definition (`Heap.lean:471`), which is `TyClass`'s `.float` clause verbatim.
+  | flt f => cases hex; rfl
 
 /-! ### Resolution to a **user-defined** method
 
@@ -559,10 +566,12 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   -- of what the class arm of `valueTy?` *means*, so the inversion hands it over
   -- (`valueTy_shapes`). The special cases are still discharged by the type
   -- judgement; what changed is that the judgement now has to say so out loud.
-  rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, hplain⟩
-  -- The four immediate cases are F1a's, unchanged: `invoke`'s receiver-shape arms
-  -- are all `.ref`, so the outer match falls straight through.
-  case' inr.inr.inr.inr =>
+  -- **Five immediates since L202** — the `.flt` disjunct is `.int`'s twin here too:
+  -- `invoke`'s receiver-shape arms are all `.ref`, so it falls through the outer
+  -- match exactly as the other four do and costs this proof one more `inr`.
+  rcases valueTy_shapes hrv with
+    ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, hplain⟩
+  case' inr.inr.inr.inr.inr =>
     -- The `.ref` case, which is F1b's whole bill. Case on the payload: `plainRecv`
     -- refutes the three special arms and the rest reach `invokeDispatch`, which is
     -- what `ResolvesTo` describes. Note this does **not** need
@@ -653,8 +662,9 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
     -- `.cls` refutation does double duty on this branch — it is also what makes
     -- `crubySingletonShadow`, the gate `ResolvesTo` never has to mention, answer
     -- `none`.
-    rcases valueTy_shapes hrv with ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨o, rfl, -⟩
-    case' inr.inr.inr.inr =>
+    rcases valueTy_shapes hrv with
+      ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, -⟩
+    case' inr.inr.inr.inr.inr =>
       -- L185: the receiver's type is `.cls cn`, which only `valueTy?`'s *plain*
       -- branch produces — so the disjunction `valueTy_shapes` now returns is
       -- narrowed back to `plainRecv` here rather than handled.
@@ -781,6 +791,7 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
   all_goals
     first
       | exact key "Integer" [] h
+      | exact key "Float" [] h
       | exact key "TrueClass" ["FalseClass"] h
       | exact key "NilClass" [] h
       | exact key "Symbol" [] h
@@ -1046,6 +1057,19 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
           rcases hg' with rfl | rfl
           · exact hgnd _ (by simp [groundClassNames])
           · exact hgnd _ (by simp [groundClassNames])
+        rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      -- L202: `.int`'s twin, and the copy is verbatim — one ground name, subtracted
+      -- from the class arm by `groundClassNames`.
+      | float =>
+        exfalso
+        have hn : declFor (addRow D c mname { params := [], ret := τb }) .float mname
+            = none := by
+          refine hgroundNone _ ?_
+          intro g hg
+          simp only [tyClassNames, List.mem_singleton] at hg
+          subst hg
+          exact hgnd _ (by simp [groundClassNames])
         rw [hn] at hdecl
         exact absurd hdecl (by simp)
       | nilT =>
@@ -2051,6 +2075,11 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
                 show ("-" == mname) = false from by simp [Ne.symm h2],
                 show ("*" == mname) = false from by simp [Ne.symm h3],
                 show ("zero?" == mname) = false from by simp [Ne.symm h4]])
+  -- L202: `baseDecls` declares nothing on `Float`, so the new ground arm is refuted
+  -- by the same table computation the other three are. That it is *refutable* is the
+  -- rung's whole cost in this file: a float literal types, and no send to it does.
+  | float =>
+    exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   | bool =>
     exact absurd hd (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   | nilT =>

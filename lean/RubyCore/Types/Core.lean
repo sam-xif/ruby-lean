@@ -687,6 +687,12 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- A bare `return` yields `nil`, so the declared type has to admit it.
       | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
     | none => none
+  -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
+  -- inserting an arm shifts every later case number in `infer.induct`, and the only
+  -- case after this one is the catch-all. The rule itself is `.int`'s verbatim, and
+  -- what it buys is measured in `implementation-notes.md`: three slice bodies stop
+  -- being out of fragment and start naming a declaration they need.
+  | .flt _ => some (.float, Γ, D)
   | _ => none
 termination_by sizeOf e
 

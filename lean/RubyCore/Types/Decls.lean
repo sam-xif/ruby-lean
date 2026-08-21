@@ -137,7 +137,7 @@ def declaresName (D : Decls) (name : String) : Bool :=
 /-- The class names the four *ground* arms of `Ty` already denote. Subtracted from
     the class arm's key set by `tyClassNames`; see the note there. -/
 def groundClassNames : List String :=
-  ["Integer", "TrueClass", "FalseClass", "NilClass", "Symbol"]
+  ["Integer", "TrueClass", "FalseClass", "NilClass", "Symbol", "Float"]
 
 /-- The classes a value of a ground type can have. A **list**, not a single name,
     because `Ty.bool` is already two classes — which is the shape `T::Boolean`
@@ -145,6 +145,10 @@ def groundClassNames : List String :=
     `Ty`. -/
 def tyClassNames : Ty → List String
   | .int => ["Integer"]
+  -- L202: `.int`'s twin, and note it is subtracted from the class arm below by the
+  -- same `groundClassNames` list — `Float` now names a *ground* type, so
+  -- `.cls "Float"` must not read `Float`'s row for the reason the note gives.
+  | .float => ["Float"]
   | .bool => ["TrueClass", "FalseClass"]
   | .nilT => ["NilClass"]
   | .sym => ["Symbol"]

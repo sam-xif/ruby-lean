@@ -319,6 +319,9 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
         | r => r
       else .outOfFragment "while"
     | r => r
+  -- **A float literal** (L202), and it is here for `infer`'s reason: the only case
+  -- after it in `inferOpen.induct` is the catch-all, so no existing case number moves.
+  | .flt _ => .ok (.nom .float) Γ s
   | _ => .outOfFragment (headName e)
 termination_by sizeOf e
 

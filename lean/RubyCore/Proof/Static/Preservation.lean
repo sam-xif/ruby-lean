@@ -137,6 +137,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
       exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
+    -- L202: `.int`'s twin, and the copy is exact — `valueTy? (.flt x) = some .float`
+    -- holds by `rfl` for the same reason (`.flt` is an immediate, so the arm reads no
+    -- heap), so `ValueTy.exact` closes it and no new transport is involved.
+    case flt x =>
+      simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
+      obtain ⟨rfl, rfl, rfl⟩ := hinf
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     case tru =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf

@@ -192,6 +192,8 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
       | bool => simp [declTys]
       | nilT => simp [declTys]
       | sym => simp [declTys]
+      -- L202: the fifth ground arm, listed in `declTys` beside the other four.
+      | float => simp [declTys]
       -- L183: `tyClassNames .any = []`, so `hc` is contradictory — which is also
       -- why `declTys` need not list `.any`: `declFor D .any n` is `none` for every
       -- `n`, so both sides of the biconditional are false there.
@@ -210,7 +212,7 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
         subst hcc
         obtain ⟨ms, hms, _⟩ := mem_declTys_of_declsFor hdc
         refine List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-          (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ ?_)))
+          (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (List.mem_cons_of_mem _ ?_))))
         exact List.mem_map_of_mem (f := fun cd => Ty.cls cd.1) hms
     unfold declAtoms
     refine List.mem_flatMap.mpr ⟨τ, hτ, ?_⟩
