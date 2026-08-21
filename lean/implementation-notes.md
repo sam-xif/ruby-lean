@@ -9461,3 +9461,52 @@ Two mechanical notes:
 `lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
 `--check` byte-identical (56/1,169/0); `--assn` smoke 1,227 clean; `--self-test` all agree;
 slice-driver 72 lines IDENTICAL; third ratchet **30**, `if` 4 → **1**.
+
+## L207 — `FrameCtx.meth`, the channel `super` needs, and two findings that reprice the rung
+
+Out of fragment **30 → 30**, `--check` byte-identical (56/1,169/0). An inert channel commit, and
+L198 is its precedent: the field exists, nothing reads it, and `StackCtx` carries it so that the
+rule can be written without re-establishing anything at forty push sites.
+
+```lean
+structure FrameCtx where … meth : Option String := none
+
+-- StackCtx's seventh clause
+(∀ mn, c.meth = some mn → (frames.getD fid default).meth = mn) ∧
+```
+
+Discharged vacuously at all four construction sites (both `initiation`s, the class-body push, and
+`user_dispatch`'s), because every context today has `meth = none`. `StackCtx_congr` and
+`StackCtx.heap_congr` each gained one agreement, `setLocal`'s case one more one-liner, and
+`infer`'s `def` arm now sets `meth := none` **explicitly** — with the field added, `{ ctx with … }`
+would silently inherit the *enclosing* method's name, which is not this body's. That is the same
+trap `defFree`'s vacuous catch-all is (constraint 4's companion rule), in the record-update form.
+
+### Finding 1 — the `superName` interaction is *not* an obstacle
+
+`doSuper` looks the target up under `f.meth`, and `userFrame` sets `meth := md.superName.getD mname`
+— so a rule that puts `some name` in the context owes *name = md.superName.getD mname*. That reads
+like a problem and is not: `superName` is set **only by the alias rule** (`Interp.lean:277`), and a
+plain `def` builds its `MethodDef` with the field at its default (`Interp.lean:227`). `alias` has no
+`infer` arm, so inside the fragment the two names always agree, and the obligation is a *condition
+on the witness* — a prelude method that happens to be an alias simply cannot witness the row, which
+is sound.
+
+### Finding 2 — `zsuper` needs a **second** channel, and the HANDOFF pricing was optimistic
+
+Bare `super` forwards *the current parameter values* (`zsuperArgs` reads them out of the frame's
+locals), so its argument **types** are the enclosing method's parameter types. `FrameCtx` does not
+carry those, and neither does the nominal judgement `bodyVerdictWith` factors into — `Γ` has the
+locals but nothing says which of them are parameters. So `zsuper` needs `FrameCtx.params : List Ty`
+with a `StackCtx` clause about `runParams`/`locals`, which is a *harder* clause than this one: it
+relates a list of declared types to the values in a frame's locals, where `meth` was one string
+compared to one string.
+
+**Consequence for the ordering**: `super(args)` (4 bodies) is reachable with this channel plus the
+table and the two dispatch lemmas; `zsuper` (2 bodies) is behind a second channel and should be
+priced separately rather than assumed to come along. `HANDOFF.md` §The next commit now says so.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` byte-identical (56/1,169/0); third ratchet **30**, unchanged — nothing reads the field yet.

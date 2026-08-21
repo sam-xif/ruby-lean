@@ -97,7 +97,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         FramesOk.push hfs⟩
       rw [getD_push_lt_self]
       exact ⟨rfl, hown, by simp [envGet?]⟩
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -119,6 +119,10 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       -- L198/L200: `userFrame` builds a `.method` frame, and the caller's context is
       -- right there on the list — so the callee's context may declare a return type.
       · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
+      -- L207: the callee's context names no method yet (`meth := none`), so the clause
+      -- is vacuous. Supplying `some mname` here is the `super` rule's first step, and
+      -- what it will cost is written in `HANDOFF.md` §The next commit.
+      · exact fun mn h => absurd h (by simp)
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
@@ -550,7 +554,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -566,6 +570,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L198: a class body declares no return type, so the clause is vacuous on the
         -- right — the honest reading, since `return` there has no target.
         · exact Or.inr rfl
+        -- L207: and it names no method, for the same reason.
+        · exact fun mn h => absurd h (by simp)
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
@@ -976,7 +982,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L189 adds a fourth agreement, and it is the same one-liner: `setLocal`
         -- writes `locals` and moves neither `defmod`, `defVis`, `self` nor `cref`.
         refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
-          (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
+          (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
@@ -993,6 +999,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
         -- L198's fifth agreement, and it is the same one-liner a fifth time.
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
+        -- L207's sixth, a sixth time.
         · subst hfx
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
@@ -1359,7 +1370,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- **is** `md.owner`. `defVis` is the frame literal's default, which is what
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
-          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1374,6 +1385,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             exact hcr
           -- L198/L200: `userFrame`'s kind, and the caller is on the list.
           · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
+          -- L207: `meth := none` on the callee's context, so vacuous.
+          · exact fun mn h => absurd h (by simp)
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.

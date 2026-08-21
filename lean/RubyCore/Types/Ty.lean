@@ -369,6 +369,14 @@ structure FrameCtx where
       is what lets `RetOk` be **derived** from `KontOk` instead of carried as a
       separate invariant conjunct. -/
   ret : Option Ty := none
+  /-- **The running method's name** (L207), or `none` in a class body and at toplevel.
+
+      `super` is the only rule that needs it, and it needs it for the reason `doSuper`
+      does (`Interp/Send.lean:260`): the target is *this method's name*, looked up on
+      the chain **after** the definee. `ret`'s channel, one field over, and established
+      at the same push — `userFrame` sets `meth := md.superName.getD mname`, which is
+      the aliasing-correct name and therefore the one to carry. -/
+  meth : Option String := none
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

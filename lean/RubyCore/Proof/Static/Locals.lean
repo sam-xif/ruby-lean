@@ -542,6 +542,11 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- apply `infer_table_ret` — that lemma needs `top = false`, and `top` is
       -- `Γs.isEmpty` at every `KontOk` constructor, so the tail has to be non-empty.
       (((frames.getD fid default).kind = .method ∧ cs ≠ []) ∨ c.ret = none) ∧
+      -- **The running method's name** (L207), when the context claims one. `super`'s
+      -- whole frame-side cost, and it is `selfCls`'s clause in shape: the fact is not
+      -- new work at the push — `user_dispatch` builds the frame with exactly this
+      -- `meth` — it is the *carrying* of it across the body's steps.
+      (∀ mn, c.meth = some mn → (frames.getD fid default).meth = mn) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -550,7 +555,7 @@ theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -575,7 +580,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
       exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
         by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -982,21 +988,25 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       -- L198's clause needs its own agreement, for the four before it: the `kind` a
       -- frame was built with does not move either.
       (∀ fid ∈ st, (f₂.getD fid default).kind = (f₁.getD fid default).kind) →
+      -- L207's clause needs its own, for the five before it.
+      (∀ fid ∈ st, (f₂.getD fid default).meth = (f₁.getD fid default).meth) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, _, _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hs => by
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_,
+  | [], [], _, _, _, _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hs => by
+      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_,
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
           (fun g hg => hcr g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hkd g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2⟩
+          (fun g hg => hkd g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hmt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
       · rw [hsf fid (List.mem_cons_self ..)]; exact hs.2.2.2.1
       · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
       · rw [hkd fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.1
+      · rw [hmt fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 
@@ -1296,7 +1306,8 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
       have hlt : (frames.getD fid default).defmod < h.objs.size :=
         classPayload?_isSome_lt hs.1
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ValueTy.congr ha (hs.2.2.2.1 sc hsc),
-        hs.2.2.2.2.1, hs.2.2.2.2.2.1, StackCtx.heap_congr ha hs.2.2.2.2.2.2⟩
+        hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1,
+        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
   | [], _ :: _, hs => hs.elim

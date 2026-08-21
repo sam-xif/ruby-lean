@@ -574,7 +574,13 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- return type *from* the body, so it cannot name one for the body to check a
       -- `return` against. Inheriting `ctx.ret` would be worse than wrong — it would
       -- check the inner body's returns against the *enclosing* method's type.
-      match infer D [] body false { ctx with selfCls := some ctx.cls, ret := none } with
+      -- L207: `meth := none` **explicitly**, and the explicitness is the point — with
+      -- the field added, `{ ctx with … }` would inherit the *enclosing* method's name,
+      -- which is not this body's. Setting it to `some name` is what the `super` rule
+      -- will want, and it is not free: `UserConforms` would then have to tie the name
+      -- to `md.superName.getD mname` (see `HANDOFF.md` §The next commit).
+      match infer D [] body false
+          { ctx with selfCls := some ctx.cls, ret := none, meth := none } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to

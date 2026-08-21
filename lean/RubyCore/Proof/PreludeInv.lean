@@ -132,7 +132,8 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- computation on the frame literal whatever the heap is.
     exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
       fun sc hsc => absurd hsc (by simp),
-      by simp [Machine.initOn, Array.getD], Or.inr rfl, trivial⟩
+      by simp [Machine.initOn, Array.getD], Or.inr rfl,
+      fun mn h => absurd h (by simp), trivial⟩
   · unfold check at hchk
     show CtlOk (declsOf p) { cls := "Object" } [] [] _
     unfold CtlOk

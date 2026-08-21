@@ -587,7 +587,8 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     (h : infer D Γ (.def' name params body) top ctx = some (τ, Γ', D')) :
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added"
-      ∧ ∃ τb Γb, infer D [] body false { ctx with selfCls := some ctx.cls, ret := none }
+      ∧ ∃ τb Γb, infer D [] body false
+          { ctx with selfCls := some ctx.cls, ret := none, meth := none }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧
