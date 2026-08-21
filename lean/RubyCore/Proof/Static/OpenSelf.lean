@@ -470,8 +470,8 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     (motive4 := fun Γ es s => FactorsArgs D θ stF ctx Γ es (inferOpenArgs D Γ es ctx s)) with
   | _ =>
     simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf,
-      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs, substEnv_aenvSet,
-      hself]
+      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs, joinTy,
+      substEnv_aenvSet, hself]
     all_goals (try intro hle)
     all_goals (try simp_all)
     all_goals (

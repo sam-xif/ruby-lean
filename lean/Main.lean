@@ -192,23 +192,13 @@ def main (args : List String) : IO UInt32 := do
         -- bug waiting to be read as a checker inconsistency: without the flag this
         -- one refuses `class C … end`, so a program `check` accepts came back with
         -- an empty type. Display-only, but the display is what a reader trusts.
+        -- **`Types.tyName`, not a copy of it** (L193). This was an inline match on
+        -- every `Ty` arm, which meant every new arm broke `Main.lean` and one of the
+        -- two renderings drifted (`.cls n` here, `c` there — the same string, but
+        -- nothing said so). One reader, one table: `tyName` is the printer's, and it
+        -- is total by construction.
         let ty := match Types.infer (Types.declsOf prog) [] prog true with
-          | some (t, _, _) => match t with
-            | .int => "Integer" | .bool => "Boolean" | .nilT => "NilClass"
-            -- `def` evaluates to the method name.
-            | .sym => "Symbol"
-            -- F1b's class arm. Unreachable today — `infer` has no construct that
-            -- produces one — but rendered rather than gated, because the moment a
-            -- producer lands this is the line that shows it working.
-            | .cls n => n
-            -- L183's top type. No expression infers at it — it exists as a
-            -- declared *parameter* — so this arm is unreachable and rendered
-            -- rather than gated, for the same reason `.cls` was before L151.
-            | .any => "T.untyped"
-            -- L184's class-object arm. No producer yet, so unreachable and
-            -- rendered rather than gated, for the third time (`.cls` before L151,
-            -- `.any` at L183).
-            | .clsOf n => "T.class_of(" ++ n ++ ")"
+          | some (t, _, _) => Types.tyName t
           | none => ""
         IO.println (Lean.Json.mkObj
           ([("decision", Lean.Json.str decision),

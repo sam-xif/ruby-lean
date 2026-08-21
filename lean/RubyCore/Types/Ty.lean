@@ -82,6 +82,26 @@ inductive Ty where
       it, because a row on `.clsOf "String"` (a singleton method) and a row on
       `.cls "String"` (an instance method) are different declarations. -/
   | clsOf (name : String)
+  /-- **`τ` or `nil`** (L193), and the first arm that is *inhabited by values of
+      more than one shape*. That is the whole difference from `.any`, whose
+      docstring above says so: `any` is a declared *parameter* position and no
+      value is ever typed at it, while a `nilable` is what an expression **infers
+      at** — `if c then "s" end`, `x&.foo`, `return if c`. This slice cannot be
+      typed without it: `T.nilable(String)` appears in a quarter of its `sig`s.
+
+      **It is what made `ValueTy` a relation.** L183 wrote down the alternative and
+      declined it ("making `ValueTy` a relation so a value could have several types
+      is what unions and nilable need, and it is deliberately not this one"); this
+      is that commit. `valueTy?` is unchanged — it still answers *the* exact type of
+      a value — and `ValueTy h v τ` now reads *`v`'s exact type is below `τ`*, so a
+      `String` reference satisfies both `.cls "String"` and `.nilable (.cls
+      "String")`.
+
+      Only `nil` and members of `τ` inhabit it: there is no general union, because
+      nothing in the slice needs one and a general union needs a normal form to keep
+      `Env` equality (which the `if`-merge and the loop-stability condition both
+      decide) usable. -/
+  | nilable (τ : Ty)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
@@ -91,7 +111,24 @@ deriving DecidableEq, Repr, Inhabited
     `infer`'s send rules, `KontOk.recvK`/`argsK`'s premises, and `ValuesTy`. Not on
     the value judgement, and not on the `if` join: a join needs a *least upper
     bound*, which is the unions rung and a different statement. -/
-def subTy (σ τ : Ty) : Bool := τ == .any || σ == τ
+def subTy (σ τ : Ty) : Bool :=
+  match τ with
+  | .any => true
+  | .nilable τ' => σ == .nilT || σ == .nilable τ' || subTy σ τ'
+  | _ => σ == τ
+
+/-- **The join** (L193) — a *least* upper bound is not what this computes and the
+    difference matters. It answers only the two cases the fragment produces, an
+    `if` whose branches agree and one where exactly one side is `nil`, and `none`
+    otherwise. Answering `.any` for the rest would be an upper bound but a useless
+    one: nothing can be done with an `any`-typed value, and — worse — `ValueTy h v
+    .any` holds for *every* value, so `.any` in an inferred position would let the
+    checker forget what it knows. `.any` stays a declared-parameter type. -/
+def joinTy (σ τ : Ty) : Option Ty :=
+  if σ == τ then some σ
+  else if σ == .nilT then some (.nilable τ)
+  else if τ == .nilT then some (.nilable σ)
+  else none
 
 /-- Pointwise, at the arity the signature declares. A length mismatch is `false`,
     which is what keeps the arity check that used to be list equality. -/
@@ -100,7 +137,46 @@ def subTys : List Ty → List Ty → Bool
   | σ :: σs, τ :: τs => subTy σ τ && subTys σs τs
   | _, _ => false
 
-@[simp] theorem subTy_refl (τ : Ty) : subTy τ τ = true := by simp [subTy]
+/-- **At a concrete parameter, `subTy` *is* equality** — the lemma that makes the
+    weakening inert: every row in `baseDecls` has concrete parameters, so their
+    conformance obligations see the proposition they always saw. -/
+theorem subTy_atomic {σ τ : Ty} (ha : τ ≠ .any) (hn : ∀ τ', τ ≠ .nilable τ') :
+    subTy σ τ = true ↔ σ = τ := by
+  cases τ <;> simp_all [subTy]
+
+/-- The old name, kept for the call sites that instantiate it at a `baseDecls`
+    parameter — every one of those is atomic, so the extra side condition is
+    discharged by `simp`. -/
+theorem subTy_concrete {σ τ : Ty} (hτ : τ ≠ .any) (hn : ∀ τ', τ ≠ .nilable τ') :
+    subTy σ τ = true ↔ σ = τ := subTy_atomic hτ hn
+
+@[simp] theorem subTy_refl (τ : Ty) : subTy τ τ = true := by
+  cases τ <;> simp [subTy]
+
+/-- **Transitivity**, which the unrelaxed `subTy` did not need and this one does:
+    `ValueTy` composes a value's exact type with the declared one, and `CtlOk`'s
+    eval clause composes again with the continuation's. -/
+theorem subTy_trans : ∀ {a b c : Ty}, subTy a b = true → subTy b c = true →
+    subTy a c = true
+  | a, b, .any, _, _ => by simp [subTy]
+  | a, b, .nilable c', hab, hbc => by
+    simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hbc ⊢
+    rcases hbc with (rfl | rfl) | hbc'
+    · exact Or.inl (Or.inl ((subTy_atomic (τ := Ty.nilT) (by simp) (by simp)).mp hab))
+    · simpa only [subTy, Bool.or_eq_true, beq_iff_eq, or_assoc] using hab
+    · exact Or.inr (subTy_trans hab hbc')
+  | a, b, .int, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .bool, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .nilT, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .sym, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .cls n, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .clsOf n, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
 
 @[simp] theorem subTys_refl : ∀ (ps : List Ty), subTys ps ps = true
   | [] => rfl
@@ -119,12 +195,29 @@ theorem subTys_cons_inv {σ : Ty} {σs ps : List Ty} (h : subTys (σ :: σs) ps 
     simp only [subTys, Bool.and_eq_true] at h
     exact ⟨τp, psrest, rfl, h.1, h.2⟩
 
-/-- **At a concrete parameter, `subTy` *is* equality** — the lemma that makes the
-    weakening inert: every row in `baseDecls` has concrete parameters, so their
-    conformance obligations see the proposition they always saw. -/
-theorem subTy_concrete {σ τ : Ty} (hτ : τ ≠ .any) : subTy σ τ = true ↔ σ = τ := by
-  unfold subTy
-  cases τ <;> simp_all
+/-- Both sides of a join are below it. The join rule's whole soundness content, and
+    the reason it is two lines: `joinTy` answers only the two shapes it can justify. -/
+theorem joinTy_sub {σ τ τj : Ty} (h : joinTy σ τ = some τj) :
+    subTy σ τj = true ∧ subTy τ τj = true := by
+  unfold joinTy at h
+  split at h
+  · rename_i heq
+    simp only [beq_iff_eq] at heq
+    subst heq
+    simp_all
+  · split at h
+    · rename_i hn
+      simp only [beq_iff_eq] at hn
+      simp only [Option.some.injEq] at h
+      subst h; subst hn
+      exact ⟨by simp [subTy], by simp [subTy]⟩
+    · split at h
+      · rename_i hn
+        simp only [beq_iff_eq] at hn
+        simp only [Option.some.injEq] at h
+        subst h; subst hn
+        exact ⟨by simp [subTy], by simp [subTy]⟩
+      · exact absurd h (by simp)
 
 /-- Local-variable typing environment. Order is canonical (`envSet` replaces in
     place) so that environment *equality* is a usable check — the `if`-merge and

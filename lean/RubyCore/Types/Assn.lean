@@ -93,6 +93,10 @@ def tyName : Ty → String
   -- L184. `T.class_of(C)` is Sorbet's spelling; `C.class` would read as the
   -- *metaclass*, which is not what the arm means.
   | .clsOf n => "T.class_of(" ++ n ++ ")"
+  -- L193. Sorbet's spelling exactly, which is the point: a quarter of the slice's
+  -- `sig`s are written this way, so the report reads back in the source's own
+  -- vocabulary.
+  | .nilable τ => "T.nilable(" ++ tyName τ ++ ")"
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ

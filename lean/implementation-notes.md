@@ -8296,3 +8296,103 @@ worth recording that the warning was in the file while the bug was three lines b
 `true` at the prelude-booted heap (14 more `noShadowBefore` rows reported); `--check` **39 / 1,186 /
 0**, byte-identical to L191's capture — the new rows widen `infer`'s `.const` and `class'` arms but
 no bootstraptest program reads or reopens an error class at toplevel; `--self-test` all agree.
+
+---
+
+## L193 — `ValueTy` becomes a relation, and `if` gets a join
+
+The rung L183 wrote down and declined. Its own docstring said so:
+
+> Making `ValueTy` a *relation* so a value could have several types is the other design,
+> it is what unions and nilable need, and it is deliberately **not** this one.
+
+`--check` moves for the fourth time: **39 → 51 accept, 1,186 → 1,174 unknown, 0 reject**, twelve
+transitions, all `unknown → accept`, none the other way. The out-of-fragment metric does **not**
+move yet — that needs the open front end's `if` to join too, which needs `ATy` to be able to say
+"nilable of a type *variable*", and that is the next commit rather than this one.
+
+### Why the type language was the wall
+
+L190's rule got one more remove at L192 (*a blocker name ranks what it costs*), and asking the same
+question of the `if` refusals is what produced this rung. The seven bodies `--assn` reported at an
+`if` are not one problem:
+
+```
+raise ArgumentError, "…" unless head?     -- one-armed if; arm is not nil
+severity&.to_s&.upcase || "UNKNOWN"       -- &. and || are ifs with a nil arm
+namespace = nil if namespace && …         -- one-armed if that BINDS A LOCAL
+```
+
+The first two are **type** joins. The third is an **environment** join, and it is deliberately not
+here: merging `Γ` needs `Env` to become a lattice, and `KontOk`'s environment *equality* — read at
+every `frameK` — does not yet tolerate that. So this rung is the type half, honestly scoped.
+
+And it is not a niche: `T.nilable(…)` appears in a quarter of the slice's `sig`s, `return if c` is
+two of the three singleton-`{return}` bodies, and `&.`/`||` desugar to exactly this shape. The
+type language, not the rule set, was the binding constraint.
+
+### Three definitions, and only three
+
+1. **`Ty.nilable τ`** — the first arm inhabited by values of more than one shape. Not a general
+   union: nothing in the slice needs one, and a general union needs a normal form to keep `Env`
+   *equality* decidable, which the `if`-merge and the loop-stability condition both rely on.
+2. **`subTy`** becomes recursive (`σ ≤ nilable τ` iff `σ` is `nilT`, is that nilable, or is `≤ τ`)
+   and gains **transitivity**, which the old one-rule version never needed.
+3. **`joinTy`** answers *only* the two cases the fragment produces — the branches agree, or exactly
+   one side is `nil`. It is **not** a least upper bound, and answering `.any` for the rest would be
+   actively wrong: `ValueTy h v .any` holds for *every* value, so an `.any` in an *inferred*
+   position would let the checker forget what it knows. `.any` stays a declared-parameter type.
+
+### Where the subsumption went, and where it did not
+
+**`ValueTy h v τ` now reads *`v`'s exact type is below `τ`*.** `valueTy?` is untouched — it still
+computes *the* type of a value — and every inversion still recovers it, because `subTy_atomic` says
+`subTy σ τ` **is** `σ = τ` at every arm but `.any` and `.nilable`. That is what made the change
+surgical rather than sweeping: `valueTy_ref_plain`, `valueTy_int`, `ValueTy.congr` and the rest all
+survive with a `⟨σ, hσ, hs⟩` at the top.
+
+Two statements did *not* survive, and both were quietly too strong:
+
+* **`valueTy_ref_cls`** said *a typed `.ref` has a class type*. False now. Replaced by
+  `valueTy_ref_not_ground`, which is the negative form its one prospective consumer
+  (`DeclsOk_grow`) actually wanted and which survives the next widening too.
+* **`valueTy_tyClass`** said *a receiver hands over its dispatch class*. False at a nilable — as it
+  must be, since the receiver may be `nil`. It now takes the two `subTy_atomic` side conditions,
+  and **no rule carries them**: `sigOf_atomic` reads them off the *existence of a row*, because
+  `tyClassNames` is `[]` at both arms. That is the payoff for having given those arms `[]` rather
+  than a name.
+
+**`CtlOk`'s eval clause is the only other place a `subTy` appears**, and it has to be there: `infer`
+answers the expression's own type while the continuation was registered at the join. The value
+clause needs nothing, because `ValueTy` is already a relation.
+
+### The one structural change: `KontOk`'s tail index is decoupled
+
+Every `KontOk` constructor that pins its *tail's* type gained a `subTy … τw` premise and indexes
+the tail at `τw`. That is a `KontOk.sub` constructor **inlined into each rule**, and the inlining is
+the whole point: a standalone `sub` constructor leaves the kont unchanged, so `cases hk` in the
+delivery case would not reduce and the proof would need well-founded recursion on the derivation.
+Eleven constructors, one premise each, and `step_ok` still closes by `cases`.
+
+Two lemmas fell out (`inv_eval_sub`, `inv_push_sub`) and one existing hypothesis widened
+(`inv_implicit_send0`'s). The `ifK` delivery case is where all of it is spent, in one line per
+branch: `subTy_trans (joinTy_sub hjoin).1 hsw`.
+
+### A second dead table, found the same way as L192's
+
+`Main.lean` had an inline match on *every* `Ty` arm to render the inferred type — a copy of
+`Types.tyName`, so every new arm broke `Main.lean` and the two renderings had already drifted in
+form if not in output. Replaced by the one function. L192 found `REOPENABLE` twice; this is the
+same hazard in the other direction (two readers of one *concept*, no shared definition), and both
+were found by a new arm breaking exactly one of the copies.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` all theorems axiom-clean at
+`propext + Classical.choice + Quot.sound` — including `check_sound`, which is what makes the twelve
+new acceptances *safe* rather than merely accepted, and there is a new named example
+(`egNilJoin_safe`) that says so. `--check` **51 / 1,174 / 0** with the twelve transitions read
+individually (`1 && 2 && 3 && nil`, `if true then 1 end`, `1if true` — all now
+`T.nilable(Integer)`); `--assn` smoke 1,227 clean / 0 fail; `fragment-gap.py --self-test` all agree,
+with three new rows pinning the join's *boundary* (one-armed `if` accepts, `nil` else-arm accepts,
+`Integer`/`Symbol` arms still refuse). The interpreter is untouched, so no difftest tier can move.

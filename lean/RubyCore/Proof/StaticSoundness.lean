@@ -149,7 +149,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     split at h
     · rename_i r hr
       obtain ⟨τ, Γ', D'⟩ := r
-      exact ⟨τ, Γ', D', hr, KontOk.nil⟩
+      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil⟩
     · exact absurd h (by split <;> simp)
 
 /-- **Static soundness, from any machine satisfying the invariant.** Stated this
@@ -176,10 +176,10 @@ def egIf : Expr :=
          .if' .tru (.var .lvar "x") (some (.int 0)) ]
 
 example : check egIf = .accept := by
-  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, envSet, envGet?, declsOf, isSelf]
+  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, envSet, envGet?, declsOf, isSelf]
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, envSet, envGet?, declsOf, isSelf])
+  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, envSet, envGet?, declsOf, isSelf])
 
 /-- **A reopened class carrying a user-defined method** (L156):
 
@@ -711,15 +711,32 @@ example : check (.send (some (.int 1)) "zero?" [.int 5] none) = .unknown := by
   simp [check, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?,
     declsFor, baseDecls, tyClassNames, declsOf, isSelf]
 
-/-- A branch-type disagreement the fragment cannot join: `unknown`, not
+/-- **`nil` on one arm is now joined** (L193), and this example is the one that
+    changed: it read `unknown` from F1a through L192 and is `accept` at
+    `T.nilable(Integer)` from here on. -/
+example : check (.if' .tru (.int 1) (some .nil)) = .accept := by
+  simp [check, infer, inferArgs, subTys, subTy, inferIf, joinTy, illTyped, declsOf, isSelf]
+
+/-- And it really is safe, not merely accepted: `check_sound` transports through
+    `joinTy` with no new hypothesis, which is the point of putting the subsumption
+    in `ValueTy` and in `CtlOk`'s eval clause rather than in a narrowing rule. -/
+theorem egNilJoin_safe :
+    ∀ r, ReachableResult (Machine.init (.if' .tru (.int 1) (some .nil))) r →
+      ¬ typeStuck r :=
+  check_sound (by
+    simp [check, infer, inferArgs, subTys, subTy, inferIf, joinTy, illTyped, declsOf,
+      isSelf])
+
+/-- A branch-type disagreement the fragment **still** cannot join: `unknown`, not
     `reject`. `illTyped` has no opinion about `if` arms — it only refutes calls
-    the builtin table refutes — so the absence of a union type shows up as
-    incompleteness rather than as a claim about the program.
+    the builtin table refutes — so the absence of a general union shows up as
+    incompleteness rather than as a claim about the program. L193 narrowed this
+    class to *neither side is `nil`*; a real union is a later rung.
 
     The verdict examples that *do* exercise `reject` live next to the checker
     in `Types/Core.lean`; only the safety-bearing ones belong here. -/
-example : check (.if' .tru (.int 1) (some .nil)) = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, inferIf, illTyped, declsOf, isSelf]
+example : check (.if' .tru (.int 1) (some (.sym "s"))) = .unknown := by
+  simp [check, infer, inferArgs, subTys, subTy, inferIf, joinTy, illTyped, declsOf, isSelf]
 
 /-! ## 6. Axiom hygiene
 

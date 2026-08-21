@@ -643,12 +643,35 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
   | some e =>
     match infer D Γ t top ctx, infer D Γ e top ctx with
     | some (τt, Γt, Dt), some (τe, Γe, De) =>
-      if τt = τe ∧ Γt = Γe ∧ Dt = De then some (τt, Γt, Dt) else none
+      -- **The types are *joined*, the environments are still compared** (L193).
+      -- Before this rung both were equalities, and the type one is what refused a
+      -- quarter of the slice's method bodies: `raise … if c`, `x&.foo`, `a || b` all
+      -- desugar to an `if` whose branches have different types. `joinTy` answers only
+      -- where it can justify an answer, so this stays a *refusal* wherever the two
+      -- sides are unrelated — what changed is that `nil` on one side is no longer one
+      -- of those places.
+      --
+      -- The environment join is a **separate** rung and deliberately not here:
+      -- `namespace = nil if c` binds a local in one branch only, and merging that
+      -- needs `Env` to become a lattice, which `KontOk`'s environment *equality*
+      -- (read by every `frameK`) does not yet tolerate.
+      if Γt = Γe ∧ Dt = De then
+        match joinTy τt τe with
+        | some τj => some (τj, Γt, Dt)
+        | none => none
+      else none
     | _, _ => none
   | none =>
     match infer D Γ t top ctx with
     | some (τt, Γt, Dt) =>
-      if τt = Ty.nilT ∧ Γt = Γ ∧ Dt = D then some (.nilT, Γ, D) else none
+      -- No `else` means the missing branch yields `nil`, so this is the same join
+      -- against `.nilT` — and it is the shape that pays for the rung, since
+      -- `raise … if c` is a one-armed `if` whose arm is not `nil`.
+      if Γt = Γ ∧ Dt = D then
+        match joinTy τt .nilT with
+        | some τj => some (τj, Γ, D)
+        | none => none
+      else none
     | none => none
 termination_by sizeOf t + sizeOf els
 

@@ -160,20 +160,55 @@ def valueTy? (h : Heap) : Value → Option Ty
     else none
   | _ => none
 
-def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop := valueTy? h v = some τ
+/-- **The value judgement, and since L193 it is a *relation*** — `v`'s exact type
+    (which `valueTy?` still computes, unchanged) is *below* `τ`.
+
+    L183 wrote down this design and declined it, and the reason it is here now is
+    `Ty.nilable`: a `String` reference has to satisfy both `.cls "String"` and
+    `.nilable (.cls "String")`, which no function from values to types can express.
+    Every inversion below still recovers the exact type, because `subTy_atomic`
+    says `subTy σ τ` *is* `σ = τ` at every arm but `.any` and `.nilable` — so the
+    weakening is inert everywhere the old definition was used and is the whole
+    content of the rung exactly where a join happens. -/
+def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop :=
+  ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
+
+/-- The exact-type constructor, which is what every producer rule has. -/
+theorem ValueTy.exact {h : Heap} {v : Value} {τ : Ty} (he : valueTy? h v = some τ) :
+    ValueTy h v τ := ⟨τ, he, by simp⟩
+
+/-- And the weakening the join needs, which is one `subTy_trans`. -/
+theorem ValueTy.weaken {h : Heap} {v : Value} {σ τ : Ty} (hv : ValueTy h v σ)
+    (hs : subTy σ τ = true) : ValueTy h v τ :=
+  ⟨hv.choose, hv.choose_spec.1, subTy_trans hv.choose_spec.2 hs⟩
+
+/-- Inversion at an **atomic** type: the exact type is the declared one, which is
+    what keeps every pre-L193 consumer working. -/
+theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
+    (hn : ∀ τ', τ ≠ .nilable τ') (hv : ValueTy h v τ) : valueTy? h v = some τ := by
+  obtain ⟨σ, hσ, hs⟩ := hv
+  rw [(subTy_atomic ha hn).mp hs] at hσ
+  exact hσ
 
 /-- **The `.ref` arm, read backwards** (L185). Two branches now, so the inversion
     is a disjunction and every consumer has to say which one it is about —
     `Locals.lean`'s own lesson from L142 applies to itself here: *an inversion
     principle is only as strong as the definition it inverts.* -/
 theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
-    (plainRecv h o = true ∧ τ = .cls (className h (classOf h (.ref o)))) ∨
-      (classRecv h o = true ∧ τ = .clsOf (className h o)) := by
+    (plainRecv h o = true ∧ subTy (.cls (className h (classOf h (.ref o)))) τ = true) ∨
+      (classRecv h o = true ∧ subTy (.clsOf (className h o)) τ = true) := by
+  obtain ⟨σ, hσ, hs⟩ := hv
   by_cases hp : plainRecv h o
-  · exact Or.inl ⟨hp, by simpa [ValueTy, valueTy?, hp] using hv.symm⟩
+  · refine Or.inl ⟨hp, ?_⟩
+    rw [show σ = .cls (className h (classOf h (.ref o))) from by
+      simpa [valueTy?, hp] using hσ.symm] at hs
+    exact hs
   · by_cases hc : classRecv h o
-    · exact Or.inr ⟨hc, by simpa [ValueTy, valueTy?, hp, hc] using hv.symm⟩
-    · simp [ValueTy, valueTy?, hp, hc] at hv
+    · refine Or.inr ⟨hc, ?_⟩
+      rw [show σ = .clsOf (className h o) from by
+        simpa [valueTy?, hp, hc] using hσ.symm] at hs
+      exact hs
+    · simp [valueTy?, hp, hc] at hσ
 
 /-- Inversion at the `int` arm. Moved here from `Proof/Static/Konts.lean` in F1a:
     it is a fact about `ValueTy`, and `Proof/Static/Decls.lean` — which sits
@@ -182,8 +217,9 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
   cases v with
   | ref o =>
     exfalso
-    rcases valueTy_ref_inv h with ⟨-, hne⟩ | ⟨-, hne⟩ <;> exact absurd hne (by simp)
-  | _ => simp_all [ValueTy, valueTy?]
+    rcases valueTy_ref_inv h with ⟨-, hne⟩ | ⟨-, hne⟩ <;>
+      exact absurd hne (by simp [subTy])
+  | _ => simp_all [ValueTy, valueTy?, subTy]
 
 /-- **Every value with a type is an immediate or a plain ref.** F1a's version of
     this said *immediate*, full stop, and that was what let
@@ -233,13 +269,13 @@ theorem valueTy_ref_plain {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.cls n)) : plainRecv h o = true := by
   rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨-, hne⟩
   · exact hp
-  · exact absurd hne (by simp)
+  · exact absurd hne (by simp [subTy])
 
 /-- And a `.ref` typed at a **class-object type** is a class receiver. -/
 theorem valueTy_ref_class {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.clsOf n)) : classRecv h o = true := by
   rcases valueTy_ref_inv hv with ⟨-, hne⟩ | ⟨hc, -⟩
-  · exact absurd hne (by simp)
+  · exact absurd hne (by simp [subTy])
   · exact hc
 
 /-- **A plain receiver dispatches through its `klass` field.** `plainRecv`
@@ -276,15 +312,21 @@ theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} (hp : plainRecv h o = true) 
     classOf h (.ref o) < h.objs.size :=
   classPayload?_isSome_lt (valueTy_ref_klass_isSome hp)
 
-/-- **A typed `.ref` has a class type**, since that is the only arm that admits one.
-    The contrapositive is what `DeclsOk_grow` needs (L146): a declaration at a
-    *ground* type can only ever be about immediates, so an allocation cannot give it
-    a new inhabitant. -/
-theorem valueTy_ref_cls {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
-    (∃ n, τ = .cls n) ∨ (∃ n, τ = .clsOf n) := by
-  rcases valueTy_ref_inv hv with ⟨-, rfl⟩ | ⟨-, rfl⟩
-  · exact Or.inl ⟨_, rfl⟩
-  · exact Or.inr ⟨_, rfl⟩
+/-- **A typed `.ref` is not typed at a *ground* type.** L146's statement was the
+    positive one — *a `.ref`'s type is a class type* — and L193 made that false: the
+    relation admits `.any` and `.nilable` above the exact type. The negative form is
+    what the consumer wanted anyway (`DeclsOk_grow`: a declaration at a ground type
+    can only ever be about immediates, so an allocation gives it no new inhabitant),
+    and it survives the weakening because `subTy σ τ` at a *ground* `τ` is equality
+    (`subTy_atomic`) and no `.ref`'s exact type is ground.
+
+    Unused today, which is why it is stated in the form that will still be true at
+    the next widening rather than the form that reads best. -/
+theorem valueTy_ref_not_ground {h : Heap} {o : ObjId} {τ : Ty}
+    (hv : ValueTy h (.ref o) τ) :
+    τ ≠ .int ∧ τ ≠ .bool ∧ τ ≠ .nilT ∧ τ ≠ .sym := by
+  rcases valueTy_ref_inv hv with ⟨-, hs⟩ | ⟨-, hs⟩ <;>
+    refine ⟨?_, ?_, ?_, ?_⟩ <;> intro heq <;> rw [heq] at hs <;> simp [subTy] at hs
 
 /-- **An immediate's type does not depend on the heap.** Four constant arms; stated
     as a transport in the direction `DeclsOk_grow` reads it, which is the direction
@@ -1154,33 +1196,43 @@ theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h') : TypeAgree h
     reason the class arm could land as one commit. -/
 theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     (hv : ValueTy h v τ) : ValueTy h' v τ := by
+  -- L193: the *exact* type is what transports, and `τ` rides along untouched —
+  -- which is why the relation cost this lemma nothing but a `refine` at the top.
+  obtain ⟨σ, hσ, hs⟩ := hv
+  refine ⟨σ, ?_, hs⟩
   cases v with
   | ref o =>
     -- L143: each clause is instantiated at an id the *hypothesis* supplies, which
     -- is the whole point of the relativization — the two bounds come from
     -- `valueTy?` itself (`plainRecv`'s two clauses read back out), so the
     -- transport is never asked about an id the old heap did not have.
-    have hb : o < h.objs.size := valueTy_ref_lt hv
+    have hb : o < h.objs.size := valueTy_ref_lt ⟨σ, hσ, hs⟩
     -- **Two branches since L185**, and they read different clauses of `TypeAgree`:
     -- the plain one needs `classOf`/`className` agreement at the *class* id, the
     -- class-object one needs only `className` at `o` itself — because its type is
     -- keyed on the object's own name rather than on its dispatch class.
-    rcases valueTy_ref_inv hv with ⟨hp, rfl⟩ | ⟨hc, rfl⟩
+    by_cases hp : plainRecv h o
     · have hk : classOf h (.ref o) < h.objs.size := valueTy_ref_klass_lt hp
-      simp [ValueTy, valueTy?, ha.2.2.2.1 o hb hp, ha.1 o hb, ha.2.1 _ hk]
-    · -- A class receiver is not a plain one, so the `if` chain takes the second
-      -- branch in `h'` too — `plainRecv` refuses a `.cls` payload and `classRecv`
-      -- *is* having one.
-      have hc' : classRecv h' o = true := ha.2.2.2.2 o hb hc
-      have hnp : plainRecv h' o = false := by
-        unfold classRecv at hc'
-        unfold plainRecv
-        simp only [Bool.and_eq_true, Option.isSome_iff_exists] at hc' ⊢
-        obtain ⟨cp, hcp⟩ := hc'.2
-        unfold Heap.classPayload? at hcp
-        cases hpl : (h'.get o).payload <;> simp_all
-      simp [ValueTy, valueTy?, hnp, hc', ha.2.1 o hb]
-  | _ => simp_all [ValueTy, valueTy?]
+      rw [show σ = Ty.cls (className h (classOf h (.ref o))) from by
+        simpa [valueTy?, hp] using hσ.symm]
+      simp [valueTy?, ha.2.2.2.1 o hb hp, ha.1 o hb, ha.2.1 _ hk]
+    · by_cases hc : classRecv h o
+      · -- A class receiver is not a plain one, so the `if` chain takes the second
+        -- branch in `h'` too — `plainRecv` refuses a `.cls` payload and `classRecv`
+        -- *is* having one.
+        have hc' : classRecv h' o = true := ha.2.2.2.2 o hb hc
+        have hnp : plainRecv h' o = false := by
+          unfold classRecv at hc'
+          unfold plainRecv
+          simp only [Bool.and_eq_true, Option.isSome_iff_exists] at hc' ⊢
+          obtain ⟨cp, hcp⟩ := hc'.2
+          unfold Heap.classPayload? at hcp
+          cases hpl : (h'.get o).payload <;> simp_all
+        rw [show σ = Ty.clsOf (className h o) from by
+          simpa [valueTy?, hp, hc] using hσ.symm]
+        simp [valueTy?, hnp, hc', ha.2.1 o hb]
+      · simp [valueTy?, hp, hc] at hσ
+  | _ => simp_all [valueTy?]
 
 /-- **Transport across a heap-writing step.** The in-bounds clause is what makes
     it available: `TypeAgree` relativizes every one of its equalities to ids the

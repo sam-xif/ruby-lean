@@ -140,6 +140,11 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   -- exists to make the match total, and `False` is the honest content: no value is
   -- typed `any`, so no receiver arrives with it.
   | .any => False
+  -- L193, and it is `.any`'s arm for `.any`'s reason: `tyClassNames .nilable = []`,
+  -- so `declFor` never answers at a nilable and `DeclsOk` never obliges anything
+  -- here. `False` is the honest content — a nilable value may be `nil`, so there is
+  -- no one class it dispatches from.
+  | .nilable _ => False
   -- **A class object dispatches from `classOf`, whatever `classOf` says** (L184),
   -- and that phrasing is the measurement rather than a choice
   -- (`scripts/classobj_probe.lean`): only 27 of the booted heap's 87 class objects
@@ -153,34 +158,47 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   | .clsOf n => ∃ o, (h.classPayload? o).isSome ∧ className h o = n ∧
       k = classOf h (.ref o)
 
-theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
+/-- **A receiver hands over its dispatch class** — but only at a type dispatch can
+    start from, and since L193 that is a hypothesis rather than a fact about every
+    `Ty`. `ValueTy` is a relation now, so `ValueTy h v (.nilable σ)` is satisfiable
+    while `TyClass h (.nilable σ) k` is `False` — as it must be, since the receiver
+    may be `nil`. The two side conditions are exactly `subTy_atomic`'s, and every
+    caller gets them from the *declaration*: `declFor` answers `none` at both arms
+    (`tyClassNames` is `[]` there), which is what `sigOf_atomic` below reads back. -/
+theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
+    (hn : ∀ τ', τ ≠ .nilable τ') (hv : ValueTy h v τ) :
     TyClass h τ (classOf h v) := by
+  have hex := hv.atomic ha hn
+  clear hv
   cases v with
-  | int a => cases τ <;> simp_all [ValueTy, valueTy?, TyClass, classOf]
+  | int a => cases τ <;> simp_all [valueTy?, TyClass, classOf]
   | bool b =>
-    have : τ = .bool := by simpa [ValueTy, valueTy?] using hv.symm
+    have : τ = .bool := by simpa [valueTy?] using hex.symm
     subst this
     cases b
     · exact Or.inr rfl
     · exact Or.inl rfl
-  | nil => have : τ = .nilT := by simpa [ValueTy, valueTy?] using hv.symm
+  | nil => have : τ = .nilT := by simpa [valueTy?] using hex.symm
            subst this; rfl
-  | sym s => have : τ = .sym := by simpa [ValueTy, valueTy?] using hv.symm
+  | sym s => have : τ = .sym := by simpa [valueTy?] using hex.symm
              subst this; rfl
   | ref o =>
+    have hv : ValueTy h (.ref o) τ := ValueTy.exact hex
     -- **Two arms since L185**, and they land in different `TyClass` cases: a plain
     -- receiver dispatches from its `klass` and its type names *that* class, while a
     -- class object dispatches from `classOf` — its eigenclass, or `Class` when it
     -- has none — and its type names the object's own class. The second is the whole
     -- content of the class-object arm and the reason `TyClass` says `classOf`
     -- rather than naming a chain.
-    rcases valueTy_ref_inv hv with ⟨hp, rfl⟩ | ⟨hc, rfl⟩
-    · exact ⟨valueTy_ref_klass_isSome hp, rfl⟩
-    · refine ⟨o, ?_, rfl, rfl⟩
+    rcases valueTy_ref_inv hv with ⟨hp, hs⟩ | ⟨hc, hs⟩
+    · rw [← (subTy_atomic ha hn).mp hs]
+      exact ⟨valueTy_ref_klass_isSome hp, rfl⟩
+    · rw [← (subTy_atomic ha hn).mp hs]
+      refine ⟨o, ?_, rfl, rfl⟩
       unfold classRecv at hc
       simp only [Bool.and_eq_true] at hc
       exact hc.2
-  | flt f => simp [ValueTy, valueTy?] at hv
+  | flt f => simp [valueTy?] at hex
 
 /-! ### Resolution to a **user-defined** method
 
@@ -349,9 +367,10 @@ def EntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) 
     available: a receiver hands over its dispatch class (`valueTy_tyClass`), while a
     class does not hand over a receiver — which is the asymmetry L147 is about. -/
 theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Value}
+    (ha : τr ≠ .any) (hn : ∀ τ', τr ≠ .nilable τ')
     (hres : ∀ k, TyClass h τr k → ResolvesAt h k mname bid)
     (hrv : ValueTy h recv τr) : ResolvesTo h recv mname bid :=
-  resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass hrv))
+  resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass ha hn hrv))
 
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
@@ -368,13 +387,18 @@ once per tabulated builtin. This is `int_bin_dispatch` with the three
 
 theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl}
     {recv : Value} {args : List Value} {site : SendSite}
+    -- L193's two side conditions, and they are the *declaration's* rather than the
+    -- receiver's: dispatch has to start somewhere, and neither `.any` nor a nilable
+    -- names a class. `sigOf_atomic` supplies them from the row's existence, so no
+    -- caller has to argue.
+    (ha : τr ≠ .any) (hn : ∀ τ', τr ≠ .nilable τ')
     (he : BuiltinEntryOk m.heap τr mname d)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
     ∃ w, ValueTy m.heap w d.ret ∧
       startArgs m recv site mname args [] .none
         = .next (withCtl m (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
-  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves hres hrv
+  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves ha hn hres hrv
   obtain ⟨hdefer, w, hw, hrun⟩ := hconf m recv args hrv hargs
   refine ⟨w, hw, ?_⟩
   simp only [startArgs, finishSend]
@@ -715,6 +739,9 @@ theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : Strin
   -- L183: both sides are `False`, and the arm is here because the two are not
   -- *syntactically* the same `False`.
   | any => exact absurd ht (by simp [TyClass])
+  -- L193, for L183's reason: `False` on both sides, but not syntactically the same
+  -- `False`, so the arm is written.
+  | nilable _ => exact absurd ht (by simp [TyClass])
   -- L184: the witness's payload and name transport by the two rewrites the `.cls`
   -- arm uses, and `classOf` by `classOf_defineMethod` — a method-table write moves
   -- neither `eigen` nor `klass`.
@@ -730,6 +757,7 @@ theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
   cases τr with
   | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
   | any => exact absurd ht (by simp [TyClass])
+  | nilable _ => exact absurd ht (by simp [TyClass])
   | clsOf n =>
     obtain ⟨o, ho, hn, hk⟩ := ht
     -- `o` is in `h`'s bounds because `PlainGrow` says **nothing became a class**:
@@ -875,6 +903,12 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         exfalso
         rw [show declFor (addRow D c mname { params := [], ret := τb }) .any mname = none from
           by simp [declFor, tyClassNames]] at hdecl
+        exact absurd hdecl (by simp)
+      -- L193, the same argument at the nilable arm — `tyClassNames` is `[]` there too.
+      | nilable τ' =>
+        exfalso
+        rw [show declFor (addRow D c mname { params := [], ret := τb }) (.nilable τ') mname
+              = none from by simp [declFor, tyClassNames]] at hdecl
         exact absurd hdecl (by simp)
       -- L184: the same argument at the class-object arm, and for the same reason —
       -- `tyClassNames` is `[]` there, so no key is read at all.
@@ -1588,8 +1622,8 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       -- `subTy_concrete` puts the argument back at exactly `.int` — which is the
       -- lemma that makes the weakening inert for every `baseDecls` row.
       obtain ⟨σ, hσ, hsub⟩ := hb
-      obtain ⟨y, rfl⟩ := valueTy_int ((subTy_concrete (by simp)).mp hsub ▸ hσ)
-      exact ⟨fun h' => hdefer h' a y, .int (op a y), rfl, hrun a y m⟩
+      obtain ⟨y, rfl⟩ := valueTy_int ((subTy_concrete (by simp) (by simp)).mp hsub ▸ hσ)
+      exact ⟨fun h' => hdefer h' a y, .int (op a y), ValueTy.exact rfl, hrun a y m⟩
 
 /-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
     `ValuesTy` pinning the argument list to `[]` instead of to one integer — which is
@@ -1686,7 +1720,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
             -- pins the function.
             exact Or.inl <| entryOk_int_nullary (f := fun x => .bool (x == 0))
               ht.2.2.2 (by decide) (by decide) (by decide)
-              (fun _ _ => rfl) run_int_zero
+              (fun _ _ => ValueTy.exact rfl) run_int_zero
               (fun _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
                 Builtins.coerceDefer?, Builtins.toAryDefer?])
           · exact absurd hd (by
@@ -1709,6 +1743,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   -- declarations, in any table.
   | any => exact absurd hd (by simp [declFor, tyClassNames])
   | clsOf n => exact absurd hd (by simp [declFor, tyClassNames])
+  | nilable _ => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
 
@@ -1766,6 +1801,7 @@ theorem tyClass (hi : IvarOnly h h') {τ : Ty} {k : ObjId} (ht : TyClass h' τ k
     exact ⟨o, by rw [← hi.classPayload]; exact hcp, by rw [← hi.className_eq]; exact hnm,
       by rw [← hi.classOf_eq]; exact hk⟩
   | any => exact ht.elim
+  | nilable _ => exact ht.elim
   | _ => exact ht
 
 theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}

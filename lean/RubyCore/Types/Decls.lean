@@ -130,6 +130,12 @@ def tyClassNames : Ty → List String
   -- `DeclsOk` never obliges anything at it and no send can use it as a receiver.
   -- The imprecision is in `subTy`, at the position a declared parameter occupies.
   | .any => []
+  -- **A nilable dispatches from nowhere** (L193), for `.any`'s reason and not for a
+  -- new one: a value typed `.nilable τ` may be `nil`, so no row can be promised at
+  -- it, and `[]` is what says so — `declFor` never answers at a nilable and
+  -- `DeclsOk` obliges nothing. Refining a nilable to its payload is a *narrowing*
+  -- rule (`x.nil?` / `if x`), which is `PLAN.md` W5 T3 and not this commit.
+  | .nilable _ => []
   -- **A class object has no declarations yet** (L184), and `[]` is a decision
   -- rather than a stub: a row on `.clsOf "String"` is a **singleton** method
   -- (`def self.m`) while a row on `.cls "String"` is an instance method, so the two

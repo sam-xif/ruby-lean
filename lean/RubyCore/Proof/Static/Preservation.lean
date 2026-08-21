@@ -56,7 +56,10 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
     (hsg : sigOf F (.cls c) mname = some ([], τret))
-    (hk : KontOk F m.heap ((ctx, Γ) :: Γs) τret m.kont) :
+    -- L193: the continuation may have been registered at a *wider* type than the
+    -- signature's return, and this is the only hypothesis that changes.
+    {τw : Ty} (hsubw : subTy τret τw = true)
+    (hk : KontOk F m.heap ((ctx, Γ) :: Γs) τw m.kont) :
     StepOk (startArgs m m.currentFrame.self site mname [] [] .none) := by
   have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
     cases hst : m.stack with
@@ -71,10 +74,11 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, hw, hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
-        (site := site) hbi hself trivial
+        (site := site) (by simp) (by simp) hbi hself trivial
     rw [hstep]
-    exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk
-  · have hru := hresu _ (valueTy_tyClass hself)
+    exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+      (ValueTy.weaken hw hsubw) hk
+  · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) hself)
     have hown : (m.heap.classPayload? mdu.owner).isSome := by
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
@@ -106,7 +110,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       · rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
         exact hcr
-    · exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk⟩
+    · exact ⟨τret, τw, Γb, _, hbodyu, hsubw, KontOk.frameK hk⟩
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, D, ctx, Γ, Γs, htab, hfs, hsc, hc⟩ := h
@@ -116,25 +120,25 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   rcases hctl : m.ctl with e | v | j
   · -- ## control = eval e
     rw [hctl] at hc
-    obtain ⟨τ, Γ', D', hinf, hk⟩ := hc
+    obtain ⟨τ, τw, Γ', D', hinf, hsubw, hk⟩ := hc
     simp only [stepFn, hctl]
     cases e <;> try (simp only [infer] at hinf; contradiction)
     case int n =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     case tru =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     case fls =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     case nil =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     -- **The producer** (L151). One allocation, no continuation, no dispatch: the
     -- whole case is `plainGrow_alloc` for the step, `valueTy_alloc_fresh` for the
     -- value, and `inv_grow_value` — proved a rung earlier — for everything else.
@@ -145,7 +149,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
         (plainGrow_alloc m.heap _ (by simp))
         rfl rfl rfl
-        (valueTy_alloc_fresh (by simp) rfl rfl hstr.1.1 hstr.1.2) hk
+        (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.1.1 hstr.1.2) hsubw) hk
     -- **The symbol literal** (L159). Identical to the four immediate cases above,
     -- which is the point: the slice's third-largest blocker by node count cost a
     -- rule of one line and a case of three, because `Ty.sym` was already there and
@@ -153,7 +157,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     case sym s =>
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
     -- **`self`** (F1b.11). `evalExpr` answers the frame's `self` with no heap
     -- write, so this is the shortest case in the file — one `inv_value` — and the
     -- whole content is the `StackCtx` clause that says the frame's `self` has the
@@ -164,7 +168,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       · next c hsome =>
         simp only [Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl, rfl⟩ := hinf
-        refine inv_value hfs htab hsc hhook hsat hstr hcls hbot ?_ hk
+        refine inv_value hfs htab hsc hhook hsat hstr hcls hbot
+          (ValueTy.weaken ?_ hsubw) hk
         cases hst : m.stack with
         | nil => exact absurd hst hf.1
         | cons fid fids =>
@@ -189,7 +194,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨rfl, rfl, rfl⟩ := hinf
           simp only [evalExpr]
           exact inv_implicit_send0 hfs htab hsc hhook hsat hstr hcls hbot hf.1
-            hsome hsg hk
+            hsome hsg hsubw hk
         · exact absurd hinf (by simp)
       · exact absurd hinf (by simp)
     -- **A constant read** (L189), and the case is short because the two `ClassOk`
@@ -219,7 +224,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [hcur]; exact hsc'.2.2.2.2.1
           simp only [evalExpr]
           rw [constRead_sole hcref hconst hsole]
-          refine inv_value hfs htab hsc hhook hsat hstr hcls hbot ?_ hk
+          refine inv_value hfs htab hsc hhook hsat hstr hcls hbot
+            (ValueTy.weaken ?_ hsubw) hk
           -- `ValueTy` at the class-object arm: `classRecv` from `ClassOk`'s payload
           -- and two id clauses, and the name from `className h k = n`.
           show ValueTy m.heap (.ref k) (.clsOf n)
@@ -241,7 +247,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         obtain ⟨σ, hg, heq⟩ := hinf
         simp only [Prod.mk.injEq] at heq
         obtain ⟨rfl, rfl, rfl⟩ := heq
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (hl x _ hg) hk
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+          (ValueTy.weaken (hl x _ hg) hsubw) hk
       all_goals (simp only [infer] at hinf; contradiction)
     case vasgn k x rhs =>
       cases k
@@ -251,7 +258,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i σ Γ₁ hrhs
           simp only [Option.some.injEq, Prod.mk.injEq] at hinf
           obtain ⟨rfl, rfl, rfl⟩ := hinf
-          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hrhs (KontOk.asgn hk)
+          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hrhs (KontOk.asgn hsubw hk)
         · exact absurd hinf (by simp)
       -- **`@x = e`** (L191). `evalExpr` pushes the same shape as the local-variable
       -- write and the rule answers the rhs's own type, so the case is `lvar`'s minus
@@ -262,7 +269,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         split at hinf
         · next sc hsome =>
           exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hinf
-            (KontOk.asgnIvar (by rw [hsome]; rfl) hk)
+            (KontOk.asgnIvar (by rw [hsome]; rfl) hsubw hk)
         · exact absurd hinf (by simp)
       all_goals (simp only [infer] at hinf; contradiction)
     case seq es =>
@@ -271,23 +278,23 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | nil =>
         simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at hinf
         obtain ⟨rfl, rfl, rfl⟩ := hinf
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken (ValueTy.exact rfl) hsubw) hk
       | cons e₁ rest =>
         cases rest with
         | nil =>
           simp only [inferSeq] at hinf
-          exact inv_eval hfs htab hsc hhook hsat hstr hcls hbot hinf hk
+          exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot hinf hsubw hk
         | cons e₂ rest' =>
           simp only [inferSeq] at hinf
           split at hinf
           · rename_i σ Γ₁ h₁
-            exact inv_push hfs htab hsc hhook hsat hstr hcls hbot h₁ (KontOk.seqCons hinf hk)
+            exact inv_push hfs htab hsc hhook hsat hstr hcls hbot h₁ (KontOk.seqCons hinf hsubw hk)
           · exact absurd hinf (by simp)
     case if' c t els =>
       simp only [infer] at hinf
       split at hinf
       · rename_i σ Γ₁ hcnd
-        exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd (KontOk.ifK hinf hk)
+        exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd (KontOk.ifK hinf hsubw hk)
       · exact absurd hinf (by simp)
     case while' c body =>
       simp only [infer] at hinf
@@ -304,7 +311,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               simp only [Option.some.injEq, Prod.mk.injEq] at hinf
               obtain ⟨rfl, rfl, rfl⟩ := hinf
               exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd
-                (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hk)
+                (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hsubw hk)
             · exact absurd hinf (by simp)
           · exact absurd hinf (by simp)
         · exact absurd hinf (by simp)
@@ -369,7 +376,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
-      · exact ⟨τ, Γb, D', hbody, KontOk.frameK hk⟩
+      · exact ⟨τ, τw, Γb, D', hbody, hsubw, KontOk.frameK hk⟩
     case def' name params body =>
       obtain ⟨rfl, rfl, rfl, hfresh, hha, τb, Γb, hbody, hrow⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
@@ -436,7 +443,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
         · show ∃ σ, ValueTy m₀.heap (Value.sym name) σ ∧
               KontOk D' m₀.heap ((ctx, Γ') :: Γs) σ m₀.kont
-          exact ⟨.sym, rfl, by rw [hko]; exact KontOk.heap_congr hag hk⟩
+          exact ⟨_, ValueTy.weaken (ValueTy.exact rfl) hsubw,
+            by rw [hko]; exact KontOk.heap_congr hag hk⟩
       -- `hlk` collapses the hook lookup to `none`, after which only the
       -- `preludeMode` `if` remains.
       simp only [evalExpr, hdm]
@@ -592,7 +600,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
             (plainGrow_alloc m.heap _ (by simp))
             rfl rfl rfl
-            (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hk
+            (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hsubw)
+            hk
         | cons e rest =>
           -- The head runs next. Its own accepting judgement is what refutes
           -- `continueArray`'s splat arm — the `recvK` case's `hsp` move.
@@ -612,7 +621,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rintro x rfl; exact absurd he (by simp [infer])
           rw [continueArray_plain hsp]
           exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
-            (KontOk.arrK hrest hk)
+            (KontOk.arrK hrest hsubw hk)
       · exact absurd hinf (by simp)
     case send recv mname args blk =>
       cases recv with
@@ -656,7 +665,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [startArgs_plain hsp hkw hfw]
             exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
               (KontOk.argsK (psacc := []) hself trivial hs1 hrest hs2
-                (by simpa using hsg) hk)
+                (by simpa using hsg) hsubw hk)
         | nil =>
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
@@ -670,7 +679,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 obtain ⟨rfl, rfl, rfl⟩ := hinf
                 simp only [evalExpr]
                 exact inv_implicit_send0 hfs htab hsc hhook hsat hstr hcls hbot hf.1
-                  hsome hsg hk
+                  hsome hsg hsubw hk
               · exact absurd hinf (by simp)
             · exact absurd hinf (by simp)
       | some r =>
@@ -691,7 +700,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             -- `KontOk.recvK0` takes the site as a parameter, so `self` is one more
             -- uniform branch rather than the rule's excluded case.
             cases r <;>
-              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK0 hsg hk)
+              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr (KontOk.recvK0 hsg hsubw hk)
         | cons arg extra =>
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
@@ -704,7 +713,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [evalExpr]
             cases r <;>
               exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr
-                (KontOk.recvK hargs hsg hsub hk)
+                (KontOk.recvK hargs hsg hsub hsubw hk)
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, hv, hk⟩ := hc
@@ -713,25 +722,28 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     generalize hK : m.kont = K at hk ⊢
     cases hk with
     | nil => trivial
-    | @seqNil _ _ _ _ _ _ k hk' =>
-      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hv hk'
-    | @seqCons _ _ _ _ _ _ _ e₁ es τ' Γ' k hseq hk' =>
+    | @seqNil _ _ _ _ _ _ τw k hsw hk' =>
+      exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken hv hsw) hk'
+    | @seqCons _ _ _ _ _ _ _ e₁ es τ' τw Γ' k hseq hsw hk' =>
       cases es with
       | nil =>
         simp only [inferSeq] at hseq
-        exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hseq (KontOk.seqNil hk')
+        exact inv_push_sub hfs htab hsc hhook hsat hstr hcls hbot hseq hsw
+          (KontOk.seqNil (by simp) hk')
       | cons e₂ es' =>
         simp only [inferSeq] at hseq
         split at hseq
         · rename_i σ Γ₁ h₁
-          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot h₁ (KontOk.seqCons hseq hk')
+          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot h₁
+            (KontOk.seqCons hseq hsw hk')
         · exact absurd hseq (by simp)
-    | @asgn _ _ _ _ _ _ x k hk' =>
+    | @asgn _ _ _ _ _ _ τw x k hsw hk' =>
       -- The machine `applyKont` steps to is `{ m with kont := k }.setLocal x v`, and
       -- `hfs` is phrased over `m`. The two agree definitionally, but since L137 made
       -- `FramesOk` heap-indexed the elaborator resolves `?m` from `hfs` rather than
       -- from the goal, so the instance has to be named.
-      refine ⟨hhook, hsat, hstr, hcls, ?_, _, ctx, envSet Γ x τ, Γs, htab, ?_, ?_, ⟨τ, hv, hk'⟩⟩
+      refine ⟨hhook, hsat, hstr, hcls, ?_, _, ctx, envSet Γ x τ, Γs, htab, ?_, ?_,
+        ⟨τw, ValueTy.weaken hv hsw, hk'⟩⟩
       · -- `setLocal` rewrites one frame's `locals` and nothing else, so every
         -- stacked frame's `defmod` — all `BottomObj` reads — is unmoved.
         show BottomObj (Machine.setLocal { m with kont := k } x v).frames
@@ -789,7 +801,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- cheapest heap-writing rule in the fragment, and it is cheap for a reason worth
     -- stating: the invariant is about *dispatch and names*, and an instance-variable
     -- table is neither.
-    | @asgnIvar _ _ _ _ _ _ x k hsome hk' =>
+    | @asgnIvar _ _ _ _ _ _ τw x k hsome hsw hk' =>
       obtain ⟨sc, hsc'⟩ := Option.isSome_iff_exists.mp hsome
       have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
         cases hst : m.stack with
@@ -804,7 +816,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
         cases hsv : m.currentFrame.self with
         | ref o' => exact ⟨o', rfl⟩
-        | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?]
+        | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?, subTy]
       have hpl : plainRecv m.heap o = true := valueTy_ref_plain (hsf ▸ hself)
       have hfz : (m.heap.get o).frozen = false := by
         unfold plainRecv at hpl
@@ -842,24 +854,35 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       · show StackCtx _ (bindIvar { m with kont := k } x v).frames
           (bindIvar { m with kont := k } x v).stack (ctx :: Γs.map Prod.fst)
         rw [hfr, hstk]; exact StackCtx.heap_congr hag hsc
-      · exact ⟨τ, ValueTy.congr hag hv,
+      · exact ⟨τw, ValueTy.congr hag (ValueTy.weaken hv hsw),
           by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
                     = k from hkt]
              exact KontOk.heap_congr hag hk'⟩
-    | @ifK _ _ _ _ _ _ _ t els τ' Γ' k hif hk' =>
+    | @ifK _ _ _ _ _ _ _ t els τ' τw Γ' k hif hsw hk' =>
       cases els with
+      -- **L193: the branch's own type is *below* the join, so each side goes through
+      -- `inv_eval_sub` with one `subTy_trans`** — the branch below the join, the join
+      -- below whatever the enclosing rule registered. `joinTy_sub` supplies the first
+      -- half; before this rung the two were equal and the composition was invisible.
       | some e₂ =>
         simp only [inferIf] at hif
         split at hif
         · rename_i τt Γt Dt τe Γe De ht he
           split at hif
           · rename_i hagree
-            obtain ⟨rfl, rfl, rfl⟩ := hagree
-            simp only [Option.some.injEq, Prod.mk.injEq] at hif
-            obtain ⟨rfl, rfl, rfl⟩ := hif
-            by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hfs htab hsc hhook hsat hstr hcls hbot ht hk'
-            · simp only [hb]; exact inv_eval hfs htab hsc hhook hsat hstr hcls hbot he hk'
+            obtain ⟨rfl, rfl⟩ := hagree
+            split at hif
+            · rename_i τj hjoin
+              simp only [Option.some.injEq, Prod.mk.injEq] at hif
+              obtain ⟨rfl, rfl, rfl⟩ := hif
+              by_cases hb : v.truthy
+              · simp only [hb, if_true]
+                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
+                  (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+              · simp only [hb]
+                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot he
+                  (subTy_trans (joinTy_sub hjoin).2 hsw) hk'
+            · exact absurd hif (by simp)
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
       | none =>
@@ -868,24 +891,35 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i τt Γt ht
           split at hif
           · rename_i hnil
-            obtain ⟨rfl, rfl, rfl⟩ := hnil
-            simp only [Option.some.injEq, Prod.mk.injEq] at hif
-            obtain ⟨rfl, rfl, rfl⟩ := hif
-            by_cases hb : v.truthy
-            · simp only [hb, if_true]; exact inv_eval hfs htab hsc hhook hsat hstr hcls hbot ht hk'
-            · simp only [hb]; exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk'
+            obtain ⟨rfl, rfl⟩ := hnil
+            split at hif
+            · rename_i τj hjoin
+              simp only [Option.some.injEq, Prod.mk.injEq] at hif
+              obtain ⟨rfl, rfl, rfl⟩ := hif
+              by_cases hb : v.truthy
+              · simp only [hb, if_true]
+                exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot ht
+                  (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+              · simp only [hb]
+                exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+                  (ValueTy.weaken (ValueTy.exact rfl)
+                    (subTy_trans (joinTy_sub hjoin).2 hsw)) hk'
+            · exact absurd hif (by simp)
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
-    | @whileCond _ _ _ _ _ _ c body k hloop hk' =>
+    | @whileCond _ _ _ _ _ _ τw c body k hloop hsw hk' =>
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hbody (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+        exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hbody
+          (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hsw hk')
       · simp only [hb]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot rfl hk'
-    | @whileBody _ _ _ _ _ _ c body k hloop hk' =>
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+          (ValueTy.weaken (ValueTy.exact rfl) hsw) hk'
+    | @whileBody _ _ _ _ _ _ τw c body k hloop hsw hk' =>
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
-      exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hk')
+      exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd
+        (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hsw hk')
     | @frameK _ _ _ cΓ' Γs _ fid k hk' =>
       -- The activation pops: `frames` is untouched, `stack` loses its head, and
       -- the caller's environment — carried all along by `FramesOk` — becomes
@@ -901,7 +935,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- and pushes one `argsK` for it; the remaining arguments ride in the kont as
     -- unevaluated program, exactly as `seqK`'s do. So this case is one
     -- `inferArgs_cons_inv` and one `KontOk.argsK` at the empty accumulator.
-    | @recvK _ _ _ _ _ _ _ mname arg args τs ps τret Γ₂ k _ hargs hsg hsub hk' =>
+    | @recvK _ _ _ _ _ _ _ mname arg args τs ps τret τw Γ₂ k _ hargs hsg hsub hsw hk' =>
       obtain ⟨τe, Γ₁, D₁, τrest, rfl, he, hrest⟩ := inferArgs_cons_inv hargs
       obtain ⟨τp, psrest, rfl, hs1, hs2⟩ := subTys_cons_inv hsub
       have hsp : ∀ e, arg ≠ .splat e := by
@@ -914,13 +948,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       rw [startArgs_plain hsp hkw hfw]
       exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
         (KontOk.argsK (psacc := []) hv trivial hs1 hrest hs2
-          (by simpa using hsg) hk')
+          (by simpa using hsg) hsw hk')
     -- **The zero-argument dispatch** (L152). `applyKont` runs `startArgs … [] []`,
     -- which is `finishSend` with no argument continuation in between — so this case
     -- ends where `argsK`'s does, one step earlier, and it is `entry_dispatch` at
     -- `args = []` rather than a second dispatch lemma. `ValuesTy _ [] []` is
     -- `trivial`, which is the whole of what the empty parameter list costs.
-    | @recvK0 _ _ _ _ _ _ mname τret k _ hsg hk' =>
+    | @recvK0 _ _ _ _ _ _ mname τret τw k _ hsg hsw hk' =>
       dsimp only
       -- **The two witness kinds land different steps** (L157), which is why
       -- `EntryOk` is a disjunction and why this case is the first to case on it.
@@ -928,9 +962,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
       · obtain ⟨w, hw, hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
-            hbi hv trivial
+            (sigOf_atomic hsg).1 (sigOf_atomic hsg).2 hbi hv trivial
         rw [hstep]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk'
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken hw hsw) hk'
       · -- The user branch: no value, a **frame**. `user_dispatch` supplies the step;
         -- the heap is untouched, so all five heap conjuncts pass straight through and
         -- what is left is the push and the callee's `CtlOk`.
@@ -938,7 +972,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- `UserEntryOk` supplies exactly that — `htys : τ = .cls cu` — so the
         -- substitution is the whole adjustment.
         subst htys
-        have hru := hresu _ (valueTy_tyClass hv)
+        have hru := hresu _ (valueTy_tyClass (by simp) (by simp) hv)
         have hown : (m.heap.classPayload? mdu.owner).isSome := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
@@ -977,13 +1011,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
-          exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk'⟩
+          exact ⟨τret, τw, Γb, _, hbodyu, hsw, KontOk.frameK hk'⟩
     -- **An array element has arrived** (L174). Two shapes again, and they are
     -- `continueArray`'s: nothing left, so allocate; or a head to run, so push the
     -- next `arrK`. The accumulated values are never inspected, which is the erasure
     -- of element types showing up as an *absence* in the proof rather than as a
     -- weakening of it.
-    | @arrK _ _ _ _ _ _ _ τ' acc rest Γ' k hs hk' =>
+    | @arrK _ _ _ _ _ _ _ τ' τw acc rest Γ' k hs hsw hk' =>
       cases rest with
       -- Nothing left: `continueArray` allocates, and the case is L151's string
       -- literal at `Boot.arrayId`. `inferSeq _ _ [] = some (.nilT, Γ, D)` pins the
@@ -998,7 +1032,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           hfs htab hsc hhook hsat hstr hcls hbot
           (plainGrow_alloc m.heap _ (by simp))
           rfl rfl rfl
-          (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hk'
+          (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl hstr.2.1 hstr.2.2) hsw)
+          hk'
       -- A head to run: push the next `arrK`. Split on the *tail* because
       -- `inferSeq`'s `[e]` arm is `infer` and its `e :: rest` arm is not — the same
       -- three-way shape `seqCons` splits on, for the same reason.
@@ -1012,7 +1047,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [continueArray_plain hsp]
           exact inv_push (m := { m with kont := k })
             hfs htab hsc hhook hsat hstr hcls hbot hs
-            (KontOk.arrK (τ' := Ty.nilT) (by simp [inferSeq]) hk')
+            (KontOk.arrK (τ' := Ty.nilT) (by simp [inferSeq]) hsw hk')
         | cons e2 r2 =>
           simp only [inferSeq] at hs
           split at hs
@@ -1023,10 +1058,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [continueArray_plain hsp]
             exact inv_push (m := { m with kont := k })
               hfs htab hsc hhook hsat hstr hcls hbot he
-              (KontOk.arrK hs hk')
+              (KontOk.arrK hs hsw hk')
           · exact absurd hs (by simp)
-    | @argsK _ _ _ _ _ _ _ mname recv τr psacc τp τrest psrest τret acc rest Γ' k _
-        hrv hva hst hrest hsr hsg hk' =>
+    | @argsK _ _ _ _ _ _ _ mname recv τr psacc τp τrest psrest τret τw acc rest Γ' k _
+        hrv hva hst hrest hsr hsg hsw hk' =>
       cases rest with
       -- **The last argument** (L175). `startArgs … (acc ++ [v]) []` is
       -- `finishSend`, so the send completes in this step, and the arguments'
@@ -1060,9 +1095,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · exact absurd hdp (by simp)
         obtain ⟨w, hw, hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
+            (sigOf_atomic (by simpa using hsg)).1 (sigOf_atomic (by simpa using hsg)).2
             hbi hrv (ValuesTy_snoc hva hv hst)
         rw [hstep]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk'
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (ValueTy.weaken hw hsw) hk'
       -- **Another argument to run.** One value moves from the unevaluated tail to
       -- the accumulated prefix, and the signature's split point moves with it —
       -- which is the `List.append_assoc` the `simpa` below discharges.
@@ -1080,7 +1116,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         exact inv_push (m := { m with kont := k })
           hfs htab hsc hhook hsat hstr hcls hbot he
           (KontOk.argsK (psacc := psacc ++ [τp]) hrv (ValuesTy_snoc hva hv hst) hs1
-            hrest' hs2 (by simpa using hsg) hk')
+            hrest' hs2 (by simpa using hsg) hsw hk')
   · -- ## control = jump: excluded by `CtlOk`
     rw [hctl] at hc
     exact hc.elim
