@@ -408,6 +408,24 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
+  -- **A constant read** (L189), and it is the first `Expr` head to *produce* a
+  -- class-object type — the arm L184/L185 built with no producer.
+  --
+  -- Restricted to `reopenableClasses`, and the restriction is the same table the
+  -- `class'` rule reads, for a stronger reason: every row of it is a promise
+  -- `ClassOk` keeps, and this rule needs **four** of those promises —
+  -- `constOwn Object n` answers a class object, that object is named `n`, it is not
+  -- one of the two ids `invoke` dispatches singleton families from, and **`Object`
+  -- is its sole owner** (L189's clause). The last is what makes the rule need no
+  -- frame clause at all: `evalExpr`'s `.const` walks the frame's `cref` *before* the
+  -- ancestors, and sole ownership means any `cref` hit is `Object`'s whatever the
+  -- `cref` is (`constRead_sole`).
+  --
+  -- One step and no continuation: `evalExpr` answers `.value` directly, so this arm
+  -- adds **no `KontOk` constructor** — the third rule in the fragment with that
+  -- property, after `.self'` and `.vcall`.
+  | .const n =>
+    if reopenableClasses.contains n then some (.clsOf n, Γ, D) else none
   -- **An array literal** (L174), and it is L151's string-literal producer with a
   -- list in front of it: `continueArray` evaluates the elements left to right and
   -- then `Builtins.allocArr`s one fresh plain `Array` — the *same* `Heap.alloc` of
@@ -480,8 +498,15 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       match infer D [] body false { ctx with selfCls := some ctx.cls } with
       | some (τb, _, Db) =>
         if Db = D then
+          -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to
+          -- eight names, five of which are the classes the *ground* arms of `Ty`
+          -- denote — and `tyClassNames` subtracts those from the class arm's range,
+          -- so a row keyed on one would owe `EntryOk` over receivers the row was
+          -- never about (`Types/Decls.lean`'s note on that subtraction).
+          -- `DeclsOk_addRow` says so in its hypotheses; this is the rule keeping
+          -- them true.
           if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
-              defFree body = true then
+              groundClassNames.contains ctx.cls = false ∧ defFree body = true then
             some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
           else some (.sym, Γ, D)
         else none

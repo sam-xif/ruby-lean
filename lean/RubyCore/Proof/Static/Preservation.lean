@@ -87,7 +87,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         FramesOk.push hfs⟩
       rw [getD_push_lt_self]
       exact ⟨rfl, hown, by simp [envGet?]⟩
-    · refine ⟨?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -101,6 +101,11 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         show ValueTy m.heap m.currentFrame.self (.cls cu)
         have hcu : c = cu := by simpa using htys
         exact hcu ▸ hself
+      -- **L189: the callee's lexical scope**, which `ResolvesUser` carries — the
+      -- ninth clause it grew for exactly this push.
+      · rw [getD_push_lt_self]
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
+        exact hcr
     · exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk⟩
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
@@ -187,6 +192,48 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             hsome hsg hk
         · exact absurd hinf (by simp)
       · exact absurd hinf (by simp)
+    -- **A constant read** (L189), and the case is short because the two `ClassOk`
+    -- clauses do the work: `constRead_sole` collapses `evalExpr`'s two-phase lookup
+    -- to `Object`'s own table (the lexical phase can only hit `Object`, and if it
+    -- misses, the ancestor walk gets there), and the value's type is the class
+    -- object's own name — which is what `ClassOk` says it is.
+    case const n =>
+      simp only [infer] at hinf
+      split at hinf
+      · next hre =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+        obtain ⟨rfl, rfl, rfl⟩ := hinf
+        obtain ⟨k, cp, hconst, hpay, hmod, hnm, huniq, hhead, hns, hrx, hmt, hsole⟩ :=
+          hcls.2.2 n (List.mem_of_elem_eq_true hre)
+        -- `Object` is on the frame's cref (`StackCtx`, L189), so the *lexical* phase
+        -- cannot miss — and sole ownership makes whatever it hits `Object`'s. The
+        -- ancestor walk is never reached.
+        cases hst : m.stack with
+        | nil => exact absurd hst hf.1
+        | cons fid fids =>
+          have hsc' := hsc
+          rw [hst] at hsc'
+          have hcur : m.currentFrame = m.frames.getD fid default := by
+            simp [Machine.currentFrame, hst]
+          have hcref : Boot.objectId ∈ m.currentFrame.cref := by
+            rw [hcur]; exact hsc'.2.2.2.2.1
+          simp only [evalExpr]
+          rw [constRead_sole hcref hconst hsole]
+          refine inv_value hfs htab hsc hhook hsat hstr hcls hbot ?_ hk
+          -- `ValueTy` at the class-object arm: `classRecv` from `ClassOk`'s payload
+          -- and two id clauses, and the name from `className h k = n`.
+          show ValueTy m.heap (.ref k) (.clsOf n)
+          have hlt : k < m.heap.objs.size := classPayload?_isSome_lt (by rw [hpay]; simp)
+          have hcr : classRecv m.heap k = true := by
+            unfold classRecv
+            simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq]
+            exact ⟨⟨⟨hlt, hrx⟩, hmt⟩, by rw [hpay]; simp⟩
+          have hnp : plainRecv m.heap k = false := by
+            unfold plainRecv
+            unfold Heap.classPayload? at hpay
+            cases hp : (m.heap.get k).payload <;> simp_all
+          simp [ValueTy, valueTy?, hnp, hcr, hnm]
+      · exact absurd hinf (by simp)
     case var k x =>
       cases k
       case lvar =>
@@ -269,6 +316,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- a module — the three tests `enterClassBody` applies before `pushFrame`.
       obtain ⟨k, cp, hconst, hpay, hmod, hnm, huniq⟩ :=
         hcls.2.2 name (List.mem_of_elem_eq_true hmem)
+      -- **L189: the enclosing frame's lexical scope**, which the pushed frame
+      -- inherits because `enterClassBody` *prepends*.
+      have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
+        rw [show m.currentFrame = m.frames.getD fid₀ default by
+          simp [Machine.currentFrame, hst]]
+        rw [hst] at hsc
+        exact hsc.2.2.2.2.1
       simp only [evalExpr, enterClassBody, hdefmod, hconst, hpay, hmod, withKont]
       -- What is left is `pushFrame`, and it is a frame push on an untouched heap.
       have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
@@ -288,13 +342,19 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
         -- A class body's `self` is the **class object**, which `plainRecv`
         -- excludes, so the context claims no self type and the clause is vacuous.
         · exact fun sc hsc' => absurd hsc' (by simp)
+        -- **L189: `enterClassBody` *prepends* the class to the enclosing cref**
+        -- (`Interp/Dispatch.lean:224`), so `Object`'s membership is inherited from
+        -- the frame this one was pushed from — which is the whole reason the clause
+        -- is a membership rather than a shape.
+        · rw [getD_push_lt_self]
+          exact List.mem_cons_of_mem _ hcrefCur
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
@@ -414,13 +474,20 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [show curFrame m = m.frames.getD fid₀ default by
             simp [curFrame, curFid, hst]]
           exact hscc.2.2.1 hfidsne
+        -- **L189: the defining frame's lexical scope contains `Object`**, which is
+        -- what the row's `ResolvesUser` has to carry across a later call, since
+        -- `evalExpr` copies `cref` into the `MethodDef` it installs.
+        have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
+          rw [show m.currentFrame = m.frames.getD fid₀ default by
+            simp [Machine.currentFrame, hst]]
+          exact hscc.2.2.2.2.1
         -- The chain from the definee starts at the definee, which is what makes the
         -- entry the step just wrote the one `lookup` finds.
         have hchain : ∀ md : MethodDef, ∃ rest,
             ancestors (defineMethod m.heap (curFrame m).defmod name md)
               (curFrame m).defmod = (curFrame m).defmod :: rest := by
           intro md
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀, _⟩ :=
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, hhead₀, _, _, _, _⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
               (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
           have hdefk : (curFrame m).defmod = k₀ :=
@@ -436,21 +503,20 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hdecls : ∀ (md : MethodDef), md.owner = (curFrame m).defmod →
             md.builtin = none → md.undefined = false → md.visibility = .pub →
             md.params = [] → md.declared = [] → md.capturedFrame = none →
-            md.body = body →
+            md.body = body → Boot.objectId ∈ md.cref →
             DeclsOk (addRow D ctx.cls name { params := [], ret := τb })
               (defineMethod m.heap (curFrame m).defmod name md) := by
-          intro md hown hb hu hvs hpar hdec hcap hbd
+          intro md hown hb hu hvs hpar hdec hcap hbd hcref
           refine DeclsOk_addRow htab hfresh ?_ ?_
-          · -- The row is not at a ground type, which is what `reopenableClasses`
-            -- membership buys: `tyClassNames` of a ground type lists ground names,
-            -- and a row on one would owe `EntryOk` over immediates.
-            revert hmemctx
-            simp only [reopenableClasses, groundClassNames, List.contains_cons,
-              List.contains_nil, Bool.or_false, beq_iff_eq]
-            intro hh
-            rw [hh]
-            decide
-          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _, _⟩ :=
+          · -- **The row is not at a ground type**, and since L189 that is a *rule*
+            -- guard rather than a consequence of `reopenableClasses` membership:
+            -- the table grew to eight names, five of which are exactly the ground
+            -- classes. `tyClassNames` subtracts those from the class arm's range, so
+            -- a row on one would owe `EntryOk` over immediates — which is why the
+            -- `def` rule now tests it and this is a hypothesis rather than a
+            -- computation.
+            exact hdf.1
+          obtain ⟨k₀, cp, _, _, _, hnm₀, huniq₀, _, _, _, _, _⟩ :=
             (ClassOk_defineMethod (name := name) (md := md)
               (cls := (curFrame m).defmod) hcls).2.2 ctx.cls (List.mem_of_elem_eq_true hmemctx)
           have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
@@ -459,7 +525,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
           obtain ⟨rest, hrest⟩ := hchain md
           refine Or.inr ⟨md, ctx.cls, ?_, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
-            by rw [hbd]; exact hdf, ?_⟩
+            by rw [hbd]; exact hdf.2, ?_⟩
           · -- The row's type names exactly its key, which is what lets a *call*
             -- recover the class the body was checked in (F1b.11).
             rfl
@@ -467,7 +533,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               rw [hdefk]; exact huniq₀ k htc.1 htc.2
             subst hk
             refine ⟨(curFrame m).defmod, ?_, hb, hu, hvs, hpar, hdec, hcap,
-              by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_⟩
+              by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_, hcref⟩
             · show lookup.go _ name (ancestors _ _) = _
               rw [hrest]
               exact lookup_go_defineMethod_self m.heap _ name md hdo rest
@@ -477,7 +543,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 simp only [List.takeWhile, bne_self_eq_false, decide_false,
                   Bool.false_eq_true, if_false]
                 rfl
-          · exact ⟨Γb, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf hbody⟩
+          · exact ⟨Γb, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody⟩
         by_cases hp : m.preludeMode = true <;>
           simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
           refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
@@ -489,6 +555,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               -- is not the outermost — which `top = false` is exactly.
               | exact hdecls _ rfl rfl rfl
                   (by simpa [defVisOfDef, hinit] using hvis) rfl rfl rfl rfl
+                  (by simpa [hdm] using hcrefCur)
               | exact hlkNH _
               | exact Saturated_defineMethod hsat _ _ _
               | exact LitClsOk_defineMethod hstr
@@ -676,9 +743,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hf' : FrameOk { m with kont := k } :=
           FramesOk.frameOk (m := { m with kont := k }) hfs
         rw [setLocal_stack, setLocal_frames (m := { m with kont := k }) hf']
-        refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
+        -- L189 adds a fourth agreement, and it is the same one-liner: `setLocal`
+        -- writes `locals` and moves neither `defmod`, `defVis`, `self` nor `cref`.
+        refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
+          (fun fid _ => ?_) hsc <;>
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
         · subst hfx
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
@@ -803,7 +877,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- **is** `md.owner`. `defVis` is the frame literal's default, which is what
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
-          refine ⟨?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -812,6 +886,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             subst hsc'
             rw [getD_push_lt_self]
             exact hv
+          -- L189: `ResolvesUser`'s tenth clause, spent here.
+          · rw [getD_push_lt_self]
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
+            exact hcr
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.

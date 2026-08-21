@@ -145,4 +145,25 @@ def main : IO UInt32 := do
 (want 0): {hazards.size}"
     for (cn, nm) in hazards do
       IO.println s!"  {nm}::{cn}"
-    return if hazards.isEmpty && unreachable == 0 then 0 else 1
+    -- **The question the `.const` *read* rule turns on** (L189): for each name the
+    -- rule can admit, is `Object` the **only** class object owning a constant of
+    -- that name? If so the two-phase lookup lands on `Object`'s table from *any*
+    -- frame — the lexical phase either finds it there or misses everything, and the
+    -- inheritance phase then reaches `Object` with nothing in front of it owning
+    -- anything (`NoShadowBefore`, L178). That is a **heap** clause, so it needs no
+    -- `cref` clause on frames and no `ResolvesUser` change.
+    IO.println "\nowners of each admissible constant name (want: Object only):"
+    let mut ambiguous := 0
+    for nm in RubyCore.Types.reopenableClasses do
+      let mut who : Array String := #[]
+      for k in [0:n] do
+        match h.classPayload? k with
+        | none => pure ()
+        | some c =>
+          if (c.consts.find? (·.1 == nm)).isSome then
+            who := who.push s!"{className h k} (id {k})"
+      IO.println s!"  {nm}: {who.size} owner(s) {who}"
+      if who.size != 1 then ambiguous := ambiguous + 1
+      else if !(who[0]!.startsWith "Object ") then ambiguous := ambiguous + 1
+    IO.println s!"  names not owned by Object alone (want 0): {ambiguous}"
+    return if hazards.isEmpty && unreachable == 0 && ambiguous == 0 then 0 else 1

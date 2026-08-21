@@ -262,7 +262,9 @@ is a table row plus a `decide`.
 `String` is the one entry, and it is not arbitrary: it is the only ground class
 the fragment can currently *produce a value of* (`.str`, L151), so it is the only
 one for which reopening buys a call site. -/
-def reopenableClasses : List String := ["String"]
+def reopenableClasses : List String :=
+  ["String", "Integer", "Symbol", "NilClass", "TrueClass", "FalseClass",
+   "Proc", "Exception"]
 
 /-- The declarations in force while checking `p`.
 

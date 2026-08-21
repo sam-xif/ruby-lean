@@ -131,7 +131,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- (`Interp.lean:225`), which is why no row can come from one.
     show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ({ cls := "Object" } :: [])
-    refine ⟨?_, ?_, ?_, ?_, trivial⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact (show ClassOk (Machine.init p).heap from
@@ -142,6 +142,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- The toplevel activation claims no self type: `self` is `main`, and nothing in
     -- the fragment needs it (F1b.11).
     · exact fun sc hsc => absurd hsc (by simp)
+    · simp [Machine.init, Machine.initOn, Array.getD]
   · unfold check at h
     show CtlOk (declsOf p) { cls := "Object" } [] [] (Machine.init p)
     unfold CtlOk
@@ -199,13 +200,13 @@ def egClassBody : Expr :=
   .class' "String" none (.def' "shout" [] (.int 1))
 
 example : check egClassBody = .accept := by
-  simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses,
+  simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
     defFree, defFreeAll, addRow, declsFor, isSelf]
 
 theorem egClassBody_safe :
     ∀ r, ReachableResult (Machine.init egClassBody) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses,
+    simp [check, egClassBody, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
       defFree, defFreeAll, addRow, declsFor, isSelf])
 
 /-- **The first accepted program with a user-method call** (F1b.10):
@@ -380,6 +381,47 @@ example : declFor baseDecls (.clsOf "String") "===" = none := by
 example : ∀ (D : Decls) (n mname : String), declFor D (.clsOf n) mname = none := by
   intro D n mname; simp [declFor, tyClassNames]
 
+/-- **A constant read** (L189), and the first program that gets a class-object type.
+
+    ```ruby
+    class String
+      def k
+        String        # ⇒ T.class_of(String)
+      end
+      "x".k
+    end
+    ```
+
+    The rule is admitted for the eight `reopenableClasses` names and refused for
+    everything else — and the eight are not a guess: `scripts/reopen_probe.lean`
+    decides `ClassOk`'s seven clauses per candidate and the refusals are all
+    *informative*. `Float` owns `NAN`/`INFINITY`, so nothing in front of `Object` on
+    its chain is constant-free; `Array`, `Hash` and `Range` fail **sole ownership**
+    because `T::Array`, `T::Hash` and `T::Range` own those names too — which is
+    L177's `T` collision arriving as a refusal rather than as a hazard; `Regexp` is
+    one of the two ids `invoke` dispatches a singleton family from; and
+    `Comparable`/`Kernel`/`T` are modules. -/
+def egConst : Expr :=
+  .class' "String" none
+    (.seq [ .def' "k" [] (.const "String"),
+            .send (some (.str "x")) "k" [] none ])
+
+theorem egConst_safe :
+    ∀ r, ReachableResult (Machine.init egConst) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egConst, infer, inferArgs, subTys, subTy, inferSeq, illTyped,
+      illTypedAny, declsOf, declaresName, baseDecls, reopenableClasses,
+      groundClassNames, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      declOf?, tyClassNames, isSelf])
+
+/-- **And a name outside the table is `unknown`** — not typed at some guessed class.
+    `Token` is a program class: it does not exist at the booted heap, so `ClassOk`
+    could not promise anything about it, which is what the table's membership test
+    is enforcing. -/
+example : check (.class' "String" none (.def' "k" [] (.const "Token"))) = .unknown := by
+  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, reopenableClasses,
+    groundClassNames, defFree, defFreeAll, isSelf]
+
 /-- **The class-object *producer*** (L185): `valueTy?` now gives a class object a
     type, and the facts worth asserting are which type and why the two `.ref` arms
     are disjoint.
@@ -481,7 +523,7 @@ def egSelf : Expr :=
 theorem egSelf_safe :
     ∀ r, ReachableResult (Machine.init egSelf) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egSelf, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses,
+    simp [check, egSelf, infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, reopenableClasses, groundClassNames,
       defFree, defFreeAll, addRow, declsFor, isSelf])
 
 /-- **A literal `self` receiver** (L172) — `self.v`, which F1b.11 excluded and
@@ -523,13 +565,13 @@ theorem egSelfRecv_safe :
     *type* is what refuses this, not the send site. -/
 example : check (.class' "String" none (.send (some .self') "upcase" [] none))
     = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, isSelf, sigOf, declFor,
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, groundClassNames, isSelf, sigOf, declFor,
     declOf?, declsFor, baseDecls, tyClassNames, groundClassNames]
 
 /-- And `self` at toplevel or in a class body is `unknown`, not accepted at some
     guessed type. -/
 example : check (.class' "String" none .self') = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, isSelf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, declsOf, reopenableClasses, groundClassNames, isSelf]
 
 /-- **A toplevel `def` declares nothing, and the call is `unknown`** — which is
     not a limitation of the rule but of Ruby: `Interp.lean:225` makes a toplevel

@@ -118,7 +118,14 @@ def classOkB (h : Heap) : Bool :=
           ((ancestors h k).head? == some k) &&
           -- L178, at this class: a method body of it is the other frame a
           -- constant read can happen in.
-          noShadowBeforeB h k
+          noShadowBeforeB h k &&
+          -- L189's two clauses for the `.const` read: the class object is a legal
+          -- receiver, and `Object` is the sole owner of a constant of this name —
+          -- the second is what makes a `cref` clause unnecessary.
+          (k != Boot.regexpId) && (k != Boot.mathId) &&
+          ((List.range h.objs.size).all fun j =>
+            !((h.classPayload? j).isSome && j != Boot.objectId) ||
+              (constOwn h j n).isNone)
       | none => false
     | _ => false
 

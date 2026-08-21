@@ -142,6 +142,11 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- body it answers `.cls c`, and this answers the variable that *stands for*
   -- `.cls c` before the class is known.
   | .self' => .ok (.var ctx.self) Γ s
+  -- **A constant read** (L189), the same restriction as `infer`'s arm — the
+  -- factoring theorem's case is one `simp`, since neither side reads the store.
+  | .const n =>
+    if reopenableClasses.contains n then .ok (.nom (.clsOf n)) Γ s
+    else .outOfFragment "const"
   -- **The `vcall`** — §4.3's construct, and the one the ledger is about. No table
   -- read at all: the requirement goes into the row on `ctx.self`.
   | .vcall mname =>

@@ -459,6 +459,21 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- *carrying* of it across the body's steps that this clause is.
       (∀ sc, c.selfCls = some sc →
         ValueTy h (frames.getD fid default).self (.cls sc)) ∧
+      -- **`Object` is on the frame's lexical constant scope** (L189), and it is the
+      -- *whole* frame-side cost of the `.const` read rule. `evalExpr`'s `.const` walks
+      -- `cref` before the ancestors (artifact 03 §4), and `ClassOk`'s sole-owner
+      -- clause says any hit is `Object`'s — so the read is decided the moment `Object`
+      -- is known to be *on* the list. It is, for every frame the fragment builds:
+      -- `Machine.init` sets `cref := [Object]`, `enterClassBody` prepends the class
+      -- (`Interp/Dispatch.lean:224`), and a method frame takes `md.cref` — which is
+      -- the defining frame's, so `ResolvesUser` carries the clause across a call.
+      --
+      -- A membership rather than a shape, deliberately: nothing needs to know what
+      -- else is on the list, because sole ownership makes the other entries answer
+      -- `none`. That is the difference between this clause and the `CrefOk` an earlier
+      -- draft priced — *nothing in front of `Object` owns anything* — which would have
+      -- had to be re-established at every push.
+      Boot.objectId ∈ (frames.getD fid default).cref ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -467,7 +482,7 @@ theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -491,7 +506,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
         getD_push_lt _ _ _ (hlt fid (List.mem_cons_self ..))
       exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
         by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -892,17 +908,22 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       (∀ fid ∈ st, (f₂.getD fid default).defmod = (f₁.getD fid default).defmod) →
       (∀ fid ∈ st, defVisOfDef (f₂.getD fid default) = defVisOfDef (f₁.getD fid default)) →
       (∀ fid ∈ st, (f₂.getD fid default).self = (f₁.getD fid default).self) →
+      -- L189: the `cref` clause needs its own agreement, for the same reason the
+      -- other three do — `setLocal` writes `locals` and moves neither.
+      (∀ fid ∈ st, (f₂.getD fid default).cref = (f₁.getD fid default).cref) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hsf, hs => by
-      refine ⟨?_, ?_, ?_, ?_,
+  | [], [], _, _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hs => by
+      refine ⟨?_, ?_, ?_, ?_, ?_,
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hsf g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2⟩
+          (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hcr g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
       · rw [hsf fid (List.mem_cons_self ..)]; exact hs.2.2.2.1
+      · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 
@@ -1123,7 +1144,7 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
       have hlt : (frames.getD fid default).defmod < h.objs.size :=
         classPayload?_isSome_lt hs.1
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ValueTy.congr ha (hs.2.2.2.1 sc hsc),
-        StackCtx.heap_congr ha hs.2.2.2.2⟩
+        hs.2.2.2.2.1, StackCtx.heap_congr ha hs.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
   | [], _ :: _, hs => hs.elim

@@ -230,7 +230,14 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     md.capturedFrame = none ∧
     (h.classPayload? md.owner).isSome ∧
     crubyShadow h
-      (if md.fromPrelude then [] else (ancestors h k).takeWhile (· != owner)) mname = none
+      (if md.fromPrelude then [] else (ancestors h k).takeWhile (· != owner)) mname = none ∧
+    -- **L189: the callee's lexical constant scope contains `Object`.** A method frame
+    -- takes `md.cref` (`Interp/Dispatch.lean:154`), so the `StackCtx` clause the
+    -- `.const` read rule needs has to cross the call — and this is where it crosses.
+    -- Heap-independent, so both transports carry it for free; established by the `def`
+    -- step from the defining frame's own clause, since `evalExpr` sets
+    -- `cref := m.currentFrame.cref` (`Interp.lean:228`).
+    Boot.objectId ∈ md.cref
 
 /-- **Conformance for a user method is discharged by the checker, not by running
     anything**: the body infers at the declared return type in the environment
@@ -1216,6 +1223,125 @@ theorem NoShadowBefore_defineMethod {h : Heap} {cls k : ObjId} {name : String}
     rw [hcs]
     exact hno j hj cp' hp
 
+/-- A class with an empty own-constant table owns nothing at any name. -/
+theorem constOwn_of_no_consts {h : Heap} {k : ObjId} {n : String}
+    (hn : ∀ cp, h.classPayload? k = some cp → cp.consts = []) :
+    constOwn h k n = none := by
+  unfold constOwn
+  cases hp : h.classPayload? k with
+  | none => simp [hp]
+  | some cp => simp [hp, hn cp hp]
+
+/-- **The inheritance phase reaches `Object`** (L189, on L178's clause): a `firstM`
+    down a chain whose members in front of `Object` own nothing gets to `Object`, and
+    `Object` answers. Stated over the raw list and at `constLookupFrom`'s own function
+    body, so the ancestor walk can be handed to it without an eta rewrite. -/
+theorem firstM_lookupOwn {h : Heap} {n : String} {v : Value}
+    (hobj : constOwn h Boot.objectId n = some v) :
+    ∀ (l : List ObjId), Boot.objectId ∈ l →
+      (∀ j ∈ l.takeWhile (· != Boot.objectId), ∀ cp,
+        h.classPayload? j = some cp → cp.consts = []) →
+      l.firstM (fun k => match h.classPayload? k with
+        | some c => (c.consts.find? (·.1 == n)).map (·.2)
+        | Option.none => Option.none) = some v := by
+  intro l
+  induction l with
+  | nil => intro hmem _; exact absurd hmem (by simp)
+  | cons a rest ih =>
+    intro hmem hno
+    by_cases ha : a = Boot.objectId
+    · subst ha
+      unfold constOwn at hobj
+      cases hp : h.classPayload? Boot.objectId with
+      | none => rw [hp] at hobj; simp at hobj
+      | some cp =>
+        rw [hp] at hobj
+        simp only [Option.bind_some] at hobj
+        simp [List.firstM, hp, hobj]
+    · have hane : (a != Boot.objectId) = true := by simpa using ha
+      have hnone : (match h.classPayload? a with
+          | some c => (c.consts.find? (·.1 == n)).map (·.2)
+          | Option.none => Option.none) = none := by
+        cases hp : h.classPayload? a with
+        | none => simp [hp]
+        | some cp => simp [hp, hno a (by simp [List.takeWhile, hane]) cp hp]
+      have hrest : Boot.objectId ∈ rest := by
+        rcases List.mem_cons.mp hmem with h' | h'
+        · exact absurd h'.symm ha
+        · exact h'
+      have hno' : ∀ j ∈ rest.takeWhile (· != Boot.objectId), ∀ cp,
+          h.classPayload? j = some cp → cp.consts = [] := by
+        intro j hj cp hcp
+        have hmm : j ∈ (a :: rest).takeWhile (· != Boot.objectId) := by
+          simp only [List.takeWhile, hane, if_true]
+          exact List.mem_cons_of_mem _ hj
+        exact hno j hmm cp hcp
+      simp [List.firstM, hnone, ih hrest hno']
+
+/-- **The lexical phase can only hit `Object`** (L189). Whatever the `cref` is, either
+    it misses the name or the hit is `Object`'s value — which is what makes the read
+    safe over a `cref` the invariant says nothing about, and what a frame clause would
+    otherwise have had to buy. -/
+theorem firstM_sole_owner {h : Heap} {n : String} {v : Value}
+    (hown : constOwn h Boot.objectId n = some v)
+    (hsole : ∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none) :
+    ∀ (l : List ObjId), l.firstM (fun c => constOwn h c n) = none ∨
+      l.firstM (fun c => constOwn h c n) = some v := by
+  intro l
+  induction l with
+  | nil => exact Or.inl rfl
+  | cons a rest ih =>
+    by_cases ha : a = Boot.objectId
+    · subst ha; exact Or.inr (by simp [List.firstM, hown])
+    · have hnone : constOwn h a n = none := by
+        by_cases hp : (h.classPayload? a).isSome
+        · exact hsole a hp ha
+        · unfold constOwn
+          cases hq : h.classPayload? a with
+          | none => simp [hq]
+          | some _ => rw [hq] at hp; exact absurd hp (by simp)
+      rcases ih with h1 | h1
+      · exact Or.inl (by simp [List.firstM, hnone, h1])
+      · exact Or.inr (by simp [List.firstM, hnone, h1])
+
+/-- **The whole constant read, in one equation** (L189) — and the *inheritance*
+    phase is never consulted.
+
+    `evalExpr`'s `.const` arm is the lexical phase over the frame's `cref` and then
+    the ancestor walk, and two facts collapse it to `Object`'s own table: `Object` is
+    **on** the cref (`StackCtx`, L189) so the lexical phase cannot miss, and `Object`
+    is the **sole owner** of the name (`ClassOk`, L189) so whatever it hits is
+    `Object`'s. The `orElse` is therefore dead code under the invariant, which is why
+    the rule needs nothing about `ancestors` — the `NoShadowBefore` an earlier draft
+    reached for is not required at all.
+
+    **This is what a `CrefOk` clause would have bought, bought by a membership.** -/
+theorem constRead_sole {h : Heap} {n : String} {v : Value} {cref : List ObjId}
+    {rest : Option Value}
+    (hmem : Boot.objectId ∈ cref)
+    (hown : constOwn h Boot.objectId n = some v)
+    (hsole : ∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none) :
+    (cref.firstM (fun c => constOwn h c n)).orElse (fun _ => rest) = some v := by
+  have hlex : cref.firstM (fun c => constOwn h c n) = some v := by
+    induction cref with
+    | nil => exact absurd hmem (by simp)
+    | cons a tail ih =>
+      by_cases ha : a = Boot.objectId
+      · subst ha; simp [List.firstM, hown]
+      · have hnone : constOwn h a n = none := by
+          by_cases hp : (h.classPayload? a).isSome
+          · exact hsole a hp ha
+          · unfold constOwn
+            cases hq : h.classPayload? a with
+            | none => simp [hq]
+            | some _ => rw [hq] at hp; exact absurd hp (by simp)
+        have htail : Boot.objectId ∈ tail := by
+          rcases List.mem_cons.mp hmem with h' | h'
+          · exact absurd h'.symm ha
+          · exact h'
+        simp [List.firstM, hnone, ih htail]
+  rw [hlex]; rfl
+
 /-- **Every reopenable class name really names a reopenable class**: `Object`'s own
     constant table binds it to a class object that is not a module.
 
@@ -1269,7 +1395,23 @@ def ClassOk (h : Heap) : Prop :=
     -- `NoShadowBefore` is what makes the read reach `Object`'s table. Folded in
     -- here for `className h Boot.objectId`'s own reason — it is the same kind of
     -- fact as the rows around it and `classOkB` decides it in the same pass.
-    NoShadowBefore h k
+    NoShadowBefore h k ∧
+    -- **L189, and these two are what the `.const` *read* rule needs.**
+    --
+    -- First: the class object is a **legal receiver** — `classRecv` excludes the two
+    -- ids `invoke` dispatches singleton families from (L185), so a name whose class
+    -- object were `Regexp` or `Math` could be read but not sent to. Decidable, and it
+    -- is the price of a `reopenableClasses` row exactly as the clauses above are.
+    k ≠ Boot.regexpId ∧ k ≠ Boot.mathId ∧
+    -- Second: **`Object` is the only class object owning a constant of this name.**
+    -- That single clause replaces a `cref` clause on frames entirely, which is the
+    -- rung's whole economy: `evalExpr`'s `.const` walks the frame's cref *before* the
+    -- ancestors, so a name-keyed read is only sound if no cref entry can shadow — and
+    -- if `Object` is the sole owner then any cref hit *is* `Object`'s, whatever the
+    -- cref is. Measured before it was assumed (`scripts/consts_probe.lean`: `String`
+    -- has exactly one owner, `Object`), and preserved because nothing in the fragment
+    -- writes a constant anywhere else.
+    (∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none)
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
@@ -1290,18 +1432,27 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
         intro hm
         simp only [hc, hp, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
           List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hm
-        obtain ⟨⟨⟨⟨hmod, hnm⟩, huniq⟩, hhead⟩, hns⟩ := hm
+        obtain ⟨⟨⟨⟨⟨⟨hmod, hnm⟩, huniq⟩, hhead⟩, hns⟩, hrx⟩, hmt⟩ := hm.1
+        have hsole := hm.2
         refine ⟨k, cp, rfl, hp, hmod, hnm, fun j hj hjn => ?_, hhead,
-          noShadowBeforeB_sound hns⟩
+          noShadowBeforeB_sound hns, by simpa using hrx, by simpa using hmt,
+          fun j hj hjo => ?_⟩
         -- The bound comes from the payload, exactly as `StackCtx`'s does
         -- (`classPayload?_isSome_lt`), so the `List.range` scan really is a scan
         -- over every id that can satisfy the hypothesis.
-        have hlt : j < h.objs.size := classPayload?_isSome_lt hj
-        rcases huniq j (List.mem_range.mpr hlt) with hno | heq
-        · have : ¬ ((h.classPayload? j).isSome = true ∧ className h j = n) := by
-            simpa using hno
-          exact absurd ⟨hj, hjn⟩ this
-        · exact heq
+        · have hlt : j < h.objs.size := classPayload?_isSome_lt hj
+          rcases huniq j (List.mem_range.mpr hlt) with hno | heq
+          · have : ¬ ((h.classPayload? j).isSome = true ∧ className h j = n) := by
+              simpa using hno
+            exact absurd ⟨hj, hjn⟩ this
+          · exact heq
+        · -- L189's sole-owner clause, read out of the `List.range` scan.
+          have hlt : j < h.objs.size := classPayload?_isSome_lt hj
+          have hh := hsole j (List.mem_range.mpr hlt)
+          rcases hh with hno | hnone
+          · exact absurd (by simp [hj, hjo] : ((h.classPayload? j).isSome && j != Boot.objectId) = true)
+              (by rw [hno]; simp)
+          · simpa using hnone
     | _ => simp [hc]
 
 /-- **`ClassOk` survives an allocating step**, and it needs nothing but
@@ -1313,15 +1464,20 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
   refine ⟨by rw [hg.className_eq]; exact hc.1,
     NoShadowBefore_grow hg hsat hc.2.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7⟩ := hc.2.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7, hrx, hmt, hsole⟩ := hc.2.2 n hn
   refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
     by rw [hg.payload]; exact h2, h3, ?_, fun j hj hjn => ?_,
     by rw [ancestors_congr_grow hg.shapeAgree hg.size hsat]; exact h6,
-    NoShadowBefore_grow hg hsat h7⟩
+    NoShadowBefore_grow hg hsat h7, hrx, hmt, fun j hj hjo => ?_⟩
   -- `PlainGrow` pins `classPayload?` at every id and `className` with it, so both
   -- new clauses transport by the same rewrite the old ones do.
   · rw [hg.className_eq]; exact h4
   · exact h5 j (by rw [← hg.payload]; exact hj) (by rw [← hg.className_eq]; exact hjn)
+  · -- L189's sole-owner clause: `constOwn` reads `classPayload?`, which `PlainGrow`
+    -- pins at every id, so the clause transports by the same rewrite the first one does.
+    unfold constOwn at *
+    rw [hg.payload]
+    exact hsole j (by rw [← hg.payload]; exact hj) hjo
 
 /-- **And a `def`** — including a `def` in the body of the very class being
     reopened, which is the case that makes the clause worth carrying rather than
@@ -1332,7 +1488,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   refine ⟨by rw [className_defineMethod]; exact hc.1,
     NoShadowBefore_defineMethod hc.2.1, ?_⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7⟩ := hc.2.2 n hn
+  obtain ⟨k, cp, h1, h2, h3, h4, h5, h6, h7, hrx, hmt, hsole⟩ := hc.2.2 n hn
   refine ⟨k, ?_⟩
   rw [constOwn_defineMethod h cls Boot.objectId name n md]
   -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
@@ -1342,7 +1498,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   | none => rw [hk, h2] at hsh; exact absurd hsh (by simp)
   | some cp' =>
     refine ⟨cp', h1, rfl, ?_, ?_, fun j hj hjn => ?_, ?_,
-      NoShadowBefore_defineMethod h7⟩
+      NoShadowBefore_defineMethod h7, hrx, hmt, fun j hj hjo => ?_⟩
     -- `isModule` is not in `clsShape`, but it *is* in `clsName_defineMethod` — L124
     -- put it there because the anonymous-class fallback renders by it. Reused rather
     -- than reproved.
@@ -1356,6 +1512,28 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     · exact h5 j (by rw [← classPayload?_isSome_defineMethod]; exact hj)
         (by rw [← className_defineMethod]; exact hjn)
     · rw [ancestors_defineMethod]; exact h6
+    · -- L189: `defineMethod` writes `methods`, and `consts_defineMethod` (L156) is
+      -- the lemma that says the constant table is untouched — including at the
+      -- definee, which is why it was written.
+      have hcs := consts_defineMethod h cls j name md
+      unfold constOwn at *
+      cases hp : h.classPayload? j with
+      | none =>
+        rw [hp] at hcs
+        cases hp' : (defineMethod h cls name md).classPayload? j with
+        | none => simp [hp']
+        | some cp'' => rw [hp'] at hcs; simp at hcs
+      | some cpj =>
+        have hj' : (h.classPayload? j).isSome := by rw [hp]; simp
+        have := hsole j hj' hjo
+        rw [hp] at this hcs
+        cases hp' : (defineMethod h cls name md).classPayload? j with
+        | none => simp [hp']
+        | some cp'' =>
+          rw [hp'] at hcs
+          simp only [Option.map_some, Option.some.injEq] at hcs
+          simp only [hp', Option.bind_some, hcs]
+          simpa using this
 
 /-- **`TableOk` survives a user `def`.** Still needed, because `HeapOk` — F0's
     heap half — is stated over `TableOk`, and `PreludeInv.heapOk_defineMethod` is

@@ -126,8 +126,11 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- is `ClassOk`'s new clause, which is why that clause is folded into `ClassOk`
     -- rather than being a seventh conjunct — the certificate already decides it.
     show StackCtx _ _ _ ({ cls := "Object" } :: [])
+    -- L189's cref clause: `initOn` sets `cref := [Boot.objectId]`, so it is a
+    -- computation on the frame literal whatever the heap is.
     exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
-      fun sc hsc => absurd hsc (by simp), trivial⟩
+      fun sc hsc => absurd hsc (by simp),
+      by simp [Machine.initOn, Array.getD], trivial⟩
   · unfold check at hchk
     show CtlOk (declsOf p) { cls := "Object" } [] [] _
     unfold CtlOk

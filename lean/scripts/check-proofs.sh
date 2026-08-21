@@ -194,4 +194,13 @@ if ! lake env lean --run scripts/classeq_probe.lean; then
   exit 1
 fi
 
+# L189's admissibility table for `reopenableClasses`. Not a ratchet on a clause but
+# on a *table*: it decides `ClassOk`'s seven per-name conjuncts for every plausible
+# candidate, so widening the table is a `decide` rather than an argument — and every
+# refusal is informative (`Float` owns NAN/INFINITY; `Array`/`Hash`/`Range` lose sole
+# ownership to `T::Array`/`T::Hash`/`T::Range`; `Regexp` is a singleton-dispatch id;
+# `Comparable`/`Kernel`/`T` are modules).
+echo "== L189 measurement (which class names are admissible)"
+lake env lean --run scripts/reopen_probe.lean
+
 echo "OK: metatheory builds; every theorem above rests on propext + Classical.choice + Quot.sound only; heapOkB and saturatedB hold at the booted heap; class names are unique"

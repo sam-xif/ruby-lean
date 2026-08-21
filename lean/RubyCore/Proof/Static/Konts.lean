@@ -336,7 +336,8 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧
             top = false ∧ name ≠ "initialize" ∧
-            reopenableClasses.contains ctx.cls = true ∧ defFree body = true)) := by
+            reopenableClasses.contains ctx.cls = true ∧
+            groundClassNames.contains ctx.cls = false ∧ defFree body = true)) := by
   simp only [infer] at h
   split at h
   · next hc =>
@@ -351,7 +352,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb,
-            Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2⟩⟩
+            Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2.1, hrow.2.2.2.2⟩⟩
         · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb, Or.inl rfl⟩

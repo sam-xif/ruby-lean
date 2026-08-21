@@ -8003,3 +8003,90 @@ scale: **cheap to state and cheap to discharge are different measurements.**
 
 Documentation only. `check-proofs.sh` green, 29 theorems, axiom-clean; `--check` 39 / 1,186 / 0;
 `--assn` 1,227 clean; `--self-test` all agree.
+
+## L189 — the `.const` read: **oof 84 → 79**, and the measurement that should have come first
+
+The census reports each body's **first** blocker. It says nothing about whether removing that blocker
+frees the body, because the body may have three more. So the first thing this rung did was compute the
+full blocker **set** per method body — which turned every earlier estimate in this file on its head:
+
+```
+bodies whose blocker set is a SINGLETON:   11 {const}   3 {super}   2 {cpath}   2 {return}
+bodies whose set is a PAIR:                11 {const, return}   3 {ivar-asgn, const}   …
+freed by removing {const, return}:         24        {const, return, zsuper}:  33
+```
+
+> **Eleven bodies have `const` as their *only* blocker.** Three commits earlier this file concluded the
+> class-object arm "buys 0 bodies" — that conclusion came from reasoning about what a `const` needs
+> (rows, narrowing) instead of measuring what the bodies contain. It was wrong, and the reason it was
+> wrong is worth more than the rung: **a blocker count ranks what to lift; a blocker *set* ranks what
+> gets freed, and only the second predicts the metric.**
+
+And the second thing it got wrong: a body moving from *out of fragment* to **`needed: <atom>`** already
+reduces the metric. `oof` counts bodies outside `infer`'s domain, not bodies that fail; a send on a
+class-object receiver with no row is a `.missing`, which is a *row* question. Five of the eleven landed
+there, as `T.class_of(String) ~ === : (α) → _` — the row L186/L187 measured witnessable.
+
+### The rule, and the clause that made it cheap
+
+```lean
+| .const n => if reopenableClasses.contains n then some (.clsOf n, Γ, D) else none
+```
+
+One step, no continuation — the third rule in the fragment with that property, after `.self'` and
+`.vcall`. What it needed was a way to know `evalExpr`'s **two-phase** lookup (lexical over the frame's
+`cref`, then the ancestor walk) lands on `Object`'s table. Two clauses do it, and the second is where
+the economy is:
+
+* **`StackCtx`** gains `Boot.objectId ∈ f.cref` — a *membership*, deliberately, so that nothing needs to
+  know what else is on the list. Established at all four sites: `Machine.init` sets `[Object]`
+  (a `simp`), `enterClassBody` **prepends** (`mem_cons_of_mem`), and a method frame takes `md.cref`, so
+  `ResolvesUser` carries it and the `def` step supplies it from the defining frame.
+* **`ClassOk`** gains, per name, *`Object` is the **sole owner** of a constant of that name* — measured
+  first (`consts_probe`: `String` has exactly one owner). With sole ownership, **any** cref hit is
+  `Object`'s, whatever the cref is.
+
+Together those make `constRead_sole` say the `orElse` is dead code: the lexical phase cannot miss
+(`Object` is on the list) and cannot lie (sole owner). **So the rule needs nothing about `ancestors`
+at all** — an earlier draft reached for L178's `NoShadowBefore` at the frame's definee, which would have
+needed the definee placed among the keyable classes and a heap-dependent clause transported through
+`StackCtx.heap_congr`. The membership is heap-independent, which is why it transports for free.
+
+### And `reopenableClasses` grew from one name to eight, by decision procedure
+
+`scripts/reopen_probe.lean` decides `ClassOk`'s seven per-name conjuncts for every plausible candidate.
+Admitted: `String`, `Integer`, `Symbol`, `NilClass`, `TrueClass`, `FalseClass`, `Proc`, `Exception`.
+**The refusals are the output worth reading**, and each is a real fact rather than a limitation:
+
+| refused | why |
+|---|---|
+| `Float` | owns `NAN`/`INFINITY`, so `NoShadowBefore` fails on its own chain |
+| `Array`, `Hash`, `Range` | **sole ownership** fails — `T::Array`, `T::Hash`, `T::Range` own those names too. L177's `T` collision, arriving as a refusal rather than as a hazard |
+| `Regexp` | one of the two ids `invoke` dispatches a singleton family from (L106), excluded by `classRecv` |
+| `Comparable`, `Kernel`, `T` | modules |
+
+Five of the eight are the classes the *ground* arms of `Ty` denote, so the `def` rule gained a
+`groundClassNames.contains ctx.cls = false` guard: `tyClassNames` subtracts those from the class arm's
+range, so a row keyed on one would owe `EntryOk` over immediates. `DeclsOk_addRow` had that as a
+hypothesis all along; this is the rule keeping it true, and it turned a `decide` in the `def` case into
+`exact hdf.1`.
+
+### The measurement
+
+| | before | after |
+|---|---|---|
+| out of fragment | 84 | **79** |
+| refused with a named atom | 8 | **13** |
+| `reopenableClasses` | 1 name | **8** |
+
+`--check` is **byte-identical** at 39 / 1,186 / 0, read by transition (zero, both ways). `const` is
+still 23 — those bodies read `Token`, `Version`, `T`, `AlphaToken`: program classes that do not exist
+at the booted heap (so `ClassOk` can promise nothing) and modules. That is the allocating `class'`
+branch, not this rule.
+
+### Checks
+
+`check-proofs.sh` green with an eighth measurement section, 29 theorems, axiom-clean; `heapok_probe`,
+`consts_probe`, `classobj_probe`, `classeq_probe` all exit 0 with the widened table. `--assn` 1,227
+clean. `--self-test` all agree. Two new checked witnesses (`String` read inside a reopened `String`
+body; `Token` refused).
