@@ -623,9 +623,16 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           -- row*, not the program: the `else` branch below still types the `def`, it
           -- just declares nothing — which `UserConforms`' `defFree` was already doing
           -- to such a body anyway.
+          -- **`ctx.inLoop.isNone`** (L226) is L200's `ctx.ret.isNone` again, for the
+          -- other jump channel. With it, `def`'s row is the only arm that grows the table
+          -- at `top = false` *and* it cannot fire inside a loop — which makes the table
+          -- **constant along every continuation chain inside a loop body**, which is what
+          -- `infer_table_loop` states and what `KontOk.nxtOk` needs. Free: a `def` that
+          -- added a row inside a loop body would make the body table-unstable and `LoopOk`
+          -- refuses such a body anyway, so this refuses no *loop* that used to type.
           if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
               groundClassNames.contains ctx.cls = false ∧ defFree body = true ∧
-              ctx.ret.isNone then
+              ctx.ret.isNone ∧ ctx.inLoop.isNone then
             some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
           else some (.sym, Γ, D)
         else none

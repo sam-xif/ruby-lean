@@ -206,6 +206,158 @@ theorem inferArgs_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top :
           obtain ⟨-, -, rfl⟩ := h
           exact inferArgs_table_ret hret htop hr
 
+/-! ### L226: the same theorem at the *loop* channel, and the same proof
+
+`infer_table_ret` (L200) says *the table is constant along a continuation chain inside a body
+that declares a return type*, and it is available because `def`'s row branch requires
+`ctx.ret.isNone`. L226 gave that branch a second such guard — `ctx.inLoop.isNone` — so the
+identical statement holds at the loop channel, which is what a `next` rule needs in order to
+walk a `KontOk` chain down to its loop kont without the table moving under it.
+
+**The two blocked rungs share this lemma.** `begin` (L218) and `next` (L225) were each stuck
+on *"the relation is indexed by `Decls` and `KontOk` threads tables"*; this is the answer for
+both. The proof below is `infer_table_ret`'s **unchanged** — the guard is the only thing that
+differs, which is itself the evidence that the two channels are the same shape.
+-/
+
+theorem infer_table_loop : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : FrameCtx),
+    ctx.inLoop.isSome = true → top = false → ∀ τ Γ' D₀,
+      infer D Γ e top ctx = some (τ, Γ', D₀) → D₀ = D := by
+  intro D Γ e top ctx
+  induction D, Γ, e, top, ctx using infer.induct with
+  | motive2 Da Γa ta elsa topa ctxa =>
+    exact ctxa.inLoop.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferIf Da Γa ta elsa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive3 Da Γa esa topa ctxa =>
+    exact ctxa.inLoop.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive4 Da Γa esa topa ctxa =>
+    exact ctxa.inLoop.isSome = true → topa = false → ∀ τs Γ' D₀,
+      inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
+  -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
+  -- branch's and the join's guard has to be split before either IH is usable.
+  | case88 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+    intro hret htop τ Γ' D₀ h
+    obtain ⟨hΓ, hD⟩ := hagree
+    simp only [inferIf, hT, hE] at h
+    rw [if_pos (by exact ⟨hΓ, hD⟩)] at h
+    simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+    obtain ⟨τj, -, -, -, rfl⟩ := h
+    exact ih2 hret htop _ _ _ hT
+  | _ =>
+    intro hret htop τ Γ' D₀ h
+    first
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, htop]; done)
+      | (simp_all only [infer, inferIf, inferSeq, inferArgs, Option.some.injEq,
+           Prod.mk.injEq, reduceCtorEq]; done)
+      | (simp_all [infer, inferIf, inferSeq, inferArgs, htop, hret]; done)
+      | (rename_i ih1
+         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs] using h))
+      | (rename_i ih2 ih1
+         first
+           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h)
+           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h))
+      -- a local read: the arm answers the input table outright, so unfolding the
+      -- `Option.map` is the whole case.
+      | (revert h; simp +contextual [infer]; done)
+      | (revert h; simp +contextual [inferIf]; done)
+      -- the `def` arm's **no-row** branch (L200's guard is one of the six conjuncts
+      -- that can fail): the arm answers the input table, and `params.isEmpty` and the
+      -- body's own stability check are already in context, so what is left is to
+      -- compute the `if`s away rather than to reason.
+      -- the `def` arm's **no-row** branch, where L200's guard is one of the six
+      -- conjuncts that can fail: the arm answers the input table, so the case is three
+      -- `if`s computed away rather than anything about types.
+      | (simp only [infer] at h
+         split at h <;> split at h <;> split at h <;> simp_all)
+      | (simp only [infer] at h
+         split at h <;> split at h <;> simp_all)
+
+/-- The three siblings, and they are **list inductions rather than a second
+    `infer.induct`**: `inferSeq`/`inferArgs` are `infer` threaded along a list and
+    `inferIf` is two `infer`s plus a join, so each one composes the theorem above with
+    itself. That is the whole reason to have proved the `infer` case separately. -/
+theorem inferIf_table_loop {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls} (hret : ctx.inLoop.isSome = true)
+    (htop : top = false) (h : inferIf D Γ t els top ctx = some (τ, Γ', D₀)) : D₀ = D := by
+  unfold inferIf at h
+  cases els with
+  | none =>
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      rw [ht] at h
+      dsimp only at h
+      split at h
+      · rename_i hq
+        simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+        obtain ⟨τj, -, -, -, rfl⟩ := h
+        rfl
+      · simp at h
+  | some e =>
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      rw [ht] at h
+      dsimp only at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r' =>
+        obtain ⟨τe, Γe, De⟩ := r'
+        rw [he] at h
+        dsimp only at h
+        split at h
+        · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+          obtain ⟨τj, -, -, -, rfl⟩ := h
+          exact infer_table_loop D Γ t top ctx hret htop _ _ _ ht
+        · simp at h
+
+theorem inferSeq_table_loop : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, ctx.inLoop.isSome = true → top = false →
+    inferSeq D Γ es top ctx = some (τ, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, _, h => by
+      simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | [e], D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      simp only [inferSeq] at h; exact infer_table_loop D Γ e top ctx hret htop _ _ _ h
+  | e :: e₂ :: rest, D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      simp only [inferSeq] at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        have hD : D₁ = D := infer_table_loop D Γ e top ctx hret htop _ _ _ he
+        subst hD
+        exact inferSeq_table_loop hret htop h
+
+theorem inferArgs_table_loop : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, ctx.inLoop.isSome = true →
+    top = false → inferArgs D Γ es top ctx = some (τs, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τs, Γ', D₀, _, _, h => by
+      simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | e :: rest, Dq, Γ, top, ctx, τs, Γ', D₀, hret, htop, h => by
+      simp only [inferArgs] at h
+      cases he : infer Dq Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        have hD : D₁ = Dq := infer_table_loop Dq Γ e top ctx hret htop _ _ _ he
+        subst hD
+        dsimp only at h
+        cases hr : inferArgs D₁ Γ₁ rest top ctx with
+        | none => rw [hr] at h; simp at h
+        | some r' =>
+          obtain ⟨τr, Γ₂, D₂⟩ := r'
+          rw [hr] at h
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, -, rfl⟩ := h
+          exact inferArgs_table_loop hret htop hr
+
 /-- **Monotonicity, with the table-stability half it needs.** Proved by the
     functional induction `infer` generates, so the case list is the rule list and
     every out-of-fragment head is discharged by its own `none`. -/

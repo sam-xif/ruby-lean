@@ -10799,3 +10799,53 @@ channel) — are **one commit apart**, not two independent problems. That is wor
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; third ratchet
 **24**. `Proof/`-only.
+
+## L226 — `infer_table_loop`, and it is the shared unlock L225 named
+
+Out of fragment **24 → 24**, `--check` byte-identical, axiom-clean. Two changes, and the second is a
+copy of an existing proof with one word changed.
+
+### The guard
+
+```lean
+if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
+    groundClassNames.contains ctx.cls = false ∧ defFree body = true ∧
+    ctx.ret.isNone ∧ ctx.inLoop.isNone then          -- ← L226
+```
+
+L200 added `ctx.ret.isNone` so that *no arm grows the table at `top = false` inside a body that
+declares a return type*. This is the same move at the other jump channel. **Free**, and for a reason
+worth stating rather than assuming: a `def` that added a row inside a loop body would make the body
+table-unstable, and `LoopOk` already refuses such a body — so the guard refuses no *loop* that used to
+type. `--check` byte-identical confirms it, and the conjunct sits inside an existing `if`, so
+`infer.induct`'s case numbering did not move (contrast L212, where a new *arm* shifted it by eleven).
+
+### The lemma
+
+`infer_table_loop` and its three siblings are `infer_table_ret`'s **verbatim** proof with
+`ctx.ret.isSome` replaced by `ctx.inLoop.isSome`. Not paraphrased — literally the same uniform block,
+the same `case88` for the `if`-with-else arm, the same eight alternatives.
+
+> **That the proof transfers unchanged is the result, not a convenience.** It says the two jump
+> channels are the same shape, and it is why one lemma unblocks both rungs: `begin` (L218) and `next`
+> (L225) were each stuck on *"the relation is indexed by `Decls` and `KontOk` threads tables"*, and
+> this is the answer for both.
+
+### What each rung still needs on top of it
+
+**`next`** (1 body, plus `break`/`redo` behind the same channel):
+* `KontOk.nil` gains an `inLoop = none` premise — it has `ret = none` (L198) and nothing about loops,
+  so the empty-continuation position cannot otherwise be refuted. Free at its construction sites;
+* `NxtOk` (designed at L225 — two `loop` constructors carrying `KontOk.whileCond`'s premises, a `skip`,
+  no `nil` and no `pop`) and `KontOk.nxtOk`, which now has its table-stability;
+* `CtlOk`'s `.jump (.nxtJ _)` case — `∃ Γl, c.inLoop = some Γl ∧ SubEnv Γl Γ ∧ NxtOk …`, the `SubEnv`
+  being L224's environment obligation and L218's relation;
+* the rules. The nominal one must require **`top = false`**, which is how the consecution case gets
+  `Γs ≠ []` and hence `infer_table_loop`'s second hypothesis — exactly how L200's `return` rule works.
+
+**`begin`** (2 bodies): the L218 kont arms, now with `RaiseOk.caught` able to carry a table.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); third ratchet **24**.
