@@ -261,10 +261,28 @@ is a table row plus a `decide`.
 
 `String` is the one entry, and it is not arbitrary: it is the only ground class
 the fragment can currently *produce a value of* (`.str`, L151), so it is the only
-one for which reopening buys a call site. -/
+one for which reopening buys a call site.
+
+**Since L189 the list has a second reader, and it is the one that now sets its
+size**: the `.const` *read* rule answers `.clsOf n` exactly for `n` on this list, so
+a row buys a constant reference and not only a reopen. L192 adds the **error class
+names** for that reason and for no other — `--sets` reports three singleton-`{const}`
+method bodies whose only blocker is one of `ArgumentError`, `NotImplementedError`
+and `NoMethodError`, read as `raise ArgumentError, "…"`.
+
+The rows are free, and *measured* free: `scripts/reopen_probe.lean` decides all seven
+`ClassOk` clauses for every candidate, and all fourteen below pass all seven. Nothing
+in `Proof/` changes — `ClassOk` is quantified over the list — so the whole cost is
+`classOkB` still answering `true`, which `check-proofs.sh` runs. (The probe also
+refuses `IOError`: it is not a constant of `Object` at the booted heap at all.) -/
 def reopenableClasses : List String :=
   ["String", "Integer", "Symbol", "NilClass", "TrueClass", "FalseClass",
-   "Proc", "Exception"]
+   "Proc", "Exception",
+   -- L192. Ordered as the probe reports them.
+   "ArgumentError", "NoMethodError", "NotImplementedError", "TypeError",
+   "RuntimeError", "StandardError", "NameError", "IndexError", "KeyError",
+   "ZeroDivisionError", "FrozenError", "StopIteration", "RangeError",
+   "LocalJumpError"]
 
 /-- The declarations in force while checking `p`.
 

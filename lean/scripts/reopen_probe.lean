@@ -27,7 +27,14 @@ open RubyCore
 open RubyCore.Interp
 def cands : List String :=
   ["Object","String","Integer","Float","Array","Hash","Symbol","Regexp","Range",
-   "Proc","Exception","NilClass","TrueClass","FalseClass","Comparable","Kernel","T"]
+   "Proc","Exception","NilClass","TrueClass","FalseClass","Comparable","Kernel","T",
+   -- L192's candidates: the **error classes the slice raises**. Measured because
+   -- `--sets` says three singleton-`{const}` bodies are blocked by exactly one of
+   -- these and nothing else, and because a name that passes all seven clauses costs
+   -- nothing but a table row — `ClassOk` is already quantified over the list.
+   "ArgumentError","NoMethodError","NotImplementedError","TypeError","RuntimeError",
+   "StandardError","NameError","IndexError","KeyError","ZeroDivisionError",
+   "FrozenError","StopIteration","RangeError","LocalJumpError","IOError"]
 def main : IO UInt32 := do
   match Prelude.boot with
   | .error e => IO.eprintln s!"boot failed: {e}"; return 1

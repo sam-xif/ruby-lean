@@ -8236,3 +8236,63 @@ stale `/tmp/check-after.txt` is L174's `test_syntax_097`, already accounted for,
 inert in the checker; `--assn` smoke 1,227 clean / 0 fail; `fragment-gap.py --self-test` all agree
 (two new rows: the write inside a method body accepts, the same write at toplevel is `unknown`
 because `selfCls` is `none` there). The interpreter is untouched, so no difftest tier can move.
+
+---
+
+## L192 — fourteen table rows, measured free
+
+Out of fragment **78 → 76**, `needed:` 13 → 15. The cheapest rung in the file: **no proof
+changed.** `reopenableClasses` gained the error class names, and `ClassOk` is already quantified
+over that list, so the entire cost is `classOkB` still answering `true` at the booted heap.
+
+### Why these names, and how they were found
+
+The rung came out of a measurement, not a guess. `--sets`' singleton list said eight bodies were
+blocked by `{const}` alone (eleven after L191 retired `ivar-asgn`), and the obvious next question —
+*which constants?* — had never been asked. Answering it took ten lines:
+
+```
+Version#update_commit: ['ArgumentError', 'String']
+Version#compare:       ['ArgumentError', 'String']
+RegexParser#self.process_spec: ['NotImplementedError', 'String']
+Version#to_str:        ['NoMethodError', 'String', 'T']
+Version#head?:         ['HEAD_VERSION_REGEX']
+CVSS#self.valid_values?: ['AC', 'AV', 'CIA', 'PR_UNCHANGED', 'UI']
+Purl#==:               ['Purl']
+```
+
+So the eleven bodies are **four separate populations**, and only one of them is behind a wall:
+
+* **error class names** (3 bodies) — boot classes, already in the heap, `raise ArgumentError, "…"`;
+* **file-level constants** (`HEAD_VERSION_REGEX`, `AC`/`AV`/`CIA`/`UI`, 3 bodies) — need `casgn`
+  and a constant *table*;
+* **program class names** (`Purl`, `Semver`, `Token`, 2 bodies) — Wall 2, the allocating `class'`
+  branch;
+* **`T`** (2 bodies) — a module, which `ClassOk` refuses on three clauses.
+
+The lesson is L190's again at one more remove: *a blocker set ranks what gets freed, but a blocker
+**name** ranks what it costs.* `const` looked like one rung of 25 bodies and is four rungs of
+wildly different price, the cheapest of which was free.
+
+### Free, and measured free
+
+`scripts/reopen_probe.lean` decides all seven `ClassOk` clauses per candidate name, so widening the
+table is a `decide` rather than an argument (that is what L189 built it for). Fifteen candidates
+were added to the probe; **fourteen pass all seven** and one — `IOError` — is refused because it is
+not a constant of `Object` at the booted heap at all. That refusal is the probe doing its job: it
+is the only one of the fifteen that would have been a wrong guess.
+
+### A dead table found on the way
+
+`fragment-gap.py` had **two** definitions of `REOPENABLE`, and the one below `shape_class` read
+`{"String"}` — dead since L156 because the later module-level assignment won, and unnoticed because
+the live copy happened to be right. Consolidated to one definition above its first reader. This is
+exactly the one-table-two-readers hazard the file's own `SUPPORTED` comment warns about, and it is
+worth recording that the warning was in the file while the bug was three lines below it.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, `heapOkB` still
+`true` at the prelude-booted heap (14 more `noShadowBefore` rows reported); `--check` **39 / 1,186 /
+0**, byte-identical to L191's capture — the new rows widen `infer`'s `.const` and `class'` arms but
+no bootstraptest program reads or reopens an error class at toplevel; `--self-test` all agree.
