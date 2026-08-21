@@ -10442,3 +10442,65 @@ type — and that is L185's problem, already solved once for class objects.
 ### Checks
 
 No code changed. Third ratchet **24**; `--check` untouched.
+
+## L220 — `next` attempted, and the finding is that `inferOpen.induct`'s fixed `ctx` is load-bearing
+
+Out of fragment **24 → 24**. Reverted, and the reason is a constraint worth knowing before the next
+four rules are designed.
+
+### The design, which is right and which I still believe
+
+`Version#<=>` is the census's only `next`, and its `next` is inside a **`while`**, not a block — so it
+is L200's shape, not Wall 1's. The design fell out cleanly:
+
+* `FrameCtx.inLoop : Bool`, set by `infer`'s `.while'` arm on the condition *and* body (`evalExpr`
+  pushes a `whileCondK` for the condition too, so a `next` there has the same target);
+* `KontOk`'s two loop constructors **switch the flag off** on the way down — above them the context is
+  the flagged one, below them the enclosing one;
+* `KontOk.frameK` requires the callee's `inLoop = false` (free: `user_dispatch` builds the callee's
+  context from a literal whose field takes the default);
+* those two together make *"the flag is on ⇒ a loop kont sits above the `frameK`"* a property of the
+  **derivation**, which is exactly what `KontOk.nxtOk` needs to refute the `frameK` position — and
+  refuting it is the whole obligation, because `unwind` answers `.unsupported` for a `.nxtJ` crossing a
+  method boundary.
+
+All of that built. `StackCtx` is invariant under the flag *by `rfl`* (`stackCtx_inLoop`) — its six
+clauses read `cls`, `selfCls`, `ret`, `meth`, `params` and nothing else — and the eleven `Preservation`
+sites it touched were mechanical.
+
+### What stopped it
+
+```lean
+induction Γ, e, s using inferOpen.induct (D := D) (ctx := ctx)     -- ctx *fixed*
+```
+
+`inferOpen_mono`, `inferOpen_rets` and `inferOpen_factors` all take `ctx` as a **fixed** parameter of
+the functional induction. That is sound only because **every recursive call in `inferOpen` passes `ctx`
+unchanged** — and a loop flag is the first thing that does not.
+
+> **`inferOpen.induct`'s fixed-`ctx` form is load-bearing, and it silently constrains the rule set: no
+> rule may use a `FrameCtx`/`OCtx` field that varies *within* an activation until the three open-self
+> inductions are generalized over `ctx`.** That is not a fact about `next`. It applies to `break`,
+> `redo`, and to Wall 1's block frames — every one of which wants a context that changes partway
+> through a body.
+
+`inferOpen_mono` and `inferOpen_rets` generalize in four lines each (nothing in them knows anything
+about `ctx`). **`inferOpen_factors` does not**: `hself : θ ctx.self = .cls ctx.cls` is the one thing it
+knows, so generalizing `ctx` moves `hself` into the motive, and `revert hself` + `intro hself` in the
+uniform block leaves twelve cases with no binder to introduce — the uniform block's `simp_all` list
+*names* `hself`, so those twelve fail on an unknown identifier rather than on the mathematics.
+
+That is a solvable problem and it is **not** solvable by trial and error, which is what I was doing:
+the right move is to work out which twelve cases they are and why their motive is not the implication,
+and that is a session's work on the most delicate proof in the project, for **one** body.
+
+### The order this changes
+
+`next`, `break` and `redo` should be done **together, after** a commit that generalizes `ctx` in the
+three open-self inductions — not one at a time. The generalization is the rung; the three rules are
+cheap once it lands. And Wall 1 needs it too, which moves it from "after the walls" to "before them".
+
+### Checks
+
+Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
+third ratchet **24**.
