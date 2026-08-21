@@ -136,7 +136,9 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- (`Interp.lean:225`), which is why no row can come from one.
     show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ({ cls := "Object" } :: [])
-    refine ⟨?_, ?_, ?_, ?_, ?_, trivial⟩
+    -- L198: the toplevel context declares no return type, so the sixth clause is the
+    -- right disjunct — a `return` at toplevel has no target and the desugarer gates it.
+    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact (show ClassOk (Machine.init p).heap from
@@ -154,7 +156,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     split at h
     · rename_i r hr
       obtain ⟨τ, Γ', D'⟩ := r
-      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil⟩
+      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil (by simp)⟩
     · exact absurd h (by split <;> simp)
 
 /-- **Static soundness, from any machine satisfying the invariant.** Stated this

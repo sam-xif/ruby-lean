@@ -279,7 +279,24 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     reason. It costs nothing today, since no rule grows the table at all. -/
 def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Prop :=
   d.params = [] ∧ defFree md.body = true ∧
-    ∃ Γ', infer D [] md.body false { cls := c, selfCls := some c } = some (d.ret, Γ', D)
+    -- **L198: the context's `ret` is carried, not fixed**, and that is what breaks a
+    -- circularity rather than papering over it.
+    --
+    -- `return e` checks `e` against `ctx.ret` — the *declared* return type — so a body
+    -- containing one has to be checked at a context that already names it. But the
+    -- `def` rule *computes* the return type from the body, so it cannot name it
+    -- before checking: `infer` at `ret := none` is all it has. Fixing this predicate
+    -- at `some d.ret` would make the `def` rule unable to discharge its own row;
+    -- fixing it at `none` would make `KontOk.frameK`'s agreement vacuous and
+    -- `RetOk` underivable.
+    --
+    -- Carrying `r` is the resolution. `def` supplies `r = none`, which is exactly
+    -- "this body contains no `return`". A **declared** signature (`PLAN.md` W8's
+    -- `sig`) supplies `r = some d.ret`, and that is the rung at which a `return`
+    -- inside a *running* method becomes reachable — the rule and its consecution case
+    -- are proved either way, which is what keeps this honest rather than speculative.
+    ∃ Γ' r, infer D [] md.body false { cls := c, selfCls := some c, ret := r }
+      = some (d.ret, Γ', D) ∧ (∀ σ, r = some σ → σ = d.ret)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -1140,8 +1157,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     · refine Or.inr ⟨mdu, cu, htys,
         fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
         by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, ?_⟩
-      obtain ⟨Γ', hb⟩ := hconfu.2.2
-      exact ⟨Γ', infer_mono hsub hconfu.2.1 hb⟩
+      obtain ⟨Γ', r, hb, hag⟩ := hconfu.2.2
+      exact ⟨Γ', r, infer_mono hsub hconfu.2.1 hb, hag⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 

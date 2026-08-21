@@ -558,7 +558,11 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
-      match infer D [] body false { ctx with selfCls := some ctx.cls } with
+      -- **`ret := none` explicitly** (L198), not inherited: a `def` computes its
+      -- return type *from* the body, so it cannot name one for the body to check a
+      -- `return` against. Inheriting `ctx.ret` would be worse than wrong — it would
+      -- check the inner body's returns against the *enclosing* method's type.
+      match infer D [] body false { ctx with selfCls := some ctx.cls, ret := none } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to

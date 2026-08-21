@@ -83,15 +83,17 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
     have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-    obtain ⟨hdp, hdfu, Γb, hbodyu⟩ := hconfu
+    obtain ⟨hdp, hdfu, Γb, r, hbu, hag⟩ := hconfu
     refine ⟨hhook, hsat, hstr, hcls,
       BottomObj_cons hne (BottomObj_push hlt hbot), _,
-      { cls := cu, selfCls := some cu }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+      -- L198: the callee's context carries the `ret` its body was checked at, which
+      -- is what `KontOk.frameK`'s agreement premise reads.
+      { cls := cu, selfCls := some cu, ret := r }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
     · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
         FramesOk.push hfs⟩
       rw [getD_push_lt_self]
       exact ⟨rfl, hown, by simp [envGet?]⟩
-    · refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -110,7 +112,11 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       · rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
         exact hcr
-    · exact ⟨τret, τw, Γb, _, hbodyu, hsubw, KontOk.frameK hk⟩
+      -- L198: `userFrame` builds a `.method` frame, so the left disjunct holds and the
+      -- callee's context may declare a return type.
+      · exact Or.inl (by rw [getD_push_lt_self]; rfl)
+    · exact ⟨τret, τw, Γb, _, hbu, hsubw,
+        KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, D, ctx, Γ, Γs, htab, hfs, hsc, hc⟩ := h
@@ -428,7 +434,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -441,10 +447,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- is a membership rather than a shape.
         · rw [getD_push_lt_self]
           exact List.mem_cons_of_mem _ hcrefCur
+        -- L198: a class body declares no return type, so the clause is vacuous on the
+        -- right — the honest reading, since `return` there has no target.
+        · exact Or.inr rfl
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
-      · exact ⟨τ, τw, Γb, D', hbody, hsubw, KontOk.frameK hk⟩
+      · exact ⟨τ, τw, Γb, D', hbody, hsubw, KontOk.frameK (fun _ h => by simp at h) hk⟩
     case def' name params body =>
       obtain ⟨rfl, rfl, rfl, hfresh, hha, τb, Γb, hbody, hrow⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
@@ -633,7 +642,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 simp only [List.takeWhile, bne_self_eq_false, decide_false,
                   Bool.false_eq_true, if_false]
                 rfl
-          · exact ⟨Γb, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody⟩
+          · -- L198: the `def` rule supplies `r = none`, which is exactly *this body
+            -- contains no `return`* — see `UserConforms`.
+            exact ⟨Γb, none, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody,
+              fun σ h => absurd h (by simp)⟩
         by_cases hp : m.preludeMode = true <;>
           simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
           refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
@@ -840,7 +852,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L189 adds a fourth agreement, and it is the same one-liner: `setLocal`
         -- writes `locals` and moves neither `defmod`, `defVis`, `self` nor `cref`.
         refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
-          (fun fid _ => ?_) hsc <;>
+          (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
@@ -852,6 +864,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
+        -- L198's fifth agreement, and it is the same one-liner a fifth time.
         · subst hfx
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
@@ -1035,7 +1052,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hcnd
         (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hsw hk')
-    | @frameK _ _ _ cΓ' Γs _ fid k hk' =>
+    | @frameK _ _ _ cΓ' Γs _ fid k hrt hk' =>
       -- The activation pops: `frames` is untouched, `stack` loses its head, and
       -- the caller's environment — carried all along by `FramesOk` — becomes
       -- current again. This is the case L91 could not close.
@@ -1092,10 +1109,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-        obtain ⟨hdp, hdfu, Γb, hbodyu⟩ := hconfu
+        obtain ⟨hdp, hdfu, Γb, r, hbu, hag⟩ := hconfu
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot), _,
-          { cls := cu, selfCls := some cu }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+          { cls := cu, selfCls := some cu, ret := r }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
         · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
             FramesOk.push hfs⟩
           rw [getD_push_lt_self]
@@ -1110,7 +1127,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- **is** `md.owner`. `defVis` is the frame literal's default, which is what
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
-          refine ⟨?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1123,10 +1140,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr⟩ := hru
             exact hcr
+          -- L198: `userFrame`'s kind.
+          · exact Or.inl (by rw [getD_push_lt_self]; rfl)
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
-          exact ⟨τret, τw, Γb, _, hbodyu, hsw, KontOk.frameK hk'⟩
+          exact ⟨τret, τw, Γb, _, hbu, hsw,
+            KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsw) hk'⟩
     -- **An array element has arrived** (L174). Two shapes again, and they are
     -- `continueArray`'s: nothing left, so allocate; or a head to run, so push the
     -- next `arrK`. The accumulated values are never inspected, which is the erasure

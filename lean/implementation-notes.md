@@ -8740,3 +8740,70 @@ so the next reader does not re-derive it.
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
 **byte-identical** (51/1,174/0) — only the open front end moved; `--assn` smoke 1,227 clean;
 `--self-test` all agree; `fragment-gap.py` **48**, and `_body_blockers` no longer counts `const`.
+
+---
+
+## L198 — the frame-side bill for `return`, paid, with the rule still to write
+
+Out of fragment **48 → 48**, `--check` byte-identical. This is F1b.2's shape again (L143–L149: *the
+producer's bill, paid, with the rule still to write*), and it is committed for the same reason: the
+four facts below are what a `return` rule consumes, each is now carried and preserved, and the one
+thing still missing is **named precisely** rather than discovered later.
+
+### What landed
+
+1. **`FrameCtx.ret : Option Ty`** — the enclosing method's *declared* return type, which is what
+   makes a `return e` rule local: it checks `e` against the declaration rather than against whatever
+   the rest of the body will answer.
+2. **`KontOk.frameK` carries the agreement** `∀ σ, cΓ.1.ret = some σ → subTy σ τ`: the callee's
+   declared return sits below the type the caller's continuation expects. `subTy` and not equality,
+   because L193's `CtlOk` already lets the continuation be wider.
+3. **`KontOk.nil` carries `ret = none`** for the head context — *an empty continuation means no
+   enclosing method*, so there is nowhere for a return to land. One `simp` at both `initiation`s.
+4. **`StackCtx` gained `kind = .method ∨ c.ret = none`** — the whole frame-side cost.
+   `returnTarget` (`Interp/Support.lean:349`) answers the stack head for every frame kind *except*
+   `.block`, where it walks to the closure's home, so the rule needs to know the current activation
+   is not a block — and `ret.isSome` is exactly when it needs to.
+
+Together, (2) and (3) are what let `RetOk` be **derived from a `KontOk` derivation** rather than
+carried as a separate `Inv` conjunct re-established at forty push sites. That was the design's whole
+economy and it is now checked.
+
+### The circularity that shaped `UserConforms`, and how it was broken
+
+`return e` checks against `ctx.ret`, so a body containing one must be checked at a context that
+already names the return type. But **the `def` rule computes the return type from the body** — it
+cannot name it before checking. Fixing `UserConforms` at `some d.ret` would make `def` unable to
+discharge its own row; fixing it at `none` would make (2) vacuous and `RetOk` underivable.
+
+So `UserConforms` **carries** the context's `ret` existentially, with the agreement `∀ σ, r = some σ →
+σ = d.ret`. `def` supplies `r = none`, which is precisely *this body contains no `return`*; a declared
+signature (`PLAN.md` W8's `sig`) supplies `some d.ret`, and that is the rung at which a `return`
+inside a *running* method becomes reachable. The rule and its consecution case are proved either way,
+which is what keeps this honest rather than speculative.
+
+### What is still missing, named exactly
+
+**The kont/stack correspondence.** `doReturn` targets `returnTarget m`, and `unwind`'s `frameK fid`
+case compares `target == fid` — so the consecution needs *the first `frameK` in the kont stack is
+labelled with the frame stack's head*. It is true (every frame push pushes a `frameK` with the same
+`fid`, and pops remove both) and it is **not currently stated anywhere**: `FramesOk`/`StackCtx` relate
+`m.stack` to the environment stack, and `KontOk` never mentions `m.stack`.
+
+Stating it is a new machine-shaped conjunct — `frameKLabels m.kont = m.stack` — independent of types
+and cheap per step, but re-established at every push and pop, so about twenty sites. That is the next
+commit's first task, and everything after it is mechanical: `RetTransparent`/`RetOk`, `CtlOk`'s
+`.jump (.retJ v target)` arm, `KontOk.retValK`, `infer`'s `.ret` arm, and `unwind`'s consecution —
+which is **thirteen short cases**, because `unwind`'s catch-all
+(`Interp/Kont.lean:457`) propagates a `.retJ` through every kont the fragment admits except `frameK`,
+and the two loop markers propagate it explicitly.
+
+Recording the measurement that makes the last part cheap: the fragment stacks nine kont shapes plus
+`frameK`, and **all nine fall through to that catch-all**. The expensive-looking half of the `return`
+rung is the cheap half.
+
+### Checks
+
+`lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean; `--check`
+**byte-identical** (51/1,174/0) — no rule changed, only what the invariant carries; `fragment-gap.py`
+**48**, unchanged, which is the honest reading of a scaffolding commit.

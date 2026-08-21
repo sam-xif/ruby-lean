@@ -131,14 +131,14 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- computation on the frame literal whatever the heap is.
     exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
       fun sc hsc => absurd hsc (by simp),
-      by simp [Machine.initOn, Array.getD], trivial⟩
+      by simp [Machine.initOn, Array.getD], Or.inr rfl, trivial⟩
   · unfold check at hchk
     show CtlOk (declsOf p) { cls := "Object" } [] [] _
     unfold CtlOk
     split at hchk
     · rename_i r hr
       obtain ⟨τ, Γ', D'⟩ := r
-      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil⟩
+      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil (by simp)⟩
     · exact absurd hchk (by split <;> simp)
 
 /-! ## 2. The certificate route

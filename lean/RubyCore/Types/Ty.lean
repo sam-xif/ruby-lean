@@ -282,6 +282,20 @@ is a property of the *stack* and not of a frame. -/
 structure FrameCtx where
   cls : String
   selfCls : Option String := none
+  /-- **The enclosing method's declared return type** (L198), or `none` in a class
+      body and at toplevel — where a `return` has no target and the desugarer gates
+      one anyway.
+
+      It is the *declared* type rather than the body's inferred one, and that is what
+      makes the rule local: `return e` can check `e` against `ret` without knowing
+      what the rest of the body will answer. `UserConforms` is where the two are tied
+      together — it already requires the body to infer at `d.ret`.
+
+      Read `KontOk.frameK`'s premise next: the frame boundary is where this field has
+      to *agree* with the type the caller's continuation expects, and that agreement
+      is what lets `RetOk` be **derived** from `KontOk` instead of carried as a
+      separate invariant conjunct. -/
+  ret : Option Ty := none
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

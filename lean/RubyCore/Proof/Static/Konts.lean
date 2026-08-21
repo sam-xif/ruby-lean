@@ -75,7 +75,14 @@ def LoopOk (D : Decls) (Γ : Env) (c body : Expr) (top : Bool := false)
     `StackCtx` read the two projections and are otherwise untouched. -/
 inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kont → Prop where
   /-- Empty stack: the in-flight value is the program's result. -/
-  | nil {D h Γs τ} : KontOk D h Γs τ []
+  | nil {D h Γs τ} :
+      -- **L198: an empty continuation means no enclosing method.** There is nowhere
+      -- for a `return` to land, so the current activation cannot declare a return
+      -- type — and stating it here is what lets `KontOk.retOk` be an induction with no
+      -- side conditions instead of a carried invariant conjunct. Established by one
+      -- `simp` at both `initiation`s: the toplevel context has `ret := none`.
+      (∀ cΓ Γs', Γs = cΓ :: Γs' → cΓ.1.ret = none) →
+      KontOk D h Γs τ []
   /-- `seqK []` yields the in-flight value unchanged (`Interp.lean:1957`). -/
   | seqNil {D h c Γ Γs τ τw k} :
       subTy τ τw = true → KontOk D h ((c, Γ) :: Γs) τw k →
@@ -214,6 +221,15 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       the next rung's problem, and it is loud rather than latent because the
       stability conditions refuse the programs it would admit. -/
   | frameK {D h cΓ cΓ' Γs τ fid k} :
+      -- **L198: the callee's declared return type *is* the type the caller's
+      -- continuation expects** — when it declares one at all, which a class-body
+      -- frame does not. That single agreement is the whole reason `RetOk` can be
+      -- *derived* from a `KontOk` derivation (`KontOk.retOk`) rather than carried as a
+      -- separate conjunct of `Inv` and re-established at forty push sites.
+      -- `subTy` rather than equality, because `CtlOk`'s eval clause already allows the
+      -- continuation to sit at a *wider* type than the expression's (L193): the
+      -- callee's declared return is below the index, not equal to it.
+      (∀ σ, cΓ.1.ret = some σ → subTy σ τ = true) →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
 
 /-- The control component. `.jump` is excluded outright: `break`/`next`/`return`
@@ -244,7 +260,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
       KontOk D h Γs τ k → TypeAgree h h' → KontOk D h' Γs τ k := by
   intro D h Γs τ k hk
   induction hk with
-  | nil => intro _; exact .nil
+  | nil hr => intro _; exact .nil hr
   | seqNil hw _ ih => intro ha; exact .seqNil hw (ih ha)
   | seqCons hs hw _ ih => intro ha; exact .seqCons hs hw (ih ha)
   | asgn hw _ ih => intro ha; exact .asgn hw (ih ha)
@@ -258,7 +274,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
       intro ha
       exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg hw (ih ha)
   | arrK hs hw _ ih => intro ha; exact .arrK hs hw (ih ha)
-  | frameK _ ih => intro ha; exact .frameK (ih ha)
+  | frameK hr _ ih => intro ha; exact .frameK hr (ih ha)
 
 /-- The shape every call site reads. `heap_congr'` takes the heap agreement
     *after* the derivation because the induction generalizes the heap index, and
@@ -374,7 +390,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     (h : infer D Γ (.def' name params body) top ctx = some (τ, Γ', D')) :
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added"
-      ∧ ∃ τb Γb, infer D [] body false { ctx with selfCls := some ctx.cls }
+      ∧ ∃ τb Γb, infer D [] body false { ctx with selfCls := some ctx.cls, ret := none }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧

@@ -776,7 +776,11 @@ theorem userConforms_of_inferBody {D : Decls} {c : String} {md : MethodDef}
     (hb : inferBody D c md.body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c)
     (hret : τ.subst θ = d.ret) : UserConforms D c md d :=
-  ⟨hp, hdf, ⟨substEnv θ Γ', by rw [← hret]; exact inferBody_sound hb hsat hself⟩⟩
+  -- L198: `r = none` — the open front end checks the body with no return target, so
+  -- the row it discharges is one whose body contains no `return`. A `sig`-declared
+  -- row is the case that supplies `some d.ret`, and it is `PLAN.md` W8.
+  ⟨hp, hdf, ⟨substEnv θ Γ', none, by rw [← hret]; exact inferBody_sound hb hsat hself,
+    fun _ h => absurd h (by simp)⟩⟩
 
 /-! ## 8. §4.3, end to end
 

@@ -524,6 +524,15 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- draft priced — *nothing in front of `Object` owns anything* — which would have
       -- had to be re-established at every push.
       Boot.objectId ∈ (frames.getD fid default).cref ∧
+      -- **A context that declares a return type is a *method* activation** (L198),
+      -- and this is the whole frame-side cost of the `return` rule. `returnTarget`
+      -- (`Interp/Support.lean:349`) answers the stack's head for every frame kind
+      -- *except* `.block`, where it walks to the closure's home — so the rule needs to
+      -- know the current activation is not a block, and `ret.isSome` is exactly when
+      -- it needs to. Vacuous at a class body and at toplevel, both of which declare
+      -- no return type; established at `user_dispatch`'s push, where `userFrame`
+      -- builds a `.method` frame.
+      ((frames.getD fid default).kind = .method ∨ c.ret = none) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -532,7 +541,7 @@ theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -556,8 +565,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
         getD_push_lt _ _ _ (hlt fid (List.mem_cons_self ..))
       exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
         by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
-        by rw [hb]; exact hs.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -961,19 +970,24 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       -- L189: the `cref` clause needs its own agreement, for the same reason the
       -- other three do — `setLocal` writes `locals` and moves neither.
       (∀ fid ∈ st, (f₂.getD fid default).cref = (f₁.getD fid default).cref) →
+      -- L198's clause needs its own agreement, for the four before it: the `kind` a
+      -- frame was built with does not move either.
+      (∀ fid ∈ st, (f₂.getD fid default).kind = (f₁.getD fid default).kind) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hs => by
-      refine ⟨?_, ?_, ?_, ?_, ?_,
+  | [], [], _, _, _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hs => by
+      refine ⟨?_, ?_, ?_, ?_, ?_, ?_,
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hcr g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2⟩
+          (fun g hg => hcr g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hkd g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
       · rw [hsf fid (List.mem_cons_self ..)]; exact hs.2.2.2.1
       · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
+      · rw [hkd fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 
@@ -1273,7 +1287,7 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
       have hlt : (frames.getD fid default).defmod < h.objs.size :=
         classPayload?_isSome_lt hs.1
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ValueTy.congr ha (hs.2.2.2.1 sc hsc),
-        hs.2.2.2.2.1, StackCtx.heap_congr ha hs.2.2.2.2.2⟩
+        hs.2.2.2.2.1, hs.2.2.2.2.2.1, StackCtx.heap_congr ha hs.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
   | [], _ :: _, hs => hs.elim
