@@ -320,7 +320,7 @@ def declNames (D : Decls) (τ : Ty) : List String :=
 /-- The types `declFor D` can answer `some` at: the four ground arms, and the
     class arm at each key of the table. -/
 def declTys (D : Decls) : List Ty :=
-  Ty.int :: Ty.bool :: Ty.nilT :: Ty.sym :: D.map (fun cd => Ty.cls cd.1)
+  Ty.int :: Ty.bool :: Ty.nilT :: Ty.sym :: D.rows.map (fun cd => Ty.cls cd.1)
 
 /-- **The graph of `declFor D`, as a list.** `Proof/Static/Assn.lean` proves
     `(τ,n,d) ∈ declAtoms D ↔ declFor D τ n = some d`, and that biconditional is
@@ -420,7 +420,7 @@ theorem declaresIn_of_declaresName {D : Decls} {c name : String}
   | some _ =>
     exfalso
     unfold declOf? declsFor at hd
-    cases hf : D.find? (·.1 == c) with
+    cases hf : D.rows.find? (·.1 == c) with
     | none => rw [hf] at hd; simp at hd
     | some cd =>
       rw [hf] at hd
@@ -428,11 +428,11 @@ theorem declaresIn_of_declaresName {D : Decls} {c name : String}
       cases he : cd.2.find? (·.1 == name) with
       | none => rw [he] at hd; simp at hd
       | some e =>
-        have hmem : cd ∈ D := List.mem_of_find?_eq_some hf
+        have hmem : cd ∈ D.rows := List.mem_of_find?_eq_some hf
         have hme : e ∈ cd.2 := List.mem_of_find?_eq_some he
         have hn : (e.1 == name) = true := by
           have := List.find?_some he; simpa using this
-        have : D.any (fun cd => cd.2.any fun md => md.1 == name) = true := by
+        have : D.rows.any (fun cd => cd.2.any fun md => md.1 == name) = true := by
           refine List.any_eq_true.mpr ⟨cd, hmem, ?_⟩
           exact List.any_eq_true.mpr ⟨e, hme, hn⟩
         rw [this] at h

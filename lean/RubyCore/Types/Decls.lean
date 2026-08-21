@@ -47,15 +47,34 @@ structure MethodDecl where
   ret : Ty
 deriving DecidableEq, Repr, Inhabited
 
-/-- The static declaration table: class name → method name → declared signature.
+/-- The static declaration table.
 
-    An association list rather than a `HashMap` for the same reason `Env` is one:
-    the proofs case on it, and `List.find?` has equation lemmas that reduce. -/
-abbrev Decls := List (String × List (String × MethodDecl))
+    **A structure with two fields since L176**, where it was an association list
+    of method rows. The second field is the **constant** table, and it is here
+    rather than in a table of its own for one reason: L160 made the declarations a
+    *threaded* judgement — `infer` returns one, `KontOk` carries it as an index,
+    `Inv` quantifies it existentially — and a constant assignment needs exactly
+    that same threading, for exactly the same reason (`initiation` obliges the
+    invariant at the **boot** heap, so a constant the program's own `casgn`
+    creates cannot be in a table fixed up front). Putting it in the value that is
+    already threaded costs **no new index anywhere**; a parallel table would cost
+    one in `infer`'s answer, in three `KontOk` constructors, in `Inv`, in `CtlOk`
+    and in every consecution case.
+
+    `rows` is still an association list rather than a `HashMap` for the same
+    reason `Env` is one: the proofs case on it, and `List.find?` has equation
+    lemmas that reduce. -/
+structure Decls where
+  /-- class name → method name → declared signature. -/
+  rows : List (String × List (String × MethodDecl)) := []
+  /-- constant name → the type of its value. **Empty until a rule populates it**;
+      L176 is the threading and nothing reads this field yet. -/
+  consts : List (String × Ty) := []
+deriving DecidableEq, Repr, Inhabited
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
-  match D.find? (·.1 == cls) with
+  match D.rows.find? (·.1 == cls) with
   | some (_, ms) => ms
   | none => []
 
@@ -75,7 +94,7 @@ def declOf? (D : Decls) (cls name : String) : Option MethodDecl :=
     With `baseDecls` this is exactly P0's `name ≠ "+" ∧ name ≠ "-" ∧ name ≠ "*"`,
     which is why F1a changes no verdict. -/
 def declaresName (D : Decls) (name : String) : Bool :=
-  D.any fun cd => cd.2.any fun md => md.1 == name
+  D.rows.any fun cd => cd.2.any fun md => md.1 == name
 
 /-- The class names the four *ground* arms of `Ty` already denote. Subtracted from
     the class arm's key set by `tyClassNames`; see the note there. -/
@@ -170,7 +189,7 @@ theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname :
     whose `find?` behaviour is a lemma; this way the only fact anything needs is
     `List.find?`'s own equation. -/
 def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
-  (cls, (name, d) :: declsFor D cls) :: D
+  { D with rows := (cls, (name, d) :: declsFor D cls) :: D.rows }
 
 /-! ## The base table
 
@@ -182,7 +201,7 @@ reasons are unchanged from P0 (`/` and `%` raise `ZeroDivisionError`, `**` makes
 a Rational, and the `Float` promotions would need the argument type unpinned).
 -/
 
-def baseDecls : Decls :=
+def baseDecls : Decls := { rows :=
   [("Integer",
     [("+", { params := [.int], ret := .int }),
      ("-", { params := [.int], ret := .int }),
@@ -198,7 +217,7 @@ def baseDecls : Decls :=
      -- `abs` is defined **twice** in `prelude/prelude.rb`, so its row would be
      -- unwitnessable at the prelude-booted heap even though it is fine at the boot
      -- one. Check both before adding a row, not just the first.
-     ("zero?", { params := [], ret := .bool })])]
+     ("zero?", { params := [], ret := .bool })])] }
 
 /-! ## The reopenable classes
 

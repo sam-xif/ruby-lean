@@ -108,14 +108,14 @@ makes the re-notation faithful, and it rests on three clauses of `tyClassNames`
 
 /-- `declsFor` answers non-empty only at a key the table has. -/
 theorem mem_declTys_of_declsFor {D : Decls} {c : String} {n : String} {d : MethodDecl}
-    (h : declOf? D c n = some d) : ∃ ms, (c, ms) ∈ D ∧ (n, d) ∈ ms := by
+    (h : declOf? D c n = some d) : ∃ ms, (c, ms) ∈ D.rows ∧ (n, d) ∈ ms := by
   unfold declOf? declsFor at h
-  cases hf : D.find? (·.1 == c) with
+  cases hf : D.rows.find? (·.1 == c) with
   | none => rw [hf] at h; simp at h
   | some cd =>
     rw [hf] at h
     obtain ⟨c', ms⟩ := cd
-    have hmem : (c', ms) ∈ D := List.mem_of_find?_eq_some hf
+    have hmem : (c', ms) ∈ D.rows := List.mem_of_find?_eq_some hf
     have hc : c' = c := by
       have := List.find?_some hf
       simpa using this

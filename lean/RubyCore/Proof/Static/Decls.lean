@@ -452,7 +452,7 @@ it has to be.
 theorem declOf?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
     (h : declOf? D cls name = some d) : declaresName D name = true := by
   unfold declOf? declsFor at h
-  cases hf : D.find? (·.1 == cls) with
+  cases hf : D.rows.find? (·.1 == cls) with
   | none => rw [hf] at h; exact absurd h (by simp)
   | some cd =>
     rw [hf] at h
@@ -489,7 +489,7 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       exact hd
     · have hcne : (cls == c) = false := by simpa using fun hh => hc (Eq.symm hh)
       have hfind :
-          (addRow D cls name d).find? (fun x => x.1 == c) = D.find? (fun x => x.1 == c) :=
+          (addRow D cls name d).rows.find? (fun x => x.1 == c) = D.rows.find? (fun x => x.1 == c) :=
         List.find?_cons_of_neg (by simp [hcne])
       have hdb : declsFor (addRow D cls name d) c = declsFor D c := by
         unfold declsFor; rw [hfind]
@@ -715,8 +715,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
   have hnone : ∀ c₀, ¬ (c₀ = c) →
       declOf? (addRow D c name { params := [], ret := τb }) c₀ name = none := by
     intro c₀ hne
-    have hfind : (addRow D c name { params := [], ret := τb }).find? (fun x => x.1 == c₀)
-        = D.find? (fun x => x.1 == c₀) :=
+    have hfind : (addRow D c name { params := [], ret := τb }).rows.find? (fun x => x.1 == c₀)
+        = D.rows.find? (fun x => x.1 == c₀) :=
       List.find?_cons_of_neg (by simpa using fun hh => hne (Eq.symm hh))
     have heq : declOf? (addRow D c name { params := [], ret := τb }) c₀ name
         = declOf? D c₀ name := by unfold declOf? declsFor; rw [hfind]
@@ -835,8 +835,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
           unfold declOf?
           rw [hda, List.find?_cons_of_neg (by simp [hhead])]
         · unfold declOf? declsFor
-          rw [show (addRow D c name { params := [], ret := τb }).find?
-                  (fun x => x.1 == c') = D.find? (fun x => x.1 == c') from
+          rw [show (addRow D c name { params := [], ret := τb }).rows.find?
+                  (fun x => x.1 == c') = D.rows.find? (fun x => x.1 == c') from
               List.find?_cons_of_neg (by simpa using fun hh => hcc (Eq.symm hh))]
       unfold declFor at hdecl ⊢
       cases hcs : tyClassNames τr with

@@ -7241,3 +7241,63 @@ hand-built table instead.
 refusal replaced by a *splat/kwargs/fwd* refusal and two new cases. Two new checked examples in
 `Proof/StaticSoundness.lean`: a two-argument send accepted against a two-parameter row, and an arity
 mismatch refused by the same list equality.
+
+## L176 — `Decls` becomes a structure, so the constant table costs no index
+
+`const` is 28 of the slice's remaining 84 out-of-fragment bodies — a third of the census — and
+`HANDOFF.md` §The next commit prices it as **two** rungs, of which the cheaper is *a constant whose
+value is a plain object needs a table threaded exactly as `Decls` is*. This commit is the threading,
+landed **inert**, and the reason it is its own commit is the argument for its shape.
+
+### Why the constants go in `Decls` rather than beside it
+
+L160 made the declarations a **threaded judgement**: `infer` returns one, `KontOk` carries it as an
+index, `Inv` quantifies it existentially, and `CtlOk` ties it to the program. A constant assignment
+needs *exactly* that same threading, for exactly the same reason L160 gives — `initiation` obliges the
+invariant at the **boot** heap, so a constant the program's own `casgn` creates cannot be in a table
+fixed up front. That is the thirteenth session's finding about `declsOf`, restated at a different
+table, and it is worth restating because the same trap is one document away from being fallen into
+twice:
+
+> **A table the program writes cannot be a function of the program alone.** `declsOf` was written
+> program-indexed and returned `baseDecls` for four rungs; the repair was L160–L163. A constant table
+> computed up front would repeat it exactly.
+
+Given that, there were two shapes:
+
+* a **parallel** `Consts` threaded beside `Decls` — which costs a new component in `infer`'s answer, a
+  new index on three `KontOk` constructors (`seqCons`, `ifK`, `recvK`), a new existential in `Inv`, a
+  new parameter on `CtlOk`, and a mention in every consecution case;
+* **one more field on the value that is already threaded** — which costs a structure, four accessor
+  rewrites, and nothing else.
+
+The second is this commit. `Decls` was `abbrev Decls := List (String × List (String × MethodDecl))`;
+it is now
+
+```lean
+structure Decls where
+  rows : List (String × List (String × MethodDecl)) := []
+  consts : List (String × Ty) := []
+```
+
+and `declsFor`/`declaresName`/`addRow`/`baseDecls`/`declTys` read `D.rows`. **Total churn: five
+definitions and six `D.find?` → `D.rows.find?` rewrites in proofs**, which is the measurement the
+choice was made on. Every `simp [declsFor, baseDecls, …]` in the corpus of checked examples still
+computes, because `baseDecls` is still a literal.
+
+### What is *not* here, deliberately
+
+No `constTyOf`, no `addConst`, no `SubDecls` clause for the constants, and no `ConstsOk`. This file's
+own norm — *write the proof, then keep the clauses it used* (L~150) — says an accessor with no consumer
+is a speculative clause, and the cost of one is every future step that has to re-derive it. What the
+commit claims is only that **the threading exists and is inert**, which is the L141/L157 stance: land
+the shape, measure that no verdict moved, and let the rule that needs it come next.
+
+The `consts` field being empty is also what makes the inertness argument short: `SubDecls` is stated
+over `declFor`, which reads `rows`; `infer`'s `D₁ = D` stability tests compare a structure whose second
+field never changes; and `DeclsOk` mentions `declFor` only.
+
+### Checks
+
+`--check` over the 1,227 cached ASTs **byte-identical** at 39 / 1,186 / 0. `--assn` smoke 1,227 clean.
+`check-proofs.sh` green, 29 theorems, axiom-clean. `fragment-gap.py --self-test` all agree.
