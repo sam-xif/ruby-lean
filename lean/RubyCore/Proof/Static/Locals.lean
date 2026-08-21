@@ -612,6 +612,21 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       StackCtx h frames fids cs
   | _, _ => False
 
+/-- **`StackCtx` does not read `inLoop`** (L222): its six clauses read `cls`, `selfCls`,
+    `ret`, `meth` and `params` and nothing else, so switching the flag is invisible to the
+    frame side. Both directions, both by `rfl`. -/
+theorem stackCtx_inLoop {h : Heap} {frames : Array Frame} {b : Bool} :
+    ∀ {st : List FrameId} {c : FrameCtx} {cs : List FrameCtx},
+      StackCtx h frames st (c :: cs) → StackCtx h frames st ({ c with inLoop := b } :: cs)
+  | [], _, _, hs => hs.elim
+  | _ :: _, _, _, hs => hs
+
+theorem stackCtx_inLoop' {h : Heap} {frames : Array Frame} {b : Bool} :
+    ∀ {st : List FrameId} {c : FrameCtx} {cs : List FrameCtx},
+      StackCtx h frames st ({ c with inLoop := b } :: cs) → StackCtx h frames st (c :: cs)
+  | [], _, _, hs => hs.elim
+  | _ :: _, _, _, hs => hs
+
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
     StackCtx h frames fids.tail cs := by

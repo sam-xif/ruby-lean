@@ -150,7 +150,7 @@ Everything else, including `isSelf`'s exclusion of a literal `self` receiver
 and an arm that differs for no reason is an arm whose proof has to be invented. -/
 mutual
 
-def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : OResult :=
+def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Bool) (s : OState) : OResult :=
   match e with
   | .int _ => .ok (.nom .int) Γ s
   | .tru => .ok (.nom .bool) Γ s
@@ -211,7 +211,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- requirement on `ctx.self` — the `vcall` arm's shape with an argument, and the
   -- receiver is still the variable that stands for `self`.
   | .send none mname (arg :: args) none =>
-    match inferOpenArgs D Γ (arg :: args) ctx s with
+    match inferOpenArgs D Γ (arg :: args) ctx il s with
     | .ok τs Γ₁ s₁ =>
       match requireRow s₁.st ctx.self mname τs s₁.fresh with
       | some (τ, st') => .ok τ Γ₁ { s₁ with st := st', fresh := s₁.fresh + 1 }
@@ -219,7 +219,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     | .missing τ n ps => .missing τ n ps
     | .outOfFragment h => .outOfFragment h
   | .vasgn .lvar x rhs =>
-    match inferOpen D Γ rhs ctx s with
+    match inferOpen D Γ rhs ctx il s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁
     | r => r
   -- **`@x = e`** (L191). No guard here, and none is needed: `inferOpen` only ever
@@ -228,7 +228,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- variable precisely because there is one. So the arm is the right-hand side's
   -- answer, unchanged, and the factoring case is "one subexpression".
   | .vasgn .ivar x rhs =>
-    match inferOpen D Γ rhs ctx s with
+    match inferOpen D Γ rhs ctx il s with
     | .ok τ Γ₁ s₁ =>
       -- **A *declared* ivar is refused here** (L196), and the reason is the open
       -- setting rather than the rule: the nominal write checks `subTy τ σ`, and `τ`
@@ -255,7 +255,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   | .ret e =>
     match e with
     | some e' =>
-      match inferOpen D Γ e' ctx s with
+      match inferOpen D Γ e' ctx il s with
       | .ok τ Γ₁ s₁ => .ok (.nom .nilT) Γ₁ { s₁ with rets := τ :: s₁.rets }
       | r => r
     | none => .ok (.nom .nilT) Γ { s with rets := .nom .nilT :: s.rets }
@@ -271,9 +271,9 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- — on a variable receiver — recorded as a row requirement with that many
   -- parameters.
   | .send (some recv) mname (arg :: args) none =>
-    match inferOpen D Γ recv ctx s with
+    match inferOpen D Γ recv ctx il s with
     | .ok τr Γ₁ s₁ =>
-      match inferOpenArgs D Γ₁ (arg :: args) ctx s₁ with
+      match inferOpenArgs D Γ₁ (arg :: args) ctx il s₁ with
       | .ok τs Γ₂ s₂ =>
         match τr with
         | .nom t =>
@@ -296,7 +296,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
       | .outOfFragment h => .outOfFragment h
     | r => r
   | .send (some recv) mname [] none =>
-    match inferOpen D Γ recv ctx s with
+    match inferOpen D Γ recv ctx il s with
     | .ok τr Γ₁ s₁ =>
       match τr with
       | .nom t =>
@@ -317,19 +317,26 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- `inferOpenSeq` with a constant answer — the same reuse of the sequence
   -- traversal `infer`'s own arm makes.
   | .array es =>
-    match inferOpenSeq D Γ es ctx s with
+    match inferOpenSeq D Γ es ctx il s with
     | .ok _ Γ' s' => .ok (.nom (.cls "Array")) Γ' s'
     | r => r
-  | .seq es => inferOpenSeq D Γ es ctx s
+  | .seq es => inferOpenSeq D Γ es ctx il s
   | .if' c t els =>
-    match inferOpen D Γ c ctx s with
-    | .ok _ Γ₁ s₁ => inferOpenIf D Γ₁ t els ctx s₁
+    match inferOpen D Γ c ctx il s with
+    | .ok _ Γ₁ s₁ => inferOpenIf D Γ₁ t els ctx il s₁
     | r => r
   | .while' c body =>
-    match inferOpen D Γ c ctx s with
+    -- **L222: both subexpressions run at `il := true`.** It has to be both, because
+    -- `evalExpr` pushes a `whileCondK` for the condition too, so a `next` there has the same
+    -- target. The flag is an *explicit parameter* rather than a field of `OCtx` or a
+    -- projection of `s`, and L220–L222 measured why: `ctx` is a **fixed** parameter of the
+    -- three open-self inductions (generalizing it moves `hself` into the motive), and a flag
+    -- read off `s` makes every multi-subexpression arm's IHs mention a *different expression*.
+    -- A parameter is an induction target, so every IH mentions it as a variable.
+    match inferOpen D Γ c ctx true s with
     | .ok _ Γ₁ s₁ =>
       if Γ₁ = Γ then
-        match inferOpen D Γ body ctx s₁ with
+        match inferOpen D Γ body ctx true s₁ with
         | .ok _ Γ₂ s₂ => if Γ₂ = Γ then .ok (.nom .nilT) Γ s₂ else .outOfFragment "while"
         | r => r
       else .outOfFragment "while"
@@ -350,7 +357,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- declaration, rendered at the container's type so the atom says which namespace it
   -- is about.
   | .cpath (some base) n =>
-    match inferOpen D Γ base ctx s with
+    match inferOpen D Γ base ctx il s with
     | .ok (.nom (.clsOf cname)) Γ₁ s₁ =>
       match scopedConstTy? D cname n with
       | some τ => .ok (.nom τ) Γ₁ s₁
@@ -405,7 +412,7 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match ctx.meth with
     | some mn =>
       if mn ≠ "" then
-        match inferOpenArgs D Γ (arg :: args) ctx s with
+        match inferOpenArgs D Γ (arg :: args) ctx il s with
         | .ok τs Γ₁ s₁ =>
           match superDecl? D ctx.cls mn with
           -- `==` against the declared list, not `subATy`, for the nominal-receiver
@@ -423,27 +430,27 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   | _ => .outOfFragment (headName e)
 termination_by sizeOf e
 
-def inferOpenSeq (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (s : OState) :
-    OResult :=
+def inferOpenSeq (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Bool)
+    (s : OState) : OResult :=
   match es with
   | [] => .ok (.nom .nilT) Γ s
-  | [e] => inferOpen D Γ e ctx s
+  | [e] => inferOpen D Γ e ctx il s
   | e :: rest =>
-    match inferOpen D Γ e ctx s with
-    | .ok _ Γ₁ s₁ => inferOpenSeq D Γ₁ rest ctx s₁
+    match inferOpen D Γ e ctx il s with
+    | .ok _ Γ₁ s₁ => inferOpenSeq D Γ₁ rest ctx il s₁
     | r => r
 termination_by sizeOf es
 
 /-- The argument list, left to right, threading the environment and the store.
     `startArgs`' own loop, in open-self mode. -/
-def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (s : OState) :
-    OArgs :=
+def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Bool)
+    (s : OState) : OArgs :=
   match es with
   | [] => .ok [] Γ s
   | e :: rest =>
-    match inferOpen D Γ e ctx s with
+    match inferOpen D Γ e ctx il s with
     | .ok τ Γ₁ s₁ =>
-      match inferOpenArgs D Γ₁ rest ctx s₁ with
+      match inferOpenArgs D Γ₁ rest ctx il s₁ with
       | .ok τs Γ₂ s₂ => .ok (τ :: τs) Γ₂ s₂
       | r => r
     | .missing τ n ps => .missing τ n ps
@@ -451,12 +458,12 @@ def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (s : OSt
 termination_by sizeOf es
 
 def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OCtx)
-    (s : OState) : OResult :=
+    (il : Bool) (s : OState) : OResult :=
   match els with
   | some e =>
-    match inferOpen D Γ t ctx s with
+    match inferOpen D Γ t ctx il s with
     | .ok τt Γt st =>
-      match inferOpen D Γ e ctx st with
+      match inferOpen D Γ e ctx il st with
       | .ok τe Γe se =>
         -- L193b, mirroring `inferIf`: the types are *joined*, the environments are
         -- still compared. `joinATy` is the only difference from the nominal rule, and
@@ -473,7 +480,7 @@ def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OC
       | r => r
     | r => r
   | none =>
-    match inferOpen D Γ t ctx s with
+    match inferOpen D Γ t ctx il s with
     | .ok τt Γt st =>
       if Γt = Γ then
         match Store.joinOpen st.st τt (.nom Ty.nilT) with
@@ -509,7 +516,7 @@ def inferBody (D : Decls) (c mname : String) (body : Expr) : OResult :=
   -- nothing a *declaration* could supply would fix it; the two types simply differ, and
   -- joining them would need the union this fragment does not have.
   match inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
-      { st := {}, fresh := 1 } with
+      false { st := {}, fresh := 1 } with
   | .ok τ Γ' s =>
     if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
   | r => r
@@ -625,11 +632,12 @@ def openParams (D : Decls) (ctx : OCtx) : List Param → AEnv → OState →
   | .key x none :: rest, Γ, s =>
     openParams D ctx rest (Γ ++ [(x, .var s.fresh)]) { s with fresh := s.fresh + 1 }
   | .opt x d :: rest, Γ, s =>
-    match inferOpen D Γ d ctx s with
+    -- L222: a parameter default is not inside the method's loops.
+    match inferOpen D Γ d ctx false s with
     | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
     | _ => none
   | .key x (some d) :: rest, Γ, s =>
-    match inferOpen D Γ d ctx s with
+    match inferOpen D Γ d ctx false s with
     | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
     | _ => none
   | .fwd :: _, _, _ => none
@@ -667,7 +675,7 @@ def inferBodyWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr)
   match openParams D ctx ps [] { st := {}, fresh := 1 } with
   | some (Γb, s) =>
     -- L201's check, at the parameterized entry point too.
-    some (Γb, match inferOpen D Γb body ctx s with
+    some (Γb, match inferOpen D Γb body ctx false s with
       | .ok τ Γ' s' =>
         if s'.rets.all (fun a => subATy a τ) then .ok τ Γ' s'
         else .outOfFragment "return-join"

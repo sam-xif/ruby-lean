@@ -425,6 +425,19 @@ structure FrameCtx where
       `StackCtx`'s `meth` clause pins it to `some []` in every activation the invariant
       can describe, because `ResolvesUser` requires `md.params = []`. -/
   params : Option (List Ty) := none
+  /-- **Are we lexically inside a `while` in this activation?** (L222)
+
+      `next`/`break`/`redo` need it for the reason `return` needed `ret`: the jump has a
+      *target*, and the rule is only sound where the target exists. `unwind` sends a `.nxtJ`
+      to the innermost `whileCondK`/`whileBodyK`; crossing a **method** boundary answers
+      `.unsupported`, which `StepOk` refuses.
+
+      Unlike the other four fields it varies *within* an activation: `infer`'s `.while'` arm
+      sets it, `KontOk`'s loop constructors clear it on the way down, and `KontOk.frameK`
+      requires it clear on the callee. Free on the nominal side because `Mono.lean` already
+      has `ctx` as an induction target; the open side carries the same flag as an explicit
+      **parameter** of `inferOpen`, for the reason recorded there. -/
+  inLoop : Bool := false
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

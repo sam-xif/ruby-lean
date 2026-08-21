@@ -157,7 +157,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
         exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
-        KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
+        KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) rfl hk⟩
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, hks, D, ctx, Γ, Γs, htab, hfs, hsc, hc⟩ := h
@@ -534,7 +534,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               obtain ⟨rfl, rfl⟩ := hΓ₂
               simp only [Option.some.injEq, Prod.mk.injEq] at hinf
               obtain ⟨rfl, rfl, rfl⟩ := hinf
-              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot (by simp [frameKLabels, hks]) hcnd
+              exact inv_push (c := { ctx with inLoop := true }) hfs htab
+                (stackCtx_inLoop hsc) hhook hsat hstr hcls hbot
+                (by simp [frameKLabels, hks]) hcnd
                 (KontOk.whileCond ⟨⟨σ, hcnd⟩, ⟨σb, hbody⟩⟩ hsubw hk)
             · exact absurd hinf (by simp)
           · exact absurd hinf (by simp)
@@ -608,7 +610,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
-      · exact ⟨τ, τw, Γb, D', hbody, hsubw, KontOk.frameK (fun _ h => by simp at h) hk⟩
+      · exact ⟨τ, τw, Γb, D', hbody, hsubw, KontOk.frameK (fun _ h => by simp at h) rfl hk⟩
     case def' name params body =>
       obtain ⟨rfl, rfl, rfl, hfresh, hha, τb, Γb, hbody, hrow⟩ := infer_def_inv hinf
       have hdm : m.currentFrame = curFrame m := currentFrame_eq hf.1
@@ -1444,13 +1446,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         exact inv_push hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) hbody
           (KontOk.whileBody ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hsw hk')
       · simp only [hb]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks)
+        -- The loop *exits*: the value goes to a continuation indexed at the enclosing
+        -- context, so this is where the flag comes back off.
+        exact inv_value hfs htab (stackCtx_inLoop' hsc) hhook hsat hstr hcls hbot
+          (by simpa [frameKLabels] using hks)
           (ValueTy.weaken (ValueTy.exact rfl) hsw) hk'
     | @whileBody _ _ _ _ _ _ τw c body k hloop hsw hk' =>
       obtain ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ := hloop
       exact inv_push hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) hcnd
         (KontOk.whileCond ⟨⟨σc, hcnd⟩, ⟨σb, hbody⟩⟩ hsw hk')
-    | @frameK _ _ _ cΓ' Γs _ fid k hrt hk' =>
+    | @frameK _ _ _ cΓ' Γs _ fid k hrt hil hk' =>
       -- The activation pops: `frames` is untouched, `stack` loses its head, and
       -- the caller's environment — carried all along by `FramesOk` — becomes
       -- current again. This is the case L91 could not close.
@@ -1577,7 +1582,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
           exact ⟨τret, τw, Γb, _, hbu, hsw,
-            KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsw) hk'⟩
+            KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsw) rfl hk'⟩
     -- **An array element has arrived** (L174). Two shapes again, and they are
     -- `continueArray`'s: nothing left, so allocate; or a head to run, so push the
     -- next `arrK`. The accumulated values are never inspected, which is the erasure

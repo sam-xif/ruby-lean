@@ -600,7 +600,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- and not an approximation.
       match infer D [] body false
           { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
-                     params := some [] } with
+                     params := some [], inLoop := false } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to
@@ -684,10 +684,13 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     -- body declares a method would put a different table in force on the second
     -- iteration than the one the first was checked at, and there is no single `D`
     -- to index the two loop konts by. Same argument as `Γ`, and the same shape.
-    match infer D Γ c top ctx with
+    -- **L222: both subexpressions are typed at `inLoop := true`** — `evalExpr` pushes a
+    -- `whileCondK` for the condition too, so a `next` there has the same target. Nothing
+    -- reads the flag yet, so this changes no verdict.
+    match infer D Γ c top { ctx with inLoop := true } with
     | some (_, Γ₁, D₁) =>
       if Γ₁ = Γ ∧ D₁ = D then
-        match infer D Γ body top ctx with
+        match infer D Γ body top { ctx with inLoop := true } with
         | some (_, Γ₂, D₂) => if Γ₂ = Γ ∧ D₂ = D then some (.nilT, Γ, D) else none
         | none => none
       else none

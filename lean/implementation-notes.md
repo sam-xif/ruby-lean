@@ -10629,3 +10629,63 @@ defect in one build instead of five.
 
 Reverted; `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
 third ratchet **24**.
+
+## L223 — the `inLoop` channel, and the design L222 named is the one that works
+
+Out of fragment **24 → 24**, `--check` byte-identical, `check-proofs.sh` axiom-clean. **This is the
+commit L220, L221 and L222 were each trying to reach**, and it went in without a single failed goal
+once the flag was put in the right place.
+
+### The channel
+
+| side | where the flag lives | why |
+|---|---|---|
+| nominal | `FrameCtx.inLoop : Bool` | `Mono.lean` already has `ctx` as an induction target, so a context field that varies within an activation is free there |
+| open | an **explicit parameter** `il : Bool` of `inferOpen`/`inferOpenIf`/`inferOpenSeq`/`inferOpenArgs` | the three open-self inductions keep `ctx` **fixed** (so `hself` stays a hypothesis), and `il` joins the *targets* — so every IH mentions the flag as a **variable** |
+
+`infer`'s `.while'` arm types the condition and body at `inLoop := true`; `inferOpen`'s passes `true`
+to both sub-calls; every other arm passes `il` through unchanged; `openParams`' default expressions and
+both `inferBody` entry points pass `false`. `KontOk`'s two loop constructors map the flagged context to
+the enclosing one on the way down, and `KontOk.frameK` requires the **callee's** flag clear — together
+making *"the flag is on ⇒ a loop kont sits above the `frameK`"* a property of the derivation, which is
+what a `next` rule will need in order to *refute* the frameK position (`unwind` answers `.unsupported`
+for a `.nxtJ` crossing a method boundary).
+
+### What the three failed attempts bought
+
+Nothing about the mathematics changed between them; what changed is where one `Bool` lives.
+
+* **L220 — on `FrameCtx`/`OCtx`.** Varies within an activation ⇒ breaks `inferOpen.induct`'s fixed-`ctx`
+  form ⇒ generalizing `ctx` moves `hself` into the motive ⇒ twelve cases lose their binder.
+* **L221/L222 — on `OState`.** `s` *is* a target, so `ctx` stays fixed and the motives are clean — but
+  `Factors` then reads the flag off a state, and **every** multi-subexpression arm has its IHs at
+  different states. `inferOpen_inLoop` says they agree and cannot be a `simp` lemma (bare-variable LHS),
+  so the equation would have to be applied by hand in forty places.
+* **L223 — an explicit parameter.** Every IH mentions it as a variable. The uniform tactic block in
+  `inferOpen_factors` needed **no new alternative at all**.
+
+> **A derived index is not an index.** An induction needs its varying data as a parameter, not as a
+> field of a fixed parameter and not as a projection of another target. Three sessions' worth of
+> analysis reduces to that sentence.
+
+### What it cost, itemized
+
+Signatures of four functions and ~27 call sites in `Types/OpenSelf.lean`; `il` added to the targets and
+motives of `inferOpen_mono`, `inferOpen_rets` and `inferOpen_factors`; an `il` binder on twelve helper
+lemmas (`inferOpenIf_mono`, `storeLe_sub`, `rets_subArgs`, …) and their applications; `Factors` and its
+three siblings gained the parameter; `stackCtx_inLoop`/`'` (both `rfl` — `StackCtx` reads none of the
+five context fields); `KontOk`'s two loop constructors and `frameK`; eleven `Preservation` sites.
+**No new mathematics, and no new tactic alternatives.**
+
+### What is next
+
+The channel is inert — nothing reads the flag. `next` is now: `RaiseOk`'s shape for `.nxtJ`
+(`NxtTransparent`, an `NxtOk` relation whose `loop` constructor carries the loop's `LoopOk`), `CtlOk`'s
+`.jump (.nxtJ v)` case, `KontOk.nxtOk` refuting the `frameK` position from `ctx.inLoop = true`, then
+the two rules. `break` and `redo` follow from the same channel — `unwind`'s `whileCondK` arm answers all
+three from one `match`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); third ratchet **24**.
