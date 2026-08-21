@@ -687,6 +687,23 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- A bare `return` yields `nil`, so the declared type has to admit it.
       | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
     | none => none
+  -- **`::n`, an absolute constant read** (L203) — and it is the *same table read* as
+  -- `.const n`, one lookup shorter.
+  --
+  -- `evalExpr`'s `.cpath none` arm is `constLookup m.heap n`, which is `Object`'s own
+  -- constant table and nothing else: no cref walk, no ancestors. So this arm needs
+  -- neither a new table (`Decls.consts` is keyed on the name, which is what an
+  -- absolute path *is*) nor `ConstOk`'s third conjunct — sole ownership is what makes
+  -- a *relative* read land on `Object`, and an absolute one starts there.
+  --
+  -- Nothing is admitted with a **scope** (`A::B`). That is a second rule and a second
+  -- table — a scoped constant is keyed on the *pair*, like `Decls.ivars` — plus a
+  -- `KontOk` arm for the base's evaluation. The slice's census says which one pays:
+  -- 86 of its 99 `cpath` nodes are `::Regexp` from a regex literal, absolute.
+  | .cpath none n =>
+    match constTy? D n with
+    | some τ => some (τ, Γ, D)
+    | none => none
   -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
   -- inserting an arm shifts every later case number in `infer.induct`, and the only
   -- case after this one is the catch-all. The rule itself is `.int`'s verbatim, and

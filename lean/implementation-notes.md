@@ -9124,3 +9124,80 @@ slice's arithmetic lives. But it is booked at **0** against the goal.
 1,227 clean; `--self-test` all agree (one new row, `1.5`); slice-driver 72 lines IDENTICAL; tier-0
 992 agree / 0 disagree; tier-slice 351 agree / 0 disagree / 1 gated; third ratchet **41**,
 unchanged.
+
+## L203 — `::n`, and the cheapest five bodies on the board
+
+Out of fragment **41 → 36**, `--check` byte-identical (52/1,173/0). Five bodies for **one table
+read**, and the reason it was that cheap is worth stating precisely, because it is the same reason
+L195–L197 were cheap and the census had been pointing at it for two sessions.
+
+### The measurement that chose the shape
+
+`cpath` was 9 of the 41 and the largest *priced* atom. `HANDOFF.md` had it filed under Wall 2 — "all
+of them regex literals, which need `Class#new`". That was wrong, and one histogram says so: the
+slice's 99 `cpath` nodes are
+
+```
+86  root ::Regexp        36  scoped T::Boolean     26  scoped T::Array    23  scoped T::Hash
+ 3  root ::Range          3  scoped T::Helpers     16  scoped <Tok>::PATTERN (8 × 2)
+ 1  scoped Float::NAN     1  scoped Version::Parser …
+```
+
+**86 of 99 are `['cpath', None, 'Regexp']`** — an *absolute* path with no base expression, which is
+what a regex literal desugars to (`/re/` → `::Regexp.new("re", 0)`). An absolute path is not a
+namespace walk at all:
+
+```lean
+-- evalExpr, the `.cpath none` arm
+match constLookup m.heap name with | some v => .next (withCtl m (.value v)) | none => …
+```
+
+and `constLookup h n` **is** `constOwn h Boot.objectId n` — the same two-line lookup, spelled twice
+in `Heap.lean` (576 and 599). So the rule is
+
+```lean
+| .cpath none n => match constTy? D n with | some τ => some (τ, Γ, D) | none => none
+```
+
+*the same arm as `.const n`*, reading *the same table*, with the cref walk deleted.
+
+### What it does *not* need, which is the whole content
+
+* **No new table.** `Decls.consts` is keyed on the name, and a name is what an absolute path is.
+* **No new `DeclsOk` clause.** `ConstOk`'s first two conjuncts are exactly what this arm consumes.
+* **`ConstOk`'s third conjunct is unused here.** Sole ownership (L189) exists to make a *relative*
+  read land on `Object` whatever the cref is; an absolute read starts at `Object`. So the
+  preservation case is `.const`'s with `constRead_sole` and the `StackCtx` cref clause both deleted —
+  it is four lines and a `constLookup = constOwn` bridge.
+* **No `KontOk` arm.** `scope = none` means no subexpression, so nothing is pushed.
+
+### The scoped half, priced but not built
+
+`A::B` pushes `.cpathK name` on the base's evaluation and then reads `constOwn` at the *container*.
+It needs a second table keyed on the **pair** — `Decls.ivars`' shape, L196's rung verbatim — a
+`ScopedConstOk` clause beside `ConstOk`, and one `KontOk` arm with its two consecution cases. It is
+4 of the remaining 36 (`Float::NAN`, `Version::Parser`, two more) and the `T::` family, which is
+where the `sig`s live. Next session's candidate, and a real one: the census now reads
+`cpath 4` rather than `cpath 9`.
+
+### Renumbering, and the recipe that survives it
+
+Two arms went in this session (L202's `.flt`, L203's `.cpath none`) and each shifted `infer.induct`'s
+tail: `.flt` by **1** (one case) and `.cpath` by **2** (the arm's internal `match` is two cases). The
+seven explicit `caseNN`s in `Mono.lean` are the motive2/3/4 cases, all after the catch-all, so both
+shifts hit all seven. `#check @RubyCore.Types.infer.induct` is **not** usable for this any more — the
+pretty-printer truncates the telescope with `⋯` at this size — so the working recipe is now: *put a
+new arm immediately before the catch-all, count the cases its own `match` creates, shift every
+explicit case number at or above the catch-all's by that, rebuild, and read the arity mismatches.*
+
+The `.cpath` hit case is discharged by a **new alternative** in the uniform block rather than by an
+explicit case number, which is the durable form: it is `case39`'s three tactics with the name left to
+unification, so the next constant-shaped rule costs nothing here.
+
+### Checks
+
+`lake build`, `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**;
+`--check` byte-identical (52/1,173/0) — no bootstraptest program reads an absolute path;
+`--assn` smoke 1,227 clean; `--self-test` all agree (three new rows: `::String` accepts, `::Regexp`
+is a missing *declaration*, `Float::NAN` is still out); slice-driver 72 lines IDENTICAL; third
+ratchet **36**.

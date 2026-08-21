@@ -319,6 +319,16 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
         | r => r
       else .outOfFragment "while"
     | r => r
+  -- **`::n`** (L203), the absolute constant read — `.const`'s arm with the cref walk
+  -- removed, and a miss is a **needed declaration** rather than a refusal, exactly as
+  -- L197 made it for `.const`. On the slice the atom is almost always `::Regexp`,
+  -- which is a requirement that can never be satisfied (`classRecv` excludes that id,
+  -- L106) — and saying so is the point: the body has crossed from the checker's
+  -- problem to the table's.
+  | .cpath none n =>
+    match constTy? D n with
+    | some τ => .ok (.nom τ) Γ s
+    | none => .missing (.nom (.clsOf "Object")) ("::" ++ n) []
   -- **A float literal** (L202), and it is here for `infer`'s reason: the only case
   -- after it in `inferOpen.induct` is the catch-all, so no existing case number moves.
   | .flt _ => .ok (.nom .float) Γ s

@@ -247,6 +247,31 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
             (ValueTy.weaken hty hsubw) hk
       · exact absurd hinf (by simp)
+    -- **`::n`** (L203), and it is `.const`'s case with the two hard steps deleted.
+    -- `evalExpr`'s absolute arm is `constLookup m.heap n`, which is `Object`'s own
+    -- constant table — literally `constOwn h Boot.objectId n` (`Heap.lean:576/599`
+    -- are the same lookup) — so neither the frame's `cref` nor `constRead_sole` is
+    -- needed here. `DeclsOk`'s constant half supplies the value and its type outright.
+    case cpath base n =>
+      cases base with
+      | none =>
+        simp only [infer] at hinf
+        split at hinf
+        · next τc hre =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+          obtain ⟨rfl, rfl, rfl⟩ := hinf
+          obtain ⟨v, hconst, hty, -⟩ := htab.2.1 n _ hre
+          have hcl : constLookup m.heap n = some v := by
+            unfold constLookup
+            unfold constOwn at hconst
+            cases hp : m.heap.classPayload? Boot.objectId with
+            | none => rw [hp] at hconst; simp at hconst
+            | some c => rw [hp] at hconst; simpa using hconst
+          simp only [evalExpr, hcl]
+          exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
+            (ValueTy.weaken hty hsubw) hk
+        · exact absurd hinf (by simp)
+      | some b => simp only [infer] at hinf; contradiction
     case var k x =>
       cases k
       case lvar =>
