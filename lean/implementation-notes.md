@@ -8090,3 +8090,58 @@ branch, not this rule.
 `consts_probe`, `classobj_probe`, `classeq_probe` all exit 0 with the widened table. `--assn` 1,227
 clean. `--self-test` all agree. Two new checked witnesses (`String` read inside a reopened `String`
 body; `Token` refused).
+
+## L190 — `--sets`, the fifth ratchet: the number that predicts a move
+
+L189's first act was a measurement it should have taken three commits earlier, and this makes it a
+tool so the next reader cannot skip it.
+
+### What the existing ratchets do not say
+
+The third ratchet (`--assn`) reports each body's **first** blocker, because `inferOpen` stops at the
+first construct outside its domain. That number ranks *what to lift*. It does **not** predict a move,
+because a body may have three more blockers behind the one it names — and this file priced the
+class-object arm at "0 bodies" three times on exactly that mistake, then watched L189 move oof by 5
+with one rule.
+
+`--sets` computes the full blocker **set** per method body, and reports two things:
+
+* **the singleton sets** — each is a body that *one* rung frees;
+* **the marginal-value table** — for every set of up to three constructs, how many bodies it frees.
+
+Measured after L189, over the slice's 120 method bodies (88 blocked):
+
+```
+singletons:  8 {const}   3 {super}   3 {return}   2 {cpath}
+             1 {ivar-read}   1 {ivar-asgn}   1 {zsuper}
+sets:       21 {const, return}     30 {const, return, zsuper}
+            29 {const, cpath, return}   25 {const, ivar-asgn, return}
+```
+
+### The rule, stated so it is not lost again
+
+> **A blocker count ranks what to lift. A blocker *set* ranks what gets freed.** They disagree, and
+> only the second is about the metric. This is L168's lesson in its third form — the first was *a
+> census classifies at the outermost node*, the second was *a front-end lift moves the ranking, not
+> the count* — and the reason it kept recurring is that the cheap number was the one the tool
+> reported.
+
+Two corollaries the table makes visible and prose kept getting wrong:
+
+* **A body moving from *out of fragment* to `needed: <atom>` already reduces oof.** The metric counts
+  bodies outside `infer`'s domain, not bodies that fail. Four of L189's five went that way.
+* **`{const, return}` is 21 bodies** — a quarter of the census — so the two are worth doing in either
+  order but only worth *pricing* together.
+
+### The caveat, stated in the code
+
+`_body_blockers` is a hand-written mirror of `inferOpen`'s arms, exactly as `SUPPORTED` is of `infer`'s,
+and it has the same drift risk — the one that made `SUPPORTED` wrong twice. So the report prints its
+own body count beside `--assn`'s and says that a large gap means the mirror has drifted. The honest
+fix is for `--assn` to report *all* blockers per body rather than the first, which needs `inferOpen`
+to keep going past a failure; that is a real change to the front end and it is the next thing this tool
+should be replaced by.
+
+### Checks
+
+Reporting only. `--self-test` all agree; `--check` unchanged; nothing in the SUT or metatheory moved.
