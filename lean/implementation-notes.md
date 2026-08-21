@@ -6958,3 +6958,87 @@ inside a reopened core class with a declared row). `--assn` smoke 1,225 clean / 
 `fragment-gap.py --self-test` all agree, two new cases (`self.v` accepted in a method body, `self.foo`
 unknown in a class body); `shape_send`'s *explicit `self` receiver* refusal is deleted, so the first
 ratchet's 16 nodes under it stop being counted as blocking.
+
+## L173 — five of the six refused parameter kinds, bound from what the machine writes
+
+L168 admitted `def` with **required positional** parameters and refused the other six *by kind*, so
+the census could say which binding rule each body was behind. That bought the information; this
+commit spends it. Nine of the slice's 89 out-of-fragment bodies were behind `key` (4), `rest` (2),
+`opt` (2), `kwrest` (1) and `block` (1), and all nine are now typed.
+
+### The soundness stance is unchanged, and that is the whole reason this is cheap
+
+`inferBodyWith_sound`'s conclusion is `infer D (substEnv θ Γb) body … = some (τ.subst θ, …)` — a
+statement about the **body**, in whatever environment the parameters give it. Its proof uses
+`openParams … = some (Γ₀, s₀)` and `inferOpen_factors`, and **neither cares what `Γ₀` is**. So
+widening `openParams` costs the theorem two lines of plumbing (it now threads an `OState` rather than
+a bare counter) and nothing else: no `KontOk` constructor, no consecution case, no `infer` arm. The
+nominal `def` rule still requires `params.isEmpty`, and the five binding rules in `enterUserMethod`
+are still unpaid **for that rule** — which is the honest statement, and the reason these bodies keep
+`acceptedOpenParams`'s separate constructor and separate census column.
+
+### What each kind is bound to, read off `enterUserMethod` rather than guessed
+
+`Interp/Dispatch.lean:96`–`119` is the authority, and it makes two of the five *more* precise than a
+variable:
+
+| kind | bound to | why |
+|---|---|---|
+| `req` | fresh variable | the caller's type is `θ`'s to choose (L168, unchanged) |
+| `rest` | **`Array`** | `Builtins.allocArr` on the surplus, unconditionally — the one parameter kind whose type is *known* |
+| `kwrest` | **`Hash`** | `allocHash` on the leftover pairs, likewise |
+| `block` | fresh variable | `blk.getD .nil` is a `Proc` **or `nil`**, a union `Ty` cannot write |
+| `opt x = d`, `key x: d` | **the default's own type** | the omitted-argument path really does bind it, so the default is typed here, in the environment built so far (a default may read an earlier parameter) |
+| `key x:` (no default) | fresh variable | a required keyword, so exactly `req` |
+| anonymous `*`/`**`/`&` | nothing | which is what the machine binds |
+
+**`block` is the interesting refusal-that-isn't.** Binding `&b` to a fresh variable is not laziness:
+if the body calls `b.call`, the requirement lands in the residual store, so `θ` ends up carrying the
+*a block was given* precondition instead of the environment asserting a type the machine does not
+guarantee. That is the under-determination in the right place.
+
+**`fwd` and `destr` are still refused**, and for a reason that is not about cost: `...` binds three
+*internal* locals (`__fwd_rest`/`__fwd_kw`/`__fwd_blk`) that no source expression can name, so there
+is no environment to state; `destr` is a recursive massign against an argument shape no `Ty` records.
+Neither occurs in the slice.
+
+Two definitions were **withdrawn** with the refusal they explained — `paramKind` and `firstNonReq`,
+struck through in place. `firstUnbound` replaces them and names only the two kinds that are left; a
+body whose *default expression* escapes the fragment reports `def-params-dflt`, which is a different
+fact and now distinguishable.
+
+### The measurement: nine bodies moved and the total did not
+
+| | before | after |
+|---|---|---|
+| out of fragment | 89 | **89** |
+| `def-params-*` (five kinds) | 9 | **0** |
+| `return` | 19 | 20 |
+| `const` | 18 | 19 |
+| `send-2-args` | 10 | **14** |
+| `send-with-block` | 9 | 10 |
+| `array` | 6 | 7 |
+| `super` | 3 | 4 |
+| `splat` | 0 | 1 |
+
+**Third rung in a row where `oof` did not move**, and the pattern is now clear enough to state as a
+rule rather than as a surprise:
+
+> **A front-end lift moves the census's *ranking*, not its *count*.** L170 (11 bodies) netted −1,
+> L172 (2 bodies) netted 0, L173 (9 bodies) netted 0. Every one of the 22 bodies behind those three
+> refusals had a *second* blocker, and after three rounds the surviving blockers are exactly the ones
+> that need machinery: `return` (20, a non-local exit channel in the invariant), `const` (19, a
+> class-object arm of `Ty` plus a constant table), `send-2-args` (14, `ValuesTy` over a list of
+> argument continuations), `send-with-block` (10, Wall 1), `array` (7, an allocating producer).
+
+That is not a disappointing measurement, it is the useful one: **the fragment's remaining distance is
+now 15 constructs and no cheap ones**, and the three cheap rungs were worth taking precisely because
+they proved there is nothing else hiding behind them.
+
+### Checks
+
+`check-proofs.sh` green, 28 theorems, axiom-clean. `--check` byte-identical to L172's capture (the
+change is entirely inside the untrusted front end; `check` does not call `inferOpen`). `--assn` smoke
+1,227 clean. `fragment-gap.py --self-test` all agree. Seven new checked examples in
+`Types/OpenSelf.lean` — one per binding decision above, because a binding read off the interpreter is
+exactly the kind of claim that rots silently.

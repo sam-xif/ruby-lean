@@ -303,41 +303,95 @@ expression evaluated in the callee frame — a second body, not a type. Refusing
 them by kind rather than in bulk is what keeps the census able to say which wall
 the remaining bodies are behind. -/
 
-/-- Which arm of `Param` this is, for the `out of fragment:` line. -/
-def paramKind : Param → String
-  | .req _ => "req" | .opt _ _ => "opt" | .rest _ => "rest"
-  | .key _ _ => "key" | .kwrest _ => "kwrest" | .block _ => "block"
-  | .fwd => "fwd" | .destr _ => "destr"
+-- ~~`paramKind`~~ / ~~`firstNonReq`~~ — **withdrawn at L173**, with the refusal
+-- they explained. L168 refused six of `Param`'s eight arms *by kind* so the census
+-- could say which binding rule a body was behind; L173 binds five of them, so the
+-- only kinds left are the two `firstUnbound` names and a per-kind printer has
+-- nothing to enumerate. What replaced the information they carried is better: the
+-- nine bodies now report the construct **inside their own body** that stops them.
 
-/-- The first parameter that is not a required positional, by kind. `none` when
-    every parameter is one, which is exactly when `openParams` succeeds. -/
-def firstNonReq : List Param → Option String
+/-- The first parameter `openParams` refuses, by kind. `none` when every
+    parameter is one it binds, which is exactly when `openParams` succeeds.
+
+    **Two kinds are left** (L173): `fwd` binds three *internal* locals nobody can
+    name (`__fwd_rest`/`__fwd_kw`/`__fwd_blk`, `Interp/Send.lean`'s
+    `forwardBundle`), so there is no source-level environment to state; and `destr`
+    nests, so its binding is a recursive massign against an argument shape no type
+    in `Ty` records. Neither occurs in the slice. -/
+def firstUnbound : List Param → Option String
   | [] => none
-  | .req _ :: rest => firstNonReq rest
-  | p :: _ => some (paramKind p)
+  | .fwd :: _ => some "fwd"
+  | .destr _ :: _ => some "destr"
+  | _ :: rest => firstUnbound rest
 
-/-- §7.3's `Γ_b = ∅[x₁ ↦ τ₁, …, x_k ↦ τ_k]`, in the *"or fresh vars"* case the
-    rule's parenthetical allows: one fresh variable per parameter, in source
-    order, and the counter left where the body's own `require`s continue from.
+/-- §7.3's `Γ_b = ∅[x₁ ↦ τ₁, …, x_k ↦ τ_k]` — the environment a method body is
+    typed in, one entry per parameter **in source order**, threading the open state
+    so that a default's own requirements land in the store.
 
     Variables start at `1` because `0` is `self` (`inferBody`'s convention), so a
     parameter's variable can never be confused with the receiver's — which matters
-    for `residualRow`, whose whole content is *the row on `self`*. -/
-def openParams : List Param → TyVar → Option (AEnv × TyVar)
-  | [], f => some ([], f)
-  | .req x :: rest, f =>
-    match openParams rest (f + 1) with
-    | some (Γ, f') => some ((x, .var f) :: Γ, f')
-    | none => none
-  | _, _ => none
+    for `residualRow`, whose whole content is *the row on `self`*.
 
-/-- Type one method body of class `c` with its parameters bound to fresh
-    variables. `none` when a parameter is not a required positional. -/
+    **What each kind is bound to** (L173), and each is read off what
+    `enterUserMethod` really writes (`Interp/Dispatch.lean:96`–`119`) rather than
+    guessed:
+
+    * `req` — a **fresh variable**. The caller's type is not known here and is not
+      claimed to be: it is `θ`'s to choose (L168).
+    * `rest` — `Array`. `*a` is bound by `Builtins.allocArr` on the surplus, always,
+      so this is the one parameter kind whose type is *known* rather than assumed.
+    * `kwrest` — `Hash`, for the same reason (`allocHash` on the leftover pairs).
+    * `block` — a **fresh variable**. `&b` holds a `Proc` **or `nil`**
+      (`blk.getD .nil`), which is a union `Ty` cannot write; a variable is the
+      honest under-determination, and whatever the body requires of it lands in the
+      residual store, so `θ` carries the *a block was given* precondition rather
+      than the environment pretending it away.
+    * `opt x = d` and `key x: d` — **the default's own type**. The default is an
+      expression evaluated in the callee frame, so it is typed here, in the
+      environment built so far (a default may read an earlier parameter), and the
+      parameter is bound to what it answers. That is a precondition on callers of
+      exactly the kind a `req`'s variable is, with the difference that this one is
+      *forced* — the omitted-argument path really does bind it.
+    * `key x:` with no default — a required keyword, so a fresh variable, as `req`.
+    * an **anonymous** `rest`/`kwrest`/`block` binds nothing at all, which is what
+      the machine does.
+
+    Refuses `fwd` and `destr`; see `firstUnbound`. -/
+def openParams (D : Decls) (ctx : OCtx) : List Param → AEnv → OState →
+    Option (AEnv × OState)
+  | [], Γ, s => some (Γ, s)
+  | .req x :: rest, Γ, s =>
+    openParams D ctx rest (Γ ++ [(x, .var s.fresh)]) { s with fresh := s.fresh + 1 }
+  | .rest (some x) :: rest, Γ, s =>
+    openParams D ctx rest (Γ ++ [(x, .nom (.cls "Array"))]) s
+  | .rest none :: rest, Γ, s => openParams D ctx rest Γ s
+  | .kwrest (some x) :: rest, Γ, s =>
+    openParams D ctx rest (Γ ++ [(x, .nom (.cls "Hash"))]) s
+  | .kwrest none :: rest, Γ, s => openParams D ctx rest Γ s
+  | .block (some x) :: rest, Γ, s =>
+    openParams D ctx rest (Γ ++ [(x, .var s.fresh)]) { s with fresh := s.fresh + 1 }
+  | .block none :: rest, Γ, s => openParams D ctx rest Γ s
+  | .key x none :: rest, Γ, s =>
+    openParams D ctx rest (Γ ++ [(x, .var s.fresh)]) { s with fresh := s.fresh + 1 }
+  | .opt x d :: rest, Γ, s =>
+    match inferOpen D Γ d ctx s with
+    | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
+    | _ => none
+  | .key x (some d) :: rest, Γ, s =>
+    match inferOpen D Γ d ctx s with
+    | .ok τ _ s' => openParams D ctx rest (Γ ++ [(x, τ)]) s'
+    | _ => none
+  | .fwd :: _, _, _ => none
+  | .destr _ :: _, _, _ => none
+
+/-- Type one method body of class `c` in the environment its parameters give.
+    `none` when a parameter kind is one `openParams` does not bind, or when a
+    default expression is itself out of the fragment. -/
 def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
     Option (AEnv × OResult) :=
-  match openParams ps 1 with
-  | some (Γb, f) =>
-    some (Γb, inferOpen D Γb body { cls := c, self := 0 } { st := {}, fresh := f })
+  let ctx : OCtx := { cls := c, self := 0 }
+  match openParams D ctx ps [] { st := {}, fresh := 1 } with
+  | some (Γb, s) => some (Γb, inferOpen D Γb body ctx s)
   | none => none
 
 /-- §11's per-body verdict for a `def` with parameters. Delegates to
@@ -347,7 +401,7 @@ def bodyVerdictWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
     BodyVerdict :=
   if ps.isEmpty then bodyVerdict D c body else
   match inferBodyWith D c ps body with
-  | none => .outOfFragment ("def-params-" ++ (firstNonReq ps).getD "?")
+  | none => .outOfFragment ("def-params-" ++ (firstUnbound ps).getD "dflt")
   | some (Γb, .ok τ _ s) =>
     .acceptedOpenParams τ (residualRow { cls := c, self := 0 } s)
       ((closeBody { cls := c, self := 0 } s).toAssn) Γb
@@ -522,25 +576,67 @@ example : inferBody baseDecls "Version" (.send (some (.int 1)) "/" [.int 2] none
 `HANDOFF.md`'s norm: the corpus cannot witness a `--assn` verdict, so the
 capability is asserted here or it is not asserted at all. -/
 
-/-- **A parameter kind that is not a required positional is refused by name.**
-    The kind is in the verdict because the census's whole value is in *which*
-    wall a body is behind — nine of the slice's bodies are behind these four
-    kinds, and an `outOfFragment "def-params"` could not say which. -/
-example :
-    bodyVerdictWith baseDecls "String" [.opt "a" (.int 1)] (.int 1)
-      = .outOfFragment "def-params-opt" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, firstNonReq, paramKind]
-
-/-- …and the `block` kind, which is the one `&blk` takes. -/
-example :
-    bodyVerdictWith baseDecls "String" [.req "a", .block (some "b")] (.int 1)
-      = .outOfFragment "def-params-block" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, firstNonReq, paramKind]
-
-/-- **`Γ_b`, in order, one fresh variable each, starting above `self`'s.** The
+/-- **`Γ_b`, in order, one fresh variable per `req`, starting above `self`'s.** The
     offset is what keeps `residualRow` — whose entire content is the row on
     `self` — from reading a parameter's row. -/
-example : openParams [.req "a", .req "b"] 1 = some ([("a", .var 1), ("b", .var 2)], 3) := by
+example :
+    openParams baseDecls { cls := "String", self := 0 } [.req "a", .req "b"] []
+        { st := {}, fresh := 1 }
+      = some ([("a", .var 1), ("b", .var 2)], { st := {}, fresh := 3 }) := by
   simp [openParams]
+
+/-- **An optional is bound to its default's type** (L173), not to a variable: the
+    omitted-argument path really does bind it, so the default is typed here — in
+    the environment built so far — and the parameter takes what it answers. -/
+example :
+    openParams baseDecls { cls := "String", self := 0 } [.opt "a" (.int 1)] []
+        { st := {}, fresh := 1 }
+      = some ([("a", .nom .int)], { st := {}, fresh := 1 }) := by
+  simp [openParams, inferOpen]
+
+/-- **`*rest` is an `Array` and `**kw` is a `Hash`**, which is the one place a
+    parameter's type is *known* rather than assumed: `enterUserMethod` binds them
+    with `allocArr`/`allocHash` unconditionally. -/
+example :
+    openParams baseDecls { cls := "String", self := 0 }
+        [.rest (some "r"), .kwrest (some "k")] [] { st := {}, fresh := 1 }
+      = some ([("r", .nom (.cls "Array")), ("k", .nom (.cls "Hash"))],
+              { st := {}, fresh := 1 }) := by
+  simp [openParams]
+
+/-- **An anonymous `*`/`**`/`&` binds nothing**, which is what the machine does. -/
+example :
+    openParams baseDecls { cls := "String", self := 0 }
+        [.rest none, .kwrest none, .block none] [] { st := {}, fresh := 1 }
+      = some ([], { st := {}, fresh := 1 }) := by
+  simp [openParams]
+
+/-- **`&b` is a fresh variable, deliberately.** It holds a `Proc` *or* `nil`
+    (`blk.getD .nil`), a union `Ty` cannot write — so the under-determination goes
+    into `θ` and whatever the body requires of the block lands in the residual
+    store, rather than the environment asserting a type the machine does not
+    guarantee. -/
+example :
+    openParams baseDecls { cls := "String", self := 0 } [.req "a", .block (some "b")] []
+        { st := {}, fresh := 1 }
+      = some ([("a", .var 1), ("b", .var 2)], { st := {}, fresh := 3 }) := by
+  simp [openParams]
+
+/-- **`...` and a destructuring parameter are still refused, by kind.** Both name
+    a binding with no source-level environment to state: `fwd` writes three
+    internal locals nobody can read by name, `destr` is a recursive massign
+    against an argument shape no `Ty` records. Neither occurs in the slice. -/
+example :
+    bodyVerdictWith baseDecls "String" [.fwd] (.int 1)
+      = .outOfFragment "def-params-fwd" := by
+  simp [bodyVerdictWith, inferBodyWith, openParams, firstUnbound]
+
+/-- And a body whose *default* is out of the fragment is refused too, with the
+    census's `dflt` marker — the parameter kinds are all bound, so what stopped it
+    is an expression rather than a binding rule. -/
+example :
+    bodyVerdictWith baseDecls "String" [.opt "a" (.array [])] (.int 1)
+      = .outOfFragment "def-params-dflt" := by
+  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, firstUnbound]
 
 end RubyCore.Types

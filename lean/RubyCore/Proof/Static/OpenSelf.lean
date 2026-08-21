@@ -578,16 +578,17 @@ theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : E
     infer D (substEnv θ Γb) body false { cls := c, selfCls := some c }
       = some (τ.subst θ, substEnv θ Γ', D) := by
   unfold inferBodyWith at hb
-  cases hop : openParams ps 1 with
+  dsimp only at hb
+  cases hop : openParams D { cls := c, self := 0 } ps [] { st := {}, fresh := 1 } with
   | none => rw [hop] at hb; simp at hb
   | some pf =>
-    obtain ⟨Γ₀, f⟩ := pf
+    obtain ⟨Γ₀, s₀⟩ := pf
     rw [hop] at hb
     simp only [Option.some.injEq, Prod.mk.injEq] at hb
     obtain ⟨hΓ, hrun⟩ := hb
     subst hΓ
     have := inferOpen_factors D { cls := c, self := 0 } θ s'.st hsat hself
-      Γ₀ body { st := {}, fresh := f }
+      Γ₀ body s₀
     rw [hrun] at this
     exact this (StoreLe.refl _)
 
