@@ -1022,25 +1022,29 @@ theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
     `"Object"` at an id that is not a class, so the name clause alone would be
     satisfied by an *absent* `String`, and `plainRecv` separately requires the
     allocated object's class to *be* a class. -/
-def StrClsOk (h : Heap) : Prop :=
-  (h.classPayload? Boot.stringId).isSome ∧ className h Boot.stringId = "String"
+def LitClsOk (h : Heap) : Prop :=
+  ((h.classPayload? Boot.stringId).isSome ∧ className h Boot.stringId = "String") ∧
+    ((h.classPayload? Boot.arrayId).isSome ∧ className h Boot.arrayId = "Array")
 
-/-- **`StrClsOk` survives an allocating step**, and unlike `NoHook_grow` it needs
+/-- **`LitClsOk` survives an allocating step**, and unlike `NoHook_grow` it needs
     neither a bound nor saturation: `PlainGrow` pins `classPayload?` at *every* id
     (that is exactly what the non-class restriction buys, `lookup_go_grow`'s note)
     and `className` is a function of it. -/
-theorem StrClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hs : StrClsOk h) :
-    StrClsOk h' :=
-  ⟨by rw [hg.payload]; exact hs.1, by rw [hg.className_eq]; exact hs.2⟩
+theorem LitClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hs : LitClsOk h) :
+    LitClsOk h' :=
+  ⟨⟨by rw [hg.payload]; exact hs.1.1, by rw [hg.className_eq]; exact hs.1.2⟩,
+   ⟨by rw [hg.payload]; exact hs.2.1, by rw [hg.className_eq]; exact hs.2.2⟩⟩
 
 /-- **And a `def`**, from the same two facts `TyClass_defineMethod` uses. A
     `defineMethod` at `Boot.stringId` itself rewrites the payload, but
     `setClassPayload` changes the method table and nothing else, so the class stays
     a class and keeps its name. -/
-theorem StrClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
-    {md : MethodDef} (hs : StrClsOk h) : StrClsOk (defineMethod h cls name md) :=
-  ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.stringId name md]; exact hs.1,
-   by rw [className_defineMethod h cls Boot.stringId name md]; exact hs.2⟩
+theorem LitClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hs : LitClsOk h) : LitClsOk (defineMethod h cls name md) :=
+  ⟨⟨by rw [classPayload?_isSome_defineMethod h cls Boot.stringId name md]; exact hs.1.1,
+    by rw [className_defineMethod h cls Boot.stringId name md]; exact hs.1.2⟩,
+   ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.arrayId name md]; exact hs.2.1,
+    by rw [className_defineMethod h cls Boot.arrayId name md]; exact hs.2.2⟩⟩
 
 /-! ### The reopen promise
 
@@ -1131,7 +1135,7 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
 /-- **`ClassOk` survives an allocating step**, and it needs nothing but
     `PlainGrow`'s third clause: `constOwn` is `classPayload?` composed with a
     lookup in `consts`, and `PlainGrow` pins `classPayload?` at *every* id. That is
-    the same one-line argument `StrClsOk_grow` makes, for the same reason. -/
+    the same one-line argument `LitClsOk_grow` makes, for the same reason. -/
 theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hc : ClassOk h) : ClassOk h' := by
   refine ⟨by rw [hg.className_eq]; exact hc.1, ?_⟩

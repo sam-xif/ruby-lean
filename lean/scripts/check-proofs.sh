@@ -106,6 +106,11 @@ import RubyCore.Proof.Static.OpenSelf
 -- with it. The witness is in the audit because the corpus cannot show that the
 -- `.selfRecv` path dispatches like the `.explicit` one.
 #print axioms RubyCore.Proof.Static.egSelfRecv_safe
+-- L174 — the array literal, the second producer of a class-typed value. Same
+-- `Heap.alloc` of a non-class object as L151's string literal, at `Boot.arrayId`;
+-- `LitClsOk` (which is what `StrClsOk` became when it stopped being about one
+-- literal) carries the name/id join for both.
+#print axioms RubyCore.Proof.Static.egArray_safe
 LEAN
 
 echo "== axioms"

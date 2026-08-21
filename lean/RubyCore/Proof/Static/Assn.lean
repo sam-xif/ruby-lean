@@ -449,7 +449,7 @@ theorem certifies_declAssn {F : Decls} {θ : TyVar → Ty} {h : Heap} (hok : Dec
     `Inv`: the `DeclsOk F m.heap` conjunct has become *there exists a certificate
     `P` whose denotation supplies it*. -/
 def InvA (m : Machine) : Prop :=
-  NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
+  NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     ∃ (F : Decls) (P : Assn) (θ : TyVar → Ty) (c : FrameCtx) (Γ : Env)
       (Γs : List (FrameCtx × Env)),

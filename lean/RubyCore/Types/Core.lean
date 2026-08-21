@@ -168,6 +168,12 @@ def defFree (e : Expr) : Bool :=
   | .vasgn _ _ rhs => defFree rhs
   | .send r _ args _ =>
     (match r with | some r' => defFree r' | none => true) && defFreeAll args
+  -- **L174.** Not optional: `infer`'s `.array` arm threads the table through the
+  -- elements via `inferSeq`, so an element `def` really does change it, and
+  -- `infer_mono`'s `D₀ = D` conclusion would be false with this arm left in the
+  -- catchall's vacuous `true`. A predicate that is vacuous *because* the head is
+  -- out of the fragment stops being vacuous the moment the head is admitted.
+  | .array es => defFreeAll es
   -- Every other head is either a leaf or outside `infer`'s domain, where the
   -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
   -- can be satisfied.
@@ -272,7 +278,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- The name is the literal `"String"` rather than anything read from the heap
   -- because `infer` is a pure function of the program. Tying it to the object
   -- the step really allocates is `Inv`'s job, and the clause that does it is
-  -- `StrClsOk` — *the boot `String` id is a class named `"String"`* — which is
+  -- `LitClsOk` — *the boot `String` id is a class named `"String"`* — which is
   -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound (L149).
   | .str _ => some (.cls "String", Γ, D)
   -- **A symbol literal** (L159). `Ty.sym` has existed since P0 — a `def`
@@ -416,6 +422,29 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | some ([τp], τret) => if τa = τp then some (τret, Γ₁, D₁) else none
         | _ => none
       | none => none
+    | none => none
+  -- **An array literal** (L174), and it is L151's string-literal producer with a
+  -- list in front of it: `continueArray` evaluates the elements left to right and
+  -- then `Builtins.allocArr`s one fresh plain `Array` — the *same* `Heap.alloc` of
+  -- a non-class object, at `Boot.arrayId` instead of `Boot.stringId`. So the value
+  -- half is `valueTy_alloc_fresh` again and the invariant clause is the second
+  -- conjunct of `LitClsOk` (which is what `StrClsOk` was renamed to when it stopped
+  -- being about one literal).
+  --
+  -- **The element types are erased**, which is what makes the rule this cheap:
+  -- `Ty` has no `Array τ`, so nothing has to be joined across the elements and the
+  -- only thing the traversal owes is the *threading* — the environment and table
+  -- the elements leave. That is exactly `inferSeq`, evaluated in the same
+  -- left-to-right order by `continueArray` as by `evalExpr`'s `.seq`, so this arm
+  -- reuses the existing third motive rather than adding a fourth mutual function.
+  --
+  -- A `splat`, `kwargs` or `fwd` element needs no guard: `infer` has no arm for
+  -- any of them, so `inferSeq` answers `none` and the consecution case recovers
+  -- *not a splat* from the element's own accepting judgement (the `recvK` case's
+  -- `hsp` move).
+  | .array es =>
+    match inferSeq D Γ es top ctx with
+    | some (_, Γ', D') => some (.cls "Array", Γ', D')
     | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
   -- next step); until then there is no environment to check the body in.

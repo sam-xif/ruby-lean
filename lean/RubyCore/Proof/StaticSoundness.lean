@@ -97,9 +97,11 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L151's fourth heap conjunct, the producer's. `Boot.stringId` is a literal in a
     -- literal heap, so both halves are kernel computations — the same reason
     -- `Saturated` needs no certificate here and does at the prelude-booted heap.
-    (show StrClsOk (Machine.init p).heap from
-      ⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
-       (by rfl : className Boot.initHeap Boot.stringId = "String")⟩),
+    (show LitClsOk (Machine.init p).heap from
+      ⟨⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
+        (by rfl : className Boot.initHeap Boot.stringId = "String")⟩,
+       ⟨(by decide : (Boot.initHeap.classPayload? Boot.arrayId).isSome = true),
+        (by rfl : className Boot.initHeap Boot.arrayId = "Array")⟩⟩),
     -- L156's fifth heap conjunct: `Object`'s constant table binds every reopenable
     -- class name to a non-module class. A literal heap, so `decide` — and the reason
     -- `reopenableClasses` is a table is that this is what a row costs.
@@ -422,6 +424,44 @@ example : check (.class' "String" none .self') = .unknown := by
 example : check (.seq [ .def' "shout" [] (.int 1), .vcall "shout" ]) = .unknown := by
   simp [check, infer, inferSeq, illTyped, illTypedAny, declsOf, declaresName,
     baseDecls, defFree, defFreeAll, isSelf]
+
+/-- **An array literal** (L174), and the second producer of a class-typed value.
+
+    ```ruby
+    ["a", 1 + 2]        # ⇒ Array
+    ```
+
+    `continueArray` runs the elements left to right and then `Builtins.allocArr`s
+    one fresh plain `Array` — the *same* `Heap.alloc` of a non-class object L151's
+    string literal makes, at `Boot.arrayId` instead of `Boot.stringId`. So the
+    value half is `valueTy_alloc_fresh` again and the invariant clause is the
+    second conjunct of `LitClsOk`.
+
+    **The element types are erased**, which is what makes the rule cheap: `Ty` has
+    no `Array τ`, so nothing is joined across the elements and the traversal owes
+    only the environment-and-table threading — which is `inferSeq`, in the same
+    left-to-right order `continueArray` uses. `KontOk.arrK` therefore does not
+    mention the accumulated values at all. -/
+def egArray : Expr := .array [.str "a", .send (some (.int 1)) "+" [.int 2] none]
+
+theorem egArray_safe :
+    ∀ r, ReachableResult (Machine.init egArray) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egArray, infer, inferSeq, illTyped, illTypedAny, declsOf, isSelf,
+      sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, groundClassNames])
+
+/-- **The empty literal is the degenerate case, and it is a different number of
+    steps**: `continueArray _ [] []` allocates immediately, with no `arrK` pushed
+    at all. Worth a witness of its own for the same reason `recvK0` is a separate
+    constructor from `recvK`. -/
+example : check (.array []) = .accept := by
+  simp [check, infer, inferSeq, illTyped, declsOf]
+
+/-- **A splat element is refused**, and by `infer` having no `.splat` arm rather
+    than by a guard: `continueArray` sends a splat to `arrSplatK`, which `KontOk`
+    does not describe, and the element's own `none` is what keeps the two in step. -/
+example : check (.array [.splat (some (.int 1))]) = .unknown := by
+  simp [check, infer, inferSeq, illTyped, declsOf]
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/

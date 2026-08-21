@@ -7042,3 +7042,110 @@ change is entirely inside the untrusted front end; `check` does not call `inferO
 1,227 clean. `fragment-gap.py --self-test` all agree. Seven new checked examples in
 `Types/OpenSelf.lean` — one per binding decision above, because a binding read off the interpreter is
 exactly the kind of claim that rots silently.
+
+## L174 — the array literal: L151's producer with a list in front of it, and the first real oof movement in four rungs
+
+`array` was 7 of the slice's 89 out-of-fragment bodies. It is the first rung since L170 whose census
+count actually fell, and it fell by more than the blocker it lifted: **89 → 85**, with four of the
+seven bodies landing on a *declaration* rather than on another construct.
+
+### The rule is cheap for one reason, and it is worth naming
+
+`Ty` has no `Array τ`. So the element types are **erased**, nothing is joined across the elements, and
+the only thing the traversal owes is the *threading* — the environment and table the elements leave
+behind. That is exactly `inferSeq`, which `continueArray` evaluates in the same left-to-right order
+`evalExpr`'s `.seq` does, so the arm **reuses the existing third motive** instead of adding a fourth
+mutual function:
+
+```lean
+| .array es =>
+  match inferSeq D Γ es top ctx with
+  | some (_, Γ', D') => some (.cls "Array", Γ', D')
+  | none => none
+```
+
+and the erasure shows up in the metatheory as an *absence*: `KontOk.arrK` does not mention the
+accumulated values at all.
+
+```lean
+| arrK {D D' h c Γ Γs τ τ' acc rest Γ' k} :
+    inferSeq D Γ rest Γs.isEmpty c = some (τ', Γ', D') →
+    KontOk D' h ((c, Γ') :: Γs) (.cls "Array") k →
+    KontOk D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
+```
+
+It is `seqCons`'s shape — `inferSeq` over stored program, an incoming table related to an outgoing one
+— with a *fixed* answer type instead of the sequence's last. And `Builtins.allocArr` is
+`Builtins.allocStr` with a different boot id and a different payload, so the allocation case is L151's
+string literal verbatim: `plainGrow_alloc`, `valueTy_alloc_fresh`, `inv_grow_value`.
+
+### `StrClsOk` became `LitClsOk`, and that is the shape to keep
+
+L151's fourth heap conjunct was *the boot `String` id is a class named `"String"`* — the join between
+a rule that claims a **name** and a step that writes an **id**. The array literal needs the same join
+at `Boot.arrayId`, and there were two ways to get it: a seventh conjunct on `Inv` (which touches
+`inv_value`/`inv_push`/`inv_eval`/`inv_grow_value`/`initiation`/`InvA`/`HeapOk`/`heapOkB` and every
+call site that passes `hstr`), or **one conjunct per literal-allocating rule inside the clause that
+already exists**. The second is a rename and four `.1`/`.2` adjustments:
+
+```lean
+def LitClsOk (h : Heap) : Prop :=
+  ((h.classPayload? Boot.stringId).isSome ∧ className h Boot.stringId = "String") ∧
+    ((h.classPayload? Boot.arrayId).isSome ∧ className h Boot.arrayId = "Array")
+```
+
+**The generalization is the point, not the saving.** Every future literal producer — `Hash`,
+`Float`, a `Regexp` — is one more conjunct here and nothing else, and `heapOkB` decides it in the
+same certificate. The rename is deliberate: a clause named for one literal invites a seventh
+conjunct next time.
+
+### A predicate that was vacuous because the head was out of the fragment
+
+`defFree` had no `.array` arm, so the catchall answered `true`. That was correct while `infer` refused
+`.array` and **wrong the moment it did not**: `infer`'s new arm threads the table through the elements
+via `inferSeq`, so an element `def` really does change it, and `infer_mono`'s `D₀ = D` conclusion would
+have been false. The build caught it — `Proof/Static/Mono.lean` stopped closing — which is
+`HANDOFF.md` constraint 4 doing its job one indirection out from where that constraint is usually
+quoted. The lesson generalizes:
+
+> **When admitting a head, check every predicate whose value at that head was vacuous.** `defFree`,
+> `elemsPlain`-style guards and the fragment gate are all "true because `infer` says `none` here"
+> until they are not.
+
+### And no splat guard is needed, which is the same argument the send rule makes
+
+`continueArray` sends a `.splat` element to `arrSplatK`, which `KontOk` does not describe. Rather than
+guard the rule, the consecution case recovers *not a splat* from the element's **own accepting
+judgement** (`infer` has no `.splat` arm, so `absurd he (by simp [infer])`) — the `recvK` case's `hsp`
+move, third use.
+
+### The measurement, and why this one moved
+
+| | before | after |
+|---|---|---|
+| out of fragment | 89 | **85** |
+| `array` | 7 | **0** |
+| refused with a named atom | 3 | **7** |
+| `send-2-args` | 14 | 15 |
+| `splat` | 1 | 3 |
+
+**Four of the seven bodies became `needed:` lines, not new out-of-fragment lines** — `Array ~ hash`,
+`Array ~ include?`, `Array ~ max`. That is the first time a rung moved bodies from *we have no rule*
+to *we have no row*, which is a different and better wall: rows are F6's item, and a body sitting on
+one has a fully typed spine.
+
+`--check` moved for the first time since L151: **38 → 39**, one transition, `unknown → accept`, none
+the other way. The program is `test_syntax_097.rb`, whose whole text is `[()]` — and that is the same
+finding L151 recorded about its fifteen bare string literals, so it is worth repeating rather than
+apologising for: **the corpus has no richer in-fragment array literal to offer**, because the binding
+constraint is the rest of the fragment.
+
+### Checks
+
+`check-proofs.sh` green, **29** theorems, axiom-clean (`egArray_safe` added); `heapok_probe` prints the
+new `LitClsOk` clause and still exits 0 at the prelude-booted heap. `--check` 39 / 1,186 / 0, read by
+transition. `--assn` smoke 1,227 clean. `fragment-gap.py --self-test` all agree, two new cases
+(`[1, 2]` accepted, `[1, *x]` unknown); `array` moved from `MISSING` to `PARTIAL` with the splat as its
+only refusal. Three new checked examples in the build — the non-empty literal, the **empty** one (a
+different number of steps: `continueArray _ [] []` allocates with no `arrK` pushed, which is why
+`recvK0` is a separate constructor from `recvK` too), and the refused splat.

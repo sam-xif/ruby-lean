@@ -268,7 +268,7 @@ def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
   -- What the `def` case actually needs of the definee is exactly this and no more:
   -- somewhere to instantiate `NoHook`'s quantifier, so the `method_added` lookup at
   -- the definee misses. Every other `defineMethod` lemma — `DeclsOk`, `Saturated`,
-  -- `StrClsOk`, `TypeAgree` — is already stated `∀ cls`. Reading what the hypothesis
+  -- `LitClsOk`, `TypeAgree` — is already stated `∀ cls`. Reading what the hypothesis
   -- was *used for* is what shrank it from an equation to a predicate.
   --
   -- Carried per-frame rather than for the current one only, because `frameK` resumes

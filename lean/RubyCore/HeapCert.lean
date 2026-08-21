@@ -108,7 +108,7 @@ def classOkB (h : Heap) : Bool :=
     | _ => false
 
 /-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook`, since L148
-    `Saturated`, and since L151 `StrClsOk`.
+    `Saturated`, and since L151 `LitClsOk`.
 
     The last is the producer's clause: a string literal is typed `.cls "String"`, a
     claim about a *name*, while the step allocates an object whose class is the *id*
@@ -125,6 +125,11 @@ def heapOkB (h : Heap) : Bool :=
     saturatedB h &&
     (h.classPayload? Boot.stringId).isSome &&
     (className h Boot.stringId == "String") &&
+    -- L174's array-literal producer, folded into the same certificate for the same
+    -- reason: `LitClsOk` is one clause per *literal-allocating* rule, and each rule
+    -- claims a name where the step writes a boot id.
+    (h.classPayload? Boot.arrayId).isSome &&
+    (className h Boot.arrayId == "Array") &&
     -- L156's sixth conjunct, folded in for the same reason L148 folded `saturatedB`:
     -- one certificate, decided once, rather than a second probe to keep in step.
     classOkB h

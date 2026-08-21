@@ -149,6 +149,20 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       sigOf D τr mname = some ([τ], τret) →
       KontOk D h ((c, Γ) :: Γs) τret k →
       KontOk D h ((c, Γ) :: Γs) τ (.argsK recv site mname [] [] .none :: k)
+  /-- **An array literal's element** (L174). The in-flight value is one element;
+      the remaining elements run next, and when they are gone `continueArray`
+      allocates — so the continuation `k` is typed at `.cls "Array"` and the
+      accumulated values are **not mentioned at all**.
+
+      That absence is the rule's whole economy: `Ty` has no `Array τ`, so the
+      element types are erased and this constructor owes only the *threading* the
+      unevaluated tail needs. It is `seqCons`'s shape — `inferSeq` over the stored
+      program, an incoming table related to an outgoing one — with a fixed answer
+      type instead of the sequence's last. -/
+  | arrK {D D' h c Γ Γs τ τ' acc rest Γ' k} :
+      inferSeq D Γ rest Γs.isEmpty c = some (τ', Γ', D') →
+      KontOk D' h ((c, Γ') :: Γs) (.cls "Array") k →
+      KontOk D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
   /-- **Method return.** The in-flight value is the body's value; popping the
       activation (`Interp.lean:2206`) discards the callee's environment and
       resumes the caller's.
@@ -203,6 +217,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | recvK hsg ha' _ ih => intro ha; exact .recvK hsg ha' (ih ha)
   | recvK0 hsg _ ih => intro ha; exact .recvK0 hsg (ih ha)
   | argsK hv hsg _ ih => intro ha; exact .argsK (ValueTy.congr ha hv) hsg (ih ha)
+  | arrK hs _ ih => intro ha; exact .arrK hs (ih ha)
   | frameK _ ih => intro ha; exact .frameK (ih ha)
 
 /-- The shape every call site reads. `heap_congr'` takes the heap agreement
@@ -229,7 +244,7 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     the object model builds a cyclic `include` — but nothing in the `Heap` **type**
     forbids one either, which is why it cannot be a theorem.
 
-    **`StrClsOk` is the fourth heap conjunct** (L151), and it is here for the
+    **`LitClsOk` is the fourth heap conjunct** (L151), and it is here for the
     producer: `infer` gives a string literal the type `.cls "String"`, which is a
     claim about a name, while the step allocates an object whose class is the id
     `Boot.stringId`. See its own docstring for why the join belongs in the
@@ -257,7 +272,7 @@ theorem KontOk.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     reason `crubySingletonShadow` was (L145): a clause that looks necessary is a
     measurement, not a judgement. -/
 def Inv (m : Machine) : Prop :=
-  NoHook m.heap ∧ Saturated m.heap ∧ StrClsOk m.heap ∧
+  NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
@@ -428,6 +443,15 @@ theorem infer_implicit_send1_inv {D D' : Decls} {Γ : Env} {arg : Expr}
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+/-- `continueArray` on a non-`splat` head pushes an `arrK` and evaluates it.
+    `startArgs_plain`'s twin, and the reason `infer`'s `.array` arm needs no splat
+    guard: the element's own accepting judgement refutes the splat arm. -/
+theorem continueArray_plain {m : Machine} {acc : List Value} {e : Expr}
+    {rest : List Expr} (hsplat : ∀ x, e ≠ .splat x) :
+    continueArray m acc (e :: rest)
+      = .next (withKont m (.eval e) (.arrK acc rest)) := by
+  cases e <;> simp_all [continueArray]
+
 /-! ### 2.2 `FramesOk` survives the fragment's frame-preserving updates
 
 `ctl` and `kont` updates leave `frames` and `stack` alone, and `FramesOk` reads
@@ -443,7 +467,7 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ m.kont) :
@@ -454,7 +478,7 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hv : ValueTy m.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
     Inv (withCtl m (.value v)) :=
@@ -464,7 +488,7 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ (k :: m.kont)) :
@@ -482,7 +506,7 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     discharged from the object literal or from the invariant:
     the bound is free (the id is the one being pushed), `hpl` is a computation on the
     payload, `hk`/`hn` are the heap facts — which for `String` is exactly what the
-    `StrClsOk` conjunct carries.
+    `LitClsOk` conjunct carries.
 
     `hpl` is three refutations rather than `plainRecv`'s own `match` because a `match`
     written in a *statement* elaborates to a fresh matcher constant, which then will
@@ -542,7 +566,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
-    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap) (hcls : ClassOk m.heap)
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
@@ -550,7 +574,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     Inv (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg
   refine ⟨NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, StrClsOk_grow hg hstr,
+    Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_⟩

@@ -70,9 +70,14 @@ method_added (want 0): {hookBad.length}"
     -- by name while the step allocates at the id `Boot.stringId`. Reported as two
     -- lines because the two halves fail differently — an absent `String` satisfies
     -- the name clause on its own, since `className` answers `"Object"` out of bounds.
-    IO.println s!"StrClsOk:\n  String is a class = \
+    IO.println s!"LitClsOk:\n  String is a class = \
 {(h.classPayload? Boot.stringId).isSome}\n  className String = \
 {className h Boot.stringId}"
+    -- L174's second clause, for the array-literal producer. Same shape, same
+    -- failure mode: one clause per literal-allocating rule.
+    IO.println s!"  Array is a class = \
+{(h.classPayload? Boot.arrayId).isSome}\n  className Array = \
+{className h Boot.arrayId}"
     let ok := heapOkB h
     IO.println s!"\nheapOkB (prelude-booted): {ok}"
     return if ok then 0 else 1

@@ -196,6 +196,13 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- `defFree` requirement); refusing here keeps the factoring theorem's `D` fixed.
   | .def' _ _ _ => .outOfFragment "def"
   | .class' _ _ _ => .outOfFragment "class"
+  -- **An array literal** (L174). The element types are erased, so this is
+  -- `inferOpenSeq` with a constant answer — the same reuse of the sequence
+  -- traversal `infer`'s own arm makes.
+  | .array es =>
+    match inferOpenSeq D Γ es ctx s with
+    | .ok _ Γ' s' => .ok (.nom (.cls "Array")) Γ' s'
+    | r => r
   | .seq es => inferOpenSeq D Γ es ctx s
   | .if' c t els =>
     match inferOpen D Γ c ctx s with
@@ -635,8 +642,8 @@ example :
     census's `dflt` marker — the parameter kinds are all bound, so what stopped it
     is an expression rather than a binding rule. -/
 example :
-    bodyVerdictWith baseDecls "String" [.opt "a" (.array [])] (.int 1)
+    bodyVerdictWith baseDecls "String" [.opt "a" (.var .ivar "@x")] (.int 1)
       = .outOfFragment "def-params-dflt" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, firstUnbound]
+  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, firstUnbound, headName]
 
 end RubyCore.Types

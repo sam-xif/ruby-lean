@@ -52,7 +52,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
     (htab : DeclsOk F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (ctx :: Γs.map Prod.fst))
-    (hhook : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hhook : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
     (hsg : sigOf F (.cls c) mname = some ([], τret))
@@ -140,7 +140,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
         (plainGrow_alloc m.heap _ (by simp))
         rfl rfl rfl
-        (valueTy_alloc_fresh (by simp) rfl hstr.1 hstr.2) hk
+        (valueTy_alloc_fresh (by simp) rfl hstr.1.1 hstr.1.2) hk
     -- **The symbol literal** (L159). Identical to the four immediate cases above,
     -- which is the point: the slice's third-largest blocker by node count cost a
     -- rule of one line and a case of three, because `Ty.sym` was already there and
@@ -353,7 +353,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       have hres : ∀ (m₀ : Machine),
           m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
           TypeAgree m.heap m₀.heap → DeclsOk D' m₀.heap → NoHook m₀.heap →
-          Saturated m₀.heap → StrClsOk m₀.heap → ClassOk m₀.heap →
+          Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
           Inv (withCtl m₀ (.value (.sym name))) := by
         intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls'
         refine ⟨hh', hsat', hstr', hcls',
@@ -388,7 +388,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               | exact DeclsOk_defineMethod htab hfresh
               | exact hlkNH _
               | exact Saturated_defineMethod hsat _ _ _
-              | exact StrClsOk_defineMethod hstr
+              | exact LitClsOk_defineMethod hstr
               | exact ClassOk_defineMethod hcls
       -- The row branch. Three facts about the *current frame* are wanted, and all
       -- three come from `StackCtx` — which is what that predicate was added for.
@@ -491,8 +491,51 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                   (by simpa [defVisOfDef, hinit] using hvis) rfl rfl rfl rfl
               | exact hlkNH _
               | exact Saturated_defineMethod hsat _ _ _
-              | exact StrClsOk_defineMethod hstr
+              | exact LitClsOk_defineMethod hstr
               | exact ClassOk_defineMethod hcls
+    -- **An array literal** (L174). Two shapes, and they are the two `continueArray`
+    -- has: an empty literal allocates *in this step* (so the case is L151's string
+    -- literal verbatim, at `Boot.arrayId`), and a non-empty one pushes an `arrK`
+    -- and evaluates its head.
+    case array es =>
+      simp only [infer] at hinf
+      split at hinf
+      · next τ0 Γ0 D0 hseq =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+        obtain ⟨rfl, rfl, rfl⟩ := hinf
+        simp only [evalExpr]
+        cases es with
+        | nil =>
+          -- `inferSeq D Γ [] = some (.nilT, Γ, D)`, so the answer's environment and
+          -- table are the incoming ones and `hk` is already at `.cls "Array"`.
+          simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at hseq
+          obtain ⟨-, rfl, rfl⟩ := hseq
+          simp only [continueArray, Builtins.allocArr]
+          exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot
+            (plainGrow_alloc m.heap _ (by simp))
+            rfl rfl rfl
+            (valueTy_alloc_fresh (by simp) rfl hstr.2.1 hstr.2.2) hk
+        | cons e rest =>
+          -- The head runs next. Its own accepting judgement is what refutes
+          -- `continueArray`'s splat arm — the `recvK` case's `hsp` move.
+          have hhd : ∃ τe Γ₁ D₁ τ', infer D Γ e Γs.isEmpty ctx = some (τe, Γ₁, D₁) ∧
+              inferSeq D₁ Γ₁ rest Γs.isEmpty ctx = some (τ', Γ0, D0) := by
+            cases rest with
+            | nil =>
+              simp only [inferSeq] at hseq
+              exact ⟨τ0, Γ0, D0, .nilT, hseq, by simp [inferSeq]⟩
+            | cons e2 r2 =>
+              simp only [inferSeq] at hseq
+              split at hseq
+              · next τe Γ₁ D₁ he => exact ⟨τe, Γ₁, D₁, τ0, he, hseq⟩
+              · exact absurd hseq (by simp)
+          obtain ⟨τe, Γ₁, D₁, τ', he, hrest⟩ := hhd
+          have hsp : ∀ x, e ≠ .splat x := by
+            rintro x rfl; exact absurd he (by simp [infer])
+          rw [continueArray_plain hsp]
+          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
+            (KontOk.arrK hrest hk)
+      · exact absurd hinf (by simp)
     case send recv mname args blk =>
       cases recv with
       -- **The written receiverless call** (L170). `evalExpr` answers
@@ -764,6 +807,53 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
           exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk'⟩
+    -- **An array element has arrived** (L174). Two shapes again, and they are
+    -- `continueArray`'s: nothing left, so allocate; or a head to run, so push the
+    -- next `arrK`. The accumulated values are never inspected, which is the erasure
+    -- of element types showing up as an *absence* in the proof rather than as a
+    -- weakening of it.
+    | @arrK _ _ _ _ _ _ _ τ' acc rest Γ' k hs hk' =>
+      cases rest with
+      -- Nothing left: `continueArray` allocates, and the case is L151's string
+      -- literal at `Boot.arrayId`. `inferSeq _ _ [] = some (.nilT, Γ, D)` pins the
+      -- environment and table to the incoming ones, so `hk'` is already at
+      -- `.cls "Array"`.
+      | nil =>
+        simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at hs
+        obtain ⟨-, rfl, rfl⟩ := hs
+        dsimp only
+        simp only [continueArray, Builtins.allocArr]
+        exact inv_grow_value (m := { m with kont := k })
+          hfs htab hsc hhook hsat hstr hcls hbot
+          (plainGrow_alloc m.heap _ (by simp))
+          rfl rfl rfl
+          (valueTy_alloc_fresh (by simp) rfl hstr.2.1 hstr.2.2) hk'
+      -- A head to run: push the next `arrK`. Split on the *tail* because
+      -- `inferSeq`'s `[e]` arm is `infer` and its `e :: rest` arm is not — the same
+      -- three-way shape `seqCons` splits on, for the same reason.
+      | cons e rest' =>
+        cases rest' with
+        | nil =>
+          simp only [inferSeq] at hs
+          have hsp : ∀ x, e ≠ .splat x := by
+            rintro x rfl; exact absurd hs (by simp [infer])
+          dsimp only
+          rw [continueArray_plain hsp]
+          exact inv_push (m := { m with kont := k })
+            hfs htab hsc hhook hsat hstr hcls hbot hs
+            (KontOk.arrK (τ' := Ty.nilT) (by simp [inferSeq]) hk')
+        | cons e2 r2 =>
+          simp only [inferSeq] at hs
+          split at hs
+          · next τe Γ₁ D₁ he =>
+            have hsp : ∀ x, e ≠ .splat x := by
+              rintro x rfl; exact absurd he (by simp [infer])
+            dsimp only
+            rw [continueArray_plain hsp]
+            exact inv_push (m := { m with kont := k })
+              hfs htab hsc hhook hsat hstr hcls hbot he
+              (KontOk.arrK hs hk')
+          · exact absurd hs (by simp)
     | @argsK _ _ _ _ _ _ mname recv τr τret k _ hrv hsg hk' =>
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The
