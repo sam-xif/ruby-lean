@@ -194,6 +194,11 @@ def defFree (e : Expr) : Bool :=
   -- that has happened.
   | .super' args blk =>
     defFreeAll args && (match blk with | some b => defFree b | none => true)
+  -- **L214.** `.zsuper`'s arm reads the *context*, not a subexpression, so this one is
+  -- vacuous on its own — but the catch-all's `true` is only *right* by accident, and the
+  -- sixth walk into that trap is one comment too many. Stated for the block slot, which
+  -- is the only subexpression the head has.
+  | .zsuper blk => match blk with | some b => defFree b | none => true
   -- Every other head is either a leaf or outside `infer`'s domain, where the
   -- predicate is vacuous: `infer` answers `none`, so no hypothesis mentioning it
   -- can be satisfied.
@@ -589,8 +594,13 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- is on the machine side, where `userFrame` builds `meth := md.superName.getD
       -- mname`: `ResolvesUser` now carries `md.superName = none`, which is true of
       -- every `def` (only `alias` sets the field) and is what makes the two agree.
+      -- **L214: `params := []` explicitly**, and the explicitness is L207's point again —
+      -- `{ ctx with … }` would inherit the *enclosing* method's parameter types, which are
+      -- not this body's. The rule requires `params.isEmpty` anyway, so `[]` is the truth
+      -- and not an approximation.
       match infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name } with
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
+                     params := some [] } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to
@@ -800,6 +810,26 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       else none
     | none => none
+  -- **Bare `super`** (L214), and it is `super(args)`'s rule with the argument list read
+  -- off the *context* instead of out of the expression. `zsuperArgs` forwards the
+  -- enclosing method's parameter **values**, so the argument types are the parameters'
+  -- declared types — `ctx.params`, L214's channel — and there is no `inferArgs` and no
+  -- continuation: `evalExpr` reconstructs the arguments and dispatches in one step.
+  --
+  -- The fourth guard is new and it is `zsuperArgs`' own refusals: it answers `none` for a
+  -- `define_method` body (`runFromDM`) and for destructuring parameters, both of which
+  -- are `.unsupported` and therefore stuck. `StackCtx`'s L214 clause is what rules them
+  -- out, so the *rule* does not test them — which is the one place this rule is cheaper
+  -- than `super(args)` rather than the same.
+  | .zsuper none =>
+    match ctx.meth, ctx.params with
+    | some mn, some ps =>
+      if mn ≠ "" then
+        match superDecl? D ctx.cls mn with
+        | some d => if subTys ps d.params then some (d.ret, Γ, D) else none
+        | none => none
+      else none
+    | _, _ => none
   | _ => none
 termination_by sizeOf e
 

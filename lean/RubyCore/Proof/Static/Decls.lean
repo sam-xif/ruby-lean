@@ -329,7 +329,7 @@ def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl
     -- `superName` clause — which is what lets a `super` in the body be typed against a
     -- row keyed on *this* method's name.
     ∃ Γ' r, infer D [] md.body false
-        { cls := c, selfCls := some c, ret := r, meth := some mname }
+        { cls := c, selfCls := some c, ret := r, meth := some mname, params := some [] }
       = some (d.ret, Γ', D) ∧ (∀ σ, r = some σ → σ = d.ret)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class

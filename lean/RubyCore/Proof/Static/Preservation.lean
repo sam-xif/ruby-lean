@@ -92,7 +92,8 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       (by simp [frameKLabels, hks, dropLast_cons_ne hne]), _,
       -- L198: the callee's context carries the `ret` its body was checked at, which
       -- is what `KontOk.frameK`'s agreement premise reads.
-      { cls := cu, selfCls := some cu, ret := r, meth := some mname }, [],
+      { cls := cu, selfCls := some cu, ret := r, meth := some mname,
+        params := some [] }, [],
       (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
     · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
         FramesOk.push hfs⟩
@@ -135,7 +136,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         subst hmn
         rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-        exact ⟨by simp [userFrame, hsn], rfl, rfl⟩
+        exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
@@ -894,7 +895,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self
                 (.cls ctx.cls) := by
             intro mn hmn
-            obtain ⟨hm, -, hself⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
+            obtain ⟨hm, -, hself, -, -, -⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
             obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
             rw [← hcur]
             exact ⟨hm, hsc'.1, hsc'.2.1, hch, hty⟩
@@ -925,6 +926,50 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               (by simp [frameKLabels, hks]) he
               (KontOk.superArgsK (psacc := []) trivial hs1 hrest hs2 hmn hne hrow
                 hpeq rfl hsubw hk)
+    -- **Bare `super`** (L214), and it is the *cheapest* of the three dispatch cases:
+    -- `evalExpr` reconstructs the arguments from the frame and calls `doSuper` in this
+    -- step, so there is no continuation, no `inferArgs` and no argument to run.
+    --
+    -- The whole case is `StackCtx`'s L214 clause spent twice: once to compute
+    -- `zsuperArgs` (`runParams = []` and `runFromDM = false` make `zsuperArgsOf` answer
+    -- `some ([], [])` by computation, so the interpreter's own `none` branches — a
+    -- `define_method` body, destructuring parameters — are refuted rather than handled),
+    -- and once to know the declared parameter list is `[]`, which is what makes
+    -- `ValuesTy` of the reconstructed arguments hold.
+    case zsuper blk =>
+      cases blk with
+      | some b => exact absurd hinf (by simp [infer])
+      | none =>
+        obtain ⟨rfl, rfl, mn, ps, dd, hmn, hpar', hne, hrow, hsub, rfl⟩ := infer_zsuper_inv hinf
+        cases hst : m.stack with
+        | nil => exact absurd hst hf.1
+        | cons fid fids =>
+          have hsc' := hsc
+          rw [hst] at hsc'
+          obtain ⟨hm, hkd, hself, hrp, hdm, hpar⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
+          obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
+          have hcur : m.frames.getD fid default
+              = m.frames.getD (methodFrameOf m) default := by
+            simp only [methodFrameOf, hst, List.headD_cons, hkd]
+          rw [hcur] at hm hrp hdm
+          -- `zsuperArgs` answers `some ([], [])`: the name is non-empty, the body is not
+          -- a `define_method` one, and an empty parameter list has no shape to fail on.
+          have hza : zsuperArgs m = some ([], []) := by
+            simp only [zsuperArgs, zsuperArgsOf, hm, hrp, hdm, classifyFull]
+            simp [hne]
+          obtain ⟨w, hw, hstep⟩ :=
+            super_dispatch (m := m) (args := []) (blk := methodBlk m) hne
+              (htab.2.2.2.2 _ _ _ hrow) hm (hcur ▸ hsc'.1) (hcur ▸ hsc'.2.1) (hcur ▸ hch)
+              (hcur ▸ hty)
+              -- `StackCtx` pins the activation's parameter list to `some []`, so the
+              -- rule's `ps` is `[]` and `subTys [] dd.params` forces the row's to be too.
+              (by
+                have : ps = [] := by rw [hpar] at hpar'; simpa using hpar'.symm
+                rw [show dd.params = [] from subTys_nil_inv (this ▸ hsub)]; trivial)
+          simp only [evalExpr, hza]
+          rw [hstep]
+          exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
+            (ValueTy.weaken hw hsubw) hk
     case send recv mname args blk =>
       cases recv with
       -- **The written receiverless call** (L170). `evalExpr` answers
@@ -1078,7 +1123,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L189 adds a fourth agreement, and it is the same one-liner: `setLocal`
         -- writes `locals` and moves neither `defmod`, `defVis`, `self` nor `cref`.
         refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
-          (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
+          (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
+          (fun fid _ => ?_) hsc <;>
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
@@ -1100,6 +1146,18 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
         -- L207's sixth, a sixth time.
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
+        -- **L214's seventh and eighth**, and they are the same one-liner again — which
+        -- is exactly the reason L214's `StackCtx` clause is the locals-independent form:
+        -- `runParams` and `runFromDM` are fields `setLocal` does not write, and the
+        -- general clause (which reads `locals`) would have had no one-liner here at all.
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
         · subst hfx
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
@@ -1451,8 +1509,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne hf.1]; simpa [frameKLabels] using hks), _,
-          { cls := cu, selfCls := some cu, ret := r, meth := some mname }, [],
-      (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+          { cls := cu, selfCls := some cu, ret := r, meth := some mname,
+            params := some [] }, [],
+          (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
         · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
             FramesOk.push hfs⟩
           rw [getD_push_lt_self]
@@ -1491,7 +1550,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             subst hmn
             rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-            exact ⟨by simp [userFrame, hsn], rfl, rfl⟩
+            exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
@@ -1564,7 +1623,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         | cons fid fids =>
           have hsc' := hsc
           rw [hst'] at hsc'
-          obtain ⟨hm, hkd, hself⟩ := hsc'.2.2.2.2.2.2.1 mname hmn
+          obtain ⟨hm, hkd, hself, -, -, -⟩ := hsc'.2.2.2.2.2.2.1 mname hmn
           obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
           have hcur : m.frames.getD fid default
               = m.frames.getD (methodFrameOf m) default := by

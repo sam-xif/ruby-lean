@@ -584,10 +584,31 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- builds (`{cls := cu, selfCls := some cu}`), and it is here rather than as a
       -- guard in the `super` rule because the rule does not need to *know* it — the
       -- consecution case does, to turn the definee's name into the receiver's type.
+      -- **And a fourth conjunct, L214's, and it is `zsuper`'s whole frame-side cost:**
+      -- the activation's parameter list is empty, on both sides. `zsuperArgsOf` then
+      -- answers `some ([], [])` by computation, and the rule's argument types are
+      -- `c.params = []`.
+      --
+      -- **The general clause was written first and is *false*.** It says
+      -- *`zsuperArgsOf h f = some (vs, [])` for some `vs` with `ValuesTy h vs c.params`* —
+      -- and `zsuperArgsOf` reads the frame's **locals**, which `setLocal` writes. So
+      -- `x = x + 1; super` moves it, and `StackCtx_congr` (whose whole job is a
+      -- frame-array rewrite that moved no *field* this predicate reads) cannot carry it.
+      -- That is not a defect in the clause: it is the fact that bare `super` forwards the
+      -- *current* parameter values, and typing it under assignment needs the parameters
+      -- to be in `Γ` with `FrameConforms` tying them to the locals — which is the
+      -- `def`-with-a-row rung, not this one.
+      --
+      -- So the locals-independent form, which is what is true today: `ResolvesUser`
+      -- requires `md.params = []`, `userFrame` therefore sets `runParams := []` and
+      -- `runFromDM := false`, and no context the invariant builds declares a parameter.
       (∀ mn, c.meth = some mn →
         (frames.getD fid default).meth = mn ∧
         (frames.getD fid default).kind = .method ∧
-        c.selfCls = some c.cls) ∧
+        c.selfCls = some c.cls ∧
+        (frames.getD fid default).runParams = [] ∧
+        (frames.getD fid default).runFromDM = false ∧
+        c.params = some []) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -1047,16 +1068,23 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       (∀ fid ∈ st, (f₂.getD fid default).kind = (f₁.getD fid default).kind) →
       -- L207's clause needs its own, for the five before it.
       (∀ fid ∈ st, (f₂.getD fid default).meth = (f₁.getD fid default).meth) →
+      -- L214's two, for the six before them. `setLocal` writes `locals`, which is
+      -- neither of these — and the *general* form of L214's clause reads `locals`, which
+      -- is exactly why it is not the form in `StackCtx` (see the note there).
+      (∀ fid ∈ st, (f₂.getD fid default).runParams = (f₁.getD fid default).runParams) →
+      (∀ fid ∈ st, (f₂.getD fid default).runFromDM = (f₁.getD fid default).runFromDM) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, _, _, _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hs => by
+  | [], [], _, _, _, _, _, _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hrp, hdm, hs => by
       refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_,
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
           (fun g hg => hcr g (List.mem_cons_of_mem _ hg))
           (fun g hg => hkd g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hmt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
+          (fun g hg => hmt g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hrp g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hdm g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
@@ -1066,9 +1094,10 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
         exact hs.2.2.2.1
       · rw [hcr fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.1
       · rw [hkd fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.1
-      · -- L212: the clause reads `kind` as well as `meth`, so it spends both
-        -- agreements — `StackCtx_congr`'s fifth and sixth.
-        rw [hmt fid (List.mem_cons_self ..), hkd fid (List.mem_cons_self ..)]
+      · -- L212/L214: the clause reads `kind`, `runParams` and `runFromDM` as well as
+        -- `meth`, so it spends four of `StackCtx_congr`'s agreements.
+        rw [hmt fid (List.mem_cons_self ..), hkd fid (List.mem_cons_self ..),
+          hrp fid (List.mem_cons_self ..), hdm fid (List.mem_cons_self ..)]
         exact hs.2.2.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn

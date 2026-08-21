@@ -84,7 +84,7 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case83 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case88 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -366,6 +366,18 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by
       simp only [infer, hmeth, hm, hsb.superDecl_eq, hrow, if_pos hne, if_pos hsub]⟩
+  -- **Bare `super`** (L214). `super()`'s case (case71) with the argument types read off
+  -- the *context* instead of the expression, so it has no IH at all — and it uses
+  -- `SubDecls` twice: `superDecl_eq` for the row and nothing for `ctx.params`, which is a
+  -- parameter and not a table.
+  | case82 D Γ top ctx mn ps hpar hmeth hne dd hrow hsub =>
+    intro F' hs hdf τ Γ' D₀ h
+    rw [show infer D Γ (.zsuper none) top ctx = some (dd.ret, Γ, D) from by
+      simp only [infer, hmeth, hpar, hrow, if_pos hne, if_pos hsub]] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by
+      simp only [infer, hmeth, hpar, hs.superDecl_eq, hrow, if_pos hne, if_pos hsub]⟩
   -- **An array literal** (L174). The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.
@@ -405,7 +417,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case83 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case88 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -417,7 +429,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin]⟩
-  | case86 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case91 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -427,17 +439,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hjoin]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case89 D Γ top ctx =>
+  | case94 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case90 D Γ top ctx e ih =>
+  | case95 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case91 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case96 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -454,12 +466,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case93 D Γ top ctx =>
+  | case98 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case94 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case99 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he

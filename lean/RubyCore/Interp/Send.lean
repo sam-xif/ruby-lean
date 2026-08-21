@@ -297,8 +297,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     shape is not reconstructible: a `define_method` body (no formals — CRuby
     raises, see L66) or destructuring params, whose synthetic slots are dropped
     after binding (L70). -/
-def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
-  let f := m.frames.getD (methodFrameOf m) default
+def zsuperArgsOf (h : Heap) (f : Frame) : Option (List Value × List (Value × Value)) :=
   -- The running body's own params, carried on the frame (L108): looking them up
   -- by `f.meth` would find whatever *currently* answers that name, which for an
   -- aliased body is a different method.
@@ -315,7 +314,7 @@ def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
         | none => some []
         | some rname =>
           match readL rname with
-          | .ref o => match (m.heap.get o).payload with
+          | .ref o => match (h.get o).payload with
             | .arr xs => some xs.toList
             | _ => none
           | _ => none
@@ -330,7 +329,7 @@ def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
           | some none => some []            -- anonymous `**`: nothing to read back
           | some (some kr) =>
             match readL kr with
-            | .ref o => match (m.heap.get o).payload with
+            | .ref o => match (h.get o).payload with
               | .hsh ps => some ps.toList
               | _ => none
             | .nil => some []
@@ -339,6 +338,14 @@ def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
         | none => none
         | some kwr => some (pos, kwPairs ++ kwr)
   | none => none
+
+
+/-- The `Machine` form, and the split is L214's: `StackCtx` is indexed by
+    `(heap, frames, stack)` and has no `Machine` to hand, so the clause `zsuper` needs
+    has to be statable about **one frame**. Same lesson as `superFound` at L212 — a
+    definition the proof needs to name belongs in the code. -/
+def zsuperArgs (m : Machine) : Option (List Value × List (Value × Value)) :=
+  zsuperArgsOf m.heap (m.frames.getD (methodFrameOf m) default)
 
 /-- The block bare `super`/`super(args)` forwards: the enclosing method's. -/
 def methodBlk (m : Machine) : Option Value :=

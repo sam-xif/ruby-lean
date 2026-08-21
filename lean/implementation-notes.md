@@ -9983,3 +9983,99 @@ had to eat.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical; `--assn` 0 failures outside the two decode gates; third ratchet **26**, `--self-test`
 all agree; tier 0 and tier slice green.
+
+## L214 — `zsuper`, and the prediction held: 26 → 24, with the nine bodies moving to declarations-only
+
+Out of fragment **26 → 24**, `--check` byte-identical (56 / 1,169 / 0), `--assn` 1,225 clean / 2 decode
+gates. Both numbers L213 wrote down in advance came out:
+
+```
+before                                    after
+oof 26   {zsuper} singleton = 9           oof 24   singletons: {next} 1, {hash} 1, {begin} 1
+marginal table headed by zsuper-sets      marginal table headed by ['block','preq','send-block'] = 10
+```
+
+The singleton table is now empty of anything worth a rung, and the marginal table's head is **Wall 1**.
+That is the board changing shape rather than shrinking: what is left is the wall, three ones, and the
+sets.
+
+### One rung, one commit, because `super` had already paid for it
+
+`FrameCtx.params` / `OCtx.params`, one `infer` arm, one `inferOpen` arm, one `StackCtx` conjunct, one
+consecution case — and **no new dispatch lemma and no new `KontOk` constructor**. `evalExpr`
+reconstructs the arguments from the frame and calls `doSuper` in the same step, so `super_dispatch`
+(L212) is reused verbatim at `args = []`. This is the cheapest of the three `super`-family cases and
+L207's finding two — *"price `zsuper` separately, it does not come along with `super`"* — was right
+about the **channel** and wrong about everything downstream of it.
+
+### The `StackCtx` clause: the general form was written first and is *false*
+
+The clause `zsuper` wants is *the enclosing method's parameter values are reconstructible and have the
+declared types*:
+
+```lean
+∃ vs, zsuperArgsOf h (frames.getD fid default) = some (vs, []) ∧ ValuesTy h vs c.params
+```
+
+It was written, and `StackCtx_congr` refused it — correctly. **`zsuperArgsOf` reads the frame's
+`locals`, and `setLocal` writes them.** `x = x + 1; super` really does change what a bare `super`
+forwards (there is a `[V]` note on `zsuperArgs` saying exactly that), so the clause is not congruent
+under the one rewrite `StackCtx_congr` exists for. Typing it needs the parameters to be *in `Γ`* with
+`FrameConforms` tying them to the locals — which is the `def`-with-a-row rung, not this one.
+
+So the locals-independent form, which is what is actually true today:
+
+```lean
+(frames.getD fid default).runParams = [] ∧
+(frames.getD fid default).runFromDM  = false ∧
+c.params = some []
+```
+
+`ResolvesUser` requires `md.params = []`, `userFrame` therefore sets both frame fields, and no context
+the invariant builds declares a parameter. The consecution case then gets `zsuperArgs m = some ([], [])`
+**by computation** — which is how the interpreter's own two `none` branches (a `define_method` body,
+destructuring parameters) are *refuted* rather than handled.
+
+> **A clause that reads `locals` cannot ride on `StackCtx`.** Six of `StackCtx`'s clauses read frame
+> fields `setLocal` does not touch, and that is not a coincidence — it is the predicate's design
+> constraint, and it is worth stating before the next frame-side clause is drafted.
+
+`StackCtx_congr` gained its seventh and eighth agreements (`runParams`, `runFromDM`) and the `setLocal`
+case two more copies of the same one-liner. `zsuperArgsOf` was factored out of `zsuperArgs` for
+`superFound`'s reason (L212) — `StackCtx` is indexed by `(heap, frames, stack)` and has no `Machine`,
+so the clause has to be statable about **one frame**.
+
+### `params` is an `Option`, and it mirrors `zsuperArgs`'
+
+`zsuperArgs` answers `none` when the shape is not reconstructible. So does the channel:
+`FrameCtx.params : Option (List Ty)`, `OCtx.params : Option (List ATy)`, and the rule **refuses `none`
+rather than guessing**. `openParamTys` decides it on the open side, and it is all-`.req` only — for an
+all-required list `openParams` allocates `1, 2, …, n` in order, so the list is exactly the variables
+the body's parameters were opened at; any other kind either allocates differently or is re-bundled by
+`zsuperArgs` into keywords, and the two would disagree.
+
+`openParamTys` is a **mirror** of `openParams`' allocation order, which is the kind of copy this
+project has been burned by twice (`SUPPORTED`). It is not a soundness risk *today* and the reason is
+worth writing down rather than assuming:
+
+> A context with a non-empty `params` cannot be **spent**. `StackCtx` pins every activation the
+> invariant describes to `some []`, so a wrong list in `openParamTys` can only ever fail to certify,
+> never certify wrongly. That is the same standing `accept (params open)` has had since L168 — and
+> `egParam_nominal` now shows it *in a type* (`params := some [.int]`, a context `infer` accepts and no
+> machine context matches) rather than in prose.
+
+### Case renumbering, third time, and the recovery is now routine
+
+The `.zsuper` arm shifted `infer.induct` by 5 (the `inferIf`/`inferSeq`/`inferArgs` alternatives are
+numbered after every `infer` arm, so *any* new arm moves them). Arity-probing a range in one build
+located them; a second probe with `trace_state` over 68–87 identified the new accepting case as
+`case82`. Two builds, no guessing — and `defFree` got a `.zsuper` arm even though the rule reads the
+context rather than a subexpression, because the catch-all's `true` being *right by accident* has cost
+this project five commits already.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical; `--assn` 0 failures outside the two decode gates; third ratchet **24**, `--self-test`
+all agree (three new rows, one of them pinning the parameter-shape refusal); tier 0, tier slice and the
+regressions corpus re-run because `Interp/Send.lean` was touched again.

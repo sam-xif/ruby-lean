@@ -702,7 +702,8 @@ def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCt
     (Γ : AEnv) (e : Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       infer D (substEnv θ Γ) e false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
+            params := ctx.params.map (List.map (ATy.subst θ)) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -712,7 +713,8 @@ def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : O
     (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferIf D (substEnv θ Γ) t els false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
+            params := ctx.params.map (List.map (ATy.subst θ)) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -720,7 +722,8 @@ def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : 
     (Γ : AEnv) (es : List Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferSeq D (substEnv θ Γ) es false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
+            params := ctx.params.map (List.map (ATy.subst θ)) }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -731,7 +734,8 @@ def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx :
     (Γ : AEnv) (es : List Expr) : OArgs → Prop
   | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferArgs D (substEnv θ Γ) es false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
+            params := ctx.params.map (List.map (ATy.subst θ)) }
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
@@ -1061,12 +1065,13 @@ theorem inferBody_sound {D : Decls} {c mname : String} {body : Expr} {τ : ATy} 
     (hb : inferBody D c mname body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
     infer D [] body false
-      { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname }
+      { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname,
+        params := some [] }
       = some (τ.subst θ, substEnv θ Γ', D) := by
-  have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname } θ s'.st
+  have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname, params := some [] } θ s'.st
     (τ.subst θ) hsat hself [] body { st := {}, fresh := 1 }
   unfold inferBody at hb
-  cases hop : inferOpen D [] body { cls := c, self := 0, meth := some mname }
+  cases hop : inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
       { st := {}, fresh := 1 } with
   | ok τ₀ Γ₀ s₀ =>
     rw [hop] at hb
@@ -1099,12 +1104,14 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
     (hb : inferBodyWith D c mname ps body = some (Γb, .ok τ Γ' s'))
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
     infer D (substEnv θ Γb) body false
-        { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname }
+        { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname,
+          params := (openParamTys ps).map (List.map (ATy.subst θ)) }
       = some (τ.subst θ, substEnv θ Γ', D) := by
   unfold inferBodyWith at hb
   dsimp only at hb
-  cases hop : openParams D { cls := c, self := 0, meth := some mname } ps []
-      { st := {}, fresh := 1 } with
+  cases hop : openParams D
+      ({ cls := c, self := 0, meth := some mname, params := openParamTys ps } : OCtx)
+      ps [] { st := {}, fresh := 1 } with
   | none => rw [hop] at hb; simp at hb
   | some pf =>
     obtain ⟨Γ₀, s₀⟩ := pf
@@ -1112,9 +1119,11 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
     simp only [Option.some.injEq, Prod.mk.injEq] at hb
     obtain ⟨hΓ, hrun⟩ := hb
     subst hΓ
-    have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname } θ s'.st
+    have hf := inferOpen_factors D
+      { cls := c, self := 0, meth := some mname, params := openParamTys ps } θ s'.st
       (τ.subst θ) hsat hself Γ₀ body s₀
-    cases hr : inferOpen D Γ₀ body { cls := c, self := 0, meth := some mname } s₀ with
+    cases hr : inferOpen D Γ₀ body
+        ({ cls := c, self := 0, meth := some mname, params := openParamTys ps } : OCtx) s₀ with
     | ok τ₀ Γ₁ s₁ =>
       rw [hr] at hrun
       dsimp only at hrun
@@ -1184,7 +1193,8 @@ theorem egRow_sat : SatStore egRowD egTheta egRowStore :=
     from the factoring theorem, not by running `infer`. -/
 theorem egRow_nominal :
     infer egRowD [] egRowBody false
-        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "value" }
+        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "value",
+          params := some [] }
       = some (.bool, [], egRowD) := by
   have := inferBody_sound egRow_open egRow_sat (by rfl)
   simpa [substEnv, egTheta] using this
@@ -1230,10 +1240,17 @@ theorem egParam_sat : SatStore baseDecls egParamTheta egParamStore :=
     accept of the enclosing `def`, whose rule still requires `params.isEmpty`. -/
 theorem egParam_nominal :
     infer baseDecls [("other", Ty.int)] egParamBody false
-        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "cmp" }
+        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "cmp",
+          -- **L214**: the nominal context now carries the parameter types the open run
+          -- opened them at, substituted — `[.int]` here, and that is the *whole* content
+          -- of the channel `zsuper` reads. Note what it also shows: this context is one
+          -- `infer` accepts and no *machine* context matches, because `StackCtx` pins an
+          -- activation's `params` to `some []`. Which is the standing `accept (params
+          -- open)` has had since L168, now visible in the type rather than in prose.
+          params := some [.int] }
       = some (.bool, [("other", Ty.int)], baseDecls) := by
   have := inferBodyWith_sound egParam_open egParam_sat (by rfl)
-  simpa [substEnv, egParamTheta] using this
+  simpa [substEnv, egParamTheta, openParamTys] using this
 
 /-! ## 9. Axiom hygiene -/
 

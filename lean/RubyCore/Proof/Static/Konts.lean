@@ -668,6 +668,29 @@ theorem infer_super_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ct
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+/-- Inversion for bare `super` (L214). No argument list, so no `inferArgs` premise —
+    the types come off the context. -/
+theorem infer_zsuper_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ctx : FrameCtx}
+    (h : infer D Γ (.zsuper none) top ctx = some (τ, Γ', D')) :
+    Γ' = Γ ∧ D' = D ∧ ∃ mn ps dd, ctx.meth = some mn ∧ ctx.params = some ps ∧ mn ≠ "" ∧
+      superDecl? D ctx.cls mn = some dd ∧ subTys ps dd.params = true ∧ τ = dd.ret := by
+  simp only [infer] at h
+  split at h
+  · next mn ps hmn hpar =>
+    split at h
+    · next hne =>
+      split at h
+      · next dd hrow =>
+        split at h
+        · next hsub =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨rfl, rfl, mn, ps, dd, hmn, hpar, hne, hrow, hsub, rfl⟩
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
 /-- Inversion for the `def` rule. -/
 theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List Param}
     {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
@@ -675,7 +698,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ name ≠ "method_added"
       ∧ ∃ τb Γb, infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name }
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [] }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧

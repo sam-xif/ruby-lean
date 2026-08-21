@@ -84,6 +84,15 @@ structure OCtx where
   -- `UserConforms` now fixes its `meth`. Nothing in `inferOpen` reads it yet — `super`
   -- is the arm that will.
   meth : Option String := none
+  /-- **The running method's parameter types, open** (L214) — `FrameCtx.params`'
+      counterpart, and unlike `meth` it is *populated*: `openParams` binds each required
+      positional to a fresh type variable, and this is that list, in order. So `zsuper`'s
+      argument types are exactly the variables the body's own parameters were opened at,
+      which is why the open front end can type a `zsuper` in a body with parameters where
+      the nominal rule can only reach one with none.
+
+      `Option` for `FrameCtx.params`' reason, and `openParamTys` is what decides it. -/
+  params : Option (List ATy) := none
 deriving DecidableEq, Repr, Inhabited
 
 /-- The store, plus the fresh-variable counter. Threaded exactly as `D` is (§7),
@@ -351,6 +360,22 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
   -- **A float literal** (L202), and it is here for `infer`'s reason: the only case
   -- after it in `inferOpen.induct` is the catch-all, so no existing case number moves.
   | .flt _ => .ok (.nom .float) Γ s
+  -- **Bare `super`** (L214), and it is the arm below with the argument list read off the
+  -- context. No `inferOpenArgs`, so no threading: the types are `ctx.params`, the
+  -- variables `openParams` opened the body's own parameters at.
+  | .zsuper none =>
+    match ctx.meth, ctx.params with
+    | some mn, some ps =>
+      if mn ≠ "" then
+        match superDecl? D ctx.cls mn with
+        | some dd =>
+          if ps == dd.params.map ATy.nom then .ok (.nom dd.ret) Γ s
+          else .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) ps
+        | none => .missing (.nom (.cls ctx.cls)) ("super:" ++ mn) ps
+      else .outOfFragment "super-outside-method"
+    -- `ctx.params = none` is a parameter shape `zsuperArgs` cannot reconstruct, so the
+    -- refusal names the shape rather than the rule.
+    | _, _ => .outOfFragment "zsuper-param-shape"
   -- **`super(args)`** (L213), and it is the *nominal-receiver* send arm's shape at a
   -- different table: the class is known (it is `ctx.cls`, the class the body is written
   -- in), so there is no row to *record* — a `super` cannot constrain a type variable,
@@ -483,7 +508,7 @@ def inferBody (D : Decls) (c mname : String) (body : Expr) : OResult :=
   -- before it knows the tail. A disagreement is `outOfFragment` rather than `missing`:
   -- nothing a *declaration* could supply would fix it; the two types simply differ, and
   -- joining them would need the union this fragment does not have.
-  match inferOpen D [] body { cls := c, self := 0, meth := some mname }
+  match inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
       { st := {}, fresh := 1 } with
   | .ok τ Γ' s =>
     if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
@@ -610,12 +635,35 @@ def openParams (D : Decls) (ctx : OCtx) : List Param → AEnv → OState →
   | .fwd :: _, _, _ => none
   | .destr _ :: _, _, _ => none
 
+/-- **The parameter types a bare `super` can forward** (L214), or `none` when the shape is
+    one `zsuperArgs` refuses to reconstruct.
+
+    All-`.req` only, and that is a *restriction on the rule*, not an approximation of
+    `openParams`: for an all-required list `openParams` allocates the fresh variables
+    `1, 2, …, n` in order (it starts at `fresh := 1` and increments once per `.req`), so
+    this list is exactly the variables the body's own parameters were opened at. Any other
+    kind — `opt`, `key`, `rest`, `block` — either does not allocate in that order or is
+    re-bundled by `zsuperArgs` into keywords, so the two would disagree and the rule
+    refuses instead.
+
+    It is a *mirror* of `openParams`' allocation order, which is the kind of copy this
+    project has been burned by (`SUPPORTED`, twice). It is not a soundness risk today and
+    the reason is worth stating: a context with a non-empty `params` cannot be **spent**,
+    because `StackCtx`'s L214 clause pins every activation the invariant describes to
+    `some []`. So a wrong list here can only ever fail to certify, never certify wrongly —
+    the same standing as `accept (params open)` has had since L168. -/
+def openParamTys (ps : List Param) : Option (List ATy) :=
+  if ps.all (fun p => match p with | .req _ => true | _ => false)
+  then some ((List.range ps.length).map (fun i => ATy.var (i + 1)))
+  else none
+
 /-- Type one method body of class `c` in the environment its parameters give.
     `none` when a parameter kind is one `openParams` does not bind, or when a
     default expression is itself out of the fragment. -/
 def inferBodyWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr) :
     Option (AEnv × OResult) :=
-  let ctx : OCtx := { cls := c, self := 0, meth := some mname }
+  let ctx : OCtx := { cls := c, self := 0, meth := some mname,
+                      params := openParamTys ps }
   match openParams D ctx ps [] { st := {}, fresh := 1 } with
   | some (Γb, s) =>
     -- L201's check, at the parameterized entry point too.

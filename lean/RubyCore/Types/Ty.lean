@@ -377,6 +377,25 @@ structure FrameCtx where
       at the same push — `userFrame` sets `meth := md.superName.getD mname`, which is
       the aliasing-correct name and therefore the one to carry. -/
   meth : Option String := none
+  /-- **The running method's declared parameter types** (L214), in order, or `[]` in a
+      class body and at toplevel — and `[]` in every activation the invariant can
+      currently describe, because `ResolvesUser` requires `md.params = []`.
+
+      `zsuper` is the only rule that needs it, and it needs it because bare `super`
+      forwards the enclosing method's *parameter values* (`zsuperArgs` reads them out of
+      the frame's locals), so its argument **types** are the parameters' declared types.
+      Neither `meth` nor `Γ` can supply them: `Γ` has the locals but nothing says which
+      of them are parameters.
+
+      **`Option`, and it mirrors `zsuperArgs`' own `Option`**: that function answers `none`
+      when the parameter shape is not reconstructible (a `define_method` body, or
+      destructuring parameters whose synthetic slots are dropped after binding), and this
+      field answers `none` for exactly the shapes a `zsuper` therefore cannot forward. The
+      rule refuses `none` rather than guessing.
+
+      `StackCtx`'s `meth` clause pins it to `some []` in every activation the invariant
+      can describe, because `ResolvesUser` requires `md.params = []`. -/
+  params : Option (List Ty) := none
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types
