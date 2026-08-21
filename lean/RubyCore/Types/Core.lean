@@ -359,7 +359,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       match inferArgs D₁ Γ₁ (arg :: args) top ctx with
       | some (τs, Γ₂, D₂) =>
         match sigOf D₂ τr mname with
-        | some (ps, τret) => if τs = ps then some (τret, Γ₂, D₂) else none
+        | some (ps, τret) => if subTys τs ps then some (τret, Γ₂, D₂) else none
         | none => none
       | none => none
     | none => none
@@ -404,7 +404,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       match inferArgs D Γ (arg :: args) top ctx with
       | some (τs, Γ₁, D₁) =>
         match sigOf D₁ (.cls c) mname with
-        | some (ps, τret) => if τs = ps then some (τret, Γ₁, D₁) else none
+        | some (ps, τret) => if subTys τs ps then some (τret, Γ₁, D₁) else none
         | none => none
       | none => none
     | none => none
@@ -717,11 +717,11 @@ with `srb` [V, 0.6.13405].
 
 /-- `1 + nil` — srb 7002. The motivating case. -/
 example : check (.send (some (.int 1)) "+" [.nil] none) = .reject := by
-  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 + true` — srb 7002. -/
 example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
-  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- **Rejected, and perfectly safe.** `if false then 1 + nil else 0 end` runs to
     `0`. `reject` claims our rules refute the program, *not* that it fails —
@@ -731,25 +731,25 @@ example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
 example :
     check (.if' .fls (.send (some (.int 1)) "+" [.nil] none) (some (.int 0)))
       = .reject := by
-  simp [check, infer, inferArgs, inferIf, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, inferIf, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1 / 2` — srb *accepts*; `/` is absent from the table, so we abstain. This
     is the case that makes "absent ⇒ no opinion" mandatory rather than merely
     conservative: rejecting here would break `reject ⇒ srb rejects`. -/
 example : check (.send (some (.int 1)) "/" [.int 2] none) = .unknown := by
-  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `1.foo(2)` — srb 7003. We abstain: the table cannot distinguish "no such
     method" from "method we have not tabulated". Incompleteness. -/
 example : check (.send (some (.int 1)) "foo" [.int 2] none) = .unknown := by
-  simp [check, infer, inferArgs, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
 
 /-- `q = 1; q + nil` — srb 7002. We abstain because `defTy` has no environment,
     so a local has no unconditional type. The obvious next widening. -/
 example :
     check (.seq [ .vasgn .lvar "q" (.int 1),
                   .send (some (.var .lvar "q")) "+" [.nil] none ]) = .unknown := by
-  simp [check, infer, inferArgs, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
+  simp [check, infer, inferArgs, subTys, subTy, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
     sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf, envSet, envGet?]
 
 end RubyCore.Types

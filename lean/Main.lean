@@ -201,6 +201,10 @@ def main (args : List String) : IO UInt32 := do
             -- produces one — but rendered rather than gated, because the moment a
             -- producer lands this is the line that shows it working.
             | .cls n => n
+            -- L183's top type. No expression infers at it — it exists as a
+            -- declared *parameter* — so this arm is unreachable and rendered
+            -- rather than gated, for the same reason `.cls` was before L151.
+            | .any => "T.untyped"
           | none => ""
         IO.println (Lean.Json.mkObj
           ([("decision", Lean.Json.str decision),

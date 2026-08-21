@@ -86,6 +86,10 @@ def tyName : Ty → String
   | .nilT => "NilClass"
   | .sym => "Symbol"
   | .cls c => c
+  -- L183. `T.untyped` is what a Sorbet reader will expect to see, and it is the
+  -- same idea; the name is the *rendering* of a declared parameter position, since
+  -- nothing is ever typed `any`.
+  | .any => "T.untyped"
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ

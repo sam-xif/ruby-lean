@@ -112,16 +112,16 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary send**, and the only case where `SubDecls` is *used* rather than
   -- carried: the signature has to be readable at the bigger table, which is what
   -- the relation was defined to say.
-  | case15 D Γ top ctx recv mname arg args τr Γ₁ D₁ hrecv Γ₂ D₂ ps τret hsig hargs
-      ihR ihA =>
+  | case15 D Γ top ctx recv mname arg args τr Γ₁ D₁ hrecv τs Γ₂ D₂ hargs ps τret
+      hsig hsub ihR ihA =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
     obtain ⟨rfl, hmA⟩ := ihA F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hargs
-    simp only [infer, hrecv, hargs, hsig,
-      Option.some.injEq, Prod.mk.injEq, if_pos rfl] at h
+    simp only [infer, hrecv, hargs, hsig, hsub,
+      Option.some.injEq, Prod.mk.injEq, if_pos] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig]⟩
+    exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig, hsub]⟩
   -- **The zero-argument send.** Same shape, one fewer subexpression.
   | case20 D Γ top ctx recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
     intro F' hs hdf τ Γ' D₀ h
@@ -143,14 +143,14 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary written receiverless call** (L171). One subexpression and the
   -- signature read at the table it leaves — the explicit unary send's case with
   -- the receiver supplied by the context instead of by an expression.
-  | case26 D Γ top ctx mname arg args c hsome Γ₁ D₁ ps τret hsig hargs ih =>
+  | case26 D Γ top ctx mname arg args c hsome τs Γ₁ D₁ hargs ps τret hsig hsub ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmA⟩ := ih F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hargs
-    simp only [infer, hsome, hargs, hsig, Option.some.injEq, Prod.mk.injEq,
-      if_pos rfl] at h
+    simp only [infer, hsome, hargs, hsig, hsub, Option.some.injEq, Prod.mk.injEq,
+      if_pos] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig]⟩
+    exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig, hsub]⟩
   -- **An array literal** (L174). The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.

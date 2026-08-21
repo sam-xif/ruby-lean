@@ -125,6 +125,11 @@ def tyClassNames : Ty → List String
   -- the type useless instead of unsound, which is the right failure direction and
   -- is what `Sub` will fix (an `Integer` receiver should be typed `.int`).
   | .cls n => if groundClassNames.contains n then [] else [n]
+  -- **The top type names no class** (L183), which is what makes it a *parameter*
+  -- type and nothing else: `declFor D .any mname` is `none` for every `mname`, so
+  -- `DeclsOk` never obliges anything at it and no send can use it as a receiver.
+  -- The imprecision is in `subTy`, at the position a declared parameter occupies.
+  | .any => []
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.

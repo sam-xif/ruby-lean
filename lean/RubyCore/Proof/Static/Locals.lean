@@ -233,13 +233,24 @@ theorem valueTy_immediate {h h' : Heap} {v : Value} {τ : Ty} (hnr : ∀ o, v �
   | ref o => exact absurd rfl (hnr o)
   | _ => simpa [ValueTy, valueTy?] using hv
 
-/-- Every value in the list has the corresponding declared type. Pointwise, and
-    length-forcing by the `_, _ => False` arm — the same shape as `FramesOk`, for
-    the same reason: an arity mismatch must not be silently admissible. -/
+/-- Every value in the list conforms to the corresponding declared type.
+    Pointwise, and length-forcing by the `_, _ => False` arm — the same shape as
+    `FramesOk`, for the same reason: an arity mismatch must not be silently
+    admissible.
+
+    **Arguments against *declared parameters*** — and since L183 the match is
+    `subTy` rather than equality, because a declared parameter may be the top type.
+
+    At a **concrete** parameter this is the old proposition, by `subTy_concrete`, so
+    every `baseDecls` row's conformance obligation is unchanged. The weakening lives
+    here and in `KontOk.recvK`/`argsK`; `ValueTy` itself is untouched and no value
+    is ever typed `any`, which is what keeps `CtlOk` and its 39 call sites out of
+    it. -/
 def ValuesTy (h : Heap) : List Value → List Ty → Prop
   | [], [] => True
-  | v :: vs, τ :: τs => ValueTy h v τ ∧ ValuesTy h vs τs
+  | v :: vs, τ :: τs => (∃ σ, ValueTy h v σ ∧ subTy σ τ = true) ∧ ValuesTy h vs τs
   | _, _ => False
+
 
 /-- The frame currently executing. -/
 def curFid (m : Machine) : FrameId := m.stack.headD 0
@@ -1019,7 +1030,9 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
 theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
     ∀ {vs : List Value} {τs : List Ty}, ValuesTy h vs τs → ValuesTy h' vs τs
   | [], [], hv => hv
-  | _ :: _, _ :: _, hv => ⟨ValueTy.congr ha hv.1, ValuesTy.congr ha hv.2⟩
+  | _ :: _, _ :: _, hv =>
+      ⟨⟨hv.1.choose, ValueTy.congr ha hv.1.choose_spec.1, hv.1.choose_spec.2⟩,
+       ValuesTy.congr ha hv.2⟩
   | [], _ :: _, hv => absurd hv (by simp [ValuesTy])
   | _ :: _, [], hv => absurd hv (by simp [ValuesTy])
 

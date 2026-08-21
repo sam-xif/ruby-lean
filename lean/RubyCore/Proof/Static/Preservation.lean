@@ -556,8 +556,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
           | none =>
-            obtain ⟨c, τs, hsome, hargs, hsg⟩ := infer_implicit_send1_inv hinf
+            obtain ⟨c, τs, ps, hsome, hargs, hsg, hsub⟩ := infer_implicit_send1_inv hinf
             obtain ⟨τe, Γ₁, D₁, τrest, rfl, he, hrest⟩ := inferArgs_cons_inv hargs
+            obtain ⟨τp, psrest, rfl, hs1, hs2⟩ := subTys_cons_inv hsub
             have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
               cases hst : m.stack with
               | nil => exact absurd hst hf.1
@@ -576,7 +577,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [evalExpr]
             rw [startArgs_plain hsp hkw hfw]
             exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
-              (KontOk.argsK (τacc := []) hself trivial hrest (by simpa using hsg) hk)
+              (KontOk.argsK (psacc := []) hself trivial hs1 hrest hs2
+                (by simpa using hsg) hk)
         | nil =>
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
@@ -616,7 +618,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
           | none =>
-            obtain ⟨τr, Γ₁, D₁, τs, hr, hargs, hsg⟩ := infer_send_inv hinf
+            obtain ⟨τr, Γ₁, D₁, τs, ps, hr, hargs, hsg, hsub⟩ := infer_send_inv hinf
             -- `evalExpr` picks the send site by matching on the receiver
             -- *expression*, and that match will not rewrite under `rw`, so
             -- force it to compute. Since L172 every branch — `self` included —
@@ -624,7 +626,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp only [evalExpr]
             cases r <;>
               exact inv_push hfs htab hsc hhook hsat hstr hcls hbot hr
-                (KontOk.recvK hargs hsg hk)
+                (KontOk.recvK hargs hsg hsub hk)
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, hv, hk⟩ := hc
@@ -741,8 +743,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     -- and pushes one `argsK` for it; the remaining arguments ride in the kont as
     -- unevaluated program, exactly as `seqK`'s do. So this case is one
     -- `inferArgs_cons_inv` and one `KontOk.argsK` at the empty accumulator.
-    | @recvK _ _ _ _ _ _ _ mname arg args τs τret Γ₂ k _ hargs hsg hk' =>
+    | @recvK _ _ _ _ _ _ _ mname arg args τs ps τret Γ₂ k _ hargs hsg hsub hk' =>
       obtain ⟨τe, Γ₁, D₁, τrest, rfl, he, hrest⟩ := inferArgs_cons_inv hargs
+      obtain ⟨τp, psrest, rfl, hs1, hs2⟩ := subTys_cons_inv hsub
       have hsp : ∀ e, arg ≠ .splat e := by
         rintro e rfl; exact absurd he (by simp [infer])
       have hkw : ∀ es, arg ≠ .kwargs es := by
@@ -752,7 +755,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       dsimp only
       rw [startArgs_plain hsp hkw hfw]
       exact inv_push hfs htab hsc hhook hsat hstr hcls hbot he
-        (KontOk.argsK (τacc := []) hv trivial hrest (by simpa using hsg) hk')
+        (KontOk.argsK (psacc := []) hv trivial hs1 hrest hs2
+          (by simpa using hsg) hk')
     -- **The zero-argument dispatch** (L152). `applyKont` runs `startArgs … [] []`,
     -- which is `finishSend` with no argument continuation in between — so this case
     -- ends where `argsK`'s does, one step earlier, and it is `entry_dispatch` at
@@ -856,14 +860,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               hfs htab hsc hhook hsat hstr hcls hbot he
               (KontOk.arrK hs hk')
           · exact absurd hs (by simp)
-    | @argsK _ _ _ _ _ _ _ mname recv τr τacc τrest τret acc rest Γ' k _
-        hrv hva hrest hsg hk' =>
+    | @argsK _ _ _ _ _ _ _ mname recv τr psacc τp τrest psrest τret acc rest Γ' k _
+        hrv hva hst hrest hsr hsg hk' =>
       cases rest with
       -- **The last argument** (L175). `startArgs … (acc ++ [v]) []` is
       -- `finishSend`, so the send completes in this step, and the arguments'
       -- `ValuesTy` is the accumulated one snoc'd with the in-flight value —
       -- `ValuesTy_snoc`, matched against the signature's parameter list split at
-      -- exactly the same point.
+      -- exactly the same point. Since L183 the match is `subTy`, so what is snoc'd
+      -- is the *declared* parameter `τp` and the in-flight type only has to be
+      -- below it.
       --
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The
@@ -873,21 +879,23 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | nil =>
         simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at hrest
         obtain ⟨rfl, rfl, rfl⟩ := hrest
+        have hpr : psrest = [] := subTys_nil_inv hsr
+        subst hpr
         dsimp only
         -- **The user arm is refuted rather than handled**, and by arithmetic rather
         -- than by anything about dispatch: `UserConforms` requires `d.params = []`
         -- (a zero-parameter method is all `enterUserMethod` binds today) while this
-        -- declaration's is `τacc ++ [τ]`, which a snoc can never be. So a send with
-        -- arguments is a builtin send, necessarily — at every arity.
+        -- declaration's is `psacc ++ [τp]`, which a snoc can never be. So a send
+        -- with arguments is a builtin send, necessarily — at every arity.
         have hbi : BuiltinEntryOk m.heap τr mname
-            { params := τacc ++ [τ], ret := τret } := by
+            { params := psacc ++ [τp], ret := τret } := by
           rcases htab τr mname _ (sigOf_declFor (by simpa using hsg)) with
             hb | ⟨_, _, _, _, _, hdp, _, _⟩
           · exact hb
           · exact absurd hdp (by simp)
         obtain ⟨w, hw, hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
-            hbi hrv (ValuesTy_snoc hva hv)
+            hbi hrv (ValuesTy_snoc hva hv hst)
         rw [hstep]
         exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk'
       -- **Another argument to run.** One value moves from the unevaluated tail to
@@ -895,6 +903,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- which is the `List.append_assoc` the `simpa` below discharges.
       | cons e rest' =>
         obtain ⟨τe, Γ₁, D₁, τrest', rfl, he, hrest'⟩ := inferArgs_cons_inv hrest
+        obtain ⟨τp', psrest', rfl, hs1, hs2⟩ := subTys_cons_inv hsr
         have hsp : ∀ x, e ≠ .splat x := by
           rintro x rfl; exact absurd he (by simp [infer])
         have hkw : ∀ es, e ≠ .kwargs es := by
@@ -905,8 +914,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rw [startArgs_plain hsp hkw hfw]
         exact inv_push (m := { m with kont := k })
           hfs htab hsc hhook hsat hstr hcls hbot he
-          (KontOk.argsK (τacc := τacc ++ [τ]) hrv (ValuesTy_snoc hva hv) hrest'
-            (by simpa using hsg) hk')
+          (KontOk.argsK (psacc := psacc ++ [τp]) hrv (ValuesTy_snoc hva hv hst) hs1
+            hrest' hs2 (by simpa using hsg) hk')
   · -- ## control = jump: excluded by `CtlOk`
     rw [hctl] at hc
     exact hc.elim

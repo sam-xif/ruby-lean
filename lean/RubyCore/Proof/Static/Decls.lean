@@ -135,6 +135,11 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   | .nilT => k = Boot.nilClassId
   | .sym => k = Boot.symbolId
   | .cls n => (h.classPayload? k).isSome ∧ className h k = n
+  -- **The top type dispatches from nowhere** (L183). `tyClassNames .any = []`, so
+  -- `declFor` never answers at it and `DeclsOk` never obliges anything — this arm
+  -- exists to make the match total, and `False` is the honest content: no value is
+  -- typed `any`, so no receiver arrives with it.
+  | .any => False
 
 theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
     TyClass h τ (classOf h v) := by
@@ -546,6 +551,9 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
       | exact key "TrueClass" ["FalseClass"] h
       | exact key "NilClass" [] h
       | exact key "Symbol" [] h
+      -- L183: `tyClassNames .any = []`, so `declFor` answers `none` and the
+      -- hypothesis is refuted by computing it.
+      | exact absurd h (by simp [declFor, tyClassNames])
 
 /-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn** (L150): L147 moved its only caller
 (`DeclsOk_defineMethod`) to `ResolvesAt_defineMethod`, and a receiver-shaped resolution
@@ -641,12 +649,16 @@ theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : Strin
   | cls n =>
     exact ⟨by rw [← classPayload?_isSome_defineMethod h cls k name md]; exact ht.1,
       by rw [← className_defineMethod h cls k name md]; exact ht.2⟩
+  -- L183: both sides are `False`, and the arm is here because the two are not
+  -- *syntactically* the same `False`.
+  | any => exact absurd ht (by simp [TyClass])
   | _ => exact ht
 
 theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
     (ht : TyClass h' τr k) : TyClass h τr k := by
   cases τr with
   | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
+  | any => exact absurd ht (by simp [TyClass])
   | _ => exact ht
 
 /-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
@@ -777,6 +789,13 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
           subst hg
           exact hgnd _ (by simp [groundClassNames])
         rw [hn] at hdecl
+        exact absurd hdecl (by simp)
+      -- L183: `tyClassNames .any = []`, so `declFor` is `none` outright — no
+      -- ground-name argument is needed, which is the arm's whole content.
+      | any =>
+        exfalso
+        rw [show declFor (addRow D c mname { params := [], ret := τb }) .any mname = none from
+          by simp [declFor, tyClassNames]] at hdecl
         exact absurd hdecl (by simp)
       | sym =>
         exfalso
@@ -1306,7 +1325,11 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     -- `d.params = [.int]`, so `ValuesTy` pins the argument list to one integer.
     match args, hargs with
     | [b], ⟨hb, _⟩ =>
-      obtain ⟨y, rfl⟩ := valueTy_int hb
+      -- L183: `ValuesTy` matches by `subTy`, and `Ty.int` is concrete, so
+      -- `subTy_concrete` puts the argument back at exactly `.int` — which is the
+      -- lemma that makes the weakening inert for every `baseDecls` row.
+      obtain ⟨σ, hσ, hsub⟩ := hb
+      obtain ⟨y, rfl⟩ := valueTy_int ((subTy_concrete (by simp)).mp hsub ▸ hσ)
       exact ⟨fun h' => hdefer h' a y, .int (op a y), rfl, hrun a y m⟩
 
 /-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
@@ -1421,6 +1444,8 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) : DeclsOk baseDecls h := by
   -- one key, `"Integer"`, and `tyClassNames` subtracts it from the class arm's
   -- range, so a class type has no declarations in the base table by construction.
   | cls n => exact absurd hd (by rw [declFor_baseDecls_cls]; simp)
+  -- L183's top type: no class names, so no declarations, in any table.
+  | any => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
 end Proof

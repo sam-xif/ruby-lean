@@ -7641,3 +7641,67 @@ that order* — which is what the last four entries measured and what this one r
 
 Documentation only. `check-proofs.sh` green, 29 theorems, axiom-clean; `--check` unchanged at
 39 / 1,186 / 0; `--self-test` all agree.
+
+## L183 — the top type: rung 1 of four, and it costs `CtlOk` nothing
+
+`slice-verdict.md` §4a's first rung, landed. `Ty` gains `any`, `subTy`/`subTys` compare an argument
+against a **declared parameter**, and that is the whole of it. Inert in the checker by construction —
+no row has an `any` parameter yet — and the capability is asserted by four checked examples at a
+hand-built row.
+
+### The design decision, restated because it is the whole point
+
+There are two ways to admit imprecision, and they cost very differently.
+
+* **Make `ValueTy` a relation** so a value can have several types. This is what unions and nilable
+  need, and its price is that `CtlOk`'s eval case must admit a *supertype* of what `infer` computed,
+  threading a `Sub` through all **39** `inv_value`/`inv_push`/`inv_eval` call sites.
+* **Put the imprecision at the *declared parameter*** and nowhere else. `valueTy?` has no `any` arm,
+  so nothing is ever typed by it; `infer` never answers `.any`; and the in-flight value keeps its exact
+  type all the way to the dispatch.
+
+L183 is the second, and it is what makes rung 1 small:
+
+| | |
+|---|---|
+| `ValuesTy` | `ValueTy h v τ` → `∃ σ, ValueTy h v σ ∧ subTy σ τ` |
+| `KontOk.recvK` | `sigOf … = some (τs, τret)` → `some (ps, τret)` **plus** `subTys τs ps` |
+| `KontOk.argsK` | the split moves from the *inferred* list to the **parameter** list: `psacc ++ τp :: psrest`, with `ValuesTy h acc psacc`, `subTy τ τp`, `subTys τrest psrest` |
+| `CtlOk`, `Inv`, `inv_value`/`inv_push`/`inv_eval` | **untouched** |
+
+### The lemma that makes it inert, and it is one line
+
+`subTy_concrete : τ ≠ .any → (subTy σ τ = true ↔ σ = τ)`. Every `baseDecls` row has concrete
+parameters, so `entryOk_int`'s conformance obligation sees the proposition it always saw — the proof
+gained exactly one `obtain` and one rewrite. That is the test of whether a weakening is really a
+weakening: **if the old consumers need new arguments, the generalisation was in the wrong place.**
+
+`subTys` is pointwise *and length-forcing*, so the arity check is unchanged: the top type widens a
+**position**, never the list. Asserted (a two-argument call on a one-parameter `any` row is `none`).
+
+### Where the extra bookkeeping actually landed
+
+`KontOk.argsK`. It stores evaluated values and unevaluated program, and the signature is split at the
+in-flight value's position; with subtyping the split has to be at the *parameter* list, so the
+constructor now carries `psacc`/`τp`/`psrest` and three `subTy` facts instead of two type lists. Each
+consecution step is still one rewrite — `subTys_cons_inv` peels the head parameter as
+`inferArgs_cons_inv` peels the head argument, and the two move together. `subTys_nil_inv` closes the
+last-argument case.
+
+Two `Ty`-total matches needed an `any` arm and both are `False`-shaped rather than arbitrary:
+`tyClassNames .any = []` (so `declFor` never answers at it and `DeclsOk` obliges nothing) and
+`TyClass h .any k = False` (no value is typed `any`, so no receiver arrives with it). Those two lines
+are what make the arm a *parameter* type and nothing else.
+
+### What it does not buy, stated plainly
+
+**Zero bodies.** No row has an `any` parameter, so `--check` is byte-identical at 39 / 1,186 / 0 and
+the per-body census is unchanged at 84. It is rung 1 of the four §4a prices, and only rung 4 moves the
+census — which is exactly what that section says and why it was written before this was built.
+
+### Checks
+
+`check-proofs.sh` green, 29 theorems, axiom-clean. `--check` byte-identical. `--assn` 1,227 clean.
+`fragment-gap.py --self-test` all agree. Four new checked examples: an `any` row accepting an
+`Integer`, the same row accepting a `String`, the arity check surviving, and a local bound through
+such a call getting the *return* type (the assertion that nothing is typed `any`).

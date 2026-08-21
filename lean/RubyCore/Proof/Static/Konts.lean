@@ -117,9 +117,10 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       regardless. So a public method dispatches identically at both, the dispatch
       lemmas have been site-polymorphic since L164, and `infer`'s `isSelf` guard —
       which existed only to keep this constructor's `.explicit` true — is gone. -/
-  | recvK {D D₂ h c Γ Γs τ mname arg args τs τret Γ₂ k} {site : SendSite} :
+  | recvK {D D₂ h c Γ Γs τ mname arg args τs ps τret Γ₂ k} {site : SendSite} :
       inferArgs D Γ (arg :: args) Γs.isEmpty c = some (τs, Γ₂, D₂) →
-      sigOf D₂ τ mname = some (τs, τret) →
+      sigOf D₂ τ mname = some (ps, τret) →
+      subTys τs ps = true →
       KontOk D₂ h ((c, Γ₂) :: Γs) τret k →
       KontOk D h ((c, Γ) :: Γs) τ (.recvK mname (arg :: args) .none site :: k)
   /-- **A zero-argument send** (L152), and it is a separate constructor rather than
@@ -144,12 +145,14 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       the site since L164. So the *written receiverless* unary send — which pushes
       this kont at `.implicit`, with the frame's `self` as the stored receiver —
       is the same constructor rather than a second one. -/
-  | argsK {D D' h c Γ Γs τ mname recv τr τacc τrest τret acc rest Γ' k}
+  | argsK {D D' h c Γ Γs τ mname recv τr psacc τp τrest psrest τret acc rest Γ' k}
       {site : SendSite} :
       ValueTy h recv τr →
-      ValuesTy h acc τacc →
+      ValuesTy h acc psacc →
+      subTy τ τp = true →
       inferArgs D Γ rest Γs.isEmpty c = some (τrest, Γ', D') →
-      sigOf D' τr mname = some (τacc ++ τ :: τrest, τret) →
+      subTys τrest psrest = true →
+      sigOf D' τr mname = some (psacc ++ τp :: psrest, τret) →
       KontOk D' h ((c, Γ') :: Γs) τret k →
       KontOk D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
   /-- **An array literal's element** (L174). The in-flight value is one element;
@@ -217,11 +220,11 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | ifK hi _ ih => intro ha; exact .ifK hi (ih ha)
   | whileCond hl _ ih => intro ha; exact .whileCond hl (ih ha)
   | whileBody hl _ ih => intro ha; exact .whileBody hl (ih ha)
-  | recvK hsg ha' _ ih => intro ha; exact .recvK hsg ha' (ih ha)
+  | recvK hsg ha' hsub _ ih => intro ha; exact .recvK hsg ha' hsub (ih ha)
   | recvK0 hsg _ ih => intro ha; exact .recvK0 hsg (ih ha)
-  | argsK hv hva hia hsg _ ih =>
+  | argsK hv hva hst hia hsr hsg _ ih =>
       intro ha
-      exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hia hsg (ih ha)
+      exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg (ih ha)
   | arrK hs _ ih => intro ha; exact .arrK hs (ih ha)
   | frameK _ ih => intro ha; exact .frameK (ih ha)
 
@@ -402,9 +405,9 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {args : List Exp
     {mname : String} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.send (some r) mname (arg :: args) none) top ctx
       = some (τ, Γ', D')) :
-    ∃ τr Γ₁ D₁ τs, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
+    ∃ τr Γ₁ D₁ τs ps, infer D Γ r top ctx = some (τr, Γ₁, D₁) ∧
       inferArgs D₁ Γ₁ (arg :: args) top ctx = some (τs, Γ', D') ∧
-      sigOf D' τr mname = some (τs, τ) := by
+      sigOf D' τr mname = some (ps, τ) ∧ subTys τs ps = true := by
   simp only [infer] at h
   split at h
   · next τr Γ₁ D₁ hr =>
@@ -416,7 +419,7 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {args : List Exp
         · next hτ =>
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨τr, Γ₁, D₁, τs, hr, ha, hτ ▸ hsg⟩
+          exact ⟨τr, Γ₁, D₁, τs, ps, hr, ha, hsg, hτ⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
@@ -431,9 +434,9 @@ theorem infer_implicit_send1_inv {D D' : Decls} {Γ : Env} {arg : Expr}
     {args : List Expr} {mname : String} {τ : Ty} {Γ' : Env} {top : Bool}
     {ctx : FrameCtx}
     (h : infer D Γ (.send none mname (arg :: args) none) top ctx = some (τ, Γ', D')) :
-    ∃ c τs, ctx.selfCls = some c ∧
+    ∃ c τs ps, ctx.selfCls = some c ∧
       inferArgs D Γ (arg :: args) top ctx = some (τs, Γ', D') ∧
-      sigOf D' (.cls c) mname = some (τs, τ) := by
+      sigOf D' (.cls c) mname = some (ps, τ) ∧ subTys τs ps = true := by
   simp only [infer] at h
   split at h
   · next c hsome =>
@@ -445,7 +448,7 @@ theorem infer_implicit_send1_inv {D D' : Decls} {Γ : Env} {arg : Expr}
         · next hτ =>
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨c, τs, hsome, ha, hτ ▸ hsg⟩
+          exact ⟨c, τs, ps, hsome, ha, hsg, hτ⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
@@ -476,9 +479,10 @@ theorem inferArgs_cons_inv {D D' : Decls} {Γ Γ' : Env} {e : Expr} {rest : List
     each `argsK` step moves one value from the unevaluated tail to the accumulated
     prefix, and the signature's parameter list is split at the same point. -/
 theorem ValuesTy_snoc {h : Heap} : ∀ {vs : List Value} {τs : List Ty} {v : Value}
-    {τ : Ty}, ValuesTy h vs τs → ValueTy h v τ → ValuesTy h (vs ++ [v]) (τs ++ [τ])
-  | [], [], _, _, _, hv => ⟨hv, trivial⟩
-  | _ :: _, _ :: _, _, _, hvs, hv => ⟨hvs.1, ValuesTy_snoc hvs.2 hv⟩
+    {σ τ : Ty}, ValuesTy h vs τs → ValueTy h v σ → subTy σ τ = true →
+      ValuesTy h (vs ++ [v]) (τs ++ [τ])
+  | [], [], _, _, _, _, hv, hs => ⟨⟨_, hv, hs⟩, trivial⟩
+  | _ :: _, _ :: _, _, _, _, hvs, hv, hs => ⟨hvs.1, ValuesTy_snoc hvs.2 hv hs⟩
 
 /-- `continueArray` on a non-`splat` head pushes an `arrK` and evaluates it.
     `startArgs_plain`'s twin, and the reason `infer`'s `.array` arm needs no splat
