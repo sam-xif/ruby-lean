@@ -95,6 +95,12 @@ import RubyCore.Proof.Static.OpenSelf
 -- body with a parameter.
 #print axioms RubyCore.Proof.Static.inferBodyWith_sound
 #print axioms RubyCore.Proof.Static.egParam_nominal
+-- L170 — the written receiverless call, `foo()`. `inv_implicit_send0` is L164's
+-- `vcall` consecution case quantified over the `SendSite`, and it is the whole
+-- proof obligation the rule adds: the two constructs differ by one `SendSite`
+-- constructor and `visError?` is `none` for every site but `.explicit`.
+#print axioms RubyCore.Proof.Static.inv_implicit_send0
+#print axioms RubyCore.Proof.Static.egImplicitCall_safe
 LEAN
 
 echo "== axioms"

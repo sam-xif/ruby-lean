@@ -136,6 +136,14 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match requireRow s.st ctx.self mname [] s.fresh with
     | some (τ, st') => .ok τ Γ { st := st', fresh := s.fresh + 1 }
     | none => .missing (.var ctx.self) mname []
+  -- **The written receiverless call** (L170), `foo()` — the `vcall` arm's twin,
+  -- and the same requirement on `ctx.self`. `infer`'s new arm reads
+  -- `sigOf D (.cls c) mname` exactly as its `vcall` arm does, so the factoring
+  -- theorem's case is the `vcall` case verbatim.
+  | .send none mname [] none =>
+    match requireRow s.st ctx.self mname [] s.fresh with
+    | some (τ, st') => .ok τ Γ { st := st', fresh := s.fresh + 1 }
+    | none => .missing (.var ctx.self) mname []
   | .vasgn .lvar x rhs =>
     match inferOpen D Γ rhs ctx s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁

@@ -282,6 +282,51 @@ theorem egVcall_safe :
       reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
+/-- **The written receiverless call** (L170) — `v()` where `egVcall` writes `v`.
+
+    ```ruby
+    class String
+      def value; 1; end
+      def get
+        value()        # ⇒ Integer
+      end
+      "x".get
+    end
+    ```
+
+    A different `Expr` constructor (`.send none "value" [] none`, not `.vcall`),
+    a different `SendSite` (`.implicit`, not `.vcall`), the **same** dispatch and
+    the same one step: `evalExpr` answers both with `startArgs m self site mname
+    [] []`, which is `finishSend`, and `visError?` is `none` for every site but
+    `.explicit`. So the rule adds no `KontOk` constructor, and
+    `inv_implicit_send0` — L164's `vcall` case quantified over the site — is the
+    whole consecution argument for both.
+
+    The slice ranked this **11 of its 112 method bodies**, second only to `const`,
+    and the census re-ranked on landing exactly as L168 said it would: `return`
+    went 8 → 16 and `send-2-args` 8 → 10, because a census classifies at the
+    outermost node. -/
+def egImplicitCall : Expr :=
+  .class' "String" none
+    (.seq [ .def' "value" [] (.int 1),
+            .def' "get" [] (.send none "value" [] none),
+            .send (some (.str "x")) "get" [] none ])
+
+theorem egImplicitCall_safe :
+    ∀ r, ReachableResult (Machine.init egImplicitCall) r → ¬ typeStuck r :=
+  check_sound (by
+    simp [check, egImplicitCall, infer, inferSeq, declsOf, declaresName, baseDecls,
+      reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
+      declOf?, tyClassNames, groundClassNames, isSelf])
+
+/-- **With an argument it is still refused**, and that is a `KontOk` arm rather
+    than a widening of this one: `startArgs` pushes an `argsK` at the `.implicit`
+    site, which `KontOk.argsK` — stated at `.explicit` — does not describe. -/
+example : check (.class' "String" none (.def' "g" [] (.send none "value" [.int 1] none)))
+    = .unknown := by
+  simp [check, infer, illTyped, declsOf, declaresName, baseDecls, reopenableClasses,
+    defFree, defFreeAll, isSelf]
+
 /-- **`self` in a method body**, which the same clause pays for and which is
     `unknown` in a class body — where `self` is the class object, and `plainRecv`
     gives a class no type at all. -/

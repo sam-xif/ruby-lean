@@ -32,6 +32,77 @@ def StepOk : StepResult → Prop
   | .done _ _ => True
   | _ => False
 
+/-! ### The implicit-self dispatch, shared by every receiverless send
+
+`evalExpr` sends `foo` and `foo()` to the **same** place — `startArgs m self site
+mname [] []`, which is `finishSend` (`Interp/Send.lean:455`) — differing only in
+the `SendSite`: `.vcall` for the bare identifier, `.implicit` for the written
+call. `visError?` answers `none` for every site but `.explicit`
+(`Interp/Dispatch.lean:325`), and both dispatch lemmas were generalized over the
+site at L164, so the two rules share **one** consecution argument. This is L164's
+`vcall` case lifted out of `step_ok` verbatim and quantified over `site`; L170's
+`.send none mname [] none` rule is the second caller and adds no proof.
+-/
+
+/-- The zero-argument implicit-self send preserves `Inv`, whatever the site. The
+    dispatch happens *in this step* — there is no continuation and no `argsK` —
+    so the caller's `KontOk` must already be typed at the return type. -/
+theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {c mname : String} {τret : Ty} {site : SendSite}
+    (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
+    (htab : DeclsOk F m.heap)
+    (hsc : StackCtx m.heap m.frames m.stack (ctx :: Γs.map Prod.fst))
+    (hhook : NoHook m.heap) (hsat : Saturated m.heap) (hstr : StrClsOk m.heap)
+    (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
+    (hsg : sigOf F (.cls c) mname = some ([], τret))
+    (hk : KontOk F m.heap ((ctx, Γ) :: Γs) τret m.kont) :
+    StepOk (startArgs m m.currentFrame.self site mname [] [] .none) := by
+  have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
+    cases hst : m.stack with
+    | nil => exact absurd hst hne
+    | cons fid fids =>
+      rw [hst] at hsc
+      have := hsc.2.2.2.1 c hsome
+      rw [show m.currentFrame = m.frames.getD fid default by
+        simp [Machine.currentFrame, hst]]
+      exact this
+  rcases htab _ mname _ (sigOf_declFor hsg) with hbi |
+    ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
+  · obtain ⟨w, hw, hstep⟩ :=
+      entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
+        (site := site) hbi hself trivial
+    rw [hstep]
+    exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk
+  · have hru := hresu _ (valueTy_tyClass hself)
+    have hown : (m.heap.classPayload? mdu.owner).isSome := by
+      obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
+    rw [user_dispatch (m := m) (site := site) hru hself]
+    have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+    obtain ⟨hdp, hdfu, Γb, hbodyu⟩ := hconfu
+    refine ⟨hhook, hsat, hstr, hcls,
+      BottomObj_cons hne (BottomObj_push hlt hbot), _,
+      { cls := cu, selfCls := some cu }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+    · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
+        FramesOk.push hfs⟩
+      rw [getD_push_lt_self]
+      exact ⟨rfl, hown, by simp [envGet?]⟩
+    · refine ⟨?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · rw [getD_push_lt_self]; exact hown
+      · rw [getD_push_lt_self]; exact hnmu
+      · rw [getD_push_lt_self]; exact fun _ => rfl
+      -- The callee's `self` **is** the receiver, and the receiver's type is
+      -- what the row was read at — so this clause is the send's own
+      -- `ValueTy` carried one frame in, not a new obligation.
+      · intro sc hsc'
+        simp only [Option.some.injEq] at hsc'
+        subst hsc'
+        rw [getD_push_lt_self]
+        show ValueTy m.heap m.currentFrame.self (.cls cu)
+        have hcu : c = cu := by simpa using htys
+        exact hcu ▸ hself
+    · exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk⟩
+
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, D, ctx, Γ, Γs, htab, hfs, hsc, hc⟩ := h
   have hf : FrameOk m := hfs.frameOk
@@ -111,55 +182,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · next τret hsg =>
           simp only [Option.some.injEq, Prod.mk.injEq] at hinf
           obtain ⟨rfl, rfl, rfl⟩ := hinf
-          have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
-            cases hst : m.stack with
-            | nil => exact absurd hst hf.1
-            | cons fid fids =>
-              rw [hst] at hsc
-              have := hsc.2.2.2.1 c hsome
-              rw [show m.currentFrame = m.frames.getD fid default by
-                simp [Machine.currentFrame, hst]]
-              exact this
           simp only [evalExpr]
-          rcases htab _ mname _ (sigOf_declFor hsg) with hbi |
-            ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
-          · obtain ⟨w, hw, hstep⟩ :=
-              entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
-                (site := .vcall) hbi hself trivial
-            rw [hstep]
-            exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hw hk
-          · have hru := hresu _ (valueTy_tyClass hself)
-            have hown : (m.heap.classPayload? mdu.owner).isSome := by
-              obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
-            rw [user_dispatch (m := m) (site := .vcall) hru hself]
-            have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-            obtain ⟨hdp, hdfu, Γb, hbodyu⟩ := hconfu
-            refine ⟨hhook, hsat, hstr, hcls,
-              BottomObj_cons hf.1 (BottomObj_push hlt hbot), _,
-              { cls := cu, selfCls := some cu }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
-            · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
-                FramesOk.push hfs⟩
-              rw [getD_push_lt_self]
-              exact ⟨rfl, hown, by simp [envGet?]⟩
-            · refine ⟨?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
-              · rw [getD_push_lt_self]; exact hown
-              · rw [getD_push_lt_self]; exact hnmu
-              · rw [getD_push_lt_self]; exact fun _ => rfl
-              -- The callee's `self` **is** the receiver, and the receiver's type is
-              -- what the row was read at — so this clause is the send's own
-              -- `ValueTy` carried one frame in, not a new obligation.
-              · intro sc hsc'
-                simp only [Option.some.injEq] at hsc'
-                subst hsc'
-                rw [getD_push_lt_self]
-                show ValueTy m.heap m.currentFrame.self (.cls cu)
-                -- `tyClassNames (.cls c) = [cu]` pins the two names equal, which
-                -- is the clause `UserEntryOk` carries for exactly this step: the
-                -- body was checked in the class the row is keyed on, and the
-                -- receiver is an instance of that class.
-                have hcu : c = cu := by simpa using htys
-                exact hcu ▸ hself
-            · exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk⟩
+          exact inv_implicit_send0 hfs htab hsc hhook hsat hstr hcls hbot hf.1
+            hsome hsg hk
         · exact absurd hinf (by simp)
       · exact absurd hinf (by simp)
     case var k x =>
@@ -470,7 +495,30 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               | exact ClassOk_defineMethod hcls
     case send recv mname args blk =>
       cases recv with
-      | none => exact absurd hinf (by simp [infer])
+      -- **The written receiverless call** (L170). `evalExpr` answers
+      -- `startArgs m self .implicit mname [] args` with no continuation pushed, so
+      -- for `args = []` this is `finishSend` and `inv_implicit_send0` — L164's
+      -- `vcall` argument, quantified over the site — closes it at `.implicit`.
+      -- Every other receiverless shape is still refused by the rule.
+      | none =>
+        cases args with
+        | cons _ _ => exact absurd hinf (by simp [infer])
+        | nil =>
+          cases blk with
+          | some b => exact absurd hinf (by simp [infer])
+          | none =>
+            simp only [infer] at hinf
+            split at hinf
+            · next c hsome =>
+              split at hinf
+              · next τret hsg =>
+                simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+                obtain ⟨rfl, rfl, rfl⟩ := hinf
+                simp only [evalExpr]
+                exact inv_implicit_send0 hfs htab hsc hhook hsat hstr hcls hbot hf.1
+                  hsome hsg hk
+              · exact absurd hinf (by simp)
+            · exact absurd hinf (by simp)
       | some r =>
         cases args with
         -- **The zero-argument send** (L152). Same `evalExpr` step as the unary one —

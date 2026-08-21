@@ -374,6 +374,26 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ₁, D₁)
       | _ => none
     | none => none
+  -- **A written receiverless call, zero arguments** (L170): `foo()` where `.vcall`
+  -- is `foo`. The *typing* is the `vcall` rule verbatim — same receiver (the
+  -- frame's `self`), same table read, same one step — and the *machine* difference
+  -- is one `SendSite` constructor: `evalExpr` answers both with
+  -- `startArgs m self site mname [] []`, which is `finishSend`, and `visError?`
+  -- is `none` for every site but `.explicit`. So this arm adds **no `KontOk`
+  -- constructor**; `inv_implicit_send0` is L164's consecution case quantified over
+  -- the site and this is its second caller.
+  --
+  -- Kept as its own arm rather than folded into `.vcall`'s because the two are
+  -- different `Expr` constructors and `step_ok`'s case analysis splits on the
+  -- constructor: folding them would mean an `infer` arm no case of the
+  -- preservation proof is indexed by.
+  | .send none mname [] none =>
+    match ctx.selfCls with
+    | some c =>
+      match sigOf D (.cls c) mname with
+      | some ([], τret) => some (τret, Γ, D)
+      | _ => none
+    | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
   -- next step); until then there is no environment to check the body in.
   --

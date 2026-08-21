@@ -6744,3 +6744,92 @@ It fails identically on the pre-commit tree, and it is the D10-era disagreement 
 on purpose (`Fragment.lean` admits the metaprogramming; the *checker* is what refuses it) encoded as a
 pre-D10 assertion. **Left failing and reported rather than weakened** — retargeting a safety guard at
 `theorem_scope` is a decision, not a cleanup.
+
+## L170 — the written receiverless call: one `SendSite` apart from `vcall`, and 11 slice bodies
+
+`--assn`'s third ratchet ranked **`send-0-args` at 11 of the slice's 112 method bodies**, second only
+to `const` (16) — and every one of those 11 is `foo()`, a receiverless call written with parentheses
+where L164's `vcall` rule covers the bare `foo`. This commit is that arm, and the reason it is worth
+recording is how *little* it cost against how the census ranked it.
+
+### The finding: the two constructs differ by one constructor of `SendSite`
+
+`evalExpr` sends both to the same place:
+
+```lean
+| .send none mname args pblk => startArgs m m.currentFrame.self .implicit mname [] args pblk
+| .vcall mname               => startArgs m m.currentFrame.self .vcall    mname [] []   .none
+```
+
+and `startArgs … [] []` **is** `finishSend`, so with no arguments both dispatch *in this step* —
+no continuation is pushed, and there is no `argsK` and no `recvK` in either chain. The only
+difference the machine can see is the site, and `visError?` (`Interp/Dispatch.lean:325`) matches
+`.explicit` alone; `missNoMethod` distinguishes `.vcall` for the *message*, which is a fact about a
+miss and a miss is not reachable under the invariant. So:
+
+* **no new `KontOk` constructor**, hence no `heap_congr'` case;
+* **no new consecution argument** — L164's `vcall` case was already the whole of it, and both
+  dispatch lemmas (`entry_dispatch`, `user_dispatch`) were generalized over `site` in that commit.
+
+The commit therefore starts by *lifting* L164's case out of `step_ok` verbatim as
+`inv_implicit_send0`, quantified over the site, and the `vcall` case becomes a five-line call to it.
+The new `.send none mname [] none` case is the second caller. **That refactor landed green before the
+rule existed**, which is the cheap way to find out whether a rung is really the same argument: if the
+lift does not typecheck at an abstract site, the two constructs were not the same dispatch after all.
+
+### What it cost, itemized
+
+| | |
+|---|---|
+| `Types/Core.lean` | one `infer` arm, the `vcall` arm's body verbatim |
+| `Types/OpenSelf.lean` | one `inferOpen` arm, the `vcall` arm's body verbatim |
+| `Proof/Static/Konts.lean` | **nothing** |
+| `Proof/Static/Preservation.lean` | the lift, plus a case that calls it |
+| `Proof/Static/Mono.lean` | one case (`case25`), the `vcall` case verbatim — **plus a renumbering** |
+| `Proof/Static/OpenSelf.lean` | **nothing** — `inferOpen_mono` and `inferOpen_factors` are uniform `| _ =>` tactics and the new arm is discharged by the `vcall` alternative already in the soup |
+
+**The renumbering is the only tax, and it is worth naming as a recurring one.** `infer.induct`'s
+cases are positional, so an arm inserted mid-match shifts every explicit `caseNN` after it.
+`HANDOFF.md` records a recovery procedure (strip the cases, restore a `trace` arm, read the list off
+the trace); there is a cheaper one, used here and recommended:
+
+> **`#check @RubyCore.Types.infer.induct` prints the whole case list with binders and arities.** Read
+> the shift off it — count the alternatives up to the new arm — instead of re-deriving it from
+> compiler errors. This arm generates **three** cases (`selfCls = some c` × signature present /
+> absent, and `selfCls = none`), so every explicit case number ≥ 25 moved by +3.
+
+### The census re-ranked again, exactly as L168 said it would
+
+`send-0-args` went to **0** and nothing else went down:
+
+| | before | after |
+|---|---|---|
+| out of fragment | 91 | **90** |
+| accepted (zero-parameter) | 16 | **17** |
+| `return` | 8 | **16** |
+| `send-2-args` | 8 | **10** |
+
+**Eleven bodies were behind the refusal and one came out.** That is the third measurement of L168's
+lesson and the first one where it was *predicted* rather than discovered: a census classifies at the
+outermost blocking node, so lifting a blocker moves the bodies whose *next* blocker is already inside
+the fragment and re-ranks the rest upward. Eleven bodies named `send-0-args` because it was the first
+thing in them the checker met; ten of the eleven have a `return` or a two-argument send behind it.
+
+Read the accept for what it is: `version.rb` gained one certified-modulo-precondition body, so the
+false-negative metric (`PLAN.md` §1 as amended by D12) is **17 + 3 of 112**, and `check` still
+answers `reject`/`uncertified` on all eight files — the two walls of `slice-verdict.md` §4 are
+untouched by this and by anything else in §3.
+
+### Checks
+
+`check-proofs.sh` green, **27** theorems (two new lines: `inv_implicit_send0`,
+`egImplicitCall_safe`), `propext`/`Classical.choice`/`Quot.sound` only. `--check` over the 1,227
+cached bootstraptest ASTs: **38 / 1,187 / 0**, unchanged. The transition argument rather than the
+totals, because this rung is *not* inert in the checker by design: the new arm intercepts a shape that
+previously fell through to `| _ => none`, so it is **additive** — no program can lose an `accept` —
+and an unchanged total of 38 therefore means **zero** transitions in either direction. `--assn` smoke
+1,225 clean / 2 decode gates. `fragment-gap.py --self-test` all agree, with two new cases: `v()`
+accepted inside a reopened `String`, and `foo(1)` still `unknown` (an argument pushes an `argsK` at
+the `.implicit` site, which `KontOk.argsK` — stated at `.explicit` — does not describe; that is the
+next rung, not this one). `shape_send`'s blanket *implicit-self send* refusal is split by arity so the
+first ratchet stops reporting the 22 admitted nodes as blocking.
