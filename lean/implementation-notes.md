@@ -6833,3 +6833,71 @@ accepted inside a reopened `String`, and `foo(1)` still `unknown` (an argument p
 the `.implicit` site, which `KontOk.argsK` — stated at `.explicit` — does not describe; that is the
 next rung, not this one). `shape_send`'s blanket *implicit-self send* refusal is split by arity so the
 first ratchet stops reporting the 22 admitted nodes as blocking.
+
+## L171 — the unary receiverless call, and `KontOk.argsK` gains a site *parameter*
+
+`send-1-args` was 4 of the slice's 112 bodies after L170. This is that arm, and its content is one
+word in an existing constructor.
+
+### The finding: the continuation is the same one, at a different site
+
+The explicit unary send reaches `.argsK recv .explicit mname [] []` **one step late** — `recvK`
+evaluates the receiver first and `applyKont` pushes `argsK` when the receiver's value arrives. The
+receiverless one pushes the *same* kont **immediately**, because the receiver is already a value (the
+frame's `self`), at site `.implicit`. Nothing between the push and the dispatch reads the site:
+`visError?` matches `.explicit` alone and `entry_dispatch` has been site-polymorphic since L164 — and
+`step_ok`'s `argsK` case never mentions it.
+
+So `KontOk.argsK` gained `{site : SendSite}` and the pattern became `.argsK recv site mname [] []`.
+That is the whole `KontOk` change: **no new constructor, no new `heap_congr'` case, and the `argsK`
+consecution case is untouched.** The only edit it forced was one more `_` in `step_ok`'s `@argsK`
+binder list.
+
+### What the rule's shape had to be, and why it is *not* the explicit rule's
+
+There is **no `recvK` in this chain**, and that decides two things the explicit rule decides
+differently:
+
+* the argument is evaluated in *this* step, so the rule's answer is the environment **and table the
+  argument leaves** — which is exactly what `CtlOk` then hands `KontOk.argsK`, whose Γ and `D` are
+  one index each. No stability side condition is needed, and an earlier draft that added `D₁ = D`
+  was withdrawn once the indices were lined up rather than guessed at;
+* the signature is read at `D₁`, **after** the argument — L160's rule, and here it is forced rather
+  than chosen, because `argsK`'s premise has to be readable at the table the kont is indexed by.
+
+### And it accepts no new *programs*, on purpose
+
+The receiver is `self`, so the row must be declared on the **definee's class**. `baseDecls` declares
+only `Integer` rows, `reopenableClasses` is `["String"]`, and `infer`'s `def` arm requires
+`params.isEmpty` — so **nothing in the fragment can supply a unary row on a reopenable class.** The
+arm is inert in `check` for the L157 reason: it is a capability with no inhabitant yet, and the way to
+see that is to ask what would have to *declare* the row rather than what would call it.
+
+The capability is therefore asserted against `infer` directly, at a table with the row added by hand
+(`Proof/StaticSoundness.lean`), together with the fact that two arguments are still `none`. `--check`
+over the 1,227 cached ASTs is **byte-identical**, diffed rather than argued.
+
+### Where it does move: `inferOpen`, which needs no row at all
+
+The open-self front end records the requirement on `ctx.self` instead of reading the table, so the
+slice's four `send-1-args` bodies move immediately. `Proof/Static/OpenSelf.lean` needed **one new
+alternative** in the factoring tactic — the zero-argument-on-`var α` line with `← hself` in front,
+because the receiver is `ctx.self` and the nominal rule reads `sigOf D (.cls ctx.cls)`.
+
+| | before | after |
+|---|---|---|
+| out of fragment | 90 | **89** |
+| refused with a named atom | 2 | **3** |
+| `return` | 16 | **19** |
+| `vulns/semver.rb` out of fragment | 1 | **0** |
+
+`semver.rb`'s only `def` is now out of the *fragment* question entirely and into the *row* question
+(`α0 ~ parse : (α2) → _`) — which is the first slice file with no out-of-fragment body, and the first
+time the remaining obstruction on a whole file is a declaration rather than a rule.
+
+### Checks
+
+`check-proofs.sh` green, 27 theorems, axiom-clean. `--check` byte-identical against L170's capture.
+`--assn` smoke 1,225 clean / 2 decode gates. `fragment-gap.py --self-test` all agree, two new cases
+(`foo(1)` unknown for want of a row, `foo(1, 2)` unknown for want of a rule); `shape_send`'s
+receiverless arm now admits arities 0 and 1.

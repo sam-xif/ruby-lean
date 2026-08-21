@@ -319,13 +319,41 @@ theorem egImplicitCall_safe :
       reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
-/-- **With an argument it is still refused**, and that is a `KontOk` arm rather
-    than a widening of this one: `startArgs` pushes an `argsK` at the `.implicit`
-    site, which `KontOk.argsK` — stated at `.explicit` — does not describe. -/
+/-- **With an argument the rule exists** (L171) **and no program can reach it.**
+    The receiver is `self`, so the row has to be declared on the definee's class;
+    `baseDecls` declares only `Integer` rows and `infer`'s `def` arm requires
+    `params.isEmpty`, so nothing in the fragment can *supply* a unary row on
+    `String`. The arm is therefore inert in `check` — the L157 situation — and the
+    capability is asserted against `infer` directly, below. -/
 example : check (.class' "String" none (.def' "g" [] (.send none "value" [.int 1] none)))
     = .unknown := by
   simp [check, infer, illTyped, declsOf, declaresName, baseDecls, reopenableClasses,
-    defFree, defFreeAll, isSelf]
+    defFree, defFreeAll, isSelf, sigOf, declFor, declOf?, declsFor, tyClassNames,
+    groundClassNames]
+
+/-- **The rule reads the row when there is one.** A `String#plus : (Integer) →
+    Integer` row put in the table by hand — which is what F1c's redefinition rule
+    or a `def` with parameters will eventually put there — and the receiverless
+    `plus(1)` types at `Integer`. This is the whole of L171's capability, asserted
+    here because the corpus cannot witness it. -/
+example :
+    infer (addRow baseDecls "String" "plus" { params := [Ty.int], ret := Ty.int }) []
+        (.send none "plus" [.int 1] none) false
+        { cls := "String", selfCls := some "String" }
+      = some (Ty.int, [],
+          addRow baseDecls "String" "plus" { params := [Ty.int], ret := Ty.int }) := by
+  simp [infer, addRow, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames,
+    groundClassNames]
+
+/-- …and a *two*-argument receiverless send is still `unknown`, at the same row.
+    That is `ValuesTy` over a list of argument continuations, which is a different
+    rung (`slice-verdict.md` §3.1). -/
+example :
+    infer (addRow baseDecls "String" "plus" { params := [Ty.int], ret := Ty.int }) []
+        (.send none "plus" [.int 1, .int 2] none) false
+        { cls := "String", selfCls := some "String" }
+      = none := by
+  simp [infer]
 
 /-- **`self` in a method body**, which the same clause pays for and which is
     `unknown` in a class body — where `self` is the class object, and `plainRecv`

@@ -394,6 +394,31 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ, D)
       | _ => none
     | none => none
+  -- **A written receiverless call with one argument** (L171). Unlike the
+  -- zero-argument case this one *does* push a continuation — `startArgs` pushes
+  -- `.argsK self .implicit mname [] []` and evaluates the argument — but it pushes
+  -- the **same** continuation the explicit unary send's `recvK` pushes one step
+  -- later, at a different site. So the rung is a `SendSite` parameter on
+  -- `KontOk.argsK` and nothing else: no new constructor, and the `argsK`
+  -- consecution case never mentions the site (`entry_dispatch` has been
+  -- site-polymorphic since L164).
+  --
+  -- **There is no `recvK` in this chain**, and that is what makes the rule's shape
+  -- differ from the explicit one: the receiver is already a value, so the argument
+  -- is evaluated in *this* step and the answer's environment and table are the
+  -- ones the argument leaves. `KontOk.argsK` is indexed by those, which is exactly
+  -- what `CtlOk` hands it — so the signature is read at `D₁`, after the argument,
+  -- for L160's reason.
+  | .send none mname [arg] none =>
+    match ctx.selfCls with
+    | some c =>
+      match infer D Γ arg top ctx with
+      | some (τa, Γ₁, D₁) =>
+        match sigOf D₁ (.cls c) mname with
+        | some ([τp], τret) => if τa = τp then some (τret, Γ₁, D₁) else none
+        | _ => none
+      | none => none
+    | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
   -- next step); until then there is no environment to check the body in.
   --

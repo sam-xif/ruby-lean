@@ -129,12 +129,19 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γ) :: Γs) τ (.recvK mname [] .none .explicit :: k)
   /-- The in-flight value is the **argument**; the receiver is already a value
       carried by the kont, so its type is pinned by `ValueTy` rather than by
-      `infer`. -/
-  | argsK {D h c Γ Γs τ mname recv τr τret k} :
+      `infer`.
+
+      **The site is a parameter** (L171). `startArgs` stores whatever site it was
+      called at, and nothing between here and the dispatch reads it: `visError?`
+      matches `.explicit` alone and both dispatch lemmas have been quantified over
+      the site since L164. So the *written receiverless* unary send — which pushes
+      this kont at `.implicit`, with the frame's `self` as the stored receiver —
+      is the same constructor rather than a second one. -/
+  | argsK {D h c Γ Γs τ mname recv τr τret k} {site : SendSite} :
       ValueTy h recv τr →
       sigOf D τr mname = some ([τ], τret) →
       KontOk D h ((c, Γ) :: Γs) τret k →
-      KontOk D h ((c, Γ) :: Γs) τ (.argsK recv .explicit mname [] [] .none :: k)
+      KontOk D h ((c, Γ) :: Γs) τ (.argsK recv site mname [] [] .none :: k)
   /-- **Method return.** The in-flight value is the body's value; popping the
       activation (`Interp.lean:2206`) discards the callee's environment and
       resumes the caller's.
@@ -394,6 +401,33 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {mname : String}
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+
+/-- Inversion for the **unary written receiverless call** (L171). No `isSelf`
+    guard and no receiver run: the receiver is the frame's `self`, supplied by the
+    context, so the rule's three tests are the argument, the signature at the table
+    the argument leaves, and the parameter match. -/
+theorem infer_implicit_send1_inv {D D' : Decls} {Γ : Env} {arg : Expr}
+    {mname : String} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
+    (h : infer D Γ (.send none mname [arg] none) top ctx = some (τ, Γ', D')) :
+    ∃ c τp, ctx.selfCls = some c ∧
+      infer D Γ arg top ctx = some (τp, Γ', D') ∧
+      sigOf D' (.cls c) mname = some ([τp], τ) := by
+  simp only [infer] at h
+  split at h
+  · next c hsome =>
+    split at h
+    · next τa Γ₁ D₁ ha =>
+      split at h
+      · next τp τret hsg =>
+        split at h
+        · next hτ =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨c, τp, hsome, hτ ▸ ha, hsg⟩
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
 
 /-! ### 2.2 `FramesOk` survives the fragment's frame-preserving updates
 

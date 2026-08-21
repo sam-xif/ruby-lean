@@ -438,6 +438,15 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
            dsimp only
            rw [requireRow_sat (by assumption) (by assumption) hsat]
            simp)
+        -- **one subexpression, then the row requirement on `self`** (L171): the
+        -- unary written receiverless call, `foo(x)`. Same shape as the line above
+        -- with `← hself` in front, because the receiver is `ctx.self` and the
+        -- nominal rule reads `sigOf D (.cls ctx.cls)`.
+        | (rename_i ih1
+           rw [ih1 (storeLe_subReq (by assumption) (by assumption))]
+           dsimp only
+           rw [← hself, requireRow_sat (by assumption) (by assumption) hsat]
+           simp)
         -- receiver, argument, then the row requirement (unary send on `var α`)
         | (rename_i ih2 ih1
            rw [ih2 (storeLe_sub (by assumption)

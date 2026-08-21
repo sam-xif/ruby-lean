@@ -502,7 +502,40 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- Every other receiverless shape is still refused by the rule.
       | none =>
         cases args with
-        | cons _ _ => exact absurd hinf (by simp [infer])
+        -- **The unary written receiverless call** (L171). `startArgs` pushes
+        -- `.argsK self .implicit mname [] []` and evaluates the argument — the same
+        -- continuation the explicit unary send reaches one step later, at a
+        -- different site, which is why `KontOk.argsK` gained a site *parameter*
+        -- rather than a sibling constructor. There is no `recvK` in this chain: the
+        -- receiver is already a value, so the argument's environment and table are
+        -- the rule's answer and `CtlOk` hands `argsK` exactly the indices it wants.
+        | cons arg extra =>
+          cases extra with
+          | cons _ _ => exact absurd hinf (by simp [infer])
+          | nil =>
+            cases blk with
+            | some b => exact absurd hinf (by simp [infer])
+            | none =>
+              obtain ⟨c, τp, hsome, harg, hsg⟩ := infer_implicit_send1_inv hinf
+              have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
+                cases hst : m.stack with
+                | nil => exact absurd hst hf.1
+                | cons fid fids =>
+                  rw [hst] at hsc
+                  have := hsc.2.2.2.1 c hsome
+                  rw [show m.currentFrame = m.frames.getD fid default by
+                    simp [Machine.currentFrame, hst]]
+                  exact this
+              have hsp : ∀ e, arg ≠ .splat e := by
+                rintro e rfl; exact absurd harg (by simp [infer])
+              have hkw : ∀ es, arg ≠ .kwargs es := by
+                rintro es rfl; exact absurd harg (by simp [infer])
+              have hfw : arg ≠ .fwd := by
+                rintro rfl; exact absurd harg (by simp [infer])
+              simp only [evalExpr]
+              rw [startArgs_plain hsp hkw hfw]
+              exact inv_push hfs htab hsc hhook hsat hstr hcls hbot harg
+                (KontOk.argsK hself hsg hk)
         | nil =>
           cases blk with
           | some b => exact absurd hinf (by simp [infer])
@@ -730,7 +763,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
           exact ⟨τret, Γb, _, hbodyu, KontOk.frameK hk'⟩
-    | @argsK _ _ _ _ _ _ mname recv τr τret k hrv hsg hk' =>
+    | @argsK _ _ _ _ _ _ mname recv τr τret k _ hrv hsg hk' =>
       -- **F1a: one dispatch step for every declared method**, where P0 had a
       -- three-way `rcases` over the tabulated names and a rewrite per name. The
       -- invariant supplies the entry, `entry_dispatch` supplies the step, and the

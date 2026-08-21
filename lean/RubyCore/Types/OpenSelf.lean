@@ -144,6 +144,16 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (s : OState) : ORe
     match requireRow s.st ctx.self mname [] s.fresh with
     | some (τ, st') => .ok τ Γ { st := st', fresh := s.fresh + 1 }
     | none => .missing (.var ctx.self) mname []
+  -- **The unary written receiverless call** (L171). One subexpression, then the
+  -- requirement on `ctx.self` — the `vcall` arm's shape with an argument, and the
+  -- receiver is still the variable that stands for `self`.
+  | .send none mname [arg] none =>
+    match inferOpen D Γ arg ctx s with
+    | .ok τa Γ₁ s₁ =>
+      match requireRow s₁.st ctx.self mname [τa] s₁.fresh with
+      | some (τ, st') => .ok τ Γ₁ { st := st', fresh := s₁.fresh + 1 }
+      | none => .missing (.var ctx.self) mname [τa]
+    | r => r
   | .vasgn .lvar x rhs =>
     match inferOpen D Γ rhs ctx s with
     | .ok τ Γ₁ s₁ => .ok τ (aenvSet Γ₁ x τ) s₁
