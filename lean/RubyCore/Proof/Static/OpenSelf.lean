@@ -702,7 +702,7 @@ def Factors (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCt
     (Γ : AEnv) (e : Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       infer D (substEnv θ Γ) e false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -712,7 +712,7 @@ def FactorsIf (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : O
     (Γ : AEnv) (t : Expr) (els : Option Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferIf D (substEnv θ Γ) t els false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -720,7 +720,7 @@ def FactorsSeq (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : 
     (Γ : AEnv) (es : List Expr) : OResult → Prop
   | .ok τ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferSeq D (substEnv θ Γ) es false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
         = some (τ.subst θ, substEnv θ Γ', D)
   | _ => True
 
@@ -731,7 +731,7 @@ def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx :
     (Γ : AEnv) (es : List Expr) : OArgs → Prop
   | .ok τs Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
       inferArgs D (substEnv θ Γ) es false
-          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF }
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth }
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
@@ -1056,16 +1056,18 @@ theorem rets_of_all {rets : List ATy} {τ : ATy} {θ : TyVar → Ty}
     type equals the body's`), so the two halves say the same thing and the
     `return`-free case is unaffected: with no `return` in the body the nominal
     `infer` never reads `ctx.ret`. -/
-theorem inferBody_sound {D : Decls} {c : String} {body : Expr} {τ : ATy} {Γ' : AEnv}
+theorem inferBody_sound {D : Decls} {c mname : String} {body : Expr} {τ : ATy} {Γ' : AEnv}
     {s' : OState} {θ : TyVar → Ty}
-    (hb : inferBody D c body = .ok τ Γ' s')
+    (hb : inferBody D c mname body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
-    infer D [] body false { cls := c, selfCls := some c, ret := some (τ.subst θ) }
+    infer D [] body false
+      { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname }
       = some (τ.subst θ, substEnv θ Γ', D) := by
-  have hf := inferOpen_factors D { cls := c, self := 0 } θ s'.st (τ.subst θ) hsat hself
-    [] body { st := {}, fresh := 1 }
+  have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname } θ s'.st
+    (τ.subst θ) hsat hself [] body { st := {}, fresh := 1 }
   unfold inferBody at hb
-  cases hop : inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 } with
+  cases hop : inferOpen D [] body { cls := c, self := 0, meth := some mname }
+      { st := {}, fresh := 1 } with
   | ok τ₀ Γ₀ s₀ =>
     rw [hop] at hb
     dsimp only at hb
@@ -1092,16 +1094,17 @@ theorem inferBody_sound {D : Decls} {c : String} {body : Expr} {τ : ATy} {Γ' :
     under their own constructor and their own census column: the body's typing is
     settled, its declaration is not, and merging the two counts would read as an
     accept-rate `check` does not have. -/
-theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : Expr}
+theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {body : Expr}
     {Γb Γ' : AEnv} {τ : ATy} {s' : OState} {θ : TyVar → Ty}
-    (hb : inferBodyWith D c ps body = some (Γb, .ok τ Γ' s'))
+    (hb : inferBodyWith D c mname ps body = some (Γb, .ok τ Γ' s'))
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
     infer D (substEnv θ Γb) body false
-        { cls := c, selfCls := some c, ret := some (τ.subst θ) }
+        { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname }
       = some (τ.subst θ, substEnv θ Γ', D) := by
   unfold inferBodyWith at hb
   dsimp only at hb
-  cases hop : openParams D { cls := c, self := 0 } ps [] { st := {}, fresh := 1 } with
+  cases hop : openParams D { cls := c, self := 0, meth := some mname } ps []
+      { st := {}, fresh := 1 } with
   | none => rw [hop] at hb; simp at hb
   | some pf =>
     obtain ⟨Γ₀, s₀⟩ := pf
@@ -1109,9 +1112,9 @@ theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : E
     simp only [Option.some.injEq, Prod.mk.injEq] at hb
     obtain ⟨hΓ, hrun⟩ := hb
     subst hΓ
-    have hf := inferOpen_factors D { cls := c, self := 0 } θ s'.st (τ.subst θ) hsat hself
-      Γ₀ body s₀
-    cases hr : inferOpen D Γ₀ body { cls := c, self := 0 } s₀ with
+    have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname } θ s'.st
+      (τ.subst θ) hsat hself Γ₀ body s₀
+    cases hr : inferOpen D Γ₀ body { cls := c, self := 0, meth := some mname } s₀ with
     | ok τ₀ Γ₁ s₁ =>
       rw [hr] at hrun
       dsimp only at hrun
@@ -1126,12 +1129,12 @@ theorem inferBodyWith_sound {D : Decls} {c : String} {ps : List Param} {body : E
     | outOfFragment _ => rw [hr] at hrun; simp at hrun
 
 /-- **The invariant's user-method clause, discharged by open-self inference.** -/
-theorem userConforms_of_inferBody {D : Decls} {c : String} {md : MethodDef}
+theorem userConforms_of_inferBody {D : Decls} {c mname : String} {md : MethodDef}
     {d : MethodDecl} {τ : ATy} {Γ' : AEnv} {s' : OState} {θ : TyVar → Ty}
     (hp : d.params = []) (hdf : defFree md.body = true)
-    (hb : inferBody D c md.body = .ok τ Γ' s')
+    (hb : inferBody D c mname md.body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c)
-    (hret : τ.subst θ = d.ret) : UserConforms D c md d :=
+    (hret : τ.subst θ = d.ret) : UserConforms D c mname md d :=
   -- L201: `r = some d.ret` — the open front end now checks the body *against its own
   -- answer type*, so the row it discharges is one whose `return`s all agree with the
   -- declared return, and the clause's side condition is `hret` itself.
@@ -1162,7 +1165,7 @@ def egRowStore : Store :=
              (0, { entries := [("value", { params := [], ret := .var 1 })] })] }
 
 theorem egRow_open :
-    inferBody egRowD "String" egRowBody = .ok (.var 2) [] { st := egRowStore, fresh := 3 } := by
+    inferBody egRowD "String" "value" egRowBody = .ok (.var 2) [] { st := egRowStore, fresh := 3 } := by
   simp [inferBody, egRowBody, egRowStore, inferOpen, isSelf, requireRow,
     Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty]
 
@@ -1181,7 +1184,7 @@ theorem egRow_sat : SatStore egRowD egTheta egRowStore :=
     from the factoring theorem, not by running `infer`. -/
 theorem egRow_nominal :
     infer egRowD [] egRowBody false
-        { cls := "String", selfCls := some "String", ret := some .bool }
+        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "value" }
       = some (.bool, [], egRowD) := by
   have := inferBody_sound egRow_open egRow_sat (by rfl)
   simpa [substEnv, egTheta] using this
@@ -1204,7 +1207,7 @@ def egParamStore : Store :=
   { rows := [(1, { entries := [("zero?", { params := [], ret := .var 2 })] })] }
 
 theorem egParam_open :
-    inferBodyWith baseDecls "String" [.req "other"] egParamBody
+    inferBodyWith baseDecls "String" "cmp" [.req "other"] egParamBody
       = some ([("other", .var 1)], .ok (.var 2) [("other", .var 1)]
           { st := egParamStore, fresh := 3 }) := by
   simp [inferBodyWith, openParams, egParamBody, egParamStore, inferOpen, isSelf,
@@ -1227,7 +1230,7 @@ theorem egParam_sat : SatStore baseDecls egParamTheta egParamStore :=
     accept of the enclosing `def`, whose rule still requires `params.isEmpty`. -/
 theorem egParam_nominal :
     infer baseDecls [("other", Ty.int)] egParamBody false
-        { cls := "String", selfCls := some "String", ret := some .bool }
+        { cls := "String", selfCls := some "String", ret := some .bool, meth := some "cmp" }
       = some (.bool, [("other", Ty.int)], baseDecls) := by
   have := inferBodyWith_sound egParam_open egParam_sat (by rfl)
   simpa [substEnv, egParamTheta] using this

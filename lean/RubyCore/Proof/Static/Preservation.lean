@@ -92,7 +92,8 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       (by simp [frameKLabels, hks, dropLast_cons_ne hne]), _,
       -- L198: the callee's context carries the `ret` its body was checked at, which
       -- is what `KontOk.frameK`'s agreement premise reads.
-      { cls := cu, selfCls := some cu, ret := r }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+      { cls := cu, selfCls := some cu, ret := r, meth := some mname }, [],
+      (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
     · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
         FramesOk.push hfs⟩
       rw [getD_push_lt_self]
@@ -116,20 +117,25 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
         -- here.** `userFrame` sets `defmod := md.owner`, and the row's resolution says
         -- that owner is on the receiver's chain — which is the fact `doSuper`'s
         -- `dropWhile` needs and the one thing the walk cannot recover for itself.
-        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch⟩ := hru
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch, _⟩ := hru
         exact ⟨hcu ▸ hself, hch⟩
       -- **L189: the callee's lexical scope**, which `ResolvesUser` carries — the
       -- ninth clause it grew for exactly this push.
       · rw [getD_push_lt_self]
-        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _⟩ := hru
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _, _⟩ := hru
         exact hcr
       -- L198/L200: `userFrame` builds a `.method` frame, and the caller's context is
       -- right there on the list — so the callee's context may declare a return type.
       · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
-      -- L207: the callee's context names no method yet (`meth := none`), so the clause
-      -- is vacuous. Supplying `some mname` here is the `super` rule's first step, and
-      -- what it will cost is written in `HANDOFF.md` §The next commit.
-      · exact fun mn h => absurd h (by simp)
+      -- **L210: the callee's context names the method**, and `userFrame` builds the
+      -- activation with `meth := md.superName.getD mname` — so the clause is
+      -- `ResolvesUser`'s twelfth, `md.superName = none`, and nothing else.
+      · intro mn hmn
+        simp only [Option.some.injEq] at hmn
+        subst hmn
+        rw [getD_push_lt_self]
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
+        simp [userFrame, hsn]
     · exact ⟨τret, τw, Γb, _, hbu, hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) hk⟩
 
@@ -731,10 +737,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hdecls : ∀ (md : MethodDef), md.owner = (curFrame m).defmod →
             md.builtin = none → md.undefined = false → md.visibility = .pub →
             md.params = [] → md.declared = [] → md.capturedFrame = none →
-            md.body = body → Boot.objectId ∈ md.cref →
+            md.body = body → Boot.objectId ∈ md.cref → md.superName = none →
             DeclsOk (addRow D ctx.cls name { params := [], ret := τb })
               (defineMethod m.heap (curFrame m).defmod name md) := by
-          intro md hown hb hu hvs hpar hdec hcap hbd hcref
+          intro md hown hb hu hvs hpar hdec hcap hbd hcref hsn
           refine DeclsOk_addRow htab hfresh ?_ ?_
           · -- **The row is not at a ground type**, and since L189 that is a *rule*
             -- guard rather than a consequence of `reopenableClasses` membership:
@@ -767,7 +773,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               -- clause, already destructured as `hrest`), and `md.owner` *is* the
               -- definee at the step that installs it — so `super`'s chain clause is
               -- free here and needs no new fact about `lookup`.
-              by rw [hown, hrest]; exact List.mem_cons_self ..⟩
+              by rw [hown, hrest]; exact List.mem_cons_self ..,
+              -- L210: the literal `evalExpr` installs leaves `superName` at its default
+              -- — only `alias` sets it — so the activation's `meth` is the plain name,
+              -- which is the one the body's context was checked at.
+              hsn⟩
             · show lookup.go _ name (ancestors _ _) = _
               rw [hrest]
               exact lookup_go_defineMethod_self m.heap _ name md hdo rest
@@ -792,7 +802,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               -- is not the outermost — which `top = false` is exactly.
               | exact hdecls _ rfl rfl rfl
                   (by simpa [defVisOfDef, hinit] using hvis) rfl rfl rfl rfl
-                  (by simpa [hdm] using hcrefCur)
+                  (by simpa [hdm] using hcrefCur) rfl
               | exact hlkNH _
               | exact Saturated_defineMethod hsat _ _ _
               | exact LitClsOk_defineMethod hstr
@@ -1059,7 +1069,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rcases valueTy_ref_inv hvc with ⟨-, hs⟩ | ⟨-, hs⟩
         · exact absurd hs (by simp [subTy])
         · simpa using (subTy_atomic (τ := Ty.clsOf cname) (by simp) (by simp)).mp hs
-      obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2 cname n σ hsco o hpay hcn
+      obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2.1 cname n σ hsco o hpay hcn
       have hcont : Interp.cpathContainer { m with kont := k } (.ref o) = .ok o := by
         unfold Interp.cpathContainer
         simp [hpay]
@@ -1367,7 +1377,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne hf.1]; simpa [frameKLabels] using hks), _,
-          { cls := cu, selfCls := some cu, ret := r }, [], (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
+          { cls := cu, selfCls := some cu, ret := r, meth := some mname }, [],
+      (ctx, Γ) :: Γs, htab, ?_, ?_, ?_⟩
         · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
             FramesOk.push hfs⟩
           rw [getD_push_lt_self]
@@ -1392,16 +1403,21 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [getD_push_lt_self]
             -- L209: as at the self-send push — `userFrame`'s definee is `md.owner`
             -- and the row's resolution puts it on the receiver's chain.
-            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch⟩ := hru
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch, _⟩ := hru
             exact ⟨hv, hch⟩
           -- L189: `ResolvesUser`'s tenth clause, spent here.
           · rw [getD_push_lt_self]
-            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _⟩ := hru
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _, _⟩ := hru
             exact hcr
           -- L198/L200: `userFrame`'s kind, and the caller is on the list.
           · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
-          -- L207: `meth := none` on the callee's context, so vacuous.
-          · exact fun mn h => absurd h (by simp)
+          -- L210: as at the self-send push — `ResolvesUser`'s `superName` clause.
+          · intro mn hmn
+            simp only [Option.some.injEq] at hmn
+            subst hmn
+            rw [getD_push_lt_self]
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
+            simp [userFrame, hsn]
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.

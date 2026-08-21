@@ -574,13 +574,15 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- return type *from* the body, so it cannot name one for the body to check a
       -- `return` against. Inheriting `ctx.ret` would be worse than wrong — it would
       -- check the inner body's returns against the *enclosing* method's type.
-      -- L207: `meth := none` **explicitly**, and the explicitness is the point — with
-      -- the field added, `{ ctx with … }` would inherit the *enclosing* method's name,
-      -- which is not this body's. Setting it to `some name` is what the `super` rule
-      -- will want, and it is not free: `UserConforms` would then have to tie the name
-      -- to `md.superName.getD mname` (see `HANDOFF.md` §The next commit).
+      -- L207 set this to `none` **explicitly**, because `{ ctx with … }` would inherit
+      -- the *enclosing* method's name, which is not this body's. **L210 sets it to
+      -- `some name`** — the body is this method's, so the context that types it names
+      -- this method, and that is the channel `super` reads. The obligation it creates
+      -- is on the machine side, where `userFrame` builds `meth := md.superName.getD
+      -- mname`: `ResolvesUser` now carries `md.superName = none`, which is true of
+      -- every `def` (only `alias` sets the field) and is what makes the two agree.
       match infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := none } with
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to

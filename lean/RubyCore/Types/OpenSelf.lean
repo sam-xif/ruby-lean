@@ -78,6 +78,12 @@ def aenvSet : AEnv → String → ATy → AEnv
 structure OCtx where
   cls : String
   self : TyVar
+  -- **L210: the running method's name**, `FrameCtx.meth`'s open counterpart. It is
+  -- here rather than a parameter of `inferBody` because the *factoring* theorem has to
+  -- name it: the nominal context `Factors` concludes at is built out of this one, and
+  -- `UserConforms` now fixes its `meth`. Nothing in `inferOpen` reads it yet — `super`
+  -- is the arm that will.
+  meth : Option String := none
 deriving DecidableEq, Repr, Inhabited
 
 /-- The store, plus the fresh-variable counter. Threaded exactly as `D` is (§7),
@@ -427,21 +433,22 @@ def closeBody (ctx : OCtx) (s : OState) : Store := s.st.closeAt ctx.self ctx.cls
 
 /-- Type one method body of class `c`, in open-self mode. `α := 0` and the fresh
     counter starts above it, which is the only bookkeeping the caller owes. -/
-def inferBody (D : Decls) (c : String) (body : Expr) : OResult :=
+def inferBody (D : Decls) (c mname : String) (body : Expr) : OResult :=
   -- **L201: the accumulated `return` types are checked here**, against the body's own
   -- answer, and this is the only place the check *can* be — the pass meets a `return`
   -- before it knows the tail. A disagreement is `outOfFragment` rather than `missing`:
   -- nothing a *declaration* could supply would fix it; the two types simply differ, and
   -- joining them would need the union this fragment does not have.
-  match inferOpen D [] body { cls := c, self := 0 } { st := {}, fresh := 1 } with
+  match inferOpen D [] body { cls := c, self := 0, meth := some mname }
+      { st := {}, fresh := 1 } with
   | .ok τ Γ' s =>
     if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
   | r => r
 
 /-- §11's per-body verdict, as an output of the checker rather than a duplicate of
     it. This is R1's third-ratchet feed and R3's input. -/
-def bodyVerdict (D : Decls) (c : String) (body : Expr) : BodyVerdict :=
-  match inferBody D c body with
+def bodyVerdict (D : Decls) (c mname : String) (body : Expr) : BodyVerdict :=
+  match inferBody D c mname body with
   | .ok τ _ s =>
     .acceptedUnder τ (residualRow { cls := c, self := 0 } s)
       ((closeBody { cls := c, self := 0 } s).toAssn)
@@ -562,9 +569,9 @@ def openParams (D : Decls) (ctx : OCtx) : List Param → AEnv → OState →
 /-- Type one method body of class `c` in the environment its parameters give.
     `none` when a parameter kind is one `openParams` does not bind, or when a
     default expression is itself out of the fragment. -/
-def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
+def inferBodyWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr) :
     Option (AEnv × OResult) :=
-  let ctx : OCtx := { cls := c, self := 0 }
+  let ctx : OCtx := { cls := c, self := 0, meth := some mname }
   match openParams D ctx ps [] { st := {}, fresh := 1 } with
   | some (Γb, s) =>
     -- L201's check, at the parameterized entry point too.
@@ -578,10 +585,10 @@ def inferBodyWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
 /-- §11's per-body verdict for a `def` with parameters. Delegates to
     `bodyVerdict` when there are none, so the zero-parameter census column keeps
     exactly the meaning it had. -/
-def bodyVerdictWith (D : Decls) (c : String) (ps : List Param) (body : Expr) :
+def bodyVerdictWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr) :
     BodyVerdict :=
-  if ps.isEmpty then bodyVerdict D c body else
-  match inferBodyWith D c ps body with
+  if ps.isEmpty then bodyVerdict D c mname body else
+  match inferBodyWith D c mname ps body with
   | none => .outOfFragment ("def-params-" ++ (firstUnbound ps).getD "dflt")
   | some (Γb, .ok τ _ s) =>
     .acceptedOpenParams τ (residualRow { cls := c, self := 0 } s)
@@ -616,11 +623,11 @@ def bodyReports (D : Decls) (cls : String) (e : Expr) : List (String × String �
   -- true of the rule, false of the body, since `inferOpen_factors` is quantified
   -- over `Γ`. A parameter that is not a required positional is still refused, **by
   -- kind**, so the census can say which binding rule the body is behind.
-  | .def' n ps body => [(cls, n, bodyVerdictWith D cls ps body)]
+  | .def' n ps body => [(cls, n, bodyVerdictWith D cls n ps body)]
   -- A singleton definition installs on the eigenclass, which is a different key;
   -- reported under the same class name with `self.` prefixed so the count is
   -- complete and the distinction is visible rather than silent.
-  | .defs _ n ps body => [(cls, "self." ++ n, bodyVerdictWith D cls ps body)]
+  | .defs _ n ps body => [(cls, "self." ++ n, bodyVerdictWith D cls n ps body)]
   | .class' name _ body => bodyReports D name body
   | .scopedClass _ name body => bodyReports D name body
   | .module' name body => bodyReports D name body
@@ -712,7 +719,7 @@ def egOpenHashStore : Store :=
   { rows := [(1, { entries := [("hash", { params := [], ret := .var 2 })] }),
              (0, { entries := [("value", { params := [], ret := .var 1 })] })] }
 
-example : inferBody baseDecls "Version" egOpenHashBody
+example : inferBody baseDecls "Version" "m" egOpenHashBody
     = .ok (.var 2) [] { st := egOpenHashStore, fresh := 3 } := by
   simp [inferBody, egOpenHashBody, egOpenHashStore, inferOpen, inferOpenArgs, isSelf, requireRow,
     Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty]
@@ -734,11 +741,11 @@ example :
 
 /-- A body that needs nothing: the residual row is empty, so §7.3's obligation is
     `emp` and the accept is unconditional. -/
-example : inferBody baseDecls "Version" (.int 1) = .ok (.nom .int) [] { fresh := 1 } := by
+example : inferBody baseDecls "Version" "m" (.int 1) = .ok (.nom .int) [] { fresh := 1 } := by
   simp [inferBody, inferOpen]
 
 /-- A nominal receiver still goes through the table, unchanged: `1 + 2`. -/
-example : inferBody baseDecls "Version" (.send (some (.int 1)) "+" [.int 2] none)
+example : inferBody baseDecls "Version" "m" (.send (some (.int 1)) "+" [.int 2] none)
     = .ok (.nom .int) [] { fresh := 1 } := by
   simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
@@ -746,7 +753,7 @@ example : inferBody baseDecls "Version" (.send (some (.int 1)) "+" [.int 2] none
 /-- And a nominal receiver the table refuses is `missing`, **with the atom** —
     §11's `needed:` line, produced by the checker rather than by a census of it.
     This is the whole of R1's benefit, and it costs no metatheory. -/
-example : inferBody baseDecls "Version" (.send (some (.int 1)) "/" [.int 2] none)
+example : inferBody baseDecls "Version" "m" (.send (some (.int 1)) "/" [.int 2] none)
     = .missing (.nom .int) "/" [.nom .int] := by
   simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
@@ -808,7 +815,7 @@ example :
     internal locals nobody can read by name, `destr` is a recursive massign
     against an argument shape no `Ty` records. Neither occurs in the slice. -/
 example :
-    bodyVerdictWith baseDecls "String" [.fwd] (.int 1)
+    bodyVerdictWith baseDecls "String" "m" [.fwd] (.int 1)
       = .outOfFragment "def-params-fwd" := by
   simp [bodyVerdictWith, inferBodyWith, openParams, firstUnbound]
 
@@ -819,7 +826,7 @@ example :
     The witness was an **ivar read** until L196 admitted one; a global read is the
     replacement, and the substitution is the kind of churn a widening should cause. -/
 example :
-    bodyVerdictWith baseDecls "String" [.opt "a" (.var .gvar "$x")] (.int 1)
+    bodyVerdictWith baseDecls "String" "m" [.opt "a" (.var .gvar "$x")] (.int 1)
       = .outOfFragment "def-params-dflt" := by
   simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
 
@@ -838,7 +845,7 @@ A shipped row would need what `T`'s did: a certificate deciding `IvarOk` at the 
     kind. This is the verdict the slice's four ivar-reading bodies now get, and the
     reason the census moved. -/
 example :
-    bodyVerdictWith baseDecls "String" [] (.var .ivar "@n")
+    bodyVerdictWith baseDecls "String" "m" [] (.var .ivar "@n")
       = .blocked (.var 0) "@@n" [] := by
   simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, baseDecls]
 
@@ -846,7 +853,7 @@ example :
     (`Interp.lean:142` ends `.getD .nil`), so the answer has to admit it — L193's
     `nilable` paying for itself in a rule that has nothing to do with `if`. -/
 example :
-    bodyVerdictWith { baseDecls with ivars := [(("String", "@n"), Ty.int)] } "String" []
+    bodyVerdictWith { baseDecls with ivars := [(("String", "@n"), Ty.int)] } "String" "m" []
         (.var .ivar "@n")
       = .acceptedUnder (.nom (.nilable .int)) Row.empty .emp := by
   simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, mkNilable,

@@ -276,7 +276,15 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     -- production site (`def`'s consecution, where `md.owner = defmod` by construction
     -- and `ClassOk`'s head clause puts `defmod` first on its own chain) has it for
     -- free.
-    md.owner ∈ ancestors h k
+    md.owner ∈ ancestors h k ∧
+    -- **L210: the method carries no alias name.** `userFrame` builds the activation
+    -- with `meth := md.superName.getD mname`, and the *context* the body was checked in
+    -- says `meth := some mname` — so the two agree exactly when `superName` is unset.
+    -- It is set only by the `alias` rule (`Interp.lean:277`); a plain `def` leaves it at
+    -- its default, and `alias` has no `infer` arm. So the clause is free at the one
+    -- production site and a prelude method that *is* an alias simply cannot witness a
+    -- row, which is sound.
+    md.superName = none
 
 /-- **Conformance for a user method is discharged by the checker, not by running
     anything**: the body infers at the declared return type in the environment
@@ -298,7 +306,7 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     Requiring `md.body` to leave the table alone is what makes the pop total, and
     it is the same shape as `LoopOk`'s stability condition and for the same
     reason. It costs nothing today, since no rule grows the table at all. -/
-def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Prop :=
+def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl) : Prop :=
   d.params = [] ∧ defFree md.body = true ∧
     -- **L198: the context's `ret` is carried, not fixed**, and that is what breaks a
     -- circularity rather than papering over it.
@@ -316,7 +324,12 @@ def UserConforms (D : Decls) (c : String) (md : MethodDef) (d : MethodDecl) : Pr
     -- `sig`) supplies `r = some d.ret`, and that is the rung at which a `return`
     -- inside a *running* method becomes reachable — the rule and its consecution case
     -- are proved either way, which is what keeps this honest rather than speculative.
-    ∃ Γ' r, infer D [] md.body false { cls := c, selfCls := some c, ret := r }
+    -- **L210: the context names the method.** `infer`'s `def` arm builds exactly this
+    -- context, and the machine's activation carries the same name by `ResolvesUser`'s
+    -- `superName` clause — which is what lets a `super` in the body be typed against a
+    -- row keyed on *this* method's name.
+    ∃ Γ' r, infer D [] md.body false
+        { cls := c, selfCls := some c, ret := r, meth := some mname }
       = some (d.ret, Γ', D) ∧ (∀ σ, r = some σ → σ = d.ret)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
@@ -390,7 +403,7 @@ def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Pro
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
   ∃ md c, τr = .cls c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
-    className h md.owner = c ∧ UserConforms D c md d
+    className h md.owner = c ∧ UserConforms D c mname md d
 
 /-- A declared method is satisfied by **either** kind of witness. A disjunction
     rather than a generalization because the two produce *different steps*:
@@ -596,6 +609,104 @@ theorem scopedConstOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
   · rw [constLookupFrom_defineMethod]
     exact hv
 
+/-! ### L211: the `super` table's clause
+
+`doSuper` (`Interp/Send.lean:260`) computes its target from three things the frame
+carries — the running method's name, the definee, and the receiver — and the only one
+of the three the invariant knows *by name* is the definee (`StackCtx` clause 2). So the
+clause has to be quantified over every class object of that name and every chain such a
+class is on, which is `IvarOk`'s shape at a chain instead of at an object.
+-/
+
+/-- `doSuper`'s target, factored out of the rule so that the invariant and the
+    dispatch lemma can name the same thing. Deliberately written to match
+    `Interp/Send.lean:266-270` symbol for symbol: `dropWhile (· != dm)` then `drop 1`,
+    then `firstM` over the payloads. -/
+def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
+  (((ancestors h k).dropWhile (· != dm)).drop 1).firstM fun c =>
+    match h.classPayload? c with
+    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
+    | none => none
+
+/-- **What one `supers` row obliges** (L211). Stated over the **pair** (a class *name*
+    and a chain) rather than over one class, which is what avoids needing `ClassOk`'s
+    uniqueness clause: uniqueness covers `readableClasses`, and every `super` in the
+    slice is in a *program* class, which is exactly the population it does not cover.
+
+    Only the **builtin** arm is here. A user arm is `EntryOk`'s disjunction at a frame
+    push (`ResolvesUser` plus `UserConforms`), and it is deliberately not in this
+    commit: with the builtin arm alone the table's rows are unsatisfiable for a program
+    method, so `preludeDecls` declares none and the rule's front end reports a **needed
+    declaration** — §5's reading of an unsatisfiable requirement (`Regexp`, L106)
+    applies verbatim. What that buys is the rule and its consecution case landing before
+    the harder witness, rather than after. -/
+def SuperOk (h : Heap) (c mname : String) (d : MethodDecl) : Prop :=
+  ∀ k dm, (h.classPayload? dm).isSome → className h dm = c → dm ∈ ancestors h k →
+    ∃ owner md bid, superFound h k dm mname = some (owner, md) ∧
+      md.builtin = some bid ∧ ConformsAt (.cls c) mname bid d
+
+/-- `superFound` is a `firstM` over a chain-derived list and a per-class table read,
+    so it is congruent under anything that pins `classPayload?` at every id — which is
+    both `PlainGrow` and `defineMethod`-of-a-different-name. Stated over the *list*
+    rather than over the chain so the two callers can supply their own chain equality. -/
+theorem superFound_congr {h h' : Heap} {k dm : ObjId} {mname : String}
+    (hp : ∀ j, (h'.classPayload? j).map (fun c => c.methods.find? (·.1 == mname))
+              = (h.classPayload? j).map (fun c => c.methods.find? (·.1 == mname)))
+    (hanc : ancestors h' k = ancestors h k) :
+    superFound h' k dm mname = superFound h k dm mname := by
+  unfold superFound
+  rw [hanc]
+  induction (((ancestors h k).dropWhile (· != dm)).drop 1) with
+  | nil => rfl
+  | cons a rest ih =>
+    simp only [List.firstM, Option.orElse_eq_orElse]
+    have := hp a
+    cases h1 : h'.classPayload? a with
+    | none =>
+      cases h2 : h.classPayload? a with
+      | none => simp [h1, h2, ih]
+      | some cp => rw [h1, h2] at this; exact absurd this (by simp)
+    | some cp' =>
+      cases h2 : h.classPayload? a with
+      | none => rw [h1, h2] at this; exact absurd this (by simp)
+      | some cp =>
+        rw [h1, h2] at this
+        simp only [Option.map_some, Option.some.injEq] at this
+        simp only [h1, h2, this]
+        cases hf : cp.methods.find? (·.1 == mname) <;> simp [hf, ih]
+
+/-- **`SuperOk` across an allocation.** Every clause is a `PlainGrow` field:
+    `classPayload?` at every id, `className`, and the chain (with saturation).
+    `ConformsAt` mentions no heap (L146), so the conformance half passes straight
+    through. -/
+theorem superOk_grow {h h' : Heap} {c n : String} {d : MethodDecl} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hs : SuperOk h c n d) : SuperOk h' c n d := by
+  intro k dm hdm hcn hmem
+  rw [hg.payload] at hdm
+  rw [hg.className_eq] at hcn
+  rw [hg.ancestors_eq hsat] at hmem
+  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
+  exact ⟨owner, md, bid,
+    by rw [superFound_congr (fun j => by rw [hg.payload]) (hg.ancestors_eq hsat k)]; exact hf,
+    hb, hconf⟩
+
+/-- **And across a `def` of a different name.** The side condition is the one
+    `ResolvesUser_defineMethod` needs and for the same reason: a write to an existing
+    method table can *displace* the target of a `super`, which is why `declaresName`
+    now scans the `supers` table's method names as well as `rows`'. -/
+theorem superOk_defineMethod {h : Heap} {c n : String} {d : MethodDecl} {cls : ObjId}
+    {name : String} {md' : MethodDef} (hs : SuperOk h c n d) (hne : ¬ (n = name)) :
+    SuperOk (defineMethod h cls name md') c n d := by
+  intro k dm hdm hcn hmem
+  rw [classPayload?_isSome_defineMethod] at hdm
+  rw [className_defineMethod] at hcn
+  rw [ancestors_defineMethod] at hmem
+  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
+  refine ⟨owner, md, bid, ?_, hb, hconf⟩
+  rw [superFound_congr (fun j => methods_find_defineMethod h cls j name n md' hne)
+    (ancestors_defineMethod h cls k name md')]
+  exact hf
+
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
     the table does not declare, and no upper bound on the heap's method table.
     That absence is the whole content of D10. -/
@@ -611,7 +722,9 @@ def DeclsOk (D : Decls) (h : Heap) : Prop :=
   -- table-indexed heap claim belongs here rather than in a new conjunct.
   (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ) ∧
   -- L205's fourth half, for the third's reason.
-  (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h c n τ)
+  (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h c n τ) ∧
+  -- L211's fifth half, for the fourth's reason.
+  (∀ c n d, superDecl? D c n = some d → SuperOk h c n d)
 
 /-! ## 2. The uniform dispatch step
 
@@ -788,9 +901,24 @@ theorem declOf?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨e, he, _⟩ := h
     have hp := List.find?_some he
-    exact List.any_eq_true.mpr
+    exact Bool.or_eq_true_iff.mpr (Or.inl (List.any_eq_true.mpr
       ⟨cd, List.mem_of_find?_eq_some hf,
-        List.any_eq_true.mpr ⟨e, List.mem_of_find?_eq_some he, hp⟩⟩
+        List.any_eq_true.mpr ⟨e, List.mem_of_find?_eq_some he, hp⟩⟩))
+
+/-- **The `supers` table's half of the same fact** (L211), and it is why
+    `declaresName` grew a disjunct: a `def` of a name a `supers` row is keyed on can
+    displace that row's target, so the `def` rule's freshness test has to see it. -/
+theorem superDecl?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
+    (h : superDecl? D cls name = some d) : declaresName D name = true := by
+  unfold superDecl? at h
+  simp only [Option.map_eq_some_iff] at h
+  obtain ⟨e, he, _⟩ := h
+  have hp := List.find?_some he
+  refine Bool.or_eq_true_iff.mpr (Or.inr (List.any_eq_true.mpr
+    ⟨e, List.mem_of_find?_eq_some he, ?_⟩))
+  simp only [beq_iff_eq] at hp
+  rw [hp]
+  simp
 
 /-- **Adding a row for an undeclared name carries every signature the table already
     supported** (F1b.10). The hypothesis is the `def` rule's own side condition, and
@@ -825,9 +953,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
-  -- L195/L196/L205: `SubDecls` is a quadruple now, and `addRow` touches `rows` only —
-  -- so all three table halves are `rfl`.
-  refine ⟨?_, rfl, rfl, rfl⟩
+  -- L195/L196/L205/L211: `SubDecls` is a quintuple now, and `addRow` touches `rows`
+  -- only — so all four table halves are `rfl`.
+  refine ⟨?_, rfl, rfl, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -1029,7 +1157,11 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
     {md : MethodDef} (hd : DeclsOk D h) (hfresh : declaresName D name = false) :
     DeclsOk D (defineMethod h cls name md) := by
   refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
-    fun c nn τ hn => scopedConstOk_defineMethod (hd.2.2.2 c nn τ hn)⟩
+    fun c nn τ hn => scopedConstOk_defineMethod (hd.2.2.2.1 c nn τ hn),
+    fun c nn dd hn => superOk_defineMethod (hd.2.2.2.2 c nn dd hn)
+      (fun heq => by
+        rw [heq] at hn
+        exact absurd (superDecl?_declaresName hn) (by simp [hfresh]))⟩
   case refine_2 =>
     -- L195: a method-table write moves neither `constOwn` nor any field `ValueTy`
     -- reads, so the constant half is `consts_defineMethod` plus `ValueTy.congr` at
@@ -1082,7 +1214,14 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     subDecls_addRow hfresh
   refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
     fun c nn τ hn => scopedConstOk_defineMethod
-      (hd.2.2.2 c nn τ (by simpa [scopedConstTy?, addRow] using hn))⟩
+      (hd.2.2.2.1 c nn τ (by simpa [scopedConstTy?, addRow] using hn)),
+    fun c nn dd hn => by
+      have hn' : superDecl? D c nn = some dd := by
+        simpa [superDecl?, addRow] using hn
+      exact superOk_defineMethod (hd.2.2.2.2 c nn dd hn')
+        (fun heq => by
+          rw [heq] at hn'
+          exact absurd (superDecl?_declaresName hn') (by simp [hfresh]))⟩
   case refine_2 =>
     -- `addRow` leaves `consts` alone, so the row's obligation is the old one at the
     -- new heap — which is `DeclsOk_defineMethod`'s constant half.
@@ -1299,7 +1438,8 @@ theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Sat
     (hd : DeclsOk D h) : DeclsOk D h' := by
   refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
     fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
-    fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2 c nn τ hn)⟩
+    fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
+    fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2 c nn dd hn)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
   · exact Or.inl ⟨bid,
@@ -2113,7 +2253,9 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
     DeclsOk baseDecls h := by
   refine ⟨?_, fun n τ hn => ?_, fun c x τ hn => ?_,
     -- L205: and the fourth, empty for the third's reason and stated the same way.
-    fun c nn τ hn => absurd hn (by simp [scopedConstTy?, baseDecls])⟩
+    fun c nn τ hn => absurd hn (by simp [scopedConstTy?, baseDecls]),
+    -- L211: and the fifth, empty for the same reason.
+    fun c nn dd hn => absurd hn (by simp [superDecl?, baseDecls])⟩
   case refine_2 => exact constOk_of_classOk hcls hn
   -- `baseDecls.ivars` is empty, so the third half is vacuous — and stating it as a
   -- refutation of the lookup rather than as `trivial` is what will break here the
@@ -2283,16 +2425,33 @@ theorem scopedConstOk (hi : IvarOnly h h') {c n : String} {τ : Ty}
   · rw [constLookupFrom_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq o)]
     exact hv
 
+/-- **`SuperOk` across an ivar write** (L211). `IvarOnly` pins every `classPayload?`,
+    so both the chain and the per-class method table are unmoved, and `ConformsAt`
+    mentions no heap. -/
+theorem superOk (hi : IvarOnly h h') {c n : String} {d : MethodDecl}
+    (hs : SuperOk h c n d) : SuperOk h' c n d := by
+  intro k dm hdm hcn hmem
+  rw [hi.classPayload] at hdm
+  rw [hi.className_eq] at hcn
+  rw [hi.ancestors_eq] at hmem
+  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
+  exact ⟨owner, md, bid,
+    by rw [superFound_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq k)];
+       exact hf,
+    hb, hconf⟩
+
 /-- **Only three of the four halves** (L196, L205), and the omission is the rung:
     `IvarOnly` says an ivar write is invisible, and `DeclsOk`'s *ivar* half is the one
     that is *about* ivars. The `@x = e` consecution case has to re-establish that half
     from the rule's own conformance check, which is why the rule has one. -/
 theorem rowsAndConsts (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) :
     MethodRowsOk D h' ∧ (∀ n τ, constTy? D n = some τ → ConstOk h' n τ) ∧
-      ∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h' c n τ :=
+      (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h' c n τ) ∧
+      ∀ c n d, superDecl? D c n = some d → SuperOk h' c n d :=
   ⟨fun τr mname d hf => hi.entryOk (hd.1 τr mname d hf),
    fun n τ hn => hi.constOk (hd.2.1 n τ hn),
-   fun c n τ hn => hi.scopedConstOk (hd.2.2.2 c n τ hn)⟩
+   fun c n τ hn => hi.scopedConstOk (hd.2.2.2.1 c n τ hn),
+   fun c n dd hn => hi.superOk (hd.2.2.2.2 c n dd hn)⟩
 
 theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,

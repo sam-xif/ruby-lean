@@ -112,6 +112,21 @@ structure Decls where
       one id — and that clause covers the *readable* names, not every name a program
       can write. -/
   scopedConsts : List ((String × String) × Ty) := []
+  /-- **class name × method name → the signature of that method's `super`** (L211).
+
+      The fifth table, and it is keyed on the *pair* for `scopedConsts`' reason
+      inverted: a `super` inside `C#m` re-dispatches `m` starting *after* `C` on the
+      receiver's chain, so the answer depends on both the class the body is written in
+      and the method it is written in. The alternative — a `parent : String → String`
+      table plus `declOf?` on the parent's rows — needs a heap clause tying a *name* to
+      a chain position, and `ClassOk`'s uniqueness clause covers only
+      `readableClasses`, so a program class's name does not pin an id.
+
+      What a row obliges is `SuperOk` (`Proof/Static/Decls.lean`), and read it before
+      adding one: it is quantified over **every** class object named `c` and every
+      chain that class is on, because `doSuper` starts its walk at the frame's `defmod`
+      and the invariant knows that definee only by its name. -/
+  supers : List ((String × String) × MethodDecl) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
@@ -129,6 +144,13 @@ def ivarTy? (D : Decls) (cls x : String) : Option Ty :=
     *declaration* by the open front end (L205), exactly as `ivarTy?`'s miss is. -/
 def scopedConstTy? (D : Decls) (cls n : String) : Option Ty :=
   (D.scopedConsts.find? (·.1 == (cls, n))).map (·.2)
+
+/-- The declared signature of the `super` a body in `cls#name` re-dispatches to, or
+    `none` for "not declared" — which the open front end reports as a *missing
+    declaration* rather than as a missing rule (L211), exactly as `ivarTy?`'s miss and
+    `scopedConstTy?`'s are. -/
+def superDecl? (D : Decls) (cls name : String) : Option MethodDecl :=
+  (D.supers.find? (·.1 == (cls, name))).map (·.2)
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
@@ -152,7 +174,13 @@ def declOf? (D : Decls) (cls name : String) : Option MethodDecl :=
     With `baseDecls` this is exactly P0's `name ≠ "+" ∧ name ≠ "-" ∧ name ≠ "*"`,
     which is why F1a changes no verdict. -/
 def declaresName (D : Decls) (name : String) : Bool :=
-  D.rows.any fun cd => cd.2.any fun md => md.1 == name
+  (D.rows.any fun cd => cd.2.any fun md => md.1 == name) ||
+  -- **L211: and the `super` table's method names.** A `def` installs an entry into a
+  -- live method table, and `SuperOk` is a claim about what `doSuper`'s walk *finds* —
+  -- so a `def` of a name some `supers` row is keyed on can displace that row's target.
+  -- Exactly the side condition `superOk_defineMethod` needs, and free while the table
+  -- is empty.
+  (D.supers.any fun sd => sd.1.2 == name)
 
 /-- The class names the four *ground* arms of `Ty` already denote. Subtracted from
     the class arm's key set by `tyClassNames`; see the note there. -/
@@ -270,14 +298,19 @@ def SubDecls (F F' : Decls) : Prop :=
   -- its answer out of it.
   F.ivars = F'.ivars ∧
   -- L205: and the scoped-constant table, same reason again.
-  F.scopedConsts = F'.scopedConsts
+  F.scopedConsts = F'.scopedConsts ∧
+  -- L211: and the `super` table, same reason a third time — the `super` rule reads its
+  -- answer out of it, so a `F'` disagreeing at the same key would make `infer_mono`
+  -- false rather than merely unprovable.
+  F.supers = F'.supers
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl⟩
+theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
     SubDecls F F'' :=
   ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1,
-    h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.trans h₂.2.2.2⟩
+    h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.1.trans h₂.2.2.2.1,
+    h₁.2.2.2.2.trans h₂.2.2.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
@@ -292,7 +325,12 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
 /-- And the scoped-constant table's (L205). -/
 @[simp] theorem SubDecls.scopedConstTy_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
     scopedConstTy? F' c n = scopedConstTy? F c n := by
-  unfold scopedConstTy?; rw [hs.2.2.2]
+  unfold scopedConstTy?; rw [hs.2.2.2.1]
+
+/-- And the `super` table's (L211). -/
+@[simp] theorem SubDecls.superDecl_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
+    superDecl? F' c n = superDecl? F c n := by
+  unfold superDecl?; rw [hs.2.2.2.2]
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}

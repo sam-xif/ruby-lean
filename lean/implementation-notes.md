@@ -9654,3 +9654,152 @@ unchanged.
 
 `lake build` and `lake build Metatheory` green; `check-proofs.sh` axiom-clean, **0 `sorryAx`**; third
 ratchet **30**, byte-identical. No `--check` diff owed (`Proof/`-only, not linked into the binary).
+
+## L210 — `meth` populated end to end: the context names the method, and it stays inert
+
+Out of fragment **30 → 30**, `--check` **56 / 1,169 / 0 — byte-identical**, `--assn` 1,225 clean /
+2 decode gates. `super`'s third prerequisite and the first one that touches the **checker**, which is
+why this commit owes the `--check` diff where L208 and L209 did not.
+
+L207 landed `FrameCtx.meth` with `none` everywhere. This commit makes it *carry a name*, at all three
+places a name exists, and the point of doing it alone is that the three have to agree and nothing
+reads the field yet — so a disagreement shows up as a failed proof rather than as a wrong verdict.
+
+| layer | before | after |
+|---|---|---|
+| `infer`'s `def` arm | `meth := none` explicitly | `meth := some name` |
+| `UserConforms` | `(D) (c) (md) (d)` | `(D) (c mname) (md) (d)`, ctx `meth := some mname` |
+| the machine's activation | `userFrame` sets `meth := md.superName.getD mname` | unchanged — a `ResolvesUser` clause makes it agree |
+| the open front end | `OCtx = {cls, self}` | `OCtx.meth`, and `inferBody`/`bodyVerdict`/`inferBodyWith`/`bodyVerdictWith` take `mname` |
+
+### The one real obligation, and it was already priced
+
+`userFrame` builds the activation with `meth := md.superName.getD mname`, so a context saying
+`meth := some mname` owes *`md.superName.getD mname = mname`*. **`ResolvesUser` gains
+`md.superName = none`** (clause 12), and L207's finding is what makes it free: `superName` is set
+**only** by the alias rule (`Interp.lean:277`), a plain `def` leaves it at its default, and `alias`
+has no `infer` arm — so the one production site discharges it with `rfl`, and a prelude method that
+*is* an alias simply cannot witness a row, which is sound. That is the same shape as clause 11 (L209)
+and clause 10 (L189): **a fact about the callee that only the definition site can know travels on the
+resolution predicate.** Three clauses, three commits, one pattern.
+
+### `OCtx.meth`, and why the open side had to move in the same commit
+
+`UserConforms` is discharged two ways — by the `def` consecution (nominal) and by
+`userConforms_of_inferBody` (open) — and the second goes through `inferOpen_factors`, whose conclusion
+*builds* the nominal context out of the open one. So fixing `UserConforms`' `meth` forces `OCtx` to
+carry it: the four `Factors`/`FactorsIf`/`FactorsSeq`/`FactorsArgs` conclusions now say
+`meth := ctx.meth`, and the induction is unchanged — **the field is threaded, never read**, so all
+twenty-odd arms still close by the same uniform `simp_all`.
+
+`inferOpen` itself does *not* read `ctx.meth` yet. `super` is the arm that will, and when it does the
+name is already there — which is the entire value of this commit.
+
+### What "inert" was checked by
+
+Three checks, and only the first is the interesting one:
+
+* **`--check` over the 1,227 cached bootstraptest ASTs: 56 accept / 1,169 unknown / 0 reject**, the
+  L207 baseline unchanged. `infer` gained no arm, so the only way this could have moved is if the
+  new context leaked into a *verdict*, and it did not.
+* `--assn` over the same corpus: 0 non-zero exits outside the two decode gates.
+* third ratchet **30**, byte-identical, `--self-test` all agree.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; tier 0 and
+tier slice green (nothing on the execution path moved — no `Interp/` file changed).
+
+## L211 — the fifth table, and `SuperOk`: the builtin arm alone, deliberately
+
+Out of fragment **30 → 30**, `--check` byte-identical, tier 0 **992 agree / 0 disagree**, tier slice
+**351 / 0**. `super`'s fourth prerequisite: the declaration it will read and the heap clause a row
+obliges. Nothing reads either yet — `infer` has no `.super'` arm — which is the last inert commit
+before the rule.
+
+**Landed in the same commit as L210** rather than after it. The two were developed back to back and
+`Types/Decls.lean`/`Proof/Static/Decls.lean` carry hunks of both interleaved; splitting the working
+tree after the fact would have meant a commit whose build was never actually run. Both notes are
+here; the checks below cover the pair.
+
+### `Decls.supers`, keyed on the pair
+
+```lean
+supers : List ((String × String) × MethodDecl) := []
+def superDecl? (D : Decls) (cls name : String) : Option MethodDecl
+```
+
+Keyed `(class, method)` — `scopedConsts`' shape (L205) — because a `super` inside `C#m`
+re-dispatches `m` starting *after* `C`, so the answer depends on both. The alternative HANDOFF
+priced (a `parent : String → String` table plus `declOf?` on the parent's rows) needs a heap clause
+tying a *name* to a chain position, and `ClassOk`'s uniqueness covers only `readableClasses` — which
+is exactly the population the slice's `super` bodies are **not** in.
+
+`SubDecls` becomes a quintuple, with the same equality (not containment) the other three tables get,
+and for the third time the same reason: the rule reads its answer *out of* the table, so a `F'`
+disagreeing at the same key would make `infer_mono` **false**, not merely unprovable.
+
+### `SuperOk`, and `superFound` as the shared vocabulary
+
+```lean
+def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
+  (((ancestors h k).dropWhile (· != dm)).drop 1).firstM fun c => …
+
+def SuperOk (h : Heap) (c mname : String) (d : MethodDecl) : Prop :=
+  ∀ k dm, (h.classPayload? dm).isSome → className h dm = c → dm ∈ ancestors h k →
+    ∃ owner md bid, superFound h k dm mname = some (owner, md) ∧
+      md.builtin = some bid ∧ ConformsAt (.cls c) mname bid d
+```
+
+`superFound` is written to match `Interp/Send.lean:266-270` symbol for symbol, and it exists so that
+the invariant and the (not yet written) dispatch lemma name the *same* function rather than two
+copies. The quantification is over a class **name** and any chain such a class is on, because
+`StackCtx` knows the frame's definee only by its name — `IvarOk`'s shape, at a chain instead of at an
+object. L209's `StackCtx` clause is what supplies `dm ∈ ancestors h k`.
+
+**Only the builtin arm.** A user arm is `ResolvesUser` plus `UserConforms` at a frame push, and
+leaving it out is a choice, not an omission: with the builtin arm alone no *program* method can
+witness a row, so `preludeDecls` declares none, and the four `super(arg)` bodies will report a
+**needed declaration** rather than an accept. That is §5's reading of an unsatisfiable requirement
+(`Regexp`, L106) verbatim, and what it buys is the rule and its consecution case landing *before* the
+harder witness instead of after.
+
+### The one thing that was not free: `declaresName`
+
+A `def` writes a live method table, and `SuperOk` is a claim about what `doSuper`'s walk **finds** —
+so a `def` of a name some `supers` row is keyed on can *displace* that row's target. That is exactly
+the side condition `superOk_defineMethod` needs, and the `def` rule's existing freshness test did not
+see it, because `declaresName` scanned `rows` only. It now scans both:
+
+```lean
+(D.rows.any fun cd => cd.2.any fun md => md.1 == name) ||
+(D.supers.any fun sd => sd.1.2 == name)
+```
+
+**This is the pattern L194 and L196 both hit**: a new table is not just rows, it is a new way for an
+existing rule's guard to be *insufficient*. Free today (the table is empty) and `--check` confirms
+it, but it is the kind of thing that is a soundness bug if it is noticed a commit later.
+
+### Three transports, all one-liners over `superFound_congr`
+
+`superFound_congr` takes *per-id method-table agreement* plus *one chain equality* — deliberately
+stated over the list rather than over the chain, so each caller supplies its own. Then:
+
+| transport | the two facts |
+|---|---|
+| `superOk_grow` | `PlainGrow.payload` at every id, `ancestors_eq hsat` |
+| `superOk_defineMethod` | `methods_find_defineMethod` (needs `n ≠ name`), `ancestors_defineMethod` |
+| `IvarOnly.superOk` | `hi.classPayload`, `hi.ancestors_eq` |
+
+`ConformsAt` mentions no heap (L146), so the conformance half passes through all three untouched —
+the fourth commit in a row where L146's decision pays.
+
+`InvA` (`Proof/Static/Assn.lean`) gained the conjunct too, and `invA_iff_inv` one component in each
+direction.
+
+### Checks (covering L210 and L211)
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
+`--check` over the 1,227 cached ASTs **56 accept / 1,169 unknown / 0 reject**, byte-identical to
+L207's; `--assn` 1,225 clean / 2 decode gates; third ratchet **30**, `--self-test` all agree;
+`difftest --tier 0` 992 agree / 0 disagree, `--tier slice` 351 / 0.
