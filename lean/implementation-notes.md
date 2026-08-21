@@ -7418,3 +7418,57 @@ The two transports are the interesting part, and each is one rewrite:
 and note `classOkB` is inside `heapOkB`, so F0's certificate now decides the new clauses too, at both
 the bare boot heap (`by decide`, in `heapOk_initHeap`) and the prelude-booted one (`heapok_probe`,
 which now prints them). `consts_probe` still exits 0.
+
+## L179 — `--consts`, the fourth ratchet, and it withdrew this session's own sequencing advice
+
+L176–L178 landed the constant table's three prerequisites — the threading, the measurement, the
+`ClassOk` clause — on the strength of an ordering claim `HANDOFF.md` made twice: *`const` is two rungs,
+do the constant table first, it is the cheaper half and it is precedented.* This is the measurement of
+whether that is true, and **it is not** — cheapness was measured and **value was not**.
+
+### The ratchet
+
+`python3 homebrew/fragment-gap.py --brew … --consts` reports two things over the slice's real ASTs: the
+constant **reads** by name, and every `casgn`'s **right-hand-side head**.
+
+```
+reads:  T 259   String 225   Integer 42   Token 24   Regexp 20   StemParser 20   Version 17  …
+casgn:  45 × <send>      3 × <str>
+```
+
+Both halves say the same thing. The reads are dominated by **class and module names**, which a table
+cannot type — they need a type for a class *object*. And 45 of the 48 assignments are initialized by a
+**send** — `T.let(…)`, `Regexp.new(…)`, `%w[…].freeze`, `{…}.freeze` — whose receiver is a class name,
+so tabulating the constant needs the class-object arm *first*. Three assignments are string literals.
+
+> **The class-object arm of `Ty` is not the second half of `const`. It is the gate on all of it.**
+
+### What this is an instance of
+
+`HANDOFF.md` §Things I got wrong already records the shape twice — *a blocker that explains the symptom
+will stop you looking for the one that explains the shape* — and this is its third instance, with a
+twist worth stating separately because it is about **ranking** rather than about blockers:
+
+> **Cheap and valuable are two measurements, and a rung needs both.** The constant table was priced
+> honestly (it is cheap: `addRow`'s precedent, and L176 measured the churn at five definitions). What
+> was never computed is what it *unblocks*, and the answer is 3 of 48. The two orderings disagree, and
+> only the second one is about the metric.
+
+It is also the fourth time this session that a census over the real ASTs has re-ranked the work
+(L167's `def`-params, L168's re-rank on lifting it, L173's front-end lesson, and now this) — which is
+why the report is a **flag on the tool** rather than a paragraph in a document. A number in prose is
+remembered; a number the tool computes is recomputed.
+
+### What survives, and it is not nothing
+
+L176's threading (`Decls.consts`) and L178's `NoShadowBefore` are **needed either way**, because a
+class-name read *is* a constant read through the same two-phase lookup: `Token.from(x)` reads the
+constant `Token` through `cref.firstM (constOwn h · n)` and then the ancestor walk. The class-object arm
+needs the same clause. So the three prerequisite commits are re-sequenced, not withdrawn — and
+`HANDOFF.md` §The next commit now says so, with the boxed correction in place of the advice it
+replaces.
+
+### Checks
+
+Nothing in the SUT or the metatheory changed; `--consts` is a new reporting flag on the census tool and
+`fragment-gap.py --self-test` still agrees. No verdict diff is owed and none is claimed.
