@@ -7957,3 +7957,49 @@ contains rather than what the clause should say — and neither took an hour.
 
 `check-proofs.sh` green, 29 theorems, axiom-clean; `classeq_probe` now scans every class object and
 exits 0. No SUT or metatheory change, so no verdict diff is owed and none is claimed.
+
+## L188 — the path is six rungs, not four, and building two of them is what found the other two
+
+`slice-verdict.md` §4a priced the path to `const` at four rungs. Rungs 1 and 2 are now built (L183;
+L184/L185), and building them made two omissions visible. Both are recorded in §4a, corrected in place.
+
+### The omission
+
+`Ty.clsOf` types a class **object**. Nothing in the fragment ever *produces* one as an expression's
+value, because **`infer` has no `.const` arm** — so `String === v` cannot be reached, and a
+`Module#===` row would be a row nothing reads. The path needs two rungs between the arm and the row:
+
+* **2a — `CrefOk`, a `StackCtx` clause confining a frame's `cref`.** `evalExpr`'s `.const` is artifact
+  03 §4's two phases, and the *lexical* one answers: the read is `constOwn h Boot.objectId n` **iff**
+  every class in front of `Object` on the frame's cref owns nothing. `Machine.init` sets
+  `cref := [Object]` and `enterClassBody` prepends the class, so it holds in the fragment — but a
+  **method** frame takes `md.cref` (`Interp.lean:228`), so `ResolvesUser` has to carry the clause and
+  the `def` rule has to establish it from the defining frame. This is exactly the ripple L184's split
+  chose not to take, arriving from the other direction.
+* **2b — `infer`'s `.const` read**, restricted to `reopenableClasses`. Nearly free once 2a exists, and
+  the reason is worth noting: **`ClassOk` already says what the rule needs.** Its per-name clauses are
+  `constOwn h Boot.objectId n = some (.ref k)`, `className h k = n` and `(classPayload? k).isSome` —
+  which is `ValueTy h (.ref k) (.clsOf n)` term for term, given L185's `classRecv`. A clause written at
+  L156 to promise the *reopen branch* of `enterClassBody` turns out to be the class-object read's
+  witness, which is the fourth time in this file a clause has done a second job it was not written for.
+
+### And a design correction to rung 3, from the same reading
+
+L187 concluded the `Module#===` row needs no table key because it is uniform in `n`. That is true and
+it is the **wrong trade**: hard-wiring it in `declFor` obliges `EntryOk` at *every* `.clsOf n`, which
+needs a universal heap conjunct (`∀ k, classPayload? k → ResolvesAt …`) plus its preservation. A
+**third `Decls` field** (`srows`, keyed by class name) with **one** row on `"String"` is a single
+decidable obligation instead — and `String.===` alone is **71 of the 123** `===` occurrences the row is
+for. Uniformity was measured; *what it costs to exploit* was not, which is L179's lesson at a smaller
+scale: **cheap to state and cheap to discharge are different measurements.**
+
+### The general shape
+
+> **A rung that looks like a type-language change is usually a frame or heap clause underneath.**
+> `const` is not "add a `Ty` arm" — the arm was two commits and neither moved the metric. It is
+> `CrefOk`, and `CrefOk` is `ResolvesUser` carrying a list.
+
+### Checks
+
+Documentation only. `check-proofs.sh` green, 29 theorems, axiom-clean; `--check` 39 / 1,186 / 0;
+`--assn` 1,227 clean; `--self-test` all agree.
