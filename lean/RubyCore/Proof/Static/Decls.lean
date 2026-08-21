@@ -381,7 +381,30 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
   mname ≠ "new" ∧
   ∀ (m : Machine) recv args, ValueTy m.heap recv τr → ValuesTy m.heap args d.params →
     (∀ h' : Heap, Builtins.deferTwin? h' bid recv args = none) ∧
-    ∃ w, ValueTy m.heap w d.ret ∧ Builtins.run bid recv args m = .ok w m
+    -- **L215: the conclusion may allocate**, and that is Wall 2's first half.
+    --
+    -- It used to be `Builtins.run … m = .ok w m` — *the machine unchanged* — which is
+    -- what `slice-verdict.md` §4 names as the wall: a builtin that allocates cannot be
+    -- tabulated, and both remaining populations need one. `Class#new` allocates by
+    -- definition; and a **block send allocates before it dispatches at all**, because
+    -- `finishSend` reifies a literal block into a `Proc` (`Interp/Send.lean`), so the
+    -- 15 `send-with-block` bodies are behind this clause and not only behind the
+    -- three-channel judgement.
+    --
+    -- The generalization is the weakest thing `inv_grow_value` (L149) will accept, and
+    -- that is why it is this and not something more permissive: `PlainGrow` for the
+    -- heap, and `frames`/`stack`/`kont` untouched. Nothing else in `Inv` reads the
+    -- machine.
+    --
+    -- **What it excludes, and the exclusion is the point**: a builtin that *mutates* an
+    -- existing object — `Array#push`, `String#<<` — is not a `PlainGrow`, because
+    -- `get`-agreement below the old size is exactly what in-place mutation breaks. Such
+    -- a builtin still cannot be tabulated, and now for a reason the clause states rather
+    -- than for one it merely happened to imply. A mutating row needs its own transport
+    -- (`IvarOnly`'s shape at a payload), which is a rung and not a relaxation.
+    ∃ w m', Builtins.run bid recv args m = .ok w m' ∧ ValueTy m'.heap w d.ret ∧
+      PlainGrow m.heap m'.heap ∧
+      m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont
 
 /-- One declared method, satisfied: **some** builtin both resolves for every
     receiver of the class and conforms. Existential in `bid` rather than pinning
@@ -732,13 +755,18 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     (ha : τr ≠ .any) (hn : ∀ τ', τr ≠ .nilable τ')
     (he : BuiltinEntryOk m.heap τr mname d)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
-    ∃ w, ValueTy m.heap w d.ret ∧
+    -- **L215: the conclusion carries the machine the builtin left**, and the four
+    -- facts about it are `inv_grow_value`'s hypotheses verbatim. Every caller that used
+    -- to end in `inv_value` now ends in `inv_grow_value`; a non-allocating row makes
+    -- `m' = m` and the two agree.
+    ∃ w m', ValueTy m'.heap w d.ret ∧ PlainGrow m.heap m'.heap ∧
+      m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
       startArgs m recv site mname args [] .none
-        = .next (withCtl m (.value w)) := by
+        = .next (withCtl m' (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves ha hn hres hrv
-  obtain ⟨hdefer, w, hw, hrun⟩ := hconf m recv args hrv hargs
-  refine ⟨w, hw, ?_⟩
+  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko⟩ := hconf m recv args hrv hargs
+  refine ⟨w, m', hw, hg, hfr, hst, hko, ?_⟩
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   -- The receiver has to be case-split, and the reason is worth stating: `invoke`
@@ -892,11 +920,15 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
       ancestors m.heap (classOf m.heap (m.frames.getD (methodFrameOf m) default).self))
     (hrv : ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self (.cls c))
     (hargs : ValuesTy m.heap args d.params) :
-    ∃ w, ValueTy m.heap w d.ret ∧ doSuper m args blk = .next (withCtl m (.value w)) := by
+    -- L215: `doSuper`'s builtin arm may allocate too, and the conclusion says so in
+    -- `entry_dispatch`'s shape.
+    ∃ w m', ValueTy m'.heap w d.ret ∧ PlainGrow m.heap m'.heap ∧
+      m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
+      doSuper m args blk = .next (withCtl m' (.value w)) := by
   obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hsup _ _ hdp hdn hch
   obtain ⟨-, -, -, hcf⟩ := hconf
-  obtain ⟨hdefer, w, hw, hrun⟩ := hcf m _ args hrv hargs
-  refine ⟨w, hw, ?_⟩
+  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko⟩ := hcf m _ args hrv hargs
+  refine ⟨w, m', hw, hg, hfr, hst, hko, ?_⟩
   unfold doSuper
   simp only []
   rw [hfm, hf]
@@ -2099,7 +2131,11 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       -- lemma that makes the weakening inert for every `baseDecls` row.
       obtain ⟨σ, hσ, hsub⟩ := hb
       obtain ⟨y, rfl⟩ := valueTy_int ((subTy_concrete (by simp) (by simp)).mp hsub ▸ hσ)
-      exact ⟨fun h' => hdefer h' a y, .int (op a y), ValueTy.exact rfl, hrun a y m⟩
+      -- L215: the witness leaves the machine alone, so it supplies `PlainGrow.rfl'`
+      -- and three `rfl`s. That the generalization is *inert* for every row that does
+      -- not allocate is the whole reason it can land before the rows that do.
+      exact ⟨fun h' => hdefer h' a y, .int (op a y), m, hrun a y m, ValueTy.exact rfl,
+        PlainGrow.rfl' _, rfl, rfl, rfl⟩
 
 /-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
     `ValuesTy` pinning the argument list to `[]` instead of to one integer — which is
@@ -2129,7 +2165,8 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
   · intro m recv args hrv hargs
     obtain ⟨a, rfl⟩ := valueTy_int hrv
     match args, hargs with
-    | [], _ => exact ⟨fun h' => hdefer h' a, f a, hty m.heap a, hrun a m⟩
+    | [], _ => exact ⟨fun h' => hdefer h' a, f a, m, hrun a m, hty m.heap a,
+        PlainGrow.rfl' _, rfl, rfl, rfl⟩
 
 /-- **The base table declares nothing at a class type.** `baseDecls`'s only key is
     `"Integer"`, and `tyClassNames` subtracts the ground names from the class arm's

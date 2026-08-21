@@ -64,6 +64,19 @@ structure PlainGrow (h h' : Heap) : Prop where
       (Wall 2) is where it stops being one. -/
   freshIvars : ∀ o, h.objs.size ≤ o → (h'.get o).ivars = []
 
+/-- **Reflexivity** (L215), which is what makes an allocating `ConformsAt` a strict
+    generalization: every witness that leaves the machine alone supplies this and reads
+    exactly as it did. `freshIvars` is vacuous because `h.objs.size ≤ o` puts `o` out of
+    bounds and `Heap.get` answers the default object there, whose `ivars` is `[]`. -/
+theorem PlainGrow.rfl' (h : Heap) : PlainGrow h h :=
+  { size := Nat.le_refl _
+    get := fun _ _ => rfl
+    payload := fun _ => rfl
+    freshIvars := fun o ho => by
+      simp only [Heap.get, Array.getD_eq_getD_getElem?,
+        Array.getElem?_eq_none (by omega), Option.getD_none]
+      rfl }
+
 /-- Pushing a non-class object is an instance. The `payload` clause is where the
     non-class hypothesis is spent: at the fresh id both heaps answer `none`, in one
     case because the object is not a class and in the other because it is not

@@ -10079,3 +10079,71 @@ this project five commits already.
 byte-identical; `--assn` 0 failures outside the two decode gates; third ratchet **24**, `--self-test`
 all agree (three new rows, one of them pinning the parameter-shape refusal); tier 0, tier slice and the
 regressions corpus re-run because `Interp/Send.lean` was touched again.
+
+## L215 — `ConformsAt` may allocate: Wall 2's first half, and the measurement that says it is the gate
+
+Out of fragment **24 → 24** by design; `--check` byte-identical (56 / 1,169 / 0), `Proof/`-only. This
+commit moves no body. It removes the reason the two remaining populations *cannot* be moved.
+
+### The measurement first, because it is what picked this commit
+
+After L214 the census is 24, and the question is which rung is next. Reading the remaining bodies
+against the code says: **there is no longer a rung that is not behind a wall or a one-body session.**
+
+| construct | bodies | measured price |
+|---|---|---|
+| `send-with-block` | 15 (10 freed by the rung alone) | Wall 1's three-channel judgement **and** Wall 2 — `finishSend` reifies a literal block into a `Proc` *before it dispatches*, so a block send allocates |
+| `splat` | 3, and they are **three different rungs** | a splat *argument* (destroys the arity a signature is matched against); a splat on a **masgn RHS** (`_, v, r = *path.match(…)` — destructuring); a splat *array element* (needs a new `Inv` conjunct — *class `Array` ⇒ `.arr` payload* — with a boot certificate and transports, for **one** body) |
+| `begin` | 2 | the rescue machinery (`CtlOk`'s `.jump` at `.raiseJ`, six kont arms, `retry` as a loop) **and** Wall 2 — both bodies `rescue Uncomparable`, and `class Uncomparable < StandardError` is a *program* class with an explicit superclass, i.e. the allocating `class'` branch |
+| `gvar` / `if` / `next` / `hash` | 1 each | four separate rungs. `hash` is the one worth naming: `plainRecv` **excludes** a `.hsh` payload, so a hash literal's value has no type *at all* — it is L185's class-arm work over again, not a `Ty` arm |
+
+**Two of those rows are new information.** `splat` being three rungs is the fourth instance of L192's
+rule (*a blocker **name** ranks what it costs*); and `begin`'s dependence on Wall 2 was not written
+down anywhere — `slice-verdict.md` §4 had the two walls as *a* pair, not as *the* gate on the whole
+remaining census.
+
+### What changed
+
+```lean
+-- before
+∃ w, ValueTy m.heap w d.ret ∧ Builtins.run bid recv args m = .ok w m
+-- after
+∃ w m', Builtins.run bid recv args m = .ok w m' ∧ ValueTy m'.heap w d.ret ∧
+  PlainGrow m.heap m'.heap ∧ m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont
+```
+
+*The machine unchanged* → *the machine grown*. The four facts are **`inv_grow_value`'s hypotheses
+verbatim** (L149 wrote that lemma for the literal producers and it has been sitting there since), which
+is why the generalization is the weakest one that works rather than a design: `entry_dispatch` and
+`super_dispatch` carry the new machine in their conclusions, and their six call sites end in
+`inv_grow_value` where they ended in `inv_value`.
+
+**It cost four proof edits and two witnesses**, and the reason it was cheap is worth recording against
+the docs' own pricing: `baseDecls` has **four rows** (`Integer` `+`, `-`, `*`, `zero?`), witnessed by
+two lemmas, and both leave the machine alone — so each supplies `PlainGrow.rfl'` (new, in
+`Proof/HeapGrow.lean`) and three `rfl`s. `slice-verdict.md` §3.3's "~128 rows" is the *future* table;
+the wall was never 128 witnesses wide, it was one definition and six call sites.
+
+> **A wall priced as structural can turn out to be one clause deep.** This is the second time
+> (L195/`Decls.consts` was the first): what made it look large was that its *consumers* are large, not
+> that it is.
+
+### What the clause now excludes, and the exclusion is the point
+
+A builtin that **mutates** an existing object — `Array#push`, `String#<<` — is not a `PlainGrow`,
+because `get`-agreement below the old size is exactly what in-place mutation breaks. Such a row is
+still untabulatable, but now for a reason the clause *states* rather than one it happened to imply. A
+mutating row needs its own transport (`IvarOnly`'s shape at a payload), which is a rung and not a
+relaxation of this one.
+
+### What is still owed on Wall 2
+
+The **other** half: the allocating `class'` branch (`ClassGrow`, a `consts`-only write, the frame
+push — priced in `HANDOFF.md` §After that). This commit makes the *builtin* side able to allocate; the
+class-object side is untouched. `Class#new`, the regex literals, and the ~8 program class names are all
+still behind it.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (run anyway, though `Proof/`-only owes no diff); third ratchet **24**, unchanged.

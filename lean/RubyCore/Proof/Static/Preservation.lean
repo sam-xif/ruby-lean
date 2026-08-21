@@ -73,11 +73,15 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       exact this.1
   rcases htab.1 _ mname _ (sigOf_declFor hsg) with hbi |
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
-  · obtain ⟨w, hw, hstep⟩ :=
+  · obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
         (site := site) (by simp) (by simp) hbi hself trivial
     rw [hstep]
-    exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
+    -- **L215**: `inv_grow_value` where this was `inv_value`, and the four extra
+    -- arguments are `entry_dispatch`'s new conclusion verbatim. Inert for a
+    -- non-allocating row (`m' = m` and `PlainGrow` is reflexive); the point is that the
+    -- case no longer *forbids* one.
+    exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks hg' hfr' hst' hko'
       (ValueTy.weaken hw hsubw) hk
   · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) hself)
     have hown : (m.heap.classPayload? mdu.owner).isSome := by
@@ -903,13 +907,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           | nil =>
             obtain ⟨rfl, rfl, mn, dd, hmn, hne, hrow, hps, rfl⟩ := infer_super0_inv hinf
             obtain ⟨hm, hdp, hdn, hch, hty⟩ := hcls' mn hmn
-            obtain ⟨w, hw, hstep⟩ :=
+            obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
               super_dispatch (m := m) (args := []) (blk := methodBlk m) hne
                 (htab.2.2.2.2 _ _ _ hrow) hm hdp hdn hch hty (by rw [hps]; trivial)
             simp only [evalExpr, startSuperArgs]
             rw [hstep]
-            exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
-              (ValueTy.weaken hw hsubw) hk
+            exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
+              hg' hfr' hst' hko' (ValueTy.weaken hw hsubw) hk
           | cons arg extra =>
             obtain ⟨mn, τs, dd, hmn, hne, hargs, hrow, hsub, rfl⟩ := infer_super_inv hinf
             obtain ⟨τe, Γ₁, D₁, τrest, rfl, he, hrest⟩ := inferArgs_cons_inv hargs
@@ -957,7 +961,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have hza : zsuperArgs m = some ([], []) := by
             simp only [zsuperArgs, zsuperArgsOf, hm, hrp, hdm, classifyFull]
             simp [hne]
-          obtain ⟨w, hw, hstep⟩ :=
+          obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
             super_dispatch (m := m) (args := []) (blk := methodBlk m) hne
               (htab.2.2.2.2 _ _ _ hrow) hm (hcur ▸ hsc'.1) (hcur ▸ hsc'.2.1) (hcur ▸ hch)
               (hcur ▸ hty)
@@ -968,8 +972,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 rw [show dd.params = [] from subTys_nil_inv (this ▸ hsub)]; trivial)
           simp only [evalExpr, hza]
           rw [hstep]
-          exact inv_value hfs htab hsc hhook hsat hstr hcls hbot hks
-            (ValueTy.weaken hw hsubw) hk
+          exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
+            hg' hfr' hst' hko' (ValueTy.weaken hw hsubw) hk
     case send recv mname args blk =>
       cases recv with
       -- **The written receiverless call** (L170). `evalExpr` answers
@@ -1488,11 +1492,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- `EntryOk` is a disjunction and why this case is the first to case on it.
       rcases htab.1 τ mname _ (sigOf_declFor hsg) with hbi |
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
-      · obtain ⟨w, hw, hstep⟩ :=
+      · obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
             (sigOf_atomic hsg).1 (sigOf_atomic hsg).2 hbi hv trivial
         rw [hstep]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) (ValueTy.weaken hw hsw) hk'
+        exact inv_grow_value (m := { m with kont := k })
+          hfs htab hsc hhook hsat hstr hcls hbot
+          (by simpa [frameKLabels] using hks) hg' hfr' hst' hko'
+          (ValueTy.weaken hw hsw) hk'
       · -- The user branch: no value, a **frame**. `user_dispatch` supplies the step;
         -- the heap is untouched, so all five heap conjuncts pass straight through and
         -- what is left is the push and the callee's `CtlOk`.
@@ -1638,14 +1645,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hpr : psrest = [] := subTys_nil_inv hsr
         subst hpr
         dsimp only
-        obtain ⟨w, hw, hstep⟩ :=
+        obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
           super_dispatch (m := { m with kont := k }) (args := acc ++ [v]) (blk := blk)
             hne (htab.2.2.2.2 _ _ _ hrow) hm hdp hdn hch hty
             (by rw [hpeq]; exact ValuesTy_snoc hva hv hst)
         rw [show startSuperArgs { m with kont := k } (acc ++ [v]) [] blk
             = doSuper { m with kont := k } (acc ++ [v]) blk from rfl, hstep]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
-          (by simpa [frameKLabels] using hks) (ValueTy.weaken (hret ▸ hw) hsw) hk'
+        exact inv_grow_value (m := { m with kont := k })
+          hfs htab hsc hhook hsat hstr hcls hbot
+          (by simpa [frameKLabels] using hks) hg' hfr' hst' hko'
+          (ValueTy.weaken (hret ▸ hw) hsw) hk'
       | cons e rest' =>
         obtain ⟨τe, Γ₁, D₁, τrest', rfl, he, hrest'⟩ := inferArgs_cons_inv hrest
         obtain ⟨τp', psrest', rfl, hs1, hs2⟩ := subTys_cons_inv hsr
@@ -1694,12 +1703,15 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             hb | ⟨_, _, _, _, _, hdp, _, _⟩
           · exact hb
           · exact absurd hdp (by simp)
-        obtain ⟨w, hw, hstep⟩ :=
+        obtain ⟨w, m', hw, hg', hfr', hst', hko', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
             (sigOf_atomic (by simpa using hsg)).1 (sigOf_atomic (by simpa using hsg)).2
             hbi hrv (ValuesTy_snoc hva hv hst)
         rw [hstep]
-        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks) (ValueTy.weaken hw hsw) hk'
+        exact inv_grow_value (m := { m with kont := k })
+          hfs htab hsc hhook hsat hstr hcls hbot
+          (by simpa [frameKLabels] using hks) hg' hfr' hst' hko'
+          (ValueTy.weaken hw hsw) hk'
       -- **Another argument to run.** One value moves from the unevaluated tail to
       -- the accumulated prefix, and the signature's split point moves with it —
       -- which is the `List.append_assoc` the `simpa` below discharges.
