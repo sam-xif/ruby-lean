@@ -207,11 +207,37 @@ def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop :=
   -- `subTy_trans`: the disjunct has to be closed upwards, and that is what `subTy` from `.any`
   -- means. Every *inversion* below refutes it by computation, because `subTy .any τ` is `false` at
   -- every concrete `τ`.
-  subTy .any τ = true ∨ ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
+  subTy .any τ = true
+  -- **L239: the parameterised arm's clause, and it is a *relation* on purpose.**
+  --
+  -- `valueTy?` cannot answer an `arrayOf`: computing an array's element type would recurse
+  -- through the heap, and a Ruby array can contain itself (`a = []; a << a`). So the claim
+  -- is stated here, over the payload the array actually holds — with one level of
+  -- `valueTy?` inlined rather than a recursive call into `ValueTy`, which keeps this
+  -- definition non-recursive and therefore keeps every `rcases` below computing.
+  --
+  -- Stated **up-closed** (`subTy (.arrayOf σ) τ`) rather than at `τ = .arrayOf σ`, for the
+  -- reason L232's `.any` disjunct is: `ValueTy.weaken` has to stay one `subTy_trans`, and
+  -- an array value does satisfy `nilable (arrayOf σ)`.
+  --
+  -- What the inlining costs is *nesting*: an element's exact type is compared to `σ` by
+  -- `subTy`, so `arrayOf (arrayOf String)` is uninhabited — `valueTy?` of an array is
+  -- `.cls "Array"`. One level is what the slice needs (`T::Array[String]`), and the honest
+  -- reading of the limit is that the *element* language is `valueTy?`'s range, not `Ty`.
+  -- `Array[Hash]` is uninhabited too, for a reason already on the board: `plainRecv`
+  -- excludes a `.hsh` payload, so a `Hash` value has no type at all.
+  -- The bound is a *conjunct* rather than a consequence: `h.get` is total, so an
+  -- out-of-bounds id reads back as the default object and the payload equation alone would
+  -- not place `o` in the heap. Clause 8 of `TypeAgree` is relativized to the old bounds,
+  -- which is what the transport needs it for.
+  ∨ (∃ σ o xs, subTy (.arrayOf σ) τ = true ∧ v = .ref o ∧ o < h.objs.size ∧
+      (h.get o).payload = .arr xs ∧
+      ∀ v' ∈ xs, ∃ σ', valueTy? h v' = some σ' ∧ subTy σ' σ = true)
+  ∨ ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
 
 /-- The exact-type constructor, which is what every producer rule has. -/
 theorem ValueTy.exact {h : Heap} {v : Value} {τ : Ty} (he : valueTy? h v = some τ) :
-    ValueTy h v τ := Or.inr ⟨τ, he, by simp⟩
+    ValueTy h v τ := Or.inr (Or.inr ⟨τ, he, by simp⟩)
 
 /-- **And `.any` needs no value at all** (L232) — the whole point of the disjunct. -/
 theorem ValueTy.any {h : Heap} {v : Value} : ValueTy h v .any := Or.inl (by simp [subTy])
@@ -221,7 +247,10 @@ theorem ValueTy.weaken {h : Heap} {v : Value} {σ τ : Ty} (hv : ValueTy h v σ)
     (hs : subTy σ τ = true) : ValueTy h v τ :=
   match hv with
   | Or.inl ha => Or.inl (subTy_trans ha hs)
-  | Or.inr ⟨σ', hσ, hsub⟩ => Or.inr ⟨σ', hσ, subTy_trans hsub hs⟩
+  -- L239: up-closed, so the array clause weakens by the same `subTy_trans` the others do.
+  | Or.inr (Or.inl ⟨σ', o, xs, hup, hvo, hb, hpay, hall⟩) =>
+      Or.inr (Or.inl ⟨σ', o, xs, subTy_trans hup hs, hvo, hb, hpay, hall⟩)
+  | Or.inr (Or.inr ⟨σ', hσ, hsub⟩) => Or.inr (Or.inr ⟨σ', hσ, subTy_trans hsub hs⟩)
 
 /-- **`.any` is below only itself and the nilables above it** (L232) — the form the
     inversions' new hypothesis takes when the caller has `subTy_atomic`'s two side
@@ -235,11 +264,15 @@ theorem subTy_any_false {τ : Ty} (ha : τ ≠ .any) (hn : ∀ τ', τ ≠ .nila
 /-- Inversion at an **atomic** type: the exact type is the declared one, which is
     what keeps every pre-L193 consumer working. -/
 theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
-    (hn : ∀ τ', τ ≠ .nilable τ') (hv : ValueTy h v τ) : valueTy? h v = some τ := by
+    (hn : ∀ τ', τ ≠ .nilable τ')
+    -- **L239**: and not an array. `valueTy?` answers `.cls "Array"` for an array object,
+    -- never an `arrayOf`, so at that arm this lemma is *false* and the hypothesis says so.
+    (hnar : ∀ σ, τ ≠ .arrayOf σ) (hv : ValueTy h v τ) : valueTy? h v = some τ := by
   -- L232: the `.any` disjunct is refuted by the same `subTy_atomic` the arm below uses —
   -- at an atomic `τ`, `subTy σ τ` *is* `σ = τ`, and `.any ≠ τ` is the hypothesis.
-  rcases hv with hany | ⟨σ, hσ, hs⟩
+  rcases hv with hany | ⟨σ', o, xs, hup, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
   · exact absurd ((subTy_atomic ha hn).mp hany) (Ne.symm ha)
+  · exact absurd ((subTy_atomic ha hn).mp hup) (Ne.symm (hnar σ'))
   rw [(subTy_atomic ha hn).mp hs] at hσ
   exact hσ
 
@@ -251,11 +284,17 @@ theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty}
     -- **L232**: `.any` types every value, including a `.ref` that is neither a plain nor a
     -- class receiver — so the inversion needs to know it is not being asked about `.any`.
     -- Every caller is at a concrete type and discharges it by `simp [subTy]`.
-    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
+    (hna : subTy .any τ = false)
+    -- **L239**: and that it is not an array type either, for the same reason — the arm is
+    -- inhabited by a `.ref` whose *contents* the claim is about, which neither `plainRecv`
+    -- nor `classRecv` can be read off. Every caller is at a concrete non-array type and
+    -- discharges it by `simp [subTy]`.
+    (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h (.ref o) τ) :
     (plainRecv h o = true ∧ subTy (.cls (className h (classOf h (.ref o)))) τ = true) ∨
       (classRecv h o = true ∧ subTy (.clsOf (className h o)) τ = true) := by
-  rcases hv with hany | ⟨σ, hσ, hs⟩
+  rcases hv with hany | ⟨σ', o', xs, hup, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
   · rw [hna] at hany; exact absurd hany (by simp)
+  · rw [hnar σ'] at hup; exact absurd hup (by simp)
   by_cases hp : plainRecv h o
   · refine Or.inl ⟨hp, ?_⟩
     rw [show σ = .cls (className h (classOf h (.ref o))) from by
@@ -275,7 +314,7 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
   cases v with
   | ref o =>
     exfalso
-    rcases valueTy_ref_inv (by simp [subTy]) h with ⟨-, hne⟩ | ⟨-, hne⟩ <;>
+    rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) h with ⟨-, hne⟩ | ⟨-, hne⟩ <;>
       exact absurd hne (by simp [subTy])
   | _ => simp_all [ValueTy, valueTy?, subTy]
 
@@ -301,43 +340,48 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
 theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty}
     -- L232: `.any` types every value, so the shape list needs to know it is not asked
     -- about `.any` — every caller is at a concrete type.
-    (hna : subTy .any τ = false) (hv : ValueTy h v τ) :
+    (hna : subTy .any τ = false)
+    -- L239: and not an array type, for `valueTy_ref_inv`'s reason.
+    (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h v τ) :
     (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) ∨
       (∃ x, v = .flt x) ∨
       (∃ o, v = .ref o ∧ (plainRecv h o = true ∨ classRecv h o = true)) := by
   cases v with
   | ref o =>
     refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩))))
-    rcases valueTy_ref_inv hna hv with ⟨hp, -⟩ | ⟨hc, -⟩
+    rcases valueTy_ref_inv hna hnar hv with ⟨hp, -⟩ | ⟨hc, -⟩
     · exact Or.inl hp
     · exact Or.inr hc
-  | _ => simp_all [ValueTy, valueTy?, hna]
+  | _ => simp_all [ValueTy, valueTy?, hna, hnar]
 
 /-- **A typed `.ref` is an id the heap actually has.** The point of `plainRecv`'s
     bound, isolated so that the transport lemmas can consume it without unfolding
     `valueTy?`: it is what will let `TypeAgree` be relativized to `< h.objs.size`
     and therefore hold across an `alloc`. -/
 theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty}
-    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
+    (hna : subTy .any τ = false)
+    -- L239: the array clause carries no bound of its own — the payload it reads is
+    -- `h.get o`, which is total — so the lemma needs to know it is not that arm.
+    (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h (.ref o) τ) :
     o < h.objs.size := by
   -- Both arms of the `.ref` case carry the bound: `plainRecv` as its first clause
   -- and `classRecv` as its first clause too (L185).
   by_cases hb : o < h.objs.size
   · exact hb
-  · simp [ValueTy, valueTy?, plainRecv, classRecv, hb, hna] at hv
+  · simp [ValueTy, valueTy?, plainRecv, classRecv, hb, hna, hnar] at hv
 
 /-- A `.ref` typed at a **class type** is a plain receiver — the old
     `valueTy_ref_plain`, restated at the arm it is about. -/
 theorem valueTy_ref_plain {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.cls n)) : plainRecv h o = true := by
-  rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨hp, -⟩ | ⟨-, hne⟩
+  rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hv with ⟨hp, -⟩ | ⟨-, hne⟩
   · exact hp
   · exact absurd hne (by simp [subTy])
 
 /-- And a `.ref` typed at a **class-object type** is a class receiver. -/
 theorem valueTy_ref_class {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.clsOf n)) : classRecv h o = true := by
-  rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨-, hne⟩ | ⟨hc, -⟩
+  rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hv with ⟨-, hne⟩ | ⟨hc, -⟩
   · exact absurd hne (by simp [subTy])
   · exact hc
 
@@ -402,9 +446,10 @@ theorem classOf_lt_of_mem_ancestors {h : Heap} {k d : ObjId}
     Unused today, which is why it is stated in the form that will still be true at
     the next widening rather than the form that reads best. -/
 theorem valueTy_ref_not_ground {h : Heap} {o : ObjId} {τ : Ty}
-    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
+    (hna : subTy .any τ = false)
+    (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h (.ref o) τ) :
     τ ≠ .int ∧ τ ≠ .bool ∧ τ ≠ .nilT ∧ τ ≠ .sym := by
-  rcases valueTy_ref_inv hna hv with ⟨-, hs⟩ | ⟨-, hs⟩ <;>
+  rcases valueTy_ref_inv hna hnar hv with ⟨-, hs⟩ | ⟨-, hs⟩ <;>
     refine ⟨?_, ?_, ?_, ?_⟩ <;> intro heq <;> rw [heq] at hs <;> simp [subTy] at hs
 
 /-- **An immediate's type does not depend on the heap.** Four constant arms; stated
@@ -1520,13 +1565,8 @@ theorem typeAgree_alloc (h : Heap) (obj : Object) (hsat : Saturated h)
     heap in for and what it predicted would happen here rather than at the use
     sites. The immediate arms are still `id`, and that asymmetry is the whole
     reason the class arm could land as one commit. -/
-theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
-    (hv : ValueTy h v τ) : ValueTy h' v τ := by
-  -- L193: the *exact* type is what transports, and `τ` rides along untouched —
-  -- which is why the relation cost this lemma nothing but a `refine` at the top.
-  rcases hv with hany | ⟨σ, hσ, hs⟩
-  · exact Or.inl hany
-  refine Or.inr ⟨σ, ?_, hs⟩
+theorem valueTy?_congr {h h' : Heap} {v : Value} {σ : Ty} (ha : TypeAgree h h')
+    (hσ : valueTy? h v = some σ) : valueTy? h' v = some σ := by
   cases v with
   | ref o =>
     -- L143: each clause is instantiated at an id the *hypothesis* supplies, which
@@ -1563,6 +1603,27 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
         simp [valueTy?, hnp, hc', ha.2.1 o hb]
       · simp [valueTy?, hp, hc] at hσ
   | _ => simp_all [valueTy?]
+
+/-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
+    reads three of `TypeAgree`'s clauses, which is what L137 threaded the heap in for
+    and what it predicted would happen here rather than at the use sites.
+
+    **L239 split the exact-type half out** (`valueTy?_congr` above), because the array
+    clause needs it *twice*: once for the array's own contents and once per element. -/
+theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
+    (hv : ValueTy h v τ) : ValueTy h' v τ := by
+  rcases hv with hany | ⟨σ', o, xs, hup, rfl, hb, hpay, hall⟩ | ⟨σ, hσ, hs⟩
+  · exact Or.inl hany
+  -- **L239: the array clause, and clause 8 of `TypeAgree` is what carries it.** The
+  -- payload is unmoved at every old id, so the same `xs` is there in `h'`; each element's
+  -- exact type transports by `valueTy?_congr`. This is the arm that would be *false*
+  -- without the clause — a step that rewrote the array would break the claim, correctly.
+  · exact Or.inr (Or.inl ⟨σ', o, xs, hup, rfl, Nat.lt_of_lt_of_le hb ha.2.2.2.2.2.2.2, by
+      rw [ha.2.2.2.2.2.2.1 o hb xs hpay],
+      fun v' hv' => by
+        obtain ⟨σ'', hσ'', hsub⟩ := hall v' hv'
+        exact ⟨σ'', valueTy?_congr ha hσ'', hsub⟩⟩)
+  · exact Or.inr (Or.inr ⟨σ, valueTy?_congr ha hσ, hs⟩)
 
 /-- **`isTypeError` transports** (L218) — the lemma `begin`/`rescue` needs and the reason
     `TypeAgree`'s chain clause lost its bound.
@@ -1622,7 +1683,7 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
           cases hsv : (frames.getD fid default).self with
           | ref o =>
               rw [hsv] at hv
-              exact ha.1 o (valueTy_ref_lt (by simp [subTy]) hv)
+              exact ha.1 o (valueTy_ref_lt (by simp [subTy]) (by simp [subTy]) hv)
           | bool b => cases b <;> rfl
           | _ => rfl
         rw [hco, ha.2.2.2.2.2.1 _]

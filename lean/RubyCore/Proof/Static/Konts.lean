@@ -1005,7 +1005,12 @@ def Inv (m : Machine) : Prop :=
     reason the two arms were given `[]` rather than a name. -/
 theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τret : Ty}
     (h : sigOf D τr mname = some (ps, τret)) :
-    τr ≠ .any ∧ ∀ τ', τr ≠ .nilable τ' := by
+    -- **L239 adds the third**, from the same fact: `tyClassNames` is `[]` at the
+    -- parameterised arm too, so a row's *existence* refutes it exactly as it refutes
+    -- `.any` and a nilable. Every dispatch lemma's new side condition is therefore free at
+    -- every caller — and the day `arrayOf` starts dispatching, this conjunct is where the
+    -- bill lands, which is the honest place for it.
+    τr ≠ .any ∧ (∀ τ', τr ≠ .nilable τ') ∧ ∀ σ, τr ≠ .arrayOf σ := by
   cases τr <;>
     simp_all [sigOf, declFor, tyClassNames]
 
@@ -1306,7 +1311,7 @@ theorem spreadA_of_array {m : Machine} {v : Value}
     | _ => rw [hsv] at hv; simp_all [ValueTy, valueTy?, subTy]
   have hpl : plainRecv m.heap o = true := valueTy_ref_plain hv
   have hcn : className m.heap (m.heap.get o).klass = "Array" := by
-    rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨-, hs⟩ | ⟨hc, hs⟩
+    rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hv with ⟨-, hs⟩ | ⟨hc, hs⟩
     · have hq := (subTy_atomic (τ := Ty.cls "Array") (by simp) (by simp)).mp hs
       rw [plainRecv_classOf hpl] at hq
       simpa using hq

@@ -96,7 +96,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
-        (site := site) (by simp) (by simp) hbi hself trivial
+        (site := site) (by simp) (by simp) (by simp) hbi hself trivial
     rw [hstep]
     -- **L215**: `inv_grow_value` where this was `inv_value`, and the four extra
     -- arguments are `entry_dispatch`'s new conclusion verbatim. Inert for a
@@ -104,7 +104,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
     -- case no longer *forbids* one.
     exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks hg' hfr' hst' hko'
       (ValueTy.weaken hw hsubw) hk hglob hgv'
-  · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) hself)
+  · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hself)
     have hown : (m.heap.classPayload? mdu.owner).isSome := by
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
@@ -453,7 +453,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             -- The class the table is keyed at: `plainRecv` says dispatch goes through
             -- `klass`, and `hself` names that class.
             have hcn : className m.heap (m.heap.get o).klass = sc := by
-              have := valueTy_ref_inv (by simp [subTy]) (hsf ▸ hself)
+              have := valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) (hsf ▸ hself)
               rcases this with ⟨-, hs⟩ | ⟨hc, hs⟩
               · have := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
                 rw [plainRecv_classOf hpl] at this
@@ -615,7 +615,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 simp only [evalExpr, Interp.doReturn, hrt,
                   show m.stack.contains fid = true from by simp [hst]]
                 exact ⟨hhook, hsat, hstr, hcls, hbot, hks, D, ctx, Γ, Γs, htab, hfs, hsc, hglob,
-                  ⟨σ, Or.inr ⟨.nilT, rfl, hsub⟩, KontOk.retOk hk hne σ hret, hff⟩⟩
+                  ⟨σ, Or.inr (Or.inr ⟨.nilT, rfl, hsub⟩), KontOk.retOk hk hne σ hret, hff⟩⟩
               · rw [if_neg hsub] at hinf; exact absurd hinf (by simp)
           · rw [hnone] at hret; exact absurd hret (by simp)
       · exact absurd hinf (by simp)
@@ -1370,7 +1370,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [Bool.and_eq_true] at hcr
         exact hcr.2
       have hcn : className m.heap o = cname := by
-        rcases valueTy_ref_inv (by simp [subTy]) hvc with ⟨-, hs⟩ | ⟨-, hs⟩
+        rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hvc with ⟨-, hs⟩ | ⟨-, hs⟩
         · exact absurd hs (by simp [subTy])
         · simpa using (subTy_atomic (τ := Ty.clsOf cname) (by simp) (by simp)).mp hs
       obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2.1 cname n σ hsco o hpay hcn
@@ -1444,7 +1444,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         exact hpl.1.1.2
       -- L196: the class the ivar table is keyed at, and the bound the scan needs.
       have hcnO : className m.heap (m.heap.get o).klass = sc := by
-        rcases valueTy_ref_inv (by simp [subTy]) (hsf ▸ hself) with ⟨-, hs⟩ | ⟨hc, hs⟩
+        rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) (hsf ▸ hself) with ⟨-, hs⟩ | ⟨hc, hs⟩
         · have hq := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
           rw [plainRecv_classOf hpl] at hq
           simpa using hq
@@ -1706,7 +1706,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
       · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
-            (sigOf_atomic hsg).1 (sigOf_atomic hsg).2 hbi hv trivial
+            (sigOf_atomic hsg).1 (sigOf_atomic hsg).2.1 (sigOf_atomic hsg).2.2 hbi hv trivial
         rw [hstep]
         exact inv_grow_value (m := { m with kont := k })
           hfs htab hsc hhook hsat hstr hcls hbot
@@ -1719,7 +1719,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- `UserEntryOk` supplies exactly that — `htys : τ = .cls cu` — so the
         -- substitution is the whole adjustment.
         subst htys
-        have hru := hresu _ (valueTy_tyClass (by simp) (by simp) hv)
+        have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hv)
         have hown : (m.heap.classPayload? mdu.owner).isSome := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
@@ -1887,7 +1887,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · exact absurd hdp (by simp)
         obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
-            (sigOf_atomic (by simpa using hsg)).1 (sigOf_atomic (by simpa using hsg)).2
+            (sigOf_atomic (by simpa using hsg)).1 (sigOf_atomic (by simpa using hsg)).2.1
+            (sigOf_atomic (by simpa using hsg)).2.2
             hbi hrv (ValuesTy_snoc hva hv hst)
         rw [hstep]
         exact inv_grow_value (m := { m with kont := k })

@@ -176,9 +176,13 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
     caller gets them from the *declaration*: `declFor` answers `none` at both arms
     (`tyClassNames` is `[]` there), which is what `sigOf_atomic` below reads back. -/
 theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
-    (hn : ∀ τ', τ ≠ .nilable τ') (hv : ValueTy h v τ) :
+    (hn : ∀ τ', τ ≠ .nilable τ')
+    -- **L239**: and not an array type, which is `ValueTy.atomic`'s new side condition —
+    -- `tyClassNames` is `[]` at the arm today, so every caller reads it back from
+    -- `declFor`'s `none` exactly as it reads the other two.
+    (hnar : ∀ σ, τ ≠ .arrayOf σ) (hv : ValueTy h v τ) :
     TyClass h τ (classOf h v) := by
-  have hex := hv.atomic ha hn
+  have hex := hv.atomic ha hn hnar
   clear hv
   cases v with
   | int a => cases τ <;> simp_all [valueTy?, TyClass, classOf]
@@ -200,7 +204,11 @@ theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
     -- has none — and its type names the object's own class. The second is the whole
     -- content of the class-object arm and the reason `TyClass` says `classOf`
     -- rather than naming a chain.
-    rcases valueTy_ref_inv (subTy_any_false ha hn) hv with ⟨hp, hs⟩ | ⟨hc, hs⟩
+    rcases valueTy_ref_inv (subTy_any_false ha hn)
+      (fun σ => by
+        by_cases hq : subTy (.arrayOf σ) τ = true
+        · exact absurd ((subTy_atomic ha hn).mp hq) (Ne.symm (hnar σ))
+        · simpa using hq) hv with ⟨hp, hs⟩ | ⟨hc, hs⟩
     · rw [← (subTy_atomic ha hn).mp hs]
       exact ⟨valueTy_ref_klass_isSome hp, rfl⟩
     · rw [← (subTy_atomic ha hn).mp hs]
@@ -464,9 +472,11 @@ def EntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) 
     class does not hand over a receiver — which is the asymmetry L147 is about. -/
 theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Value}
     (ha : τr ≠ .any) (hn : ∀ τ', τr ≠ .nilable τ')
+    -- L239: `valueTy_tyClass`'s third side condition, threaded.
+    (hnar : ∀ σ, τr ≠ .arrayOf σ)
     (hres : ∀ k, TyClass h τr k → ResolvesAt h k mname bid)
     (hrv : ValueTy h recv τr) : ResolvesTo h recv mname bid :=
-  resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass ha hn hrv))
+  resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass ha hn hnar hrv))
 
 /-- **What one constant row obliges** (L195), and it is three conjuncts where
     `ClassOk`'s class-object block carried seven — because `ValueTy h v (.clsOf n)`
@@ -775,6 +785,9 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     -- names a class. `sigOf_atomic` supplies them from the row's existence, so no
     -- caller has to argue.
     (ha : τr ≠ .any) (hn : ∀ τ', τr ≠ .nilable τ')
+    -- L239: `EntryOk.resolves`' third side condition. Every caller is at a concrete
+    -- receiver type, so it is `by simp` at each.
+    (hnar : ∀ σ, τr ≠ .arrayOf σ)
     (he : BuiltinEntryOk m.heap τr mname d)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
     -- **L215: the conclusion carries the machine the builtin left**, and the four
@@ -787,7 +800,8 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       startArgs m recv site mname args [] .none
         = .next (withCtl m' (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
-  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves ha hn hres hrv
+  obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ :=
+    EntryOk.resolves ha hn hnar hres hrv
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   simp only [startArgs, finishSend]
@@ -807,7 +821,12 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   -- **Five immediates since L202** — the `.flt` disjunct is `.int`'s twin here too:
   -- `invoke`'s receiver-shape arms are all `.ref`, so it falls through the outer
   -- match exactly as the other four do and costs this proof one more `inr`.
-  rcases valueTy_shapes (subTy_any_false ha hn) hrv with
+  rcases valueTy_shapes (subTy_any_false ha hn)
+    -- L239: the same `subTy_atomic` argument `subTy_any_false` makes, at the array arm.
+    (fun σ => by
+      by_cases hq : subTy (.arrayOf σ) τr = true
+      · exact absurd ((subTy_atomic ha hn).mp hq) (Ne.symm (hnar σ))
+      · simpa using hq) hrv with
     ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, hplain⟩
   case' inr.inr.inr.inr.inr =>
     -- The `.ref` case, which is F1b's whole bill. Case on the payload: `plainRecv`
@@ -900,7 +919,7 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
     -- `.cls` refutation does double duty on this branch — it is also what makes
     -- `crubySingletonShadow`, the gate `ResolvesTo` never has to mention, answer
     -- `none`.
-    rcases valueTy_shapes (by simp [subTy]) hrv with
+    rcases valueTy_shapes (by simp [subTy]) (by simp [subTy]) hrv with
       ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, -⟩
     case' inr.inr.inr.inr.inr =>
       -- L185: the receiver's type is `.cls cn`, which only `valueTy?`'s *plain*
@@ -2320,7 +2339,7 @@ theorem constsOkB_sound {h : Heap} {cs : List (String × Ty)}
       | none => rw [hv] at he; exact absurd he.1 (by simp)
       | some σ =>
         rw [hv] at he
-        exact Or.inr ⟨σ, hv, by simpa using he.1⟩
+        exact Or.inr (Or.inr ⟨σ, hv, by simpa using he.1⟩)
     · -- The bound comes from the payload, so the `List.range` scan really does cover
       -- every id the hypothesis can name (`classPayload?_isSome_lt`).
       have hlt : j < h.objs.size := classPayload?_isSome_lt hj
