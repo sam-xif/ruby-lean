@@ -11239,3 +11239,47 @@ call sites, no proof restructured.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
 `Proof/`-only, so no `--check` diff is owed (L148's borderline rule: the binary cannot move).
+
+## L233 — `begin`'s rescue is gated on the *same* env fact as `if`, and that is the finding
+
+Out of fragment **21 → 21**. The `begin`/`rescue` rung was designed to the point where the
+`RaiseOk` refactor was half-written, and then it produced the same obligation L231 hit from the other
+side. Two rungs, one gate — worth one entry rather than two false starts.
+
+### What was designed, and what is right about it
+
+The shape is the first cut §10 asks for: **one clause, no class list, no `else`, no `ensure`**, the
+binding a local. `RaiseOk` gains the table, the heap, the context and the environment as indices
+(a *propagating* raise needed none of them; a *handler's typing* needs all four) and a `caught`
+constructor carrying the handler's `infer` equation at `envSet Γ x .any` — which is what L232 was
+for, since `subTy` has no nominal subtyping and the raised value's class is a descendant.
+
+**And one part is genuinely free.** The handler's *output* environment is wider than the begin's
+answer (the desugarer's string interpolation binds `__dt_t1`/`__dt_t2` — measured on the target
+body), and that costs nothing: a new kont constructor may relate its conclusion's environment to its
+premise's however it likes, so `KontOk.rescueK`'s conclusion sits at the handler's output and its
+tail at the begin's, with `FramesOk.narrowHead` at the delivery. **Narrowing across a kont you are
+introducing is free; it is *widening* that is not.**
+
+### Where it dies, and it is L231's wall from the other side
+
+The raise's consecution case has `FramesOk` at the machine's *current* environment `Γcur` and needs
+it at the handler's `envSet Γbegin x .any` — so it needs `SubEnv Γbegin Γcur`, i.e. **the begin's
+environment is below the one in force where the raise happened**. That is *true* — environments only
+grow within a frame — but **the invariant does not record it**, and it cannot be recovered from the
+`KontOk` chain: each constructor relates its own conclusion's environment to its premise's, and the
+composition runs the wrong way (`asgn`'s premise is *wider* than its conclusion, so walking down the
+chain to the `beginBodyK` gives `Γbegin ⊆ Γdeep`, not `Γbegin ⊆ Γcur`).
+
+> **So `if` (L231) and `begin` (L233) are one rung, not two.** What both want is an invariant fact
+> that environments only grow within an activation — either as a `KontOk` clause (*every
+> constructor's premise environment extends its conclusion's*, which then composes) or as the
+> `infer` environment-monotonicity lemma L231 wrote down. The `KontOk` clause looks cheaper and is
+> the one to try first: it is seventeen constructors' worth of `SubEnv` premises, each discharged at
+> its introduction site by `SubEnv.refl` or `subEnv_envSet`, and it makes the chain composable in
+> the direction both rungs read it.
+
+### Checks
+
+Reverted to L232's tree: `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; third
+ratchet **21**.
