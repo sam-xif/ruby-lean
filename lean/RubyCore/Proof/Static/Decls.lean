@@ -443,6 +443,35 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
 def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
   ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧ ConformsAt τr mname bid d
 
+/-- **The receiver type a user row is keyed at** (L241), and it is a *relation* rather than
+    the equation `τr = .cls c` it replaces.
+
+    The equation was the pinning that made `mem_declAtoms_iff`'s certificate reading break
+    when `arrayOf` was given dispatch (L240): the enumeration `declTys` is finite, element
+    types are not, so `DeclsOk` at an `arrayOf` receiver has to be *derivable* from the
+    `.cls "Array"` atom. For a builtin entry it already is — `TyClass` at the two types is
+    the same proposition, definitionally — and for a user entry the equation is what
+    refused it.
+
+    Two shapes and no more: a class type at its own name, and the parameterised array type
+    at `Array`. Deliberately not `tyClassNames τr = [c]`, which would also admit the ground
+    arms — a user row on `Integer` is what `hground` exists to forbid, and widening this to
+    reach it would make `UserEntryOk` satisfiable at a type whose inhabitants are
+    immediates. -/
+def UserKey (τr : Ty) (c : String) : Prop :=
+  τr = .cls c ∨ (∃ e, τr = .arrayOf e) ∧ c = "Array"
+
+
+/-- At a class type the key *is* the equation, which is what every consumer reads: a send's
+    receiver type is a `.cls` (that is what `plainRecv`/`valueTy?` answer), so the second
+    shape is refuted by the constructor. -/
+theorem UserKey.cls_inv {n c : String} (h : UserKey (.cls n) c) : n = c := by
+  rcases h with h | ⟨⟨e, he⟩, -⟩
+  · simpa using h
+  · exact absurd he (by simp)
+
+theorem UserKey.cls {c : String} : UserKey (.cls c) c := Or.inl rfl
+
 /-- **The user witness** (L157): resolution to a `MethodDef` with `builtin = none`,
     with conformance discharged by the *checker* rather than by running anything.
 
@@ -455,7 +484,7 @@ def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Pro
     place to leave it. -/
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
-  ∃ md c, τr = .cls c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
+  ∃ md c, UserKey τr c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
     className h md.owner = c ∧ UserConforms D c mname md d
 
 /-- A declared method is satisfied by **either** kind of witness. A disjunction
@@ -2521,9 +2550,9 @@ theorem tyClass (hi : IvarOnly h h') {τ : Ty} {k : ObjId} (ht : TyClass h' τ k
 
 theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}
     {d : MethodDecl} (he : EntryOk D h τr mname d) : EntryOk D h' τr mname d := by
-  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, rfl, hres, hown, hconf⟩
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩
   · exact Or.inl ⟨bid, fun k hk => hi.resolvesAt (hres k (hi.tyClass hk)), hconf⟩
-  · exact Or.inr ⟨md, c, rfl, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
+  · exact Or.inr ⟨md, c, hkey, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
       by rw [hi.className_eq]; exact hown, hconf⟩
 
 theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ) :

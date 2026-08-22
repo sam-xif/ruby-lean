@@ -140,7 +140,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
         show ValueTy m.heap m.currentFrame.self (.cls cu) ∧
           (userFrame m.currentFrame.self mdu mname).defmod ∈
             ancestors m.heap (classOf m.heap m.currentFrame.self)
-        have hcu : c = cu := by simpa using htys
+        have hcu : c = cu := UserKey.cls_inv htys
         -- **L209: and the chain half is `ResolvesUser`'s eleventh clause, spent
         -- here.** `userFrame` sets `defmod := md.owner`, and the row's resolution says
         -- that owner is on the receiver's chain — which is the fact `doSuper`'s
@@ -947,11 +947,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
           obtain ⟨rest, hrest⟩ := hchain md
-          refine Or.inr ⟨md, ctx.cls, ?_, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
+          refine Or.inr ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
             by rw [hbd]; exact hdf.2, ?_⟩
-          · -- The row's type names exactly its key, which is what lets a *call*
-            -- recover the class the body was checked in (F1b.11).
-            rfl
+          -- L241: the row's key is `UserKey.cls` — the type names exactly its class, which
+          -- is what lets a *call* recover the class the body was checked in (F1b.11). It
+          -- used to be `rfl` at an equation; the relation's first shape is that equation.
           · have hk : k = (curFrame m).defmod := by
               rw [hdefk]; exact huniq₀ k htc.1 htc.2
             subst hk
@@ -1716,9 +1716,17 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- the heap is untouched, so all five heap conjuncts pass straight through and
         -- what is left is the push and the callee's `CtlOk`.
         -- L185: `user_dispatch` pins the receiver's type to the class arm, and
-        -- `UserEntryOk` supplies exactly that — `htys : τ = .cls cu` — so the
-        -- substitution is the whole adjustment.
-        subst htys
+        -- `UserEntryOk` supplies exactly that — so the substitution is the whole
+        -- adjustment.
+        --
+        -- **L241 made the key a relation**, so there are two shapes to case on, and the
+        -- second is refuted *here* rather than by the witness: `tyClassNames` is `[]` at
+        -- `arrayOf`, so a row cannot be read at it. This is the case that becomes real the
+        -- day dispatch lands, and it is the honest place for that bill to show up.
+        rcases htys with rfl | ⟨⟨e, rfl⟩, rfl⟩
+        case inr =>
+          simp only [sigOf, declFor, tyClassNames] at hsg
+          exact absurd hsg (by simp)
         have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hv)
         have hown : (m.heap.classPayload? mdu.owner).isSome := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
