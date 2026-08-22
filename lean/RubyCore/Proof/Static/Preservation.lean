@@ -105,7 +105,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
     have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-    obtain ⟨hdp, hdfu, Γb, r, hbu, hag⟩ := hconfu
+    obtain ⟨hdp, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
     refine ⟨hhook, hsat, hstr, hcls,
       BottomObj_cons hne (BottomObj_push hlt hbot),
       -- L199: the push writes a `frameK` and a stack entry at the same id, so both
@@ -161,7 +161,10 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ : Env}
     -- **L228: the push leaves the globals alone**, and the heap too, so the conjunct is
     -- the incoming one at a machine that differs in `frames`/`stack`/`kont`/`ctl`.
     · exact hglob
-    · exact ⟨τret, τw, Γb, _, hbu, hsubw,
+    -- **L229: the body's type is `τb`, below the declared `τret`** — and the eval clause's
+    -- subsumption is where that difference is spent, exactly as `CtlOk` has allowed since
+    -- L193. One `subTy_trans` is the whole cost of the join.
+    · exact ⟨τb, τw, Γb, _, hbu, subTy_trans hsb hsubw,
         KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) rfl hk⟩
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
@@ -890,8 +893,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 rfl
           · -- L198: the `def` rule supplies `r = none`, which is exactly *this body
             -- contains no `return`* — see `UserConforms`.
-            exact ⟨Γb, none, by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody,
-              fun σ h => absurd h (by simp)⟩
+            -- L229: the `def` rule's row carries the body's *own* type, so the new
+            -- `subTy` conjunct is reflexivity — a `def` declares exactly what it infers,
+            -- and it is the *declared* signature (W8's `sig`) that can be wider.
+            exact ⟨Γb, none, τb,
+              by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody,
+              subTy_refl _, fun σ h => absurd h (by simp)⟩
         by_cases hp : m.preludeMode = true <;>
           simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
           refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
@@ -1642,7 +1649,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-        obtain ⟨hdp, hdfu, Γb, r, hbu, hag⟩ := hconfu
+        obtain ⟨hdp, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne hf.1]; simpa [frameKLabels] using hks), _,
@@ -1691,7 +1698,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
-          exact ⟨τret, τw, Γb, _, hbu, hsw,
+          exact ⟨τb, τw, Γb, _, hbu, subTy_trans hsb hsw,
             KontOk.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsw) rfl hk'⟩
     -- **An array element has arrived** (L174). Two shapes again, and they are
     -- `continueArray`'s: nothing left, so allocate; or a head to run, so push the

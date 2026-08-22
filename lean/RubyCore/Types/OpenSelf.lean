@@ -555,18 +555,41 @@ def residualRow (ctx : OCtx) (s : OState) : Row := s.st.rowOf ctx.self
 /-- §7.3's `Σ' ∖ α ∧ (c ⊒ R)`. -/
 def closeBody (ctx : OCtx) (s : OState) : Store := s.st.closeAt ctx.self ctx.cls
 
+/-- **The join of a body's own answer with every `return` it recorded** (L229), and it
+    is what makes a method's inferred return type *the union of its exits* rather than the
+    type of its last expression.
+
+    L201 checked `subATy a τ` for every recorded `a` and refused otherwise — which is
+    exactly right when the body's own answer is already the widest exit, and wrong when it
+    is not: `return if x.nil?` records `nilT` in a method whose tail is an `Integer`, and
+    the honest answer is `T.nilable(Integer)`, not a refusal. Strictly more permissive
+    than the check it replaces: `subATy a τ = true` makes `joinATy a τ = some τ`.
+
+    Folded right-to-left so the recursion is on the list, which is what the soundness
+    lemma (`joinRets_sub`) inducts over. A join that cannot be justified is still a
+    refusal — `joinATy` answers only the shapes it can. -/
+def joinRets : List ATy → ATy → Option ATy
+  | [], τ => some τ
+  | a :: rest, τ =>
+    match joinRets rest τ with
+    | some τ₁ => joinATy a τ₁
+    | none => none
+
 /-- Type one method body of class `c`, in open-self mode. `α := 0` and the fresh
     counter starts above it, which is the only bookkeeping the caller owes. -/
 def inferBody (D : Decls) (c mname : String) (body : Expr) : OResult :=
-  -- **L201: the accumulated `return` types are checked here**, against the body's own
-  -- answer, and this is the only place the check *can* be — the pass meets a `return`
-  -- before it knows the tail. A disagreement is `outOfFragment` rather than `missing`:
-  -- nothing a *declaration* could supply would fix it; the two types simply differ, and
-  -- joining them would need the union this fragment does not have.
+  -- **L201/L229: the accumulated `return` types are *joined* with the body's own
+  -- answer**, and this is the only place the join *can* be — the pass meets a `return`
+  -- before it knows the tail. L201 checked `subATy` here and refused a disagreement on the
+  -- grounds that "joining them would need the union this fragment does not have"; it does
+  -- not — `joinTy` has answered `nil`-shaped joins since L193, which is exactly the shape
+  -- a bare `return` produces. A join that *cannot* be justified is still `outOfFragment`.
   match inferOpen D [] body { cls := c, self := 0, meth := some mname, params := some [] }
       none { st := {}, fresh := 1 } with
   | .ok τ Γ' s =>
-    if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
+    match joinRets s.rets τ with
+    | some τj => .ok τj Γ' s
+    | none => .outOfFragment "return-join"
   | r => r
 
 /-- §11's per-body verdict, as an output of the checker rather than a duplicate of
@@ -725,8 +748,9 @@ def inferBodyWith (D : Decls) (c mname : String) (ps : List Param) (body : Expr)
     -- L201's check, at the parameterized entry point too.
     some (Γb, match inferOpen D Γb body ctx none s with
       | .ok τ Γ' s' =>
-        if s'.rets.all (fun a => subATy a τ) then .ok τ Γ' s'
-        else .outOfFragment "return-join"
+        match joinRets s'.rets τ with
+        | some τj => .ok τj Γ' s'
+        | none => .outOfFragment "return-join"
       | r => r)
   | none => none
 
@@ -869,7 +893,7 @@ def egOpenHashStore : Store :=
 
 example : inferBody baseDecls "Version" "m" egOpenHashBody
     = .ok (.var 2) [] { st := egOpenHashStore, fresh := 3 } := by
-  simp [inferBody, egOpenHashBody, egOpenHashStore, inferOpen, inferOpenArgs, isSelf, requireRow,
+  simp [joinRets, inferBody, egOpenHashBody, egOpenHashStore, inferOpen, inferOpenArgs, isSelf, requireRow,
     Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty]
 
 /-- §7.3's `R = Σ'(α)` — the method's precondition on its own class. -/
@@ -890,12 +914,12 @@ example :
 /-- A body that needs nothing: the residual row is empty, so §7.3's obligation is
     `emp` and the accept is unconditional. -/
 example : inferBody baseDecls "Version" "m" (.int 1) = .ok (.nom .int) [] { fresh := 1 } := by
-  simp [inferBody, inferOpen]
+  simp [joinRets, inferBody, inferOpen]
 
 /-- A nominal receiver still goes through the table, unchanged: `1 + 2`. -/
 example : inferBody baseDecls "Version" "m" (.send (some (.int 1)) "+" [.int 2] none)
     = .ok (.nom .int) [] { fresh := 1 } := by
-  simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
+  simp [joinRets, inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
 
 /-- And a nominal receiver the table refuses is `missing`, **with the atom** —
@@ -903,7 +927,7 @@ example : inferBody baseDecls "Version" "m" (.send (some (.int 1)) "+" [.int 2] 
     This is the whole of R1's benefit, and it costs no metatheory. -/
 example : inferBody baseDecls "Version" "m" (.send (some (.int 1)) "/" [.int 2] none)
     = .missing (.nom .int) "/" [.nom .int] := by
-  simp [inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
+  simp [joinRets, inferBody, inferOpen, inferOpenArgs, isSelf, sigOf, declFor, declOf?, declsFor, baseDecls,
     tyClassNames]
 
 
@@ -965,7 +989,7 @@ example :
 example :
     bodyVerdictWith baseDecls "String" "m" [.fwd] (.int 1)
       = .outOfFragment "def-params-fwd" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, firstUnbound]
+  simp [bodyVerdictWith, joinRets, inferBodyWith, openParams, firstUnbound]
 
 /-- And a body whose *default* is out of the fragment is refused too, with the
     census's `dflt` marker — the parameter kinds are all bound, so what stopped it
@@ -977,7 +1001,7 @@ example :
 example :
     bodyVerdictWith baseDecls "String" "m" [.opt "a" .retry'] (.int 1)
       = .outOfFragment "def-params-dflt" := by
-  simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
+  simp [bodyVerdictWith, joinRets, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
 
 /-! ### L196's two branches, both exercised
 
@@ -996,7 +1020,7 @@ A shipped row would need what `T`'s did: a certificate deciding `IvarOk` at the 
 example :
     bodyVerdictWith baseDecls "String" "m" [] (.var .ivar "@n")
       = .blocked (.var 0) "@@n" [] := by
-  simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, baseDecls]
+  simp [bodyVerdictWith, bodyVerdict, joinRets, inferBody, inferOpen, ivarTy?, baseDecls]
 
 /-- **Declared: `T.nilable(Integer)`, not `Integer`.** An unset ivar reads as `nil`
     (`Interp.lean:142` ends `.getD .nil`), so the answer has to admit it — L193's
@@ -1005,7 +1029,7 @@ example :
     bodyVerdictWith { baseDecls with ivars := [(("String", "@n"), Ty.int)] } "String" "m" []
         (.var .ivar "@n")
       = .acceptedUnder (.nom (.nilable .int)) Row.empty .emp := by
-  simp [bodyVerdictWith, bodyVerdict, inferBody, inferOpen, ivarTy?, mkNilable,
+  simp [bodyVerdictWith, bodyVerdict, joinRets, inferBody, inferOpen, ivarTy?, mkNilable,
     residualRow, closeBody, Store.toAssn, Store.rowOf, Store.closeAt, Assn.all,
     Row.empty]
 

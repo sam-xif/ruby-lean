@@ -11001,3 +11001,56 @@ the constant is read inside the same expression.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical; `--self-test` all agree, with three new gvar rows and a third witness for the
 `def-params-dflt` example (ivar → gvar → `retry`, one per widening); third ratchet **23**.
+
+## L229 — `return-join`: a method's type is the join of its exits
+
+Out of fragment **23 → 22**, and this one *type-checks* rather than crossing to a needed atom:
+`certified-modulo-precondition (params open)` goes **5 → 6**. `--check` byte-identical, axiom-clean.
+
+### The rule L201 got wrong, and the sentence that admitted it
+
+```lean
+-- L201, in inferBody:
+if s.rets.all (fun a => subATy a τ) then .ok τ Γ' s else .outOfFragment "return-join"
+```
+
+with the comment *"joining them would need the union this fragment does not have."* It does not:
+`joinTy` has answered `nil`-shaped joins since **L193**, and a bare `return` records exactly `nilT`.
+So the check was refusing the one shape the machinery already handles, for a reason that stopped being
+true eight commits later. The replacement is `joinRets`, a right fold of `joinATy` over the recorded
+returns, and it is **strictly more permissive**: `subATy a τ` makes `joinATy a τ = some τ`.
+
+`PkgVersion#<=>` is the body: `return if version_comparison.nil?` records `nilT`, the tail
+`nonzero? || (revision <=> other.revision)` is `T.nilable(Integer)`, and the method's type is the
+join. Sorbet's answer, arrived at from the machine's side.
+
+### `UserConforms` widens, and nothing downstream had to
+
+```lean
+∃ Γ' r τb, infer D [] md.body false { … } = some (τb, Γ', D) ∧ subTy τb d.ret = true ∧ …
+```
+
+The equality was right while the reported type *was* the body's last expression. Once it is the join
+of the exits, there is no reading of the pair as an equality — a body ending in `Integer` with a bare
+`return` has type `Integer` and declares `T.nilable(Integer)`.
+
+> **The `subTy` costs one `subTy_trans` at each of the two frame pushes, and nothing else** — because
+> `CtlOk`'s eval clause has allowed the continuation to sit at a *wider* type than the expression's
+> since L193. A widening that lands exactly where an existing subsumption was already waiting is the
+> sign the earlier rung put it in the right place.
+
+`def`'s own row is unaffected: it carries the body's own type, so its new conjunct is `subTy_refl`. A
+*declared* signature (W8's `sig`) is the one that can be wider, which is what the clause is for.
+
+### Two soundness lemmas, both three lines of composition
+
+`joinRets_sub` — the join is above the body's answer and above every recorded return — is
+`joinATy_subst` (the open join commutes with `θ`) composed with `joinTy_sub` (both sides are below a
+nominal join), once per element. `inferBody_sound` and `inferBodyWith_sound` now answer
+`∃ τ0, infer … = some (τ0, …) ∧ subTy τ0 (τ.subst θ)`, which is the same widening one layer down, and
+the two `eg*_nominal` witnesses recover the old equality with `subTy_atomic`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); `--self-test` all agree; third ratchet **22**, `pacc` 6.

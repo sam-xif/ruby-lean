@@ -1085,6 +1085,35 @@ theorem rets_of_all {rets : List ATy} {τ : ATy} {θ : TyVar → Ty}
   intro a ha
   exact subATy_subst (List.all_eq_true.mp h a ha)
 
+/-- **`joinRets` is a join: the body's answer and every recorded `return` are below it**
+    (L229), which is `rets_of_all`'s replacement and supplies the *same* two premises
+    `Factors` asks for — the second one verbatim, and the first one is new, because the
+    body's own answer is now strictly below the type `inferBody` reports.
+
+    The whole proof is `joinATy_subst` (the open join commutes with `θ`) composed with
+    `joinTy_sub` (both sides of a nominal join are below it), once per element. -/
+theorem joinRets_sub {θ : TyVar → Ty} : ∀ {rets : List ATy} {τ τj : ATy},
+    joinRets rets τ = some τj →
+    subTy (τ.subst θ) (τj.subst θ) = true ∧
+      ∀ a ∈ rets, subTy (a.subst θ) (τj.subst θ) = true
+  | [], τ, τj, h => by
+      simp only [joinRets, Option.some.injEq] at h
+      subst h
+      exact ⟨subTy_refl _, by simp⟩
+  | a :: rest, τ, τj, h => by
+      simp only [joinRets] at h
+      cases hr : joinRets rest τ with
+      | none => rw [hr] at h; simp at h
+      | some τ₁ =>
+        rw [hr] at h
+        obtain ⟨hτ, hall⟩ := joinRets_sub (θ := θ) hr
+        obtain ⟨hl, hrr⟩ := joinTy_sub (joinATy_subst (θ := θ) h)
+        refine ⟨subTy_trans hτ hrr, ?_⟩
+        intro b hb
+        rcases List.mem_cons.mp hb with rfl | hb'
+        · exact hl
+        · exact subTy_trans (hall b hb') hrr
+
 /-- The body-level factoring theorem, at the store the body ends at.
 
     **L201 adds the return target to the conclusion**: the nominal context is now
@@ -1097,10 +1126,13 @@ theorem inferBody_sound {D : Decls} {c mname : String} {body : Expr} {τ : ATy} 
     {s' : OState} {θ : TyVar → Ty}
     (hb : inferBody D c mname body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
-    infer D [] body false
-      { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname,
-        params := some [] }
-      = some (τ.subst θ, substEnv θ Γ', D) := by
+    -- **L229: the answer is the *join*, so the body's own type is only *below* it** — and
+    -- that is the whole change to this statement. `infer` still answers the body's type;
+    -- what `inferBody` reports is the type of the method, which is the join of its exits.
+    ∃ τ0, infer D [] body false
+        { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname,
+          params := some [] }
+        = some (τ0, substEnv θ Γ', D) ∧ subTy τ0 (τ.subst θ) = true := by
   have hf := inferOpen_factors D { cls := c, self := 0, meth := some mname, params := some [] } θ s'.st
     (τ.subst θ) hsat hself [] body none { st := {}, fresh := 1 }
   unfold inferBody at hb
@@ -1110,11 +1142,12 @@ theorem inferBody_sound {D : Decls} {c mname : String} {body : Expr} {τ : ATy} 
     rw [hop] at hb
     dsimp only at hb
     split at hb
-    · rename_i hall
+    · rename_i τj hall
       simp only [OResult.ok.injEq] at hb
       obtain ⟨rfl, rfl, rfl⟩ := hb
       rw [hop] at hf
-      simpa [substEnv] using hf (StoreLe.refl _) (rets_of_all hall)
+      obtain ⟨hbelow, hrets⟩ := joinRets_sub (θ := θ) hall
+      exact ⟨τ₀.subst θ, by simpa [substEnv] using hf (StoreLe.refl _) hrets, hbelow⟩
     · simp at hb
   | missing _ _ _ => rw [hop] at hb; simp at hb
   | outOfFragment _ => rw [hop] at hb; simp at hb
@@ -1136,10 +1169,12 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
     {Γb Γ' : AEnv} {τ : ATy} {s' : OState} {θ : TyVar → Ty}
     (hb : inferBodyWith D c mname ps body = some (Γb, .ok τ Γ' s'))
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c) :
-    infer D (substEnv θ Γb) body false
+    -- L229's widening, as in `inferBody_sound`: the reported type is the join of the
+    -- method's exits, and the body's own answer is below it.
+    ∃ τ0, infer D (substEnv θ Γb) body false
         { cls := c, selfCls := some c, ret := some (τ.subst θ), meth := some mname,
           params := (openParamTys ps).map (List.map (ATy.subst θ)) }
-      = some (τ.subst θ, substEnv θ Γ', D) := by
+      = some (τ0, substEnv θ Γ', D) ∧ subTy τ0 (τ.subst θ) = true := by
   unfold inferBodyWith at hb
   dsimp only at hb
   cases hop : openParams D
@@ -1162,11 +1197,12 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
       rw [hr] at hrun
       dsimp only at hrun
       split at hrun
-      · rename_i hall
+      · rename_i τj hall
         simp only [OResult.ok.injEq] at hrun
         obtain ⟨rfl, rfl, rfl⟩ := hrun
         rw [hr] at hf
-        exact hf (StoreLe.refl _) (rets_of_all hall)
+        obtain ⟨hbelow, hrets⟩ := joinRets_sub (θ := θ) hall
+        exact ⟨τ₀.subst θ, hf (StoreLe.refl _) hrets, hbelow⟩
       · simp at hrun
     | missing _ _ _ => rw [hr] at hrun; simp at hrun
     | outOfFragment _ => rw [hr] at hrun; simp at hrun
@@ -1181,9 +1217,10 @@ theorem userConforms_of_inferBody {D : Decls} {c mname : String} {md : MethodDef
   -- L201: `r = some d.ret` — the open front end now checks the body *against its own
   -- answer type*, so the row it discharges is one whose `return`s all agree with the
   -- declared return, and the clause's side condition is `hret` itself.
-  ⟨hp, hdf, ⟨substEnv θ Γ', some d.ret,
-    by rw [← hret]; exact inferBody_sound hb hsat hself,
-    fun _ h => by simpa using h.symm⟩⟩
+  ⟨hp, hdf, by
+    obtain ⟨τ0, heq, hsub⟩ := inferBody_sound (θ := θ) hb hsat hself
+    rw [hret] at heq hsub
+    exact ⟨substEnv θ Γ', some d.ret, τ0, heq, hsub, fun _ h => by simpa using h.symm⟩⟩
 
 /-! ## 8. §4.3, end to end
 
@@ -1209,7 +1246,7 @@ def egRowStore : Store :=
 
 theorem egRow_open :
     inferBody egRowD "String" "value" egRowBody = .ok (.var 2) [] { st := egRowStore, fresh := 3 } := by
-  simp [inferBody, egRowBody, egRowStore, inferOpen, isSelf, requireRow,
+  simp [joinRets, inferBody, egRowBody, egRowStore, inferOpen, isSelf, requireRow,
     Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty]
 
 /-- The solver's answer: `self` is a `String`, what `value` returns is an
@@ -1230,8 +1267,15 @@ theorem egRow_nominal :
         { cls := "String", selfCls := some "String", ret := some .bool, meth := some "value",
           params := some [] }
       = some (.bool, [], egRowD) := by
-  have := inferBody_sound egRow_open egRow_sat (by rfl)
-  simpa [substEnv, egTheta] using this
+  -- L229: `inferBody_sound` now hands over the body's own type *below* the reported
+  -- one; here they coincide (the body has no `return`), and `subTy` at an atomic type is
+  -- an equality (`subTy_atomic`) — so the witness is one `obtain` longer than it was.
+  obtain ⟨τ0, heq, hsub⟩ := inferBody_sound egRow_open egRow_sat (by rfl)
+  have : τ0 = .bool := by
+    simpa using (subTy_atomic (τ := Ty.bool) (by simp) (by simp)).mp
+      (by simpa [substEnv, egTheta] using hsub)
+  rw [this] at heq
+  simpa [substEnv, egTheta] using heq
 
 /-! ## 8b. §7.3's `Γ_b`, end to end (L168)
 
@@ -1254,7 +1298,7 @@ theorem egParam_open :
     inferBodyWith baseDecls "String" "cmp" [.req "other"] egParamBody
       = some ([("other", .var 1)], .ok (.var 2) [("other", .var 1)]
           { st := egParamStore, fresh := 3 }) := by
-  simp [inferBodyWith, openParams, egParamBody, egParamStore, inferOpen, isSelf,
+  simp [joinRets, inferBodyWith, openParams, egParamBody, egParamStore, inferOpen, isSelf,
     requireRow, Store.rowOf, Row.get?, Row.insert, Store.setRow, Row.empty,
     aenvGet?]
 
@@ -1283,8 +1327,14 @@ theorem egParam_nominal :
           -- open)` has had since L168, now visible in the type rather than in prose.
           params := some [.int] }
       = some (.bool, [("other", Ty.int)], baseDecls) := by
-  have := inferBodyWith_sound egParam_open egParam_sat (by rfl)
-  simpa [substEnv, egParamTheta, openParamTys] using this
+  -- L229, as in `egRow_nominal`: the body's own type comes back below the reported one,
+  -- and at an atomic type `subTy` is an equality.
+  obtain ⟨τ0, heq, hsub⟩ := inferBodyWith_sound egParam_open egParam_sat (by rfl)
+  have : τ0 = .bool := by
+    simpa using (subTy_atomic (τ := Ty.bool) (by simp) (by simp)).mp
+      (by simpa [substEnv, egParamTheta] using hsub)
+  rw [this] at heq
+  simpa [substEnv, egParamTheta, openParamTys] using heq
 
 /-! ## 9. Axiom hygiene -/
 

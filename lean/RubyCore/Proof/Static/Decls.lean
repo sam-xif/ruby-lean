@@ -328,9 +328,19 @@ def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl
     -- context, and the machine's activation carries the same name by `ResolvesUser`'s
     -- `superName` clause — which is what lets a `super` in the body be typed against a
     -- row keyed on *this* method's name.
-    ∃ Γ' r, infer D [] md.body false
+    -- **L229: the body's own type is *below* the declared return, not equal to it.**
+    --
+    -- The equality was right while `inferBody` reported the body's last expression; it is
+    -- wrong once the reported type is the **join of the method's exits**. A body ending in
+    -- an `Integer` with a bare `return` in it has type `Integer` and declares
+    -- `T.nilable(Integer)`, and there is no reading of that pair as an equality.
+    --
+    -- Nothing downstream had to widen to accept it: `CtlOk`'s eval clause has allowed the
+    -- continuation to sit at a wider type than the expression's since L193, so the frame
+    -- push spends this `subTy` exactly where that clause already expected one.
+    ∃ Γ' r τb, infer D [] md.body false
         { cls := c, selfCls := some c, ret := r, meth := some mname, params := some [] }
-      = some (d.ret, Γ', D) ∧ (∀ σ, r = some σ → σ = d.ret)
+      = some (τb, Γ', D) ∧ subTy τb d.ret = true ∧ (∀ σ, r = some σ → σ = d.ret)
 
 /-- **Conformance to a declared signature.** On a receiver of the declared class
     and arguments of the declared parameter types, `bid` answers a value of the
@@ -1474,8 +1484,8 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
     · refine Or.inr ⟨mdu, cu, htys,
         fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
         by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, ?_⟩
-      obtain ⟨Γ', r, hb, hag⟩ := hconfu.2.2
-      exact ⟨Γ', r, infer_mono hsub hconfu.2.1 hb, hag⟩
+      obtain ⟨Γ', r, τb, hb, hsb, hag⟩ := hconfu.2.2
+      exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.1 hb, hsb, hag⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
