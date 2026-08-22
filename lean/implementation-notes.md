@@ -11581,3 +11581,54 @@ Every dispatch caller therefore passes `(by simp)` or reads the third conjunct.
 
 `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty across both commits,
 census **19**, `--self-test` all agree. No machine file changed, so the difftest is unowed.
+
+## L240 — the exact-`Array` conjunct, and why dispatch is not the next commit (oof 19 → 19)
+
+One line of definition landed; a whole sub-rung was attempted and **reverted**. Both are worth
+recording, and the reverted one is the useful half.
+
+### What landed
+
+`ValueTy`'s array clause gained `valueTy? h v = some (.cls "Array")`. It is not redundant: the
+payload equation alone admits an instance of a **subclass** of `Array` — payload-core subclassing is
+in the model — and such a value's `valueTy?` names the subclass. An `arrayOf` is an *exact* `Array`,
+which is the honest reading of an invariant element type. `--check` byte-identical, axiom-clean.
+
+### What was attempted: `tyClassNames (.arrayOf _) = ["Array"]`
+
+Everything on the *receiver* side worked, and cheaply:
+
+* `DeclsOk_addRow`'s new `c ≠ "Array"` is discharged at its only caller by
+  `"Array" ∉ reopenableClasses` — a `def` in the fragment cannot target `Array`;
+* `tableOk_declsOk` gets a real arm (one `simp`: `baseDecls` has rows on `Integer` only);
+* `sigOf_atomic` gives up the third conjunct L239 added to it, exactly as L239 predicted;
+* **`valueTy_tyClass` is provable at the arm** — `TyClass` at `.arrayOf` asks for
+  `className (classOf v) = "Array"`, and the exact-`Array` conjunct above is what supplies it;
+* **`valueTy_shapes` is provable without a side condition**, by casing on the *disjunct* rather
+  than on the value: every disjunct pins the value's shape, and the array clause's conjunct makes it
+  a plain receiver. (`valueTy_ref_inv` still needs the condition — *its* conclusion is about the
+  nominal type and is false at an `arrayOf`.)
+
+### What stopped it, and it is the report rather than the machine
+
+`mem_declAtoms_iff` says `declAtoms D` is exactly the graph of `declFor D`, and its **backward**
+direction is what makes `⟦declAssn D⟧ → DeclsOk D` — the direction a certificate is read in.
+`declTys` is a **finite** list; element types are not. So with dispatch on,
+`declFor D (.arrayOf e) n = some d` is an atom the enumeration cannot contain and the biconditional
+is **false**.
+
+Weakening it to `τ ∈ declTys D → …` moves the obligation to the consumer, which then has to derive
+`DeclsOk` at an `arrayOf` receiver from the `.cls "Array"` atom. That transfer is free for a
+*builtin* entry — `TyClass h (.arrayOf e) k` and `TyClass h (.cls "Array") k` are the same
+proposition, definitionally — and **false for a user entry**, because `UserEntryOk` pins
+`τr = .cls c`.
+
+> **So the first bill of dispatch is widening `UserEntryOk` to admit the parameterised type**, not
+> `DeclsOk_addRow`. Its shape, `user_dispatch`, the `def` case's construction, and `DeclsOk_addRow`'s
+> `hτ` step. That is the next commit of this rung, and it is a *witness-language* change rather than
+> a type-language one — which is why it is worth its own entry rather than being folded into a
+> "turn dispatch on" commit.
+
+### Checks
+
+`lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty, census **19**.

@@ -230,7 +230,15 @@ def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop :=
   -- out-of-bounds id reads back as the default object and the payload equation alone would
   -- not place `o` in the heap. Clause 8 of `TypeAgree` is relativized to the old bounds,
   -- which is what the transport needs it for.
+  -- **L240 adds `valueTy? h v = some (.cls "Array")`**, and it is not redundant: the
+  -- payload equation alone admits an instance of a *subclass* of `Array` (payload-core
+  -- subclassing is in the model), whose `valueTy?` names the subclass. An `arrayOf` is an
+  -- **exact** `Array`, which is both the honest reading of an invariant element type and
+  -- what the arm needs the day it dispatches: `TyClass` at `.arrayOf` asks for
+  -- `className (classOf v) = "Array"`, and this conjunct is the only thing that supplies
+  -- it (`valueTy_tyClass`'s array case, measured at L240 and reverted with it).
   ∨ (∃ σ o xs, subTy (.arrayOf σ) τ = true ∧ v = .ref o ∧ o < h.objs.size ∧
+      valueTy? h v = some (.cls "Array") ∧
       (h.get o).payload = .arr xs ∧
       ∀ v' ∈ xs, ∃ σ', valueTy? h v' = some σ' ∧ subTy σ' σ = true)
   ∨ ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
@@ -248,8 +256,8 @@ theorem ValueTy.weaken {h : Heap} {v : Value} {σ τ : Ty} (hv : ValueTy h v σ)
   match hv with
   | Or.inl ha => Or.inl (subTy_trans ha hs)
   -- L239: up-closed, so the array clause weakens by the same `subTy_trans` the others do.
-  | Or.inr (Or.inl ⟨σ', o, xs, hup, hvo, hb, hpay, hall⟩) =>
-      Or.inr (Or.inl ⟨σ', o, xs, subTy_trans hup hs, hvo, hb, hpay, hall⟩)
+  | Or.inr (Or.inl ⟨σ', o, xs, hup, hvo, hb, hex, hpay, hall⟩) =>
+      Or.inr (Or.inl ⟨σ', o, xs, subTy_trans hup hs, hvo, hb, hex, hpay, hall⟩)
   | Or.inr (Or.inr ⟨σ', hσ, hsub⟩) => Or.inr (Or.inr ⟨σ', hσ, subTy_trans hsub hs⟩)
 
 /-- **`.any` is below only itself and the nilables above it** (L232) — the form the
@@ -270,7 +278,7 @@ theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
     (hnar : ∀ σ, τ ≠ .arrayOf σ) (hv : ValueTy h v τ) : valueTy? h v = some τ := by
   -- L232: the `.any` disjunct is refuted by the same `subTy_atomic` the arm below uses —
   -- at an atomic `τ`, `subTy σ τ` *is* `σ = τ`, and `.any ≠ τ` is the hypothesis.
-  rcases hv with hany | ⟨σ', o, xs, hup, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
+  rcases hv with hany | ⟨σ', o, xs, hup, -, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
   · exact absurd ((subTy_atomic ha hn).mp hany) (Ne.symm ha)
   · exact absurd ((subTy_atomic ha hn).mp hup) (Ne.symm (hnar σ'))
   rw [(subTy_atomic ha hn).mp hs] at hσ
@@ -292,7 +300,7 @@ theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty}
     (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h (.ref o) τ) :
     (plainRecv h o = true ∧ subTy (.cls (className h (classOf h (.ref o)))) τ = true) ∨
       (classRecv h o = true ∧ subTy (.clsOf (className h o)) τ = true) := by
-  rcases hv with hany | ⟨σ', o', xs, hup, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
+  rcases hv with hany | ⟨σ', o', xs, hup, -, -, -, -, -⟩ | ⟨σ, hσ, hs⟩
   · rw [hna] at hany; exact absurd hany (by simp)
   · rw [hnar σ'] at hup; exact absurd hup (by simp)
   by_cases hp : plainRecv h o
@@ -1612,13 +1620,14 @@ theorem valueTy?_congr {h h' : Heap} {v : Value} {σ : Ty} (ha : TypeAgree h h')
     clause needs it *twice*: once for the array's own contents and once per element. -/
 theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     (hv : ValueTy h v τ) : ValueTy h' v τ := by
-  rcases hv with hany | ⟨σ', o, xs, hup, rfl, hb, hpay, hall⟩ | ⟨σ, hσ, hs⟩
+  rcases hv with hany | ⟨σ', o, xs, hup, rfl, hb, hex, hpay, hall⟩ | ⟨σ, hσ, hs⟩
   · exact Or.inl hany
   -- **L239: the array clause, and clause 8 of `TypeAgree` is what carries it.** The
   -- payload is unmoved at every old id, so the same `xs` is there in `h'`; each element's
   -- exact type transports by `valueTy?_congr`. This is the arm that would be *false*
   -- without the clause — a step that rewrote the array would break the claim, correctly.
-  · exact Or.inr (Or.inl ⟨σ', o, xs, hup, rfl, Nat.lt_of_lt_of_le hb ha.2.2.2.2.2.2.2, by
+  · exact Or.inr (Or.inl ⟨σ', o, xs, hup, rfl, Nat.lt_of_lt_of_le hb ha.2.2.2.2.2.2.2,
+      valueTy?_congr ha hex, by
       rw [ha.2.2.2.2.2.2.1 o hb xs hpay],
       fun v' hv' => by
         obtain ⟨σ'', hσ'', hsub⟩ := hall v' hv'
