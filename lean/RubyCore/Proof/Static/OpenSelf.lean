@@ -767,6 +767,22 @@ theorem mkNilable_joinOpen {D : Decls} {θ : TyVar → Ty} {stF st st' : Store} 
   rw [show (ATy.nom Ty.nilT).subst θ = Ty.nilT from rfl, joinTy_nilT_right] at h1
   simpa using h1
 
+/-- **The open environment check is stronger than the nominal one** (L227) — the whole
+    soundness content of the open `next` rule, and it is one implication: `subAEnvB`
+    compares `ATy`s syntactically, so a matching entry keeps matching after `θ` is applied,
+    while `subEnvB` only ever asks about the *substituted* types. The converse is false and
+    is not needed: the open pass is allowed to be conservative. -/
+theorem subAEnvB_subst {θ : TyVar → Ty} {Γl Γ : AEnv} (h : subAEnvB Γl Γ = true) :
+    subEnvB (substEnv θ Γl) (substEnv θ Γ) = true := by
+  unfold subEnvB substEnv
+  rw [List.all_map]
+  refine List.all_eq_true.mpr ?_
+  intro e he
+  have hg : aenvGet? Γ e.1 = some e.2 := by
+    have hq := List.all_eq_true.mp h e he
+    simpa [subAEnvB] using hq
+  simpa [substEnv] using aenvGet_subst (θ := θ) hg
+
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (il : Option AEnv) (s : OState) :
@@ -797,6 +813,12 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     all_goals (
       first
         | done
+        -- **L227's environment check.** The arm is a guard `simp_all` reduces away, leaving
+        -- exactly the `subEnvB` obligation the nominal `next` rule asks for — and the whole
+        -- factoring is that the open check is the stronger one. An *alternative* rather
+        -- than a residual, because the alternatives below `split` and would consume the
+        -- goal before a residual ran.
+        | exact subAEnvB_subst (by assumption)
         -- **The `if` join with a *recorded* equality** (L206). The store now changes at
         -- the join, so the two IHs' bounds are one `joinOpen_mono` further away than
         -- they were and `simp_all` cannot find them. Supplying the three composed

@@ -496,6 +496,35 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               · rw [if_neg hsub] at hinf; exact absurd hinf (by simp)
           · rw [hnone] at hret; exact absurd hret (by simp)
       · exact absurd hinf (by simp)
+    -- **A bare `next`** (L227). `evalExpr` is one line — the control becomes the jump and
+    -- nothing else moves — so the case is entirely about handing `CtlOk`'s new arm its
+    -- four components, and three of them are the rule's own guards read back off `hinf`.
+    -- The fourth is `KontOk.nxtOk`, which needs exactly the other two: the `inLoop`
+    -- witness and `Γs ≠ []`, which is `top = false` (L226).
+    case nxt e =>
+      -- The value-carrying `next e` has no rule, so it is refuted by *computing* — and
+      -- the `cases` has to come first, because the arm's pattern is `.nxt none` and
+      -- `simp only [infer]` cannot fire on an unresolved `Option`.
+      cases e with
+      | some e' => exact absurd hinf (by simp [infer])
+      | none =>
+        simp only [infer] at hinf
+        split at hinf
+        · next htop =>
+          split at hinf
+          · next Γl hil =>
+            split at hinf
+            · next hse =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+              obtain ⟨rfl, rfl, rfl⟩ := hinf
+              simp only [evalExpr]
+              exact ⟨hhook, hsat, hstr, hcls, hbot, by simpa [withCtl] using hks,
+                D, ctx, Γ, Γs, htab, hfs, hsc,
+                ⟨Γl, hil, subEnvB_sound hse, by simpa using htop,
+                  KontOk.nxtOk hk hil (by simpa using htop)⟩⟩
+            · exact absurd hinf (by simp)
+          · exact absurd hinf (by simp)
+        · exact absurd hinf (by simp)
     case seq es =>
       simp only [infer] at hinf
       cases es with
@@ -1860,6 +1889,53 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             obtain ⟨c', Γ'⟩ := cΓ
             exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
               D, c', Γ', Γs', htab, hfs.tail, StackCtx.tail hsc, ⟨hne, hro'⟩⟩
+    -- **A `next` in flight** (L227), and it is the only jump that *lands back in the
+    -- program*: the two `RetOk`-shaped cases pop frames, this one restarts a loop in the
+    -- same activation. So the two terminating cases have to re-establish the **`.eval`**
+    -- arm, and that is where L224's `SubEnv` is spent: the loop's condition was typed at
+    -- the entry environment `Γl`, the `next` fires at whatever the body had reached, and
+    -- `FramesOk.narrowHead` (L218) is what turns the runtime conformance at the wider
+    -- environment into conformance at `Γl`. `StackCtx` needs nothing — it reads no
+    -- environment at all.
+    | nxtJ v =>
+      obtain ⟨Γl, hil, hsub, htop, hro⟩ := hc
+      simp only [stepFn, hctl]
+      generalize hK : m.kont = K at hro hks ⊢
+      cases hro with
+      | skip hκ hro' =>
+        rw [unwind_nxt_transparent (m := m) hκ hK]
+        refine ⟨hhook, hsat, hstr, hcls, hbot, ?_, D, ctx, Γ, Γs, htab, hfs, hsc,
+          ⟨Γl, hil, hsub, htop, hro'⟩⟩
+        simp only [withCtl]
+        rw [← hks, frameKLabels_nxt_transparent hκ]
+      | loopCond hl hw hk' =>
+        rename_i Γl' _ _ _ _
+        -- `cases` unified the relation's context index with the constructor's record, so
+        -- the loop environment `CtlOk` named and the one `NxtOk` carries are the same one
+        -- — `hil` is the proof, and it is one `simp`.
+        have hΓl : Γl' = Γl := by simpa using hil
+        subst hΓl
+        rw [unwind_nxt_loopCond (m := m) hK]
+        obtain ⟨τc, hc'⟩ := hl.1
+        refine ⟨hhook, hsat, hstr, hcls, hbot, by simpa [withKont, frameKLabels] using hks,
+          D, _, Γl', Γs, htab, FramesOk.narrowHead hsub hfs, hsc,
+          ⟨τc, τc, Γl', D, ?_, subTy_refl _, ?_⟩⟩
+        · simpa [withKont] using hc'
+        · simpa [withKont] using KontOk.whileCond hl hw hk'
+      | loopBody hl hw hk' =>
+        rename_i Γl' _ _ _ _
+        -- `cases` unified the relation's context index with the constructor's record, so
+        -- the loop environment `CtlOk` named and the one `NxtOk` carries are the same one
+        -- — `hil` is the proof, and it is one `simp`.
+        have hΓl : Γl' = Γl := by simpa using hil
+        subst hΓl
+        rw [unwind_nxt_loopBody (m := m) hK]
+        obtain ⟨τc, hc'⟩ := hl.1
+        refine ⟨hhook, hsat, hstr, hcls, hbot, by simpa [withKont, frameKLabels] using hks,
+          D, _, Γl', Γs, htab, FramesOk.narrowHead hsub hfs, hsc,
+          ⟨τc, τc, Γl', D, ?_, subTy_refl _, ?_⟩⟩
+        · simpa [withKont] using hc'
+        · simpa [withKont] using KontOk.whileCond hl hw hk'
     | _ => exact hc.elim
 end Static
 end Proof

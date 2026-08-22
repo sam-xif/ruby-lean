@@ -82,6 +82,12 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       -- side conditions instead of a carried invariant conjunct. Established by one
       -- `simp` at both `initiation`s: the toplevel context has `ret := none`.
       (∀ cΓ Γs', Γs = cΓ :: Γs' → cΓ.1.ret = none) →
+      -- **L227: and no enclosing loop either**, for the same reason at the other jump
+      -- channel: `unwind` at `[]` answers `.stuck "jump escaped the program"` for a
+      -- `.nxtJ`, so `KontOk.nxtOk` has to be able to *refute* the empty-continuation
+      -- position, and `ret = none` says nothing about loops. Established by the same
+      -- `simp` at both `initiation`s — the toplevel context has `inLoop := none`.
+      (∀ cΓ Γs', Γs = cΓ :: Γs' → cΓ.1.inLoop = none) →
       KontOk D h Γs τ []
   /-- `seqK []` yields the in-flight value unchanged (`Interp.lean:1957`). -/
   | seqNil {D h c Γ Γs τ τw k} :
@@ -384,7 +390,7 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
     Γs ≠ [] → ∀ σ, c.ret = some σ → RetOk D h Γs σ k
   | [], _, _, c, Γ, Γs, _, hk, _, σ, hσ => by
       cases hk with
-      | nil hr => exact absurd (hr (c, Γ) Γs rfl) (by rw [hσ]; simp)
+      | nil hr hl => exact absurd (hr (c, Γ) Γs rfl) (by rw [hσ]; simp)
   | κ :: k, D, h, c, Γ, Γs, τ, hk, hne, σ, hσ => by
       have htop : Γs.isEmpty = false := by simpa using hne
       cases hk with
@@ -556,6 +562,85 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       | retValK hr hs hk' => exact .skip trivial (KontOk.raiseOk hk')
       | frameK hrt hil hk' => exact .pop (KontOk.raiseOk hk')
 
+/-- **The kont shape a `next` walks** (L227), `RetOk`'s third sibling — and the one that
+    does **not cross a frame**: a `next` restarts the enclosing loop in the *same*
+    activation. So it has no `pop` and no `nil`. Both of those positions are **refuted**
+    rather than handled: `unwind` at `[]` answers `.stuck` and at a `frameK` answers
+    `.unsupported`, and `KontOk.nil`'s and `KontOk.frameK`'s `inLoop = none` premises
+    (L224/L227) are what refute them.
+
+    The two `loop` constructors carry exactly `KontOk.whileCond`'s premises, which is what
+    the restart needs. The *environment* obligation lives in `CtlOk`, because the rule is
+    what can check it (L224). -/
+inductive NxtOk (D : Decls) (h : Heap) :
+    FrameCtx → List (FrameCtx × Env) → List Kont → Prop where
+  | loopCond {ctx Γl Γs τw c body k} :
+      LoopOk D Γl c body Γs.isEmpty { ctx with inLoop := some Γl } →
+      subTy .nilT τw = true →
+      KontOk D h ((ctx, Γl) :: Γs) τw k →
+      NxtOk D h { ctx with inLoop := some Γl } Γs (.whileCondK c body :: k)
+  | loopBody {ctx Γl Γs τw c body k} :
+      LoopOk D Γl c body Γs.isEmpty { ctx with inLoop := some Γl } →
+      subTy .nilT τw = true →
+      KontOk D h ((ctx, Γl) :: Γs) τw k →
+      NxtOk D h { ctx with inLoop := some Γl } Γs (.whileBodyK c body :: k)
+  | skip {c Γs κ k} :
+      NxtTransparent κ → NxtOk D h c Γs k → NxtOk D h c Γs (κ :: k)
+
+/-- **`NxtOk`, derived from `KontOk`** (L227) — `KontOk.retOk`'s sibling, and it needs the
+    same two hypotheses for the same two reasons.
+
+    `c.inLoop = some Γl` is what refutes the `nil` and `frameK` positions. `Γs.isEmpty =
+    false` is what makes **`infer_table_loop`** (L226) applicable: every threading
+    constructor hands the continuation a table the chain computed, and without that lemma the
+    derived relation would sit at the chain's deepest table while `CtlOk` needs the
+    invariant's. That was L225's blocker and it is now one `subst` per threading case. -/
+theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx} {Γ : Env}
+    {Γs : List (FrameCtx × Env)} {τ : Ty} {Γl : Env},
+    KontOk D h ((c, Γ) :: Γs) τ k → c.inLoop = some Γl → Γs.isEmpty = false →
+    NxtOk D h c Γs k
+  | [], _, _, c, Γ, Γs, _, _, hk, hil, _ => by
+      cases hk with
+      | nil hr hl => exact absurd (hl (c, Γ) Γs rfl) (by rw [hil]; simp)
+  | κ :: k, D, h, c, Γ, Γs, τ, Γl, hk, hil, htop => by
+      have hls : c.inLoop.isSome = true := by rw [hil]; simp
+      cases hk with
+      | seqNil hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | seqCons hs hw hk' =>
+          have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | asgn hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | asgnIvar hsc hw hcf hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | ifK hi hw hk' =>
+          have hq : _ = D := inferIf_table_loop (ctx := c) hls htop hi
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | recvK ha hsg hsub hw hk' =>
+          have hq : _ = D := inferArgs_table_loop (ctx := c) hls htop ha
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | recvK0 hsg hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | argsK hv hva hst hia hsr hsg hw hk' =>
+          have hq : _ = D := inferArgs_table_loop (ctx := c) hls htop hia
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | superArgsK hva hst hia hsr hmt hmn hrow hps hrt hw hk' =>
+          have hq : _ = D := inferArgs_table_loop (ctx := c) hls htop hia
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | arrK hs hw hk' =>
+          have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | cpathK hb hsc hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | retValK hr hs hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      -- **The two terminators.**
+      | whileCond hl hw hk' => exact .loopCond hl hw hk'
+      | whileBody hl hw hk' => exact .loopBody hl hw hk'
+      -- **The refuted position** (L224).
+      | frameK hrt hnl hk' => exact absurd hil (by rw [hnl]; simp)
+
 def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     (m : Machine) : Prop :=
   match m.ctl with
@@ -609,8 +694,18 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
   -- (*a handler typed at τ*). Stated so the next commit does not read the absence as an
   -- oversight.
   | .jump (.raiseJ exc) => ¬ isTypeError m.heap exc ∧ RaiseOk Γs m.kont
-  -- The other jumps stay excluded: `break`/`next`/`retry`/`redo`/`throw` are not in the
-  -- fragment, so no step can produce one.
+  -- **A `next` in flight** (L227). Three things, and the third is the one `return` did not
+  -- need: `NxtOk` says the kont stack reaches a loop kont without crossing a frame, and
+  -- `SubEnv Γl Γ` says the loop's *entry* environment — which its condition was typed at —
+  -- is weaker than the one the `next` fires in. A `next` restarts the loop in the **same
+  -- frame**, so the environment survives the jump and has to be reconciled; `RetOk` and
+  -- `RaiseOk` both pop a frame and owe nothing here (L224). `SubEnv` is L218's relation,
+  -- getting its first consumer.
+  | .jump (.nxtJ _) =>
+      ∃ Γl, c.inLoop = some Γl ∧ SubEnv Γl Γ ∧ Γs.isEmpty = false ∧
+        NxtOk D m.heap c Γs m.kont
+  -- The other jumps stay excluded: `break`/`retry`/`redo`/`throw` are not in the fragment,
+  -- so no step can produce one.
   | .jump _ => False
 
 /-- **Transport of the continuation judgement.** The other half of L137's cost:
@@ -623,7 +718,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
       KontOk D h Γs τ k → TypeAgree h h' → KontOk D h' Γs τ k := by
   intro D h Γs τ k hk
   induction hk with
-  | nil hr => intro _; exact .nil hr
+  | nil hr hl => intro _; exact .nil hr hl
   | seqNil hw _ ih => intro ha; exact .seqNil hw (ih ha)
   | seqCons hs hw _ ih => intro ha; exact .seqCons hs hw (ih ha)
   | asgn hw _ ih => intro ha; exact .asgn hw (ih ha)

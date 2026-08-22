@@ -65,6 +65,14 @@ abbrev AEnv := List (String × ATy)
 def aenvGet? (Γ : AEnv) (x : String) : Option ATy :=
   (Γ.find? (·.1 == x)).map (·.2)
 
+/-- **The open-self `SubEnv` check** (L227) — `subEnvB`'s twin at `AEnv`, and the reason
+    it is a *separate* function rather than `subEnvB` after substitution: the check runs in
+    the open pass, where the types are still variables, so it compares `ATy`s. What makes
+    it sound is that it is **stronger** than the nominal check pointwise: an entry that
+    matches syntactically matches under every `θ` (`subAEnvB_subst`). -/
+def subAEnvB (Γ Γ' : AEnv) : Bool :=
+  Γ.all fun e => aenvGet? Γ' e.1 == some e.2
+
 /-- Order is canonical, as in `envSet`, so that environment *equality* is a usable
     check — the `if`-merge and the loop-stability condition both need it, and the
     factoring theorem needs `substEnv θ` to commute with it. -/
@@ -427,6 +435,19 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
         | .outOfFragment h => .outOfFragment h
       else .outOfFragment "super-outside-method"
     | none => .outOfFragment "super-outside-method"
+  -- **A bare `next`** (L227), the nominal rule's mirror — the guard on `il` and the
+  -- environment check, and nothing else. Two refusals rather than one because they say
+  -- different things: `next-outside-loop` is a `next` with no enclosing `while`, where the
+  -- machine is `.stuck`; `next-env` is a loop the *body* has widened past its condition's
+  -- environment, which is a `LoopOk` failure one construct earlier.
+  --
+  -- No `top` guard, because the open pass is only ever run on method bodies — that is what
+  -- `false` in `Factors`' nominal conclusion says.
+  | .nxt none =>
+    match il with
+    | some Γl =>
+      if subAEnvB Γl Γ then .ok (.nom .nilT) Γ s else .outOfFragment "next-env"
+    | none => .outOfFragment "next-outside-loop"
   | _ => .outOfFragment (headName e)
 termination_by sizeOf e
 

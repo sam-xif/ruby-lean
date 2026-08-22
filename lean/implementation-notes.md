@@ -10849,3 +10849,79 @@ the same `case88` for the `if`-with-else arm, the same eight alternatives.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); third ratchet **24**.
+
+## L227 — `next`, the third jump channel, and a mispriced ratchet
+
+Out of fragment **24 → 24**, `--check` byte-identical (56 / 1,169 / 0), axiom-clean. The rung landed
+exactly as L226 designed it, in one pass and with no design attempts spent — and it moved the census
+by **zero**, which is the more useful half of the entry.
+
+### The rule, and its three guards
+
+```lean
+| .nxt none =>
+  if top = false then
+    match ctx.inLoop with
+    | some Γl => if subEnvB Γl Γ then some (.nilT, Γ, D) else none
+    | none => none
+  else none
+```
+
+* **`ctx.inLoop`** is L220's channel. `none` means no enclosing loop, where `unwind` answers
+  `.stuck "jump escaped the program"` — so the guard is the soundness argument, as `ctx.ret` is for
+  `return`.
+* **`subEnvB Γl Γ`** is the obligation **no other jump has**. A `next` restarts the loop *in the same
+  activation*, so the locals the body assigned are still live when the condition re-runs, and the
+  environment the condition was typed at has to admit the one the `next` fires in. `return` and
+  `raise` both pop a frame and owe nothing here. First consumer of L218's `SubEnv`.
+* **`top = false`** for L200's reason at the other channel: it is what makes `infer_table_loop` apply.
+  Concretely it refuses a `next` in a **toplevel** `while`, where `class'` can still grow the table
+  mid-loop.
+
+The answer is `.nilT` for `.ret`'s reason: the machine jumps, so this continuation never sees a value.
+
+### The proof side, in the order L226 predicted
+
+`KontOk.nil` gained `inLoop = none` (`by simp` at both construction sites) — `NxtOk` with its two
+`loop` constructors and a `skip`, no `nil` and no `pop`; `KontOk.nxtOk`, whose every threading case is
+one `infer_table_loop` `subst` and then `.skip`; `CtlOk`'s `.jump (.nxtJ _)` arm with the four
+components; the two consecution cases. The `frameK` position is **refuted**, by L224's premise, and
+the `nil` one by the new premise — which is what makes a relation with no `pop` well-formed.
+
+The open front end is `subAEnvB` — `subEnvB` at `ATy`, compared *syntactically* — plus
+`subAEnvB_subst`, six lines: a syntactic match survives every `θ`, so the open check is strictly
+stronger than the nominal one, which is all `Factors` needs.
+
+> **The `inLoop` channel cost four design attempts (L220–L224) and the rule that uses it cost one
+> pass.** Both halves are the lesson: the channel was the hard part, and it was hard because a derived
+> index is not an index.
+
+### And the ratchet did not move — the pricing was read off a stale table
+
+`--sets`' singleton `{next}` is gone (35 blocked bodies → 34) and `Version#<=>` type-checks its
+`next`. The **census is unchanged at 24**, verified by rebuilding the binary from `HEAD` and diffing
+the label histogram rather than by argument:
+
+```
+before:  15 send-with-block   3 splat   2 begin   1 return-join   1 nilable-receiver   1 if   1 gvar
+after :  15 send-with-block   3 splat   2 begin   1 return-join   1 nilable-receiver   1 if   1 gvar
+```
+
+`next` was never in the 24. `Version#<=>` is reported for an earlier missing **declaration**
+(`::NULL_TOKEN`), so `inferOpen` never reached its `next` — which is exactly the `--sets`-vs-`--assn`
+gap L213 wrote the warning about, and the warning was right there when I priced this rung at 1.
+
+> **`slice-verdict.md`'s "Where the 24 are" block was L214's, and I read it as current.** Two labels
+> in it (`next`, `hash`) had already been replaced by `return-join` and `nilable-receiver` in the
+> sessions since. **A breakdown in a document is a measurement with a date on it; re-run it before
+> pricing anything against it.** The one-line command is
+> `--assn-dump | grep -o "out of fragment: [a-z-]*" | sort | uniq -c`, and it is now in `HANDOFF.md`.
+
+So the remaining 24 are: **`send-with-block` 15** (Wall 1), **`splat` 3**, **`begin` 2**, and four
+singletons — `return-join`, `nilable-receiver` (`&.` on a nilable receiver), `if`, `gvar`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** (29
+theorems); `--check` byte-identical to L226; `--self-test` all agree, with four new `next` rows; third
+ratchet **24**; fifth ratchet 34 blocked (was 35).

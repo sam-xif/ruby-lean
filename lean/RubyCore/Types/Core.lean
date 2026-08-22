@@ -194,6 +194,11 @@ def defFree (e : Expr) : Bool :=
   -- that has happened.
   | .super' args blk =>
     defFreeAll args && (match blk with | some b => defFree b | none => true)
+  -- **L227.** Seventh, and this one is vacuous *and* stays vacuous: a bare `next` has no
+  -- subexpression at all, so there is nothing for a `def` to hide in. Written anyway, for
+  -- the reason L214's is: the catch-all's `true` being right by accident is what the six
+  -- earlier walks into this trap all looked like from here.
+  | .nxt none => true
   -- **L214.** `.zsuper`'s arm reads the *context*, not a subexpression, so this one is
   -- vacuous on its own — but the catch-all's `true` is only *right* by accident, and the
   -- sixth walk into that trap is one comment too many. Stated for the block slot, which
@@ -840,6 +845,34 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       else none
     | _, _ => none
+  -- **A bare `next`** (L227), the third jump rule and the shortest — and the *only* one
+  -- whose obligation is about the **environment** rather than a type.
+  --
+  -- `ctx.inLoop` is the channel `.while'` opens (L220): `some Γl` is the environment the
+  -- enclosing loop's condition was typed at, and `none` means there is no enclosing loop,
+  -- where `unwind` answers `.stuck "jump escaped the program"` — so the guard is not a
+  -- convenience, it is the whole soundness argument, exactly as `ctx.ret` is for `.ret`.
+  --
+  -- **`subEnvB Γl Γ`** is the new obligation, and no other jump has it. A `next` restarts
+  -- the loop **in the same activation**: the locals the body assigned are still there when
+  -- the condition re-runs, so the environment the condition was typed at has to admit the
+  -- one the `next` fires in. `return` and `raise` both pop a frame and owe nothing here.
+  -- Note the direction — `Γl` is the *weaker* one, so this asks that every binding the
+  -- condition relies on still holds with the type it relied on.
+  --
+  -- **`top = false`** for L200's reason at the other channel: it is what makes
+  -- `infer_table_loop` (L226) apply, and that lemma is what lets `KontOk.nxtOk` walk a
+  -- continuation chain at *one* table. Concretely it refuses a `next` inside a
+  -- **toplevel** `while`, because there `class'` can still grow the table mid-loop.
+  --
+  -- The answer is `.nilT` and it is free for `.ret`'s reason: the machine jumps, so this
+  -- continuation never sees the value.
+  | .nxt none =>
+    if top = false then
+      match ctx.inLoop with
+      | some Γl => if subEnvB Γl Γ then some (.nilT, Γ, D) else none
+      | none => none
+    else none
   | _ => none
 termination_by sizeOf e
 
