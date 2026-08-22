@@ -11523,3 +11523,61 @@ cannot cover it. The census is the evidence, and the `Array ~ uniq` atom is the 
 
 `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty against L236, third
 ratchet **19**, `--self-test` all agree.
+
+## L239 — `TypeAgree`'s eighth clause and `ValueTy`'s array arm (oof 19 → 19, inert by construction)
+
+Two commits, both inert (`--check` byte-identical, census **19**, axiom-clean), and together they
+are the *relation* `Ty.arrayOf` exists for.
+
+### The clause first, because it is the one that could have been false
+
+Every clause of `TypeAgree` before this one is about a value's **class** — all of them functions of
+`classOf`/`className`/`classPayload?` — and an `arrayOf` claim is about the object's **contents**.
+So `ValueTy.congr` at the new arm is not merely unproved without a new clause, it is **false**: a
+heap-writing step could replace an array's elements and the claim would not survive it. Correctly.
+
+Stated as *unchanged* rather than *still conforms*, which is stronger than the transport needs and
+is what every producer proves outright — nothing in the fragment writes an array payload
+(`Array#<<` has no row, so `entry_dispatch` never reaches one). The producers cost one line each,
+and the interesting one is `defineMethod`: it rewrites the payload of the **class** object, and a
+`.arr` payload is not a `.cls` one, so either the ids differ (`get_defineMethod_ne`) or
+`defineMethod` is the identity — the same case split `plainRecv_defineMethod` makes.
+
+### The arm, and its four decisions
+
+```lean
+  ∨ (∃ σ o xs, subTy (.arrayOf σ) τ = true ∧ v = .ref o ∧ o < h.objs.size ∧
+      (h.get o).payload = .arr xs ∧
+      ∀ v' ∈ xs, ∃ σ', valueTy? h v' = some σ' ∧ subTy σ' σ = true)
+```
+
+* **relational, not computed** — `valueTy?` would have to recurse through the heap, and a Ruby
+  array can contain itself (`a = []; a << a`);
+* **up-closed** (`subTy (.arrayOf σ) τ`, not `τ = .arrayOf σ`) so `ValueTy.weaken` stays one
+  `subTy_trans`: an array does satisfy `nilable (arrayOf σ)`;
+* **one level of `valueTy?` inlined** rather than a recursive `ValueTy` call, which keeps the
+  definition non-recursive and every `rcases` in the file computing. The cost is nesting —
+  `arrayOf (arrayOf String)` is uninhabited, and so is `Array[Hash]`, the latter because
+  `plainRecv` excludes a `.hsh` payload (a gap already on the board);
+* **the bound is a conjunct**, because `h.get` is total: an out-of-bounds id reads back as the
+  default object, so the payload equation alone would not place `o` in the heap — and clause 8 is
+  relativized to the old bounds.
+
+`ValueTy.congr` split its exact-type half out as `valueTy?_congr`, because the array arm needs it
+once per element as well as once for the array.
+
+### The ripple, and why it is not a tax
+
+Six lemmas grew a *"and not an array type"* side condition (`valueTy_ref_inv`, `ValueTy.atomic`,
+`valueTy_shapes`, `valueTy_ref_lt`, `valueTy_ref_not_ground`, `valueTy_tyClass`, and through them
+`EntryOk.resolves`/`entry_dispatch`). **`sigOf_atomic` supplies it for free** — the same fact that
+supplies `.any` and nilable: `tyClassNames` is `[]` at the arm, so a *row's existence* refutes it.
+Every dispatch caller therefore passes `(by simp)` or reads the third conjunct.
+
+> **The day `arrayOf` starts dispatching, `sigOf_atomic`'s third conjunct is where the bill lands.**
+> That is the honest place for it, and it is the first item of the chain in `HANDOFF.md`.
+
+### Checks
+
+`lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty across both commits,
+census **19**, `--self-test` all agree. No machine file changed, so the difftest is unowed.
