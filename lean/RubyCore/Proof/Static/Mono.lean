@@ -374,6 +374,166 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       -- No fallback, for the reason the other three inductions have none: a new `infer`
       -- arm has to be looked at, not absorbed.
 
+/-- **The sequence form** (L234), by list induction on top of `infer_env_mono` — the same
+    composition the table lemmas use, and for the same reason: `inferSeq` is `infer`
+    threaded along a list, so the theorem composes with itself. -/
+theorem inferSeq_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, asgnFreeAll es = true →
+    inferSeq D Γ es top ctx = some (τ, Γ', D₀) →
+    Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → inferSeq D Γ₂ es top ctx = some (τ, Γ₂, D₀)
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, h => by
+      simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨rfl, fun Γ₂ _ => by simp [inferSeq]⟩
+  | [e], D, Γ, top, ctx, τ, Γ', D₀, ha, h => by
+      simp only [inferSeq] at h
+      obtain ⟨rfl, hm⟩ := infer_env_mono D Γ e top ctx (by simpa [asgnFreeAll] using ha) _ _ _ h
+      exact ⟨rfl, fun Γ₂ hs => by simp only [inferSeq]; exact hm Γ₂ hs⟩
+  | e :: e₂ :: rest, D, Γ, top, ctx, τ, Γ', D₀, ha, h => by
+      simp only [asgnFreeAll, Bool.and_eq_true] at ha
+      simp only [inferSeq] at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        obtain ⟨rfl, hme⟩ := infer_env_mono D Γ e top ctx ha.1 _ _ _ he
+        obtain ⟨rfl, hmr⟩ := inferSeq_env_mono (by simpa [asgnFreeAll] using ha.2) h
+        exact ⟨rfl, fun Γ₂ hs => by simp only [inferSeq, hme Γ₂ hs]; exact hmr Γ₂ hs⟩
+
+/-- And the argument list's (L234). -/
+theorem inferArgs_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, asgnFreeAll es = true →
+    inferArgs D Γ es top ctx = some (τs, Γ', D₀) →
+    Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → inferArgs D Γ₂ es top ctx = some (τs, Γ₂, D₀)
+  | [], D, Γ, top, ctx, τs, Γ', D₀, _, h => by
+      simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨rfl, fun Γ₂ _ => by simp [inferArgs]⟩
+  | e :: rest, D, Γ, top, ctx, τs, Γ', D₀, ha, h => by
+      simp only [asgnFreeAll, Bool.and_eq_true] at ha
+      simp only [inferArgs] at h
+      cases he : infer D Γ e top ctx with
+      | none => rw [he] at h; simp at h
+      | some r =>
+        obtain ⟨τe, Γ₁, D₁⟩ := r
+        rw [he] at h
+        obtain ⟨rfl, hme⟩ := infer_env_mono D Γ e top ctx ha.1 _ _ _ he
+        dsimp only at h
+        cases hr : inferArgs D₁ Γ₁ rest top ctx with
+        | none => rw [hr] at h; simp at h
+        | some r' =>
+          obtain ⟨τr, Γ₂', D₂⟩ := r'
+          rw [hr] at h
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          obtain ⟨rfl, hmr⟩ := inferArgs_env_mono (by simpa [asgnFreeAll] using ha.2) hr
+          exact ⟨rfl, fun Γ₂ hs => by simp [inferArgs, hme Γ₂ hs, hmr Γ₂ hs]⟩
+
+/-- And the array-element traversal's (L234). -/
+theorem inferElems_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, asgnFreeAll es = true →
+    inferElems D Γ es top ctx = some (τ, Γ', D₀) →
+    Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → inferElems D Γ₂ es top ctx = some (τ, Γ₂, D₀)
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, h => by
+      simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact ⟨rfl, fun Γ₂ _ => by simp [inferElems]⟩
+  | e :: rest, D, Γ, top, ctx, τ, Γ', D₀, ha, h => by
+      simp only [asgnFreeAll, Bool.and_eq_true] at ha
+      cases e
+      case splat oe =>
+        cases oe with
+        | none => exact absurd h (by simp [inferElems, infer])
+        | some o =>
+          simp only [inferElems] at h
+          cases ho : infer D Γ o top ctx with
+          | none => rw [ho] at h; exact absurd h (by simp)
+          | some r =>
+            obtain ⟨τo, Γ₁, D₁⟩ := r
+            rw [ho] at h
+            obtain ⟨rfl, hmo⟩ := infer_env_mono D Γ o top ctx (by simpa [asgnFree] using ha.1)
+              _ _ _ ho
+            cases τo with
+            | cls nm =>
+              by_cases hnm : nm = "Array"
+              · subst hnm
+                obtain ⟨rfl, hmr⟩ := inferElems_env_mono (by simpa [asgnFreeAll] using ha.2) h
+                exact ⟨rfl, fun Γ₂ hs => by
+                  simp only [inferElems, hmo Γ₂ hs]; exact hmr Γ₂ hs⟩
+              · simp_all
+            | _ => simp_all
+      all_goals
+        (simp only [inferElems] at h
+         first
+           | (cases he : infer D Γ _ top ctx with
+              | none => rw [he] at h; exact absurd h (by simp)
+              | some r =>
+                obtain ⟨τe, Γ₁, D₁⟩ := r
+                rw [he] at h
+                obtain ⟨rfl, hme⟩ := infer_env_mono D Γ _ top ctx ha.1 _ _ _ he
+                obtain ⟨rfl, hmr⟩ := inferElems_env_mono (by simpa [asgnFreeAll] using ha.2) h
+                exact ⟨rfl, fun Γ₂ hs => by
+                  simp only [inferElems, hme Γ₂ hs]; exact hmr Γ₂ hs⟩)
+           | simp_all)
+
+/-- And the `if` join's (L234), by cases on the `else` rather than by induction. -/
+theorem inferIf_env_mono {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}
+    (hat : asgnFree t = true) (hae : asgnFreeOpt els = true)
+    (h : inferIf D Γ t els top ctx = some (τ, Γ', D₀)) :
+    Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → inferIf D Γ₂ t els top ctx = some (τ, Γ₂, D₀) := by
+  unfold inferIf at h
+  cases els with
+  | none =>
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      rw [ht] at h
+      obtain ⟨rfl, hmt⟩ := infer_env_mono D Γ t top ctx hat _ _ _ ht
+      dsimp only at h
+      split at h
+      · next hg =>
+        simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+        obtain ⟨τj, hj, rfl, rfl, rfl⟩ := h
+        refine ⟨rfl, fun Γ₂ hs => ?_⟩
+        simp only [inferIf, hmt Γ₂ hs]
+        split
+        · simp [hj]
+        · -- The guard that failed is the arm's own stability check; after the IH's `rfl`
+          -- its environment half is trivial, so what is left is the table half — which is
+          -- the guard the *original* run already passed.
+          rename_i hbad
+          exact absurd hg.2 (by simpa using hbad)
+      · exact absurd h (by simp)
+  | some e' =>
+    dsimp only at h
+    cases ht : infer D Γ t top ctx with
+    | none => rw [ht] at h; simp at h
+    | some r =>
+      obtain ⟨τt, Γt, Dt⟩ := r
+      cases he : infer D Γ e' top ctx with
+      | none => rw [ht, he] at h; simp at h
+      | some r' =>
+        obtain ⟨τe, Γe, De⟩ := r'
+        rw [ht, he] at h
+        obtain ⟨rfl, hmt⟩ := infer_env_mono D Γ t top ctx hat _ _ _ ht
+        obtain ⟨rfl, hme⟩ := infer_env_mono D _ e' top ctx (by simpa [asgnFreeOpt] using hae)
+          _ _ _ he
+        dsimp only at h
+        split at h
+        · next hg =>
+          simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+          obtain ⟨τj, hj, rfl, rfl, rfl⟩ := h
+          refine ⟨rfl, fun Γ₂ hs => ?_⟩
+          simp only [inferIf, hmt Γ₂ hs, hme Γ₂ hs]
+          split
+          · simp [hj]
+          · rename_i hbad
+            exact absurd hg.2 (by simpa using hbad)
+        · exact absurd h (by simp)
+
 /-! ### L226: the same theorem at the *loop* channel, and the same proof
 
 `infer_table_ret` (L200) says *the table is constant along a continuation chain inside a body

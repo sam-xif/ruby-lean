@@ -11351,3 +11351,38 @@ a design question.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; `#print axioms
 infer_env_mono` = `propext + Classical.choice + Quot.sound`. `--check` unowed (`Proof/` plus a
 predicate no rule reads).
+
+## L235 — the four mutual forms of `infer_env_mono`, and what they do *not* reach
+
+Out of fragment **21 → 21**, `Proof/`-only, axiom-clean. `inferSeq_env_mono`,
+`inferArgs_env_mono`, `inferElems_env_mono` (list inductions on top of L234) and
+`inferIf_env_mono` (two cases). Together they are what a `KontOk` widening would consume, since every
+constructor stores an equation in one of those five functions.
+
+### And here is the part to read before writing that widening
+
+**`begin` does not need it, and `if` needs more than it.**
+
+* **`begin`** needs one fact and it is not a widening: `SubEnv Γbegin Γcur`, *the environment the
+  begin was entered at is below the one in force where the raise happened*. Composing the `KontOk`
+  chain gives the wrong pair (L233). Restricting the *body* to be assign-free would make every kont
+  between the raise and the `beginBodyK` sit at the same environment — and then `Γcur = Γbegin`
+  outright — but that restriction has to be *a hypothesis of `KontOk.raiseOk`*, and the
+  raise-producing consecution cases have no way to supply it.
+* **`if`** needs the widening at continuations that **do** assign: `t1 = a; if c … end; t2 = b` stores
+  `t2 = b` in the `seqK` above the `ifK`, so the assign-free special case does not apply. The general
+  form needs `Γ'' = Γ' ++ δ` (a *structural* conclusion, not `SubEnv`), because `inferIf`'s guard is
+  an **equality** of environments and only a structural description makes it survive widening — and
+  that in turn needs `δ`'s names disjoint from the expression's assigned ones, which is exactly the
+  side condition L231 wrote down and this special case was chosen to avoid.
+
+> **So the rung is: `Inv` has to record how environments evolve within an activation.** Not a lemma
+> about `infer` — a clause. Two candidate shapes, and the next session should price both before
+> writing either: (a) `KontOk` carries, per constructor, that its premise environment is its
+> conclusion's *extended by a disjoint δ*, which makes the chain composable in both directions; or
+> (b) `Inv` carries a single per-frame "environment so far" and the `KontOk` envs are all suffixes of
+> it. (b) is the one that would also give `begin` its fact for free.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; third ratchet **21**.
