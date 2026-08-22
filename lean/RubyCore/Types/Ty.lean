@@ -342,12 +342,21 @@ def envGet? (Γ : Env) (x : String) : Option Ty :=
 def SubEnv (Γ Γ' : Env) : Prop :=
   ∀ x τ, envGet? Γ x = some τ → envGet? Γ' x = some τ
 
-/-- The decidable form the rule checks. -/
+/-- The decidable form the rule checks.
+
+    **Each entry's *lookup* rather than its payload** (L236), and the difference is
+    shadowing: an `Env` is an association list, so `[(x, Int), (x, String)]` is a legal
+    value whose second entry is dead. Comparing payloads makes such an environment fail
+    `subEnvB Γ Γ` — which is fine for a rule that checks two *different* environments,
+    and fatal for `infer_env_mono`, whose conclusion instantiates the guard at an
+    arbitrary wider environment. Comparing lookups is reflexive by construction and
+    proves the same `SubEnv`. -/
 def subEnvB (Γ Γ' : Env) : Bool :=
-  Γ.all fun e => envGet? Γ' e.1 == some e.2
+  Γ.all fun e => envGet? Γ' e.1 == envGet? Γ e.1
 
 theorem subEnvB_sound {Γ Γ' : Env} (h : subEnvB Γ Γ' = true) : SubEnv Γ Γ' := by
   intro x τ hx
+  have hx' := hx
   unfold envGet? at hx
   simp only [Option.map_eq_some_iff] at hx
   obtain ⟨e, he, hτ⟩ := hx
@@ -355,7 +364,31 @@ theorem subEnvB_sound {Γ Γ' : Env} (h : subEnvB Γ Γ' = true) : SubEnv Γ Γ'
   simp only [beq_iff_eq] at hp
   have := List.all_eq_true.mp h e (List.mem_of_find?_eq_some he)
   simp only [beq_iff_eq] at this
-  rw [← hp, ← hτ]; exact this
+  rw [← hp] at hx' ⊢
+  rw [this]; exact hx'
+
+@[simp] theorem subEnvB_refl (Γ : Env) : subEnvB Γ Γ = true :=
+  List.all_eq_true.mpr fun _ _ => by simp
+
+/-- A member's key always resolves — the fact `subEnvB`'s lookup form needs to compose
+    with `SubEnv`, which speaks about *successful* lookups only. -/
+theorem envGet?_of_mem {Γ : Env} {e : String × Ty} (he : e ∈ Γ) :
+    ∃ τ, envGet? Γ e.1 = some τ := by
+  unfold envGet?
+  cases hf : Γ.find? (fun p => p.1 == e.1) with
+  | none => exact absurd (List.find?_eq_none.mp hf e he) (by simp)
+  | some p => exact ⟨p.2, by simp [hf]⟩
+
+/-- `subEnvB` composes with `SubEnv` on the right. This is the `next` rule's own
+    transitivity (L227), restated for the lookup form (L236). -/
+theorem subEnvB_trans_sub {Γl Γ Γ₂ : Env} (h : subEnvB Γl Γ = true) (hs : SubEnv Γ Γ₂) :
+    subEnvB Γl Γ₂ = true := by
+  refine List.all_eq_true.mpr fun e he => ?_
+  have h1 := List.all_eq_true.mp h e he
+  obtain ⟨τ, hτ⟩ := envGet?_of_mem he
+  simp only [beq_iff_eq] at h1 ⊢
+  rw [hτ] at h1 ⊢
+  exact hs e.1 τ h1
 
 theorem SubEnv.refl (Γ : Env) : SubEnv Γ Γ := fun _ _ h => h
 

@@ -1094,7 +1094,22 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
       -- `match` scrutinee is exactly the shape `rw` refuses ("motive is not type
       -- correct"). One combinator instead of one match, and the open side's
       -- `joinATy_subst` goes straight in.
-      if Γt = Γe ∧ Dt = De then (joinTy τt τe).map (fun τj => (τj, Γt, Dt)) else none
+      -- **The environment answer is the *entry* one, and the guard is containment**
+      -- (L236) — where this was `Γt = Γe`. Nothing is merged and `Env` stays a list: a
+      -- binding made inside a branch is not visible after the `if`, which is the honest
+      -- reading (in Ruby it may be `nil`). What the two `subEnvB`s buy is that each
+      -- branch runs at an environment *containing* the answer, which is the fact the
+      -- `ifK` delivery spends against `KontOk`'s `SubEnv` premise.
+      --
+      -- Both halves have to be *containments* rather than one of them an equality: the
+      -- open pass mirrors this rule and `inferOpen_factors` needs the answer to be a
+      -- function of `(Γ, Γt, Γe)` that commutes with `substEnv θ`. A shape test like
+      -- `Γt = Γe` does not — two `ATy` environments can differ and still substitute
+      -- equal — so a rule that *chose* between answers by such a test would answer one
+      -- environment on the open side and a different one on the nominal side.
+      if subEnvB Γ Γt ∧ subEnvB Γ Γe ∧ Dt = De then
+        (joinTy τt τe).map (fun τj => (τj, Γ, Dt))
+      else none
     | _, _ => none
   | none =>
     match infer D Γ t top ctx with
@@ -1102,7 +1117,10 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
       -- No `else` means the missing branch yields `nil`, so this is the same join
       -- against `.nilT` — and it is the shape that pays for the rung, since
       -- `raise … if c` is a one-armed `if` whose arm is not `nil`.
-      if Γt = Γ ∧ Dt = D then (joinTy τt .nilT).map (fun τj => (τj, Γ, D)) else none
+      -- L236: `subEnvB Γ Γt` where this was `Γt = Γ`. A one-armed `if` already answered
+      -- the *entry* environment, so widening the guard changes no answer — it only stops
+      -- refusing `x = 1 if c`, whose arm binds.
+      if subEnvB Γ Γt ∧ Dt = D then (joinTy τt .nilT).map (fun τj => (τj, Γ, D)) else none
     | none => none
 termination_by sizeOf t + sizeOf els
 

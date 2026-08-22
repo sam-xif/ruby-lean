@@ -401,6 +401,12 @@ theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Opt
       -- membership is the hypothesis after one `obtain`.
       | (rename_i hx hq; obtain ⟨-, -, rfl⟩ := hq; exact hx)
       | (rename_i hq hx; obtain ⟨-, -, rfl⟩ := hq; exact hx)
+      -- **L236: the `if`'s guard is a conjunction `simp_all` cannot decide**, so the
+      -- answer stays wrapped in an `ite` and the equation cannot be destructured until
+      -- one `split` has chosen a side. Before the alternative below, which would try the
+      -- `obtain` and fail hard rather than backtrack.
+      | (rename_i hh hmem; split at hh <;> simp_all)
+      | (rename_i hh; split at hh <;> simp_all)
       -- **The arms whose answer `simp_all` left as an unsplit equation** (L201),
       -- with the membership hypothesis *after* it — so the `obtain` has to name
       -- two, and the composition is then read off by unification.
@@ -909,10 +915,18 @@ theorem subAEnvB_subst {θ : TyVar → Ty} {Γl Γ : AEnv} (h : subAEnvB Γl Γ 
   rw [List.all_map]
   refine List.all_eq_true.mpr ?_
   intro e he
-  have hg : aenvGet? Γ e.1 = some e.2 := by
-    have hq := List.all_eq_true.mp h e he
-    simpa [subAEnvB] using hq
-  simpa [substEnv] using aenvGet_subst (θ := θ) hg
+  -- L236: the check compares *lookups*, so both sides are `aenvGet_subst` at the same
+  -- witness — the entry's own payload never appears.
+  have hq := List.all_eq_true.mp h e he
+  simp only [beq_iff_eq] at hq
+  obtain ⟨a, ha⟩ := aenvGet?_of_mem he
+  rw [ha] at hq
+  show (_ == _) = true
+  simp only [beq_iff_eq]
+  rw [show envGet? (List.map (fun e => (e.1, ATy.subst θ e.2)) Γ) e.1 = some (a.subst θ) from
+        by simpa [substEnv] using aenvGet_subst (θ := θ) hq,
+      show envGet? (List.map (fun e => (e.1, ATy.subst θ e.2)) Γl) e.1 = some (a.subst θ) from
+        by simpa [substEnv] using aenvGet_subst (θ := θ) ha]
 
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
@@ -944,7 +958,7 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     -- L206: and `joinOpen_subst`, which is the same conditional rewrite with the
     -- store's satisfaction as a second hypothesis — also in context, so also
     -- dischargeable here.
-    all_goals (try simp_all [joinATy_subst, joinOpen_subst])
+    all_goals (try simp_all [joinATy_subst, joinOpen_subst, subAEnvB_subst])
     all_goals (
       first
         | done
@@ -963,20 +977,26 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
         -- they were and `simp_all` cannot find them. Supplying the three composed
         -- hypotheses first is all this case needs; `joinOpen_subst` then closes it as
         -- `joinATy_subst` used to.
+        -- **L236: the `if`'s environment guard, both arms.** The open rule decides
+        -- `subAEnvB` and the nominal one asks for `subEnvB` at the substituted
+        -- environments, which is `subAEnvB_subst` — the same lemma L227's `next` uses,
+        -- now with the store threading of L206 stacked in front of it. Two alternatives
+        -- because the two-armed `if` leaves a conjunction and the one-armed one a
+        -- `mkNilable` equation.
         | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
            have hle3 := storeLe_sub (by assumption) hle2
            have hr2 := rets_sub (by assumption) hr
-           simp_all
+           simp_all [subAEnvB_subst]
            exact joinOpen_subst (by assumption) hle hsat)
         | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
            have hle3 := storeLe_sub (by assumption) hle2
            have hr2 := rets_sub (by assumption) hr
-           simp_all
+           simp_all [subAEnvB_subst]
            exact mkNilable_joinOpen (by assumption) hle hsat)
         | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
            have hle3 := storeLe_sub (by assumption) hle2
            have hr2 := rets_sub (by assumption) hr
-           simp_all)
+           simp_all [subAEnvB_subst])
         | (have hle2 := StoreLe.trans (joinOpen_mono (by assumption)) hle
            simp_all
            exact joinOpen_subst (by assumption) hle hsat)

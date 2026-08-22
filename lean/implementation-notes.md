@@ -11386,3 +11386,86 @@ constructor stores an equation in one of those five functions.
 ### Checks
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; third ratchet **21**.
+
+## L236 — the environment slack, and the `if` rung it buys (oof 21 → 20)
+
+Out of fragment **21 → 20**; the `if` singleton is gone. `--check` byte-identical
+(56 / 1,169 / 0 over the 1,304 cached ASTs, `diff` empty), axiom-clean, `--self-test` all agree with
+**three new rows** — two gains and, pinned in the same place, one loss.
+
+### The rung, and why L235's plan was the wrong one
+
+L235 said the `if` environment join needed `Inv` to record how environments evolve. It does not. What
+it needs is **slack at the continuation**, and the reason L231–L235 kept failing to find it is that
+every attempt tried to *derive* the slack where it is used:
+
+> **There is no `KontOk` monotonicity lemma.** `KontOk.seqCons` stores `inferSeq D Γ (e :: es) = …`,
+> so re-indexing a stored continuation at a *different* environment would need `infer_env_mono`
+> (L234) on statements that are not `asgnFree` — and `x = 1; x` is exactly such a statement. The
+> slack has to be recorded where the continuation is **built**, not derived where it is delivered.
+
+So all 18 `KontOk` constructors (and `NxtOk`'s two loop arms) grew one premise:
+
+```lean
+  | seqCons {… Γk} :
+      inferSeq D Γ (e :: es) Γs.isEmpty c = some (τ', Γ', D') → subTy τ' τw = true →
+      KontOk D' h ((c, Γk) :: Γs) τw k →                       -- the tail, at its own env
+      (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
+      KontOk D h ((c, Γ) :: Γs) τ (.seqK (e :: es) :: k)
+```
+
+and both halves of `CtlOk` gained the matching existential. Three decisions made the edit cheap
+rather than a 43-site rewrite, and they are the reusable part:
+
+1. **The premise is last in the telescope and an `optParam`.** Inductive constructors *do* accept
+   default values in Lean 4 (measured, not assumed), so every existing construction site elaborates
+   unchanged: `refl` where the tail sits at the computed environment, `assumption` where the
+   enclosing case has already destructured a slack of its own.
+2. **`Γk` is the last implicit binder**, so `@ctor` case patterns needed one `_` appended rather
+   than a reordering — 16 patterns, mechanically.
+3. **On the value side the slack is consumed once**, at the top of the delivery block:
+   `have hfs := FramesOk.narrowHead hsuE hfs` (L218's lemma, now with a second consumer) moves the
+   *runtime* conformance down to the environment the kont was registered at, and all 16 arms then
+   run at their own environment with no per-arm reconciliation. Three arms that build their `Inv`
+   by hand rather than through an `inv_*` helper needed their env spelled as `Γk`; that is the whole
+   diff on that side.
+
+### The rule, and the shape constraint the *open* pass imposes on it
+
+```lean
+if subEnvB Γ Γt ∧ subEnvB Γ Γe ∧ Dt = De then (joinTy τt τe).map (fun τj => (τj, Γ, Dt)) else none
+```
+
+Two containments where this was `Γt = Γe`, and the answer is the **entry** environment. The `ifK`
+delivery then reconciles by `SubEnv.trans hsu (subEnvB_sound hsub1)` — one line, and it is the only
+construction site in `Preservation.lean` that passes anything but `SubEnv.refl`.
+
+> **The answer had to be a function of `(Γ, Γt, Γe)` that commutes with `substEnv θ`, and that is
+> what killed the first two designs.** A rule that *chose* between answers by a shape test
+> (`if Γt = Γe then Γt else Γ`) is unimplementable across the two front ends: two `ATy`
+> environments can differ and still substitute equal, so the open pass would answer one environment
+> and the nominal pass a different one, and `inferOpen_factors` states an *equality* of answers.
+> Same argument kills a key-and-type environment meet. `Γ` commutes trivially, so `Γ` it is.
+
+**And `subEnvB` had to change** (`Γ.all fun e => envGet? Γ' e.1 == envGet? Γ e.1`, each entry's
+*lookup* rather than its payload). An `Env` is an association list, so `[(x, Int), (x, String)]` is
+a legal value whose second entry is dead — and payload comparison makes such an environment fail
+`subEnvB Γ Γ`, which `infer_env_mono` cannot afford: its conclusion instantiates the guard at an
+arbitrary wider environment. The lookup form is reflexive by construction (`subEnvB_refl`) and
+proves the same `SubEnv`. `subAEnvB` moved with it, and `subAEnvB_subst` got shorter.
+
+### The price, pinned rather than described
+
+`if c then x = 1 else x = 2 end; x` **was** accepted (both branches answered the same environment,
+which the old rule then answered) and now is not: the answer environment is the entry one, so a
+local bound in *both* branches is invisible after the `if`. It is `--self-test` row 3 of the new
+three. `--check` did not move — no bootstraptest program exercises it — and the census gained a
+body, so the trade is net positive, but the fix is a real rung: a **typed environment meet** (at
+each shared key, the *join* of the two types), which commutes with substitution because keys do and
+because `joinATy_subst` already exists. The store threading at each join is why it is a rung and not
+a line.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, tier 0 / slice difftest,
+`--check` diff empty against L230's baseline, third ratchet **20**, `--self-test` all agree.

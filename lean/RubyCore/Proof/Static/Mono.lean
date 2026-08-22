@@ -309,11 +309,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [infer, hil, hse, if_true, reduceIte, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     refine ⟨rfl, fun Γ₂ hs => ?_⟩
-    have hse2 : subEnvB Γl Γ₂ = true := by
-      refine List.all_eq_true.mpr fun e he => ?_
-      have h1 := List.all_eq_true.mp hse e he
-      simp only [beq_iff_eq] at h1 ⊢
-      exact hs e.1 e.2 h1
+    have hse2 : subEnvB Γl Γ₂ = true := subEnvB_trans_sub hse hs
     simp only [infer, hil, hse2, if_true, reduceIte]
   -- **The `if` join** (case99): the two branches answer the same environment, which the arm
   -- already checked, so the join transports unchanged.
@@ -324,6 +320,9 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [inferIf, hT, hE] at h
     split at h
     · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      -- L236: both branches are assign-free, so each answers the environment it was
+      -- given, and the rule's answer is the entry one — nothing to transport but the
+      -- guard, which is `subEnvB Γ₂ Γ₂` at the wider environment.
       obtain ⟨τj, hj, rfl, rfl, rfl⟩ := h
       refine ⟨rfl, fun Γ₂ hs => ?_⟩
       simp only [inferIf, hmT Γ₂ hs, hmE Γ₂ hs]
@@ -333,8 +332,8 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
         -- The guard that just failed is the one `hag` already established: after the two
         -- IHs' `rfl`s the environments are syntactically equal, so what is left is the
         -- table half, and that is `hag`'s second component.
-        exact absurd hag.2 (by simpa using hbad)
-    · exact absurd h (by simp)
+        exact absurd hag.2.2 (by simpa using hbad)
+    · exact absurd hag (by assumption)
   | _ =>
     intro hasg τ Γ' D₀ h
     first
@@ -505,7 +504,7 @@ theorem inferIf_env_mono {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {
           -- its environment half is trivial, so what is left is the table half — which is
           -- the guard the *original* run already passed.
           rename_i hbad
-          exact absurd hg.2 (by simpa using hbad)
+          exact absurd hg.2 (by simpa [subEnvB_refl] using hbad)
       · exact absurd h (by simp)
   | some e' =>
     dsimp only at h
@@ -531,7 +530,7 @@ theorem inferIf_env_mono {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {
           split
           · simp [hj]
           · rename_i hbad
-            exact absurd hg.2 (by simpa using hbad)
+            exact absurd hg.2.2 (by simpa using hbad)
         · exact absurd h (by simp)
 
 /-! ### L226: the same theorem at the *loop* channel, and the same proof
@@ -952,22 +951,21 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
     obtain ⟨rfl, hmE⟩ := ihE F' hs hdf.2 _ _ _ hE
-    obtain ⟨hΓ, -⟩ := hagree
-    subst hΓ
+    obtain ⟨hΓ, hΓ2, -⟩ := hagree
     simp only [inferIf, hT, hE] at h
-    rw [if_pos (by simp)] at h
+    rw [if_pos (by exact ⟨hΓ, hΓ2, trivial⟩)] at h
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin]⟩
+    exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin, hΓ, hΓ2]⟩
   | case102 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
-    obtain ⟨rfl, rfl⟩ := hcond
+    obtain ⟨hsub1, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
     simp only [inferIf, hT] at h
-    rw [if_pos (by simp)] at h
+    rw [if_pos (by exact ⟨hsub1, trivial⟩)] at h
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [inferIf, hmT, hjoin]⟩
+    exact ⟨rfl, by simp [inferIf, hmT, hjoin, hsub1]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
   | case105 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
@@ -1138,6 +1136,14 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
            Prod.mk.injEq] at h
          obtain ⟨rfl, rfl, rfl⟩ := h
          exact ⟨rfl, by simp only [infer, hil, hse, if_true, reduceIte]⟩)
+      -- **L236: the one-armed `if`'s refusing branch** (case103), explicit because its
+      -- guard is now `subEnvB` rather than an equality — nothing `simp` can compute, so
+      -- the case is the guard split and the two refutations it leaves.
+      | (rename_i hinf hbad _
+         simp only [inferIf, hinf] at h
+         split at h
+         · exact absurd (by assumption) hbad
+         · exact absurd h (by simp))
       -- No fallback: every case is closed above or by one of the four uniform
       -- tactics, and there is deliberately no `sorry` arm to hide a case the next
       -- widening adds. A new `infer` rule breaks this proof, which is the same

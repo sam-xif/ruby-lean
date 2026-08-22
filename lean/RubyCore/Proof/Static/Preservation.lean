@@ -1587,16 +1587,25 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i τt Γt Dt τe Γe De ht he
           split at hif
           · rename_i hagree
-            obtain ⟨rfl, rfl⟩ := hagree
+            -- **L236: the environment half is two containments, not an equality**, and
+            -- this is the case the whole slack machinery was built for. The branch runs
+            -- at *its own* environment while the continuation was registered at the
+            -- `if`'s answer — the entry one; `subEnvB_sound` turns the rule's own guard
+            -- into the missing `SubEnv`, `hsu` is the kont's slack against the answer,
+            -- and one `SubEnv.trans` reconciles them. Every other construction site in
+            -- this file passes `refl`.
+            obtain ⟨hsub1, hsub2, rfl⟩ := hagree
             simp only [Option.map_eq_some_iff, Prod.mk.injEq] at hif
             obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := hif
             by_cases hb : v.truthy
             · simp only [hb, if_true]
               exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot hks ht
                 (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+                (hsuE := SubEnv.trans hsu (subEnvB_sound hsub1))
             · simp only [hb]
               exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot hks he
                 (subTy_trans (joinTy_sub hjoin).2 hsw) hk'
+                (hsuE := SubEnv.trans hsu (subEnvB_sound hsub2))
           · exact absurd hif (by simp)
         · exact absurd hif (by simp)
       | none =>
@@ -1605,13 +1614,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · rename_i τt Γt ht
           split at hif
           · rename_i hnil
-            obtain ⟨rfl, rfl⟩ := hnil
+            -- L236: `subEnvB` where this was an equality, so the arm's environment is a
+            -- *widening* of the `if`'s and the kont's slack composes with it.
+            obtain ⟨hsub1, rfl⟩ := hnil
             simp only [Option.map_eq_some_iff, Prod.mk.injEq] at hif
             obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := hif
             by_cases hb : v.truthy
             · simp only [hb, if_true]
               exact inv_eval_sub hfs htab hsc hhook hsat hstr hcls hbot hks ht
                 (subTy_trans (joinTy_sub hjoin).1 hsw) hk'
+                (hsuE := SubEnv.trans hsu (subEnvB_sound hsub1))
             · simp only [hb]
               exact inv_value hfs htab hsc hhook hsat hstr hcls hbot (by simpa [frameKLabels] using hks)
                 (ValueTy.weaken (ValueTy.exact rfl)

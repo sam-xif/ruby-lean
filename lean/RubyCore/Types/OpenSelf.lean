@@ -65,13 +65,23 @@ abbrev AEnv := List (String × ATy)
 def aenvGet? (Γ : AEnv) (x : String) : Option ATy :=
   (Γ.find? (·.1 == x)).map (·.2)
 
+/-- A member's key always resolves — `envGet?_of_mem`'s twin (L236). -/
+theorem aenvGet?_of_mem {Γ : AEnv} {e : String × ATy} (he : e ∈ Γ) :
+    ∃ a, aenvGet? Γ e.1 = some a := by
+  unfold aenvGet?
+  cases hf : Γ.find? (fun p => p.1 == e.1) with
+  | none => exact absurd (List.find?_eq_none.mp hf e he) (by simp)
+  | some p => exact ⟨p.2, by simp [hf]⟩
+
 /-- **The open-self `SubEnv` check** (L227) — `subEnvB`'s twin at `AEnv`, and the reason
     it is a *separate* function rather than `subEnvB` after substitution: the check runs in
     the open pass, where the types are still variables, so it compares `ATy`s. What makes
     it sound is that it is **stronger** than the nominal check pointwise: an entry that
     matches syntactically matches under every `θ` (`subAEnvB_subst`). -/
 def subAEnvB (Γ Γ' : AEnv) : Bool :=
-  Γ.all fun e => aenvGet? Γ' e.1 == some e.2
+  -- L236: each entry's *lookup* rather than its payload, for `subEnvB`'s reason — an
+  -- `AEnv` is an association list, so a shadowed entry must not make the check fail.
+  Γ.all fun e => aenvGet? Γ' e.1 == aenvGet? Γ e.1
 
 /-- Order is canonical, as in `envSet`, so that environment *equality* is a usable
     check — the `if`-merge and the loop-stability condition both need it, and the
@@ -546,24 +556,29 @@ def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OC
         -- still compared. `joinATy` is the only difference from the nominal rule, and
         -- the reason it exists rather than `joinTy` being reused is that this side
         -- joins against a type *variable*.
-        if Γt = Γe then
+        -- **L236: two containments and the *entry* environment as the answer**, mirroring
+        -- `inferIf` exactly — including the reason it is not a shape test: the factoring
+        -- theorem needs the answer to commute with `substEnv θ`, and `Γt = Γe` does not.
+        if subAEnvB Γ Γt && subAEnvB Γ Γe then
           -- L206: `joinOpen` rather than `joinATy` — the store is threaded because the
           -- join may *record* a requirement (a variable pinned to the other arm's
           -- type) rather than only answering one.
           match Store.joinOpen se.st τt τe with
-          | some (τj, st') => .ok τj Γe { se with st := st' }
+          | some (τj, st') => .ok τj Γ { se with st := st' }
           | none => .outOfFragment "if"
-        else .outOfFragment "if"
+        else .outOfFragment "if-env"
       | r => r
     | r => r
   | none =>
     match inferOpen D Γ t ctx il s with
     | .ok τt Γt st =>
-      if Γt = Γ then
+      -- L236: `subAEnvB Γ Γt` where this was `Γt = Γ`; the answer was already the entry
+      -- environment, so only the refusal changes.
+      if subAEnvB Γ Γt then
         match Store.joinOpen st.st τt (.nom Ty.nilT) with
         | some (τj, st') => .ok τj Γ { st with st := st' }
         | none => .outOfFragment "if"
-      else .outOfFragment "if"
+      else .outOfFragment "if-env"
     | r => r
 termination_by sizeOf t + sizeOf els
 
