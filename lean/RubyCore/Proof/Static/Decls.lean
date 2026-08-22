@@ -161,6 +161,12 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   -- clause makes single-valued for every name the table can be keyed on.
   | .clsOf n => ∃ o, (h.classPayload? o).isSome ∧ className h o = n ∧
       k = classOf h (.ref o)
+  -- **L238: an `arrayOf` dispatches from `Array`**, and unlike `.any`/`.nilable` this
+  -- arm is *inhabited* — `tyClassNames` names `Array`, so `declFor` does answer at it
+  -- and `DeclsOk` will oblige every `Array` row over these receivers. The obligation is
+  -- the same one `.cls "Array"` carries, which is what makes the arm cost nothing until
+  -- a row mentions the element type.
+  | .arrayOf _ => (h.classPayload? k).isSome ∧ className h k = "Array"
 
 /-- **A receiver hands over its dispatch class** — but only at a type dispatch can
     start from, and since L193 that is a hypothesis rather than a fact about every
@@ -1082,6 +1088,8 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
       -- L183/L184: `tyClassNames` is `[]` at the top type and at the class-object
       -- arm, so `declFor` answers `none` and the hypothesis is refuted by
       -- computing it.
+      -- L238: and the parameterised arm, which is `[]` at `tyClassNames` for now —
+      -- see the note there for what `["Array"]` costs.
       | exact absurd h (by simp [declFor, tyClassNames])
 
 /-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn** (L150): L147 moved its only caller
@@ -1197,6 +1205,12 @@ theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : Strin
     exact ⟨o, by rw [← classPayload?_isSome_defineMethod h cls o name md]; exact ho,
       by rw [← className_defineMethod h cls o name md]; exact hn,
       by rw [hk, classOf_defineMethod]⟩
+  -- L238: the same two rewrites the `.cls` arm uses — the arm *is* `.cls "Array"`'s
+  -- content, so it transports identically. Stated even though `tyClassNames` is `[]`
+  -- at it today, because the arm is what the iterator rung will turn on.
+  | arrayOf _ =>
+    exact ⟨by rw [← classPayload?_isSome_defineMethod h cls k name md]; exact ht.1,
+      by rw [← className_defineMethod h cls k name md]; exact ht.2⟩
   | _ => exact ht
 
 theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
@@ -1213,6 +1227,8 @@ theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
     have hlt : o < h.objs.size := classPayload?_isSome_lt ho'
     exact ⟨o, ho', by rw [← hg.className_eq o]; exact hn,
       by rw [hk, hg.classOf_eq hlt]⟩
+  | arrayOf _ =>
+    exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
   | _ => exact ht
 
 /-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
@@ -1403,6 +1419,16 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
       | clsOf n =>
         exfalso
         rw [show declFor (addRow D c mname { params := [], ret := τb }) (.clsOf n) mname
+            = none from by simp [declFor, tyClassNames]] at hdecl
+        exact absurd hdecl (by simp)
+      -- **L238, and this arm is where `tyClassNames (.arrayOf _) = []` is spent.** With
+      -- `["Array"]` the `exfalso` would be *false* — a program may reopen `class Array`
+      -- and `def` into it, and then an `arrayOf` receiver resolves to the new row too, so
+      -- this lemma's conclusion (`τr = .cls c`) would have to widen to a disjunction.
+      -- That is the iterator rung's first bill, and it is one lemma statement.
+      | arrayOf e =>
+        exfalso
+        rw [show declFor (addRow D c mname { params := [], ret := τb }) (.arrayOf e) mname
             = none from by simp [declFor, tyClassNames]] at hdecl
         exact absurd hdecl (by simp)
       | sym =>
@@ -2409,6 +2435,8 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
   | any => exact absurd hd (by simp [declFor, tyClassNames])
   | clsOf n => exact absurd hd (by simp [declFor, tyClassNames])
   | nilable _ => exact absurd hd (by simp [declFor, tyClassNames])
+  -- L238, and it is `.any`'s arm for `.any`'s reason today.
+  | arrayOf _ => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
 
@@ -2467,6 +2495,9 @@ theorem tyClass (hi : IvarOnly h h') {τ : Ty} {k : ObjId} (ht : TyClass h' τ k
       by rw [← hi.classOf_eq]; exact hk⟩
   | any => exact ht.elim
   | nilable _ => exact ht.elim
+  -- L238: `.cls "Array"`'s content, so `.cls`'s two rewrites verbatim.
+  | arrayOf _ =>
+    exact ⟨by rw [← hi.classPayload]; exact ht.1, by rw [← hi.className_eq]; exact ht.2⟩
   | _ => exact ht
 
 theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}

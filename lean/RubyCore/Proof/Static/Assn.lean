@@ -203,6 +203,9 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
       -- why `declTys` need not list `.any`: `declFor D .any n` is `none` for every
       -- `n`, so both sides of the biconditional are false there.
       | any => exact absurd hc (by simp [tyClassNames])
+      -- L238: `.any`'s arm for `.any`'s reason — `tyClassNames` is `[]` at the
+      -- parameterised arm too, so `hc` is contradictory and `declTys` need not list it.
+      | arrayOf _ => exact absurd hc (by simp [tyClassNames])
       -- L184: same, at the class-object arm.
       | clsOf n => exact absurd hc (by simp [tyClassNames])
       -- L193: same, at the nilable arm.

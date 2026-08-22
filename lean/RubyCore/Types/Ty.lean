@@ -117,6 +117,34 @@ inductive Ty where
       `--sets` is what picked it (L201): `{flt}` was a singleton blocker set for
       three slice bodies, the only cheap entry left on the marginal-value table. -/
   | float
+  /-- **An `Array` whose elements are all `elem`** (L238) — the first *parameterised*
+      arm, and the gate for Wall 1 rather than a convenience.
+
+      **Why it is not optional.** `tyClassNames .any = []`, so no send can use `.any`
+      as a receiver; a block whose parameter is `.any` therefore type-checks only if
+      its body never calls a method on the parameter, and every block in the slice
+      does (`identifiers.select { |i| i.start_with?("CVE-") }`). The element type is
+      already *in the program* — `sig { returns(T::Array[String]) }` — and it was the
+      type language that dropped it.
+
+      **Invariant, deliberately.** `subTy` compares it by equality (the catch-all
+      arm), so `arrayOf String` and `arrayOf Object` are unrelated. Covariance would
+      be unsound at *mutation* under aliasing: `ys = xs; ys << 1` cannot be allowed to
+      widen `ys`'s element type while `xs` still claims `arrayOf String`, and no
+      local-only narrowing can see the other alias. Every mutating row must therefore
+      preserve the element type, which is what makes the claim survive for all aliases.
+
+      **`valueTy?` never answers one**, for `.any`'s and `.clsOf`'s reason and one
+      more: computing an array's element type recurses through the *heap*, and a Ruby
+      array can contain itself (`a = []; a << a`). `ValueTy` gains a **relational**
+      arm instead — recursion on the *type*, which is structural — so a cyclic array
+      inhabits no `arrayOf` type at all, which is sound.
+
+      **Nothing constructs one yet**: the decoder still maps `T::Array[X]` to
+      `.cls "Array"` and no row mentions the arm, so this commit accepts nothing new.
+      What it buys is the relation and its inversions, which the iterator rung needs
+      before it can type a block body. -/
+  | arrayOf (elem : Ty)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
@@ -186,6 +214,13 @@ theorem subTy_concrete {σ τ : Ty} (hτ : τ ≠ .any) (hn : ∀ τ', τ ≠ .n
 theorem subTy_trans : ∀ {a b c : Ty}, subTy a b = true → subTy b c = true →
     subTy a c = true
   | a, b, .any, _, _ => by simp [subTy]
+  -- L238: `arrayOf` is compared by equality, so transitivity at it is `Eq.trans` —
+  -- the same shape every other concrete arm has, spelled because the arm carries a
+  -- payload and the catch-all pattern below does not reach it.
+  | a, b, .arrayOf e, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc
+    subst hbc
+    exact hab
   | a, b, .nilable c', hab, hbc => by
     simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hbc ⊢
     rcases hbc with (rfl | rfl) | hbc'
@@ -269,13 +304,15 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
     branch has to be refuted at `X` against `nilable X`. One structural induction. -/
 theorem ne_nilable_self : ∀ (X : Ty), ¬ (X = .nilable X)
   | .nilable Y => by simpa using ne_nilable_self Y
-  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float => by simp
+  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
+  | .arrayOf _ => by simp
 
 /-- And the once-nested form, which `joinTy_absorb'`'s *first* branch needs refuted.
     Same induction. -/
 theorem ne_nilable_self2 : ∀ (X : Ty), ¬ (X = .nilable (.nilable X))
   | .nilable Y => by simpa using ne_nilable_self2 Y
-  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float => by simp
+  | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
+  | .arrayOf _ => by simp
 
 @[simp] theorem joinTy_absorb' (X : Ty) : joinTy X (mkNilable X) = some (mkNilable X) := by
   unfold mkNilable

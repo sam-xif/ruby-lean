@@ -108,6 +108,9 @@ def tyName : Ty → String
   -- `sig`s are written this way, so the report reads back in the source's own
   -- vocabulary.
   | .nilable τ => "T.nilable(" ++ tyName τ ++ ")"
+  -- L238. Sorbet's spelling again, and the report reads back the element type the
+  -- `sig` wrote.
+  | .arrayOf τ => "T::Array[" ++ tyName τ ++ "]"
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ

@@ -277,6 +277,21 @@ def tyClassNames : Ty → List String
   -- `DeclsOk` obliges nothing at the arm and it is a *type* with no declarations —
   -- exactly `Ty.cls`'s position between L141 and L163.
   | .clsOf _ => []
+  -- **L238: `[]` for now, and the *measured* reason is worth the paragraph** — because
+  -- `["Array"]` is what the arm eventually wants and it is not free.
+  --
+  -- With `["Array"]` an `arrayOf` receiver dispatches from `Array`'s rows, which is what
+  -- `xs.select` needs. But `declFor` then answers at the arm, and `DeclsOk_addRow`'s
+  -- `hτ` step — *the only type a freshly added row is read at is `.cls c`* — becomes
+  -- **false**: a program may reopen `class Array` and `def` into it, and an `arrayOf`
+  -- receiver would resolve there too. Its conclusion has to widen to a disjunction, and
+  -- so does every consumer of it. `TyClass` is already ready (the arm is `.cls "Array"`'s
+  -- content verbatim), so that lemma statement is the whole cost — but it is a cost, and
+  -- this commit is the *type* and its value relation, nothing else.
+  --
+  -- So today the arm is a **declaration and parameter** type, like `.any`: inhabited by
+  -- values (`ValueTy`'s new arm) and dispatching from nowhere.
+  | .arrayOf _ => []
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.
