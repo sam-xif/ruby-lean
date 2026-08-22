@@ -246,10 +246,27 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       program, an incoming table related to an outgoing one — with a fixed answer
       type instead of the sequence's last. -/
   | arrK {D D' h c Γ Γs τ τ' τw acc rest Γ' k} :
-      inferSeq D Γ rest Γs.isEmpty c = some (τ', Γ', D') →
+      -- **L230: `inferElems`, not `inferSeq`.** The remaining elements are typed by the
+      -- traversal that admits a splat, which is the whole of the rung on this side.
+      inferElems D Γ rest Γs.isEmpty c = some (τ', Γ', D') →
       subTy (.cls "Array") τw = true →
       KontOk D' h ((c, Γ') :: Γs) τw k →
       KontOk D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
+  /-- **A splatted array element, with the operand in flight** (L230) — `arrK`'s twin at
+      `continueArray`'s splat arm, and it carries exactly one premise more: the in-flight
+      value's type is `Array`.
+
+      That premise is what makes the step **total**. `applyKont`'s `arrSplatK` arm calls
+      `spreadA`, which answers `.error` — hence `.unsupported`, which `StepOk` refuses —
+      for every payload but `.arr`, `.mdata` and a `Range`; and the bridge from "its class
+      is `Array`" to "its payload is an `.arr`" is `plainRecv`'s sixth clause (L230),
+      landed as a clause of the judgement rather than as a sixth heap conjunct of `Inv`. -/
+  | arrSplatK {D D' h c Γ Γs τ τ' τw acc rest Γ' k} :
+      subTy τ (.cls "Array") = true →
+      inferElems D Γ rest Γs.isEmpty c = some (τ', Γ', D') →
+      subTy (.cls "Array") τw = true →
+      KontOk D' h ((c, Γ') :: Γs) τw k →
+      KontOk D h ((c, Γ) :: Γs) τ (.arrSplatK acc rest :: k)
   /-- **Method return.** The in-flight value is the body's value; popping the
       activation (`Interp.lean:2206`) discards the callee's environment and
       resumes the caller's.
@@ -345,6 +362,8 @@ def RetTransparent : Kont → Prop
   -- about a jump.
   | .superArgK .. => True
   | .arrK .. => True
+  -- L230: and the splat arm of the same literal — `unwind`'s catch-all a further time.
+  | .arrSplatK .. => True
   | .jumpValK _ => True
   -- L205: `unwind`'s catch-all, like the nine above — a `.cpathK` on the stack has no
   -- opinion about a jump, so a `.retJ` passes straight through it.
@@ -435,7 +454,11 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           subst hq
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | arrK hs hw hk' =>
-          have hq : _ = D := inferSeq_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
+          have hq : _ = D := inferElems_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
+          subst hq
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | arrSplatK ha hs hw hk' =>
+          have hq : _ = D := inferElems_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
           subst hq
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | retValK hr hs hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
@@ -477,6 +500,8 @@ def NxtTransparent : Kont → Prop
   | .argsK .. => True
   | .superArgK .. => True
   | .arrK .. => True
+  -- L230: and the splat arm of the same literal — `unwind`'s catch-all a further time.
+  | .arrSplatK .. => True
   | .jumpValK _ => True
   | .cpathK _ => True
   | _ => False
@@ -573,6 +598,7 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       | superArgsK hva hst hia hsr hmt hmn hrow hps hrt hw hk' =>
           exact .skip trivial (KontOk.raiseOk hk')
       | arrK hs hw hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | arrSplatK ha hs hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | cpathK hb hsc hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | retValK hr hs hk' => exact .skip trivial (KontOk.raiseOk hk')
       | frameK hrt hil hk' => exact .pop (KontOk.raiseOk hk')
@@ -646,7 +672,11 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           subst hq
           exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | arrK hs hw hk' =>
-          have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
+          have hq : _ = D := inferElems_table_loop (ctx := c) hls htop hs
+          subst hq
+          exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | arrSplatK ha hs hw hk' =>
+          have hq : _ = D := inferElems_table_loop (ctx := c) hls htop hs
           subst hq
           exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | cpathK hb hsc hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
@@ -753,6 +783,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
       intro ha
       exact .argsK (ValueTy.congr ha hv) (ValuesTy.congr ha hva) hst hia hsr hsg hw (ih ha)
   | arrK hs hw _ ih => intro ha; exact .arrK hs hw (ih ha)
+  | arrSplatK hv hs hw _ ih => intro ha; exact .arrSplatK hv hs hw (ih ha)
   | frameK hr hil _ ih => intro ha; exact .frameK hr hil (ih ha)
   | retValK hr hs _ ih => intro ha; exact .retValK hr hs (ih ha)
 
@@ -1230,6 +1261,50 @@ theorem continueArray_plain {m : Machine} {acc : List Value} {e : Expr}
       = .next (withKont m (.eval e) (.arrK acc rest)) := by
   cases e <;> simp_all [continueArray]
 
+/-- **An `Array`-typed value spreads, and the machine does not move** (L230) — the whole
+    soundness content of the splat rule, and the reason `plainRecv` gained a sixth clause.
+
+    `spreadA` is total on an `.arr` payload (it hands back the elements) and answers
+    `.error` — hence `.unsupported`, which `StepOk` refuses — on a `.str`, an `.int` or a
+    `.hsh`. `valueTy?` reads the *class*, so nothing but `plainRecv`'s clause connects the
+    two, and this lemma is where the connection is spent. -/
+theorem spreadA_of_array {m : Machine} {v : Value}
+    (hv : ValueTy m.heap v (.cls "Array")) :
+    ∃ vs, Interp.spreadA m v = .ok (vs, m) := by
+  -- The value is a reference: no immediate has a class type (`valueTy?`'s arms answer
+  -- `.int`/`.bool`/… and `subTy` at a concrete type is an equality).
+  obtain ⟨o, rfl⟩ : ∃ o, v = .ref o := by
+    cases hsv : v with
+    | ref o' => exact ⟨o', rfl⟩
+    | _ => rw [hsv] at hv; simp_all [ValueTy, valueTy?, subTy]
+  have hpl : plainRecv m.heap o = true := valueTy_ref_plain hv
+  have hcn : className m.heap (m.heap.get o).klass = "Array" := by
+    rcases valueTy_ref_inv hv with ⟨-, hs⟩ | ⟨hc, hs⟩
+    · have hq := (subTy_atomic (τ := Ty.cls "Array") (by simp) (by simp)).mp hs
+      rw [plainRecv_classOf hpl] at hq
+      simpa using hq
+    · exact absurd hs (by simp [subTy])
+  -- And now the sixth clause, read back out.
+  have harr : ∃ xs, (m.heap.get o).payload = .arr xs := by
+    unfold plainRecv at hpl
+    simp only [Bool.and_eq_true] at hpl
+    have h6 := hpl.2
+    rw [hcn] at h6
+    simp only [beq_self_eq_true, if_true] at h6
+    cases hp : (m.heap.get o).payload with
+    | arr xs => exact ⟨xs, rfl⟩
+    | _ => rw [hp] at h6; exact absurd h6 (by simp)
+  obtain ⟨xs, hp⟩ := harr
+  exact ⟨xs.toList, by simp [Interp.spreadA, Interp.spread, hp, Except.map]⟩
+
+/-- **And the splat arm** (L230), which is one line of `continueArray` and needs no
+    hypothesis: a `.splat (some o)` element evaluates `o` under an `arrSplatK`. -/
+theorem continueArray_splat {m : Machine} {acc : List Value} {o : Expr}
+    {rest : List Expr} :
+    continueArray m acc (.splat (some o) :: rest)
+      = .next (withKont m (.eval o) (.arrSplatK acc rest)) := by
+  simp [continueArray]
+
 /-! ### 2.2 `FramesOk` survives the fragment's frame-preserving updates
 
 `ctl` and `kont` updates leave `frames` and `stack` alone, and `FramesOk` reads
@@ -1373,7 +1448,11 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     -- the same reason (`allocStr`/`allocArr` leave the field at its default).
     (hiv : obj.ivars = [])
     (hk : (h.classPayload? obj.klass).isSome)
-    (hn : className h obj.klass = n) :
+    (hn : className h obj.klass = n)
+    -- **L230: and if it is an `Array`, it holds one** — `plainRecv`'s sixth clause,
+    -- stated at the *name* the producer already has. Free at both call sites: the array
+    -- literal's payload *is* an `.arr`, and the string literal's name is `"String"`.
+    (harr : n = "Array" → ∃ xs, obj.payload = .arr xs) :
     ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
   obtain ⟨hproc, hhsh, hnc⟩ := hpl
   have hg : PlainGrow h ⟨h.objs.push obj⟩ := plainGrow_alloc h obj hnc hiv
@@ -1385,11 +1464,22 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
   have hplain : plainRecv ⟨h.objs.push obj⟩ h.objs.size = true := by
     unfold plainRecv
     rw [hget, he, hg.payload obj.klass]
+    rw [hg.className_eq obj.klass, hn]
     cases hp : obj.payload
     case proc c => exact absurd hp (hproc c)
     case hsh xs => exact absurd hp (hhsh xs)
     case cls c => exact absurd hp (hnc c)
-    all_goals simp [hlt, hk, hfz]
+    -- The `.arr` payload satisfies the sixth clause outright; every other payload
+    -- **refutes** `n = "Array"` through `harr`, which is the direction that makes the
+    -- hypothesis free at the string producer.
+    case arr xs => simp [hlt, hk, hfz]
+    all_goals
+      (have hna : ¬ n = "Array" := by
+         intro hq
+         obtain ⟨ys, hys⟩ := harr hq
+         rw [hp] at hys
+         exact absurd hys (by simp)
+       simp [hlt, hk, hfz, hna])
   refine ValueTy.exact ?_
   simp only [valueTy?, hplain, if_true]
   rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass, hn]

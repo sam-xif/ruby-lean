@@ -105,7 +105,23 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
      | .proc _ => false
      | .hsh _ => false
      | .cls _ => false
-     | _ => true)
+     | _ => true) &&
+    -- **An object of class `Array` holds an array** (L230), and it is `plainRecv`'s move
+    -- for the *sixth* time: a side condition a later rung has to derive at the use site
+    -- is cheaper in the judgement. The use site is the **splat**: `[a, *b]` spreads `b`
+    -- with `spreadA`, which answers `.ok` for an `.arr` payload and `.error` — hence
+    -- `.unsupported`, which `StepOk` refuses — for a `.str` or `.int` one. Nothing else
+    -- in the invariant ties a *class* to a *payload*, and `valueTy?` reads the class.
+    --
+    -- Landing it here rather than as a sixth heap conjunct of `Inv` is what makes it
+    -- cheap: a conjunct needs a `heapOkB` clause, a `ConformsAt` clause and a transport
+    -- at every allocating step, while a clause of `plainRecv` is established exactly
+    -- where `plainRecv` already is — two producers — and transported by the two
+    -- congruences that already exist. **It will be needed again** by the first *mutating*
+    -- Array row (`Array#push`, Wall 1's chain), whose builtin reads the payload off a
+    -- receiver the row types as `Array`.
+    (if className h (h.get o).klass == "Array" then
+       (match (h.get o).payload with | .arr _ => true | _ => false) else true)
 
 /-- **A class-object receiver** (L185) — the shape `Ty.clsOf` types, and the dual
     of `plainRecv`: the payload *is* a class, and the two receiver ids `invoke`
@@ -292,7 +308,7 @@ theorem plainRecv_classOf {h : Heap} {o : ObjId} (hp : plainRecv h o = true) :
     classOf h (.ref o) = (h.get o).klass := by
   unfold plainRecv at hp
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hp
-  simp only [classOf, hp.1.1.2]
+  simp only [classOf, hp.1.1.1.2]
 
 /-- **A plain receiver's class is a class** (L147). The clause `plainRecv` gained,
     read back out at the composite the resolution clause is indexed by. -/
@@ -301,7 +317,7 @@ theorem valueTy_ref_klass_isSome {h : Heap} {o : ObjId}
   rw [plainRecv_classOf hp]
   unfold plainRecv at hp
   simp only [Bool.and_eq_true] at hp
-  exact hp.1.1.1.2
+  exact hp.1.1.1.1.2
 
 /-- **And therefore is an id the heap actually has**, since `classPayload?` answers
     `none` out of bounds. This is the L143 clause, now a consequence rather than a
@@ -1178,10 +1194,14 @@ theorem payload_setClassPayload (h : Heap) (o : ObjId) (c : ClassPayload)
     object *does* change. -/
 theorem plainRecv_congr {h h' : Heap} {o : ObjId}
     (hsz : h'.objs.size = h.objs.size) (hget : h'.get o = h.get o)
-    (hcp : ∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome) :
+    (hcp : ∀ k, (h'.classPayload? k).isSome = (h.classPayload? k).isSome)
+    -- L230: and the class *name*, which the sixth clause reads. Every caller has it —
+    -- `className_defineMethod` for the method-table write, `PlainGrow.className_eq` for a
+    -- growing heap — and both were written for another consumer.
+    (hcn : ∀ k, className h' k = className h k) :
     plainRecv h' o = plainRecv h o := by
   unfold plainRecv
-  rw [hget, hsz, hcp]
+  rw [hget, hsz, hcp, hcn]
 
 /-- A `defineMethod` at a *different* id leaves the object alone. -/
 theorem get_defineMethod_ne (h : Heap) (cls o : ObjId) (name : String)
@@ -1226,6 +1246,7 @@ theorem plainRecv_defineMethod (h : Heap) (cls o : ObjId) (name : String)
   · exact plainRecv_congr (objs_size_defineMethod h cls name md)
       (get_defineMethod_ne h cls o name md hk)
       (fun k => classPayload?_isSome_defineMethod h cls k name md)
+      (fun k => className_defineMethod h cls k name md)
 
 /-- **`defineMethod`'s transport.** The four facts are equalities and unrelativized —
     a method-table write moves no id — so the relativized clauses are satisfied at
@@ -1290,13 +1311,18 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     unfold plainRecv at hp ⊢
     rw [hget o ho]
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hp ⊢
-    obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, hfz⟩, h4⟩ := hp
-    refine ⟨⟨⟨⟨Nat.lt_of_lt_of_le h1 hsz, ?_⟩, h3⟩, hfz⟩, h4⟩
+    obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hfz⟩, h4⟩, h5⟩ := hp
+    refine ⟨⟨⟨⟨⟨Nat.lt_of_lt_of_le h1 hsz, ?_⟩, h3⟩, hfz⟩, h4⟩, ?_⟩
     -- L147: the class clause transports because being a class puts the id *in
     -- bounds* (`classPayload?_isSome_lt`), which is where `get` agreement applies.
     have hb : (h.get o).klass < h.objs.size := classPayload?_isSome_lt h2
-    simp only [Heap.classPayload?, hget _ hb]
-    exact h2
+    · simp only [Heap.classPayload?, hget _ hb]
+      exact h2
+    · -- L230: the sixth clause reads the class *name*, and the name is a function of
+      -- `get` at the class id — which is in bounds because being a class puts it there.
+      have hb2 : (h.get o).klass < h.objs.size := classPayload?_isSome_lt h2
+      simp only [className, Heap.classPayload?, hget _ hb2]
+      exact h5
   · -- L185's clause, and the `get` agreement does all of it: `classRecv` reads the
     -- bound, two id comparisons and the payload, and all four are functions of
     -- `h.get o`.
@@ -1371,6 +1397,10 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   · rw [hcp k]
   · unfold plainRecv at hp ⊢
     rw [hkl o, hei o, hpl o, hfz o, hcp _, ← hsz]
+    -- L230: and the class name, which `hcp` gives at every id (`className` is
+    -- `classPayload?`'s name field).
+    rw [show className h' (h.get o).klass = className h (h.get o).klass from by
+      simp only [className, hcp _]]
     exact hp
   · unfold classRecv at hc ⊢
     rw [hcp o, ← hsz]

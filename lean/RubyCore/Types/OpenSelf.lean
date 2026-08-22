@@ -325,7 +325,9 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
   -- `inferOpenSeq` with a constant answer — the same reuse of the sequence
   -- traversal `infer`'s own arm makes.
   | .array es =>
-    match inferOpenSeq D Γ es ctx il s with
+    -- L230: `inferOpenElems`, the traversal that admits a splat element — the mirror of
+    -- the nominal side's `inferElems`, and the only place a splat is in the fragment.
+    match inferOpenElems D Γ es ctx il s with
     | .ok _ Γ' s' => .ok (.nom (.cls "Array")) Γ' s'
     | r => r
   | .seq es => inferOpenSeq D Γ es ctx il s
@@ -503,6 +505,33 @@ def inferOpenArgs (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Op
       | r => r
     | .missing τ n ps => .missing τ n ps
     | .outOfFragment h => .outOfFragment h
+termination_by sizeOf es
+
+/-- **The elements of an array literal, in open-self mode** (L230) — `inferElems`' mirror,
+    and the fifth open function for the same reason the nominal side has a fifth: a splat
+    element is admitted **here and nowhere else**, and giving `.splat` an `inferOpen` arm
+    would make the *factoring* claim that `infer` accepts a bare splat, which it does not.
+
+    **A splat's operand must be a *nominal* `Array`.** A type *variable* is refused rather
+    than constrained, for `cpath-base`'s reason (L205): the store's requirements are rows,
+    and "is an `Array`" is not a row. That is a real limitation and it is measured — it is
+    why `Vulnerability#identifiers` (`[id, *aliases].uniq`) stays out of the fragment while
+    `PkgVersion#self.parse` (`[*path.match(…)]`) crosses to a needed *declaration*. -/
+def inferOpenElems (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : Option AEnv)
+    (s : OState) : OResult :=
+  match es with
+  | [] => .ok (.nom .nilT) Γ s
+  | e :: rest =>
+    match e with
+    | .splat (some o) =>
+      match inferOpen D Γ o ctx il s with
+      | .ok (.nom (.cls "Array")) Γ₁ s₁ => inferOpenElems D Γ₁ rest ctx il s₁
+      | .ok _ _ _ => .outOfFragment "splat-operand"
+      | r => r
+    | ee =>
+      match inferOpen D Γ ee ctx il s with
+      | .ok _ Γ₁ s₁ => inferOpenElems D Γ₁ rest ctx il s₁
+      | r => r
 termination_by sizeOf es
 
 def inferOpenIf (D : Decls) (Γ : AEnv) (t : Expr) (els : Option Expr) (ctx : OCtx)

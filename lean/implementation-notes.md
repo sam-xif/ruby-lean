@@ -11054,3 +11054,76 @@ the two `eg*_nominal` witnesses recover the old equality with `subTy_atomic`.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); `--self-test` all agree; third ratchet **22**, `pacc` 6.
+
+## L230 — the splat, and a design that had to be reverted twice to be right
+
+Out of fragment **22 → 21**, `--check` byte-identical, axiom-clean. The rung is small; the *shape* of
+it took three attempts, and the two failures are the transferable part.
+
+### `plainRecv`'s sixth clause — an object of class `Array` holds an array
+
+```lean
+(if className h (h.get o).klass == "Array" then
+   (match (h.get o).payload with | .arr _ => true | _ => false) else true)
+```
+
+The splat's step is `spreadA`, which answers `.ok` for an `.arr` payload and `.error` — hence
+`.unsupported`, which `StepOk` **refuses** — for a `.str` or an `.int`. `valueTy?` reads the *class*,
+and nothing in the invariant tied a class to a payload, so the rule needed a new fact.
+
+> **It went into `plainRecv` rather than into `Inv`**, which is `plainRecv`'s own pattern for the
+> **sixth** time (its docstring names the first five): *a side condition a later rung has to derive at
+> the use site is cheaper in the judgement.* A sixth `Inv` conjunct would have cost a `heapOkB`
+> clause, a `ConformsAt` clause and a transport at every allocating step — L228 paid exactly that bill
+> for `GlobalsOk` and it is ~25 edits. A clause of `plainRecv` costs **two producers and two
+> congruences**, because that is where `plainRecv` is already established and transported. It will be
+> needed again by the first *mutating* `Array` row (`Array#push`, Wall 1's chain).
+
+### `inferElems` — the fifth mutual function, after two rejected designs
+
+**Attempt 1: an `infer` arm for `.splat`.** Unsound, and the reason is worth keeping: `CtlOk`'s eval
+clause quantifies over expressions `infer` accepts, so the *invariant* could then sit at
+`.eval (.splat e)` — where `evalExpr` answers `.unsupported "splat outside call/array position"`.
+Every other position that stores a subexpression and `.eval`s it later (`.seq`'s tail, `if`'s
+branches, a `while`'s body, an argument list, a `cpath` base) would have needed its own guard, and
+`inferArgs` would have needed one for a second reason: **a splat spreads into many arguments, so
+typing it as one argument of type `Array` makes every arity check downstream a lie.**
+
+**Attempt 2: an `allowSplat` flag on `inferSeq`.** Sound, and it renumbered `infer.induct` twice —
+`inferSeq`'s arms double, and every case after them moves. Reverted.
+
+**Attempt 3, the one that landed: a fifth mutual function**, declared after `inferArgs`, so its cases
+are *appended* and **no existing case number moves**. It answers `(Ty × Env × Decls)` with the type
+always `.nilT` — the shape `inferSeq` has, which is what lets the three inductions' uniform blocks
+treat its cases with the alternatives they already have.
+
+> **`motive4` is `inferElems` and `motive5` is `inferArgs`** — the *mutual block's* order, not the
+> file's. The two have the same signature, so a swapped assignment **type-checks** and only the IHs'
+> shapes reveal it (`trace_state` on the `.array` case: its IH was about `inferArgs`). The same trap
+> is in `inferOpen.induct`, and it cost a build each side.
+
+### Two more things the proof found
+
+**`defFree` needed a `.splat` arm** — the eighth walk into the trap `.array`/`.vasgn .ivar`/`.ret`/
+`.cpath`/`.super'`/`.zsuper`/`.nxt` all have a comment about, and the **first one found by a proof
+rather than by the writer**: `inferElems` threads the table through the operand, so the element
+traversal's IH arrived with no `defFree` for it at all.
+
+**`inv_continueArray`** — the array loop, stated once. `continueArray` now has three entry points
+(the `.array` step, the `arrK` delivery, the `arrSplatK` delivery after the spread) and they are the
+same two shapes, so the case that used to be inline became a lemma and the new one costs three lines.
+
+### What moved, and the limit that is now visible
+
+`PkgVersion#self.parse` — `_, v, r = *path.match(REGEX)`, which desugars to `[*…]` — crosses to a
+needed declaration (`::Regexp`). `Vulnerability#identifiers` — `[id, *aliases].uniq` — does **not**:
+`aliases` types to a type *variable*, and the open rule refuses a variable operand rather than
+constraining it, for `cpath-base`'s reason (L205): the store's requirements are rows, and "is an
+`Array`" is not a row. The census says so in its own vocabulary — the label is `splat-operand` — and
+**that is the assertion language's next rung**, not the splat's.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical (56 / 1,169 / 0); `--self-test` all agree with three new splat rows; third ratchet
+**21**; fifth ratchet 31 blocked (was 33), singletons `{hash}` and `{begin}`.

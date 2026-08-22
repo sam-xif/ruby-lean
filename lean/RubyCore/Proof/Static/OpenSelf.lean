@@ -330,11 +330,17 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Opt
     -- **L175's argument traversal.** Same statement at the fourth motive; the send
     -- arms' chain is now `inferOpen recv → inferOpenArgs → requireRow`, so the
     -- transitivity alternatives below gained one link.
-    (motive4 := fun Γ es il s => ∀ τs Γ' s',
+    -- **L230: `motive4` is `inferOpenElems` and `motive5` is `inferOpenArgs`** — the
+    -- order is the mutual block's, not the file's, and the two have the same signature so
+    -- a swapped assignment type-checks and only the IHs reveal it. Measured, twice: the
+    -- nominal side has the same trap (`Mono.lean`).
+    (motive4 := fun Γ es il s => ∀ τ Γ' s',
+        inferOpenElems D Γ es ctx il s = .ok τ Γ' s' → StoreLe s.st s'.st)
+    (motive5 := fun Γ es il s => ∀ τs Γ' s',
         inferOpenArgs D Γ es ctx il s = .ok τs Γ' s' → StoreLe s.st s'.st) with
   | _ =>
     intros
-    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs]
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs, inferOpenElems]
     try (rename_i hh; obtain ⟨-, -, rfl⟩ := hh)
     first
       | done
@@ -372,11 +378,13 @@ theorem inferOpen_rets (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Opt
         inferOpenIf D Γ t els ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets)
     (motive3 := fun Γ es il s => ∀ τ Γ' s',
         inferOpenSeq D Γ es ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets)
-    (motive4 := fun Γ es il s => ∀ τs Γ' s',
+    (motive4 := fun Γ es il s => ∀ τ Γ' s',
+        inferOpenElems D Γ es ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets)
+    (motive5 := fun Γ es il s => ∀ τs Γ' s',
         inferOpenArgs D Γ es ctx il s = .ok τs Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets) with
   | _ =>
     intros
-    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs]
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenArgs, inferOpenElems]
     try (rename_i hh; obtain ⟨-, -, rfl⟩ := hh)
     first
       | done
@@ -511,6 +519,59 @@ theorem storeLe_subSeq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {
     StoreLe s.st stF :=
   StoreLe.trans (inferOpenSeq_mono D ctx il es Γ s τ Γ' s' h) hle
 
+/-- **L230's element traversal, monotone** — `inferOpenSeq_mono`'s twin at the fifth
+    function, and shorter: there is no `[e]` special case, and the splat arm's operand is
+    an `inferOpen` like any other. -/
+theorem inferOpenElems_mono (D : Decls) (ctx : OCtx) (il : Option AEnv) :
+    ∀ (es : List Expr) (Γ : AEnv) (s : OState) τ Γ' s',
+      inferOpenElems D Γ es ctx il s = .ok τ Γ' s' → StoreLe s.st s'.st := by
+  intro es
+  induction es with
+  | nil => intro Γ s τ Γ' s' h; unfold inferOpenElems at h; cases h; exact StoreLe.refl _
+  | cons e rest ih =>
+    intro Γ s τ Γ' s' h
+    unfold inferOpenElems at h
+    cases e
+    case splat oe =>
+      cases oe with
+      | none => simp only at h; exact absurd h (by simp [inferOpen])
+      | some o =>
+        simp only at h
+        cases ho : inferOpen D Γ o ctx il s with
+        | ok τ₁ Γ₁ s₁ =>
+          rw [ho] at h
+          cases τ₁ with
+          | nom t =>
+            cases t with
+            | cls nm =>
+              by_cases hnm : nm = "Array"
+              · subst hnm
+                exact StoreLe.trans (inferOpen_mono D ctx Γ o il s _ _ _ ho)
+                  (ih Γ₁ s₁ τ Γ' s' h)
+              · simp_all
+            | _ => simp_all
+          | var _ => simp_all
+          | nilOf _ => simp_all
+        | missing a b c => rw [ho] at h; exact absurd h (by simp)
+        | outOfFragment hd => rw [ho] at h; exact absurd h (by simp)
+    all_goals
+      (simp only at h
+       first
+         | (cases he : inferOpen D Γ _ ctx il s with
+            | ok τ₁ Γ₁ s₁ =>
+              rw [he] at h
+              exact StoreLe.trans (inferOpen_mono D ctx Γ _ il s _ _ _ he)
+                (ih Γ₁ s₁ τ Γ' s' h)
+            | missing a b c => rw [he] at h; exact absurd h (by simp)
+            | outOfFragment hd => rw [he] at h; exact absurd h (by simp))
+         | simp_all)
+
+theorem storeLe_subElems {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv}
+    {es : List Expr} {s s' : OState} {τ : ATy} {Γ' : AEnv} {stF : Store}
+    (h : inferOpenElems D Γ es ctx il s = .ok τ Γ' s') (hle : StoreLe s'.st stF) :
+    StoreLe s.st stF :=
+  StoreLe.trans (inferOpenElems_mono D ctx il es Γ s τ Γ' s' h) hle
+
 /-- The argument list's monotonicity (L175), by list induction on top of
     `inferOpen_mono` — `inferOpenSeq_mono`'s twin, and needed for the same reason:
     a send's store bound has to reach its arguments. -/
@@ -612,6 +673,51 @@ theorem inferOpenSeq_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
       | missing _ _ _ => rw [he] at h; simp at h
       | outOfFragment _ => rw [he] at h; simp at h
 
+/-- **And L230's element traversal's** — `inferOpenElems_mono`'s shape at `rets`. -/
+theorem inferOpenElems_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
+    ∀ (es : List Expr) (Γ : AEnv) (s : OState) τ Γ' s',
+      inferOpenElems D Γ es ctx il s = .ok τ Γ' s' → ∀ x ∈ s.rets, x ∈ s'.rets := by
+  intro es
+  induction es with
+  | nil => intro Γ s τ Γ' s' h; unfold inferOpenElems at h; cases h; exact fun x hx => hx
+  | cons e rest ih =>
+    intro Γ s τ Γ' s' h
+    unfold inferOpenElems at h
+    cases e
+    case splat oe =>
+      cases oe with
+      | none => simp only at h; exact absurd h (by simp [inferOpen])
+      | some o =>
+        simp only at h
+        cases ho : inferOpen D Γ o ctx il s with
+        | ok τ₁ Γ₁ s₁ =>
+          rw [ho] at h
+          cases τ₁ with
+          | nom t =>
+            cases t with
+            | cls nm =>
+              by_cases hnm : nm = "Array"
+              · subst hnm
+                exact fun x hx => ih Γ₁ s₁ τ Γ' s' h x
+                  (inferOpen_rets D ctx Γ o il s _ _ _ ho x hx)
+              · simp_all
+            | _ => simp_all
+          | var _ => simp_all
+          | nilOf _ => simp_all
+        | missing a b c => rw [ho] at h; exact absurd h (by simp)
+        | outOfFragment hd => rw [ho] at h; exact absurd h (by simp)
+    all_goals
+      (simp only at h
+       first
+         | (cases he : inferOpen D Γ _ ctx il s with
+            | ok τ₁ Γ₁ s₁ =>
+              rw [he] at h
+              exact fun x hx => ih Γ₁ s₁ τ Γ' s' h x
+                (inferOpen_rets D ctx Γ _ il s _ _ _ he x hx)
+            | missing a b c => rw [he] at h; exact absurd h (by simp)
+            | outOfFragment hd => rw [he] at h; exact absurd h (by simp))
+         | simp_all)
+
 /-- And the argument list's (L201). -/
 theorem inferOpenArgs_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
     ∀ (es : List Expr) (Γ : AEnv) (s : OState) τs Γ' s',
@@ -663,6 +769,13 @@ theorem rets_subSeq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es 
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
     ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenSeq_rets D ctx il es Γ s τ Γ' s' h a ha)
+
+theorem rets_subElems {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
+    {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
+    (h : inferOpenElems D Γ es ctx il s = .ok τ Γ' s')
+    (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
+    ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
+  fun a ha => hr a (inferOpenElems_rets D ctx il es Γ s τ Γ' s' h a ha)
 
 theorem rets_subArgs {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τs : List ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
@@ -745,6 +858,24 @@ def FactorsArgs (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx :
         = some (τs.map (ATy.subst θ), substEnv θ Γ', D)
   | _ => True
 
+/-- **And the array literal's elements** (L230), the fifth — `FactorsSeq`'s statement at
+    `inferElems`, and the type component is **`.nilT` on both sides**.
+
+    That is not a normalization: both traversals *always* answer `.nilT`, because an array
+    literal's element types are erased (the empty case answers it and every other case
+    hands the tail's answer through). Writing it out rather than quantifying it
+    existentially is what lets this motive share the sequence's alternatives in the proof
+    below — the existential version needed its own, and could not be closed by them. -/
+def FactorsElems (D : Decls) (θ : TyVar → Ty) (stF : Store) (retF : Ty) (ctx : OCtx)
+    (il : Option AEnv) (Γ : AEnv) (es : List Expr) : OResult → Prop
+  | .ok _ Γ' s' => StoreLe s'.st stF → (∀ a ∈ s'.rets, subTy (a.subst θ) retF = true) →
+      inferElems D (substEnv θ Γ) es false
+          { cls := ctx.cls, selfCls := some ctx.cls, ret := some retF, meth := ctx.meth,
+            params := ctx.params.map (List.map (ATy.subst θ)),
+            inLoop := il.map (substEnv θ) }
+        = some (.nilT, substEnv θ Γ', D)
+  | _ => True
+
 /-- **The `if` join's factoring step, packaged so `apply` can unify it** (L193b).
     `rw [joinATy_subst (by assumption)]` cannot work inside the uniform tactic block:
     `rw` elaborates its term before touching the goal, so `a`/`b`/`c` are still
@@ -792,12 +923,16 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
       FactorsIf D θ stF retF ctx il Γ t els (inferOpenIf D Γ t els ctx il s))
     (motive3 := fun Γ es il s =>
       FactorsSeq D θ stF retF ctx il Γ es (inferOpenSeq D Γ es ctx il s))
+    -- L230: `motive4` is the *elements* traversal and `motive5` the argument list — the
+    -- mutual block's order, not the file's. See `inferOpen_mono`'s note.
     (motive4 := fun Γ es il s =>
+      FactorsElems D θ stF retF ctx il Γ es (inferOpenElems D Γ es ctx il s))
+    (motive5 := fun Γ es il s =>
       FactorsArgs D θ stF retF ctx il Γ es (inferOpenArgs D Γ es ctx il s)) with
   | _ =>
-    simp_all [inferOpen, inferOpenSeq, inferOpenIf, Factors, FactorsIf,
-      FactorsSeq, FactorsArgs, infer, inferSeq, inferIf, inferArgs,
-      substEnv_aenvSet, hself]
+    simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenElems, Factors, FactorsIf,
+      FactorsSeq, FactorsArgs, FactorsElems, infer, inferSeq, inferIf, inferArgs,
+      inferElems, substEnv_aenvSet, hself]
     all_goals (try intro hle)
     -- L201's second premise: the collected `return` types all agree with the
     -- body's, pushed down to the subexpressions by `rets_sub` below.
@@ -988,13 +1123,55 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
                 dsimp only
                 rw [heq] at ih1
                 (first | exact ih1 hle hr | exact ih1 hle))))
-        | (trace_state; fail)
+        -- **L230's array elements**, both accepting arms — the sequence alternative's
+        -- shape with `storeLe_subElems`/`rets_subElems` in place of the `Seq` twins. The
+        -- *splat* arm's operand IH lands where the element's does, because the arm's
+        -- nominal shape is the same match one indirection in.
+        | (rename_i ih2 ih1
+           split
+           all_goals (first
+             | simp
+             | (rename_i heq
+                intro hle hr
+                (first
+                  | rw [ih2 (storeLe_subElems heq hle) (rets_subElems heq hr)]
+                  | rw [ih2 (storeLe_subElems heq hle)])
+                dsimp only
+                rw [heq] at ih1
+                (first | exact ih1 hle hr | exact ih1 hle))))
+        -- **And the same two arms *after* `simp_all` has already split them** (L230).
+        -- `simp_all` reduces `FactorsElems` at the recursive call, so the case arrives
+        -- with its `heq` in context and the `split` above has nothing to do — the
+        -- alternative is the same three rewrites without it. `rename_i` names six because
+        -- the two IHs are not the last inaccessible hypotheses here.
+        | (rename_i ih2 ih1 _ _ _ _
+           intro hle hr
+           rw [ih2 (storeLe_subElems heq hle) (rets_subElems heq hr)]
+           dsimp only
+           rw [heq] at ih1
+           (first | exact ih1 hle hr | exact ih1 hle))
         -- the join's own refusal: the guard is false, so the arm is `True`
         | (split <;>
              (first
                | done
                | simp
-               | (rename_i heq; split at heq <;> simp_all))))
+               | (rename_i heq; split at heq <;> simp_all)))
+        -- **L230's third elems shape**: the case arrives with its recursive call
+        -- *unreduced*, so the `split` is needed after all. Three alternatives for one
+        -- traversal is the cost of `simp_all` reducing some cases and not others — and it
+        -- is cheaper than teaching `simp_all` which.
+        | (rename_i ih2 ih1
+           split
+           all_goals (first
+             | simp
+             | (rename_i heq
+                intro hle hr
+                (first
+                  | rw [ih2 (storeLe_subElems heq hle) (rets_subElems heq hr)]
+                  | rw [ih2 (storeLe_subElems heq hle)])
+                try dsimp only
+                rw [heq] at ih1
+                (first | exact ih1 hle hr | exact ih1 hle)))))
     -- **A residual store bound** (L175). The variable-receiver send at positive
     -- arity leaves exactly one side goal — the `requireRow` step's own `StoreLe` —
     -- because the alternative that rewrote the rest of the arm could not name it.

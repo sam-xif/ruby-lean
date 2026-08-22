@@ -79,7 +79,13 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
   | motive3 Da Γa esa topa ctxa =>
     exact ctxa.ret.isSome = true → topa = false → ∀ τ Γ' D₀,
       inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  -- **L230: `motive4` is `inferElems` and `motive5` is `inferArgs`**, and the order is
+  -- *not* the file's — the two functions have the same signature, so a swapped assignment
+  -- type-checks and only the IHs' shapes reveal it. Measured with `trace_state`.
   | motive4 Da Γa esa topa ctxa =>
+    exact ctxa.ret.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferElems Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive5 Da Γa esa topa ctxa =>
     exact ctxa.ret.isSome = true → topa = false → ∀ τs Γ' D₀,
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
@@ -95,16 +101,16 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
   | _ =>
     intro hret htop τ Γ' D₀ h
     first
-      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, htop]; done)
-      | (simp_all only [infer, inferIf, inferSeq, inferArgs, Option.some.injEq,
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, inferElems, htop]; done)
+      | (simp_all only [infer, inferIf, inferSeq, inferArgs, inferElems, Option.some.injEq,
            Prod.mk.injEq, reduceCtorEq]; done)
-      | (simp_all [infer, inferIf, inferSeq, inferArgs, htop, hret]; done)
+      | (simp_all [infer, inferIf, inferSeq, inferArgs, inferElems, htop, hret]; done)
       | (rename_i ih1
-         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs] using h))
+         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs, inferElems] using h))
       | (rename_i ih2 ih1
          first
-           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h)
-           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h))
+           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs, inferElems] using h)
+           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs, inferElems] using h))
       -- a local read: the arm answers the input table outright, so unfolding the
       -- `Option.map` is the whole case.
       | (revert h; simp +contextual [infer]; done)
@@ -181,6 +187,49 @@ theorem inferSeq_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : 
         subst hD
         exact inferSeq_table_ret hret htop h
 
+/-- **L230's element traversal**, and it is `inferSeq_table_ret`'s proof with one more
+    case: a splat element threads the table through its **operand**, which is one
+    `infer_table_ret` at a different subexpression. -/
+theorem inferElems_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, ctx.ret.isSome = true → top = false →
+    inferElems D Γ es top ctx = some (τ, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, _, h => by
+      simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | e :: rest, D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      cases e
+      case splat oe =>
+        cases oe with
+        -- `.splat none` (an anonymous splat) has no `infer` arm, so it falls to
+        -- `inferElems`' catch-all and is refused there.
+        | none => exact absurd h (by simp [inferElems, infer])
+        | some o =>
+          simp only [inferElems] at h
+          cases ho : infer D Γ o top ctx with
+          | none => rw [ho] at h; exact absurd h (by simp)
+          | some r =>
+            obtain ⟨τo, Γ₁, D₁⟩ := r
+            rw [ho] at h
+            have hD : D₁ = D := infer_table_ret D Γ o top ctx hret htop _ _ _ ho
+            subst hD
+            cases τo with
+            | cls nm =>
+              by_cases hnm : nm = "Array"
+              · subst hnm
+                exact inferElems_table_ret hret htop h
+              · simp_all
+            | _ => simp_all
+      all_goals
+        (simp only [inferElems] at h
+         cases he : infer D Γ _ top ctx with
+         | none => rw [he] at h; simp at h
+         | some r =>
+           obtain ⟨τe, Γ₁, D₁⟩ := r
+           rw [he] at h
+           have hD : D₁ = D := infer_table_ret D Γ _ top ctx hret htop _ _ _ he
+           subst hD
+           exact inferElems_table_ret hret htop h)
+
 theorem inferArgs_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
     {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, ctx.ret.isSome = true →
     top = false → inferArgs D Γ es top ctx = some (τs, Γ', D₀) → D₀ = D
@@ -232,6 +281,9 @@ theorem infer_table_loop : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (c
     exact ctxa.inLoop.isSome = true → topa = false → ∀ τ Γ' D₀,
       inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
   | motive4 Da Γa esa topa ctxa =>
+    exact ctxa.inLoop.isSome = true → topa = false → ∀ τ Γ' D₀,
+      inferElems Da Γa esa topa ctxa = some (τ, Γ', D₀) → D₀ = Da
+  | motive5 Da Γa esa topa ctxa =>
     exact ctxa.inLoop.isSome = true → topa = false → ∀ τs Γ' D₀,
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
@@ -247,16 +299,16 @@ theorem infer_table_loop : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (c
   | _ =>
     intro hret htop τ Γ' D₀ h
     first
-      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, htop]; done)
-      | (simp_all only [infer, inferIf, inferSeq, inferArgs, Option.some.injEq,
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, inferElems, htop]; done)
+      | (simp_all only [infer, inferIf, inferSeq, inferArgs, inferElems, Option.some.injEq,
            Prod.mk.injEq, reduceCtorEq]; done)
-      | (simp_all [infer, inferIf, inferSeq, inferArgs, htop, hret]; done)
+      | (simp_all [infer, inferIf, inferSeq, inferArgs, inferElems, htop, hret]; done)
       | (rename_i ih1
-         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs] using h))
+         exact ih1 hret htop _ _ _ (by simpa [infer, inferIf, inferSeq, inferArgs, inferElems] using h))
       | (rename_i ih2 ih1
          first
-           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h)
-           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs] using h))
+           | exact ih1 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs, inferElems] using h)
+           | exact ih2 hret htop _ _ _ (by simpa [infer, inferSeq, inferArgs, inferElems] using h))
       -- a local read: the arm answers the input table outright, so unfolding the
       -- `Option.map` is the whole case.
       | (revert h; simp +contextual [infer]; done)
@@ -333,6 +385,49 @@ theorem inferSeq_table_loop : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top :
         subst hD
         exact inferSeq_table_loop hret htop h
 
+/-- **L230's element traversal**, and it is `inferSeq_table_loop`'s proof with one more
+    case: a splat element threads the table through its **operand**, which is one
+    `infer_table_loop` at a different subexpression. -/
+theorem inferElems_table_loop : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
+    {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, ctx.inLoop.isSome = true → top = false →
+    inferElems D Γ es top ctx = some (τ, Γ', D₀) → D₀ = D
+  | [], D, Γ, top, ctx, τ, Γ', D₀, _, _, h => by
+      simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
+      exact h.2.2.symm
+  | e :: rest, D, Γ, top, ctx, τ, Γ', D₀, hret, htop, h => by
+      cases e
+      case splat oe =>
+        cases oe with
+        -- `.splat none` (an anonymous splat) has no `infer` arm, so it falls to
+        -- `inferElems`' catch-all and is refused there.
+        | none => exact absurd h (by simp [inferElems, infer])
+        | some o =>
+          simp only [inferElems] at h
+          cases ho : infer D Γ o top ctx with
+          | none => rw [ho] at h; exact absurd h (by simp)
+          | some r =>
+            obtain ⟨τo, Γ₁, D₁⟩ := r
+            rw [ho] at h
+            have hD : D₁ = D := infer_table_loop D Γ o top ctx hret htop _ _ _ ho
+            subst hD
+            cases τo with
+            | cls nm =>
+              by_cases hnm : nm = "Array"
+              · subst hnm
+                exact inferElems_table_loop hret htop h
+              · simp_all
+            | _ => simp_all
+      all_goals
+        (simp only [inferElems] at h
+         cases he : infer D Γ _ top ctx with
+         | none => rw [he] at h; simp at h
+         | some r =>
+           obtain ⟨τe, Γ₁, D₁⟩ := r
+           rw [he] at h
+           have hD : D₁ = D := infer_table_loop D Γ _ top ctx hret htop _ _ _ he
+           subst hD
+           exact inferElems_table_loop hret htop h)
+
 theorem inferArgs_table_loop : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
     {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, ctx.inLoop.isSome = true →
     top = false → inferArgs D Γ es top ctx = some (τs, Γ', D₀) → D₀ = D
@@ -380,6 +475,10 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- rules need the arguments' *types* in order, so `inferArgs` is a separate
   -- traversal from `inferSeq` and needs its own monotonicity.
   | motive4 Da Γa esa topa ctxa =>
+    exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
+      ∀ τ Γ' D₀, inferElems Da Γa esa topa ctxa = some (τ, Γ', D₀) →
+        D₀ = Da ∧ inferElems F' Γa esa topa ctxa = some (τ, Γ', F')
+  | motive5 Da Γa esa topa ctxa =>
     exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
       ∀ τs Γ' D₀, inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) →
         D₀ = Da ∧ inferArgs F' Γa esa topa ctxa = some (τs, Γ', F')
@@ -611,6 +710,26 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       simp only [inferSeq, he] at h
       obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll]) _ _ _ h
       exact ⟨rfl, by simp [inferSeq, hmE, hmR]⟩
+  -- **L230's `inferElems`** — the array-element traversal, three accepting arms. The
+  -- splat arm is the non-splat one with the operand in place of the element and its type
+  -- pinned to `Array` by the pattern, which is why it has one binder fewer.
+  | case109 D Γ top ctx =>
+    intro F' hs hdf τ Γ' D₀ h
+    simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    exact ⟨rfl, by simp [inferElems]⟩
+  | case110 D Γ top ctx rest o Γ₁ D₁ ho ihO ihR =>
+    intro F' hs hdf τ Γ' D₀ h
+    obtain ⟨rfl, hmO⟩ := ihO F' hs (by simp_all [defFreeAll, defFree]) _ _ _ ho
+    simp only [inferElems, ho] at h
+    obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll, defFree]) _ _ _ h
+    exact ⟨rfl, by simp [inferElems, hmO, hmR]⟩
+  | case112 D Γ top ctx ee rest hne τe Γ₁ D₁ he ihE ihR =>
+    intro F' hs hdf τ Γ' D₀ h
+    obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll, defFree]) _ _ _ he
+    simp only [inferElems, he] at h
+    obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll, defFree]) _ _ _ h
+    exact ⟨rfl, by simp [inferElems, hmE, hmR]⟩
   -- **`inferArgs`' three arms** (L175), mirroring `startArgs`' loop. The `[]` arm
   -- is a `rfl`; the recursive arm is the only place two IHs of *different* motives
   -- meet, and the reason it needs both is that an argument may itself be a send.
@@ -618,12 +737,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case109 D Γ top ctx =>
+  | case114 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case110 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case115 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -667,9 +786,9 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   | _ =>
     intro F' hs hdf τ Γ' D₀ h
     first
-      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs]; done)
-      | (exfalso; simp_all only [infer, inferIf, inferSeq, inferArgs, reduceCtorEq]; done)
-      | (exfalso; simp_all [infer, inferIf, inferSeq, inferArgs, defFree, defFreeAll]; done)
+      | (exfalso; revert h; simp +contextual [infer, inferIf, inferSeq, inferArgs, inferElems]; done)
+      | (exfalso; simp_all only [infer, inferIf, inferSeq, inferArgs, inferElems, reduceCtorEq]; done)
+      | (exfalso; simp_all [infer, inferIf, inferSeq, inferArgs, inferElems, defFree, defFreeAll]; done)
       -- The `self`-receiver guard's negative branch, and the arms under it: `infer`
       -- answers `none` outright, so the hypothesis is refuted by computing the
       -- guard rather than by anything about types (F1b.11).

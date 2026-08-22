@@ -193,10 +193,10 @@ def egIf : Expr :=
          .if' .tru (.var .lvar "x") (some (.int 0)) ]
 
 example : check egIf = .accept := by
-  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf]
+  simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferElems, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf]
 
 theorem egIf_safe : ∀ r, ReachableResult (Machine.init egIf) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf])
+  check_sound (by simp [check, egIf, infer, inferArgs, subTys, subTy, inferSeq, inferElems, inferIf, joinTy, constTy?, baseConsts, envSet, envGet?, declsOf, isSelf])
 
 /-- **A reopened class carrying a user-defined method** (L156):
 
@@ -254,14 +254,14 @@ def egUserCall : Expr :=
             .send (some (.str "x")) "shout" [] none ])
 
 example : check egUserCall = .accept := by
-  simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
+  simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, baseDecls,
     readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
     declOf?, tyClassNames, groundClassNames, isSelf]
 
 theorem egUserCall_safe :
     ∀ r, ReachableResult (Machine.init egUserCall) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
+    simp [check, egUserCall, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, baseDecls,
       readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
@@ -298,7 +298,7 @@ def egVcall : Expr :=
 theorem egVcall_safe :
     ∀ r, ReachableResult (Machine.init egVcall) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egVcall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
+    simp [check, egVcall, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, baseDecls,
       readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
@@ -335,7 +335,7 @@ def egImplicitCall : Expr :=
 theorem egImplicitCall_safe :
     ∀ r, ReachableResult (Machine.init egImplicitCall) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egImplicitCall, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
+    simp [check, egImplicitCall, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, baseDecls,
       readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
@@ -426,7 +426,7 @@ def egConst : Expr :=
 theorem egConst_safe :
     ∀ r, ReachableResult (Machine.init egConst) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egConst, infer, inferArgs, subTys, subTy, inferSeq, illTyped,
+    simp [check, egConst, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped,
       illTypedAny, declsOf, declaresName, baseDecls, constTy?, baseConsts,
       readableClasses, reopenableClasses,
       groundClassNames, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
@@ -574,7 +574,7 @@ def egSelfRecv : Expr :=
 theorem egSelfRecv_safe :
     ∀ r, ReachableResult (Machine.init egSelfRecv) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egSelfRecv, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, baseDecls,
+    simp [check, egSelfRecv, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, baseDecls,
       readableClasses, reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor,
       declOf?, tyClassNames, groundClassNames, isSelf])
 
@@ -598,7 +598,7 @@ example : check (.class' "String" none .self') = .unknown := by
     would be unwitnessable. Kept as a checked fact because it is the constraint
     that decided the rung's shape (F1b.9). -/
 example : check (.seq [ .def' "shout" [] (.int 1), .vcall "shout" ]) = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, inferSeq, illTyped, illTypedAny, declsOf, declaresName,
+  simp [check, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped, illTypedAny, declsOf, declaresName,
     baseDecls, defFree, defFreeAll, isSelf]
 
 /-- **An array literal** (L174), and the second producer of a class-typed value.
@@ -623,7 +623,7 @@ def egArray : Expr := .array [.str "a", .send (some (.int 1)) "+" [.int 2] none]
 theorem egArray_safe :
     ∀ r, ReachableResult (Machine.init egArray) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egArray, infer, inferArgs, subTys, subTy, inferSeq, illTyped, illTypedAny, declsOf, isSelf,
+    simp [check, egArray, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped, illTypedAny, declsOf, isSelf,
       sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, groundClassNames])
 
 /-- **The empty literal is the degenerate case, and it is a different number of
@@ -631,13 +631,13 @@ theorem egArray_safe :
     at all. Worth a witness of its own for the same reason `recvK0` is a separate
     constructor from `recvK`. -/
 example : check (.array []) = .accept := by
-  simp [check, infer, inferArgs, subTys, subTy, inferSeq, illTyped, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped, declsOf]
 
 /-- **A splat element is refused**, and by `infer` having no `.splat` arm rather
     than by a guard: `continueArray` sends a splat to `arrSplatK`, which `KontOk`
     does not describe, and the element's own `none` is what keeps the two in step. -/
 example : check (.array [.splat (some (.int 1))]) = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, inferSeq, illTyped, declsOf]
+  simp [check, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped, declsOf]
 
 /-- `x = 0; while true do x = 1 end` — diverges, which safety permits: the
     property is *never type-stuck*, not *terminates*. -/
@@ -646,10 +646,10 @@ def egLoop : Expr :=
          .while' .tru (.vasgn .lvar "x" (.int 1)) ]
 
 example : check egLoop = .accept := by
-  simp [check, egLoop, infer, inferArgs, subTys, subTy, inferSeq, envSet, declsOf, isSelf]
+  simp [check, egLoop, infer, inferArgs, subTys, subTy, inferSeq, inferElems, envSet, declsOf, isSelf]
 
 theorem egLoop_safe : ∀ r, ReachableResult (Machine.init egLoop) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egLoop, infer, inferArgs, subTys, subTy, inferSeq, envSet, declsOf, isSelf])
+  check_sound (by simp [check, egLoop, infer, inferArgs, subTys, subTy, inferSeq, inferElems, envSet, declsOf, isSelf])
 
 /-- `def f; 1 + 2; end; 3 * 4` — the P1b shape. The `def` installs a method,
     mutating the method table (which `TableOk_defineMethod` is what survives), and
@@ -659,10 +659,10 @@ def egDef : Expr :=
          .send (some (.int 3)) "*" [.int 4] none ]
 
 example : check egDef = .accept := by
-  simp [check, egDef, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf]
+  simp [check, egDef, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf]
 
 theorem egDef_safe : ∀ r, ReachableResult (Machine.init egDef) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egDef, infer, inferArgs, subTys, subTy, inferSeq, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf])
+  check_sound (by simp [check, egDef, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, declaresName, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, isSelf])
 
 /-- `(x + 1) * 2` with `x` a local — the P0b program shape. -/
 def egArith : Expr :=
@@ -671,11 +671,11 @@ def egArith : Expr :=
                "*" [.int 2] none ]
 
 example : check egArith = .accept := by
-  simp [check, egArith, infer, inferArgs, subTys, subTy, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf]
+  simp [check, egArith, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf]
 
 theorem egArith_safe :
     ∀ r, ReachableResult (Machine.init egArith) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egArith, infer, inferArgs, subTys, subTy, inferSeq, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf])
+  check_sound (by simp [check, egArith, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf])
 
 /-- **The first accepted program that allocates** (L151), and therefore the first
     whose safety theorem is about a heap the program itself grew. `s = "hi"; s` was
@@ -690,10 +690,10 @@ def egStr : Expr :=
   .seq [ .vasgn .lvar "s" (.str "hi"), .var .lvar "s" ]
 
 example : check egStr = .accept := by
-  simp [check, egStr, infer, inferArgs, subTys, subTy, inferSeq, envSet, envGet?, declsOf, isSelf]
+  simp [check, egStr, infer, inferArgs, subTys, subTy, inferSeq, inferElems, envSet, envGet?, declsOf, isSelf]
 
 theorem egStr_safe : ∀ r, ReachableResult (Machine.init egStr) r → ¬ typeStuck r :=
-  check_sound (by simp [check, egStr, infer, inferArgs, subTys, subTy, inferSeq, envSet, envGet?, declsOf, isSelf])
+  check_sound (by simp [check, egStr, infer, inferArgs, subTys, subTy, inferSeq, inferElems, envSet, envGet?, declsOf, isSelf])
 
 /-- The same, mixed with the arithmetic fragment: an allocation happens *between*
     two typed integer sends, so `KontOk`'s stored `ValueTy` facts really are
@@ -707,7 +707,7 @@ def egStrSeq : Expr :=
 theorem egStrSeq_safe :
     ∀ r, ReachableResult (Machine.init egStrSeq) r → ¬ typeStuck r :=
   check_sound (by
-    simp [check, egStrSeq, infer, inferArgs, subTys, subTy, inferSeq, declsOf, sigOf, declFor, declOf?,
+    simp [check, egStrSeq, infer, inferArgs, subTys, subTy, inferSeq, inferElems, declsOf, sigOf, declFor, declOf?,
       declsFor, baseDecls, tyClassNames, envSet, envGet?, isSelf])
 
 /-- **The first zero-argument send** (L152). `(1 + 2).zero?` is typed end to end:

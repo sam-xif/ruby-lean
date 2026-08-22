@@ -194,6 +194,12 @@ def defFree (e : Expr) : Bool :=
   -- that has happened.
   | .super' args blk =>
     defFreeAll args && (match blk with | some b => defFree b | none => true)
+  -- **L230.** Eighth walk into the same trap, and the first one the *proof* found rather
+  -- than the writer: `inferElems` threads the table through a splat's **operand**, so a
+  -- `def` in there really does change it — and with the catch-all's vacuous `true` the
+  -- element traversal's IH arrives with no `defFree` for the operand at all, which is
+  -- exactly the shape `infer_mono`'s new case could not close.
+  | .splat e => match e with | some e' => defFree e' | none => true
   -- **L227.** Seventh, and this one is vacuous *and* stays vacuous: a bare `next` has no
   -- subexpression at all, so there is nothing for a `def` to hide in. Written anyway, for
   -- the reason L214's is: the catch-all's `true` being right by accident is what the six
@@ -539,7 +545,10 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- *not a splat* from the element's own accepting judgement (the `recvK` case's
   -- `hsp` move).
   | .array es =>
-    match inferSeq D Γ es top ctx with
+    -- **L230: `inferElems`, not `inferSeq`** — the fifth mutual function, which is where
+    -- a splat element is admitted and the only place one is. See its docstring for why it
+    -- is a separate function and not a flag or an `infer` arm.
+    match inferElems D Γ es top ctx with
     | some (_, Γ', D') => some (.cls "Array", Γ', D')
     | none => none
   -- A **zero-parameter** definition. Parameters wait for call-site types (the
@@ -964,6 +973,47 @@ def inferArgs (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
     | none => none
 termination_by sizeOf es
 
+/-- **The elements of an array literal** (L230) — the **fifth** mutual function, and the
+    reason it is one rather than a flag on `inferSeq` or an arm of `infer`:
+
+    * **not an `infer` arm**, because then the *invariant* could sit at `.eval (.splat e)`
+      — `CtlOk`'s eval clause quantifies over expressions `infer` accepts — and `evalExpr`
+      answers `.unsupported "splat outside call/array position"` there, which `StepOk`
+      refuses. Every other position that later `.eval`s a stored subexpression (`.seq`'s
+      tail, `if`'s branches, a `while`'s body, an argument list) would need its own guard.
+    * **not a flag on `inferSeq`**, because `inferSeq`'s cases are *numbered* in
+      `infer.induct` and a flag doubles its arms — which renumbers every case after it and
+      re-opens three inductions. A fifth function's cases are appended **after**
+      `inferArgs`', so no existing case number moves. (Measured: the flag version cost a
+      full renumbering of `Mono.lean` twice before this note was written.)
+
+    An array literal's *element* types are erased (`.array` answers `.cls "Array"`), which
+    is why `continueArray` never inspects the accumulated values — the answer's type
+    component is `.nilT` throughout and exists only so that this function has `inferSeq`'s
+    **shape**, which is what lets the three inductions' uniform blocks treat its cases with
+    the alternatives they already have. It needs no `[e]` special case either, because
+    `continueArray` pushes an `arrK` for the last element too.
+
+    **The splat's operand must be exactly `Array`.** That is what makes the step total:
+    `spreadA` answers `.ok` for an `.arr` payload and `.error` — hence `.unsupported` —
+    for anything else, and `plainRecv`'s sixth clause (L230) is the bridge from the class
+    to the payload. -/
+def inferElems (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
+    (ctx : FrameCtx := { cls := "Object" }) : Option (Ty × Env × Decls) :=
+  match es with
+  | [] => some (.nilT, Γ, D)
+  | e :: rest =>
+    match e with
+    | .splat (some o) =>
+      match infer D Γ o top ctx with
+      | some (.cls "Array", Γ₁, D₁) => inferElems D₁ Γ₁ rest top ctx
+      | _ => none
+    | ee =>
+      match infer D Γ ee top ctx with
+      | some (_, Γ₁, D₁) => inferElems D₁ Γ₁ rest top ctx
+      | none => none
+termination_by sizeOf es
+
 /-- The `if` join, factored out because `KontOk.ifK` must agree with it
     branch-for-branch. No union type in P0, so the two arms must agree on both
     the type and the environment; a missing `else` contributes `nil` and no
@@ -1145,7 +1195,7 @@ example : check (.send (some (.int 1)) "foo" [.int 2] none) = .unknown := by
 example :
     check (.seq [ .vasgn .lvar "q" (.int 1),
                   .send (some (.var .lvar "q")) "+" [.nil] none ]) = .unknown := by
-  simp [check, infer, inferArgs, subTys, subTy, inferSeq, illTyped, illTypedAny, tableRefutes, defTy,
+  simp [check, infer, inferArgs, subTys, subTy, inferSeq, inferElems, illTyped, illTypedAny, tableRefutes, defTy,
     sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf, envSet, envGet?]
 
 end RubyCore.Types
