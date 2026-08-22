@@ -402,9 +402,15 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
     -- a builtin still cannot be tabulated, and now for a reason the clause states rather
     -- than for one it merely happened to imply. A mutating row needs its own transport
     -- (`IvarOnly`'s shape at a payload), which is a rung and not a relaxation.
+    -- **L228 adds `globals`**, and it is the sentence above ("nothing else in `Inv` reads
+    -- the machine") coming due: `GlobalsOk` does. Free at both witnesses, which leave the
+    -- machine alone — and a real restriction on the *next* tabulated builtin, which is the
+    -- honest place for it: a builtin that wrote `$~` would otherwise silently invalidate a
+    -- declared global.
     ∃ w m', Builtins.run bid recv args m = .ok w m' ∧ ValueTy m'.heap w d.ret ∧
       PlainGrow m.heap m'.heap ∧
-      m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont
+      m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
+      m'.globals = m.globals
 
 /-- One declared method, satisfied: **some** builtin both resolves for every
     receiver of the class and conforms. Existential in `bid` rather than pinning
@@ -761,12 +767,13 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     -- `m' = m` and the two agree.
     ∃ w m', ValueTy m'.heap w d.ret ∧ PlainGrow m.heap m'.heap ∧
       m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
+      m'.globals = m.globals ∧
       startArgs m recv site mname args [] .none
         = .next (withCtl m' (.value w)) := by
   obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := EntryOk.resolves ha hn hres hrv
-  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko⟩ := hconf m recv args hrv hargs
-  refine ⟨w, m', hw, hg, hfr, hst, hko, ?_⟩
+  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
+  refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   -- The receiver has to be case-split, and the reason is worth stating: `invoke`
@@ -924,11 +931,12 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
     -- `entry_dispatch`'s shape.
     ∃ w m', ValueTy m'.heap w d.ret ∧ PlainGrow m.heap m'.heap ∧
       m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
+      m'.globals = m.globals ∧
       doSuper m args blk = .next (withCtl m' (.value w)) := by
   obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hsup _ _ hdp hdn hch
   obtain ⟨-, -, -, hcf⟩ := hconf
-  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko⟩ := hcf m _ args hrv hargs
-  refine ⟨w, m', hw, hg, hfr, hst, hko, ?_⟩
+  obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hcf m _ args hrv hargs
+  refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   unfold doSuper
   simp only []
   rw [hfm, hf]
@@ -1007,9 +1015,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
-  -- L195/L196/L205/L211: `SubDecls` is a quintuple now, and `addRow` touches `rows`
-  -- only — so all four table halves are `rfl`.
-  refine ⟨?_, rfl, rfl, rfl, rfl⟩
+  -- L195/L196/L205/L211/L228: `SubDecls` is a sextuple now, and `addRow` touches `rows`
+  -- only — so all five other table halves are `rfl`.
+  refine ⟨?_, rfl, rfl, rfl, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -2135,7 +2143,7 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       -- and three `rfl`s. That the generalization is *inert* for every row that does
       -- not allocate is the whole reason it can land before the rows that do.
       exact ⟨fun h' => hdefer h' a y, .int (op a y), m, hrun a y m, ValueTy.exact rfl,
-        PlainGrow.rfl' _, rfl, rfl, rfl⟩
+        PlainGrow.rfl' _, rfl, rfl, rfl, rfl⟩
 
 /-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
     `ValuesTy` pinning the argument list to `[]` instead of to one integer — which is
@@ -2166,7 +2174,7 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
     obtain ⟨a, rfl⟩ := valueTy_int hrv
     match args, hargs with
     | [], _ => exact ⟨fun h' => hdefer h' a, f a, m, hrun a m, hty m.heap a,
-        PlainGrow.rfl' _, rfl, rfl, rfl⟩
+        PlainGrow.rfl' _, rfl, rfl, rfl, rfl⟩
 
 /-- **The base table declares nothing at a class type.** `baseDecls`'s only key is
     `"Integer"`, and `tyClassNames` subtracts the ground names from the class arm's

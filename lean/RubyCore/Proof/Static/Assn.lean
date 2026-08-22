@@ -532,6 +532,10 @@ def InvA (m : Machine) : Prop :=
       (∀ c n d, superDecl? F c n = some d → SuperOk m.heap c n d) ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
+      -- L228's globals half, carried beside the other four for the same reason: the
+      -- assertion language has no atom for a global either, and giving it one is the
+      -- same rung as giving it one for a constant.
+      GlobalsOk F m.heap m.globals ∧
       CtlOk F c Γ Γs m
 
 /-- **The two invariants are the same predicate.** The forward direction is
@@ -540,13 +544,13 @@ def InvA (m : Machine) : Prop :=
 theorem invA_iff_inv {m : Machine} : InvA m ↔ Inv m := by
   constructor
   · rintro ⟨h1, h2, h3, h4, h5, h6, F, P, θ, c, Γ, Γs, hcert, hcst, hiv, hsco, hsup,
-      hf, hs, hctl⟩
+      hf, hs, hgl, hctl⟩
     exact ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, ⟨hcert.declsOk, hcst, hiv, hsco, hsup⟩,
-      hf, hs, hctl⟩
-  · rintro ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, hok, hf, hs, hctl⟩
+      hf, hs, hgl, hctl⟩
+  · rintro ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, hok, hf, hs, hgl, hctl⟩
     exact ⟨h1, h2, h3, h4, h5, h6, F, declAssn F, fun _ => .int, c, Γ, Γs,
       certifies_declAssn hok.1, hok.2.1, hok.2.2.1, hok.2.2.2.1, hok.2.2.2.2,
-      hf, hs, hctl⟩
+      hf, hs, hgl, hctl⟩
 
 /-- **Soundness of the assertion-language invariant**, inherited rather than
     re-proved. Every consecution case `Static/Preservation.lean` already closes is

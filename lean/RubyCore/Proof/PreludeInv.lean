@@ -116,7 +116,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- the certificate rather than the kernel vouches for.
     (by simp [Machine.initOn, frameKLabels]),
     declsOf p, { cls := "Object" }, [], [],
-    tableOk_declsOk hh.1 hh.2.2.2.2, ?_, ?_, ?_⟩
+    tableOk_declsOk hh.1 hh.2.2.2.2, ?_, ?_, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
@@ -134,6 +134,12 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
       fun sc hsc => absurd hsc (by simp),
       by simp [Machine.initOn, Array.getD], Or.inr rfl,
       fun mn h => absurd h (by simp), trivial⟩
+  · -- **L228: the globals conjunct**, and here — unlike at `Machine.init` — the list is
+    -- *quantified*, because `initWithPrelude` carries phase 1's globals into phase 2. So
+    -- it is not vacuous, and what discharges it is `declsOf p`: the checker's own table
+    -- declares no global, so the lookup is `none` at every name.
+    intro x pr σ _ _ hd
+    exact absurd hd (by simp [declsOf, baseDecls, globalTy?])
   · unfold check at hchk
     show CtlOk (declsOf p) { cls := "Object" } [] [] _
     unfold CtlOk

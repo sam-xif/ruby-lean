@@ -435,6 +435,33 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
         | .outOfFragment h => .outOfFragment h
       else .outOfFragment "super-outside-method"
     | none => .outOfFragment "super-outside-method"
+  -- **`$x`** (L228), and the miss is a **needed declaration** — the category the census
+  -- counts separately, and the right one here: the rule exists, the table is silent. The
+  -- atom is rendered at `T.class_of(Object)` for `::n`'s reason (L203): a global has no
+  -- receiver at all, so the only honest container is the toplevel.
+  | .var .gvar x =>
+    match plainGlobal x with
+    | true =>
+      match globalTy? D x with
+      | some σ => .ok (.nom (mkNilable σ)) Γ s
+      | none => .missing (.nom (.clsOf "Object")) x []
+    | false => .outOfFragment "gvar-special"
+  -- **`$x = e`** (L228). Unlike the ivar write (L196), a *declared* global is the only
+  -- one the rule admits — so the open arm cannot simply defer: it has to decide
+  -- `subATy τ (.nom σ)`, which is exactly `subATy`'s job and is sound at every
+  -- substitution (`subATy_subst`). A type *variable* on the right-hand side is refused
+  -- rather than constrained, for `iasgn-declared`'s reason: the store's requirements are
+  -- rows, and "is a subtype of `σ`" is not a row.
+  | .vasgn .gvar x rhs =>
+    match plainGlobal x with
+    | true =>
+      match inferOpen D Γ rhs ctx il s with
+      | .ok τ Γ₁ s₁ =>
+        match globalTy? D x with
+        | some σ => if subATy τ (.nom σ) then .ok τ Γ₁ s₁ else .outOfFragment "gasgn-type"
+        | none => .missing (.nom (.clsOf "Object")) x []
+      | r => r
+    | false => .outOfFragment "gvar-special"
   -- **A bare `next`** (L227), the nominal rule's mirror — the guard on `il` and the
   -- environment check, and nothing else. Two refusals rather than one because they say
   -- different things: `next-outside-loop` is a `next` with no enclosing `while`, where the
@@ -944,10 +971,11 @@ example :
     census's `dflt` marker — the parameter kinds are all bound, so what stopped it
     is an expression rather than a binding rule.
 
-    The witness was an **ivar read** until L196 admitted one; a global read is the
-    replacement, and the substitution is the kind of churn a widening should cause. -/
+    The witness was an **ivar read** until L196 admitted one, then a **global read**
+    until L228 did; `retry` is the third, and the churn is the kind a widening should
+    cause — each substitution is a rule that moved from *missing* to *present*. -/
 example :
-    bodyVerdictWith baseDecls "String" "m" [.opt "a" (.var .gvar "$x")] (.int 1)
+    bodyVerdictWith baseDecls "String" "m" [.opt "a" .retry'] (.int 1)
       = .outOfFragment "def-params-dflt" := by
   simp [bodyVerdictWith, inferBodyWith, openParams, inferOpen, inferOpenArgs, firstUnbound, headName]
 

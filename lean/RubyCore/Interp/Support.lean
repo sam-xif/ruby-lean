@@ -486,29 +486,6 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
 
-/-- `$1`…`$9`, `$&`, `` $` `` and `$'` are **views of `$~`**, not stored
-    globals: CRuby derives them from the last `MatchData` on every read. Storing
-    them instead would need every failed match to clear nine slots, and would
-    still get `defined?($3)` wrong. Returns `none` for any other global name, so
-    the ordinary path is untouched. (L101.) -/
-def matchViewIdx? (x : String) : Option Nat :=
-  if x.length == 2 then
-    let c := x.get ⟨1⟩
-    if c.isDigit && c != '0' then some (c.toNat - '0'.toNat)
-    else if c == '&' then some 0
-    else none
-  else none
-
-/-- Is `x` one of those views, rather than a stored global? **Purely syntactic** —
-    the name decides, not the machine. Factored out and named so the metatheory's
-    fragment predicate can exclude exactly these names and cannot drift from the
-    rule `matchGlobal` implements: `Step.varGvar` said a gvar read is a plain
-    `getGlobal`, which stopped being true when L101 put `matchGlobal` in front of
-    it, and nothing noticed for 24 commits because `Proof/` is off the default
-    build target (L119). -/
-def isMatchView (x : String) : Bool :=
-  (matchViewIdx? x).isSome || x == "$`" || x == "$'"
-
 /-- The `$~`-view read itself. `none` for any other global name, so the ordinary
     path is untouched. -/
 def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=

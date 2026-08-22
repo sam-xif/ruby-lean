@@ -819,6 +819,10 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
         -- than a residual, because the alternatives below `split` and would consume the
         -- goal before a residual ran.
         | exact subAEnvB_subst (by assumption)
+        -- **L228's global write.** The open arm decides `subATy τ (.nom σ)` and the
+        -- nominal one asks for `subTy (τ.subst θ) σ` — which is `subATy_subst`, the
+        -- lemma that arm exists to use.
+        | exact subATy_subst (by assumption)
         -- **The `if` join with a *recorded* equality** (L206). The store now changes at
         -- the join, so the two IHs' bounds are one `joinOpen_mono` further away than
         -- they were and `simp_all` cannot find them. Supplying the three composed

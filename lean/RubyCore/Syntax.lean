@@ -143,6 +143,44 @@ end
 deriving instance Repr for Expr, Param, KwEntry
 deriving instance Inhabited for Expr, Param
 
+/-! ## The match-view global names
+
+**Here, rather than in `Interp/Support.lean`, since L228.** They are pure string tests
+on a *name*, and the type checker needs them for the same reason the interpreter does:
+`Decls.globals` may only declare a global the machine actually stores in `m.globals`, and
+`isMatchView` is the predicate that says which those are. `Types/` cannot import `Interp/`,
+and a second copy of the test is exactly the drift `isMatchView`'s own docstring was
+written to prevent — so the definition moves down to the layer both sides can see, keeping
+its `Interp` namespace and every use site unchanged.
+-/
+
+namespace Interp
+
+/-- `$1`…`$9`, `$&`, `` $` `` and `$'` are **views of `$~`**, not stored
+    globals: CRuby derives them from the last `MatchData` on every read. Storing
+    them instead would need every failed match to clear nine slots, and would
+    still get `defined?($3)` wrong. Returns `none` for any other global name, so
+    the ordinary path is untouched. (L101.) -/
+def matchViewIdx? (x : String) : Option Nat :=
+  if x.length == 2 then
+    let c := x.get ⟨1⟩
+    if c.isDigit && c != '0' then some (c.toNat - '0'.toNat)
+    else if c == '&' then some 0
+    else none
+  else none
+
+/-- Is `x` one of those views, rather than a stored global? **Purely syntactic** —
+    the name decides, not the machine. Factored out and named so the metatheory's
+    fragment predicate can exclude exactly these names and cannot drift from the
+    rule `matchGlobal` implements: `Step.varGvar` said a gvar read is a plain
+    `getGlobal`, which stopped being true when L101 put `matchGlobal` in front of
+    it, and nothing noticed for 24 commits because `Proof/` is off the default
+    build target (L119). -/
+def isMatchView (x : String) : Bool :=
+  (matchViewIdx? x).isSome || x == "$`" || x == "$'"
+
+end Interp
+
 namespace Decode
 
 open Lean (Json)

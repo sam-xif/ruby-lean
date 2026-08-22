@@ -155,7 +155,12 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- the fragment needs it (F1b.11).
     · exact fun sc hsc => absurd hsc (by simp)
     · simp [Machine.init, Machine.initOn, Array.getD]
-  · unfold check at h
+  · -- **L228: the globals conjunct at the initial machine**, and it is vacuous — the
+    -- initial machine has `globals := []`, so the lookup is `none` and no declared
+    -- global claims anything yet. What makes it *stay* vacuous is the write rule's
+    -- conformance check, not this.
+    refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
+    unfold check at h
     show CtlOk (declsOf p) { cls := "Object" } [] [] (Machine.init p)
     unfold CtlOk
     split at h

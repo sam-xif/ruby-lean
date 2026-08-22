@@ -127,6 +127,25 @@ structure Decls where
       chain that class is on, because `doSuper` starts its walk at the frame's `defmod`
       and the invariant knows that definee only by its name. -/
   supers : List ((String × String) × MethodDecl) := []
+  /-- **global-variable name → the type of its contents** (L228).
+
+      The sixth table, and the **first one that is not about the heap**. The five above
+      it are all read against a `DeclsOk` clause — a fact about objects, classes or
+      chains — and this one is read against `m.globals`, an association list on the
+      machine. So it is the first table whose obligation cannot live in `DeclsOk` and
+      needs its own `Inv` conjunct (`GlobalsOk`, `Proof/Static/Konts.lean`), which is
+      what makes this rung more than a fourth copy of `ivars`.
+
+      **The name includes the `$`** (`"$__dt_rx3"`), because that is what the AST
+      carries and what `Machine.getGlobal` keys on — no normalization anywhere.
+
+      Only *plain* globals may be declared: `$~`, `$!` and the match views
+      (`$1`…`$9`, `` $` ``, `$'`) are not in `m.globals` at all — `getGlobal` routes
+      them to `currentExc` and `lastMatchValue`, and `matchGlobal` reads the views out
+      of the match data — so a row here would describe the wrong storage. The rule
+      carries `plainGlobal` for exactly that, and `GlobalsOk` is quantified over the
+      plain names only. -/
+  globals : List (String × Ty) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
@@ -151,6 +170,19 @@ def scopedConstTy? (D : Decls) (cls n : String) : Option Ty :=
     `scopedConstTy?`'s are. -/
 def superDecl? (D : Decls) (cls name : String) : Option MethodDecl :=
   (D.supers.find? (·.1 == (cls, name))).map (·.2)
+
+/-- The declared type of `$x`, or `none` for "not declared" — reported as a missing
+    *declaration* by the open front end (L228), exactly as `ivarTy?`'s miss is. -/
+def globalTy? (D : Decls) (x : String) : Option Ty :=
+  (D.globals.find? (·.1 == x)).map (·.2)
+
+/-- **A global the machine keeps in `m.globals`** (L228) — everything except the two
+    machine-backed names and the match views. `Interp.getGlobal`'s three-way split *is*
+    this predicate: `$!` is `currentExc`, `$~` is the frame's `lastMatch`, a view is
+    computed by `matchGlobal` from the match data, and everything else is the
+    association list. A rule about the association list has to say which. -/
+def plainGlobal (x : String) : Bool :=
+  x != "$!" && x != "$~" && Interp.isMatchView x == false
 
 /-- The declarations of one class, by name. -/
 def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
@@ -302,15 +334,17 @@ def SubDecls (F F' : Decls) : Prop :=
   -- L211: and the `super` table, same reason a third time — the `super` rule reads its
   -- answer out of it, so a `F'` disagreeing at the same key would make `infer_mono`
   -- false rather than merely unprovable.
-  F.supers = F'.supers
+  F.supers = F'.supers ∧
+  -- L228: and the globals table, same reason a fourth time.
+  F.globals = F'.globals
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl⟩
+theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
     SubDecls F F'' :=
   ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1,
     h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.1.trans h₂.2.2.2.1,
-    h₁.2.2.2.2.trans h₂.2.2.2.2⟩
+    h₁.2.2.2.2.1.trans h₂.2.2.2.2.1, h₁.2.2.2.2.2.trans h₂.2.2.2.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
@@ -330,7 +364,12 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
 /-- And the `super` table's (L211). -/
 @[simp] theorem SubDecls.superDecl_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
     superDecl? F' c n = superDecl? F c n := by
-  unfold superDecl?; rw [hs.2.2.2.2]
+  unfold superDecl?; rw [hs.2.2.2.2.1]
+
+/-- And the globals table's (L228). -/
+@[simp] theorem SubDecls.globalTy_eq {F F' : Decls} (hs : SubDecls F F') (x : String) :
+    globalTy? F' x = globalTy? F x := by
+  unfold globalTy?; rw [hs.2.2.2.2.2]
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}

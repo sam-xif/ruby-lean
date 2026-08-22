@@ -125,6 +125,18 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       (∀ cn σ, c.selfCls = some cn → ivarTy? D cn x = some σ → subTy τ σ = true) →
       KontOk D h ((c, Γ) :: Γs) τw k →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
+  /-- **`$x = e`, with the value in flight** (L228) — `asgnIvar`'s shape at the sixth
+      table, and simpler in exactly one way: a global has no receiver, so there is no
+      `selfCls` premise and no quantification over the class. The declared type is carried
+      here rather than re-read at the delivery for `asgnIvar`'s reason: the delivery is
+      where `GlobalsOk` has to be re-established, and this is the fact that does it. -/
+  | asgnGvar {D h c Γ Γs τ τw x σ k} :
+      plainGlobal x = true →
+      globalTy? D x = some σ →
+      subTy τ σ = true →
+      subTy τ τw = true →
+      KontOk D h ((c, Γ) :: Γs) τw k →
+      KontOk D h ((c, Γ) :: Γs) τ (.asgnK .gvar x :: k)
   /-- The in-flight value is the condition; either branch may run next, so the
       join must be the one `inferIf` computed. -/
   | ifK {D D' h c Γ Γs τ t els τ' τw Γ' k} :
@@ -401,6 +413,8 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | asgn hw hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | asgnIvar hsc hw hcf hk' => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | asgnGvar hpg hgt hcf hw hk' =>
+          exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | ifK hi hw hk' =>
           have hq : _ = D := inferIf_table_ret (ctx := c) (by rw [hσ]; simp) htop hi
           subst hq
@@ -549,6 +563,7 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       | seqCons hs hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | asgn hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | asgnIvar hsc hw hcf hk' => exact .skip trivial (KontOk.raiseOk hk')
+      | asgnGvar hpg hgt hcf hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | ifK hi hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | whileCond hl hw hk' => exact .skip trivial (KontOk.raiseOk hk')
       | whileBody hl hw hk' => exact .skip trivial (KontOk.raiseOk hk')
@@ -612,6 +627,7 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | asgn hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | asgnIvar hsc hw hcf hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | asgnGvar hpg hgt hcf hw hk' => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | ifK hi hw hk' =>
           have hq : _ = D := inferIf_table_loop (ctx := c) hls htop hi
           subst hq
@@ -723,6 +739,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | seqCons hs hw _ ih => intro ha; exact .seqCons hs hw (ih ha)
   | asgn hw _ ih => intro ha; exact .asgn hw (ih ha)
   | asgnIvar hsc hw hcf _ ih => intro ha; exact .asgnIvar hsc hw hcf (ih ha)
+  | asgnGvar hpg hgt hcf hw _ ih => intro ha; exact .asgnGvar hpg hgt hcf hw (ih ha)
   | ifK hi hw _ ih => intro ha; exact .ifK hi hw (ih ha)
   | whileCond hl hw _ ih => intro ha; exact .whileCond hl hw (ih ha)
   | whileBody hl hw _ ih => intro ha; exact .whileBody hl hw (ih ha)
@@ -755,6 +772,112 @@ theorem dropLast_cons_ne {α : Type} {a : α} {l : List α} (h : l ≠ []) :
   cases l with
   | nil => exact absurd rfl h
   | cons b t => simp
+
+/-- **The globals conjunct** (L228), and it is the first `Inv` clause about machine
+    state that is neither the heap nor the frames.
+
+    Indexed by the *heap* and the *association list* rather than by the machine, which is
+    `FramesOk`'s shape and is here for `FramesOk`'s reason: every step that changes only
+    the control or the continuation leaves both projections `rfl`-equal, so the conjunct
+    transports by handing the hypothesis over untouched at all but a handful of cases.
+
+    **Only plain globals are constrained.** `$!`, `$~` and the match views are not in
+    `m.globals` at all — `getGlobal` routes them to `currentExc`, the frame's `lastMatch`
+    and `matchGlobal`'s computation — so a claim about them here would be a claim about the
+    wrong storage. `plainGlobal` is the hypothesis, and it is the reason the read rule
+    carries the same test. -/
+def GlobalsOk (D : Decls) (h : Heap) (gs : List (String × Value)) : Prop :=
+  ∀ x p σ, plainGlobal x = true → gs.find? (·.1 == x) = some p →
+    globalTy? D x = some σ → ValueTy h p.2 σ
+
+/-- **A plain global is not a match view** (L228), which is what makes the read step a
+    plain `getGlobal`: `evalExpr`'s gvar arm consults `matchGlobal` first, and that answers
+    `none` for every name outside `isMatchView`. The rule's guard is what supplies it —
+    `Step.varGvar`'s old claim that a gvar read *is* a `getGlobal` becomes true again,
+    conditionally, for exactly the names the table may declare. -/
+theorem matchGlobal_none_of_plain {m : Machine} {x : String} (h : plainGlobal x = true) :
+    Interp.matchGlobal m x = none := by
+  have hv : Interp.isMatchView x = false := by
+    unfold plainGlobal at h
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    exact h.2
+  unfold Interp.matchGlobal
+  simp [hv]
+
+/-- **And `setGlobal` writes the association list** (L228), for the same reason: the `$~`
+    branch is the only other one and `plainGlobal` excludes it. -/
+theorem setGlobal_of_plain {m : Machine} {x : String} {v : Value} (h : plainGlobal x = true) :
+    m.setGlobal x v = { m with globals := (x, v) :: m.globals.filter (·.1 != x) } := by
+  have ht : (x == "$~") = false := by
+    unfold plainGlobal at h
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+    simpa using h.1.2
+  unfold Machine.setGlobal
+  rw [if_neg (by simpa using ht)]
+
+/-- **The read**, which is the only shape the rule consumes: `getGlobal` answers the stored
+    value or `.nil`, and `mkNilable σ` is what admits both. The `nil` half is why the rule
+    answers a *nilable* type and not `σ` — an unset global reads `nil` in Ruby, with no
+    error and no declaration consulted. -/
+theorem GlobalsOk.read {D : Decls} {m : Machine} {x : String} {σ : Ty}
+    (hg : GlobalsOk D m.heap m.globals) (hp : plainGlobal x = true)
+    (hd : globalTy? D x = some σ) : ValueTy m.heap (m.getGlobal x) (mkNilable σ) := by
+  -- The two machine-backed names, read off `plainGlobal` as **`Bool` facts**: `simp` on
+  -- `x = "$!"` unfolds `isMatchView` and times out, and `hp` itself is still needed below.
+  have hb : (x == "$!") = false := by
+    have := hp; unfold plainGlobal at this
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
+    simpa using this.1.1
+  have ht : (x == "$~") = false := by
+    have := hp; unfold plainGlobal at this
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
+    simpa using this.1.2
+  unfold Machine.getGlobal
+  rw [if_neg (by simpa using hb), if_neg (by simpa using ht)]
+  cases hf : m.globals.find? (·.1 == x) with
+  | none => exact ValueTy.weaken (ValueTy.exact rfl) (subTy_nilT_mkNilable _)
+  | some pr => exact ValueTy.weaken (hg x pr σ hp hf hd) (subTy_mkNilable _)
+
+/-- **The write**, and the one thing it has to check is what the rule checks: the value's
+    type is the declared one. The list `setGlobal` builds is `(x, v) :: filter`, so a
+    lookup either finds the new head — the `ValueTy` the rule supplies — or an old entry,
+    which the incoming conjunct covers. -/
+theorem GlobalsOk.set {D : Decls} {h : Heap} {gs : List (String × Value)} {x : String}
+    {v : Value} {σ : Ty} (hg : GlobalsOk D h gs) (hd : globalTy? D x = some σ)
+    (hv : ValueTy h v σ) :
+    GlobalsOk D h ((x, v) :: gs.filter (·.1 != x)) := by
+  intro y p τ hpl hf hdy
+  by_cases hxy : (x == y) = true
+  · have hyx : x = y := by simpa using hxy
+    subst hyx
+    rw [List.find?_cons_of_pos (p := fun (e : String × Value) => e.1 == x) (by simp)] at hf
+    simp only [Option.some.injEq] at hf
+    subst hf
+    rw [hdy] at hd
+    simp only [Option.some.injEq] at hd
+    subst hd
+    exact hv
+  · rw [List.find?_cons_of_neg (p := fun (e : String × Value) => e.1 == y) (by simpa using hxy)] at hf
+    -- The list fact is `HeapFacts`' `find?_filter_ne`, which is already stated over any
+    -- `List (String × α)` and was written for the *method*-table filter at L142 — the
+    -- association list `setGlobal` builds has the same shape, which is why this case
+    -- needed no new lemma once I looked.
+    have hne : ¬ (y = x) := fun hq => hxy (by rw [hq]; simp)
+    rw [find?_filter_ne _ hne] at hf
+    exact hg y p τ hpl hf hdy
+
+/-- **And the table is irrelevant up to `SubDecls`** (L228) — a `def` grows `rows` and
+    nothing else, so `globalTy?` is unmoved and the conjunct transports by rewriting the
+    lookup. Needed because the `def` case re-establishes `Inv` at the *grown* table. -/
+theorem GlobalsOk.table {D D' : Decls} {h : Heap} {gs : List (String × Value)}
+    (hs : SubDecls D D') (hg : GlobalsOk D h gs) : GlobalsOk D' h gs :=
+  fun x p σ hp hf hd => hg x p σ hp hf (by rw [← hs.globalTy_eq x]; exact hd)
+
+/-- **And the heap transport**, one `ValueTy.congr` under a binder. Every allocating step
+    owes exactly this, and it is why the conjunct costs an allocating case one term. -/
+theorem GlobalsOk.congr {D : Decls} {h h' : Heap} {gs : List (String × Value)}
+    (ha : TypeAgree h h') (hg : GlobalsOk D h gs) : GlobalsOk D h' gs :=
+  fun x p σ hp hf hd => ValueTy.congr ha (hg x p σ hp hf hd)
 
 /-- **The invariant** handed to `invariant_sound_from`.
 
@@ -810,6 +933,9 @@ def Inv (m : Machine) : Prop :=
     ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
+      -- **L228: the globals**, and it is inside the existential because it reads the
+      -- table — the sixth one, and the first whose obligation is not about the heap.
+      GlobalsOk F m.heap m.globals ∧
       CtlOk F c Γ Γs m
 
 /-! ### Inversions used by the send cases -/
@@ -1123,9 +1249,15 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hbot : BottomObj m.frames m.stack)
     (hks : frameKLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
-    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ m.kont) :
+    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ m.kont)
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', hinf, by simp, hk⟩⟩
 
 /-- **The same, at a *wider* continuation** (L193) — `inv_eval` with the identity
@@ -1140,9 +1272,15 @@ theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hks : frameKLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
-    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' m.kont) :
+    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' m.kont)
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
 
 theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
@@ -1152,9 +1290,15 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
     (hks : frameKLabels m.kont = m.stack.dropLast)
-    (hv : ValueTy m.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
+    (hv : ValueTy m.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont)
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption) :
     Inv (withCtl m (.value v)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, ⟨τ, hv, hk⟩⟩
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl, ⟨τ, hv, hk⟩⟩
 
 theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
@@ -1164,9 +1308,15 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hbot : BottomObj m.frames m.stack)
     (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
-    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ (k :: m.kont)) :
+    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ (k :: m.kont))
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', hinf, by simp, hk⟩⟩
 
 /-- **`inv_push` at a wider continuation** (L193), the `inv_eval_sub` of the
@@ -1181,9 +1331,15 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
-    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' (k :: m.kont)) :
+    (hk : KontOk F' m.heap ((c, Γ') :: Γs) τ' (k :: m.kont))
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ', Γ', F', hinf, hsub, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
@@ -1270,7 +1426,15 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     (hks : frameKLabels m.kont = m.stack.dropLast)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
-    (hv : ValueTy m'.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont) :
+    (hv : ValueTy m'.heap v τ) (hk : KontOk F m.heap ((c, Γ) :: Γs) τ m.kont)
+    -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
+    -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
+    -- insertion into nine call sites of five lemmas is the kind of edit that silently
+    -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
+    -- so a caller that lacks the fact still fails here rather than being papered over.
+    (hgl : GlobalsOk F m.heap m.globals := by assumption)
+    -- And that the allocation left the globals alone, which is `rfl` at every caller.
+    (hgv : m'.globals = m.globals := by rfl) :
     Inv (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
   refine ⟨NoHook_grow hg hsat hh,
@@ -1278,13 +1442,16 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show frameKLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
-    F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_⟩
+    F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
     exact FramesOk.heap_congr hag hfs
   · show StackCtx m'.heap m'.frames m'.stack (c :: Γs.map Prod.fst)
     rw [hfr, hst]
     exact StackCtx.heap_congr hag hsc
+  · show GlobalsOk F m'.heap m'.globals
+    rw [hgv]
+    exact GlobalsOk.congr hag hgl
   · show ∃ σ, ValueTy m'.heap v σ ∧ KontOk F m'.heap ((c, Γ) :: Γs) σ m'.kont
     exact ⟨τ, hv, by rw [hko]; exact KontOk.heap_congr hag hk⟩
 end Static

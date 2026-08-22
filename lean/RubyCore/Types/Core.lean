@@ -867,6 +867,57 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   --
   -- The answer is `.nilT` and it is free for `.ret`'s reason: the machine jumps, so this
   -- continuation never sees the value.
+  -- **A global-variable read** (L228), and it is the ivar read's shape at the sixth
+  -- table with **no context to consult**: a global is global, so there is no `selfCls`
+  -- and no class key — which is what makes this the first rule that reads the machine's
+  -- own association list rather than the heap, and the reason `Inv` grew a conjunct
+  -- (`GlobalsOk`) instead of `DeclsOk` growing a clause.
+  --
+  -- `plainGlobal` is the guard, and it is not a convenience: `$!` reads `currentExc`,
+  -- `$~` reads the frame's `lastMatch`, and `$1`…`$9` are *computed* by `matchGlobal`
+  -- from the match data. None of those is in `m.globals`, so a declaration about them
+  -- would be a claim about the wrong storage. `Interp.getGlobal`'s three-way split is
+  -- exactly this predicate.
+  --
+  -- **`mkNilable`** for the ivar read's reason, and here it is not even a
+  -- definite-assignment question: an unset global reads `nil` in Ruby, always, with no
+  -- error and no declaration consulted. `getGlobal` ends `| none => .nil`.
+  --
+  -- **Both gvar arms `match` on `plainGlobal` rather than `if`-ing on it**, and the
+  -- difference is not cosmetic: `simp only [infer]` unfolds an `ite` all the way to a
+  -- `Decidable.rec`, after which neither `simp` nor `rw` can use the guard's hypothesis —
+  -- which is where `infer_mono`'s write case sat for three builds. A `match` on a `Bool`
+  -- leaves a shape `split` and the functional induction both handle.
+  | .var .gvar x =>
+    match plainGlobal x, globalTy? D x with
+    | true, some σ => some (mkNilable σ, Γ, D)
+    | _, _ => none
+  -- **A global-variable write** (L228), the read's twin and the clause that makes the
+  -- read sound: `GlobalsOk` is a claim about every value in the list, so the only way to
+  -- keep it is to check the value going in. An **undeclared** global is refused here
+  -- rather than admitted freely — the opposite of the ivar write's choice (L196), and for
+  -- a reason: `Machine.setGlobal` *creates* the entry, so admitting the write of an
+  -- undeclared name would leave the list holding a value no declaration describes. That
+  -- is harmless for `GlobalsOk` as stated (it quantifies over declared names) but it
+  -- would make the *read* of that same name unusable, which is the whole point of the
+  -- rung — so the refusal is a needed **declaration**, which is what the open front end
+  -- reports.
+  --
+  -- **The table is read *after* the right-hand side** (`globalTy? D₁`), which is
+  -- `.vasgn .ivar`'s shape and is not a style choice: `evalExpr` pushes an `asgnK`, so the
+  -- continuation `KontOk` types is at the table the rhs leaves — and the declared type has
+  -- to be the one *that* continuation can name. Reading it at `D` costs a monotonicity
+  -- lemma at every use; reading it here costs nothing.
+  | .vasgn .gvar x rhs =>
+    match plainGlobal x with
+    | true =>
+      match infer D Γ rhs top ctx with
+      | some (τ, Γ₁, D₁) =>
+        match globalTy? D₁ x with
+        | some σ => if subTy τ σ then some (τ, Γ₁, D₁) else none
+        | none => none
+      | none => none
+    | false => none
   | .nxt none =>
     if top = false then
       match ctx.inLoop with

@@ -10925,3 +10925,79 @@ singletons — `return-join`, `nilable-receiver` (`&.` on a nilable receiver), `
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** (29
 theorems); `--check` byte-identical to L226; `--self-test` all agree, with four new `next` rows; third
 ratchet **24**; fifth ratchet 34 blocked (was 35).
+
+## L228 — `$x`, the sixth table, and the first `Inv` conjunct that is not about the heap
+
+Out of fragment **24 → 23**, `--check` byte-identical (56 / 1,169 / 0), axiom-clean. The rung is
+`ivars`' shape at a different storage, and that difference is the whole content: five tables have been
+read against `DeclsOk` — a fact about objects, classes or chains — and this one is read against
+`m.globals`, an association list on the *machine*. So `Inv` grew a conjunct.
+
+### `GlobalsOk`, and why it is indexed the way it is
+
+```lean
+def GlobalsOk (D : Decls) (h : Heap) (gs : List (String × Value)) : Prop :=
+  ∀ x p σ, plainGlobal x = true → gs.find? (·.1 == x) = some p →
+    globalTy? D x = some σ → ValueTy h p.2 σ
+```
+
+Indexed by the **heap and the list**, not by the machine — `FramesOk`'s shape, for `FramesOk`'s
+reason: every step that moves only the control or the continuation leaves both projections
+`rfl`-equal, so the conjunct transports by handing the hypothesis over. Three lemmas carry the rest:
+`GlobalsOk.read` (the rule's whole obligation), `.set` (the write's, and `HeapFacts`' existing
+`find?_filter_ne` turned out to be exactly the list fact — it was written for the *method*-table
+filter at L142), and `.congr` (one `ValueTy.congr`, which is what an allocating case owes).
+
+**`plainGlobal` is a hypothesis of the conjunct, not a convenience.** `$!` is `currentExc`, `$~` is
+the frame's `lastMatch`, and `$1`…`$9` are *computed* by `matchGlobal` from the match data — none of
+them is in `m.globals`, so a declaration about them would be a claim about the wrong storage.
+`Interp.getGlobal`'s three-way split *is* this predicate, which is why `isMatchView` moved down to
+`Syntax.lean`: `Types/` cannot import `Interp/`, and a second copy of the test is exactly the drift
+that function's own docstring was written to prevent.
+
+### The threading, and the price of a new conjunct
+
+`ConformsAt` gained `m'.globals = m.globals` — the sentence "nothing else in `Inv` reads the machine"
+(L215) coming due. Free at both witnesses, and a real restriction on the next tabulated builtin,
+which is the honest place for it. Then: five `inv_*` helpers, 20-odd construction sites, two
+`initiation`s (vacuous at `Machine.init`, and *not* vacuous at `initiation_on`, where the list is
+quantified — what discharges it there is that `declsOf` declares no global), and `InvA`'s fifth
+carried half.
+
+> **The `inv_*` helpers take the conjunct as a *defaulted* argument** — `(hgl : … := by assumption)`,
+> elaborated in the caller's context. That is what kept a nine-site positional insertion out of five
+> lemmas, and it fails loudly at a caller that lacks the fact rather than papering over it.
+
+### Two lessons from the rules
+
+**`match` on the guard, never `if`.** `simp only [infer]` unfolds an `ite` all the way to a
+`Decidable.rec`, after which neither `simp` nor `rw` can use the guard's hypothesis. `infer_mono`'s
+write case sat on that for three builds. A `match` on a `Bool` leaves a shape both `split` and the
+functional induction handle.
+
+**A named case beats an alternative when the guards are hypotheses.** `infer.induct` splits the
+guards, so the goal has no `if` to `split` — and an alternative that half-matches leaves *unsolved
+goals* rather than failing, which aborts `first` instead of falling through. The two gvar rules are
+explicit `case87`/`case89`/`case90`/`case91` in `Mono.lean` for that reason.
+
+**The table is read *after* the right-hand side** (`globalTy? D₁`), which is `.vasgn .ivar`'s shape
+and not a style choice: the continuation `KontOk` types is at the table the rhs leaves, so the
+declared type has to be the one *that* continuation can name.
+
+### What moved, and what it did not buy
+
+`Token#self.create` — `case val when /\A#{…}\z/o` — crosses from out-of-fragment to a **needed
+declaration**, because the `/o` regex desugars to `$__dt_rxN ||= Regexp.new(…)` and the read is now a
+rule. It reports `::Regexp`, not the global: `inferOpen` short-circuits at the first `.missing` and
+the constant is read inside the same expression.
+
+> **So the body still does not *type*, and would not even with the table populated** — the `||=`
+> desugars to `if $g then $g else $g = …`, whose join is nilable, and the `===` send on a nilable
+> receiver is `nilable-receiver`. That is the **flow-narrowing** rung (`&.` and `if x.nil?`), now the
+> shared blocker of two of the remaining singletons. Measured before starting, per L227's correction.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
+byte-identical; `--self-test` all agree, with three new gvar rows and a third witness for the
+`def-params-dflt` example (ivar → gvar → `retry`, one per widening); third ratchet **23**.
