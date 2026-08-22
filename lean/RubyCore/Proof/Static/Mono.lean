@@ -255,6 +255,125 @@ theorem inferArgs_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top :
           obtain ⟨-, -, rfl⟩ := h
           exact inferArgs_table_ret hret htop hr
 
+/-! ### L234 — environment monotonicity, for the expressions a continuation stores
+
+`inferIf` refuses two branches whose environments differ, which is what refuses every desugared
+`||`, `&&` and `&.` (L231), and `begin`'s handler needs the same relation from the other side
+(L233). Both want to *widen* a stored `infer` equation from an environment to a larger one, and
+this is that lemma at the special case both of them are actually about: **an expression that
+assigns no local**.
+
+The general case would have to say what `envSet`'s *ordering* does under a widening, since `while`
+and `if` compare environments for equality. The assign-free case has no `envSet` at all: the answer
+environment *is* the argument, and the only other way `infer` reads it is `envGet?`, which `SubEnv`
+pins by definition.
+-/
+
+/-- **An assign-free expression answers the environment it was given, and widening it changes
+    nothing else** (L234). -/
+theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : FrameCtx),
+    asgnFree e = true → ∀ τ Γ' D₀, infer D Γ e top ctx = some (τ, Γ', D₀) →
+      Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → infer D Γ₂ e top ctx = some (τ, Γ₂, D₀) := by
+  intro D Γ e top ctx
+  induction D, Γ, e, top, ctx using infer.induct with
+  | motive2 Da Γa ta elsa topa ctxa =>
+    exact asgnFree ta = true ∧ asgnFreeOpt elsa = true →
+      ∀ τ Γ' D₀, inferIf Da Γa ta elsa topa ctxa = some (τ, Γ', D₀) →
+        Γ' = Γa ∧ ∀ Γ₂, SubEnv Γa Γ₂ → inferIf Da Γ₂ ta elsa topa ctxa = some (τ, Γ₂, D₀)
+  | motive3 Da Γa esa topa ctxa =>
+    exact asgnFreeAll esa = true → ∀ τ Γ' D₀, inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) →
+      Γ' = Γa ∧ ∀ Γ₂, SubEnv Γa Γ₂ → inferSeq Da Γ₂ esa topa ctxa = some (τ, Γ₂, D₀)
+  | motive4 Da Γa esa topa ctxa =>
+    exact asgnFreeAll esa = true → ∀ τ Γ' D₀, inferElems Da Γa esa topa ctxa = some (τ, Γ', D₀) →
+      Γ' = Γa ∧ ∀ Γ₂, SubEnv Γa Γ₂ → inferElems Da Γ₂ esa topa ctxa = some (τ, Γ₂, D₀)
+  | motive5 Da Γa esa topa ctxa =>
+    exact asgnFreeAll esa = true → ∀ τs Γ' D₀, inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) →
+      Γ' = Γa ∧ ∀ Γ₂, SubEnv Γa Γ₂ → inferArgs Da Γ₂ esa topa ctxa = some (τs, Γ₂, D₀)
+  -- **`if`** (case52): the condition fixes the environment and `inferIf` answers it.
+  | case52 D Γ top ctx c t els τc Γ₁ D₁ hc ih2 ih1 =>
+    intro hasg τ Γ' D₀ h
+    have hac : asgnFree c = true := by
+      unfold asgnFree at hasg; simp only [Bool.and_eq_true] at hasg; exact hasg.1.1
+    have hai : asgnFree t = true ∧ asgnFreeOpt els = true := by
+      unfold asgnFree at hasg; simp only [Bool.and_eq_true] at hasg
+      exact ⟨hasg.1.2, by cases els <;> simpa [asgnFreeOpt] using hasg.2⟩
+    obtain ⟨rfl, hmc⟩ := ih2 hac _ _ _ hc
+    simp only [infer, hc] at h
+    obtain ⟨rfl, hmi⟩ := ih1 hai _ _ _ h
+    exact ⟨rfl, fun Γ₂ hs => by simp only [infer, hmc Γ₂ hs, hmi Γ₂ hs]⟩
+  -- **`next`** (case94), and it is the one arm whose *guard* mentions the environment: the
+  -- rule checks `subEnvB Γl Γ`, and at a wider `Γ₂` that check still passes — which is one
+  -- transitivity, and the reason the statement is over `SubEnv` in the first place.
+  | case94 D Γ ctx Γl hil hse =>
+    intro hasg τ Γ' D₀ h
+    simp only [infer, hil, hse, if_true, reduceIte, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    refine ⟨rfl, fun Γ₂ hs => ?_⟩
+    have hse2 : subEnvB Γl Γ₂ = true := by
+      refine List.all_eq_true.mpr fun e he => ?_
+      have h1 := List.all_eq_true.mp hse e he
+      simp only [beq_iff_eq] at h1 ⊢
+      exact hs e.1 e.2 h1
+    simp only [infer, hil, hse2, if_true, reduceIte]
+  -- **The `if` join** (case99): the two branches answer the same environment, which the arm
+  -- already checked, so the join transports unchanged.
+  | case99 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hag ih2 ih1 =>
+    intro hasg τ Γ' D₀ h
+    obtain ⟨rfl, hmT⟩ := ih2 hasg.1 _ _ _ hT
+    obtain ⟨rfl, hmE⟩ := ih1 (by simpa [asgnFreeOpt] using hasg.2) _ _ _ hE
+    simp only [inferIf, hT, hE] at h
+    split at h
+    · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨τj, hj, rfl, rfl, rfl⟩ := h
+      refine ⟨rfl, fun Γ₂ hs => ?_⟩
+      simp only [inferIf, hmT Γ₂ hs, hmE Γ₂ hs]
+      split
+      · simp [hj]
+      · rename_i hbad
+        -- The guard that just failed is the one `hag` already established: after the two
+        -- IHs' `rfl`s the environments are syntactically equal, so what is left is the
+        -- table half, and that is `hag`'s second component.
+        exact absurd hag.2 (by simpa using hbad)
+    · exact absurd h (by simp)
+  | _ =>
+    intro hasg τ Γ' D₀ h
+    first
+      | (exfalso; revert h
+         simp +contextual [infer, inferIf, inferSeq, inferArgs, inferElems, asgnFree,
+           asgnFreeAll] at hasg ⊢
+         done)
+      -- **The local read**, and it is the only arm that reads the environment at all —
+      -- which is why `SubEnv` is exactly the right hypothesis and why every other arm
+      -- closes by computation.
+      | (simp only [infer, Option.map_eq_some_iff] at h
+         obtain ⟨a, hg, heq⟩ := h
+         simp only [Prod.mk.injEq] at heq
+         obtain ⟨rfl, rfl, rfl⟩ := heq
+         exact ⟨rfl, fun Γ₂ hs => by simp [infer, hs _ _ hg]⟩)
+      | (refine ⟨?_, fun Γ₂ hs => ?_⟩ <;>
+           (simp_all [infer, inferIf, inferSeq, inferArgs, inferElems, asgnFree, asgnFreeAll]
+            done))
+      -- **Two subexpressions threaded**: the first fixes the environment (it is assign-free,
+      -- so it answers the one it was given) and the second is the answer. The `rfl` from the
+      -- first IH is what lets the second one apply at all — before it, the two are stated at
+      -- different environments and neither composes.
+      | (rename_i hc ih2 ih1
+         simp only [asgnFree, Bool.and_eq_true] at hasg
+         obtain ⟨rfl, hm2⟩ := ih2 (by simp_all [asgnFree]) _ _ _ hc
+         obtain ⟨rfl, hm1⟩ := ih1 (by simp_all) _ _ _ h
+         exact ⟨rfl, fun Γ₂ hs => by
+           simp only [infer, inferIf, inferSeq, inferArgs, inferElems, hm2 Γ₂ hs, hm1 Γ₂ hs]⟩)
+      -- **`def`** (case44/45), whose only dependence on the environment is the answer's
+      -- second component: the body is typed at `[]` and every guard is about names and
+      -- tables. So the case is the arm's guards computed away twice, at `Γ` and at `Γ₂`.
+      | (refine ⟨?_, fun Γ₂ hs => ?_⟩ <;>
+           (revert h
+            simp only [infer]
+            split <;> split <;> simp_all
+            done))
+      -- No fallback, for the reason the other three inductions have none: a new `infer`
+      -- arm has to be looked at, not absorbed.
+
 /-! ### L226: the same theorem at the *loop* channel, and the same proof
 
 `infer_table_ret` (L200) says *the table is constant along a continuation chain inside a body

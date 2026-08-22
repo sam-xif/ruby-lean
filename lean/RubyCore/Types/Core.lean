@@ -222,6 +222,59 @@ def defFreeAll (es : List Expr) : Bool :=
   | e :: rest => defFree e && defFreeAll rest
 termination_by sizeOf es
 
+/-- **The expression neither assigns a local nor opens a loop** (L234), and it is
+    `defFree`'s shape at two different constructors.
+
+    What it buys is *environment monotonicity*: `infer` threads the environment, and the
+    only two arms that make the answer depend on the environment *beyond* an `envGet?` are
+    `.vasgn .lvar` (which extends it) and `.while'` (which puts it into the **context**, as
+    `inLoop`). Rule out those two and widening the environment cannot change the answer,
+    because `SubEnv` pins every lookup.
+
+    **`.while'` is the arm that made the first draft of `infer_env_mono` unprovable**, and
+    the reason is worth keeping: the loop's rule types its body at `{ctx with inLoop :=
+    some Γ}`, so at a wider `Γ₂` the *context* differs too — and the induction hypothesis
+    is fixed at the narrow one. A `next` is fine and stays in (its guard reads
+    `ctx.inLoop` but never *sets* it, and `subEnvB Γl Γ` survives widening by one
+    transitivity).
+
+    `def'` and `class'` are **true** here and false in `defFree`, which is the difference
+    between the two predicates: a class body's assignments happen in an environment this
+    expression's caller never sees (`infer` types both at `[]`). -/
+def asgnFree (e : Expr) : Bool :=
+  match e with
+  | .vasgn .lvar _ _ => false
+  | .while' _ _ => false
+  | .vasgn _ _ rhs => asgnFree rhs
+  | .seq es => asgnFreeAll es
+  | .if' c t els =>
+    asgnFree c && asgnFree t && (match els with | some e' => asgnFree e' | none => true)
+  | .send r _ args _ =>
+    (match r with | some r' => asgnFree r' | none => true) && asgnFreeAll args
+  | .array es => asgnFreeAll es
+  | .ret e => match e with | some e' => asgnFree e' | none => true
+  | .cpath base _ => match base with | some b => asgnFree b | none => true
+  | .super' args blk =>
+    asgnFreeAll args && (match blk with | some b => asgnFree b | none => true)
+  | .splat e => match e with | some e' => asgnFree e' | none => true
+  | .zsuper blk => match blk with | some b => asgnFree b | none => true
+  | _ => true
+termination_by sizeOf e
+
+def asgnFreeAll (es : List Expr) : Bool :=
+  match es with
+  | [] => true
+  | e :: rest => asgnFree e && asgnFreeAll rest
+termination_by sizeOf es
+
+/-- The optional-subexpression form, and it exists for a *motive*'s sake: an inline
+    `match els with …` inside `inferIf`'s motive is elaborated with the local context
+    generalized into it, and the resulting `match els, ih1, hasg, h with` does not match
+    the one the arm computes. A named function has no such context. -/
+def asgnFreeOpt : Option Expr → Bool
+  | some e => asgnFree e
+  | none => true
+
 end
 
 /-! `defFree`'s own equation lemmas carry the *earlier patterns did not match*

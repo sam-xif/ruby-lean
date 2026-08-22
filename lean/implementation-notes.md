@@ -11293,3 +11293,61 @@ chain to the `beginBodyK` gives `Γbegin ⊆ Γdeep`, not `Γbegin ⊆ Γcur`).
 
 Reverted to L232's tree: `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; third
 ratchet **21**.
+
+## L234 — `infer_env_mono`, the gate L231 and L233 both stopped at
+
+Out of fragment **21 → 21** — `Proof/`-only plus one predicate — and it is the lemma the two reverted
+rungs turned out to share. Axiom-clean, `sorry`-free.
+
+```lean
+theorem infer_env_mono : ∀ D Γ e top ctx, asgnFree e = true → ∀ τ Γ' D₀,
+    infer D Γ e top ctx = some (τ, Γ', D₀) →
+      Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → infer D Γ₂ e top ctx = some (τ, Γ₂, D₀)
+```
+
+### `asgnFree` refuses **two** constructors, and the second one is the finding
+
+`.vasgn .lvar` is the obvious one — it is the only arm that extends the environment, so without it
+the answer *is* the argument. `.while'` is the one the first draft did not have and could not do
+without: the loop's rule types its body at `{ctx with inLoop := some Γ}`, so widening the environment
+widens the **context** too, and the induction hypothesis is fixed at the narrow one. There is no way
+to patch that inside the induction; the arm has to leave the fragment of the lemma.
+
+> **A `next` stays in**, and the contrast is the useful part: it *reads* `ctx.inLoop` but never sets
+> it, and its guard `subEnvB Γl Γ` survives widening by one transitivity (`case94` — the only case
+> in the proof that does anything with `SubEnv` beyond passing it along). **Reading the environment
+> is free; putting it into the context is not.**
+
+### The proof is four named cases and one uniform block
+
+The block closes everything that does not read the environment — which is every arm but the local
+read — in one `refine ⟨?_, fun Γ₂ hs => ?_⟩ <;> simp_all … <;> done`. The named ones are `if`
+(condition then join), the local read, `next`, and the `if`-with-else join; `def` gets its own
+alternative because its guards are five deep and its body is typed at `[]`.
+
+Two mechanical lessons, both already in this file and both re-paid here:
+* **`split at h`, not `rw [if_pos …]`** — `simp only [infer]` unfolds an `ite` to a `Decidable.rec`
+  past the point a hypothesis can be used (L228).
+* **An alternative that leaves goals *succeeds*** and aborts `first`. The generic alternative had to
+  end in `done` before the four specific ones could ever run — three builds lost to that, and it is
+  the same trap as L230's.
+
+And one new one, worth its own line:
+
+> **An inline `match` in an induction *motive* is elaborated with the local context generalized
+> into it.** `motive2`'s `match elsa with | some x => asgnFree x | none => true` came out as
+> `match elsa, ih1, hasg, h with …`, which does not match the term the arm computes. The fix is a
+> named function (`asgnFreeOpt`) — a motive should mention no anonymous `match`.
+
+### What it unblocks, and what is still owed
+
+With this, a `KontOk` **widening** is stateable: a continuation whose stored expressions are
+`asgnFree` types at any wider environment, which is what `if`'s branches (L231) and `begin`'s handler
+(L233) both need. That lemma plus the two rules is the next rung, and it is now a *proof* rather than
+a design question.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean; `#print axioms
+infer_env_mono` = `propext + Classical.choice + Quot.sound`. `--check` unowed (`Proof/` plus a
+predicate no rule reads).
