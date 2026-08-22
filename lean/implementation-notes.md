@@ -11127,3 +11127,63 @@ constraining it, for `cpath-base`'s reason (L205): the store's requirements are 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**; `--check`
 byte-identical (56 / 1,169 / 0); `--self-test` all agree with three new splat rows; third ratchet
 **21**; fifth ratchet 31 blocked (was 33), singletons `{hash}` and `{begin}`.
+
+## L231 — the `if` environment join, attempted and reverted: what the wall actually is
+
+**Out of fragment 21 → 21**, and this entry is the *negative* result. It was built, it type-checked
+as far as `Preservation`, and then it hit the obligation L219 named — from a direction I had
+convinced myself avoided it. Recording the attempt because the next session will otherwise repeat it.
+
+### The design
+
+`inferIf` refuses `Γt ≠ Γe`, which is what refuses every desugared `||`, `&&` and `&.`: each expands
+to an `if` whose branches assign *different* temporaries. The proposed rule kept the old branch and
+added a second:
+
+```lean
+if Γt = Γe ∧ Dt = De then (joinTy τt τe).map (fun τj => (τj, Γt, Dt))
+else if subEnvB Γ Γt ∧ subEnvB Γ Γe ∧ Dt = De then (joinTy τt τe).map (fun τj => (τj, Γ, Dt))
+else none
+```
+
+— both branches extend the incoming environment, so `Γ` itself is sound for the continuation. The
+machine side was to be `CtlOk`'s eval clause carrying an **environment subsumption** beside its type
+one:
+
+```lean
+∃ τ τ' Γ' Γ'' D', infer D Γ e Γs.isEmpty c = some (τ, Γ'', D') ∧ SubEnv Γ' Γ'' ∧ …
+```
+
+with `FramesOk.narrowHead` (L218) discharging conformance at each consumer. That much *worked*: the
+rule, `infer_mono`, both table lemmas, the five `inv_*` helpers (defaulted `SubEnv` arguments, so no
+call site moved), the frame-push case (narrow, *then* `FramesOk.push`).
+
+### Where it dies
+
+`KontOk`'s constructors compute their **tail's** environment from their conclusion's — `asgn`'s tail
+is at `envSet Γ x τ`, `seqCons`' at the sequence's threaded env, `ifK`'s at the join's. Once the eval
+clause admits `Γ' ⊊ Γ''`, every consecution case holds its incoming tail at `Γ'` and needs it at
+`F Γ''` — so **every constructor would need its premise widened**, and widening a stored `infer`
+equation from a narrower environment to a wider one *is* `infer` environment-monotonicity.
+
+> **L219 priced this as "relaxing it needs `infer` environment-monotonicity" and was exactly right.**
+> The eval-clause subsumption looks like it routes around that — it does not; it *relocates* the
+> obligation from `inferIf` into all seventeen `KontOk` constructors. **A subsumption added to a
+> judgement that other judgements *store* is not a weakening, it is a distribution.**
+
+### What the monotonicity lemma has to say, for whoever writes it
+
+```lean
+infer D Γ e top ctx = some (τ, Γ', D') → Γ₂ ⊇ Γ (disjointly) → e assigns no name of Γ₂ \ Γ →
+  infer D Γ₂ e top ctx = some (τ, Γ' ∪ (Γ₂ \ Γ), D')
+```
+
+The side condition is real and syntactic: `.vasgn` writes with `envSet`, whose *order* the `while`
+and `if` equality checks can see. That is the shape of the rung — a `defFree`-style predicate over
+the assigned names, and an induction with the same twelve-case block every other `infer` induction
+has.
+
+### Checks
+
+Reverted to L230's tree: `lake build`, `lake build Metatheory` green, `check-proofs.sh` axiom-clean,
+third ratchet **21**.
