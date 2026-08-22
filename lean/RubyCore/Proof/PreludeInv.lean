@@ -146,7 +146,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     split at hchk
     · rename_i r hr
       obtain ⟨τ, Γ', D'⟩ := r
-      exact ⟨τ, τ, Γ', D', hr, by simp, KontOk.nil (by simp) (by simp)⟩
+      exact ⟨τ, τ, Γ', D', Γ', hr, by simp, SubEnv.refl _, KontOk.nil (by simp) (by simp)⟩
     · exact absurd hchk (by split <;> simp)
 
 /-! ## 2. The certificate route

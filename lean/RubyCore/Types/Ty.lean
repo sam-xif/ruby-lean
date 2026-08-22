@@ -359,6 +359,9 @@ theorem subEnvB_sound {Γ Γ' : Env} (h : subEnvB Γ Γ' = true) : SubEnv Γ Γ'
 
 theorem SubEnv.refl (Γ : Env) : SubEnv Γ Γ := fun _ _ h => h
 
+theorem SubEnv.trans {Γ Γ' Γ'' : Env} (h : SubEnv Γ Γ') (h' : SubEnv Γ' Γ'') :
+    SubEnv Γ Γ'' := fun x τ hx => h' x τ (h x τ hx)
+
 def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
   | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ
