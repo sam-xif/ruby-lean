@@ -536,6 +536,18 @@ def inferOpenElems (D : Decls) (Γ : AEnv) (es : List Expr) (ctx : OCtx) (il : O
     | .splat (some o) =>
       match inferOpen D Γ o ctx il s with
       | .ok (.nom (.cls "Array")) Γ₁ s₁ => inferOpenElems D Γ₁ rest ctx il s₁
+      -- **L237: a *variable* operand is a requirement, not a refusal.** `[id, *aliases]`
+      -- where `aliases` is still `α` was the `splat-operand` refusal; the store's `eqs`
+      -- field — L206's, added for the join — is exactly the atom for it: record `θ α =
+      -- Array` and carry on. Nothing here solves for `α`; the untrusted solver chooses
+      -- `θ` and `satStoreB` checks, which is the same division of labour every other
+      -- store field has.
+      --
+      -- `addEq` rather than a *bound* (`α ⊒ Array`) is what the assertion language can
+      -- say, and it is enough: the nominal rule wants the operand to *be* `Array`, so an
+      -- equality is the requirement, not an approximation of one.
+      | .ok (.var α) Γ₁ s₁ =>
+        inferOpenElems D Γ₁ rest ctx il { s₁ with st := s₁.st.addEq α (.nom (.cls "Array")) }
       | .ok _ _ _ => .outOfFragment "splat-operand"
       | r => r
     | ee =>

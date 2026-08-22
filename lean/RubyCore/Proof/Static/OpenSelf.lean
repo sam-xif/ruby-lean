@@ -361,6 +361,10 @@ theorem inferOpen_mono (D : Decls) (ctx : OCtx) (Γ : AEnv) (e : Expr) (il : Opt
       | exact StoreLe.trans (StoreLe.trans (by assumption) (by assumption))
           (joinOpen_mono (by assumption))
       | exact joinOpen_mono (by assumption)
+      -- **L237: the splat operand's `addEq`**, and it is the only arm that grows the
+      -- store outside a join — one extra link in the same chain shape.
+      | exact StoreLe.trans (by assumption)
+          (StoreLe.trans (storeLe_addEq _ _ _) (by assumption))
 
 /-- **And `rets` is monotone too** (L201), for the store's reason: a recorded return
     type is a positive fact, so the list only grows. Subset rather than sublist because
@@ -556,7 +560,12 @@ theorem inferOpenElems_mono (D : Decls) (ctx : OCtx) (il : Option AEnv) :
                   (ih Γ₁ s₁ τ Γ' s' h)
               · simp_all
             | _ => simp_all
-          | var _ => simp_all
+          -- **L237: the variable operand**, and it is the one arm of this proof that
+          -- grows the store rather than only threading it — one `storeLe_addEq` between
+          -- the operand's chain and the rest of the list's.
+          | var β =>
+            exact StoreLe.trans (inferOpen_mono D ctx Γ o il s _ _ _ ho)
+              (StoreLe.trans (storeLe_addEq _ β _) (ih Γ₁ _ τ Γ' s' h))
           | nilOf _ => simp_all
         | missing a b c => rw [ho] at h; exact absurd h (by simp)
         | outOfFragment hd => rw [ho] at h; exact absurd h (by simp)
@@ -708,7 +717,11 @@ theorem inferOpenElems_rets (D : Decls) (ctx : OCtx) (il : Option AEnv) :
                   (inferOpen_rets D ctx Γ o il s _ _ _ ho x hx)
               · simp_all
             | _ => simp_all
-          | var _ => simp_all
+          -- L237: `addEq` touches the store, not `rets`, so the composition is the same
+          -- two steps the `Array` arm has.
+          | var _ =>
+            exact fun x hx => ih Γ₁ _ τ Γ' s' h x
+              (inferOpen_rets D ctx Γ o il s _ _ _ ho x hx)
           | nilOf _ => simp_all
         | missing a b c => rw [ho] at h; exact absurd h (by simp)
         | outOfFragment hd => rw [ho] at h; exact absurd h (by simp)
@@ -775,6 +788,30 @@ theorem rets_subSeq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es 
     (hr : ∀ a ∈ s'.rets, subTy (ATy.subst θ a) retF = true) :
     ∀ a ∈ s.rets, subTy (ATy.subst θ a) retF = true :=
   fun a ha => hr a (inferOpenSeq_rets D ctx il es Γ s τ Γ' s' h a ha)
+
+/-- **L237: the same two bridges across the splat operand's `addEq`.** The factoring's
+    elems alternative composes its bound through the *recursive* call, and after L237 that
+    call runs at a store one `addEq` up — so the bridge has to step over it. Stated rather
+    than inlined because the alternative cannot name the state. -/
+theorem storeLe_subElemsEq {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv}
+    {es : List Expr} {s s' : OState} {τ : ATy} {Γ' : AEnv} {stF : Store} {α : TyVar} {a : ATy}
+    (h : inferOpenElems D Γ es ctx il { s with st := s.st.addEq α a } = .ok τ Γ' s')
+    (hle : StoreLe s'.st stF) : StoreLe s.st stF :=
+  StoreLe.trans (storeLe_addEq _ α a) (storeLe_subElems h hle)
+
+/-- **L237: the splat operand's requirement, discharged.** `θ α = t`, from the equality the
+    rule recorded before recursing — carried to `stF` by the elems bridge and satisfied by
+    `hsat`. Stated as a lemma rather than assembled in the factoring proof because the
+    tactic block cannot name `α`: a `have` whose *type* mentions it would leave a
+    placeholder, and an unsolvable placeholder inside `have … : T := by …` is a **logged**
+    error rather than a backtrackable failure, so it would abort the alternative block
+    instead of falling through to the next shape. -/
+theorem eq_of_addEq_subElems {D : Decls} {θ : TyVar → Ty} {stF : Store} {ctx : OCtx}
+    {il : Option AEnv} {Γ : AEnv} {es : List Expr} {s s' : OState} {τ : ATy} {Γ' : AEnv}
+    {α : TyVar} {t : Ty}
+    (heq : inferOpenElems D Γ es ctx il { s with st := s.st.addEq α (.nom t) } = .ok τ Γ' s')
+    (hle : StoreLe s'.st stF) (hsat : SatStore D θ stF) : θ α = t :=
+  hsat.2 _ _ ((storeLe_subElems heq hle).eqs _ (mem_addEq _ _ _))
 
 theorem rets_subElems {D : Decls} {ctx : OCtx} {il : Option AEnv} {Γ : AEnv} {es : List Expr}
     {s s' : OState} {τ : ATy} {Γ' : AEnv} {θ : TyVar → Ty} {retF : Ty}
@@ -1153,9 +1190,22 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
              | simp
              | (rename_i heq
                 intro hle hr
+                -- **L237: the store bound is *named* before it is used**, and that is not
+                -- style: the recursive call runs one `addEq` up in the splat-operand arm,
+                -- so two bridges are possible — and a `rw` whose argument fails to
+                -- elaborate is a *logged* error rather than a backtrackable failure, so
+                -- `first | rw … | rw …` would abort the block instead of trying the
+                -- second. An `exact` inside a `have` backtracks.
+                have hb := by
+                  first
+                    -- the `addEq` bridge *first*: its premise pins the state to a
+                    -- record update, so it cannot fire on the plain shape, while the
+                    -- plain one unifies with either.
+                    | exact storeLe_subElemsEq heq hle
+                    | exact storeLe_subElems heq hle
                 (first
-                  | rw [ih2 (storeLe_subElems heq hle) (rets_subElems heq hr)]
-                  | rw [ih2 (storeLe_subElems heq hle)])
+                  | rw [ih2 hb (rets_subElems heq hr)]
+                  | rw [ih2 hb])
                 dsimp only
                 rw [heq] at ih1
                 (first | exact ih1 hle hr | exact ih1 hle))))
@@ -1184,11 +1234,33 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
            split
            all_goals (first
              | simp
+             -- **L237: the splat operand at a *variable*** — the one shape whose nominal
+             -- counterpart needs a fact about `θ` rather than about the sub-derivation.
+             -- The rule matched on `Ty.cls "Array"` and the IH answers `θ α`, so the
+             -- recorded equality is spent here: `mem_addEq` at the store the recursive
+             -- call ran in, carried to `stF` by the plain bridge and satisfied by `hsat`.
+             -- Its own *inner* option, because the `have` is what fails on every other
+             -- shape — and an alternative of the outer chain would have to succeed on all
+             -- of the `split`'s goals at once.
              | (rename_i heq
                 intro hle hr
+                have hEq := by exact eq_of_addEq_subElems heq hle hsat
+                have hb := by exact storeLe_subElemsEq heq hle
+                have hr2 := by exact rets_subElems heq hr
                 (first
-                  | rw [ih2 (storeLe_subElems heq hle) (rets_subElems heq hr)]
-                  | rw [ih2 (storeLe_subElems heq hle)])
+                  | rw [ih2 hb hr2]
+                  | rw [ih2 hb])
+                rw [hEq]
+                try dsimp only
+                rw [heq] at ih1
+                (first | exact ih1 hle hr | exact ih1 hle))
+             | (rename_i heq
+                intro hle hr
+                -- L237: and the plain shape, whose bridge is the one that was here before.
+                have hb := by exact storeLe_subElems heq hle
+                (first
+                  | rw [ih2 hb (rets_subElems heq hr)]
+                  | rw [ih2 hb])
                 try dsimp only
                 rw [heq] at ih1
                 (first | exact ih1 hle hr | exact ih1 hle)))))

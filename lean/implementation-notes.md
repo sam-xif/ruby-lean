@@ -11469,3 +11469,57 @@ a line.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, tier 0 / slice difftest,
 `--check` diff empty against L230's baseline, third ratchet **20**, `--self-test` all agree.
+
+## L237 — the splat operand's *requirement*, and the store field that was already there (oof 20 → 19)
+
+Out of fragment **20 → 19**; `splat-operand` is gone and `Vulnerability#identifiers`
+(`[id, *aliases].uniq`) now reports a **needed declaration** — `Array ~ uniq : () → _` — which is the
+clean side of the line. `--check` byte-identical, axiom-clean, `--self-test` all agree.
+
+### The rung is four lines of rule and no new machinery
+
+`[id, *aliases]` where `aliases` is still the type variable `α` was refused (`"splat-operand"`)
+because the nominal `inferElems` matches the operand's type against `Ty.cls "Array"`. The open pass
+already has the atom for saying *make it so*: `Store.eqs`, added at L206 for the join —
+"`θ α` must be this type", a requirement rather than an inference, checked by `satStoreB` and chosen
+by the untrusted solver.
+
+```lean
+      | .ok (.var α) Γ₁ s₁ =>
+        inferOpenElems D Γ₁ rest ctx il { s₁ with st := s₁.st.addEq α (.nom (.cls "Array")) }
+```
+
+An *equality* rather than a bound (`α ⊒ Array`) is both what the assertion language can say and
+enough: the nominal rule wants the operand to **be** `Array`.
+
+The proof cost is three lemmas and two tactic-block options:
+
+* `storeLe_subElemsEq` / `eq_of_addEq_subElems` — the store bridge across the new `addEq`, and the
+  requirement's discharge (`mem_addEq` → `StoreLe.eqs` → `SatStore`);
+* `inferOpen_mono` and `inferOpen_rets` each gain the `var` arm explicitly (the store *grows* here,
+  which outside a join was previously only true of `requireRow`);
+* the factoring theorem's elems alternative splits into two options — the `addEq` shape and the plain
+  one.
+
+### Two tactic-engineering facts, because they cost the session more than the rung did
+
+1. **A `rw` whose argument fails to elaborate is a *logged* error, not a backtrackable failure.** So
+   `first | rw [f h] | rw [g h]` does **not** try `g` when `f h` is ill-typed — it aborts the whole
+   block. The fix is to name the term first (`have hb := by first | exact f h | exact g h`), because
+   an `exact` inside a `have` *does* backtrack. The same applies to an unsolvable placeholder in a
+   `have … : T := by …` type, which is why `eq_of_addEq_subElems` is a lemma: the tactic block cannot
+   name `α`, and `have hEq : θ _ = Ty.cls "Array"` leaves a placeholder that aborts rather than fails.
+2. **An alternative of an outer `first` has to succeed on *all* of an `all_goals`' goals.** The
+   variable-operand shape therefore had to become an *inner* option of the existing elems
+   alternative, not a new alternative of the outer chain — as a new alternative it failed on the
+   sibling shapes and never got tried on its own.
+
+### What this does not pin
+
+The change is on the **open** side only, so `--self-test` (which runs `--check`, the nominal pass)
+cannot cover it. The census is the evidence, and the `Array ~ uniq` atom is the readable half of it.
+
+### Checks
+
+`lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty against L236, third
+ratchet **19**, `--self-test` all agree.
