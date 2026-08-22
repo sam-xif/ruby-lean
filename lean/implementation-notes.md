@@ -11271,13 +11271,23 @@ grow within a frame — but **the invariant does not record it**, and it cannot 
 composition runs the wrong way (`asgn`'s premise is *wider* than its conclusion, so walking down the
 chain to the `beginBodyK` gives `Γbegin ⊆ Γdeep`, not `Γbegin ⊆ Γcur`).
 
-> **So `if` (L231) and `begin` (L233) are one rung, not two.** What both want is an invariant fact
-> that environments only grow within an activation — either as a `KontOk` clause (*every
-> constructor's premise environment extends its conclusion's*, which then composes) or as the
-> `infer` environment-monotonicity lemma L231 wrote down. The `KontOk` clause looks cheaper and is
-> the one to try first: it is seventeen constructors' worth of `SubEnv` premises, each discharged at
-> its introduction site by `SubEnv.refl` or `subEnv_envSet`, and it makes the chain composable in
-> the direction both rungs read it.
+> **So `if` (L231) and `begin` (L233) are one rung, not two** — and the cheap-looking form of it
+> does not work, which is worth writing down before someone tries it.
+>
+> A `KontOk` clause saying *every constructor's premise environment extends its conclusion's* is
+> true (a deeper kont receives its value later, so its environment has more bindings) and composes
+> — **in the wrong direction**. Walking down to the `beginBodyK` it gives `Γcur ⊆ Γdeep` and the
+> constructor gives `Γbegin ⊆ Γdeep`; neither orders `Γbegin` against `Γcur`, which is what the
+> handler's conformance needs. Requiring the *body* to be environment-stable (`Γ₁ = Γ`, which the
+> target body satisfies) makes the two equal **semantically**, and the derivation still cannot see
+> it: `KontOk` records no connection between "this body assigns nothing" and "every kont in its
+> chain is at `Γ`".
+>
+> What is left is **L231's lemma**: `infer` environment-monotonicity, and with it a `KontOk`
+> *widening* — the direction that is not free. Its assign-free special case is much smaller than the
+> general one (`asgnFree e → infer D Γ e … = some (τ, Γ, D') → SubEnv Γ Γ₂ → infer D Γ₂ e … = some
+> (τ, Γ₂, D')`, no `envSet` reordering to reason about) and covers both rungs' pending programs,
+> because what a continuation stores above a frame boundary is the *rest of a method body*.
 
 ### Checks
 
