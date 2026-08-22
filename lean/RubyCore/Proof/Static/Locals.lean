@@ -1145,11 +1145,28 @@ def TypeAgree (h h' : Heap) : Prop :=
     -- be a class the old heap did not have — plus `h.objs.size ≤ h'.objs.size` to carry
     -- the bound itself forward.
     (∀ k, ancestors h' k = ancestors h k) ∧
+    -- **L239's eighth clause: an old array's payload is unmoved.**
+    --
+    -- It is here for the *parameterised* type (`Ty.arrayOf`, L238). Every other clause is
+    -- about a value's **class**, which is why they are all functions of `classOf`/`className`
+    -- and why a heap write that keeps shapes keeps them; an `arrayOf` claim is about the
+    -- object's *contents*, and contents are exactly what the other clauses do not pin.
+    -- Without this clause `ValueTy.congr` is **false** at the new arm — a heap-writing step
+    -- could replace an array's elements and the claim would not survive it, correctly.
+    --
+    -- **Stated as "unchanged" rather than "still conforms"**, which is stronger than the
+    -- transport needs and is what every current producer proves outright: nothing in the
+    -- fragment writes an array payload (`Array#<<` has no row, so `entry_dispatch` never
+    -- reaches one), and the four producers move `methods`, `ivars`, `klass` or the object
+    -- count. A **mutating** row is what will have to weaken it to element-conformance —
+    -- and that weakening is the same invariance check `Ty.arrayOf`'s docstring prices.
+    (∀ o, o < h.objs.size → ∀ xs, (h.get o).payload = .arr xs →
+      (h'.get o).payload = .arr xs) ∧
     h.objs.size ≤ h'.objs.size
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp,
-   fun _ _ hc => hc, fun _ => Eq.refl _, Nat.le_refl _⟩
+   fun _ _ hc => hc, fun _ => Eq.refl _, fun _ _ _ hp => hp, Nat.le_refl _⟩
 
 /-- **Transport across a frame-array rewrite**, the counterpart of
     `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
@@ -1324,6 +1341,29 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
     -- is congruent at *every* id — `ancestors_defineMethod`, which the constant-table
     -- lemmas beside it already use.
     fun k => ancestors_defineMethod h cls k name md,
+    -- L239's eighth: `defineMethod` rewrites `methods` at one id and nothing else, so an
+    -- `.arr` payload is where it was — `payload_defineMethod` is the same one-liner the
+    -- `plainRecv` clause above uses.
+    -- L239's eighth: `defineMethod` rewrites the payload of the **class** object and
+    -- nothing else, and a `.arr` payload is not a `.cls` one — so the id being written is
+    -- not the id being asked about, and `get_defineMethod_ne` finishes it. Same case split
+    -- `plainRecv_defineMethod` above makes, for the same reason.
+    fun o _ xs hxs => by
+      by_cases hk : o = cls
+      · subst hk
+        -- The written id is the one being asked about, so either it is a class object —
+        -- and then its payload is a `.cls`, which `hxs` refutes — or `defineMethod` is
+        -- the identity. The split is on `classPayload?`, which is `defineMethod`'s own.
+        unfold defineMethod
+        cases hc : h.classPayload? o with
+        | none => exact hxs
+        | some c =>
+          exfalso
+          have hpay : (h.get o).payload = .cls c := by
+            unfold Heap.classPayload? at hc
+            split at hc <;> simp_all
+          rw [hpay] at hxs; exact absurd hxs (by simp)
+      · rw [get_defineMethod_ne h cls o name md hk]; exact hxs,
     by rw [objs_size_defineMethod]; exact Nat.le_refl _⟩
 
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
@@ -1343,7 +1383,7 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     -- hypothesis. Every caller has it from a lemma written for another consumer.
     (hanc : ∀ k, ancestors h' k = ancestors h k) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
-    fun o ho hc => ?_, hanc, hsz⟩
+    fun o ho hc => ?_, hanc, fun o ho xs hxs => by rw [hget o ho]; exact hxs, hsz⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
   · simp only [Heap.classPayload?, hget k hk]
@@ -1433,7 +1473,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
     intro k; simp only [Heap.classPayload?, hpl k]
   refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_,
-    fun k => ?_, ?_⟩
+    fun k => ?_, ?_, ?_⟩
   · simp only [classOf, hei o, hkl o]
   · simp only [className, hcp k]
   · rw [hcp k]
@@ -1451,6 +1491,9 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     -- fuel — `ancestors_go_congr` with the size equation, which is `IvarOnly`'s
     -- `ancestors_eq` inlined at the four fields this lemma is stated over.
     exact ancestors_congr (fun j => by rw [hcp j]) hsz.symm k
+  · -- L239's eighth: this lemma is stated over the *four* fields a write can move, and
+    -- `payload` is not one of them — `hpl` is the agreement, already a hypothesis.
+    intro o _ xs hxs; rw [hpl o]; exact hxs
   · exact Nat.le_of_eq hsz
 
 /-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
