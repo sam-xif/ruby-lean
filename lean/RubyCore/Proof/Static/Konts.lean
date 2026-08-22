@@ -1279,7 +1279,7 @@ theorem spreadA_of_array {m : Machine} {v : Value}
     | _ => rw [hsv] at hv; simp_all [ValueTy, valueTy?, subTy]
   have hpl : plainRecv m.heap o = true := valueTy_ref_plain hv
   have hcn : className m.heap (m.heap.get o).klass = "Array" := by
-    rcases valueTy_ref_inv hv with ⟨-, hs⟩ | ⟨hc, hs⟩
+    rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨-, hs⟩ | ⟨hc, hs⟩
     · have hq := (subTy_atomic (τ := Ty.cls "Array") (by simp) (by simp)).mp hs
       rw [plainRecv_classOf hpl] at hq
       simpa using hq

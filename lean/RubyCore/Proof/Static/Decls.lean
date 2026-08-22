@@ -194,7 +194,7 @@ theorem valueTy_tyClass {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
     -- has none — and its type names the object's own class. The second is the whole
     -- content of the class-object arm and the reason `TyClass` says `classOf`
     -- rather than naming a chain.
-    rcases valueTy_ref_inv hv with ⟨hp, hs⟩ | ⟨hc, hs⟩
+    rcases valueTy_ref_inv (subTy_any_false ha hn) hv with ⟨hp, hs⟩ | ⟨hc, hs⟩
     · rw [← (subTy_atomic ha hn).mp hs]
       exact ⟨valueTy_ref_klass_isSome hp, rfl⟩
     · rw [← (subTy_atomic ha hn).mp hs]
@@ -801,7 +801,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   -- **Five immediates since L202** — the `.flt` disjunct is `.int`'s twin here too:
   -- `invoke`'s receiver-shape arms are all `.ref`, so it falls through the outer
   -- match exactly as the other four do and costs this proof one more `inr`.
-  rcases valueTy_shapes hrv with
+  rcases valueTy_shapes (subTy_any_false ha hn) hrv with
     ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, hplain⟩
   case' inr.inr.inr.inr.inr =>
     -- The `.ref` case, which is F1b's whole bill. Case on the payload: `plainRecv`
@@ -894,7 +894,7 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
     -- `.cls` refutation does double duty on this branch — it is also what makes
     -- `crubySingletonShadow`, the gate `ResolvesTo` never has to mention, answer
     -- `none`.
-    rcases valueTy_shapes hrv with
+    rcases valueTy_shapes (by simp [subTy]) hrv with
       ⟨a, rfl⟩ | ⟨b, rfl⟩ | rfl | ⟨sy, rfl⟩ | ⟨fx, rfl⟩ | ⟨o, rfl, -⟩
     case' inr.inr.inr.inr.inr =>
       -- L185: the receiver's type is `.cls cn`, which only `valueTy?`'s *plain*
@@ -2294,7 +2294,7 @@ theorem constsOkB_sound {h : Heap} {cs : List (String × Ty)}
       | none => rw [hv] at he; exact absurd he.1 (by simp)
       | some σ =>
         rw [hv] at he
-        exact ⟨σ, hv, by simpa using he.1⟩
+        exact Or.inr ⟨σ, hv, by simpa using he.1⟩
     · -- The bound comes from the payload, so the `List.range` scan really does cover
       -- every id the hypothesis can name (`classPayload?_isSome_lt`).
       have hlt : j < h.objs.size := classPayload?_isSome_lt hj

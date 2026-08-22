@@ -446,7 +446,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             -- The class the table is keyed at: `plainRecv` says dispatch goes through
             -- `klass`, and `hself` names that class.
             have hcn : className m.heap (m.heap.get o).klass = sc := by
-              have := valueTy_ref_inv (hsf ▸ hself)
+              have := valueTy_ref_inv (by simp [subTy]) (hsf ▸ hself)
               rcases this with ⟨-, hs⟩ | ⟨hc, hs⟩
               · have := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
                 rw [plainRecv_classOf hpl] at this
@@ -608,7 +608,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 simp only [evalExpr, Interp.doReturn, hrt,
                   show m.stack.contains fid = true from by simp [hst]]
                 exact ⟨hhook, hsat, hstr, hcls, hbot, hks, D, ctx, Γ, Γs, htab, hfs, hsc, hglob,
-                  ⟨σ, ⟨.nilT, rfl, hsub⟩, KontOk.retOk hk hne σ hret, hff⟩⟩
+                  ⟨σ, Or.inr ⟨.nilT, rfl, hsub⟩, KontOk.retOk hk hne σ hret, hff⟩⟩
               · rw [if_neg hsub] at hinf; exact absurd hinf (by simp)
           · rw [hnone] at hret; exact absurd hret (by simp)
       · exact absurd hinf (by simp)
@@ -1351,7 +1351,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [Bool.and_eq_true] at hcr
         exact hcr.2
       have hcn : className m.heap o = cname := by
-        rcases valueTy_ref_inv hvc with ⟨-, hs⟩ | ⟨-, hs⟩
+        rcases valueTy_ref_inv (by simp [subTy]) hvc with ⟨-, hs⟩ | ⟨-, hs⟩
         · exact absurd hs (by simp [subTy])
         · simpa using (subTy_atomic (τ := Ty.clsOf cname) (by simp) (by simp)).mp hs
       obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2.1 cname n σ hsco o hpay hcn
@@ -1425,7 +1425,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         exact hpl.1.1.2
       -- L196: the class the ivar table is keyed at, and the bound the scan needs.
       have hcnO : className m.heap (m.heap.get o).klass = sc := by
-        rcases valueTy_ref_inv (hsf ▸ hself) with ⟨-, hs⟩ | ⟨hc, hs⟩
+        rcases valueTy_ref_inv (by simp [subTy]) (hsf ▸ hself) with ⟨-, hs⟩ | ⟨hc, hs⟩
         · have hq := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
           rw [plainRecv_classOf hpl] at hq
           simpa using hq

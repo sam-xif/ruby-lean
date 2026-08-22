@@ -191,22 +191,55 @@ def valueTy? (h : Heap) : Value → Option Ty
     weakening is inert everywhere the old definition was used and is the whole
     content of the rung exactly where a join happens. -/
 def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop :=
-  ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
+  -- **L232: `.any` types everything, and nothing else changes.**
+  --
+  -- `Ty.lean`'s note on `joinTy` already says "`ValueTy h v .any` holds for *every* value" and gives
+  -- that as the reason `.any` must never be *inferred*. It was not true: `valueTy?` answers `none`
+  -- for a `Proc`, a `Hash` and a frozen object, so `ValueTy h (hash) .any` was **false** — and a
+  -- *declared* `.any` parameter could therefore be un-inhabitable rather than unconstrained.
+  --
+  -- What needs it: the block-send rung (Wall 1). A block's parameter type has to be `.any` — an
+  -- `Array`'s element type is not in `Ty` — and the block frame's `FrameConforms` then has to hold
+  -- for an element that may be a `Hash`. And the `rescue => e` binding, for the same reason at a
+  -- different value.
+  --
+  -- Phrased as `subTy .any τ` rather than `τ = .any` so that `ValueTy.weaken` is still one
+  -- `subTy_trans`: the disjunct has to be closed upwards, and that is what `subTy` from `.any`
+  -- means. Every *inversion* below refutes it by computation, because `subTy .any τ` is `false` at
+  -- every concrete `τ`.
+  subTy .any τ = true ∨ ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
 
 /-- The exact-type constructor, which is what every producer rule has. -/
 theorem ValueTy.exact {h : Heap} {v : Value} {τ : Ty} (he : valueTy? h v = some τ) :
-    ValueTy h v τ := ⟨τ, he, by simp⟩
+    ValueTy h v τ := Or.inr ⟨τ, he, by simp⟩
+
+/-- **And `.any` needs no value at all** (L232) — the whole point of the disjunct. -/
+theorem ValueTy.any {h : Heap} {v : Value} : ValueTy h v .any := Or.inl (by simp [subTy])
 
 /-- And the weakening the join needs, which is one `subTy_trans`. -/
 theorem ValueTy.weaken {h : Heap} {v : Value} {σ τ : Ty} (hv : ValueTy h v σ)
     (hs : subTy σ τ = true) : ValueTy h v τ :=
-  ⟨hv.choose, hv.choose_spec.1, subTy_trans hv.choose_spec.2 hs⟩
+  match hv with
+  | Or.inl ha => Or.inl (subTy_trans ha hs)
+  | Or.inr ⟨σ', hσ, hsub⟩ => Or.inr ⟨σ', hσ, subTy_trans hsub hs⟩
+
+/-- **`.any` is below only itself and the nilables above it** (L232) — the form the
+    inversions' new hypothesis takes when the caller has `subTy_atomic`'s two side
+    conditions rather than a concrete type. -/
+theorem subTy_any_false {τ : Ty} (ha : τ ≠ .any) (hn : ∀ τ', τ ≠ .nilable τ') :
+    subTy .any τ = false := by
+  by_cases hq : subTy .any τ = true
+  · exact absurd ((subTy_atomic ha hn).mp hq) (Ne.symm ha)
+  · simpa using hq
 
 /-- Inversion at an **atomic** type: the exact type is the declared one, which is
     what keeps every pre-L193 consumer working. -/
 theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
     (hn : ∀ τ', τ ≠ .nilable τ') (hv : ValueTy h v τ) : valueTy? h v = some τ := by
-  obtain ⟨σ, hσ, hs⟩ := hv
+  -- L232: the `.any` disjunct is refuted by the same `subTy_atomic` the arm below uses —
+  -- at an atomic `τ`, `subTy σ τ` *is* `σ = τ`, and `.any ≠ τ` is the hypothesis.
+  rcases hv with hany | ⟨σ, hσ, hs⟩
+  · exact absurd ((subTy_atomic ha hn).mp hany) (Ne.symm ha)
   rw [(subTy_atomic ha hn).mp hs] at hσ
   exact hσ
 
@@ -214,10 +247,15 @@ theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
     is a disjunction and every consumer has to say which one it is about —
     `Locals.lean`'s own lesson from L142 applies to itself here: *an inversion
     principle is only as strong as the definition it inverts.* -/
-theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+theorem valueTy_ref_inv {h : Heap} {o : ObjId} {τ : Ty}
+    -- **L232**: `.any` types every value, including a `.ref` that is neither a plain nor a
+    -- class receiver — so the inversion needs to know it is not being asked about `.any`.
+    -- Every caller is at a concrete type and discharges it by `simp [subTy]`.
+    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
     (plainRecv h o = true ∧ subTy (.cls (className h (classOf h (.ref o)))) τ = true) ∨
       (classRecv h o = true ∧ subTy (.clsOf (className h o)) τ = true) := by
-  obtain ⟨σ, hσ, hs⟩ := hv
+  rcases hv with hany | ⟨σ, hσ, hs⟩
+  · rw [hna] at hany; exact absurd hany (by simp)
   by_cases hp : plainRecv h o
   · refine Or.inl ⟨hp, ?_⟩
     rw [show σ = .cls (className h (classOf h (.ref o))) from by
@@ -237,7 +275,7 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
   cases v with
   | ref o =>
     exfalso
-    rcases valueTy_ref_inv h with ⟨-, hne⟩ | ⟨-, hne⟩ <;>
+    rcases valueTy_ref_inv (by simp [subTy]) h with ⟨-, hne⟩ | ⟨-, hne⟩ <;>
       exact absurd hne (by simp [subTy])
   | _ => simp_all [ValueTy, valueTy?, subTy]
 
@@ -260,42 +298,46 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
     not: `invoke` consults that gate only on the `md.builtin = none` branch
     (`Interp/Send.lean:246`) and `ResolvesTo` pins `md.builtin = some bid`, so the
     F1a measurement survives an abstract `.ref` receiver unchanged. -/
-theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty} (hv : ValueTy h v τ) :
+theorem valueTy_shapes {h : Heap} {v : Value} {τ : Ty}
+    -- L232: `.any` types every value, so the shape list needs to know it is not asked
+    -- about `.any` — every caller is at a concrete type.
+    (hna : subTy .any τ = false) (hv : ValueTy h v τ) :
     (∃ a, v = .int a) ∨ (∃ b, v = .bool b) ∨ v = .nil ∨ (∃ s, v = .sym s) ∨
       (∃ x, v = .flt x) ∨
       (∃ o, v = .ref o ∧ (plainRecv h o = true ∨ classRecv h o = true)) := by
   cases v with
   | ref o =>
     refine Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨o, Eq.refl _, ?_⟩))))
-    rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨hc, -⟩
+    rcases valueTy_ref_inv hna hv with ⟨hp, -⟩ | ⟨hc, -⟩
     · exact Or.inl hp
     · exact Or.inr hc
-  | _ => simp_all [ValueTy, valueTy?]
+  | _ => simp_all [ValueTy, valueTy?, hna]
 
 /-- **A typed `.ref` is an id the heap actually has.** The point of `plainRecv`'s
     bound, isolated so that the transport lemmas can consume it without unfolding
     `valueTy?`: it is what will let `TypeAgree` be relativized to `< h.objs.size`
     and therefore hold across an `alloc`. -/
-theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty} (hv : ValueTy h (.ref o) τ) :
+theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty}
+    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
     o < h.objs.size := by
   -- Both arms of the `.ref` case carry the bound: `plainRecv` as its first clause
   -- and `classRecv` as its first clause too (L185).
   by_cases hb : o < h.objs.size
   · exact hb
-  · simp [ValueTy, valueTy?, plainRecv, classRecv, hb] at hv
+  · simp [ValueTy, valueTy?, plainRecv, classRecv, hb, hna] at hv
 
 /-- A `.ref` typed at a **class type** is a plain receiver — the old
     `valueTy_ref_plain`, restated at the arm it is about. -/
 theorem valueTy_ref_plain {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.cls n)) : plainRecv h o = true := by
-  rcases valueTy_ref_inv hv with ⟨hp, -⟩ | ⟨-, hne⟩
+  rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨hp, -⟩ | ⟨-, hne⟩
   · exact hp
   · exact absurd hne (by simp [subTy])
 
 /-- And a `.ref` typed at a **class-object type** is a class receiver. -/
 theorem valueTy_ref_class {h : Heap} {o : ObjId} {n : String}
     (hv : ValueTy h (.ref o) (.clsOf n)) : classRecv h o = true := by
-  rcases valueTy_ref_inv hv with ⟨-, hne⟩ | ⟨hc, -⟩
+  rcases valueTy_ref_inv (by simp [subTy]) hv with ⟨-, hne⟩ | ⟨hc, -⟩
   · exact absurd hne (by simp [subTy])
   · exact hc
 
@@ -360,9 +402,9 @@ theorem classOf_lt_of_mem_ancestors {h : Heap} {k d : ObjId}
     Unused today, which is why it is stated in the form that will still be true at
     the next widening rather than the form that reads best. -/
 theorem valueTy_ref_not_ground {h : Heap} {o : ObjId} {τ : Ty}
-    (hv : ValueTy h (.ref o) τ) :
+    (hna : subTy .any τ = false) (hv : ValueTy h (.ref o) τ) :
     τ ≠ .int ∧ τ ≠ .bool ∧ τ ≠ .nilT ∧ τ ≠ .sym := by
-  rcases valueTy_ref_inv hv with ⟨-, hs⟩ | ⟨-, hs⟩ <;>
+  rcases valueTy_ref_inv hna hv with ⟨-, hs⟩ | ⟨-, hs⟩ <;>
     refine ⟨?_, ?_, ?_, ?_⟩ <;> intro heq <;> rw [heq] at hs <;> simp [subTy] at hs
 
 /-- **An immediate's type does not depend on the heap.** Four constant arms; stated
@@ -1439,15 +1481,19 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
     (hv : ValueTy h v τ) : ValueTy h' v τ := by
   -- L193: the *exact* type is what transports, and `τ` rides along untouched —
   -- which is why the relation cost this lemma nothing but a `refine` at the top.
-  obtain ⟨σ, hσ, hs⟩ := hv
-  refine ⟨σ, ?_, hs⟩
+  rcases hv with hany | ⟨σ, hσ, hs⟩
+  · exact Or.inl hany
+  refine Or.inr ⟨σ, ?_, hs⟩
   cases v with
   | ref o =>
     -- L143: each clause is instantiated at an id the *hypothesis* supplies, which
     -- is the whole point of the relativization — the two bounds come from
     -- `valueTy?` itself (`plainRecv`'s two clauses read back out), so the
     -- transport is never asked about an id the old heap did not have.
-    have hb : o < h.objs.size := valueTy_ref_lt ⟨σ, hσ, hs⟩
+    have hb : o < h.objs.size := by
+      by_cases hbb : o < h.objs.size
+      · exact hbb
+      · simp [valueTy?, plainRecv, classRecv, hbb] at hσ
     -- **Two branches since L185**, and they read different clauses of `TypeAgree`:
     -- the plain one needs `classOf`/`className` agreement at the *class* id, the
     -- class-object one needs only `className` at `o` itself — because its type is
@@ -1533,7 +1579,7 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
           cases hsv : (frames.getD fid default).self with
           | ref o =>
               rw [hsv] at hv
-              exact ha.1 o (valueTy_ref_lt hv)
+              exact ha.1 o (valueTy_ref_lt (by simp [subTy]) hv)
           | bool b => cases b <;> rfl
           | _ => rfl
         rw [hco, ha.2.2.2.2.2.1 _]

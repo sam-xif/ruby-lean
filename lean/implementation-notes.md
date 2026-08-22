@@ -11187,3 +11187,55 @@ has.
 
 Reverted to L230's tree: `lake build`, `lake build Metatheory` green, `check-proofs.sh` axiom-clean,
 third ratchet **21**.
+
+## L232 — `ValueTy _ _ .any` is now *true*, which is what `Ty.lean` already claimed
+
+Out of fragment **21 → 21** — `Proof/`-only, so `--check` cannot move — and it is the prerequisite
+two different rungs turned out to share.
+
+### The claim that was not true
+
+`Ty.lean`'s note on `joinTy` says, as the reason `.any` must never be *inferred*:
+
+> `ValueTy h v .any` holds for *every* value, so `.any` in an inferred position would let the checker
+> forget what it knows.
+
+It did not hold for every value. `ValueTy` was `∃ σ, valueTy? h v = some σ ∧ subTy σ τ`, and
+`valueTy?` answers `none` for a `Proc`, a `Hash`, and any `.ref` that is neither `plainRecv` nor
+`classRecv` — so `ValueTy h ⟨hash⟩ .any` was **false**, and a *declared* `.any` parameter was
+un-inhabitable rather than unconstrained. The definition now reads
+
+```lean
+subTy .any τ = true ∨ ∃ σ, valueTy? h v = some σ ∧ subTy σ τ = true
+```
+
+— phrased as `subTy .any τ` rather than `τ = .any` so that `ValueTy.weaken` stays one `subTy_trans`:
+the new disjunct has to be closed upwards, and that is exactly what `subTy` *from* `.any` means.
+
+### What it costs, and the shape of the cost
+
+Four inversions are stated at an arbitrary `τ` and are **false at `.any`** — `valueTy_ref_inv`,
+`valueTy_ref_lt`, `valueTy_shapes`, `valueTy_ref_not_ground`. Each gains one hypothesis,
+`subTy .any τ = false`, and every caller discharges it by `simp [subTy]` (at a concrete `τ`) or by
+`subTy_any_false ha hn` (where `subTy_atomic`'s two side conditions are already in scope). Sixteen
+call sites, no proof restructured.
+
+> **An inversion principle is only as strong as the definition it inverts** — `Locals.lean`'s own
+> L142 lesson, applied to itself for the second time (L185's class arm was the first). Widening a
+> judgement weakens every inversion of it by exactly the width added, and the hypothesis that
+> restores each one is the *negation of the new case*.
+
+### What needs it
+
+* **Wall 1's block-send rung**: a block's parameter type has to be `.any` — an `Array`'s element
+  type is not in `Ty` — and the block frame's `FrameConforms` then has to hold for an element that
+  may be a `Hash`.
+* **`begin`'s `rescue => e`**: the binding's type has to be `.any`, because `subTy` has no nominal
+  subtyping and the raised value's exact class is a *descendant* of `StandardError`. With this, the
+  binding costs the invariant nothing (`ValueTy.any`), and any *use* of `e` is a needed row on
+  `.any` — which is the honest report.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**;
+`Proof/`-only, so no `--check` diff is owed (L148's borderline rule: the binary cannot move).
