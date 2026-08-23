@@ -380,8 +380,22 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
 def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
     (elemArgs : List (List Value)) (kind : IterKind) (initAcc : List Value)
     (retVal : Value) : StepResult :=
+  -- **`cref` is the caller's** (L256), and it is a *fidelity* fix with a proof
+  -- consumer. This activation is the `break` target and **no code evaluates in it** —
+  -- the loop is driven by the `iterK` continuation and every expression runs in a block
+  -- frame above — so the field was left at `[]` and nothing read it: every `cref` read in
+  -- the interpreter is `m.currentFrame.cref` (during eval *in* that frame), `md.cref`, or
+  -- `capF.cref` (the frame a closure captured, which is the caller, not this one).
+  --
+  -- What made it worth fixing is the static invariant: `StackCtx`'s fifth clause is
+  -- *`Object` is on the frame's lexical constant scope* (L189), it is positional, and an
+  -- empty `cref` refuses it — see `implementation-notes.md` L255 for the alternative that
+  -- was priced and rejected (a second `FrameCtx` channel, whose consumers would have
+  -- needed the fact threaded through 18 `KontOk` constructors). CRuby's iterator
+  -- activation inherits the caller's cref, so this is also the more faithful frame.
   let frame : Frame :=
-    { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname }
+    { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname,
+      cref := m.currentFrame.cref }
   let fid := m.frames.size
   let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
   let m := { m with kont := .frameK fid :: m.kont }

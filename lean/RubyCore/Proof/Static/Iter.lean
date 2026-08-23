@@ -116,7 +116,8 @@ theorem startIter_eq (m : Machine) (recv : Value) (mname : String) (cl : Closure
       = iterStep
           { m with
             frames := m.frames.push
-              { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname },
+              { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname,
+                cref := m.currentFrame.cref },
             stack := m.frames.size :: m.stack,
             kont := .frameK m.frames.size :: m.kont }
           cl m.frames.size elemArgs kind initAcc retVal := rfl

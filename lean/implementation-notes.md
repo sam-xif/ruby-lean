@@ -12614,3 +12614,56 @@ of this one.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** and no
 `sorry` in the tree, `--check` diff empty against L254's capture, third ratchet **19**.
+
+## L256 — the iterator activation gets the caller's `cref`, and that is L255's blocker gone
+
+Out of fragment **19 → 19**. **The first change to the interpreter in this chain**, so the full
+difftest is owed and was run — every tier matches its recorded baseline exactly.
+
+### One line
+
+```lean
+  let frame : Frame :=
+    { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname,
+      cref := m.currentFrame.cref }          -- ← was: cref left at its `[]` default
+```
+
+`startIter` pushes this activation as the **`break` target**, and **no code evaluates in it**: the
+loop is driven by the `iterK` continuation and every expression runs in a block frame above. So the
+field was never read — every `cref` read in the interpreter is `m.currentFrame.cref` (during eval
+*in* that frame), `md.cref`, or `capF.cref` (the frame a closure captured, which is the caller and
+not this one). CRuby's iterator activation inherits the caller's cref, so this is also the more
+faithful frame.
+
+### Why it is worth a semantics change, and what it replaces
+
+`StackCtx`'s fifth clause is *`Object` is on the frame's lexical constant scope* (L189, the whole
+frame-side cost of the `.const` read rule). It is **positional**, so the iterator activation owes it
+and an empty `cref` refuses it — L255's blocker.
+
+L255 priced the alternative: a second `FrameCtx` channel (`noCode`), a guard on clause 5, and — the
+real cost — its **consumers**. `.const`, `def` and `class'` all read clause 5, the only source for
+the flag is `CtlOk`'s **eval** clause (the value clause cannot carry it, because at the `iterK`
+delivery the head context *is* the iterator's), and reaching the delivery cases from there means a
+trailing `optParam` on 18 `KontOk` constructors — L236's edit at L236's cost.
+
+> **A one-line change to a frame nothing reads, validated by the difftest, is cheaper than an
+> invariant channel with three consumers.** And it is the honest direction: the field was `[]`
+> because nothing needed it, not because `[]` was right.
+
+`Proof/Static/Iter.lean`'s `startIter_eq` is the only proof that mentions the literal; it gained the
+field and stayed `rfl`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` byte-identical,
+third ratchet **19**, and the difftest in full:
+
+| tier | result | recorded baseline |
+|---|---|---|
+| 0 | **992 agree, 0 disagree** (1,304 ran) | 992 / 0 |
+| slice | **351 agree, 0 disagree** | 351 / 0 |
+| 4 | **25 agree, 0 disagree** | 25 / 0 |
+| advisory | **106 agree, 0 disagree** | 106 / 0 |
+| 1 / 1.5 | 146 / 163 agree, **0 disagree** | 0 disagree (generative, re-drawn) |
+| regressions | **35 held, 2 still_open, 3 gated** | 35 / 2 / 3 |
