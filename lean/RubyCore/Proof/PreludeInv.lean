@@ -115,6 +115,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- the start of the run — the same instantiation `initiation` makes, at a heap
     -- the certificate rather than the kernel vouches for.
     (by simp [Machine.initOn, framePopLabels]),
+    (by intro κ hm; simp [Machine.initOn] at hm),
     declsOf p, { cls := "Object" }, [], [],
     tableOk_declsOk hh.1 hh.2.2.2.2, ?_, ?_, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])

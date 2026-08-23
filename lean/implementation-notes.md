@@ -12113,3 +12113,56 @@ one does not.
 3. `StackCtx`/`FramesOk` at the two pushes, and `setLocal` at a block-local;
 4. the third `EntryOk` arm;
 5. the rule, its `inferOpen` mirror, and `inferOpen_factors`' case.
+
+## L248 — `ClosuresOk`: the whole frame-side price of a block call, and it is one conjunct
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean, `Proof/`-only. L247's item 1,
+built.
+
+```lean
+def KontClosure : Kont → Option Closure
+  | .iterK cl _ _ _ _ _ _ => some cl
+  | .blkFrameK _ _ _ cl _ => some cl
+  | _ => none
+
+def ClosuresOk (m : Machine) : Prop :=
+  ∀ κ ∈ m.kont, ∀ cl, KontClosure κ = some cl →
+    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none
+```
+
+`Inv`'s seventh conjunct, beside `BottomObj` and the frame/kont correspondence — a **machine**
+fact, mentioning no table and no type, so it sits outside the existential as those two do. `InvA`
+mirrors it.
+
+### Why it is this small
+
+Because the captured frame's **environment** is not among the things a block call needs. L232 made
+`ValueTy h v .any` true of every value *for this rung*, so the block body is typed with the
+enclosing locals at `.any` and the block frame's `FrameConforms` obligation at an outer name is
+`ValueTy h _ .any`. What is left is `ShallowChain`'s two conjuncts, and this is them. See L247 for
+the pricing that got here from L246's kont/stack relation.
+
+### Four transport lemmas, and every consecution case is one of them
+
+`ClosuresOk.transport` is the general shape — the frames may have grown or had a `locals`
+rewritten, and the continuation may have gained konts that carry no closure or lost some from the
+front. `konts` (frames unmoved), `pushFrame` (a `frameK` and a frame) and `ctl` are its instances.
+`setLocal_captured`/`setLocal_frames_size` are the two facts the assignment case needs: `setLocal`
+writes `locals`, so every frame's `captured` is where it was.
+
+### Two placement findings, and the second is the one that cost builds
+
+1. **`hcloTail`, once for the whole proof.** Almost every consecution case steps at
+   `{ m with kont := k }` for the tail the kont's head was peeled off, so a defaulted
+   `by assumption` cannot find `ClosuresOk m`. One `have` above the `rcases` on `m.ctl` bridges all
+   ~30 of them, and the equation naming the head is what each case already has under `hK`.
+2. **A defaulted parameter still consumes a positional argument.** L228's note says `hgl` is
+   *last* for exactly this reason; inserting `hclo` before it silently rebound every caller's
+   `hglob`. Second time this has been load-bearing, so it is now stated twice: the five `inv_*`
+   helpers take `hclo` **after** `hsuE`, and `inv_push`'s `hkc` (the pushed kont carries no
+   closure) after that.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty against L245's capture, third ratchet **19**.

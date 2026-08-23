@@ -518,6 +518,8 @@ def InvA (m : Machine) : Prop :=
     -- L199, and it rides along here for `BottomObj`'s reason: a machine fact, not a
     -- typing one, so it sits outside the existential in both invariants.
     framePopLabels m.kont = m.stack.dropLast ∧
+    -- L247, mirroring `Inv`.
+    ClosuresOk m ∧
     ∃ (F : Decls) (P : Assn) (θ : TyVar → Ty) (c : FrameCtx) (Γ : Env)
       (Γs : List (FrameCtx × Env)),
       Certifies F θ P m.heap ∧
@@ -546,12 +548,12 @@ def InvA (m : Machine) : Prop :=
     faithfulness is spent. -/
 theorem invA_iff_inv {m : Machine} : InvA m ↔ Inv m := by
   constructor
-  · rintro ⟨h1, h2, h3, h4, h5, h6, F, P, θ, c, Γ, Γs, hcert, hcst, hiv, hsco, hsup,
+  · rintro ⟨h1, h2, h3, h4, h5, h6, h7, F, P, θ, c, Γ, Γs, hcert, hcst, hiv, hsco, hsup,
       hf, hs, hgl, hctl⟩
-    exact ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, ⟨hcert.declsOk, hcst, hiv, hsco, hsup⟩,
+    exact ⟨h1, h2, h3, h4, h5, h6, h7, F, c, Γ, Γs, ⟨hcert.declsOk, hcst, hiv, hsco, hsup⟩,
       hf, hs, hgl, hctl⟩
-  · rintro ⟨h1, h2, h3, h4, h5, h6, F, c, Γ, Γs, hok, hf, hs, hgl, hctl⟩
-    exact ⟨h1, h2, h3, h4, h5, h6, F, declAssn F, fun _ => .int, c, Γ, Γs,
+  · rintro ⟨h1, h2, h3, h4, h5, h6, h7, F, c, Γ, Γs, hok, hf, hs, hgl, hctl⟩
+    exact ⟨h1, h2, h3, h4, h5, h6, h7, F, declAssn F, fun _ => .int, c, Γ, Γs,
       certifies_declAssn hok.1, hok.2.1, hok.2.2.1, hok.2.2.2.1, hok.2.2.2.2,
       hf, hs, hgl, hctl⟩
 

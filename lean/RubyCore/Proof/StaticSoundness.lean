@@ -123,6 +123,8 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L199: `Machine.init` builds one frame and an empty continuation, so both lists
     -- are trivial — `[] = [0].dropLast`.
     (by simp [Machine.init, Machine.initOn, framePopLabels]),
+    -- L247: the initial continuation is empty, so the clause is vacuous.
+    (by intro κ hm; simp [Machine.init, Machine.initOn] at hm),
     declsOf p, { cls := "Object" }, [], [],
     tableOk_declsOk tableOk_initHeap classOk_initHeap, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames

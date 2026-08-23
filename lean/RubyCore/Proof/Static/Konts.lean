@@ -1056,6 +1056,103 @@ theorem GlobalsOk.congr {D : Decls} {h h' : Heap} {gs : List (String × Value)}
     (ha : TypeAgree h h') (hg : GlobalsOk D h gs) : GlobalsOk D h' gs :=
   fun x p σ hp hf hd => ValueTy.congr ha (hg x p σ hp hf hd)
 
+/-- **The closure a continuation carries, if it carries one** (L247). Two constructors
+    do: `iterK` remembers the block a native iterator is driving, and `blkFrameK`
+    remembers it so that `redo` can re-enter the same invocation. -/
+def KontClosure : Kont → Option Closure
+  | .iterK cl _ _ _ _ _ _ => some cl
+  | .blkFrameK _ _ _ cl _ => some cl
+  | _ => none
+
+/-- **Every closure the continuation mentions captures a live, non-block frame** (L247).
+
+    This is the *whole* frame-side fact a block call needs, and it is small because the
+    captured frame's **environment** is not among the things it has to supply: the block
+    body is typed with the enclosing locals at `.any` (L232's clause, written for exactly
+    this), so the block frame's `FrameConforms` obligation at an outer name is
+    `ValueTy h _ .any`, which holds for every value. What is left is `ShallowChain`'s two
+    conjuncts, and they are these.
+
+    A **list-wide** predicate over the kont rather than a positional pairing of kont
+    against stack — which is what L246 priced and L247 withdrew. Preserving it is three
+    observations: frames only grow, `setLocal` writes `locals` and not `captured`, and
+    the one step that pushes such a kont pushes it with `cl.captured = m.stack.headD 0`,
+    whose non-blockness is `StackCtx`'s L243 clause. -/
+def ClosuresOk (m : Machine) : Prop :=
+  ∀ κ ∈ m.kont, ∀ cl, KontClosure κ = some cl →
+    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none
+
+theorem ClosuresOk.cons {m : Machine} {κ : Kont} {ctl : Ctl}
+    (hκ : KontClosure κ = none) (h : ClosuresOk m) :
+    ClosuresOk (Interp.withKont m ctl κ) := by
+  intro κ' hmem cl hcl
+  rcases List.mem_cons.mp hmem with rfl | hmem'
+  · exact absurd hcl (by rw [hκ]; simp)
+  · exact h κ' hmem' cl hcl
+
+theorem ClosuresOk.ctl {m : Machine} {ctl : Ctl} (h : ClosuresOk m) :
+    ClosuresOk (Interp.withCtl m ctl) := h
+
+/-- **The one shape every consecution case needs** (L247): the frames may have grown
+    (or had a `locals` rewritten), and the continuation may have gained konts that carry
+    no closure or lost some from the front. Every step in the fragment is an instance,
+    which is why the sites take one lemma rather than one argument each. -/
+theorem ClosuresOk.transport {m m' : Machine} (h : ClosuresOk m)
+    (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none)
+    (hsz : m.frames.size ≤ m'.frames.size)
+    (hget : ∀ p, p < m.frames.size →
+      (m'.frames.getD p default).captured = (m.frames.getD p default).captured) :
+    ClosuresOk m' := by
+  intro κ hmem cl hcl
+  rcases hk κ hmem with hin | hnone
+  · obtain ⟨hlt, hcap⟩ := h κ hin cl hcl
+    exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [hget _ hlt]; exact hcap⟩
+  · exact absurd hcl (by rw [hnone]; simp)
+
+/-- The activation push: one `frameK` (which carries no closure) and one frame. -/
+theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
+    (h : ClosuresOk m) (hk : m'.kont = .frameK fid :: m.kont)
+    (hf : m'.frames = m.frames.push f) : ClosuresOk m' :=
+  h.transport
+    (by
+      intro κ hmem
+      rw [hk] at hmem
+      rcases List.mem_cons.mp hmem with rfl | hin
+      · exact Or.inr (by simp [KontClosure])
+      · exact Or.inl hin)
+    (by rw [hf, Array.size_push]; omega)
+    (by intro p hp; rw [hf, getD_push_lt _ _ _ hp])
+
+/-- `setLocal` writes a frame's `locals`; every frame's `captured` is where it was. -/
+theorem setLocal_captured (m : Machine) (x : String) (v : Value) (p : ObjId) :
+    ((m.setLocal x v).frames.getD p default).captured
+      = (m.frames.getD p default).captured := by
+  show ((m.frames.set! _ _).getD p default).captured = _
+  by_cases hq : p = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+      (m.frames.size + 1)
+  · by_cases hlt : p < m.frames.size
+    · rw [hq, getD_set!_self _ _ _ (hq ▸ hlt)]
+    · simp only [Array.getD, Array.set!]
+      rw [dif_neg (by simpa using hlt), dif_neg hlt]
+  · rw [getD_set!_ne _ _ _ _ hq]
+
+theorem setLocal_frames_size (m : Machine) (x : String) (v : Value) :
+    (m.setLocal x v).frames.size = m.frames.size := by
+  show (m.frames.set! _ _).size = _
+  simp [Array.set!]
+
+/-- The common instance: nothing about the frames moved. -/
+theorem ClosuresOk.konts {m m' : Machine} (h : ClosuresOk m)
+    (hf : m'.frames = m.frames)
+    (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none) : ClosuresOk m' :=
+  h.transport hk (by rw [hf]; exact Nat.le_refl _) (by intro p _; rw [hf])
+
+/-- The kont shrinks: a `∀` over a sublist. -/
+theorem ClosuresOk.tail {m : Machine} {κ : Kont} {k : List Kont} (hk : m.kont = κ :: k)
+    (h : ClosuresOk m) : ∀ κ' ∈ k, ∀ cl, KontClosure κ' = some cl →
+      cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none :=
+  fun κ' hmem => h κ' (by rw [hk]; exact List.mem_cons_of_mem _ hmem)
+
 /-- **The invariant** handed to `invariant_sound_from`.
 
     **`Saturated` is the third heap conjunct since L148**, and it is here for one
@@ -1107,6 +1204,10 @@ def Inv (m : Machine) : Prop :=
     -- no `Ty` — which is why it sits out here beside `BottomObj` rather than inside
     -- the existential.
     framePopLabels m.kont = m.stack.dropLast ∧
+    -- **L247: every closure on the continuation captures a live, non-block frame.** A
+    -- machine fact like the two above it, and the *whole* frame-side price of a block
+    -- call — see `ClosuresOk` for why the captured frame's environment is not part of it.
+    ClosuresOk m ∧
     ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
@@ -1491,9 +1592,14 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
-    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
+    -- **L247's conjunct, and it is placed *last*** — after every other defaulted
+    -- parameter — because a defaulted parameter still consumes a positional argument,
+    -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
+    -- the same thing about `hgl`; this is the second time it has been load-bearing.
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', Γk, hinf, by simp, hsuE, hk⟩⟩
 
 /-- **The same, at a *wider* continuation** (L193) — `inv_eval` with the identity
@@ -1515,9 +1621,14 @@ theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
-    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
+    -- **L247's conjunct, and it is placed *last*** — after every other defaulted
+    -- parameter — because a defaulted parameter still consumes a positional argument,
+    -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
+    -- the same thing about `hgl`; this is the second time it has been load-bearing.
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ', Γ', F', Γk, hinf, hsub, hsuE, hk⟩⟩
 
 theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
@@ -1534,9 +1645,10 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
-    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withCtl m (.value v)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl, ⟨τ, Γk, hv, hsuE, hk⟩⟩
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl, ⟨τ, Γk, hv, hsuE, hk⟩⟩
 
 theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {Γk : Env} {e : Expr} {τ : Ty} {Γ' : Env} {F' : Decls} {k : Kont}
@@ -1553,9 +1665,15 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
-    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
+    -- **L247's conjunct, and it is placed *last*** — after every other defaulted
+    -- parameter — because a defaulted parameter still consumes a positional argument,
+    -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
+    -- the same thing about `hgl`; this is the second time it has been load-bearing.
+    (hkc : KontClosure k = none := by simp [KontClosure])
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', Γk, hinf, by simp, hsuE, hk⟩⟩
 
 /-- **`inv_push` at a wider continuation** (L193), the `inv_eval_sub` of the
@@ -1577,9 +1695,15 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- reorders a `by simp` argument. The default is elaborated in the *caller's* context,
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
-    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
+    -- **L247's conjunct, and it is placed *last*** — after every other defaulted
+    -- parameter — because a defaulted parameter still consumes a positional argument,
+    -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
+    -- the same thing about `hgl`; this is the second time it has been load-bearing.
+    (hkc : KontClosure k = none := by simp [KontClosure])
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ', Γ', F', Γk, hinf, hsub, hsuE, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
@@ -1690,7 +1814,8 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     -- And that the allocation left the globals alone, which is `rfl` at every caller.
     (hgv : m'.globals = m.globals := by rfl)
-    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) :
+    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
+    (hclo : ClosuresOk m := by assumption) :
     Inv (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
   refine ⟨NoHook_grow hg hsat hh,
@@ -1698,6 +1823,12 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
+    -- L247: an allocating step moves neither the kont nor the frames.
+    show ClosuresOk (withCtl m' (.value v)) by
+      intro κ hmem cl hcl
+      rw [show (withCtl m' (.value v)).kont = m.kont from by simp [withCtl, hko]] at hmem
+      have := hclo κ hmem cl hcl
+      simpa [withCtl, hfr] using this,
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
