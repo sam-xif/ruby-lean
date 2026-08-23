@@ -12352,3 +12352,55 @@ captured frame's facts ride on the kont (this).
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty, third ratchet **19**.
+
+## L252 — the deferred bill: `x = 1` inside a block, refused by the rule and guarded in the invariant
+
+Out of fragment **19 → 19**. `--check` byte-identical, `--self-test` all agree, axiom-clean. L243's
+bill, paid — and with it the **last** of the block frame's frame-side prerequisites.
+
+### What L243 deferred, restated
+
+`StackCtx`'s L243 clause is `(frames.getD fid default).captured = none`, and it is **false at a
+block frame**. What it was load-bearing for is `setLocal`, not `getLocal`:
+
+> `Machine.setLocal` walks the `captured` chain and mutates the frame that already binds the name —
+> which for a block frame may be the **enclosing** activation, invalidating that frame's own entry
+> in `FramesOk` at a type its own environment still claims.
+
+So the clause is guarded on `c.inBlock = false` and `infer`'s `.vasgn .lvar` arm grows the matching
+guard. Free today; the block rule is what will make it bite. (The widening it does *not* refuse is
+an assignment to a **block-local** — a name first assigned inside the block, which `callClosure`
+pre-binds in the block frame's own `locals` so `setLocal.owner` stops there. That needs the name,
+not the flag; L247.)
+
+### `KontOk.asgn` carries the flag, and that is where the delivery reads it
+
+The guard is checked at the **eval** step and spent at the **delivery**, two steps apart, so it has
+to ride on the kont — `c.inBlock = false` as `KontOk.asgn`'s first premise, free at its one
+construction site because the eval case's split hands it over. Same shape as `asgnIvar`'s
+`selfCls.isSome` premise (L191), and for the same reason.
+
+### `infer.induct` renumbered, and the recovery cost is worth recording
+
+This is the **first guard in the chain that sits inside an arm** rather than inside an existing
+`if`, so the arm's alternatives went from two (`some`/`none`) to three (`true`, `false`+`some`,
+`false`+`none`) and every case number after it moved by **one**. Recovery, in the order it worked:
+
+1. `sed` every `| caseN` with `N ≥ 13` to `N+1` — **32 of the 33 numbered alternatives in
+   `Mono.lean` were then correct on the first build.** The threshold is one above the last
+   pre-`vasgn` alternative, which `Mono.lean`'s own comments name (`case10` is `vcall`).
+2. The one that was not is the arm itself: it gained a binder for the guard's branch, and the
+   equation it stores is now under that branch — so the case takes `hib` and every `simp only
+   [infer, …]` in it needs `hib` in the list.
+3. `Preservation.lean`'s eval case gained one `split`: inside a block the rule answers `none`, so
+   that branch is the contradiction and the old proof is the `false` branch.
+
+> **`FrameOk` stops being free**, and that is the change with the widest reach. What the proof can
+> have unconditionally is now **`FrameShallow`** — `m.stack ≠ []`, `curFid < size`, and a shallow
+> chain — which is enough for every *read* and for the twenty `hf.1` uses. Only the `asgnK`
+> delivery needs the write, and it has the flag.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty, `--self-test` all agree (owed: `infer` changed), third ratchet **19**.

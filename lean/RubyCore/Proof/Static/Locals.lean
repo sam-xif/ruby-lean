@@ -808,7 +808,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- conditional on a `FrameCtx` block channel, and `infer`'s `.vasgn .lvar` arm
       -- grows the guard that reads it. Nothing else about a block frame is blocked by
       -- the predicates any more.
-      (frames.getD fid default).captured = none ∧
+      (c.inBlock = false → (frames.getD fid default).captured = none) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -987,17 +987,18 @@ theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
 /-- The empty chain, read off the context stack (L243). -/
 theorem StackCtx.captured_none {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
-    (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
-    (frames.getD fid default).captured = none := hs.2.2.2.2.2.2.2.1
+    (hs : StackCtx h frames (fid :: fids) (c :: cs)) (hb : c.inBlock = false) :
+    (frames.getD fid default).captured = none := hs.2.2.2.2.2.2.2.1 hb
 
 /-- …and at the machine, which is the shape `step_ok` reads it in. -/
 theorem StackCtx.curCaptured {m : Machine} {c : FrameCtx} {cs : List FrameCtx}
-    (hs : StackCtx m.heap m.frames m.stack (c :: cs)) : (curFrame m).captured = none := by
+    (hs : StackCtx m.heap m.frames m.stack (c :: cs)) (hb : c.inBlock = false) :
+    (curFrame m).captured = none := by
   cases hst : m.stack with
   | nil => rw [hst] at hs; exact absurd hs (by simp [StackCtx])
   | cons fid fids =>
     rw [hst] at hs
-    simpa [curFrame, curFid, hst] using hs.captured_none
+    simpa [curFrame, curFid, hst] using hs.captured_none hb
 
 /-- **Conformance narrows with the environment** (L218). `FrameConforms`' third clause is
     a `∀` over `Γ`'s lookups, so a weaker `Γ` is a weaker claim and the lemma is one

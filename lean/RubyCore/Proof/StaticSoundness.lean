@@ -145,7 +145,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L198: the toplevel context declares no return type, so the sixth clause is the
     -- right disjunct — a `return` at toplevel has no target and the desugarer gates it.
     -- L207: and it names no method, so the seventh is vacuous too.
-    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), rfl, trivial⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), fun _ => rfl, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact fun _ => (show ClassOk (Machine.init p).heap from

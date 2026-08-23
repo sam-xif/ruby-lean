@@ -90,7 +90,7 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case99 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case100 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -290,7 +290,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact asgnFreeAll esa = true → ∀ τs Γ' D₀, inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) →
       Γ' = Γa ∧ ∀ Γ₂, SubEnv Γa Γ₂ → inferArgs Da Γ₂ esa topa ctxa = some (τs, Γ₂, D₀)
   -- **`if`** (case52): the condition fixes the environment and `inferIf` answers it.
-  | case52 D Γ top ctx c t els τc Γ₁ D₁ hc ih2 ih1 =>
+  | case53 D Γ top ctx c t els τc Γ₁ D₁ hc ih2 ih1 =>
     intro hasg τ Γ' D₀ h
     have hac : asgnFree c = true := by
       unfold asgnFree at hasg; simp only [Bool.and_eq_true] at hasg; exact hasg.1.1
@@ -304,7 +304,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **`next`** (case94), and it is the one arm whose *guard* mentions the environment: the
   -- rule checks `subEnvB Γl Γ`, and at a wider `Γ₂` that check still passes — which is one
   -- transitivity, and the reason the statement is over `SubEnv` in the first place.
-  | case94 D Γ ctx Γl hil hse =>
+  | case95 D Γ ctx Γl hil hse =>
     intro hasg τ Γ' D₀ h
     simp only [infer, hil, hse, if_true, reduceIte, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
@@ -313,7 +313,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [infer, hil, hse2, if_true, reduceIte]
   -- **The `if` join** (case99): the two branches answer the same environment, which the arm
   -- already checked, so the join transports unchanged.
-  | case99 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hag ih2 ih1 =>
+  | case100 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hag ih2 ih1 =>
     intro hasg τ Γ' D₀ h
     obtain ⟨rfl, hmT⟩ := ih2 hasg.1 _ _ _ hT
     obtain ⟨rfl, hmE⟩ := ih1 (by simpa [asgnFreeOpt] using hasg.2) _ _ _ hE
@@ -566,7 +566,7 @@ theorem infer_table_loop : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (c
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case99 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case100 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -784,18 +784,20 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hsome, SubDecls.sigOf_eq hs hsig]⟩
   -- **Assignment.** One IH, and the `rfl` it returns is what lines the output
   -- tables up — which is why the two conclusions had to be proved together.
-  | case13 D Γ top ctx x rhs τr Γ₁ D₁ hrhs ih =>
+  | case14 D Γ top ctx x rhs hib τr Γ₁ D₁ hrhs ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hs hdf _ _ _ hrhs
-    simp only [infer, hrhs, Option.some.injEq, Prod.mk.injEq] at h
+    -- L252: the arm is under the block guard now, so the equation has to be reduced at
+    -- the *same* branch before it can be inverted.
+    simp only [infer, hib, hrhs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
-    exact ⟨rfl, by simp [infer, hm]⟩
+    exact ⟨rfl, by simp [infer, hib, hm]⟩
   -- **`@x = e`** (L191/L196). Two accepting arms since the write checks the table:
   -- the declared case, where the widening has to preserve the *conformance* too, and
   -- the undeclared one, where there is nothing to conform to. `SubDecls`' ivar half
   -- is an equality (as its constant half is), so both are the rhs's IH plus a rewrite.
-  | case15 D Γ top ctx name rhs sc hsome τr Γ₁ D₁ hrhs σ hiv hsub ih =>
+  | case16 D Γ top ctx name rhs sc hsome τr Γ₁ D₁ hrhs σ hiv hsub ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hs hdf _ _ _ hrhs
@@ -803,7 +805,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hm, hs.ivarTy_eq, hiv, hsub]⟩
-  | case17 D Γ top ctx name rhs sc hsome τr Γ₁ D₁ hrhs hiv ih =>
+  | case18 D Γ top ctx name rhs sc hsome τr Γ₁ D₁ hrhs hiv ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hs hdf _ _ _ hrhs
@@ -812,7 +814,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hsome, hm, hs.ivarTy_eq, hiv]⟩
   -- **`@x`** (L196). The answer comes out of the table, so like `case33`'s constant
   -- read this case *uses* `SubDecls` — through its ivar half, an equality.
-  | case20 D Γ top ctx x sc hsome σ hiv =>
+  | case21 D Γ top ctx x sc hsome σ hiv =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hsome, hiv, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
@@ -820,7 +822,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary send**, and the only case where `SubDecls` is *used* rather than
   -- carried: the signature has to be readable at the bigger table, which is what
   -- the relation was defined to say.
-  | case23 D Γ top ctx recv mname arg args τr Γ₁ D₁ hrecv τs Γ₂ D₂ hargs ps τret
+  | case24 D Γ top ctx recv mname arg args τr Γ₁ D₁ hrecv τs Γ₂ D₂ hargs ps τret
       hsig hsub ihR ihA =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
@@ -831,7 +833,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hmR, hmA, SubDecls.sigOf_eq hs hsig, hsub]⟩
   -- **The zero-argument send.** Same shape, one fewer subexpression.
-  | case28 D Γ top ctx recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
+  | case29 D Γ top ctx recv mname τr Γ₁ D₁ hrecv τret hsig ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hrecv
@@ -843,7 +845,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- case — same receiver from the context, same `SubDecls.sigOf_eq` — which is
   -- the monotonicity half of the claim that the two rules differ only in a
   -- `SendSite`.
-  | case31 D Γ top ctx mname c hsome τret hsig =>
+  | case32 D Γ top ctx mname c hsome τret hsig =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hsome, hsig, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
@@ -851,7 +853,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **The unary written receiverless call** (L171). One subexpression and the
   -- signature read at the table it leaves — the explicit unary send's case with
   -- the receiver supplied by the context instead of by an expression.
-  | case34 D Γ top ctx mname arg args c hsome τs Γ₁ D₁ hargs ps τret hsig hsub ih =>
+  | case35 D Γ top ctx mname arg args c hsome τs Γ₁ D₁ hargs ps τret hsig hsub ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree, defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmA⟩ := ih F' hs (by simp_all [defFree, defFreeAll]) _ _ _ hargs
@@ -864,7 +866,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **L195: the answer comes out of the table**, so this case now *uses* `SubDecls`
   -- — through its constant half, which is an equality. Before, the rule read a global
   -- list and the case was as inert as a literal's.
-  | case39 D Γ top ctx n τc hre =>
+  | case40 D Γ top ctx n τc hre =>
     intro F' hs hdf τ Γ' D₀ h
     rw [show infer D Γ (.const n) top ctx = some (τc, Γ, D) from by
       simp only [infer, hre]] at h
@@ -874,7 +876,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **`super()`** (L212). The answer comes out of the `supers` table, so the case
   -- *uses* `SubDecls` — through its fifth half, which is an equality (`superDecl_eq`).
   -- Same shape as `.const`'s (case39): no IH, one table read, two guards to recompute.
-  | case71 D Γ top ctx mn hmeth hne dd hrow hemp =>
+  | case72 D Γ top ctx mn hmeth hne dd hrow hemp =>
     intro F' hs hdf τ Γ' D₀ h
     rw [show infer D Γ (.super' [] none) top ctx = some (dd.ret, Γ, D) from by
       simp only [infer, hmeth, hrow, if_pos hne, if_pos hemp]] at h
@@ -885,7 +887,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **`super(args)`** (L212). The argument list's IH plus the same table read, and the
   -- read is at the table the *last* argument leaves — which is why the IH's `D₀ = D`
   -- half has to be spent before `superDecl_eq` can fire.
-  | case76 D Γ top ctx arg args mn hmeth hne τs Γ₂ D₂ hargs dd hrow hsub ih =>
+  | case77 D Γ top ctx arg args mn hmeth hne τs Γ₂ D₂ hargs dd hrow hsub ih =>
     intro F' hsb hdf τ Γ' D₀ h
     simp only [defFree, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hsb (by simp_all [defFree]) _ _ _ hargs
@@ -899,7 +901,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- the *context* instead of the expression, so it has no IH at all — and it uses
   -- `SubDecls` twice: `superDecl_eq` for the row and nothing for `ctx.params`, which is a
   -- parameter and not a table.
-  | case82 D Γ top ctx mn ps hpar hmeth hne dd hrow hsub =>
+  | case83 D Γ top ctx mn ps hpar hmeth hne dd hrow hsub =>
     intro F' hs hdf τ Γ' D₀ h
     rw [show infer D Γ (.zsuper none) top ctx = some (dd.ret, Γ, D) from by
       simp only [infer, hmeth, hpar, hrow, if_pos hne, if_pos hsub]] at h
@@ -910,7 +912,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **An array literal** (L174). The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.
-  | case41 D Γ top ctx es τ0 Γ₁ D₁ hs ih =>
+  | case42 D Γ top ctx es τ0 Γ₁ D₁ hs ih =>
     intro F' hsub hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     obtain ⟨rfl, hm⟩ := ih F' hsub hdf _ _ _ hs
@@ -918,12 +920,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hm]⟩
   -- `seq` is `inferSeq` definitionally, so this case is the third motive verbatim.
-  | case51 D Γ top ctx es ih =>
+  | case52 D Γ top ctx es ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree] at hdf
     simp only [infer] at h ⊢
     exact ih F' hs hdf _ _ _ h
-  | case52 D Γ top ctx c t els τc Γ₁ D₁ hc ihC ihI =>
+  | case53 D Γ top ctx c t els τc Γ₁ D₁ hc ihC ihI =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFree_if, Bool.and_eq_true] at hdf
     obtain ⟨⟨hc1, ht1⟩, he1⟩ := hdf
@@ -933,7 +935,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmI]⟩
   -- **The loop**, where the stability side conditions do the work: both come back
   -- as `rfl`s, so the table at `F'` is stable for the same reason it was at `F`.
-  | case54 D Γ top ctx c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
+  | case55 D Γ top ctx c body τc Γc Dc hc hstc τb Γb Db hbody hstb ihC ihB =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, rfl⟩ := hstc
     obtain ⟨rfl, rfl⟩ := hstb
@@ -946,7 +948,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case99 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case100 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -957,7 +959,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin, hΓ, hΓ2]⟩
-  | case102 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case103 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨hsub1, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -967,17 +969,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hjoin, hsub1]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case105 D Γ top ctx =>
+  | case106 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case106 D Γ top ctx e ih =>
+  | case107 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case107 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case108 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -990,18 +992,18 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **L230's `inferElems`** — the array-element traversal, three accepting arms. The
   -- splat arm is the non-splat one with the operand in place of the element and its type
   -- pinned to `Array` by the pattern, which is why it has one binder fewer.
-  | case109 D Γ top ctx =>
+  | case110 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferElems]⟩
-  | case110 D Γ top ctx rest o Γ₁ D₁ ho ihO ihR =>
+  | case111 D Γ top ctx rest o Γ₁ D₁ ho ihO ihR =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, hmO⟩ := ihO F' hs (by simp_all [defFreeAll, defFree]) _ _ _ ho
     simp only [inferElems, ho] at h
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll, defFree]) _ _ _ h
     exact ⟨rfl, by simp [inferElems, hmO, hmR]⟩
-  | case112 D Γ top ctx ee rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case113 D Γ top ctx ee rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll, defFree]) _ _ _ he
     simp only [inferElems, he] at h
@@ -1014,12 +1016,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case114 D Γ top ctx =>
+  | case115 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case115 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case116 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -1033,7 +1035,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- match; and one that half-matches leaves *unsolved goals* rather than failing, which
   -- aborts `first` instead of falling through to the next alternative. A named case is
   -- immune to both.
-  | case87 D Γ top ctx x σ hgt hpg =>
+  | case88 D Γ top ctx x σ hgt hpg =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hpg, hgt, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
@@ -1041,7 +1043,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **And the write** (case89/case90 — two cases, because the equation compiler splits
   -- the guard pair and the right-hand side's own `match` separately). Same shape with
   -- `case13`'s IH step in the middle.
-  | case89 D Γ top ctx x rhs hpg τr Γr Dr hq0 σ hgt hsub ih1 =>
+  | case90 D Γ top ctx x rhs hpg τr Γr Dr hq0 σ hgt hsub ih1 =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, hm⟩ := ih1 F' hs (by simpa [defFree] using hdf) _ _ _ hq0
     simp only [infer, hpg, hq0, hgt, hsub, if_true, reduceIte, Option.some.injEq,
@@ -1052,11 +1054,11 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `case91` the *undeclared* one, which is the needed-declaration branch. Both make the
   -- rule answer `none`, so the hypothesis is false; kept explicit rather than left to the
   -- `exfalso` alternatives for their sibling's reason.
-  | case90 D Γ top ctx x rhs hpg τr Γr Dr hq0 σ hgt hsub _ih1 =>
+  | case91 D Γ top ctx x rhs hpg τr Γr Dr hq0 σ hgt hsub _ih1 =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hpg, hq0, hgt, if_neg hsub] at h
     exact absurd h (by simp)
-  | case91 D Γ top ctx x rhs hpg τr Γr Dr hq0 hgt _ih1 =>
+  | case92 D Γ top ctx x rhs hpg τr Γr Dr hq0 hgt _ih1 =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [infer, hpg, hq0, hgt] at h
     exact absurd h (by simp)

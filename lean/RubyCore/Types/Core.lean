@@ -418,10 +418,28 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ, D)
       | _ => none
     | none => none
+  -- **`ctx.inBlock = false`** (L252), and it is the *one* construct a block frame cannot
+  -- host. `Machine.setLocal` walks the `captured` chain and mutates the frame that
+  -- already binds the name — which for a block frame may be the **enclosing** activation,
+  -- invalidating that frame's own entry in `FramesOk` at a type its environment still
+  -- claims. So `StackCtx`'s empty-chain clause is guarded on the same flag, and this is
+  -- the rule that makes the guard enough.
+  --
+  -- **A `match`, not an `if`** (L228's rule): `simp only [infer]` unfolds an `ite` to a
+  -- `Decidable.rec`, after which the guard's hypothesis is unusable — and this arm's
+  -- consecution case is exactly where that hypothesis is spent.
+  --
+  -- What it does *not* refuse is an assignment to a **block-local** — a name first
+  -- assigned inside the block, which `callClosure` pre-binds in the block frame's own
+  -- `locals` so `setLocal.owner` stops there. That is the widening the block rule wants
+  -- and it needs the name, not the flag; see `implementation-notes.md` L247.
   | .vasgn .lvar x rhs =>
-    match infer D Γ rhs top ctx with
-    | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
-    | none => none
+    match ctx.inBlock with
+    | true => none
+    | false =>
+      match infer D Γ rhs top ctx with
+      | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
+      | none => none
   -- **`@x = e`** (L191). The rule is a *guard* plus the right-hand side's own
   -- answer, and the guard is `selfCls`.
   --

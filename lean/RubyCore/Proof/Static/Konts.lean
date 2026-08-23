@@ -110,7 +110,13 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γ) :: Γs) τ (.seqK (e :: es) :: k)
   /-- Assignment binds `x` at the in-flight type and re-yields the value. -/
   | asgn {D h c Γ Γs τ τw x k Γk} :
-      subTy τ τw = true →
+      -- **L252: the activation is not a block.** `applyKont`'s delivery runs
+      -- `Machine.setLocal`, which walks the `captured` chain and may write an
+      -- **enclosing** frame; `StackCtx`'s empty-chain clause is guarded on the same flag
+      -- and is what the delivery reads it through. Free at the one construction site,
+      -- because `infer`'s `.vasgn .lvar` arm now refuses inside a block, so the eval
+      -- case's split hands the fact over.
+      c.inBlock = false → subTy τ τw = true →
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (envSet Γ x τ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
@@ -506,7 +512,7 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           have hq : _ = D := inferSeq_table_ret (ctx := c) (by rw [hσ]; simp) htop hs
           subst hq
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
-      | asgn hw hk' _ => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
+      | asgn hib hw hk' _ => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | asgnIvar hsc hw hcf hk' _ => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | asgnGvar hpg hgt hcf hw hk' _ =>
           exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
@@ -718,7 +724,7 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       | blkFrameK _ _ _ hk' => exact .popBlk (KontOk.raiseOk hk')
       | seqNil hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | seqCons hs hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
-      | asgn hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
+      | asgn hib hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | asgnIvar hsc hw hcf hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | asgnGvar hpg hgt hcf hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | ifK hi hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
@@ -787,7 +793,7 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
           have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
           subst hq
           exact .skip trivial (KontOk.nxtOk hk' hil htop)
-      | asgn hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
+      | asgn hib hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | asgnIvar hsc hw hcf hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | asgnGvar hpg hgt hcf hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | ifK hi hw hk' _ =>
@@ -913,7 +919,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   | blkFrameK hr hl hw _ ih => intro ha; exact .blkFrameK hr hl hw (ih ha)
   | seqNil hw _ hsu ih => intro ha; exact .seqNil hw (ih ha) hsu
   | seqCons hs hw _ hsu ih => intro ha; exact .seqCons hs hw (ih ha) hsu
-  | asgn hw _ hsu ih => intro ha; exact .asgn hw (ih ha) hsu
+  | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
   | asgnIvar hsc hw hcf _ hsu ih => intro ha; exact .asgnIvar hsc hw hcf (ih ha) hsu
   | asgnGvar hpg hgt hcf hw _ hsu ih => intro ha; exact .asgnGvar hpg hgt hcf hw (ih ha) hsu
   | ifK hi hw _ hsu ih => intro ha; exact .ifK hi hw (ih ha) hsu
