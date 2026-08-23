@@ -96,7 +96,9 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       rw [show m.currentFrame = m.frames.getD fid default by
         simp [Machine.currentFrame, hst]]
       exact this.1
-  rcases htab.1 _ mname _ (sigOf_declFor hsg) with hbi |
+  -- L254: `EntryOk.blockless` is what refutes the iterator arm at a rule that read the
+  -- row through `sigOf`, which refuses a block-taking one.
+  rcases (htab.1 _ mname _ (sigOf_declFor hsg)).blockless with hbi |
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
@@ -994,8 +996,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
           obtain ⟨rest, hrest⟩ := hchain md
-          refine Or.inr ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
-            rfl, by rw [hbd]; exact hdf.2.1, ?_⟩
+          refine Or.inr (Or.inl ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_,
+            by rw [hown]; exact hctx', rfl,
+            rfl, by rw [hbd]; exact hdf.2.1, ?_⟩)
           -- L241: the row's key is `UserKey.cls` — the type names exactly its class, which
           -- is what lets a *call* recover the class the body was checked in (F1b.11). It
           -- used to be `rfl` at an equation; the relation's first shape is that equation.
@@ -1935,7 +1938,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       dsimp only
       -- **The two witness kinds land different steps** (L157), which is why
       -- `EntryOk` is a disjunction and why this case is the first to case on it.
-      rcases htab.1 τ mname _ (sigOf_declFor hsg) with hbi |
+      rcases (htab.1 τ mname _ (sigOf_declFor hsg)).blockless with hbi |
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
       · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
@@ -2126,7 +2129,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- with arguments is a builtin send, necessarily — at every arity.
         have hbi : BuiltinEntryOk m.heap τr mname
             { params := psacc ++ [τp], ret := τret } := by
-          rcases htab.1 τr mname _ (sigOf_declFor (by simpa using hsg)) with
+          rcases (htab.1 τr mname _ (sigOf_declFor (by simpa using hsg))).blockless with
             hb | ⟨_, _, _, _, _, hdp, _, _⟩
           · exact hb
           · exact absurd hdp (by simp)

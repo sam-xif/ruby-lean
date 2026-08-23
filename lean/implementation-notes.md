@@ -12465,3 +12465,63 @@ answers into a fresh array and needs the element claim `Ty` cannot yet write (`a
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** (and no
 `sorry` in the tree), `--check` diff empty, third ratchet **19**.
+
+## L254 — the third `EntryOk` arm, and the "opposite polarity" bill turns out to be already paid
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean, `Proof/`-only. L249's item 4.
+
+```lean
+def MissesAt (h : Heap) (k : ObjId) (mname : String) : Prop := lookupIn h k mname = none
+
+def IterEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
+  τr = .cls "Array" ∧ mname = "each" ∧ d.params = [] ∧ d.ret = .cls "Array" ∧
+  (∃ br, d.blk = some { params := [.any], ret := br }) ∧
+  ∀ k, TyClass h τr k → MissesAt h k mname
+
+def EntryOk … := BuiltinEntryOk … ∨ UserEntryOk … ∨ IterEntryOk …
+```
+
+### The bill L244 named, and why it costs nothing
+
+> `tryIterator` is reached only from `dispatchMiss`, so a block row's witness says the name is
+> **not** there — the opposite polarity from both existing arms, and a clause
+> `DeclsOk_defineMethod` has to preserve.
+
+It preserves it for free, and the reason is a guard that has been in `infer`'s `def` rule since
+F1a: **`declaresName D name = false`**. So the *declared* name and the *installed* one are disjoint
+at every `def` the fragment admits, and a miss at one name survives an installation at another —
+the same `hne` the two resolving arms already use, read in the other direction. `PlainGrow` needs
+no side condition at all (an allocation cannot install a method) and `IvarOnly` is one
+`lookupIn_eq`.
+
+### `bs.params = [.any]`, and it is what keeps `Ty.arrayOf` off the critical path
+
+`KontOk.iterK`'s *every remaining element has the block's parameter types* premise becomes
+`ValuesTy h a [.any]`, which holds of **every** value — so the arm needs no claim about the
+array's contents. A precise element type would need `ValueTy h recv (.arrayOf σ)`, which is L239's
+arm and the dispatch rung behind it. This is HANDOFF correction 1, cashed at the place it was
+about.
+
+### `EntryOk.blockless`, and why it is one lemma rather than three `rcases` arms
+
+Every *blockless* rule reads its row through `sigOf`, which refuses a block-taking row (L242), so
+`sigOf_declFor` concludes at `blk := none` and the iterator arm is refuted by one projection.
+Stated once:
+
+```lean
+theorem EntryOk.blockless (he : EntryOk D h τr mname { params := ps, ret := τret, blk := none }) :
+    BuiltinEntryOk … ∨ UserEntryOk …
+```
+
+The three send cases then keep the two-way `rcases` they had, and the diff at each is one `.blockless`.
+
+### What is left
+
+The block-send step's consecution case (L244's five reductions plus `Inv` at the far end, which is
+L253's cons case with a heap allocation in front of it) and the rule. **The census moves at the end
+of the rule.**
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty, third ratchet **19**.

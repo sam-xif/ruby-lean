@@ -498,13 +498,67 @@ def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDe
   ∃ md c, UserKey τr c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
     className h md.owner = c ∧ UserConforms D c mname md d
 
-/-- A declared method is satisfied by **either** kind of witness. A disjunction
-    rather than a generalization because the two produce *different steps*:
+/-- **The name misses on this dispatch class** (L254), and it is the *opposite polarity*
+    from `ResolvesAt`/`ResolvesUser`.
+
+    `tryIterator` is reached only from `dispatchMiss`, which `invokeDispatch` reaches only
+    when `lookup` answers `none`. So a block row's witness has to say the name is **not**
+    there — and a program that reopened `Array` and defined `each` would take a different
+    step entirely.
+
+    That reads like an obligation `defineMethod` cannot preserve, and it is not: `infer`'s
+    `def` rule requires `declaresName D name = false`, so the *declared* name and the
+    *installed* one are disjoint at every `def` the fragment admits, and a miss at one
+    name survives an installation at another. The same argument `DeclsOk_defineMethod`
+    already makes for the two resolving arms, read in the other direction. -/
+def MissesAt (h : Heap) (k : ObjId) (mname : String) : Prop :=
+  lookupIn h k mname = none
+
+/-- **A block-taking row, witnessed by a native iterator** (L254) — `EntryOk`'s third
+    arm, and the one L242 named as the bill for `MethodDecl.blk`.
+
+    Pinned to `Array#each` and nothing else, which is the same standing `baseDecls`'
+    three `Integer` rows had when they were the whole table: `tryIterator`'s `match` on
+    the name is a sixteen-way split with a different `IterKind`, element list and seed
+    per arm (L244), so there is no shared statement and each row that is ever declared
+    pays for its own copy.
+
+    **`bs.params = [.any]` is what keeps `Ty.arrayOf` off the critical path.**
+    `KontOk.iterK`'s *every remaining element has the block's parameter types* premise is
+    then `ValuesTy h a [.any]`, which holds of **every** value (`ValueTy.any`, L232) — so
+    this arm needs no claim about the array's contents at all. A precise element type
+    would need `ValueTy h recv (.arrayOf σ)`, which is L239's arm and the dispatch rung
+    behind it. -/
+def IterEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
+  τr = .cls "Array" ∧ mname = "each" ∧ d.params = [] ∧ d.ret = .cls "Array" ∧
+  (∃ br, d.blk = some { params := [.any], ret := br }) ∧
+  ∀ k, TyClass h τr k → MissesAt h k mname
+
+/-- A declared method is satisfied by **any** of three kinds of witness. A disjunction
+    rather than a generalization because the three produce *different steps*:
     `entry_dispatch` lands a value in one step, `user_dispatch` lands a frame with
-    the body still to run. `HANDOFF.md` §constraint 1 predicted this shape ("a
-    disjunction of two witness kinds") and predicted the reason. -/
+    the body still to run, and the iterator lands **two** frames with a block body in
+    `ctl`. `HANDOFF.md` §constraint 1 predicted this shape ("a disjunction of witness
+    kinds") and predicted the reason. -/
 def EntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
-  BuiltinEntryOk h τr mname d ∨ UserEntryOk D h τr mname d
+  BuiltinEntryOk h τr mname d ∨ UserEntryOk D h τr mname d ∨ IterEntryOk h τr mname d
+
+/-- **A row `sigOf` handed over is witnessed by one of the *two* resolving arms** (L254).
+
+    `sigOf` refuses a block-taking row (L242) and `sigOf_declFor` therefore concludes at
+    `blk := none`, while the iterator arm requires `some` — so the third disjunct is
+    refuted by one projection wherever a blockless rule reads the table. Stated once here
+    rather than at each of the three send cases, which then keep the two-way `rcases`
+    they had. -/
+theorem EntryOk.blockless {D : Decls} {h : Heap} {τr : Ty} {mname : String}
+    {ps : List Ty} {τret : Ty}
+    (he : EntryOk D h τr mname { params := ps, ret := τret, blk := none }) :
+    BuiltinEntryOk h τr mname { params := ps, ret := τret, blk := none } ∨
+      UserEntryOk D h τr mname { params := ps, ret := τret, blk := none } := by
+  rcases he with h1 | h2 | ⟨-, -, -, -, ⟨br, hdb⟩, -⟩
+  · exact Or.inl h1
+  · exact Or.inr h2
+  · exact absurd hdb (by simp)
 
 /-- The receiver-shaped form the send cases want, recovered from the class-indexed
     one. This direction is all anything needs, and it is the direction that is
@@ -1329,12 +1383,21 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
   -- L157: two arms now, and the *same* argument twice. `UserConforms` mentions no
   -- heap either — it is a fact about `infer` and a body — so both conformance halves
   -- pass through and only the resolution halves transport.
-  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
+  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hne, hconf⟩
-  · exact Or.inr ⟨mdu, cu, htys,
+  · exact Or.inr (Or.inl ⟨mdu, cu, htys,
       fun k ht => ResolvesUser_defineMethod (hres k (TyClass_defineMethod ht)) hne,
-      by rw [className_defineMethod]; exact hnm, hconf⟩
+      by rw [className_defineMethod]; exact hnm, hconf⟩)
+  -- **L254: a miss survives an installation at a *different* name**, and
+  -- `declaresName D name = false` is what makes the two names disjoint — the same
+  -- argument the two arms above make, read in the other direction.
+  · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k ht => by
+      have := hmiss k (TyClass_defineMethod ht)
+      unfold MissesAt lookupIn at this ⊢
+      rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md hne]
+      exact this⟩)
 
 /-- **The `def` step with a row.** F1b.10's central obligation, and the shape says
     what it costs: every row the table already had survives by name-disjointness,
@@ -1563,14 +1626,20 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
           rw [hd0] at hdecl
           simpa only [hsame] using hdecl
     rcases hd.1 τr mname decl hold with ⟨bid, hres, hconf⟩ |
-      ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
+      ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩ | ⟨hτ, hmnm, hdp, hdr, hdb, hmiss⟩
     · exact Or.inl ⟨bid,
         fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hmn, hconf⟩
-    · refine Or.inr ⟨mdu, cu, htys,
+    · refine Or.inr (Or.inl ⟨mdu, cu, htys,
         fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
-        by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, hconfu.2.2.1, ?_⟩
+        by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, hconfu.2.2.1, ?_⟩)
       obtain ⟨Γ', r, τb, hb, hsb, hag⟩ := hconfu.2.2.2
       exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.2.1 hb, hsb, hag⟩
+    -- L254: the miss survives, by the same name-disjointness the two arms above use.
+    · exact Or.inr (Or.inr ⟨hτ, hmnm, hdp, hdr, hdb, fun k ht => by
+        have hm0 := hmiss k (TyClass_defineMethod ht)
+        unfold MissesAt lookupIn at hm0 ⊢
+        rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md hmn]
+        exact hm0⟩)
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
@@ -1598,12 +1667,21 @@ theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Sat
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
     fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2 c nn dd hn)⟩
   intro τr mname decl hdecl
-  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩
+  rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid,
       fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
-  · exact Or.inr ⟨mdu, cu, htys,
+  · exact Or.inr (Or.inl ⟨mdu, cu, htys,
       fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)),
-      by rw [hg.className_eq]; exact hnm, hconf⟩
+      by rw [hg.className_eq]; exact hnm, hconf⟩)
+  -- **L254: an allocation cannot install a method**, so a miss survives with no side
+  -- condition at all — the contrast `ResolvesAt_grow`'s docstring already draws, in the
+  -- other direction.
+  · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k ht => by
+      have hm0 := hmiss k (TyClass_grow hg ht)
+      unfold MissesAt lookupIn at hm0 ⊢
+      rw [hg.ancestors_eq hsat, lookup_go_grow hg]
+      exact hm0⟩)
 
 /-! ## 4. The bridge from `TableOk`
 
@@ -2561,10 +2639,16 @@ theorem tyClass (hi : IvarOnly h h') {τ : Ty} {k : ObjId} (ht : TyClass h' τ k
 
 theorem entryOk (hi : IvarOnly h h') {D : Decls} {τr : Ty} {mname : String}
     {d : MethodDecl} (he : EntryOk D h τr mname d) : EntryOk D h' τr mname d := by
-  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid, fun k hk => hi.resolvesAt (hres k (hi.tyClass hk)), hconf⟩
-  · exact Or.inr ⟨md, c, hkey, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
-      by rw [hi.className_eq]; exact hown, hconf⟩
+  · exact Or.inr (Or.inl ⟨md, c, hkey, fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
+      by rw [hi.className_eq]; exact hown, hconf⟩)
+  -- L254: an ivar write moves no method table, so the miss is unmoved.
+  · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k hk => by
+      have hm0 := hmiss k (hi.tyClass hk)
+      unfold MissesAt at hm0 ⊢
+      rw [hi.lookupIn_eq]; exact hm0⟩)
 
 theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ) :
     ConstOk h' n τ := by
