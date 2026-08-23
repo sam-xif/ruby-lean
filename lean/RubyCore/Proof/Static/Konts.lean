@@ -315,6 +315,29 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       -- of the guarantee above.
       cΓ.1.inLoop = none →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
+  /-- **A block body's value, delivered** (L245) — the block frame pops and the value
+      goes on to whatever pushed the block call (an `iterK`, for a native iterator).
+
+      `frameK`'s shape at a different constructor: `applyKont`'s two arms are the same
+      `stack.tail` + `.value v`, and only the label's kind differs. What is *not*
+      `frameK`'s are the two context premises, and they are the reason the case analyses
+      over `KontOk` close rather than a tidiness:
+
+      * `ret = none` — a `return` inside a block targets the **home method**
+        (`returnTarget` walks past a block frame), not this activation, so the block's
+        context opens no return channel and `KontOk.retOk`'s new case is `absurd`;
+      * `inLoop = none` — a `next` inside a block ends the *block invocation*
+        (`blkFrameK`'s own `.nxtJ` arm), not the enclosing loop, so the same for
+        `KontOk.nxtOk`.
+
+      Both are what `infer`'s block rule will supply, and both are §10's "first cut"
+      stated on the invariant side: a block body containing `return` or `next` is out of
+      the fragment, and this is where that shows up as a *derivation* that does not
+      exist rather than as a rule that refuses. -/
+  | blkFrameK {D h cΓ cΓ' Γs τ τ' fid lam brk cl args k} :
+      cΓ.1.ret = none → cΓ.1.inLoop = none → subTy τ τ' = true →
+      KontOk D h (cΓ' :: Γs) τ' k →
+      KontOk D h (cΓ :: cΓ' :: Γs) τ (.blkFrameK fid lam brk cl args :: k)
   /-- **`return e`, with the value in flight** (L200). Three premises, each spent in a
       different place: `c.ret = some σ` is what the target is read through, `subTy τ σ`
       is the rule's own conformance check, and the tail's `KontOk` is what
@@ -361,6 +384,30 @@ def frameKLabels : List Kont → List FrameId
   | .frameK fid :: k => fid :: frameKLabels k
   | _ :: k => frameKLabels k
 
+/-- **Every kont that pops a frame** (L245) — `frameK` *and* `blkFrameK` — and it is
+    this, not `frameKLabels`, that `Inv` states the stack correspondence over.
+
+    `callClosure` pushes a block activation with a **`blkFrameK`**, not a `frameK`
+    (`Interp/Kont.lean`: both deliveries are `stack.tail` + `.value v`, and only the
+    label's constructor differs). So the moment a block frame exists, `frameKLabels
+    m.kont = m.stack.dropLast` is **false** — the stack has an entry the labels do not.
+
+    > **And the naive fix — teaching `frameKLabels` to count `blkFrameK` — is wrong**,
+    > which is worth writing down because it is the obvious move. `frameKLabels` and
+    > `firstFrameK` are the *return-target* correspondence: `doReturn` targets
+    > `returnTarget m`, which walks **past** a block frame to the closure's `home`, and
+    > `unwind`'s `frameK fid` case compares that against the kont's label. A
+    > `firstFrameK` that answered a block frame's id would make that comparison wrong.
+    > The two notions are genuinely different and both are needed.
+
+    The bridge between them is `firstFrameK_of_retOk` below, and it goes through
+    `RetOk` rather than through the labels — which is *why* the split costs nothing. -/
+def framePopLabels : List Kont → List FrameId
+  | [] => []
+  | .frameK fid :: k => fid :: framePopLabels k
+  | .blkFrameK fid _ _ _ _ :: k => fid :: framePopLabels k
+  | _ :: k => framePopLabels k
+
 /-- **The konts a `.retJ` passes straight through** (L199). Not a judgement: it is a
     read-off of `unwind` (`Interp/Kont.lean`), whose **catch-all** propagates a jump
     unchanged and whose two loop markers propagate a `.retJ` explicitly. All nine kont
@@ -393,8 +440,21 @@ def firstFrameK : List Kont → Option FrameId
   | .frameK fid :: _ => some fid
   | _ :: k => firstFrameK k
 
+/-- **A transparent kont pops nothing** (L245) — `RetTransparent`'s list and
+    `framePopLabels`' two arms are disjoint by inspection, which is the fact the bridge
+    below runs on. -/
+@[simp] theorem framePopLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
+    framePopLabels (κ :: k) = framePopLabels k := by
+  cases κ <;> simp_all [RetTransparent, framePopLabels]
+
 /-- The first label of `frameKLabels` *is* `firstFrameK` — the bridge between L199's
-    list-shaped clause and the single id `unwind` compares against. -/
+    list-shaped clause and the single id `unwind` compares against.
+
+    **Superseded at L245 and kept**, with the withdrawal visible rather than deleted:
+    `Inv`'s clause is now over `framePopLabels`, so this lemma's hypothesis is no longer
+    something the invariant supplies, and both of its callers moved to
+    `firstFrameK_of_retOk`. It remains *true*, and it remains the statement to reach for
+    if a future clause is ever phrased over `frameKLabels` again. -/
 theorem firstFrameK_of_labels : ∀ (k : List Kont) (fid : FrameId) (rest : List FrameId),
     frameKLabels k = fid :: rest → firstFrameK k = some fid := by
   intro k
@@ -482,6 +542,8 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       -- plain transparent case — no `_table_ret` composition needed.
       | cpathK hb hsc hw hk' _ => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       | frameK hrt hil hk' => exact RetOk.here (hrt σ hσ) hk'
+      -- L245: the block's context opens no return channel, so this case does not exist.
+      | blkFrameK hr _ _ _ => exact absurd hσ (by rw [hr]; simp)
 
 @[simp] theorem frameKLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
     frameKLabels (κ :: k) = frameKLabels k := by
@@ -490,6 +552,34 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
 @[simp] theorem firstFrameK_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
     firstFrameK (κ :: k) = firstFrameK k := by
   cases κ <;> simp_all [RetTransparent, firstFrameK]
+
+/-- **The bridge, and it goes through `RetOk` rather than through the labels** (L245).
+
+    L199's clause used to *be* the bridge: `frameKLabels m.kont = m.stack.dropLast` and
+    `firstFrameK_of_labels` together said *the innermost `frameK`'s label is the stack's
+    head*, which is what `unwind` compares `returnTarget` against. With the clause moved
+    to `framePopLabels` (L245) that reading is gone — the innermost *popping* kont may be
+    a `blkFrameK`, whose frame `returnTarget` walks past.
+
+    What replaces it is free, because `RetOk` already says the missing thing: it is built
+    from `skip` at **transparent** konts and `here` at a `frameK`, and no transparent kont
+    pops. So along a chain that carries a `.retJ` at all, the first popping kont *is* the
+    `frameK` the jump lands at — and its label is `framePopLabels`' head. -/
+theorem firstFrameK_of_retOk {D : Decls} {h : Heap} {Γs : List (FrameCtx × Env)} {σ : Ty} :
+    ∀ {k : List Kont}, RetOk D h Γs σ k → ∀ {fid rest},
+      framePopLabels k = fid :: rest → firstFrameK k = some fid := by
+  intro k hr
+  induction hr with
+  | here _ _ =>
+    intro fid rest hl
+    simp only [framePopLabels, List.cons.injEq] at hl
+    simp [firstFrameK, hl.1]
+  | skip ht _ ih =>
+    intro fid rest hl
+    rw [framePopLabels_transparent ht] at hl
+    rw [firstFrameK_transparent ht]
+    exact ih hl
+
 
 /-- **`unwind` propagates a `.retJ` through every transparent kont** (L200), which is
     a computation rather than an argument: `unwind`'s catch-all passes a jump on
@@ -534,6 +624,11 @@ theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Va
     (h : NxtTransparent κ) : frameKLabels (κ :: k) = frameKLabels k := by
   cases κ <;> simp_all [NxtTransparent, frameKLabels]
 
+/-- L245's twin, at the `next` channel. -/
+@[simp] theorem framePopLabels_nxt_transparent {κ : Kont} {k : List Kont}
+    (h : NxtTransparent κ) : framePopLabels (κ :: k) = framePopLabels k := by
+  cases κ <;> simp_all [NxtTransparent, framePopLabels]
+
 /-- **`unwind` restarts the loop at its condition** (L225) — `unwind`'s `whileCondK`/
     `whileBodyK` arm at `.nxtJ`, which is one line of the interpreter: pop the loop kont,
     push a fresh `whileCondK`, and evaluate the condition. -/
@@ -576,6 +671,18 @@ theorem unwind_raise_frameK {m : Machine} {fid : FrameId} {k : List Kont} {exc :
   unfold Interp.unwind
   rw [hkm]
 
+/-- **L245: the same, at a block frame.** `unwind`'s `blkFrameK` arm sends a `.raiseJ`
+    on with `stack := m.stack.tail`, which is `frameK`'s arm at a different label — one
+    `rw` and one `simp` for the arm's own `match` on the jump. -/
+theorem unwind_raise_blkFrameK {m : Machine} {fid : FrameId} {lam : Bool}
+    {brk : Option FrameId} {cl : Closure} {args : List Value} {k : List Kont} {exc : Value}
+    (hkm : m.kont = .blkFrameK fid lam brk cl args :: k) :
+    Interp.unwind m (.raiseJ exc)
+      = .next (Interp.withCtl { m with kont := k, stack := m.stack.tail }
+          (.jump (.raiseJ exc))) := by
+  unfold Interp.unwind
+  rw [hkm]
+
 /-- **The konts a propagating raise walks, and how the frame stack shrinks under it**
     (L217). `RetOk`'s shape with the type removed.
 
@@ -589,6 +696,13 @@ inductive RaiseOk : List (FrameCtx × Env) → List Kont → Prop where
   | nil {Γs} : RaiseOk Γs []
   | skip {Γs κ k} : RetTransparent κ → RaiseOk Γs k → RaiseOk Γs (κ :: k)
   | pop {cΓ Γs k fid} : RaiseOk Γs k → RaiseOk (cΓ :: Γs) (.frameK fid :: k)
+  /-- **L245: a block frame pops on a raise too**, and it is `pop`'s shape at the other
+      popping kont — `unwind`'s `blkFrameK` arm sends a `.raiseJ` on with
+      `stack := m.stack.tail`, exactly as its `frameK` arm does. A separate constructor
+      rather than a generalization of `pop` because the two are different `Kont`
+      constructors and the raise consecution case splits on the head. -/
+  | popBlk {cΓ Γs k fid lam brk cl args} :
+      RaiseOk Γs k → RaiseOk (cΓ :: Γs) (.blkFrameK fid lam brk cl args :: k)
 
 /-- **`RaiseOk`, derived from `KontOk`** — the counterpart of `KontOk.retOk` (L200), and
     cheaper for the reason `RaiseOk` is cheaper: no `top = false`, no `c.ret`, no
@@ -600,6 +714,8 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
   | [], _, _, _, _, _, _, _ => RaiseOk.nil
   | κ :: k, D, h, c, Γ, Γs, τ, hk => by
       cases hk with
+      -- L245: a block frame pops on a raise, exactly as an activation does.
+      | blkFrameK _ _ _ hk' => exact .popBlk (KontOk.raiseOk hk')
       | seqNil hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | seqCons hs hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | asgn hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
@@ -664,6 +780,8 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
   | κ :: k, D, h, c, Γ, Γs, τ, Γl, hk, hil, htop => by
       have hls : c.inLoop.isSome = true := by rw [hil]; simp
       cases hk with
+      -- L245: the block's context opens no loop channel, so this case does not exist.
+      | blkFrameK _ hl _ _ => exact absurd hil (by rw [hl]; simp)
       | seqNil hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | seqCons hs hw hk' _ =>
           have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
@@ -792,6 +910,7 @@ theorem KontOk.heap_congr' {h' : Heap} :
   intro D h Γs τ k hk
   induction hk with
   | nil hr hl => intro _; exact .nil hr hl
+  | blkFrameK hr hl hw _ ih => intro ha; exact .blkFrameK hr hl hw (ih ha)
   | seqNil hw _ hsu ih => intro ha; exact .seqNil hw (ih ha) hsu
   | seqCons hs hw _ hsu ih => intro ha; exact .seqCons hs hw (ih ha) hsu
   | asgn hw _ hsu ih => intro ha; exact .asgn hw (ih ha) hsu
@@ -987,7 +1106,7 @@ def Inv (m : Machine) : Prop :=
     -- `frameK`. A machine fact rather than a typing one — it mentions no `Decls` and
     -- no `Ty` — which is why it sits out here beside `BottomObj` rather than inside
     -- the existential.
-    frameKLabels m.kont = m.stack.dropLast ∧
+    framePopLabels m.kont = m.stack.dropLast ∧
     ∃ (F : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env)), DeclsOk F m.heap ∧
       FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst) ∧
@@ -1363,7 +1482,7 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels m.kont = m.stack.dropLast)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γk) :: Γs) τ m.kont)
     -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
@@ -1386,7 +1505,7 @@ theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels m.kont = m.stack.dropLast)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
     (hk : KontOk F' m.heap ((c, Γk) :: Γs) τ' m.kont)
@@ -1407,7 +1526,7 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels m.kont = m.stack.dropLast)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
     (hv : ValueTy m.heap v τ) (hk : KontOk F m.heap ((c, Γk) :: Γs) τ m.kont)
     -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
     -- has it under the same name: `Inv`'s own destructuring binds `hglob`, and a positional
@@ -1425,7 +1544,7 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
+    (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hk : KontOk F' m.heap ((c, Γk) :: Γs) τ (k :: m.kont))
     -- **L228's conjunct, defaulted.** It is last and `by assumption` because every caller
@@ -1448,7 +1567,7 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels (k :: m.kont) = m.stack.dropLast)
+    (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
     (hinf : infer F Γ e Γs.isEmpty c = some (τ, Γ', F'))
     (hsub : subTy τ τ' = true)
     (hk : KontOk F' m.heap ((c, Γk) :: Γs) τ' (k :: m.kont))
@@ -1559,7 +1678,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     (hsc : StackCtx m.heap m.frames m.stack (c :: Γs.map Prod.fst))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap) (hcls : ClassOk m.heap)
     (hbot : BottomObj m.frames m.stack)
-    (hks : frameKLabels m.kont = m.stack.dropLast)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : ValueTy m'.heap v τ) (hk : KontOk F m.heap ((c, Γk) :: Γs) τ m.kont)
@@ -1578,7 +1697,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
-    show frameKLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
+    show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]

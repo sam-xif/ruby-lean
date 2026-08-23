@@ -11901,3 +11901,75 @@ copy's shape is this one.
 `lake build`, `lake build Metatheory` (60 jobs), `check-proofs.sh` axiom-clean with **0
 `sorryAx`** — the five lemmas are added to its audit list, because an off-target file with no
 consumer is exactly how `Proof/` rotted for 24 commits (L119). Third ratchet **19**.
+
+## L245 — the frame/kont correspondence admits a block frame, and `KontOk` gains its pop
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean, `Proof/`-only. Wall 1's
+**invariant** side, first half.
+
+### The clause that breaks the moment a block frame exists
+
+`Inv`'s L199 conjunct is `frameKLabels m.kont = m.stack.dropLast`, and `frameKLabels` counts only
+`.frameK`. `callClosure` pushes a block activation under a **`blkFrameK`** — `applyKont`'s two
+arms are the *same* `stack.tail` + `.value v` and only the label's constructor differs — so the
+stack gains an entry the labels do not, and the equation is false.
+
+> **The obvious fix is wrong, and that is the finding.** Teaching `frameKLabels` to count
+> `blkFrameK` makes `firstFrameK` answer a block frame's id — and `frameKLabels`/`firstFrameK`
+> are the **return-target** correspondence: `doReturn` targets `returnTarget m`, which walks
+> *past* a block frame to the closure's `home`, and `unwind`'s `frameK fid` case compares the two.
+> A `firstFrameK` that answered the block would make that comparison wrong.
+>
+> The previous HANDOFF entry said "a second function, leaving `frameKLabels` alone", and stopped
+> there — which is half the answer: with the `Inv` clause moved, the *bridge* from it to
+> `firstFrameK` is gone, and both of `firstFrameK_of_labels`' callers depended on it.
+
+### What replaced the bridge, and it is free
+
+`framePopLabels` (both popping konts) carries the `Inv` clause. The bridge runs through **`RetOk`**
+instead of through the labels:
+
+```lean
+theorem firstFrameK_of_retOk : RetOk D h Γs σ k → framePopLabels k = fid :: rest →
+  firstFrameK k = some fid
+```
+
+`RetOk` is built from `skip` at **transparent** konts and `here` at a `frameK`, and no transparent
+kont pops. So along a chain that carries a `.retJ` at all, the first popping kont *is* the `frameK`
+the jump lands at — which is exactly the fact the two callers needed and could previously only get
+by conflating the two notions. `firstFrameK_of_labels` is kept, struck in place: still true, no
+longer supplied by the invariant.
+
+### `KontOk.blkFrameK`, and the two premises that make the case analyses close
+
+```lean
+  | blkFrameK {…} : cΓ.1.ret = none → cΓ.1.inLoop = none → subTy τ τ' = true →
+      KontOk D h (cΓ' :: Γs) τ' k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.blkFrameK … :: k)
+```
+
+`frameK`'s shape at a different constructor. The two context premises are not tidiness — they are
+what `KontOk.retOk` and `KontOk.nxtOk` discharge their new cases with (`absurd`), and each is the
+honest reading of the machine: a `return` inside a block targets the **home method** and a `next`
+ends the **block invocation** (`blkFrameK`'s own `.nxtJ` arm), so neither channel is the enclosing
+one. §10's "first cut" restated on the invariant side — a block body containing `return` or `next`
+is out of the fragment, and it shows up here as a derivation that does not exist rather than as a
+rule that refuses.
+
+`RaiseOk` gains **`popBlk`**, `pop`'s twin: `unwind`'s `blkFrameK` arm sends a `.raiseJ` on with
+`stack := m.stack.tail`, which is `frameK`'s arm at a different label. One new `unwind` lemma
+(`unwind_raise_blkFrameK`, two tactics) and one new consecution arm, a copy of `pop`'s.
+
+The value-delivery case in `Preservation.lean` is `frameK`'s with the type agreement read off the
+constructor's own `subTy` instead of off the caller's context. Nothing about the block is used:
+the block frame is described by `FramesOk` (L243) and popping it is `hfs.tail`.
+
+### What is still owed for a block send
+
+`KontOk.iterK` — the substantial one, because at its delivery `iterStep` either calls the block
+again (a new block frame **and** a new `iterK`) or finishes, so the constructor carries everything
+the next call needs; `StackCtx`/`FramesOk` at the two pushes; the third `EntryOk` arm; the rule.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty, third ratchet **19**.

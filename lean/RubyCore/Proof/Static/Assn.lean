@@ -517,7 +517,7 @@ def InvA (m : Machine) : Prop :=
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     -- L199, and it rides along here for `BottomObj`'s reason: a machine fact, not a
     -- typing one, so it sits outside the existential in both invariants.
-    frameKLabels m.kont = m.stack.dropLast ∧
+    framePopLabels m.kont = m.stack.dropLast ∧
     ∃ (F : Decls) (P : Assn) (θ : TyVar → Ty) (c : FrameCtx) (Γ : Env)
       (Γs : List (FrameCtx × Env)),
       Certifies F θ P m.heap ∧

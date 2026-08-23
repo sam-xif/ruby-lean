@@ -114,7 +114,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- F1b.8: the table is existential in `Inv`, and `declsOf p` is what pins it at
     -- the start of the run — the same instantiation `initiation` makes, at a heap
     -- the certificate rather than the kernel vouches for.
-    (by simp [Machine.initOn, frameKLabels]),
+    (by simp [Machine.initOn, framePopLabels]),
     declsOf p, { cls := "Object" }, [], [],
     tableOk_declsOk hh.1 hh.2.2.2.2, ?_, ?_, ?_, ?_⟩
   · show FramesOk _ _ _ ([] :: [])
