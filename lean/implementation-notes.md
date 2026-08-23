@@ -12044,3 +12044,72 @@ it buys it for `blkFrameK` too, which the block frame's own `FrameConforms` need
 
 The five machine reductions (L244) and `KontOk.blkFrameK` (L245) are unaffected — neither mentions
 a captured frame. The rung after it is unchanged too: the third `EntryOk` arm, then the rule.
+
+## L247 — L246's premise (3) dissolves: the captured environment does not have to be *precise*
+
+Out of fragment **19 → 19**. No code. L246 concluded that `KontOk.iterK`'s third premise forces a
+redesign of L199's clause into a kont/stack relation. **That conclusion is withdrawn**, and the
+thing that dissolves it is a fact this file already recorded for exactly this purpose.
+
+### The move
+
+L246 wanted `Γb = bs-parameters ++ Γcap`, where `Γcap` is the environment the captured frame
+conforms at — and getting `Γcap` is what needs the frame *id*, which `KontOk` cannot name. But
+`Γcap` does not have to be precise:
+
+> **L232 made `ValueTy h v .any` *true for every value*, and said so in as many words: "what needs
+> it: the block-send rung (Wall 1)."** So type the enclosing locals at **`.any`**:
+>
+> ```
+> Γb = params(bs.params) ++ blockLocals(nilT) ++ Γcap.map (fun (x, _) => (x, Ty.any))
+> ```
+>
+> The block frame's `FrameConforms` at that environment needs **nothing about the captured
+> frame's environment** — every outer name's obligation is `ValueTy h _ .any`, which holds. What
+> is still needed of `cl.captured` is only `ShallowChain`: `cl.captured < bfid` and
+> `(frames[cl.captured]).captured = none`. Two facts, no environment, no positional pairing.
+
+**And it costs nothing on the census**, which is the measurement that decides it: a send on an
+`.any` receiver is `declFor D .any m = none`, a **missing declaration**, so a block body that calls
+a method on an outer local reports `needed:` exactly as one that calls a method on its parameter
+does. Precision would change the `accept` column, which is the `arrayOf` chain's business
+(correction 1 in `homebrew/HANDOFF.md`), not this rung's.
+
+### So L246's redesign is not needed, and what is needed instead is small
+
+```lean
+/-- Every closure the continuation mentions captures a frame that exists and is not
+    itself a block frame. -/
+def ClosuresOk (m : Machine) : Prop   -- a ∀ over `m.kont`'s `iterK`/`blkFrameK` arms
+```
+
+A list-wide predicate over the kont, not a positional pairing: state it, and preserving it is
+three observations — frames only grow, `setLocal` writes `locals` and not `captured`, and the one
+step that pushes such a kont pushes it with `cl.captured = m.stack.headD 0`, whose non-blockness is
+`StackCtx`'s L243 clause.
+
+### The other half of the correction, and it is the one that costs bodies
+
+L243 concluded that `x = 1` inside a block cannot be admitted, because `setLocal` walks the chain
+and may mutate the **enclosing** activation. True — **for a name the enclosing frame binds.** Ruby
+scoping says a name *first assigned inside the block* is block-local, and the model implements
+exactly that: the exporter puts such names in the `.block` node's second component, `callClosure`
+pre-binds them in the block frame's own `locals`, and `setLocal.owner` therefore stops at the block
+frame. Measured on the slice — `Vulnerability#fix_available?`'s block declares
+`["version_matched", "ranges", "semver_ranges", …]`, `Identify#self.tag`'s declares `["match"]`.
+
+So the admissible guard is not `asgnFree body`; it is **every assigned name is a parameter or a
+block-local**, which is syntactic and checkable from the `.block` node the rule already has. What
+it costs on the proof side is one lemma: `setLocal_owner_start`'s twin under
+`(curFrame m).locals.any (·.1 == x)` instead of `captured = none`, and `FramesOk.setLocal` taking
+that hypothesis. **That matters for the census**: `Identify#self.tag`'s block opens with
+`match = url.match(pattern)`, so an `asgnFree` guard would have left it out of fragment and this
+one does not.
+
+### Revised order for the rung
+
+1. `ClosuresOk` (above), inert;
+2. `KontOk.iterK`, with `Γb` built as above — premises (1) and (2) of L246 unchanged, (3) gone;
+3. `StackCtx`/`FramesOk` at the two pushes, and `setLocal` at a block-local;
+4. the third `EntryOk` arm;
+5. the rule, its `inferOpen` mirror, and `inferOpen_factors`' case.
