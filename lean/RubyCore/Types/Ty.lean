@@ -518,6 +518,27 @@ structure FrameCtx where
       part-way through the body at a richer one. So the rule owes `SubEnv Γloop Γcur`, which
       it can only check if it knows `Γloop` — hence `Option Env` and not `Bool`. -/
   inLoop : Option Env := none
+  /-- **Is this activation a block?** (L249) — the sixth channel, and the one the
+      *frame* side of Wall 1 turned out to need after all.
+
+      L243 added it, pinned it `false`, and withdrew it in the same commit on the
+      grounds that a field no rule sets is a `DecidableEq` cost and an implication with
+      one instance. That was right about `FrameConforms`, whose obligation at an
+      enclosing local is `ValueTy _ _ .any` and needs nothing about the captured frame
+      (L247), and **wrong about `StackCtx`**, which is positional over the same stack and
+      whose second clause compares a *heap-derived name* — `className h defmod`, read off
+      the frame the closure captured — against the name this context carries. Only the
+      pairing connects them, and `KontOk` cannot express a pairing (L249).
+
+      So the clause is guarded on this flag instead: a block activation owes no name, and
+      nothing reads one there — the clause's consumers are the `def` row's key and the
+      `class'` rule, and a block body may contain neither.
+
+      **`false` in every activation the invariant can currently describe**, and no rule
+      sets it; the block-send rule is what will. `infer`'s `def` arm carries the matching
+      guard, which refuses nothing today and is what `--check`'s byte-identical diff
+      records. -/
+  inBlock : Bool := false
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

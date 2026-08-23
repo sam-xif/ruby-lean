@@ -131,7 +131,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     show StackCtx _ _ _ ({ cls := "Object" } :: [])
     -- L189's cref clause: `initOn` sets `cref := [Boot.objectId]`, so it is a
     -- computation on the frame literal whatever the heap is.
-    exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
+    exact ⟨hh.2.1.1, fun _ => hh.2.2.2.2.1, fun hz => absurd rfl hz,
       fun sc hsc => absurd hsc (by simp),
       by simp [Machine.initOn, Array.getD], Or.inr rfl,
       fun mn h => absurd h (by simp), by simp [Machine.initOn, Array.getD], trivial⟩

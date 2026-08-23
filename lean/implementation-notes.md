@@ -12241,3 +12241,59 @@ second consumer appears.
 4. the two pushes' `StackCtx`/`FramesOk`, and `setLocal` at a block-local;
 5. the third `EntryOk` arm;
 6. the rule, its `inferOpen` mirror, and `inferOpen_factors`' case.
+
+## L250 — `FrameCtx.inBlock` after all, and `StackCtx`'s name clause is guarded on it
+
+Out of fragment **19 → 19**. `--check` byte-identical, `--self-test` all agree, axiom-clean.
+L249's items 2 and 3, built — and it is L243's withdrawn field, reinstated with the reason it is
+actually needed.
+
+### The reinstatement, and why L243's withdrawal was right at the time
+
+L243 added `FrameCtx.inBlock`, pinned it `false`, and withdrew it in the same commit: *a field no
+rule sets is a `DecidableEq` cost and an implication with one instance*. That was right about
+`FrameConforms` — L247 then showed its obligation at an enclosing local is `ValueTy _ _ .any`,
+which needs nothing about the captured frame — and **wrong about `StackCtx`**, which is positional
+over the same stack and whose second clause compares a *heap-derived name* (`className h defmod`,
+read off the frame the closure captured) against the name the context carries. Only the pairing
+connects them, and `KontOk` cannot express a pairing (L249).
+
+```lean
+  (c.inBlock = false → className h (frames.getD fid default).defmod = c.cls) ∧
+```
+
+### What pays for the guard, and where
+
+* **`infer`'s `def` arm** grows `ctx.inBlock = false` as an eighth conjunct of the row guard —
+  `ctx.ret.isNone`'s shape at the block channel, and free for the same reason (no rule sets the
+  flag). The row's key *is* `ctx.cls`, so it is unwitnessable inside a block; the rule refusing the
+  row is what makes the guarded clause enough.
+* **The `def` case's `hctx` becomes a function of the flag**, applied where the row is built —
+  three sites, one `hdf.2.2` each.
+* **`StackCtx`'s `meth` clause gains `c.inBlock = false`.** That is what the two `super` cases read
+  the name clause through: they already have `c.meth = some mn`, and a block body's context names
+  no method. Without it each would have needed its own guard.
+* **`infer`'s `def` body context sets `inBlock := false` explicitly.** L207/L214's point a third
+  time: `{ ctx with … }` would inherit the *enclosing* activation's flag, and a `def` body is never
+  a block whatever encloses it (`enterUserMethod` pushes a `.method` frame).
+
+### The alternative that was tried first and is worse
+
+Guarding on the **frame's** kind (`(frames.getD fid default).kind ≠ .block`) rather than on the
+context's flag. It type-checks at the construction sites just as cheaply, and it fails at the
+*consumers*: the `def` case would have to prove the current frame is not a block, and nothing in
+`Inv` says so — the fact lives in the static context, which is exactly what a channel is for.
+Reverted after one build.
+
+### What is left of the rung
+
+`KontOk.iterK` (L249's item 3) is now unblocked on the `StackCtx` side: a block activation's entry
+owes clause 1 (`classPayload?`, name-free), clause 3 (`defVis`, name-free), clause 5 (`cref`,
+name-free) and nothing else, and the three name-free ones are `ClosuresOk`'s next growth (L249
+item 1). Then the two pushes, the third `EntryOk` arm, and the rule.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty against L248's capture, `--self-test` all agree (the `def` guard is the first
+change to `infer` in this chain, so the self-test is owed and was run), third ratchet **19**.

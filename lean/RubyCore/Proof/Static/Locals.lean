@@ -691,7 +691,14 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
   | [], [] => True
   | fid :: fids, c :: cs =>
       (h.classPayload? (frames.getD fid default).defmod).isSome ∧
-      className h (frames.getD fid default).defmod = c.cls ∧
+      -- **L249: guarded on the context's block flag.** A block activation copies its
+      -- `defmod` from the frame the closure captured, and nothing on the stack ties that
+      -- id to this entry's context — the *pairing* `KontOk` cannot express. Sound to
+      -- drop there because nothing reads it there: the clause's consumers are the `def`
+      -- row's key and the `class'` rule, and a block body may contain neither
+      -- (`defFree`, and `class'` needs `top`). Every other context proves it exactly as
+      -- before, so the guard is one `intro` at each construction site.
+      (c.inBlock = false → className h (frames.getD fid default).defmod = c.cls) ∧
       (fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub) ∧
       -- **The activation's `self`, when the context claims one** (F1b.11). `some c`
       -- says this is a *method* body, where `self` is an instance of `c`; a class
@@ -779,7 +786,10 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
         c.selfCls = some c.cls ∧
         (frames.getD fid default).runParams = [] ∧
         (frames.getD fid default).runFromDM = false ∧
-        c.params = some []) ∧
+        c.params = some [] ∧
+        -- L249: a context that names a running method is not a block's — `super` reads
+        -- clause 2 through this one, and a block body's context names no method.
+        c.inBlock = false) ∧
       -- **The activation has no captured chain** (L243), and this clause is where
       -- `FrameOk` now comes from.
       --
@@ -827,7 +837,8 @@ theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
     (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
-    className h (frames.getD fid default).defmod = c.cls := hs.2.1
+    c.inBlock = false →
+      className h (frames.getD fid default).defmod = c.cls := hs.2.1
 
 theorem StackCtx.headVis {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}

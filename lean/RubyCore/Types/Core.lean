@@ -667,7 +667,14 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- and not an approximation.
       match infer D [] body false
           { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
-                     params := some [], inLoop := none } with
+                     params := some [], inLoop := none,
+                     -- **L249: `inBlock := false` explicitly**, and it is L207/L214's
+                     -- point a third time — `{ ctx with … }` would inherit the
+                     -- *enclosing* activation's flag, and a `def` body is never a block
+                     -- whatever encloses it (`enterUserMethod` pushes a `.method`
+                     -- frame). The rule refuses the row inside a block anyway, so this
+                     -- is the truth rather than an approximation.
+                     inBlock := false } with
       | some (τb, _, Db) =>
         if Db = D then
           -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to
@@ -699,7 +706,14 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           -- refuses such a body anyway, so this refuses no *loop* that used to type.
           if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
               groundClassNames.contains ctx.cls = false ∧ defFree body = true ∧
-              ctx.ret.isNone ∧ ctx.inLoop.isNone then
+              ctx.ret.isNone ∧ ctx.inLoop.isNone ∧
+              -- **`ctx.inBlock = false`** (L249), and it is `ctx.ret.isNone`'s shape at
+              -- the block channel. `StackCtx`'s name clause is guarded on the same flag
+              -- — a block activation copies its definee from the frame the closure
+              -- captured, and nothing ties that id to this context — so the row's key,
+              -- which is `ctx.cls`, is unwitnessable inside a block. Free: no rule sets
+              -- the flag, so this refuses nothing until the block rule does.
+              ctx.inBlock = false then
             some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
           else some (.sym, Γ, D)
         else none

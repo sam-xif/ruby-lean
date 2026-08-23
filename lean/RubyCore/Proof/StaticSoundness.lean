@@ -148,7 +148,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), rfl, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
-    · exact (show ClassOk (Machine.init p).heap from
+    · exact fun _ => (show ClassOk (Machine.init p).heap from
         classOkB_sound (by decide : classOkB Boot.initHeap = true)).1
     -- Vacuous at the outermost frame, and that is the point: a toplevel `def`
     -- installs a **private** method, so no row can come from one (F1b.9/F1b.10).

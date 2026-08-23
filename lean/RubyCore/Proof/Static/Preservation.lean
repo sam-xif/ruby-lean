@@ -133,7 +133,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       · intro y σ hy; exact absurd hy (by simp [envGet?])
     · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
-      · rw [getD_push_lt_self]; exact hnmu
+      · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
       -- The callee's `self` **is** the receiver, and the receiver's type is
       -- what the row was read at — so this clause is the send's own
@@ -168,7 +168,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
         subst hmn
         rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-        exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
+        exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
       -- L243: `userFrame` leaves `captured` at its default, which is the same fact
       -- `FrameConforms`'s first clause used to carry here.
       · rw [getD_push_lt_self]; rfl
@@ -772,7 +772,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- where a toplevel one is private.
       · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
-        · rw [getD_push_lt_self]; exact hnm
+        · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
         -- A class body's `self` is the **class object**, which `plainRecv`
         -- excludes, so the context claims no self type and the clause is vacuous.
@@ -913,10 +913,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           | cons a r => rw [hΓ] at hfs; exact absurd hfs.2.2.2 (by simp [FramesOk])
         have hscc : StackCtx m.heap m.frames (fid₀ :: fids₀) (ctx :: Γs.map Prod.fst) := by
           rw [hst] at hsc; exact hsc
-        have hctx : className m.heap (curFrame m).defmod = ctx.cls := by
+        -- L249: the name clause is guarded on the block flag, and the `def` rule's row
+        -- carries the matching guard — so `hctx` is a function of it, applied where the
+        -- row is built.
+        have hctx : ctx.inBlock = false → className m.heap (curFrame m).defmod = ctx.cls := by
+          intro hnb
           rw [show curFrame m = m.frames.getD fid₀ default by
             simp [curFrame, curFid, hst]]
-          exact hscc.2.1
+          exact hscc.2.1 hnb
         have hvis : defVisOfDef (curFrame m) = .pub := by
           rw [show curFrame m = m.frames.getD fid₀ default by
             simp [curFrame, curFid, hst]]
@@ -941,7 +945,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨-, hhead₀, -⟩ := hreop₀ (List.mem_of_elem_eq_true hmemctx)
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo)
-              (by rw [className_defineMethod]; exact hctx)
+              (by rw [className_defineMethod]; exact hctx hdf.2.2)
           rw [hdefk] at hdo hhead₀ ⊢
           cases hanc : ancestors (defineMethod m.heap k₀ name md) k₀ with
           | nil => rw [hanc] at hhead₀; exact absurd hhead₀ (by simp)
@@ -970,12 +974,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
               (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
           have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
-              (curFrame m).defmod = ctx.cls := by rw [className_defineMethod]; exact hctx
+              (curFrame m).defmod = ctx.cls := by rw [className_defineMethod]; exact hctx hdf.2.2
           have hdefk : (curFrame m).defmod = k₀ :=
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
           obtain ⟨rest, hrest⟩ := hchain md
           refine Or.inr ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
-            rfl, by rw [hbd]; exact hdf.2, ?_⟩
+            rfl, by rw [hbd]; exact hdf.2.1, ?_⟩
           -- L241: the row's key is `UserKey.cls` — the type names exactly its class, which
           -- is what lets a *call* recover the class the body was checked in (F1b.11). It
           -- used to be `rfl` at an equation; the relation's first shape is that equation.
@@ -1008,7 +1012,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             -- `subTy` conjunct is reflexivity — a `def` declares exactly what it infers,
             -- and it is the *declared* signature (W8's `sig`) that can be wider.
             exact ⟨Γb, none, τb,
-              by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2 hbody,
+              by rw [hbd]; exact infer_mono (subDecls_addRow hfresh) hdf.2.1 hbody,
               subTy_refl _, fun σ h => absurd h (by simp)⟩
         by_cases hp : m.preludeMode = true <;>
           simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
@@ -1086,10 +1090,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               ValueTy m.heap (m.frames.getD (methodFrameOf m) default).self
                 (.cls ctx.cls) := by
             intro mn hmn
-            obtain ⟨hm, -, hself, -, -, -⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
+            obtain ⟨hm, -, hself, -, -, -, hnb⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
             obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
             rw [← hcur]
-            exact ⟨hm, hsc'.1, hsc'.2.1, hch, hty⟩
+            exact ⟨hm, hsc'.1, hsc'.2.1 hnb, hch, hty⟩
           cases args with
           | nil =>
             obtain ⟨rfl, rfl, mn, dd, hmn, hne, hrow, hps, rfl⟩ := infer_super0_inv hinf
@@ -1137,7 +1141,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         | cons fid fids =>
           have hsc' := hsc
           rw [hst] at hsc'
-          obtain ⟨hm, hkd, hself, hrp, hdm, hpar⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
+          obtain ⟨hm, hkd, hself, hrp, hdm, hpar, hnb⟩ := hsc'.2.2.2.2.2.2.1 mn hmn
           obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
           have hcur : m.frames.getD fid default
               = m.frames.getD (methodFrameOf m) default := by
@@ -1150,7 +1154,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             simp [hne]
           obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
             super_dispatch (m := m) (args := []) (blk := methodBlk m) hne
-              (htab.2.2.2.2 _ _ _ hrow) hm (hcur ▸ hsc'.1) (hcur ▸ hsc'.2.1) (hcur ▸ hch)
+              (htab.2.2.2.2 _ _ _ hrow) hm (hcur ▸ hsc'.1) (hcur ▸ hsc'.2.1 hnb) (hcur ▸ hch)
               (hcur ▸ hty)
               -- `StackCtx` pins the activation's parameter list to `some []`, so the
               -- rule's `ps` is `[]` and `subTys [] dd.params` forces the row's to be too.
@@ -1849,7 +1853,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- `defFree` restriction, not this, that keeps one out of the fragment.
           refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
-          · rw [getD_push_lt_self]; exact hnmu
+          · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
           · intro sc hsc'
             simp only [Option.some.injEq] at hsc'
@@ -1871,7 +1875,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             subst hmn
             rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
-            exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
+            exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
           -- L243: `userFrame` leaves `captured` at its default.
           · rw [getD_push_lt_self]; rfl
         · -- The callee's body, typed at the **declared return type**: that is what
@@ -1916,13 +1920,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         | cons fid fids =>
           have hsc' := hsc
           rw [hst'] at hsc'
-          obtain ⟨hm, hkd, hself, -, -, -⟩ := hsc'.2.2.2.2.2.2.1 mname hmn
+          obtain ⟨hm, hkd, hself, -, -, -, hnb⟩ := hsc'.2.2.2.2.2.2.1 mname hmn
           obtain ⟨hty, hch⟩ := hsc'.2.2.2.1 ctx.cls hself
           have hcur : m.frames.getD fid default
               = m.frames.getD (methodFrameOf m) default := by
             simp only [methodFrameOf, hst', List.headD_cons, hkd]
           rw [← hcur]
-          exact ⟨hm, hsc'.1, hsc'.2.1, hch, hty⟩
+          exact ⟨hm, hsc'.1, hsc'.2.1 hnb, hch, hty⟩
       obtain ⟨hm, hdp, hdn, hch, hty⟩ := hfacts
       cases rest with
       | nil =>
