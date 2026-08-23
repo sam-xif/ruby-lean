@@ -12297,3 +12297,58 @@ item 1). Then the two pushes, the third `EntryOk` arm, and the rule.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty against L248's capture, `--self-test` all agree (the `def` guard is the first
 change to `infer` in this chain, so the self-test is owed and was run), third ratchet **19**.
+
+## L251 — `ClosuresOk` grows the three name-free clauses, and `FrameShape` is what makes it cheap
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean, `Proof/`-only. L249's item 1,
+built — the last of the block frame's frame-side prerequisites.
+
+```lean
+def ClosuresOk (m : Machine) : Prop :=
+  ∀ κ ∈ m.kont, ∀ cl, KontClosure κ = some cl →
+    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none ∧
+    (m.heap.classPayload? (m.frames.getD cl.captured default).defmod).isSome ∧
+    Boot.objectId ∈ (m.frames.getD cl.captured default).cref ∧
+    defVisOfDef (m.frames.getD cl.captured default) = .pub
+```
+
+The three new conjuncts are exactly the `StackCtx` clauses a **block activation's own entry** will
+owe that do not mention a name — `callClosure` copies `defmod`, `cref` and `defVis` from the
+captured frame, so proving them there is proving them here. The name-dependent clause is the one
+L250 guarded on `c.inBlock`.
+
+### `FrameShape`, and why the transport needed it
+
+`ClosuresOk.transport`'s frame hypothesis was *the frame is unchanged*, which is **false at
+`setLocal`** — that writes `locals`. Strengthening it broke the assignment case and weakening it
+to `captured` alone stopped covering the three new conjuncts. What works is the predicate naming
+the four fields the invariant reads:
+
+```lean
+def FrameShape (f g : Frame) : Prop :=
+  f.captured = g.captured ∧ f.defmod = g.defmod ∧ f.cref = g.cref ∧
+  defVisOfDef f = defVisOfDef g
+```
+
+One hypothesis instead of four, and `setLocal_shape` discharges it in one lemma — the same
+`by_cases` on the owner that `setLocal_captured` was, generalized. `getD_push_lt` and the
+frames-unchanged steps give it by `FrameShape.rfl'`.
+
+### And a *heap* hypothesis, which the old version did not need
+
+`(classPayload? defmod).isSome` reads the heap, so the transport now also takes
+*classes stay classes*. Three instances: `PlainGrow` (through `TypeAgree`'s third component),
+`defineMethod` (the same), and `IvarOnly` (`hi.classPayload`). Every other step leaves the heap
+alone and supplies `fun o ho => ho`.
+
+### What is left of the rung
+
+`KontOk.iterK` and the two pushes, then the third `EntryOk` arm, then the rule. Every predicate a
+block frame needs is now in place: `FrameConforms` follows the chain (L243), `Inv`'s frame/kont
+correspondence counts the block pop (L245), `StackCtx`'s name clause is guarded (L250), and the
+captured frame's facts ride on the kont (this).
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
+`--check` diff empty, third ratchet **19**.

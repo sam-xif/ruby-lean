@@ -119,7 +119,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       -- lists grow by the same head — which is the whole content of the clause.
       (by simp [framePopLabels, hks, dropLast_cons_ne hne]),
       -- L247: one `frameK` (no closure) and one frame.
-      (ClosuresOk.pushFrame hclo rfl rfl), _,
+      (ClosuresOk.pushFrame hclo rfl rfl rfl), _,
       -- L198: the callee's context carries the `ret` its body was checked at, which
       -- is what `KontOk.frameK`'s agreement premise reads.
       { cls := cu, selfCls := some cu, ret := r, meth := some mname,
@@ -266,7 +266,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   -- and the equation naming the head is what each case already has under `hK`.
   have hcloTail : ∀ {κ₀ : Kont} {k' : List Kont}, m.kont = κ₀ :: k' →
       ClosuresOk { m with kont := k' } := fun hkq =>
-    ClosuresOk.konts hclo rfl
+    ClosuresOk.konts hclo rfl rfl
       (by intro κ hm; exact Or.inl (by rw [hkq]; exact List.mem_cons_of_mem _ hm))
   unfold CtlOk at hc
   rcases hctl : m.ctl with e | v | j
@@ -754,7 +754,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       refine ⟨hhook, hsat, hstr, hcls,
         BottomObj_cons hf.1 (BottomObj_push hlt hbot),
         (by simp [framePopLabels, hks, dropLast_cons_ne hf.1]),
-        (ClosuresOk.pushFrame hclo rfl rfl),
+        (ClosuresOk.pushFrame hclo rfl rfl rfl),
         D, { cls := name }, [], [(ctx, Γk)],
         htab, ?_, ?_, hglob, ?_⟩
       · -- `FrameConforms` at the class-body frame: no captured chain (the literal
@@ -859,8 +859,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         refine ⟨hh', hsat', hstr', hcls',
           show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
           show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
-          ClosuresOk.konts hclo hfr
-            (by intro κ hm; simp only [withCtl, hko] at hm; exact Or.inl hm),
+          ClosuresOk.transport hclo
+            (by intro κ hm; simp only [withCtl, hko] at hm; exact Or.inl hm)
+            (by simp only [withCtl]; rw [hfr]; exact Nat.le_refl _)
+            (by intro p _; simp only [withCtl]; rw [hfr]; exact FrameShape.rfl' _)
+            (by
+              intro o ho
+              show (m₀.heap.classPayload? o).isSome = true
+              exact (hag.2.2.1 o (classPayload?_isSome_lt ho)) ▸ ho),
           D', ctx, Γ', Γs, ht', ?_, ?_, hgl', ?_⟩
         · show FramesOk m₀.heap m₀.frames m₀.stack (Γ' :: Γs.map Prod.snd)
           rw [hfr, hst]; exact FramesOk.heap_congr hag hfs
@@ -1304,11 +1310,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         ClosuresOk.transport (hcloTail hK)
           (by intro κ hm; exact Or.inl (by simpa [Machine.setLocal, withCtl] using hm))
           (Nat.le_of_eq (setLocal_frames_size { m with kont := k } x v).symm)
-          (by
-            intro p _
-            show ((({ m with kont := k } : Machine).setLocal x v).frames.getD p default).captured
-              = (({ m with kont := k } : Machine).frames.getD p default).captured
-            exact setLocal_captured _ x v p),
+          (by intro p _; exact setLocal_shape { m with kont := k } x v p)
+          (by intro o ho; exact ho),
         _, ctx, envSet Γk x τ, Γs, htab, ?_, ?_, hglob,
         ⟨τw, _, ValueTy.weaken hv hsw, hsu, hk'⟩⟩
       · -- `setLocal` rewrites one frame's `locals` and nothing else, so every
@@ -1468,7 +1471,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       simp only [Interp.withCtl]
       exact ⟨hhook, hsat, hstr, hcls, hbot, (by simpa [framePopLabels] using hks),
         -- L247: a global write moves neither frames nor the closures on the kont.
-        ClosuresOk.konts (hcloTail hK) rfl
+        ClosuresOk.konts (hcloTail hK) rfl rfl
           (by intro κ hm; exact Or.inl (by simpa using hm)),
         D, ctx, Γk, Γs, htab, hfs, hsc,
         GlobalsOk.set hglob hgt (ValueTy.weaken hv hcf),
@@ -1539,17 +1542,26 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                  = m.stack from hstk]
            simpa [framePopLabels] using hks,
         -- L247: `bindIvar` writes a heap object; frames and konts are untouched.
-        ClosuresOk.konts (hcloTail hK)
-          (show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
-              = ({ m with kont := k } : Machine).frames from by rw [show
-            (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
-              = (bindIvar { m with kont := k } x v).frames from rfl, hfr])
+        ClosuresOk.transport (hcloTail hK)
           (by
             intro κ hm
             refine Or.inl ?_
             rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
               = k from hkt] at hm
-            exact hm),
+            exact hm)
+          (by
+            rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+              = (bindIvar { m with kont := k } x v).frames from rfl, hfr]
+            exact Nat.le_refl _)
+          (by
+            intro p _
+            rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+              = (bindIvar { m with kont := k } x v).frames from rfl, hfr]
+            exact FrameShape.rfl' _)
+          (by
+            intro o ho
+            show ((bindIvar { m with kont := k } x v).heap.classPayload? o).isSome = true
+            rw [hi.classPayload]; exact ho),
         D, ctx, Γk, Γs, ⟨(hi.rowsAndConsts htab).1, (hi.rowsAndConsts htab).2.1, ?_,
           (hi.rowsAndConsts htab).2.2⟩,
         ?_, ?_, ?_, ?_⟩
@@ -1637,7 +1649,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           simp only [Interp.doReturn, Interp.returnTarget, List.headD_cons, hkind]
           rw [if_pos (show ((fid :: fids).contains fid) = true from by simp)]
           refine ⟨hhook, hsat, hstr, hcls, hbot, ?_,
-            ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+            ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
             D, ctx, Γk, Γs, htab, hfs, hsc, hglob,
             ⟨σ, ValueTy.weaken hv hsub, KontOk.retOk hk' hne σ hret, hff⟩⟩
           show framePopLabels k = (fid :: fids).dropLast
@@ -1736,7 +1748,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
         simpa using hq.2
       refine ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
-        ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+        ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
         _, c', Γ', Γs, htab,
         hfs.tail, StackCtx.tail hsc, hglob,
         ⟨_, _, ValueTy.weaken hv hsw, SubEnv.refl _, hk'⟩⟩
@@ -1763,7 +1775,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
         simpa using hq.2
       refine ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
-        ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+        ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
         _, c', Γ', Γs, htab,
         hfs.tail, ?_, hglob, ⟨τ, _, hv, SubEnv.refl _, hk'⟩⟩
       -- `StackCtx` pops with the environment stack, which is the whole point of
@@ -1832,7 +1844,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne hf.1]; simpa [framePopLabels] using hks),
-          ClosuresOk.pushFrame (hcloTail hK) rfl rfl, _,
+          ClosuresOk.pushFrame (hcloTail hK) rfl rfl rfl, _,
           { cls := cu, selfCls := some cu, ret := r, meth := some mname,
             params := some [] }, [],
           (ctx, Γj) :: Γs, htab, ?_, ?_, hglob, ?_⟩
@@ -2039,7 +2051,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | skip hκ hro' =>
         rw [unwind_ret_transparent (m := m) hκ hK]
         refine ⟨hhook, hsat, hstr, hcls, hbot, ?_,
-          ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+          ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
           D, ctx, Γ, Γs, htab, hfs, hsc, hglob,
           ⟨σ, hv, hro', ?_⟩⟩
         · simp only [withCtl]
@@ -2080,7 +2092,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               obtain ⟨c', Γ'⟩ := cΓb
               rw [hΓ] at hfs hsc hkf
               exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
-                ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+                ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
                 D, c', Γ', Γsb, htab, hfs.tail, StackCtx.tail hsc, hglob,
                 ⟨τf, _, ValueTy.weaken hv hsubf, SubEnv.refl _, hkf⟩⟩
     -- **A raise in flight** (L217), and it is the shortest jump case in the file:
@@ -2103,7 +2115,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- heap, frames and stack — so only `frameKLabels` moves.
         rw [unwind_raise_transparent (m := m) hκ hK]
         refine ⟨hhook, hsat, hstr, hcls, hbot, ?_,
-          ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+          ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
           D, ctx, Γ, Γs, htab, hfs, hsc, hglob,
           ⟨hne, hro'⟩⟩
         simp only [withCtl]
@@ -2128,7 +2140,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [hst, ht] at hbot hfs hsc hlab
             obtain ⟨c', Γ'⟩ := cΓ
             exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
-              ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+              ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
               D, c', Γ', Γs', htab, hfs.tail, StackCtx.tail hsc, hglob, ⟨hne, hro'⟩⟩
       | pop hro' =>
         -- A `frameK`: the activation goes with it, and `RaiseOk.pop` handed over the
@@ -2154,7 +2166,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [hst, ht] at hbot hfs hsc hlab
             obtain ⟨c', Γ'⟩ := cΓ
             exact ⟨hhook, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
-              ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+              ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
               D, c', Γ', Γs', htab, hfs.tail, StackCtx.tail hsc, hglob, ⟨hne, hro'⟩⟩
     -- **A `next` in flight** (L227), and it is the only jump that *lands back in the
     -- program*: the two `RetOk`-shaped cases pop frames, this one restarts a loop in the
@@ -2172,7 +2184,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       | skip hκ hro' =>
         rw [unwind_nxt_transparent (m := m) hκ hK]
         refine ⟨hhook, hsat, hstr, hcls, hbot, ?_,
-          ClosuresOk.konts (hcloTail hK) rfl (by intro κ hm; exact Or.inl hm),
+          ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
           D, ctx, Γ, Γs, htab, hfs, hsc, hglob,
           ⟨Γl, hil, hsub, htop, hro'⟩⟩
         simp only [withCtl]
@@ -2187,7 +2199,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rw [unwind_nxt_loopCond (m := m) hK]
         obtain ⟨τc, hc'⟩ := hl.1
         refine ⟨hhook, hsat, hstr, hcls, hbot, by simpa [withKont, framePopLabels] using hks,
-          ClosuresOk.konts hclo rfl
+          ClosuresOk.konts hclo rfl rfl
             (by
               intro κ hm
               rcases List.mem_cons.mp hm with rfl | hin
@@ -2207,7 +2219,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rw [unwind_nxt_loopBody (m := m) hK]
         obtain ⟨τc, hc'⟩ := hl.1
         refine ⟨hhook, hsat, hstr, hcls, hbot, by simpa [withKont, framePopLabels] using hks,
-          ClosuresOk.konts hclo rfl
+          ClosuresOk.konts hclo rfl rfl
             (by
               intro κ hm
               rcases List.mem_cons.mp hm with rfl | hin

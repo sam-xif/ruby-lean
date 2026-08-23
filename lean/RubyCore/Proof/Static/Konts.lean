@@ -1080,7 +1080,14 @@ def KontClosure : Kont → Option Closure
     whose non-blockness is `StackCtx`'s L243 clause. -/
 def ClosuresOk (m : Machine) : Prop :=
   ∀ κ ∈ m.kont, ∀ cl, KontClosure κ = some cl →
-    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none
+    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none ∧
+    -- **L250: and the three *name-free* `StackCtx` clauses of that frame** — the ones a
+    -- block activation's own entry will owe, since `callClosure` copies `defmod`, `cref`
+    -- and `defVis` from here. Name-free is the whole point: `className … = c.cls` is the
+    -- clause that needs the pairing, and it is guarded on `c.inBlock` instead (L250).
+    (m.heap.classPayload? (m.frames.getD cl.captured default).defmod).isSome ∧
+    Boot.objectId ∈ (m.frames.getD cl.captured default).cref ∧
+    defVisOfDef (m.frames.getD cl.captured default) = .pub
 
 theorem ClosuresOk.cons {m : Machine} {κ : Kont} {ctl : Ctl}
     (hκ : KontClosure κ = none) (h : ClosuresOk m) :
@@ -1093,6 +1100,19 @@ theorem ClosuresOk.cons {m : Machine} {κ : Kont} {ctl : Ctl}
 theorem ClosuresOk.ctl {m : Machine} {ctl : Ctl} (h : ClosuresOk m) :
     ClosuresOk (Interp.withCtl m ctl) := h
 
+theorem ClosuresOk.cons' {m : Machine} {κ : Kont} {ctl : Ctl}
+    (hκ : KontClosure κ = none) (h : ClosuresOk m) :
+    ClosuresOk (Interp.withKont m ctl κ) := h.cons hκ
+
+/-- The four fields `ClosuresOk` reads off the captured frame. Stated as a predicate so
+    the transport takes one hypothesis rather than four, and so `setLocal` — which writes
+    `locals` and none of these — discharges it in one lemma. -/
+def FrameShape (f g : Frame) : Prop :=
+  f.captured = g.captured ∧ f.defmod = g.defmod ∧ f.cref = g.cref ∧
+  defVisOfDef f = defVisOfDef g
+
+theorem FrameShape.rfl' (f : Frame) : FrameShape f f := ⟨rfl, rfl, rfl, rfl⟩
+
 /-- **The one shape every consecution case needs** (L247): the frames may have grown
     (or had a `locals` rewritten), and the continuation may have gained konts that carry
     no closure or lost some from the front. Every step in the fragment is an instance,
@@ -1100,19 +1120,22 @@ theorem ClosuresOk.ctl {m : Machine} {ctl : Ctl} (h : ClosuresOk m) :
 theorem ClosuresOk.transport {m m' : Machine} (h : ClosuresOk m)
     (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none)
     (hsz : m.frames.size ≤ m'.frames.size)
-    (hget : ∀ p, p < m.frames.size →
-      (m'.frames.getD p default).captured = (m.frames.getD p default).captured) :
+    (hget : ∀ p, p < m.frames.size → FrameShape (m'.frames.getD p default)
+      (m.frames.getD p default))
+    (hh : ∀ o, (m.heap.classPayload? o).isSome → (m'.heap.classPayload? o).isSome) :
     ClosuresOk m' := by
   intro κ hmem cl hcl
   rcases hk κ hmem with hin | hnone
-  · obtain ⟨hlt, hcap⟩ := h κ hin cl hcl
-    exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [hget _ hlt]; exact hcap⟩
+  · obtain ⟨hlt, hcap, hpay, hcref, hvis⟩ := h κ hin cl hcl
+    obtain ⟨e1, e2, e3, e4⟩ := hget _ hlt
+    exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [e1]; exact hcap,
+      by rw [e2]; exact hh _ hpay, by rw [e3]; exact hcref, by rw [e4]; exact hvis⟩
   · exact absurd hcl (by rw [hnone]; simp)
 
 /-- The activation push: one `frameK` (which carries no closure) and one frame. -/
 theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
     (h : ClosuresOk m) (hk : m'.kont = .frameK fid :: m.kont)
-    (hf : m'.frames = m.frames.push f) : ClosuresOk m' :=
+    (hf : m'.frames = m.frames.push f) (hhp : m'.heap = m.heap) : ClosuresOk m' :=
   h.transport
     (by
       intro κ hmem
@@ -1121,7 +1144,8 @@ theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
       · exact Or.inr (by simp [KontClosure])
       · exact Or.inl hin)
     (by rw [hf, Array.size_push]; omega)
-    (by intro p hp; rw [hf, getD_push_lt _ _ _ hp])
+    (by intro p hp; rw [hf, getD_push_lt _ _ _ hp]; exact FrameShape.rfl' _)
+    (by intro o ho; rw [hhp]; exact ho)
 
 /-- `setLocal` writes a frame's `locals`; every frame's `captured` is where it was. -/
 theorem setLocal_captured (m : Machine) (x : String) (v : Value) (p : ObjId) :
@@ -1136,6 +1160,20 @@ theorem setLocal_captured (m : Machine) (x : String) (v : Value) (p : ObjId) :
       rw [dif_neg (by simpa using hlt), dif_neg hlt]
   · rw [getD_set!_ne _ _ _ _ hq]
 
+theorem setLocal_shape (m : Machine) (x : String) (v : Value) (p : ObjId) :
+    FrameShape ((m.setLocal x v).frames.getD p default) (m.frames.getD p default) := by
+  show FrameShape ((m.frames.set! _ _).getD p default) _
+  by_cases hq : p = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+      (m.frames.size + 1)
+  · by_cases hlt : p < m.frames.size
+    · rw [hq, getD_set!_self _ _ _ (hq ▸ hlt)]
+      exact ⟨rfl, rfl, rfl, rfl⟩
+    · simp only [Array.getD, Array.set!]
+      rw [dif_neg (by simpa using hlt), dif_neg hlt]
+      exact FrameShape.rfl' _
+  · rw [getD_set!_ne _ _ _ _ hq]
+    exact FrameShape.rfl' _
+
 theorem setLocal_frames_size (m : Machine) (x : String) (v : Value) :
     (m.setLocal x v).frames.size = m.frames.size := by
   show (m.frames.set! _ _).size = _
@@ -1143,15 +1181,11 @@ theorem setLocal_frames_size (m : Machine) (x : String) (v : Value) :
 
 /-- The common instance: nothing about the frames moved. -/
 theorem ClosuresOk.konts {m m' : Machine} (h : ClosuresOk m)
-    (hf : m'.frames = m.frames)
+    (hf : m'.frames = m.frames) (hhp : m'.heap = m.heap)
     (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none) : ClosuresOk m' :=
-  h.transport hk (by rw [hf]; exact Nat.le_refl _) (by intro p _; rw [hf])
-
-/-- The kont shrinks: a `∀` over a sublist. -/
-theorem ClosuresOk.tail {m : Machine} {κ : Kont} {k : List Kont} (hk : m.kont = κ :: k)
-    (h : ClosuresOk m) : ∀ κ' ∈ k, ∀ cl, KontClosure κ' = some cl →
-      cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none :=
-  fun κ' hmem => h κ' (by rw [hk]; exact List.mem_cons_of_mem _ hmem)
+  h.transport hk (by rw [hf]; exact Nat.le_refl _)
+    (by intro p _; rw [hf]; exact FrameShape.rfl' _)
+    (by intro o ho; rw [hhp]; exact ho)
 
 /-- **The invariant** handed to `invariant_sound_from`.
 
@@ -1826,11 +1860,20 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
     -- L247: an allocating step moves neither the kont nor the frames.
-    show ClosuresOk (withCtl m' (.value v)) by
-      intro κ hmem cl hcl
-      rw [show (withCtl m' (.value v)).kont = m.kont from by simp [withCtl, hko]] at hmem
-      have := hclo κ hmem cl hcl
-      simpa [withCtl, hfr] using this,
+    show ClosuresOk (withCtl m' (.value v)) from
+      hclo.transport
+        (by
+          intro κ hmem
+          exact Or.inl (by rw [show (withCtl m' (.value v)).kont = m.kont from by
+            simp [withCtl, hko]] at hmem; exact hmem))
+        (by rw [show (withCtl m' (.value v)).frames = m.frames from by
+              simp [withCtl, hfr]]; exact Nat.le_refl _)
+        (by intro p _; rw [show (withCtl m' (.value v)).frames = m.frames from by
+              simp [withCtl, hfr]]; exact FrameShape.rfl' _)
+        (by
+          intro o ho
+          show (m'.heap.classPayload? o).isSome = true
+          rw [hag.2.2.1 o (classPayload?_isSome_lt ho)]; exact ho),
     F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
