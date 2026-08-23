@@ -52,6 +52,7 @@ import RubyCore.Proof.AncestorsGrow
 import RubyCore.Proof.Static.Mono
 import RubyCore.Proof.Static.Assn
 import RubyCore.Proof.Static.OpenSelf
+import RubyCore.Proof.Static.Iter
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -78,6 +79,14 @@ import RubyCore.Proof.Static.OpenSelf
 -- is the invariant restated over it, inheriting every consecution case.
 #print axioms RubyCore.Proof.Static.denote_declAssn
 #print axioms RubyCore.Proof.Static.entail_sound
+-- Wall 1's machine step (L244). The five reductions a block send passes through,
+-- audited here because nothing else imports them yet — an off-target file with no
+-- consumer is exactly how `Proof/` rotted for 24 commits (L119).
+#print axioms RubyCore.Proof.Static.finishSend_lit
+#print axioms RubyCore.Proof.Static.invoke_iter_each
+#print axioms RubyCore.Proof.Static.startIter_eq
+#print axioms RubyCore.Proof.Static.iterStep_cons
+#print axioms RubyCore.Proof.Static.callClosure_req1
 #print axioms RubyCore.Proof.Static.assn_sound_from
 #print axioms RubyCore.Proof.Static.assn_check_sound
 -- R4 (open self). `inferOpen_mono` is §7.5's owed monotonicity lemma;

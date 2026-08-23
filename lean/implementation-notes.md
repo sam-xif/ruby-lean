@@ -11821,3 +11821,83 @@ the rule.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**, `--check`
 diff empty against L242's capture, third ratchet **19**. No machine file touched.
+
+## L244 — Wall 1's machine step, in five reductions, and a measured correction to the plan
+
+Out of fragment **19 → 19**, `Proof/`-only (a new off-import file plus the axiom audit), so
+no `--check` diff is owed and none was needed. Axiom-clean.
+
+### The measurement first, because it reprices the wall
+
+`HANDOFF.md` split Wall 1 into *the native-iterator rung (20 of the 30-odd sends) and the
+prelude-Enumerable rung behind it*, as **two populations** — `each`/`map`/`inject`/`max_by`
+native, `select`/`any?`/`find`/`filter_map`/… written in Ruby in the prelude.
+
+Traced, one program per method (`[1,2].m { |x| x }`, `rubycore --trace`, frame kinds and kont
+labels collected):
+
+| method | frames / konts seen |
+|---|---|
+| `each`, `map`, `each_with_index`, `inject`, `max_by` | one `method` frame, `iterate` konts, block frames |
+| `select`, `any?`, `find`, `filter_map`, `flat_map`, `partition`, `sort_by`, `reject`, `all?`, `to_h`, `zip` | **two** `method` frames, `iterate` konts, block frames |
+| `tap` | one `method` frame, one block frame, **no** `iterate` |
+
+> **They are not two populations.** A prelude `Enumerable#select` is a Ruby body that calls
+> `each`, so its trace has its own activation *on top of* a `startIter` activation. The native
+> iterator is the **floor** of fifteen of the sixteen block methods the slice uses, and the
+> prelude rung sits on it. So this is not one of two alternatives to pick between — it is the
+> shared prerequisite, and nothing about a block send can be proved before it.
+
+### The five reductions, all proved
+
+`RubyCore/Proof/Static/Iter.lean`. A block send is one `stepFn` step that ends with the
+**block body in `ctl`**, two frames pushed and three konts pushed; these are the pieces it
+factors into.
+
+| lemma | what it says |
+|---|---|
+| `reifyBlock_eq` | the `Proc` allocation, with the closure named (`blockClosure`) |
+| `finishSend_lit` | a literal block reaches `invoke` as that `Proc` — **at any name that is not `lambda`/`proc`/`new`**, so the sixteen iterator rows share one lemma |
+| `invoke_iter_each` | …and dispatch is `startIter`, given three side conditions |
+| `startIter_eq` | a frame push and a `frameK` — the activation a `break` returns from |
+| `iterStep_cons` / `iterStep_nil` | one turn (an `iterK`, then the block call) / the empty loop |
+| `callClosure_req1` | the block call for a `\|x\|` block: the block frame, `captured := some cl.captured` |
+
+They compose: the file's `example` runs the whole chain by five rewrites and concludes
+*the step lands in `.eval body`*, with no case split and no `Builtins.run`.
+
+**`invoke_iter_each`'s three hypotheses are the specification of a block row**, and each is a
+real obligation rather than bookkeeping:
+
+1. **`lookup m.heap (.ref o) "each" = none`** — `tryIterator` is reached only from
+   `dispatchMiss`. A program that reopens `Array` and defines `each` takes a different step
+   entirely, so this is the clause a block row's `EntryOk` arm carries and the one a
+   `defineMethod` has to preserve. It is the *opposite* polarity from both existing arms,
+   which say the name **resolves**.
+2. **the receiver's payload is an `Array`** — `plainRecv`'s sixth clause (L230) is the bridge
+   from `.cls "Array"`, so a typed receiver supplies it.
+3. **the block value is a `Proc` over `cl`** — `reifyBlock_eq` supplies it at the allocation.
+
+**`callClosure_req1`'s three are all syntactic**, which is what lets `infer`'s rule check them:
+a single required positional, no block-local names, not a lambda. Each turns off one branch —
+`classifySimple` succeeds, the auto-splat test needs `required ≥ 2`, `arityOk` is vacuous off a
+lambda.
+
+`invoke_iter_each` is stated at `each` and not at an abstract iterator name on purpose:
+`tryIterator`'s `match` is a sixteen-way split with a different `IterKind`, element list and
+seed per arm, so there is no shared statement. Each declared row pays for its own copy, and the
+copy's shape is this one.
+
+### What is still owed for a block send to type
+
+* `KontOk` arms for `blkFrameK` and `iterK`, and `StackCtx`/`FramesOk` entries for the
+  iterator activation and the block frame — the predicates are ready as of L243;
+* the third `EntryOk` arm, whose content is `invoke_iter_each`'s hypotheses plus the loop's
+  own conformance (every element is yielded at the block's parameter type);
+* the `infer`/`inferOpen` rule and `inferOpen_factors`' case.
+
+### Checks
+
+`lake build`, `lake build Metatheory` (60 jobs), `check-proofs.sh` axiom-clean with **0
+`sorryAx`** — the five lemmas are added to its audit list, because an off-target file with no
+consumer is exactly how `Proof/` rotted for 24 commits (L119). Third ratchet **19**.
