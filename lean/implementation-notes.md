@@ -11973,3 +11973,74 @@ the next call needs; `StackCtx`/`FramesOk` at the two pushes; the third `EntryOk
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty, third ratchet **19**.
+
+## L246 — `KontOk.iterK`'s missing fact, priced before writing it (no code)
+
+Out of fragment **19 → 19**. No code: the next constructor was designed to the point where its
+one unprovable premise became clear, and that premise redesigns an `Inv` clause rather than adding
+one. Written down before the attempt, following L219/L235's precedent — *a rung priced to the fact
+it needs is cheaper than a rung reverted*.
+
+### What `KontOk.iterK` has to say
+
+At its delivery the in-flight value is the block's result for the current element, the block frame
+has already popped, and the current activation is the **iterator's**. `iterStep` then either calls
+the block again — a *new* block frame and a *new* `iterK` — or delivers `retVal` to the `frameK`
+below. So the constructor has to carry everything the next call needs:
+
+1. the block body's typing, `infer D Γb cl.body false <block ctx> = some (τb, _, D)` with
+   `subTy τb bs.ret`;
+2. every remaining element's type, `∀ a ∈ rest, ValuesTy h a bs.params` — heap-indexed, so it
+   rides through `heap_congr'` like every other `ValueTy` premise;
+3. `Γb = bs-parameters ++ Γcap`, where `Γcap` is the environment the block's **captured** frame
+   conforms at.
+
+(1) and (2) are ordinary `KontOk` premises. (3) is the one that does not fit.
+
+### Why (3) does not fit, stated exactly
+
+`FrameConforms` at the *new* block frame (L243) reads `localOfIn`, which is the frame's own locals
+and then **one hop to `frames[cl.captured]`**. So the delivery has to know that
+`frames[cl.captured]` conforms at `Γcap` — and `FramesOk` supplies exactly that **for frames on
+the stack, positionally**. At the `iterK` delivery the stack is `ifid :: capfid :: …`, and `Γcap`
+is the second entry of `KontOk`'s own `Γs` index. So the *only* missing fact is
+
+> `cl.captured = m.stack.tail.headD 0`
+
+— a frame **id**, and `KontOk` is indexed by environments and contexts, not by ids. It cannot say
+this, and no amount of premise-adding will let it.
+
+### The three candidate homes, priced
+
+1. **Index `KontOk` by the stack** (`Γs : List (FrameCtx × Env × FrameId)`). Correct and
+   mechanical, and it is ~200 sites across five files — every constructor pattern, every
+   `@ctor` case in `Preservation.lean`, `CtlOk`, `Inv`. Rejected on cost, not on shape.
+2. **A new `Inv` conjunct about the head of the kont.** Cheap to state and **wrong**: while the
+   block body runs the head is a `blkFrameK` and the `iterK` is second, so a head-only clause is
+   not preserved by the step that needs it.
+3. **Redesign L199's clause as a relation over the two lists.** This is the one.
+
+```lean
+-- sketch
+def KontFramesOk (frames : Array Frame) : List Kont → List FrameId → Prop
+  -- walks kont and stack together; at a `frameK fid` the stack's head is `fid`;
+  -- at a `blkFrameK fid _ _ cl _` the head is `fid` **and** `cl.captured` is the
+  -- next id below; at an `iterK cl brk …` the head is `brk` and `cl.captured` is
+  -- the next id below; a non-popping kont advances the kont list only.
+```
+
+It **subsumes** `framePopLabels m.kont = m.stack.dropLast` — that equation is its projection — so
+it is a replacement rather than an addition, and the ~20 sites that carry `hks` today are the same
+~20 sites that would carry this. What it buys beyond the equation is exactly the missing fact, and
+it buys it for `blkFrameK` too, which the block frame's own `FrameConforms` needs at the *push*.
+
+> **The reason it is a relation and not another projection**: the closure's captured id is not a
+> function of the kont alone (two `iterK`s in a chain may capture different frames), and it is not
+> a function of the stack alone. It is a *pairing*, which is what L199's clause already is — the
+> equation was the pairing's degenerate case, back when the only popping kont was `frameK` and the
+> only thing to say about it was its label.
+
+### What this does *not* change
+
+The five machine reductions (L244) and `KontOk.blkFrameK` (L245) are unaffected — neither mentions
+a captured frame. The rung after it is unchanged too: the third `EntryOk` arm, then the rule.
