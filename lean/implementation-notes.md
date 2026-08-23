@@ -12166,3 +12166,78 @@ writes `locals`, so every frame's `captured` is where it was.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty against L245's capture, third ratchet **19**.
+
+## L249 — L247's dissolution was **partial**: `StackCtx` still wants the pairing, and here is what buys it out
+
+Out of fragment **19 → 19**. No code. `KontOk.iterK` was designed a second time, and the premise
+L247 removed from `FrameConforms` turned out to reappear one predicate over. Written down rather
+than discovered mid-refactor, for L246's reason.
+
+### The correction
+
+L247 said the block frame's conformance needs nothing about the captured frame because the
+enclosing locals are typed `.any`. That is **true of `FrameConforms` and false of `StackCtx`.**
+Both are positional over `m.stack`, so the block frame gets an entry in *each*, and `StackCtx`'s
+per-entry clauses read fields `callClosure` copies from the captured frame:
+
+| `StackCtx` clause | reads | supplied by |
+|---|---|---|
+| 1. `(classPayload? defmod).isSome` | `capF.defmod` | name-free |
+| 2. `className h defmod = c.cls` | `capF.defmod` **and the context's name** | **needs the pairing** |
+| 3. `defVisOfDef = .pub` | `capF.defVis` | name-free |
+| 4. `selfCls` (self's type, chain) | `capF.self` **and the context's name** | vacuous at `selfCls = none` |
+| 5. `Object ∈ cref` | `capF.cref` | name-free |
+| 6. `meth` | the context | vacuous at `meth = none` |
+| 7. `captured = none` (L243) | — | **false at a block frame; already the block rung's** |
+
+So four of the seven are free at `.any`-typed enclosing locals; **clause 2 is not**, because it
+compares a heap-derived *name* against a name the static context carries, and only the pairing
+(`cl.captured` is stack position *k*) connects them.
+
+### What buys it out, and it is cheaper than indexing `KontOk` by the stack
+
+1. **`ClosuresOk` grows the three name-free clauses** about `frames[cl.captured]` —
+   `(classPayload? defmod).isSome`, `Object ∈ cref`, `defVisOfDef = .pub`. All true of the caller
+   (its own `StackCtx` entry says so at the push), all preserved by the same three observations
+   L248's version is.
+2. **`StackCtx`'s clause 2 is guarded on `kind ≠ .block`.** Sound because nothing reads it at a
+   block frame: its consumers are the `def` row's key and the `class'` rule, and a block body may
+   contain neither (`defFree`). Every construction site already proves the equation, so the guard
+   is one `intro _` there; the *consumers* are what pay, and they pay one `kind` fact each — which
+   `StackCtx`'s own clause 6 or the frame literal already gives at each of them.
+3. **The block's context sets `selfCls := none` and `meth := none`** (as well as `ret := none` and
+   `inLoop := none`, which L245 already requires), which makes clauses 4 and 6 vacuous.
+
+### What (3) costs on the census, measured rather than assumed
+
+`selfCls = none` refuses an implicit-self send inside a block — so a block that calls an enclosing
+method is out. Checked against the fifteen bodies: **it costs one of them**, because in almost
+every block the *first* thing evaluated is a send on the parameter, and a send on `.any` is a
+`needed:` that short-circuits the whole body before the vcall is reached.
+
+| block | first evaluated | verdict under this cut |
+|---|---|---|
+| `identifiers.select { \|i\| i.start_with?("CVE-") }` | `i.start_with?` on `.any` | `needed:` |
+| `references.find { \|r\| r["type"] == "ADVISORY" }` | `r["type"]` on `.any` | `needed:` |
+| `versions.any? { \|v\| normalize_version(v.to_s) == target }` | `v.to_s` on `.any` | `needed:` |
+| `list.map { \|data\| new(data) }` | `new(data)`, an implicit-self send | **stays `oof`** |
+
+So the cut is worth taking: `selfCls` inside a block is a *later* widening, and the one body it
+costs is `Vulnerability#self.from_osv_list`.
+
+### The option this replaces, and why
+
+Indexing `KontOk` by the frame stack (a parallel `fids` index, or `Γs : List (FrameCtx × Env ×
+FrameId)`) is the general answer and would make clause 2 provable directly. It is ~200 mechanical
+edits across five files and it makes every constructor carry an index nothing but this one clause
+reads. The two changes above are ~15 edits and leave the general answer available for the day a
+second consumer appears.
+
+### Revised order for the rung (superseding L247's)
+
+1. `ClosuresOk` — **built** (L248); grow it by the three name-free clauses;
+2. `StackCtx` clause 2 guarded on `kind ≠ .block`;
+3. `KontOk.iterK`, with the block environment `params ++ blockLocals(nilT) ++ outer-as-`.any``;
+4. the two pushes' `StackCtx`/`FramesOk`, and `setLocal` at a block-local;
+5. the third `EntryOk` arm;
+6. the rule, its `inferOpen` mirror, and `inferOpen_factors`' case.
