@@ -1019,19 +1019,28 @@ theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τr
     `declFor` — so the `argsK` case has to move between the two.
 
     **Generalized from `[τp]` to any `params` in L152**, because the zero-argument
-    case needs it at `[]` and the two would otherwise be the same proof twice. -/
+    case needs it at `[]` and the two would otherwise be the same proof twice.
+
+    **The recovered row takes no block** (L242), and that conjunct is not decoration:
+    `sigOf` now refuses a block-taking row, so a rule that reads a signature has
+    *shown* the row is blockless, and this is where that fact is handed to `DeclsOk`.
+    The day a block-send rule exists it will read `declFor` directly rather than come
+    through here, for exactly this reason. -/
 theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
     {τret : Ty} (h : sigOf D τr mname = some (params, τret)) :
-    declFor D τr mname = some { params := params, ret := τret } := by
+    declFor D τr mname = some { params := params, ret := τret, blk := none } := by
   unfold sigOf at h
   cases hd : declFor D τr mname with
   | none => rw [hd] at h; exact absurd h (by simp)
   | some d =>
-    obtain ⟨ps, r⟩ := d
+    obtain ⟨ps, r, b⟩ := d
     rw [hd] at h
-    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h
-    rfl
+    cases b with
+    | none =>
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      rfl
+    | some _ => exact absurd h (by simp)
 
 -- ~~`site_explicit`~~ — **withdrawn at L172**, together with the hypothesis it
 -- needed. It said: *`evalExpr` chooses the send site syntactically, `infer`

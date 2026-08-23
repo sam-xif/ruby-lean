@@ -321,7 +321,10 @@ def ResolvesUser (h : Heap) (k : ObjId) (mname : String) (md : MethodDef) : Prop
     it is the same shape as `LoopOk`'s stability condition and for the same
     reason. It costs nothing today, since no rule grows the table at all. -/
 def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl) : Prop :=
-  d.params = [] ∧ defFree md.body = true ∧
+  -- **L242**, for `ConformsAt`'s reason at the other witness: the body below is checked
+  -- by `infer` at a context with no block channel at all (`FrameCtx` has no `blk`
+  -- field), so a row declaring a block would oblige a `yield` rule that does not exist.
+  d.params = [] ∧ d.blk = none ∧ defFree md.body = true ∧
     -- **L198: the context's `ret` is carried, not fixed**, and that is what breaks a
     -- circularity rather than papering over it.
     --
@@ -395,6 +398,14 @@ def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl
 def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
   (mname == "send" || mname == "public_send" || mname == "__send__") = false ∧
   bid ≠ "Object#raise" ∧
+  -- **L242: the row takes no block**, and this is where the new field's inertness is
+  -- stated rather than assumed. `Builtins.run bid recv args m` below is a *blockless*
+  -- call — the signature has no slot for a `Proc` and `invoke` reaches this path only
+  -- with `blk = none` — so a row declaring a block would be a claim about a step this
+  -- conjunction does not describe. Free at both shipped tables (every row defaults the
+  -- field), and it is the exact place the bill lands: a block-taking row is witnessed by
+  -- a **third** arm of `EntryOk`, the native iterator, not by widening this one.
+  d.blk = none ∧
   -- **`new` is excluded** (L185), and it is the third of exactly this kind of
   -- clause. `invoke` intercepts a `.cls` receiver at `invokeMaybeNew` when the name
   -- is `"new"` (`Interp/Send.lean:106`) and allocates rather than dispatching, so a
@@ -828,7 +839,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       m'.globals = m.globals ∧
       startArgs m recv site mname args [] .none
         = .next (withCtl m' (.value w)) := by
-  obtain ⟨bid, hres, hns, hraise, hnew, hconf⟩ := he
+  obtain ⟨bid, hres, hns, hraise, -, hnew, hconf⟩ := he
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ :=
     EntryOk.resolves ha hn hnar hres hrv
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
@@ -998,7 +1009,7 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
       m'.globals = m.globals ∧
       doSuper m args blk = .next (withCtl m' (.value w)) := by
   obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hsup _ _ hdp hdn hch
-  obtain ⟨-, -, -, hcf⟩ := hconf
+  obtain ⟨-, -, -, -, hcf⟩ := hconf
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hcf m _ args hrv hargs
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   unfold doSuper
@@ -1557,9 +1568,9 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         fun k ht => ResolvesAt_defineMethod (hres k (TyClass_defineMethod ht)) hmn, hconf⟩
     · refine Or.inr ⟨mdu, cu, htys,
         fun k ht => ResolvesUser_defineMethod (hresu k (TyClass_defineMethod ht)) hmn,
-        by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, ?_⟩
-      obtain ⟨Γ', r, τb, hb, hsb, hag⟩ := hconfu.2.2
-      exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.1 hb, hsb, hag⟩
+        by rw [className_defineMethod]; exact hnmu, hconfu.1, hconfu.2.1, hconfu.2.2.1, ?_⟩
+      obtain ⟨Γ', r, τb, hb, hsb, hag⟩ := hconfu.2.2.2
+      exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.2.1 hb, hsb, hag⟩
 
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
@@ -2201,7 +2212,7 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
     BuiltinEntryOk h .int mname { params := [.int], ret := .int } := by
   -- L185's `mname ≠ "new"` is `hnew`, a hypothesis rather than a `decide`, because
   -- the lemma is stated at an abstract `mname`.
-  refine ⟨bid, ?_, hns, hraise, hnew, ?_⟩
+  refine ⟨bid, ?_, hns, hraise, rfl, hnew, ?_⟩
   · -- L147: the clause is now indexed by the dispatch class, and `TyClass h .int k`
     -- *is* `k = Boot.integerId` — so the `valueTy_int` inversion and the
     -- `lookup_int_const`/`classOf_int` rewrites all go away. `IntBuiltinResolves` is
@@ -2250,7 +2261,7 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
     BuiltinEntryOk h .int mname { params := [], ret := τret } := by
   -- L185's `mname ≠ "new"` is `hnew`, a hypothesis rather than a `decide`, because
   -- the lemma is stated at an abstract `mname`.
-  refine ⟨bid, ?_, hns, hraise, hnew, ?_⟩
+  refine ⟨bid, ?_, hns, hraise, rfl, hnew, ?_⟩
   · intro k hk
     subst hk
     exact hres

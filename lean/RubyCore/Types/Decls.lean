@@ -40,11 +40,41 @@ does not change.
 
 namespace RubyCore.Types
 
+/-- **The signature of the block a method takes** (L242) — the parameter types the
+    block is called with, and the type its body must answer.
+
+    A *separate* structure from `MethodDecl` rather than a recursive occurrence of it,
+    and the reason is what the two describe. A `MethodDecl` is a claim about a
+    **method-table entry**: something `ResolvesAt` finds and `ConformsAt`/`UserConforms`
+    discharge. A `BlockSig` is a claim about a **call the callee makes** — the callee
+    invokes the block, so the direction of the obligation is reversed: the *caller* owes
+    a body that answers `ret` when handed values of `params`, and the *callee* owes to
+    call it that way and no other. Nesting `MethodDecl` would suggest a block can itself
+    take a block, which no rule will admit and which `reifyBlock` gives no shape to.
+
+    There is no arity slack: `params.length` is the number of values `iterStep` yields
+    per iteration, exactly, because `callClosure` binds them positionally. Ruby's
+    auto-splat (a one-parameter block receiving a `[k, v]` pair whole) is therefore a
+    *different* row and not a widening of this one — `Hash#each` yields one argument,
+    and a `|k, v|` block against it is `callClosure`'s destructuring path, which
+    `openParams` already refuses by kind. -/
+structure BlockSig where
+  params : List Ty := []
+  ret : Ty
+deriving DecidableEq, Repr, Inhabited
+
 /-- A declared signature: parameter types and return type. The receiver's type is
-    the key's class, not a field. -/
+    the key's class, not a field.
+
+    **`blk` is the block the method takes** (L242), `none` for a method that takes
+    none — which is every row any shipped table holds, and every row `DeclsOk` can
+    currently witness (`ConformsAt` and `UserConforms` each pin it, and each names the
+    bill the day it is widened). A defaulted field, so all 130-odd existing literals
+    elaborate unchanged. -/
 structure MethodDecl where
   params : List Ty
   ret : Ty
+  blk : Option BlockSig := none
 deriving DecidableEq, Repr, Inhabited
 
 /-- The static declaration table.
@@ -309,9 +339,22 @@ def declFor (D : Decls) (τ : Ty) (mname : String) : Option MethodDecl :=
 
 /-- The signature in the `(params, ret)` shape `infer` and `KontOk` read. This is
     the direct replacement for P0's `builtinSig`, and the only difference visible
-    to the type rules is that it takes the table. -/
+    to the type rules is that it takes the table.
+
+    **A block-taking row is not a signature** (L242), and the filter is the whole
+    inertness argument for `MethodDecl.blk`. Every rule in the fragment reads its
+    receiver's declaration through this function and *none* of them passes a block, so
+    a row that declares one would otherwise let `xs.each` — no block — type against
+    `Array#each { |x| … } → Array`, which is a claim about a different step
+    (`tryIterator` answers `none` without a block, and the call is an Enumerator the
+    model gates). Refusing here rather than at each rule is what makes the field
+    unreadable by anything that has not been taught about it. -/
 def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
-  (declFor D τ mname).map fun d => (d.params, d.ret)
+  match declFor D τ mname with
+  | some d => match d.blk with
+    | none => some (d.params, d.ret)
+    | some _ => none
+  | none => none
 
 /-- **One table is carried by another**: every signature the first supports, the
     second supports identically.

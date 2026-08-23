@@ -11632,3 +11632,93 @@ proposition, definitionally — and **false for a user entry**, because `UserEnt
 ### Checks
 
 `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--check` diff empty, census **19**.
+
+## L241 — `UserKey`: the user witness stops pinning `τr = .cls c` (oof 19 → 19, inert)
+
+*Entry written at L242 from the commit message; the commit itself (`ca3b4e4`) shipped without one,
+which is a §4 norm miss worth naming rather than quietly fixing.*
+
+`UserEntryOk`'s first conjunct was the equation `τr = .cls c`, and that equation is what breaks
+`mem_declAtoms_iff`'s certificate reading the moment `arrayOf` dispatches: `declTys` is finite and
+element types are not, so `DeclsOk` at an `arrayOf` receiver has to be **derivable** from the
+`.cls "Array"` atom — free for a builtin entry (`TyClass` at the two types is the same proposition,
+definitionally) and refused by the equation for a user one.
+
+```lean
+def UserKey (τr : Ty) (c : String) : Prop :=
+  τr = .cls c ∨ (∃ e, τr = .arrayOf e) ∧ c = "Array"
+```
+
+Two shapes and no more. Deliberately **not** `tyClassNames τr = [c]`, which would also admit the
+ground arms — a user row on `Integer` is what `hground` exists to forbid.
+
+## L242 — the block signature enters the declaration table, and it is unreadable on purpose
+
+Out of fragment **19 → 19**. `--check` byte-identical (56 / 1,169 / 0), `check-proofs.sh`
+axiom-clean, `--self-test` all agree. The first rung of Wall 1, and it is an **inert prerequisite**
+in L238's sense: it adds the vocabulary a block-send rule needs and arranges that *nothing* can read
+it until that rule exists.
+
+### What landed
+
+```lean
+structure BlockSig where
+  params : List Ty := []
+  ret : Ty
+
+structure MethodDecl where
+  params : List Ty
+  ret : Ty
+  blk : Option BlockSig := none          -- L242
+```
+
+A **defaulted** field, so all ~130 existing row literals elaborate unchanged and `Sig := MethodDecl`
+carries it into the assertion language for free.
+
+`BlockSig` is a separate structure rather than a recursive `MethodDecl`, and the reason is what the
+two describe. A `MethodDecl` is a claim about a **method-table entry** — something `ResolvesAt` finds
+and `ConformsAt`/`UserConforms` discharge. A `BlockSig` is a claim about a call the **callee** makes,
+so the obligation runs the other way: the caller owes a body that answers `ret` when handed values of
+`params`, and the callee owes to call it that way. Nesting would suggest a block may take a block,
+which no rule will admit and `reifyBlock` gives no shape to.
+
+### The three places that make it inert, and each one names its own bill
+
+1. **`sigOf` refuses a block-taking row.** This is the load-bearing one. Every blockless rule in the
+   fragment reads its receiver's declaration through `sigOf`, so without the filter a row
+   `Array#each { |x| … } → Array` would let a *blockless* `xs.each` type — a claim about a different
+   step entirely (`tryIterator` answers `none` without a block, and the call is an Enumerator the
+   model gates). Refusing once, here, is what makes the field unreadable by anything that has not
+   been taught about it; a block-send rule will read `declFor` directly.
+2. **`ConformsAt` pins `d.blk = none`.** `Builtins.run bid recv args m` is a *blockless* call — the
+   signature has no `Proc` slot — so a row declaring a block would be a claim about a step that
+   conjunction does not describe. **The bill:** a block-taking row is witnessed by a **third arm of
+   `EntryOk`** — the native iterator (`tryIterator` → `startIter`, which pushes an activation frame,
+   a `frameK`, an `iterK` and a block frame) — not by widening this one.
+3. **`UserConforms` pins `d.blk = none`.** The body below it is checked by `infer` at a context with
+   no block channel at all (`FrameCtx` has no `blk` field), so a row declaring a block would oblige
+   a `yield` rule that does not exist.
+
+### The price, measured
+
+`sigOf_declFor` now concludes `declFor … = some { params, ret, blk := none }` — the filter means a
+rule that has read a signature has *shown* the row is blockless, and this is where that fact reaches
+`DeclsOk`. Five destructuring sites gained a `-` or an `rfl` (`entry_dispatch`, `super_dispatch`,
+`entryOk_int`, `entryOk_int_nullary`, `DeclsOk_defineMethod`), plus `userConforms_of_inferBody`,
+which takes the new pin as a hypothesis. That is the whole diff on the proof side.
+
+### Why the *arrayOf* dispatch rung is not on Wall 1's critical path after all
+
+HANDOFF's chain put `Ty.arrayOf` + dispatch + element-polymorphic rows *before* the block rule,
+because L237 measured that a block parameter typed `.any` makes essentially no slice body **accept**
+(`tyClassNames .any = []`, so no send can use the parameter as a receiver). That is right about
+*accept* and wrong about *oof*: `declFor D .any m = none` is a **missing declaration**, which the
+census counts in the `needed:` column, not in `oof`. So for the metric this initiative ratchets, the
+type-language rung is optional and the *rule* is the whole cost. L238–L240 are still paid and still
+what an accepting `select` will need; they are no longer the gate.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**, `--check`
+diff empty against L241's capture, `--self-test` all agree, third ratchet **19**. No machine file
+touched, so no difftest is owed.

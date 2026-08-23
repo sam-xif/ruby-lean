@@ -109,7 +109,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
     have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-    obtain ⟨hdp, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
+    obtain ⟨hdp, hdblk, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
     refine ⟨hhook, hsat, hstr, hcls,
       BottomObj_cons hne (BottomObj_push hlt hbot),
       -- L199: the push writes a `frameK` and a stack entry at the same id, so both
@@ -948,7 +948,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
           obtain ⟨rest, hrest⟩ := hchain md
           refine Or.inr ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_, by rw [hown]; exact hctx', rfl,
-            by rw [hbd]; exact hdf.2, ?_⟩
+            rfl, by rw [hbd]; exact hdf.2, ?_⟩
           -- L241: the row's key is `UserKey.cls` — the type names exactly its class, which
           -- is what lets a *call* recover the class the body was checked in (F1b.11). It
           -- used to be `rfl` at an equation; the relation's first shape is that equation.
@@ -1732,7 +1732,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
         rw [user_dispatch (m := { m with kont := k }) hru hv]
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-        obtain ⟨hdp, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
+        obtain ⟨hdp, hdblk, hdfu, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
         refine ⟨hhook, hsat, hstr, hcls,
           BottomObj_cons hf.1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne hf.1]; simpa [frameKLabels] using hks), _,

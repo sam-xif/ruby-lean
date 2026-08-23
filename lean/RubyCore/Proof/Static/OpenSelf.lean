@@ -1479,14 +1479,14 @@ theorem inferBodyWith_sound {D : Decls} {c mname : String} {ps : List Param} {bo
 /-- **The invariant's user-method clause, discharged by open-self inference.** -/
 theorem userConforms_of_inferBody {D : Decls} {c mname : String} {md : MethodDef}
     {d : MethodDecl} {τ : ATy} {Γ' : AEnv} {s' : OState} {θ : TyVar → Ty}
-    (hp : d.params = []) (hdf : defFree md.body = true)
+    (hp : d.params = []) (hblk : d.blk = none) (hdf : defFree md.body = true)
     (hb : inferBody D c mname md.body = .ok τ Γ' s')
     (hsat : SatStore D θ s'.st) (hself : θ 0 = .cls c)
     (hret : τ.subst θ = d.ret) : UserConforms D c mname md d :=
   -- L201: `r = some d.ret` — the open front end now checks the body *against its own
   -- answer type*, so the row it discharges is one whose `return`s all agree with the
   -- declared return, and the clause's side condition is `hret` itself.
-  ⟨hp, hdf, by
+  ⟨hp, hblk, hdf, by
     obtain ⟨τ0, heq, hsub⟩ := inferBody_sound (θ := θ) hb hsat hself
     rw [hret] at heq hsub
     exact ⟨substEnv θ Γ', some d.ret, τ0, heq, hsub, fun _ h => by simpa using h.symm⟩⟩
