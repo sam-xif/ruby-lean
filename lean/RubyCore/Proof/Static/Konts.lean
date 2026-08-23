@@ -375,6 +375,55 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
+  /-- **A native iterator between two block calls** (L253) — the loop marker, and the
+      one constructor that has to carry *everything the next call needs*, because
+      `iterStep` either calls the block again (a fresh block frame **and** a fresh
+      `iterK`) or delivers the iterator's own answer.
+
+      The conclusion sits at the **iterator activation's** entry: the block frame has
+      already popped (`blkFrameK`'s delivery is `stack.tail`), so the current frame is
+      the one `startIter` pushed.
+
+      What each group of premises is for:
+
+      * **the closure's shape** — `[.req x]`, no block-locals, not a lambda — is exactly
+        `callClosure_req1`'s hypothesis set (L244), and all three are syntactic, so
+        `infer`'s rule can check them;
+      * **`Γb = (x, σp) :: outer` with every `outer` entry `.any`** is the block
+        environment, and the `.any` is doing real work: `FrameConforms` at the fresh
+        block frame then owes `ValueTy h _ .any` at every enclosing name, which holds for
+        every value (L232), so the constructor needs to say **nothing** about the frame
+        the closure captured. That is what `ClosuresOk` carries instead (L248/L251);
+      * **the block context's five `none`/`true` fields** discharge four of `StackCtx`'s
+        seven clauses at the block frame outright (L250) and are what `retOk`/`nxtOk`
+        close their new cases with;
+      * **`∀ a ∈ rest, ValuesTy h a bs.params`** is the loop's remaining work, heap-indexed
+        so it rides `heap_congr'` like every other `ValueTy` premise;
+      * **`retVal`'s type** is the iterator's answer, delivered to the `frameK` below once
+        `rest` runs out.
+
+      `kind = .ignore` restricts this to the `each`-shaped iterators. `.collect` accumulates
+      the block's values into a fresh array and would need the element claim `Ty` cannot
+      yet write (`arrayOf`, L238); `.fold`/`.maxBy` change the block's *argument* types
+      between iterations. One `IterKind` at a time, and the census says `each` is the
+      one to have (L244's table). -/
+  | iterK {D : Decls} {h : Heap} {cΓ : FrameCtx × Env} {Γs : List (FrameCtx × Env)}
+      {τ τ' τr τbody σp : Ty} {bs : BlockSig} {cb : FrameCtx} {Γb Γb' outer : Env}
+      {x : String} {cl : Closure} {brk : FrameId} {rest : List (List Value)}
+      {acc : List Value} {retVal cur : Value} {k : List Kont} :
+      cl.params = [.req x] → cl.locals = [] → cl.lam = false →
+      bs.params = [σp] → Γb = (x, σp) :: outer → (∀ e ∈ outer, e.2 = Ty.any) →
+      cb.ret = none → cb.inLoop = none → cb.selfCls = none → cb.meth = none →
+      cb.inBlock = true →
+      infer D Γb cl.body false cb = some (τbody, Γb', D) →
+      SubEnv Γb Γb' →
+      subTy τbody bs.ret = true →
+      (∀ a ∈ rest, ValuesTy h a bs.params) →
+      subTy τ bs.ret = true →
+      ValueTy h retVal τr → subTy τr τ' = true →
+      cΓ.1.ret = none → cΓ.1.inLoop = none →
+      KontOk D h (cΓ :: Γs) τ' k →
+      KontOk D h (cΓ :: Γs) τ (.iterK cl brk rest .ignore acc retVal cur :: k)
 
 /-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
     push writes both a stack entry and a `frameK`, and one pop removes both, so the
@@ -437,6 +486,12 @@ def RetTransparent : Kont → Prop
   -- L205: `unwind`'s catch-all, like the nine above — a `.cpathK` on the stack has no
   -- opinion about a jump, so a `.retJ` passes straight through it.
   | .cpathK _ => True
+  -- **L253: the native iterator's loop marker.** `unwind` has *no arm* for `.iterK` — it
+  -- falls to the catch-all, which passes the jump on with the kont popped — so it is
+  -- transparent for the same one line of the interpreter the ten above it are. Note the
+  -- asymmetry with `blkFrameK`, which is right there beside it in the continuation and is
+  -- **not** transparent: the block frame consumes a `next` and a lambda's `break`.
+  | .iterK .. => True
   | _ => False
 
 /-- The label of the innermost activation's `frameK`. With L199's clause this is the
@@ -550,6 +605,9 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       | frameK hrt hil hk' => exact RetOk.here (hrt σ hσ) hk'
       -- L245: the block's context opens no return channel, so this case does not exist.
       | blkFrameK hr _ _ _ => exact absurd hσ (by rw [hr]; simp)
+      -- L253: the iterator activation declares no return type either.
+      | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hr _ hk' =>
+          exact absurd hσ (by rw [hr] at hσ ⊢; simp)
 
 @[simp] theorem frameKLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
     frameKLabels (κ :: k) = frameKLabels k := by
@@ -616,6 +674,8 @@ def NxtTransparent : Kont → Prop
   | .arrSplatK .. => True
   | .jumpValK _ => True
   | .cpathK _ => True
+  -- L253, for `RetTransparent`'s reason at the other channel.
+  | .iterK .. => True
   | _ => False
 
 theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Value}
@@ -722,6 +782,9 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       cases hk with
       -- L245: a block frame pops on a raise, exactly as an activation does.
       | blkFrameK _ _ _ hk' => exact .popBlk (KontOk.raiseOk hk')
+      -- L253: `unwind` has no arm for `iterK`, so a raise passes straight through.
+      | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hk' =>
+          exact .skip trivial (KontOk.raiseOk hk')
       | seqNil hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | seqCons hs hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | asgn hib hw hk' _ => exact .skip trivial (KontOk.raiseOk hk')
@@ -788,6 +851,8 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       cases hk with
       -- L245: the block's context opens no loop channel, so this case does not exist.
       | blkFrameK _ hl _ _ => exact absurd hil (by rw [hl]; simp)
+      | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hl _ =>
+          exact absurd hil (by rw [hl] at hil ⊢; simp)
       | seqNil hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | seqCons hs hw hk' _ =>
           have hq : _ = D := inferSeq_table_loop (ctx := c) hls htop hs
@@ -917,6 +982,12 @@ theorem KontOk.heap_congr' {h' : Heap} :
   induction hk with
   | nil hr hl => intro _; exact .nil hr hl
   | blkFrameK hr hl hw _ ih => intro ha; exact .blkFrameK hr hl hw (ih ha)
+  | iterK hp hlo hlam hbp hgb hany hr hil hsc hmt hib hbody hsu hsb hvs hsr hrv hrt
+      hcr hci _ ih =>
+    intro ha
+    exact .iterK hp hlo hlam hbp hgb hany hr hil hsc hmt hib hbody hsu hsb
+      (fun a hm => ValuesTy.congr ha (hvs a hm)) hsr (ValueTy.congr ha hrv) hrt hcr hci
+      (ih ha)
   | seqNil hw _ hsu ih => intro ha; exact .seqNil hw (ih ha) hsu
   | seqCons hs hw _ hsu ih => intro ha; exact .seqCons hs hw (ih ha) hsu
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
@@ -1124,19 +1195,23 @@ theorem FrameShape.rfl' (f : Frame) : FrameShape f f := ⟨rfl, rfl, rfl, rfl⟩
     no closure or lost some from the front. Every step in the fragment is an instance,
     which is why the sites take one lemma rather than one argument each. -/
 theorem ClosuresOk.transport {m m' : Machine} (h : ClosuresOk m)
-    (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none)
+    -- **Every closure the new continuation mentions, the old one mentioned** (L253) —
+    -- which is weaker than *every new kont was already there*, and the weakening is what
+    -- the block call needs: it pushes two konts that are **new** and carry the closure
+    -- the `iterK` it replaces already carried.
+    (hk : ∀ κ ∈ m'.kont, ∀ cl, KontClosure κ = some cl →
+      ∃ κ₀ ∈ m.kont, KontClosure κ₀ = some cl)
     (hsz : m.frames.size ≤ m'.frames.size)
     (hget : ∀ p, p < m.frames.size → FrameShape (m'.frames.getD p default)
       (m.frames.getD p default))
     (hh : ∀ o, (m.heap.classPayload? o).isSome → (m'.heap.classPayload? o).isSome) :
     ClosuresOk m' := by
   intro κ hmem cl hcl
-  rcases hk κ hmem with hin | hnone
-  · obtain ⟨hlt, hcap, hpay, hcref, hvis⟩ := h κ hin cl hcl
-    obtain ⟨e1, e2, e3, e4⟩ := hget _ hlt
-    exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [e1]; exact hcap,
-      by rw [e2]; exact hh _ hpay, by rw [e3]; exact hcref, by rw [e4]; exact hvis⟩
-  · exact absurd hcl (by rw [hnone]; simp)
+  obtain ⟨κ₀, hin, hcl₀⟩ := hk κ hmem cl hcl
+  obtain ⟨hlt, hcap, hpay, hcref, hvis⟩ := h κ₀ hin cl hcl₀
+  obtain ⟨e1, e2, e3, e4⟩ := hget _ hlt
+  exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [e1]; exact hcap,
+    by rw [e2]; exact hh _ hpay, by rw [e3]; exact hcref, by rw [e4]; exact hvis⟩
 
 /-- The activation push: one `frameK` (which carries no closure) and one frame. -/
 theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
@@ -1144,11 +1219,11 @@ theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
     (hf : m'.frames = m.frames.push f) (hhp : m'.heap = m.heap) : ClosuresOk m' :=
   h.transport
     (by
-      intro κ hmem
+      intro κ hmem cl hcl
       rw [hk] at hmem
       rcases List.mem_cons.mp hmem with rfl | hin
-      · exact Or.inr (by simp [KontClosure])
-      · exact Or.inl hin)
+      · exact absurd hcl (by simp [KontClosure])
+      · exact ⟨κ, hin, hcl⟩)
     (by rw [hf, Array.size_push]; omega)
     (by intro p hp; rw [hf, getD_push_lt _ _ _ hp]; exact FrameShape.rfl' _)
     (by intro o ho; rw [hhp]; exact ho)
@@ -1189,7 +1264,11 @@ theorem setLocal_frames_size (m : Machine) (x : String) (v : Value) :
 theorem ClosuresOk.konts {m m' : Machine} (h : ClosuresOk m)
     (hf : m'.frames = m.frames) (hhp : m'.heap = m.heap)
     (hk : ∀ κ ∈ m'.kont, κ ∈ m.kont ∨ KontClosure κ = none) : ClosuresOk m' :=
-  h.transport hk (by rw [hf]; exact Nat.le_refl _)
+  h.transport (fun κ hm cl hcl => by
+      rcases hk κ hm with hin | hnone
+      · exact ⟨κ, hin, hcl⟩
+      · exact absurd hcl (by rw [hnone]; simp))
+    (by rw [hf]; exact Nat.le_refl _)
     (by intro p _; rw [hf]; exact FrameShape.rfl' _)
     (by intro o ho; rw [hhp]; exact ho)
 
@@ -1869,9 +1948,9 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     show ClosuresOk (withCtl m' (.value v)) from
       hclo.transport
         (by
-          intro κ hmem
-          exact Or.inl (by rw [show (withCtl m' (.value v)).kont = m.kont from by
-            simp [withCtl, hko]] at hmem; exact hmem))
+          intro κ hmem cl hcl
+          exact ⟨κ, by rw [show (withCtl m' (.value v)).kont = m.kont from by
+            simp [withCtl, hko]] at hmem; exact hmem, hcl⟩)
         (by rw [show (withCtl m' (.value v)).frames = m.frames from by
               simp [withCtl, hfr]]; exact Nat.le_refl _)
         (by intro p _; rw [show (withCtl m' (.value v)).frames = m.frames from by

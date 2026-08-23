@@ -1,4 +1,5 @@
 import RubyCore.Proof.Static.Konts
+import RubyCore.Proof.Static.Iter
 
 /-!
 # P0 static soundness, part 3 — progress and preservation in one case analysis
@@ -869,7 +870,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
           show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
           ClosuresOk.transport hclo
-            (by intro κ hm; simp only [withCtl, hko] at hm; exact Or.inl hm)
+            (by intro κ hm cl hcl; simp only [withCtl, hko] at hm; exact ⟨κ, hm, hcl⟩)
             (by simp only [withCtl]; rw [hfr]; exact Nat.le_refl _)
             (by intro p _; simp only [withCtl]; rw [hfr]; exact FrameShape.rfl' _)
             (by
@@ -1317,7 +1318,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L247: `setLocal` writes `locals`, so every frame's `captured` is where it
         -- was, and the kont lost its head.
         ClosuresOk.transport (hcloTail hK)
-          (by intro κ hm; exact Or.inl (by simpa [Machine.setLocal, withCtl] using hm))
+          (by
+            intro κ hm cl hcl
+            exact ⟨κ, by simpa [Machine.setLocal, withCtl] using hm, hcl⟩)
           (Nat.le_of_eq (setLocal_frames_size { m with kont := k } x v).symm)
           (by intro p _; exact setLocal_shape { m with kont := k } x v p)
           (by intro o ho; exact ho),
@@ -1553,8 +1556,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- L247: `bindIvar` writes a heap object; frames and konts are untouched.
         ClosuresOk.transport (hcloTail hK)
           (by
-            intro κ hm
-            refine Or.inl ?_
+            intro κ hm cl hcl
+            refine ⟨κ, ?_, hcl⟩
             rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
               = k from hkt] at hm
             exact hm)
@@ -1761,6 +1764,119 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         _, c', Γ', Γs, htab,
         hfs.tail, StackCtx.tail hsc, hglob,
         ⟨_, _, ValueTy.weaken hv hsw, SubEnv.refl _, hk'⟩⟩
+    -- **The native iterator's loop, one turn** (L253).
+    | @iterK _ _ cΓ Γs _ τ' τr τbody σp bs cb Γb Γb' outer x cl brk rest acc retVal cur k
+        hp hlo hlam hbp hgb hany hcbr hcbl hcbs hcbm hcbi hbody hsub hsb hvs hsr hrv hrt
+        hcr hci hk' =>
+      cases rest with
+      | nil =>
+        -- The loop is done: `iterStep` delivers the iterator's own answer, and the
+        -- `frameK` below is what pops its activation.
+        exact inv_value hfs htab hsc hhook hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks) (ValueTy.weaken hrv hrt) hk'
+          (hclo := hcloTail hK)
+      | cons a rest' =>
+        obtain ⟨a₀, rfl⟩ : ∃ a₀, a = [a₀] := by
+          have hva := hvs a (by simp)
+          rw [hbp] at hva
+          match a, hva with
+          | [a₀], _ => exact ⟨a₀, rfl⟩
+        show StepOk (Interp.iterStep { m with kont := k } cl brk ([a₀] :: rest')
+          .ignore acc retVal)
+        rw [iterStep_cons, callClosure_req1 (cl := cl) hp hlo hlam]
+        -- `ClosuresOk` is what says the captured frame exists and is self-contained —
+        -- the *whole* frame-side price of the call (L248/L251).
+        obtain ⟨hcaplt, hcapn, hcappay, hcapcref, hcapvis⟩ :=
+          hclo _ (by rw [hK]; exact List.mem_cons_self ..) cl (by simp [KontClosure])
+        have hne : m.stack ≠ [] := hfsh.1
+        have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+        obtain ⟨ca₀, hva₀, hsa₀⟩ : ∃ σ, ValueTy m.heap a₀ σ ∧ subTy σ σp = true := by
+          have hva := hvs [a₀] (by simp)
+          rw [hbp] at hva
+          exact hva.1
+        refine ⟨hhook, hsat, hstr, hcls,
+          BottomObj_cons hne (BottomObj_push hlt hbot),
+          -- L245: the block push writes a `blkFrameK` and a stack entry at the same id,
+          -- and the `iterK` between them pops nothing.
+          (by simpa [withKont, framePopLabels, dropLast_cons_ne hne] using hks),
+          -- L248: the two new konts carry the closure the old one did.
+          (ClosuresOk.transport hclo
+            (by
+              intro κ hm cl' hcl'
+              -- The two konts the call pushes carry the closure the old `iterK` did;
+              -- everything below them was already there.
+              rcases List.mem_cons.mp hm with rfl | hm₁
+              · exact ⟨Kont.iterK cl brk ([a₀] :: rest') .ignore acc retVal cur,
+                  by rw [hK]; exact List.mem_cons_self .., by simpa [KontClosure] using hcl'⟩
+              · rcases List.mem_cons.mp hm₁ with rfl | hm₂
+                · exact ⟨Kont.iterK cl brk ([a₀] :: rest') .ignore acc retVal cur,
+                    by rw [hK]; exact List.mem_cons_self .., by simpa [KontClosure] using hcl'⟩
+                · exact ⟨κ, by rw [hK]; exact List.mem_cons_of_mem _ hm₂, hcl'⟩)
+            (by simp [withKont, Array.size_push])
+            (by
+              intro p hp'
+              show FrameShape ((m.frames.push _).getD p default) _
+              rw [getD_push_lt _ _ _ hp']; exact FrameShape.rfl' _)
+            (by intro o ho; exact ho)),
+          _, cb, Γb, (ctx, Γk) :: Γs, htab, ?_, ?_, hglob, ?_⟩
+        · -- `FrameConforms` at the fresh block frame.
+          simp only [withKont]
+          refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+            ⟨?_, ?_, ?_⟩, FramesOk.push hfs⟩
+          · -- `ShallowChain`: one hop, and it lands on a self-contained frame.
+            intro q hq
+            rw [getD_push_lt_self] at hq
+            simp only [Option.some.injEq] at hq
+            subst hq
+            exact ⟨hcaplt, by rw [getD_push_lt _ _ _ hcaplt]; exact hcapn⟩
+          · rw [getD_push_lt_self]; exact hcappay
+          · -- The parameter is in the frame's **own** locals, so its read is one lookup;
+            -- every other name is `.any`, and `ValueTy _ _ .any` holds of every value
+            -- (L232) — which is why the captured frame's environment is not needed here.
+            intro y σ hy
+            rw [hgb] at hy
+            by_cases hyx : y = x
+            · subst hyx
+              have hσ : σ = σp := by
+                simpa [envGet?, List.find?] using hy.symm
+              subst hσ
+              rw [show localOfIn (m.frames.push _) ((m.frames.push _).getD m.frames.size default) y
+                  = a₀ from by rw [getD_push_lt_self]; simp [localOfIn, List.find?]]
+              exact ValueTy.weaken hva₀ hsa₀
+            · have hmem : ∃ e ∈ outer, e.2 = σ := by
+                have hy' : envGet? outer y = some σ := by
+                  have hxy : (x == y) = false := by simpa using fun hq => hyx hq.symm
+                  simpa [envGet?, List.find?, hxy] using hy
+                unfold envGet? at hy'
+                cases hf : outer.find? (fun p => p.1 == y) with
+                | none => rw [hf] at hy'; exact absurd hy' (by simp)
+                | some e =>
+                  rw [hf] at hy'
+                  exact ⟨e, List.mem_of_find?_eq_some hf, by simpa using hy'⟩
+              obtain ⟨e, hem, he⟩ := hmem
+              rw [← he, hany e hem]
+              exact ValueTy.any
+        · -- `StackCtx` at the block frame: four of the seven clauses are vacuous because
+          -- the block's context claims no name, no self and no method (L250), and the
+          -- three that are not are `ClosuresOk`'s (L251) read through
+          -- `callClosure`'s copy.
+          simp only [withKont]
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          · rw [getD_push_lt_self]; exact hcappay
+          · intro hb; exact absurd (hcbi ▸ hb) (by simp)
+          · intro _; rw [getD_push_lt_self]; simp [defVisOfDef]
+          · exact fun sc hsc' => absurd (hcbs ▸ hsc') (by simp)
+          · rw [getD_push_lt_self]; exact hcapcref
+          · exact Or.inr hcbr
+          · exact fun mn hmn => absurd (hcbm ▸ hmn) (by simp)
+          · intro hb; exact absurd (hcbi ▸ hb) (by simp)
+        · -- The block body is what runs, under the `blkFrameK` that pops its frame and
+          -- the fresh `iterK` that remembers the rest of the loop.
+          exact ⟨τbody, bs.ret, Γb', D, Γb, hbody, hsb, hsub,
+            KontOk.blkFrameK hcbr hcbl (subTy_refl _)
+              (KontOk.iterK hp hlo hlam hbp hgb hany hcbr hcbl hcbs hcbm hcbi hbody hsub
+                hsb (fun a hm => hvs a (List.mem_cons_of_mem _ hm)) (subTy_refl _)
+                hrv hrt hcr hci hk')⟩
     | @frameK _ _ _ cΓ' Γs _ fid k hrt hil hk' =>
       -- The activation pops: `frames` is untouched, `stack` loses its head, and
       -- the caller's environment — carried all along by `FramesOk` — becomes

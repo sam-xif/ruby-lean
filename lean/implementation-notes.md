@@ -12404,3 +12404,64 @@ This is the **first guard in the chain that sits inside an arm** rather than ins
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty, `--self-test` all agree (owed: `infer` changed), third ratchet **19**.
+
+## L253 — `KontOk.iterK`, and the loop's turn is **proved**
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean, `Proof/`-only. L249's item 3
+and half of item 4: the constructor, and the consecution case that consumes it.
+
+### The constructor
+
+```lean
+  | iterK … :
+      cl.params = [.req x] → cl.locals = [] → cl.lam = false →
+      bs.params = [σp] → Γb = (x, σp) :: outer → (∀ e ∈ outer, e.2 = Ty.any) →
+      cb.ret = none → cb.inLoop = none → cb.selfCls = none → cb.meth = none →
+      cb.inBlock = true →
+      infer D Γb cl.body false cb = some (τbody, Γb', D) → SubEnv Γb Γb' →
+      subTy τbody bs.ret = true →
+      (∀ a ∈ rest, ValuesTy h a bs.params) →
+      subTy τ bs.ret = true → ValueTy h retVal τr → subTy τr τ' = true →
+      cΓ.1.ret = none → cΓ.1.inLoop = none →
+      KontOk D h (cΓ :: Γs) τ' k →
+      KontOk D h (cΓ :: Γs) τ (.iterK cl brk rest .ignore acc retVal cur :: k)
+```
+
+The conclusion sits at the **iterator activation's** entry — the block frame has already popped —
+and the constructor carries *everything the next call needs*, because `iterStep` either calls the
+block again (a fresh block frame **and** a fresh `iterK`) or delivers `retVal` to the `frameK`
+below.
+
+`kind = .ignore` restricts it to the `each`-shaped iterators. `.collect` accumulates the block's
+answers into a fresh array and needs the element claim `Ty` cannot yet write (`arrayOf`);
+`.fold`/`.maxBy` change the block's *argument* types between iterations.
+
+### What the consecution case actually needed, in the order it came out
+
+* **`ValuesTy h a [σp]` pins the per-iteration argument list to one value.** `ValuesTy`'s
+  `_, _ => False` arm does it; the block's arity check is not a separate premise.
+* **`ClosuresOk` is spent in one `obtain`** and supplies all five facts about the captured frame:
+  the bound, the empty chain (for `ShallowChain`), and the three name-free `StackCtx` clauses. The
+  captured frame's *environment* is never mentioned, which is L247's move cashed.
+* **`FrameConforms` at the fresh block frame splits on the name.** The parameter is in the frame's
+  **own** locals, so its read is one lookup and `ValueTy.weaken` on the element's type closes it;
+  every other name is `.any` and `ValueTy.any` closes it with no lookup at all.
+* **`StackCtx` at the block frame is four vacuous clauses and three `ClosuresOk` ones.** `inBlock`
+  makes the name clause vacuous (L250), `selfCls = none` and `meth = none` the other two, and
+  `defVisOfDef` is a computation on the frame literal (`kind = .block`, `defVis` at its default).
+* **`ClosuresOk.transport`'s hypothesis had to be weakened**, and this is the transferable part:
+
+  > It said *every kont of the new continuation was already in the old one*. The block call pushes
+  > **two konts that are new** and carry the closure the `iterK` they replace already carried. The
+  > right hypothesis is *every closure the new continuation mentions, the old one mentioned* —
+  > weaker, still one line at all four existing call sites, and it is what a loop that rebuilds its
+  > own continuation needs.
+
+* **`SubEnv Γb Γb'` is a premise, not a lemma.** `CtlOk`'s eval clause relates the continuation's
+  environment to the body's *output* one, and `infer` only ever extends — but nothing states that,
+  so the constructor carries it and the rule will check `subEnvB`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** (and no
+`sorry` in the tree), `--check` diff empty, third ratchet **19**.
