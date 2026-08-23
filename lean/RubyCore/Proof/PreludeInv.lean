@@ -121,7 +121,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     -- L154: the toplevel frame's definee has to be a *class*, and at an arbitrary
     -- heap that is not decidable — it is `NoHook`'s first conjunct, which is exactly
     -- what that conjunct is for.
-    simp [Machine.initOn, FramesOk, FrameConforms, envGet?]
+    simp [Machine.initOn, FramesOk, FrameConforms, ShallowChain, envGet?]
     exact hh.2.1.1
   · -- F1b.9: the outermost activation's context is `"Object"`. The `isSome` half is
     -- `NoHook`'s first conjunct, as it is for `FrameConforms` above; the *name* half
@@ -133,7 +133,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     exact ⟨hh.2.1.1, hh.2.2.2.2.1, fun hz => absurd rfl hz,
       fun sc hsc => absurd hsc (by simp),
       by simp [Machine.initOn, Array.getD], Or.inr rfl,
-      fun mn h => absurd h (by simp), trivial⟩
+      fun mn h => absurd h (by simp), by simp [Machine.initOn, Array.getD], trivial⟩
   · -- **L228: the globals conjunct**, and here — unlike at `Machine.init` — the list is
     -- *quantified*, because `initWithPrelude` carries phase 1's globals into phase 2. So
     -- it is not vacuous, and what discharges it is `declsOf p`: the checker's own table

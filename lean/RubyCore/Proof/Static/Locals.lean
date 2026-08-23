@@ -501,11 +501,63 @@ def localOf (f : Frame) (x : String) : Value :=
   | some (_, v) => v
   | none => .nil
 
-/-- One activation conforms to one environment. `captured = none` is what makes
-    the frame *self-contained*: `getLocal`/`setLocal` otherwise walk into
-    enclosing scopes (`Machine.lean:322–352`) and nothing about them reduces. -/
-def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
-  f.captured = none ∧
+/-- **A local read from `f`, following one level of `captured`** (L243) — what
+    `getLocal` reads when the chain is known to be at most one hop deep.
+
+    One level and not a walk, and that is a decision with a measurement behind it. The
+    only frame the fragment will ever give a non-empty chain is a **block frame**, which
+    `callClosure` builds with `captured := some cl.captured` — the activation the block
+    *literal* was written in. A block nested inside a block would be two hops, and
+    `infer`'s block rule refuses one (a block body is checked at a context whose own
+    block channel is already open). So a `Nat`-fuelled walk would buy nothing and cost
+    every lemma below a fuel argument; `Machine.getLocal`'s own fuel is
+    `m.frames.size + 1`, and `getLocal_cur` discharges it by unfolding twice.
+
+    Reduces to `localOf` when the chain is empty, which is why every existing site is
+    unmoved. -/
+def localOfIn (frames : Array Frame) (f : Frame) (x : String) : Value :=
+  match f.locals.find? (·.1 == x) with
+  | some (_, v) => v
+  | none => match f.captured with
+    | some p => localOf (frames.getD p default) x
+    | none => .nil
+
+@[simp] theorem localOfIn_of_captured_none {frames : Array Frame} {f : Frame} (x : String)
+    (hc : f.captured = none) : localOfIn frames f x = localOf f x := by
+  simp only [localOfIn, localOf, hc]
+
+/-- **The chain is at most one hop, and it lands on a self-contained frame** (L243).
+
+    `FrameConforms`'s first clause was `f.captured = none`, which makes a **block frame
+    inexpressible** — `callClosure` builds one with `captured := some cl.captured`
+    precisely so that free variables reach the defining activation. This is the weakest
+    replacement that keeps `localOfIn` an honest description of `getLocal`: one hop, to a
+    frame with no chain of its own.
+
+    Note what it does *not* say: nothing about *which* frame `p` is. Tying the captured
+    frame to the environment the block body was typed at is the **kont's** job — a
+    `blkFrameK`/`iterK` carries the closure, so it carries the pair — for `KontOk`'s
+    standing reason (L236): a fact about how one activation relates to another has to be
+    recorded where the continuation is built. -/
+def ShallowChain (frames : Array Frame) (fid : FrameId) : Prop :=
+  ∀ p, (frames.getD fid default).captured = some p →
+    p < fid ∧ (frames.getD p default).captured = none
+
+theorem ShallowChain.of_none {frames : Array Frame} {fid : FrameId}
+    (hc : (frames.getD fid default).captured = none) : ShallowChain frames fid :=
+  fun _ hp => absurd (hc ▸ hp) (by simp)
+
+/-- One activation conforms to one environment.
+
+    **The first clause was `f.captured = none` until L243**, and what replaced it is
+    `ShallowChain`: a block frame has a chain by construction, so the old clause did not
+    merely under-describe one, it refused to admit one exists. What the empty chain was
+    load-bearing for is `setLocal` — which walks the chain and may write an *enclosing*
+    frame, invalidating that frame's own entry in `FramesOk` — and that is now a
+    hypothesis of the `setLocal` lemmas, supplied by the rule that assigns rather than
+    by every frame on the stack. -/
+def FrameConforms (h : Heap) (frames : Array Frame) (Γ : Env) (fid : FrameId) : Prop :=
+  ShallowChain frames fid ∧
   -- **The definee is a class** (L153's `NoHook` generalization cashed, L154). It
   -- used to be `f.defmod = Boot.objectId`, which is all a fragment with no `class`
   -- and no `module` can ever produce — and which makes a class-body frame
@@ -520,8 +572,8 @@ def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
   --
   -- Carried per-frame rather than for the current one only, because `frameK` resumes
   -- a *caller's* frame and `NoHook` has to survive that.
-  (h.classPayload? f.defmod).isSome ∧
-  ∀ x τ, envGet? Γ x = some τ → ValueTy h (localOf f x) τ
+  (h.classPayload? (frames.getD fid default).defmod).isSome ∧
+  ∀ x τ, envGet? Γ x = some τ → ValueTy h (localOfIn frames (frames.getD fid default) x) τ
 
 /-- **Per-frame conformance down the activation stack**, innermost first.
 
@@ -538,7 +590,7 @@ def FramesOk (h : Heap) (frames : Array Frame) : List FrameId → List Env → P
   | [], [] => True
   | fid :: fids, Γ :: Γs =>
       fid < frames.size ∧ (∀ g ∈ fids, g < fid) ∧
-      FrameConforms h Γ (frames.getD fid default) ∧ FramesOk h frames fids Γs
+      FrameConforms h frames Γ fid ∧ FramesOk h frames fids Γs
   | _, _ => False
 
 /-- **The outermost activation is the toplevel one, and its definee is `Object`**
@@ -566,6 +618,14 @@ def BottomObj (frames : Array Frame) : List FrameId → Prop
     its own definition so the local-access lemmas stay readable. -/
 def FrameOk (m : Machine) : Prop :=
   m.stack ≠ [] ∧ curFid m < m.frames.size ∧ (curFrame m).captured = none
+
+/-- **What `FramesOk` gives about the current frame once the chain may be non-empty**
+    (L243) — `FrameOk` with its third clause weakened from *no chain* to *a shallow
+    one*. Every **read** of a local is decided by this much (`getLocal_curIn`); a
+    **write** is not, which is why `FrameOk` survives beside it. -/
+def FrameShallow (m : Machine) : Prop :=
+  m.stack ≠ [] ∧ curFid m < m.frames.size ∧ ShallowChain m.frames (curFid m)
+
 
 /-- Every variable the environment types holds a value of that type. Stated
     against `m.getLocal` — what the interpreter actually reads. -/
@@ -720,6 +780,25 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
         (frames.getD fid default).runParams = [] ∧
         (frames.getD fid default).runFromDM = false ∧
         c.params = some []) ∧
+      -- **The activation has no captured chain** (L243), and this clause is where
+      -- `FrameOk` now comes from.
+      --
+      -- It is a **move**, not a new fact: `FrameConforms`'s first clause said exactly
+      -- this until L243, and saying it there made a block frame *inexpressible* —
+      -- `callClosure` builds one with `captured := some cl.captured`, so that free
+      -- variables in the block body reach the defining activation. `FrameConforms` now
+      -- says only `ShallowChain` (the chain is one hop, to a self-contained frame),
+      -- which is all a **read** needs, and the empty chain lives here.
+      --
+      -- Here rather than nowhere, because it is still true of every activation the
+      -- fragment builds and something has to supply `FrameOk` to the `setLocal`
+      -- lemmas — a *write* walks the chain and may land in an **enclosing** frame,
+      -- invalidating that frame's own entry in `FramesOk` at a type its environment
+      -- still claims. **That is the bill of the block rung**: this clause becomes
+      -- conditional on a `FrameCtx` block channel, and `infer`'s `.vasgn .lvar` arm
+      -- grows the guard that reads it. Nothing else about a block frame is blocked by
+      -- the predicates any more.
+      (frames.getD fid default).captured = none ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -743,7 +822,7 @@ theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -768,8 +847,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
       exact ⟨by rw [hb]; exact hs.1, by rw [hb]; exact hs.2.1,
         by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.1,
-        by rw [hb]; exact hs.2.2.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -785,6 +864,37 @@ theorem getLocal_cur {m : Machine} (hf : FrameOk m) (x : String) :
 -- `find?_filter_ne` now lives in `Proof/HeapFacts.lean` — the `defineMethod`
 -- chain needs it too, and one copy is better than two.
 open RubyCore.Proof in
+
+/-- One unfolding of the fuel at a frame with no chain — `setLocal_owner_start`'s
+    shape on the read side. -/
+theorem getLocal_go_self {m : Machine} {p : FrameId} {x : String} {fuel : Nat}
+    (hp : (m.frames.getD p default).captured = none) :
+    Machine.getLocal.go m x p (fuel + 1) = localOf (m.frames.getD p default) x := by
+  unfold Machine.getLocal.go
+  simp only [localOf, hp]
+  rfl
+
+/-- **`getLocal` really is `localOfIn`, once the chain is known shallow** (L243).
+
+    `Machine.getLocal.go`'s fuel is `m.frames.size + 1`, and the current frame's id is
+    below the size, so the fuel unfolds **twice** — exactly one hop more than
+    `ShallowChain` allows. That is the measurement behind `localOfIn` being one level
+    rather than a walk: at the second frame the chain is empty by hypothesis, so a third
+    unfolding never has to happen. -/
+theorem getLocal_curIn {m : Machine} (hf : FrameShallow m) (x : String) :
+    m.getLocal x = localOfIn m.frames (curFrame m) x := by
+  obtain ⟨-, hlt, hsc⟩ := hf
+  have hpos : 0 < m.frames.size := Nat.lt_of_le_of_lt (Nat.zero_le _) hlt
+  obtain ⟨t, ht⟩ : ∃ t, m.frames.size = t + 1 := ⟨m.frames.size - 1, by omega⟩
+  unfold Machine.getLocal
+  unfold Machine.getLocal.go
+  unfold localOfIn
+  cases hcap : (m.frames.getD (m.stack.headD 0) default).captured with
+  | none => simp only [curFrame, curFid, hcap]; rfl
+  | some q =>
+    have hq := (hsc q (by simpa [curFrame, curFid] using hcap)).2
+    simp only [curFrame, curFid, hcap, ht, getLocal_go_self hq]
+    rfl
 
 /-- With no captured chain, `setLocal`'s owner search returns the start frame on
     both branches, whichever frame that is. -/
@@ -841,8 +951,8 @@ theorem getLocal_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Val
 
 /-! ### 1.2 `FramesOk` implies what the old invariant asserted -/
 
-theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
-    (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : FrameOk m := by
+theorem FramesOk.frameShallow {m : Machine} {Γ : Env} {Γs : List Env}
+    (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : FrameShallow m := by
   cases hst : m.stack with
   | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
   | cons fid fids =>
@@ -852,13 +962,39 @@ theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     · simpa [curFid, hst] using hlt
     · simpa [curFrame, curFid, hst] using hc
 
+/-- **And `FrameOk` itself, once the empty chain is supplied from outside** (L243).
+
+    The hypothesis is what `StackCtx`'s L243 clause answers at a context with
+    `inBlock = false`, which is every context the invariant can currently build — so
+    this is the same fact `FramesOk.frameOk` used to produce, arriving one clause later
+    and behind a flag the block rule will be able to switch. -/
+theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
+    (h : FramesOk m.heap m.frames m.stack (Γ :: Γs))
+    (hc : (curFrame m).captured = none) : FrameOk m :=
+  ⟨h.frameShallow.1, h.frameShallow.2.1, hc⟩
+
+/-- The empty chain, read off the context stack (L243). -/
+theorem StackCtx.captured_none {h : Heap} {frames : Array Frame} {fid : FrameId}
+    {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
+    (hs : StackCtx h frames (fid :: fids) (c :: cs)) :
+    (frames.getD fid default).captured = none := hs.2.2.2.2.2.2.2.1
+
+/-- …and at the machine, which is the shape `step_ok` reads it in. -/
+theorem StackCtx.curCaptured {m : Machine} {c : FrameCtx} {cs : List FrameCtx}
+    (hs : StackCtx m.heap m.frames m.stack (c :: cs)) : (curFrame m).captured = none := by
+  cases hst : m.stack with
+  | nil => rw [hst] at hs; exact absurd hs (by simp [StackCtx])
+  | cons fid fids =>
+    rw [hst] at hs
+    simpa [curFrame, curFid, hst] using hs.captured_none
+
 /-- **Conformance narrows with the environment** (L218). `FrameConforms`' third clause is
     a `∀` over `Γ`'s lookups, so a weaker `Γ` is a weaker claim and the lemma is one
     composition. What it is for: `begin`/`rescue`'s two exits leave different
     environments — the body may have assigned locals the handler never sees — so the
     region is typed at the *entry* environment and the delivery has to weaken the body's. -/
-theorem FrameConforms.narrow {h : Heap} {Γ Γ' : Env} {f : Frame}
-    (hs : SubEnv Γ Γ') (hc : FrameConforms h Γ' f) : FrameConforms h Γ f :=
+theorem FrameConforms.narrow {h : Heap} {frames : Array Frame} {Γ Γ' : Env} {fid : FrameId}
+    (hs : SubEnv Γ Γ') (hc : FrameConforms h frames Γ' fid) : FrameConforms h frames Γ fid :=
   ⟨hc.1, hc.2.1, fun x τ hx => hc.2.2 x τ (hs x τ hx)⟩
 
 /-- **And the stack's head narrows** (L218) — the only position a region needs, because a
@@ -896,6 +1032,33 @@ theorem FramesOk.mem_lt {hp : Heap} {frames : Array Frame} :
       · exact h.1
       · exact ih h.2.2.2 g hm
 
+/-- A push does not move a shallow chain's read (L243) — the captured id is already in
+    bounds, so `getD` at it is unmoved. -/
+theorem localOfIn_push {frames : Array Frame} {f g : Frame} {fid : FrameId}
+    (hlt : fid < frames.size) (hg : g = frames.getD fid default)
+    (hsc : ShallowChain frames fid) (x : String) :
+    localOfIn (frames.push f) g x = localOfIn frames g x := by
+  subst hg
+  unfold localOfIn
+  cases hf : (frames.getD fid default).locals.find? (fun p => p.1 == x) with
+  | some _ => rfl
+  | none =>
+    cases hcap : (frames.getD fid default).captured with
+    | none => rfl
+    | some p =>
+      simp only [getD_push_lt _ _ _ (Nat.lt_trans (hsc p hcap).1 hlt)]
+
+theorem FrameConforms.push {h : Heap} {frames : Array Frame} {f : Frame} {Γ : Env}
+    {fid : FrameId} (hlt : fid < frames.size) (hc : FrameConforms h frames Γ fid) :
+    FrameConforms h (frames.push f) Γ fid := by
+  have hb : (frames.push f).getD fid default = frames.getD fid default :=
+    getD_push_lt _ _ _ hlt
+  refine ⟨fun p hp => ?_, by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
+  · rw [hb] at hp
+    obtain ⟨hplt, hcp⟩ := hc.1 p hp
+    exact ⟨hplt, by rw [getD_push_lt _ _ _ (Nat.lt_trans hplt hlt)]; exact hcp⟩
+  · rw [hb, localOfIn_push hlt rfl hc.1]; exact hc.2.2 x τ hx
+
 /-- **A pushed frame disturbs no frame already on the stack** (L156). `FramesOk`
     reads frames by id and every stacked id is already in bounds
     (`FramesOk.mem_lt`), so `getD` answers the same object either side of a
@@ -916,7 +1079,7 @@ theorem FramesOk.push {hp : Heap} {frames : Array Frame} {f : Frame} :
     | cons Γ Γs' =>
       obtain ⟨hlt, hgt, hfc, htl⟩ := h
       exact ⟨by rw [Array.size_push]; exact Nat.lt_succ_of_lt hlt, hgt,
-        by rw [getD_push_lt _ _ _ hlt]; exact hfc, ih htl⟩
+        FrameConforms.push hlt hfc, ih htl⟩
 
 /-- **The toplevel mode really does mean a single activation.** `FramesOk`'s
     `_, _ => False` arm forces the frame stack and the environment stack to have
@@ -995,15 +1158,15 @@ theorem BottomObj_curFrame {m : Machine} {fid : FrameId}
 theorem FramesOk.localsOk {m : Machine} {Γ : Env} {Γs : List Env}
     (h : FramesOk m.heap m.frames m.stack (Γ :: Γs)) : LocalsOk Γ m := by
   intro x τ hg
-  rw [getLocal_cur h.frameOk x]
+  rw [getLocal_curIn h.frameShallow x]
   cases hst : m.stack with
   | nil => rw [hst] at h; exact absurd h (by simp [FramesOk])
   | cons fid fids =>
-    have hc : FrameConforms m.heap Γ (m.frames.getD fid default) := by
+    have hc : FrameConforms m.heap m.frames Γ fid := by
       rw [hst] at h; exact h.2.2.1
-    have : curFrame m = m.frames.getD fid default := by
+    have hcf : curFrame m = m.frames.getD fid default := by
       simp [curFrame, curFid, hst]
-    rw [this]
+    rw [hcf]
     exact hc.2.2 x τ hg
 
 /-! ### 1.3 Environment update, and its agreement with `setLocal` -/
@@ -1049,28 +1212,49 @@ theorem envGet?_set (Γ : Env) (x y : String) (τ : Ty) :
 
 /-! ### 1.4 `FramesOk` under the fragment's updates -/
 
-/-- Conformance only reads the frames the stack names, so an array change that
-    leaves those alone transports it. -/
-theorem FramesOk.frames_congr {hp : Heap} {a b : Array Frame} :
+/-- Conformance only reads the frames the stack names — **and, since L243, the frames
+    they *capture***, so the agreement hypothesis is stated over a **bound** rather than
+    over the stack list.
+
+    A block frame's `localOfIn` reads one hop up the chain, and the captured id is not on
+    the stack segment the recursion is walking; what `ShallowChain` does give is that it
+    is **below** the frame that captures it, so a bound above every stacked id is above
+    every id any of them reads. That is the whole reason for the reformulation, and it is
+    also why `ShallowChain` carries `p < fid` and not merely `p < frames.size`. -/
+theorem FramesOk.frames_congr {hp : Heap} {a b : Array Frame} {bound : Nat}
+    (hbs : bound ≤ b.size) (heq : ∀ g, g < bound → b.getD g default = a.getD g default) :
     ∀ {fids : List FrameId} {Γs : List Env}, FramesOk hp a fids Γs →
-      (∀ g ∈ fids, g < b.size) → (∀ g ∈ fids, b.getD g default = a.getD g default) →
-      FramesOk hp b fids Γs
-  | [], [], h, _, _ => h
-  | fid :: fids, Γ :: Γs, h, hb, heq => by
+      (∀ g ∈ fids, g < bound) → FramesOk hp b fids Γs
+  | [], [], h, _ => h
+  | fid :: fids, Γ :: Γs, h, hlt => by
     obtain ⟨_, hlt2, hcf, hrest⟩ := h
-    exact ⟨hb fid (by simp), hlt2,
-      by rw [heq fid (by simp)]; exact hcf,
-      FramesOk.frames_congr hrest (fun g hg => hb g (by simp [hg]))
-        (fun g hg => heq g (by simp [hg]))⟩
-  | [], _ :: _, h, _, _ => absurd h (by simp [FramesOk])
-  | _ :: _, [], h, _, _ => absurd h (by simp [FramesOk])
+    have hfb : fid < bound := hlt fid (by simp)
+    refine ⟨Nat.lt_of_lt_of_le hfb hbs, hlt2, ?_,
+      FramesOk.frames_congr hbs heq hrest (fun g hg => hlt g (by simp [hg]))⟩
+    have hbf := heq fid hfb
+    refine ⟨fun q hq => ?_, by rw [hbf]; exact hcf.2.1, fun x τ hx => ?_⟩
+    · rw [hbf] at hq
+      obtain ⟨hqf, hqc⟩ := hcf.1 q hq
+      exact ⟨hqf, by rw [heq q (Nat.lt_trans hqf hfb)]; exact hqc⟩
+    · have hread : localOfIn b (b.getD fid default) x = localOfIn a (a.getD fid default) x := by
+        rw [hbf]
+        unfold localOfIn
+        cases hf : (a.getD fid default).locals.find? (fun r => r.1 == x) with
+        | some _ => rfl
+        | none =>
+          cases hcap : (a.getD fid default).captured with
+          | none => rfl
+          | some q => simp only [heq q (Nat.lt_trans (hcf.1 q hcap).1 hfb)]
+      rw [hread]; exact hcf.2.2 x τ hx
+  | [], _ :: _, h, _ => absurd h (by simp [FramesOk])
+  | _ :: _, [], h, _ => absurd h (by simp [FramesOk])
 
 theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
     {τ : Ty} {v : Value} (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs))
-    (hv : ValueTy m.heap v τ) :
+    (hcap : (curFrame m).captured = none) (hv : ValueTy m.heap v τ) :
     FramesOk m.heap (m.setLocal x v).frames (m.setLocal x v).stack
       (envSet Γ x τ :: Γs) := by
-  have hf := hfs.frameOk
+  have hf : FrameOk m := hfs.frameOk hcap
   have hlt := hf.2.1
   rw [setLocal_stack]
   cases hst : m.stack with
@@ -1081,22 +1265,23 @@ theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
     obtain ⟨hfl, hgt, hcf, hrest⟩ := hfs
     have hsz : (m.setLocal x v).frames.size = m.frames.size := by
       rw [setLocal_frames hf x v]; simp [Array.set!]
-    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨?_, ?_, ?_⟩, ?_⟩
-    -- the head frame: captured survives, and the binding is updated at `x` only
-    · have := (FrameOk.setLocal hf x v).2.2
-      simpa [curFrame, curFid_setLocal, hcur] using this
+    have hhead : (m.setLocal x v).frames.getD fid default
+        = { curFrame m with locals := (x, v) :: (curFrame m).locals.filter (·.1 != x) } := by
+      rw [setLocal_frames hf x v, hcur, getD_set!_self _ _ _ hfl]
+    -- L243: the head frame's own chain is empty by hypothesis, and `setLocal` copies the
+    -- field, so `localOfIn` is `localOf` on both sides of the update.
+    have hcapn : ((m.setLocal x v).frames.getD fid default).captured = none := by
+      rw [hhead]
+      simpa [curFrame, hcur] using hcap
+    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨ShallowChain.of_none hcapn, ?_, ?_⟩, ?_⟩
     · -- `defmod` rides through `setLocal`, which only rewrites `locals`
-      have := setLocal_frames hf x v
-      rw [this, hcur, getD_set!_self _ _ _ hfl]
-      -- L154: the clause is now `classPayload?` at the definee. `setLocal` rewrites
-      -- `locals` and touches neither `defmod` nor the heap, so it still rides
-      -- through — but the goal no longer reduces by `show`, because the definee is
-      -- under a structure-update literal rather than being a constant.
+      rw [hhead]
       have hcf' : curFrame m = m.frames.getD fid default := by simp [curFrame, hcur]
       have := hcf.2.1
       rw [← hcf'] at this
       exact this
     · intro y σ hg
+      rw [localOfIn_of_captured_none _ hcapn]
       have hy : localOf ((m.setLocal x v).frames.getD fid default) y
           = localOf (curFrame (m.setLocal x v)) y := by
         simp [curFrame, curFid_setLocal, hcur]
@@ -1107,12 +1292,15 @@ theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
         rw [Option.some.injEq] at hg; subst hg; exact hv
       · rw [if_neg hyx] at hg ⊢
         have := hcf.2.2 y σ hg
+        rw [localOfIn_of_captured_none _ (by simpa [curFrame, hcur] using hcap)] at this
         simpa [curFrame, hcur] using this
-    -- the frames below: every id there is `< fid = curFid`, so `set!` missed them
-    · refine FramesOk.frames_congr hrest (fun g hg => by rw [hsz]; exact Nat.lt_trans (hgt g hg) hfl)
-        (fun g hg => ?_)
+    -- the frames below: every id there is `< fid = curFid`, so `set!` missed them — and
+    -- L243's bound is what carries that to the frames they *capture* as well.
+    · refine FramesOk.frames_congr (b := (m.setLocal x v).frames) (bound := fid)
+        (by rw [hsz]; exact Nat.le_of_lt hfl) (fun g hg => ?_) hrest hgt
       rw [setLocal_frames hf x v, hcur]
-      exact getD_set!_ne _ _ _ _ (Nat.ne_of_lt (hgt g hg))
+      exact getD_set!_ne _ _ _ _ (Nat.ne_of_lt hg)
+
 /-! ### 1.5 Heap congruence — what the threading costs
 
 Once the typing judgement is indexed by a heap, every heap-writing step owes a
@@ -1243,10 +1431,13 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
       -- is exactly why it is not the form in `StackCtx` (see the note there).
       (∀ fid ∈ st, (f₂.getD fid default).runParams = (f₁.getD fid default).runParams) →
       (∀ fid ∈ st, (f₂.getD fid default).runFromDM = (f₁.getD fid default).runFromDM) →
+      -- L243's clause needs its own, for the eight before it: `setLocal` writes
+      -- `locals` and a frame's `captured` is fixed when it is pushed.
+      (∀ fid ∈ st, (f₂.getD fid default).captured = (f₁.getD fid default).captured) →
       StackCtx h f₁ st cs → StackCtx h f₂ st cs
-  | [], [], _, _, _, _, _, _, _, _, hs => hs
-  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hrp, hdm, hs => by
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_,
+  | [], [], _, _, _, _, _, _, _, _, _, hs => hs
+  | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hrp, hdm, hcp, hs => by
+      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
@@ -1254,7 +1445,8 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           (fun g hg => hkd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hmt g (List.mem_cons_of_mem _ hg))
           (fun g hg => hrp g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hdm g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2⟩
+          (fun g hg => hdm g (List.mem_cons_of_mem _ hg))
+          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
@@ -1269,6 +1461,7 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
         rw [hmt fid (List.mem_cons_self ..), hkd fid (List.mem_cons_self ..),
           hrp fid (List.mem_cons_self ..), hdm fid (List.mem_cons_self ..)]
         exact hs.2.2.2.2.2.2.1
+      · rw [hcp fid (List.mem_cons_self ..)]; exact hs.2.2.2.2.2.2.2.1
 
 /-! ### ~~`TypeAgree.symm`~~, ~~`TypeAgree.of_equalities`~~, ~~`typeAgree_defineMethod'`~~ — all withdrawn
 
@@ -1675,8 +1868,8 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
       have hlt : (frames.getD fid default).defmod < h.objs.size :=
         classPayload?_isSome_lt hs.1
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ?_,
-        hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1,
-        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2⟩
+        hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1, hs.2.2.2.2.2.2.2.1,
+        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
       · -- **L209: the chain half, and this is what `TypeAgree`'s sixth clause is for.**
@@ -1709,12 +1902,16 @@ theorem ValuesTy.congr {h h' : Heap} (ha : TypeAgree h h') :
   | [], _ :: _, hv => absurd hv (by simp [ValuesTy])
   | _ :: _, [], hv => absurd hv (by simp [ValuesTy])
 
-theorem FrameConforms.congr {h h' : Heap} {Γ : Env} {f : Frame}
-    (ha : TypeAgree h h') (hc : FrameConforms h Γ f) : FrameConforms h' Γ f :=
+theorem FrameConforms.congr {h h' : Heap} {frames : Array Frame} {Γ : Env} {fid : FrameId}
+    (ha : TypeAgree h h') (hc : FrameConforms h frames Γ fid) :
+    FrameConforms h' frames Γ fid :=
   -- L154's definee clause transports by `TypeAgree`'s **third** component, which was
   -- already there for `TyClass` — the bound it needs comes from the clause itself,
-  -- since `classPayload?` answers `none` out of bounds.
-  ⟨hc.1, by rw [ha.2.2.1 f.defmod (classPayload?_isSome_lt hc.2.1)]; exact hc.2.1,
+  -- since `classPayload?` answers `none` out of bounds. L243's chain clause mentions no
+  -- heap at all, so it rides through untouched.
+  ⟨hc.1, by
+    rw [ha.2.2.1 (frames.getD fid default).defmod (classPayload?_isSome_lt hc.2.1)]
+    exact hc.2.1,
    fun x τ hg => ValueTy.congr ha (hc.2.2 x τ hg)⟩
 
 theorem FramesOk.heap_congr {h h' : Heap} {frames : Array Frame}

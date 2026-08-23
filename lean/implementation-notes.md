@@ -11722,3 +11722,102 @@ what an accepting `select` will need; they are no longer the gate.
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**, `--check`
 diff empty against L241's capture, `--self-test` all agree, third ratchet **19**. No machine file
 touched, so no difftest is owed.
+
+## L243 — a block frame becomes expressible: `FrameConforms` follows one hop of the chain
+
+Out of fragment **19 → 19**, `Proof/`-only, `--check` byte-identical, axiom-clean. Wall 1's
+**frame-side** prerequisite, and it is one clause moving from one predicate to another.
+
+### The clause that made a block frame inexpressible
+
+```lean
+def FrameConforms (h : Heap) (Γ : Env) (f : Frame) : Prop :=
+  f.captured = none ∧ …                          -- before
+```
+
+`callClosure` builds a block activation with `captured := some cl.captured`, precisely so that
+free variables in the block body reach the defining method's locals. So the old first clause did
+not merely under-describe a block frame — it **refused to admit one exists**, and no amount of
+work on `KontOk` or `EntryOk` was going to get past it.
+
+### What replaced it, and the measurement that fixed the depth
+
+```lean
+def localOfIn (frames : Array Frame) (f : Frame) (x : String) : Value :=
+  match f.locals.find? (·.1 == x) with
+  | some (_, v) => v
+  | none => match f.captured with
+    | some p => localOf (frames.getD p default) x
+    | none => .nil
+
+def ShallowChain (frames : Array Frame) (fid : FrameId) : Prop :=
+  ∀ p, (frames.getD fid default).captured = some p →
+    p < fid ∧ (frames.getD p default).captured = none
+
+def FrameConforms (h : Heap) (frames : Array Frame) (Γ : Env) (fid : FrameId) : Prop :=
+  ShallowChain frames fid ∧ (h.classPayload? _).isSome ∧
+  ∀ x τ, envGet? Γ x = some τ → ValueTy h (localOfIn frames _ x) τ
+```
+
+**One hop, not a walk, and it is a measurement rather than a simplification.** The only frame the
+fragment will give a chain is a block frame; a block nested inside a block is two hops and
+`infer`'s block rule will refuse one, because a block body is checked at a context whose block
+channel is already open. `Machine.getLocal.go`'s fuel is `m.frames.size + 1`, so `getLocal_curIn`
+unfolds it exactly **twice** and the third unfolding never has to happen — a `Nat`-fuelled walk
+would have put a fuel argument in every lemma below for nothing.
+
+**`FrameConforms` is now indexed by the frame *id*, not the frame.** That is not cosmetic:
+`ShallowChain` has to say `p < fid`, and a bare `Frame` cannot name its own id. The ordering is
+what `frames_congr` needs (below), and it is true of the machine for a reason worth stating — a
+closure captures a frame that existed when the closure was *created*, and the block frame is
+pushed when it is *called*.
+
+### Where the empty chain went, and that is the bill
+
+Into `StackCtx`, as a ninth clause: *the activation has no captured chain*. **A move, not a new
+fact** — it is still true of every frame the fragment builds, and something has to supply
+`FrameOk` to the `setLocal` lemmas.
+
+> **A *read* through the chain is one lookup; a *write* is not.** `Machine.setLocal` walks the
+> chain and mutates the frame that already binds the name — which for a block frame may be the
+> **enclosing** activation, invalidating *that* frame's entry in `FramesOk` at a type its own
+> environment still claims. `x = 1` inside a block is therefore the one construct a block frame
+> cannot host, and this is where the block rung pays: the `StackCtx` clause becomes conditional on
+> a `FrameCtx` block channel, and `infer`'s `.vasgn .lvar` arm grows the guard that reads it.
+>
+> An earlier draft of this commit added that channel (`FrameCtx.inBlock`) up front and pinned it
+> `false`. Withdrawn: with no rule setting it, the field is a `DecidableEq`/`Repr` cost and a
+> `StackCtx` implication whose hypothesis is never anything but `rfl`. The **unconditional** clause
+> says exactly as much and the block rung will weaken it in the same commit that needs it.
+
+### `frames_congr` had to be restated over a *bound*, and that is the other measurement
+
+```lean
+theorem FramesOk.frames_congr (hbs : bound ≤ b.size)
+    (heq : ∀ g, g < bound → b.getD g default = a.getD g default) :
+  FramesOk hp a fids Γs → (∀ g ∈ fids, g < bound) → FramesOk hp b fids Γs
+```
+
+It used to quantify the agreement over `fids`. A block frame's `localOfIn` reads a frame that is
+**not on the segment being walked**, so agreement over the stack list is no longer enough — and
+`ShallowChain`'s `p < fid` is exactly what makes a bound above every stacked id also above every id
+any of them reads. Its one caller (`FramesOk.setLocal`) supplies `bound := fid`, which is what
+`set!`-at-the-head misses anyway.
+
+### The rest of the diff
+
+`FramesOk.frameOk` now takes `(curFrame m).captured = none`, supplied by `StackCtx.curCaptured`;
+`FramesOk.frameShallow` is the version that survives a block frame and is what `FramesOk.localsOk`
+uses. `StackCtx_congr` gained a ninth agreement (`captured`, a field `setLocal` does not write) and
+`StackCtx.heap_congr` one projection. Three frame pushes in `Preservation.lean` and both
+`initiation`s supply the new clause by `rfl` on a frame literal.
+
+**What is *not* blocked by the predicates any more**: a block frame's conformance, its shallow
+chain, and the read through it. What is still owed for Wall 1: `KontOk` arms for `blkFrameK`/
+`iterK`, `StackCtx` for the iterator activation, the third `EntryOk` arm (the native iterator), and
+the rule.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**, `--check`
+diff empty against L242's capture, third ratchet **19**. No machine file touched.

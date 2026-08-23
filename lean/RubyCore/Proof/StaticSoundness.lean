@@ -130,7 +130,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
     -- `Object`, and the clause is now that it is a *class* rather than that it is
     -- that id — one `decide` at a literal heap.
-    simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, envGet?]
+    simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, ShallowChain, envGet?]
     decide
   · -- **The toplevel activation's context is `Object`** (F1b.9), which is
     -- `BottomObj` again, one level more informative: the bottom frame's definee is
@@ -143,7 +143,7 @@ theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := 
     -- L198: the toplevel context declares no return type, so the sixth clause is the
     -- right disjunct — a `return` at toplevel has no target and the desugarer gates it.
     -- L207: and it names no method, so the seventh is vacuous too.
-    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), trivial⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), rfl, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact (show ClassOk (Machine.init p).heap from

@@ -122,11 +122,11 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       -- L236: the caller's environment on the new stack is the *narrowed* one, which
       -- `hfs` was moved to at the top of the proof.
       (ctx, Γk) :: Γs, htab, ?_, ?_, ?_, ?_⟩
-    · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
-        FramesOk.push hfs⟩
-      rw [getD_push_lt_self]
-      exact ⟨rfl, hown, by simp [envGet?]⟩
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+    · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+        ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩, FramesOk.push hfs⟩
+      · rw [getD_push_lt_self]; exact hown
+      · intro y σ hy; exact absurd hy (by simp [envGet?])
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -164,6 +164,9 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
         rw [getD_push_lt_self]
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
         exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
+      -- L243: `userFrame` leaves `captured` at its default, which is the same fact
+      -- `FrameConforms`'s first clause used to carry here.
+      · rw [getD_push_lt_self]; rfl
     -- **L228: the push leaves the globals alone**, and the heap too, so the conjunct is
     -- the incoming one at a machine that differs in `frames`/`stack`/`kont`/`ctl`.
     · exact hglob
@@ -249,7 +252,7 @@ theorem inv_continueArray {D D' : Decls} {m : Machine} {c : FrameCtx} {Γ Γ' : 
 
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, hks, D, ctx, Γ, Γs, htab, hfs, hsc, hglob, hc⟩ := h
-  have hf : FrameOk m := hfs.frameOk
+  have hf : FrameOk m := hfs.frameOk hsc.curCaptured
   have hl : LocalsOk Γ m := hfs.localsOk
   unfold CtlOk at hc
   rcases hctl : m.ctl with e | v | j
@@ -734,20 +737,20 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         (by simp [frameKLabels, hks, dropLast_cons_ne hf.1]),
         D, { cls := name }, [], [(ctx, Γk)],
         htab, ?_, ?_, hglob, ?_⟩
-      · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
-          FramesOk.push hfs⟩
-        rw [getD_push_lt_self]
-        -- `FrameConforms` at the class-body frame: no captured chain (the literal
+      · -- `FrameConforms` at the class-body frame: no captured chain (the literal
         -- leaves the field at its default), the definee is a class — which is
         -- exactly `ClassOk`'s second conjunct, and is what L154 generalized this
         -- clause to admit — and the empty environment types nothing.
-        exact ⟨rfl, by simp [hpay], by simp [envGet?]⟩
+        refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+          ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩, FramesOk.push hfs⟩
+        · rw [getD_push_lt_self]; simp [hpay]
+        · intro y σ hy; exact absurd hy (by simp [envGet?])
       -- **The class-body frame's static context is the class's own name** (F1b.9),
       -- and this is where `ClassOk`'s new clause is spent: the definee is the object
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -765,6 +768,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         · exact Or.inr rfl
         -- L207: and it names no method, for the same reason.
         · exact fun mn h => absurd h (by simp)
+        -- L243: the class-body frame literal leaves `captured` at its default.
+        · rw [getD_push_lt_self]
       -- The class body's own table `Db` is the index the *callee's* continuation
       -- carries; `frameK` carries one table, which the rule's stability condition
       -- is what pays for.
@@ -782,9 +787,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         cases hst : m.stack with
         | nil => exact absurd hst hf.1
         | cons fid _ =>
-          have : FrameConforms m.heap Γ' (m.frames.getD fid default) := by
+          have hfc : FrameConforms m.heap m.frames Γ' fid := by
             rw [hst] at hfs; exact hfs.2.2.1
-          simpa [curFrame, curFid, hst] using this.2.1
+          simpa [curFrame, curFid, hst] using hfc.2.1
       have hha' : ¬ ("method_added" = name) := fun hh => hha hh.symm
       -- `hlk` is the raw lookup equation, because `simp` needs it to collapse
       -- `evalExpr`'s hook `match`; `hlkNH` is the invariant's clause, which since L149
@@ -1276,6 +1281,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           (Machine.setLocal { m with kont := k } x v).stack
         have hf' : FrameOk { m with kont := k } :=
           FramesOk.frameOk (m := { m with kont := k }) hfs
+            (by simpa [curFrame, curFid] using hsc.curCaptured)
         rw [setLocal_stack, setLocal_frames (m := { m with kont := k }) hf']
         refine BottomObj_congr (fun fid _ => ?_) hbot
         by_cases hfx : fid = curFid { m with kont := k }
@@ -1283,7 +1289,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
-      · exact FramesOk.setLocal (m := { m with kont := k }) hfs hv
+      · exact FramesOk.setLocal (m := { m with kont := k }) hfs
+          (by simpa [curFrame, curFid] using hsc.curCaptured) hv
       · -- The same argument for the context stack: `setLocal` moves neither
         -- `defmod` nor `defVis`, which is all this predicate reads.
         show StackCtx (Machine.setLocal { m with kont := k } x v).heap
@@ -1291,12 +1298,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           (Machine.setLocal { m with kont := k } x v).stack (ctx :: Γs.map Prod.fst)
         have hf' : FrameOk { m with kont := k } :=
           FramesOk.frameOk (m := { m with kont := k }) hfs
+            (by simpa [curFrame, curFid] using hsc.curCaptured)
         rw [setLocal_stack, setLocal_frames (m := { m with kont := k }) hf']
         -- L189 adds a fourth agreement, and it is the same one-liner: `setLocal`
         -- writes `locals` and moves neither `defmod`, `defVis`, `self` nor `cref`.
         refine StackCtx_congr (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
           (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_) (fun fid _ => ?_)
-          (fun fid _ => ?_) hsc <;>
+          (fun fid _ => ?_) (fun fid _ => ?_) hsc <;>
           by_cases hfx : fid = curFid { m with kont := k }
         · subst hfx; rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]; rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
@@ -1330,6 +1338,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
         · rw [getD_set!_ne _ _ _ _ hfx]
+        · subst hfx
+          rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
+          rfl
+        · rw [getD_set!_ne _ _ _ _ hfx]
+        -- L243's ninth: `captured` is a field `setLocal` does not write either.
         · subst hfx
           rw [getD_set!_self _ _ _ (by simpa using hf'.2.1)]
           rfl
@@ -1739,21 +1752,22 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           { cls := cu, selfCls := some cu, ret := r, meth := some mname,
             params := some [] }, [],
           (ctx, Γj) :: Γs, htab, ?_, ?_, hglob, ?_⟩
-        · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt, ?_,
-            FramesOk.push hfs⟩
-          rw [getD_push_lt_self]
-          -- `FrameConforms` at the activation: `userFrame` leaves `captured` at its
+        · -- `FrameConforms` at the activation: `userFrame` leaves `captured` at its
           -- default, its definee **is** `md.owner`, and `ResolvesUser` carries that
           -- that id is a class — the clause the user arm has and `ResolvesAt` does
           -- not need.
-          exact ⟨rfl, hown, by simp [envGet?]⟩
+          refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+            ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; rfl), ?_, ?_⟩,
+            FramesOk.push hfs⟩
+          · rw [getD_push_lt_self]; exact hown
+          · intro y σ hy; exact absurd hy (by simp [envGet?])
         · -- **The activation's static context is the owner's class name** (F1b.9),
           -- which is the clause `UserEntryOk` carries beside the body's typing: the
           -- body was checked in the class it is defined on, and `userFrame`'s definee
           -- **is** `md.owner`. `defVis` is the frame literal's default, which is what
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
-          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1778,6 +1792,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             rw [getD_push_lt_self]
             obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
             exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl⟩
+          -- L243: `userFrame` leaves `captured` at its default.
+          · rw [getD_push_lt_self]; rfl
         · -- The callee's body, typed at the **declared return type**: that is what
           -- makes `frameK` — which has always resumed the caller at the in-flight
           -- type — line the activation's answer up with the send's continuation.
