@@ -1643,6 +1643,38 @@ theorem continueArray_plain {m : Machine} {acc : List Value} {e : Expr}
       = .next (withKont m (.eval e) (.arrK acc rest)) := by
   cases e <;> simp_all [continueArray]
 
+/-- **An `Array`-typed value is a reference to an `.arr` payload** (L255) — `plainRecv`'s
+    sixth clause (L230) read back out, factored from `spreadA_of_array` because the block
+    send needs the same fact for a different consumer (`tryIterator`'s payload match). -/
+theorem arrayPayload_of_valueTy {h : Heap} {v : Value} (hv : ValueTy h v (.cls "Array")) :
+    ∃ o xs, v = .ref o ∧ (h.get o).payload = .arr xs ∧ o < h.objs.size := by
+  obtain ⟨o, rfl⟩ : ∃ o, v = .ref o := by
+    cases hsv : v with
+    | ref o' => exact ⟨o', rfl⟩
+    | _ => rw [hsv] at hv; simp_all [ValueTy, valueTy?, subTy]
+  have hpl : plainRecv h o = true := valueTy_ref_plain hv
+  have hcn : className h (h.get o).klass = "Array" := by
+    rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hv with ⟨-, hs⟩ | ⟨hc, hs⟩
+    · have hq := (subTy_atomic (τ := Ty.cls "Array") (by simp) (by simp)).mp hs
+      rw [plainRecv_classOf hpl] at hq
+      simpa using hq
+    · exact absurd hs (by simp [subTy])
+  have hlt : o < h.objs.size := by
+    unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
+    exact of_decide_eq_true hpl.1.1.1.1.1
+  have harr : ∃ xs, (h.get o).payload = .arr xs := by
+    unfold plainRecv at hpl
+    simp only [Bool.and_eq_true] at hpl
+    have h6 := hpl.2
+    rw [hcn] at h6
+    simp only [beq_self_eq_true, if_true] at h6
+    cases hp : (h.get o).payload with
+    | arr xs => exact ⟨xs, rfl⟩
+    | _ => rw [hp] at h6; exact absurd h6 (by simp)
+  obtain ⟨xs, hp⟩ := harr
+  exact ⟨o, xs, rfl, hp, hlt⟩
+
+
 /-- **An `Array`-typed value spreads, and the machine does not move** (L230) — the whole
     soundness content of the splat rule, and the reason `plainRecv` gained a sixth clause.
 

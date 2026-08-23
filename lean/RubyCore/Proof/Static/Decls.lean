@@ -560,6 +560,18 @@ theorem EntryOk.blockless {D : Decls} {h : Heap} {τr : Ty} {mname : String}
   · exact Or.inr h2
   · exact absurd hdb (by simp)
 
+/-- **And the converse reading** (L255): a row that *does* take a block is witnessed by
+    the iterator arm and nothing else, because both resolving arms pin `blk = none`
+    (`ConformsAt`'s and `UserConforms`'s L242 conjuncts). This is what the block-send
+    rule's consecution case reads its dispatch out of. -/
+theorem EntryOk.iter {D : Decls} {h : Heap} {τr : Ty} {mname : String} {d : MethodDecl}
+    {bs : BlockSig} (he : EntryOk D h τr mname d) (hb : d.blk = some bs) :
+    IterEntryOk h τr mname d := by
+  rcases he with ⟨bid, -, -, -, hnb, -, -⟩ | ⟨md, c, -, -, -, -, hnb, -, -⟩ | h3
+  · exact absurd hb (by rw [hnb]; simp)
+  · exact absurd hb (by rw [hnb]; simp)
+  · exact h3
+
 /-- The receiver-shaped form the send cases want, recovered from the class-indexed
     one. This direction is all anything needs, and it is the direction that is
     available: a receiver hands over its dispatch class (`valueTy_tyClass`), while a

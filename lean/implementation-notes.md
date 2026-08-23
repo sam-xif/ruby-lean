@@ -12525,3 +12525,92 @@ of the rule.**
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`**,
 `--check` diff empty, third ratchet **19**.
+
+## L255 — the block-send rule, written and **reverted**, and the frame it stumbles on has no `cref`
+
+Out of fragment **19 → 19**. `--check` byte-identical, axiom-clean. The rule was written, the
+checker built and stayed byte-identical, and four of the five proof obligations closed. The fifth
+is a clause nothing had needed before, and its price is an L236-shaped edit — so the rule is
+**reverted** and its *vocabulary* kept, which is what the next session starts from.
+
+### What landed (inert, and all of it the rule's own vocabulary)
+
+`blockSend?` (the four-way read off the row and the block node), `anyEnv`, `blockCtx`, their two
+inversions (`blockSend?_shape`, `blockSend?_declFor`), `SubDecls.blockSend_eq`, `anyEnv_get` /
+`anyEnv_subEnv` / `SubEnv.cons`, `EntryOk.iter` (a block-taking row is witnessed by the iterator
+arm and nothing else, because both resolving arms pin `blk = none`) and `arrayPayload_of_valueTy`
+(`plainRecv`'s sixth clause read back out, factored from `spreadA_of_array`).
+
+### What the rule looks like, and that it is small
+
+```lean
+  | .send (some recv) mname [] (some (.block ps ls body)) =>
+    match infer D Γ recv top ctx with
+    | some (τr, Γ₁, D₁) =>
+      match blockSend? D₁ τr mname ps ls with
+      | some (x, σp, βret, τret) =>
+        match infer D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) with
+        | some (τb, Γb', D₂) =>
+          if subTy τb βret = true ∧ D₂ = D₁ ∧
+              subEnvB ((x, σp) :: anyEnv Γ₁) Γb' = true then some (τret, Γ₁, D₁) else none
+        | none => none
+      | none => none
+    | none => none
+```
+
+Twelve lines, placed **last** before the catch-all, and `--check` was byte-identical with it in —
+no shipped table has a block row, so it accepts nothing until one is declared.
+
+### Four of the five obligations, and what each cost
+
+1. **`infer.induct` renumbers by +5 for `N ≥ 96`** — measured, and the L252 recipe worked again:
+   `sed` the numbers, then read the new arm's arities off Lean's own "expected *k*" messages
+   (99 and 100 are the `if`'s two branches at 25 binders, 101/102/103 the three refusals).
+2. **`defFree` and `asgnFree` must recurse into the block slot.** The **ninth** walk into L174's
+   trap, and the first a *block* causes: the rule threads the table and the environment through the
+   block **body**, so the `.send` arm's `blk`-ignoring conjunction stops being vacuous.
+3. **`infer_env_mono`'s block case is the only arm whose subexpression's environment is built from
+   the send's own**, which is what `anyEnv_subEnv` is for. Closed.
+4. **`infer_mono_all`'s** is the receiver's IH, `SubDecls.blockSend_eq`, and the body's IH. Closed.
+5. **The `recvKBlk` delivery case** — and this is where it stops.
+
+### The fifth: `startIter`'s activation has an empty `cref`
+
+`Proof/Static/Iter.lean`'s five reductions (L244) took the step all the way to the block body with
+no trouble, and `KontOk.iterK`'s premises (L253) are exactly what the far end needs. What refuses
+is `StackCtx` at the **iterator activation** — the frame `startIter` pushes as the `break` target:
+
+```lean
+let frame : Frame := { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname }
+```
+
+`cref` is left at `[]`, and `StackCtx`'s fifth clause is *`Object` is on the frame's lexical
+constant scope* (L189, the whole frame-side cost of the `.const` read rule). Nothing needs it
+there — **no code runs in that activation**; the loop is driven by the `iterK` continuation and
+every expression is evaluated in a block frame above it — but the predicate is positional and
+demands the clause of every entry.
+
+> **And guarding it on the *block* flag is wrong**, measured: a block body **does** read constants
+> (`CVSS_TYPE_PRIORITY.key?(…)` is in the slice), so a block frame owes clause 5 and gets it from
+> the frame it captured (`ClosuresOk`, L251). The two activations a block send pushes want
+> *different* clauses relaxed — clause 2 for the block, clause 5 for the iterator — which is why
+> `FrameCtx` needs a **second** flag (`noCode`) and not a wider first one.
+
+### The price of that flag, and it is why this is reverted rather than finished
+
+`noCode` on `FrameCtx` and the guard on clause 5 are three lines. The **consumers** are what cost:
+`.const`, `def` and `class'` all read clause 5, so each needs `ctx.noCode = false`, and the only
+place that fact can come from is **`CtlOk`'s eval clause** — *the context a body is evaluated at
+hosts code*. `CtlOk`'s value clause cannot carry it, because at the `iterK` delivery the head
+context **is** the iterator's. So the fact has to reach the delivery cases through `KontOk`, which
+means a defaulted premise on the constructors that hand a continuation an `.eval` — L236's edit
+shape, and L236 is the measurement of what it costs (18 constructors, 43 construction sites
+unchanged because the premise is a trailing `optParam`).
+
+That is one clean commit, and it belongs at the top of the next session rather than at the bottom
+of this one.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with **0 `sorryAx`** and no
+`sorry` in the tree, `--check` diff empty against L254's capture, third ratchet **19**.

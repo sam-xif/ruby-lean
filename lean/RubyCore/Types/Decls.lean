@@ -356,6 +356,134 @@ def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
     | some _ => none
   | none => none
 
+/-- **The pieces a block send reads off the row and the block node** (L255):
+    the block's one parameter name, its declared type, the type its body must answer, and
+    the send's own answer.
+
+    One function rather than four guards in the rule, for `sigOf`'s reason: the arm is
+    already the deepest nest in `infer`, and a `match` on one `Option` is what
+    `infer.induct` can be addressed at. Every refusal in it is a **first-cut**
+    restriction, and each names a different thing the block rung has not paid for yet:
+
+    * `[.req x]` — one required positional, which is `callClosure_req1`'s hypothesis
+      (L244) and rules out auto-splat, optionals and destructuring;
+    * `[]` block-locals — a name first assigned inside the block is pre-bound in the
+      block frame's own `locals`, which is the widening L247 prices and this cut skips;
+    * `d.params = []` — the *send* takes no positional arguments, which is `each`;
+    * `bs.params = [σp]` — the block is called with one value per iteration. -/
+def blockSend? (D : Decls) (τr : Ty) (mname : String) (ps : List Param)
+    (ls : List String) : Option (String × Ty × Ty × Ty) :=
+  match ps, ls with
+  | [.req x], [] =>
+    match declFor D τr mname with
+    | some d =>
+      match d.blk, d.params, (d.blk.map (·.params)).getD [] with
+      | some bs, [], [σp] => some (x, σp, bs.ret, d.ret)
+      | _, _, _ => none
+    | none => none
+  | _, _ => none
+
+/-- The shape `blockSend?` refuses everything but (L255): its answer pins the block
+    node's parameter list and its (empty) block-locals, which `callClosure_req1` needs. -/
+theorem blockSend?_shape {D : Decls} {τr : Ty} {mname : String} {ps : List Param}
+    {ls : List String} {x : String} {σp βret τret : Ty}
+    (h : blockSend? D τr mname ps ls = some (x, σp, βret, τret)) :
+    ps = [.req x] ∧ ls = [] := by
+  unfold blockSend? at h
+  split at h
+  · next x' =>
+    split at h
+    · next d hd =>
+      split at h
+      · next bs σ hb hp hbp =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        exact ⟨by rw [h.1], rfl⟩
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- **The row `blockSend?` read**, recovered — what the invariant's `EntryOk` is about. -/
+theorem blockSend?_declFor {D : Decls} {τr : Ty} {mname : String} {ps : List Param}
+    {ls : List String} {x : String} {σp βret τret : Ty}
+    (h : blockSend? D τr mname ps ls = some (x, σp, βret, τret)) :
+    ∃ d, declFor D τr mname = some d ∧ d.params = [] ∧ d.ret = τret ∧
+      d.blk = some { params := [σp], ret := βret } := by
+  unfold blockSend? at h
+  split at h
+  · next x' =>
+    split at h
+    · next d hd =>
+      split at h
+      · next bs σ hb hp hbp =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        refine ⟨d, hd, hp, h.2.2.2, ?_⟩
+        rw [hb, ← h.2.2.1, ← h.2.1]
+        cases bs with
+        | mk bsp bsr =>
+          have hbp' : bsp = [σ] := by simpa [hb] using hbp
+          rw [hbp']
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- **The enclosing locals, seen from inside a block** (L255) — every name at `.any`.
+
+    Not an approximation of the caller's environment: `ValueTy h v .any` holds of every
+    value (L232), so the block frame's `FrameConforms` obligation at an enclosing name is
+    discharged with no lookup at all — which is what lets `KontOk.iterK` say **nothing**
+    about the frame the closure captured. A *precise* enclosing environment would need
+    the pairing `KontOk` cannot express (L249). -/
+def anyEnv (Γ : Env) : Env := Γ.map (fun e => (e.1, Ty.any))
+
+/-- A lookup in `anyEnv Γ` succeeds exactly where the same lookup in `Γ` does, at `.any`.
+    Induction on the list, and it is the only fact anything needs about `anyEnv`. -/
+theorem anyEnv_get (Γ : Env) (y : String) :
+    envGet? (anyEnv Γ) y = (envGet? Γ y).map (fun _ => Ty.any) := by
+  induction Γ with
+  | nil => rfl
+  | cons e rest ih =>
+    by_cases hy : (e.1 == y) = true
+    · simp [anyEnv, envGet?, List.find?, hy]
+    · simp only [anyEnv, envGet?, List.map_cons, List.find?, hy, Bool.false_eq_true, if_false]
+      simpa [anyEnv, envGet?] using ih
+
+/-- **`anyEnv` is monotone** (L255) — the one step `infer_env_mono`'s block-send case
+    takes that the other arms do not: the block body is typed in an environment built
+    *from* the send's, so widening the send's widens the body's. -/
+theorem anyEnv_subEnv {Γ Γ' : Env} (h : SubEnv Γ Γ') : SubEnv (anyEnv Γ) (anyEnv Γ') := by
+  intro y τ hy
+  rw [anyEnv_get] at hy ⊢
+  cases hg : envGet? Γ y with
+  | none => rw [hg] at hy; exact absurd hy (by simp)
+  | some σ => rw [h y σ hg]; rw [hg] at hy; exact hy
+
+/-- Extending both sides of a containment by the same head. -/
+theorem SubEnv.cons {Γ Γ' : Env} (e : String × Ty) (h : SubEnv Γ Γ') :
+    SubEnv (e :: Γ) (e :: Γ') := by
+  intro y τ hy
+  by_cases hy2 : (e.1 == y) = true
+  · simpa [envGet?, List.find?, hy2] using hy
+  · simp only [envGet?, List.find?, hy2, Bool.false_eq_true, if_false] at hy ⊢
+    exact h y τ hy
+
+/-- **The context a block body is typed in** (L255). Four channels closed and one opened,
+    and each closure is the honest reading of where the jump would go:
+
+    * `ret := none` — a `return` inside a block targets the closure's **home method**,
+      not this activation, so `.ret`'s rule has no target here;
+    * `inLoop := none` — a `next` ends the *block invocation* (`blkFrameK`'s own arm),
+      not the enclosing loop;
+    * `selfCls := none` — the first cut's one real cost, measured at **one body** of the
+      fifteen (`implementation-notes.md` L249): a block whose first evaluated expression
+      is a send on its parameter reports a *needed declaration* long before it reaches an
+      implicit-self send;
+    * `meth := none`/`params := none` — no `super` from inside a block;
+    * `inBlock := true` — which is what guards `StackCtx`'s name clause (L250) and
+      refuses `x = 1` (L252). -/
+def blockCtx (ctx : FrameCtx) : FrameCtx :=
+  { cls := ctx.cls, selfCls := none, ret := none, meth := none, params := none,
+    inLoop := none, inBlock := true }
+
 /-- **One table is carried by another**: every signature the first supports, the
     second supports identically.
 
@@ -395,6 +523,27 @@ def SubDecls (F F' : Decls) : Prop :=
   F.supers = F'.supers ∧
   -- L228: and the globals table, same reason a fourth time.
   F.globals = F'.globals
+
+/-- **`blockSend?` is monotone in the table** (L255), which is the half `infer_mono` needs:
+    it reads `declFor` and nothing else, and `SubDecls`' first component is exactly that
+    reading preserved. -/
+theorem SubDecls.blockSend_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
+    {mname : String} {ps : List Param} {ls : List String} {r : String × Ty × Ty × Ty}
+    (h : blockSend? F τr mname ps ls = some r) : blockSend? F' τr mname ps ls = some r := by
+  unfold blockSend? at h ⊢
+  cases ps with
+  | nil => exact absurd h (by simp)
+  | cons p rest =>
+    cases p <;> cases rest <;> cases ls <;>
+      simp only [] at h ⊢ <;>
+      first
+        | exact absurd h (by simp)
+        | (cases hd : declFor F τr mname with
+           | none => rw [hd] at h; exact absurd h (by simp)
+           | some d =>
+             rw [hd] at h
+             rw [hs.1 τr mname d hd]
+             exact h)
 
 theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl⟩
 
