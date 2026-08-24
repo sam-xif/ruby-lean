@@ -13215,3 +13215,86 @@ are, not `decide`. `native_decide` is banned (§4 norm 5).
 `fragment-gap.py --self-test` all agree. No consumer yet — `Types/Program.lean` is off the
 default target until L265 imports it in `Main.lean` — so `--assn` and the third ratchet
 cannot move, and no interpreter change means no difftest.
+
+## L264 — promotion, and the class object: what is reachable and what is deliberately not
+
+L263 records a `def`'s signature as a provision on a type *variable*, which is what lets a
+sibling body's requirement cancel. It does not make the method callable on a **nominal**
+receiver: `"x".value` reads `sigOf D (.cls "String") "value"` and nothing has put it there.
+This is the second half — and it is also where the honest limits of the class-object half
+get pinned rather than papered over.
+
+### Promotion: the program's own ground rows, into the table
+
+A provision whose signature is **ground** is a row `Decls` can hold. `promoteOnce` runs the
+pass and adds them; `promote` iterates to a fixed point with `defCount prog` as the bound —
+counted, not capped, because every non-final round adds at least one row and a row comes
+from a `def`.
+
+**Every promoted row is one `infer`'s own `def` arm would add**, and the five guards are
+copied from `Types/Core.lean` one for one rather than chosen: `cls ≠ "Object"` (a toplevel
+`def` is private, L162), `name ≠ "initialize"` (same rule), `reopenableClasses.contains cls`
+(F1b.9's uniqueness clause), `groundClassNames` excluded (L189), and
+`declaresName D name = false` (a redefinition is F1c, unbuilt).
+
+The promoted rows are **conjoined into the verdict's assertion as `Assn.decl` atoms**, so an
+accept reads *types, **given** these declarations* — `denote_declAssn` is what gives that
+clause its meaning — rather than hiding the table extension.
+
+### The measurement that corrected the plan for this rung
+
+The plan for L264 said the delta over `infer`'s `def` rule is "exactly the parameterized
+rows", since `infer` additionally requires `params.isEmpty` and this does not. **Running it
+shows that is wrong, and the reason is worth keeping:** a parameterized `def`'s provision is
+`(α₃) → α₃`, which is *not ground*, so it is not promotable either. An unconstrained
+parameter has no ground type. So promotion in practice fires on zero-parameter ground
+bodies — the same population `infer`'s rule admits — and what L264 actually buys is
+narrower than planned:
+
+* program-defined class **constants** (below), so a class object is a value;
+* the fixpoint, so a promoted row can unblock a body that grounds another provision;
+* the `decl`-atom machinery that makes any table extension visible in the output.
+
+The parameterized case is not lost — it lives in the *assertion*, where an unresolved type
+belongs (`.eqv 3 Integer ∧ .eqv 4 α₃` for `add(a)` called at `Integer`, which is the solved
+instantiation). It is only not a nominal row.
+
+### The class object: a value, and still not a receiver
+
+`programConsts` adds each program-defined class name to `D.consts` at `.clsOf name`, so
+`Foo` stops being `missing ::Foo`. Syntactic, deliberately *not* read off a pass run: a
+program containing `Foo.new` fails the pass and the constant it needs must not depend on the
+pass succeeding.
+
+**`Foo.new` is out of reach, and the blocker is a deliberate decision rather than an
+oversight.** `tyClassNames (.clsOf _) = []` (`Types/Decls.lean`), so `declFor`/`sigOf`
+answer `none` at the class-object arm *whatever* rows the table holds — the arm is a
+declaration-and-parameter type with no dispatch, exactly as `.any` is. Undoing that is not a
+promotion guard: it needs a key for singleton rows (the note there rejects `"%class:" ++ n`
+for a stated reason) and it widens `DeclsOk_addRow`'s `hτ` step — *the only type a freshly
+added row is read at is `.cls c`* — into a disjunction, along with every consumer.
+
+What L263 *does* reach is the class object as a **variable**: `def self.x` provisions on
+`β_C`, a call in the class body requires on the same `β_C`, and those cancel. Only the
+nominal route is missing, and it is missing by design.
+
+### The next rung, with a witness pinned in the file
+
+`"x".twice(1)` against `class String; def twice(a); a; end; end` is **`blocked`**, and the
+last `example` in `Types/Program.lean` records it. `twice`'s provision is not promotable
+(not ground) and `inferOpen`'s nominal send arm answers `.missing` rather than recording the
+requirement `String ~ twice : (Integer) → α` — an atom that already exists (`Store.nom`,
+`Assn.req` at a `.nom` receiver). The rung is **one arm of `inferOpen`**, and it is its own
+commit because that arm changes the *per-body* verdicts too: `blocked` becomes `accept` and
+`fragment-gap.py`'s third ratchet moves, which wants its own measurement.
+
+### Costs and checks
+
+The eight `example`s are `simp +decide` over the equation lemmas. `+decide` is what makes
+them robust rather than a war with `List.contains` normalization — the pass is a `mutual`
+block, so it is WF-compiled and does not reduce in the kernel, but the *decidable side
+conditions* inside it do. `native_decide` remains banned (§4 norm 5).
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean,
+`fragment-gap.py --self-test` all agree. Still off the default target until L265, so
+`--assn` and the third ratchet cannot move; no interpreter change, so no difftest.

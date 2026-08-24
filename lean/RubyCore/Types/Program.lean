@@ -278,6 +278,7 @@ end
 inductive ProgramVerdict where
   /-- Types, under this assertion. `ty` is the program's own value type. -/
   | acceptedUnder (ty : ATy) (assn : Assn) (classes : List (String × TyVar × Option TyVar))
+      (consts : List String)
   | blocked (τ : ATy) (n : String) (params : List ATy)
   | outOfFragment (head : String)
 deriving Repr, DecidableEq
@@ -295,7 +296,7 @@ def closeClasses (s : PState) (st : Store) : Store :=
   s.selves.foldl (fun acc e => acc.closeAt e.2 e.1) st
 
 /-- The program's verdict: run the pass, cancel, close, render. -/
-def programVerdict (D : Decls) (prog : Expr) : ProgramVerdict :=
+def programVerdictWith (D : Decls) (prog : Expr) : ProgramVerdict :=
   let (α, s₀) := (PState.mk {} [] []).selfOf "Object"
   match inferProgram D [] prog "Object" α s₀ with
   | .ok τ _ s =>
@@ -304,40 +305,222 @@ def programVerdict (D : Decls) (prog : Expr) : ProgramVerdict :=
       -- entered has none — a toplevel `def` puts `Object` in `selves` and nothing in
       -- `metas`, and reporting `0` there would collide with a real variable.
       (s.selves.map fun e =>
-        (e.1, e.2, (s.metas.find? (·.1 == e.1)).map (·.2)))
+        (e.1, e.2, (s.metas.find? (·.1 == e.1)).map (·.2))) []
   | .missing τ n ps => .blocked τ n ps
   | .outOfFragment h => .outOfFragment h
 
-/-! ## 5. Examples — the shapes the header claims
+/-! ## 5. L264 — promotion: the program's own ground rows, into the table
 
-`simp` over the equation lemmas rather than `decide`: the pass is a `mutual` block, so it
-is compiled by well-founded recursion and does not reduce in the kernel — the same reason
+`inferProgram` records a `def`'s signature as a **provision** on a type *variable*, which
+is what lets a sibling body's requirement cancel against it. It does not make the method
+callable on a *nominal* receiver: `"x".value` reads `sigOf D (.cls "String") "value"`, and
+nothing has put it there.
+
+Promotion is the second half. A provision whose signature is **ground** — no variables left
+— is a row `Decls` can hold, so it is added and the pass is run again; a body that was
+blocked on it may now type, which may ground another provision, so it iterates to a fixed
+point.
+
+## Every promoted row is one `infer`'s own `def` rule would add — except for parameters
+
+That is the whole justification, and it is why the guards below are copied from
+`Types/Core.lean`'s `def` arm one for one rather than chosen:
+
+* **`cls ≠ "Object"`** — a *toplevel* `def` installs a **private** method
+  (`Interp.lean:225`), and `ResolvesUser` requires `.pub`, so the row is unwitnessable
+  (L162). Not a refusal of the `def`, only of its row.
+* **`name ≠ "initialize"`** — private for the same rule, one line earlier.
+* **`reopenableClasses.contains cls`** — the row obliges *every* class object of that name
+  and `ClassOk`'s uniqueness clause is stated at the names in that table (F1b.9).
+* **`groundClassNames.contains cls = false`** — `tyClassNames` subtracts those from the
+  class arm's range, so a row keyed on one would owe `EntryOk` over receivers it was never
+  about (L189).
+* **`declaresName D name = false`** — a `def` of a name the table already mentions is a
+  *redefinition*, admissible only if the new body conforms to the displaced declaration.
+  That is F1c and it is not built, so it is refused here as it is there.
+
+**The delta is therefore exactly the parameterized rows.** `infer`'s `def` arm additionally
+requires `params.isEmpty`, and this does not — which is the 67-of-112 population
+(`HANDOFF.md` §The measurement that reordered the work). So the promoted rows are reported
+as `Assn.decl` atoms in the verdict rather than folded in silently: an accept reads *types,
+**given** these declarations*, and `denote_declAssn` is what gives that clause its meaning.
+
+## The class object is a value here, and is still not a receiver
+
+`programConsts` puts each program-defined class name in `D.consts` at `.clsOf name`, so
+`Foo` stops being `missing ::Foo` and becomes a value — enough for `case x when Foo`,
+`Foo === x`, or passing the class as an argument.
+
+**`Foo.new` is still out of reach, and the blocker is deliberate rather than missing.**
+`tyClassNames (.clsOf _) = []` (`Types/Decls.lean`), so `declFor`/`sigOf` answer `none` at
+the class-object arm *whatever* rows the table holds — the arm is a declaration-and-parameter
+type with no dispatch, exactly as `.any` is. That is L180/L186's decision and undoing it is
+not a promotion guard: it needs a key for singleton rows (the note there rejects
+`"%class:" ++ n` for a stated reason) and it widens `DeclsOk_addRow`'s `hτ` step, whose
+conclusion — *the only type a freshly added row is read at is `.cls c`* — becomes a
+disjunction, along with every consumer of it.
+
+What L263 *does* reach is the class object as a **variable**: `def self.x` provisions on
+`β_C` and a call in the class body requires on the same `β_C`, so those cancel. What is
+missing is only the nominal route, and it is missing by design. -/
+
+mutual
+
+/-- The class and module names the program defines, in source order. Syntactic, and
+    deliberately not read off a pass run: a program containing `Foo.new` fails the pass, and
+    the constant it needs must not depend on the pass succeeding. -/
+def programConstNames : Expr → List String
+  | .class' name _ body => name :: programConstNames body
+  | .module' name body => name :: programConstNames body
+  | .scopedClass _ name body => name :: programConstNames body
+  | .scopedModule _ name body => name :: programConstNames body
+  | .seq es => programConstNamesList es
+  | .begin' body _ _ _ => programConstNames body
+  | _ => []
+
+def programConstNamesList : List Expr → List String
+  | [] => []
+  | e :: rest => programConstNames e ++ programConstNamesList rest
+
+end
+
+/-- Add each program-defined class name as a constant at its class-object type. Names the
+    table already carries are left alone — `T` is in there, and a program that reopens a
+    core class must not shadow the declaration the prelude-aware table already has. -/
+def programConsts (D : Decls) (prog : Expr) : Decls × List String :=
+  (programConstNames prog).foldl
+    (fun acc n =>
+      if (constTy? acc.1 n).isSome then acc
+      else ({ acc.1 with consts := (n, .clsOf n) :: acc.1.consts }, acc.2 ++ [n]))
+    (D, [])
+
+/-- May this class/name pair carry a row? The five guards above, in order. -/
+def promotable (D : Decls) (cls name : String) : Bool :=
+  cls != "Object" && name != "initialize" && reopenableClasses.contains cls &&
+    groundClassNames.contains cls == false && declaresName D name == false
+
+/-- One promotion pass: run the driver, then add every **ground** provision on an
+    *instance* variable that `promotable` admits.
+
+    Instance variables only. A provision on `β_C` is a singleton method, and there is no
+    key for one — see the header. -/
+def promoteOnce (D : Decls) (prog : Expr) : Decls × List (String × String × Sig) :=
+  let (α, s₀) := (PState.mk {} [] []).selfOf "Object"
+  match inferProgram D [] prog "Object" α s₀ with
+  | .ok _ _ s =>
+    s.selves.foldl
+      (fun acc e =>
+        (s.o.st.provOf e.2).entries.foldl
+          (fun acc₂ ent =>
+            match ent.2.toNom? with
+            | some σ =>
+              if promotable acc₂.1 e.1 ent.1 then
+                (addRow acc₂.1 e.1 ent.1 σ, acc₂.2 ++ [(e.1, ent.1, σ)])
+              else acc₂
+            | none => acc₂)
+          acc)
+      (D, [])
+  -- A pass that did not reach the end promotes nothing. Its `.missing` is the verdict.
+  | _ => (D, [])
+
+/-- Iterate to a fixed point. `fuel` bounds it structurally; a round that adds no row is
+    the fixed point and stops early, so the bound is only ever spent on real progress. -/
+def promote (fuel : Nat) (D : Decls) (prog : Expr) :
+    Decls × List (String × String × Sig) :=
+  match fuel with
+  | 0 => (D, [])
+  | fuel + 1 =>
+    let (D₁, added) := promoteOnce D prog
+    if added.isEmpty then (D, [])
+    else
+      let (D₂, more) := promote fuel D₁ prog
+      (D₂, added ++ more)
+
+/-- The promoted rows, as declaration atoms — which is how they enter the verdict's
+    assertion rather than the verdict's silence. -/
+def promotedAssn (added : List (String × String × Sig)) : Assn :=
+  Assn.all (added.map fun a => Assn.declC a.1 a.2.1 a.2.2)
+
+mutual
+
+/-- How many `def`s the program has, which is the exact bound on promotion rounds: every
+    round that does not stop adds at least one row, and a row comes from a `def`. Counted
+    rather than capped, so nothing is silently truncated. -/
+def defCount : Expr → Nat
+  | .def' _ _ body => 1 + defCount body
+  | .defs _ _ _ body => 1 + defCount body
+  | .class' _ _ body => defCount body
+  | .module' _ body => defCount body
+  | .scopedClass _ _ body => defCount body
+  | .scopedModule _ _ body => defCount body
+  | .sclass _ body => defCount body
+  | .seq es => defCountList es
+  | .begin' body _ _ _ => defCount body
+  | .if' _ t e => defCount t + (match e with | some x => defCount x | none => 0)
+  | .while' _ b => defCount b
+  | _ => 0
+
+def defCountList : List Expr → Nat
+  | [] => 0
+  | e :: rest => defCount e + defCountList rest
+
+end
+
+/-- **The whole-program verdict.** Constants first (they cannot depend on a pass run),
+    then promotion to a fixed point, then the verdict at the extended table — with the
+    promoted rows **conjoined into the assertion** as `decl` atoms, so an accept reads
+    *types, given these declarations* rather than hiding the extension. -/
+def programVerdict (D : Decls) (prog : Expr) : ProgramVerdict :=
+  let (D₁, consts) := programConsts D prog
+  let (D₂, added) := promote (defCount prog) D₁ prog
+  match programVerdictWith D₂ prog with
+  | .acceptedUnder τ A cs _ =>
+    .acceptedUnder τ (match added with
+                      | [] => A
+                      | _ => .and (promotedAssn added) A) cs consts
+  | r => r
+
+/-! ## 6. Examples — the shapes the two rungs claim
+
+`simp` over the equation lemmas rather than `decide`: the pass is a `mutual` block, so it is
+compiled by well-founded recursion and does not reduce in the kernel — the same reason
 `Types/OpenSelf.lean`'s examples name `inferOpen` in their `simp` set. `native_decide` is
 banned outright (`PLAN.md` §4 norm 5). -/
 
 /-- **The deliverable.** A class that answers its own body: the `vcall` in `get` requires
     `value` on `α_String`, the `def value` beside it supplies it, `discharge` cancels, and
-    the class obligation closes **empty** — so the whole assertion is the one equality the
-    cancellation owed. This is what `bodyReports` structurally cannot say: it gives each
-    body its own store at `{}`, so the two halves never meet. -/
+    the class obligation closes **empty** — so what is left is the equality the cancellation
+    owed, and the row promotion put in the table. This is what `bodyReports` structurally
+    cannot say: it gives each body its own store at `{}`, so the two halves never meet. -/
 example :
     programVerdict baseDecls
         (.class' "String" none (.seq [
           .def' "value" [] (.int 1),
           .def' "get" [] (.vcall "value")]))
-      = .acceptedUnder (.nom .sym) (.eqv 3 (.nom .int))
-          [("String", 2, some 1), ("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+      = .acceptedUnder (.nom .sym)
+          (.and (.decl (.cls "String") "value" { params := [], ret := .int })
+                (.eqv 3 (.nom .int)))
+          [("String", 2, some 1), ("Object", 0, none)] [] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
-    Row.empty, Assn.all, defFree]
+    Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
 /-- **Parameters, cancelled across two bodies** — the case `infer`'s own `def` rule cannot
     reach at all (`params.isEmpty`). `add`'s parameter is opened at `α₃`, `use` calls it at
-    `Integer`, and the two equalities are exactly the solved instantiation: the parameter
-    is an `Integer` and the call's result is whatever the parameter was. -/
+    `Integer`, and the two equalities are exactly the solved instantiation: the parameter is
+    an `Integer` and the call's result is whatever the parameter was.
+
+    Neither row is promoted, and that is the honest reason: a signature mentioning a free
+    parameter variable is not **ground**, so it is not something `Decls` can hold. The
+    constraint lives in the assertion, which is where an unresolved type belongs. -/
 example :
     programVerdict baseDecls
         (.class' "String" none (.seq [
@@ -345,19 +528,25 @@ example :
           .def' "use" [] (.send none "add" [.int 1] none)]))
       = .acceptedUnder (.nom .sym)
           (.and (.eqv 3 (.nom .int)) (.eqv 4 (.var 3)))
-          [("String", 2, some 1), ("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+          [("String", 2, some 1), ("Object", 0, none)] [] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
     Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
-    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy]
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
 /-- **The Homebrew shape.** An unknown superclass and a body calling a method it inherits:
     nothing supplies `system`, so the requirement survives the cancellation and
-    `closeClasses` turns it into the obligation `Foo ⊒ ⟨ system : (String) → α₃ ⟩` — which
-    is the honest statement that `Formula`, which no table describes, must declare it. -/
+    `closeClasses` turns it into `Foo ⊒ ⟨ system : (String) → α₃ ⟩` — the honest statement
+    that `Formula`, which no table describes, must declare it. `Foo` itself becomes a
+    **constant** (the `["Foo"]`), so the class object is a value even though no row of it is
+    promoted: `Foo` is not in `reopenableClasses`. -/
 example :
     programVerdict baseDecls
         (.class' "Foo" (some (.const "Formula"))
@@ -365,18 +554,22 @@ example :
       = .acceptedUnder (.nom .sym)
           (.obl "Foo" { entries := [("system", { params := [.nom (.cls "String")],
                                                  ret := .var 3 })] })
-          [("Foo", 2, some 1), ("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+          [("Foo", 2, some 1), ("Object", 0, none)] ["Foo"] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
     Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
-    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy]
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
-/-- **An optional parameter provides nothing**, and the body still types. `add` accepts
-    zero *or* one argument and `ASig` records one arity, so no provision is recorded and
-    `use`'s requirement survives — a weaker output, never a wrong cancellation. -/
+/-- **An optional parameter provides nothing**, and the body still types. `add` accepts zero
+    *or* one argument and `ASig` records one arity, so no provision is recorded and `use`'s
+    requirement survives — a weaker output, never a wrong cancellation. -/
 example :
     programVerdict baseDecls
         (.class' "String" none (.seq [
@@ -385,50 +578,92 @@ example :
       = .acceptedUnder (.nom .sym)
           (.obl "String" { entries := [("add", { params := [.nom .int],
                                                  ret := .var 3 })] })
-          [("String", 2, some 1), ("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+          [("String", 2, some 1), ("Object", 0, none)] [] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
     Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
-    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy]
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
-/-- **`def self.x` lands on the class object**, and a call in the class body finds it
-    there. The two `self`s are different variables and that is what makes this work: had
-    they been merged, this would have cancelled against an *instance* row. -/
+/-- **`def self.x` lands on the class object**, and a call in the class body finds it there.
+    The two `self`s are different variables and that is what makes this work: merged, this
+    would have cancelled against an *instance* row. No row is promoted — there is no key for
+    a singleton method (§5's header) — so the cancellation is the whole answer. -/
 example :
     programVerdict baseDecls
         (.class' "Foo" none (.seq [.defs .self' "make" [] (.int 1), .vcall "make"]))
-      = .acceptedUnder (.var 2) (.eqv 2 (.nom .int)) [("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+      = .acceptedUnder (.var 2) (.eqv 2 (.nom .int))
+          [("Object", 0, none)] ["Foo"] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
     Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
-    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy]
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
-/-- **A toplevel `def`, called** — `Object` is the class and the cancellation is the same
-    one. (`infer`'s table refuses this row for a different and correct reason: a toplevel
-    `def` installs a *private* method, L162. An assertion is not a table.) -/
+/-- **A toplevel `def`, called.** `Object` is the class and the cancellation is the same one.
+    No row is promoted, and the guard is `infer`'s own: a toplevel `def` installs a
+    **private** method, so the row is unwitnessable (L162). An assertion is not a table. -/
 example :
     programVerdict baseDecls (.seq [.def' "f" [] (.int 1), .vcall "f"])
-      = .acceptedUnder (.var 1) (.eqv 1 (.nom .int)) [("Object", 0, none)] := by
-  simp [programVerdict, inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+      = .acceptedUnder (.var 1) (.eqv 1 (.nom .int)) [("Object", 0, none)] [] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
     inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
     joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
     dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
     Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
     Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
-    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy]
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
-/-- **A `def` under an `if` provides nothing**, and says so by name rather than
-    disappearing into the `if`: it may not run, so recording its row would be a claim the
-    program does not support. -/
+/-- **A `def` under an `if` provides nothing**, and says so by name rather than disappearing
+    into the `if`: it may not run, so recording its row would be a claim the program does not
+    support. -/
 example :
     programVerdict baseDecls (.if' .tru (.def' "f" [] (.int 1)) none)
       = .outOfFragment "def-in-if" := by
-  simp [programVerdict, inferProgram, PState.selfOf, defFree, headName]
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, defCount, inferProgram, PState.selfOf, defFree, headName]
+
+/-- **What is still blocked, pinned so the next rung has a witness.** A *nominal* send to a
+    method whose promoted signature would not be ground: `"x".twice(1)` reads
+    `sigOf D (.cls "String") "twice"`, `twice`'s provision is `(α₃) → α₃` and so is not
+    promotable, and `inferOpen`'s nominal send arm answers `.missing` rather than recording
+    the requirement `String ~ twice : (Integer) → α`.
+
+    The atom it wants exists (`Store.nom`, `Assn.req` at a `.nom` receiver) and the rung is
+    one arm of `inferOpen` — but that arm changes the **per-body** verdicts too, turning
+    `blocked` into `accept` and moving `fragment-gap.py`'s third ratchet, so it is its own
+    commit with its own measurement rather than a rider on this one. -/
+example :
+    programVerdict baseDecls
+        (.seq [.class' "String" none (.def' "twice" [.req "a"] (.var .lvar "a")),
+               .send (some (.str "x")) "twice" [.int 1] none])
+      = .blocked (.nom (.cls "String")) "twice" [.nom .int] := by
+  simp +decide [programVerdict, programVerdictWith, programConsts, programConstNames, promote,
+    promoteOnce, promotable, promotedAssn, defCount, addRow, constTy?,
+    inferProgram, inferProgramSeq, inferClassBody, inferDefBody,
+    inferOpen, PState.selfOf, PState.metaOf, openParams, allRequired, paramTysOf,
+    joinRets, requireRow, closeClasses, discharge, dischargeRows, dischargeEntries,
+    dischargeSig, pinPair, pinPairs, Store.addProv, Store.provOf, Store.rowIn,
+    Store.rowOf, Store.setRow, Store.closeAt, Store.toAssn, Row.get?, Row.insert,
+    Row.empty, Assn.all, PResult.ofOpen, aenvGet?, inferOpenArgs, defFree, isSelf,
+    sigOf, declFor, declOf?, declsFor, baseDecls, Store.addEq, subATy, ASig.toNom?,
+    ATy.toNom?, ATy.nomList?, declaresName, reopenableClasses, groundClassNames,
+    defCountList, programConstNamesList, baseConsts, Assn.declC, nomTy]
 
 end RubyCore.Types
