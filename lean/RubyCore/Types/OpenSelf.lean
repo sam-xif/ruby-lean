@@ -166,6 +166,11 @@ Arm for arm, `Types/Core.lean`'s `infer`, with two differences and no others:
 Everything else, including `isSelf`'s exclusion of a literal `self` receiver
 (L164), is copied deliberately: the factoring theorem is an arm-by-arm induction,
 and an arm that differs for no reason is an arm whose proof has to be invented. -/
+/-- **The block-send rule's captured environment, from the open side** (L258): the
+    names of `Γ`, all at `.any`. Equal to `anyEnv (substEnv θ Γ)` at every `θ` — which
+    is the whole reason the block body can be handed to the nominal `infer`. -/
+def anyOf (Γ : AEnv) : Env := Γ.map (fun e => (e.1, Ty.any))
+
 mutual
 
 def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv) (s : OState) : OResult :=
@@ -325,6 +330,38 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
         match requireRow s₁.st α mname [] s₁.fresh with
         | some (τ, st') => .ok τ Γ₁ { s₁ with st := st', fresh := s₁.fresh + 1 }
         | none => .missing (.var α) mname []
+      | .nilOf _ => .outOfFragment "nilable-receiver"
+    | r => r
+  -- **A send with a block** (L258), the open counterpart of `infer`'s L257 arm.
+  --
+  -- The block's body is checked by the **nominal** `infer`, not by a recursive
+  -- `inferOpen`. That is not a shortcut: the rule erases the captured environment to
+  -- `.any` at *every* name (`anyEnv`), so by the time the body is reached there is
+  -- nothing open left in it — the parameter's type, the block's return type and the
+  -- send's answer all come from the declaration, which is nominal. So this arm needs
+  -- no `inBlock` channel on `OCtx` and no new guard on any other arm; the factoring
+  -- theorem's case is the observation that `anyEnv (substEnv θ Γ₁)` does not mention
+  -- `θ` (`anyOf_subst`).
+  --
+  -- A receiver with no such declaration is a missing **declaration**, not a missing
+  -- rule — `blockSend?` is exactly the question "is there one", and the census counts
+  -- the two in different columns.
+  | .send (some recv) mname [] (some (.block ps ls body)) =>
+    match inferOpen D Γ recv ctx il s with
+    | .ok τr Γ₁ s₁ =>
+      match τr with
+      | .nom t =>
+        match blockSend? D t mname ps ls with
+        | some (x, σp, βret, τret) =>
+          match infer D ((x, σp) :: anyOf Γ₁) body false (blockCtx { cls := ctx.cls }) with
+          | some (τb, Γb', D₂) =>
+            if subTy τb βret = true ∧ D₂ = D ∧
+                subEnvB ((x, σp) :: anyOf Γ₁) Γb' = true then
+              .ok (.nom τret) Γ₁ s₁
+            else .outOfFragment "send-block-body"
+          | none => .outOfFragment "send-block-body"
+        | none => .missing (.nom t) mname []
+      | .var α => .missing (.var α) mname []
       | .nilOf _ => .outOfFragment "nilable-receiver"
     | r => r
   -- A body that declares a method is outside the fragment already (`infer`'s own

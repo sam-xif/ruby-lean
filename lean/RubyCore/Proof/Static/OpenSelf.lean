@@ -965,6 +965,13 @@ theorem subAEnvB_subst {θ : TyVar → Ty} {Γl Γ : AEnv} (h : subAEnvB Γl Γ 
       show envGet? (List.map (fun e => (e.1, ATy.subst θ e.2)) Γl) e.1 = some (a.subst θ) from
         by simpa [substEnv] using aenvGet_subst (θ := θ) ha]
 
+/-- **`anyOf` is `anyEnv ∘ substEnv θ`, at every `θ`** (L258) — the one fact the
+    block-send arm needs, and the reason it can hand the body to the nominal `infer`:
+    the rule erases the captured environment to `.any` at every name, and an erased
+    environment does not mention the substitution. -/
+theorem anyOf_subst (θ : TyVar → Ty) (Γ : AEnv) : anyEnv (substEnv θ Γ) = anyOf Γ := by
+  simp [anyEnv, anyOf, substEnv, List.map_map, Function.comp_def]
+
 theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : Store)
     (retF : Ty) (hsat : SatStore D θ stF) (hself : θ ctx.self = .cls ctx.cls)
     (Γ : AEnv) (e : Expr) (il : Option AEnv) (s : OState) :
@@ -983,7 +990,10 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
   | _ =>
     simp_all [inferOpen, inferOpenSeq, inferOpenIf, inferOpenElems, Factors, FactorsIf,
       FactorsSeq, FactorsArgs, FactorsElems, infer, inferSeq, inferIf, inferArgs,
-      inferElems, substEnv_aenvSet, hself]
+      inferElems, substEnv_aenvSet, hself,
+      -- L258: the block-send arm's two normalizations — the erased environment does
+      -- not mention `θ`, and `blockCtx` keeps only `cls`, which the two contexts share.
+      anyOf_subst, blockCtx]
     all_goals (try intro hle)
     -- L201's second premise: the collected `return` types all agree with the
     -- body's, pushed down to the subexpressions by `rets_sub` below.

@@ -12736,3 +12736,65 @@ next commit, and it is a front-end arm plus one case of `inferOpen_factors`.
 
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--self-test` all agree,
 third ratchet **19** (unchanged, and expected — see above). No interpreter change, so no difftest.
+
+## L258 — the open front end gets the block arm, and the census moves **19 → 7**
+
+L257 put the block-send rule in `infer`. The census reads `inferOpen`, so the ratchet did not
+move. This is the front-end arm, and it is far cheaper than the nominal one was.
+
+### The body is checked *nominally*
+
+```lean
+| .send (some recv) mname [] (some (.block ps ls body)) =>
+  match inferOpen D Γ recv ctx il s with
+  | .ok τr Γ₁ s₁ =>
+    match τr with
+    | .nom t =>
+      match blockSend? D t mname ps ls with
+      | some (x, σp, βret, τret) =>
+        match infer D ((x, σp) :: anyOf Γ₁) body false (blockCtx { cls := ctx.cls }) with
+        …
+      | none => .missing (.nom t) mname []
+    | .var α => .missing (.var α) mname []
+    | .nilOf _ => .outOfFragment "nilable-receiver"
+  | r => r
+```
+
+The recursive call is `infer`, not `inferOpen`, and that is the whole economy of the arm:
+
+> **The rule erases the captured environment to `.any` at every name, so by the time the body
+> is reached there is nothing open left in it.** The parameter's type, the block's return type
+> and the send's answer all come from the *declaration*, which is nominal.
+
+The alternative — recursing with `inferOpen` — would have needed an `inBlock` channel on `OCtx`
+and a guard on every arm the nominal `blockCtx` closes off (`self`, `x = …`, `return`, `super`,
+`zsuper`, `next`), each of which is a case of `inferOpen_factors`. This needs none of them.
+
+The factoring theorem's cost is **one lemma and two simp arguments**:
+
+```lean
+theorem anyOf_subst (θ : TyVar → Ty) (Γ : AEnv) : anyEnv (substEnv θ Γ) = anyOf Γ
+```
+
+plus `blockCtx` in the unfolding set, because `blockCtx` keeps only `cls` and the open and
+nominal contexts agree there. The case then closes in the existing `simp_all`.
+
+### A missing declaration is not a missing rule
+
+`blockSend?` *is* the question "is there a declaration for this send-with-block", so a receiver
+with none answers `.missing`, and the census counts it in the `needed:` column beside `Array ~
+hash` and `Hash ~ fetch`. That is the whole of the 19 → 7 move: twelve of the fifteen
+`send-with-block` bodies now name the declaration they want (`α1 ~ select`, `α3 ~ select`, …)
+rather than naming a hole in the checker.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--self-test` all agree.
+No interpreter change, so no difftest.
+
+| ratchet | before | after |
+|---|---|---|
+| `oof` | 19 | **7** |
+| `needed:` | 70 | 82 |
+
+Remaining `oof`: `send-with-block` 3, `begin` 2, `splat` 1, `nilable-receiver` 1.

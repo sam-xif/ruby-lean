@@ -122,7 +122,19 @@ def main (args : List String) : IO UInt32 := do
         -- where `T` does not exist. Two tables, each sound at the heap it describes;
         -- see `Types/Decls.lean`'s `preludeDecls`.
         let D := Types.preludeDecls
-        let rs := Types.bodyReports D "Object" prog
+        -- `--assn-top`: report the **top-level program** as one more body, under
+        -- `Object#<main>`. `bodyReports` walks *into* structure and reports only
+        -- `def`/`defs`, so a program's straight-line code — the part a reader is
+        -- most likely to have an obvious type in mind for — has no row at all
+        -- today, and the only verdict covering it is `--check`'s whole-program one.
+        --
+        -- **Off by default**, because `--assn`'s census is a consumed number
+        -- (`homebrew/fragment-gap.py`'s third ratchet) and a body that is not a
+        -- method body would move it.
+        let rs := Types.bodyReports D "Object" prog ++
+          (if args.contains "--assn-top" then
+            [("Object", "<main>", Types.bodyVerdict D "Object" "<main>" prog)]
+           else [])
         let c := Types.census rs
         let one := fun (r : String × String × Types.BodyVerdict) =>
           Lean.Json.mkObj ([
