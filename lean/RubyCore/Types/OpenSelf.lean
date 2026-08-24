@@ -314,7 +314,24 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
         -- a nilable — the receiver may be `nil` — which is `tyClassNames .nilable = []`
         -- arriving in the front end. What this position wants is *narrowing*
         -- (`x.nil?`, `if x`), and that is `PLAN.md` W5 T3.
-        | .nilOf _ => .outOfFragment "nilable-receiver"
+        -- **L260: a nilable receiver dispatches by union**, and this is the arm the
+        -- census's `nilable-receiver` line was. See the arity-zero arm below for the
+        -- reasoning; the only difference here is the argument list.
+        | .nilOf a =>
+          match a with
+          | .nom t =>
+            match sigOf D (mkNilable t) mname with
+            | some (ps, τret) =>
+              if τs == ps.map ATy.nom then .ok (.nom τret) Γ₂ s₂
+              else .missing (.nom (mkNilable t)) mname τs
+            | none =>
+              match sigOf D .nilT mname with
+              | none => .missing (.nom .nilT) mname τs
+              | some _ => .missing (.nom t) mname τs
+          | _ =>
+            match sigOf D .nilT mname with
+            | none => .missing (.nom .nilT) mname τs
+            | some _ => .outOfFragment "nilable-receiver"
       | .missing τ n ps => .missing τ n ps
       | .outOfFragment h => .outOfFragment h
     | r => r
@@ -330,7 +347,34 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
         match requireRow s₁.st α mname [] s₁.fresh with
         | some (τ, st') => .ok τ Γ₁ { s₁ with st := st', fresh := s₁.fresh + 1 }
         | none => .missing (.var α) mname []
-      | .nilOf _ => .outOfFragment "nilable-receiver"
+      -- **L260: a nilable receiver dispatches by union.** `x&.m` desugars to
+      -- `t = x; if t.nil? then nil else t.m`, so the blocker the census called
+      -- `nilable-receiver` is a plain send at a `.nilable σ` — and the sound reading is
+      -- the standard one: admissible when **both** arms of the union declare the method
+      -- at the same signature, which is what `sigOf` now answers (L260).
+      --
+      -- The nil arm is checked *first*, because it is the one that is almost always
+      -- missing and it is the honest atom to name: at `severity&.to_s&.upcase` the
+      -- checker asks for `NilClass ▷ upcase`, which is exactly what a union-typed
+      -- checker says.
+      --
+      -- A receiver whose *under* type is still a variable is out of the fragment rather
+      -- than a row requirement: the requirement would have to pin `θ α` to a
+      -- non-nilable, and `SatStore`'s row clause is stated over `sigOf`, which by
+      -- construction cannot say that.
+      | .nilOf a =>
+        match a with
+        | .nom t =>
+          match sigOf D (mkNilable t) mname with
+          | some ([], τret) => .ok (.nom τret) Γ₁ s₁
+          | _ =>
+            match sigOf D .nilT mname with
+            | none => .missing (.nom .nilT) mname []
+            | some _ => .missing (.nom t) mname []
+        | _ =>
+          match sigOf D .nilT mname with
+          | none => .missing (.nom .nilT) mname []
+          | some _ => .outOfFragment "nilable-receiver"
     | r => r
   -- **A send with a block** (L258), the open counterpart of `infer`'s L257 arm.
   --

@@ -350,11 +350,64 @@ def declFor (D : Decls) (τ : Ty) (mname : String) : Option MethodDecl :=
     model gates). Refusing here rather than at each rule is what makes the field
     unreadable by anything that has not been taught about it. -/
 def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
-  match declFor D τ mname with
-  | some d => match d.blk with
-    | none => some (d.params, d.ret)
-    | some _ => none
-  | none => none
+  match τ with
+  -- **Union dispatch at a nilable receiver** (L260), and it is the whole
+  -- `nilable-receiver` rung: `x&.m` desugars to `t = x; if t.nil? then nil else t.m`, so
+  -- the blocker is a plain send whose receiver type is a `.nilable σ` — a type
+  -- `declFor` answers `none` at, because `tyClassNames` is `[]` there (L193).
+  --
+  -- The sound reading is the standard one: the send is admissible when **both** arms of
+  -- the union declare the method, at the *same* signature. `NilClass` is a class like any
+  -- other, so this is two ordinary `declFor` reads and no new key — which is why the rung
+  -- needs no change to `infer`, to `KontOk`, or to `infer.induct`'s case numbering: every
+  -- send rule already reads its receiver's row through this function.
+  --
+  -- `d₁ == d₂` rather than a join of the two signatures: a join would be a second,
+  -- weaker notion of conformance to keep sound at dispatch, and the slice needs none of
+  -- it. What the census then says at `severity&.to_s&.upcase` is `NilClass ▷ upcase` —
+  -- which is exactly the answer a union-typed checker gives.
+  | .nilable σ =>
+    match declFor D .nilT mname, declFor D σ mname with
+    | some d₁, some d₂ =>
+      if d₁ == d₂ then
+        match d₁.blk with
+        | none => some (d₁.params, d₁.ret)
+        | some _ => none
+      else none
+    | _, _ => none
+  | _ =>
+    match declFor D τ mname with
+    | some d => match d.blk with
+      | none => some (d.params, d.ret)
+      | some _ => none
+    | none => none
+
+/-- **The two rows a nilable signature is made of** (L260) — the inversion the dispatch
+    case reads, and the reason the rung needs no new `EntryOk` arm: each row is at an
+    *ordinary* key, so each is `MethodRowsOk` at that key and dispatches by the machinery
+    that was already there. -/
+theorem sigOf_nilable {D : Decls} {σ : Ty} {mname : String} {ps : List Ty} {τret : Ty}
+    (h : sigOf D (.nilable σ) mname = some (ps, τret)) :
+    declFor D .nilT mname = some { params := ps, ret := τret } ∧
+      declFor D σ mname = some { params := ps, ret := τret } := by
+  simp only [sigOf] at h
+  split at h
+  · next d₁ d₂ h1 h2 =>
+    split at h
+    · next hq =>
+      simp only [beq_iff_eq] at hq
+      subst hq
+      split at h
+      · next hb =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨hp, hr⟩ := h
+        subst hp; subst hr
+        refine ⟨?_, ?_⟩
+        · rw [h1]; cases d₁ with | mk p r b => simp_all
+        · rw [h2]; cases d₁ with | mk p r b => simp_all
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
 
 /-- **The same read, without the arity-zero restriction** (L259) — what the
     positive-arity block-send rule asks. It hands back the declaration's *parameter
@@ -648,9 +701,33 @@ theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname :
     {ps : List Ty} {τret : Ty} (h : sigOf F τ mname = some (ps, τret)) :
     sigOf F' τ mname = some (ps, τret) := by
   unfold sigOf at h ⊢
-  cases hd : declFor F τ mname with
-  | none => rw [hd] at h; exact absurd h (by simp)
-  | some d => rw [hs.1 τ mname d hd]; rw [hd] at h; exact h
+  cases τ with
+  -- L260: the nilable arm reads *two* rows, so it moves by two applications of the
+  -- same `declFor` monotonicity the others use one of.
+  | nilable σ =>
+    simp only [] at h ⊢
+    cases h1 : declFor F Ty.nilT mname with
+    | none => rw [h1] at h; exact absurd h (by simp)
+    | some d₁ =>
+      cases h2 : declFor F σ mname with
+      | none => rw [h1, h2] at h; exact absurd h (by simp)
+      | some d₂ =>
+        rw [hs.1 _ mname d₁ h1, hs.1 _ mname d₂ h2]
+        rw [h1, h2] at h; exact h
+  | _ =>
+    all_goals (
+      simp only [] at h ⊢
+      first
+        | (cases hd : declFor F (Ty.cls _) mname with
+           | none => rw [hd] at h; exact absurd h (by simp)
+           | some d => rw [hs.1 _ mname d hd]; rw [hd] at h; exact h)
+        | (rename_i a
+           cases hd : declFor F a mname with
+           | none => rw [hd] at h; exact absurd h (by simp)
+           | some d => rw [hs.1 _ mname d hd]; rw [hd] at h; exact h)
+        | (cases hd : declFor F _ mname with
+           | none => rw [hd] at h; exact absurd h (by simp)
+           | some d => rw [hs.1 _ mname d hd]; rw [hd] at h; exact h))
 
 /-! ## The reopenable classes
 

@@ -1295,6 +1295,10 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     -- arm ran it at `anyOf Γ₂`. One rewrite — and it has to be *here*, because at the
     -- moment `first` runs, that term does not exist yet.
     all_goals (try (simp only [anyOf_subst]; simp_all))
+    -- **L260's nilable arm.** `ATy.subst θ (.nilOf (.nom t))` *is* `mkNilable t` by
+    -- definition, so the open arm's `sigOf` read and the nominal one are the same read —
+    -- a residual for the reason above: at `first`-time the term is not there yet.
+    all_goals (try (simp only [ATy.subst] at *; simp_all))
 
 /-! ## 6. The decidable side — §8.2's discharge, and what it buys
 

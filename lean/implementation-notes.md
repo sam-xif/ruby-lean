@@ -12870,3 +12870,88 @@ Remaining `oof`, one body each except `begin`: `begin` **2** (`in_interval_stric
 `in_interval_permissive?`), `splat` **1** (`Version#to_json`), `nilable-receiver` **1**
 (`severity_display`, a `&.` chain), `send-with-block` **1** (`comparator_for`, a `->(a, b) { … }`
 lambda — proc types, not the block rule).
+
+## L260 — union dispatch at a nilable receiver, and it costs **one** lemma at each send — **5 → 4**
+
+`severity&.to_s&.upcase || "UNKNOWN"`. Measured first, before any code:
+
+```
+$ harness/desugar-dt/bin/export-json  # def f(x) = x&.to_s
+["seq",["vasgn","local","__dt_t1",["var","local","x"]],
+       ["if",["send",["var","local","__dt_t1"],"nil?",[],null],["nil"],
+             ["send",["var","local","__dt_t1"],"to_s",[],null]]]
+```
+
+So `&.` is **not** a construct the checker is missing. It is a plain send whose receiver
+type is a `.nilable σ` — a type `declFor` answers `none` at, because `tyClassNames` is `[]`
+there (L193). The rung is a *rule for that send*, and the standard sound one is union
+dispatch.
+
+### The rule is one arm of `sigOf`, and that is why it is cheap
+
+```lean
+def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
+  match τ with
+  | .nilable σ =>
+    match declFor D .nilT mname, declFor D σ mname with
+    | some d₁, some d₂ => if d₁ == d₂ then … else none
+    | _, _ => none
+  | _ => …
+```
+
+> **Every send rule already reads its receiver's row through `sigOf`.** So the rung needs no
+> new `infer` arm, no new `KontOk` constructor, and — the part that mattered — **no
+> `infer.induct` renumbering**. `NilClass` is a class like any other, so the union is two
+> ordinary `declFor` reads at two ordinary keys, and neither owes a new `EntryOk` arm.
+
+`d₁ == d₂` rather than a join of the two signatures: a join would be a second, weaker notion
+of conformance to keep sound at dispatch, and the slice needs none of it.
+
+### The whole bill lands at the *dispatch* sites, and there are three
+
+`sigOf_atomic` used to **derive** `∀ τ', τr ≠ .nilable τ'` from a row's existence. It cannot
+any more, so it and `sigOf_declFor` take it as a hypothesis. Two of the three callers are at
+an abstract receiver type; both are re-bound by one `obtain`:
+
+```lean
+obtain ⟨τ, hsg, hv, hnilτ⟩ := sigOf_value_atomic hsg hv
+```
+
+`sigOf_value_atomic` **reduces** a nilable receiver to the atomic arm the receiver *value*
+actually is — `valueTy_nilable_inv` splits `ValueTy h v (.nilable σ)` into `v = nil` and
+`ValueTy h v σ`, and each arm dispatches by the machinery that was already there. The case
+bodies below the `obtain` are unchanged, which is the point: nilable dispatch is not a new
+dispatch, it is a *choice between two old ones*.
+
+Three small facts it rests on, all new: `declFor_atomic` (a declaration's key is atomic —
+`sigOf_atomic`'s old proof, moved one level down), `valueTy_nilT`, `valueTy_not_nilable`.
+
+### The front end names the atom a union-typed checker names
+
+The open arms check the **nil** side first, because it is the one that is almost always
+missing and it is the honest atom to report: `severity&.to_s&.upcase` now asks for
+`NilClass ~ upcase : () → _`, which is exactly what Sorbet says about the same line.
+
+A receiver whose *under* type is still a type variable stays out of the fragment, and the
+reason is worth recording: the requirement would have to pin `θ α` to a **non-nilable**
+(otherwise the nominal `sigOf` sees `.nilable (.nilable τ)`, where `declFor` answers `none`),
+and `SatStore`'s row clause is stated over `sigOf`, which by construction cannot say that.
+The slice does not reach it — the nil side is missing first — and the census's rule has
+always been *report the first atom the body needs*.
+
+The factoring case is again a **residual**, for L259's reason and closed the same way:
+`ATy.subst θ (.nilOf (.nom t))` *is* `mkNilable t` by definition, so the open arm's `sigOf`
+read and the nominal one are the same read — but the term only exists after the alternative
+that reduces the receiver has run.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--self-test` all agree.
+No interpreter change, so no difftest.
+
+| ratchet | before | after |
+|---|---|---|
+| `oof` | 5 | **4** |
+| `needed:` | 84 | 85 |
+
+Remaining: `begin` **2**, `splat` **1**, `send-with-block` **1** (the `->(a, b) { … }` lambda).

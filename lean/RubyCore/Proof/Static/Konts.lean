@@ -1372,6 +1372,11 @@ def Inv (m : Machine) : Prop :=
     `valueTy_tyClass` now ask for, and no rule has to carry it. That is the whole
     reason the two arms were given `[]` rather than a name. -/
 theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τret : Ty}
+    -- **L260 adds the hypothesis the conclusion used to *derive*.** `sigOf` now answers at
+    -- a nilable receiver (union dispatch), so a row's existence no longer refutes that
+    -- arm — the caller has to have ruled it out, and the two dispatch sites that cannot
+    -- do so by `simp` split on it instead.
+    (hnil : ∀ τ', τr ≠ .nilable τ')
     (h : sigOf D τr mname = some (ps, τret)) :
     -- **L239 adds the third**, from the same fact: `tyClassNames` is `[]` at the
     -- parameterised arm too, so a row's *existence* refutes it exactly as it refutes
@@ -1381,6 +1386,66 @@ theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τr
     τr ≠ .any ∧ (∀ τ', τr ≠ .nilable τ') ∧ ∀ σ, τr ≠ .arrayOf σ := by
   cases τr <;>
     simp_all [sigOf, declFor, tyClassNames]
+
+/-- **A declaration's key is atomic** (L260) — `tyClassNames` is `[]` at `.any`, at a
+    nilable and at an `arrayOf`, so `declFor` answering `some` refutes all three. This is
+    `sigOf_atomic`'s old proof, moved one level down: `sigOf` itself is no longer atomic
+    (it answers at a nilable now), but the rows it is *made of* still are. -/
+theorem declFor_atomic {D : Decls} {τ : Ty} {mname : String} {d : MethodDecl}
+    (h : declFor D τ mname = some d) :
+    τ ≠ .any ∧ (∀ τ', τ ≠ .nilable τ') ∧ ∀ σ, τ ≠ .arrayOf σ := by
+  cases τ <;> simp_all [declFor, tyClassNames]
+
+/-- `valueTy?`'s range, at the two arms the nilable inversion needs to read back. -/
+theorem valueTy_nilT {h : Heap} {v : Value} (hσ : valueTy? h v = some .nilT) :
+    v = .nil := by
+  cases v with
+  | nil => rfl
+  | ref o =>
+    simp only [valueTy?] at hσ
+    split at hσ
+    · exact absurd hσ (by simp)
+    · split at hσ
+      · exact absurd hσ (by simp)
+      · exact absurd hσ (by simp)
+  | _ => exact absurd hσ (by simp [valueTy?])
+
+theorem valueTy_not_nilable {h : Heap} {v : Value} {σ : Ty}
+    (hσ : valueTy? h v = some (.nilable σ)) : False := by
+  cases v with
+  | ref o =>
+    simp only [valueTy?] at hσ
+    split at hσ
+    · exact absurd hσ (by simp)
+    · split at hσ
+      · exact absurd hσ (by simp)
+      · exact absurd hσ (by simp)
+  | _ => exact absurd hσ (by simp [valueTy?])
+
+/-- **A nilable is either `nil` or the thing under it** (L260). The three disjuncts of
+    `ValueTy` all reduce: `.any` is below a nilable only when it is below what is under
+    it (`subTy_any_false`), an array likewise, and the exact arm's `subTy σ' (.nilable σ)`
+    is `σ' = .nilT ∨ σ' = .nilable σ ∨ subTy σ' σ` — of which the middle is refuted
+    because `valueTy?` never answers a nilable. -/
+theorem valueTy_nilable_inv {h : Heap} {v : Value} {σ : Ty} (ha : σ ≠ .any)
+    (hn : ∀ τ', σ ≠ .nilable τ') (hnar : ∀ τ', σ ≠ .arrayOf τ')
+    (hv : ValueTy h v (.nilable σ)) : v = .nil ∨ ValueTy h v σ := by
+  rcases hv with hany | ⟨σ', o, xs, hup, rfl, hb, hex, hpay, hall⟩ | ⟨σ', hσ, hsub⟩
+  · simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hany
+    rcases hany with (h1 | h1) | h1
+    · exact absurd h1 (by simp)
+    · exact absurd h1 (by simp)
+    · exact absurd h1.symm ha
+  · simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hup
+    rcases hup with (h1 | h1) | h1
+    · exact absurd h1 (by simp)
+    · exact absurd h1 (by simp)
+    · exact Or.inr (Or.inr (Or.inl ⟨σ', o, xs, by rw [← h1]; simp, rfl, hb, hex, hpay, hall⟩))
+  · simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hsub
+    rcases hsub with (rfl | rfl) | h1
+    · exact Or.inl (valueTy_nilT hσ)
+    · exact absurd hσ (fun hq => (valueTy_not_nilable hq).elim)
+    · exact Or.inr (Or.inr (Or.inr ⟨σ', hσ, by rw [h1]; simp⟩))
 
 /-- The signature in the shape `EntryOk` reads it. Trivial, and it exists because
     `sigOf` is `declFor` composed with a projection while `DeclsOk` is stated over
@@ -1395,20 +1460,52 @@ theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τr
     The day a block-send rule exists it will read `declFor` directly rather than come
     through here, for exactly this reason. -/
 theorem sigOf_declFor {D : Decls} {τr : Ty} {mname : String} {params : List Ty}
-    {τret : Ty} (h : sigOf D τr mname = some (params, τret)) :
+    {τret : Ty} (hnil : ∀ τ', τr ≠ .nilable τ')
+    (h : sigOf D τr mname = some (params, τret)) :
     declFor D τr mname = some { params := params, ret := τret, blk := none } := by
-  unfold sigOf at h
-  cases hd : declFor D τr mname with
-  | none => rw [hd] at h; exact absurd h (by simp)
-  | some d =>
-    obtain ⟨ps, r, b⟩ := d
-    rw [hd] at h
-    cases b with
-    | none =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, rfl⟩ := h
-      rfl
-    | some _ => exact absurd h (by simp)
+  cases τr with
+  | nilable σ => exact absurd rfl (hnil σ)
+  | _ =>
+    all_goals (
+      unfold sigOf at h
+      simp only [] at h
+      cases hd : declFor D _ mname with
+      | none => rw [hd] at h; exact absurd h (by simp)
+      | some d =>
+        obtain ⟨ps, r, b⟩ := d
+        rw [hd] at h
+        cases b with
+        | none =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          rfl
+        | some _ => exact absurd h (by simp))
+
+/-- **L260's whole cost at a dispatch site, in one lemma.** A send whose receiver type
+    is a nilable is *reduced* to the atomic arm the receiver value actually is: the union
+    rule's two rows are ordinary rows at ordinary keys, so each dispatches by the
+    machinery that was already there and neither needs a new `EntryOk` arm.
+
+    Stated as a re-binding of the same three facts (`sigOf`, `ValueTy`, and now the
+    atomicity side condition) so that a consecution case spends **one** `obtain` on it and
+    its body is unchanged. -/
+theorem sigOf_value_atomic {D : Decls} {h : Heap} {v : Value} {τ : Ty} {mname : String}
+    {ps : List Ty} {τret : Ty}
+    (hsg : sigOf D τ mname = some (ps, τret)) (hv : ValueTy h v τ) :
+    ∃ τ₀, sigOf D τ₀ mname = some (ps, τret) ∧ ValueTy h v τ₀ ∧
+      (∀ τ', τ₀ ≠ .nilable τ') := by
+  cases hτ : τ with
+  | nilable σ =>
+    subst hτ
+    obtain ⟨h1, h2⟩ := sigOf_nilable hsg
+    obtain ⟨haσ, hnσ, hnarσ⟩ := declFor_atomic h2
+    rcases valueTy_nilable_inv haσ hnσ hnarσ hv with rfl | hvσ
+    · exact ⟨.nilT, by simp [sigOf, h1], ValueTy.exact rfl, by simp⟩
+    · refine ⟨σ, ?_, hvσ, hnσ⟩
+      cases σ with
+      | nilable _ => exact absurd rfl (hnσ _)
+      | _ => all_goals (simp only [sigOf]; rw [h2])
+  | _ => exact ⟨τ, hτ ▸ hsg, hτ ▸ hv, by subst hτ; simp⟩
 
 -- ~~`site_explicit`~~ — **withdrawn at L172**, together with the hypothesis it
 -- needed. It said: *`evalExpr` chooses the send site syntactically, `infer`

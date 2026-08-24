@@ -98,7 +98,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
       exact this.1
   -- L254: `EntryOk.blockless` is what refutes the iterator arm at a rule that read the
   -- row through `sigOf`, which refuses a block-taking one.
-  rcases (htab.1 _ mname _ (sigOf_declFor hsg)).blockless with hbi |
+  rcases (htab.1 _ mname _ (sigOf_declFor (by simp) hsg)).blockless with hbi |
     ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
   · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
@@ -2255,13 +2255,18 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
     | @recvK0 _ _ _ _ _ _ mname τret τw k Γj _ hsg hsw hk' hsu =>
       have hfs := FramesOk.narrowHead hsu hfs
       dsimp only
+      -- **L260: a nilable receiver is reduced to the arm the value actually is**, and
+      -- that is the whole of the union rule at a dispatch site. The three facts are
+      -- re-bound at the atomic type, so everything below is the case as it was.
+      obtain ⟨τ, hsg, hv, hnilτ⟩ := sigOf_value_atomic hsg hv
       -- **The two witness kinds land different steps** (L157), which is why
       -- `EntryOk` is a disjunction and why this case is the first to case on it.
-      rcases (htab.1 τ mname _ (sigOf_declFor hsg)).blockless with hbi |
+      rcases (htab.1 τ mname _ (sigOf_declFor hnilτ hsg)).blockless with hbi |
         ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
       · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
-            (sigOf_atomic hsg).1 (sigOf_atomic hsg).2.1 (sigOf_atomic hsg).2.2 hbi hv trivial
+            (sigOf_atomic hnilτ hsg).1 (sigOf_atomic hnilτ hsg).2.1
+            (sigOf_atomic hnilτ hsg).2.2 hbi hv trivial
         rw [hstep]
         exact inv_grow_value (m := { m with kont := k })
           hfs htab hsc hhook hsat hstr hcls hbot
@@ -2441,6 +2446,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hpr : psrest = [] := subTys_nil_inv hsr
         subst hpr
         dsimp only
+        -- L260, as in the `recvK0` case: the nilable receiver is reduced to the arm the
+        -- value is, and the three facts are re-bound at the atomic type.
+        obtain ⟨τr, hsgA, hrv, hnilτ⟩ := sigOf_value_atomic (by simpa using hsg) hrv
         -- **The user arm is refuted rather than handled**, and by arithmetic rather
         -- than by anything about dispatch: `UserConforms` requires `d.params = []`
         -- (a zero-parameter method is all `enterUserMethod` binds today) while this
@@ -2448,14 +2456,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- with arguments is a builtin send, necessarily — at every arity.
         have hbi : BuiltinEntryOk m.heap τr mname
             { params := psacc ++ [τp], ret := τret } := by
-          rcases (htab.1 τr mname _ (sigOf_declFor (by simpa using hsg))).blockless with
+          rcases (htab.1 τr mname _ (sigOf_declFor hnilτ hsgA)).blockless with
             hb | ⟨_, _, _, _, _, hdp, _, _⟩
           · exact hb
           · exact absurd hdp (by simp)
         obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
           entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
-            (sigOf_atomic (by simpa using hsg)).1 (sigOf_atomic (by simpa using hsg)).2.1
-            (sigOf_atomic (by simpa using hsg)).2.2
+            (sigOf_atomic hnilτ hsgA).1 (sigOf_atomic hnilτ hsgA).2.1
+            (sigOf_atomic hnilτ hsgA).2.2
             hbi hrv (ValuesTy_snoc hva hv hst)
         rw [hstep]
         exact inv_grow_value (m := { m with kont := k })
