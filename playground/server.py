@@ -4,6 +4,11 @@
 Pipeline per request:  Ruby source -> export-json (desugar) -> rubycore --trace
                        -> {steps, status, detail} JSON  ->  the browser UI.
 
+The static queries take the same first hop and a different flag: `--check` (the
+nominal `infer`, whole-program) and `--assn` (the open front end `inferOpen`, one
+verdict per method body, in the assertion language). Neither executes anything,
+so neither boots the prelude and neither depends on model coverage.
+
 Run:  python3 server.py [port]      (default 8077)
 Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../lean && lake build).
 """
@@ -117,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path not in ("/trace", "/run", "/steps"):
+        if self.path not in ("/trace", "/run", "/steps", "/check", "/assn"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
@@ -135,6 +140,10 @@ class Handler(BaseHTTPRequestHandler):
             result = trace(source, window)
         elif self.path == "/steps":
             result = steps(source)
+        elif self.path == "/check":
+            result = check(source)
+        elif self.path == "/assn":
+            result = assn(source, top=self.headers.get("X-Assn-Top") == "1")
         else:
             result = run_ruby(source)
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
@@ -155,6 +164,87 @@ def steps(source: str) -> dict:
         return json.loads(lean.stdout)
     except ValueError as e:
         return {"error": "lean", "message": str(e)}
+
+
+def desugar(source: str) -> tuple[str | None, dict | None]:
+    """Ruby source -> RubyCore JSON, or (None, error-dict). The first hop of
+    every query on this server; exit 3 is the desugar's own fragment gate."""
+    if not RUBYCORE.exists():
+        return None, {"error": "setup",
+                      "message": f"rubycore not built at {RUBYCORE} — run `cd ../lean && lake build`"}
+    try:
+        des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
+                             capture_output=True, text=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None, {"error": "timeout", "message": "desugar timed out"}
+    if des.returncode == 3:
+        return None, {"error": "desugar",
+                      "message": des.stderr.strip() or "out of desugar fragment"}
+    if des.returncode != 0:
+        return None, {"error": "desugar", "message": des.stderr.strip()[:500] or "desugar failed"}
+    return des.stdout, None
+
+
+def lean_query(core_json: str, *flags: str) -> dict:
+    """One static `rubycore` query. Static means static: no prelude is booted and
+    nothing is executed, so a non-zero exit is a real harness error rather than a
+    program outcome."""
+    try:
+        lean = subprocess.run([str(RUBYCORE), *flags], input=core_json,
+                              capture_output=True, text=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "message": f"rubycore {' '.join(flags)} timed out"}
+    if lean.returncode != 0:
+        return {"error": "lean",
+                "message": lean.stderr.strip()[:500] or f"rubycore exit {lean.returncode}"}
+    try:
+        return json.loads(lean.stdout)
+    except ValueError as e:
+        return {"error": "lean", "message": f"unparseable {' '.join(flags)} output: {e}"}
+
+
+def check(source: str) -> dict:
+    """`infer`, whole-program (`rubycore --check`), with the Sorbet-fragment
+    report beside it (`--fragment`).
+
+    The two are **independent queries and neither causes the other**, which is
+    worth stating because the pairing invites the opposite reading. A
+    `missing-sig` violation is *not* why `--check` says `uncertified`: `declsOf`
+    ignores the program entirely (`Types/Decls.lean`: `declsOf _p := baseDecls`),
+    so `infer` never reads a `sig` and adding one to a method changes no verdict —
+    a one-parameter `def` with a full `sig` is `in_fragment: true` and still
+    `reject`/`uncertified`. What `infer` actually wants is a *declaration*, and
+    the only rule that makes one is the `def` arm's `addRow`, which fires only for
+    a zero-parameter `def` reopening a class in `reopenableClasses` at
+    `top = false`. `--fragment` answers a different question — the scope a
+    soundness theorem could have — and is shown because it is the other half of
+    "what would it take", not because it is the cause."""
+    core, err = desugar(source)
+    if err:
+        return err
+    out = lean_query(core, "--check")
+    if out.get("error"):
+        return out
+    frag = lean_query(core, "--fragment")
+    out["fragment"] = frag
+    return out
+
+
+def assn(source: str, top: bool = False) -> dict:
+    """`inferOpen`, per method body (`rubycore --assn`) — the assertion-language
+    report of `homebrew/assertion-language.md` §11. Reports against the
+    *prelude-aware* declaration table, unlike `--check`; that asymmetry is
+    Main.lean's and is deliberate.
+
+    `inferOpen` reads no `sig` either — it opens each parameter at a fresh type
+    variable and reports what the body then requires — so this is already the
+    sig-free view of the program. `top` adds `--assn-top`'s `Object#<main>` row,
+    which is the only way to get an open verdict on a program's straight-line
+    code (`bodyReports` reports `def`/`defs` only)."""
+    core, err = desugar(source)
+    if err:
+        return err
+    return lean_query(core, "--assn", *(["--assn-top"] if top else []))
 
 
 def main():

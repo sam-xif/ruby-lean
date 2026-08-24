@@ -287,8 +287,14 @@ A browser playground to write Ruby and step through its execution **in the Lean
 model** one `stepFn` transition at a time (control state, frame stack + live
 locals, continuation stack, stdout). Zero-dependency Python stdlib server
 (`server.py`) over the existing pipeline + a Lean `--trace` mode
-(`lean/RubyCore/Trace.lean`, a lossy non-gating tooling view). Run: `cd
-lean && lake build`, then `python3 playground/server.py`. See
+(`lean/RubyCore/Trace.lean`, a lossy non-gating tooling view). It also runs the
+**static** queries on the same source without executing it: **Type-check
+(infer)** is `rubycore --check` (the nominal whole-program `infer`, with
+`--fragment`'s violations beside it, since `uncertified` is usually explained by
+them) and **Per-body (inferOpen)** is `rubycore --assn` — the assertion-language
+report of `homebrew/assertion-language.md` §11, one verdict per method body, in
+the three-line shape `Assn.explain` prints. Run: `cd lean && lake build`, then
+`python3 playground/server.py`. See
 [`playground/README.md`](playground/README.md).
 
 ### `homebrew/` — coverage analysis + the **active initiative** (runnable)

@@ -62,13 +62,23 @@
   .err { color:var(--bad); font-family:var(--mono); font-size:13px; white-space:pre-wrap;
     background:#1e1418; border:1px solid #4a2530; border-radius:6px; padding:10px; }
   .detail { font-family:var(--mono); font-size:12px; color:var(--dim); }
+  pre.assn { max-height:340px; overflow:auto; white-space:pre; }
+  pre.assn .body { color:var(--accent); } pre.assn .ok { color:var(--good); }
+  pre.assn .no { color:var(--warn); } pre.assn .lbl { color:var(--dim); }
+  .verdict { font-family:var(--mono); font-size:13px; background:var(--panel2);
+    border:1px solid var(--edge); border-left:3px solid var(--dim);
+    border-radius:6px; padding:9px 11px; margin:0; }
+  .verdict.accept { border-left-color:var(--good); }
+  .verdict.reject { border-left-color:var(--warn); }
+  .verdict .k { color:var(--dim); } .verdict .ty { color:var(--warn); }
+  .census { font-family:var(--mono); font-size:12px; color:var(--dim); }
   .err-inline { color:var(--bad); }
 </style>
 </head>
 <body>
 <header>
   <h1>Ruby → Lean stepper</h1>
-  <span class="hint">write Ruby · Run · step with ← → · desugar + L0/L1 model</span>
+  <span class="hint">write Ruby · Run · step with ← → · or type it: infer / inferOpen</span>
 </header>
 <div class="wrap">
   <div class="left">
@@ -84,6 +94,15 @@
     <div id="errbox"></div>
     <h2>Desugared RubyCore (s-expression)</h2>
     <pre class="out sexpr" id="sexpr"></pre>
+    <h2>Static types — no execution, no prelude</h2>
+    <div class="row">
+      <button class="ghost" id="check" title="rubycore --check: the nominal whole-program `infer`">Type-check (infer)</button>
+      <button class="ghost" id="assn" title="rubycore --assn: the open front end `inferOpen`, one assertion per method body">Per-body (inferOpen)</button>
+      <label class="detail" title="also report the top-level program as Object#&lt;main&gt; (rubycore --assn-top); off by default because --assn's census is a consumed number"><input type="checkbox" id="assntop"> top level too</label>
+      <span id="staticmsg" class="detail"></span>
+    </div>
+    <div id="verdictbox"></div>
+    <pre class="out assn" id="assnout"><span class="empty">— press “Per-body (inferOpen)”</span></pre>
     <h2>Model stdout (Lean stepper, at current step)</h2>
     <pre class="out" id="out"></pre>
     <h2>CRuby stdout (real Ruby)</h2>
@@ -235,6 +254,103 @@ function render() {
   $('detail').textContent = last && trace.detail ? `result: ${trace.detail}` : '';
 }
 
+// ── Static queries: `infer` (whole program) and `inferOpen` (per body) ────
+// Both are printers over the checker's own output, not second checkers. What
+// they may claim is bounded by what the flags claim: `--check`'s `reject` says
+// *this checker did not certify*, never *this program fails*, and an `unknown`
+// body carries the atom it wanted rather than nothing at all.
+//
+// The two panes are shown apart because they answer different questions, and
+// **neither reads a Sorbet `sig`**: `infer` types against `declsOf`, which
+// ignores the program, and `inferOpen` opens each parameter at a fresh variable.
+// So a `--check` reject is never explained by a missing `sig`, and the fragment
+// list printed beside it is context, not cause.
+
+// `⟨  ⟩` is `Row.render` of the empty row — an accept with no precondition.
+const EMPTY_ROW = s => !s || s.replace(/[⟨⟩\s]/g, '') === '';
+
+// One body, in the three-line shape of `Assn.explain`.
+function fmtBody(b) {
+  const head = `<span class="body">${esc(b.class)}#${esc(b.method)}</span>`;
+  const L = [];
+  if (b.status === 'accept') {
+    L.push(`${head}  <span class="ok">accept</span> : ${esc(b.type||'')}`);
+    if (b.open_params)
+      L.push(`  <span class="lbl">params:  </span> (` +
+        (b.params||[]).map(p => `${esc(p.name)} : ${esc(p.type)}`).join(', ') + `)`);
+    if (!EMPTY_ROW(b.requires))
+      L.push(`  <span class="lbl">requires:</span> ${esc(b.class)} ⊒ ${esc(b.requires)}`);
+    if (b.store && b.store !== 'emp')
+      L.push(`  <span class="lbl">and:     </span> ${esc(b.store)}`);
+  } else {
+    L.push(`${head}  <span class="no">unknown</span>`);
+    if (b.needed) L.push(`  <span class="lbl">needed:  </span> ${esc(b.needed)}`);
+    if (b.out_of_fragment)
+      L.push(`  <span class="lbl">out of fragment:</span> ${esc(b.out_of_fragment)}`);
+  }
+  return L.join('\n');
+}
+
+async function runAssn() {
+  $('assn').disabled = true; $('staticmsg').textContent = 'inferOpen…';
+  try {
+    const r = await fetch('/assn', {method:'POST', body: $('src').value,
+      headers: $('assntop').checked ? {'X-Assn-Top': '1'} : {}});
+    const d = await r.json();
+    if (d.error) {
+      $('assnout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`;
+      $('staticmsg').textContent = ''; return;
+    }
+    const bodies = d.bodies || [], c = d.census || {};
+    $('assnout').innerHTML = bodies.length
+      ? bodies.map(fmtBody).join('\n\n')
+      : '<span class="empty">— no method bodies in this program</span>';
+    // The census is the per-body gradient: `accepted` factors through the
+    // nominal judgement `check` uses, `accepted_params` through a body-only one,
+    // and the two are counted apart on purpose (see `acceptedOpenParams`).
+    $('staticmsg').innerHTML = bodies.length
+      ? `<span class="census">${c.total} bodies · ${c.accepted} accept` +
+        ` (${c.unconditional} unconditional) · ${c.accepted_params} accept/open-params` +
+        ` · ${c.blocked} blocked · ${c.out_of_fragment} out of fragment</span>`
+      : '';
+  } catch(e) {
+    $('assnout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
+  } finally { $('assn').disabled = false; }
+}
+
+async function runCheck() {
+  $('check').disabled = true; $('staticmsg').textContent = 'infer…';
+  try {
+    const r = await fetch('/check', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    $('staticmsg').textContent = '';
+    if (d.error) {
+      $('verdictbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
+      return;
+    }
+    // `decision` is total (accept | reject); `basis` is the three-valued fact
+    // underneath it — `certified`, `refuted` (our rules refute) or `uncertified`
+    // (the fragment escaped). Printing the decision without the basis would let
+    // a reject read as a refutation.
+    const bits = [
+      `<span class="k">decision</span> ${esc(d.decision)}`,
+      `<span class="k">basis</span> ${esc(d.basis)}`,
+      `<span class="k">verdict</span> ${esc(d.verdict)}`];
+    if (d.type) bits.push(`<span class="k">type</span> <span class="ty">${esc(d.type)}</span>`);
+    const vs = (d.fragment && d.fragment.violations) || [];
+    const frag = (d.fragment && d.fragment.error)
+      ? `\n<span class="err-inline">[fragment] ${esc(d.fragment.message||'')}</span>`
+      : vs.length
+        ? `\n<span class="k">outside the Sorbet fragment (a separate query — not why this was rejected):</span>\n` +
+          vs.map(v => `  ${esc(v.kind)} ${esc(v.what)} — ${esc(v.reason)}`).join('\n')
+        : `\n<span class="k">fragment</span> in fragment`;
+    $('verdictbox').innerHTML =
+      `<div class="verdict ${esc(d.decision)}">${bits.join('   ')}${frag}</div>`;
+  } catch(e) {
+    $('verdictbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
+  } finally { $('check').disabled = false; }
+}
+
 async function runRuby() {
   $('runruby').disabled = true;
   $('rubyout').innerHTML = '<span class="empty">running in CRuby…</span>';
@@ -255,6 +371,8 @@ function go(n){ if(!trace) return; i = n; render(); }
 $('run').onclick = run;
 $('runruby').onclick = runRuby;
 $('count').onclick = countSteps;
+$('check').onclick = runCheck;
+$('assn').onclick = runAssn;
 $('first').onclick = () => go(0);
 $('prev').onclick = () => go(i-1);
 $('next').onclick = () => go(i+1);
