@@ -193,6 +193,16 @@ example {m : Machine} {o : ObjId} {x : String} {body : Expr} {site : SendSite}
     callClosure_req1 (cl := blockClosure m [.req x] [] body false) rfl rfl rfl]
   exact ⟨_, rfl, rfl⟩
 
+/-- **The lambda literal's whole step** (L261), and it is `finishSend`'s `mkLam` branch:
+    `reifyBlock` and nothing else — no dispatch, no frame, no continuation. Written as a
+    reduction here beside the five block-send ones because it is the same allocation, and
+    L257's `_grow` transports are what the consecution case then spends. -/
+theorem startArgs_lambda (m : Machine) (ps : List Param) (ls : List String) (body : Expr) :
+    startArgs m m.currentFrame.self SendSite.implicit "lambda" [] []
+        (PendingBlk.lit ps ls body)
+      = RubyCore.StepResult.next (withCtl (reifyBlock m ps ls body true).2
+          (.value (reifyBlock m ps ls body true).1)) := rfl
+
 end Static
 end Proof
 end RubyCore

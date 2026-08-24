@@ -1101,6 +1101,28 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
+  -- **A lambda literal** (L261), and the answer is `.any` — which is not a lapse of the
+  -- rule that `.any` is never *inferred* (`Ty.lean`), it is the honest content of the
+  -- type language at a value it cannot name. There is no `Ty.proc`, so a `Proc` value's
+  -- `valueTy?` is `none` (`plainRecv` excludes a `.proc` payload) and `.any` is the only
+  -- type such a value satisfies at all.
+  --
+  -- **The body is deliberately not checked, and that is sound here** because the fragment
+  -- cannot *call* the value it produces: a send on `.any` reads `sigOf D .any m`, which is
+  -- `none` (`tyClassNames .any = []`); `&e` block-pass is out of fragment; a user method
+  -- call in the fragment passes no block; and `ConformsAt` excludes `new`. So the closure
+  -- is allocated and no step in the fragment reaches `callClosure` with it.
+  --
+  -- What replaces this is Wall 2's `Ty.proc`, and the day it lands the body is checked
+  -- against the proc's declared parameter and return types. Until then the rule is exactly
+  -- as strong as the type language: a lambda is a value the checker admits and can do
+  -- nothing with.
+  --
+  -- L228's shape (`match` on the guard, not `if`), so the guard hypothesis stays usable.
+  | .send none mname [] (some (.block _ _ _)) =>
+    match mname == "lambda" with
+    | true => some (Ty.any, Γ, D)
+    | false => none
   | _ => none
 termination_by sizeOf e
 

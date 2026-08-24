@@ -432,6 +432,13 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
       | .missing τ n ps => .missing τ n ps
       | .outOfFragment h => .outOfFragment h
     | r => r
+  -- **A lambda literal** (L261) — the nominal rule's mirror, and the answer is the same
+  -- `.any`. See `Types/Core.lean` for why the body is not checked and why that is sound
+  -- at this type language.
+  | .send none mname [] (some (.block _ _ _)) =>
+    match mname == "lambda" with
+    | true => .ok (.nom .any) Γ s
+    | false => .outOfFragment "receiverless-send-with-block"
   -- A body that declares a method is outside the fragment already (`infer`'s own
   -- `defFree` requirement); refusing here keeps the factoring theorem's `D` fixed.
   | .def' _ _ _ => .outOfFragment "def"

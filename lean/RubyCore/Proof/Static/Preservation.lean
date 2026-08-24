@@ -1230,7 +1230,28 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 (by simpa using hsg) hsubw hk)
         | nil =>
           cases blk with
-          | some b => exact absurd hinf (by simp [infer])
+          | some b =>
+            -- **L261's lambda literal.** The step is `reifyBlock` and nothing else, so the
+            -- case is `inv_grow_value` at the allocation L257 already priced — and the
+            -- value's type is `.any`, which every value satisfies, so there is nothing to
+            -- prove about *what was allocated*. That is the whole content of the rule: the
+            -- type language cannot name a `Proc`, and this is what that costs and buys.
+            cases b with
+            | block ps ls body =>
+              simp only [infer] at hinf
+              split at hinf
+              · next hlam =>
+                simp only [beq_iff_eq] at hlam
+                subst hlam
+                simp only [Option.some.injEq, Prod.mk.injEq] at hinf
+                obtain ⟨rfl, rfl, rfl⟩ := hinf
+                simp only [evalExpr]
+                rw [startArgs_lambda, reifyBlock_eq]
+                exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
+                  (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+                  (ValueTy.weaken ValueTy.any hsubw) hk
+              · exact absurd hinf (by simp)
+            | _ => exact absurd hinf (by simp [infer])
           | none =>
             simp only [infer] at hinf
             split at hinf

@@ -12955,3 +12955,73 @@ No interpreter change, so no difftest.
 | `needed:` | 84 | 85 |
 
 Remaining: `begin` **2**, `splat` **1**, `send-with-block` **1** (the `->(a, b) { … }` lambda).
+
+## L261 — the lambda literal, at the only type the language has for it — **4 → 3**
+
+`Vulnerability#comparator_for` returns `->(a, b) { … }`. The census called it
+`send-with-block`; it is not the block rule. Desugared:
+
+```
+["send", null, "lambda", [], ["block", [["preq","a"],["preq","b"]], [], [], body]]
+```
+
+### The rule, and the one thing it says
+
+```lean
+| .send none mname [] (some (.block _ _ _)) =>
+  match mname == "lambda" with
+  | true => some (Ty.any, Γ, D)
+  | false => none
+```
+
+`.any` is inferred here, and `Ty.lean` says `.any` must never be inferred. The exception is
+not a lapse — it is the honest content of the type language at a value it cannot name:
+
+> There is no `Ty.proc`. `plainRecv` excludes a `.proc` payload (dispatch on a proc has
+> receiver-shape special cases in `invoke`), so a `Proc` value's `valueTy?` is `none` and
+> **`.any` is the only type it satisfies at all**. A rule that answered anything else would
+> be false.
+
+**The body is deliberately not checked, and that is sound at this fragment** because the
+fragment cannot *call* what the rule produces: a send on `.any` reads `sigOf D .any m`, which
+is `none` (`tyClassNames .any = []`); `&e` block-pass is out of fragment; a user method call
+in the fragment passes no block; and `ConformsAt` excludes `new`. The closure is allocated
+and no step in the fragment reaches `callClosure` with it. When Wall 2's `Ty.proc` lands, the
+body is checked against the proc's declared parameter and return types and this rule is
+replaced; the note in `Types/Core.lean` says so at the arm.
+
+### The consecution case is L257's allocation with nothing after it
+
+`finishSend`'s `mkLam` branch is `reifyBlock` and then `.value` — no dispatch, no frame, no
+continuation. `Proof/Static/Iter.lean` gains a sixth reduction, `startArgs_lambda` (`rfl`),
+and the case is:
+
+```lean
+rw [startArgs_lambda, reifyBlock_eq]
+exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
+  (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+  (ValueTy.weaken ValueTy.any hsubw) hk
+```
+
+Every `_grow` transport it spends was paid at L257 for the *same* allocation. And the value
+obligation is `ValueTy.any` — there is nothing to prove about what was allocated, which is
+exactly what answering `.any` costs and buys.
+
+### Costs
+
+`infer.induct`: the arm has two leaves and sits last before the catch-all, so **`+2` for
+`N ≥ 110`**. `infer_env_mono` gets one new alternative — the arm is *one* guard where the
+`def` arm is two, so `split <;> simp_all` rather than `split <;> split <;> simp_all`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean (with
+`startArgs_lambda` added to the audit list), `--self-test` all agree. No interpreter change,
+so no difftest.
+
+| ratchet | before | after |
+|---|---|---|
+| `oof` | 4 | **3** |
+| `pacc` | 6 | **7** — `comparator_for` now *accepts*, it did not merely move column |
+
+Remaining: `begin` **2**, `splat` **1**.

@@ -87,6 +87,8 @@ import RubyCore.Proof.Static.Iter
 #print axioms RubyCore.Proof.Static.startIter_eq
 #print axioms RubyCore.Proof.Static.iterStep_cons
 #print axioms RubyCore.Proof.Static.callClosure_req1
+-- L261: the lambda literal's step, the same allocation with no dispatch after it.
+#print axioms RubyCore.Proof.Static.startArgs_lambda
 #print axioms RubyCore.Proof.Static.assn_sound_from
 #print axioms RubyCore.Proof.Static.assn_check_sound
 -- R4 (open self). `inferOpen_mono` is §7.5's owed monotonicity lemma;
