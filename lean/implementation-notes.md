@@ -13121,3 +13121,97 @@ empty provisions is vacuous, so nothing is smuggled in through it).
 consumer yet** — `--assn` is untouched and the third ratchet cannot move — and no
 interpreter change, so no difftest. The three `example`s in `Types/Discharge.lean` are the
 capability, by `decide` rather than `native_decide` (§4 norm 5).
+
+## L263 — `inferProgram`: the open front end over a whole program, and one variable per class
+
+`inferOpen` refuses `def` and `class`, and the reason it gives is about the *body* it was
+built for: `infer`'s `def` arm requires `defFree body`, so a body that declares a method is
+outside the nominal fragment anyway, and a fixed table is what makes `inferOpen_factors`'
+conclusion carry `D` in both positions. That is sound, and it is not a reason to refuse a
+**program** — a program *is* a sequence of `class`es and `def`s, and typing one asks a
+different question with a different answer: *what would the types have to be for this
+program's constraints to be satisfiable?*
+
+### A driver, not an arm
+
+`Types/Program.lean`'s `inferProgram` walks the declaration-shaped constructors — `seq`,
+`class'`, `module'`, `scopedClass`/`scopedModule`, `def'`, `defs`, `begin'` — and hands
+every *expression* to `inferOpen` **unchanged**. So `inferOpen` gains no arm,
+`inferOpen_factors`/`inferOpen_mono` and their four companions are untouched, and each
+body's typing is still a nominal typing. The price is stated rather than hidden: a `def`
+nested inside a *method body* is still refused, by `inferOpen`. Nothing in the slice has one.
+
+### The mechanism is one variable per class — two, actually
+
+`bodyReports` gives every body a **fresh** store at `{}` and `self := 0`, which is why no
+requirement it reports has ever been answerable: two bodies of one class share nothing.
+Here each class name gets
+
+* `α_C` — an *instance*, which is `self` inside every `def` of `C`;
+* `β_C` — the *class object*, which is `self` inside `class C … end`'s own body,
+
+allocated once from one counter into one store. The `vcall` requirement in one body and the
+`def` provision beside it land at the same variable, and L262's `discharge` cancels them:
+
+```
+class String; def value; 1; end; def get; value; end; end
+  ⇒ accept, Symbol, under  α₄ = Integer          -- the obligation on String closes EMPTY
+```
+
+**Two variables and not one**, because `self` in a class body is the class and in a method
+body an instance — the conflation `infer` avoids by refusing `self` when `selfCls` is
+`none`. Merged, an `attr_accessor :x` in a class body would discharge an `x` requirement
+from a method body, which is false. The bug this caught in the first draft is worth keeping:
+the `defs` arm prefixed the provision name with `self.` (mirroring `bodyReports`' *display*
+convention), so `def self.make` provisioned `self.make` while the class body's call required
+`make`, and the two silently failed to cancel. The variable is what marks a singleton; the
+name is the name.
+
+### Two things read off the output rather than mirrored
+
+* **`ctx.params` and the provision's parameter list come from `Γ_b`**, not from
+  `openParamTys`. That function hard-codes `1, 2, …, n`, which is right under
+  `inferBodyWith`'s convention (`fresh` starts at 1) and wrong under a shared counter. Here
+  a mirror would be a *soundness* bug rather than a stale report — a provision at the wrong
+  variables cancels a requirement it does not answer.
+* **`PState` wraps `OState`** rather than adding fields to it. `OState` appears in every
+  lemma statement in `Proof/Static/OpenSelf.lean` — `inferOpen_mono`, `inferOpen_rets`, the
+  five `Factors` motives — and none of them would read the new fields.
+
+### Three refusals, each with its reason
+
+* **A `def` under an `if`/`while` provides nothing** — it may not run, so its row is not a
+  fact about the program. `outOfFragment "def-in-if"`, named rather than approximated (the
+  label is `"def-in-" ++ headName e`, so the census can say which construct it was under).
+* **A `def` whose parameters are not all required positionals provides nothing** — it
+  accepts a *range* of arities and `ASig` records one. Its body still types and its
+  callers' requirements simply survive.
+* **No provision is seeded from a superclass**, and this is the one that would have been a
+  real unsoundness. `class Foo < Formula` is typed exactly as `class Foo`. Seeding
+  `Formula`'s rows onto `α_Foo` looks attractive and is *false*: `SatProvs` obliges
+  `sigOf D (θ α) n` to answer, and `sigOf` does not walk ancestors, so the premise
+  `discharge_sound` needs would not hold. The obligation is the honest output —
+
+  ```
+  class Foo < Formula; def install; system "make"; end; end
+    ⇒ accept, Symbol, under  Foo ⊒ ⟨ system : (String) → α₃ ⟩
+  ```
+
+  — and inheritance is what *discharges* an obligation, not what fakes a provision.
+
+### What an accept means, and it is weaker than anything else the tool prints
+
+*Types under these class obligations.* Weaker than `--assn`'s per-body accept (already only
+*types under this precondition*, never *is safe* — `slice-verdict.md` §1), and much weaker
+than `check`'s `accept`, the only verdict `check_sound` licenses. Nothing here feeds `check`.
+
+### Costs and checks
+
+The pass is a `mutual` block, so it is well-founded-compiled and does **not** reduce in the
+kernel: the seven `example`s are `simp` over the equation lemmas, as `Types/OpenSelf.lean`'s
+are, not `decide`. `native_decide` is banned (§4 norm 5).
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean,
+`fragment-gap.py --self-test` all agree. No consumer yet — `Types/Program.lean` is off the
+default target until L265 imports it in `Main.lean` — so `--assn` and the third ratchet
+cannot move, and no interpreter change means no difftest.
