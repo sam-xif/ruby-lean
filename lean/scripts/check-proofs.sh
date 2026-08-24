@@ -53,6 +53,7 @@ import RubyCore.Proof.Static.Mono
 import RubyCore.Proof.Static.Assn
 import RubyCore.Proof.Static.OpenSelf
 import RubyCore.Proof.Static.Iter
+import RubyCore.Proof.Static.Discharge
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -122,6 +123,12 @@ import RubyCore.Proof.Static.Iter
 -- `LitClsOk` (which is what `StrClsOk` became when it stopped being about one
 -- literal) carries the name/id join for both.
 #print axioms RubyCore.Proof.Static.egArray_safe
+-- L262 — the whole-program pass's one theorem. `discharge` *drops* requirements, so its
+-- whole soundness content is that a dropped one was met: a `θ` satisfying the cancelled
+-- store, at a program whose own provisions hold, satisfies the store `inferOpen` built.
+-- Audited here because `Proof/Static/Discharge.lean` has no other consumer yet, and an
+-- off-target file with no consumer is exactly how `Proof/` rotted for 24 commits (L119).
+#print axioms RubyCore.Proof.Static.discharge_sound
 LEAN
 
 echo "== axioms"

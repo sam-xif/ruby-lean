@@ -631,6 +631,28 @@ structure Store where
       the same division of labour `rows` has — `inferOpen` records, the (untrusted)
       solver chooses `θ`, `satStoreB` checks. -/
   eqs : List (TyVar × ATy) := []
+  /-- **What the program itself supplies** (L262): the rows a variable is *known* to
+      answer, as against `rows`, which is what has been *asked* of it.
+
+      The field the whole-program pass needs and no per-body pass does. `inferOpen`
+      types one body against one class variable `α_C` and every self-call it meets is
+      a requirement on `α_C`; a `def` in the same class is the matching *provision*,
+      and the two can only cancel if they are recorded in one store at one variable.
+      That cancellation is `Types/Discharge.lean`, and it is why this is a fourth
+      field rather than a second store: a requirement and a provision at the same `α`
+      have to be looked up together.
+
+      **Same type as `rows`, deliberately.** A provision is a row entry — `n : (ps) → τ`
+      with the types still possibly variables — so `Row`/`ASig` carry it unchanged and
+      `discharge` compares like with like. What distinguishes the two fields is
+      polarity, not shape: `SatStore` *obliges* `rows` and *assumes* `provs`
+      (`Proof/Static/Discharge.lean`'s `SatProvs`).
+
+      **It is not an assertion atom.** `toAssn` does not print it, and `Assn` gains no
+      arm: a provision is an internal ledger that `discharge` spends before anything is
+      rendered, so the printed assertion keeps exactly the four atom kinds §6 has and
+      `entail`/`dischargeAll`/`denote` are untouched. -/
+  provs : List (TyVar × Row) := []
 deriving DecidableEq, Repr, Inhabited
 
 namespace Store
@@ -641,6 +663,36 @@ def rowOf (st : Store) (α : TyVar) : Row :=
   match st.rows.find? (·.1 == α) with
   | some (_, R) => R
   | none => Row.empty
+
+/-- **The lookup, off a bare list** (L262) — `rowOf` and `provOf` are the same read at
+    two fields, and `discharge` rewrites one of them entry-by-entry, so the lemma it
+    needs (*a key-preserving map commutes with the lookup*) has to be stated about the
+    list rather than about the store. `rowOf_eq`/`provOf_eq` are `rfl`, so nothing that
+    already unfolds `rowOf` notices. -/
+def rowIn (l : List (TyVar × Row)) (α : TyVar) : Row :=
+  match l.find? (·.1 == α) with
+  | some (_, R) => R
+  | none => Row.empty
+
+theorem rowOf_eq (st : Store) (α : TyVar) : st.rowOf α = rowIn st.rows α := rfl
+
+/-- **What `α` is known to answer** (L262) — `rowOf` at the provisions. -/
+def provOf (st : Store) (α : TyVar) : Row := rowIn st.provs α
+
+theorem provOf_eq (st : Store) (α : TyVar) : st.provOf α = rowIn st.provs α := rfl
+
+/-- Record that `α` *supplies* `n : σ` — `setRow`'s twin at the other polarity, and
+    prepend-shadowing for the same reason (`find?` stops at the first hit).
+
+    `Row.insert`'s ★★ applies here too and means something sharper: two `def`s of the
+    same name on the same class at *different* signatures. The later one wins in Ruby,
+    and `insert` refuses rather than choosing, so `addProv` answers `none` and the
+    caller leaves the class's requirements standing — a refusal to cancel, never a
+    wrong cancellation. -/
+def addProv (st : Store) (α : TyVar) (n : String) (σ : ASig) : Option Store :=
+  match (st.provOf α).insert n σ with
+  | some R' => some { st with provs := (α, R') :: st.provs }
+  | none => none
 
 /-- Replace `α`'s row. Prepending shadows, exactly as `addRow` does for `Decls`
     and for the same reason (`Types/Decls.lean`): `find?` stops at the first hit,
@@ -659,6 +711,12 @@ def closeAt (st : Store) (α : TyVar) (c : String) : Store :=
     -- into a named obligation; an equality about any variable — including `α` — is
     -- still a condition on the substitution and belongs in the printed `and:` clause.
     eqs := st.eqs,
+    -- L262: and so are the provisions. Closing `α` retires *the variable*, not what the
+    -- program was found to supply at it — `discharge` has already spent whatever the two
+    -- had in common, and a provision at another variable is still live. Carried
+    -- explicitly rather than defaulted, because a record literal that omits a field
+    -- silently empties it.
+    provs := st.provs,
     obl := if R.entries.isEmpty then st.obl else (c, R) :: st.obl }
 
 /-- Record `θ α = a`. Prepends, like `setRow`, and is idempotent on a duplicate so a

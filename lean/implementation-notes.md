@@ -13025,3 +13025,99 @@ so no difftest.
 | `pacc` | 6 | **7** — `comparator_for` now *accepts*, it did not merely move column |
 
 Remaining: `begin` **2**, `splat` **1**.
+
+## L262 — `provs`, `discharge`, and the theorem that replaces factoring for a *program*
+
+The whole-program pass (L263) needs one thing the per-body pass never did: a place for a
+class's own `def`s to **meet** its own bodies' requirements. `inferOpen` types
+`def get; value; end` into `α ~ value : () → β` and stops; the other half —
+`α ▷ value : () → Integer`, which `def value; 1; end` supplies — has never been recorded
+anywhere, because `bodyReports` gives every body a *fresh* store at `{}` and two bodies of
+one class therefore share nothing.
+
+Three pieces, and the third is the only one with a soundness story.
+
+### 1. `Store.provs`, the fourth field
+
+Same type as `rows` — `List (TyVar × Row)` — because a provision *is* a row entry with
+possibly-variable types, so `Row`/`ASig` carry it unchanged and `discharge` compares like
+with like. What distinguishes the fields is **polarity, not shape**: `SatStore` obliges
+`rows` and assumes `provs`.
+
+`Store.rowIn` is factored out of `rowOf` in the same change (`rowOf_eq`/`provOf_eq` are
+`rfl`, so nothing that already unfolds `rowOf` notices). The reason is the proof: the
+lookup has to be stated about the *association list*, because `dischargeRows` rewrites one
+entry-by-entry and the lemma it needs is *a key-preserving map commutes with the lookup*.
+
+**It is not an `Assn` atom, and that is deliberate.** `toAssn` does not print it and `Assn`
+gains no arm, so `entail`/`dischargeAll`/`denote` — all proof-coupled — are untouched. A
+provision is an internal ledger that `discharge` *spends* before anything is rendered.
+
+### 2. `discharge`, and the three places it refuses to cancel
+
+`Types/Discharge.lean`. Requirements a provision answers are replaced by the equalities
+that answering them owes:
+
+```
+Σ = { α ~ value : () → β }  ∪  { α ▷ value : () → Integer }
+discharge Σ  =  { β = Integer }
+```
+
+The refusals are the design, not gaps, and every one of them **keeps** the requirement —
+a weaker output, never a wrong one:
+
+* **two non-variable types** — `pinPair` equates `α` with anything either way round
+  (`θ α = τ.subst θ` is exactly an `eqv` atom), but two differing nominal types are
+  equatable by no `θ` at all;
+* **an arity disagreement** — `pinPairs` is length-indexed. L263 records no provision for a
+  `def` with optional or keyword parameters (those accept a *range* of arities and `ASig`
+  records one), so this fires only on a genuine caller/callee disagreement;
+* **two `def`s of one name at different signatures** — `addProv`'s ★★, upstream of here.
+
+One implementation note worth keeping: every traversal is written `let r := …` + `r.1`/`r.2`
+rather than `let (es, keep) := …`. A destructuring `let` elaborates to a `match`, and every
+lemma in the proof file would have had to push a motive through it.
+
+### 3. `discharge_sound` — and why `inferOpen_factors` is no longer the theorem to want
+
+```lean
+theorem discharge_sound (h : SatStore D θ (discharge st)) (hp : SatProvs D θ st) :
+    SatStore D θ st
+```
+
+`discharge` **drops** requirements, so that is its entire soundness content: a dropped one
+was really met. A solver may then be handed the small cancelled store and its answer still
+discharges every requirement `inferOpen` recorded.
+
+**`inferOpen_factors` cannot be the program-level theorem, and this is the argument.** It
+says open-self typing factors through nominal typing *at a fixed table*, which is what
+makes an open accept re-derivable as an `infer` accept. A program's `def`s are precisely
+what changes the table, and generalizing `Factors` to thread `D` would oblige the open
+`def` arm to satisfy `infer`'s `def` rule — including `params.isEmpty`, which excludes
+**67 of the slice's 112 method bodies**. So the division of labour is:
+
+| theorem | scope | status |
+|---|---|---|
+| `inferOpen_factors` | one *body*'s typing is a nominal typing | unchanged, untouched — `inferOpen` gains no arm |
+| `discharge_sound` | the *cancellation between* bodies preserves what was required | proved here, axiom-clean |
+
+**The second premise is real and is not discharged here.** `SatProvs D θ st` says
+`sigOf D (θ α) n` really is the signature the `def` supplied — a fact about the **table**,
+not about `θ`, true when the class really does define the method. L263's `def` arm is what
+has to record it faithfully. Stating it as a premise is the honest split; pretending it
+were free would make the theorem vacuous in exactly the direction that matters. `SatProvs`
+is literally `SatStore`'s first clause read at the other field, which is what makes the
+last step of the proof one `rw`.
+
+Two corollaries are in the file as sanity checks on which way each premise leans:
+`discharge_nil_provs` (no provisions ⇒ `discharge` is the identity on `rows`, so the
+cancellation and not the statement is doing the work) and `satProvs_nil` (`SatProvs` at
+empty provisions is vacuous, so nothing is smuggled in through it).
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean with
+`discharge_sound` added to the audit list, `fragment-gap.py --self-test` all agree. **No
+consumer yet** — `--assn` is untouched and the third ratchet cannot move — and no
+interpreter change, so no difftest. The three `example`s in `Types/Discharge.lean` are the
+capability, by `decide` rather than `native_decide` (§4 norm 5).
