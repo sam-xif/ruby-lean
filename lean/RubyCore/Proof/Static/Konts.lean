@@ -375,6 +375,30 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
+  /-- **The receiver of a *block* send, in flight** (L257) — the `recvK` a literal block
+      rides on, and the constructor `infer`'s block-send rule registers.
+
+      Its premises are `KontOk.iterK`'s (L253) read one step earlier: the block
+      environment is built from the **send site's** environment rather than from the
+      iterator activation's, and the row is still a row rather than the loop's residue.
+      What the delivery adds is everything `DeclsOk` supplies — the miss, the payload
+      shape and the answer's type — which is why none of that is here. -/
+  | recvKBlk {D : Decls} {h : Heap} {c : FrameCtx} {Γ Γk : Env}
+      {Γs : List (FrameCtx × Env)} {τr τw τb τret σp βret : Ty} {Γb' : Env}
+      {mname x : String} {ps : List Param} {ls : List String} {body : Expr}
+      {k : List Kont} {site : SendSite} :
+      blockSend? D τr mname ps ls = some (x, σp, βret, τret) →
+      infer D ((x, σp) :: anyEnv Γ) body false (blockCtx c) = some (τb, Γb', D) →
+      SubEnv ((x, σp) :: anyEnv Γ) Γb' →
+      subTy τb βret = true →
+      subTy τret τw = true →
+      -- L257: the send site is not itself inside a block, so the frame the closure
+      -- captures is self-contained — `ShallowChain`'s second conjunct at the fresh
+      -- block frame, and the reason a nested block is out of the fragment.
+      c.inBlock = false →
+      KontOk D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOk D h ((c, Γ) :: Γs) τr (.recvK mname [] (.lit ps ls body) site :: k)
   /-- **A native iterator between two block calls** (L253) — the loop marker, and the
       one constructor that has to carry *everything the next call needs*, because
       `iterStep` either calls the block again (a fresh block frame **and** a fresh
@@ -605,6 +629,8 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       | frameK hrt hil hk' => exact RetOk.here (hrt σ hσ) hk'
       -- L245: the block's context opens no return channel, so this case does not exist.
       | blkFrameK hr _ _ _ => exact absurd hσ (by rw [hr]; simp)
+      -- L257: `recvK` is transparent to a `.retJ`, block or no block.
+      | recvKBlk _ _ _ _ _ _ hk' _ => exact RetOk.skip trivial (KontOk.retOk hk' hne σ hσ)
       -- L253: the iterator activation declares no return type either.
       | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hr _ hk' =>
           exact absurd hσ (by rw [hr] at hσ ⊢; simp)
@@ -782,6 +808,7 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       cases hk with
       -- L245: a block frame pops on a raise, exactly as an activation does.
       | blkFrameK _ _ _ hk' => exact .popBlk (KontOk.raiseOk hk')
+      | recvKBlk _ _ _ _ _ _ hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       -- L253: `unwind` has no arm for `iterK`, so a raise passes straight through.
       | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hk' =>
           exact .skip trivial (KontOk.raiseOk hk')
@@ -851,6 +878,7 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       cases hk with
       -- L245: the block's context opens no loop channel, so this case does not exist.
       | blkFrameK _ hl _ _ => exact absurd hil (by rw [hl]; simp)
+      | recvKBlk _ _ _ _ _ _ hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
       | iterK _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ hl _ =>
           exact absurd hil (by rw [hl] at hil ⊢; simp)
       | seqNil hw hk' _ => exact .skip trivial (KontOk.nxtOk hk' hil htop)
@@ -982,6 +1010,8 @@ theorem KontOk.heap_congr' {h' : Heap} :
   induction hk with
   | nil hr hl => intro _; exact .nil hr hl
   | blkFrameK hr hl hw _ ih => intro ha; exact .blkFrameK hr hl hw (ih ha)
+  | recvKBlk hbs hbody hsu2 hsb hsw hib _ hsu ih =>
+    intro ha; exact .recvKBlk hbs hbody hsu2 hsb hsw hib (ih ha) hsu
   | iterK hp hlo hlam hbp hgb hany hr hil hsc hmt hib hbody hsu hsb hvs hsr hrv hrt
       hcr hci _ ih =>
     intro ha
@@ -1163,8 +1193,7 @@ def ClosuresOk (m : Machine) : Prop :=
     -- and `defVis` from here. Name-free is the whole point: `className … = c.cls` is the
     -- clause that needs the pairing, and it is guarded on `c.inBlock` instead (L250).
     (m.heap.classPayload? (m.frames.getD cl.captured default).defmod).isSome ∧
-    Boot.objectId ∈ (m.frames.getD cl.captured default).cref ∧
-    defVisOfDef (m.frames.getD cl.captured default) = .pub
+    Boot.objectId ∈ (m.frames.getD cl.captured default).cref
 
 theorem ClosuresOk.cons {m : Machine} {κ : Kont} {ctl : Ctl}
     (hκ : KontClosure κ = none) (h : ClosuresOk m) :
@@ -1208,10 +1237,10 @@ theorem ClosuresOk.transport {m m' : Machine} (h : ClosuresOk m)
     ClosuresOk m' := by
   intro κ hmem cl hcl
   obtain ⟨κ₀, hin, hcl₀⟩ := hk κ hmem cl hcl
-  obtain ⟨hlt, hcap, hpay, hcref, hvis⟩ := h κ₀ hin cl hcl₀
+  obtain ⟨hlt, hcap, hpay, hcref⟩ := h κ₀ hin cl hcl₀
   obtain ⟨e1, e2, e3, e4⟩ := hget _ hlt
   exact ⟨Nat.lt_of_lt_of_le hlt hsz, by rw [e1]; exact hcap,
-    by rw [e2]; exact hh _ hpay, by rw [e3]; exact hcref, by rw [e4]; exact hvis⟩
+    by rw [e2]; exact hh _ hpay, by rw [e3]; exact hcref⟩
 
 /-- The activation push: one `frameK` (which carries no closure) and one frame. -/
 theorem ClosuresOk.pushFrame {m m' : Machine} {fid : FrameId} {f : Frame}
@@ -1547,6 +1576,46 @@ theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {�
       exact ⟨τr, hr, hsg⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
+
+/-- **Inversion for the block-send rule** (L257). Four nested splits, and the last is
+    the three-way conjunction the rule checks. -/
+theorem infer_sendBlk_inv {D D' : Decls} {Γ Γ' : Env} {recv body : Expr}
+    {mname : String} {ps : List Param} {ls : List String} {τ : Ty} {top : Bool}
+    {ctx : FrameCtx}
+    (h : infer D Γ (.send (some recv) mname [] (some (.block ps ls body))) top ctx
+      = some (τ, Γ', D')) :
+    ∃ τr x σp βret τb Γb',
+      infer D Γ recv top ctx = some (τr, Γ', D') ∧
+      blockSend? D' τr mname ps ls = some (x, σp, βret, τ) ∧
+      infer D' ((x, σp) :: anyEnv Γ') body false (blockCtx ctx) = some (τb, Γb', D') ∧
+      subTy τb βret = true ∧ subEnvB ((x, σp) :: anyEnv Γ') Γb' = true ∧
+      ctx.inBlock = false := by
+  simp only [infer] at h
+  cases hr : infer D Γ recv top ctx with
+  | none => rw [hr] at h; exact absurd h (by simp)
+  | some p =>
+    obtain ⟨τr, Γ₁, D₁⟩ := p
+    rw [hr] at h
+    simp only [] at h
+    cases hbs : blockSend? D₁ τr mname ps ls with
+    | none => rw [hbs] at h; exact absurd h (by simp)
+    | some r =>
+      obtain ⟨x, σp, βret, τret⟩ := r
+      rw [hbs] at h
+      simp only [] at h
+      cases hbody : infer D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) with
+      | none => rw [hbody] at h; exact absurd h (by simp)
+      | some q =>
+        obtain ⟨τb, Γb', D₂⟩ := q
+        rw [hbody] at h
+        simp only [] at h
+        split at h
+        · next hif =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          obtain ⟨hsb, rfl, hse, hib⟩ := hif
+          exact ⟨τr, x, σp, βret, τb, Γb', rfl, hbs, hbody, hsb, hse, hib⟩
+        · exact absurd h (by simp)
 
 /-- Inversion for the send rule, **at any positive arity** (L175). Factored out of
     `step_ok` because the nested `split at` needs `next`-bound names that are

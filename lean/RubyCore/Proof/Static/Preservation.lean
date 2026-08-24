@@ -259,6 +259,7 @@ theorem inv_continueArray {D D' : Decls} {m : Machine} {c : FrameCtx} {Γ Γ' : 
          exact inv_push hfs htab hsc hhook hsat hstr hcls hbot
            (by simp [framePopLabels, hks]) he (KontOk.arrK hs hsw hk))
 
+set_option maxHeartbeats 2000000 in
 theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
   obtain ⟨hhook, hsat, hstr, hcls, hbot, hks, hclo, D, ctx, Γ, Γs, htab, hfs, hsc, hglob, hc⟩ := h
   -- **L252: `FrameOk` is no longer free.** `StackCtx`'s empty-chain clause is guarded on
@@ -1250,7 +1251,20 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         -- step later, in `applyKont`.
         | nil =>
           cases blk with
-          | some b => exact absurd hinf (by simp [infer])
+          | some b =>
+            -- **L257: a *literal block*, and the receiver still runs first.** The step is
+            -- the blockless one — `evalExpr` pushes a `recvK` — and the whole difference
+            -- is the `PendingBlk` it carries, which `KontOk.recvKBlk` is indexed by.
+            cases b with
+            | block bps bls bbody =>
+              obtain ⟨τr, x, σp, βret, τb, Γb', hr, hbs, hbody, hsb, hse, hib⟩ :=
+                infer_sendBlk_inv hinf
+              simp only [evalExpr]
+              cases r <;>
+                exact inv_push hfs htab hsc hhook hsat hstr hcls hbot
+                  (by simp [framePopLabels, hks]) hr
+                  (KontOk.recvKBlk hbs hbody (subEnvB_sound hse) hsb hsubw hib hk)
+            | _ => exact absurd hinf (by simp [infer])
           | none =>
             obtain ⟨τr, hr, hsg⟩ := infer_send0_inv hinf
             simp only [evalExpr]
@@ -1767,6 +1781,302 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         _, c', Γ', Γs, htab,
         hfs.tail, StackCtx.tail hsc, hglob,
         ⟨_, _, ValueTy.weaken hv hsw, SubEnv.refl _, hk'⟩⟩
+    -- **A block send dispatches** (L257) — the step `Proof/Static/Iter.lean`'s five
+    -- reductions describe, with `Inv` at the far end.
+    | @recvKBlk _ _ _ _ Γk2 Γs2 τr2 τw2 τb2 τret2 σp2 βret2 Γb'2 mname2 x2 ps2 ls2 body2
+        k2 site2 hbs hbody hsu2 hsb hsw hib2 hk'2 hsuE2 =>
+      obtain ⟨d, hd, hdp, hdr, hdb⟩ := blockSend?_declFor hbs
+      obtain ⟨hτ, hmn, -, hdr2, ⟨br, hdb2⟩, hmiss⟩ := (htab.1 _ mname2 d hd).iter hdb
+      obtain ⟨hps, hls⟩ := blockSend?_shape hbs
+      subst hps; subst hls; subst hmn; subst hτ
+      have hσany : σp2 = Ty.any := by
+        rw [hdb] at hdb2
+        simp only [Option.some.injEq, BlockSig.mk.injEq, List.cons.injEq,
+          and_true, List.nil_eq] at hdb2
+        exact hdb2.1
+      have hret : τret2 = Ty.cls "Array" := by rw [← hdr, hdr2]
+      subst hσany; subst hret
+      obtain ⟨o, xs, rfl, hpay, holt⟩ := arrayPayload_of_valueTy hv
+      have htc : TyClass m.heap (Ty.cls "Array") (classOf m.heap (.ref o)) :=
+        valueTy_tyClass (by simp) (by simp) (by simp) hv
+      have hne : m.stack ≠ [] := hfsh.1
+      have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+      have hg : PlainGrow m.heap
+          (reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap := by
+        rw [reifyBlock_eq]; exact plainGrow_alloc m.heap _ (by simp) rfl
+      have hag : TypeAgree m.heap
+          (reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap :=
+        typeAgree_of_plainGrow hg hsat
+      have hpay1 : ((reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap.get
+          o).payload = .arr xs := by rw [hg.get o holt]; exact hpay
+      have hlk1 : lookup (reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap
+          (.ref o) "each" = none := by
+        have hm0 := hmiss (classOf m.heap (.ref o)) htc
+        unfold MissesAt lookupIn at hm0
+        show lookup.go _ "each" (ancestors _ (classOf _ (.ref o))) = none
+        rw [hg.classOf_value_eq (.ref o) (fun o' he => by
+            simp only [Value.ref.injEq] at he; exact he ▸ holt),
+          hg.ancestors_eq hsat, lookup_go_grow hg]
+        exact hm0
+      have hproc1 : ((reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap.get
+          m.heap.objs.size).payload
+            = .proc (blockClosure { m with kont := k2 } [.req x2] [] body2 false) := by
+        rw [reifyBlock_eq]
+        exact congrArg Object.payload (get_push_self m.heap.objs _)
+      show StepOk (Interp.finishSend { m with kont := k2 } (.ref o) site2 "each" []
+        (.lit [.req x2] [] body2))
+      rw [finishSend_lit (by simp) (by simp) (by simp)]
+      rw [reifyBlock_eq] at hpay1 hlk1 hproc1 hg hag ⊢
+      rw [invoke_iter_each (cl := blockClosure { m with kont := k2 } [.req x2] [] body2 false)
+        hpay1 hproc1 hlk1, startIter_eq]
+      cases hxs : xs.toList with
+      | nil =>
+        -- **An empty array**: the loop never runs, and the iterator's own answer — the
+        -- receiver — goes to the `frameK` that pops its activation.
+        simp only [hxs, List.map_nil]
+        rw [iterStep_nil]
+        refine ⟨NoHook_grow hg hsat hhook, Saturated_grow hg.shapeAgree hg.size hsat,
+          LitClsOk_grow hg hstr, ClassOk_grow hg hsat hcls,
+          BottomObj_cons hne (BottomObj_push hlt hbot),
+          (by simpa [withCtl, framePopLabels, dropLast_cons_ne hne] using hks),
+          ?_, D, { cls := "Array" }, [], (ctx, Γk2) :: Γs,
+          DeclsOk_grow hg hsat htab, ?_, ?_, ?_, ?_⟩
+        · -- `ClosuresOk`: the pushed `frameK` carries no closure, the rest was there.
+          refine ClosuresOk.transport hclo (fun κ hm cl hcl => ?_)
+            (by simp only [withCtl]; simp [Array.size_push]) (by
+              intro p hp'
+              simp only [withCtl]
+              show FrameShape ((m.frames.push _).getD p default) _
+              rw [getD_push_lt _ _ _ hp']; exact FrameShape.rfl' _)
+            (fun ob hob => by
+              simp only [withCtl]
+              show (Heap.classPayload? _ ob).isSome = true
+              rw [hg.payload]; exact hob)
+          rcases List.mem_cons.mp hm with rfl | hm₁
+          · exact absurd hcl (by simp [KontClosure])
+          · exact ⟨κ, by rw [hK]; exact List.mem_cons_of_mem _ hm₁, hcl⟩
+        · -- `FramesOk`: the iterator activation has no locals, so its environment is `[]`.
+          simp only [withCtl]
+          refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+            ⟨ShallowChain.of_none (by rw [getD_push_lt_self]), ?_, ?_⟩,
+            FramesOk.push (FramesOk.narrowHead hsuE2 (FramesOk.heap_congr hag hfs))⟩
+          · rw [getD_push_lt_self]
+            show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
+            rw [hg.payload, hg.classOf_eq holt]; exact htc.1
+          · intro y σ hy; exact absurd hy (by simp [envGet?])
+        · -- `StackCtx`: the activation's definee **is** the receiver's class, and its
+          -- `cref` is the caller's (L256) — the clause an empty one refused.
+          simp only [withCtl]
+          refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn hmn => absurd hmn (by simp), ?_,
+            StackCtx.push hlt (StackCtx.heap_congr hag hsc)⟩
+          · rw [getD_push_lt_self]
+            show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
+            rw [hg.payload, hg.classOf_eq holt]; exact htc.1
+          · intro _
+            rw [getD_push_lt_self]
+            show className _ (classOf _ (.ref o)) = "Array"
+            rw [hg.classOf_eq holt, hg.className_eq]; exact htc.2
+          · intro _; rw [getD_push_lt_self]; simp [defVisOfDef]
+          · exact fun sc hsc' => absurd hsc' (by simp)
+          · rw [getD_push_lt_self]
+            show Boot.objectId ∈ m.currentFrame.cref
+            rw [currentFrame_eq hne]
+            cases hst : m.stack with
+            | nil => exact absurd hst hne
+            | cons fid fids =>
+              rw [hst] at hsc
+              simpa [curFrame, curFid, hst] using hsc.2.2.2.2.1
+          · intro _; rw [getD_push_lt_self]
+        · simp only [withCtl]; exact GlobalsOk.congr hag hglob
+        · exact ⟨τw2, [], ValueTy.weaken (ValueTy.congr hag hv) hsw, SubEnv.refl _,
+            KontOk.frameK (fun σ hq => absurd hq (by simp)) rfl
+              (KontOk.heap_congr hag hk'2)⟩
+      | cons a0 rest' =>
+        simp only [hxs, List.map_cons]
+        rw [iterStep_cons,
+          callClosure_req1 (cl := blockClosure { m with kont := k2 } [.req x2] [] body2 false)
+            rfl rfl rfl]
+        -- **The closure's captured frame is the send site's**, and every fact the block
+        -- frame needs about it is one of `StackCtx`'s clauses at the caller.
+        have hcapn : (m.frames.getD (m.stack.headD 0) default).captured = none := by
+          simpa [curFrame, curFid] using hsc.curCaptured hib2
+        have hcap3 : (m.heap.classPayload? (m.frames.getD (m.stack.headD 0)
+              default).defmod).isSome = true ∧
+            Boot.objectId ∈ (m.frames.getD (m.stack.headD 0) default).cref := by
+          cases hst : m.stack with
+          | nil => exact absurd hst hne
+          | cons fid0 fids0 =>
+            rw [hst] at hsc
+            exact ⟨by simpa [hst] using hsc.1, by simpa [hst] using hsc.2.2.2.2.1⟩
+        have hclt : m.stack.headD 0 < m.frames.size := by
+          simpa [curFid] using hfsh.2.1
+        -- The closure's captured id *is* the send site's frame, but only by `rfl`.
+        have hbc : (blockClosure { m with kont := k2 } [.req x2] [] body2 false).captured
+            = m.stack.headD 0 := rfl
+        -- Everything the block frame's environment claims is `.any`, so its conformance
+        -- is `ValueTy.any` at every name and needs no lookup (L247).
+        have hany : ∀ y σ, envGet? ((x2, Ty.any) :: anyEnv Γk) y = some σ → σ = Ty.any := by
+          intro y σ hy
+          by_cases hyx : (x2 == y) = true
+          · simpa [envGet?, List.find?, hyx] using hy.symm
+          · have hy' : envGet? (anyEnv Γk) y = some σ := by
+              simpa [envGet?, List.find?, hyx] using hy
+            rw [anyEnv_get] at hy'
+            cases hgk : envGet? Γk y with
+            | none => rw [hgk] at hy'; exact absurd hy' (by simp)
+            | some _ => rw [hgk] at hy'; simpa using hy'.symm
+        -- The two pushes are opaque giants; every index fact below is one of these five
+        -- (L257 — `omega` will not fire under a context this large, so each is explicit).
+        have hpop : ∀ (f1 f2 : Frame) (q : FrameId), q < m.frames.size →
+            ((m.frames.push f1).push f2).getD q default = m.frames.getD q default := by
+          intro f1 f2 q hq
+          rw [getD_push_lt _ _ _ (by
+              simp only [Array.size_push]; exact Nat.lt_succ_of_lt hq),
+            getD_push_lt _ _ _ hq]
+        have hlt2 : ∀ (f1 f2 : Frame) (q : FrameId), q < m.frames.size →
+            q < ((m.frames.push f1).push f2).size := by
+          intro f1 f2 q hq
+          simp only [Array.size_push]
+          exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hq)
+        have hltI : ∀ (f1 f2 : Frame), m.frames.size < ((m.frames.push f1).push f2).size := by
+          intro f1 f2; simp only [Array.size_push]
+          exact Nat.lt_succ_of_lt (Nat.lt_succ_self _)
+        have hltB : ∀ (f1 f2 : Frame),
+            (m.frames.push f1).size < ((m.frames.push f1).push f2).size := by
+          intro f1 f2; simp only [Array.size_push]; exact Nat.lt_succ_self _
+        have hgetI : ∀ (f1 f2 : Frame),
+            ((m.frames.push f1).push f2).getD m.frames.size default = f1 := by
+          intro f1 f2
+          rw [getD_push_lt _ _ _ (by
+              simp only [Array.size_push]; exact Nat.lt_succ_self _), getD_push_lt_self]
+        refine ⟨NoHook_grow hg hsat hhook, Saturated_grow hg.shapeAgree hg.size hsat,
+          LitClsOk_grow hg hstr, ClassOk_grow hg hsat hcls,
+          BottomObj_cons (by simp) (BottomObj_cons hne
+            (BottomObj_push (fun g hgm => by
+                have h0 := hlt g hgm; simp only [Array.size_push]; exact Nat.lt_succ_of_lt h0)
+              (BottomObj_push hlt hbot))),
+          (by
+            simpa [withKont, framePopLabels, dropLast_cons_ne hne] using hks),
+          ?_, D, blockCtx ctx, (x2, Ty.any) :: anyEnv Γk,
+          ({ cls := "Array" }, []) :: (ctx, Γk2) :: Γs,
+          DeclsOk_grow hg hsat htab, ?_, ?_, ?_, ?_⟩
+        · -- `ClosuresOk`: the two konts the call pushes carry the **fresh** closure, whose
+          -- captured frame is the send site's.
+          simp only [withKont]
+          intro κ hm cl' hcl'
+          have hfacts : ∀ (f1 f2 : Frame) (h' : Heap),
+              (∀ kk, h'.classPayload? kk = m.heap.classPayload? kk) →
+              ∀ cl0 : Closure, cl0.captured = m.stack.headD 0 →
+              cl0.captured < ((m.frames.push f1).push f2).size ∧
+              (((m.frames.push f1).push f2).getD cl0.captured default).captured = none ∧
+              (h'.classPayload? (((m.frames.push f1).push f2).getD cl0.captured
+                default).defmod).isSome = true ∧
+              Boot.objectId ∈ (((m.frames.push f1).push f2).getD cl0.captured default).cref := by
+            intro f1 f2 h' hpp cl0 hc0
+            have h1 : cl0.captured < m.frames.size := hc0 ▸ hclt
+            have h2 : ((m.frames.push f1).push f2).getD cl0.captured default
+                = m.frames.getD cl0.captured default := by
+              rw [getD_push_lt _ _ _ (by
+                  simp only [Array.size_push]; exact Nat.lt_succ_of_lt h1),
+                getD_push_lt _ _ _ h1]
+            refine ⟨by
+                simp only [Array.size_push]
+                exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt h1),
+              by rw [h2, hc0]; exact hcapn,
+              by rw [h2, hc0, hpp]; exact hcap3.1,
+              by rw [h2, hc0]; exact hcap3.2⟩
+          rcases List.mem_cons.mp hm with rfl | hm₁
+          · exact hfacts _ _ _ (fun kk => hg.payload kk) cl' (by
+              simp only [KontClosure, Option.some.injEq] at hcl'; rw [← hcl']; rfl)
+          · rcases List.mem_cons.mp hm₁ with rfl | hm₂
+            · exact hfacts _ _ _ (fun kk => hg.payload kk) cl' (by
+                simp only [KontClosure, Option.some.injEq] at hcl'; rw [← hcl']; rfl)
+            · rcases List.mem_cons.mp hm₂ with rfl | hm₃
+              · exact absurd hcl' (by simp [KontClosure])
+              · obtain ⟨hlt0, hcapn0, hpay0, hcref0⟩ :=
+                  hclo κ (by rw [hK]; exact List.mem_cons_of_mem _ hm₃) cl' hcl'
+                exact ⟨hlt2 _ _ _ hlt0,
+                  by rw [hpop _ _ _ hlt0]; exact hcapn0,
+                  by rw [hpop _ _ _ hlt0, hg.payload]; exact hpay0,
+                  by rw [hpop _ _ _ hlt0]; exact hcref0⟩
+        · -- `FramesOk` at the fresh block frame, then the iterator's, then the caller's.
+          simp only [withKont]
+          refine FramesOk.cons (hltB _ _) ?_
+            (FrameConforms.mk' ?_ ?_ ?_)
+            (FramesOk.cons (hltI _ _) hlt
+              (FrameConforms.mk' (ShallowChain.of_none (by rw [hgetI]))
+                ?_ (fun y σ hy => absurd hy (by simp [envGet?])))
+              (FramesOk.push (FramesOk.push
+                (FramesOk.narrowHead hsuE2 (FramesOk.heap_congr hag hfs)))))
+          · intro g hgm
+            rcases List.mem_cons.mp hgm with rfl | hgm'
+            · simp only [Array.size_push]; exact Nat.lt_succ_self _
+            · simp only [Array.size_push]; exact Nat.lt_succ_of_lt (hlt g hgm')
+          · intro q hq
+            rw [getD_push_lt_self] at hq
+            simp only [Option.some.injEq] at hq
+            subst hq
+            refine ⟨by simp only [Array.size_push]; exact Nat.lt_succ_of_lt hclt, ?_⟩
+            rw [hbc, hpop _ _ _ hclt]
+            exact hcapn
+          · rw [getD_push_lt_self, hbc, getD_push_lt _ _ _ hclt, hg.payload]
+            exact hcap3.1
+          · intro y σ hy
+            rw [hany y σ hy]
+            exact ValueTy.any
+          · rw [hgetI]
+            show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
+            rw [hg.payload, hg.classOf_eq holt]; exact htc.1
+        · -- `StackCtx` at the block frame, then at the iterator activation.
+          simp only [withKont]
+          refine StackCtx.cons ?_ (fun hq => absurd hq (by simp [blockCtx])) ?_
+            (fun sc hsc' => absurd hsc' (by simp [blockCtx])) ?_ (Or.inr rfl)
+            (fun mn hmn => absurd hmn (by simp [blockCtx]))
+            (fun hq => absurd hq (by simp [blockCtx]))
+            (StackCtx.cons ?_ ?_ ?_ (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
+              (fun mn hmn => absurd hmn (by simp)) (fun _ => ?_)
+              (StackCtx.push
+                (fun g hgm => by
+                  simp only [Array.size_push]; exact Nat.lt_succ_of_lt (hlt g hgm))
+                (StackCtx.push hlt (StackCtx.heap_congr hag hsc))))
+          · rw [getD_push_lt_self, hbc, getD_push_lt _ _ _ hclt, hg.payload]; exact hcap3.1
+          · intro _; rw [getD_push_lt_self]; simp [defVisOfDef]
+          · rw [getD_push_lt_self, hbc, getD_push_lt _ _ _ hclt]; exact hcap3.2
+          · rw [hgetI]
+            show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
+            rw [hg.payload, hg.classOf_eq holt]; exact htc.1
+          · intro _
+            rw [hgetI]
+            show className _ (classOf _ (.ref o)) = "Array"
+            rw [hg.classOf_eq holt, hg.className_eq]; exact htc.2
+          · intro _
+            rw [hgetI]; simp [defVisOfDef]
+          · rw [hgetI]
+            show Boot.objectId ∈ m.currentFrame.cref
+            rw [currentFrame_eq hne]
+            cases hst : m.stack with
+            | nil => exact absurd hst hne
+            | cons fid0 fids0 =>
+              rw [hst] at hsc
+              simpa [curFrame, curFid, hst] using hsc.2.2.2.2.1
+          · rw [hgetI]
+        · simp only [withKont]; exact GlobalsOk.congr hag hglob
+        · -- The block body runs, under the `blkFrameK` that pops its frame and the fresh
+          -- `iterK` that remembers the rest of the loop.
+          refine ⟨τb2, βret2, Γb'2, D, (x2, Ty.any) :: anyEnv Γk, hbody, hsb, hsu2,
+            KontOk.blkFrameK rfl rfl (subTy_refl _)
+              (KontOk.iterK (bs := { params := [Ty.any], ret := βret2 })
+                rfl rfl rfl rfl rfl ?_ rfl rfl rfl rfl rfl
+                hbody hsu2 hsb ?_ (subTy_refl _)
+                (ValueTy.congr hag hv) hsw rfl rfl
+                (KontOk.frameK (fun σ hq => absurd hq (by simp)) rfl
+                  (KontOk.heap_congr hag hk'2)))⟩
+          · intro e he
+            obtain ⟨e0, -, rfl⟩ := List.mem_map.mp he
+            rfl
+          · intro a ha
+            obtain ⟨e0, -, rfl⟩ := List.mem_map.mp ha
+            exact ⟨⟨Ty.any, ValueTy.any, by simp [subTy]⟩, trivial⟩
     -- **The native iterator's loop, one turn** (L253).
     | @iterK _ _ cΓ Γs _ τ' τr τbody σp bs cb Γb Γb' outer x cl brk rest acc retVal cur k
         hp hlo hlam hbp hgb hany hcbr hcbl hcbs hcbm hcbi hbody hsub hsb hvs hsr hrv hrt
@@ -1789,7 +2099,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         rw [iterStep_cons, callClosure_req1 (cl := cl) hp hlo hlam]
         -- `ClosuresOk` is what says the captured frame exists and is self-contained —
         -- the *whole* frame-side price of the call (L248/L251).
-        obtain ⟨hcaplt, hcapn, hcappay, hcapcref, hcapvis⟩ :=
+        obtain ⟨hcaplt, hcapn, hcappay, hcapcref⟩ :=
           hclo _ (by rw [hK]; exact List.mem_cons_self ..) cl (by simp [KontClosure])
         have hne : m.stack ≠ [] := hfsh.1
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt

@@ -12667,3 +12667,72 @@ third ratchet **19**, and the difftest in full:
 | advisory | **106 agree, 0 disagree** | 106 / 0 |
 | 1 / 1.5 | 146 / 163 agree, **0 disagree** | 0 disagree (generative, re-drawn) |
 | regressions | **35 held, 2 still_open, 3 gated** | 35 / 2 / 3 |
+
+## L257 — the block-send rule lands in `infer`, and the delivery case is **proved**
+
+L255 wrote the rule and reverted it; L256 removed its blocker. This puts it back and pays the
+consecution case in full, so `Metatheory` builds axiom-clean with the rule in `infer`.
+
+### The rule
+
+`Types/Core.lean`, last arm before the catch-all:
+
+```lean
+| .send (some recv) mname [] (some (.block ps ls body)) =>
+  match infer D Γ recv top ctx with
+  | some (τr, Γ₁, D₁) =>
+    match blockSend? D₁ τr mname ps ls with
+    | some (x, σp, βret, τret) =>
+      match infer D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) with
+      | some (τb, Γb', D₂) =>
+        if subTy τb βret = true ∧ D₂ = D₁ ∧
+            subEnvB ((x, σp) :: anyEnv Γ₁) Γb' = true ∧ ctx.inBlock = false then
+          some (τret, Γ₁, D₁)
+        else none
+      | none => none
+    | none => none
+  | none => none
+```
+
+`ctx.inBlock = false` in the guard is not decoration: without it a *nested* block send would build a
+two-hop capture chain and `ShallowChain` — the `FrameConforms` clause that says a frame's captured
+parent is itself uncaptured — is a one-hop predicate. One flag refuses the nesting instead.
+
+### The delivery case, and what actually cost
+
+`KontOk.recvKBlk` delivers the receiver; the step is `finishSend_lit ⟶ reifyBlock ⟶
+invoke_iter_each ⟶ startIter ⟶ iterStep`, all five already reduced in `Proof/Static/Iter.lean`
+(L244). The `nil` branch is the receiver going to a `frameK`. The `cons` branch builds `Inv` at a
+machine with **two pushed frames** (the iterator activation, then the block frame), and that is where
+the session's time went — not in the semantics, in the arithmetic:
+
+> **`omega` does not fire under a context this large.** With `this : g < m.frames.size` in scope and
+> the goal `g < m.frames.size + 1` — verbatim, after `simp only [Array.size_push]` — `omega` reports
+> *"No usable constraints found"*, while `exact Nat.lt_succ_of_lt this` closes it. Every index fact
+> in the branch is therefore explicit.
+
+Five `have`s at the head of the branch carry all of them (`hpop`, `hlt2`, `hltI`, `hltB`, `hgetI`),
+each quantified over the two pushed frames so the giant frame literals never have to be written.
+A sixth, `hbc`, is the `rfl` that says the fresh closure's `captured` **is** the send site's frame —
+the goal spells it `(blockClosure … ).captured`, and `rw` will not see through that.
+
+Two named constructors, in `Proof/Static/Locals.lean`:
+
+- `FramesOk.cons` — the predicate is a `match`, and a four-deep anonymous constructor at a two-frame
+  push re-associates unpredictably. Naming the arm makes each obligation a *typed* hole.
+- `StackCtx.cons`, `FrameConforms.mk'` — likewise, eight and three holes.
+
+That is the whole lesson of the case: at this context size, `⟨_, _, _, _⟩` and `omega` both stop
+being labour-saving and start being labour.
+
+### Census
+
+The rule is in `infer`. The **census reads `inferOpen`**, which does not have it yet, so the third
+ratchet is unchanged at **19** — the `send-with-block` bodies are still counted as a missing *rule*
+rather than as the missing *declarations* (`Array ▷ each` with a `blk`) they will become. That is the
+next commit, and it is a front-end arm plus one case of `inferOpen_factors`.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--self-test` all agree,
+third ratchet **19** (unchanged, and expected — see above). No interpreter change, so no difftest.

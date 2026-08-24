@@ -166,8 +166,16 @@ def defFree (e : Expr) : Bool :=
     defFree c && defFree t && (match els with | some e' => defFree e' | none => true)
   | .while' c b => defFree c && defFree b
   | .vasgn _ _ rhs => defFree rhs
-  | .send r _ args _ =>
-    (match r with | some r' => defFree r' | none => true) && defFreeAll args
+  -- **L257. Ninth walk into the same trap**, and the first one a *block* causes: the
+  -- block-send rule threads the table through the block **body**, so a `def` in there
+  -- really does change it and `infer_mono`'s conclusion at a larger table would be false
+  -- with the catch-all's vacuous `true` left in place.
+  | .send r _ args blk =>
+    (match r with | some r' => defFree r' | none => true) && defFreeAll args &&
+      (match blk with | some b => defFree b | none => true)
+  -- L257: and the node the block slot holds. Vacuous until the arm above reaches it,
+  -- which is the same reason `.nxt none`'s arm is written.
+  | .block _ _ b => defFree b
   -- **L174.** Not optional: `infer`'s `.array` arm threads the table through the
   -- elements via `inferSeq`, so an element `def` really does change it, and
   -- `infer_mono`'s `D₀ = D` conclusion would be false with this arm left in the
@@ -249,8 +257,12 @@ def asgnFree (e : Expr) : Bool :=
   | .seq es => asgnFreeAll es
   | .if' c t els =>
     asgnFree c && asgnFree t && (match els with | some e' => asgnFree e' | none => true)
-  | .send r _ args _ =>
-    (match r with | some r' => asgnFree r' | none => true) && asgnFreeAll args
+  -- L257, for `defFree`'s reason at the other predicate: `infer_env_mono` has to reach
+  -- the block body, whose environment is a function of the send's own.
+  | .send r _ args blk =>
+    (match r with | some r' => asgnFree r' | none => true) && asgnFreeAll args &&
+      (match blk with | some b => asgnFree b | none => true)
+  | .block _ _ b => asgnFree b
   | .array es => asgnFreeAll es
   | .ret e => match e with | some e' => asgnFree e' | none => true
   | .cpath base _ => match base with | some b => asgnFree b | none => true
@@ -299,7 +311,8 @@ any of the compound shapes. These are the unconditional forms, and they are what
 @[simp] theorem defFree_send (r : Option Expr) (m : String) (args : List Expr)
     (blk : Option Expr) :
     defFree (.send r m args blk)
-      = ((match r with | some r' => defFree r' | none => true) && defFreeAll args) := by
+      = ((match r with | some r' => defFree r' | none => true) && defFreeAll args &&
+          (match blk with | some b => defFree b | none => true)) := by
   rw [defFree.eq_def]
 
 @[simp] theorem defFreeAll_nil : defFreeAll [] = true := by rw [defFreeAll.eq_def]
@@ -1018,6 +1031,45 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some Γl => if subEnvB Γl Γ then some (.nilT, Γ, D) else none
       | none => none
     else none
+  -- **A send with a literal block** (L257) — Wall 1's rule, and it is placed **last** for
+  -- `.flt`'s reason (L202): the only case after it in `infer.induct` is the catch-all, so
+  -- no existing case number moves.
+  --
+  -- The receiver runs first (a `recvK` is pushed), then the row is read — and it is read
+  -- with `declFor` rather than `sigOf`, because `sigOf` **refuses** a block-taking row
+  -- (L242) and this is the one rule that wants one. `blockSend?` is the four-way read:
+  -- the block's parameter name and type, what its body must answer, and the send's own
+  -- answer.
+  --
+  -- The block body is checked at the parameter plus every enclosing local at **`.any`**.
+  -- That is not an approximation of the caller's environment — it is what makes the block
+  -- frame's `FrameConforms` obligation dischargeable without naming the frame the closure
+  -- captured (L247/L249), and it is free on the census because a send on `.any` is a
+  -- *missing declaration*, which is the column the ratchet does not count.
+  --
+  -- Three conditions on the body's answer, and each is a premise `KontOk.iterK` carries:
+  -- it conforms to the block's declared return; it leaves the table alone (`frameK`
+  -- carries one table, and `blkFrameK` is the same shape); and its output environment
+  -- contains the one it started at, which is what `CtlOk`'s eval clause relates.
+  | .send (some recv) mname [] (some (.block ps ls body)) =>
+    match infer D Γ recv top ctx with
+    | some (τr, Γ₁, D₁) =>
+      match blockSend? D₁ τr mname ps ls with
+      | some (x, σp, βret, τret) =>
+        match infer D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) with
+        | some (τb, Γb', D₂) =>
+          -- **`ctx.inBlock = false`: a block inside a block is out of the fragment**, and
+          -- it is the restriction `localOfIn`'s single hop is (L243). The block frame
+          -- captures the *send site's* activation, so a nested block would capture a
+          -- block frame and its free-variable read would be two hops — which
+          -- `ShallowChain` refuses by construction rather than by accident.
+          if subTy τb βret = true ∧ D₂ = D₁ ∧
+              subEnvB ((x, σp) :: anyEnv Γ₁) Γb' = true ∧ ctx.inBlock = false then
+            some (τret, Γ₁, D₁)
+          else none
+        | none => none
+      | none => none
+    | none => none
   | _ => none
 termination_by sizeOf e
 

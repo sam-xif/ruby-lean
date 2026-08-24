@@ -593,6 +593,23 @@ def FramesOk (h : Heap) (frames : Array Frame) : List FrameId → List Env → P
       FrameConforms h frames Γ fid ∧ FramesOk h frames fids Γs
   | _, _ => False
 
+/-- **`FramesOk`'s `cons` arm, as a constructor** (L257). The predicate is a `match`, so
+    building one at a two-frame push means a four-deep anonymous constructor that
+    re-associates unpredictably; naming the arm makes each obligation a *typed* hole. -/
+theorem FramesOk.cons {hp : Heap} {frames : Array Frame} {fid : FrameId}
+    {fids : List FrameId} {Γ : Env} {Γs : List Env} (hlt : fid < frames.size)
+    (hgt : ∀ g ∈ fids, g < fid) (hc : FrameConforms hp frames Γ fid)
+    (ht : FramesOk hp frames fids Γs) : FramesOk hp frames (fid :: fids) (Γ :: Γs) :=
+  ⟨hlt, hgt, hc, ht⟩
+
+/-- And `FrameConforms`' three clauses, likewise. -/
+theorem FrameConforms.mk' {h : Heap} {frames : Array Frame} {Γ : Env} {fid : FrameId}
+    (hsc : ShallowChain frames fid)
+    (hpay : (h.classPayload? (frames.getD fid default).defmod).isSome)
+    (hv : ∀ x τ, envGet? Γ x = some τ →
+      ValueTy h (localOfIn frames (frames.getD fid default) x) τ) :
+    FrameConforms h frames Γ fid := ⟨hsc, hpay, hv⟩
+
 /-- **The outermost activation is the toplevel one, and its definee is `Object`**
     (L155).
 
@@ -826,6 +843,30 @@ theorem stackCtx_inLoop' {h : Heap} {frames : Array Frame} {b : Option Env} :
       StackCtx h frames st ({ c with inLoop := b } :: cs) → StackCtx h frames st (c :: cs)
   | [], _, _, hs => hs.elim
   | _ :: _, _, _, hs => hs
+
+/-- **`StackCtx`'s `cons` arm, as a constructor** (L257) — eight typed holes instead of
+    an eight-deep anonymous constructor. -/
+theorem StackCtx.cons {h : Heap} {frames : Array Frame} {fid : FrameId}
+    {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
+    (h1 : (h.classPayload? (frames.getD fid default).defmod).isSome)
+    (h2 : c.inBlock = false → className h (frames.getD fid default).defmod = c.cls)
+    (h3 : fids ≠ [] → defVisOfDef (frames.getD fid default) = .pub)
+    (h4 : ∀ sc, c.selfCls = some sc →
+      ValueTy h (frames.getD fid default).self (.cls sc) ∧
+      (frames.getD fid default).defmod ∈
+        ancestors h (classOf h (frames.getD fid default).self))
+    (h5 : Boot.objectId ∈ (frames.getD fid default).cref)
+    (h6 : ((frames.getD fid default).kind = .method ∧ cs ≠ []) ∨ c.ret = none)
+    (h7 : ∀ mn, c.meth = some mn →
+      (frames.getD fid default).meth = mn ∧
+      (frames.getD fid default).kind = .method ∧
+      c.selfCls = some c.cls ∧
+      (frames.getD fid default).runParams = [] ∧
+      (frames.getD fid default).runFromDM = false ∧
+      c.params = some [] ∧ c.inBlock = false)
+    (h8 : c.inBlock = false → (frames.getD fid default).captured = none)
+    (ht : StackCtx h frames fids cs) : StackCtx h frames (fid :: fids) (c :: cs) :=
+  ⟨h1, h2, h3, h4, h5, h6, h7, h8, ht⟩
 
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
