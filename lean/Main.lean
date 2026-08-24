@@ -12,6 +12,7 @@ import RubyCore.Types.Fragment
 import RubyCore.Types.Core
 import RubyCore.Types.SigRead
 import RubyCore.Types.OpenSelf
+import RubyCore.Types.Program
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -77,6 +78,22 @@ def main (args : List String) : IO UInt32 := do
   -- It changes **no verdict**. `--check` is untouched, and this is a second,
   -- additive query over the same AST.
   let assnOnly := args.contains "--assn"
+  -- `--assn-program`: L263/L264's **whole-program** open verdict, and it is a third
+  -- query rather than a mode of `--assn` for a stated reason — `--assn`'s per-body
+  -- census is a *consumed* number (`homebrew/fragment-gap.py`'s third ratchet), so it
+  -- must stay byte-identical.
+  --
+  -- What distinguishes it from both existing static queries. Against `--check`: it
+  -- accepts programs with `def`s and `class`es whose *declarations do not exist yet*,
+  -- and answers what the types would have to be rather than whether they are known.
+  -- Against `--assn`: the bodies share **one store**, so a class's own `def`s cancel
+  -- against its own bodies' requirements (`Types/Discharge.lean`) — which is the thing
+  -- a per-body pass structurally cannot do, since it hands every body a fresh store.
+  --
+  -- **An `accept` here is the weakest of the three**, and the JSON says so in the
+  -- `means` field rather than leaving it to be inferred: *types under these class
+  -- obligations*. `check`'s `accept` is the only one `check_sound` licenses.
+  let assnProgOnly := args.contains "--assn-program"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -179,6 +196,40 @@ def main (args : List String) : IO UInt32 := do
             ("unconditional", Lean.Json.num c.unconditional),
             ("blocked", Lean.Json.num c.blocked),
             ("out_of_fragment", Lean.Json.num c.outOfFragment)])]).compress
+        return 0
+      if assnProgOnly then
+        -- `preludeDecls` for `--assn`'s reason (L195): this reports about the
+        -- prelude-booted model, which is the heap the difftest SUT runs.
+        let renderClass := fun (e : String × Types.TyVar × Option Types.TyVar) =>
+          Lean.Json.mkObj [
+            ("class", Lean.Json.str e.1),
+            ("instance_var", Lean.Json.num e.2.1),
+            ("class_object_var", match e.2.2 with
+              | some β => Lean.Json.num β
+              | none => Lean.Json.null)]
+        IO.println (match Types.programVerdict Types.preludeDecls prog with
+          | .acceptedUnder τ A cs consts =>
+            Lean.Json.mkObj [
+              ("status", Lean.Json.str "accept"),
+              ("means", Lean.Json.str "types under these class obligations"),
+              ("type", Lean.Json.str τ.render),
+              ("assn", Lean.Json.str A.render),
+              ("classes", Lean.Json.arr (cs.map renderClass).toArray),
+              -- The class names this program *defines*, added to the constant table so
+              -- the class object is a value (L264). Reported because it is a table
+              -- extension, and an extension a reader cannot see is one they cannot
+              -- check.
+              ("consts_added", Lean.Json.arr (consts.map Lean.Json.str).toArray)]
+          | .blocked τ n ps =>
+            Lean.Json.mkObj [
+              ("status", Lean.Json.str "unknown"),
+              ("needed", Lean.Json.str
+                (τ.render ++ " ~ " ++ n ++ " : (" ++
+                  String.intercalate ", " (ps.map Types.ATy.render) ++ ") → _"))]
+          | .outOfFragment head =>
+            Lean.Json.mkObj [
+              ("status", Lean.Json.str "unknown"),
+              ("out_of_fragment", Lean.Json.str head)]).compress
         return 0
       if checkOnly then
         -- **D12: the reported verdict is total** — `decision` is `accept` or

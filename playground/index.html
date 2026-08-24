@@ -99,6 +99,7 @@
       <button class="ghost" id="check" title="rubycore --check: the nominal whole-program `infer`">Type-check (infer)</button>
       <button class="ghost" id="assn" title="rubycore --assn: the open front end `inferOpen`, one assertion per method body">Per-body (inferOpen)</button>
       <label class="detail" title="also report the top-level program as Object#&lt;main&gt; (rubycore --assn-top); off by default because --assn's census is a consumed number"><input type="checkbox" id="assntop"> top level too</label>
+      <button class="ghost" id="assnprog" title="rubycore --assn-program: the open front end over the WHOLE program — one shared store, so a class's own defs cancel against its own bodies' requirements">Whole program (inferProgram)</button>
       <span id="staticmsg" class="detail"></span>
     </div>
     <div id="verdictbox"></div>
@@ -318,6 +319,44 @@ async function runAssn() {
   } finally { $('assn').disabled = false; }
 }
 
+// L263/L264. The third static query, and the one that accepts a program whose
+// declarations do not exist yet. Rendered as one block rather than a list because
+// the verdict *is* one thing: the assertion under which the whole program types.
+async function runAssnProgram() {
+  $('assnprog').disabled = true; $('staticmsg').textContent = 'inferProgram…';
+  try {
+    const r = await fetch('/assn-program', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    if (d.error) {
+      $('assnout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`;
+      $('staticmsg').textContent = ''; return;
+    }
+    const L = [];
+    if (d.status === 'accept') {
+      L.push(`<span class="ok">accept</span> <span class="lbl">${esc(d.means||'')}</span>`);
+      L.push(`  <span class="lbl">type</span>    ${esc(d.type||'')}`);
+      L.push(`  <span class="lbl">under</span>   ${esc(d.assn||'')}`);
+      for (const c of (d.classes||[]))
+        L.push(`  <span class="lbl">class</span>   ${esc(c.class)}` +
+               ` — instance α${c.instance_var}` +
+               (c.class_object_var === null ? '' : `, class object α${c.class_object_var}`));
+      if ((d.consts_added||[]).length)
+        L.push(`  <span class="lbl">consts</span>  ${(d.consts_added).map(esc).join(', ')}`);
+    } else {
+      L.push(`<span class="no">unknown</span>`);
+      if (d.needed) L.push(`  <span class="lbl">needed</span>  ${esc(d.needed)}`);
+      if (d.out_of_fragment) L.push(`  <span class="lbl">stopped</span> ${esc(d.out_of_fragment)}`);
+    }
+    $('assnout').innerHTML = L.join('\n');
+    // No census: the whole-program verdict is one answer, not a gradient. That is
+    // exactly why `--assn`'s per-body count stays the ratchet.
+    $('staticmsg').innerHTML =
+      `<span class="census">whole program · ${esc(d.status)}</span>`;
+  } catch(e) {
+    $('assnout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
+  } finally { $('assnprog').disabled = false; }
+}
+
 async function runCheck() {
   $('check').disabled = true; $('staticmsg').textContent = 'infer…';
   try {
@@ -373,6 +412,7 @@ $('runruby').onclick = runRuby;
 $('count').onclick = countSteps;
 $('check').onclick = runCheck;
 $('assn').onclick = runAssn;
+$('assnprog').onclick = runAssnProgram;
 $('first').onclick = () => go(0);
 $('prev').onclick = () => go(i-1);
 $('next').onclick = () => go(i+1);

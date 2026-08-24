@@ -5,9 +5,11 @@ Pipeline per request:  Ruby source -> export-json (desugar) -> rubycore --trace
                        -> {steps, status, detail} JSON  ->  the browser UI.
 
 The static queries take the same first hop and a different flag: `--check` (the
-nominal `infer`, whole-program) and `--assn` (the open front end `inferOpen`, one
-verdict per method body, in the assertion language). Neither executes anything,
-so neither boots the prelude and neither depends on model coverage.
+nominal `infer`, whole-program), `--assn` (the open front end `inferOpen`, one
+verdict per method body, in the assertion language) and `--assn-program` (L263/L264:
+the open front end over the *whole* program, so a class's own `def`s cancel against
+its own bodies' requirements). None of them executes anything, so none boots the
+prelude and none depends on model coverage.
 
 Run:  python3 server.py [port]      (default 8077)
 Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../lean && lake build).
@@ -122,7 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path not in ("/trace", "/run", "/steps", "/check", "/assn"):
+        if self.path not in ("/trace", "/run", "/steps", "/check", "/assn",
+                             "/assn-program"):
             self._send(404, b"not found", "text/plain")
             return
         n = int(self.headers.get("Content-Length", 0))
@@ -144,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
             result = check(source)
         elif self.path == "/assn":
             result = assn(source, top=self.headers.get("X-Assn-Top") == "1")
+        elif self.path == "/assn-program":
+            result = assn_program(source)
         else:
             result = run_ruby(source)
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
@@ -245,6 +250,28 @@ def assn(source: str, top: bool = False) -> dict:
     if err:
         return err
     return lean_query(core, "--assn", *(["--assn-top"] if top else []))
+
+
+def assn_program(source: str) -> dict:
+    """`inferProgram`, whole-program (`rubycore --assn-program`) — L263/L264.
+
+    The third static query, and what distinguishes it from the other two is worth
+    stating because they look adjacent. Against `--check`: this accepts programs
+    whose `def`s and `class`es have no declarations *yet*, and answers what the
+    types would have to be rather than whether they are already known. Against
+    `--assn`: the bodies share **one store**, so the requirement a `vcall` in one
+    body records is cancelled by the `def` beside it — which a per-body pass
+    structurally cannot do, since it hands every body a fresh store.
+
+    An `accept` here is the **weakest** verdict the tool prints — *types under
+    these class obligations* — and the JSON says so in `means`. It is also
+    all-or-nothing, where `--assn` is a gradient: on a real file this reports the
+    *first* construct that stopped the program, so `--assn`'s per-body census stays
+    the ratchet and this is the verdict."""
+    core, err = desugar(source)
+    if err:
+        return err
+    return lean_query(core, "--assn-program")
 
 
 def main():

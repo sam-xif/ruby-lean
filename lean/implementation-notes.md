@@ -13298,3 +13298,77 @@ conditions* inside it do. `native_decide` remains banned (§4 norm 5).
 `lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean,
 `fragment-gap.py --self-test` all agree. Still off the default target until L265, so
 `--assn` and the third ratchet cannot move; no interpreter change, so no difftest.
+
+## L265 — `--assn-program`, the playground's third static query, and the number it actually reports
+
+The flag, the pane, and the measurement. `Types/Program.lean` joins the default build here
+(`Main.lean` imports it), which is also what makes the ratchet question live.
+
+### `--assn` is byte-identical, verified rather than argued
+
+`--assn`'s per-body census is a *consumed* number (`fragment-gap.py`'s third ratchet), and
+L262 touched `Store` — a new field — and `Store.closeAt`, which `closeBody` calls on the
+`--assn` path. The provisions are empty there, so the output cannot change; **that was
+checked** by building the pre-L262 binary in a worktree at `85bdc4b` and comparing
+`--assn` output over all eight slice files:
+
+```
+version.rb IDENTICAL   version/parser.rb IDENTICAL   pkg_version.rb IDENTICAL
+vulns/semver.rb IDENTICAL   vulns/cvss.rb IDENTICAL   vulns/purl.rb IDENTICAL
+vulns/vulnerability.rb IDENTICAL   vulns/identify.rb IDENTICAL
+```
+
+`--check` too, on three of them. Third ratchet on `/tmp/hb/brew3`: **112 defs, 17 accept,
+7 pacc, 8 uncond, 85 needed, 3 oof** — unmoved. (`HANDOFF.md` records `needed: 84`; the
+difference is the brew checkout, not this batch. The byte-comparison is what settles it.)
+
+### The headline, and it is a one-liner
+
+```
+class Version; def value; 1; end; def get; value; end; end
+  --check          reject / uncertified
+  --assn-program   accept  ·  type Symbol  ·  under  α3 = Integer
+```
+
+The obligation on `Version` closes **empty** — the class answers its own body — so the whole
+assertion is the equality the cancellation owed. This is the thing `--assn` structurally
+cannot say: it hands every body a fresh store at `{}`, so the two halves never meet.
+
+### The measurement that matters more than the headline
+
+On the eight **real** slice files, `--assn-program` reports:
+
+| file | verdict |
+|---|---|
+| `version.rb`, `pkg_version.rb` | `needed: T.class_of(Object) ~ ::Comparable` |
+| `version/parser.rb` | `needed: T.class_of(T) ~ ::Helpers` |
+| `vulns/vulnerability.rb` | `needed: T.class_of(Object) ~ ::Utils` |
+| `vulns/semver.rb`, `vulns/cvss.rb`, `vulns/identify.rb` | `oof: casgn` |
+| `vulns/purl.rb` | `oof: receiverless-send-with-block` |
+
+**So the whole-program verdict is all-or-nothing where `--assn`'s is a gradient**, and it
+stops *earlier* than the per-body census does — on the class body's own statements, which
+`bodyReports` walks straight past. That is the honest shape of the query and it decides how
+the two are used: `--assn`'s per-body count stays the ratchet, `--assn-program` is the
+verdict beside it. Recording it here rather than letting the next session rediscover it.
+
+It also names the next three rungs for whole-program coverage, in the order the slice wants
+them: `include Comparable`'s **constant** (`Comparable` is genuinely absent from
+`readableClasses` — modules fail its `noShadow` clause, checked, not assumed), **`casgn`**
+(a constant *assignment*, which no rule has), and the receiverless block send.
+
+### The JSON, and one field that is not data
+
+`status` / `type` / `assn` / `classes` / `consts_added`, plus **`means`**: the literal string
+*types under these class obligations*. It is in the payload rather than in this file because
+the reading is the part a consumer gets wrong, and a verdict whose strength lives only in a
+note is a verdict that will be quoted without it. `consts_added` is there for the same
+reason: L264 extends the constant table, and an extension a reader cannot see is one they
+cannot check.
+
+### Checks
+
+`lake build` (now including `Types/Program.lean`), `lake build Metatheory`,
+`check-proofs.sh` axiom-clean, `fragment-gap.py --self-test` all agree, `--assn`/`--check`
+byte-identical against a pre-L262 binary, playground `/assn-program` exercised end to end
+against CRuby's desugarer. No interpreter change, so no difftest.
