@@ -1278,7 +1278,16 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
               exact inv_push hfs htab hsc hhook hsat hstr hcls hbot (by simp [framePopLabels, hks]) hr (KontOk.recvK0 hsg hsubw hk)
         | cons arg extra =>
           cases blk with
-          | some b => exact absurd hinf (by simp [infer])
+          | some b =>
+            -- **L259's arity-`n` block send, refuted by the *table*** — and that is the
+            -- honest refutation. The rule is real, but a block-taking row is admissible
+            -- only through `IterEntryOk` (`EntryOk.iter`), which pins the declaration's
+            -- parameter list to `[]`; this send has arguments, so no declaration the
+            -- invariant admits can fire it. When a future `EntryOk` arm supplies a
+            -- block-taking row *with* parameters, this line becomes work.
+            exfalso
+            obtain ⟨τr, d, σp, βret, hd, hdps, hdb⟩ := infer_sendBlkN_decl hinf
+            exact hdps ((htab.1 τr mname d hd).iter hdb).2.2.1
           | none =>
             obtain ⟨τr, Γ₁, D₁, τs, ps, hr, hargs, hsg, hsub⟩ := infer_send_inv hinf
             -- `evalExpr` picks the send site by matching on the receiver

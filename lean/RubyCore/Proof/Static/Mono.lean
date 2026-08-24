@@ -90,7 +90,7 @@ theorem infer_table_ret : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ct
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case105 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case111 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -343,9 +343,49 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   | case103 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 =>
     intro _ τ Γ' D₀ h
     exfalso; revert h; simp +contextual [infer, a10]
-  -- **The `if` join** (case105): the two branches answer the same environment, which the arm
+  -- **L259's arity-`n` block send.** The arity-zero case above, plus the argument
+  -- traversal's own IH — and the arguments are assign-free, so their output environment
+  -- is their input one and nothing new has to be transported.
+  | case104 D Γ top ctx recv mname arg args ps ls body τr Γ₁ D₁ hrecv τs Γ₂ D₂ hargs
+      x σp βret dps τret hbs τb Γb' D₃ hbody hif ihR ihA ihB =>
+    intro hasg τ Γ' D₀ h
+    simp only [asgnFree, Bool.and_eq_true] at hasg
+    obtain ⟨rfl, hmR⟩ := ihR hasg.1.1 _ _ _ hrecv
+    obtain ⟨rfl, hmA⟩ := ihA hasg.1.2 _ _ _ hargs
+    obtain ⟨rfl, hmB⟩ := ihB hasg.2 _ _ _ hbody
+    -- The two table equalities go first. `simp` would otherwise use `D₂ = D₁` as a
+    -- rewrite and then `hbs` — which is stated at `D₂` — would no longer match; the
+    -- arity-zero arm does not have this problem only because it reads the table
+    -- *before* the arguments run.
+    obtain ⟨hsts, hsub, rfl, rfl, rfl, -, hib⟩ := hif
+    simp only [infer, hrecv, hargs, hbs, hbody, hsts, hsub, hib, subEnvB_refl,
+      and_true, true_and, and_self, if_true, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl, rfl⟩ := h
+    refine ⟨rfl, fun Γw hs => ?_⟩
+    simp only [infer, hmR Γw hs, hmA Γw hs, hbs,
+      hmB _ (SubEnv.cons _ (anyEnv_subEnv hs)), hsts, hsub, hib, subEnvB_refl,
+      and_true, true_and, and_self, if_true]
+  | case105 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21
+      a22 a23 a24 a25 a26 a27 a28 a29 a30 a31 a32 a33 =>
+    intro _ τ Γ' D₀ h
+    exfalso; revert h; simp +contextual [infer, a15, a19, a25, a29, a30]
+  | case106 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21
+      a22 a23 a24 a25 a26 a27 a28 a29 =>
+    intro _ τ Γ' D₀ h
+    exfalso; revert h; simp +contextual [infer, a15, a19, a25, a26]
+  | case107 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21
+      a22 =>
+    intro _ τ Γ' D₀ h
+    exfalso; revert h; simp +contextual [infer, a15, a19, a20]
+  | case108 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 =>
+    intro _ τ Γ' D₀ h
+    exfalso; revert h; simp +contextual [infer, a15, a16]
+  | case109 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 =>
+    intro _ τ Γ' D₀ h
+    exfalso; revert h; simp +contextual [infer, a12]
+  -- **The `if` join** (case111): the two branches answer the same environment, which the arm
   -- already checked, so the join transports unchanged.
-  | case105 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hag ih2 ih1 =>
+  | case111 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hag ih2 ih1 =>
     intro hasg τ Γ' D₀ h
     obtain ⟨rfl, hmT⟩ := ih2 hasg.1 _ _ _ hT
     obtain ⟨rfl, hmE⟩ := ih1 (by simpa [asgnFreeOpt] using hasg.2) _ _ _ hE
@@ -598,7 +638,7 @@ theorem infer_table_loop : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (c
       inferArgs Da Γa esa topa ctxa = some (τs, Γ', D₀) → D₀ = Da
   -- **The `if`-with-else arm**, explicit because the answer's table is the *then*
   -- branch's and the join's guard has to be split before either IH is usable.
-  | case105 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
+  | case111 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ih2 ih1 =>
     intro hret htop τ Γ' D₀ h
     obtain ⟨hΓ, hD⟩ := hagree
     simp only [inferIf, hT, hE] at h
@@ -980,7 +1020,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ⟨rfl, by simp [infer, hmC, hmB]⟩
   -- `inferIf`, both arms: the join conditions are equalities, so they transport
   -- by the same `rfl`s the loop's stability does.
-  | case105 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
+  | case111 D Γ t top ctx e' τt Γt Dt τe Γe De hE hT hagree ihT ihE =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmT⟩ := ihT F' hs hdf.1 _ _ _ hT
@@ -991,7 +1031,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hmE, hjoin, hΓ, hΓ2]⟩
-  | case108 D Γ t top ctx τt Γt Dt hT hcond ihT =>
+  | case114 D Γ t top ctx τt Γt Dt hT hcond ihT =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨hsub1, rfl⟩ := hcond
     obtain ⟨_, hmT⟩ := ihT F' hs (by simp_all) _ _ _ hT
@@ -1001,17 +1041,17 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨τj, hjoin, rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferIf, hmT, hjoin, hsub1]⟩
   -- `inferSeq`'s three arms, mirroring `evalExpr`'s split on `.seq`.
-  | case111 D Γ top ctx =>
+  | case117 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferSeq, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferSeq]⟩
-  | case112 D Γ top ctx e ih =>
+  | case118 D Γ top ctx e ih =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     simp only [inferSeq] at h ⊢
     exact ih F' hs (by simp_all [defFreeAll]) _ _ _ h
-  | case113 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case119 D Γ top ctx e rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -1024,18 +1064,18 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- **L230's `inferElems`** — the array-element traversal, three accepting arms. The
   -- splat arm is the non-splat one with the operand in place of the element and its type
   -- pinned to `Array` by the pattern, which is why it has one binder fewer.
-  | case115 D Γ top ctx =>
+  | case121 D Γ top ctx =>
     intro F' hs hdf τ Γ' D₀ h
     simp only [inferElems, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferElems]⟩
-  | case116 D Γ top ctx rest o Γ₁ D₁ ho ihO ihR =>
+  | case122 D Γ top ctx rest o Γ₁ D₁ ho ihO ihR =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, hmO⟩ := ihO F' hs (by simp_all [defFreeAll, defFree]) _ _ _ ho
     simp only [inferElems, ho] at h
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll, defFree]) _ _ _ h
     exact ⟨rfl, by simp [inferElems, hmO, hmR]⟩
-  | case118 D Γ top ctx ee rest hne τe Γ₁ D₁ he ihE ihR =>
+  | case124 D Γ top ctx ee rest hne τe Γ₁ D₁ he ihE ihR =>
     intro F' hs hdf τ Γ' D₀ h
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll, defFree]) _ _ _ he
     simp only [inferElems, he] at h
@@ -1048,12 +1088,12 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
-  | case120 D Γ top ctx =>
+  | case126 D Γ top ctx =>
     intro F' hs hdf τs Γ' D₀ h
     simp only [inferArgs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [inferArgs]⟩
-  | case121 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
+  | case127 D Γ top ctx e rest τe Γ₁ D₁ he τs Γ₂ D₂ hrest ihE ihR =>
     intro F' hs hdf τs' Γ' D₀ h
     simp only [defFreeAll, Bool.and_eq_true] at hdf
     obtain ⟨rfl, hmE⟩ := ihE F' hs (by simp_all [defFreeAll]) _ _ _ he
@@ -1164,7 +1204,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
          exact ⟨rfl, by simp only [infer, hm, hs.scopedConstTy_eq, hsco]⟩)
       -- **L227's bare `next`**, all four of its alternatives, and the arm reads *nothing*
       -- from the table: `top`, `ctx.inLoop` and `subEnvB` are all table-free, so the
-      -- transport is three `split`s and a recomputation. An IH-free case, like `case105`.
+      -- transport is three `split`s and a recomputation. An IH-free case, like `case111`.
       | (rename_i _ hil hse
          simp only [infer, hil, hse, if_true, reduceIte, Option.some.injEq,
            Prod.mk.injEq] at h
@@ -1192,6 +1232,27 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
          exact ⟨rfl, by
            simp only [infer, hmR, hs.blockSend_eq hbs, hmB, hif, if_true]
            simp⟩)
+      -- **L259's arity-`n` block send**, and the one difference from the arm above is
+      -- the argument traversal's IH between the receiver's and the body's.
+      | (rename_i hrecv _ _ _ hargs _ _ _ _ _ hbs _ _ _ hbody hif ihR ihA ihB
+         simp only [defFree, Bool.and_eq_true] at hdf
+         obtain ⟨rfl, hmR⟩ := ihR F' hs hdf.1.1 _ _ _ hrecv
+         obtain ⟨rfl, hmA⟩ := ihA F' hs hdf.1.2 _ _ _ hargs
+         obtain ⟨rfl, hmB⟩ := ihB F' hs hdf.2 _ _ _ hbody
+         obtain ⟨hsts, hsub, hd32, hd21, hd1, hse, hib⟩ := hif
+         -- The two table equalities are *rewritten into* the row read and the body,
+         -- not substituted: `subst` cannot fire here (the receiver's IH has already
+         -- moved `D₁`), and left as plain facts `simp` would use `D₂ = D₁` to rewrite
+         -- the goal out from under `hbs`.
+         simp only [hd21] at hbs hbody hse hd32
+         simp only [infer, hrecv, hargs, hbs, hbody, hsts, hsub, hse, hib, hd32, hd21, hd1,
+           and_true, true_and, and_self, if_true, Option.some.injEq, Prod.mk.injEq] at h
+         obtain ⟨rfl, rfl, rfl⟩ := h
+         refine ⟨rfl, ?_⟩
+         simp only [infer, hmR, hmA]
+         rw [SubDecls.blockSendA_eq hs hbs]
+         simp only [hmB]
+         simp [hsts, hsub, hse, hib, hd1])
       -- No fallback: every case is closed above or by one of the four uniform
       -- tactics, and there is deliberately no `sorry` arm to hide a case the next
       -- widening adds. A new `infer` rule breaks this proof, which is the same

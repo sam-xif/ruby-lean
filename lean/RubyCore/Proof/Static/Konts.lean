@@ -1577,6 +1577,76 @@ theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {�
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+/-- The argument traversal on a non-empty list answers a non-empty list of types. -/
+theorem inferArgs_cons_ne {D D' : Decls} {Γ Γ' : Env} {e : Expr} {es : List Expr}
+    {top : Bool} {ctx : FrameCtx} {τs : List Ty}
+    (h : inferArgs D Γ (e :: es) top ctx = some (τs, Γ', D')) : τs ≠ [] := by
+  simp only [inferArgs] at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      rw [← h.1]; simp
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- **L259: an arity-`n` block send names a block-taking row *with parameters*.**
+
+    That pair of facts is exactly what `EntryOk` cannot grant: both resolving arms pin
+    `blk = none` (`EntryOk.iter`), and the one arm that admits a block — `IterEntryOk` —
+    pins the parameter list to `[]`. So the *rule* is real and the **table** is what
+    refuses it, which is where the refusal belongs: a future `EntryOk` arm for a
+    block-taking row with parameters turns this refutation back into work. -/
+theorem infer_sendBlkN_decl {D D' : Decls} {Γ Γ' : Env} {recv arg blk : Expr}
+    {extra : List Expr} {mname : String} {τ : Ty} {top : Bool} {ctx : FrameCtx}
+    (h : infer D Γ (.send (some recv) mname (arg :: extra) (some blk)) top ctx
+      = some (τ, Γ', D')) :
+    ∃ τr d σp βret, declFor D τr mname = some d ∧ d.params ≠ [] ∧
+      d.blk = some { params := [σp], ret := βret } := by
+  cases blk
+  case block ps ls body =>
+    simp only [infer] at h
+    cases hr : infer D Γ recv top ctx with
+    | none => rw [hr] at h; exact absurd h (by simp)
+    | some p =>
+      obtain ⟨τr, Γ₁, D₁⟩ := p
+      rw [hr] at h
+      simp only [] at h
+      cases ha : inferArgs D₁ Γ₁ (arg :: extra) top ctx with
+      | none => rw [ha] at h; exact absurd h (by simp)
+      | some q =>
+        obtain ⟨τs, Γ₂, D₂⟩ := q
+        rw [ha] at h
+        simp only [] at h
+        cases hbs : blockSendA? D₂ τr mname ps ls with
+        | none => rw [hbs] at h; exact absurd h (by simp)
+        | some rr =>
+          obtain ⟨x, σp, βret, dps, τret⟩ := rr
+          rw [hbs] at h
+          simp only [] at h
+          cases hbody : infer D₂ ((x, σp) :: anyEnv Γ₂) body false (blockCtx ctx) with
+          | none => rw [hbody] at h; exact absurd h (by simp)
+          | some z =>
+            obtain ⟨τb, Γb', D₃⟩ := z
+            rw [hbody] at h
+            simp only [] at h
+            split at h
+            · next hif =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨-, -, -⟩ := h
+              obtain ⟨h1, h2, h3, hd21, hd1, h5, h6⟩ := hif
+              subst hd21
+              subst hd1
+              obtain ⟨d, hd, hdps, -, hdb⟩ := blockSendA?_declFor hbs
+              refine ⟨τr, d, σp, βret, hd, ?_, hdb⟩
+              rw [hdps]
+              intro hnil
+              rw [hnil] at h1
+              cases hts : τs with
+              | nil => exact inferArgs_cons_ne ha hts
+              | cons t ts => rw [hts] at h1; exact absurd h1 (by simp [subTys])
+            · exact absurd h (by simp)
+  all_goals exact absurd h (by simp [infer])
+
 /-- **Inversion for the block-send rule** (L257). Four nested splits, and the last is
     the three-way conjunction the rule checks. -/
 theorem infer_sendBlk_inv {D D' : Decls} {Γ Γ' : Env} {recv body : Expr}

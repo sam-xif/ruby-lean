@@ -356,6 +356,51 @@ def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
     | some _ => none
   | none => none
 
+/-- **The same read, without the arity-zero restriction** (L259) — what the
+    positive-arity block-send rule asks. It hands back the declaration's *parameter
+    list* as well, because that is what the argument types have to match.
+
+    `blockSend?` is not defined in terms of this one: its own two inversion lemmas are
+    what the L257 proofs read, and restating it would be a rewrite of proofs that are
+    done. The duplication is four lines. -/
+def blockSendA? (D : Decls) (τr : Ty) (mname : String) (ps : List Param)
+    (ls : List String) : Option (String × Ty × Ty × List Ty × Ty) :=
+  match ps, ls with
+  | [.req x], [] =>
+    match declFor D τr mname with
+    | some d =>
+      match d.blk, (d.blk.map (·.params)).getD [] with
+      | some bs, [σp] => some (x, σp, bs.ret, d.params, d.ret)
+      | _, _ => none
+    | none => none
+  | _, _ => none
+
+/-- Its inversion: a successful read names a declaration with a one-parameter block
+    signature, and the parameter list it hands back is that declaration's own. -/
+theorem blockSendA?_declFor {D : Decls} {τr : Ty} {mname : String} {ps : List Param}
+    {ls : List String} {x : String} {σp βret τret : Ty} {dps : List Ty}
+    (h : blockSendA? D τr mname ps ls = some (x, σp, βret, dps, τret)) :
+    ∃ d, declFor D τr mname = some d ∧ d.params = dps ∧ d.ret = τret ∧
+      d.blk = some { params := [σp], ret := βret } := by
+  unfold blockSendA? at h
+  split at h
+  · next x' =>
+    split at h
+    · next d hd =>
+      split at h
+      · next bs σ hb hbp =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, hσ, hβ, hdps, hτ⟩ := h
+        refine ⟨d, hd, hdps, hτ, ?_⟩
+        rw [hb] at hbp ⊢
+        simp only [Option.map_some] at hbp
+        subst hσ; subst hβ
+        cases bs with
+        | mk bps br => simp_all
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
 /-- **The pieces a block send reads off the row and the block node** (L255):
     the block's one parameter name, its declared type, the type its body must answer, and
     the send's own answer.
@@ -531,6 +576,26 @@ theorem SubDecls.blockSend_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
     {mname : String} {ps : List Param} {ls : List String} {r : String × Ty × Ty × Ty}
     (h : blockSend? F τr mname ps ls = some r) : blockSend? F' τr mname ps ls = some r := by
   unfold blockSend? at h ⊢
+  cases ps with
+  | nil => exact absurd h (by simp)
+  | cons p rest =>
+    cases p <;> cases rest <;> cases ls <;>
+      simp only [] at h ⊢ <;>
+      first
+        | exact absurd h (by simp)
+        | (cases hd : declFor F τr mname with
+           | none => rw [hd] at h; exact absurd h (by simp)
+           | some d =>
+             rw [hd] at h
+             rw [hs.1 τr mname d hd]
+             exact h)
+
+/-- And `blockSendA?` likewise (L259) — the same one-line reading, same proof. -/
+theorem SubDecls.blockSendA_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
+    {mname : String} {ps : List Param} {ls : List String}
+    {r : String × Ty × Ty × List Ty × Ty}
+    (h : blockSendA? F τr mname ps ls = some r) : blockSendA? F' τr mname ps ls = some r := by
+  unfold blockSendA? at h ⊢
   cases ps with
   | nil => exact absurd h (by simp)
   | cons p rest =>

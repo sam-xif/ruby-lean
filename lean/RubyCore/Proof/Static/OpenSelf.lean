@@ -1009,6 +1009,9 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     all_goals (
       first
         | done
+        -- **L259's arity-`n` block send.** `simp_all` has already put the *hypothesis*
+        -- into `anyOf` form; the goal still names `anyEnv (substEnv θ _)`, so the one
+        -- rewrite that closes it is `anyOf_subst` again, in the goal this time.
         -- **L227's environment check.** The arm is a guard `simp_all` reduces away, leaving
         -- exactly the `subEnvB` obligation the nominal `next` rule asks for — and the whole
         -- factoring is that the open check is the stronger one. An *alternative* rather
@@ -1286,6 +1289,12 @@ theorem inferOpen_factors (D : Decls) (ctx : OCtx) (θ : TyVar → Ty) (stF : St
     -- alternative because at the moment `first` runs, the goal is still the whole
     -- `FactorsIf` — the join equation does not exist yet.
     all_goals (try exact joinATy_subst (by assumption))
+    -- **And L259's block body, likewise a residual.** The arity-`n` block send's
+    -- alternative reduces the receiver and the argument list and then stops: the goal
+    -- that is left names the body's `infer` at `anyEnv (substEnv θ Γ₂)`, while the open
+    -- arm ran it at `anyOf Γ₂`. One rewrite — and it has to be *here*, because at the
+    -- moment `first` runs, that term does not exist yet.
+    all_goals (try (simp only [anyOf_subst]; simp_all))
 
 /-! ## 6. The decidable side — §8.2's discharge, and what it buys
 

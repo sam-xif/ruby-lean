@@ -1070,6 +1070,37 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
+  -- **A send with arguments *and* a literal block** (L259). Everything above is the
+  -- arity-zero arm's, once; the two differences are that the arguments run between the
+  -- receiver and the row read (`inferArgs`, the same traversal `recvK` uses), and that
+  -- the row is read with `blockSendA?` — `blockSend?`'s sibling that does **not** pin
+  -- the declaration's parameter list to `[]` and hands it back to be matched.
+  --
+  -- Placed after the arity-zero arm and before the catch-all, so again no case number
+  -- moves except by one at the very end.
+  | .send (some recv) mname (arg :: args) (some (.block ps ls body)) =>
+    match infer D Γ recv top ctx with
+    | some (τr, Γ₁, D₁) =>
+      match inferArgs D₁ Γ₁ (arg :: args) top ctx with
+      | some (τs, Γ₂, D₂) =>
+        match blockSendA? D₂ τr mname ps ls with
+        | some (x, σp, βret, dps, τret) =>
+          match infer D₂ ((x, σp) :: anyEnv Γ₂) body false (blockCtx ctx) with
+          | some (τb, Γb', D₃) =>
+            -- **`D₁ = D` is the conjunct the arity-zero arm does not have**, and it is
+            -- what makes the *table* the refuter of this rule (L259): `Inv`'s eval clause
+            -- carries `DeclsOk` at the entry table only, so a row read at a table the
+            -- subexpressions grew is a row nothing in the invariant knows. Nothing in the
+            -- slice declares a method inside a block send's receiver or arguments, so the
+            -- restriction is free on the census.
+            if subTys τs dps = true ∧ subTy τb βret = true ∧ D₃ = D₂ ∧ D₂ = D₁ ∧ D₁ = D ∧
+                subEnvB ((x, σp) :: anyEnv Γ₂) Γb' = true ∧ ctx.inBlock = false then
+              some (τret, Γ₂, D₂)
+            else none
+          | none => none
+        | none => none
+      | none => none
+    | none => none
   | _ => none
 termination_by sizeOf e
 

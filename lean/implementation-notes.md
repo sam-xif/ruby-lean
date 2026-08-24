@@ -12798,3 +12798,75 @@ No interpreter change, so no difftest.
 | `needed:` | 70 | 82 |
 
 Remaining `oof`: `send-with-block` 3, `begin` 2, `splat` 1, `nilable-receiver` 1.
+
+## L259 — the arity-`n` block send, and the *table* is what refuses it — **7 → 5**
+
+`xs.gsub(re) { |c| … }` — a send with arguments *and* a block. Two of the slice's three
+remaining `send-with-block` bodies are this shape; the rule for it is the L257 arm plus the
+argument traversal, and its consecution case is a **refutation**.
+
+### The rule
+
+`blockSendA?` is `blockSend?` without the `d.params = []` restriction, handing back the
+declaration's parameter list so `subTys` can match the argument types against it. The arm sits
+after L257's and before the catch-all.
+
+Its guard carries one conjunct L257's does not: **`D₁ = D`**.
+
+> `Inv`'s eval clause carries `DeclsOk` at the **entry** table only, so a row read at a table
+> the subexpressions grew is a row nothing in the invariant knows. Pinning the receiver's
+> output table to the entry one is what lets the consecution case reach `DeclsOk` at all.
+
+Nothing in the slice declares a method inside a block send's receiver or arguments, so the
+restriction is free on the census.
+
+### The consecution case is a refutation, and that is the honest shape
+
+```lean
+obtain ⟨τr, d, σp, βret, hd, hdps, hdb⟩ := infer_sendBlkN_decl hinf
+exact hdps ((htab.1 τr mname d hd).iter hdb).2.2.1
+```
+
+An arity-`n` block send names a declaration that is **block-taking** *and* has **parameters**.
+`EntryOk` cannot grant both: the two resolving arms pin `blk = none` (`EntryOk.iter`), and the
+one arm that admits a block — `IterEntryOk` — pins the parameter list to `[]`. So the rule is
+real and the **table** refuses it, which is where the refusal belongs. When a future `EntryOk`
+arm supplies a block-taking row *with* parameters, that one line becomes work.
+
+`infer_sendBlkN_decl` is the inversion that extracts the pair; `inferArgs_cons_ne` is the
+half-line that says a non-empty argument list has a non-empty type list, which is what turns
+`subTys τs dps` into `dps ≠ []`.
+
+### The costs that were not the semantics
+
+- **`infer.induct` renumbering, third time.** The arm has six leaves, so **`+6` for `N ≥ 104`**
+  in `Proof/Static/Mono.lean` — the arity-zero arm occupies 99–103, not 96–100 as a first
+  reading of L255's note suggests. The recipe (renumber, then read arities off Lean's
+  "expected *k*" messages) worked unchanged: 33, 33, 29, 22, 18, 13.
+- **`simp` and the table equalities.** In `infer_mono_all`, `⟨…, rfl, rfl, …⟩` on the guard
+  cannot fire (the receiver's IH has already moved `D₁`), and leaving them as plain facts lets
+  `simp` rewrite `D₂ → D₁` in the goal *before* `hbs` — which is stated at `D₂` — can match. So
+  they are rewritten **into** the row read and the body first, then used.
+- **`inferOpen_factors`' new case is a residual, not an alternative.** The arity-`n`
+  alternative reduces the receiver and the argument list and stops; the goal that survives
+  names the body's `infer` at `anyEnv (substEnv θ Γ₂)` where the open arm ran it at
+  `anyOf Γ₂`. One rewrite closes it — but it has to run *after* the alternative block, because
+  **at the moment `first` runs, that term does not exist yet**. An hour went into treating it
+  as an alternative that "mysteriously would not fire"; it was firing on a goal that did not
+  yet contain the pattern. The file already names this shape twice (L175's `StoreLe`, L193b's
+  join); this is the third.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean, `--self-test` all agree.
+No interpreter change, so no difftest.
+
+| ratchet | before | after |
+|---|---|---|
+| `oof` | 7 | **5** |
+| `needed:` | 82 | 84 |
+
+Remaining `oof`, one body each except `begin`: `begin` **2** (`in_interval_strict?`,
+`in_interval_permissive?`), `splat` **1** (`Version#to_json`), `nilable-receiver` **1**
+(`severity_display`, a `&.` chain), `send-with-block` **1** (`comparator_for`, a `->(a, b) { … }`
+lambda — proc types, not the block rule).

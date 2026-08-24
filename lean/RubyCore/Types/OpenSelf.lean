@@ -364,6 +364,30 @@ def inferOpen (D : Decls) (Γ : AEnv) (e : Expr) (ctx : OCtx) (il : Option AEnv)
       | .var α => .missing (.var α) mname []
       | .nilOf _ => .outOfFragment "nilable-receiver"
     | r => r
+  -- **A send with arguments *and* a block** (L259) — the open counterpart of the
+  -- nominal arity-`n` arm, and the same economy: the body goes to `infer`.
+  | .send (some recv) mname (arg :: args) (some (.block ps ls body)) =>
+    match inferOpen D Γ recv ctx il s with
+    | .ok τr Γ₁ s₁ =>
+      match inferOpenArgs D Γ₁ (arg :: args) ctx il s₁ with
+      | .ok τs Γ₂ s₂ =>
+        match τr with
+        | .nom t =>
+          match blockSendA? D t mname ps ls with
+          | some (x, σp, βret, dps, τret) =>
+            match infer D ((x, σp) :: anyOf Γ₂) body false (blockCtx { cls := ctx.cls }) with
+            | some (τb, Γb', D₂) =>
+              if τs == dps.map ATy.nom ∧ subTy τb βret = true ∧ D₂ = D ∧
+                  subEnvB ((x, σp) :: anyOf Γ₂) Γb' = true then
+                .ok (.nom τret) Γ₂ s₂
+              else .outOfFragment "send-block-body"
+            | none => .outOfFragment "send-block-body"
+          | none => .missing (.nom t) mname τs
+        | .var α => .missing (.var α) mname τs
+        | .nilOf _ => .outOfFragment "nilable-receiver"
+      | .missing τ n ps => .missing τ n ps
+      | .outOfFragment h => .outOfFragment h
+    | r => r
   -- A body that declares a method is outside the fragment already (`infer`'s own
   -- `defFree` requirement); refusing here keeps the factoring theorem's `D` fixed.
   | .def' _ _ _ => .outOfFragment "def"
