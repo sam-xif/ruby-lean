@@ -340,6 +340,15 @@ Headline the slice supports: Homebrew carries **two inequivalent version orderin
 (`::Version#<=>` and `Vulns::Semver.compare`) and uses both inside the same CVE-matching
 decision).
 
+**Reportable findings live in [`homebrew/repro/`](homebrew/repro/README.md)** — nine
+Direction-A witnesses reproducing from the **unmodified `brew vulns` / `brew
+advisory-match` commands** against a pinned upstream checkout, with the OSV network
+stood in for at the process boundary (`HOMEBREW_CURL_PATH` → a stand-in `curl`, so no
+Homebrew source is patched and `JSON.parse`/`sig`/`T.let` all still run). `run.sh --all`
+is the self-check; [`repro/WITNESSES.md`](homebrew/repro/WITNESSES.md) is the triage note,
+ranked by realism, and discharges `nontrivial-target.md` R2. The vendored checkout is
+gitignored — recreate it with `repro/fetch-brew.sh`, then `repro/setup.sh`.
+
 ### `ruby_papers/` — reference PDFs
 `essence_of_ruby.pdf` (Ueno et al., APLAS'14 — closest prior semantics), `ruby_intermediate_language.pdf`
 (Furr et al., DLS'09 — RIL/desugaring reference), `csmith.pdf` (PLDI'11 — differential
