@@ -67,6 +67,22 @@ by the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own
 directories** (`lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
 `certify/` untrusted with E-numbers; import-only dependence on the existing trees).
 
+**Design (amends the above):** [The judgment layer](judgment-layer.md) — the 2026-08-26
+re-scoping of **C-1**: state the invariant over an **inductive judgment** (`Judge`/
+`KJudge`/`MachineTyped`, transcribing `type-judgments.md` §6–§8 into Lean as the
+definition of record) rather than over `chk` — the diagnosis being that metatheory stated
+over a *function* (`infer.induct`, then `chk.induct`) is re-incurred at every checker
+rewrite, and the relation is the layer stable under implementation churn. Settles the
+**semantic type notion** first: recursive knots tied by *names into a table `D`* (never
+anonymous structural recursion — that's coinductive); slots as heap-conformance
+invariants, not intrinsic structure; responds-to sets indexed by boot phase; **unions +
+nil + narrowing** as the load-bearing grammar (they are what refute `aboutToTypeStick`).
+Certificates become **derivations-as-data** checked by a trivial local rule-matcher
+(constructor-mirroring, so `Deriv.check → Judge` is one easy induction) — the maximal
+form of "validation is search-free." `chk` is demoted to the coverage tier; the
+`chk_table_ret` rung is deliberately abandoned. Milestones **J0–J4**; honest costs: the
+preservation mountain is unchanged, only its marginal cost structure improves.
+
 **Instrumentation design:** [Concolic dataflow tracing](concolic-dataflow.md) — how the
 model should emit *symbolic terms* (not just branch directions) so the concolic engine can
 build solver queries without re-deriving dataflow outside the semantics. States the
