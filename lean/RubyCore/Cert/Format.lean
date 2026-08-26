@@ -257,8 +257,14 @@ structure Cert where
       too little fuel makes `chk` answer `none`, which *rejects*. So a wrong fuel
       costs a body, never an accept — the same argument `thetaFn`'s `.any` default
       makes. A computed `sizeOf p` would have been the other kind of dependency: a
-      derived `Nat` the kernel has to reduce before it can start. -/
-  fuel : Nat := 64
+      derived `Nat` the kernel has to reduce before it can start.
+
+      **The bound is node count, not depth** (V19). `chk` and its helpers are one
+      `mutual` block in which every call decreases the fuel — a helper's call into its
+      own tail included — because that is what makes the block structural *and* lets
+      Lean derive `chk.induct`, which the whole metatheory is written against. A list
+      of `k` elements therefore costs `k`, not 1. The default is sized for that. -/
+  fuel : Nat := 256
   /-- The residue the conclusion is conditional on. `emp` is an unconditional
       accept, and §2 constraint 4 is the reason this is a field rather than prose:
       the verdict-strength ladder is an ordering on residues. -/

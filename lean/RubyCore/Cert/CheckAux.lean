@@ -21,100 +21,34 @@ namespace RubyCore.Cert
 
 open RubyCore.Types
 
-/-! ## 1. The recursive-call type, and the list helpers
+/-! ## 1. `Rec` — retired at V19
 
-`chk` recurses on fuel and the list helpers recurse on their list, so the two never
-have to decrease together — which is what keeps *both* structural. The helpers take
-the recursive call as a **parameter** rather than sitting in a `mutual` block with
-`chk`: a mutual block at the same fuel value is well-founded recursion again, and
-well-founded recursion is the whole thing this file exists to avoid (V9).
+The list helpers used to take the recursive call as a **parameter** (`Rec`), which
+kept them structural without a `mutual` block. That design cost exactly one thing,
+and it turned out to be the expensive one: Lean could not derive `chk.induct`.
 
-The `Path` argument of each helper is the *parent's* path plus the index of the
-first element, so a helper extends what its caller built. -/
+> `Cannot derive functional induction principle … failed to transform matcher … the
+> argument has type (fun a => ∀ …) of sort Prop but is expected to have type Rec of
+> sort Type`
 
-/-- The type of `chk` at a fixed certificate and fuel — the callback the list
-    helpers take. -/
-abbrev Rec := Decls → Env → Expr → Bool → FrameCtx → Option (Ty × Env × Decls)
+A recursive call passed as a higher-order argument is what the induction-principle
+generator cannot see through. And `chk.induct` is not a convenience:
+`Proof/Static/Mono.lean`'s twenty structural laws are every one of them
+`induction … using infer.induct with | motive2 … | motive5 …`, so without the
+analogous principle each law is a hand-rolled fuel induction fighting `split` — which
+is what V17's cost estimate was measuring, and it was measuring the wrong design.
 
-/-- A statement sequence: thread the environment and the table, take the last type.
-    An empty sequence is `nil`, and `[e]` is `e` — the three-way split `evalExpr`
-    makes on `.seq`. -/
-def chkSeq (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List Expr → Option (Ty × Env × Decls)
-  | D, Γ, [] => some (.nilT, Γ, D)
-  | D, Γ, [e] => f D Γ e top ctx
-  | D, Γ, e :: rest =>
-    match f D Γ e top ctx with
-    | some (_, Γ₁, D₁) => chkSeq f top ctx D₁ Γ₁ rest
-    | none => none
+The replacement is a `mutual` block in `Cert/Check.lean` in which **every** call
+decreases the fuel, a helper's call into its own tail included. That is still
+structural recursion on a `Nat`, so the kernel still reduces it (V9 intact, the
+`decide`s still pass), and Lean derives `chk.induct` with one motive per function.
 
-/-- An argument list: the same threading, but the *types* are kept in order, because
-    that is what a signature's parameter list is matched against. -/
-def chkArgs (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List Expr → Option (List Ty × Env × Decls)
-  | D, Γ, [] => some ([], Γ, D)
-  | D, Γ, e :: rest =>
-    match f D Γ e top ctx with
-    | some (τ, Γ₁, D₁) =>
-      match chkArgs f top ctx D₁ Γ₁ rest with
-      | some (τs, Γ₂, D₂) => some (τ :: τs, Γ₂, D₂)
-      | none => none
-    | none => none
+The price: fuel now bounds *node count* rather than depth, so `Cert.fuel`'s default is
+larger. It still fails in the safe direction.
 
-/-- The elements of an array literal. Element types are erased (`.array` answers
-    `.cls "Array"`), and a `.splat` element's operand must be exactly `Array` —
-    which is what makes the step total, since `spreadA` errors on any other
-    payload. -/
-def chkElems (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List Expr → Option (Ty × Env × Decls)
-  | D, Γ, [] => some (.nilT, Γ, D)
-  | D, Γ, e :: rest =>
-    match e with
-    | .splat (some o) =>
-      match f D Γ o top ctx with
-      | some (.cls "Array", Γ₁, D₁) => chkElems f top ctx D₁ Γ₁ rest
-      | _ => none
-    | ee =>
-      match f D Γ ee top ctx with
-      | some (_, Γ₁, D₁) => chkElems f top ctx D₁ Γ₁ rest
-      | none => none
-
-/-- The pairs of a hash literal — key then value, left to right, threading both.
-    A `**h` double-splat is a `.splat` in the key position with the value unused,
-    which is how the decoder emits it. -/
-def chkPairs (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List (Expr × Expr) → Option (Env × Decls)
-  | D, Γ, [] => some (Γ, D)
-  | D, Γ, (k, v) :: rest =>
-    match f D Γ k top ctx with
-    | some (_, Γ₁, D₁) =>
-      match f D₁ Γ₁ v top ctx with
-      | some (_, Γ₂, D₂) => chkPairs f top ctx D₂ Γ₂ rest
-      | none => none
-    | none => none
-
-/-- The entries of a brace-less keyword-argument marker. Each entry's *value* is
-    evaluated; a `.dyn` entry's key is too. -/
-def chkKwEntries (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List KwEntry → Option (Env × Decls)
-  | D, Γ, [] => some (Γ, D)
-  | D, Γ, e :: rest =>
-    match e with
-    | .pair _ v =>
-      match f D Γ v top ctx with
-      | some (_, Γ₁, D₁) => chkKwEntries f top ctx D₁ Γ₁ rest
-      | none => none
-    | .splat v =>
-      match f D Γ v top ctx with
-      | some (_, Γ₁, D₁) => chkKwEntries f top ctx D₁ Γ₁ rest
-      | none => none
-    | .dyn k v =>
-      match f D Γ k top ctx with
-      | some (_, Γ₁, D₁) =>
-        match f D₁ Γ₁ v top ctx with
-        | some (_, Γ₂, D₂) => chkKwEntries f top ctx D₂ Γ₂ rest
-        | none => none
-      | none => none
+What stays here is what is *not* mutually recursive with `chk`: `defFreeF`, the
+binding forms, and the joins.
+-/
 
 /-! ## 1a. `defFree`, re-spelled on fuel (V13)
 
@@ -239,60 +173,5 @@ def joinAll : List Ty → Option Ty
 def allBelow : List Ty → Ty → Bool
   | [], _ => true
   | τ :: rest, σ => subTy τ σ && allBelow rest σ
-
-/-- The handlers of a `begin` region: each is checked at the **entry** environment,
-    because a handler may run after any prefix of the body and nothing the body bound
-    is guaranteed. The exception-class list is checked as an ordinary expression list
-    (each entry is a constant read); the target binds the exception, at the claimed
-    type or at the first class named. -/
-def chkRescues (c : Cert) (f : Rec) (top : Bool) (ctx : FrameCtx) :
-    Decls → Env → List (List Expr × Option (TargetKind × String) × Expr) →
-    Option (List Ty)
-  | _, _, [] => some []
-  | D, Γ, (excs, tgt, hbody) :: rest =>
-    match chkArgs f top ctx D Γ excs with
-    | none => none
-    | some (τs, _, D₁) =>
-      if D₁ != D then none
-      else
-        -- The bound exception's type: the claim if there is one, else the sole
-        -- class named (`rescue Foo => e` with one class is the common shape), else
-        -- `.any`, which is honest — a handler that dispatches on a multi-class
-        -- binding needs the union `Ty` does not have (§9.8).
-        let τx := match (c.claimAt hbody).bind (·.tys) with
-          | some (τ :: _) => τ
-          | _ => match τs with
-            | [.clsOf n] => .cls n
-            | _ => .any
-        let Γh := match tgt with
-          | some (_, x) => envSet Γ x τx
-          | none => Γ
-        match f D Γh hbody top ctx with
-        | none => none
-        | some (τh, _, Dh) =>
-          if Dh != D then none
-          else
-            match chkRescues c f top ctx D Γ rest with
-            | some τrs => some (τh :: τrs)
-            | none => none
-
-/-- A block send whose row `blockSend?`/`blockSendA?` does not supply — the claimed
-    arm. The block's body is still **checked**, at the claimed parameter type, so
-    what the certificate supplies is the row and not the body's typing. -/
-def chkBlockClaim (c : Cert) (f : Rec) (_top : Bool) (ctx : FrameCtx) (key : Expr)
-    (D : Decls) (Γ : Env) (τs : List Ty) (ps : List Param) (ls : List String)
-    (body : Expr) : Option (Ty × Env × Decls) :=
-  let _ := ls
-  let _ := τs
-  match c.claimAt key with
-  | none => none
-  | some cl =>
-    let τp := match cl.tys with
-      | some (τ :: _) => τ
-      | _ => .any
-    let Γb := bindParams 64 ps [τp] (anyEnv Γ)
-    match f D Γb body false (blockCtx ctx) with
-    | some (_, _, D') => if D' == D && ctx.inBlock == false then some (cl.ty, Γ, D) else none
-    | none => none
 
 end RubyCore.Cert

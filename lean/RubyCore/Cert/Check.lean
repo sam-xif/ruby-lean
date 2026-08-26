@@ -79,7 +79,8 @@ namespace RubyCore.Cert
 
 open RubyCore.Types
 
-/-! ## 4. `chk`
+
+/-! ## 2. `chk` and the functions it is mutual with
 
 One `match` on the head, in the order the grammar declares them, so that a missing
 arm is visible as a gap in the reading rather than swallowed by a catch-all. **There
@@ -109,6 +110,163 @@ def claimTys (c : Cert) (e : Expr) : List Ty :=
   match c.claimAt e with
   | some cl => cl.tys.getD []
   | none => []
+
+
+mutual
+
+/-- **An optional subterm**, checked if present; `nil` and the incoming environment and
+    table if absent.
+
+    It exists for the metatheory rather than for brevity. An *inline* `match eo with …`
+    inside an arm of `chk` becomes, after `split at h`, a hypothesis whose scrutinee is
+    still `eo`, and `split at h` cannot reach inside a hypothesis it just created. In
+    the arms whose enclosing pattern is a wildcard — a send whose block is `some val`
+    for an unconstrained `val` — there is then no way to make `eo` concrete and the
+    case is unprovable without restructuring. Naming the computation turns it into a
+    function application that a *law* can consume. -/
+def chkOpt (c : Cert) : Nat → Decls → Env → Option Expr → Bool → FrameCtx →
+    Option (Ty × Env × Decls)
+  | _, D, Γ, none, _, _ => some (.nilT, Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, D, Γ, some e, top, ctx => chk c n D Γ e top ctx
+
+/-- A statement sequence: thread the environment and the table, take the last type.
+    An empty sequence is `nil`, and `[e]` is `e` — the three-way split `evalExpr` makes
+    on `.seq`. -/
+def chkSeq (c : Cert) : Nat → Bool → FrameCtx → Decls → Env → List Expr →
+    Option (Ty × Env × Decls)
+  | _, _, _, D, Γ, [] => some (.nilT, Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, [e] => chk c n D Γ e top ctx
+  | n + 1, top, ctx, D, Γ, e :: rest =>
+    match chk c n D Γ e top ctx with
+    | some (_, Γ₁, D₁) => chkSeq c n top ctx D₁ Γ₁ rest
+    | none => none
+
+/-- An argument list: the same threading, but the *types* are kept in order, because
+    that is what a signature's parameter list is matched against. -/
+def chkArgs (c : Cert) : Nat → Bool → FrameCtx → Decls → Env → List Expr →
+    Option (List Ty × Env × Decls)
+  | _, _, _, D, Γ, [] => some ([], Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, e :: rest =>
+    match chk c n D Γ e top ctx with
+    | some (τ, Γ₁, D₁) =>
+      match chkArgs c n top ctx D₁ Γ₁ rest with
+      | some (τs, Γ₂, D₂) => some (τ :: τs, Γ₂, D₂)
+      | none => none
+    | none => none
+
+/-- The elements of an array literal. Element types are erased (`.array` answers
+    `.cls "Array"`), and a `.splat` element's operand must be exactly `Array` — which
+    is what makes the step total, since `spreadA` errors on any other payload. -/
+def chkElems (c : Cert) : Nat → Bool → FrameCtx → Decls → Env → List Expr →
+    Option (Ty × Env × Decls)
+  | _, _, _, D, Γ, [] => some (.nilT, Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, e :: rest =>
+    match e with
+    | .splat (some o) =>
+      match chk c n D Γ o top ctx with
+      | some (.cls "Array", Γ₁, D₁) => chkElems c n top ctx D₁ Γ₁ rest
+      | _ => none
+    | ee =>
+      match chk c n D Γ ee top ctx with
+      | some (_, Γ₁, D₁) => chkElems c n top ctx D₁ Γ₁ rest
+      | none => none
+
+/-- The pairs of a hash literal — key then value, left to right, threading both. -/
+def chkPairs (c : Cert) : Nat → Bool → FrameCtx → Decls → Env →
+    List (Expr × Expr) → Option (Env × Decls)
+  | _, _, _, D, Γ, [] => some (Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, (k, v) :: rest =>
+    match chk c n D Γ k top ctx with
+    | some (_, Γ₁, D₁) =>
+      match chk c n D₁ Γ₁ v top ctx with
+      | some (_, Γ₂, D₂) => chkPairs c n top ctx D₂ Γ₂ rest
+      | none => none
+    | none => none
+
+/-- The entries of a brace-less keyword-argument marker. Each entry's *value* is
+    evaluated; a `.dyn` entry's key is too. -/
+def chkKwEntries (c : Cert) : Nat → Bool → FrameCtx → Decls → Env → List KwEntry →
+    Option (Env × Decls)
+  | _, _, _, D, Γ, [] => some (Γ, D)
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, ent :: rest =>
+    match ent with
+    | .pair _ v =>
+      match chk c n D Γ v top ctx with
+      | some (_, Γ₁, D₁) => chkKwEntries c n top ctx D₁ Γ₁ rest
+      | none => none
+    | .splat v =>
+      match chk c n D Γ v top ctx with
+      | some (_, Γ₁, D₁) => chkKwEntries c n top ctx D₁ Γ₁ rest
+      | none => none
+    | .dyn k v =>
+      match chk c n D Γ k top ctx with
+      | some (_, Γ₁, D₁) =>
+        match chk c n D₁ Γ₁ v top ctx with
+        | some (_, Γ₂, D₂) => chkKwEntries c n top ctx D₂ Γ₂ rest
+        | none => none
+      | none => none
+
+/-- The handlers of a `begin` region: each is checked at the **entry** environment,
+    because a handler may run after any prefix of the body and nothing the body bound
+    is guaranteed. The exception-class list is checked as an ordinary expression list
+    (each entry is a constant read); the target binds the exception, at the claimed
+    type or at the first class named. -/
+def chkRescues (c : Cert) : Nat → Bool → FrameCtx → Decls → Env →
+    List (List Expr × Option (TargetKind × String) × Expr) → Option (List Ty)
+  | _, _, _, _, _, [] => some []
+  | 0, _, _, _, _, _ => none
+  | n + 1, top, ctx, D, Γ, (excs, tgt, hbody) :: rest =>
+    match chkArgs c n top ctx D Γ excs with
+    | none => none
+    | some (τs, _, D₁) =>
+      if D₁ != D then none
+      else
+        -- The bound exception's type: the claim if there is one, else the sole
+        -- class named (`rescue Foo => e` with one class is the common shape), else
+        -- `.any`, which is honest — a handler that dispatches on a multi-class
+        -- binding needs the union `Ty` does not have (§9.8).
+        let τx := match (c.claimAt hbody).bind (·.tys) with
+          | some (τ :: _) => τ
+          | _ => match τs with
+            | [.clsOf n] => .cls n
+            | _ => .any
+        let Γh := match tgt with
+          | some (_, x) => envSet Γ x τx
+          | none => Γ
+        match chk c n D Γh hbody top ctx with
+        | none => none
+        | some (τh, _, Dh) =>
+          if Dh != D then none
+          else
+            match chkRescues c n top ctx D Γ rest with
+            | some τrs => some (τh :: τrs)
+            | none => none
+
+/-- A block send whose row `blockSend?`/`blockSendA?` does not supply — the claimed
+    arm. The block's body is still **checked**, at the claimed parameter type, so
+    what the certificate supplies is the row and not the body's typing. -/
+def chkBlockClaim (c : Cert) : Nat → Bool → FrameCtx → Expr → Decls → Env →
+    List Ty → List Param → List String → Expr → Option (Ty × Env × Decls)
+  | 0, _, _, _, _, _, _, _, _, _ => none
+  | n + 1, _top, ctx, key, D, Γ, τs, ps, ls, body =>
+  let _ := ls
+  let _ := τs
+  match c.claimAt key with
+  | none => none
+  | some cl =>
+    let τp := match cl.tys with
+      | some (τ :: _) => τ
+      | _ => .any
+    let Γb := bindParams n ps [τp] (anyEnv Γ)
+    match chk c n D Γb body false (blockCtx ctx) with
+    | some (_, _, D') => if D' == D && ctx.inBlock == false then some (cl.ty, Γ, D) else none
+    | none => none
 
 /-- **The checker.** `chk c n D Γ e top ctx = some (τ, Γ', D')` — at the
     certificate `c`, with `n` fuel, `e` has type `τ` and leaves the environment `Γ'`
@@ -229,9 +387,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       | some (τ, Γ₁, D₁) => some (τ, Γ₁, D₁)
       | none => none
     | .cpathAsgn base _ rhs =>
-      match (match base with
-             | none => some (Ty.nilT, Γ, D)
-             | some b => chk c n D Γ b top ctx) with
+      match chkOpt c n D Γ base top ctx with
       | some (_, Γ₁, D₁) =>
         match chk c n D₁ Γ₁ rhs top ctx with
         | some (τ, Γ₂, D₂) => some (τ, Γ₂, D₂)
@@ -252,7 +408,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
         match blkO with
         -- ### Block-less: the arguments, then the signature.
         | none =>
-          match chkArgs (chk c n) top ctx D₁ Γ₁ args with
+          match chkArgs c n top ctx D₁ Γ₁ args with
           | none => none
           | some (τs, Γ₂, D₂) =>
             match sigOf D₂ τr mname with
@@ -287,16 +443,16 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
                     some (τret, Γ₁, D₁)
                   else none
                 | none => none
-              | none => chkBlockClaim c (chk c n) top ctx e D₁ Γ₁ [] ps ls body
+              | none => chkBlockClaim c n top ctx e D₁ Γ₁ [] ps ls body
             -- An implicit-self `lambda { … }` is the one block send with no
             -- receiver the fragment admits, and its answer is `.any`: a `Proc` has
             -- no row in any table, so nothing can be done with the value, which is
             -- exactly what the type says.
             | none =>
               if mname == "lambda" then some (.any, Γ, D)
-              else chkBlockClaim c (chk c n) top ctx e D Γ [] ps ls body
+              else chkBlockClaim c n top ctx e D Γ [] ps ls body
           | _ =>
-            match chkArgs (chk c n) top ctx D₁ Γ₁ args with
+            match chkArgs c n top ctx D₁ Γ₁ args with
             | none => none
             | some (τs, Γ₂, D₂) =>
               match blockSendA? D₂ τr mname ps ls with
@@ -309,17 +465,15 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
                     some (τret, Γ₂, D₂)
                   else none
                 | none => none
-              | none => chkBlockClaim c (chk c n) top ctx e D₂ Γ₂ τs ps ls body
+              | none => chkBlockClaim c n top ctx e D₂ Γ₂ τs ps ls body
         -- ### A block-pass `&e`. The operand is evaluated (or is the enclosing
         -- method's own block, anonymously forwarded); the row is claimed, because a
         -- `&:sym` is a `Symbol#to_proc` whose arity no signature records.
         | some (.blockpass bo) =>
-          match chkArgs (chk c n) top ctx D₁ Γ₁ args with
+          match chkArgs c n top ctx D₁ Γ₁ args with
           | none => none
           | some (τs, Γ₂, D₂) =>
-            match (match bo with
-                   | none => some (Ty.nilT, Γ₂, D₂)
-                   | some b => chk c n D₂ Γ₂ b top ctx) with
+            match chkOpt c n D₂ Γ₂ bo top ctx with
             | none => none
             | some (_, Γ₃, D₃) =>
               match claimTy c e with
@@ -348,7 +502,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
     -- array element, and each has an arm here so that a certificate can address it
     -- — which is the whole of V10.
     | .kwargs entries =>
-      match chkKwEntries (chk c n) top ctx D Γ entries with
+      match chkKwEntries c n top ctx D Γ entries with
       | some (Γ', D') => some (.cls "Hash", Γ', D')
       | none => none
     -- `...` forwards the enclosing `(...)`-method's captured arguments. There is no
@@ -372,7 +526,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
     -- return type, which no `Decls` field records — so it is claimed, and the
     -- arguments are checked against the claimed parameter list.
     | .yield' args =>
-      match chkArgs (chk c n) top ctx D Γ args with
+      match chkArgs c n top ctx D Γ args with
       | some (τs, Γ', D') =>
         match claimTy c e with
         | some τ => if subTys τs (claimTys c e) then some (τ, Γ', D') else none
@@ -624,18 +778,14 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       | some (τ, _, _) => some (τ, Γ, D)
       | none => none
     | .scopedClass base name body =>
-      match (match base with
-             | none => some (Ty.nilT, Γ, D)
-             | some b => chk c n D Γ b top ctx) with
+      match chkOpt c n D Γ base top ctx with
       | none => none
       | some (_, Γ₁, D₁) =>
         match chk c n D₁ [] body false { cls := name } with
         | some (τ, _, _) => some (τ, Γ₁, D₁)
         | none => none
     | .scopedModule base name body =>
-      match (match base with
-             | none => some (Ty.nilT, Γ, D)
-             | some b => chk c n D Γ b top ctx) with
+      match chkOpt c n D Γ base top ctx with
       | none => none
       | some (_, Γ₁, D₁) =>
         match chk c n D₁ [] body false { cls := name } with
@@ -669,7 +819,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       | some (τb, _, D₁) =>
         if D₁ != D then none
         else
-          match chkRescues c (chk c n) top ctx D Γ rescues with
+          match chkRescues c n top ctx D Γ rescues with
           | none => none
           | some τr =>
             match (match els with
@@ -707,7 +857,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       | some mn =>
         if mn == "" then none
         else
-          match chkArgs (chk c n) top ctx D Γ args with
+          match chkArgs c n top ctx D Γ args with
           | none => none
           | some (τs, Γ₁, D₁) =>
             match blkO with
@@ -758,13 +908,15 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
     | .defined _ => some (.nilable (.cls "String"), Γ, D)
     -- ## Composites.
     | .array es =>
-      match chkElems (chk c n) top ctx D Γ es with
+      match chkElems c n top ctx D Γ es with
       | some (_, Γ', D') => some (.cls "Array", Γ', D')
       | none => none
     | .hash pairs =>
-      match chkPairs (chk c n) top ctx D Γ pairs with
+      match chkPairs c n top ctx D Γ pairs with
       | some (Γ', D') => some (.cls "Hash", Γ', D')
       | none => none
-    | .seq es => chkSeq (chk c n) top ctx D Γ es
+    | .seq es => chkSeq c n top ctx D Γ es
+
+end
 
 end RubyCore.Cert
