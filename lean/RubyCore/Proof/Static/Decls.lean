@@ -1816,6 +1816,49 @@ theorem DeclsOk_addRow_here {D : Decls} {h : Heap} {c name : String} {σ : Metho
       exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.2.1 hbo, hsb, hag⟩
     · exact Or.inr (Or.inr hi)
 
+/-! ## 3c. L267 — `EntryOk` is monotone in the table, and `DeclsOk` transfers along `SubDecls`
+
+L266 gives *a row added at a fixed heap*, one row at a time. A **certificate** adds
+several (`Cert.table` folds `addRow` over its claims), and doing that one row at a
+time is the wrong induction: the new row's obligation has to be discharged at the
+table the certificate *ends* at, because that is the table the `decl` atom in
+`assumes` is denoted against, and `EntryOk` is not antitone — a `UserEntryOk` witness
+at a bigger table does not give one at a smaller (`infer_mono` runs the other way).
+
+So the induction is over `declFor` at the final table instead, and these two lemmas
+are what it needs. Both are facts about the existing machinery, neither has anything
+to do with certificates, and `DeclsOk_of_subDecls` in particular is the general form
+of the second half of every `DeclsOk_*` lemma above: *the old rows survive because
+`infer` is monotone; only the new ones owe anything.* -/
+
+theorem EntryOk_mono {D D' : Decls} {h : Heap} {τ : Ty} {n : String} {d : MethodDecl}
+    (hs : SubDecls D D') (he : EntryOk D h τ n d) : EntryOk D' h τ n d := by
+  rcases he with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
+  · exact Or.inl hb
+  · refine Or.inr (Or.inl ⟨mdu, cu, htys, hres, hnm,
+      hconf.1, hconf.2.1, hconf.2.2.1, ?_⟩)
+    obtain ⟨Γ', r, τb, hbo, hsb, hag⟩ := hconf.2.2.2
+    exact ⟨Γ', r, τb, infer_mono hs hconf.2.2.1 hbo, hsb, hag⟩
+  · exact Or.inr (Or.inr hi)
+
+theorem DeclsOk_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOk D h)
+    (hs : SubDecls D D')
+    (hnew : ∀ τ n d, declFor D τ n = none → declFor D' τ n = some d → EntryOk D' h τ n d) :
+    DeclsOk D' h := by
+  refine ⟨fun τ n d hdf => ?_,
+    fun n τ hn => hd.2.1 n τ (by rw [← hs.constTy_eq]; exact hn),
+    fun c x τ hn => hd.2.2.1 c x τ (by rw [← hs.ivarTy_eq]; exact hn),
+    fun c n τ hn => hd.2.2.2.1 c n τ (by rw [← hs.scopedConstTy_eq]; exact hn),
+    fun c n dd hn => hd.2.2.2.2 c n dd (by rw [← hs.superDecl_eq]; exact hn)⟩
+  cases hold : declFor D τ n with
+  | none => exact hnew τ n d hold hdf
+  | some d0 =>
+    have heq := hs.1 τ n d0 hold
+    rw [hdf] at heq
+    have : d0 = d := (Option.some.inj heq).symm
+    subst this
+    exact EntryOk_mono hs (hd.1 τ n d0 hold)
+
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
     L146 proved this with a side condition — *every receiver the new heap types was

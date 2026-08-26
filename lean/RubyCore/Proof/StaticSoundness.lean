@@ -86,90 +86,74 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
 theorem classOk_initHeap : ClassOk Boot.initHeap :=
   classOkB_sound (by decide : classOkB Boot.initHeap = true)
 
-/-- Initiation, for the machine `Machine.init` builds. -/
-theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) := by
-  -- `DeclsOk` is what the invariant carries now (F1a), and `tableOk_declsOk` is
-  -- how the boot heap's three concrete `rfl`-proved resolutions become it.
+/-- **Initiation, at any sound table** (L267).
+
+    `initiation` below used to be this, with `declsOf p` written in at both places
+    the table appears. Generalizing it changes nothing about `check_sound` — that is
+    the instance, three lines down — and it is what the certificate language needs:
+    a certificate names a table *larger* than `declsOf p`
+    (`RubyCore/Cert/Format.lean`), and the invariant is parametric in the table by
+    construction (F1b.8, `Inv`'s existential), so nothing in the proof was ever
+    specific to `declsOf p`.
+
+    The two hypotheses are exactly the two places it appeared: the table is sound at
+    the boot heap, and the program types at it. Everything else here is a computation
+    on a literal heap. -/
+theorem initiation_at {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
+    (h : (infer F [] p true { cls := "Object" }).isSome = true) : Inv (Machine.init p) := by
+
   refine ⟨
-    -- L153: the clause is now a bounded `∀` over class objects, so it is `noHookB`
-    -- at a literal heap rather than one `rfl` — the same shape `Saturated` has.
     (show NoHook (Machine.init p).heap from
       noHookB_sound (by decide : noHookB Boot.initHeap = true)),
-    -- L148's third heap conjunct. The boot heap is a literal, so the walk's
-    -- saturation is decidable *in the kernel* — no certificate needed here, unlike
-    -- at the prelude-booted heap where `Lean.Json.parse` does not reduce (L135).
     (show Saturated (Machine.init p).heap from
       saturatedB_sound (by decide : saturatedB Boot.initHeap = true)),
-    -- L151's fourth heap conjunct, the producer's. `Boot.stringId` is a literal in a
-    -- literal heap, so both halves are kernel computations — the same reason
-    -- `Saturated` needs no certificate here and does at the prelude-booted heap.
     (show LitClsOk (Machine.init p).heap from
       ⟨⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
         (by rfl : className Boot.initHeap Boot.stringId = "String")⟩,
        ⟨(by decide : (Boot.initHeap.classPayload? Boot.arrayId).isSome = true),
         (by rfl : className Boot.initHeap Boot.arrayId = "Array")⟩⟩),
-    -- L156's fifth heap conjunct: `Object`'s constant table binds every reopenable
-    -- class name to a non-module class. A literal heap, so `decide` — and the reason
-    -- `reopenableClasses` is a table is that this is what a row costs.
     (show ClassOk (Machine.init p).heap from classOk_initHeap),
-    -- L155's sixth conjunct, and the only one that is not about the heap: the
-    -- outermost activation's definee is `Object`. `Machine.init` builds exactly
-    -- one frame and it is the toplevel one, so this is a computation on a literal.
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),
-    -- **The table the run starts at is `declsOf p`** (F1b.8). It is existential in
-    -- `Inv` because it changes along the run; this is where it is pinned, and the
-    -- `DeclsOk` obligation is the one F1a already discharged.
-    -- L199: `Machine.init` builds one frame and an empty continuation, so both lists
-    -- are trivial — `[] = [0].dropLast`.
     (by simp [Machine.init, Machine.initOn, framePopLabels]),
-    -- L247: the initial continuation is empty, so the clause is vacuous.
     (by intro κ hm; simp [Machine.init, Machine.initOn] at hm),
-    declsOf p, { cls := "Object" }, [], [],
-    tableOk_declsOk tableOk_initHeap classOk_initHeap, ?_, ?_, ?_⟩
+    F, { cls := "Object" }, [], [],
+    hD, ?_, ?_, ?_⟩
   · show FramesOk (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ([] :: [])
-    -- L154 leaves one goal `simp` cannot close: the toplevel frame's definee is
-    -- `Object`, and the clause is now that it is a *class* rather than that it is
-    -- that id — one `decide` at a literal heap.
     simp [Machine.init, Machine.initOn, FramesOk, FrameConforms, ShallowChain, envGet?]
     decide
-  · -- **The toplevel activation's context is `Object`** (F1b.9), which is
-    -- `BottomObj` again, one level more informative: the bottom frame's definee is
-    -- the `Object` id, and the boot heap names that id `"Object"`. Both are
-    -- computations on a literal heap. `defVis` is the frame literal's default —
-    -- and note that a *toplevel* `def` is nevertheless private
-    -- (`Interp.lean:225`), which is why no row can come from one.
-    show StackCtx (Machine.init p).heap (Machine.init p).frames
+  · show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ({ cls := "Object" } :: [])
-    -- L198: the toplevel context declares no return type, so the sixth clause is the
-    -- right disjunct — a `return` at toplevel has no target and the desugarer gates it.
-    -- L207: and it names no method, so the seventh is vacuous too.
     refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), fun _ => rfl, trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact fun _ => (show ClassOk (Machine.init p).heap from
         classOkB_sound (by decide : classOkB Boot.initHeap = true)).1
-    -- Vacuous at the outermost frame, and that is the point: a toplevel `def`
-    -- installs a **private** method, so no row can come from one (F1b.9/F1b.10).
     · exact fun hz => absurd rfl hz
-    -- The toplevel activation claims no self type: `self` is `main`, and nothing in
-    -- the fragment needs it (F1b.11).
     · exact fun sc hsc => absurd hsc (by simp)
     · simp [Machine.init, Machine.initOn, Array.getD]
-  · -- **L228: the globals conjunct at the initial machine**, and it is vacuous — the
-    -- initial machine has `globals := []`, so the lookup is `none` and no declared
-    -- global claims anything yet. What makes it *stay* vacuous is the write rule's
-    -- conformance check, not this.
-    refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
-    unfold check at h
-    show CtlOk (declsOf p) { cls := "Object" } [] [] (Machine.init p)
+  · refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
+    show CtlOk F { cls := "Object" } [] [] (Machine.init p)
     unfold CtlOk
-    split at h
-    · rename_i r hr
+    cases hr : infer F [] p true { cls := "Object" } with
+    | none => rw [hr] at h; exact absurd h (by simp)
+    | some r =>
       obtain ⟨τ, Γ', D'⟩ := r
-      exact ⟨τ, τ, Γ', D', Γ', hr, by simp, SubEnv.refl _, KontOk.nil (by simp) (by simp)⟩
-    · exact absurd h (by split <;> simp)
+      exact ⟨τ, τ, Γ', D', Γ', by simpa [Machine.init, Machine.initOn] using hr,
+        by simp, SubEnv.refl _, KontOk.nil (by simp) (by simp)⟩
+
+/-- Initiation, for the machine `Machine.init` builds — `initiation_at` at the table
+    `check` runs against, which is `declsOf p` (`Types/Decls.lean`: a function of the
+    program, constant today). The `DeclsOk` obligation is the one F1a already
+    discharged, and it is `rfl`-provable at the boot heap, which is what keeps
+    `check_sound` unconditional. -/
+theorem initiation {p : Expr} (h : check p = .accept) : Inv (Machine.init p) :=
+  initiation_at (tableOk_declsOk tableOk_initHeap classOk_initHeap) (by
+    unfold check at h
+    split at h
+    · rename_i r hr; simp only [declsOf] at hr ⊢; rw [hr]; simp
+    · exact absurd h (by split <;> simp))
 
 /-- **Static soundness, from any machine satisfying the invariant.** Stated this
     way so that P1's prelude-booted start (`Prelude.initWithPrelude`, the

@@ -13433,3 +13433,74 @@ instance of this one (its heap moves), which is why it stays where it is untouch
 change and no rule change, so `--assn`/`--check` cannot move and there is no
 difftest; `DeclsOk_addRow` and every consumer of it are untouched, which the
 metatheory build is what checks.
+
+## L267 — `EntryOk` is monotone in the table, and `initiation` is parametric in it
+
+Two generalizations of existing facts, both needed by the certificate language
+(`docs/semantics/certificate-language.md`, `RubyCore/Cert/`) and both of them facts
+about the standing machinery rather than about certificates — so they land in
+`Proof/Static/Decls.lean` and `Proof/StaticSoundness.lean` rather than in the new
+tree (that document's §7 norm 7: *never fork a private copy*).
+
+### 1. Why L266 was not enough, and the induction that replaced it
+
+L266 gives *a row added at a fixed heap*, one row at a time. A certificate adds
+several — `Cert.table` folds `addRow` over its claims — and doing that one row at a
+time is **the wrong induction**, for a reason worth recording because it is not
+visible from the statement:
+
+> the new row's obligation has to be discharged at the table the certificate *ends*
+> at, because that is the table its `decl` atom in `assumes` is denoted against, and
+> `EntryOk` is not antitone.
+
+`EntryOk`'s only table-dependent arm is `UserEntryOk`, whose `UserConforms` says the
+body infers at `D` and *leaves* `D`; `infer_mono` transports that from a smaller
+table to a bigger one and there is no lemma the other way (nor should there be —
+`declaresName` is name-global, so a bigger table refuses `def`s a smaller one
+admits). So a one-row-at-a-time induction would need `EntryOk` at each intermediate
+table and the hypothesis only supplies it at the last.
+
+The induction is therefore over `declFor` at the final table: each row is *either*
+one of the claims (obligation supplied) *or* one of `declsOf p`'s (obligation
+transported up). Two lemmas make that work, and the second is the general form of
+the second half of every `DeclsOk_*` lemma in the file:
+
+```
+EntryOk_mono       : SubDecls D D' → EntryOk D h τ n d → EntryOk D' h τ n d
+DeclsOk_of_subDecls: DeclsOk D h → SubDecls D D' →
+                       (∀ τ n d, declFor D τ n = none → declFor D' τ n = some d →
+                          EntryOk D' h τ n d) →
+                     DeclsOk D' h
+```
+
+*The old rows survive because `infer` is monotone; only the new ones owe anything.*
+The four non-row clauses are free: `SubDecls` pins `consts`/`ivars`/`scopedConsts`/
+`supers`/`globals` by **equality** (L195's decision, and this is the first consumer
+that spends all five).
+
+The split into old/new is clean rather than approximate, and `SubDecls` is what makes
+it so: `declFor D' τ n = some d` with `declFor D τ n = some d₀` forces `d = d₀`, so
+there is no third case where a row is *displaced*.
+
+### 2. `initiation`, parametric in the table — and nothing moved
+
+`initiation` had `declsOf p` written in at both places the table appears: the
+`DeclsOk` witness and `CtlOk`'s `infer` equation. `initiation_at` takes those two as
+hypotheses and `initiation` is the three-line instance.
+
+**Nothing else in that proof was ever specific to `declsOf p`**, which is the
+measurement worth keeping: `Inv` ∃-quantifies the table (F1b.8) precisely because it
+changes along a run, so the initial machine's invariant is parametric in it by
+construction. Every remaining line is a computation on a literal heap. `check_sound`
+is unchanged and `#print axioms` still reports the same three.
+
+That is also the answer to a question the certificate design left open: whether
+carrying a *larger* table into `Inv` costs a re-proof. It does not; it costs
+`DeclsOk` at that table, which is §1's obligation and nothing else.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean. No rule change
+and no interpreter change, so `--assn`/`--check` cannot move — verified
+byte-identical on all eight slice files against a worktree binary at `d8b8c7c` — and
+tier 0 is `992 agree, 0 disagree`, unmoved.
