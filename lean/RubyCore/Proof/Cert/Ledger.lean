@@ -192,17 +192,24 @@ theorem ledger_satStore {c : RubyCore.Cert.Cert} {p : Expr} {st : Store}
 
 /-- …and `validateFull` gives both halves at once: the program-level conclusion and
     the store-level one. Stated so a consumer of the JSON's `ledger_ok` field has one
-    theorem to point at. -/
+    theorem to point at.
+
+    **The program-level half carries C-1's premise** (`hctl`), for the reason
+    `Proof/Cert/Sound.lean` gives: `validate` no longer calls `infer`, so the control
+    clause is not yet produced by `chkOk`. The *store-level* half is unaffected — it is
+    about the table and the pairing, and mentions no checker — which is why the two are
+    stated together rather than the whole thing being deferred. -/
 theorem validateFull_sound {c : RubyCore.Cert.Cert} {p : Expr} {st : Store}
     (h : validateFull c p = true)
     (ha : denote (c.table p) c.thetaFn c.rowAssn (Machine.init p).heap)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p))
     (hs : c.ledgerStore? = some st)
     (hsol : SatStore (c.table p) c.thetaFn (discharge st)) :
     (∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r) ∧
       SatStore (c.table p) c.thetaFn st := by
   unfold validateFull at h
   simp only [Bool.and_eq_true] at h
-  exact ⟨validate_sound_carries h.1 ha, ledger_satStore hs h.2 hsol⟩
+  exact ⟨validate_sound_of_ctl h.1 ha hctl, ledger_satStore hs h.2 hsol⟩
 
 /-! ## 4. The worked example — L262's headline, with the pairing *stated*
 

@@ -744,7 +744,32 @@ parameter types and checks the body below the declared return, so the population
 claimable. `infer`'s `def` arm refuses it on its first guard (`params.isEmpty`), so
 this is squarely C6/D2a arriving.
 
-### 10.5 The soundness half is open, and here is what it costs
+### 10.5 The soundness half is open — at *one named premise*
+
+`Proof/Cert/Sound.lean` now holds
+
+```lean
+theorem validate_sound_of_ctl (h : validate c p = true) (ha : ⟦c.rowAssn⟧)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
+    ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
+```
+
+axiom-clean, and **with no `infer` in its statement** — which is what
+`initiation_ctl` (`Proof/StaticSoundness.lean`, L268) was factored out of
+`initiation_at` to permit. What is proved and what is open, precisely:
+
+* **proved — the certificate's own half.** `DeclsOk` for the table the certificate
+  names, given the carried residue (`declsOk_of_validate`). This is where the *trust*
+  lives, and the pivot did not touch it: it reads `rowsGuarded` and the `decl` atoms
+  of `assumes` and mentions no checker.
+* **proved and unchanged** — safety, and consecution under it (`sound_from`,
+  `step_ok`). The bad-state predicate never moved.
+* **proved** — `egEven`'s residue is still *discharged* (`egEven_residue_discharged`),
+  so the rung that says the pivot buys coverage and not just plumbing is intact.
+* **open** — `hctl`. `CtlOk`'s eval arm is stated over `infer`, so `chkOk c p = true`
+  does not yet produce one. **That is milestone C-1 and it is one premise.**
+
+### 10.5a What C-1 costs
 
 `CtlOk`'s eval clause is literally `infer F Γ e … = some …`
 (`Proof/Static/Konts.lean`), so a `chk`-based accept does not reach `Inv` yet.

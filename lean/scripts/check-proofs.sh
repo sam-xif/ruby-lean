@@ -144,13 +144,32 @@ import RubyCore.Proof.Cert.Ledger
 -- are the milestone's gate and they are one per rung of the verdict ladder:
 -- unconditional with no extension, unconditional with the residue *discharged*, and
 -- conditional on a residue that cannot be.
-#print axioms RubyCore.Proof.Cert.validate_sound
-#print axioms RubyCore.Proof.Cert.validate_sound_carries
+-- The certificate theorems. **Six names were removed here, deliberately**, and the
+-- audit is where that has to be legible rather than a file quietly getting shorter
+-- (`certificate-language.md` §10.5):
+--
+--   validate_sound, validate_sound_carries      -> validate_sound_of_ctl,
+--                                                  validate_sound_assumes
+--   check_accept_of_validate_empty              -> gone: it was `validate` at the empty
+--                                                  certificate equals `check p = accept`,
+--                                                  and `validate` no longer calls `infer`
+--   egVcall_certified, egEven_certified,
+--   egDiv_certified                             -> await C-1; their *validation* facts
+--                                                  and egEven's discharged residue are
+--                                                  audited below in their place
+--
+-- `validate_sound_of_ctl` carries C-1's one open premise (`CtlOk` at `Machine.init p`).
+-- When C-1 lands, the three `_certified` corollaries come back and these lines with
+-- them.
+#print axioms RubyCore.Proof.Cert.validate_sound_of_ctl
+#print axioms RubyCore.Proof.Cert.validate_sound_assumes
 #print axioms RubyCore.Proof.Cert.validate_sound_unconditional
-#print axioms RubyCore.Proof.Cert.check_accept_of_validate_empty
-#print axioms RubyCore.Proof.Cert.egVcall_certified
-#print axioms RubyCore.Proof.Cert.egEven_certified
-#print axioms RubyCore.Proof.Cert.egDiv_certified
+#print axioms RubyCore.Proof.Cert.declsOk_of_validate
+#print axioms RubyCore.Proof.Cert.egVcall_validates
+#print axioms RubyCore.Proof.Cert.egEven_validates
+#print axioms RubyCore.Proof.Cert.egEven_residue_discharged
+#print axioms RubyCore.Proof.Cert.egDiv_validates
+#print axioms RubyCore.Proof.Cert.chkBlockClaim_table_ret
 -- C2 — the ledger. `satProvs_ledgerStore` is `discharge_sound`'s open premise (L262:
 -- "the second premise is real and is not discharged here") closed by the certificate
 -- *stating* the requirement/provision pairing `discharge` had to search for.

@@ -1,57 +1,52 @@
 import RubyCore.Proof.Cert.Bridge
+import RubyCore.Proof.StaticSoundness
+import RubyCore.Proof.Cert.Mono
 
 /-!
-# C1 — `validate_sound`, the composed program-level theorem
+# The composed certificate theorem, and the one premise C-1 discharges
 
-`docs/semantics/certificate-language.md` §3 and milestone **C1**:
+`docs/semantics/certificate-language.md` §3 and milestone **C1** proved
 
 ```lean
-theorem validate_sound (c : Cert) (p : Expr)
-    (h : validate c p = true) (ha : ⟦c.assumes⟧ D θ) :
+theorem validate_sound (c : Cert) (p : Expr) (h : validate c p = true) (ha : ⟦c.assumes⟧) :
     ∀ r, Reaches (Machine.init p) r → ¬ typeStuck r
 ```
 
-This is the theorem the whole pivot exists to force — *"the composed program-level
-soundness theorem the stack currently lacks"* — and the milestone's own prediction
-about its cost holds up: it is **re-plumbing**, and the three obligations §3 prices
-land exactly where that table says.
+**unconditionally**, and it did so by one specific route: `validate`'s sixth conjunct
+*was* `infer (c.table p) [] p true … |>.isSome`, so it *was* `Inv`'s control clause and
+there was nothing to bridge (§9.1).
 
-| obligation | how it is discharged here |
-|---|---|
-| initiation | `initiation_at` (L267) — `initiation` generalized over the table, plus `declsOk_table` for the extension. `StaticSoundness.lean`'s literal-heap `decide`/`rfl` pattern is reused verbatim; nothing about it was ever specific to `declsOf p`. |
-| consecution | **nothing new.** `sound_from` already takes `Inv` at an arbitrary machine and `Inv` ∃-quantifies the table (F1b.8), so `step_ok` is untouched. |
-| safety | **nothing new** — the bad-state predicate is unchanged, which §3 predicted. |
+`validate` no longer calls `infer` (V9–V16; V12 makes the independence a fact about the
+module graph). **So this file's headline theorem is now conditional**, on exactly one
+premise, and that is the honest state of the pivot rather than a detail:
 
-## What the milestone got wrong, and it is worth stating
+```lean
+theorem validate_sound_of_ctl (h : validate c p = true) (ha : …)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
+    ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
+```
 
-§3's table anticipates *"a bridging lemma: `validate`'s per-body checking-mode
-acceptance implies the `FramesOk`/`CtlOk` instance `step_ok` consumes — the analogue
-of `inferOpen_factors`, in the checking direction"*. **No such lemma is needed and
-none is here.** The reason is V1: a certificate names a *table*, and `CtlOk`'s eval
-clause is literally `infer F Γ e … = some …` at that table, so `validate`'s
-`nominalOk` conjunct **is** the instance — there is nothing to bridge, because the
-validator's acceptance and the invariant's clause are the same proposition.
+Read what is and is not open:
 
-What that costs is stated in `Cert/Validate.lean` §3 and is the honest other side of
-the same coin: the per-body `bodies` section is *not* what the theorem reads. Its
-claimed rows are true only after the program's own `def`s run, and `Machine.init p`'s
-heap is before them (V2), so `bodies_certified` is a measured ratchet and C9's heap
-schedule is what would make it a conclusion.
+* **The certificate's own half is proved.** `DeclsOk` for the table the certificate
+  names, given the carried residue, is `declsOk_table` (`Bridge.lean`) — and it is
+  untouched by the pivot, because it reads `rowsGuarded` and the `decl` atoms of
+  `assumes` and mentions no checker at all. That is the half where the *trust* lives.
+* **Safety and consecution are proved and unchanged** — `sound_from`, and `step_ok`
+  underneath it. The bad-state predicate never moved.
+* **The control clause is open.** `CtlOk`'s eval arm is stated over `infer`
+  (`Proof/Static/Konts.lean`), so `chkOk c p = true` does not yet produce one.
 
-## The three shapes of the conclusion, and why there are three
+Milestone **C-1** (§10.6) is exactly the discharge of `hctl` from `chkOk`, and
+`Proof/Cert/Mono.lean` is its first rung — with V20's measurement saying it is a
+tractable port rather than an open-ended one.
 
-* `validate_sound_carries` — conditional on `c.rowAssn`: **one `decl` atom per claimed
-  row and nothing else.** This is the sharp form and the one the other two are proved
-  from.
-* `validate_sound` — §3's statement, conditional on the whole printed `assumes`.
-  Follows from the sharp form by `rowsDeclared`, and is what a reader of the JSON's
-  `carries`/`reports` fields is looking at.
-* `validate_sound_unconditional` — no hypothesis at all, when `deltaRows = []`. An
-  unconditional accept is a different claim and should not have to be read out of a
-  quantifier over an empty list.
-
-§4 of this file is the gate: three worked programs, one per rung of that ladder, each
-a `#check`-able theorem about a concrete program and its concrete certificate.
+**Why the premise is `CtlOk` and not `infer … = some …`.** `initiation_ctl`
+(`Proof/StaticSoundness.lean`, L268) was factored out of `initiation_at` for this: the
+statement below mentions **no `infer`**, so nothing in this file stands in the way of
+deprecating it, and C-1 has one premise to close rather than a shape to reverse-engineer.
+An earlier attempt went the other way — a bridge from `chk` back to `infer` — and was
+deleted for precisely that reason.
 -/
 
 namespace RubyCore
@@ -75,44 +70,58 @@ theorem validate_parts {c : RubyCore.Cert.Cert} {p : Expr} (h : validate c p = t
     c.version = RubyCore.Cert.version ∧
     rowsGuarded (declsOf p) c.deltaRows = true ∧
     rowsDeclared c = true ∧ eqsOk c = true ∧ bodiesOk c p = true ∧
-    nominalOk c p = true := by
+    chkOk c p = true := by
   unfold validate at h
   simp only [Bool.and_eq_true, beq_iff_eq] at h
   exact ⟨h.1.1.1.1.1, h.1.1.1.1.2, h.1.1.1.2, h.1.1.2, h.1.2, h.2⟩
 
-/-! ## 2. The theorem -/
+/-! ## 2. The half that is proved: the table the certificate names is sound
 
-/-- **`validate_sound`, in its sharp form**: conditional on the *carried rows* and
-    nothing else.
+This is the certificate's own contribution and the only place its trust enters. It is
+independent of which checker `validate` runs — `declsOk_table` reads `rowsGuarded` and
+the `decl` atoms, and mentions no judgement. -/
 
-    Read the proof for how little there is: `declsOk_table` is the extension's
-    obligation (`Proof/Cert/Bridge.lean`), `nominalOk` is `CtlOk`'s clause verbatim,
-    and `initiation_at`/`sound_from` are the existing machinery. No consecution case
-    and no new invariant conjunct — which is what makes the certificate architecture
-    cheap and is the claim §3 makes about it. -/
-theorem validate_sound_carries {c : RubyCore.Cert.Cert} {p : Expr}
+/-- **`DeclsOk` for the claimed table**, at the boot heap, conditional on the carried
+    rows. `declsOf p`'s own obligation is F1a's (`rfl` at the boot heap) and each
+    claimed row costs exactly one `EntryOk`, which `rowsDeclared` forces to appear as a
+    `decl` atom of `assumes`. -/
+theorem declsOk_of_validate {c : RubyCore.Cert.Cert} {p : Expr}
     (h : validate c p = true)
     (ha : denote (c.table p) c.thetaFn c.rowAssn (Machine.init p).heap) :
-    ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
-  obtain ⟨-, hg, -, -, -, hn⟩ := validate_parts h
-  refine sound_from (initiation_at (F := c.table p) ?_ ?_)
-  · exact declsOk_table (tableOk_declsOk tableOk_initHeap classOk_initHeap) hg ha
-  · unfold nominalOk at hn; exact hn
+    DeclsOk (c.table p) Boot.initHeap :=
+  declsOk_table (tableOk_declsOk tableOk_initHeap classOk_initHeap)
+    (validate_parts h).2.1 ha
 
-/-- **§3's statement, verbatim.** *This JSON certificate, this program, therefore no
-    reachable `typeStuck` — conditional only on the printed residue.* -/
-theorem validate_sound {c : RubyCore.Cert.Cert} {p : Expr}
+/-! ## 3. The composed theorem, modulo the control clause -/
+
+/-- **§3's statement, with its one open premise named.** Everything but `hctl` is
+    proved: the table's soundness from the certificate (§2), initiation from
+    `initiation_ctl`, consecution and safety from `sound_from`.
+
+    `hctl` is milestone C-1. Note what the statement does *not* mention: `infer`. -/
+theorem validate_sound_of_ctl {c : RubyCore.Cert.Cert} {p : Expr}
     (h : validate c p = true)
-    (ha : denote (c.table p) c.thetaFn c.assumes (Machine.init p).heap) :
+    (ha : denote (c.table p) c.thetaFn c.rowAssn (Machine.init p).heap)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
-  validate_sound_carries h (rowAssn_of_assumes (validate_parts h).2.2.1 ha)
+  sound_from (initiation_ctl (declsOk_of_validate h ha) hctl)
 
-/-- **And an unconditional accept is unconditional.** `Cert.unconditional` is the
+/-- The same, over the whole printed `assumes` rather than the carried rows — which is
+    what a reader of the JSON's `carries`/`reports` fields is looking at. -/
+theorem validate_sound_assumes {c : RubyCore.Cert.Cert} {p : Expr}
+    (h : validate c p = true)
+    (ha : denote (c.table p) c.thetaFn c.assumes (Machine.init p).heap)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
+    ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
+  validate_sound_of_ctl h (rowAssn_of_assumes (validate_parts h).2.2.1 ha) hctl
+
+/-- **And an unconditional accept needs no residue.** `Cert.unconditional` is the
     `Bool` the JSON reports, so the two readings cannot come apart. -/
 theorem validate_sound_unconditional {c : RubyCore.Cert.Cert} {p : Expr}
-    (h : validate c p = true) (hu : c.unconditional = true) :
+    (h : validate c p = true) (hu : c.unconditional = true)
+    (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
-  refine validate_sound_carries h ?_
+  refine validate_sound_of_ctl h ?_ hctl
   have hnil : c.deltaRows = [] := by
     unfold RubyCore.Cert.Cert.unconditional at hu
     simpa using hu
@@ -120,27 +129,11 @@ theorem validate_sound_unconditional {c : RubyCore.Cert.Cert} {p : Expr}
   rw [hnil]
   exact trivial
 
-/-- **The certificate does not widen `check`'s accepts for free.** A certificate with
-    no rows certifies exactly the programs `check` accepts, and this is the direction
-    that says so: `validate` at the empty certificate is `check p = .accept`. Kept as a
-    theorem rather than a remark because it is what makes the round-trip property of
-    §6 C0 a fact rather than an observation about six examples. -/
-theorem check_accept_of_validate_empty {p : Expr}
-    (h : validate ({} : RubyCore.Cert.Cert) p = true) : check p = .accept := by
-  obtain ⟨-, -, -, -, -, hn⟩ := validate_parts h
-  have hn' : (infer (declsOf p) [] p true { cls := "Object" }).isSome = true := by
-    simpa [nominalOk, RubyCore.Cert.Cert.table] using hn
-  unfold check
-  cases hr : infer (declsOf p) [] p true { cls := "Object" } with
-  | none => rw [hr] at hn'; exact absurd hn' (by simp)
-  | some r => rfl
+/-! ## 4. Reading the residue
 
-/-! ## 3. Reading the residue
-
-The `denote` obligation `validate_sound` quantifies over is `EntryOk` at each claimed
-row (`Proof/Static/Assn.lean`'s `denote`, `.decl` arm), which is exactly what the
-`carries:` line prints. Two lemmas so that a consumer never has to unfold `Assn.all`:
-the residue is a conjunction of `EntryOk`s and nothing else. -/
+The `denote` obligation the theorems quantify over is `EntryOk` at each claimed row
+(`Proof/Static/Assn.lean`'s `denote`, `.decl` arm), which is exactly what the
+`carries:` line prints. -/
 
 /-- One claimed row: the residue *is* the `EntryOk` for it. -/
 theorem rowAssn_single {c : RubyCore.Cert.Cert} {D : Decls} {θ : TyVar → Ty} {h : Heap}
@@ -151,62 +144,24 @@ theorem rowAssn_single {c : RubyCore.Cert.Cert} {D : Decls} {θ : TyVar → Ty} 
   rw [hr]
   exact he
 
-/-! ## 4. The gate — three worked programs, one per rung
+/-! ## 5. The gate, as far as it goes
 
-Each is a theorem about a *concrete program and a concrete certificate*, so each is
-`#check`-able and each is in the axiom audit below. The three are chosen to be the
-three different things an accept can mean. -/
+The three worked programs of C1 — one per rung of the verdict ladder — with their
+*validation* facts, which are what the pivot changed and are now each one `decide`
+rather than a fifteen-name `simp` list over `infer`'s equation lemmas. Their
+`_certified` corollaries wait on C-1; keeping the validation facts here is what makes
+that a one-line change when it lands, and keeps them from silently rotting. -/
 
-/-! ### Rung 1 — unconditional, no extension
+theorem egVcall_validates :
+    validate ({} : RubyCore.Cert.Cert) RubyCore.Cert.egVcall = true := by decide
 
-`egVcall` (`Proof/StaticSoundness.lean`'s `egVcall`, and `Cert/Validate.lean`'s): the
-L265 headline's shape at `String`, the one class the nominal fragment can both reopen
-and produce a value of.
+theorem egVcall_sound_tier :
+    RubyCore.Cert.Cert.certifies ({} : RubyCore.Cert.Cert) RubyCore.Cert.egVcall = true := by
+  decide
 
-```ruby
-class String
-  def value; 1; end
-  def get; value; end
-  "x".get
-end
-```
-
-`check` already accepts it (`egVcall_safe`), and the point of the certificate here is
-the **round trip**: the empty certificate re-derives the same conclusion, so nothing
-about the pivot lost ground. -/
-
-theorem egVcall_validates : validate ({} : RubyCore.Cert.Cert) RubyCore.Cert.egVcall = true := by
-  simp [validate, RubyCore.Cert.egVcall, rowsGuarded, rowsDeclared, eqsOk, bodiesOk,
-    nominalOk, RubyCore.Cert.Cert.table, Assn.eqAtoms, infer, inferArgs, subTys, subTy,
-    inferSeq, inferElems, declsOf, declaresName, baseDecls, readableClasses,
-    reopenableClasses, defFree, defFreeAll, addRow, declsFor, sigOf, declFor, declOf?,
-    tyClassNames, groundClassNames, isSelf]
-
-theorem egVcall_certified :
-    ∀ r, ReachableResult (Machine.init RubyCore.Cert.egVcall) r → ¬ typeStuck r :=
-  validate_sound_unconditional egVcall_validates (by decide)
-
-/-! ### Rung 2 — a table extension whose residue is **discharged**, so the
-conclusion is unconditional anyway
-
-```ruby
-1.even?
-```
-
-`check` abstains: `even?` is absent from `baseDecls`, and the absence is a coverage
-gap rather than a decision — `Types/Decls.lean` picked `zero?` as the one nullary row
-for two measured reasons (no bootstraptest program defines `zero?`, and `abs` is
-defined twice in the prelude), and `even?` was simply never added.
-
-So the certificate claims the row, the residue is `Integer ▷ even? : () → Boolean`,
-and **that residue is provable**: `entryOk_int_nullary` at the boot heap, which is
-the *"three-line instantiation"* `static-soundness-poc.md` §8.2(5) advertises as the
-payoff of parameterising the conformance lemma. The result is a program that `check`
-rejects and a certificate proves safe with **no hypothesis at all**.
-
-This is the rung that says the pivot buys coverage and not just plumbing, and it says
-it in the honest currency: the residue is not assumed away, it is discharged. -/
-
+/-- `1.even?` — the rung whose residue is *discharged*, so the conclusion will be
+    unconditional once C-1 lands. `even?` is absent from `baseDecls` for no reason at
+    all, so the row is claimable and `entryOk_int_nullary` discharges it. -/
 def egEven : Expr := .send (some (.int 1)) "even?" [] none
 
 def egEvenRow : RowClaim :=
@@ -217,26 +172,14 @@ def egEvenCert : RubyCore.Cert.Cert :=
   { deltaRows := [egEvenRow],
     assumes := .decl .int "even?" { params := [], ret := .bool } }
 
-/-- `check` abstains — the row is absent, so there is no opinion either way. -/
-theorem egEven_unknown : check egEven = .unknown := by
-  simp [check, egEven, infer, inferArgs, subTys, subTy, illTyped, tableRefutes, defTy,
-    sigOf, declFor, declOf?, declsFor, baseDecls, tyClassNames, declsOf]
-
-theorem egEven_validates : validate egEvenCert egEven = true := by
-  simp [validate, egEvenCert, egEvenRow, egEven, rowsGuarded, rowGuards, rowsDeclared,
-    entailAtom, Assn.declAtoms, Assn.eqAtoms, eqsOk, bodiesOk, nominalOk,
-    RubyCore.Cert.Cert.table, nomTy, Provenance.honoured,
-    infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, addRow,
-    declsFor, sigOf, declFor, declOf?, tyClassNames, groundClassNames, isSelf]
+theorem egEven_validates : validate egEvenCert egEven = true := by decide
 
 /-- `Integer#even?` resolves at the boot heap, by the same eight `rfl`s
-    `tableOk_initHeap`'s four entries use. That it is eight `rfl`s and not a
-    `native_decide` is L73's reducibility discipline being spent (§8.4). -/
+    `tableOk_initHeap`'s four entries use. -/
 theorem intResolves_even : IntBuiltinResolves Boot.initHeap "even?" "Integer#even?" :=
   ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
-/-- …and conforms to `() → Boolean`. `entryOk_int_nullary` at
-    `f := fun x => .bool (x % 2 == 0)`, which is what `Builtins.run` answers by `rfl`. -/
+/-- …and conforms to `() → Boolean`. -/
 theorem entryOk_even {D : Decls} :
     EntryOk D Boot.initHeap .int "even?" { params := [], ret := .bool } :=
   Or.inl (entryOk_int_nullary (f := fun x => .bool (x % 2 == 0)) intResolves_even
@@ -247,81 +190,52 @@ theorem entryOk_even {D : Decls} :
       simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
         Builtins.toAryDefer?]))
 
-/-- **The gate.** A program `check` rejects, certified safe **unconditionally** —
-    the residue the certificate carries is discharged rather than assumed. -/
-theorem egEven_certified :
-    ∀ r, ReachableResult (Machine.init egEven) r → ¬ typeStuck r :=
-  validate_sound_carries egEven_validates
-    (rowAssn_single (r := egEvenRow) rfl entryOk_even)
+/-- **The residue is provable**, which is the whole point of that rung: the accept will
+    be unconditional, not merely conditional-on-something-plausible. Kept green so the
+    conformance proof does not rot while C-1 is outstanding. -/
+theorem egEven_residue_discharged :
+    denote (egEvenCert.table egEven) egEvenCert.thetaFn egEvenCert.rowAssn Boot.initHeap :=
+  rowAssn_single (r := egEvenRow) rfl entryOk_even
 
-/-! ### Rung 3 — a residue that **cannot** be discharged, and the theorem says so
-
-```ruby
-1 / 2
-```
-
-`check` abstains here too, and this time the absence is a *decision*:
-`Types/Decls.lean` records that `/` may not appear in `baseDecls` because
-`1 / 0` raises, so `Integer#/ : (Integer) → Integer` is **not** a conformant row and
-no proof of the residue exists.
-
-The certificate accepts, and the conclusion is exactly as strong as the residue is
-true — which is to say, not true. That is the point of keeping this example: an
-accept whose residue is false is *visible* as such, because the residue is printed
-and quantified over. §8 risk 3's mitigation is not a policy here, it is the shape of
-the theorem: a reader who cannot prove `EntryOk … "/" …` cannot instantiate this. -/
-
+/-- `1 / 2` — the rung whose residue *cannot* be discharged, kept for exactly that
+    reason: `Types/Decls.lean` records that `/` may not appear in `baseDecls` because
+    `1 / 0` raises, so no proof of this residue exists and a reader who cannot produce
+    one cannot instantiate the theorem. §8 risk 3's mitigation is the shape of the
+    statement, not a policy. -/
 theorem egDiv_validates :
-    validate RubyCore.Cert.egDivCert RubyCore.Cert.egDiv = true := by
-  simp [validate, RubyCore.Cert.egDivCert, RubyCore.Cert.egDiv, rowsGuarded, rowGuards,
-    rowsDeclared, entailAtom, Assn.declAtoms, Assn.eqAtoms, eqsOk, bodiesOk, nominalOk,
-    RubyCore.Cert.Cert.table, nomTy, Provenance.honoured,
-    infer, inferArgs, subTys, subTy, declsOf, declaresName, baseDecls, addRow,
-    declsFor, sigOf, declFor, declOf?, tyClassNames, groundClassNames, isSelf]
+    validate RubyCore.Cert.egDivCert RubyCore.Cert.egDiv = true := by decide
 
-/-- **Conditional, and the hypothesis is the printed residue verbatim.** Compare
-    `egEven_certified`, which has none: the difference between the two is a
-    conformance proof, and that is exactly where the trust boundary sits. -/
-theorem egDiv_certified
-    (hres : EntryOk (RubyCore.Cert.egDivCert.table RubyCore.Cert.egDiv)
-              (Machine.init RubyCore.Cert.egDiv).heap .int "/"
-              { params := [.int], ret := .int }) :
-    ∀ r, ReachableResult (Machine.init RubyCore.Cert.egDiv) r → ¬ typeStuck r :=
-  validate_sound_carries egDiv_validates
-    (rowAssn_single (r := { cls := "Integer", name := "/",
-                            sig := { params := [.int], ret := .int },
-                            why := .assumed "rbi" }) rfl hres)
+/-- …and it is in the sound tier: a *table* extension is not a node claim. -/
+theorem egDiv_sound_tier :
+    RubyCore.Cert.Cert.certifies RubyCore.Cert.egDivCert RubyCore.Cert.egDiv = true := by
+  decide
 
-/-! ## 5. Axiom hygiene
+/-! ## 6. Axiom hygiene
 
-The C1 exit criterion, and the same baseline every other headline theorem in this
-project has: `[propext, Classical.choice, Quot.sound]` and nothing else. In
-particular no `native_decide`/`ofReduceBool` — §7 norm 5, and §8 risk 1's reason for
-it: *"otherwise the headline theorem inherits `ofReduceBool` and 'replayed in Lean'
-loses exactly the force the idea is after."*
+Every theorem above is `[propext, Classical.choice, Quot.sound]` and nothing else — in
+particular no `native_decide`/`ofReduceBool`, which is §7 norm 5 and §8 risk 1's reason
+for it. `scripts/check-proofs.sh` runs the same audit; these are here so the file fails
+on its own if the baseline moves. -/
 
-`scripts/check-proofs.sh` runs the same audit; these are here so the file fails on its
-own if the baseline moves. -/
-
-/-- info: 'RubyCore.Proof.Cert.validate_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RubyCore.Proof.Cert.validate_sound_of_ctl' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms validate_sound
+#print axioms validate_sound_of_ctl
 
 /-- info: 'RubyCore.Proof.Cert.validate_sound_unconditional' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms validate_sound_unconditional
 
-/-- info: 'RubyCore.Proof.Cert.egVcall_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RubyCore.Proof.Cert.declsOk_of_validate' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms egVcall_certified
+#print axioms declsOk_of_validate
 
-/-- info: 'RubyCore.Proof.Cert.egEven_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RubyCore.Proof.Cert.egEven_residue_discharged' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms egEven_certified
+#print axioms egEven_residue_discharged
 
-/-- info: 'RubyCore.Proof.Cert.egDiv_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+/-- info: 'RubyCore.Proof.Cert.egVcall_validates' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
-#print axioms egDiv_certified
+#print axioms egVcall_validates
 
 end Cert
 end Proof

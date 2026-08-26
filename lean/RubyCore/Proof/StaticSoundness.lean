@@ -99,8 +99,8 @@ theorem classOk_initHeap : ClassOk Boot.initHeap :=
     The two hypotheses are exactly the two places it appeared: the table is sound at
     the boot heap, and the program types at it. Everything else here is a computation
     on a literal heap. -/
-theorem initiation_at {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
-    (h : (infer F [] p true { cls := "Object" }).isSome = true) : Inv (Machine.init p) := by
+theorem initiation_ctl {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
+    (hc : CtlOk F { cls := "Object" } [] [] (Machine.init p)) : Inv (Machine.init p) := by
 
   refine ⟨
     (show NoHook (Machine.init p).heap from
@@ -133,15 +133,29 @@ theorem initiation_at {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
     · exact fun hz => absurd rfl hz
     · exact fun sc hsc => absurd hsc (by simp)
     · simp [Machine.init, Machine.initOn, Array.getD]
-  · refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
-    show CtlOk F { cls := "Object" } [] [] (Machine.init p)
+  · exact ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), hc⟩
+
+/-- **`initiation_at`, factored** (L268). `initiation_ctl` above takes the control
+    clause *itself*; this derives it from the nominal judgement, which is the only
+    producer of one today.
+
+    The split exists for the certificate pivot. `validate` no longer calls `infer`
+    (`docs/semantics/certificate-language.md` §10), so the composed certificate theorem
+    needs to name its open obligation, and the obligation it wants to name is `CtlOk` —
+    not `infer … = some …`. Stating it over `CtlOk` is what lets
+    `Proof/Cert/Sound.lean` hold the theorem with **no `infer` in its statement**, and
+    lets milestone C-1 discharge exactly one premise. Nothing about the proof moved;
+    the last bullet is now a hypothesis. -/
+theorem initiation_at {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
+    (h : (infer F [] p true { cls := "Object" }).isSome = true) : Inv (Machine.init p) :=
+  initiation_ctl hD (by
     unfold CtlOk
     cases hr : infer F [] p true { cls := "Object" } with
     | none => rw [hr] at h; exact absurd h (by simp)
     | some r =>
       obtain ⟨τ, Γ', D'⟩ := r
       exact ⟨τ, τ, Γ', D', Γ', by simpa [Machine.init, Machine.initOn] using hr,
-        by simp, SubEnv.refl _, KontOk.nil (by simp) (by simp)⟩
+        by simp, SubEnv.refl _, KontOk.nil (by simp) (by simp)⟩)
 
 /-- Initiation, for the machine `Machine.init` builds — `initiation_at` at the table
     `check` runs against, which is `declsOf p` (`Types/Decls.lean`: a function of the
