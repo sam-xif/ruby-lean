@@ -289,11 +289,19 @@ from `--assn`), `validate`, `ledger` (C2's coherent single-class pairing), `solv
 (C3's `theta`), and `ratchet` — the **fourth ratchet** over the slice, plus the
 `needed`-census classification that is C3's own measurement. `rbi.py` ingests Sorbet
 `sig`s (C4), `core-rows.txt` is the hand-written core-library stand-in (the checkout
-ships no core RBI), `tyjson.py` the wire encoding. See
+ships no core RBI), `tyjson.py` the wire encoding, and `llm.py` is C4's **LLM arm**
+(`--llm`): Claude is given the file, every per-body verdict, the type language
+positively *and* negatively, and the one-row-per-name rule, and returns rows under a
+JSON schema. Responses are cached under `certify/certs/llm/` and **committed** — a
+ratchet whose number depends on a live sample is not a ratchet — with `--llm-offline`
+for cache-only runs and `--llm-refresh` to re-ask deliberately. See
 [`certify/implementation-notes.md`](certify/implementation-notes.md) for revertable
-decisions (**E1–E16**) — including the measured ones: the settling pass that caught a
+decisions (**E1–E18**) — including the measured ones: the settling pass that caught a
 wrong `Token#to_s : Float`, the greedy plateau that needed a second starting point
-(6 → 10 on `version.rb`), and why all six remaining ratchet bodies are blocked by R2.
+(6 → 10 on `version.rb`), why all six remaining ratchet bodies are blocked by R2, and
+E18's result — the LLM proposes 10 rule-respecting rows and the ratchet does **not**
+move, because generation is not the bottleneck: three *schema* limits are (R2, no
+`Assn` atom for a constant, no inherited-declaration lookup).
 
 ### `concolic/` — finding type errors by concolic execution (runnable)
 Phase 2 of the Direction-A witness finder: a **concolic search engine** (Python + z3)

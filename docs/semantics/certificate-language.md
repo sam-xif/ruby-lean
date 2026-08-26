@@ -571,9 +571,10 @@ language's own next rung"* — and this is the measurement that prices it: **an
 `Assn.const` atom, with a `Certifies`/`InvA` clause, is worth more than half the
 remaining census.**
 
-So the honest re-ordering of §6 is: **R2, then `Assn.const`, then C5.** Recorded here
-rather than acted on, because both are rule/schema changes in the standing tree and
-this initiative's norm 7 keeps it out of them.
+So the honest re-ordering of §6 is: **R2, then `Assn.const`, then C5** — and §9.9 adds
+a third, **T2 (`Sub`)**, from an independent direction. Recorded here rather than acted
+on, because all three are rule/schema changes in the standing tree and this
+initiative's norm 7 keeps it out of them.
 
 ### 9.8 Two corrections to documents this initiative depends on
 
@@ -588,3 +589,56 @@ this initiative's norm 7 keeps it out of them.
   first RBI parser read `def`s only, which misses exactly those three accessors —
   methods with a signature and no body, which is what a claimed row is *for* and what
   `bodyOk` can never derive (E14).
+
+### 9.9 The LLM arm of C4, and the third name on the wall
+
+§6 C4 ends *"LLM-proposed rows ride the same path with a different `src`"*, and
+`certify/llm.py` (`--llm`) is that path: Claude is given the file, every per-body
+verdict, the type language positively **and** negatively, the rows already claimed, and
+the one-row-per-name rule; it returns rows under a JSON schema; they become `.assumed`
+claims with `src: "llm:<model>"` and go through the same search (E15) and the same
+validator as everything else. Responses are **cached and committed** — a ratchet whose
+number depends on a live sample is not a ratchet (§7 norm 4).
+
+**Measured over the slice (`claude-opus-5`): 34 rows proposed, 34 expressible, 0
+dropped, fourth ratchet unchanged at 11.** The certificates carry more — `version.rb`
+goes from 38 claimed rows to 47 — and certify exactly the same bodies. Every rule
+respected on the first attempt — no
+constant reads, no `T.class_of` receivers, no union types, no duplicate names — and the
+rows are correct Ruby. They cannot be *spent*, for three reasons, and the third is new:
+
+* **R2** — the row that would help (`Token#value`) is unavailable, because `value` is
+  already claimed on `NullToken`/`StringToken`/`NumericToken`;
+* **no `Assn` atom for a constant** — the bodies wanting `Regexp#match` and
+  `Pathname#*` are blocked on `::Regexp` and `::Pathname` first;
+* **[new] no inherited-declaration lookup.** Seven of the ten rows are on `Comparable`
+  or `Object`. `tyClassNames (.cls "Version") = ["Version"]`, so `sigOf` reads a
+  class's *own* row only — verified: a row on `Comparable#<` answers at
+  `.cls "Comparable"` and `none` at `.cls "Version"`. `Types/Decls.lean` records this
+  as deliberate (*"it is **not** the ancestors walk … which is `Sub`'s job
+  (`PLAN.md` W5 T2) and is deliberately still absent"*), and nothing is ever typed
+  `.cls "Object"`.
+
+Two of the eight files have no cached proposal: the largest, `vulns/vulnerability.rb`,
+reproducibly **stalls** the request (blocked on I/O, no `stop_reason`), and the file
+behind it never got its turn. Both contribute 0 certified bodies in every configuration
+measured, so the numbers above are complete for the ratchet — stated because "34 rows
+over the slice" would otherwise read as all eight. The stall is why `llm.py` sets an
+explicit client timeout and why a failed call is reported per-file rather than losing
+the batch (E18a).
+
+The model flagged the third blocker itself, unprompted, in the `notes` field the schema
+asks for — *"if it uses a different ancestor those five rows will simply not fire"* — along
+with a blocker §9.6's own analysis had missed (that `value` was already claimed
+elsewhere).
+
+So the reading, and it is §8 risk 2 arriving on schedule (*"certificates change who
+searches, not what is provable"*):
+
+> **Generation is not the bottleneck.** What stands between this slice and a
+> certificate is three **schema** limits in the standing tree, not any emitter's
+> ability to produce signatures.
+
+Which makes the re-ordering of §9.7 three items long: **R2, `Assn.const`, and T2
+(`Sub`) — all three before C5.** The `Comparable` rows are the concrete witness for
+the last of them.
