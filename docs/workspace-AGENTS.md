@@ -170,7 +170,7 @@ Start at [`docs/semantics/README.md`](docs/semantics/README.md) (reading order +
 | `linearization.md` | worked example of nontrivial desugaring: hoisting control-flow jumps out of operand position (`"#{next}"`) |
 | `co-semantics.md` | **framing (early draft, to grow):** Ruby + Rails as a *pair* of semantics at two altitudes joined by a refinement/bisimulation correspondence — structural `α` where macros define methods, observational `α` where `method_missing` does not; correspondences testable via `obs⁺` before the Lean model exists. §5: proof-goal shape (coupling invariant `Inv`, stuttering forward simulation — same machinery as `relating-language-and-substrate.md` — `escape` event for invariant-breaking programs, miniRails not real Rails in the proof). §6: everything hinges on `Inv` — clause taxonomy + validate it as an executable heap predicate against CRuby first |
 | `types-and-preservation.md` | **research artifact (to grow):** (A) formalization-oriented deep dive on **Sorbet** (type grammar, flow-sensitive narrowing, unsound-by-design stance + escape hatches, `# typed:` strictness levels, runtime `sig` enforcement as the gradual boundary via `T.untyped`); (B) broad survey of how **type preservation/soundness** is proved (Wright–Felleisen, Featherweight Java + "stupid casts", TypeScript/Safe-TypeScript + store typing `Σ`, DRuby/PRuby, Typed Racket occurrence typing, gradual-typing safety + blame theorem + gradual guarantee, Lean/Coq/Isabelle mechanization); (C) maps onto our `Step` — recommends a *runtime* three-outcome safety statement, reuses `Step.heap_monotone` as store typing, treats a sig-violating heap mutation as a type `escape` (cf. `co-semantics.md` §5.3); two cheapest steps (`obs⁺` gradual-guarantee probe, `srb`/`T.reveal_type` typing oracle) need no Lean. Verified via adversarial research pass; two refuted claims recorded as corrections (`T.cast` *is* runtime-checked; `T.let` isn't the only dual-checked assertion). §C.5: the discipline decision (extrinsic typing + store typing `Σ` over the machine) + Lean shape |
-| `certificate-language.md` | **design (2026-08-25, not built):** type-checking as **certificate replay** — the untrusted-emitter/trusted-validator pivot (back to `../type-safety-by-reachability.md` §4/§6). The `Cert` grammar (`theta`/`deltaRows`+provenance/`bodies`/`ledger`/`assumes`) reusing `Assn`/`Row`/`ASig` as the vocabulary; `validate` search-free and kernel-`decide`d; `validate_sound` as the composed program-level theorem through `invariant_sound`; design dimensions D1–D6 (join-point stackmaps, call-site monomorphization, boot schedules, Sorbet `static`/`guarded` rows, an `unsafe` refutation polarity, per-file linking); milestones **C0–C9** with gates, measured against the slice census + a new fourth ratchet (bodies certified-by-replayed-certificate); `validate_sound` proof **in scope** at C1 with a priced obligation table; governed by `homebrew/PLAN.md` §4 norms (restated in its §7) and **isolated** in `lean/RubyCore/Cert/` + `Proof/Cert/` (trusted, V-numbers) and top-level `certify/` (untrusted emitters, E-numbers), import-only against `Types/`/`Proof/Static/` |
+| `certificate-language.md` | **design + §9 as built (C0–C4 done, 2026-08-25):** type-checking as **certificate replay** — the untrusted-emitter/trusted-validator pivot (back to `../type-safety-by-reachability.md` §4/§6). The `Cert` grammar (`theta`/`deltaRows`+provenance/`bodies`/`ledger`/`assumes`) reusing `Assn`/`Row`/`ASig` as the vocabulary; `validate` search-free; **`validate_sound` proved** as the composed program-level theorem through `invariant_sound`; design dimensions D1–D6; milestones **C0–C9** with gates, measured against the slice census + the **fourth ratchet** (bodies certified-by-replayed-certificate, now **11**). §9 records the corrections the build forced: what a certificate *is* is the **declaration table** (so §3's bridging lemma is unnecessary — `nominalOk` *is* `CtlOk`'s clause); `.fromDef` is unsound at `Machine.init p` and belongs to C9's heap phases; the kernel-replay cost is inherited from `infer`'s WF recursion, not created; and the two rungs the measurements name as **coming before C5** — R2 (name-global `declaresName`, now blocking three separate things) and an `Assn` atom for a **constant** (61% of the 85-`needed` census is class-object receivers, i.e. constant reads). Implementation: `lean/RubyCore/Cert/` + `Proof/Cert/` (trusted, **V1–V8**), `certify/` (untrusted, **E1–E16**) |
 | `type-judgments.md` | **spec (implementation catalog, to grow):** the typing layer's reference — every judgment form (`Ty`, `Sub` [= the `ancestors` walk], `Consistent`/`≲` [gradual boundary, non-transitive], `Join`, `mtype` [= store-typing mirror of `Heap.lookup`], `narrow` [occurrence typing], `HasType` [engine, one rule per `Expr` head, `send` is the whole game], `KontOk`/`ConfigTy` [type the machine state, not just exprs], `StoreOk` [`Δ ⊨ H`]); metatheorem statements (preservation up-to-subtyping / progress / gradual three-outcome safety); staging T1 (the exact fragment already in `Proof/Step.lean`) → T2 send → T3 gradual → T4 flow-sensitivity → T5+ generics. Companion to `types-and-preservation.md` (rationale). Extrinsic discipline: defined over the untyped syntax, reuses `Step.heap_monotone` as store growth |
 
 Evidence tags used throughout: **[V]** verified against CRuby, **[D]** from docs/ISO 30170,
@@ -267,6 +267,33 @@ cases, 0 disagree — and the ordered next steps: L1 blocks done, next L2 classe
 revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
 `lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
+
+`RubyCore/Cert/` + `RubyCore/Proof/Cert/` are the **certificate language**
+(`docs/semantics/certificate-language.md`), deliberately isolated: import-only against
+`Types/`/`Proof/Static/`, with `Main.lean`'s `--certify` the single wiring point.
+`Format.lean`/`Validate.lean`/`Ledger.lean` are the trusted checker (the JSON codec is
+split out into `Json.lean` because `Lean.Json.parse` does not reduce in the kernel);
+`Proof/Cert/Sound.lean` proves **`validate_sound`** — *this certificate, this program,
+therefore no reachable `typeStuck`, conditional only on the printed residue* — and
+`Proof/Cert/Ledger.lean` closes `discharge_sound`'s premise that L262 left open.
+Decisions: [`lean/RubyCore/Cert/implementation-notes.md`](lean/RubyCore/Cert/implementation-notes.md)
+(**V1–V8**).
+
+### `certify/` — the untrusted certificate emitters (runnable)
+The **generation** half of `docs/semantics/certificate-language.md`, and everything in
+it is on the untrusted side of that document's §1 trust boundary: a bad certificate
+costs a body we failed to certify, never a false "type-checked". Talks to Lean *only*
+through the versioned certificate JSON (`rubycore --certify FILE`) — nothing here links
+against or patches the Lean tree. `certify.py` is one CLI: `emit` (self-certification
+from `--assn`), `validate`, `ledger` (C2's coherent single-class pairing), `solve`
+(C3's `theta`), and `ratchet` — the **fourth ratchet** over the slice, plus the
+`needed`-census classification that is C3's own measurement. `rbi.py` ingests Sorbet
+`sig`s (C4), `core-rows.txt` is the hand-written core-library stand-in (the checkout
+ships no core RBI), `tyjson.py` the wire encoding. See
+[`certify/implementation-notes.md`](certify/implementation-notes.md) for revertable
+decisions (**E1–E16**) — including the measured ones: the settling pass that caught a
+wrong `Token#to_s : Float`, the greedy plateau that needed a second starting point
+(6 → 10 on `version.rb`), and why all six remaining ratchet bodies are blocked by R2.
 
 ### `concolic/` — finding type errors by concolic execution (runnable)
 Phase 2 of the Direction-A witness finder: a **concolic search engine** (Python + z3)

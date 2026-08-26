@@ -46,7 +46,7 @@ iteration); and CHC/Spacer as the concrete instantiation of the untrusted invari
 engine that `invariant_sound` was built to check. Includes a literature table marking
 which references were verified in-session.
 
-**Design:** [The certificate language](certificate-language.md) — type-checking as
+**Design + as built (C0–C4):** [The certificate language](certificate-language.md) — type-checking as
 **certificate replay**: the pivot back to `type-safety-by-reachability.md` §4/§6's
 certifying-not-trusted architecture, now that the invariant machinery exists to receive
 it. Generation (untrusted: solvers, RBI ingestion, LLMs) is decoupled from validation (a
@@ -56,11 +56,16 @@ search-free, kernel-`decide`d `validate` + a once-proved `validate_sound` throug
 in the conclusion. Design dimensions D1–D6 (stackmap-style join records, monomorphic
 instantiations, boot schedules, Sorbet `static`/`guarded` row modes, a refutation
 polarity, per-file linking) and milestones **C0–C9**, each with a gate and a ratchet —
-the new fourth ratchet is *bodies certified-by-replayed-certificate*. Proving
-`validate_sound` is **in scope** (C1, with a priced proof plan); the work is governed by
-the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own directories**
-(`lean/RubyCore/Cert/` + `Proof/Cert/` trusted, top-level `certify/` untrusted;
-import-only dependence on the existing trees).
+the new fourth ratchet is *bodies certified-by-replayed-certificate*. **C0–C4 are built** and §9
+is the as-built account: `validate_sound` is proved and axiom-clean, the fourth ratchet
+stands at **11**, and the corrections the build forced are recorded there — a certificate
+names the **declaration table** (so §3's anticipated bridging lemma is unnecessary),
+`.fromDef` is unsound at `Machine.init p`, the kernel-replay cost is inherited from
+`infer` rather than created, and the two rungs the measurements put **before C5** are R2
+(name-global `declaresName`) and an `Assn` atom for a **constant**. The work is governed
+by the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own
+directories** (`lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
+`certify/` untrusted with E-numbers; import-only dependence on the existing trees).
 
 **Instrumentation design:** [Concolic dataflow tracing](concolic-dataflow.md) — how the
 model should emit *symbolic terms* (not just branch directions) so the concolic engine can

@@ -1,6 +1,15 @@
 # The certificate language — type-checking as certificate replay
 
-**Design artifact (2026-08-25). Nothing here is built.** Origin: an advisor suggestion —
+> **Status (2026-08-25): C0–C4 built.** `validate` and the versioned JSON format are
+> in [`../../lean/RubyCore/Cert/`](../../lean/RubyCore/Cert/) (**V-numbers**), the
+> proved `validate_sound` in
+> [`../../lean/RubyCore/Proof/Cert/`](../../lean/RubyCore/Proof/Cert/), the untrusted
+> emitters in [`../../certify/`](../../certify/) (**E-numbers**). `rubycore --certify
+> FILE` is the entry point. §9 records what the ladder got right and what it got
+> wrong, per milestone; the ladder itself (§6) is left as written so the corrections
+> are legible against it.
+
+**Design artifact (2026-08-25). §1–§8 as designed; see §9 for as built.** Origin: an advisor suggestion —
 *have the type-checking procedure emit a proof certificate that gets replayed in Lean;
 if the replay passes, the program is type-checked* — worked out in a design conversation
 against the machinery as it stands after L265.
@@ -409,3 +418,173 @@ place where that failure mode is most expensive.
    `assumes = emp` and residual accepts separately), and an `.assumed` row that a
    Direction-A witness violates is a finding, not an embarrassment — route it to the
    emitter, exactly as difftest disagreements route to the model.
+
+---
+
+## 9. As built — C0 through C4, and where the ladder was wrong
+
+Recorded per §7 norm 1, and per §6 C5's own instruction that a milestone whose bet
+does not pay *"goes in this file"*. The decision-level detail is in
+`lean/RubyCore/Cert/implementation-notes.md` (**V1–V8**) and
+`certify/implementation-notes.md` (**E1–E16**); this section is the design-level
+account. Numbers are on the pinned checkout `homebrew/vendor/brew`, which reproduces
+L265's third ratchet exactly (112 defs / 17 accept / 7 pacc / 8 uncond / 85 needed /
+3 oof).
+
+### 9.1 The content question §3 left open, and the answer that fixed everything else
+
+§6 C0 leaves the *representation* to the first commit. The question that actually had
+to be answered first was **what can a certificate supply that changes which programs
+are provable**, and `Inv` forces it (V1):
+
+> `CtlOk`'s eval clause **is** `infer F Γ e … = some …` at the invariant's own table
+> `F`. So the one degree of freedom a certificate has, without re-opening
+> preservation, is `F`. A certificate names **the declaration table**, plus the
+> evidence that the extension over `declsOf p` is legitimate.
+
+Two consequences ran through everything after it.
+
+**The bridging lemma §3 budgets for does not exist.** §3's price table anticipates
+*"a bridging lemma: `validate`'s per-body checking-mode acceptance implies the
+`FramesOk`/`CtlOk` instance `step_ok` consumes"*. There is none and there is nothing
+for one to do — `nominalOk` **is** that instance. That is the good half of V1.
+
+**And the bad half:** a certificate cannot say anything the nominal judgement cannot
+check. Which is why the per-body `bodies` section is a *measurement* and not a
+conclusion, and why §4 D1's stackmaps (C5) are the next thing worth building.
+
+### 9.2 `.fromDef` cannot be sound at `Machine.init p` — C9 is the milestone it was waiting for
+
+§3 describes `Provenance.fromDef` as *"the validator re-checks body `i` at this sig:
+CHECKED, zero trust"*. Measured (V2), it is not checkable at all at the initial
+machine: `MethodRowsOk` obliges `EntryOk D h τ n d` **at this heap**, a program's own
+`def` is witnessed by `UserEntryOk`, and `UserEntryOk`'s resolution clause is about
+the heap *after* installation. At the boot heap the claim is **false**, not unproved.
+
+So `validate` refuses `.fromDef` by name, and the row it was for is a **heap-phase**
+claim — §4 D3, milestone **C9**. Nothing is lost for the population `infer` already
+threads a row for (F1b.10), which is why C0's round-trip holds with an *empty*
+certificate and `check_accept_of_validate_empty` is a theorem.
+
+### 9.3 The kernel-replay risk (§8.1) is inherited, not created
+
+§2 constraint 2 asks for kernel-`decide`ability and §6 C0 for it to be measured. Four
+of `validate`'s six conjuncts `decide` at a literal certificate. The two that do not
+are the two that name `infer`, and the reason is `static-soundness-poc.md` §8.1(4)
+unchanged: `infer` is well-founded-recursive, so kernel reduction gets stuck — which
+is why `check p = .accept` has been discharged by `simp` since P0a.
+
+So **the certificate inherits the cost rather than creating it**, and §8 risk 1's
+prescribed fix (reduction-friendly data structures, never `native_decide`) is a
+restructuring of `Types/Core.lean`, which §7 norm 7 puts out of scope. Every worked
+example in `Proof/Cert/` is `simp`-over-equation-lemmas where `infer` appears and
+`decide` everywhere else; `native_decide` appears nowhere.
+
+### 9.4 What C1 delivered, and the rung that is the actual result
+
+Three theorems rather than one plus prose, because §2 constraint 4 only holds if the
+ordering on residues is in the types: `validate_sound_carries` (conditional on the
+claimed rows alone), `validate_sound` (§3's statement, over the whole printed
+`assumes`), `validate_sound_unconditional` (no hypothesis). Plus
+`check_accept_of_validate_empty`, which closes the ladder at the bottom.
+
+The gate is three programs, one per rung, and **the middle one is the result**:
+
+| program | `check` | certificate | conclusion |
+|---|---|---|---|
+| `class String; def value;1;end; def get;value;end; "x".get; end` | accept | empty | unconditional (round trip) |
+| `1.even?` | unknown | `Integer ▷ even? : () → Boolean` | **unconditional — the residue is *discharged*** |
+| `1 / 2` | unknown | `Integer ▷ / : (Integer) → Integer` | conditional, and undischargeable |
+
+`even?` is absent from `baseDecls` for no reason at all (`Types/Decls.lean` picked
+`zero?` as the one nullary row on two measured grounds and never came back), so the
+row is claimable and `entryOk_int_nullary` discharges it — the *three-line
+instantiation* `static-soundness-poc.md` §8.2(5) advertises. **A program `check`
+rejects, proved safe with no hypothesis, through the certificate rather than through a
+new rule.** `1 / 2` is kept precisely because its residue has no proof (`1 / 0`
+raises): §8 risk 3's mitigation is not a policy but the shape of the theorem.
+
+### 9.5 C2 closed L262's open premise, and hit R2
+
+`satProvs_ledgerStore` discharges the premise L262 stated and declined
+(*"`SatProvs D θ st` … is a fact about the table, not about `θ`"*). The shape is §1's
+thesis in one line: the certificate records what `discharge` had to **search** for, so
+the obligation per cancellation is one `sigOf` lookup. `Proof/Cert/Ledger.lean` §4 is
+L262's headline with the pairing stated, and it is the first place *both* of
+`discharge_sound`'s premises are met.
+
+**And then it hits a wall that is not the certificate's** (V8/E9). For a row the
+program *itself* defines, `ledger_ok` and `status: accept` cannot both hold:
+`ledgerStepOk`'s lookup needs the provision in the table, and `infer`'s `def` rule
+requires `declaresName D name = false` (F1c). Both halves are honest and they are about
+different things; what is blocked is *composing* them.
+
+### 9.6 The fourth ratchet: 5 → 11, and every remaining body is R2
+
+`certify/certify.py ratchet --brew homebrew/vendor/brew --solve-bodies --optimize`
+
+| stage | fourth ratchet |
+|---|---|
+| C0, empty certificates | 5 |
+| + C4 project RBI rows | 7 |
+| + C3 body solving, C4 core rows, E15's search | **11** |
+
+against `--assn`'s 17 accepts (+7 `open_params`, which `bodyOk` cannot claim by
+construction — L168). So **C3's gate is not met**: the ratchet moved without touching
+trusted code, which is C3's substantive claim, but it does not *strictly exceed* 17.
+
+The shortfall is exactly six bodies and every one has the same blocker
+(`certify/implementation-notes.md` E16): `Token#blank?` needs `Token#null?` while
+`null?` is claimed on `NullToken`; `Version#null?/#hash/#to_i/#to_s` and
+`PkgVersion#head?` have a `T.nilable(String)` receiver, so L260's union dispatch needs
+**both** `String#hash` and `NilClass#hash` — two rows, one name.
+
+> **All six are blocked by name-global `declaresName`.**
+
+### 9.7 The finding that reorders the ladder: **R2 and a `const` atom, before C5–C9**
+
+Two measurements, and each names a rung in the **existing** tree rather than anything
+the certificate language can fix.
+
+**(a) `declaresName` is name-global, and it is now load-bearing three times over.**
+`Types/Assn.lean` §R2 records it as *stated but not built* — `declaresIn` exists,
+`infer` still reads `declaresName`, and the heap-side argument
+(`DeclsOk_defineMethod` takes name-globality from an *arbitrary* dispatch class) is on
+the wrong side of the `ResolvesAt`/`ConformsAt` line. It now blocks: V3 (a certificate
+row forbids every `def` of that name), E9 (the C2 ledger against `nominalOk`), and
+§9.6 (all six remaining ratchet bodies). **This should be the next rung**, ahead of
+C5.
+
+**(b) The certificate language has no atom for a constant, and that is 61% of the
+census.** §6 C3 asks for the ratchet measured against the 85 `needed` atoms. Measured
+(E12): **52** of the 85 have a *class-object* receiver — `T.class_of(Object) ~
+::Regexp`, `~ ::NULL_TOKEN`, `~ ::Boolean` — which is to say they are **constant
+reads**, 16 have a variable receiver, 8 an unmapped parameter, and 9 are row-shaped
+(of which 4 are `super:` rows and one takes a block). **Four** atoms in the whole
+census are claimable as rows.
+
+`tyClassNames (.clsOf _) = []` is L264's deliberate decision, so a row on a class
+object is unreadable whatever the table holds; and `Assn` has atoms for method rows
+only. `Proof/Static/Assn.lean` already names the rung in as many words — *"the
+constant half, carried rather than certified … giving it an atom is the assertion
+language's own next rung"* — and this is the measurement that prices it: **an
+`Assn.const` atom, with a `Certifies`/`InvA` clause, is worth more than half the
+remaining census.**
+
+So the honest re-ordering of §6 is: **R2, then `Assn.const`, then C5.** Recorded here
+rather than acted on, because both are rule/schema changes in the standing tree and
+this initiative's norm 7 keeps it out of them.
+
+### 9.8 Two corrections to documents this initiative depends on
+
+* **[✗→] `Ty` has no general union, and the slice does need one.** L193 declined it on
+  the grounds that *"nothing in the slice needs one, and a general union needs a normal
+  form"*. Measured: the slice's central accessors — `Token#value`,
+  `Version#version`, `PkgVersion#version` — are every one of them
+  `T.nilable(T.any(String, Integer))`, and *every* unconfirmed accept depends on one.
+  The emitter's workaround is to **narrow** (E13), which is unsound-and-visible; the
+  real fix is a `Ty` arm.
+* **[✗→] `attr_reader` carries a sig, and it is the population that matters.** The
+  first RBI parser read `def`s only, which misses exactly those three accessors —
+  methods with a signature and no body, which is what a claimed row is *for* and what
+  `bodyOk` can never derive (E14).
