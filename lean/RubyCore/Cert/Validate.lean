@@ -1,4 +1,4 @@
-import RubyCore.Cert.Check
+import RubyCore.Cert.Frag
 
 /-!
 # The validator

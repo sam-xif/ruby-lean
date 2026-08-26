@@ -411,6 +411,17 @@ compiled use. `Cert` derives `BEq` rather than `DecidableEq` because `Expr.flt`
 carries a `Float`, which has no `DecidableEq`; two `NaN` literals therefore compare
 unequal and a claim on one is not found — refusing.
 
+### V18 — the split, under norm 3
+
+`Cert/Check.lean` reached 1,167 lines, over norm 3's limit, so it is three files and
+the split is by concern rather than by size:
+
+| file | concern |
+|---|---|
+| `Cert/CheckAux.lean` | the list combinators, `defFreeF`, the binding forms, the joins, `chkRescues`/`chkBlockClaim` — the machinery `chk` defers to, and the subjects `Proof/Cert/Mono.lean` §1 states its laws about |
+| `Cert/Check.lean` | `chk` itself, 47 arms, no catch-all |
+| `Cert/Frag.lean` | `inferFrag` — a *different question* from `chk`'s: not *does this check* but *is the accept transferable* |
+
 ### V17 — the measurement that priced the soundness half, and the bridge that was deleted
 
 **What is done and green:** `validate` calls no `infer*`, all six conjuncts `decide`,
