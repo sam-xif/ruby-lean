@@ -366,18 +366,18 @@ is checked by the round-trip fixtures rather than assumed. -/
 
 /-- The claimed type of a node, or `none`. Local abbreviation for the pattern every
     fallback branch uses. -/
-private def claimTy (c : Cert) (π : Path) : Option Ty := (c.claimAt π).map (·.ty)
+def claimTy (c : Cert) (π : Path) : Option Ty := (c.claimAt π).map (·.ty)
 
 /-- The claimed continuation environment of a node, defaulting to the one passed in
     — which is what every deterministic arm wants. -/
-private def claimEnv (c : Cert) (π : Path) (Γ : Env) : Env :=
+def claimEnv (c : Cert) (π : Path) (Γ : Env) : Env :=
   match c.claimAt π with
   | some cl => cl.env.getD Γ
   | none => Γ
 
 /-- The claimed type list at a node (declared parameters, or a call-site
     instantiation), or `[]`. -/
-private def claimTys (c : Cert) (π : Path) : List Ty :=
+def claimTys (c : Cert) (π : Path) : List Ty :=
   match c.claimAt π with
   | some cl => cl.tys.getD []
   | none => []
@@ -396,7 +396,6 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     Option (Ty × Env × Decls)
   | 0, _, _, _, _, _, _ => none
   | n + 1, D, Γ, e, top, ctx, π =>
-    let rec' : Rec := fun D' Γ' e' t' c' π' => chk c n D' Γ' e' t' c' π'
     match e with
     -- ## Literals — derived, immediate, and each one `evalExpr`'s own answer.
     | .int _ => some (.int, Γ, D)
@@ -441,13 +440,13 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       match ctx.inBlock with
       | true => none
       | false =>
-        match rec' D Γ rhs top ctx (0 :: π) with
+        match chk c n D Γ rhs top ctx (0 :: π) with
         | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
         | none => none
     | .vasgn .ivar x rhs =>
       match ctx.selfCls with
       | some cc =>
-        match rec' D Γ rhs top ctx (0 :: π) with
+        match chk c n D Γ rhs top ctx (0 :: π) with
         | some (τ, Γ₁, D₁) =>
           match ivarTy? D₁ cc x with
           | some σ => if subTy τ σ then some (τ, Γ₁, D₁) else none
@@ -457,7 +456,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     | .vasgn .gvar x rhs =>
       match plainGlobal x with
       | true =>
-        match rec' D Γ rhs top ctx (0 :: π) with
+        match chk c n D Γ rhs top ctx (0 :: π) with
         | some (τ, Γ₁, D₁) =>
           match globalTy? D₁ x with
           | some σ => if subTy τ σ then some (τ, Γ₁, D₁) else none
@@ -467,7 +466,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- A cvar write is checked against the claim if there is one, and otherwise just
     -- answers the right-hand side's type: the *read* is what needs a declaration.
     | .vasgn .cvar _ rhs =>
-      match rec' D Γ rhs top ctx (0 :: π) with
+      match chk c n D Γ rhs top ctx (0 :: π) with
       | some (τ, Γ₁, D₁) =>
         match claimTy c π with
         | some σ => if subTy τ σ then some (τ, Γ₁, D₁) else none
@@ -483,7 +482,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       | some τ => some (τ, Γ, D)
       | none => claimTy c π |>.map (fun τ => (τ, Γ, D))
     | .cpath (some base) nm =>
-      match rec' D Γ base top ctx (0 :: π) with
+      match chk c n D Γ base top ctx (0 :: π) with
       | some (.clsOf cname, Γ₁, D₁) =>
         match scopedConstTy? D₁ cname nm with
         | some τ => some (τ, Γ₁, D₁)
@@ -498,15 +497,15 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- assumption — not silently threaded, which would be a table the residue does
     -- not mention. This is §9.7(b)'s `Assn.const` rung seen from the checker's side.
     | .casgn _ rhs =>
-      match rec' D Γ rhs top ctx (0 :: π) with
+      match chk c n D Γ rhs top ctx (0 :: π) with
       | some (τ, Γ₁, D₁) => some (τ, Γ₁, D₁)
       | none => none
     | .cpathAsgn base _ rhs =>
       match (match base with
              | none => some (Ty.nilT, Γ, D)
-             | some b => rec' D Γ b top ctx (0 :: π)) with
+             | some b => chk c n D Γ b top ctx (0 :: π)) with
       | some (_, Γ₁, D₁) =>
-        match rec' D₁ Γ₁ rhs top ctx (1 :: π) with
+        match chk c n D₁ Γ₁ rhs top ctx (1 :: π) with
         | some (τ, Γ₂, D₂) => some (τ, Γ₂, D₂)
         | none => none
       | none => none
@@ -519,13 +518,13 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
                match ctx.selfCls with
                | some cc => some (Ty.cls cc, Γ, D)
                | none => none
-             | some r => rec' D Γ r top ctx (0 :: π)) with
+             | some r => chk c n D Γ r top ctx (0 :: π)) with
       | none => none
       | some (τr, Γ₁, D₁) =>
         match blkO with
         -- ### Block-less: the arguments, then the signature.
         | none =>
-          match chkArgs rec' top ctx π D₁ Γ₁ 1 args with
+          match chkArgs (chk c n) top ctx π D₁ Γ₁ 1 args with
           | none => none
           | some (τs, Γ₂, D₂) =>
             match sigOf D₂ τr mname with
@@ -553,28 +552,28 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
             | some _ =>
               match blockSend? D₁ τr mname ps ls with
               | some (x, σp, βret, τret) =>
-                match rec' D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) (1 :: π) with
+                match chk c n D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) (1 :: π) with
                 | some (τb, Γb', D₂) =>
                   if subTy τb βret && D₂ == D₁ &&
                       subEnvB ((x, σp) :: anyEnv Γ₁) Γb' && ctx.inBlock == false then
                     some (τret, Γ₁, D₁)
                   else none
                 | none => none
-              | none => chkBlockClaim c rec' top ctx π D₁ Γ₁ [] ps ls body
+              | none => chkBlockClaim c (chk c n) top ctx π D₁ Γ₁ [] ps ls body
             -- An implicit-self `lambda { … }` is the one block send with no
             -- receiver the fragment admits, and its answer is `.any`: a `Proc` has
             -- no row in any table, so nothing can be done with the value, which is
             -- exactly what the type says.
             | none =>
               if mname == "lambda" then some (.any, Γ, D)
-              else chkBlockClaim c rec' top ctx π D Γ [] ps ls body
+              else chkBlockClaim c (chk c n) top ctx π D Γ [] ps ls body
           | _ =>
-            match chkArgs rec' top ctx π D₁ Γ₁ 1 args with
+            match chkArgs (chk c n) top ctx π D₁ Γ₁ 1 args with
             | none => none
             | some (τs, Γ₂, D₂) =>
               match blockSendA? D₂ τr mname ps ls with
               | some (x, σp, βret, dps, τret) =>
-                match rec' D₂ ((x, σp) :: anyEnv Γ₂) body false (blockCtx ctx)
+                match chk c n D₂ ((x, σp) :: anyEnv Γ₂) body false (blockCtx ctx)
                     ((args.length + 1) :: π) with
                 | some (τb, Γb', D₃) =>
                   if subTys τs dps && subTy τb βret && D₃ == D₂ && D₂ == D₁ && D₁ == D &&
@@ -582,17 +581,17 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
                     some (τret, Γ₂, D₂)
                   else none
                 | none => none
-              | none => chkBlockClaim c rec' top ctx π D₂ Γ₂ τs ps ls body
+              | none => chkBlockClaim c (chk c n) top ctx π D₂ Γ₂ τs ps ls body
         -- ### A block-pass `&e`. The operand is evaluated (or is the enclosing
         -- method's own block, anonymously forwarded); the row is claimed, because a
         -- `&:sym` is a `Symbol#to_proc` whose arity no signature records.
         | some (.blockpass bo) =>
-          match chkArgs rec' top ctx π D₁ Γ₁ 1 args with
+          match chkArgs (chk c n) top ctx π D₁ Γ₁ 1 args with
           | none => none
           | some (τs, Γ₂, D₂) =>
             match (match bo with
                    | none => some (Ty.nilT, Γ₂, D₂)
-                   | some b => rec' D₂ Γ₂ b top ctx ((args.length + 1) :: π)) with
+                   | some b => chk c n D₂ Γ₂ b top ctx ((args.length + 1) :: π)) with
             | none => none
             | some (_, Γ₃, D₃) =>
               match claimTy c π with
@@ -621,7 +620,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- array element, and each has an arm here so that a certificate can address it
     -- — which is the whole of V10.
     | .kwargs entries =>
-      match chkKwEntries rec' top ctx π D Γ 0 entries with
+      match chkKwEntries (chk c n) top ctx π D Γ 0 entries with
       | some (Γ', D') => some (.cls "Hash", Γ', D')
       | none => none
     -- `...` forwards the enclosing `(...)`-method's captured arguments. There is no
@@ -633,7 +632,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       match eo with
       | none => some (.cls "Array", Γ, D)
       | some o =>
-        match rec' D Γ o top ctx (0 :: π) with
+        match chk c n D Γ o top ctx (0 :: π) with
         | some (.cls "Array", Γ₁, D₁) => some (.cls "Array", Γ₁, D₁)
         | some (.arrayOf τ, Γ₁, D₁) => some (.arrayOf τ, Γ₁, D₁)
         | _ => none
@@ -645,7 +644,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- return type, which no `Decls` field records — so it is claimed, and the
     -- arguments are checked against the claimed parameter list.
     | .yield' args =>
-      match chkArgs rec' top ctx π D Γ 0 args with
+      match chkArgs (chk c n) top ctx π D Γ 0 args with
       | some (τs, Γ', D') =>
         match claimTy c π with
         | some τ => if subTys τs (claimTys c π) then some (τ, Γ', D') else none
@@ -661,12 +660,12 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- environment contains the claimed one. That is exactly Rose's lightweight
     -- bytecode verification, and it is the milestone C5 asked for.
     | .if' cond t els =>
-      match rec' D Γ cond top ctx (0 :: π) with
+      match chk c n D Γ cond top ctx (0 :: π) with
       | none => none
       | some (_, Γ₁, D₁) =>
         match els with
         | some el =>
-          match rec' D₁ Γ₁ t top ctx (1 :: π), rec' D₁ Γ₁ el top ctx (2 :: π) with
+          match chk c n D₁ Γ₁ t top ctx (1 :: π), chk c n D₁ Γ₁ el top ctx (2 :: π) with
           | some (τt, Γt, Dt), some (τe, Γe, De) =>
             if subEnvB Γ₁ Γt && subEnvB Γ₁ Γe && Dt == De then
               match joinTy τt τe with
@@ -681,7 +680,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
             else none
           | _, _ => none
         | none =>
-          match rec' D₁ Γ₁ t top ctx (1 :: π) with
+          match chk c n D₁ Γ₁ t top ctx (1 :: π) with
           | some (τt, Γt, Dt) =>
             if subEnvB Γ₁ Γt && Dt == D₁ then
               match joinTy τt .nilT with
@@ -702,10 +701,10 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     | .while' cond body =>
       let Γl := claimEnv c π Γ
       let ctxl := { ctx with inLoop := some Γl }
-      match rec' D Γl cond top ctxl (0 :: π) with
+      match chk c n D Γl cond top ctxl (0 :: π) with
       | some (_, Γ₁, D₁) =>
         if Γ₁ == Γl && D₁ == D then
-          match rec' D Γl body top ctxl (1 :: π) with
+          match chk c n D Γl body top ctxl (1 :: π) with
           | some (_, Γ₂, D₂) => if Γ₂ == Γl && D₂ == D then some (.nilT, Γ, D) else none
           | none => none
         else none
@@ -715,10 +714,10 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     | .dowhile body cond =>
       let Γl := claimEnv c π Γ
       let ctxl := { ctx with inLoop := some Γl }
-      match rec' D Γl body top ctxl (0 :: π) with
+      match chk c n D Γl body top ctxl (0 :: π) with
       | some (_, Γ₁, D₁) =>
         if Γ₁ == Γl && D₁ == D then
-          match rec' D Γl cond top ctxl (1 :: π) with
+          match chk c n D Γl cond top ctxl (1 :: π) with
           | some (_, Γ₂, D₂) => if Γ₂ == Γl && D₂ == D then some (.nilT, Γ, D) else none
           | none => none
         else none
@@ -729,14 +728,14 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- the element type outright; anything else binds at `.any` or at the claim.
     -- Ruby's `for` evaluates to the collection.
     | .for' tgts coll body =>
-      match rec' D Γ coll top ctx (0 :: π) with
+      match chk c n D Γ coll top ctx (0 :: π) with
       | none => none
       | some (τc, Γ₁, D₁) =>
         let τe := match τc with
           | .arrayOf τ => τ
           | _ => (claimTy c π).getD .any
         let Γb := bindTargets tgts τe Γ₁
-        match rec' D₁ Γb body top { ctx with inLoop := some Γb } (1 :: π) with
+        match chk c n D₁ Γb body top { ctx with inLoop := some Γb } (1 :: π) with
         | some (_, Γ₂, D₂) => if Γ₂ == Γb && D₂ == D₁ then some (τc, Γb, D₁) else none
         | none => none
     -- ## Jumps. Each is sound only where its target exists, which is what the
@@ -746,7 +745,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       | some σ =>
         match eo with
         | some e' =>
-          match rec' D Γ e' top ctx (0 :: π) with
+          match chk c n D Γ e' top ctx (0 :: π) with
           | some (τ, Γ₁, D₁) => if subTy τ σ then some (.nilT, Γ₁, D₁) else none
           | none => none
         | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
@@ -762,7 +761,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
           match eo with
           | none => if subEnvB Γl Γ then some (.nilT, Γ, D) else none
           | some e' =>
-            match rec' D Γ e' top ctx (0 :: π) with
+            match chk c n D Γ e' top ctx (0 :: π) with
             | some (_, Γ₁, D₁) =>
               if subEnvB Γl Γ₁ && D₁ == D then some (.nilT, Γ₁, D₁) else none
             | none => none
@@ -779,7 +778,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
           match eo with
           | none => some (.nilT, Γ, D)
           | some e' =>
-            match rec' D Γ e' top ctx (0 :: π) with
+            match chk c n D Γ e' top ctx (0 :: π) with
             | some (τ, Γ₁, D₁) =>
               match claimTy c π with
               | some σ => if subTy τ σ then some (.nilT, Γ₁, D₁) else none
@@ -814,7 +813,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       -- factoring would put a definition between them.
       | none =>
         if ps.isEmpty && declaresName D name == false && name != "method_added" then
-          match rec' D [] body false
+          match chk c n D [] body false
               { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
                          params := some [], inLoop := none, inBlock := false }
               (0 :: π) with
@@ -846,7 +845,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
         let τs := cl.tys.getD []
         if τs.length != ps.length then none
         else
-          match rec' D (bindParams n ps τs []) body false
+          match chk c n D (bindParams n ps τs []) body false
               { ctx with selfCls := some ctx.cls, ret := some cl.ty, meth := some name,
                          params := some τs, inLoop := none, inBlock := false }
               (0 :: π) with
@@ -859,12 +858,12 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- checked, and no row is threaded: a singleton row is a `deltaRows` claim,
     -- because `.clsOf`'s key is the one L264 measured as unreadable.
     | .defs recv name ps body =>
-      match rec' D Γ recv top ctx (0 :: π) with
+      match chk c n D Γ recv top ctx (0 :: π) with
       | none => none
       | some (_, Γ₁, D₁) =>
         let τs := claimTys c π
         let Γb := bindParams n ps τs []
-        match rec' D₁ Γb body false
+        match chk c n D₁ Γb body false
             { ctx with selfCls := none, ret := claimTy c π, meth := some name,
                        params := some τs, inLoop := none, inBlock := false } (1 :: π) with
         | some (_, _, Db) => if Db == D₁ then some (.sym, Γ₁, D₁) else none
@@ -877,7 +876,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       match sup with
       | none =>
         if top && reopenableClasses.contains name then
-          match rec' D [] body false { cls := name } (0 :: π) with
+          match chk c n D [] body false { cls := name } (0 :: π) with
           | some (τ, _, Db) => some (τ, Γ, Db)
           | none => none
         else none
@@ -886,45 +885,45 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       -- the body is checked and the extension is **dropped**: rows on a class the
       -- program defines are `deltaRows`/C9 territory (V2).
       | some s =>
-        match rec' D Γ s top ctx (0 :: π) with
+        match chk c n D Γ s top ctx (0 :: π) with
         | none => none
         | some (_, Γ₁, D₁) =>
-          match rec' D₁ [] body false { cls := name } (1 :: π) with
+          match chk c n D₁ [] body false { cls := name } (1 :: π) with
           | some (τ, _, _) => some (τ, Γ₁, D₁)
           | none => none
     | .module' name body =>
-      match rec' D [] body false { cls := name } (0 :: π) with
+      match chk c n D [] body false { cls := name } (0 :: π) with
       | some (τ, _, _) => some (τ, Γ, D)
       | none => none
     | .scopedClass base name body =>
       match (match base with
              | none => some (Ty.nilT, Γ, D)
-             | some b => rec' D Γ b top ctx (0 :: π)) with
+             | some b => chk c n D Γ b top ctx (0 :: π)) with
       | none => none
       | some (_, Γ₁, D₁) =>
-        match rec' D₁ [] body false { cls := name } (1 :: π) with
+        match chk c n D₁ [] body false { cls := name } (1 :: π) with
         | some (τ, _, _) => some (τ, Γ₁, D₁)
         | none => none
     | .scopedModule base name body =>
       match (match base with
              | none => some (Ty.nilT, Γ, D)
-             | some b => rec' D Γ b top ctx (0 :: π)) with
+             | some b => chk c n D Γ b top ctx (0 :: π)) with
       | none => none
       | some (_, Γ₁, D₁) =>
-        match rec' D₁ [] body false { cls := name } (1 :: π) with
+        match chk c n D₁ [] body false { cls := name } (1 :: π) with
         | some (τ, _, _) => some (τ, Γ₁, D₁)
         | none => none
     -- `class << obj` — the eigenclass body. The definee is the singleton, which has
     -- no name in the type language, so the body is checked at the claimed class name
     -- and its extension dropped for `.defs`' reason.
     | .sclass obj body =>
-      match rec' D Γ obj top ctx (0 :: π) with
+      match chk c n D Γ obj top ctx (0 :: π) with
       | none => none
       | some (τo, Γ₁, D₁) =>
         let nm := match τo with
           | .clsOf n => n
           | _ => ctx.cls
-        match rec' D₁ [] body false { cls := nm } (1 :: π) with
+        match chk c n D₁ [] body false { cls := nm } (1 :: π) with
         | some (τ, _, _) => some (τ, Γ₁, D₁)
         | none => none
     -- ## `begin`/`rescue`/`else`/`ensure` — the L231/L233 join wall, and D1's second
@@ -937,18 +936,18 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     -- join of every exit — deterministically where `joinTy` folds, at the claim
     -- otherwise.
     | .begin' body rescues els ens =>
-      match rec' D Γ body top ctx (0 :: π) with
+      match chk c n D Γ body top ctx (0 :: π) with
       | none => none
       | some (τb, _, D₁) =>
         if D₁ != D then none
         else
-          match chkRescues c rec' top ctx π D Γ 1 rescues with
+          match chkRescues c (chk c n) top ctx π D Γ 1 rescues with
           | none => none
           | some τr =>
             match (match els with
                    | none => some (τb, D)
                    | some el =>
-                     match rec' D Γ el top ctx (98 :: π) with
+                     match chk c n D Γ el top ctx (98 :: π) with
                      | some (τl, _, Dl) => if Dl == D then some (τl, D) else none
                      | none => none) with
             | none => none
@@ -956,7 +955,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
               match (match ens with
                      | none => some Ty.nilT
                      | some en =>
-                       match rec' D Γ en top ctx (99 :: π) with
+                       match chk c n D Γ en top ctx (99 :: π) with
                        | some (_, _, Dn) => if Dn == D then some Ty.nilT else none
                        | none => none) with
               | none => none
@@ -980,7 +979,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
       | some mn =>
         if mn == "" then none
         else
-          match chkArgs rec' top ctx π D Γ 0 args with
+          match chkArgs (chk c n) top ctx π D Γ 0 args with
           | none => none
           | some (τs, Γ₁, D₁) =>
             match blkO with
@@ -1031,14 +1030,14 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx → Pa
     | .defined _ => some (.nilable (.cls "String"), Γ, D)
     -- ## Composites.
     | .array es =>
-      match chkElems rec' top ctx π D Γ 0 es with
+      match chkElems (chk c n) top ctx π D Γ 0 es with
       | some (_, Γ', D') => some (.cls "Array", Γ', D')
       | none => none
     | .hash pairs =>
-      match chkPairs rec' top ctx π D Γ 0 pairs with
+      match chkPairs (chk c n) top ctx π D Γ 0 pairs with
       | some (Γ', D') => some (.cls "Hash", Γ', D')
       | none => none
-    | .seq es => chkSeq rec' top ctx π D Γ 0 es
+    | .seq es => chkSeq (chk c n) top ctx π D Γ 0 es
 
 /-! ## 5. `inferFrag` — the frontier, as a decidable predicate
 
@@ -1113,14 +1112,25 @@ def inferFrag : Nat → Expr → Bool
     -- `lambda` arm, and the one shape where both refuse).
     | .send recvO _ args blkO =>
       (match recvO with | some r => inferFrag n r | none => true) &&
-      fragElems (inferFrag n) args &&
+      -- `fragAll` and **not** `fragElems`: an *argument* list hands each element to
+      -- `chk`/`infer` directly, so a `.splat` argument is a head `chk` accepts and
+      -- `infer` refuses. Only an *array* literal consumes a splat in place. The first
+      -- draft had `fragElems` in both positions and it was wrong in this one.
+      fragAll (inferFrag n) args &&
       (match blkO with
        | none => true
-       | some (.block _ _ body) =>
-         (recvO.isSome || args.isEmpty) && inferFrag n body
+       -- **A receiver is required**, and `lambda` is why it is not
+       -- `recvO.isSome || args.isEmpty`. `infer`'s implicit-self block arm answers
+       -- `some (.any, Γ, D)` for `lambda { … }` *without consulting `ctx.selfCls`*,
+       -- while `chk` computes the receiver first and so refuses in a class body.
+       -- The two therefore disagree at exactly one shape, and admitting it here
+       -- would make `chk_infer` false. `lambda` stays in the coverage tier; the
+       -- alternative — special-casing it ahead of the receiver in `chk` — buys one
+       -- expression and costs the send arm its single shape.
+       | some (.block _ _ body) => recvO.isSome && inferFrag n body
        | some _ => false)
     | .super' args blkO =>
-      fragElems (inferFrag n) args && (match blkO with | none => true | some _ => false)
+      fragAll (inferFrag n) args && (match blkO with | none => true | some _ => false)
     | .zsuper blkO => match blkO with | none => true | some _ => false
     | .array es => fragElems (inferFrag n) es
     | .seq es => fragAll (inferFrag n) es
@@ -1130,7 +1140,20 @@ def inferFrag : Nat → Expr → Bool
     | .while' cnd body => inferFrag n cnd && inferFrag n body
     | .ret eo => match eo with | some e' => inferFrag n e' | none => true
     | .nxt none => true
-    | .def' _ ps body => ps.isEmpty && inferFrag n body
+    -- **`defFreeF` is a *fragment* condition and not just a rule condition**, which
+    -- the first draft got wrong. `infer`'s promotion guard reads `defFree body` and
+    -- `chk`'s reads `defFreeF n body`, and those two are related by *implication*
+    -- only (V13): at low fuel `defFreeF` is `false` where `defFree` is `true`. So
+    -- without this conjunct the two checkers can take *different branches* of the
+    -- promotion — one threading a row and one not — and `chk_infer` is false, in the
+    -- `else` branch where nothing looks wrong. Demanding it here makes the guard's
+    -- `defFree` component `true` on both sides, so the branches agree.
+    --
+    -- The population it costs is a `def` whose body contains a nested `def` or
+    -- `class`. `infer` accepts one only when it does not promote, so the loss is the
+    -- non-promoting corner of an already narrow arm; recorded rather than measured
+    -- because the slice has no instance.
+    | .def' _ ps body => ps.isEmpty && defFreeF n body && inferFrag n body
     | .class' _ none body => inferFrag n body
     -- Admitted vacuously: both checkers refuse.
     | .retry' | .undef _ => true
