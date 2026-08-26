@@ -600,10 +600,10 @@ claims with `src: "llm:<model>"` and go through the same search (E15) and the sa
 validator as everything else. Responses are **cached and committed** — a ratchet whose
 number depends on a live sample is not a ratchet (§7 norm 4).
 
-**Measured over the slice (`claude-opus-5`): 34 rows proposed, 34 expressible, 0
-dropped, fourth ratchet unchanged at 11.** The certificates carry more — `version.rb`
-goes from 38 claimed rows to 47 — and certify exactly the same bodies. Every rule
-respected on the first attempt — no
+**Measured over the slice (`claude-opus-5`): 53 rows proposed, 53 expressible, 0
+dropped, fourth ratchet unchanged at 11.** The certificates carry substantially more —
+`version.rb` from 38 claimed rows to 47, `vulns/identify.rb` from 21 to 40 — and
+certify exactly the same bodies. Every rule respected on the first attempt — no
 constant reads, no `T.class_of` receivers, no union types, no duplicate names — and the
 rows are correct Ruby. They cannot be *spent*, for three reasons, and the third is new:
 
@@ -619,13 +619,20 @@ rows are correct Ruby. They cannot be *spent*, for three reasons, and the third 
   (`PLAN.md` W5 T2) and is deliberately still absent"*), and nothing is ever typed
   `.cls "Object"`.
 
-Two of the eight files have no cached proposal: the largest, `vulns/vulnerability.rb`,
-reproducibly **stalls** the request (blocked on I/O, no `stop_reason`), and the file
-behind it never got its turn. Both contribute 0 certified bodies in every configuration
-measured, so the numbers above are complete for the ratchet — stated because "34 rows
-over the slice" would otherwise read as all eight. The stall is why `llm.py` sets an
-explicit client timeout and why a failed call is reported per-file rather than losing
-the batch (E18a).
+`vulns/identify.rb` is the sharpest single instance: 19 rows, every one expressible,
+zero gain — fifteen of them `String#{sub,include?,start_with?,match?,tr,…}` and
+`MatchData#[]`, exactly the core-library rows §9.6 says are missing, at exactly the
+receiver that file's chains go through. They change nothing because all seven of its
+bodies are blocked *before* reaching them, on `::Regexp` / `::URI` constant reads —
+which is the 52 again.
+
+One of the eight files has no cached proposal: the largest,
+`vulns/vulnerability.rb`, reproducibly **stalls** the request (blocked on I/O, no
+`stop_reason`). It contributes 0 certified bodies in every configuration measured, so
+the numbers above are complete for the ratchet — stated because "53 rows over the
+slice" would otherwise read as all eight. The stall is why `llm.py` sets an explicit
+client timeout and why a failed call is reported per-file rather than losing the batch
+(E18a).
 
 The model flagged the third blocker itself, unprompted, in the `notes` field the schema
 asks for — *"if it uses a different ancestor those five rows will simply not fire"* — along

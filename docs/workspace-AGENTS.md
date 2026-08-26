@@ -299,7 +299,7 @@ for cache-only runs and `--llm-refresh` to re-ask deliberately. See
 decisions (**E1–E18**) — including the measured ones: the settling pass that caught a
 wrong `Token#to_s : Float`, the greedy plateau that needed a second starting point
 (6 → 10 on `version.rb`), why all six remaining ratchet bodies are blocked by R2, and
-E18's result — the LLM proposes 10 rule-respecting rows and the ratchet does **not**
+E18's result — the LLM proposes 53 rule-respecting rows and the ratchet does **not**
 move, because generation is not the bottleneck: three *schema* limits are (R2, no
 `Assn` atom for a constant, no inherited-declaration lookup).
 
