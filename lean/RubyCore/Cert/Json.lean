@@ -205,6 +205,50 @@ def stepOfJson (j : Json) : Except String DischargeStep := do
          required := ← asigOfJson (← j.getObjVal? "required"),
          provided := ← asigOfJson (← j.getObjVal? "provided") }
 
+/-! ### Node claims (V10)
+
+`Path` is a `List Nat` and goes over the wire as a JSON array of numbers, **innermost
+index first** — the order `Cert/Check.lean` builds it in. An emitter that appends
+instead of consing produces paths that address nothing, which is a lost body and not
+a wrong accept; `certify/` builds them the same way and the round-trip fixtures are
+what check that it does. -/
+
+def pathToJson (π : Path) : Json := Json.arr (List.map (fun i : Nat => Json.num i) π).toArray
+
+def pathOfJson (j : Json) : Except String Path := do
+  pure (← (← j.getArr?).toList.mapM fun x => x.getNat?)
+
+def envToJson (Γ : Env) : Json :=
+  Json.arr (Γ.map fun e => Json.mkObj [("name", Json.str e.1), ("ty", tyToJson e.2)]).toArray
+
+def envOfJson (j : Json) : Except String Env := do
+  pure (← (← j.getArr?).toList.mapM fun e => do
+    pure ((← (← e.getObjVal? "name").getStr?), (← tyOfJson (← e.getObjVal? "ty"))))
+
+def nodeClaimToJson (cl : NodeClaim) : Json :=
+  Json.mkObj ([("ty", tyToJson cl.ty)] ++
+    (match cl.env with | some Γ => [("env", envToJson Γ)] | none => []) ++
+    (match cl.tys with
+     | some τs => [("tys", Json.arr (τs.map tyToJson).toArray)]
+     | none => []))
+
+def nodeClaimOfJson (j : Json) : Except String NodeClaim := do
+  let ty ← tyOfJson (← j.getObjVal? "ty")
+  let env ← match j.getObjVal? "env" with
+    | .error _ => pure none
+    | .ok v => do pure (some (← envOfJson v))
+  let tys ← match j.getObjVal? "tys" with
+    | .error _ => pure none
+    | .ok v => do pure (some (← (← v.getArr?).toList.mapM tyOfJson))
+  pure { ty := ty, env := env, tys := tys }
+
+def claimToJson (e : Path × NodeClaim) : Json :=
+  Json.mkObj [("path", pathToJson e.1), ("claim", nodeClaimToJson e.2)]
+
+def claimOfJson (j : Json) : Except String (Path × NodeClaim) := do
+  pure ((← pathOfJson (← j.getObjVal? "path")),
+        (← nodeClaimOfJson (← j.getObjVal? "claim")))
+
 def Cert.toJson (c : Cert) : Json :=
   Json.mkObj [
     ("version", Json.num c.version),
@@ -213,6 +257,8 @@ def Cert.toJson (c : Cert) : Json :=
     ("delta_rows", Json.arr (c.deltaRows.map rowClaimToJson).toArray),
     ("bodies", Json.arr (c.bodies.map bodyCertToJson).toArray),
     ("ledger", Json.arr (c.ledger.map stepToJson).toArray),
+    ("claims", Json.arr (c.claims.map claimToJson).toArray),
+    ("fuel", Json.num c.fuel),
     ("assumes", assnToJson c.assumes)]
 
 /-- Every field is optional and defaults to the empty certificate's, which is what
@@ -231,11 +277,19 @@ def Cert.ofJson (j : Json) : Except String Cert := do
   let deltaRows ← opt "delta_rows" rowClaimOfJson
   let bodies ← opt "bodies" bodyCertOfJson
   let ledger ← opt "ledger" stepOfJson
+  let claims ← opt "claims" claimOfJson
+  -- **The fuel defaults rather than being required**, for the reason every other
+  -- field does: an emitter that has never heard of it still produces a decodable
+  -- certificate, and the default refuses rather than accepts on a program too deep
+  -- for it (V9).
+  let fuel ← match j.getObjVal? "fuel" with
+    | .error _ => pure 64
+    | .ok v => v.getNat?
   let assumes ← match j.getObjVal? "assumes" with
     | .error _ => pure Assn.emp
     | .ok v => assnOfJson v
   pure { version := version, theta := theta, deltaRows := deltaRows, bodies := bodies,
-         ledger := ledger, assumes := assumes }
+         ledger := ledger, claims := claims, fuel := fuel, assumes := assumes }
 
 /-! ## 5. The verdict, as JSON
 
@@ -265,6 +319,16 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
     -- fact about the certificate, not about the verdict, and a rejected certificate's
     -- row count is what an emitter reads while iterating.
     ("carries_rows", Json.num c.deltaRows.length),
+    -- **The two dimensions of the verdict** (V14), both outside the `if` because a
+    -- reader iterating on an emitter needs to know *which* tier a reject missed.
+    -- `certifies` is the sound tier — `validate` plus a program every head of which
+    -- `infer` has an arm for, plus no load-bearing node claim. `validate` alone is
+    -- the coverage ratchet, and the gap between the two numbers is the schema work
+    -- §10 of the design document lists.
+    ("claims_made", Json.num c.claims.length),
+    ("claim_free", Json.bool c.claimFree),
+    ("in_fragment", Json.bool (inferFrag c.fuel p)),
+    ("certifies", Json.bool (Cert.certifies c p)),
     -- Per claim, whether it replayed. The gradient at its finest grain, and what an
     -- emitter reads back to iterate (`certify/implementation-notes.md` E5): the
     -- untrusted side proposes signatures and this is the adjudication.
@@ -274,7 +338,10 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
                     ("ok", Json.bool (bodyOk c p b))]).toArray)] ++
     (if ok then
       [("unconditional", Json.bool c.unconditional),
-       ("means", Json.str (if c.unconditional then
+       ("tier", Json.str (if Cert.certifies c p then "sound" else "covered")),
+       ("means", Json.str (if !Cert.certifies c p then
+            "this program checks at the claimed table under the claimed nodes; the accept is not yet transferred to `Inv` (see `in_fragment`/`claim_free`)"
+          else if c.unconditional then
             "no reachable outcome of this program is type-stuck"
           else
             "no reachable outcome of this program is type-stuck, given `carries`")),
@@ -289,7 +356,7 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
            else if !rowsDeclared c then "row-not-in-assumes"
            else if !eqsOk c then "theta-inconsistent"
            else if !bodiesOk c p then "body-claim"
-           else if !nominalOk c p then "nominal"
+           else if !chkOk c p then "chk"
            else "ledger"))]))
 
 end RubyCore.Cert

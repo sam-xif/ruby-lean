@@ -1,4 +1,5 @@
 import RubyCore.Cert.Validate
+import RubyCore.Types.Discharge
 
 /-!
 # C2 — the ledger

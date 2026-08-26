@@ -1,4 +1,4 @@
-import RubyCore.Types.Program
+import RubyCore.Types.Assn
 
 /-!
 # C0 — the certificate grammar
@@ -118,6 +118,58 @@ deriving DecidableEq, Repr, Inhabited
     that the validator's check and the theorem's read-out cannot drift. -/
 def RowClaim.atom (r : RowClaim) : Ty × String × Sig := (nomTy r.cls, r.name, r.sig)
 
+/-! ## 2a. Node addresses and node claims (V9–V11)
+
+**The import above is one line and it is the point of this revision.** It was
+`RubyCore.Types.Program`, which reaches `Types/Core.lean` and therefore `infer`; it is
+now `RubyCore.Types.Assn`, whose own import closure is `Decls → Ty → Syntax` and
+contains **no inference pass at all**. So "the validator does not depend on `infer`"
+is not a claim about discipline, it is a fact about the module graph, and
+`Cert/Check.lean` could not call `infer` if it wanted to. See V12.
+
+What replaces `infer` on the checked path is `chk` (`Cert/Check.lean`), and it needs
+two things the C0 grammar had no room for.
+
+**A way to name a node.** `Path` is the list of child indices from the root,
+**innermost first** — the child `i` of the node at `π` is at `i :: π`. Consed rather
+than appended because the checker builds it on the way *down*, and a cons is one
+allocation where a `++` is a traversal; the price is that a path reads
+right-to-left, which is why every emitter must build it the same way (`certify/`
+does, E-side).
+
+**A way to state a claim about that node.** §4 D1's stackmap table, generalized:
+between claims the checker propagates deterministically, and at a claimed node it
+*reads the answer instead of computing it*. One structure with three fields rather
+than three sections, because every consumer looks the node up once.
+
+A node claim is **not** covered by `validate_sound`. `claims = []` is a hypothesis of
+the bridge (`Proof/Cert/Check.lean`), so a certificate that claims a node buys
+coverage and gives up the theorem — which is the same two-tier bargain `deltaRows`
+strikes, one level down, and it is reported the same way (`Cert.claimFree`). -/
+
+/-- A node address: child indices from the root, innermost first. -/
+abbrev Path := List Nat
+
+/-- What the certificate may say about one node — §4 D1's stackmap entry.
+
+    All three fields are read by `chk` only where the deterministic rule has *no*
+    answer, never to override one: a claim cannot make an accept out of a rule that
+    fired and refused. That is what keeps a bad claim a lost body rather than a false
+    accept, and it is the reason `chk` consults `claimAt` in the `none` branch of each
+    match and nowhere else. -/
+structure NodeClaim where
+  /-- The type this node is claimed to have. -/
+  ty : Ty
+  /-- The environment the node's continuation is typed at — a join point's
+      stackmap (C5). `none` means "the entry environment", which is what every
+      deterministic arm passes. -/
+  env : Option Env := none
+  /-- A list of types the node's rule needs and cannot derive from the program: a
+      call site's instantiation of a parameterized callee (C6, D2a), or the declared
+      parameter types of a `def` that takes parameters. -/
+  tys : Option (List Ty) := none
+deriving DecidableEq, Repr, Inhabited
+
 /-! ## 3. The per-body claim
 
 C0 is **signatures-only** (§4 D1): the validator re-propagates between claims, so a
@@ -166,6 +218,22 @@ structure Cert where
   bodies : List BodyCert := []
   /-- Which provision answers which requirement (C2). -/
   ledger : List DischargeStep := []
+  /-- Per-node claims, keyed by `Path` — §4 D1's stackmap table (V10). Empty is
+      the sound tier: `Cert.claimFree` reports it and the bridge requires it. -/
+  claims : List (Path × NodeClaim) := []
+  /-- **The checker's fuel, carried by the certificate** (V9).
+
+      `chk` is structurally recursive on this `Nat`, which is what makes the whole
+      validator kernel-reducible — `infer`'s well-founded recursion is exactly why
+      four of C0's six conjuncts `decide`d and two did not (§9.3), and a fuel
+      parameter is the standard fix, already the shape of the model's own interpreter.
+
+      **Carried rather than computed**, and the direction it fails in is the reason:
+      too little fuel makes `chk` answer `none`, which *rejects*. So a wrong fuel
+      costs a body, never an accept — the same argument `thetaFn`'s `.any` default
+      makes. A computed `sizeOf p` would have been the other kind of dependency: a
+      derived `Nat` the kernel has to reduce before it can start. -/
+  fuel : Nat := 64
   /-- The residue the conclusion is conditional on. `emp` is an unconditional
       accept, and §2 constraint 4 is the reason this is a field rather than prose:
       the verdict-strength ladder is an ordering on residues. -/
@@ -186,6 +254,20 @@ def thetaFn (c : Cert) : TyVar → Ty :=
   fun α => match c.theta.find? (·.1 == α) with
     | some (_, τ) => τ
     | none => .any
+
+/-- The claim at a node, if the certificate makes one. A `List.find?` over ground
+    data, so it reduces in the kernel like everything else on the checked path. -/
+def claimAt (c : Cert) (π : Path) : Option NodeClaim :=
+  (c.claims.find? (·.1 == π)).map (·.2)
+
+/-- **Does this certificate claim any node?** The sound tier is `true`: the bridge to
+    `infer` (`Proof/Cert/Check.lean`) has `claims = []` as a hypothesis, because a
+    claimed node is precisely a place where `chk` answers and `infer` does not.
+
+    Reported beside `Cert.unconditional` for the same reason that one is (V6): a
+    verdict whose strength a reader has to reconstruct from a quantifier is not a
+    verdict, and the fourth ratchet counts the two populations apart. -/
+def claimFree (c : Cert) : Bool := c.claims.isEmpty
 
 /-- The table the certificate names: `declsOf p`, extended left to right.
 
