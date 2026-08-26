@@ -1653,6 +1653,169 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         rw [ancestors_defineMethod, lookup_go_defineMethod h cls name mname md hmn]
         exact hm0⟩)
 
+/-! ## 3b. L266 — a row added to the table at a **fixed** heap
+
+`DeclsOk_addRow` above is the `def` step's form: the row and the method arrive
+together, so its conclusion is at `defineMethod h cls name md` and its new-row
+obligation is discharged by the installation. The **certificate** needs the same
+fact with nothing about the heap moving — a claimed row is not installed by
+anything, its witness is supplied — and that turns out to be *cheaper* rather than
+harder in two places, and to need one thing `DeclsOk_addRow` did not.
+
+* Cheaper: the two resolving arms of an old row transport by `rfl` (the heap is the
+  same), so `ResolvesAt_defineMethod`/`ResolvesUser_defineMethod` are not needed;
+  and `IterEntryOk`'s `MissesAt` clause likewise.
+* Needed: `DeclsOk_addRow` assumes `groundClassNames.contains c = false` and
+  concludes `τr = .cls c`, which is exactly what a row on `Integer` must *not* be
+  refused by — `declFor` reads such a row at `Ty.int`, not at `.cls "Integer"`
+  (L189's subtraction). `declFor_addRow_self_inv` below replaces the assumption with
+  the true statement: whatever type the new row is read at, its class list is the
+  singleton `[c]`. That covers the ground arms, the class arm, and — vacuously —
+  `.bool`, whose two names cannot both be `c`.
+
+Kept here rather than in `RubyCore/Cert/` because every one of these is a fact
+about `addRow`/`declFor`/`DeclsOk`, i.e. about the existing machinery
+(`docs/semantics/certificate-language.md` §7 norm 7). The `nomTy` half of the
+bridge — *the singleton is `nomTy c`* — lives in `Types/Assn.lean`, where both
+functions are in scope. -/
+
+theorem declOf?_addRow_self {D : Decls} {c name : String} {σ : MethodDecl} :
+    declOf? (addRow D c name σ) c name = some σ := by
+  unfold declOf? declsFor; simp [addRow]
+
+theorem declOf?_addRow_ne {D : Decls} {c name : String} {σ : MethodDecl}
+    (hfresh : declaresName D name = false) :
+    ∀ c₀, ¬ (c₀ = c) → declOf? (addRow D c name σ) c₀ name = none := by
+  intro c₀ hne
+  have hfind : (addRow D c name σ).rows.find? (fun x => x.1 == c₀)
+      = D.rows.find? (fun x => x.1 == c₀) :=
+    List.find?_cons_of_neg (by simpa using fun hh => hne (Eq.symm hh))
+  have heq : declOf? (addRow D c name σ) c₀ name = declOf? D c₀ name := by
+    unfold declOf? declsFor; rw [hfind]
+  rw [heq]
+  cases hdd : declOf? D c₀ name with
+  | none => rfl
+  | some dd => exact absurd (declOf?_declaresName hdd) (by simp [hfresh])
+
+theorem declOf?_addRow_other {D : Decls} {c name mname : String} {σ : MethodDecl}
+    (hmn : ¬ (mname = name)) :
+    ∀ c', declOf? (addRow D c name σ) c' mname = declOf? D c' mname := by
+  intro c'
+  by_cases hcc : c' = c
+  · subst hcc
+    have hhead : (name == mname) = false := by simpa using fun hh => hmn hh.symm
+    have hda : declsFor (addRow D c' name σ) c' = (name, σ) :: declsFor D c' := by
+      simp [declsFor, addRow]
+    unfold declOf?
+    rw [hda, List.find?_cons_of_neg (by simp [hhead])]
+  · unfold declOf? declsFor
+    rw [show (addRow D c name σ).rows.find? (fun x => x.1 == c')
+            = D.rows.find? (fun x => x.1 == c') from
+        List.find?_cons_of_neg (by simpa using fun hh => hcc (Eq.symm hh))]
+
+theorem declFor_addRow_other {D : Decls} {c name mname : String} {σ : MethodDecl}
+    (hmn : ¬ (mname = name)) (τr : Ty) :
+    declFor (addRow D c name σ) τr mname = declFor D τr mname := by
+  unfold declFor
+  cases hcs : tyClassNames τr with
+  | nil => rfl
+  | cons c₀ cs =>
+    dsimp only
+    rw [declOf?_addRow_other hmn c₀]
+    cases hd0 : declOf? D c₀ mname with
+    | none => rfl
+    | some d0 => simp only [declOf?_addRow_other hmn]
+
+/-- **The new row, read at a type whose class list is the singleton `[g]`.** -/
+theorem declFor_addRow_at {D : Decls} {c name g : String} {σ : MethodDecl} {τ0 : Ty}
+    (hfresh : declaresName D name = false) (h : tyClassNames τ0 = [g]) :
+    declFor (addRow D c name σ) τ0 name = if g = c then some σ else none := by
+  unfold declFor
+  rw [h]
+  dsimp only
+  by_cases hg : g = c
+  · subst hg
+    rw [declOf?_addRow_self]
+    simp
+  · rw [declOf?_addRow_ne hfresh g hg]
+    simp [hg]
+
+/-- And at the **two-class** type, where it is unreadable whatever `c` is. -/
+theorem declFor_addRow_bool {D : Decls} {c name : String} {σ : MethodDecl}
+    (hfresh : declaresName D name = false) :
+    declFor (addRow D c name σ) .bool name = none := by
+  unfold declFor
+  simp only [tyClassNames]
+  by_cases h1 : "TrueClass" = c
+  · subst h1
+    rw [declOf?_addRow_self]
+    dsimp only
+    rw [show (List.all ["FalseClass"]
+        fun c' => declOf? (addRow D "TrueClass" name σ) c' name == some σ) = false from by
+      simp [declOf?_addRow_ne (D := D) (c := "TrueClass") (name := name) (σ := σ)
+        hfresh "FalseClass" (by decide)]]
+    simp
+  · rw [declOf?_addRow_ne hfresh "TrueClass" h1]
+
+/-- **The new row is read at exactly one type, and it is `nomTy c`.** -/
+theorem declFor_addRow_self_inv {D : Decls} {c name : String} {σ : MethodDecl} {τr : Ty}
+    {decl : MethodDecl} (hfresh : declaresName D name = false)
+    (hdecl : declFor (addRow D c name σ) τr name = some decl) :
+    tyClassNames τr = [c] ∧ decl = σ := by
+  have h : ∀ g, tyClassNames τr = [g] → tyClassNames τr = [c] ∧ decl = σ := by
+    intro g hg
+    rw [declFor_addRow_at hfresh hg] at hdecl
+    by_cases hgc : g = c
+    · subst hgc
+      exact ⟨hg, (Option.some.inj (by simpa using hdecl)).symm⟩
+    · simp [hgc] at hdecl
+  have hnil : ∀ (τ : Ty), tyClassNames τ = [] →
+      declFor (addRow D c name σ) τ name = none := by
+    intro τ hτ; unfold declFor; rw [hτ]
+  cases τr with
+  | int => exact h "Integer" rfl
+  | float => exact h "Float" rfl
+  | nilT => exact h "NilClass" rfl
+  | sym => exact h "Symbol" rfl
+  | bool => rw [declFor_addRow_bool hfresh] at hdecl; exact absurd hdecl (by simp)
+  | any => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
+  | clsOf _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
+  | nilable _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
+  | arrayOf _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
+  | cls n =>
+    by_cases hng : groundClassNames.contains n = true
+    · rw [hnil _ (by simp only [tyClassNames]; rw [if_pos hng])] at hdecl
+      exact absurd hdecl (by simp)
+    · exact h n (by simp only [tyClassNames]; rw [if_neg hng])
+
+/-- **A row added to the table at a *fixed* heap.** `DeclsOk_addRow` is this at the
+    heap a `def` step produced; this is the certificate's form, where nothing about the
+    heap moves and the new row's witness is supplied rather than installed. -/
+theorem DeclsOk_addRow_here {D : Decls} {h : Heap} {c name : String} {σ : MethodDecl}
+    (hd : DeclsOk D h) (hfresh : declaresName D name = false)
+    (hnew : ∀ τ0, tyClassNames τ0 = [c] → EntryOk (addRow D c name σ) h τ0 name σ) :
+    DeclsOk (addRow D c name σ) h := by
+  have hsub : SubDecls D (addRow D c name σ) := subDecls_addRow hfresh
+  refine ⟨?_,
+    fun n τ hn => hd.2.1 n τ (by simpa [constTy?, addRow] using hn),
+    fun c0 x τ hn => hd.2.2.1 c0 x τ (by simpa [ivarTy?, addRow] using hn),
+    fun c0 nn τ hn => hd.2.2.2.1 c0 nn τ (by simpa [scopedConstTy?, addRow] using hn),
+    fun c0 nn dd hn => hd.2.2.2.2 c0 nn dd (by simpa [superDecl?, addRow] using hn)⟩
+  intro τr mname decl hdecl
+  by_cases hmn : mname = name
+  · subst hmn
+    obtain ⟨hk, rfl⟩ := declFor_addRow_self_inv hfresh hdecl
+    exact hnew τr hk
+  · have hold : declFor D τr mname = some decl := by
+      rw [← declFor_addRow_other (D := D) (c := c) (σ := σ) hmn τr]; exact hdecl
+    rcases hd.1 τr mname decl hold with hb | ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩ | hi
+    · exact Or.inl hb
+    · refine Or.inr (Or.inl ⟨mdu, cu, htys, hresu, hnmu,
+        hconfu.1, hconfu.2.1, hconfu.2.2.1, ?_⟩)
+      obtain ⟨Γ', r, τb, hbo, hsb, hag⟩ := hconfu.2.2.2
+      exact ⟨Γ', r, τb, infer_mono hsub hconfu.2.2.1 hbo, hsb, hag⟩
+    · exact Or.inr (Or.inr hi)
+
 /-- **The invariant survives an allocating step, unconditionally** (L147).
 
     L146 proved this with a side condition — *every receiver the new heap types was

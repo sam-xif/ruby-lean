@@ -89,6 +89,61 @@ def nomTy : String → Ty
   | "Float" => .float
   | c => .cls c
 
+/-! ### L266 — `nomTy` is the *inverse* of `tyClassNames` on singletons
+
+`nomTy` is introduced above as *the `Ty` a class name names*, and the docstring
+records where it is lossy (the two `Boolean` classes). What it does not record is the
+fact the certificate's `DeclsOk` step needs, and which is worth having as a theorem
+because it is the reason that step needs no `groundClassNames` guard
+(`Cert/implementation-notes.md` V3):
+
+> a type whose class list is a **singleton** is `nomTy` of that name, exactly.
+
+So a declaration keyed by a class name is read at exactly one type, and it is the one
+`nomTy` computes — over the ground arms (`nomTy "Integer" = .int`) as much as over the
+class arm. Both directions of the lossiness stay where they were: `.bool`'s list has
+two entries so no name names it, and `.any`/`.clsOf`/`.nilable`/`.arrayOf` have empty
+lists so no name names them either.
+
+Stated here rather than in `Proof/Static/Decls.lean` because it is the one fact in
+that chain mentioning `nomTy`, which is this file's. -/
+
+/-- The four names `nomTy` sends off the class arm are exactly the four it must:
+    every one of them is in `groundClassNames`. -/
+theorem nomTy_of_not_ground {n : String} (h : groundClassNames.contains n = false) :
+    nomTy n = .cls n := by
+  unfold nomTy
+  split
+  · exact absurd h (by decide)
+  · exact absurd h (by decide)
+  · exact absurd h (by decide)
+  · exact absurd h (by decide)
+  · rfl
+
+/-- **A singleton class list determines its type.** One case per `Ty` arm; the six
+    that answer `[]` or a pair are refuted by the shape of the list alone. -/
+theorem tyClassNames_singleton_inv {τ : Ty} {c : String} (h : tyClassNames τ = [c]) :
+    τ = nomTy c := by
+  cases τ with
+  | int => simp only [tyClassNames, List.cons.injEq] at h; simp [← h.1, nomTy]
+  | float => simp only [tyClassNames, List.cons.injEq] at h; simp [← h.1, nomTy]
+  | nilT => simp only [tyClassNames, List.cons.injEq] at h; simp [← h.1, nomTy]
+  | sym => simp only [tyClassNames, List.cons.injEq] at h; simp [← h.1, nomTy]
+  | bool => simp [tyClassNames] at h
+  | any => simp [tyClassNames] at h
+  | clsOf _ => simp [tyClassNames] at h
+  | nilable _ => simp [tyClassNames] at h
+  | arrayOf _ => simp [tyClassNames] at h
+  | cls n =>
+    simp only [tyClassNames] at h
+    split at h
+    · simp at h
+    · rename_i hg
+      simp only [List.cons.injEq] at h
+      have hn : n = c := h.1
+      subst hn
+      exact (nomTy_of_not_ground (by simpa using hg)).symm
+
 /-- A `Ty`, rendered. Used by the printer, and the partial inverse of `nomTy`. -/
 def tyName : Ty → String
   | .int => "Integer"

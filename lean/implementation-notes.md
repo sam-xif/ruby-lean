@@ -13372,3 +13372,64 @@ cannot check.
 `check-proofs.sh` axiom-clean, `fragment-gap.py --self-test` all agree, `--assn`/`--check`
 byte-identical against a pre-L262 binary, playground `/assn-program` exercised end to end
 against CRuby's desugarer. No interpreter change, so no difftest.
+
+## L266 — a row added to the table at a **fixed** heap, and the guard that turns out to be unnecessary
+
+`DeclsOk_addRow` (F1b.10) is the `def` step's form of *the table grew by one row*: the
+row and the method arrive together, so its conclusion is stated at
+`defineMethod h cls name md` and the new row's own obligation is discharged by the
+installation. The certificate language
+(`docs/semantics/certificate-language.md`, `RubyCore/Cert/`) needs the same fact with
+**nothing about the heap moving** — a claimed row is not installed by anything, its
+witness is supplied — and this is that lemma. It is a fact about `addRow`/`declFor`/
+`DeclsOk`, so it lives in `Proof/Static/Decls.lean` and `Types/Assn.lean` rather than
+in the new tree (that document's §7 norm 7: *never fork a private copy*).
+
+### The measurement: `groundClassNames` was guarding the wrong thing
+
+`DeclsOk_addRow` assumes `groundClassNames.contains c = false` and its central step
+concludes `τr = .cls c` — *the only type a freshly added row is read at is the class
+arm*. Read against a certificate that wants to declare `Integer#even?` from an RBI,
+that assumption refuses the row, and the refusal is **wrong for a stated reason**:
+`declFor` reads a row keyed `"Integer"` at `Ty.int`, because `tyClassNames .int =
+["Integer"]`. It is the `.cls "Integer"` arm that L189's subtraction empties, and
+`nomTy "Integer"` is not that arm.
+
+So the guard is replaced by the true statement rather than kept and worked around:
+
+```
+declFor_addRow_self_inv :
+  declaresName D name = false → declFor (addRow D c name σ) τr name = some decl →
+    tyClassNames τr = [c] ∧ decl = σ
+```
+
+*Whatever type the new row is read at, its class list is the singleton `[c]`.* That
+covers the ground arms, the class arm, and — vacuously — `.bool`, whose two names
+cannot both be `c`, and the four arms whose list is empty. `DeclsOk_addRow_here` then
+takes its new-row obligation quantified over exactly those types, and there is at
+most one of them: `Types/Assn.lean`'s `tyClassNames_singleton_inv` says it is
+`nomTy c`. So a certificate discharges the obligation with **one** `decl` atom.
+
+Four small table lemmas fall out and are worth their names, because all four are
+about `addRow`'s prepend-shadowing and each was inlined inside `DeclsOk_addRow`'s
+proof: `declOf?_addRow_self`, `declOf?_addRow_ne` (freshness makes every *other*
+class answer `none` at the written name), `declOf?_addRow_other` and
+`declFor_addRow_other` (a *different* name does not see the row at all).
+
+### What is cheaper at a fixed heap, and it is most of the proof
+
+`DeclsOk_addRow` spends its second half transporting the old rows across
+`defineMethod`. At a fixed heap there is nothing to transport: both resolving arms of
+`EntryOk` and `IterEntryOk`'s `MissesAt` clause pass through by `rfl`, and the only
+surviving obligation is the one that was never about the heap — `UserConforms`'
+`infer_mono` step, which needs `SubDecls D (addRow …)`, i.e. `subDecls_addRow` at the
+same freshness hypothesis. So the new lemma is a third the length of the old one and
+the two do not share a proof; the *statement* `DeclsOk_addRow` proves is not an
+instance of this one (its heap moves), which is why it stays where it is untouched.
+
+### Checks
+
+`lake build`, `lake build Metatheory`, `check-proofs.sh` axiom-clean. No interpreter
+change and no rule change, so `--assn`/`--check` cannot move and there is no
+difftest; `DeclsOk_addRow` and every consumer of it are untouched, which the
+metatheory build is what checks.
