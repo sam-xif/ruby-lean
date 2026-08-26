@@ -172,3 +172,76 @@ over it. Two numbers, not one:
 
 An accept whose residue is a *false* atom is therefore visible as a residual accept
 with a nameable atom, which is the failure mode §8.3 wants routable to the emitter.
+
+## V7 — C1 as built: what the milestone predicted, and the one thing it got wrong
+
+`Proof/Cert/Bridge.lean` + `Proof/Cert/Sound.lean`. §3's price list holds up almost
+exactly — initiation is `initiation_at` (L267) plus the extension's obligation,
+consecution and safety are *nothing at all* — with one correction worth stating
+because it is about the design and not about the effort.
+
+### The bridging lemma §3 budgets for does not exist, because V1 removed the gap
+
+§3's table anticipates *"a bridging lemma: `validate`'s per-body checking-mode
+acceptance implies the `FramesOk`/`CtlOk` instance `step_ok` consumes — the analogue
+of `inferOpen_factors`, in the checking direction"*. There is none, and there is
+nothing for one to do:
+
+> `CtlOk`'s eval clause **is** `infer F Γ e … = some …`, and `validate`'s `nominalOk`
+> conjunct is that equation at the certificate's table. The validator's acceptance and
+> the invariant's clause are the same proposition.
+
+That is V1 paying off: choosing *the table* as what a certificate names is exactly
+what makes the bridge an identity. The cost is the other half of V1 — a certificate
+cannot say anything the nominal judgement cannot check — and that is where the
+per-body `bodies` section lands: it is a **measurement**, not a hypothesis or a
+conclusion (V2, and `Validate.lean` §3's two-tables note).
+
+### The verdict ladder, as three theorems rather than three readings
+
+`validate_sound_carries` is the sharp form (conditional on `rowAssn` — one `decl`
+atom per claimed row); `validate_sound` is §3's statement over the whole printed
+`assumes`, derived from it by `rowsDeclared`; `validate_sound_unconditional` has no
+hypothesis at all. Three statements rather than one plus prose, because §2 constraint
+4 makes the residue first-class and *"the verdict-strength ladder becomes an ordering
+on residues instead of prose"* is only true if the ordering is in the types.
+
+`check_accept_of_validate_empty` closes the ladder at the bottom: the empty
+certificate certifies exactly what `check` accepts. So the round-trip property of §6
+C0 is a theorem and not an observation about six examples.
+
+### The gate: three programs, and the middle one is the result
+
+| program | `check` | certificate | conclusion |
+|---|---|---|---|
+| `class String; def value; 1; end; def get; value; end; "x".get; end` | accept | empty | **unconditional** (round trip) |
+| `1.even?` | unknown | one row, `Integer ▷ even? : () → Boolean` | **unconditional** — the residue is *discharged* |
+| `1 / 2` | unknown | one row, `Integer ▷ / : (Integer) → Integer` | **conditional**, and undischargeable |
+
+The middle row is what the pivot was for. `even?` is absent from `baseDecls` for no
+reason at all — `Types/Decls.lean` picked `zero?` as the one nullary row on two
+measured grounds (no bootstraptest program defines `zero?`; `abs` is defined twice in
+the prelude) and never came back — so the row is claimable, and its `EntryOk` is the
+*three-line instantiation* `static-soundness-poc.md` §8.2(5) advertises:
+`entryOk_int_nullary` at `f := fun x => .bool (x % 2 == 0)`, with
+`IntBuiltinResolves` by the same eight `rfl`s `tableOk_initHeap` uses. **A program
+`check` rejects, proved safe with no hypothesis**, and the proof went through the
+certificate rather than through a new rule.
+
+The third row is kept deliberately, and it is the reason `1 / 2` and not something
+tidier is this initiative's standing example: `Integer#/` is absent from `baseDecls`
+by *decision* (`1 / 0` raises), so its residue has no proof and `egDiv_certified`
+cannot be instantiated. §8 risk 3's mitigation is therefore not a policy here but the
+shape of the theorem — an accept whose residue is false is visible as one, because a
+reader has to supply the residue to use it.
+
+### What C1 did **not** need, recorded so a later rung does not re-budget it
+
+* no change to `Inv`, `CtlOk`, `KontOk`, `step_ok`, or any consecution case;
+* no change to `Types/Core.lean`, and therefore no `--check`/`--assn` movement;
+* no new invariant conjunct for the table extension — `Inv` ∃-quantifies the table
+  already (F1b.8), and L267's measurement is that *nothing* in `initiation` was ever
+  specific to `declsOf p`.
+
+The whole trusted addition is `Bridge.lean`'s four lemmas and `Sound.lean`'s three
+statements, on top of L266/L267 in the existing tree.

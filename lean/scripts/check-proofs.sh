@@ -54,6 +54,7 @@ import RubyCore.Proof.Static.Assn
 import RubyCore.Proof.Static.OpenSelf
 import RubyCore.Proof.Static.Iter
 import RubyCore.Proof.Static.Discharge
+import RubyCore.Proof.Cert.Sound
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -129,6 +130,26 @@ import RubyCore.Proof.Static.Discharge
 -- Audited here because `Proof/Static/Discharge.lean` has no other consumer yet, and an
 -- off-target file with no consumer is exactly how `Proof/` rotted for 24 commits (L119).
 #print axioms RubyCore.Proof.Static.discharge_sound
+-- L266/L267 — the two facts the certificate language needed from the standing
+-- machinery: a row added at a *fixed* heap, and `initiation` parametric in the table.
+-- Audited because `DeclsOk_addRow_here`'s only consumer is off in `Proof/Cert/`, and
+-- `initiation_at` is what `check_sound` now factors through.
+#print axioms RubyCore.Proof.Static.DeclsOk_addRow_here
+#print axioms RubyCore.Proof.Static.DeclsOk_of_subDecls
+#print axioms RubyCore.Proof.Static.initiation_at
+-- C1 (`docs/semantics/certificate-language.md`) — the composed program-level
+-- soundness theorem: *this certificate, this program, therefore no reachable
+-- `typeStuck`, conditional only on the printed residue.* The three worked corollaries
+-- are the milestone's gate and they are one per rung of the verdict ladder:
+-- unconditional with no extension, unconditional with the residue *discharged*, and
+-- conditional on a residue that cannot be.
+#print axioms RubyCore.Proof.Cert.validate_sound
+#print axioms RubyCore.Proof.Cert.validate_sound_carries
+#print axioms RubyCore.Proof.Cert.validate_sound_unconditional
+#print axioms RubyCore.Proof.Cert.check_accept_of_validate_empty
+#print axioms RubyCore.Proof.Cert.egVcall_certified
+#print axioms RubyCore.Proof.Cert.egEven_certified
+#print axioms RubyCore.Proof.Cert.egDiv_certified
 LEAN
 
 echo "== axioms"
