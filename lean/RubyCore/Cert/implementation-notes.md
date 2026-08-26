@@ -245,3 +245,64 @@ reader has to supply the residue to use it.
 
 The whole trusted addition is `Bridge.lean`'s four lemmas and `Sound.lean`'s three
 statements, on top of L266/L267 in the existing tree.
+
+## V8 — C2 as built: the ledger, and the premise L262 left open
+
+`Cert/Ledger.lean` (checker) + `Proof/Cert/Ledger.lean` (theorem). L262 proved
+`discharge_sound` and said plainly what it did not do:
+
+> **The second premise is real and is not discharged here.** `SatProvs D θ st` says
+> `sigOf D (θ α) n` really is the signature the `def` supplied — a fact about the
+> **table**, not about `θ`. […] Stating it as a premise is the honest split.
+
+`satProvs_ledgerStore` discharges it, and the shape is §1's thesis in one line: **the
+certificate records what `discharge` had to search for.** The pairing is a choice;
+`Types/Discharge.lean` finds it by walking the store, the ledger states it, and the
+validator's obligation per cancellation is one `sigOf` lookup.
+
+### Three decisions in the checker
+
+1. **A `DischargeStep` determines *both* polarities**, so the ledger determines a whole
+   `Store` (`ledgerStore?`): `required` into `rows`, `provided` into `provs`. That is
+   what makes `discharge` applicable to it and `discharge_sound` composable
+   (`ledger_satStore`). A ledger that only carried provisions would have discharged
+   `SatProvs` and left nothing to spend it on.
+2. **The `pinPair` equalities are re-derived, never stored.** `ledgerEqsOk` runs
+   `dischargeSig` — the same function `discharge` runs — and checks `θ` against its
+   output. A stored equality would be one more thing to trust, and re-deriving means
+   L262's three refusals arrive here as *rejections* rather than as silent
+   non-cancellations.
+3. **`validateFull`, not a seventh conjunct of `validate`.** Mechanically because
+   `ledgerOk` lives in a file that imports `Validate.lean`; honestly because the
+   ledger's theorem concludes `SatStore`, not `¬ typeStuck` — a different obligation,
+   not a stronger version of the same one.
+
+### The worked example, and what it is the first of
+
+`Proof/Cert/Ledger.lean` §4 is L262's headline with the pairing stated: the store, the
+cancellation, the solver's answer on the *cancelled* store by `satStoreB_sound (by
+decide)`, and `SatStore` for the whole store. **That is the first place both of
+`discharge_sound`'s premises are met**, and the whole chain is a kernel computation —
+two `decide`s and a `rfl`, no `native_decide`.
+
+### The wall, measured (and it is R2)
+
+For a row the program **itself defines**, `ledger_ok` and `status: accept` cannot both
+hold. `ledgerStepOk`'s `sigOf` lookup needs the provision in the certificate's table;
+`infer`'s `def` rule requires `declaresName D name = false` (F1c); so declaring
+`String#value` makes `infer` refuse `def value` and `nominalOk` false.
+
+```
+class String; def value; 1; end; def get; value; end; end
+  ledger_ok: true                      the cancellation's obligation IS discharged
+  status:    reject (why: "nominal")   because the table now shadows the `def`
+```
+
+Both halves are honest and they are about different things — C2's gate is the premise,
+and it is met. What is blocked is *composing* it with the program-level conclusion, and
+the blocker is name-global `declaresName` (`Types/Assn.lean` §R2, stated-but-not-built).
+**R2 is now load-bearing for two separate things** (V3's cost note and this), which is
+a measurement that should reorder it relative to C5–C9. Not worked around: the
+workaround is a ledger reading a table the program does not see, and two tables
+disagreeing about what a class declares is what L263's superclass-seeding refusal
+already rejected.

@@ -55,6 +55,7 @@ import RubyCore.Proof.Static.OpenSelf
 import RubyCore.Proof.Static.Iter
 import RubyCore.Proof.Static.Discharge
 import RubyCore.Proof.Cert.Sound
+import RubyCore.Proof.Cert.Ledger
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -150,6 +151,14 @@ import RubyCore.Proof.Cert.Sound
 #print axioms RubyCore.Proof.Cert.egVcall_certified
 #print axioms RubyCore.Proof.Cert.egEven_certified
 #print axioms RubyCore.Proof.Cert.egDiv_certified
+-- C2 — the ledger. `satProvs_ledgerStore` is `discharge_sound`'s open premise (L262:
+-- "the second premise is real and is not discharged here") closed by the certificate
+-- *stating* the requirement/provision pairing `discharge` had to search for.
+-- `egLedger_satStore` is the first place both of `discharge_sound`'s premises are met.
+#print axioms RubyCore.Proof.Cert.satProvs_ledgerStore
+#print axioms RubyCore.Proof.Cert.ledger_satStore
+#print axioms RubyCore.Proof.Cert.validateFull_sound
+#print axioms RubyCore.Proof.Cert.egLedger_satStore
 LEAN
 
 echo "== axioms"

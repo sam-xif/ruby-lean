@@ -1,4 +1,4 @@
-import RubyCore.Cert.Validate
+import RubyCore.Cert.Ledger
 
 /-!
 # C0 — the certificate's serialization
@@ -245,7 +245,7 @@ from the presence of `carries`. That is L265's `means` discipline applied to a s
 verdict. -/
 
 def verdictToJson (c : Cert) (p : Expr) : Json :=
-  let ok := validate c p
+  let ok := validateFull c p
   Json.mkObj ([
     ("status", Json.str (if ok then "accept" else "reject")),
     ("version", Json.num c.version),
@@ -256,6 +256,11 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
     -- number gated on `status` would read 0 for the whole slice forever.
     ("bodies_claimed", Json.num c.bodies.length),
     ("bodies_certified", Json.num (bodiesCertified c p)),
+    -- **C2's ledger.** Reported outside the `if` for `bodies_certified`'s reason: the
+    -- number of cancellations a certificate *states* is a gradient, and `ledger_ok` is
+    -- what `Proof/Cert/Ledger.lean`'s `satProvs_ledgerStore` is conditional on.
+    ("ledger_steps", Json.num c.ledger.length),
+    ("ledger_ok", Json.bool (ledgerOk c p)),
     -- Per claim, whether it replayed. The gradient at its finest grain, and what an
     -- emitter reads back to iterate (`certify/implementation-notes.md` E5): the
     -- untrusted side proposes signatures and this is the adjudication.
@@ -281,6 +286,7 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
            else if !rowsDeclared c then "row-not-in-assumes"
            else if !eqsOk c then "theta-inconsistent"
            else if !bodiesOk c p then "body-claim"
-           else "nominal"))]))
+           else if !nominalOk c p then "nominal"
+           else "ledger"))]))
 
 end RubyCore.Cert
