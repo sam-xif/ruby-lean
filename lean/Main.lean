@@ -270,7 +270,11 @@ def main (args : List String) : IO UInt32 := do
                 Lean.Json.mkObj [("status", Lean.Json.str "reject"),
                                  ("why", Lean.Json.str "certificate-undecodable"),
                                  ("detail", Lean.Json.str e)]
-              | .ok cert => Cert.verdictToJson cert prog
+              -- **V15's resolution step.** Claims travel as addresses and are
+              -- checked against terms, so the path has to be resolved against
+              -- *this* program before the validator sees the certificate. An
+              -- address that names nothing is dropped, which refuses.
+              | .ok cert => Cert.verdictToJson (Cert.Cert.resolveClaims prog cert) prog
         IO.println out.compress
         return 0
       if checkOnly then

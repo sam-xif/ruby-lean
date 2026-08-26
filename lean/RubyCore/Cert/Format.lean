@@ -1,4 +1,4 @@
-import RubyCore.Types.Assn
+import RubyCore.Cert.ExprEq
 
 /-!
 # C0 — the certificate grammar
@@ -130,12 +130,26 @@ is not a claim about discipline, it is a fact about the module graph, and
 What replaces `infer` on the checked path is `chk` (`Cert/Check.lean`), and it needs
 two things the C0 grammar had no room for.
 
-**A way to name a node.** `Path` is the list of child indices from the root,
-**innermost first** — the child `i` of the node at `π` is at `i :: π`. Consed rather
-than appended because the checker builds it on the way *down*, and a cons is one
-allocation where a `++` is a traversal; the price is that a path reads
-right-to-left, which is why every emitter must build it the same way (`certify/`
-does, E-side).
+**A way to name a node — and V15 is a correction to what that means.** The first
+version keyed a claim on its **address**: a `Path`, the list of child indices from
+the root. That is what an emitter finds natural, and it is *unstatable in an
+invariant*, which is the measurement that changed it:
+
+> `Inv` is a predicate on machine states, and a machine's `ctl` holds an `Expr`, not
+> an address. So `chk c n D Γ e top ctx π` cannot be asserted at a reachable
+> machine — there is no `π` to hand it. A claim the soundness argument can carry has
+> to be keyed on something the machine can see, which is **the subterm itself**.
+
+So `Cert.claims` is keyed on `Expr`. The consequence, stated because it is a real
+weakening: two *syntactically identical* subterms in different positions share a
+claim. That is the same convention a type ascription on a term has, it is what makes
+a claim position-independent, and it costs precision only where a program repeats a
+subterm and wants two different answers for it — in which case the two claims
+conflict and the first one wins, which refuses rather than accepts.
+
+The `Path` survives as the **wire** format and as provenance (`NodeClaim.at`):
+`Cert/Json.lean` resolves it to a subterm on load, so emitters keep writing
+addresses and the trusted structure keeps reading terms.
 
 **A way to state a claim about that node.** §4 D1's stackmap table, generalized:
 between claims the checker propagates deterministically, and at a claimed node it
@@ -147,7 +161,12 @@ the bridge (`Proof/Cert/Check.lean`), so a certificate that claims a node buys
 coverage and gives up the theorem — which is the same two-tier bargain `deltaRows`
 strikes, one level down, and it is reported the same way (`Cert.claimFree`). -/
 
-/-- A node address: child indices from the root, innermost first. -/
+/-- A node address: child indices from the root, innermost first.
+
+    **Provenance only, since V15.** It is what an emitter finds natural to write and
+    what a diff of two certificates reads well, and it is *not* how the validator
+    looks a claim up — see `Cert.claims`. `Cert/Json.lean` resolves it to the subterm
+    it addresses when a certificate is loaded. -/
 abbrev Path := List Nat
 
 /-- What the certificate may say about one node — §4 D1's stackmap entry.
@@ -160,6 +179,11 @@ abbrev Path := List Nat
 structure NodeClaim where
   /-- The type this node is claimed to have. -/
   ty : Ty
+  /-- Where the emitter said this claim was, as an address. **Provenance only** — no
+      rule reads it (V15). Carried so that a certificate round-trips and two
+      certificates diff, which §2 constraint 5 asks for. (`addr` and not `at`, which
+      is a keyword.) -/
+  addr : Path := []
   /-- The environment the node's continuation is typed at — a join point's
       stackmap (C5). `none` means "the entry environment", which is what every
       deterministic arm passes. -/
@@ -218,9 +242,10 @@ structure Cert where
   bodies : List BodyCert := []
   /-- Which provision answers which requirement (C2). -/
   ledger : List DischargeStep := []
-  /-- Per-node claims, keyed by `Path` — §4 D1's stackmap table (V10). Empty is
-      the sound tier: `Cert.claimFree` reports it and the bridge requires it. -/
-  claims : List (Path × NodeClaim) := []
+  /-- Per-node claims, keyed by the **subterm** they are about — §4 D1's stackmap
+      table (V10), re-keyed at V15 so that the soundness argument can carry one.
+      Empty is the sound tier, which `Cert.claimFree` reports. -/
+  claims : List (Expr × NodeClaim) := []
   /-- **The checker's fuel, carried by the certificate** (V9).
 
       `chk` is structurally recursive on this `Nat`, which is what makes the whole
@@ -238,7 +263,10 @@ structure Cert where
       accept, and §2 constraint 4 is the reason this is a field rather than prose:
       the verdict-strength ladder is an ordering on residues. -/
   assumes : Assn := .emp
-deriving DecidableEq, Repr, Inhabited
+-- `BEq` and not `DecidableEq`: `claims` is keyed on `Expr`, which carries a `Float`
+-- (V15, `RubyCore/Syntax.lean`). Nothing needs propositional decidability of a whole
+-- certificate; `==` is what the round-trip fixtures compare.
+deriving BEq, Repr, Inhabited
 
 namespace Cert
 
@@ -255,10 +283,12 @@ def thetaFn (c : Cert) : TyVar → Ty :=
     | some (_, τ) => τ
     | none => .any
 
-/-- The claim at a node, if the certificate makes one. A `List.find?` over ground
-    data, so it reduces in the kernel like everything else on the checked path. -/
-def claimAt (c : Cert) (π : Path) : Option NodeClaim :=
-  (c.claims.find? (·.1 == π)).map (·.2)
+/-- The claim about a subterm, if the certificate makes one. A `List.find?` over
+    ground data compared by `exprEq` (V16, `Cert/ExprEq.lean`) — the derived
+    `BEq Expr` is well-founded and does not reduce in the kernel, which is the whole
+    reason that file exists. Note what this is *not* indexed by: see V15. -/
+def claimAt (c : Cert) (e : Expr) : Option NodeClaim :=
+  (c.claims.find? (fun p => exprEq c.fuel p.1 e)).map (·.2)
 
 /-- **Does this certificate claim any node?** The sound tier is `true`: the bridge to
     `infer` (`Proof/Cert/Check.lean`) has `claims = []` as a hypothesis, because a

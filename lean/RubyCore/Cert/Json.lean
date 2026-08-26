@@ -205,18 +205,92 @@ def stepOfJson (j : Json) : Except String DischargeStep := do
          required := ← asigOfJson (← j.getObjVal? "required"),
          provided := ← asigOfJson (← j.getObjVal? "provided") }
 
-/-! ### Node claims (V10)
+/-! ### Node claims (V10), and the resolution step V15 forces
 
-`Path` is a `List Nat` and goes over the wire as a JSON array of numbers, **innermost
-index first** — the order `Cert/Check.lean` builds it in. An emitter that appends
-instead of consing produces paths that address nothing, which is a lost body and not
-a wrong accept; `certify/` builds them the same way and the round-trip fixtures are
-what check that it does. -/
+`Cert.claims` is keyed on the **subterm** a claim is about, because a claim keyed on a
+position cannot be stated at a machine state (`Cert/Format.lean` V15). Emitters,
+though, naturally write *positions* — and a position is also what diffs and reads
+well. So the wire format keeps the `Path` and this file resolves it:
 
-def pathToJson (π : Path) : Json := Json.arr (List.map (fun i : Nat => Json.num i) π).toArray
+```
+JSON  {"path": [0], "claim": {...}}        →  (subtermAt p [0], claim with addr := [0])
+```
 
-def pathOfJson (j : Json) : Except String Path := do
-  pure (← (← j.getArr?).toList.mapM fun x => x.getNat?)
+`Cert.resolveClaims` is the step, and it is **not** part of `ofJson`: decoding does
+not know the program. `Main.lean` calls it after decoding, once the program is in
+hand. A claim whose path addresses nothing resolves to nothing and is **dropped**,
+which refuses rather than accepts.
+
+`childAt` is the numbering, and it is the *only* place the numbering is defined now —
+`chk` no longer computes paths at all, so there is nothing for an emitter to
+disagree with. Children are numbered left to right in evaluation order. -/
+
+def childAt : Expr → Nat → Option Expr
+  | .vasgn _ _ r, 0 => some r
+  | .casgn _ r, 0 => some r
+  | .cpath (some b) _, 0 => some b
+  | .cpathAsgn (some b) _ _, 0 => some b
+  | .cpathAsgn none _ r, 0 => some r
+  | .cpathAsgn (some _) _ r, 1 => some r
+  | .send (some r) _ _ _, 0 => some r
+  | .send (some _) _ as bl, i =>
+    if i ≤ as.length then as[i - 1]? else if i == as.length + 1 then bl else none
+  | .send none _ as bl, i =>
+    if i ≤ as.length then as[i - 1]? else if i == as.length + 1 then bl else none
+  | .block _ _ b, 0 => some b
+  | .blockpass (some b), 0 => some b
+  | .yield' as, i => as[i]?
+  | .if' c _ _, 0 => some c
+  | .if' _ t _, 1 => some t
+  | .if' _ _ (some e), 2 => some e
+  | .while' c _, 0 => some c
+  | .while' _ b, 1 => some b
+  | .dowhile b _, 0 => some b
+  | .dowhile _ c, 1 => some c
+  | .for' _ co _, 0 => some co
+  | .for' _ _ b, 1 => some b
+  | .def' _ _ b, 0 => some b
+  | .defs r _ _ _, 0 => some r
+  | .defs _ _ _ b, 1 => some b
+  | .array es, i => es[i]?
+  | .splat (some o), 0 => some o
+  | .ret (some x), 0 => some x
+  | .brk (some x), 0 => some x
+  | .nxt (some x), 0 => some x
+  | .class' _ none b, 0 => some b
+  | .class' _ (some su) _, 0 => some su
+  | .class' _ (some _) b, 1 => some b
+  | .module' _ b, 0 => some b
+  | .scopedClass (some ba) _ _, 0 => some ba
+  | .scopedClass _ _ b, 1 => some b
+  | .scopedModule (some ba) _ _, 0 => some ba
+  | .scopedModule _ _ b, 1 => some b
+  | .sclass o _, 0 => some o
+  | .sclass _ b, 1 => some b
+  | .begin' b _ _ _, 0 => some b
+  | .super' as bl, i => if i < as.length then as[i]? else bl
+  | .zsuper bl, 0 => bl
+  | .defined x, 0 => some x
+  | .seq es, i => es[i]?
+  | _, _ => none
+
+/-- Walk a path from the root, outermost step first — which is the *reverse* of the
+    innermost-first order a `Path` is written in, so the caller reverses once and this
+    recurses on the list. Structural, so no fuel needed here: `Json.lean` is off the
+    checked path anyway (L135), but a plain list recursion is free. -/
+def subtermFwd (e : Expr) : List Nat → Option Expr
+  | [] => some e
+  | i :: rest => (childAt e i).bind (fun ch => subtermFwd ch rest)
+
+/-- Resolve an address against a program. -/
+def subtermAt (e : Expr) (π : Path) : Option Expr := subtermFwd e π.reverse
+
+/-- Resolve every claim's address to the subterm it addresses, dropping the ones that
+    address nothing. Called by `Main.lean` after decoding, because decoding does not
+    know the program. -/
+def Cert.resolveClaims (p : Expr) (c : Cert) : Cert :=
+  { c with claims := c.claims.filterMap fun entry =>
+      (subtermAt p entry.2.addr).map (fun sub => (sub, entry.2)) }
 
 def envToJson (Γ : Env) : Json :=
   Json.arr (Γ.map fun e => Json.mkObj [("name", Json.str e.1), ("ty", tyToJson e.2)]).toArray
@@ -226,7 +300,8 @@ def envOfJson (j : Json) : Except String Env := do
     pure ((← (← e.getObjVal? "name").getStr?), (← tyOfJson (← e.getObjVal? "ty"))))
 
 def nodeClaimToJson (cl : NodeClaim) : Json :=
-  Json.mkObj ([("ty", tyToJson cl.ty)] ++
+  Json.mkObj ([("ty", tyToJson cl.ty),
+               ("path", Json.arr (List.map (fun i : Nat => Json.num i) cl.addr).toArray)] ++
     (match cl.env with | some Γ => [("env", envToJson Γ)] | none => []) ++
     (match cl.tys with
      | some τs => [("tys", Json.arr (τs.map tyToJson).toArray)]
@@ -234,20 +309,25 @@ def nodeClaimToJson (cl : NodeClaim) : Json :=
 
 def nodeClaimOfJson (j : Json) : Except String NodeClaim := do
   let ty ← tyOfJson (← j.getObjVal? "ty")
+  let addr ← match j.getObjVal? "path" with
+    | .error _ => pure []
+    | .ok v => do pure (← (← v.getArr?).toList.mapM fun x => x.getNat?)
   let env ← match j.getObjVal? "env" with
     | .error _ => pure none
     | .ok v => do pure (some (← envOfJson v))
   let tys ← match j.getObjVal? "tys" with
     | .error _ => pure none
     | .ok v => do pure (some (← (← v.getArr?).toList.mapM tyOfJson))
-  pure { ty := ty, env := env, tys := tys }
+  pure { ty := ty, addr := addr, env := env, tys := tys }
 
-def claimToJson (e : Path × NodeClaim) : Json :=
-  Json.mkObj [("path", pathToJson e.1), ("claim", nodeClaimToJson e.2)]
+/-- A claim on the wire. The key is a placeholder until `Cert.resolveClaims` runs —
+    `Expr.nil` matches nothing a program is likely to claim about, and an unresolved
+    certificate therefore *refuses* the claim rather than misapplying it. -/
+def claimOfJson (j : Json) : Except String (Expr × NodeClaim) := do
+  pure (.nil, (← nodeClaimOfJson (← j.getObjVal? "claim")))
 
-def claimOfJson (j : Json) : Except String (Path × NodeClaim) := do
-  pure ((← pathOfJson (← j.getObjVal? "path")),
-        (← nodeClaimOfJson (← j.getObjVal? "claim")))
+def claimToJson (e : Expr × NodeClaim) : Json :=
+  Json.mkObj [("claim", nodeClaimToJson e.2)]
 
 def Cert.toJson (c : Cert) : Json :=
   Json.mkObj [

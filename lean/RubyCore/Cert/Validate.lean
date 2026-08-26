@@ -103,7 +103,7 @@ for. -/
     consumes at `Machine.init p`, and (with the table itself) the only part of
     `validate` that `validate_sound` reads. -/
 def chkOk (c : Cert) (p : Expr) : Bool :=
-  (chk c c.fuel (c.table p) [] p true { cls := "Object" } []).isSome
+  (chk c c.fuel (c.table p) [] p true { cls := "Object" }).isSome
 
 /-! ## 3. The per-body claims
 
@@ -127,13 +127,13 @@ restriction goes, and the body's parameters are bound at the signature's types. 
     reduce in the kernel, which would have put `bodiesOk` back on the wrong side of
     §8 risk 1 after `chk` had got it off. Measured: the first draft of this file was
     a `mutual` and `bodiesCertified` would not `decide`. -/
-def findDefList (g : Path → Expr → Option (List Param × Expr × Path))
-    (i : Nat) (π : Path) : List Expr → Option (List Param × Expr × Path)
+def findDefList (g : Expr → Option (List Param × Expr))
+    : List Expr → Option (List Param × Expr)
   | [] => none
   | e :: rest =>
-    match g (i :: π) e with
+    match g e with
     | some r => some r
-    | none => findDefList g (i + 1) π rest
+    | none => findDefList g rest
 
 /-- The parameters, body **and path** of `cls#name`, as the program writes them.
 
@@ -149,18 +149,18 @@ def findDefList (g : Path → Expr → Option (List Param × Expr × Path))
     It deliberately does **not** descend into a `def` body, into an `if`, or into a
     `while`: a `def` inside any of those is not a fact about the program (L263's
     first refusal), so a certificate may not claim its row. -/
-def findDef (cls name : String) : Nat → String → Path → Expr →
-    Option (List Param × Expr × Path)
-  | 0, _, _, _ => none
-  | n + 1, cur, π, e =>
+def findDef (cls name : String) : Nat → String → Expr →
+    Option (List Param × Expr)
+  | 0, _, _ => none
+  | n + 1, cur, e =>
     match e with
-    | .def' nm ps body => if cur == cls && nm == name then some (ps, body, π) else none
-    | .class' c _ body => findDef cls name n c (0 :: π) body
-    | .module' c body => findDef cls name n c (0 :: π) body
-    | .scopedClass _ c body => findDef cls name n c (1 :: π) body
-    | .scopedModule _ c body => findDef cls name n c (1 :: π) body
-    | .seq es => findDefList (fun π' e' => findDef cls name n cur π' e') 0 π es
-    | .begin' body _ _ _ => findDef cls name n cur (0 :: π) body
+    | .def' nm ps body => if cur == cls && nm == name then some (ps, body) else none
+    | .class' cn _ body => findDef cls name n cn body
+    | .module' cn body => findDef cls name n cn body
+    | .scopedClass _ cn body => findDef cls name n cn body
+    | .scopedModule _ cn body => findDef cls name n cn body
+    | .seq es => findDefList (fun e' => findDef cls name n cur e') es
+    | .begin' body _ _ _ => findDef cls name n cur body
     | _ => none
 
 /-- The table the `bodies` section is checked at: `Cert.table` plus the section's own
@@ -173,13 +173,13 @@ def Cert.bodyTable (c : Cert) (p : Expr) : Decls :=
 
 /-- One body's claim, re-checked at `bodyTable`. -/
 def bodyOk (c : Cert) (p : Expr) (b : BodyCert) : Bool :=
-  match findDef b.owner b.name c.fuel "Object" [] p with
+  match findDef b.owner b.name c.fuel "Object" p with
   | none => false
-  | some (ps, body, π) =>
+  | some (ps, body) =>
     b.sig.blk == none && b.sig.params.length == ps.length && defFreeF c.fuel body &&
       (match chk c c.fuel (c.bodyTable p) (bindParams c.fuel ps b.sig.params []) body false
           { cls := b.owner, selfCls := some b.owner, ret := some b.sig.ret,
-            meth := some b.name, params := some b.sig.params } (0 :: π) with
+            meth := some b.name, params := some b.sig.params } with
        | some (τ, _, D') => subTy τ b.sig.ret && D' == c.bodyTable p
        | none => false)
 
@@ -409,7 +409,7 @@ example : Cert.certifies {} egMisc = false := by decide
 def egFor : Expr :=
   .for' [(.lvar, "i")] (.array [.int 1, .int 2]) (.var .lvar "i")
 
-example : validate { claims := [([], { ty := .int })] } egFor = true := by decide
+example : validate { claims := [(egFor, { ty := .int })] } egFor = true := by decide
 
 /-- **A claim is not a licence.** The same `for` loop with the target claimed at
     `Symbol` fails, because the body reads `i` and then nothing accepts it where an
@@ -420,8 +420,8 @@ def egForUse : Expr :=
   .for' [(.lvar, "i")] (.array [.int 1, .int 2])
     (.send (some (.var .lvar "i")) "+" [.int 1] none)
 
-example : validate { claims := [([], { ty := .int })] } egForUse = true := by decide
-example : validate { claims := [([], { ty := .sym })] } egForUse = false := by decide
+example : validate { claims := [(egForUse, { ty := .int })] } egForUse = true := by decide
+example : validate { claims := [(egForUse, { ty := .sym })] } egForUse = false := by decide
 
 /-! ### C5 — a claimed join the deterministic rule refuses
 
@@ -437,17 +437,17 @@ def egJoin : Expr := .if' .tru (.int 1) (some (.sym "s"))
 example : validate {} egJoin = false := by decide
 
 /-- Claimed at `any`, both branches are below it and the region checks. -/
-example : validate { claims := [([], { ty := .any })] } egJoin = true := by decide
+example : validate { claims := [(egJoin, { ty := .any })] } egJoin = true := by decide
 
 /-- Claimed at `Integer`, the `else` branch is *not* below it and the claim is
     refused. This is the check that makes the stackmap a stackmap. -/
-example : validate { claims := [([], { ty := .int })] } egJoin = false := by decide
+example : validate { claims := [(egJoin, { ty := .int })] } egJoin = false := by decide
 
 /-- A claimed join is a node claim, so the accept is in the coverage tier only —
     even though every *head* of the program is in `inferFrag`. Both dimensions of
     V14's ladder, visible at one program. -/
 example : inferFrag 64 egJoin = true := by decide
-example : Cert.certifies { claims := [([], { ty := .any })] } egJoin = false := by decide
+example : Cert.certifies { claims := [(egJoin, { ty := .any })] } egJoin = false := by decide
 
 /-! ### C6 — a parameterized `def`, certified at a claimed signature
 
@@ -456,29 +456,32 @@ example : Cert.certifies { claims := [([], { ty := .any })] } egJoin = false := 
 certificate could ever claim its body. `chk`'s claimed `def` arm binds the declared
 parameter types and checks the body below the declared return. -/
 
-def egParam : Expr :=
-  .class' "String" none (.def' "twice" [.req "a"] (.var .lvar "a"))
+/-- The `def` node, named so a claim can be keyed on it — which is what V15's
+    re-keying looks like at a use site: a claim names the *term* it is about. -/
+def egParamDef : Expr := .def' "twice" [.req "a"] (.var .lvar "a")
+
+def egParam : Expr := .class' "String" none egParamDef
 
 /-- Unclaimed, refused — exactly as `infer` refuses it. -/
 example : validate {} egParam = false := by decide
 
-/-- Claimed at `(Integer) → Integer`, the body checks. The path `[0]` is the
-    `def` node: the class body, which is child 0 of the root, *is* the `def`. -/
+/-- Claimed at `(Integer) → Integer`, the body checks. The claim is keyed on
+    `egParamDef` — the `def` term itself (V15). -/
 example :
-    validate { claims := [([0], { ty := .int, tys := some [.int] })] } egParam = true := by
+    validate { claims := [(egParamDef, { ty := .int, tys := some [.int] })] } egParam = true := by
   decide
 
 /-- …and claimed at `(Integer) → Symbol` it is refused: the body answers the
     parameter's type, which is `Integer`. -/
 example :
-    validate { claims := [([0], { ty := .sym, tys := some [.int] })] } egParam = false := by
+    validate { claims := [(egParamDef, { ty := .sym, tys := some [.int] })] } egParam = false := by
   decide
 
 /-- **And the body is certifiable**, which is the fourth ratchet's unit and the thing
     §9.6 said `bodyOk` *"cannot claim by construction"*. It can now. -/
 example :
     bodiesCertified
-      { claims := [([0], { ty := .int, tys := some [.int] })],
+      { claims := [(egParamDef, { ty := .int, tys := some [.int] })],
         bodies := [{ owner := "String", name := "twice",
                      sig := { params := [.int], ret := .int } }] } egParam = 1 := by
   decide

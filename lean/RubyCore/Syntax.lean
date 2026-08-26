@@ -142,6 +142,17 @@ end
 
 deriving instance Repr for Expr, Param, KwEntry
 deriving instance Inhabited for Expr, Param
+/-! **Structural equality on syntax**, added for the certificate language (V15):
+    `Cert.claims` is keyed on the *subterm* a claim is about, because a claim keyed on
+    a position cannot be stated at a machine state (the machine's `ctl` holds an
+    `Expr`, not an address). `BEq` and not `DecidableEq`, because `Expr.flt` carries a
+    `Float` and `Float` has no `DecidableEq` — so this is `==` and comparing two
+    `NaN` literals answers `false`, which is the safe direction for a lookup that
+    refuses when it misses.
+
+    Additive: nothing compared two `Expr`s before, so no existing `==` changes
+    meaning. -/
+deriving instance BEq for Expr, Param, KwEntry
 
 /-! ## The match-view global names
 
