@@ -52,7 +52,7 @@ produce the successor's witness from the current one's. It does not: state the
 invariant's clause as `∃ n, chk c n D Γ e top ctx = some …` and every arm of `chk`
 hands its *children* a witness at `n` directly. A loop re-enters the same subterm at
 the same fuel; a method body is a subterm of the program and so is covered by the
-program's own bound. So the existential absorbs the whole question, and the ~45-case
+program's own bound. So the existential absorbs the whole question, and the ~47-case
 callback-monotonicity argument is not owed. Recorded because it was budgeted.
 -/
 
@@ -261,7 +261,7 @@ theorem chkKwEntries_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
 /-! ## 2. The step — the next rung, and what it costs
 
 `tableRet_step : TableRet c n → TableRet c (n + 1)` is what §1 is for, and it is
-**not** landed here. It is forty-five heads of case analysis and the shape is now
+**not** landed here. It is forty-seven heads of case analysis and the shape is now
 known precisely, which is the useful thing to record:
 
 * **`D` outright** (the literals, the immediate reads, `.while'`, `.dowhile`,
@@ -286,7 +286,7 @@ Three tactical facts worth having written down, because each cost a wrong turn:
    hypothesis leaves `h` untouched, so every subsequent `simp` reports no progress.
 2. **A generic `VarKind` blocks reduction.** `chk`'s arms are per-kind, so matching
    `.var _ _` leaves the head match irreducible and `split` re-opens the whole
-   45-arm tree with impossible `heq` hypotheses. The four kinds have to be split.
+   47-arm tree with impossible `heq` hypotheses. The four kinds have to be split.
 3. **`absurd h (by simp)` is not a finisher.** It elaborates and leaves the side goal
    open, so a `first` combinator treats it as a success and never reaches the
    induction branch — twenty-six arms failed silently that way before

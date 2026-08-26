@@ -342,7 +342,7 @@ through fuel.**
 
 ### V10 — an arm for every head, and no catch-all
 
-`chk` has an arm for all 45 `Expr` constructors. `infer`'s trailing `| _ => none`
+`chk` has an arm for all 47 `Expr` constructors. `infer`'s trailing `| _ => none`
 covered nine heads that no certificate could then address (`begin'`, `hash`, `for'`,
 `defined?`, `module'`, `defs`, `sclass`, `dowhile`, `casgn`) plus the argument-position
 markers, `break`/`redo`/`retry`, `alias`/`undef`, class variables, block-passes, and

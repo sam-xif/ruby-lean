@@ -31,7 +31,7 @@ Lean"* means the kernel decided the replay and not that a tactic did. §9.3 reco
 the opposite as an inherited fact; it was inherited from a function this file no
 longer calls.
 
-**(b) Coverage is no longer `infer`'s coverage.** `chk` has an arm for all 45 `Expr`
+**(b) Coverage is no longer `infer`'s coverage.** `chk` has an arm for all 47 `Expr`
 heads, so a certificate can address a `begin`/`rescue`, a `hash`, a `for`, a
 parameterized `def`. §9.1's *"a certificate cannot say anything the nominal judgement
 cannot check"* was a fact about `nominalOk`, and it is retired.

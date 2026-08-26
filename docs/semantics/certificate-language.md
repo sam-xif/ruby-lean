@@ -2,7 +2,7 @@
 
 > **Status (2026-08-26): C0–C4 built; `validate` rebuilt without `infer` (§10).**
 > The validator no longer calls any `infer*` function — the independence is a fact
-> about the module graph, not a discipline — and `chk` covers all 45 `Expr`
+> about the module graph, not a discipline — and `chk` covers all 47 `Expr`
 > constructors with every conjunct kernel-`decide`d. The **soundness half is open**:
 > `CtlOk` is still stated over `infer`, so an accept reaches `Inv` only inside
 > `inferFrag`. §10 is the account, §10.5 the price, §10.6 the re-ordered ladder.
@@ -678,7 +678,7 @@ It is now `chkOk`, over **`chk`** (`lean/RubyCore/Cert/Check.lean`): a new check
 in `Cert/` where §7 norm 7 puts this initiative's trusted code, that is
 
 * **structurally recursive on fuel** carried by the certificate (V9),
-* **total over the grammar** — an arm for every one of the 45 `Expr` constructors,
+* **total over the grammar** — an arm for every one of the 47 `Expr` constructors,
   no catch-all (V10),
 * **certificate-driven at every choice**, with a claim read only where a
   deterministic rule has no answer (V11).

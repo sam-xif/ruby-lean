@@ -31,7 +31,7 @@ checker, in `Cert/`, where norm 7 says this initiative's trusted code belongs:
 
 * **structurally recursive on fuel** (V9), so it reduces in the kernel and
   `validate` is one `decide`;
-* **total over the grammar** (V10) — an arm for every one of the 45 `Expr`
+* **total over the grammar** (V10) — an arm for every one of the 47 `Expr`
   constructors, so there is no head a certificate cannot address;
 * **certificate-driven at every choice** (V11) — where the deterministic rule has
   no answer, the certificate supplies one and `chk` checks the *consequences* of
