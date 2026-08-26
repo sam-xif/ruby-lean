@@ -600,10 +600,11 @@ claims with `src: "llm:<model>"` and go through the same search (E15) and the sa
 validator as everything else. Responses are **cached and committed** — a ratchet whose
 number depends on a live sample is not a ratchet (§7 norm 4).
 
-**Measured over the slice (`claude-opus-5`): 53 rows proposed, 53 expressible, 0
-dropped, fourth ratchet unchanged at 11.** The certificates carry substantially more —
-`version.rb` from 38 claimed rows to 47, `vulns/identify.rb` from 21 to 40 — and
-certify exactly the same bodies. Every rule respected on the first attempt — no
+**Measured over all eight slice files (`claude-opus-5`): 69 rows proposed, 69
+expressible, 0 dropped, fourth ratchet unchanged at 11.** The certificates carry
+substantially more — `version.rb` from 38 claimed rows to 47, `vulns/identify.rb` from
+21 to 40, `vulns/vulnerability.rb` from 45 to 61 — and certify exactly the same bodies.
+Every rule respected on the first attempt — no
 constant reads, no `T.class_of` receivers, no union types, no duplicate names — and the
 rows are correct Ruby. They cannot be *spent*, for three reasons, and the third is new:
 
@@ -626,13 +627,17 @@ receiver that file's chains go through. They change nothing because all seven of
 bodies are blocked *before* reaching them, on `::Regexp` / `::URI` constant reads —
 which is the 52 again.
 
-One of the eight files has no cached proposal: the largest,
-`vulns/vulnerability.rb`, reproducibly **stalls** the request (blocked on I/O, no
-`stop_reason`). It contributes 0 certified bodies in every configuration measured, so
-the numbers above are complete for the ratchet — stated because "53 rows over the
-slice" would otherwise read as all eight. The stall is why `llm.py` sets an explicit
-client timeout and why a failed call is reported per-file rather than losing the batch
-(E18a).
+**[✗→] One operational claim in the first version of this section was wrong**, and it
+is worth correcting here rather than only in the notes, because it is a mistake anyone
+driving this API from a script will make. It said `vulns/vulnerability.rb` *stalls* the
+request. It does not: asked once and left alone it returns in **177 s**, and each of
+three earlier "stalls" was the call being killed before it finished. Latency over the
+eight files tracks **output** tokens and is independent of input — a 2.6× output spread
+(5.4k median, 14.3k max) gave a 2.4× latency spread (74 s median, 177 s max), while the
+largest *prompt* in the set was a median-latency call. What made it look like a hang is
+that `display` defaults to `"omitted"` on Opus 5, so a long thinking turn is an idle
+socket with nothing to show. Fixed by `display: "summarized"` plus a heartbeat, and the
+timeout re-set from the measured maximum (E18a).
 
 The model flagged the third blocker itself, unprompted, in the `notes` field the schema
 asks for — *"if it uses a different ancestor those five rows will simply not fire"* — along

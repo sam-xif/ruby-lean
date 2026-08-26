@@ -294,12 +294,14 @@ ships no core RBI), `tyjson.py` the wire encoding, and `llm.py` is C4's **LLM ar
 positively *and* negatively, and the one-row-per-name rule, and returns rows under a
 JSON schema. Responses are cached under `certify/certs/llm/` and **committed** — a
 ratchet whose number depends on a live sample is not a ratchet — with `--llm-offline`
-for cache-only runs and `--llm-refresh` to re-ask deliberately. See
+for cache-only runs and `--llm-refresh` to re-ask deliberately. Calls stream with a
+progress heartbeat and a timeout set from the measured latency distribution, both of
+which exist because E18a's first draft misdiagnosed a slow call as a hung one. See
 [`certify/implementation-notes.md`](certify/implementation-notes.md) for revertable
 decisions (**E1–E18**) — including the measured ones: the settling pass that caught a
 wrong `Token#to_s : Float`, the greedy plateau that needed a second starting point
 (6 → 10 on `version.rb`), why all six remaining ratchet bodies are blocked by R2, and
-E18's result — the LLM proposes 53 rule-respecting rows and the ratchet does **not**
+E18's result — the LLM proposes 69 rule-respecting rows and the ratchet does **not**
 move, because generation is not the bottleneck: three *schema* limits are (R2, no
 `Assn` atom for a constant, no inherited-declaration lookup).
 
