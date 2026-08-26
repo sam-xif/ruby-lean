@@ -172,3 +172,67 @@ full + tier-1 + regression replay must stay **0 disagree**, and agreement may
 only go up (baseline now **940**). At batch boundaries also build the `Proof/`
 files and run `../concolic` (28 tests) — the ratchet does not notice a
 kernel-reducibility regression (L73).
+
+---
+
+## C-1 — the one open premise of `validate_sound` (2026-08-26)
+
+`validate` no longer calls `infer`; `#check @infer` does not elaborate from
+`RubyCore.Cert.Validate`. The composed certificate theorem is
+`Proof/Cert/Sound.lean`'s
+
+```lean
+validate_sound_of_ctl (h : validate c p = true) (ha : ⟦c.rowAssn⟧)
+  (hctl : CtlOk (c.table p) { cls := "Object" } [] [] (Machine.init p)) :
+  ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
+```
+
+axiom-clean, no `infer` in the statement (that is what L268's `initiation_ctl`
+factoring is for). **`hctl` is the only thing open.** Closing it is C-1:
+restate `CtlOk`/`KontOk` over `chk` and repair `Mono`/`Locals`/`Preservation`.
+`docs/semantics/certificate-language.md` §10.5–10.6 is the design account;
+`lean/RubyCore/Cert/implementation-notes.md` V9–V20 is the decision record.
+
+### Start here, and do not re-derive these
+
+1. **`chk.induct` exists** (V19) — `chk` and its eight helpers are one `mutual`
+   block with fuel decreasing on *every* call. Do not "simplify" that back into
+   the callback (`Rec`) form: a recursive call passed as a higher-order argument
+   makes the induction principle underivable, and all twenty of
+   `Proof/Static/Mono.lean`'s laws are `induction … using infer.induct`.
+2. **The motive map is in `Proof/Cert/Mono.lean`** and cannot be read off the
+   file. Motives 3/5/7 (`chkSeq`/`chkElems`/`chkArgs`) have identical types, so a
+   swapped assignment *type-checks* and only the IH shapes reveal it — same for
+   1/10 (`chkOpt`/`chkRecv`). Measured, twice.
+3. **The immediate next task**: `chk_table_ret` is one uniform tactic away from
+   green. Motives 4 and 8 (`chkPairs`/`chkKwEntries`) need their three-link IH
+   chain applied *explicitly*; `simp_all` diverges there (max steps → max
+   recursion → `isDefEq` heartbeats, and at 40M it does not terminate in ten
+   minutes). Everything else closes.
+4. **Do not build a bridge back to `infer`.** One was written and deleted: it
+   makes the headline theorem depend on the function the pivot exists to retire.
+   Two findings from it are kept in `Cert/Frag.lean` §5 and are load-bearing —
+   `defFreeF` must be a *fragment* condition (otherwise the two checkers take
+   different promotion branches and **both accept**), and a literal-block send
+   needs a receiver (`infer`'s `lambda` arm ignores `ctx.selfCls`).
+
+### Four tactical facts, each of which cost a wrong turn
+
+* `split at h`, not `cases`, on a scrutinee that is not a hypothesis.
+* A generic `VarKind`/`Option` payload blocks the head match and makes `split`
+  re-open all 47 arms; split those at the *pattern*. Where the enclosing pattern
+  must stay a wildcard, name the computation instead (that is `chkOpt`/`chkRecv`).
+* `absurd h (by simp)` is not a finisher — it elaborates and leaves its side goal
+  open, so `first` treats it as a success. Twenty-six arms failed silently that
+  way. Use `simp at h; done`.
+* **Macro bodies are hygienic.** An `ih`/`hr` written inside a `local macro`
+  refers to a fresh `ih✝`, and the failure mode is a `first` branch that never
+  fires. Three wrong turns. Pass them as parameters.
+
+### Ratchets as of this handoff
+
+`lake build` 94 jobs green; `scripts/check-proofs.sh` **OK**; difftest tier-0
+`--sut lean` 1304 ran / **992 agree** / **0 disagree** / 306 unsupported. Note
+992 exceeds the 940 baseline recorded above and this initiative added no
+interpreter behaviour — the baseline line is stale, but the delta was not
+attributed, so it is left as written rather than silently updated.
