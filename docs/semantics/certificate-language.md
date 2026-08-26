@@ -1,5 +1,12 @@
 # The certificate language — type-checking as certificate replay
 
+> **Status (2026-08-26): C0–C4 built; `validate` rebuilt without `infer` (§10).**
+> The validator no longer calls any `infer*` function — the independence is a fact
+> about the module graph, not a discipline — and `chk` covers all 45 `Expr`
+> constructors with every conjunct kernel-`decide`d. The **soundness half is open**:
+> `CtlOk` is still stated over `infer`, so an accept reaches `Inv` only inside
+> `inferFrag`. §10 is the account, §10.5 the price, §10.6 the re-ordered ladder.
+>
 > **Status (2026-08-25): C0–C4 built.** `validate` and the versioned JSON format are
 > in [`../../lean/RubyCore/Cert/`](../../lean/RubyCore/Cert/) (**V-numbers**), the
 > proved `validate_sound` in
@@ -654,3 +661,142 @@ searches, not what is provable"*):
 Which makes the re-ordering of §9.7 three items long: **R2, `Assn.const`, and T2
 (`Sub`) — all three before C5.** The `Comparable` rows are the concrete witness for
 the last of them.
+
+---
+
+## 10. The rebuild — `validate` without `infer`, and what it costs the theorem
+
+Recorded per §7 norm 1. Decision-level detail is in
+`lean/RubyCore/Cert/implementation-notes.md` (**V9–V17**); this section is the
+design-level account and it contains **three changes to this document's own
+architecture**, flagged as such.
+
+### 10.1 What was rebuilt, and the measurement §6 C0 asked for
+
+`validate`'s sixth conjunct was `nominalOk`, i.e. `(infer (c.table p) [] p true …)`.
+It is now `chkOk`, over **`chk`** (`lean/RubyCore/Cert/Check.lean`): a new checker,
+in `Cert/` where §7 norm 7 puts this initiative's trusted code, that is
+
+* **structurally recursive on fuel** carried by the certificate (V9),
+* **total over the grammar** — an arm for every one of the 45 `Expr` constructors,
+  no catch-all (V10),
+* **certificate-driven at every choice**, with a claim read only where a
+  deterministic rule has no answer (V11).
+
+Two of this document's standing claims are retired by it.
+
+**§9.3 is retired.** C0 reported four of six conjuncts `decide`-able and two not,
+and blamed `infer`'s well-founded recursion — correctly, and it added that §8 risk
+1's prescribed fix *"is a restructuring of `Types/Core.lean`, which §7 norm 7 puts
+out of scope"*. That was the wrong conclusion from the right premise: the fix is not
+to restructure `infer`, it is **to stop calling it**. All six conjuncts now `decide`;
+the 26 examples in `Validate.lean` and 8 in `ExprEq.lean` are every one `by decide`;
+`native_decide` appears nowhere.
+
+**§9.1's honest half is retired.** *"A certificate cannot say anything the nominal
+judgement cannot check"* was a fact about `nominalOk`, not about certificates.
+
+And **V12 makes the independence checkable rather than disciplinary**:
+`Cert/Format.lean` imported `Types.Program` (→ `Core`) and now imports
+`Types.Assn`, whose closure is `Decls → Ty → Syntax`. Nothing on the checked path
+*can* call `infer`.
+
+### 10.2 [MAJOR] A claim is keyed on the subterm, not on its address
+
+§4 D1 describes stackmaps as *"environments at join points and loop heads"* and the
+§3 strawman keys `joins`/`insts` by a `Label`/`CallSite`. **That keying is
+unstatable**, and the reason is the soundness theorem rather than the checker:
+
+> `Inv` is a predicate on machine states, and a machine's `ctl` holds an `Expr`, not
+> an address. So `chk c n D Γ e top ctx π` cannot be asserted at a reachable
+> machine — there is no `π` to hand it.
+
+So `Cert.claims : List (Expr × NodeClaim)` (V15). `chk` loses its path parameter
+entirely, the list helpers lose their index arguments, and the emitter's obligation
+to compute addresses the same way the checker does is **gone**, because the checker
+computes none. Addresses survive as the wire format and as provenance;
+`Cert/Json.lean` resolves them once the program is known.
+
+The weakening, stated: two *syntactically identical* subterms share a claim. That is
+a type ascription's convention, and where a program wants two answers for one term
+the claims conflict and the first wins — refusing, not accepting.
+
+### 10.3 [MAJOR] The verdict is two-dimensional, and the frontier is a `Bool`
+
+§2 constraint 4 makes the residue first-class. The same principle now applies to the
+*coverage frontier*, which used to be implicit in `infer`'s trailing `| _ => none`:
+
+| tier | predicate | what it buys |
+|---|---|---|
+| **covered** | `validate c p` | this program checks at the claimed table under the claimed nodes — the fourth ratchet's unit |
+| **sound** | `Cert.certifies c p = validate c p && inferFrag c.fuel p && c.claimFree` | the program-level theorem |
+
+`inferFrag` (`Cert/Check.lean` §5) is the syntactic predicate marking the sub-grammar
+where an accept can be transferred to `Inv`. The JSON reports both, plus `tier`.
+This is honest and it is also a **regression in the headline theorem's reach**, which
+§10.5 is about.
+
+### 10.4 [MAJOR] `bodyOk` accepts parameters
+
+§9.6 records the slice's 7 `open_params` accepts as ones *"which `bodyOk` cannot
+claim by construction — L168"*. It can now: `chk`'s claimed `def` arm binds declared
+parameter types and checks the body below the declared return, so the population is
+claimable. `infer`'s `def` arm refuses it on its first guard (`params.isEmpty`), so
+this is squarely C6/D2a arriving.
+
+### 10.5 The soundness half is open, and here is what it costs
+
+`CtlOk`'s eval clause is literally `infer F Γ e … = some …`
+(`Proof/Static/Konts.lean`), so a `chk`-based accept does not reach `Inv` yet.
+
+A **bridge** — `chk_infer`, `chk` accepts only where `infer` does, on the fragment —
+was built (~600 lines, nearly complete) and then **deleted**, on the grounds that it
+is the wrong shape: it makes the headline theorem depend on the function this
+initiative exists to retire, so `infer` cannot be deprecated while the bridge holds
+the theorem up. Two findings from it are kept, because each is a place where the two
+checkers *both accept* and disagree, which no implication-shaped lemma would catch:
+
+* **`defFreeF` must be a fragment condition.** `infer`'s promotion guard reads
+  `defFree body`, `chk`'s reads the fuel-spelled `defFreeF n body`, and the two are
+  related by implication only — so without the conjunct the two take *different
+  branches* of the promotion, one threading a row and one not.
+* **A literal-block send needs a receiver.** `infer`'s implicit-self block arm
+  answers `lambda { … }` without reading `ctx.selfCls`; `chk` computes the receiver
+  first. One shape, moved to the coverage tier.
+
+**The replacement, and its price.** `Proof/Static/Mono.lean` proves twenty structural
+laws about `infer`, every one by
+`induction … using infer.induct with | motive2 … | motive5 …` — the well-founded
+*functional induction principle* of that mutual block. `chk` has none and cannot: it
+recurses on fuel and its list helpers are separate functions taking the recursive
+call as a parameter, which is exactly what makes the whole thing kernel-reducible. So
+the laws are a **restate-and-reprove**, not a port:
+
+| file | to match | status |
+|---|---|---|
+| `Proof/Cert/Mono.lean` | 1291 | **rung 1 landed** — `TableRet` and the five list-helper laws, green, no `sorry` |
+| `Proof/Cert/Konts.lean` | 2245 | `KontOk`'s 12 constructors each carry an `infer*` premise |
+| `Proof/Cert/Locals.lean` | 1988 | `FramesOk`/`StackCtx` |
+| `Proof/Cert/Preservation.lean` | 2711 | `step_ok`, 73 inversion sites |
+
+and that is the cost to reach **today's** coverage. `chk`'s fifteen extra heads are
+additional per-head work after it — which is §8 risk 2 arriving exactly on schedule,
+now with a number against it.
+
+One budgeted cost turns out not to be owed: **fuel monotonicity**. State the clause
+as `∃ n, chk c n D Γ e top ctx = some …` and every arm hands its children a witness
+at `n`; a loop re-enters the same subterm at the same fuel, and a method body is a
+subterm of the program.
+
+### 10.6 The honest re-ordering of §6, updated
+
+§9.7 and §9.9 put **R2**, **`Assn.const`** and **T2 (`Sub`)** before C5. All three
+still stand — they are about what is *provable*, and nothing here changed that. What
+this rebuild adds is a fourth item that now precedes the rest of the ladder, because
+until it lands the coverage tier and the sound tier are different numbers:
+
+> **C-1 — restate the invariant over `chk`.** The four files of §10.5. C5 and C6 are
+> *built* in the coverage tier already (§10.2/§10.4); what they are waiting on is not
+> a validator arm but this.
+
+So the ladder reads: **C-1, then R2, `Assn.const`, T2, then C7–C9.**

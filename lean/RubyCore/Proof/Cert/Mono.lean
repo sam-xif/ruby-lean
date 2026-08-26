@@ -194,6 +194,105 @@ theorem chkElems_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
         subst h1
         exact chkElems_table_ret ih top ctx hr ht rest D₁ Γ₁ τ Γ' D₀ h
 
+theorem chkPairs_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
+    (hr : ctx.ret.isSome = true) (ht : top = false) :
+    ∀ (ps : List (Expr × Expr)) (D : Decls) (Γ : Env) (Γ' : Env) (D₀ : Decls),
+      chkPairs (chk c n) top ctx D Γ ps = some (Γ', D₀) → D₀ = D
+  | [], D, Γ, Γ', D₀, h => by
+    simp only [chkPairs, Option.some.injEq, Prod.mk.injEq] at h
+    exact h.2.symm
+  | (k, v) :: rest, D, Γ, Γ', D₀, h => by
+    simp only [chkPairs] at h
+    cases hk : chk c n D Γ k top ctx with
+    | none => rw [hk] at h; exact absurd h (by simp)
+    | some a =>
+      obtain ⟨_, Γ₁, D₁⟩ := a
+      rw [hk] at h
+      dsimp only at h
+      have e1 : D₁ = D := ih D Γ k top ctx _ Γ₁ D₁ hr ht hk
+      subst e1
+      cases hv : chk c n D₁ Γ₁ v top ctx with
+      | none => rw [hv] at h; exact absurd h (by simp)
+      | some b =>
+        obtain ⟨_, Γ₂, D₂⟩ := b
+        rw [hv] at h
+        have e2 : D₂ = D₁ := ih D₁ Γ₁ v top ctx _ Γ₂ D₂ hr ht hv
+        subst e2
+        exact chkPairs_table_ret ih top ctx hr ht rest D₂ Γ₂ Γ' D₀ h
+
+theorem chkKwEntries_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
+    (hr : ctx.ret.isSome = true) (ht : top = false) :
+    ∀ (es : List KwEntry) (D : Decls) (Γ : Env) (Γ' : Env) (D₀ : Decls),
+      chkKwEntries (chk c n) top ctx D Γ es = some (Γ', D₀) → D₀ = D
+  | [], D, Γ, Γ', D₀, h => by
+    simp only [chkKwEntries, Option.some.injEq, Prod.mk.injEq] at h
+    exact h.2.symm
+  | ent :: rest, D, Γ, Γ', D₀, h => by
+    match ent with
+    | .pair _ v | .splat v =>
+      simp only [chkKwEntries] at h
+      cases hv : chk c n D Γ v top ctx with
+      | none => rw [hv] at h; exact absurd h (by simp)
+      | some a =>
+        obtain ⟨_, Γ₁, D₁⟩ := a
+        rw [hv] at h
+        have e1 : D₁ = D := ih D Γ v top ctx _ Γ₁ D₁ hr ht hv
+        subst e1
+        exact chkKwEntries_table_ret ih top ctx hr ht rest D₁ Γ₁ Γ' D₀ h
+    | .dyn k v =>
+      simp only [chkKwEntries] at h
+      cases hk : chk c n D Γ k top ctx with
+      | none => rw [hk] at h; exact absurd h (by simp)
+      | some a =>
+        obtain ⟨_, Γ₁, D₁⟩ := a
+        rw [hk] at h
+        dsimp only at h
+        have e1 : D₁ = D := ih D Γ k top ctx _ Γ₁ D₁ hr ht hk
+        subst e1
+        cases hv : chk c n D₁ Γ₁ v top ctx with
+        | none => rw [hv] at h; exact absurd h (by simp)
+        | some b =>
+          obtain ⟨_, Γ₂, D₂⟩ := b
+          rw [hv] at h
+          have e2 : D₂ = D₁ := ih D₁ Γ₁ v top ctx _ Γ₂ D₂ hr ht hv
+          subst e2
+          exact chkKwEntries_table_ret ih top ctx hr ht rest D₂ Γ₂ Γ' D₀ h
+
+/-! ## 2. The step — the next rung, and what it costs
+
+`tableRet_step : TableRet c n → TableRet c (n + 1)` is what §1 is for, and it is
+**not** landed here. It is forty-five heads of case analysis and the shape is now
+known precisely, which is the useful thing to record:
+
+* **`D` outright** (the literals, the immediate reads, `.while'`, `.dowhile`,
+  `.begin'`, `.module'`) — `simp only [chk] at h; repeat' split at h` and then read
+  the triple off `Option.some.injEq`/`Prod.mk.injEq`.
+* **the two arms the law is actually about** — `.def'`, whose promotion guard reads
+  `ctx.ret.isNone` and is therefore refuted by the hypothesis, so the row is never
+  added; and `.class' _ none _`, which requires `top`. Both need
+  `Bool.and_false`/`if_false` in the simp set to collapse the guard, and neither
+  needs an induction.
+* **one child, threaded** (the assignments, `.cpath (some _)`, `.ret`, `.splat`,
+  `.for'`, `.sclass`, `.defs`, the scoped class/module forms) — split, then apply the
+  hypothesis to the child's `chk … = some …`, which `split` has already named.
+* **a list helper** (`.seq`, `.array`, `.hash`, `.kwargs`, `.send`, `.super'`,
+  `.yield'`) — §1, directly.
+* **`.if'`**, the only arm that threads *two* children and so chains the hypothesis
+  twice.
+
+Three tactical facts worth having written down, because each cost a wrong turn:
+
+1. **`split at h`, not `cases`.** `cases X with` on a scrutinee that is not a
+   hypothesis leaves `h` untouched, so every subsequent `simp` reports no progress.
+2. **A generic `VarKind` blocks reduction.** `chk`'s arms are per-kind, so matching
+   `.var _ _` leaves the head match irreducible and `split` re-opens the whole
+   45-arm tree with impossible `heq` hypotheses. The four kinds have to be split.
+3. **`absurd h (by simp)` is not a finisher.** It elaborates and leaves the side goal
+   open, so a `first` combinator treats it as a success and never reaches the
+   induction branch — twenty-six arms failed silently that way before
+   `Option.noConfusion` replaced it.
+-/
+
 end
 
 end Cert

@@ -306,3 +306,163 @@ a measurement that should reorder it relative to C5–C9. Not worked around: the
 workaround is a ledger reading a table the program does not see, and two tables
 disagreeing about what a class declares is what L263's superclass-seeding refusal
 already rejected.
+
+---
+
+## V9–V17 — the validator stops calling `infer`
+
+The goal: rebuild `validate` with **no dependency on any of the existing `infer*`
+machinery**, and drive it to cover the entire `Expr` grammar. What follows is what
+that cost and what it found, decision by decision.
+
+### V9 — fuel, not well-founded recursion
+
+`chk` (`Cert/Check.lean`) is structurally recursive on a `Nat` carried by the
+certificate (`Cert.fuel`, default 64). Everything else about this initiative follows
+from that choice:
+
+* the kernel reduces it, so `validate` is one `decide` — see V17's measurement;
+* the list helpers (`chkSeq`/`chkArgs`/`chkElems`/`chkPairs`/`chkKwEntries`) take the
+  recursive call as a **parameter** rather than sitting in a `mutual` block with
+  `chk`, because a mutual block at the same fuel value is well-founded recursion
+  again;
+* fuel exhaustion answers `none`, i.e. *refuses*. A wrong bound costs a body, never
+  an accept — `thetaFn`'s `.any` default is the same argument.
+
+**Carried rather than computed.** A `sizeOf p` would be a derived `Nat` the kernel has
+to reduce before it can start.
+
+The trap this discipline exists to avoid caught **five** functions in turn, each
+found by a `decide` that would not close: `infer` itself, `findDef` (a `mutual` over
+`Expr`/`List Expr`), `bindParams` (the `.destr` arm recurses into a `List Param`
+inside the head element), `defFree`, and the derived `BEq Expr` (V16). Every one is a
+nested-inductive recursion that Lean compiles by well-founded recursion. The rule of
+thumb the file now records: **on the checked path, nothing recurses on syntax except
+through fuel.**
+
+### V10 — an arm for every head, and no catch-all
+
+`chk` has an arm for all 45 `Expr` constructors. `infer`'s trailing `| _ => none`
+covered nine heads that no certificate could then address (`begin'`, `hash`, `for'`,
+`defined?`, `module'`, `defs`, `sclass`, `dowhile`, `casgn`) plus the argument-position
+markers, `break`/`redo`/`retry`, `alias`/`undef`, class variables, block-passes, and
+parameterized `def`s. The absence of a catch-all is the point: a missing arm is now a
+gap in the reading rather than a silent refusal.
+
+### V11 — claims are read only where a rule has no answer
+
+`NodeClaim` is §4 D1's stackmap entry (C5) and D2a's per-site instantiation (C6). It is
+consulted **only in the `none` branch** of a deterministic rule, never to override one
+that fired and refused. That ordering is what keeps a bad claim a lost body rather
+than a false accept, and it is `deltaRows`' bargain applied per node.
+
+### V12 — the independence is a module-graph fact
+
+`Cert/Format.lean` imported `Types.Program` (→ `OpenSelf` → `Core`); it now imports
+`Cert.ExprEq` → `Types.Assn`, whose closure is `Decls → Ty → Syntax`. **Nothing on the
+checked path can call `infer`, because `infer` is not in scope.** That is a stronger
+claim than a discipline and it is checkable by `grep`.
+
+### V13 — one private copy, and what it is paid for with
+
+`defFreeF` re-spells `Types/Core.lean`'s `defFree` on fuel. Norm 7 forbids a private
+copy of anything the standing tree has; the exception is taken because (a) the module
+that defines `defFree` also defines `infer`, and (b) the original does not reduce.
+The debt is `defFreeF_sound : defFreeF n e = true → defFree e = true`, which was
+proved and then deleted with the bridge (V17); it comes back when the fresh
+development reaches the `def` arm.
+
+### V14 — the verdict is two-dimensional
+
+`validate c p` is the **coverage** verdict (the fourth ratchet's unit).
+`Cert.certifies c p = validate c p && inferFrag c.fuel p && c.claimFree` is the
+**sound** one. Two `Bool`s and not a docstring, because §2 constraint 4 says the
+strength of a verdict is output; the JSON reports both plus a `tier` field. Also here:
+`bodyOk` now accepts parameters, which is §9.6's 7 `open_params` bodies — *"which
+`bodyOk` cannot claim by construction"* — becoming claimable.
+
+### V15 — **a path-keyed claim cannot appear in an invariant**
+
+The finding that changed the design, and it came from trying to state the soundness
+theorem rather than from reading:
+
+> `Inv` is a predicate on machine states, and a machine's `ctl` holds an `Expr`, not
+> an address. So `chk c n D Γ e top ctx π` cannot be asserted at a reachable machine:
+> there is no `π` to hand it.
+
+So `Cert.claims : List (Expr × NodeClaim)` — keyed on the **subterm**. Consequences,
+every one a simplification: `chk` loses its `Path` parameter, the list helpers lose
+their index arguments, `findDef` stops threading an address, and the emitter's
+obligation to compute addresses the same way the checker does is *gone* (the checker
+computes none). The wire format keeps `Path`; `childAt`/`subtermAt`/`resolveClaims`
+(`Cert/Json.lean`) resolve it once the program is known, and an address naming nothing
+is dropped, which refuses.
+
+The weakening, stated because it is real: two syntactically identical subterms share a
+claim. That is a type ascription's convention; where a program wants two answers for
+one term the claims conflict and the first wins, refusing.
+
+### V16 — `deriving BEq for Expr` does not reduce
+
+Measured: `example : ((.int 1 : Expr) == (.int 1)) = true := by decide` **fails**.
+`Cert/ExprEq.lean` is the fuel-structural replacement (`exprEq`, `paramEq`,
+`kwEntryEq`, `listEq`, `optEq`). The derived instance stays in `Syntax.lean` for
+compiled use. `Cert` derives `BEq` rather than `DecidableEq` because `Expr.flt`
+carries a `Float`, which has no `DecidableEq`; two `NaN` literals therefore compare
+unequal and a claim on one is not found — refusing.
+
+### V17 — the measurement that priced the soundness half, and the bridge that was deleted
+
+**What is done and green:** `validate` calls no `infer*`, all six conjuncts `decide`,
+26 examples in `Validate.lean` + 8 in `ExprEq.lean` are `by decide`, `native_decide`
+appears nowhere, tier-0 is 0 disagreements.
+
+**What is open:** the soundness half. `CtlOk`'s eval clause is literally
+`infer F Γ e … = some …` (`Proof/Static/Konts.lean`), so a `chk`-based accept does not
+reach `Inv` yet.
+
+A bridge — `chk_infer : chk c n D Γ e top ctx = some r → infer D Γ e top ctx = some r`
+on the fragment — was built (~600 lines, nearly complete) and then **deleted**. It is
+the wrong shape: it makes the headline theorem depend on the function the pivot exists
+to retire, so `infer` cannot be deprecated while the bridge holds the theorem up. Two
+things it did find are worth keeping, and both are recorded in `Cert/Check.lean` §5:
+
+* **`defFreeF` has to be a *fragment* condition, not just a rule condition.** `infer`'s
+  promotion guard reads `defFree body` and `chk`'s reads `defFreeF n body`; the two are
+  related by implication only, so without the conjunct the two checkers take
+  *different branches* of the promotion — one threading a row, one not — and both
+  still **accept**. An implication-shaped bridge would not have caught it; only the
+  equation does.
+* **A literal-block send needs a receiver.** `infer`'s implicit-self block arm answers
+  `some (.any, Γ, D)` for `lambda { … }` without reading `ctx.selfCls`, where `chk`
+  computes the receiver first. One shape, moved to the coverage tier.
+
+**The price of the fresh development, measured.** `Proof/Static/Mono.lean` proves
+twenty structural laws about `infer`, every one by
+`induction … using infer.induct with | motive2 … | motive5 …` — the well-founded
+*functional induction principle* of that mutual block. `chk` has no such principle and
+cannot: it recurses on fuel, and its list helpers are separate functions. So the laws
+are a restate-and-reprove:
+
+| file | to match | status |
+|---|---|---|
+| `Proof/Cert/Mono.lean` | 1291 | **rung 1 landed** — `TableRet`, `tableRet_zero`, and the five list-helper laws |
+| `Proof/Cert/Konts.lean` | 2245 | `KontOk`'s 12 constructors carry `infer`/`inferArgs`/`inferElems`/`inferSeq`/`inferIf` premises |
+| `Proof/Cert/Locals.lean` | 1988 | `FramesOk`/`StackCtx` |
+| `Proof/Cert/Preservation.lean` | 2711 | `step_ok`, 73 inversion sites |
+
+and that is the cost to reach **today's** coverage; `chk`'s fifteen extra heads are
+additional per-head work after it. Stated so the ladder is priced rather than
+aspirational.
+
+**One budgeted cost that is not owed:** fuel monotonicity. State the invariant's clause
+as `∃ n, chk c n D Γ e top ctx = some …` and every arm hands its children a witness at
+`n`; a loop re-enters the same subterm at the same fuel, and a method body is a subterm
+of the program. The existential absorbs it.
+
+**Three tactical facts, each of which cost a wrong turn** (recorded in
+`Proof/Cert/Mono.lean` §2): use `split at h` and not `cases` on a non-hypothesis
+scrutinee; a generic `VarKind` blocks the head match and makes `split` re-open all 45
+arms; and `absurd h (by simp)` is not a finisher — it elaborates, leaves the side goal
+open, and so a `first` combinator treats it as a success (26 arms failed silently that
+way before `Option.noConfusion` replaced it).
