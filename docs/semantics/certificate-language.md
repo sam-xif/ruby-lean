@@ -764,17 +764,31 @@ checkers *both accept* and disagree, which no implication-shaped lemma would cat
   answers `lambda { … }` without reading `ctx.selfCls`; `chk` computes the receiver
   first. One shape, moved to the coverage tier.
 
-**The replacement, and its price.** `Proof/Static/Mono.lean` proves twenty structural
-laws about `infer`, every one by
-`induction … using infer.induct with | motive2 … | motive5 …` — the well-founded
-*functional induction principle* of that mutual block. `chk` has none and cannot: it
-recurses on fuel and its list helpers are separate functions taking the recursive
-call as a parameter, which is exactly what makes the whole thing kernel-reducible. So
-the laws are a **restate-and-reprove**, not a port:
+**The replacement, and its price — and the price was measured wrong the first time.**
+`Proof/Static/Mono.lean` proves twenty structural laws about `infer`, every one by
+`induction … using infer.induct with | motive2 … | motive5 …`, the *functional
+induction principle* of that mutual block. The first estimate said `chk` could not have
+one, because it recurses on fuel with its list helpers taking the recursive call as a
+parameter — and concluded ~8,200 lines of restate-and-reprove.
+
+**That was a fact about the design, not about `chk`** (V19/V20). `#check @chk.induct`
+fails with *"the argument has type (fun a => ∀ …) of sort Prop but is expected to have
+type Rec of sort Type"* — a recursive call passed as a *higher-order argument* is what
+the generator cannot see through. Put `chk` and its helpers in one `mutual` block where
+every call decreases the fuel and the recursion is still structural, the kernel still
+reduces it (the `decide`s are intact), **and `chk.induct` is derived** with one motive
+per function. Two arms also had to be *named* — `chkOpt` and `chkRecv` — because an
+inline `match eo with …` becomes a case hypothesis whose scrutinee `split at h` cannot
+reach.
+
+With the principle in hand, the table-return law's ~250 cases fall to one uniform
+tactic bar a handful, and the residue is a `simp_all` divergence in two motives rather
+than mathematics. So C-1 is a **tractable port**, and the table below is the shape of
+it rather than a line count to fear:
 
 | file | to match | status |
 |---|---|---|
-| `Proof/Cert/Mono.lean` | 1291 | **rung 1 landed** — `TableRet` and the five list-helper laws, green, no `sorry` |
+| `Proof/Cert/Mono.lean` | 1291 | **rung 1 in progress** — `chk.induct` derived, the motive map measured, the uniform tactic written; `chkBlockClaim_table_ret` proved. The residue is named in that file. |
 | `Proof/Cert/Konts.lean` | 2245 | `KontOk`'s 12 constructors each carry an `infer*` premise |
 | `Proof/Cert/Locals.lean` | 1988 | `FramesOk`/`StackCtx` |
 | `Proof/Cert/Preservation.lean` | 2711 | `step_ok`, 73 inversion sites |

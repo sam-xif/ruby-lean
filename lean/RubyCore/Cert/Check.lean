@@ -130,6 +130,24 @@ def chkOpt (c : Cert) : Nat → Decls → Env → Option Expr → Bool → Frame
   | 0, _, _, _, _, _ => none
   | n + 1, D, Γ, some e, top, ctx => chk c n D Γ e top ctx
 
+/-- **The receiver of a send.** An explicit receiver is checked; an implicit one is
+    `self`, which has a type only where it is an *instance* — in a class body it is the
+    class object, which `plainRecv` excludes.
+
+    Named for `chkOpt`'s reason (V19): inline, the `match recvO with …` becomes a case
+    hypothesis of `chk.induct` whose scrutinee is still `recvO`, and there is then no
+    way to make it concrete — the send arm was the last thing blocking the
+    table-return law. Named, it gets a motive of its own and the induction hypothesis
+    covers it. -/
+def chkRecv (c : Cert) : Nat → Decls → Env → Option Expr → Bool → FrameCtx →
+    Option (Ty × Env × Decls)
+  | _, D, Γ, none, _, ctx =>
+    match ctx.selfCls with
+    | some cc => some (.cls cc, Γ, D)
+    | none => none
+  | 0, _, _, _, _, _ => none
+  | n + 1, D, Γ, some r, top, ctx => chk c n D Γ r top ctx
+
 /-- A statement sequence: thread the environment and the table, take the last type.
     An empty sequence is `nil`, and `[e]` is `e` — the three-way split `evalExpr` makes
     on `.seq`. -/
@@ -397,12 +415,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
     -- is on what is *present* — receiver, arguments, block — rather than on the
     -- shapes one pass happened to admit.
     | .send recvO mname args blkO =>
-      match (match recvO with
-             | none =>
-               match ctx.selfCls with
-               | some cc => some (Ty.cls cc, Γ, D)
-               | none => none
-             | some r => chk c n D Γ r top ctx) with
+      match chkRecv c n D Γ recvO top ctx with
       | none => none
       | some (τr, Γ₁, D₁) =>
         match blkO with

@@ -477,3 +477,80 @@ scrutinee; a generic `VarKind` blocks the head match and makes `split` re-open a
 arms; and `absurd h (by simp)` is not a finisher — it elaborates, leaves the side goal
 open, and so a `first` combinator treats it as a success (26 arms failed silently that
 way before `Option.noConfusion` replaced it).
+
+### V19 — `chk` becomes a mutual fuel block, because `chk.induct` is the whole ballgame
+
+V17 priced the infer-free soundness route at ~8,200 lines. **It was pricing the wrong
+design**, and the measurement that says so is one command:
+
+```
+#check @chk.induct
+  Cannot derive functional induction principle …
+    the argument has type (fun a => ∀ …) of sort Prop
+    but is expected to have type Rec of sort Type
+```
+
+The list helpers took the recursive call as a *parameter* (`Rec`), which kept both
+`chk` and the helpers structural without a `mutual` block. A recursive call passed as a
+higher-order argument is exactly what Lean's induction-principle generator cannot see
+through — and `chk.induct` is not a convenience. `Proof/Static/Mono.lean`'s twenty
+structural laws are every one of them `induction … using infer.induct with | motive2 …`,
+so without the analogous principle each law is a hand-rolled fuel induction fighting
+`split at h`. Hand-rolling *one* of the twenty took a session and did not close.
+
+So `chk` and its helpers are now **one `mutual` block in which every call decreases the
+fuel**, a helper's call into its own tail included. Still structural recursion on a
+`Nat`, so:
+
+* the kernel still reduces it — all 26 `validate` examples remain `by decide`, whole
+  file ~1.4 s, `native_decide` still nowhere (V9 intact);
+* **`chk.induct` is derived**, ten motives, one per function.
+
+Two arms had to be given **names** before any law could reach them, and this is the
+second half of V19:
+
+* **`chkOpt`** — the optional-subterm computation (`.cpathAsgn`'s base, the scoped
+  class/module bases, a block-pass's operand);
+* **`chkRecv`** — a send's receiver, explicit or implicit-self.
+
+An *inline* `match eo with …` becomes a case hypothesis whose scrutinee is still `eo`,
+and `split at h` cannot reach inside a hypothesis it just created. In the arms whose
+enclosing pattern is a wildcard — a send whose block is `some val` for an unconstrained
+`val` — the operand can then never be made concrete and the case is unprovable. Named,
+each gets a motive of its own. Measured: the send arm was the last thing blocking the
+table-return law, twice, for exactly this reason.
+
+Price: fuel now bounds **node count** rather than depth, so `Cert.fuel`'s default goes
+64 → 256. It fails in the same direction it always did.
+
+### V20 — what the induction principle buys, and the residue
+
+With `chk.induct` and the motive map (recorded in `Proof/Cert/Mono.lean`, because it
+cannot be read off the file), the table-return law's ~250 cases fall to a single
+uniform tactic except for a handful. Two things worth keeping:
+
+* **Motives 3, 5 and 7 have identical types** (`chkSeq`/`chkElems`/`chkArgs`), so a
+  swapped assignment *type-checks* and only the induction hypotheses' shapes reveal it.
+  The first assignment had 5 and 7 exchanged; it surfaced as a send case whose
+  hypothesis was about `chkElems` where the arm uses `chkArgs`. This is
+  `Proof/Static/Mono.lean`'s L230 note recurring verbatim one layer up. Motives 1 and
+  10 (`chkOpt`/`chkRecv`) are ambiguous the same way.
+* **The residue is not mathematical.** It is the `chkPairs`/`chkKwEntries` cases, which
+  want a three-link chain of induction hypotheses and where `simp_all` diverges — max
+  steps, then max recursion, then `isDefEq` heartbeats in turn, and at 40M heartbeats it
+  does not terminate in ten minutes. Those two motives want the chain applied
+  explicitly rather than searched for.
+
+**Four tactical facts**, each of which cost a wrong turn and all four recorded in
+`Proof/Cert/Mono.lean` so the next rung does not re-pay them: use `split at h` and not
+`cases` on a non-hypothesis scrutinee; a generic `VarKind` blocks the head match and
+makes `split` re-open all 47 arms; `absurd h (by simp)` is not a finisher because it
+elaborates and leaves its side goal open, so `first` treats it as a success (26 arms
+failed silently that way); and **macro bodies are hygienic**, so an `ih`/`hr` written
+inside a `local macro` refers to a fresh `ih✝` rather than the caller's hypothesis —
+three separate wrong turns before that one was written down.
+
+**Status of `validate_sound` under the new architecture: open.** `CtlOk` is still
+stated over `infer`, so an accept reaches `Inv` only inside `inferFrag`. What is done
+is the foundation and the *price*: C-1 is now a tractable port rather than an
+open-ended one, and `Proof/Cert/Mono.lean` names the next thing to write.

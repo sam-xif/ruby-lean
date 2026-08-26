@@ -1,59 +1,104 @@
 import RubyCore.Cert.Validate
 
 /-!
-# `chk`'s structural laws — rung 1 of the infer-free soundness development
+# `chk`'s structural laws — the infer-free soundness development, rung 1
 
-**Why this file exists, and what it replaces.** `validate` no longer calls `infer`
-(V9–V16); the *soundness argument* still did, through `CtlOk`, whose eval clause is
-literally `infer F Γ e … = some …` (`Proof/Static/Konts.lean`). A bridge from `chk`
-back to `infer` was built and then deleted, because it is the wrong shape: it makes
-the headline theorem depend on the function the whole pivot exists to retire, so
-`infer` cannot be deprecated while the bridge holds the theorem up.
+`validate` no longer calls `infer` (V9–V16, and V12 makes it a module-graph fact). The
+*soundness argument* still does, through `CtlOk`, whose eval clause is literally
+`infer F Γ e … = some …` (`Proof/Static/Konts.lean`). Closing that is milestone **C-1**
+(`docs/semantics/certificate-language.md` §10.6): restate the invariant over `chk`,
+which needs `chk`'s structural laws first, which is this file.
 
-So the invariant gets restated over `chk`, and this file is the foundation that
-restatement needs.
+A bridge from `chk` *back* to `infer` was built and deleted: it makes the headline
+theorem depend on the function the pivot exists to retire, so `infer` could not be
+deprecated while the bridge held the theorem up.
 
-## The measurement that priced the route (V17)
+## V20 — the induction principle, and the measurement that priced the rung
 
-`Proof/Static/Mono.lean` proves twenty structural laws about `infer` — table-return,
-environment-monotonicity, loop-stability, table-monotonicity, for each of the five
-mutually recursive functions. Every one of them is proved by
+V17 estimated the port at ~8,200 lines and was pricing the **wrong design**. The
+correction is V19 (`Cert/Check.lean`): with `chk` and its helpers in one `mutual` block
+where every call decreases the fuel, Lean derives **`chk.induct`** — ten motives, one
+per function, the same shape `Proof/Static/Mono.lean`'s twenty laws are written
+against. Hand-rolling a single law without it took a session and did not close.
+
+**The motive map**, which is the hard-won part and cannot be read off the file:
+
+| motive | function | note |
+|---|---|---|
+| 1 | `chkOpt` | |
+| 2 | `chk` | the goal's own motive |
+| 3 | `chkSeq` | |
+| 4 | `chkPairs` | returns `(Env × Decls)` — two outputs, not three |
+| 5 | `chkElems` | |
+| 6 | `chkRescues` | returns `Option (List Ty)` — **no table**, so the motive is `True` |
+| 7 | `chkArgs` | |
+| 8 | `chkKwEntries` | two outputs |
+| 9 | `chkBlockClaim` | |
+| 10 | `chkRecv` | |
+
+Motives 3, 5 and 7 have **identical types**, so a swapped assignment type-checks and
+only the induction hypotheses' shapes reveal it. Measured: the first assignment had 5
+and 7 exchanged, and it surfaced as a send case whose hypothesis was about `chkElems`
+where the arm uses `chkArgs`. That is `Proof/Static/Mono.lean`'s L230 note — *"the
+order is not the file's … measured with `trace_state`"* — recurring verbatim one layer
+up. Motives 1 and 10 are ambiguous for the same reason.
+
+**Two arms had to be given names before any law could reach them**, and both are in
+V19: `chkOpt` (the optional-subterm computation) and `chkRecv` (a send's receiver). An
+*inline* `match eo with …` becomes a case hypothesis of `chk.induct` whose scrutinee is
+still `eo`, and in the arms whose enclosing pattern is a wildcard — a send whose block
+is `some val` for an unconstrained `val` — there is no way to make it concrete. Named,
+each gets a motive and the induction hypothesis covers it.
+
+**What the uniform tactic reaches.** For the table-return law (*inside a method body
+nothing grows the table*), `chk.induct` generates ~250 cases and
 
 ```lean
-induction D, Γ, e, top, ctx using infer.induct with | motive2 … | motive5 …
+first
+| trivial
+| (intro hr ht τ Γ' D₀ h
+   simp_all [chk, chkOpt, chkRecv, chkSeq, chkArgs, chkElems, chkPairs,
+     chkKwEntries, chkBlockClaim]
+   <closers>)
+| (intro hr ht Γ' D₀ h; …)
 ```
 
-the **well-founded functional induction principle** of that mutual block. `chk` has
-no such principle and cannot: it is structurally recursive on *fuel*, and its list
-helpers are separate top-level functions taking the recursive call as a parameter
-(that separation is what makes both structural, `Cert/Check.lean` §1). So each law
-has to be **restated in the fuel shape and re-proved** — induction on `n`, with one
-lemma per list helper taking the fuel-level hypothesis as an argument. It is not a
-port.
+closes all but a handful — with the motives assigned as above and every motive given
+the same `ctx.ret.isSome → top = false →` prefix, including `chkBlockClaim`'s, which
+does not need it but wants the uniform binder shape so the `first` dispatch is
+reliable.
 
-The cost, stated so the ladder is priced rather than aspirational:
+The residue is **not mathematical**: it is the `chkPairs`/`chkKwEntries` cases, which
+need a three-link chain of induction hypotheses (`chkPairs` at `D₂`, the value at `D₁`,
+the key at `D`) and where `simp_all` diverges — max steps, then max recursion, then
+`isDefEq` heartbeats in turn, and at 40M heartbeats it does not terminate in ten
+minutes. Those two motives want the chain applied *explicitly* rather than searched
+for. Recorded at this grain because it is the next thing to write, not a thing to
+rediscover.
 
-| file | lines | what it is | status |
-|---|---|---|---|
-| `Proof/Cert/Mono.lean` | this | the structural laws, in the fuel shape | **rung 1, in progress** |
-| `Proof/Cert/Konts.lean` | ~2200 to match | `KontOk`'s 12 constructors carry `infer`/`inferArgs`/`inferElems`/`inferSeq`/`inferIf` premises; each becomes a `chk` premise | not started |
-| `Proof/Cert/Locals.lean` | ~2000 to match | `FramesOk`/`StackCtx` and the frame laws | not started |
-| `Proof/Cert/Preservation.lean` | ~2700 to match | `step_ok`, 73 `simp only [infer] at hinf` sites | not started |
+**Three tactical facts, each of which cost a wrong turn:**
 
-and that is the cost to reach **today's** coverage. `chk` has fifteen heads `infer`
-does not, so the per-head work after that is additional — which is the point, and is
-why the frontier is a `Bool` (`Cert/Check.lean` §5) rather than a promise.
+1. **`split at h`, not `cases`** on a scrutinee that is not a hypothesis — `cases`
+   leaves `h` untouched and every later `simp` reports no progress.
+2. **A generic `VarKind` blocks the head match.** `chk`'s arms are per-kind, so
+   matching `.var _ _` leaves the match irreducible and `split` re-opens all 47 arms
+   with impossible `heq` hypotheses. Same for `.vasgn`.
+3. **`absurd h (by simp)` is not a finisher.** It elaborates and leaves its side goal
+   open, so a `first` combinator treats it as a success and never reaches the branches
+   after it — twenty-six arms failed silently that way. `simp at h; done` fails
+   cleanly.
 
-## What this file does *not* need, and it is worth knowing
+And one that is not about this proof but about writing any of them: **macro bodies are
+hygienic.** An `ih` or `hr` written inside a `local macro` refers to a fresh `ih✝`, not
+the caller's hypothesis, and the failure mode is a `first` branch that silently never
+fires. Three separate wrong turns before it was written down; pass them as macro
+parameters.
 
-**Fuel monotonicity is not required.** The first draft of the plan budgeted for
-`chk c n … = some r → chk c (n+1) … = some r`, on the grounds that a step has to
-produce the successor's witness from the current one's. It does not: state the
-invariant's clause as `∃ n, chk c n D Γ e top ctx = some …` and every arm of `chk`
-hands its *children* a witness at `n` directly. A loop re-enters the same subterm at
-the same fuel; a method body is a subterm of the program and so is covered by the
-program's own bound. So the existential absorbs the whole question, and the ~47-case
-callback-monotonicity argument is not owed. Recorded because it was budgeted.
+## What is proved here
+
+`chkBlockClaim_table_ret` — the one law that needs no induction, because the claimed
+block-send arm answers the table it was handed outright. Everything else waits on the
+residue above.
 -/
 
 namespace RubyCore
@@ -63,237 +108,31 @@ namespace Cert
 open RubyCore.Types
 open RubyCore.Cert
 
-set_option maxHeartbeats 2000000
-set_option maxRecDepth 100000
+set_option maxHeartbeats 1000000
 
-/-! ## 1. The table-return law
+/-- **The claimed block-send arm returns the table it was handed**, unconditionally —
+    no fuel hypothesis and no `ctx.ret` side condition, because the arm's answer is
+    `some (cl.ty, Γ, D)`.
 
-`infer_table_ret`'s statement, in the fuel shape:
-
-> inside a method body — `ctx.ret.isSome`, `top = false` — nothing grows the table.
-
-It is the smallest complete family and it is the one every later law leans on, because
-it is what lets a rule conclude `D' = D` without inspecting the subterm. The two arms
-that *can* grow the table are `.def'` (which promotes a row) and `.class'` (which
-threads its body's extension out), and each is refused under exactly these
-hypotheses: `.def'`'s promotion guard requires `ctx.ret.isNone`, and `.class'`
-requires `top`.
-
-The list helpers get their own statements, each taking the fuel-level fact as a
-hypothesis — the shape that replaces `infer.induct`'s `motive3`…`motive5`. -/
-
-/-- The fuel-level hypothesis, named so the four statements below read as one law. -/
-def TableRet (c : Cert) (n : Nat) : Prop :=
-  ∀ D Γ e top ctx τ Γ' D₀, ctx.ret.isSome = true → top = false →
-    chk c n D Γ e top ctx = some (τ, Γ', D₀) → D₀ = D
-
-theorem tableRet_zero (c : Cert) : TableRet c 0 := by
-  intro D Γ e top ctx τ Γ' D₀ _ _ h
-  simp [chk] at h
-
-section
-variable {c : Cert} {n : Nat}
-
-theorem chkSeq_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
-    (hr : ctx.ret.isSome = true) (ht : top = false) :
-    ∀ (es : List Expr) (D : Decls) (Γ : Env) (τ : Ty) (Γ' : Env) (D₀ : Decls),
-      chkSeq (chk c n) top ctx D Γ es = some (τ, Γ', D₀) → D₀ = D
-  | [], D, Γ, τ, Γ', D₀, h => by
-    simp only [chkSeq, Option.some.injEq, Prod.mk.injEq] at h
-    exact h.2.2.symm
-  | [e], D, Γ, τ, Γ', D₀, h => ih D Γ e top ctx τ Γ' D₀ hr ht h
-  | e :: e2 :: rest, D, Γ, τ, Γ', D₀, h => by
-    simp only [chkSeq] at h
-    cases he : chk c n D Γ e top ctx with
-    | none => rw [he] at h; exact absurd h (by simp)
-    | some v =>
-      obtain ⟨_, Γ₁, D₁⟩ := v
-      rw [he] at h
-      have h1 : D₁ = D := ih D Γ e top ctx _ Γ₁ D₁ hr ht he
-      subst h1
-      exact chkSeq_table_ret ih top ctx hr ht (e2 :: rest) D₁ Γ₁ τ Γ' D₀ h
-
-theorem chkArgs_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
-    (hr : ctx.ret.isSome = true) (ht : top = false) :
-    ∀ (es : List Expr) (D : Decls) (Γ : Env) (τs : List Ty) (Γ' : Env) (D₀ : Decls),
-      chkArgs (chk c n) top ctx D Γ es = some (τs, Γ', D₀) → D₀ = D
-  | [], D, Γ, τs, Γ', D₀, h => by
-    simp only [chkArgs, Option.some.injEq, Prod.mk.injEq] at h
-    exact h.2.2.symm
-  | e :: rest, D, Γ, τs, Γ', D₀, h => by
-    simp only [chkArgs] at h
-    cases he : chk c n D Γ e top ctx with
-    | none => rw [he] at h; exact absurd h (by simp)
-    | some v =>
-      obtain ⟨_, Γ₁, D₁⟩ := v
-      rw [he] at h
-      dsimp only at h
-      have h1 : D₁ = D := ih D Γ e top ctx _ Γ₁ D₁ hr ht he
-      subst h1
-      cases hrest : chkArgs (chk c n) top ctx D₁ Γ₁ rest with
-      | none => rw [hrest] at h; exact absurd h (by simp)
-      | some w =>
-        obtain ⟨_, Γ₂, D₂⟩ := w
-        rw [hrest] at h
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        have h2 : D₂ = D₁ :=
-          chkArgs_table_ret ih top ctx hr ht rest D₁ Γ₁ _ Γ₂ D₂ hrest
-        rw [← h.2.2]; exact h2
-
-theorem chkElems_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
-    (hr : ctx.ret.isSome = true) (ht : top = false) :
-    ∀ (es : List Expr) (D : Decls) (Γ : Env) (τ : Ty) (Γ' : Env) (D₀ : Decls),
-      chkElems (chk c n) top ctx D Γ es = some (τ, Γ', D₀) → D₀ = D
-  | [], D, Γ, τ, Γ', D₀, h => by
-    simp only [chkElems, Option.some.injEq, Prod.mk.injEq] at h
-    exact h.2.2.symm
-  | e :: rest, D, Γ, τ, Γ', D₀, h => by
-    match e with
-    | .splat (some o) =>
-      simp only [chkElems] at h
-      cases ho : chk c n D Γ o top ctx with
-      | none => rw [ho] at h; exact absurd h (by simp)
-      | some v =>
-        obtain ⟨τo, Γ₁, D₁⟩ := v
-        rw [ho] at h
-        have h1 : D₁ = D := ih D Γ o top ctx _ Γ₁ D₁ hr ht ho
-        subst h1
-        match τo with
-        | .cls sname =>
-          by_cases hs : sname = "Array"
-          · subst hs
-            exact chkElems_table_ret ih top ctx hr ht rest D₁ Γ₁ τ Γ' D₀ h
-          · exact absurd h (by simp [hs])
-        | .int | .bool | .nilT | .sym | .any | .float | .clsOf _ | .nilable _
-        | .arrayOf _ => exact absurd h (by simp)
-    | .splat none =>
-      simp only [chkElems] at h
-      cases ho : chk c n D Γ (Expr.splat none) top ctx with
-      | none => rw [ho] at h; exact absurd h (by simp)
-      | some v =>
-        obtain ⟨_, Γ₁, D₁⟩ := v
-        rw [ho] at h
-        have h1 : D₁ = D := ih D Γ _ top ctx _ Γ₁ D₁ hr ht ho
-        subst h1
-        exact chkElems_table_ret ih top ctx hr ht rest D₁ Γ₁ τ Γ' D₀ h
-    | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' | .var _ _
-    | .vasgn _ _ _ | .const _ | .casgn _ _ | .cpath _ _ | .cpathAsgn _ _ _
-    | .send _ _ _ _ | .vcall _ | .kwargs _ | .fwd | .block _ _ _ | .yield' _
-    | .blockpass _ | .if' _ _ _ | .while' _ _ | .dowhile _ _ | .for' _ _ _
-    | .def' _ _ _ | .array _ | .hash _ | .ret _ | .brk _ | .nxt _ | .retry' | .redo'
-    | .class' _ _ _ | .module' _ _ | .scopedClass _ _ _ | .scopedModule _ _ _
-    | .sclass _ _ | .defs _ _ _ _ | .begin' _ _ _ _ | .super' _ _ | .zsuper _
-    | .undef _ | .alias' _ _ | .defined _ | .seq _ =>
-      simp only [chkElems] at h
-      cases ho : chk c n D Γ _ top ctx with
-      | none => rw [ho] at h; exact absurd h (by simp)
-      | some v =>
-        obtain ⟨_, Γ₁, D₁⟩ := v
-        rw [ho] at h
-        have h1 : D₁ = D := ih D Γ _ top ctx _ Γ₁ D₁ hr ht ho
-        subst h1
-        exact chkElems_table_ret ih top ctx hr ht rest D₁ Γ₁ τ Γ' D₀ h
-
-theorem chkPairs_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
-    (hr : ctx.ret.isSome = true) (ht : top = false) :
-    ∀ (ps : List (Expr × Expr)) (D : Decls) (Γ : Env) (Γ' : Env) (D₀ : Decls),
-      chkPairs (chk c n) top ctx D Γ ps = some (Γ', D₀) → D₀ = D
-  | [], D, Γ, Γ', D₀, h => by
-    simp only [chkPairs, Option.some.injEq, Prod.mk.injEq] at h
-    exact h.2.symm
-  | (k, v) :: rest, D, Γ, Γ', D₀, h => by
-    simp only [chkPairs] at h
-    cases hk : chk c n D Γ k top ctx with
-    | none => rw [hk] at h; exact absurd h (by simp)
-    | some a =>
-      obtain ⟨_, Γ₁, D₁⟩ := a
-      rw [hk] at h
-      dsimp only at h
-      have e1 : D₁ = D := ih D Γ k top ctx _ Γ₁ D₁ hr ht hk
-      subst e1
-      cases hv : chk c n D₁ Γ₁ v top ctx with
-      | none => rw [hv] at h; exact absurd h (by simp)
-      | some b =>
-        obtain ⟨_, Γ₂, D₂⟩ := b
-        rw [hv] at h
-        have e2 : D₂ = D₁ := ih D₁ Γ₁ v top ctx _ Γ₂ D₂ hr ht hv
-        subst e2
-        exact chkPairs_table_ret ih top ctx hr ht rest D₂ Γ₂ Γ' D₀ h
-
-theorem chkKwEntries_table_ret (ih : TableRet c n) (top : Bool) (ctx : FrameCtx)
-    (hr : ctx.ret.isSome = true) (ht : top = false) :
-    ∀ (es : List KwEntry) (D : Decls) (Γ : Env) (Γ' : Env) (D₀ : Decls),
-      chkKwEntries (chk c n) top ctx D Γ es = some (Γ', D₀) → D₀ = D
-  | [], D, Γ, Γ', D₀, h => by
-    simp only [chkKwEntries, Option.some.injEq, Prod.mk.injEq] at h
-    exact h.2.symm
-  | ent :: rest, D, Γ, Γ', D₀, h => by
-    match ent with
-    | .pair _ v | .splat v =>
-      simp only [chkKwEntries] at h
-      cases hv : chk c n D Γ v top ctx with
-      | none => rw [hv] at h; exact absurd h (by simp)
-      | some a =>
-        obtain ⟨_, Γ₁, D₁⟩ := a
-        rw [hv] at h
-        have e1 : D₁ = D := ih D Γ v top ctx _ Γ₁ D₁ hr ht hv
-        subst e1
-        exact chkKwEntries_table_ret ih top ctx hr ht rest D₁ Γ₁ Γ' D₀ h
-    | .dyn k v =>
-      simp only [chkKwEntries] at h
-      cases hk : chk c n D Γ k top ctx with
-      | none => rw [hk] at h; exact absurd h (by simp)
-      | some a =>
-        obtain ⟨_, Γ₁, D₁⟩ := a
-        rw [hk] at h
-        dsimp only at h
-        have e1 : D₁ = D := ih D Γ k top ctx _ Γ₁ D₁ hr ht hk
-        subst e1
-        cases hv : chk c n D₁ Γ₁ v top ctx with
-        | none => rw [hv] at h; exact absurd h (by simp)
-        | some b =>
-          obtain ⟨_, Γ₂, D₂⟩ := b
-          rw [hv] at h
-          have e2 : D₂ = D₁ := ih D₁ Γ₁ v top ctx _ Γ₂ D₂ hr ht hv
-          subst e2
-          exact chkKwEntries_table_ret ih top ctx hr ht rest D₂ Γ₂ Γ' D₀ h
-
-/-! ## 2. The step — the next rung, and what it costs
-
-`tableRet_step : TableRet c n → TableRet c (n + 1)` is what §1 is for, and it is
-**not** landed here. It is forty-seven heads of case analysis and the shape is now
-known precisely, which is the useful thing to record:
-
-* **`D` outright** (the literals, the immediate reads, `.while'`, `.dowhile`,
-  `.begin'`, `.module'`) — `simp only [chk] at h; repeat' split at h` and then read
-  the triple off `Option.some.injEq`/`Prod.mk.injEq`.
-* **the two arms the law is actually about** — `.def'`, whose promotion guard reads
-  `ctx.ret.isNone` and is therefore refuted by the hypothesis, so the row is never
-  added; and `.class' _ none _`, which requires `top`. Both need
-  `Bool.and_false`/`if_false` in the simp set to collapse the guard, and neither
-  needs an induction.
-* **one child, threaded** (the assignments, `.cpath (some _)`, `.ret`, `.splat`,
-  `.for'`, `.sclass`, `.defs`, the scoped class/module forms) — split, then apply the
-  hypothesis to the child's `chk … = some …`, which `split` has already named.
-* **a list helper** (`.seq`, `.array`, `.hash`, `.kwargs`, `.send`, `.super'`,
-  `.yield'`) — §1, directly.
-* **`.if'`**, the only arm that threads *two* children and so chains the hypothesis
-  twice.
-
-Three tactical facts worth having written down, because each cost a wrong turn:
-
-1. **`split at h`, not `cases`.** `cases X with` on a scrutinee that is not a
-   hypothesis leaves `h` untouched, so every subsequent `simp` reports no progress.
-2. **A generic `VarKind` blocks reduction.** `chk`'s arms are per-kind, so matching
-   `.var _ _` leaves the head match irreducible and `split` re-opens the whole
-   47-arm tree with impossible `heq` hypotheses. The four kinds have to be split.
-3. **`absurd h (by simp)` is not a finisher.** It elaborates and leaves the side goal
-   open, so a `first` combinator treats it as a success and never reaches the
-   induction branch — twenty-six arms failed silently that way before
-   `Option.noConfusion` replaced it.
--/
-
-end
+    Wanted as a standalone law rather than an induction case because `chk`'s block-send
+    fallback is a bare `chkBlockClaim` application, with no `some (…)` wrapper for the
+    injective-`some` step to see. -/
+theorem chkBlockClaim_table_ret {c : Cert} {n : Nat} {top : Bool} {ctx : FrameCtx}
+    {key : Expr} {D : Decls} {Γ : Env} {τs : List Ty} {ps : List Param}
+    {ls : List String} {body : Expr} {τ : Ty} {Γ' : Env} {D₀ : Decls}
+    (h : chkBlockClaim c n top ctx key D Γ τs ps ls body = some (τ, Γ', D₀)) :
+    D₀ = D := by
+  -- The fuel has to be cased first: `chkBlockClaim`'s own `match` is on it, so with
+  -- `n` a variable `simp only [chkBlockClaim]` makes no progress. At zero fuel the arm
+  -- is `none`, which refuses — the safe direction, as everywhere else.
+  cases n with
+  | zero => simp [chkBlockClaim] at h
+  | succ m =>
+    simp only [chkBlockClaim] at h
+    (repeat' split at h) <;>
+      first
+      | (simp only [Option.some.injEq, Prod.mk.injEq] at h; exact h.2.2.symm)
+      | (simp at h; done)
 
 end Cert
 end Proof
