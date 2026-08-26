@@ -13,6 +13,7 @@ import RubyCore.Types.Core
 import RubyCore.Types.SigRead
 import RubyCore.Types.OpenSelf
 import RubyCore.Types.Program
+import RubyCore.Cert.Json
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -94,6 +95,16 @@ def main (args : List String) : IO UInt32 := do
   -- `means` field rather than leaving it to be inferred: *types under these class
   -- obligations*. `check`'s `accept` is the only one `check_sound` licenses.
   let assnProgOnly := args.contains "--assn-program"
+  -- `--certify FILE`: **replay a certificate** (`docs/semantics/certificate-language.md`).
+  -- The program comes in on stdin as always; `FILE` holds the certificate JSON the
+  -- (untrusted) `certify/` emitters produce. `validate` re-checks it and
+  -- `Proof/Cert/Sound.lean`'s `validate_sound` is what an accept means.
+  --
+  -- A fourth static query rather than a mode of the other three, for `--assn-program`'s
+  -- reason: `--check`'s and `--assn`'s numbers are consumed ratchets and must stay
+  -- byte-identical. This one reads a *second input*, which is the whole difference — it
+  -- is the only query whose answer depends on something other than the program.
+  let certifyFile : Option String := flagArg "--certify"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -230,6 +241,37 @@ def main (args : List String) : IO UInt32 := do
             Lean.Json.mkObj [
               ("status", Lean.Json.str "unknown"),
               ("out_of_fragment", Lean.Json.str head)]).compress
+        return 0
+      if certifyFile.isSome then
+        let path := certifyFile.getD ""
+        -- A missing or malformed certificate is a **reject**, not a crash: §1's
+        -- "a bad certificate costs a body we failed to certify, never a false
+        -- type-checked". The reason is reported, as `--assn`'s `needed` is.
+        let contents ← (do
+          try
+            let s ← IO.FS.readFile path
+            pure (Except.ok s)
+          catch e => pure (Except.error (toString e)))
+        let out : Lean.Json :=
+          match contents with
+          | .error e =>
+            Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                             ("why", Lean.Json.str "certificate-unreadable"),
+                             ("detail", Lean.Json.str e)]
+          | .ok text =>
+            match Lean.Json.parse text with
+            | .error e =>
+              Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                               ("why", Lean.Json.str "certificate-bad-json"),
+                               ("detail", Lean.Json.str e)]
+            | .ok cj =>
+              match Cert.Cert.ofJson cj with
+              | .error e =>
+                Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                                 ("why", Lean.Json.str "certificate-undecodable"),
+                                 ("detail", Lean.Json.str e)]
+              | .ok cert => Cert.verdictToJson cert prog
+        IO.println out.compress
         return 0
       if checkOnly then
         -- **D12: the reported verdict is total** — `decision` is `accept` or
