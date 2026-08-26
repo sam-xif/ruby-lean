@@ -261,6 +261,10 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
     -- what `Proof/Cert/Ledger.lean`'s `satProvs_ledgerStore` is conditional on.
     ("ledger_steps", Json.num c.ledger.length),
     ("ledger_ok", Json.bool (ledgerOk c p)),
+    -- Outside the `if` for the same reason: how many rows a certificate *carries* is a
+    -- fact about the certificate, not about the verdict, and a rejected certificate's
+    -- row count is what an emitter reads while iterating.
+    ("carries_rows", Json.num c.deltaRows.length),
     -- Per claim, whether it replayed. The gradient at its finest grain, and what an
     -- emitter reads back to iterate (`certify/implementation-notes.md` E5): the
     -- untrusted side proposes signatures and this is the adjudication.
@@ -275,7 +279,6 @@ def verdictToJson (c : Cert) (p : Expr) : Json :=
           else
             "no reachable outcome of this program is type-stuck, given `carries`")),
        ("carries", Json.str c.rowAssn.render),
-       ("carries_rows", Json.num c.deltaRows.length),
        ("reports", Json.str c.reportAssn.render)]
      else
       -- Which conjunct failed. A reject that does not say why is the `unknown`
