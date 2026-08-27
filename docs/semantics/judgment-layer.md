@@ -314,6 +314,189 @@ what the cheapness buys):
   the checked form staying the expanded union. Aliases never reach the checker, so
   the trust cost is zero.
 
+### 1.7 The first-order dividend, cashed as solvers (2026-08-27)
+
+The nominal/first-order choice (§1.1–§1.5) has an operational payoff beyond proof
+economics, and it is the sharpest way to *sell* the choice: every object in the layer
+— `Ty` (seven constructors), `subTy` (an ancestors walk over a finite table, hence a
+finite ground relation per program), `Judge` (first-order inductive over finite
+syntax), the invariant — is finitely representable in solver-decidable theories. An
+Iris-style model forecloses this — not "makes it harder," forecloses: step-indexed,
+resource-quantified predicates have no decision procedure, so automation there means
+tactics-per-proof by an expert. Here it means running cvc5, **untrusted**, because
+`validateJ` is the sole arbiter. Three slots, in increasing ambition:
+
+1. **SMT as the J4 emitter arm** (untrusted `Deriv` synthesis). Encode `Ty` as an
+   SMT algebraic datatype, `D` as ground facts, `subTy` unrolled, each `Judge` rule
+   as a constraint template with unknowns for env entries / claimed rows / joins —
+   quantifier-free over datatypes + UF for a fixed program. The solver's *model* is
+   a type assignment; a pretty-printer turns model + program into the existing JSON
+   `Deriv`; a hallucinated model dies at the kernel `Bool`, zero new trusted code.
+   Prior art: [InferType (ECOOP 2024)](https://drops.dagstuhl.de/storage/00lipics/lipics-vol313-ecoop2024/LIPIcs.ECOOP.2024.23/LIPIcs.ECOOP.2024.23.pdf)
+   (type constraints as Z3 datatype equalities) and Ruby's own
+   [InferDL/RDL](https://www.cs.tufts.edu/~jfoster/papers/dls20.pdf) (constraint
+   solving + heuristics) — neither with a proof-grade checker behind it, which is
+   the differentiated sentence. [Dminor](https://catalin-hritcu.github.io/publications/dminor-icfp2010.pdf)
+   (Bierman–Gordon, ICFP 2010) is the closest historical arrangement — semantic
+   subtyping *as* first-order validity discharged by Z3 — except they trust the
+   solver; we would not have to. The design point itself is validated by
+   [decidable tag-based semantic subtyping](https://arxiv.org/pdf/1912.08255)
+   (the Julia lineage): nominal-tag interpretation is what keeps semantic subtyping
+   decidable where behavioral interpretations aren't.
+2. **The untrusted invariant-inference engine** (`type-safety-by-reachability.md`
+   §4) **as CHC solving.** Inductive-invariant synthesis over `stepFn` is literally
+   the Constrained Horn Clause problem (Spacer, Eldarica). The unknown predicates
+   are first-order and small *because* the abstract domain is class names; had "type
+   of v" meant a predicate over heaplets, the CHC unknowns would be higher-order and
+   no encoding would exist. This is the crispest instance of "first-order rendered X
+   tractable": the still-open engineering on the roadmap is solver-shaped only
+   because of §1's choice. Blocks do not break this slot — the reduction from
+   higher-order CHCs to first-order CHCs is
+   [sound and complete via defunctionalization](https://arxiv.org/pdf/1810.03598)
+   (see §1.9).
+3. **Solver proofs replayed into Lean** —
+   [lean-smt](https://arxiv.org/pdf/2505.15796) reconstructs cvc5's CPC proofs
+   kernel-checked, but covers ~30% of the rule set (2025); real but young. Our own
+   certificate format + `validateJ` is strictly better for this use case anyway
+   (total, ours, built). Recorded so it isn't mistaken for the load-bearing slot.
+
+The decidability *argument* can be borrowed verbatim from the refinement-types
+community, which restricts to QF-UFLIA on purpose: quantified/higher-order VCs make
+typability hostage to "the solver's unpredictable quantifier instantiation
+heuristics," while the QF fragment gives "a precise, solver-agnostic, language-based
+characterization of when a program is well-typed"
+([Refinement Types: A Tutorial](https://arxiv.org/pdf/2010.07763)). Ours is the same
+claim one level up: not just the side conditions but the entire semantic soundness
+story stays first-order, because reachability replaced step-indexing as the ground
+truth (§1.5).
+
+### 1.8 The admission boundary for discharge-by-execution (2026-08-27)
+
+J31/J35 discharge a claim's obligation **by executing the semantics**, and both
+pilots (`lambda { 1 }`, the `define_method` row) sat in a sweet spot: closed,
+deterministic, terminating, state-insensitive. Each adjective names a failure mode,
+and the umbrella over all of them: **`SemJudge` is a Π-statement (all conformant
+states, all runs) and execution discharges Σ-statements (this one run).** The
+translation-validation literature supplies the right frame
+([Tristan–Leroy](https://jtristan.github.io/papers/popl08.pdf)): the discharge is
+*sound* for any claim (replay cannot lie) but *complete only relative to a named
+fragment* — and the honest deliverable is the fragment's boundary. This section is
+that boundary, i.e. **the admission policy for semantic claims**, because the
+project-level risk is not any single gap below: it is an axiom quietly admitted
+outside the fragment, "discharged" by an execution that does not cover its
+quantifier — poisoning the axiom-clean claim while still typechecking.
+
+Discharge-by-execution is complete for claims that are **closed** (the conformant
+start-state set is a singleton or enumerated), **terminating within the certificate's
+fuel**, **deterministic**, **first-order-argumented** (no quantified block/proc
+parameters), and **table-stable** (footprint slice of `D` untouched between discharge
+and use). Outside it, three named escalations — never a fourth, improvised one:
+
+* **State-polymorphism → footprint lemma.** A claim at nonempty `Γ` with an abstract
+  `cls C` quantifies over infinitely many conformant heaps; one run instantiates one.
+  The reduction to finitely many representative runs is a lemma "running `e` reads
+  only these locations" — which is **the frame rule, re-entering as pay-as-you-go
+  first-order obligations**. Named honestly: §1's choice did not eliminate framing,
+  it deferred it to exactly these discharge obligations (this is §1.5's "if
+  preservation's mutation cases blow up on framing" signal, relocated to the
+  claim layer).
+* **Unboundedness → the invariant route.** A fuel-bounded run proves "no type-stuck
+  outcome within n steps" — the bounded-model-checking verdict, with BMC's known
+  repair (k-induction/IC3 ≙ our inductive invariant) and BMC's known discipline: the
+  bound is a **first-class output**. A fuel-discharged claim is a `SemJudgeUpTo n`
+  grade carrying its fuel in the certificate, never silently promoted to the
+  unbounded judgment.
+* **Higher-order arguments → per-instantiation discharge** (§1.9).
+
+Two further conditions on any discharged claim:
+
+* **Table evolution.** The claim is conditioned on `D`, and `define_method`/`prepend`
+  move `D`. The direct ancestor is
+  [Hummingbird](https://www.cs.tufts.edu/~jfoster/papers/pldi16.pdf) (Ren–Foster,
+  PLDI 2016 — just-in-time static checking *is* discharge-by-execution at the moment
+  metaprogramming settles), and its documented lesson is that **cache invalidation
+  was the hard half of its preservation theorem**, not an engineering afterthought.
+  A discharged claim must carry the slice of `D` it depends on, and the checker must
+  refuse composition across a delta touching that slice — the semantic heap-diff of
+  `bounded-effect-checking.md` §6 as part of the *proved* story.
+* **The effect seam.** `stepFn` is deterministic today, so one run per state
+  suffices; the moment the POSIX mediator lands, a run fixes one oracle sequence.
+  Prior art's verdict is unanimous — Netsem retreated from verification to
+  *membership of the observed trace*; CakeML keeps theorems oracle-quantified and
+  never discharges them by running. Effectful constructs get **trace-grade
+  monitoring claims, syntactically distinct** from state-quantified ones, so one
+  grade cannot masquerade as the other.
+
+Trust grades, recorded per certificate: kernel `decide` vs `native_decide` (which
+adds `Lean.ofReduceBool` to the audit — a distinct trust level, per two decades of
+proof-by-reflection practice from the four-color proof onward, not a dent to hide).
+
+### 1.9 Blocks do not breach the boundary (2026-08-27)
+
+Pressure-tested worry: blocks are ubiquitous, `SemJudge` claims about block-taking
+methods quantify over all blocks, so does the first-order commitment cap the layer
+where Ruby actually lives — and doesn't HOL "directly represent" blocks? Two
+conflations to undo, then three instruments.
+
+**First-order is a property of the *model*, not the ambient logic.** Lean quantifies
+over `Prop`s every day; what §1.5 declines is the step-indexed Kripke *construction*.
+And step-indexing is forced by exactly one thing: **behavioral types over
+higher-order store** ("cell holds a σ→τ function" constraining behavior on heaps
+satisfying the world being defined). Nominal `VTy` severs that knot at the root: the
+type of a stored proc is `tag = Proc`, a heap fact with no behavioral content, no
+recursion, no worlds. §1.5 records this cut for the `Judge` route (bodies checked on
+*source*); it holds unchanged for the claim route. Storing blocks in ivars costs the
+invariant nothing; the only question is recovering *behavioral* facts at use sites.
+
+* **Rank-1 conditional claims.** A block's behavioral spec doesn't need a new logic —
+  **it is a `SemJudge` statement** ("invoked with σ-typed arguments in a conformant
+  heap, reaches no type-stuck outcome, returns a τ"). A claim about a block-taking
+  method becomes an implication: `(∀ b, SemJudgeBlock D Γ b σ τ) → SemJudge …` —
+  one quantifier over a first-order-defined predicate, rank-1, no self-reference,
+  stated and consumed in plain Lean. This covers the ubiquitous pattern: blocks
+  passed *downward* and called (`each`/`map`/`times`), which never round-trip
+  through the store in a way that recreates the knot.
+* **Closed-world defunctionalization.** In the whole-program setting certification
+  already assumes (§1.6's closed-world collapse), "all blocks of type σ→τ" is the
+  program's **finite set of block literals**, and the sub-set flowing to a given
+  yield site is computable by CFA. The ∀ in the rank-1 premise collapses to a finite
+  conjunction: discharge `SemJudgeBlock` once per literal (by execution, by `Judge`,
+  or by claim — the existing tri-modal admission), with the CFA untrusted and its
+  flow set certified element-wise like everything else. Captured environments do
+  *not* reopen the higher-order problem — a capture is just more `Γ`, reducing to
+  §1.8's footprint escalation. The industrial precedent to cite:
+  [ACL2's `apply$`](https://www.cs.utexas.edu/~kaufmann/papers/apply/report.pdf)
+  (Kaufmann–Moore, JAR 2020) — a strictly first-order prover where "functions" are
+  data, a syntactic **tameness** predicate gates interpretability (≙ `fragHead`),
+  and **warrants** are explicit per-function hypotheses (≙ per-block claims);
+  twenty years of hardware verification then used mapped functionals routinely.
+  First-order prover + ubiquitous higher-order idioms is a solved coexistence, not
+  a research bet. (The encodings also keep §1.7's solver slots alive under blocks:
+  Sledgehammer's apply/λ-lifting translation, and the sound-and-complete
+  [defunctionalization of higher-order CHCs](https://arxiv.org/pdf/1810.03598).)
+* **The havoc block**, for the bounded checker only: replace an unanalyzed block by
+  a most-general one (arbitrary τ-result, arbitrary mutation within a declared
+  footprint), Boogie-style. A run surviving the havoc covers every real block with
+  that footprint; used only when *choosing* not to enumerate, with the CFA saying
+  what the real footprint is.
+
+**Residual watchlist**, stated precisely: procs stored in the heap and invoked far
+from creation, *when a behavioral fact is needed at the invocation*. The invariant
+stays sound there (nominal `VTy`), but recovering the return type at such a site
+binds on **CFA precision, not on the logic** — which cell can hold which literals is
+an analysis question the certificate architecture already knows how to consume
+untrusted answers to.
+
+**Flip-condition refinement** (extends §1.5's list): step-indexed semantic typing
+earns its keep when behavioral types must be assigned to heap-stored code while
+remaining **open-world** — linking against unknown, never-executed, syntactically
+unavailable code (a gem as a black box, certified once for all clients). That is
+RustBelt's problem statement and §1.6 already records it as the trade taken. If the
+roadmap ever grows it, the increment is one logical-relation module *over the same
+machine* (reachability stays the ground truth —
+[the Iris school's own framing](https://iris-project.org/pdfs/2024-jacm-logical-type-soundness-final.pdf)
+builds its models over an operational semantics like ours), not a rewrite.
+
 ## 2. The judgment — `Judge D Γ self e t Γ'`
 
 Flow-sensitive expression typing as an **inductive `Prop`**, exactly as `Step m m'` is
@@ -435,7 +618,7 @@ Sized like the C-ladder: each rung is a commit series with a measurable exit.
 **Scorecard (2026-08-26): J0 ✓, J1 ✓ (`judge_sound_cert`, audited), J2 ✓
 (`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
-arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
+arm — §1.7 slot 1 records the SMT-as-untrusted-emitter candidate for it).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
 (J18–J35; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
 typing, J31 semantic axioms — user-supplied semantic judgments as `Judge` leaves,
 Deriv-invocable, pilot delivered).
@@ -498,3 +681,12 @@ lemmas about existing machinery land *there* with L-numbers, never forked.
    judgments change *who checks*, not *what is provable*. Growing the rule set is
    still hand-proof work in preservation — now priced per constructor instead of per
    motive.
+5. **Quantifier under-coverage in discharged claims.** The failure mode §1.8 exists
+   to prevent: a semantic claim admitted outside the five-adjective fragment, its
+   obligation "discharged" by an execution that instantiates only part of its
+   quantifier (one conformant state of many, one fuel of unboundedly many, one
+   block of a quantified set). It typechecks, stays axiom-clean by `#print axioms`,
+   and is wrong. Mitigation is structural, not vigilance: the admission policy's
+   grades (`SemJudgeUpTo n`, trace-grade, per-instantiation) must be distinct
+   *types of claim* the checker refuses to compose as the unbounded judgment, so
+   the gap is unrepresentable rather than merely discouraged.
