@@ -661,6 +661,57 @@ theorem egNarrow_certified :
     ∀ r, ReachableResult (Machine.init egNarrow) r → ¬ typeStuck r :=
   validateJ_certifies egNarrowJCert_validates (fun r hm => by simp [egNarrowJCert] at hm)
 
+/-! ## The refusal direction, observed
+
+A checker whose accepts are proven sound still owes evidence that it *refuses* —
+a validator that answered `true` everywhere would satisfy every theorem above
+vacuously at the `decide` sites. One guard per refusal class, each a wrong
+certificate for `egNarrow`: the plain `if` node where the branch needs the
+narrowed environment (the dispatch on a nilable receiver has no row), a claimed
+join that drops the nil branch (`subJb` refuses `nilT ≤ int`), a derivation whose
+shape does not match the program, and a claimed row colliding with a base row
+(`rowsGuarded`). The JSON boundary's refusal (`derivOfJson` on an unknown node
+kind answers a decode *error*, not a crash) is exercised by evaluation rather
+than here — the kernel cannot run the `Except` decoder under `#guard`. -/
+
+-- The plain `if` node cannot certify the narrowing program.
+def egNarrowBadPlain : JCert :=
+  { deriv := .seq (.cons
+      (.vasgnLvar (.ifElse .tru .int .nil (.nilable .int) []))
+      (.single (.ifElse .varLvar (.send (.expl .varLvar) (.cons .int .nil))
+        .int .int []))) }
+
+#guard validateJ egNarrowBadPlain egNarrow 32 == false
+
+-- A join claim that forgets the nil branch is refused.
+def egNarrowBadJoin : JCert :=
+  { deriv := .seq (.cons
+      (.vasgnLvar (.ifElse .tru .int .nil .int []))
+      (.single (.ifNarrowElse (.send (.expl .varLvar) (.cons .int .nil))
+        .int .int []))) }
+
+#guard validateJ egNarrowBadJoin egNarrow 32 == false
+
+-- A derivation whose shape does not match the program is refused.
+def egNarrowBadShape : JCert :=
+  { deriv := .seq (.cons (.vasgnLvar (.send (.expl .int) .nil))
+      (.single (.ifNarrowElse (.send (.expl .varLvar) (.cons .int .nil))
+        .int .int []))) }
+
+#guard validateJ egNarrowBadShape egNarrow 32 == false
+
+-- A claimed row colliding with a base row is refused by `rowsGuarded`…
+def clashRow : RowClaim :=
+  { cls := "Integer", name := "+", sig := { params := [.int], ret := .int },
+    why := .assumed "clash" }
+
+#guard validateJ { deltaRows := [clashRow], deriv := egNarrowJCert.deriv }
+  egNarrow 32 == false
+
+-- …while a fresh row rides along fine.
+#guard validateJ { deltaRows := [egEvenRow], deriv := egNarrowJCert.deriv }
+  egNarrow 32 == true
+
 /-! ## Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Judgment.validateJ_certifies' depends on axioms: [propext, Classical.choice, Quot.sound] -/

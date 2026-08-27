@@ -492,3 +492,16 @@ if x then x + 1 else 0 end`, the DRuby guard-discrimination shape T4 names as th
 false-positive class narrowing exists to kill — is certified from certificate
 data, axiom-clean: the optional flows into the guard, the guard narrows, the
 narrowed branch dispatches.
+
+## J27a — the refusal direction, observed rather than assumed
+
+Exercised the checker on wrong certificates and the JSON boundary on malformed
+documents (a validator whose accepts are proven sound could still be vacuously
+`true` at the `decide` sites). Observed and pinned as `#guard`s in
+`Proof/Judgment/Adequacy.lean`: the plain `if` node refused where the branch
+needs the narrowed environment, a nil-forgetting join refused by `subJb`, a
+shape-mismatched derivation refused, a base-row-colliding claim refused by
+`rowsGuarded` — and the same derivation accepted alongside a *fresh* claimed row.
+`derivOfJson` on an unknown node kind answers `error: unknown derivation node
+frobnicate` (a message, not a crash), and a serialize→decode→re-check round trip
+of `egNarrow`'s certificate re-validates.
