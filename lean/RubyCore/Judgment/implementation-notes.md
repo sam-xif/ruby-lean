@@ -215,3 +215,51 @@ is done (J14):
    *unsound*, not just imprecise. Blocked on the ancestors-walk `Sub` rung
    (`PLAN.md` W5 T2), which is where the DRuby-style occurrence typing bill
    actually lands.
+
+## J16 — arrows: lambdas typed, `call` eliminates, subtyping gains variance
+
+The rung the L270 spine exists for. Three pieces:
+
+* **`SubJ.arrow0`/`SubJ.arrowCons`** — contravariant parameters, covariant return,
+  cell by cell over the spine (which is why no mutual `SubJs`-in-`SubJ` was
+  needed — the spine linearizes the parameter list into the relation's own
+  recursion). Arity mismatch refuses by shape: an `arrowCons` is never below an
+  `arrow0`. Since every send-rule premise is already `SubJ`/`SubJs` (J14),
+  **receivers accept subtype arguments — higher-order ones included — with no
+  rule changes**: passing a `(Int?) → Int` lambda where a `(Int) → Int?` is
+  declared is admissible by exactly the variance rule.
+* **`sendLambdaArrow`** — the intro. The J0 opaque rule (`.any`, body unjudged)
+  is kept beside it: still sound (an `.any` value is uninvokable from typed
+  code), and it is what a derivation falls back to when the body is out of
+  fragment. The arrow rule judges the body in a **block context except `ret`**:
+  a `return` in a *lambda* returns from the lambda [V], so `ret := some σa` — the
+  one channel where lambda and block genuinely differ, and the reason this rule
+  is **lambda-only**: `proc {}`/`Proc.new {}` have method-targeting `return` and
+  lenient arity, so minting them arrows with these semantics would be unsound.
+  They stay `.any` until a proc-flavored arrow (or a leniency-aware `call` rule)
+  is priced.
+* **`sendCall`** — the elim, reading the spine via `arrowParts?` (so only
+  well-formed spines eliminate), args below params by `SubJs`, arity exact by
+  shape — which is lambda arity semantics, matching the only mint.
+
+**The named bill, extending L269's**: `ValueTy` has no arrow arm, so machine
+typing cannot yet witness a lambda at an arrow — the J1 obligation is "a
+`Value.proc`-shaped closure inhabits `arrowOf τs σ` when its body preserves the
+binding discipline," i.e. arrows join unions in the preservation queue. Until
+then arrow rules are spec + coverage, same status as everything else here.
+
+Demonstrated in `Examples.lean`: `l = lambda { |a| a }; l.call(1)` end to end at
+`.int`, the variance example `(Int?) → Int ≤ (Int) → Int?`, and the `decide`d
+refusal of the flipped direction at the `subTy` base.
+
+## J17 — method bodies are not arrows, decided
+
+Considered and declined while adding L270: converting `MethodDecl` to an arrow
+(or typing `def` bodies at one). A method is not a value in Ruby — nothing
+first-class carries it — and `MethodDecl` already *is* the method-arrow
+(params/ret/blk) keyed in the table, consumed by `sigOf`/`superDecl?`/`DeclsOk`
+and every preservation lemma; re-representing it buys no expressiveness and
+re-opens every proof that cases on rows. The future consumer that *does* want an
+arrow from a row is `method(:f)`/`&method(:f)` reification — that is one Judge
+rule minting `arrowOf d.params d.ret` from the resolved row when the corpus
+demands it, not a representation change.

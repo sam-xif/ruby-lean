@@ -398,13 +398,42 @@ inductive Judge : Decls → Env → Expr → Bool → JCtx → Ty → Env → De
       SubEnv ((x, σp) :: anyEnv Γ₂) Γb' →
       ctx.inBlock = false →
       Judge D Γ (.send recvO mname (a :: as) (some (.block ps ls body))) top ctx τret Γ₂ D
-  -- An implicit-self `lambda { … }`: answers `.any` — a `Proc` has no row in any
-  -- table, so nothing can be done with the value, which is what the type says. The
-  -- body is deliberately unjudged (`chk`, transcribed): an unusable value's factory
-  -- body can only matter through effects the region's other rules must license.
+  -- An implicit-self `lambda { … }`, **opaque**: answers `.any` — the body is
+  -- deliberately unjudged (`chk`, transcribed), sound because an `.any`-typed
+  -- value is unusable, so typed code can never invoke it.
   | sendLambda {D Γ ps ls body top ctx cc} :
       ctx.selfCls = some cc →
       Judge D Γ (.send none "lambda" [] (some (.block ps ls body))) top ctx .any Γ D
+  -- The same lambda, **typed at an arrow** (L270/J16): the derivation chooses the
+  -- parameter types and the declared return (`defDecl`'s shape at a value), the
+  -- body is judged below the return with the table pinned, and the answer is the
+  -- spine. The body's context is a block's (`jBlockCtx` — enclosing locals at
+  -- `.any`, writes refused, no `yield`/`retry`) **except `ret`**: a `return`
+  -- inside a *lambda* returns from the lambda [V], so the return target is the
+  -- arrow's own answer — the one channel where lambda and block genuinely differ.
+  -- `proc {}` / `Proc.new {}` get no arrow: their `return` targets the *enclosing
+  -- method* and their arity is lenient, so this rule is deliberately
+  -- lambda-only (J16).
+  | sendLambdaArrow {D Γ ps ls body top ctx cc τs σa τb Γb'} :
+      ctx.selfCls = some cc →
+      τs.length = ps.length →
+      Judge D (bindParamsJ ps τs (anyEnv Γ)) body false
+        { jBlockCtx ctx with ret := some σa } τb Γb' D →
+      SubJ τb σa →
+      Judge D Γ (.send none "lambda" [] (some (.block ps ls body))) top ctx
+        (arrowOf τs σa) Γ D
+  -- The arrow's eliminator: `.call` on an arrow-typed receiver. Args may sit below
+  -- the declared parameters (`SubJs`), arity is exact by the spine's shape — which
+  -- is the *lambda* arity semantics, and the intro rule above only mints arrows
+  -- for lambdas. Sound alongside the row-based send rule: relations union, and a
+  -- `call` row in `D` would be a claim about a different receiver type anyway
+  -- (`tyClassNames` names no class for an arrow).
+  | sendCall {D Γ r args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps ret} :
+      Judge D Γ r top ctx τr Γ₁ D₁ →
+      arrowParts? τr = some (ps, ret) →
+      JudgeArgs D₁ Γ₁ args top ctx τs Γ₂ D₂ →
+      SubJs τs ps →
+      Judge D Γ (.send (some r) "call" args none) top ctx ret Γ₂ D₂
   -- A block-pass `&e`: the operand is judged (or is the anonymous forward, `nil`
   -- via `JudgeOpt.none`), and the send types at the receiver's ordinary signature.
   | sendBlockpass {D Γ recvO mname args bo top ctx τr Γ₁ D₁ τs Γ₂ D₂ τp Γ₃ D₃ ps τret} :

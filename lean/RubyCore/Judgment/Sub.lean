@@ -33,6 +33,14 @@ inductive SubJ : Ty → Ty → Prop where
   | unionR1 {σ a b} : SubJ σ a → SubJ σ (.union a b)
   | unionR2 {σ a b} : SubJ σ b → SubJ σ (.union a b)
   | nilableL {σ τ} : SubJ .nilT τ → SubJ σ τ → SubJ (.nilable σ) τ
+  -- L270: the arrow spine's variance, cell by cell — **contravariant** parameters
+  -- (the wider arrow must accept at least what the narrower accepted, so the premise
+  -- runs q ≤ p, right-to-left) and **covariant** return. Arity mismatches refuse
+  -- structurally: an `arrowCons` is never below an `arrow0`, which is the
+  -- `ArgumentError` family's condition showing up as a shape constraint.
+  | arrow0 {r s} : SubJ r s → SubJ (.arrow0 r) (.arrow0 s)
+  | arrowCons {p q rest rest'} :
+      SubJ q p → SubJ rest rest' → SubJ (.arrowCons p rest) (.arrowCons q rest')
 
 theorem SubJ.refl (τ : Ty) : SubJ τ τ := .base (subTy_refl τ)
 
@@ -52,6 +60,30 @@ theorem SubJs.of_subTys : ∀ {σs τs : List Ty}, subTys σs τs = true → Sub
     exact .cons (.base h.1) (SubJs.of_subTys h.2)
   | [], _ :: _, h => by simp [subTys] at h
   | _ :: _, [], h => by simp [subTys] at h
+
+/-! ## The arrow spine, assembled and read back -/
+
+/-- `(A, B) → R` from its parts: `arrowOf [A, B] R = arrowCons A (arrowCons B
+    (arrow0 R))`. The rules construct arrows only through this, so every arrow a
+    derivation mentions is a well-formed spine. -/
+def arrowOf : List Ty → Ty → Ty
+  | [], r => .arrow0 r
+  | p :: ps, r => .arrowCons p (arrowOf ps r)
+
+/-- The parts back, or `none` off the well-formed spine — the `call` rule's reader. -/
+def arrowParts? : Ty → Option (List Ty × Ty)
+  | .arrow0 r => some ([], r)
+  | .arrowCons p rest =>
+    match arrowParts? rest with
+    | some (ps, r) => some (p :: ps, r)
+    | none => none
+  | _ => none
+
+@[simp] theorem arrowParts?_arrowOf (ps : List Ty) (r : Ty) :
+    arrowParts? (arrowOf ps r) = some (ps, r) := by
+  induction ps with
+  | nil => rfl
+  | cons p ps ih => simp [arrowOf, arrowParts?, ih]
 
 /-! ## The widening constructor -/
 

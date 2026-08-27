@@ -77,4 +77,29 @@ example : Judge {} [("x", .int)] (.while' .tru (.vasgn .lvar "x" (.int 1)))
 example : Judge {} [("y", .bool)] (.int 3) false objCtx (.nilable .int) [] {} :=
   .sub .int (.base (by decide)) (fun _ _ h => by simp [envGet?] at h)
 
+/-- **Arrow intro + elim, end to end** (L270/J16): `l = lambda { |a| a }; l.call(1)`
+    types at `.int` — the lambda is minted at `(Int) → Int` (its body judged at the
+    chosen parameter type), stored, read back, and `call`'s arguments checked
+    against the spine. -/
+example : Judge {} []
+    (.seq [.vasgn .lvar "l"
+             (.send none "lambda" [] (some (.block [.req "a"] [] (.var .lvar "a")))),
+           .send (some (.var .lvar "l")) "call" [.int 1] none])
+    false objCtx .int [("l", arrowOf [.int] .int)] {} :=
+  .seq (.cons
+    (.vasgnLvar rfl
+      (.sendLambdaArrow rfl rfl (.varLvar rfl) (SubJ.refl _)))
+    (.single (.sendCall (.varLvar rfl) rfl (.cons .int .nil) (.cons (SubJ.refl _) .nil))))
+
+/-- **Arrow variance** (J16): `(Int?) → Int ≤ (Int) → Int?` — parameters
+    contravariant (the wider lambda accepts at least an `Int`), return covariant. -/
+example : SubJ (arrowOf [.nilable .int] .int) (arrowOf [.int] (.nilable .int)) :=
+  .arrowCons (.base (by decide)) (.arrow0 (.base (by decide)))
+
+/-- And the refusals that make variance meaningful: neither the flipped direction
+    nor an arity mismatch is derivable — checked here only at the `subTy` base
+    (the structural rules refuse by shape). -/
+example : subTy (arrowOf [.int] (.nilable .int)) (arrowOf [.nilable .int] .int) = false := by
+  decide
+
 end RubyCore.Judgment
