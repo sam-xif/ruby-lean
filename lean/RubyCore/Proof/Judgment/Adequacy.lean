@@ -206,6 +206,8 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .vasgnLvar _, .vasgn .lvar _ _ => simp [fragHead] at hf
       | .seq _, .seq _ => simp [fragHead] at hf
       | .const, .const _ => simp [fragHead] at hf
+      | .cpathAbs, .cpath none _ => simp [fragHead] at hf
+      | .cpathScoped _, .cpath (some _) _ => simp [fragHead] at hf
       | .varIvar, .var .ivar _ => simp [fragHead] at hf
       | .varGvar, .var .gvar _ => simp [fragHead] at hf
       | .vasgnIvar _, .vasgn .ivar _ _ => simp [fragHead] at hf
@@ -335,6 +337,25 @@ theorem check_sound_all : ∀ (n : Nat),
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact .const hre
+        · exact absurd h (by simp)
+      | .cpathAbs, .cpath none nm =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next τ0 hre =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .cpathAbs hre
+        · exact absurd h (by simp)
+      | .cpathScoped base, .cpath (some b) nm =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next cname Γ₁ D₁ hb =>
+          split at h
+          · next τ0 hsco =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact .cpathScoped (ihc hb) hsco
+          · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .varIvar, .var .ivar x =>
         simp only [RubyCore.Judgment.check] at h

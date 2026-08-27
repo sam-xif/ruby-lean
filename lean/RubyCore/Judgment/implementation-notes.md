@@ -867,3 +867,25 @@ Findings, measured over the eight slice files (pin `007333f2`):
    singletons. Every file keeps at least one real block-send, so Wall 1 (the
    iterator vocabulary, `KontOkJ.iterK`/block frames — the Static side is proved,
    L242–L255) is on the critical path of even the first whole-file accept.
+
+## J38 — `cpath` machine-typed: the first slice rung (a)
+
+The J37 ladder's cheapest full-stack rung, and the first `fragHead` widening since
+J31 — `.cpath` moves into the syntactic universe (so it is no longer claimable,
+which is right: its rules are total). `MFrag.cpathAbs`/`.cpathScoped`,
+`KontOkJ.cpathK` (the Static `KontOk.cpathK` with `subTy` premises as `SubJ`),
+both eval cases and the delivery transliterated from L205's Static cases —
+`ConstOk` supplies the `::n` lookup (the machine's *flat* `constLookup`, not the
+cref walk `constRead_sole` serves), `ScopedConstOk` the `C::n` walk, both already
+`DeclsOkJ` conjuncts since J20 — `judge_mono` cases through
+`constTy_eq`/`scopedConstTy_eq` (tables *equal* under `SubDecls`), checker nodes
+`.cpathAbs`/`.cpathScoped` with adequacy and the `check_fragHead_false` arms, JSON
+codec. Everything checked on the first full build — the §0 diagnosis pricing a
+third time: a Static-side transliteration with the vocabulary in place is
+mechanical.
+
+**The named bill (J38b):** `JCert` has no channel for constant declarations —
+`declsOf p = baseDecls`, whose `consts`/`scopedConsts` are empty, so no data
+certificate can make either new rule fire. The table half is `deltaConsts`/
+`deltaScopedConsts` on `JCert` with one `ConstOk`/`ScopedConstOk` residue each,
+mirroring `deltaRows`' `EntryOkJ` residue discipline exactly.

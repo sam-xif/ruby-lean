@@ -208,6 +208,7 @@ def fragHead : Expr → Bool
   | .def' _ _ _ => true
   | .class' _ none _ => true
   | .const _ => true
+  | .cpath _ _ => true
   | .array _ => true
   -- The four *marker* shapes are not evaluable expressions (they occur only as
   -- argument/element/block slots of other heads), so a semantic claim on one has

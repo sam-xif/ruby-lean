@@ -873,6 +873,36 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       rw [constRead_sole hcref hconst hsole]
       exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
         (VTy.weaken (VTy.ofValueTy hty) hsubw) hk
+  -- ## `::n` (J38): one step, `ConstOk`'s toplevel lookup — the `hconst` argument
+  -- with the cref walk replaced by the flat lookup the machine performs here.
+  case hcpathAbs =>
+    intro D Γ nm top ctx τ0 hre
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    obtain ⟨v, hconst, hty, hsole⟩ := htab.2.1 nm _ hre
+    have hcl : constLookup m.heap nm = some v := by
+      unfold constLookup
+      unfold constOwn at hconst
+      cases hp : m.heap.classPayload? Boot.objectId with
+      | none => rw [hp] at hconst; simp at hconst
+      | some c => rw [hp] at hconst; simpa using hconst
+    simp only [evalExpr, hcl]
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      (VTy.weaken (VTy.ofValueTy hty) hsubw) hk
+  -- ## `b::n` (J38): push `.cpathK` on the base; the rule's two reads are exactly
+  -- `KontOkJ.cpathK`'s premises (mirroring L205's eval case).
+  case hcpathScoped =>
+    intro D Γ base nm top ctx cname Γ₁ D₁ τ0 hbase hsco ihbase
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | cpathScoped hfb hmb =>
+      subst htop
+      simp only [evalExpr]
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hmb hfb hbase (SubJ.refl _)
+        (KontOkJ.cpathK (SubJ.refl _) hsco hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1522,6 +1552,49 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         F, ctx, Γk, Γs, htab, hfs, hsc,
         GlobalsOk.set hgl hgt ((hv.weaken hcf).toValueTy (htab.2.2.2.2.2.2.2 _ _ hgt)),
         ⟨τw, _, VTy.weaken hv hsw, hsu, hk'⟩⟩
+    -- **`C::n`, at the delivery** (J38, transliterating L205's delivery): the
+    -- in-flight value is a class object, the constant is not private, and the walk
+    -- finds a value of the declared type — all three read out of `ScopedConstOk`.
+    | @cpathK _ _ _ _ _ _ τw cname n σ k _ hb hsco hsw hk' hsu =>
+      have hvc : ValueTy m.heap v (.clsOf cname) :=
+        (VTy.weaken hv hb).toValueTy (by simp [groundTy])
+      obtain ⟨o, rfl⟩ : ∃ o, v = .ref o := by
+        cases hsv : v with
+        | ref o' => exact ⟨o', rfl⟩
+        | _ => rw [hsv] at hvc; simp_all [ValueTy, valueTy?, subTy]
+      have hcr : classRecv m.heap o = true := valueTy_ref_class hvc
+      have hpay : (m.heap.classPayload? o).isSome := by
+        unfold classRecv at hcr
+        simp only [Bool.and_eq_true] at hcr
+        exact hcr.2
+      have hcn : className m.heap o = cname := by
+        rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) hvc with ⟨-, hs⟩ | ⟨-, hs⟩
+        · exact absurd hs (by simp [subTy])
+        · simpa using (subTy_atomic (τ := Ty.clsOf cname) (by simp) (by simp)).mp hs
+      obtain ⟨hpriv, cv, hcv, hcty⟩ := htab.2.2.2.1 cname n σ hsco o hpay hcn
+      have hcont : Interp.cpathContainer { m with kont := k } (.ref o) = .ok o := by
+        unfold Interp.cpathContainer
+        simp [hpay]
+      simp only [hcont, hcv]
+      split
+      · rename_i _x cv' heq
+        split at heq
+        · exact absurd heq (by simp)
+        · simp only [Option.some.injEq] at heq
+          subst heq
+          exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks)
+            (VTy.weaken (VTy.ofValueTy hcty) hsw) hk' (hclo := hcloTail hK)
+      · rename_i _x heq
+        exfalso
+        split at heq
+        · rename_i hcond
+          simp only [List.any_eq_true] at hcond
+          obtain ⟨a, ha, hcon⟩ := hcond
+          have hpa := List.all_eq_true.mp hpriv a ha
+          revert hcon hpa
+          cases m.heap.classPayload? a <;> simp
+        · exact absurd heq (by simp)
     | @arrK _ D' _ _ _ _ _ τw acc rest Γ' k _ hfm hm hje hsw hk' hsu =>
       exact inv_continueArrayJ (m := { m with kont := k })
         hfs htab hsc hh hsat hstr hcls hbot (by simpa [framePopLabels] using hks) hgl

@@ -63,6 +63,8 @@ partial def derivToJson : Deriv → Json
       ("join", tyToJson τj), ("env", envToJson Γc)]
   | .vcall => Json.mkObj [("k", "vcall")]
   | .const => Json.mkObj [("k", "const")]
+  | .cpathAbs => Json.mkObj [("k", "cpathAbs")]
+  | .cpathScoped base => Json.mkObj [("k", "cpathScoped"), ("base", derivToJson base)]
   | .varIvar => Json.mkObj [("k", "varIvar")]
   | .varGvar => Json.mkObj [("k", "varGvar")]
   | .vasgnIvar rhs => Json.mkObj [("k", "vasgnIvar"), ("rhs", derivToJson rhs)]
@@ -143,6 +145,8 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
     pure (.ifNarrowNone (← derivOfJson (← j.getObjVal? "t"))
       (← tyOfJson (← j.getObjVal? "join")) (← envOfJson (← j.getObjVal? "env")))
   | "const" => pure .const
+  | "cpathAbs" => pure .cpathAbs
+  | "cpathScoped" => pure (.cpathScoped (← derivOfJson (← j.getObjVal? "base")))
   | "varIvar" => pure .varIvar
   | "varGvar" => pure .varGvar
   | "vasgnIvar" => pure (.vasgnIvar (← derivOfJson (← j.getObjVal? "rhs")))

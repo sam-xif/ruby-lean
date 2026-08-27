@@ -92,6 +92,11 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
   -- (`continueArray_plain`'s side conditions fall out of `MFrag`'s own emptiness
   -- at those shapes).
   | const {n} : MFrag A (.const n)
+  -- J38: scoped constant reads. `::n` is one step (a toplevel lookup); `b::n`
+  -- pushes `.cpathK` on the base, whose delivery only *reads* (`ScopedConstOk`).
+  | cpathAbs {n} : MFrag A (.cpath none n)
+  | cpathScoped {b n} :
+      fragHead b = true → MFrag A b → MFrag A (.cpath (some b) n)
   | varIvar {x} : MFrag A (.var .ivar x)
   | varGvar {x} : MFrag A (.var .gvar x)
   | vasgnIvar {x rhs} :
@@ -581,6 +586,8 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
     | .def' _ _ body => fragHead body && rec body
     | .class' _ none body => fragHead body && rec body
     | .const _ => true
+    | .cpath none _ => true
+    | .cpath (some b) _ => fragHead b && rec b
     | .var .ivar _ => true
     | .var .gvar _ => true
     | .vasgn .ivar _ rhs => fragHead rhs && rec rhs
@@ -666,6 +673,11 @@ theorem mfragB_sound {A : SemAxioms} :
         simp only [Bool.and_eq_true] at h'
         exact .classTop h'.1 (ih h'.2)
       | .const _ => exact .const
+      | .cpath none _ => exact .cpathAbs
+      | .cpath (some b) _ =>
+        replace h' : (fragHead b && mfragB A n b) = true := h'
+        simp only [Bool.and_eq_true] at h'
+        exact .cpathScoped h'.1 (ih h'.2)
       | .var .ivar _ => exact .varIvar
       | .var .gvar _ => exact .varGvar
       | .vasgn .ivar x rhs =>
@@ -681,7 +693,6 @@ theorem mfragB_sound {A : SemAxioms} :
         simp only [Bool.and_eq_true, List.all_eq_true] at h'
         exact .array (fun e' he' => h'.1 e' he') fun e' he' => ih (h'.2 e' he')
       | .casgn _ _ => exact Bool.noConfusion h'
-      | .cpath _ _ => exact Bool.noConfusion h'
       | .cpathAsgn _ _ _ => exact Bool.noConfusion h'
       | .send (some _) _ _ (some _) => exact Bool.noConfusion h'
       | .send none _ _ (some _) => exact Bool.noConfusion h'

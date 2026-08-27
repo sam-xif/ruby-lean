@@ -44,6 +44,8 @@ inductive Deriv where
   | ifNarrowNone (t : Deriv) (τj : Ty) (Γc : Env)
   | vcall
   | const
+  | cpathAbs
+  | cpathScoped (base : Deriv)
   | varIvar
   | varGvar
   | vasgnIvar (rhs : Deriv)
@@ -179,6 +181,17 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       match constTy? D nm with
       | some τ => some (τ, Γ, D)
       | none => none
+    | .cpathAbs, .cpath none nm =>
+      match constTy? D nm with
+      | some τ => some (τ, Γ, D)
+      | none => none
+    | .cpathScoped base, .cpath (some b) nm =>
+      match check n A base D Γ b top ctx with
+      | some (.clsOf cname, Γ₁, D₁) =>
+        match scopedConstTy? D₁ cname nm with
+        | some τ => some (τ, Γ₁, D₁)
+        | none => none
+      | _ => none
     | .varIvar, .var .ivar x =>
       match ctx.selfCls with
       | some cc =>

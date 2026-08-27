@@ -105,6 +105,17 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ ans A D h ((c, Γ) :: Γs) τ (.asgnK .gvar x :: k)
+  /-- `C::n`, with the base in flight (J38, mirroring L205's `KontOk.cpathK`): the
+      table is read here (`scopedConstTy?`), the container's heap at the delivery
+      (`ScopedConstOk`, `DeclsOkJ`'s conjunct) — so the delivery re-establishes
+      nothing. -/
+  | cpathK {D h c Γ Γs τ τw cname n σ k Γk} :
+      SubJ τ (.clsOf cname) →
+      scopedConstTy? D cname n = some σ →
+      SubJ σ τw →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
   /-- An array literal's element (J26, mirroring L174): the remaining elements ride
       as program, the answer is a fresh `Array`, the accumulated values are not
       mentioned (element types are erased at `.cls "Array"`). -/
@@ -252,6 +263,7 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | seqNil hw _ hsu ih => intro ha; exact .seqNil hw (ih ha) hsu
   | seqCons hm hs hw _ hsu ih => intro ha; exact .seqCons hm hs hw (ih ha) hsu
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
+  | cpathK hb hsco hsw _ hsu ih => intro ha; exact .cpathK hb hsco hsw (ih ha) hsu
   | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw _ hsu ih =>
       intro ha; exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih ha) hsu
   | ifNoneK hft hmt ht hjt hjn hct hce hw _ hsu ih =>
