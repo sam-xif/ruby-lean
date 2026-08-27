@@ -38,3 +38,13 @@ root = "ConcolicMain"
 name = "Metatheory"
 srcDir = "."
 globs = ["RubyCore.Proof.+"]
+
+# The declarative judgment layer (`RubyCore/Judgment/`, judgment-layer.md J0) —
+# the definition of record the J-milestones' metatheory is stated over. Off the
+# default target for Metatheory's reason (nothing the SUT does depends on it):
+#
+#     lake build Judgment
+[[lean_lib]]
+name = "Judgment"
+srcDir = "."
+globs = ["RubyCore.Judgment.+"]
