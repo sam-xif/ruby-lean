@@ -903,6 +903,60 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
         (by simp [framePopLabels, hks]) hmb hfb hbase (SubJ.refl _)
         (KontOkJ.cpathK (SubJ.refl _) hsco hsubw hk)
+  -- ## `return e` (J39): push `jumpValK .retK` on the operand; the jump happens at
+  -- the delivery (L200's eval case, some-arm).
+  case hretSome =>
+    intro D Γ e' top ctx σ τ0 Γ₁ D₁ hσ hms hj0 hsj ihe
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | retSome hfe hme =>
+      subst htop
+      simp only [evalExpr]
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hme hfe hj0 (SubJ.refl _)
+        (KontOkJ.retValK hσ hms hsj hk)
+  -- ## Bare `return` (J39): `evalExpr` calls `doReturn` outright — the jump is the
+  -- new control (L200's eval case, none-arm). `StackCtx`'s L198/L200 clause turns
+  -- the open channel into the `.method` frame `returnTarget` reads.
+  case hretNil =>
+    intro D Γ top ctx σ hσ hms hsj
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    subst htop
+    have hne0 : m.stack ≠ [] := (hfs.frameShallow).1
+    cases hst : m.stack with
+    | nil => exact absurd hst hne0
+    | cons fid fids =>
+      have hsc2 := hsc
+      rw [hst] at hsc2
+      rcases hsc2.2.2.2.2.2.1 with ⟨hkind, hcs⟩ | hnone
+      · have hne : Γs ≠ [] := by
+          intro hq; rw [hq] at hcs; simp [jctxs] at hcs
+        have hfne : fids ≠ [] := by
+          intro hq
+          rw [hq] at hsc2
+          have htl := hsc2.2.2.2.2.2.2
+          cases hΓ : (Γs.map Prod.fst).map JCtx.toFrameCtx with
+          | nil => exact absurd hΓ hcs
+          | cons a b =>
+            rw [hΓ] at htl
+            exact absurd htl (by simp [StackCtx])
+        have hrt : Interp.returnTarget m = fid := by
+          have hhd : m.stack.headD 0 = fid := by rw [hst]; rfl
+          simp only [Interp.returnTarget, hhd, hkind]
+        have hro : RetOkJ ans A D m.heap Γs σ m.kont :=
+          KontOkJ.retOkJ hk hne σ hσ hms
+        have hff : firstFrameK m.kont = some fid := by
+          refine firstFrameK_of_retOkJ hro (rest := fids.dropLast) ?_
+          rw [hks, hst, dropLast_cons_ne hfne]
+        simp only [evalExpr, Interp.doReturn, hrt,
+          show m.stack.contains fid = true from by simp [hst]]
+        exact ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl,
+          D, ctx, Γ, Γs, htab, hfs, hsc, hgl,
+          ⟨σ, VTy.weaken (VTy.exact rfl) hsj, hro, hff⟩⟩
+      · rw [hnone] at hσ; exact absurd hσ (by simp)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1599,6 +1653,41 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       exact inv_continueArrayJ (m := { m with kont := k })
         hfs htab hsc hh hsat hstr hcls hbot (by simpa [framePopLabels] using hks) hgl
         hfm hm hje hsw hk' (hclo := hcloTail hK)
+    -- **`return e`'s value has arrived** (J39, L200's delivery): `applyKont`'s
+    -- `jumpValK .retK` arm is `doReturn`, so this case *creates* the jump.
+    | @retValK _ _ _ _ _ _ τ'' σ k _ hσ hms hsub hk' hsu =>
+      cases hst : m.stack with
+      | nil => exact absurd hst (hfs.frameShallow).1
+      | cons fid fids =>
+        have hsc2 := hsc
+        rw [hst] at hsc2
+        rcases hsc2.2.2.2.2.2.1 with ⟨hkind, hcs⟩ | hnone
+        · have hne : Γs ≠ [] := by
+            intro hq; rw [hq] at hcs; simp [jctxs] at hcs
+          have hfne : fids ≠ [] := by
+            intro hq
+            rw [hq] at hsc2
+            have htl := hsc2.2.2.2.2.2.2
+            cases hΓ : (Γs.map Prod.fst).map JCtx.toFrameCtx with
+            | nil => exact absurd hΓ hcs
+            | cons a b =>
+              rw [hΓ] at htl
+              exact absurd htl (by simp [StackCtx])
+          have hro : RetOkJ ans A F m.heap Γs σ k :=
+            KontOkJ.retOkJ hk' hne σ hσ hms
+          have hpl : framePopLabels k = fid :: fids.dropLast := by
+            rw [show framePopLabels k = (fid :: fids).dropLast from by
+              rw [← hst]; simpa [framePopLabels] using hks, dropLast_cons_ne hfne]
+          have hff : firstFrameK k = some fid := firstFrameK_of_retOkJ hro hpl
+          rw [hst] at hbot hfs hsc hks
+          simp only [Interp.doReturn, Interp.returnTarget, List.headD_cons, hkind]
+          rw [if_pos (show ((fid :: fids).contains fid) = true from by simp)]
+          exact ⟨hh, hsat, hstr, hcls, hbot,
+            (by simpa [framePopLabels, Interp.withCtl] using hks),
+            ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
+            F, ctx, Γk, Γs, htab, hfs, hsc, hgl,
+            ⟨σ, VTy.weaken hv hsub, hro, hff⟩⟩
+        · rw [hnone] at hσ; exact absurd hσ (by simp)
     | @frameK _ _ _ cΓ' Γs' _ fid k hrt hil hk' =>
       obtain ⟨c', Γ'⟩ := cΓ'
       have hst2 : ∃ f0 f1 rest, m.stack = f0 :: f1 :: rest := by
@@ -1620,9 +1709,66 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         _, c', Γ', Γs', htab,
         hfs.tail, ?_, hgl, ⟨τ, _, hv, SubEnv.refl _, hk'⟩⟩
       exact StackCtx.tail hsc
-  · -- ## control = jump — empty in the rung-1 fragment.
+  · -- ## control = jump — inhabited since J39, and only by `.retJ` (L200's branch,
+    -- transliterated). Two cases, both read off `RetOkJ`: a transparent kont pops
+    -- (`skip`), the `frameK` consumes the jump and pops the frame (`here`).
     rw [hctl] at hc
-    exact absurd hc (by simp)
+    cases j with
+    | retJ v target =>
+      obtain ⟨σ, hv, hro, hff⟩ := hc
+      simp only [stepFn, hctl]
+      generalize hK : m.kont = K at hro hff hks ⊢
+      cases hro with
+      | skip hκ hro' =>
+        rw [unwind_ret_transparent (m := m) hκ hK]
+        refine ⟨hh, hsat, hstr, hcls, hbot, ?_,
+          ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
+          F, ctx, Γ, Γs, htab, hfs, hsc, hgl,
+          ⟨σ, hv, hro', ?_⟩⟩
+        · simp only [Interp.withCtl]
+          rw [← hks, framePopLabels_transparent hκ]
+        · simp only [Interp.withCtl]
+          rw [← hff, firstFrameK_transparent hκ]
+      | here hsubf hkf =>
+        rename_i τf fid kf
+        have htg : target = fid := by simpa [firstFrameK] using hff.symm
+        subst htg
+        rw [show Interp.unwind m (.retJ v target)
+              = .next (Interp.withCtl
+                  { m with kont := kf, stack := m.stack.tail } (.value v)) from by
+          unfold Interp.unwind
+          rw [hK]
+          simp only [beq_self_eq_true, if_true, Interp.withCtl]]
+        cases hst : m.stack with
+        | nil => rw [hst] at hks; simp [framePopLabels] at hks
+        | cons f0 t =>
+          cases ht : t with
+          | nil => rw [hst, ht] at hks; simp [framePopLabels] at hks
+          | cons f1 rest =>
+            have hlab : framePopLabels kf = m.stack.tail.dropLast := by
+              have hq := hks
+              simp only [framePopLabels] at hq
+              rw [hst, ht] at hq ⊢
+              simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
+              simpa using hq.2
+            rw [hst, ht] at hbot hfs hsc hlab
+            cases hΓ : Γs with
+            | nil =>
+              rw [hΓ] at hfs
+              exact absurd hfs (by simp [FramesOkJ])
+            | cons cΓb Γsb =>
+              obtain ⟨c', Γ'⟩ := cΓb
+              rw [hΓ] at hfs hsc hkf
+              exact ⟨hh, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+                ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
+                F, c', Γ', Γsb, htab, hfs.tail, StackCtx.tail hsc, hgl,
+                ⟨τf, _, VTy.weaken hv hsubf, SubEnv.refl _, hkf⟩⟩
+    | raiseJ exc => exact hc.elim
+    | brkJ v => exact hc.elim
+    | nxtJ v => exact hc.elim
+    | throwJ tag v => exact hc.elim
+    | retryJ => exact hc.elim
+    | redoJ => exact hc.elim
 
 end Judgment
 end Proof

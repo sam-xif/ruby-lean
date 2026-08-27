@@ -97,6 +97,9 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
   | cpathAbs {n} : MFrag A (.cpath none n)
   | cpathScoped {b n} :
       fragHead b = true → MFrag A b → MFrag A (.cpath (some b) n)
+  -- J39: `return`. The operand is a non-statement position.
+  | retSome {e} : fragHead e = true → MFrag A e → MFrag A (.ret (some e))
+  | retNil : MFrag A (.ret none)
   | varIvar {x} : MFrag A (.var .ivar x)
   | varGvar {x} : MFrag A (.var .gvar x)
   | vasgnIvar {x rhs} :
@@ -588,6 +591,8 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
     | .const _ => true
     | .cpath none _ => true
     | .cpath (some b) _ => fragHead b && rec b
+    | .ret none => true
+    | .ret (some e') => fragHead e' && rec e' 
     | .var .ivar _ => true
     | .var .gvar _ => true
     | .vasgn .ivar _ rhs => fragHead rhs && rec rhs
@@ -678,6 +683,11 @@ theorem mfragB_sound {A : SemAxioms} :
         replace h' : (fragHead b && mfragB A n b) = true := h'
         simp only [Bool.and_eq_true] at h'
         exact .cpathScoped h'.1 (ih h'.2)
+      | .ret none => exact .retNil
+      | .ret (some e') =>
+        replace h' : (fragHead e' && mfragB A n e') = true := h'
+        simp only [Bool.and_eq_true] at h'
+        exact .retSome h'.1 (ih h'.2)
       | .var .ivar _ => exact .varIvar
       | .var .gvar _ => exact .varGvar
       | .vasgn .ivar x rhs =>
@@ -704,7 +714,6 @@ theorem mfragB_sound {A : SemAxioms} :
       | .for' _ _ _ => exact Bool.noConfusion h'
       | .hash _ => exact Bool.noConfusion h'
       | .splat _ => exact Bool.noConfusion h'
-      | .ret _ => exact Bool.noConfusion h'
       | .brk _ => exact Bool.noConfusion h'
       | .nxt _ => exact Bool.noConfusion h'
       | .retry' => exact Bool.noConfusion h'

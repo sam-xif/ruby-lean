@@ -208,6 +208,8 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .const, .const _ => simp [fragHead] at hf
       | .cpathAbs, .cpath none _ => simp [fragHead] at hf
       | .cpathScoped _, .cpath (some _) _ => simp [fragHead] at hf
+      | .retSome _, .ret (some _) => simp [fragHead] at hf
+      | .retNil, .ret none => simp [fragHead] at hf
       | .varIvar, .var .ivar _ => simp [fragHead] at hf
       | .varGvar, .var .gvar _ => simp [fragHead] at hf
       | .vasgnIvar _, .vasgn .ivar _ _ => simp [fragHead] at hf
@@ -355,6 +357,35 @@ theorem check_sound_all : ∀ (n : Nat),
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl, rfl⟩ := h
             exact .cpathScoped (ihc hb) hsco
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .retSome rhs, .ret (some e') =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next σ hσ =>
+          split at h
+          · next hms =>
+            split at h
+            · next τ0 Γ₁ D₁ hr =>
+              split at h
+              · next hsb =>
+                simp only [Option.some.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, rfl, rfl⟩ := h
+                exact .retSome hσ (by simpa using hms) (ihc hr) (subJb_sound hsb)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .retNil, .ret none =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next σ hσ =>
+          split at h
+          · next hg =>
+            simp only [Bool.and_eq_true] at hg
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact .retNil hσ (by simpa using hg.1) (subJb_sound hg.2)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .varIvar, .var .ivar x =>
@@ -917,6 +948,34 @@ theorem egCpath_data_certified :
 /-- info: 'RubyCore.Proof.Judgment.egCpath_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms egCpath_data_certified
+
+/-! ## The J39 worked end: `return` inside a judged body -/
+
+/-- `def f; return 1; end` — `defDecl` opens both channels (`ret`/`meth`), the
+    body is the `retSome` node. The body is never dispatched (no row installed),
+    so the theorem is unconditional; the point is the checker path and the rule.
+
+    The declared return is **nilable**, and that is a recorded precision limit,
+    not a typo: a body ending in `return e` types `.nilT` (the judgment has no
+    bottom type), and `defDecl` demands the body's type below the declared
+    return — so a returning body only checks at a nil-admitting σ. The fix is
+    the Static spine's return-join (L229: a method's type is the join of its
+    exits), a rung of its own. -/
+def egRet : Expr := .def' "f" [] (.ret (some (.int 1)))
+
+def egRetJCert : JCert :=
+  { deriv := .defDecl [] (.nilable .int) none (.retSome .int) }
+
+theorem egRetJCert_validates : validateJ egRetJCert egRet 8 = true := by decide
+
+theorem egRet_data_certified :
+    ∀ r, ReachableResult (Machine.init egRet) r → ¬ typeStuck r :=
+  validateJ_certifies semAxiomsOk_nil egRetJCert_validates
+    (fun r hm => by simp [egRetJCert] at hm)
+
+/-- info: 'RubyCore.Proof.Judgment.egRet_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egRet_data_certified
 
 /-! ## The refusal direction, observed
 

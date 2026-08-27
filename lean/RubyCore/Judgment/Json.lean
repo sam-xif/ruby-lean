@@ -65,6 +65,8 @@ partial def derivToJson : Deriv → Json
   | .const => Json.mkObj [("k", "const")]
   | .cpathAbs => Json.mkObj [("k", "cpathAbs")]
   | .cpathScoped base => Json.mkObj [("k", "cpathScoped"), ("base", derivToJson base)]
+  | .retSome rhs => Json.mkObj [("k", "retSome"), ("rhs", derivToJson rhs)]
+  | .retNil => Json.mkObj [("k", "retNil")]
   | .varIvar => Json.mkObj [("k", "varIvar")]
   | .varGvar => Json.mkObj [("k", "varGvar")]
   | .vasgnIvar rhs => Json.mkObj [("k", "vasgnIvar"), ("rhs", derivToJson rhs)]
@@ -147,6 +149,8 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "const" => pure .const
   | "cpathAbs" => pure .cpathAbs
   | "cpathScoped" => pure (.cpathScoped (← derivOfJson (← j.getObjVal? "base")))
+  | "retSome" => pure (.retSome (← derivOfJson (← j.getObjVal? "rhs")))
+  | "retNil" => pure .retNil
   | "varIvar" => pure .varIvar
   | "varGvar" => pure .varGvar
   | "vasgnIvar" => pure (.vasgnIvar (← derivOfJson (← j.getObjVal? "rhs")))

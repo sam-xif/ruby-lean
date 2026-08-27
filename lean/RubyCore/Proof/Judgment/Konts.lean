@@ -1,5 +1,6 @@
 import RubyCore.Proof.Judgment.Frames
 import RubyCore.Proof.Judgment.Decls
+import RubyCore.Proof.Judgment.TableRet
 
 /-!
 # Machine typing over `Judge` (J20) — `KontOkJ`, `CtlOkJ`, `InvJ`
@@ -244,6 +245,17 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ ans A D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
+  /-- **`return e`'s value in flight** (J39, mirroring L200's `KontOk.retValK`):
+      the delivery is `doReturn`, so the constructor carries what that needs —
+      the open return channel below the in-flight type, plus the method channel
+      (`judge_table_ret`'s second hypothesis). The tail is at an *unrelated* type
+      `τ'`: nothing about the popped-to continuation is knowable here; the
+      `RetOkJ` derived at the delivery is what lands the value. -/
+  | retValK {D h c Γ Γs τ τ' σ k Γk} :
+      c.ret = some σ → c.meth.isSome = true → SubJ τ σ →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τ' k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.jumpValK .retK :: k)
   /-- **Method return** — the callee's declared return type is what the caller's
       continuation expects; the two-deep stack is what makes the pop total. -/
   | frameK {D h cΓ cΓ' Γs τ fid k} :
@@ -264,6 +276,7 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | seqCons hm hs hw _ hsu ih => intro ha; exact .seqCons hm hs hw (ih ha) hsu
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
   | cpathK hb hsco hsw _ hsu ih => intro ha; exact .cpathK hb hsco hsw (ih ha) hsu
+  | retValK hσ hms hsub _ hsu ih => intro ha; exact .retValK hσ hms hsub (ih ha) hsu
   | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw _ hsu ih =>
       intro ha; exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih ha) hsu
   | ifNoneK hft hmt ht hjt hjn hct hce hw _ hsu ih =>
@@ -294,6 +307,100 @@ theorem KontOkJ.heap_congr {ans : Ty} {A : SemAxioms} {h h' : Heap} (ha : TypeAg
     (hk : KontOkJ ans A D h Γs τ k) : KontOkJ ans A D h' Γs τ k :=
   KontOkJ.heap_congr' hk ha
 
+/-- **A `.retJ` in flight is well-typed for where it will land** (J39, mirroring
+    L200's `RetOk`): every kont above the innermost `frameK` is transparent to a
+    `.retJ`, and that `frameK` resumes a caller whose continuation accepts the
+    value's type. Indexed by the **callers'** stack — the head activation is what
+    the jump is leaving. -/
+inductive RetOkJ (ans : Ty) (A : SemAxioms) :
+    Decls → Heap → List (JCtx × Env) → Ty → List Kont → Prop where
+  | here {D h Γs σ τ fid k} :
+      SubJ σ τ → KontOkJ ans A D h Γs τ k → RetOkJ ans A D h Γs σ (.frameK fid :: k)
+  | skip {D h Γs σ κ k} :
+      RetTransparent κ → RetOkJ ans A D h Γs σ k → RetOkJ ans A D h Γs σ (κ :: k)
+
+/-- `KontOk.retOk` over the judgment (J39): a continuation whose head context has
+    the return **and** method channels open unwinds to a `RetOkJ`. Table-threading
+    konts hold the table still by `judge_*_table_ret` — the J-side twin of L200's
+    `infer_table_ret` composition. -/
+theorem KontOkJ.retOkJ {ans : Ty} {A : SemAxioms} :
+    ∀ {k : List Kont} {D : Decls} {h : Heap} {c : JCtx} {Γ : Env}
+    {Γs : List (JCtx × Env)} {τ : Ty}, KontOkJ ans A D h ((c, Γ) :: Γs) τ k →
+    Γs ≠ [] → ∀ σ, c.ret = some σ → c.meth.isSome = true →
+    RetOkJ ans A D h Γs σ k
+  | [], _, _, c, Γ, Γs, _, hk, _, σ, hσ, _ => by
+      cases hk with
+      | nil _ hr _ => exact absurd (hr (c, Γ) Γs rfl) (by rw [hσ]; simp)
+  | κ :: k, D, h, c, Γ, Γs, τ, hk, hne, σ, hσ, hms => by
+      have htop : Γs.isEmpty = false := by simpa using hne
+      cases hk with
+      | seqNil hw hk' hsu => exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | seqCons hm hseq hw hk' hsu =>
+          have hq : _ = D := judge_seq_table_ret hseq (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | asgn hib hw hk' hsu => exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | asgnIvar hsc hw hcf hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | asgnGvar hpg hgt hcf hw hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | cpathK hb hsco hw hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | retValK hσ' hms' hsub hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | arrK hfm hm helems hje hk' hsu =>
+          have hq : _ = D := judge_elems_table_ret helems (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw hk' hsu =>
+          have hq : _ = D := judge_table_ret ht (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | ifNoneK hft hmt ht hjt hjn hct hce hw hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | ifNarrowElseK hft hfe hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw hk' hsu =>
+          have hq : _ = D := judge_table_ret ht (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw hk' hsu =>
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | whileCond hl hw hk' hsu =>
+          exact RetOkJ.skip trivial
+            (KontOkJ.retOkJ hk' hne σ (by simpa [loopCtx] using hσ)
+              (by simpa [loopCtx] using hms))
+      | whileBody hl hw hk' hsu =>
+          exact RetOkJ.skip trivial
+            (KontOkJ.retOkJ hk' hne σ (by simpa [loopCtx] using hσ)
+              (by simpa [loopCtx] using hms))
+      | recvK hfm hm hargs hsg hsub hw hk' hsu =>
+          have hq : _ = D := judge_args_table_ret hargs (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | recvK0 hsg hw hk' hsu => exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | argsK hrv hva hst hfm hm hrest hsr hsg hw hk' hsu =>
+          have hq : _ = D := judge_args_table_ret hrest (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | frameK hrt hil hk' => exact RetOkJ.here (hrt σ hσ) hk'
+
+/-- `firstFrameK_of_retOk`, J-flavored: along a chain that carries a `.retJ`, the
+    first popping kont is the `frameK` the jump lands at. -/
+theorem firstFrameK_of_retOkJ {ans : Ty} {A : SemAxioms} {D : Decls} {h : Heap}
+    {Γs : List (JCtx × Env)} {σ : Ty} :
+    ∀ {k : List Kont}, RetOkJ ans A D h Γs σ k → ∀ {fid rest},
+      framePopLabels k = fid :: rest → firstFrameK k = some fid := by
+  intro k hr
+  induction hr with
+  | here _ _ =>
+    intro fid rest hl
+    simp only [framePopLabels, List.cons.injEq] at hl
+    simp [firstFrameK, hl.1]
+  | skip ht _ ih =>
+    intro fid rest hl
+    rw [framePopLabels_transparent ht] at hl
+    rw [firstFrameK_transparent ht]
+    exact ih hl
+
 /-- The control clause over the judgment (`CtlOk`, Proof/Static/Konts.lean:925).
     The eval arm adds the fragment gate; the jump arms are `False` until the rungs
     that produce jumps (`return`/`next`/`raise`) enter the fragment. `ans` (J29) is
@@ -320,6 +427,12 @@ def CtlOkJ (D : Decls) (c : JCtx) (Γ : Env) (Γs : List (JCtx × Env))
           KontOkJ ans A (addRows D cl.rows) m.heap ((c, Γk) :: Γs) τ' m.kont)
   | .value v => ∃ τ Γk, VTy m.heap v τ ∧ SubEnv Γk Γ ∧
       KontOkJ ans A D m.heap ((c, Γk) :: Γs) τ m.kont
+  -- **A `return` in flight** (J39, mirroring L200's arm): the value's type, the
+  -- transparent unwinding (`RetOkJ`), and the jump's target — the innermost
+  -- `frameK`'s label, which L199's clause pins to the stack's head.
+  | .jump (.retJ v target) =>
+    ∃ σ, VTy m.heap v σ ∧ RetOkJ ans A D m.heap Γs σ m.kont ∧
+      firstFrameK m.kont = some target
   | .jump _ => False
 
 /-- The `JCtx`-shaped context stack, projected for `StackCtx`. -/

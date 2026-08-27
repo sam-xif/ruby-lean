@@ -229,6 +229,16 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     | cpathScoped hfb hmb =>
       obtain ⟨rfl, h2⟩ := ih hmeth2 hfb hmb (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .cpathScoped h2 (by rw [hs.scopedConstTy_eq]; exact hsco)⟩
+  case hretSome =>
+    intro D Γ e' top ctx σ τ0 Γ₁ D₁ hσ hms hj0 hsj ih hmeth2 hfhx hmf hdf D2 hs
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | retSome hfe hme =>
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfe hme (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .retSome hσ hms h2 hsj⟩
+  case hretNil =>
+    intro D Γ top ctx σ hσ hms hsj _ _ _ _ D2 hs
+    exact ⟨rfl, .retNil hσ hms hsj⟩
   case hvarIvar =>
     intro D Γ x top ctx cc σ hcc hiv _ _ _ _ D2 hs
     exact ⟨rfl, .varIvar hcc (by rw [hs.ivarTy_eq]; exact hiv)⟩

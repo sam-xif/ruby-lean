@@ -139,9 +139,9 @@ partial def walk (owner : String) (cls : Option String) (stmt sh : Bool)
     mkEntry owner "dowhile" stmt sh e :: (walk owner cls false sh2 b ++ walk owner cls false sh2 c)
   | e@(.for' _ c b) =>
     mkEntry owner "for" stmt sh e :: (walk owner cls false sh2 c ++ walk owner cls false sh2 b)
-  | e@(.ret o) =>
-    mkEntry owner "return" stmt sh e ::
-      (match o with | some e' => walk owner cls false sh2 e' | none => [])
+  -- J39: `return` is in the fragment; only the operand is walked.
+  | .ret o =>
+    (match o with | some e' => walk owner cls false sh2 e' | none => [])
   | e@(.brk o) =>
     mkEntry owner "break" stmt sh e ::
       (match o with | some e' => walk owner cls false sh2 e' | none => [])

@@ -913,3 +913,38 @@ binary replay in `certify/certs/j/eg_cpath.*` reporting the claims as
 A claim shadowed by a base entry is inert by construction (claims append after
 the base, `find?` answers the base first), so no collision guard is needed for
 soundness; the residue of a shadowed claim is simply an obligation nothing reads.
+
+## J39 — `return` machine-typed: the jump vocabulary opens
+
+The J37 ladder's second-largest mass (33 post-strip). The Static crib (L200) is
+complete and transliterated: `RetOkJ` (`SubJ`/`KontOkJ` for `subTy`/`KontOk`),
+`KontOkJ.retValK`, `KontOkJ.retOkJ` (the chain walk), `firstFrameK_of_retOkJ`,
+`CtlOkJ`'s first inhabited `.jump` arm (`.retJ` only), both eval cases (push /
+`doReturn` outright), the `retValK` delivery, and the whole new `step_okJ` jump
+branch (skip through a transparent kont / consume at the `frameK`).
+
+Three decisions worth carrying:
+
+1. **`Judge.retSome/retNil` gain `ctx.meth.isSome`** — locally, instead of
+   tightening the J32 rows/method disjunct: `judge_table_ret` (the J twin of
+   L200's `infer_table_ret`, stability of the table along a ret-open chain)
+   needs a row-bearing semantic claim refuted, and `meth.isSome` is what the
+   disjunct refutes against. Machine-wise the premise is free (`doReturn` pops a
+   `.method` frame; `StackCtx`'s L198/L200 clause already says so).
+2. **A relation costs one `.rec` per eliminated family.** `infer_table_ret`
+   covered all five mutual functions in one `infer.induct`; `judge_table_ret`
+   re-runs the same motives through `JudgeSeq.rec`/`JudgeArgs.rec`/
+   `JudgeElems.rec` (`TableRet.lean`, its own file — `Konts` consumes it and
+   `Mono` sits above `Konts`). The whole quadruple is ~90% one `all_goals`
+   sweep (`simp_all` closes `defPromote` by its own `ctx.ret = none` guard and
+   `classTop` by `top = true`).
+3. **A returning body types `.nilT`, so it only checks below a nil-admitting
+   declared return** — the judgment has no bottom type. `egRet`'s worked end
+   declares `Integer?` for exactly this reason. The fix is the Static spine's
+   return-join (L229), a rung of its own; recorded as a named bill.
+
+Checker nodes `retSome`/`retNil`, JSON codec, adequacy, `check_fragHead_false`
+arms, census mirror. Worked end `egRet` (`def f; return 1; end`) certified from
+data, axiom-clean — the body is judged, not dispatched (no row installed), which
+is honest: dispatching *into* ret-open bodies is the parameterized-user-method
+rung's business (`UserConformsJ` still pins `params = []`, `ret` free).

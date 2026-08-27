@@ -209,6 +209,7 @@ def fragHead : Expr → Bool
   | .class' _ none _ => true
   | .const _ => true
   | .cpath _ _ => true
+  | .ret _ => true
   | .array _ => true
   -- The four *marker* shapes are not evaluable expressions (they occur only as
   -- argument/element/block slots of other heads), so a semantic claim on one has
@@ -627,12 +628,17 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       SubEnv Γb Γ₂ →
       Judge A D Γ (.for' tgts coll body) top ctx τc Γb D₁
   -- ## Jumps — each sound only where its target exists, per the context channels.
+  -- J39: `ctx.meth.isSome` — a `return` fires only inside a method body (the
+  -- machine's `doReturn` pops a `.method` frame; `StackCtx`'s L198/L200 clause is
+  -- what turns the open channel into that frame's existence). It is also what
+  -- lets `judge_table_ret` treat a row-bearing semantic claim as impossible
+  -- along a returning continuation.
   | retSome {D Γ e' top ctx σ τ Γ₁ D₁} :
-      ctx.ret = some σ →
+      ctx.ret = some σ → ctx.meth.isSome = true →
       Judge A D Γ e' top ctx τ Γ₁ D₁ → SubJ τ σ →
       Judge A D Γ (.ret (some e')) top ctx .nilT Γ₁ D₁
   | retNil {D Γ top ctx σ} :
-      ctx.ret = some σ → SubJ .nilT σ →
+      ctx.ret = some σ → ctx.meth.isSome = true → SubJ .nilT σ →
       Judge A D Γ (.ret none) top ctx .nilT Γ D
   -- `next` restarts the loop in the same frame: the jump point's environment must
   -- re-guarantee the loop head's.

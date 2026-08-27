@@ -46,6 +46,8 @@ inductive Deriv where
   | const
   | cpathAbs
   | cpathScoped (base : Deriv)
+  | retSome (rhs : Deriv)
+  | retNil
   | varIvar
   | varGvar
   | vasgnIvar (rhs : Deriv)
@@ -192,6 +194,22 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         | some τ => some (τ, Γ₁, D₁)
         | none => none
       | _ => none
+    | .retSome rhs, .ret (some e') =>
+      match ctx.ret with
+      | some σ =>
+        if ctx.meth.isSome then
+          match check n A rhs D Γ e' top ctx with
+          | some (τ, Γ₁, D₁) =>
+            if subJb (tyFuel τ σ) τ σ then some (.nilT, Γ₁, D₁) else none
+          | none => none
+        else none
+      | none => none
+    | .retNil, .ret none =>
+      match ctx.ret with
+      | some σ =>
+        if ctx.meth.isSome && subJb (tyFuel .nilT σ) .nilT σ then some (.nilT, Γ, D)
+        else none
+      | none => none
     | .varIvar, .var .ivar x =>
       match ctx.selfCls with
       | some cc =>
