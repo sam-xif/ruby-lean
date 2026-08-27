@@ -14,6 +14,7 @@ import RubyCore.Types.SigRead
 import RubyCore.Types.OpenSelf
 import RubyCore.Types.Program
 import RubyCore.Cert.Json
+import RubyCore.Judgment.Json
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -105,6 +106,14 @@ def main (args : List String) : IO UInt32 := do
   -- byte-identical. This one reads a *second input*, which is the whole difference — it
   -- is the only query whose answer depends on something other than the program.
   let certifyFile : Option String := flagArg "--certify"
+  -- `--certify-j FILE`: **replay a judgment-layer certificate** (`docs/semantics/
+  -- judgment-layer.md` §4(3), J25). `FILE` holds a `JCert` JSON — claimed rows plus
+  -- a `Deriv` tree — and the trusted `validateJ` re-checks it against the program on
+  -- stdin. An accept means `Proof/Judgment/Adequacy.lean`'s `validateJ_certifies`
+  -- applies: no reachable outcome is type-stuck, conditional on exactly the printed
+  -- `carries` rows' residue (`EntryOkJ` each), and unconditional when there are none.
+  -- Same second-input rationale as `--certify`; same reject-not-crash discipline.
+  let certifyJFile : Option String := flagArg "--certify-j"
   match Lean.Json.parse input with
   | .error e =>
     IO.eprintln s!"bad input JSON: {e}"
@@ -241,6 +250,46 @@ def main (args : List String) : IO UInt32 := do
             Lean.Json.mkObj [
               ("status", Lean.Json.str "unknown"),
               ("out_of_fragment", Lean.Json.str head)]).compress
+        return 0
+      if certifyJFile.isSome then
+        let path := certifyJFile.getD ""
+        let contents ← (do
+          try
+            let s ← IO.FS.readFile path
+            pure (Except.ok s)
+          catch e => pure (Except.error (toString e)))
+        let out : Lean.Json :=
+          match contents with
+          | .error e =>
+            Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                             ("why", Lean.Json.str "certificate-unreadable"),
+                             ("detail", Lean.Json.str e)]
+          | .ok text =>
+            match Lean.Json.parse text with
+            | .error e =>
+              Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                               ("why", Lean.Json.str "certificate-bad-json"),
+                               ("detail", Lean.Json.str e)]
+            | .ok cj =>
+              match Judgment.JCert.ofJson cj with
+              | .error e =>
+                Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                                 ("why", Lean.Json.str "certificate-undecodable"),
+                                 ("detail", Lean.Json.str e)]
+              | .ok cert =>
+                -- The fuel bounds two structural walks (the fragment scan and the
+                -- derivation); any value past their depths is inert, and the walks
+                -- are linear, so a large constant is safe and total.
+                if Judgment.validateJ cert prog 1_000_000 then
+                  Lean.Json.mkObj [("status", Lean.Json.str "accept"),
+                    ("theorem", Lean.Json.str "validateJ_certifies"),
+                    ("unconditional", Lean.Json.bool cert.deltaRows.isEmpty),
+                    ("carries", Lean.Json.arr
+                      (cert.deltaRows.map Cert.rowClaimToJson).toArray)]
+                else
+                  Lean.Json.mkObj [("status", Lean.Json.str "reject"),
+                                   ("why", Lean.Json.str "validateJ-false")]
+        IO.println out.compress
         return 0
       if certifyFile.isSome then
         let path := certifyFile.getD ""

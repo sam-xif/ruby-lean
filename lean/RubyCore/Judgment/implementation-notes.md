@@ -505,3 +505,17 @@ shape-mismatched derivation refused, a base-row-colliding claim refused by
 `derivOfJson` on an unknown node kind answers `error: unknown derivation node
 frobnicate` (a message, not a crash), and a serialize→decode→re-check round trip
 of `egNarrow`'s certificate re-validates.
+
+## J28 — `--certify-j`: the replay path, wired
+
+`Main.lean` gains `--certify-j FILE`, mirroring `--certify`'s shape (program on
+stdin, certificate as the second input, reject-not-crash on unreadable/bad-JSON/
+undecodable files): `JCert.ofJson` → `validateJ` at an inert large fuel (the two
+structural walks it bounds are linear), reporting `accept` with the claimed rows
+as `carries` (+ an `unconditional` bit) or `reject`. Additive — every existing
+query's bytes are untouched, re-confirmed by the tier-0 ratchet. Worked examples
+live in `certify/certs/j/` (`eg_narrow` unconditional through the narrowing node,
+`eg_even` carrying its discharged row), serialized by the codec itself so the
+files cannot drift from the checker. This closes the J2 exit criterion's binary
+half without an emitter: the certificates are hand-authored data, and the replay
+path is what a future emitter targets.

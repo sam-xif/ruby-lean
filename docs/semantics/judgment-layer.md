@@ -31,9 +31,11 @@
 > `return`/`next` jumps (unreachable until a running context opens those channels —
 > W8 sigs), splat elements, block iterators/`lambda` (J16/J19's arrow bill),
 > `begin`/`rescue` (**gated on resolving J8 first** — the entry-env handler rule is
-> the piece preservation would refute), `cpath`, `super`/`zsuper`. Deliberately not
-> built, per the initiative's own exclusion: emitters, and the `--certify` binary
-> wiring that exists to serve them.
+> the piece preservation would refute), `cpath`, `super`/`zsuper`. The binary
+> replay path IS wired (`rubycore --certify-j`, J28; worked files in
+> `certify/certs/j/`, replayed against real `export-json` output). Deliberately
+> not built, per the initiative's own exclusion: **emitters** — the hand-authored
+> example certificates are what a future emitter targets.
 >
 > Origin: a first-principles design conversation prompted by the observation that
 > the type-checking strand feels like wheel-spinning. The conclusion was a
@@ -380,8 +382,7 @@ four metatheory files.
 
 Sized like the C-ladder: each rung is a commit series with a measurable exit.
 **Scorecard (2026-08-26): J0 ✓, J1 ✓ (`judge_sound_cert`, audited), J2 ✓
-(`validateJ_certifies` + JSON format; the `--certify` binary wiring waits for an
-emitter to feed it), J3 ✓ in substance (sends/`def` landed with J22/J23; the
+(`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
 arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
 (J18–J27).
