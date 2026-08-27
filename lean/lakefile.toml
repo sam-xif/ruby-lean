@@ -10,7 +10,19 @@ defaultTargets = ["rubycore"]
 [[require]]
 name = "plausible"
 git = "https://github.com/leanprover-community/plausible"
-rev = "v4.31.0"
+rev = "v4.32.0"
+
+# iris-lean (H-layer, judgment-layer.md J36): the Iris base logic + program
+# logic, seated over the RubyCore machine exactly as the sibling branch
+# `mdd/ruby-sorbet` does (`mdd/sorbet-lean/`, spike S1 — verdict GO). Used
+# ONLY by the `HJudge` lib (`RubyCore/HJudge/`); the `RubyCore` SUT lib, the
+# `Judgment` layer and the `Metatheory` gate never import it. Pin = the
+# sibling's measured-good pin (their G0/S1 evidence is at this rev).
+[[require]]
+name = "iris"
+git = "https://github.com/leanprover-community/iris-lean"
+rev = "34390a0133986385c62bf59a6eb01938945b48ec"
+subDir = "Iris"
 
 [[lean_lib]]
 name = "RubyCore"
@@ -48,3 +60,16 @@ globs = ["RubyCore.Proof.+"]
 name = "Judgment"
 srcDir = "."
 globs = ["RubyCore.Judgment.+"]
+
+# The H-layer (`RubyCore/HJudge/`, judgment-layer.md J36): the higher-order
+# semantic type denotation `HTy`, the judgment `HJudge` over it, and the
+# iris-lean seat (Language instance / ownP interp / WP walk / adequacy —
+# ported from `mdd/ruby-sorbet`'s `mdd/sorbet-lean/`, attributed per file)
+# that supplies its WP admission route. Off the default target: nothing the
+# SUT does depends on it, and it is the only lib that elaborates Iris.
+#
+#     lake build HJudge
+[[lean_lib]]
+name = "HJudge"
+srcDir = "."
+globs = ["RubyCore.HJudge.+"]
