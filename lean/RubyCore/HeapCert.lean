@@ -164,6 +164,8 @@ def heapOkB (h : Heap) : Bool :=
     -- claims a name where the step writes a boot id.
     (h.classPayload? Boot.arrayId).isSome &&
     (className h Boot.arrayId == "Array") &&
+    (h.classPayload? Boot.procId).isSome &&
+    (h.classPayload? Boot.hashId).isSome &&
     -- L156's sixth conjunct, folded in for the same reason L148 folded `saturatedB`:
     -- one certificate, decided once, rather than a second probe to keep in step.
     classOkB h

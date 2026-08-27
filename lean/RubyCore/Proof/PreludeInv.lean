@@ -90,7 +90,8 @@ def HeapOk (h : Heap) : Prop :=
     difficulty of F0 is the other end. -/
 theorem heapOk_initHeap : HeapOk Boot.initHeap :=
   ⟨tableOk_initHeap, noHookB_sound (by decide), saturatedB_sound (by decide),
-   ⟨⟨by decide, by rfl⟩, ⟨by decide, by rfl⟩⟩, classOkB_sound (by decide)⟩
+   ⟨⟨by decide, by rfl⟩, ⟨by decide, by rfl⟩, by decide, by decide⟩,
+   classOkB_sound (by decide)⟩
 
 /-! ### 1.1 Initiation at an arbitrary heap
 
@@ -179,11 +180,12 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩, h6a⟩, h7a⟩, h8⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩, h6a⟩, h7a⟩, hpc⟩, hhc⟩, h8⟩ := hb
   exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3,
       intResolvesB_sound hz⟩,
     noHookB_sound hnh, saturatedB_sound h5,
-    ⟨⟨h6, by simpa using h7⟩, ⟨h6a, by simpa using h7a⟩⟩, classOkB_sound h8⟩
+    ⟨⟨h6, by simpa using h7⟩, ⟨h6a, by simpa using h7a⟩, hpc, hhc⟩,
+    classOkB_sound h8⟩
 
 /-- **F0, certificate form.** A checked `Bool` about the machine in hand plus an
     accepting `check` gives the invariant — for *any* start configuration, so in

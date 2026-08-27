@@ -55,6 +55,14 @@ structure PlainGrow (h h' : Heap) : Prop where
   get : ∀ o, o < h.objs.size → h'.get o = h.get o
   /-- And nothing anywhere became a class. -/
   payload : ∀ k, h'.classPayload? k = h.classPayload? k
+  /-- **J43: a fresh object's dispatch fields are bounded and inert** — its
+      `klass` is an id the *old* heap had and it carries no eigenclass. What
+      `ChainsIn` needs re-established across an abstract `PlainGrow` (the
+      dispatch lemmas expose no fields of what a builtin allocated), and true of
+      every producer for `freshIvars`'s reason: the fragment's allocations are
+      literals, whose classes are boot ids. -/
+  freshKlass : ∀ o, h.objs.size ≤ o → o < h'.objs.size →
+    (h'.get o).klass < h.objs.size ∧ (h'.get o).eigen = none
   /-- **And a fresh object has no instance variables** (L196). Not hygiene: `IvarOk`
       is quantified over *every* object of a class, so an allocation could break a row
       by producing an instance with a badly-typed `@x`, and nothing else in `PlainGrow`
@@ -72,6 +80,7 @@ theorem PlainGrow.rfl' (h : Heap) : PlainGrow h h :=
   { size := Nat.le_refl _
     get := fun _ _ => rfl
     payload := fun _ => rfl
+    freshKlass := fun o ho ho' => absurd ho' (by omega)
     freshIvars := fun o ho => by
       simp only [Heap.get, Array.getD_eq_getD_getElem?,
         Array.getElem?_eq_none (by omega), Option.getD_none]
@@ -82,14 +91,25 @@ theorem PlainGrow.rfl' (h : Heap) : PlainGrow h h :=
     case because the object is not a class and in the other because it is not
     there. -/
 theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ .cls c)
-    (hiv : obj.ivars = []) :
+    (hiv : obj.ivars = [])
+    (hkl : obj.klass < h.objs.size := by decide)
+    (heig : obj.eigen = none := by rfl) :
     PlainGrow h ⟨h.objs.push obj⟩ := by
   have hget : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
     intro o ho
     simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
       if_neg (Nat.ne_of_lt ho)]
-  refine ⟨by simp, hget, fun k => ?_, fun o ho => ?_⟩
+  have hgnew : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+    simp [Heap.get, Array.getD_eq_getD_getElem?]
+  refine ⟨by simp, hget, fun k => ?_, fun o hlo hhi => ?_, fun o ho => ?_⟩
   case refine_2 =>
+    have ho : o = h.objs.size := by
+      have : o < h.objs.size + 1 := by simpa using hhi
+      omega
+    subst ho
+    rw [hgnew]
+    exact ⟨hkl, heig⟩
+  case refine_3 =>
     -- Above the old size there is exactly one inhabited slot, and it is `obj`;
     -- anything higher reads `default`, whose `ivars` is `[]` too.
     by_cases he : o = h.objs.size
@@ -118,6 +138,35 @@ theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ 
       show ¬ k < (h.objs.push obj).size
       rw [Array.size_push]
       exact Nat.not_lt.mpr (Nat.succ_le_of_lt hlt)
+
+/-- **`ChainsIn` survives a plain growth** (J43): old edges by `get`-agreement,
+    fresh objects by `freshKlass`, and no fresh id has a payload at all
+    (`payload`'s global agreement), so the chain clause never fires there. -/
+theorem chainsIn_plainGrow {h h' : Heap} (hg : PlainGrow h h') (hch : ChainsIn h) :
+    ChainsIn h' := by
+  obtain ⟨b1, b2, b3, b4, b5⟩ := hch.boot
+  refine ⟨⟨Nat.lt_of_lt_of_le b1 hg.size, Nat.lt_of_lt_of_le b2 hg.size,
+      Nat.lt_of_lt_of_le b3 hg.size, Nat.lt_of_lt_of_le b4 hg.size,
+      Nat.lt_of_lt_of_le b5 hg.size⟩,
+    fun o hlt => ?_, fun o hlt e he => ?_, fun o cp hlt hcp => ?_⟩
+  · by_cases hlo : o < h.objs.size
+    · rw [hg.get o hlo]
+      exact Nat.lt_of_lt_of_le (hch.klass o hlo) hg.size
+    · exact Nat.lt_of_lt_of_le
+        ((hg.freshKlass o (Nat.le_of_not_lt hlo) hlt).1) hg.size
+  · by_cases hlo : o < h.objs.size
+    · rw [hg.get o hlo] at he
+      exact Nat.lt_of_lt_of_le (hch.eigen o hlo e he) hg.size
+    · rw [(hg.freshKlass o (Nat.le_of_not_lt hlo) hlt).2] at he
+      exact absurd he (by simp)
+  · by_cases hlo : o < h.objs.size
+    · have hcp0 : h.classPayload? o = some cp := by rw [← hg.payload o]; exact hcp
+      obtain ⟨h1, h2, h3⟩ := hch.chain o cp hlo hcp0
+      exact ⟨fun sc hs => Nat.lt_of_lt_of_le (h1 sc hs) hg.size,
+        fun i hi => Nat.lt_of_lt_of_le (h2 i hi) hg.size,
+        fun q hq => Nat.lt_of_lt_of_le (h3 q hq) hg.size⟩
+    · rw [hg.payload o, classPayload?_oob h o hlo] at hcp
+      exact absurd hcp (by simp)
 
 /-! ## 1. The pure object-model functions
 

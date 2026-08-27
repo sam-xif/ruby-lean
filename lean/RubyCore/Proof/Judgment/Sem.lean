@@ -64,7 +64,7 @@ mid-loop — those channels are what `KontOkJ.nil` refutes at the empty position
 /-- A machine state conformant with table `D`, environment `Γ`, and context `c`:
     the Judge-free half of `InvJ`, at an empty continuation. -/
 def Conformant (A : SemAxioms) (D : Decls) (c : JCtx) (Γ : Env) (m : Machine) : Prop :=
-  NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧ ClassOk m.heap ∧
+  NoHook m.heap ∧ Saturated m.heap ∧ ChainsIn m.heap ∧ LitClsOk m.heap ∧ ClassOk m.heap ∧
   BottomObj m.frames m.stack ∧
   m.kont = [] ∧
   framePopLabels m.kont = m.stack.dropLast ∧
@@ -100,9 +100,10 @@ theorem invJ_of_conformant {A : SemAxioms} {D : Decls} {c : JCtx} {Γ : Env}
     (hmf : MFrag A e) (hfr : fragHead e = true)
     (hj : Judge A D Γ e true c τ Γ' D') :
     InvJ τ A m := by
-  obtain ⟨hh, hsat, hstr, hcls, hbot, hk0, hks, hclo, htab, hfs, hsc, hgl,
+  obtain ⟨hh, hsat, hchn, hstr, hcls, hbot, hk0, hks, hclo, htab, hfs, hsc, hgl,
     hret, hloop⟩ := hconf
-  refine ⟨hh, hsat, hstr, hcls, hbot, hks, hclo, D, c, Γ, [], htab, hfs, hsc, hgl, ?_⟩
+  refine ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo, D, c, Γ, [], htab, hfs, hsc,
+    hgl, ?_⟩
   unfold CtlOkJ
   rw [hctl]
   refine Or.inl ⟨hfr, hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ', ?_⟩
@@ -150,11 +151,14 @@ theorem conformant_init {A : SemAxioms} {p : Expr} {F : Decls}
       noHookB_sound (by decide : noHookB Boot.initHeap = true)),
     (show Saturated (Machine.init p).heap from
       saturatedB_sound (by decide : saturatedB Boot.initHeap = true)),
+    (show ChainsIn (Machine.init p).heap from chainsIn_initHeap),
     (show LitClsOk (Machine.init p).heap from
       ⟨⟨(by decide : (Boot.initHeap.classPayload? Boot.stringId).isSome = true),
         (by rfl : className Boot.initHeap Boot.stringId = "String")⟩,
        ⟨(by decide : (Boot.initHeap.classPayload? Boot.arrayId).isSome = true),
-        (by rfl : className Boot.initHeap Boot.arrayId = "Array")⟩⟩),
+        (by rfl : className Boot.initHeap Boot.arrayId = "Array")⟩,
+       (by decide : (Boot.initHeap.classPayload? Boot.procId).isSome = true),
+       (by decide : (Boot.initHeap.classPayload? Boot.hashId).isSome = true)⟩),
     (show ClassOk (Machine.init p).heap from classOk_initHeap),
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),

@@ -2137,7 +2137,8 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     (harr : n = "Array" → ∃ xs, obj.payload = .arr xs) :
     ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
   obtain ⟨hproc, hhsh, hnc⟩ := hpl
-  have hg : PlainGrow h ⟨h.objs.push obj⟩ := plainGrow_alloc h obj hnc hiv
+  have hg : PlainGrow h ⟨h.objs.push obj⟩ :=
+    plainGrow_alloc h obj hnc hiv (classPayload?_isSome_lt hk) he
   -- The fresh id reads back as the object that was pushed; everything else is a
   -- rewrite through `PlainGrow`, which pins `classPayload?` at *every* id.
   have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by

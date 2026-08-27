@@ -69,6 +69,7 @@ def EvalOkAt (ans : Ty) (A : SemAxioms) (D : Decls) (Γ : Env) (e : Expr) (top :
     StackCtx m.heap m.frames m.stack (jctxs ctx Γs) →
     NoHook m.heap → Saturated m.heap → LitClsOk m.heap → ClassOk m.heap →
     BottomObj m.frames m.stack →
+    ChainsIn m.heap →
     framePopLabels m.kont = m.stack.dropLast →
     GlobalsOk D m.heap m.globals →
     ClosuresOk m →
@@ -112,6 +113,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
     (hsc : StackCtx m.heap m.frames m.stack (jctxs ctx Γs))
     (hhook : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
     (hsg : sigOf F (.cls c) mname = some ([], τret))
@@ -137,15 +139,16 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
       entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
         (site := site) (by simp) (by simp) (by simp) hbi hself trivial
     rw [hstep]
-    exact inv_grow_valueJ hfs htab hsc hhook hsat hstr hcls hbot hks hg' hfr' hst' hko'
-      (VTy.weaken (VTy.ofValueTy hw) hsubw) hk hglob hgv'
+    exact inv_grow_valueJ hfs htab hsc hhook hsat hstr hcls hbot hchn hks hg' hfr' hst' hko'
+      (VTy.weaken (VTy.ofValueTy hw) hsubw) (hchn' := chainsIn_plainGrow hg' hchn)
+      (hk := hk) (hgl := hglob) (hgv := hgv')
   · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hself)
     have hown : (m.heap.classPayload? mdu.owner).isSome := by
       obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
     rw [user_dispatch (m := m) (site := site) hru hself]
     have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
     obtain ⟨hdp, hdblk, hdfu, hmfb, hfb, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
-    refine ⟨hhook, hsat, hstr, hcls,
+    refine ⟨hhook, hsat, hchn, hstr, hcls,
       BottomObj_cons hne (BottomObj_push hlt hbot),
       (by simp [framePopLabels, hks, dropLast_cons_ne hne]),
       (ClosuresOk.pushFrame hclo rfl rfl rfl), _,
@@ -203,6 +206,7 @@ theorem inv_continueArrayJ {ans : Ty} {D D' : Decls} {m : Machine} {c : JCtx} {�
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hgl : GlobalsOk D m.heap m.globals)
     (hfa : ∀ e ∈ rest, fragHead e = true)
@@ -216,17 +220,22 @@ theorem inv_continueArrayJ {ans : Ty} {D D' : Decls} {m : Machine} {c : JCtx} {�
   cases hje with
   | nil =>
     simp only [Interp.continueArray, Builtins.allocArr]
-    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
-      (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
+      (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.1.1) rfl)
+      rfl rfl rfl
       (VTy.weaken (VTy.ofValueTy
-        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1 hstr.2.2
-          (fun _ => ⟨_, rfl⟩))) hsw) hk
+        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1.1 hstr.2.1.2
+          (fun _ => ⟨_, rfl⟩))) hsw)
+      (hchn' := chainsIn_plainGrow
+        (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.1.1) rfl)
+        hchn)
+      (hk := hk)
   | @cons _ _ e rest' _ _ τe Γ₁ D₁ _ _ he hrest =>
     have hnsp : ∀ x, e ≠ Expr.splat x := by
       rintro x rfl
       exact nomatch hm (Expr.splat x) (by simp)
     rw [continueArray_plain (by intro x hq; exact absurd hq (hnsp x))]
-    exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+    exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
       (by simp [framePopLabels, hks]) (hm e (by simp)) (hfa e (by simp)) he (SubJ.refl _)
       (KontOkJ.arrK (fun e' he' => hfa e' (by simp [he']))
         (fun e' he' => hm e' (by simp [he'])) hrest hsw hk)
@@ -275,72 +284,77 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hint =>
     intro D Γ n top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   case hflt =>
     intro D Γ x top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   case hsym =>
     intro D Γ s top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   case htru =>
     intro D Γ top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   case hfls =>
     intro D Γ top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   case hnil =>
     intro D Γ top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.exact rfl) hsubw) hk
   -- ## The string literal: the producer — one allocation, `inv_grow_valueJ`.
   case hstr =>
     intro D Γ s top ctx
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
-      (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
+      (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.1.1) rfl)
+      rfl rfl rfl
       (VTy.weaken (VTy.ofValueTy
-        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.1.1 hstr.1.2 (by simp))) hsubw) hk
+        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.1.1 hstr.1.2 (by simp))) hsubw)
+      (hchn' := chainsIn_plainGrow
+        (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.1.1) rfl)
+        hchn)
+      (hk := hk)
   -- ## Local read: `LocalsOkJ`, off the head frame's conformance.
   case hvarLvar =>
     intro D Γ x top ctx τ0 hget
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (hfs.localsOk x τ0 hget) hsubw) hk
   -- ## Local write: push the assignment kont on the rhs.
   case hvasgnLvar =>
     intro D Γ x rhs top ctx τ0 Γ₁ D₁ hib hrhs ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnLvar hfrhs hmrhs =>
       subst htop
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmrhs hfrhs hrhs (SubJ.refl _)
         (KontOkJ.asgn hib hsubw hk)
   -- ## Sequencing: the three-way split `evalExpr` makes.
   case hseq =>
     intro D Γ es top ctx τ0 Γ' D'0 hseq ihseq
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     have hall : ∀ e' ∈ es, MFrag A e' := by
       cases hmf with
@@ -348,21 +362,21 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       | seq h => exact h
     cases hseq with
     | nil =>
-      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
         (VTy.weaken (VTy.exact rfl) hsubw) hk
     | @single _ _ e1 _ _ _ _ _ hj1 hcpl =>
       by_cases hfe : fragHead e1 = true
-      · exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot hks
+      · exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
           (hall _ (by simp)) hfe hj1 hsubw hk
       · -- claimed statement in final position: the coupling pins the claim's
         -- judgment, so the continuation's expectation matches the claimed type
         replace hfe : fragHead e1 = false := by simpa using hfe
         obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc, hreq, hfr⟩ := hcpl hfe
-        exact inv_evalSemJ hfs htab hsc hh hsat hstr hcls hbot hks
+        exact inv_evalSemJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
           hclA rfl hfe hdisc hreq hfr hsubw hk
     | @cons _ _ e1 e₂ rest _ _ τ₁ Γ₁ D₁ _ _ _ hj1 hrest hcpl =>
       by_cases hfe : fragHead e1 = true
-      · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simp [framePopLabels, hks]) (hall _ (by simp)) hfe hj1 (SubJ.refl _)
           (KontOkJ.seqCons (fun e' he' => hall e' (List.mem_cons_of_mem _ he'))
             hrest hsubw hk)
@@ -371,7 +385,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         replace hfe : fragHead e1 = false := by simpa using hfe
         obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hfr⟩ := hcpl hfe
         subst hD₁
-        exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simp [framePopLabels, hks])
           hclA rfl hfe hdisc hreq hfr (SubJ.refl cl.τ)
           (KontOkJ.seqCons (fun e' he' => hall e' (List.mem_cons_of_mem _ he'))
@@ -381,24 +395,24 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ cond t els top ctx τc Γ₁ D₁ τt Γt Dt τe Γe τj Γc
     intro hcnd ht he hjt hje hct hce ihc iht ihe
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifElse hfc hft hfe hmc hmt hme =>
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmc hfc hcnd (SubJ.refl _)
         (KontOkJ.ifElseK hft hfe hmt hme ht he hjt hje hct hce hsubw hk)
   case hifNone =>
     intro D Γ cond t top ctx τc Γ₁ D₁ τt Γt τj Γc
     intro hcnd ht hjt hjn hct hcΓ ihc iht
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifNone hfc hft hmc hmt =>
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmc hfc hcnd (SubJ.refl _)
         (KontOkJ.ifNoneK hft hmt ht hjt hjn hct hcΓ hsubw hk)
   -- ## The narrowing `if` (J27): the push chooses the stored value's atom by
@@ -409,7 +423,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ x t els top ctx τ0 τt Γt Dt τe Γe τj Γc
     intro hget ht he hjt hje hct hce iht ihe
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
@@ -418,7 +432,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       obtain ⟨a, hva, hs0, hT, hFn, hFf⟩ := vty_narrow_kit hv0
       have hfs' := FramesOkJ.setHead hfs hva
       simp only [evalExpr]
-      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) MFrag.varLvar rfl
         (Judge.varLvar (by rw [envGet?_set]; simp))
         (SubJ.refl _)
@@ -428,7 +442,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ x t top ctx τ0 τt Γt τj Γc
     intro hget ht hjt hjn hct hcΓ iht
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
@@ -437,7 +451,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       obtain ⟨a, hva, hs0, hT, hFn, hFf⟩ := vty_narrow_kit hv0
       have hfs' := FramesOkJ.setHead hfs hva
       simp only [evalExpr]
-      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) MFrag.varLvar rfl
         (Judge.varLvar (by rw [envGet?_set]; simp))
         (SubJ.refl _)
@@ -447,7 +461,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ Γl cond body top ctx τc Γ₁ τb Γ₂
     intro hentry hcnd hs1 hbody hs2 ihc ihb
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
@@ -455,7 +469,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       have hfs' := FramesOkJ.narrowHead hentry hfs
       have hloop : LoopOkJ A D Γl cond body Γs.isEmpty (loopCtx ctx Γl) :=
         ⟨hfc, hfb, hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩
-      refine inv_pushJ (c := loopCtx ctx Γl) hfs' htab ?_ hh hsat hstr hcls hbot
+      refine inv_pushJ (c := loopCtx ctx Γl) hfs' htab ?_ hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmc hfc hcnd (SubJ.refl _)
         (KontOkJ.whileCond hloop hsubw hk (hsu := hsuE)) (hsuE := hs1)
       show StackCtx m.heap m.frames m.stack (jctxs (loopCtx ctx Γl) Γs)
@@ -468,8 +482,8 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hself =>
     intro D Γ top ctx cc hsome
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.ofValueTy ?_) hsubw) hk
     have hne : m.stack ≠ [] := (hfs.frameShallow).1
     cases hst : m.stack with
@@ -484,16 +498,16 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hvcall =>
     intro D Γ mname top ctx cc τret hsome hsg
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     simp only [evalExpr]
-    exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hks
+    exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (hfs.frameShallow).1 hsome hsg hsubw hk
   -- ## The block-less send.
   case hsend =>
     intro D Γ recvO mname args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps τret
     intro hrecv hargs hsg hsub ihr iha
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hrecv with
     | expl hr =>
@@ -510,14 +524,14 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         simp only [evalExpr]
         rename_i r
         cases r <;>
-          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simp [framePopLabels, hks]) hmr hfr hr (SubJ.refl _)
             (KontOkJ.recvK0 hsg hsubw hk)
       | cons a as =>
         simp only [evalExpr]
         rename_i r
         cases r <;>
-          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simp [framePopLabels, hks]) hmr hfr hr (SubJ.refl _)
             (KontOkJ.recvK (fun a' ha' => hfa a' ha') (fun a' ha' => hma a' ha')
               hargs hsg hsub hsubw hk)
@@ -532,7 +546,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         have hps : ps = [] := hsub.nil_inv
         subst hps
         simp only [evalExpr]
-        exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hks
+        exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hchn hks
           (hfs.frameShallow).1 hsome hsg hsubw hk
       | cons a as =>
         cases hargs with
@@ -559,7 +573,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
             exact nomatch hma Expr.fwd (by simp)
           simp only [evalExpr]
           rw [startArgs_plain hsp hkw hfw]
-          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simp [framePopLabels, hks]) (hma _ (by simp)) (hfa _ (by simp)) ha1
             (SubJ.refl _)
             (KontOkJ.argsK (psacc := []) (VTy.ofValueTy hself) trivial hs1
@@ -570,7 +584,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hclassTop =>
     intro D Γ name body ctx τ0 Γb' Db hmem hbody ihb
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | classTop hfb hmb =>
@@ -591,7 +605,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         exact hsc.2.2.2.2.1
       simp only [evalExpr, enterClassBody, hdefmod, hconst, hpay, hmod, withKont]
       have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
-      refine ⟨hh, hsat, hstr, hcls,
+      refine ⟨hh, hsat, hchn, hstr, hcls,
         BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
         (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
         (ClosuresOk.pushFrame hclo rfl rfl rfl),
@@ -620,7 +634,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ name ps body top ctx τs σb bs τb Γb'
     intro hfresh hha hlen hbody hsbb ihb
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
     have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
     have hfs := FramesOkJ.narrowHead hsuE hfs
@@ -644,10 +658,11 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
         TypeAgree m.heap m₀.heap → DeclsOkJ A D m₀.heap → NoHook m₀.heap →
         Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
+        ChainsIn m₀.heap →
         GlobalsOk D m₀.heap m₀.globals →
         InvJ ans A (withCtl m₀ (.value (.sym name))) := by
-      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
-      refine ⟨hh', hsat', hstr', hcls',
+      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hchn' hgl'
+      refine ⟨hh', hsat', hchn', hstr', hcls',
         show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
         show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
         ClosuresOk.transport hclo
@@ -670,9 +685,10 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     simp only [evalExpr, hdm]
     by_cases hp : m.preludeMode = true <;>
       simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
-      refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
+      refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
         first
           | rfl
+          | exact chainsIn_defineMethod hchn
           | exact typeAgree_defineMethod _ _ _ _
           | exact DeclsOkJ_defineMethod htab hfresh
           | exact hlkNH _
@@ -684,7 +700,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     intro D Γ name body top ctx τb Γb'
     intro hfresh hha hbody htopf hinit hmemctx hgroundc hdfree hretn hloopn hblkn ihb
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨hffb, hmfb⟩ : fragHead body = true ∧ MFrag A body := by
       cases hmf with
       | semantic hmem hff => simp [fragHead] at hff
@@ -713,11 +729,12 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         TypeAgree m.heap m₀.heap →
         DeclsOkJ A (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap →
         NoHook m₀.heap → Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
+        ChainsIn m₀.heap →
         GlobalsOk (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
           m₀.globals →
         InvJ ans A (withCtl m₀ (.value (.sym name))) := by
-      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
-      refine ⟨hh', hsat', hstr', hcls',
+      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hchn' hgl'
+      refine ⟨hh', hsat', hchn', hstr', hcls',
         show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
         show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
         ClosuresOk.transport hclo
@@ -861,6 +878,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       (refine hres _ rfl rfl rfl (typeAgree_defineMethod _ _ _ _) ?_ (hlkNH _)
         (Saturated_defineMethod hsat _ _ _) (LitClsOk_defineMethod hstr)
         (ClassOk_defineMethod hcls)
+        (chainsIn_defineMethod hchn)
         (GlobalsOk.congr (typeAgree_defineMethod _ _ _ _) hgl)
        refine hdecls _ rfl rfl rfl ?_ rfl rfl rfl rfl ?_ rfl
        · simpa [defVisOfDef, hinit] using hvis
@@ -869,7 +887,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hconst =>
     intro D Γ nm top ctx τ0 hre
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨v, hconst, hty, hsole⟩ := htab.2.1 nm _ hre
     have hne : m.stack ≠ [] := (hfs.frameShallow).1
     cases hst : m.stack with
@@ -883,14 +901,14 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         rw [hcur]; exact hsc'.2.2.2.2.1
       simp only [evalExpr]
       rw [constRead_sole hcref hconst hsole]
-      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
         (VTy.weaken (VTy.ofValueTy hty) hsubw) hk
   -- ## `::n` (J38): one step, `ConstOk`'s toplevel lookup — the `hconst` argument
   -- with the cref walk replaced by the flat lookup the machine performs here.
   case hcpathAbs =>
     intro D Γ nm top ctx τ0 hre
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨v, hconst, hty, hsole⟩ := htab.2.1 nm _ hre
     have hcl : constLookup m.heap nm = some v := by
       unfold constLookup
@@ -899,20 +917,20 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       | none => rw [hp] at hconst; simp at hconst
       | some c => rw [hp] at hconst; simpa using hconst
     simp only [evalExpr, hcl]
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.ofValueTy hty) hsubw) hk
   -- ## `b::n` (J38): push `.cpathK` on the base; the rule's two reads are exactly
   -- `KontOkJ.cpathK`'s premises (mirroring L205's eval case).
   case hcpathScoped =>
     intro D Γ base nm top ctx cname Γ₁ D₁ τ0 hbase hsco ihbase
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | cpathScoped hfb hmb =>
       subst htop
       simp only [evalExpr]
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmb hfb hbase (SubJ.refl _)
         (KontOkJ.cpathK (SubJ.refl _) hsco hsubw hk)
   -- ## `return e` (J39): push `jumpValK .retK` on the operand; the jump happens at
@@ -920,13 +938,13 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hretSome =>
     intro D Γ e' top ctx σ τ0 Γ₁ D₁ hσ hms hj0 hsj ihe
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | retSome hfe hme =>
       subst htop
       simp only [evalExpr]
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hme hfe hj0 (SubJ.refl _)
         (KontOkJ.retValK hσ hms hsj hk)
   -- ## Bare `return` (J39): `evalExpr` calls `doReturn` outright — the jump is the
@@ -935,7 +953,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hretNil =>
     intro D Γ top ctx σ hσ hms hsj
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     have hne0 : m.stack ≠ [] := (hfs.frameShallow).1
     cases hst : m.stack with
@@ -965,7 +983,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           rw [hks, hst, dropLast_cons_ne hfne]
         simp only [evalExpr, Interp.doReturn, hrt,
           show m.stack.contains fid = true from by simp [hst]]
-        exact ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl,
+        exact ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.ctl,
           D, ctx, Γ, Γs, htab, hfs, hsc, hgl,
           ⟨σ, VTy.weaken (VTy.exact rfl) hsj, hro, hff⟩⟩
       · rw [hnone] at hσ; exact absurd hσ (by simp)
@@ -974,7 +992,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hhash =>
     intro D Γ prs top ctx Γ' D' hprs ihprs
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | hash hfp hmk hmv =>
@@ -982,12 +1000,17 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       cases hprs with
       | nil =>
         simp only [evalExpr, Builtins.allocHsh]
-        exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
-          (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
-          (VTy.weaken VTy.any hsubw) hk
+        exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
+          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2) rfl)
+          rfl rfl rfl
+          (VTy.weaken VTy.any hsubw)
+          (hchn' := chainsIn_plainGrow
+            (plainGrow_alloc m.heap _ (by simp) rfl
+              (classPayload?_isSome_lt hstr.2.2.2) rfl) hchn)
+          (hk := hk)
       | @cons _ _ kE vE rest _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
         simp only [evalExpr]
-        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simp [framePopLabels, hks])
           (hmk (kE, vE) (by simp)) (hfp (kE, vE) (by simp)).1 hkj (SubJ.refl _)
           (KontOkJ.hshKeyK (hfp (kE, vE) (by simp)).2 (hmv (kE, vE) (by simp))
@@ -997,7 +1020,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hcasgn =>
     intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hrhs ihr
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | casgn hfr hmr =>
@@ -1008,13 +1031,13 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         | cons a b => rw [hq] at htopt; simp at htopt
       subst hΓs
       simp only [evalExpr]
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
         (KontOkJ.casgnK hct hsct hrd hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     have hne : m.stack ≠ [] := (hfs.frameShallow).1
     have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
       cases hst : m.stack with
@@ -1041,7 +1064,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
       simpa using hpl.1.1.1.1.1
     simp only [evalExpr, hsf]
-    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.ofValueTy ?_) hsubw) hk
     cases hfind : ((m.heap.get o).ivars.find? (·.1 == x)).map Prod.snd with
     | none => simpa [hfind] using ValueTy.weaken (ValueTy.exact rfl) (by simp)
@@ -1051,19 +1074,19 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hvarGvar =>
     intro D Γ x top ctx σ hpg hgt
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     simp only [evalExpr, matchGlobal_none_of_plain hpg]
-    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
       (VTy.weaken (VTy.ofValueTy (GlobalsOk.read hgl hpg hgt)) hsubw) hk
   case hvasgnIvarDecl =>
     intro D Γ x rhs top ctx sc τ0 Γ₁ D₁ σ hsome hrhs hiv hsj ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnIvar hfr hmr =>
       subst htop
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
         (KontOkJ.asgnIvar (by rw [hsome]; rfl) hsubw
           (fun cn σ' hcn hiv' => by
@@ -1076,12 +1099,12 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hvasgnIvarFresh =>
     intro D Γ x rhs top ctx sc τ0 Γ₁ D₁ hsome hrhs hiv ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnIvar hfr hmr =>
       subst htop
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
         (KontOkJ.asgnIvar (by rw [hsome]; rfl) hsubw
           (fun cn σ' hcn hiv' => by
@@ -1092,32 +1115,32 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hvasgnGvar =>
     intro D Γ x rhs top ctx τ0 Γ₁ D₁ σ hpg hrhs hgt hsj ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnGvar hfr hmr =>
       subst htop
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
         (KontOkJ.asgnGvar hpg hgt hsj hsubw hk)
   case harray =>
     intro D Γ es top ctx Γ'0 D'0 hje ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     subst htop
     obtain ⟨hfa, hall⟩ : (∀ e' ∈ es, fragHead e' = true) ∧ (∀ e' ∈ es, MFrag A e') := by
       cases hmf with
       | semantic hmem hff => simp [fragHead] at hff
       | array hf h => exact ⟨hf, h⟩
     simp only [evalExpr]
-    exact inv_continueArrayJ hfs htab hsc hh hsat hstr hcls hbot hks hgl hfa hall hje
+    exact inv_continueArrayJ hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hfa hall hje
       hsubw hk
   -- ## `sendCall`'s conclusion is a send head, so the fragment gate's shape
   -- condition (no `call`-named explicit sends) is what refutes it.
   case hsendCall =>
     intro D Γ r args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps ret hr hparts hargs hsub ihr iha
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | send hne _ _ _ _ => exact absurd rfl hne
@@ -1125,8 +1148,8 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   case hsub =>
     intro D Γ e top ctx τ0 Γ'0 D'0 σ Γ'' hj0 hs hse ih
     intro _hfh
-    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
-    exact ih _hfh m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    exact ih _hfh m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
       (hs.trans hsubw) (SubEnv.trans hsuE hse) hk
   -- ## Everything else is out of the rung-1 fragment: refuted by `MFrag`.
   -- ## Everything else is out of the rung-1 fragment: refuted by the `fragHead`
@@ -1137,14 +1160,14 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     (intros
      first
       | exact Bool.noConfusion ‹fragHead _ = true›
-      | (refine fun m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo
+      | (refine fun m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo
            hmf hsubw hsuE hk => ?_
          cases hmf <;> simp_all [fragHead]))
 
 /-- **Progress and preservation in one case analysis** — `step_ok`, over `InvJ`. -/
 theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     (h : InvJ ans A m) : StepOkJ ans A (stepFn m) := by
-  obtain ⟨hh, hsat, hstr, hcls, hbot, hks, hclo, F, ctx, Γ, Γs, htab, hfs, hsc, hgl, hc⟩ := h
+  obtain ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo, F, ctx, Γ, Γs, htab, hfs, hsc, hgl, hc⟩ := h
   have hcloTail : ∀ {κ₀ : Kont} {k' : List Kont}, m.kont = κ₀ :: k' →
       ClosuresOk { m with kont := k' } := fun hkq =>
     ClosuresOk.konts hclo rfl rfl
@@ -1156,13 +1179,13 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     rcases hc with ⟨hfh, hmf, τ, τw, Γ', D', Γk, hj, hsubw, hsuE, hk⟩ |
       ⟨cl, hmem, hcle, hfh, hdisc, hreq, hfr, τw, Γk, hs', hsuE, hk⟩
     · simp only [stepFn, hctl]
-      exact judge_eval_ok hj hfh m Γs τw Γk rfl hfs htab hsc hh hsat hstr hcls hbot hks
+      exact judge_eval_ok hj hfh m Γs τw Γk rfl hfs htab hsc hh hsat hstr hcls hbot hchn hks
         hgl hclo hmf hsubw hsuE hk
     · -- the semantic leaf: the claim's obligation, applied
       simp only [stepFn, hctl]
       subst hcle
       exact hax cl hmem ans F Γ Γs.isEmpty ctx hreq hfr m Γs τw Γk rfl hfs htab hsc hh
-        hsat hstr hcls hbot hks hgl hclo (.semantic ⟨cl, hmem, rfl⟩ hfh) hs' hsuE hk
+        hsat hstr hcls hbot hchn hks hgl hclo (.semantic ⟨cl, hmem, rfl⟩ hfh) hs' hsuE hk
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, Γk, hv, hsuE, hk⟩ := hc
@@ -1173,26 +1196,26 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     cases hk with
     | nil hsub _ _ => exact VTy.weaken hv hsub
     | @seqNil _ _ _ _ _ _ τw k _ hsw hk' hsu =>
-      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simpa [framePopLabels] using hks)
         (VTy.weaken hv hsw) hk' (hclo := hcloTail hK)
     | @seqCons _ _ _ _ _ _ _ e₁ es τ' τw Γ' k _ hm hseq hsw hk' hsu =>
       cases hseq with
       | single hj1 hcpl =>
         by_cases hfe : fragHead e₁ = true
-        · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) (hm _ (by simp)) hfe hj1 hsw
             (KontOkJ.seqNil (SubJ.refl _) hk') (hclo := hcloTail hK)
         · -- claimed final statement: the coupling pins the claim's judgment
           replace hfe : fragHead e₁ = false := by simpa using hfe
           obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc, hreq, hfr⟩ := hcpl hfe
-          exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks)
             hclA rfl hfe hdisc hreq hfr hsw
             (KontOkJ.seqNil (SubJ.refl _) hk') (hclo := hcloTail hK)
       | cons hj1 hrest hcpl =>
         by_cases hfe : fragHead e₁ = true
-        · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) (hm _ (by simp)) hfe hj1 (SubJ.refl _)
             (KontOkJ.seqCons (fun e' he' => hm e' (List.mem_cons_of_mem _ he'))
               hrest hsw hk') (hclo := hcloTail hK)
@@ -1200,13 +1223,13 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           replace hfe : fragHead e₁ = false := by simpa using hfe
           obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hfr⟩ := hcpl hfe
           subst hD₁
-          exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks)
             hclA rfl hfe hdisc hreq hfr (SubJ.refl cl.τ)
             (KontOkJ.seqCons (fun e' he' => hm e' (List.mem_cons_of_mem _ he'))
               hrest hsw hk') (hclo := hcloTail hK)
     | @asgn _ _ _ _ _ _ τw x k _ hib hsw hk' hsu =>
-      refine ⟨hh, hsat, hstr, hcls, ?_,
+      refine ⟨hh, hsat, hchn, hstr, hcls, ?_,
         (by
           show framePopLabels (Machine.setLocal { m with kont := k } x v).kont
             = (Machine.setLocal { m with kont := k } x v).stack.dropLast
@@ -1284,22 +1307,22 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         hft hfe hmt hme ht he hjt hje hct hce hjw hk' hsu =>
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hmt hft ht (hjt.trans hjw) hk'
           (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
       · simp only [hb]
-        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hme hfe he (hje.trans hjw) hk'
           (hsuE := SubEnv.trans hsu hce) (hclo := hcloTail hK)
     | @ifNoneK _ _ _ _ _ _ t τt Γt τj Γc τw k _
         hft hmt ht hjt hjn hct hcΓ hjw hk' hsu =>
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_evalJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hmt hft ht (hjt.trans hjw) hk'
           (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
       · simp only [hb]
-        exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks)
           (VTy.weaken (VTy.exact rfl) (hjn.trans hjw)) hk'
           (hsuE := SubEnv.trans hsu hcΓ) (hclo := hcloTail hK)
@@ -1309,17 +1332,17 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         · exact absurd hb (by rw [vty_nilT_eq hv]; simp [Value.truthy])
         · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set hdrop) hfs
           simp only [hb, if_true]
-          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) hmt hft ht (hjt.trans hjw) hk'
             (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
       · simp only [hb]
         rcases truthy_false_cases (by simpa using hb) with rfl | rfl
         · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set (hFn (vty_nil_subJ hv))) hfs
-          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) hme hfe he (hje2.trans hjw) hk'
             (hsuE := SubEnv.trans hsu hce) (hclo := hcloTail hK)
         · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set (hFf (vty_false_subJ hv))) hfs
-          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) hme hfe he (hje2.trans hjw) hk'
             (hsuE := SubEnv.trans hsu hce) (hclo := hcloTail hK)
     | ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw hk' hsu =>
@@ -1328,12 +1351,12 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         · exact absurd hb (by rw [vty_nilT_eq hv]; simp [Value.truthy])
         · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set hdrop) hfs
           simp only [hb, if_true]
-          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) hmt hft ht (hjt.trans hjw) hk'
             (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
       · simp only [hb]
         have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_unset hget hs0) hfs
-        exact inv_valueJ hfs' htab hsc hh hsat hstr hcls hbot
+        exact inv_valueJ hfs' htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks)
           (VTy.weaken (VTy.exact rfl) (hjn.trans hjw)) hk'
           (hsuE := SubEnv.trans hsu hcb) (hclo := hcloTail hK)
@@ -1341,13 +1364,13 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       obtain ⟨hfc, hfb, hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩ := hloop
       by_cases hb : v.truthy
       · simp only [hb, if_true]
-        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hmb hfb hbody (SubJ.refl _)
           (KontOkJ.whileBody ⟨hfc, hfb, hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩
             hsw hk' (hsu := hsu))
           (hsuE := hs2) (hclo := hcloTail hK)
       · simp only [hb]
-        refine inv_valueJ (c := ctx') hfs htab ?_ hh hsat hstr hcls hbot
+        refine inv_valueJ (c := ctx') hfs htab ?_ hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks)
           (VTy.weaken (VTy.exact rfl) hsw) hk'
           (hsuE := hsu) (hclo := hcloTail hK)
@@ -1359,7 +1382,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         simpa [jctxs] using stackCtx_inLoop' hsc
     | @whileBody _ _ ctx' Γl _ _ τw c body k _ hloop hsw hk' hsu =>
       obtain ⟨hfc, hfb, hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩ := hloop
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simpa [framePopLabels] using hks) hmc hfc hcnd (SubJ.refl _)
         (KontOkJ.whileCond ⟨hfc, hfb, hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩
           hsw hk' (hsu := hsu))
@@ -1380,7 +1403,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           exact nomatch hm Expr.fwd (by simp)
         dsimp only
         rw [startArgs_plain hsp hkw hfw]
-        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) (hm _ (by simp)) (hfm _ (by simp)) ha1
           (SubJ.refl _)
           (KontOkJ.argsK (psacc := []) hv trivial hs1
@@ -1399,9 +1422,11 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             (sigOf_atomic hnilτ hsg).2.2 hbi hv0 trivial
         rw [hstep]
         exact inv_grow_valueJ (m := { m with kont := k })
-          hfs htab hsc hh hsat hstr hcls hbot
+          hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hg' hfr' hst' hko'
-          (VTy.weaken (VTy.ofValueTy hw) hsw) hk' hgl hgv' (hclo := hcloTail hK)
+          (VTy.weaken (VTy.ofValueTy hw) hsw)
+          (hchn' := chainsIn_plainGrow hg' hchn)
+          (hk := hk') (hgl := hgl) (hgv := hgv') (hclo := hcloTail hK)
       · rcases htys with rfl | ⟨⟨e, rfl⟩, rfl⟩
         case inr =>
           simp only [sigOf, declFor, tyClassNames] at hsg
@@ -1412,7 +1437,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         rw [user_dispatch (m := { m with kont := k }) hru hv0]
         have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
         obtain ⟨hdp, hdblk, hdfu, hmfb, hfb, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
-        refine ⟨hh, hsat, hstr, hcls,
+        refine ⟨hh, hsat, hchn, hstr, hcls,
           BottomObj_cons (hfs.frameShallow).1 (BottomObj_push hlt hbot),
           (by rw [dropLast_cons_ne (hfs.frameShallow).1]
               simpa [framePopLabels] using hks),
@@ -1487,9 +1512,11 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             ((VTys.snoc hva (hv.weaken hst)).toValuesTy hground)
         rw [hstep]
         exact inv_grow_valueJ (m := { m with kont := k })
-          hfs htab hsc hh hsat hstr hcls hbot
+          hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks) hg' hfr' hst' hko'
-          (VTy.weaken (VTy.ofValueTy hw) hsw) hk' hgl hgv' (hclo := hcloTail hK)
+          (VTy.weaken (VTy.ofValueTy hw) hsw)
+          (hchn' := chainsIn_plainGrow hg' hchn)
+          (hk := hk') (hgl := hgl) (hgv := hgv') (hclo := hcloTail hK)
       | cons e rest' =>
         cases hrest with
         | cons he1 hrest' =>
@@ -1507,7 +1534,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           dsimp only
           rw [startArgs_plain hsp hkw hfw]
           exact inv_pushJ (m := { m with kont := k })
-            hfs htab hsc hh hsat hstr hcls hbot
+            hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks) (hm _ (by simp)) (hfm _ (by simp)) he1
             (SubJ.refl _)
             (KontOkJ.argsK (psacc := psacc ++ [τp]) hrv
@@ -1568,7 +1595,8 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       have hgb : (bindIvar { m with kont := k } x v).globals = m.globals := by
         unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
           = m.currentFrame from rfl, hsf]
-      refine ⟨hi.noHook hh, hi.saturated hsat, hi.litClsOk hstr, hi.classOk hcls,
+      refine ⟨hi.noHook hh, hi.saturated hsat, chainsIn_ivarOnly hi hchn,
+        hi.litClsOk hstr, hi.classOk hcls,
         by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
                  = m.frames from hfr,
               show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
@@ -1654,7 +1682,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       show StepOkJ ans A (.next (Interp.withCtl (({ m with kont := k }).setGlobal x v) (.value v)))
       rw [setGlobal_of_plain (m := { m with kont := k }) hpg]
       simp only [Interp.withCtl]
-      refine ⟨hh, hsat, hstr, hcls, hbot, (by simpa [framePopLabels] using hks),
+      refine ⟨hh, hsat, hchn, hstr, hcls, hbot, (by simpa [framePopLabels] using hks),
         ClosuresOk.konts (hcloTail hK) rfl rfl
           (by intro κ hm; exact Or.inl (by simpa using hm)),
         F, ctx, Γk, Γs, htab, hfs, hsc,
@@ -1690,7 +1718,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         · exact absurd heq (by simp)
         · simp only [Option.some.injEq] at heq
           subst heq
-          exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot
+          exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn
             (by simpa [framePopLabels] using hks)
             (VTy.weaken (VTy.ofValueTy hcty) hsw) hk' (hclo := hcloTail hK)
       · rename_i _x heq
@@ -1705,13 +1733,14 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         · exact absurd heq (by simp)
     | @arrK _ D' _ _ _ _ _ τw acc rest Γ' k _ hfm hm hje hsw hk' hsu =>
       exact inv_continueArrayJ (m := { m with kont := k })
-        hfs htab hsc hh hsat hstr hcls hbot (by simpa [framePopLabels] using hks) hgl
+        hfs htab hsc hh hsat hstr hcls hbot hchn
+        (by simpa [framePopLabels] using hks) hgl
         hfm hm hje hsw hk' (hclo := hcloTail hK)
     -- **The hash literal's key has arrived** (J40): the value expression runs
     -- next, the key rides the kont untyped.
     | @hshKeyK _ D₂ D' _ _ _ _ _ vE rest τv Γ₂ Γ' τw acc k _
         hfv hmv hfp hmk hmvs hjv hpr hw hk' hsu =>
-      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simpa [framePopLabels] using hks) hmv hfv hjv (SubJ.refl _)
         (KontOkJ.hshValK hfp hmk hmvs hpr hw hk') (hclo := hcloTail hK)
     -- **The hash literal's value has arrived** (J40): accumulate (untyped), then
@@ -1721,11 +1750,16 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       | nil =>
         simp only [Builtins.allocHsh]
         exact inv_grow_valueJ (m := { m with kont := k }) hfs htab hsc hh hsat hstr
-          hcls hbot (by simpa [framePopLabels] using hks)
-          (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
-          (VTy.weaken VTy.any hw) hk' (hclo := hcloTail hK)
+          hcls hbot hchn (by simpa [framePopLabels] using hks)
+          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2) rfl)
+          rfl rfl rfl
+          (VTy.weaken VTy.any hw)
+          (hchn' := chainsIn_plainGrow
+            (plainGrow_alloc m.heap _ (by simp) rfl
+              (classPayload?_isSome_lt hstr.2.2.2) rfl) hchn)
+          (hk := hk') (hclo := hcloTail hK)
       | @cons _ _ kE vE rest' _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
-        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
           (by simpa [framePopLabels] using hks)
           (hmk (kE, vE) (by simp)) (hfp (kE, vE) (by simp)).1 hkj (SubJ.refl _)
           (KontOkJ.hshKeyK (hfp (kE, vE) (by simp)).2 (hmvs (kE, vE) (by simp))
@@ -1759,6 +1793,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         have hrows := constSetIn_rowsAndConstsJ (j := Boot.objectId) (v := v)
           htab hct hsct
         refine ⟨noHook_constSetIn hh, saturated_constSetIn hsat,
+          chainsIn_constSetIn hchn,
           litClsOk_constSetIn hstr,
           classOk_constSetIn_obj (by simpa using hrd) hcls,
           hbot, (by simpa [framePopLabels, Interp.withCtl] using hks),
@@ -1806,7 +1841,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           rw [hst] at hbot hfs hsc hks
           simp only [Interp.doReturn, Interp.returnTarget, List.headD_cons, hkind]
           rw [if_pos (show ((fid :: fids).contains fid) = true from by simp)]
-          exact ⟨hh, hsat, hstr, hcls, hbot,
+          exact ⟨hh, hsat, hchn, hstr, hcls, hbot,
             (by simpa [framePopLabels, Interp.withCtl] using hks),
             ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
             F, ctx, Γk, Γs, htab, hfs, hsc, hgl,
@@ -1828,7 +1863,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         rw [hst] at hq ⊢
         simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
         simpa using hq.2
-      refine ⟨hh, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+      refine ⟨hh, hsat, hchn, hstr, hcls, BottomObj_tail hbot, hlab,
         ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
         _, c', Γ', Γs', htab,
         hfs.tail, ?_, hgl, ⟨τ, _, hv, SubEnv.refl _, hk'⟩⟩
@@ -1845,7 +1880,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       cases hro with
       | skip hκ hro' =>
         rw [unwind_ret_transparent (m := m) hκ hK]
-        refine ⟨hh, hsat, hstr, hcls, hbot, ?_,
+        refine ⟨hh, hsat, hchn, hstr, hcls, hbot, ?_,
           ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
           F, ctx, Γ, Γs, htab, hfs, hsc, hgl,
           ⟨σ, hv, hro', ?_⟩⟩
@@ -1883,7 +1918,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             | cons cΓb Γsb =>
               obtain ⟨c', Γ'⟩ := cΓb
               rw [hΓ] at hfs hsc hkf
-              exact ⟨hh, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+              exact ⟨hh, hsat, hchn, hstr, hcls, BottomObj_tail hbot, hlab,
                 ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
                 F, c', Γ', Γsb, htab, hfs.tail, StackCtx.tail hsc, hgl,
                 ⟨τf, _, VTy.weaken hv hsubf, SubEnv.refl _, hkf⟩⟩

@@ -1075,3 +1075,30 @@ invariant. Designed against the code this session:
    realized", established at the module push. (`defs` in a *reopened boot* class
    would allocate — 60 of 87 boot class objects have no eigenclass — so that
    variant waits.)
+
+## J43a/b (built) — `ChainsIn` carried, `PlainGrow` strengthened
+
+W2a landed: `ChainsIn` (`Proof/AncestorsGrow.lean`) with `chainsInB_sound` and the
+boot discharge by kernel `decide`; transports across pushes
+(`chainsIn_push`/`chainsIn_alloc`), `defineMethod`, `constSetIn`, `IvarOnly`, and
+**abstract `PlainGrow`** — the last is what the dispatch path needs (a builtin's
+allocation exposes no fields), and it forced the honest move: `PlainGrow` gains a
+`freshKlass` field (*a fresh object's `klass` is an old id and it carries no
+eigenclass*), free at `rfl'` and at every producer, with `plainGrow_alloc` taking
+the two facts as hypotheses. The bound's suppliers at the alloc sites are
+`classPayload?_isSome_lt` off `LitClsOk` — which grew **Proc and Hash presence
+clauses** for the reify and hash producers (`hstr.2.1.*` renumbering at ~8 sites,
+`heapOkB` extended).
+
+Carried as a new `InvJ`/`EvalOkAt`/`Conformant` conjunct (after `Saturated`; the
+L228 insertion recipe — helpers take it as a defaulted `by assumption` argument,
+so heap-unchanged cases pay nothing; the autoParam sits mid-position, so
+positional call sites pass it explicitly). `Conformant` gaining it *weakens*
+`SemJudge` claims' obligations (fewer conformant states), which is the sound
+direction. `omega` failed on every `Boot.classId < size + 1` goal under the large
+contexts (the L257 lesson, again) — `Nat.lt_succ_of_lt`/`Nat.lt_of_lt_of_le`
+throughout.
+
+Still owed for the module rung (W2c): `ClsGrow` + the relativized congruence
+suite keyed on `ChainsIn` (old walks never reach the fresh id), then the
+`module'` eval case.

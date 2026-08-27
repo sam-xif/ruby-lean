@@ -169,8 +169,8 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
   obtain ⟨hccls, hicb, hnbk⟩ := hreq "String" rfl
   have hfresh : declaresName D "shout" = false := by
     simpa [dmClaim, shoutSig] using hfr ("String", "shout", shoutSig) (by simp [dmClaim])
-  intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw
-    hsuE hk
+  intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
+    hsubw hsuE hk
   have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
   have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
   have hfs := FramesOkJ.narrowHead hsuE hfs
@@ -199,6 +199,8 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
     simp [reifyBlock, dmPcl, dmPobj, dmM₁]
   have hg₁ : PlainGrow m.heap (dmM₁ m).heap :=
     plainGrow_alloc m.heap (dmPobj m) (by simp [dmPobj]) rfl
+      (by simp [dmPobj]; exact classPayload?_isSome_lt hstr.2.2.1) rfl
+  have hchn₁ : ChainsIn (dmM₁ m).heap := chainsIn_plainGrow hg₁ hchn
   have hag₁ : TypeAgree m.heap (dmM₁ m).heap := typeAgree_of_plainGrow hg₁ hsat
   -- the alloc'd object reads back
   have hgetpo : (dmM₁ m).heap.get (m.heap.alloc (dmPobj m)).1 = dmPobj m := by
@@ -316,7 +318,8 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
   rw [hstep]
   show InvJ ans [dmClaim] (withCtl (dmM₂ m) (.value (.sym "shout")))
   refine ⟨NoHook_defineMethod hh₁ hha,
-    Saturated_defineMethod hsat₁ _ _ _, LitClsOk_defineMethod hstr₁,
+    Saturated_defineMethod hsat₁ _ _ _, chainsIn_defineMethod hchn₁,
+    LitClsOk_defineMethod hstr₁,
     ClassOk_defineMethod hcls₁,
     show BottomObj m.frames m.stack from hbot,
     show framePopLabels m.kont = m.stack.dropLast from hks,

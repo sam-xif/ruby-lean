@@ -502,7 +502,7 @@ def jctxs (c : JCtx) (Γs : List (JCtx × Env)) : List FrameCtx :=
     invariant forget the judged type (any value re-closes `KontOkJ.nil` at its
     own type). Safety-only clients instantiate `ans := .any`. -/
 def InvJ (ans : Ty) (A : SemAxioms) (m : Machine) : Prop :=
-  NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
+  NoHook m.heap ∧ Saturated m.heap ∧ ChainsIn m.heap ∧ LitClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     framePopLabels m.kont = m.stack.dropLast ∧
     ClosuresOk m ∧
@@ -522,6 +522,7 @@ theorem inv_evalJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hmf : MFrag A e)
     (hfh : fragHead e = true)
@@ -532,7 +533,7 @@ theorem inv_evalJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx
     (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    Or.inl ⟨hfh, hmf, τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
 
 theorem inv_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
@@ -542,13 +543,14 @@ theorem inv_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCt
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hv : VTy m.heap v τ) (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ m.kont)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withCtl m (.value v)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, Γk, hv, hsuE, hk⟩⟩
 
 theorem inv_pushJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
@@ -559,6 +561,7 @@ theorem inv_pushJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
     (hmf : MFrag A e)
     (hfh : fragHead e = true)
@@ -570,7 +573,7 @@ theorem inv_pushJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx
     (hkc : KontClosure k = none := by simp [KontClosure])
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    Or.inl ⟨hfh, hmf, τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
 
 /-- **Semantic-mode re-establishment (J31)** — the eval arm's `Or.inr`, for a
@@ -582,6 +585,7 @@ theorem inv_evalSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     {cl : SemClaim}
     (hmem : cl ∈ A) (hcle : cl.e = e) (hfh : fragHead e = false)
@@ -595,7 +599,7 @@ theorem inv_evalSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withCtl m (.eval e)) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hfr, τ', Γk, hs', hsuE, hk⟩⟩
 
 /-- Semantic-mode push: a claimed expression becoming `ctl` under a freshly pushed
@@ -607,6 +611,7 @@ theorem inv_pushSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
     {cl : SemClaim}
     (hmem : cl ∈ A) (hcle : cl.e = e) (hfh : fragHead e = false)
@@ -621,7 +626,7 @@ theorem inv_pushSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hkc : KontClosure k = none := by simp [KontClosure])
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withKont m (.eval e) k) :=
-  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+  ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hfr, τ', Γk, hs', hsuE, hk⟩⟩
 
 theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} {c : JCtx} {Γ : Env}
@@ -631,10 +636,14 @@ theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} 
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hchn : ChainsIn m.heap := by assumption)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
     (hv : VTy m'.heap v τ) (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ m.kont)
+    -- J43: `PlainGrow` cannot say the fresh object's fields are bounded, so the
+    -- grown heap's `ChainsIn` arrives from the call site (`chainsIn_alloc`).
+    (hchn' : ChainsIn m'.heap := by assumption)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hgv : m'.globals = m.globals := by rfl)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
@@ -642,7 +651,7 @@ theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} 
     InvJ ans A (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
   refine ⟨NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
+    Saturated_grow hg.shapeAgree hg.size hsat, hchn', LitClsOk_grow hg hstr,
     ClassOk_grow hg hsat hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,

@@ -57,12 +57,17 @@ theorem semAxiomsOk_lam : SemAxiomsOk [lamClaim] := by
   intro cl hcl ans D Γ top c _hreq _hfr
   simp only [List.mem_singleton] at hcl
   subst hcl
-  intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw
-    hsuE hk
+  intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
+    hsubw hsuE hk
   simp only [lamClaim, lamE, evalExpr, startArgs, finishSend, reifyBlock]
-  exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
-    (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
-    (VTy.weaken VTy.any hsubw) hk hgl rfl hsuE hclo
+  exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
+    (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.1) rfl)
+    rfl rfl rfl
+    (VTy.weaken VTy.any hsubw)
+    (hchn' := chainsIn_plainGrow
+      (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.1) rfl)
+      hchn)
+    (hk := hk) (hgl := hgl) (hgv := rfl) (hsuE := hsuE) (hclo := hclo)
 
 /-- `x = 1; lambda { 1 }; x` — the claimed lambda in statement position. -/
 def egSem : Expr := .seq [.vasgn .lvar "x" (.int 1), lamE, .var .lvar "x"]

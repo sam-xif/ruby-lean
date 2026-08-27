@@ -129,7 +129,7 @@ theorem tru_hJudged (A : SemAxioms) (D : Decls) (Γ : Env) (c : JCtx) :
     HJudge A D Γ .tru c HTy.trueClass := by
   refine .wp ?_
   intro m hconf hctl GF _
-  obtain ⟨-, -, -, -, -, hkont, -⟩ := hconf
+  obtain ⟨-, -, -, -, -, -, hkont, -⟩ := hconf
   exact tru_wp hctl hkont
 
 /-- Closed: every terminating run of `true` is a `TrueClass` instance at its

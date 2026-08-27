@@ -1895,9 +1895,10 @@ theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h')
     `Saturated h` — so the direct `typeAgree_of_get` proof this lemma used to have
     cannot be reconstructed from `Array.push` alone. -/
 theorem typeAgree_alloc (h : Heap) (obj : Object) (hsat : Saturated h)
-    (hnc : ∀ c, obj.payload ≠ .cls c) (hiv : obj.ivars = []) :
+    (hnc : ∀ c, obj.payload ≠ .cls c) (hiv : obj.ivars = [])
+    (hkl : obj.klass < h.objs.size) (heig : obj.eigen = none) :
     TypeAgree h ⟨h.objs.push obj⟩ :=
-  typeAgree_of_plainGrow (plainGrow_alloc h obj hnc hiv) hsat
+  typeAgree_of_plainGrow (plainGrow_alloc h obj hnc hiv hkl heig) hsat
 
 /-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
     reads three of `TypeAgree`'s four clauses, which is what L137 threaded the

@@ -219,8 +219,9 @@ theorem inv_continueArray {D D' : Decls} {m : Machine} {c : FrameCtx} {Γ Γ' : 
     obtain ⟨-, rfl, rfl⟩ := hs
     simp only [Interp.continueArray, Builtins.allocArr]
     exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
-      (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
-      (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1 hstr.2.2
+      (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.1.1) rfl)
+      rfl rfl rfl
+      (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1.1 hstr.2.1.2
         (fun _ => ⟨_, rfl⟩)) hsw) hk
   | cons e rest' =>
     -- A head to run, and **which kont it gets is the head's own shape**: a splat element
@@ -314,7 +315,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       simp only [infer, Option.some.injEq, Prod.mk.injEq] at hinf
       obtain ⟨rfl, rfl, rfl⟩ := hinf
       exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
-        (plainGrow_alloc m.heap _ (by simp) rfl)
+        (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.1.1) rfl)
         rfl rfl rfl
         (ValueTy.weaken (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.1.1 hstr.1.2 (by simp)) hsubw) hk
     -- **The symbol literal** (L159). Identical to the four immediate cases above,
@@ -1250,7 +1251,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                   (.lit ps ls body))
                 rw [startArgs_lambda, reifyBlock_eq]
                 exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
-                  (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+                  (plainGrow_alloc m.heap _ (by simp) rfl
+                    (classPayload?_isSome_lt hstr.2.2.1) rfl) rfl rfl rfl
                   (ValueTy.weaken ValueTy.any hsubw) hk
               · exact absurd hinf (by simp)
             | _ => exact absurd hinf (by simp [infer])
@@ -1835,7 +1837,9 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
       have hg : PlainGrow m.heap
           (reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap := by
-        rw [reifyBlock_eq]; exact plainGrow_alloc m.heap _ (by simp) rfl
+        rw [reifyBlock_eq]
+        exact plainGrow_alloc m.heap _ (by simp) rfl
+          (classPayload?_isSome_lt hstr.2.2.1) rfl
       have hag : TypeAgree m.heap
           (reifyBlock { m with kont := k2 } [.req x2] [] body2 false).2.heap :=
         typeAgree_of_plainGrow hg hsat
