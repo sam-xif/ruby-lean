@@ -81,6 +81,11 @@ theorem tableOk_initHeap : TableOk Boot.initHeap :=
    -- fact about the method table, and a table entry does not know its own arity.
    ⟨_, _, rfl, rfl, rfl, rfl, rfl, rfl⟩⟩
 
+/-- J43/W2a: the boot heap has no out-of-bounds chain edges — the probe's
+    measurement, kernel-checked. -/
+theorem chainsIn_initHeap : ChainsIn Boot.initHeap :=
+  chainsInB_sound (by decide)
+
 /-- L195: named, because `tableOk_declsOk` now needs it too — the constant half of
     `DeclsOk baseDecls` is `ClassOk` read out at a `baseConsts` entry. -/
 theorem classOk_initHeap : ClassOk Boot.initHeap :=

@@ -81,6 +81,245 @@ rather than a fact in doubt.
 namespace RubyCore
 namespace Proof
 
+/-! ## 0. `ChainsIn` (J43 / W2a) — no in-bounds object has a chain edge pointing
+out of bounds
+
+The clause this file's header names as *owed* by a class-allocating step, now a
+carried invariant: `ancestors`/`classOf`/`lookup` from an old id must never reach
+a fresh id, and these are the fields those walks read. The `boot` clause carries
+the handful of literal class ids the fragment's producers allocate at, so the
+transport at each `alloc` site has its bound in hand. Decided by `chainsInB` at a
+concrete heap (the probe's "0 out-of-bounds edges", now kernel-checked). -/
+
+structure ChainsIn (h : Heap) : Prop where
+  boot : Boot.classId < h.objs.size ∧ Boot.moduleId < h.objs.size ∧
+         Boot.hashId < h.objs.size ∧ Boot.procId < h.objs.size ∧
+         Boot.objectId < h.objs.size
+  klass : ∀ o, o < h.objs.size → (h.get o).klass < h.objs.size
+  eigen : ∀ o, o < h.objs.size → ∀ e, (h.get o).eigen = some e → e < h.objs.size
+  chain : ∀ o cp, o < h.objs.size → h.classPayload? o = some cp →
+    (∀ s, cp.superclass = some s → s < h.objs.size) ∧
+    (∀ i ∈ cp.includes, i < h.objs.size) ∧
+    (∀ q ∈ cp.prepends, q < h.objs.size)
+
+def chainsInB (h : Heap) : Bool :=
+  decide (Boot.classId < h.objs.size) && decide (Boot.moduleId < h.objs.size) &&
+  decide (Boot.hashId < h.objs.size) && decide (Boot.procId < h.objs.size) &&
+  decide (Boot.objectId < h.objs.size) &&
+  (List.range h.objs.size).all fun o =>
+    decide ((h.get o).klass < h.objs.size) &&
+    (match (h.get o).eigen with
+     | some e => decide (e < h.objs.size)
+     | none => true) &&
+    (match h.classPayload? o with
+     | some cp =>
+       (match cp.superclass with
+        | some s => decide (s < h.objs.size)
+        | none => true) &&
+       cp.includes.all (fun i => decide (i < h.objs.size)) &&
+       cp.prepends.all (fun q => decide (q < h.objs.size))
+     | none => true)
+
+theorem chainsInB_sound {h : Heap} (hb : chainsInB h = true) : ChainsIn h := by
+  unfold chainsInB at hb
+  simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hb
+  obtain ⟨⟨⟨⟨⟨hc, hm⟩, hh⟩, hp⟩, ho⟩, hall⟩ := hb
+  refine ⟨⟨hc, hm, hh, hp, ho⟩, fun o hlt => ?_, fun o hlt e he => ?_,
+    fun o cp hlt hcp => ?_⟩
+  · exact (hall o (List.mem_range.mpr hlt)).1.1
+  · have h2 := (hall o (List.mem_range.mpr hlt)).1.2
+    rw [he] at h2
+    simpa using h2
+  · have h3 := (hall o (List.mem_range.mpr hlt)).2
+    rw [hcp] at h3
+    simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h3
+    refine ⟨fun s hs => ?_, fun i hi => ?_, fun q hq => ?_⟩
+    · have := h3.1.1; rw [hs] at this; simpa using this
+    · have := h3.1.2 i hi; simpa using this
+    · have := h3.2 q hq; simpa using this
+
+/-- Across a push of an object whose own fields are bounded. -/
+theorem chainsIn_push {h : Heap} {obj : Object}
+    (hch : ChainsIn h)
+    (hkl : obj.klass < h.objs.size)
+    (heig : obj.eigen = none)
+    (hcp : ∀ cp, obj.payload = .cls cp →
+      (∀ s, cp.superclass = some s → s < h.objs.size) ∧
+      (∀ i ∈ cp.includes, i < h.objs.size) ∧
+      (∀ q ∈ cp.prepends, q < h.objs.size)) :
+    ChainsIn ⟨h.objs.push obj⟩ := by
+  have hsz : (Heap.mk (h.objs.push obj)).objs.size = h.objs.size + 1 := by simp
+  have hgold : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
+    intro o ho
+    simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
+      if_neg (Nat.ne_of_lt ho)]
+  have hgnew : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+    simp [Heap.get, Array.getD_eq_getD_getElem?]
+  have hsplit : ∀ o, o < h.objs.size + 1 → o < h.objs.size ∨ o = h.objs.size :=
+    fun o hlt => Nat.lt_succ_iff_lt_or_eq.mp hlt
+  obtain ⟨b1, b2, b3, b4, b5⟩ := hch.boot
+  refine ⟨⟨by rw [hsz]; exact Nat.lt_succ_of_lt b1,
+      by rw [hsz]; exact Nat.lt_succ_of_lt b2,
+      by rw [hsz]; exact Nat.lt_succ_of_lt b3,
+      by rw [hsz]; exact Nat.lt_succ_of_lt b4,
+      by rw [hsz]; exact Nat.lt_succ_of_lt b5⟩,
+    fun o hlt => ?_, fun o hlt e he => ?_, fun o cp hlt hcp2 => ?_⟩
+  · rw [hsz] at hlt ⊢
+    rcases hsplit o hlt with hlo | rfl
+    · rw [hgold o hlo]; exact Nat.lt_succ_of_lt (hch.klass o hlo)
+    · rw [hgnew]; exact Nat.lt_succ_of_lt hkl
+  · rw [hsz] at hlt ⊢
+    rcases hsplit o hlt with hlo | rfl
+    · rw [hgold o hlo] at he
+      exact Nat.lt_succ_of_lt (hch.eigen o hlo e he)
+    · rw [hgnew] at he; rw [heig] at he; exact absurd he (by simp)
+  · rw [hsz] at hlt
+    rcases hsplit o hlt with hlo | rfl
+    · have hcp3 : h.classPayload? o = some cp := by
+        unfold Heap.classPayload? at hcp2 ⊢
+        rw [hgold o hlo] at hcp2
+        exact hcp2
+      obtain ⟨h1, h2, h3⟩ := hch.chain o cp hlo hcp3
+      refine ⟨fun sc hs => ?_, fun i hi => ?_, fun q hq => ?_⟩
+      · rw [hsz]; exact Nat.lt_succ_of_lt (h1 sc hs)
+      · rw [hsz]; exact Nat.lt_succ_of_lt (h2 i hi)
+      · rw [hsz]; exact Nat.lt_succ_of_lt (h3 q hq)
+    · unfold Heap.classPayload? at hcp2
+      rw [hgnew] at hcp2
+      cases hpl : obj.payload with
+      | cls c =>
+        rw [hpl] at hcp2
+        simp only [Option.some.injEq] at hcp2
+        subst hcp2
+        obtain ⟨h1, h2, h3⟩ := hcp c hpl
+        refine ⟨fun sc hs => ?_, fun i hi => ?_, fun q hq => ?_⟩
+        · rw [hsz]; exact Nat.lt_succ_of_lt (h1 sc hs)
+        · rw [hsz]; exact Nat.lt_succ_of_lt (h2 i hi)
+        · rw [hsz]; exact Nat.lt_succ_of_lt (h3 q hq)
+      | _ => rw [hpl] at hcp2; exact absurd hcp2 (by simp)
+
+/-- The plain-push instance: a non-class object with no eigenclass. -/
+theorem chainsIn_alloc {h : Heap} {obj : Object}
+    (hch : ChainsIn h) (hkl : obj.klass < h.objs.size) (heig : obj.eigen = none)
+    (hnc : ∀ c, obj.payload ≠ .cls c) :
+    ChainsIn ⟨h.objs.push obj⟩ :=
+  chainsIn_push hch hkl heig (fun cp hcp => absurd hcp (hnc cp))
+
+theorem get_defineMethod_eigen (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (o : ObjId) :
+    ((defineMethod h cls name md).get o).eigen = (h.get o).eigen := by
+  unfold defineMethod
+  cases hc : h.classPayload? cls with
+  | none => rfl
+  | some c =>
+    by_cases ho : o = cls
+    · subst ho
+      by_cases hb : o < h.objs.size
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_self _ _ _ hb]
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_oob _ _ _ hb]
+    · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ ho]
+
+theorem get_defineMethod_klass (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (o : ObjId) :
+    ((defineMethod h cls name md).get o).klass = (h.get o).klass := by
+  unfold defineMethod
+  cases hc : h.classPayload? cls with
+  | none => rfl
+  | some c =>
+    by_cases ho : o = cls
+    · subst ho
+      by_cases hb : o < h.objs.size
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_self _ _ _ hb]
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_oob _ _ _ hb]
+    · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ ho]
+
+/-- Chain-edge equality out of a `clsShape` agreement, at one id. -/
+theorem chainEdges_of_shape {h h' : Heap} {o : ObjId} {cp cp' : ClassPayload}
+    (hsh : (h'.classPayload? o).map clsShape = (h.classPayload? o).map clsShape)
+    (hcp' : h'.classPayload? o = some cp') (hcp : h.classPayload? o = some cp) :
+    cp'.superclass = cp.superclass ∧ cp'.includes = cp.includes ∧
+      cp'.prepends = cp.prepends := by
+  rw [hcp', hcp] at hsh
+  simp only [Option.map_some, Option.some.injEq, clsShape, Prod.mk.injEq] at hsh
+  exact ⟨hsh.2.2, hsh.2.1, hsh.1⟩
+
+theorem chainsIn_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hch : ChainsIn h) : ChainsIn (defineMethod h cls name md) := by
+  have hsz := objs_size_defineMethod h cls name md
+  refine ⟨by rw [hsz]; exact hch.boot, fun o hlt => ?_, fun o hlt e he => ?_,
+    fun o cp hlt hcp => ?_⟩
+  · rw [hsz] at hlt ⊢
+    rw [get_defineMethod_klass]
+    exact hch.klass o hlt
+  · rw [hsz] at hlt ⊢
+    rw [get_defineMethod_eigen] at he
+    exact hch.eigen o hlt e he
+  · rw [hsz] at hlt
+    have hsh := shape_defineMethod h cls o name md
+    have hs0 : (h.classPayload? o).isSome := by
+      have := classPayload?_isSome_defineMethod h cls o name md
+      rw [hcp] at this
+      exact this.symm ▸ (by simp)
+    cases hcp0 : h.classPayload? o with
+    | none => rw [hcp0] at hs0; exact absurd hs0 (by simp)
+    | some cp0 =>
+      obtain ⟨hsup, hinc, hpre⟩ := chainEdges_of_shape hsh hcp hcp0
+      obtain ⟨h1, h2, h3⟩ := hch.chain o cp0 hlt hcp0
+      rw [hsup, hinc, hpre]
+      exact ⟨fun sc hs => by rw [hsz]; exact h1 sc hs,
+        fun i hi => by rw [hsz]; exact h2 i hi,
+        fun q hq => by rw [hsz]; exact h3 q hq⟩
+
+theorem chainsIn_constSetIn {h : Heap} {j : ObjId} {nm : String} {v : Value}
+    (hch : ChainsIn h) : ChainsIn (constSetIn h j nm v) := by
+  have hsz := objs_size_constSetIn h j nm v
+  refine ⟨by rw [hsz]; exact hch.boot, fun o hlt => ?_, fun o hlt e he => ?_,
+    fun o cp hlt hcp => ?_⟩
+  · rw [hsz] at hlt ⊢
+    rw [(get_constSetIn_fields h j nm v o).2.1]
+    exact hch.klass o hlt
+  · rw [hsz] at hlt ⊢
+    rw [(get_constSetIn_fields h j nm v o).2.2.1] at he
+    exact hch.eigen o hlt e he
+  · rw [hsz] at hlt
+    have hsh := shape_constSetIn h j o nm v
+    have hs0 : (h.classPayload? o).isSome := by
+      have := classPayload?_isSome_constSetIn h j o nm v
+      rw [hcp] at this
+      exact this.symm ▸ (by simp)
+    cases hcp0 : h.classPayload? o with
+    | none => rw [hcp0] at hs0; exact absurd hs0 (by simp)
+    | some cp0 =>
+      obtain ⟨hsup, hinc, hpre⟩ := chainEdges_of_shape hsh hcp hcp0
+      obtain ⟨h1, h2, h3⟩ := hch.chain o cp0 hlt hcp0
+      rw [hsup, hinc, hpre]
+      exact ⟨fun sc hs => by rw [hsz]; exact h1 sc hs,
+        fun i hi => by rw [hsz]; exact h2 i hi,
+        fun q hq => by rw [hsz]; exact h3 q hq⟩
+
+theorem chainsIn_ivarOnly {h h' : Heap} (hi : IvarOnly h h') (hch : ChainsIn h) :
+    ChainsIn h' := by
+  refine ⟨by rw [hi.size]; exact hch.boot, fun o hlt => ?_, fun o hlt e he => ?_,
+    fun o cp hlt hcp => ?_⟩
+  · rw [hi.size] at hlt ⊢
+    rw [hi.klass]
+    exact hch.klass o hlt
+  · rw [hi.size] at hlt ⊢
+    rw [hi.eigen] at he
+    exact hch.eigen o hlt e he
+  · rw [hi.size] at hlt
+    rw [hi.classPayload] at hcp
+    obtain ⟨h1, h2, h3⟩ := hch.chain o cp hlt hcp
+    exact ⟨fun sc hs => by rw [hi.size]; exact h1 sc hs,
+      fun i hi2 => by rw [hi.size]; exact h2 i hi2,
+      fun q hq => by rw [hi.size]; exact h3 q hq⟩
+
 /-! ## 1. Saturation, and the fuel monotonicity it buys -/
 
 /-- **The ancestor walk has finished before its fuel runs out.** Stated as "one
