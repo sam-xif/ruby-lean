@@ -1245,7 +1245,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
                 subst hlam
                 simp only [Option.some.injEq, Prod.mk.injEq] at hinf
                 obtain ⟨rfl, rfl, rfl⟩ := hinf
-                simp only [evalExpr]
+                show StepOk (startArgs m m.currentFrame.self .implicit "lambda" [] []
+                  (.lit ps ls body))
                 rw [startArgs_lambda, reifyBlock_eq]
                 exact inv_grow_value hfs htab hsc hhook hsat hstr hcls hbot hks
                   (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl

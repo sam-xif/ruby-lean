@@ -31,6 +31,54 @@ partial def definesMethod : Expr → Bool
   | .block _ _ b => definesMethod b
   | _ => false
 
+
+/-- **Is this body closed over locals?** (L272/J33) — a conservative whitelist:
+    `true` only when no evaluation step of the body (or of any nested param-less,
+    local-less block inside it) can read *or* write a local variable, so the
+    activation's `captured` chain is never consulted and erasing it is
+    unobservable. Anything suspicious — an lvar read/write anywhere (even one a
+    nested binder would shadow), `defined?`, `super`/`zsuper`/`...`-forwarding,
+    definition heads, blocks with params or block-locals — answers `false`, which
+    merely *keeps* the capture (no behaviour change). Fueled per the L73
+    kernel-reduction discipline; `sizeOf` bounds the recursion. -/
+def localFreeB : Nat → Expr → Bool
+  | 0, _ => false
+  | n + 1, e =>
+    match e with
+    | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
+    | .var .lvar _ => false
+    | .var _ _ => true
+    | .vasgn .lvar _ _ => false
+    | .vasgn _ _ rhs => localFreeB n rhs
+    | .const _ => true
+    | .casgn _ rhs => localFreeB n rhs
+    | .seq es => es.all (localFreeB n)
+    | .if' c t e =>
+      localFreeB n c && localFreeB n t &&
+      (match e with | some e' => localFreeB n e' | none => true)
+    | .while' c b => localFreeB n c && localFreeB n b
+    | .dowhile b c => localFreeB n c && localFreeB n b
+    | .send r mname args blk =>
+      -- frame-sensitive callees: `block_given?` &c consult the activation's
+      -- linkage, which the erasure changes (caught by the tier-0 ratchet on
+      -- `test_method_204`) — refuse them, and anything else that reads the
+      -- frame rather than the receiver.
+      !(["block_given?", "binding", "local_variables", "iterator?"].contains mname) &&
+      (match r with | some r' => localFreeB n r' | none => true) &&
+      args.all (localFreeB n) &&
+      (match blk with | some b => localFreeB n b | none => true)
+    | .vcall mname =>
+      !(["block_given?", "binding", "local_variables", "iterator?"].contains mname)
+    | .block ps ls b => ps.isEmpty && ls.isEmpty && localFreeB n b
+    | .blockpass (some b) => localFreeB n b
+    | .blockpass none => false
+    | .array es => es.all (localFreeB n)
+    | .hash prs => prs.all (fun p => localFreeB n p.1 && localFreeB n p.2)
+    | .ret e => (match e with | some e' => localFreeB n e' | none => true)
+    | .brk e => (match e with | some e' => localFreeB n e' | none => true)
+    | .nxt e => (match e with | some e' => localFreeB n e' | none => true)
+    | _ => false
+
 /-- The closure a Proc value carries, if any. -/
 def procClosure? (m : Machine) (v : Value) : Option Closure :=
   match v with
@@ -80,9 +128,21 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
             | some (target, m) =>
               -- constants in the body resolve at the *definition* site [V]
               let cref := (m.frames.getD cl.captured default).cref
+              -- **J33: capture erasure for closed bodies.** A body that can
+              -- never read or write a local (`localFreeB`) never consults the
+              -- chain, so installing it chain-free is unobservable — and it is
+              -- what lets the typing layer's user-conformance (whose heap-only
+              -- vocabulary cannot validate frame pointers, `ResolvesUser`'s
+              -- `capturedFrame = none` clause) cover `define_method`-generated
+              -- methods. Open bodies keep the capture, byte-for-byte as before.
               let md : MethodDef :=
                 { params := cl.params, body := cl.body, owner := target, cref,
-                  capturedFrame := some cl.captured, declared := cl.locals,
+                  capturedFrame :=
+                    -- fuel bounds the *depth*; any body deeper than this keeps
+                    -- its capture (the conservative direction)
+                    if localFreeB 1000000 cl.body then none
+                    else some cl.captured,
+                  declared := cl.locals,
                   fromPrelude := m.preludeMode }
               let m := { m with heap := defineMethod m.heap target name md }
               some (.next (withCtl m (.value (.sym name))))

@@ -204,7 +204,25 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       -- receiver may not — so the site kind is decided here, syntactically [V].
       let site : SendSite := match r with | .self' => .selfRecv | _ => .explicit
       .next (withKont m (.eval r) (.recvK mname args pblk site))
-    | none => startArgs m m.currentFrame.self .implicit mname [] args pblk
+    | none =>
+      -- **J33: `define_method(:name) { … }` composes to one step.** The literal
+      -- symbol's evaluation is pure (no heap effect), so the three-step route
+      -- (push argsK / deliver the symbol / dispatch) and this direct dispatch
+      -- have byte-identical observable behaviour — only the step count differs.
+      -- Composing it is what makes the construct's *semantic-claim obligation*
+      -- provable: the invariant need not cover the intermediate `argsK` state,
+      -- whose `KontOkJ` constructor demands a declared row `define_method`
+      -- cannot have. Scrutinize `pblk` first so block-less sends (the syntactic
+      -- fragment) reduce past this match with `mname`/`args` still symbolic.
+      match pblk with
+      | .lit ps ls body =>
+        match mname, args with
+        | "define_method", [.sym nm] =>
+          finishSend m m.currentFrame.self .implicit "define_method" [.sym nm]
+            (.lit ps ls body)
+        | mname, args =>
+          startArgs m m.currentFrame.self .implicit mname [] args (.lit ps ls body)
+      | pblk => startArgs m m.currentFrame.self .implicit mname [] args pblk
   -- A vcall is an implicit-self, zero-arg, block-less send; only the miss
   -- message differs (L75), and that is carried by the `.vcall` site.
   | .vcall mname => startArgs m m.currentFrame.self .vcall mname [] [] .none
