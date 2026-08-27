@@ -32,19 +32,23 @@ open RubyCore.Proof.Static
 
 set_option maxRecDepth 100000
 
-/-- `StepOk` with the invariant swapped: `.next` carries `InvJ`, `.done` is a halt,
-    `.uncaught` is admitted when the exception is not a type error (progress is
-    exactly this clause), everything else refused. -/
-def StepOkJ : StepResult → Prop
-  | .next m' => InvJ m'
-  | .done _ _ => True
+/-- `StepOk` with the invariant swapped: `.next` carries `InvJ`, `.uncaught` is
+    admitted when the exception is not a type error (progress is exactly this
+    clause), everything else refused. **J29:** the `done` arm is no longer a mere
+    halt — the delivered value inhabits the answer type. This is the single point
+    where the `ans` parameter pays out: it is what `SemJudge`'s result clause and
+    `judge_result_vty` consume, and its bill is one `VTy.weaken` at the
+    `KontOkJ.nil` inversion in `step_okJ`'s delivery branch. -/
+def StepOkJ (ans : Ty) : StepResult → Prop
+  | .next m' => InvJ ans m'
+  | .done v mf => VTy mf.heap v ans
   | .uncaught exc m => ¬ isTypeError m.heap exc
   | _ => False
 
 /-- The eval branch's motive: everything `step_okJ` knows at an eval state, with the
     conclusion over `evalExpr`. Universally quantified over the machine so the
     `Judge.rec` induction can thread it through `sub`. -/
-def EvalOkAt (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : JCtx)
+def EvalOkAt (ans : Ty) (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : JCtx)
     (τ : Ty) (Γ' : Env) (D' : Decls) : Prop :=
   ∀ (m : Machine) (Γs : List (JCtx × Env)) (τw : Ty) (Γk : Env),
     top = Γs.isEmpty →
@@ -58,8 +62,8 @@ def EvalOkAt (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : JCtx)
     ClosuresOk m →
     MFrag e →
     SubJ τ τw → SubEnv Γk Γ' →
-    KontOkJ D' m.heap ((ctx, Γk) :: Γs) τw m.kont →
-    StepOkJ (evalExpr m e)
+    KontOkJ ans D' m.heap ((ctx, Γk) :: Γs) τw m.kont →
+    StepOkJ ans (evalExpr m e)
 
 
 @[simp] theorem jctxs_eq (c : JCtx) (Γs : List (JCtx × Env)) :
@@ -71,7 +75,7 @@ set_option maxHeartbeats 1000000 in
     The dispatch happens *in this step*; the builtin arm ends in
     `inv_grow_valueJ`, the user arm pushes the activation whose body's `Judge`
     derivation `UserConformsJ` carries. -/
-theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env}
+theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env}
     {Γs : List (JCtx × Env)} {c mname : String} {τret : Ty} {site : SendSite}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
     (htab : DeclsOkJ F m.heap)
@@ -82,11 +86,11 @@ theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env
     (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
     (hsg : sigOf F (.cls c) mname = some ([], τret))
     {τw : Ty} (hsubw : SubJ τret τw)
-    (hk : KontOkJ F m.heap ((ctx, Γk) :: Γs) τw m.kont)
+    (hk : KontOkJ ans F m.heap ((ctx, Γk) :: Γs) τw m.kont)
     (hglob : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
-    StepOkJ (startArgs m m.currentFrame.self site mname [] [] .none) := by
+    StepOkJ ans (startArgs m m.currentFrame.self site mname [] [] .none) := by
   have hfs := FramesOkJ.narrowHead hsuE hfs
   have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
     cases hst : m.stack with
@@ -151,7 +155,7 @@ theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env
       · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
         exact StackCtx.push hlt hsc
     · refine ⟨hglob, ?_⟩
-      show CtlOkJ F _ [] ((ctx, Γk) :: Γs) _
+      show CtlOkJ F _ [] ((ctx, Γk) :: Γs) _ _
       exact ⟨hmfb, τb, τw, Γb, F, Γb,
         hbu, hsb.trans hsubw, SubEnv.refl _,
         KontOkJ.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) rfl hk⟩
@@ -161,7 +165,7 @@ theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env
     → allocate; a head to run → push `arrK`. Fragment elements are never splats
     (`MFrag` has no constructor at that shape), so the loop stays on the plain
     branch. -/
-theorem inv_continueArrayJ {D D' : Decls} {m : Machine} {c : JCtx} {Γ Γ' : Env}
+theorem inv_continueArrayJ {ans : Ty} {D D' : Decls} {m : Machine} {c : JCtx} {Γ Γ' : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {τw : Ty} {acc : List Value} {rest : List Expr}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
     (htab : DeclsOkJ D m.heap)
@@ -173,10 +177,10 @@ theorem inv_continueArrayJ {D D' : Decls} {m : Machine} {c : JCtx} {Γ Γ' : Env
     (hm : ∀ e ∈ rest, MFrag e)
     (hje : JudgeElems D Γ rest Γs.isEmpty c Γ' D')
     (hsw : SubJ (.cls "Array") τw)
-    (hk : KontOkJ D' m.heap ((c, Γk) :: Γs) τw m.kont)
+    (hk : KontOkJ ans D' m.heap ((c, Γk) :: Γs) τw m.kont)
     (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
-    StepOkJ (Interp.continueArray m acc rest) := by
+    StepOkJ ans (Interp.continueArray m acc rest) := by
   cases hje with
   | nil =>
     simp only [Interp.continueArray, Builtins.allocArr]
@@ -196,9 +200,9 @@ theorem inv_continueArrayJ {D D' : Decls} {m : Machine} {c : JCtx} {Γ Γ' : Env
 
 set_option maxHeartbeats 2000000 in
 /-- **The eval branch**, by induction over the derivation. -/
-theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
+theorem judge_eval_ok {ans : Ty} {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     {τ : Ty} {Γ' : Env} {D' : Decls} (hj : Judge D Γ e top ctx τ Γ' D') :
-    EvalOkAt D Γ e top ctx τ Γ' D' := by
+    EvalOkAt ans D Γ e top ctx τ Γ' D' := by
   refine Judge.rec
     (motive_1 := fun _ _ _ _ _ _ _ _ _ => True)
     (motive_2 := fun _ _ _ _ _ _ _ _ _ => True)
@@ -210,7 +214,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
     (motive_8 := fun _ _ _ _ _ _ _ => True)
     (motive_9 := fun _ _ _ _ _ _ _ _ => True)
     (motive_10 := fun _ _ _ _ _ _ => True)
-    (motive_11 := fun D Γ e top ctx τ Γ' D' _ => EvalOkAt D Γ e top ctx τ Γ' D')
+    (motive_11 := fun D Γ e top ctx τ Γ' D' _ => EvalOkAt ans D Γ e top ctx τ Γ' D')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
@@ -548,7 +552,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
         TypeAgree m.heap m₀.heap → DeclsOkJ D m₀.heap → NoHook m₀.heap →
         Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
         GlobalsOk D m₀.heap m₀.globals →
-        InvJ (withCtl m₀ (.value (.sym name))) := by
+        InvJ ans (withCtl m₀ (.value (.sym name))) := by
       intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
       refine ⟨hh', hsat', hstr', hcls',
         show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
@@ -567,7 +571,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
       · show StackCtx m₀.heap m₀.frames m₀.stack (jctxs ctx Γs)
         rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
       · show ∃ σ' Γk', VTy m₀.heap (Value.sym name) σ' ∧ SubEnv Γk' Γk ∧
-            KontOkJ D m₀.heap ((ctx, Γk') :: Γs) σ' m₀.kont
+            KontOkJ ans D m₀.heap ((ctx, Γk') :: Γs) σ' m₀.kont
         exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
           by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
     simp only [evalExpr, hdm]
@@ -614,7 +618,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
         NoHook m₀.heap → Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
         GlobalsOk (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
           m₀.globals →
-        InvJ (withCtl m₀ (.value (.sym name))) := by
+        InvJ ans (withCtl m₀ (.value (.sym name))) := by
       intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
       refine ⟨hh', hsat', hstr', hcls',
         show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
@@ -634,7 +638,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
       · show StackCtx m₀.heap m₀.frames m₀.stack (jctxs ctx Γs)
         rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
       · show ∃ σ' Γk', VTy m₀.heap (Value.sym name) σ' ∧ SubEnv Γk' Γk ∧
-            KontOkJ (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
+            KontOkJ ans (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
               ((ctx, Γk') :: Γs) σ' m₀.kont
         exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
           by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
@@ -892,7 +896,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
      cases hmf)
 
 /-- **Progress and preservation in one case analysis** — `step_ok`, over `InvJ`. -/
-theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
+theorem step_okJ {ans : Ty} {m : Machine} (h : InvJ ans m) : StepOkJ ans (stepFn m) := by
   obtain ⟨hh, hsat, hstr, hcls, hbot, hks, hclo, F, ctx, Γ, Γs, htab, hfs, hsc, hgl, hc⟩ := h
   have hcloTail : ∀ {κ₀ : Kont} {k' : List Kont}, m.kont = κ₀ :: k' →
       ClosuresOk { m with kont := k' } := fun hkq =>
@@ -914,7 +918,7 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
     unfold applyKont
     generalize hK : m.kont = K at hk hks ⊢
     cases hk with
-    | nil => trivial
+    | nil hsub _ _ => exact VTy.weaken hv hsub
     | @seqNil _ _ _ _ _ _ τw k _ hsw hk' hsu =>
       exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot
         (by simpa [framePopLabels] using hks)
@@ -1172,7 +1176,7 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
           · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
             exact StackCtx.push hlt hsc
         · refine ⟨hgl, ?_⟩
-          show CtlOkJ _ _ [] ((ctx, Γj) :: Γs) _
+          show CtlOkJ _ _ [] ((ctx, Γj) :: Γs) _ _
           exact ⟨hmfb, τb, τw, Γb, _, Γb,
             hbu, hsb.trans hsw, SubEnv.refl _,
             KontOkJ.frameK (fun σ hσ => by rw [hag σ (by simpa using hσ)]; exact hsw)
@@ -1266,7 +1270,7 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
       have hltO : o < m.heap.objs.size := by
         unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
         simpa using hpl.1.1.1.1.1
-      show StepOkJ (match m.currentFrame.self with
+      show StepOkJ ans (match m.currentFrame.self with
         | .ref o' =>
           if (m.heap.get o').frozen then _ else
             .next (withCtl (bindIvar { m with kont := k } x v) (.value v))
@@ -1371,7 +1375,7 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
                     = k from hkt]
              exact KontOkJ.heap_congr hag hk'⟩
     | @asgnGvar _ _ _ _ _ _ τw x σ k _ hpg hgt hcf hsw hk' hsu =>
-      show StepOkJ (.next (Interp.withCtl (({ m with kont := k }).setGlobal x v) (.value v)))
+      show StepOkJ ans (.next (Interp.withCtl (({ m with kont := k }).setGlobal x v) (.value v)))
       rw [setGlobal_of_plain (m := { m with kont := k }) hpg]
       simp only [Interp.withCtl]
       refine ⟨hh, hsat, hstr, hcls, hbot, (by simpa [framePopLabels] using hks),

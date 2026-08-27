@@ -29,16 +29,16 @@ open RubyCore.Proof.Static
 
 set_option maxRecDepth 100000
 
-/-- Preservation, in `invariant_sound_from`'s shape. -/
-theorem consecutionJ (m m' : Machine) (h : InvJ m) (hs : SmallStep m m') :
-    InvJ m' := by
+/-- Preservation, in `invariant_sound_from`'s shape — at every answer type (J29). -/
+theorem consecutionJ {ans : Ty} (m m' : Machine) (h : InvJ ans m) (hs : SmallStep m m') :
+    InvJ ans m' := by
   have hok := step_okJ h
   unfold SmallStep at hs
   rw [hs] at hok
   exact hok
 
 /-- Progress: a machine satisfying `InvJ` is never one step from a type error. -/
-theorem safetyJ (m : Machine) (h : InvJ m) : ¬ aboutToTypeStick m := by
+theorem safetyJ {ans : Ty} (m : Machine) (h : InvJ ans m) : ¬ aboutToTypeStick m := by
   intro hbad
   have hok := step_okJ h
   unfold aboutToTypeStick typeStuck at hbad
@@ -58,7 +58,7 @@ def topJCtx : JCtx := { cls := "Object" }
 theorem initiationJ {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
     (hD : DeclsOkJ F Boot.initHeap)
     (hmf : MFrag p)
-    (hj : Judge F [] p true topJCtx τ Γ' D') : InvJ (Machine.init p) := by
+    (hj : Judge F [] p true topJCtx τ Γ' D') : InvJ τ (Machine.init p) := by
   refine ⟨
     (show NoHook (Machine.init p).heap from
       noHookB_sound (by decide : noHookB Boot.initHeap = true)),
@@ -92,9 +92,9 @@ theorem initiationJ {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
     · exact fun sc hsc => absurd hsc (by simp [topJCtx, jctxs])
     · simp [Machine.init, Machine.initOn, Array.getD]
   · refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
-    show CtlOkJ F topJCtx [] [] (Machine.init p)
+    show CtlOkJ F topJCtx [] [] τ (Machine.init p)
     exact ⟨hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ',
-      KontOkJ.nil (by simp [topJCtx]) (by simp [topJCtx])⟩
+      KontOkJ.nil (SubJ.refl τ) (by simp [topJCtx]) (by simp [topJCtx])⟩
 
 /-- **The composed theorem** — a derivation is a type-safety certificate. Note
     what the statement does not mention: `infer`, `chk`, or any checker at all;
@@ -104,7 +104,7 @@ theorem judge_sound {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
     (hmf : MFrag p)
     (hj : Judge F [] p true topJCtx τ Γ' D') :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
-  invariant_sound_from InvJ (initiationJ hD hmf hj) consecutionJ safetyJ
+  invariant_sound_from (InvJ τ) (initiationJ hD hmf hj) consecutionJ safetyJ
 
 /-! ## The boot table's J-witness
 

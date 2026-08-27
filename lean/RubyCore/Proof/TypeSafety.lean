@@ -152,6 +152,23 @@ theorem invariant_sound_from {m₀ : Machine} (I : Machine → Prop)
   have hIm : I m := invariant_reaches cons init hr
   exact safe m hIm (by unfold aboutToTypeStick; rw [hstep]; exact hts)
 
+/-- **Every reachable result satisfies whatever the invariant forces of a single
+    step** (L271) — `invariant_sound_from` generalized from `¬ typeStuck` to an
+    arbitrary result predicate `P`. A reachable result *is* `stepFn m` at some
+    invariant-satisfying `m`, so `P` needs establishing only there. This is the
+    composition point for conclusions beyond safety: the J29 answer-typed
+    `StepOkJ` puts `VTy mf.heap v ans` in its `done` arm, and this lemma is what
+    carries that to every reachable `done` outcome (`SemJudge`'s result clause,
+    `judge_result_vty`). -/
+theorem invariant_result_sound {m₀ : Machine} (I : Machine → Prop)
+    (init : I m₀)
+    (cons : ∀ m m', I m → SmallStep m m' → I m')
+    {P : StepResult → Prop} (hstep : ∀ m, I m → P (stepFn m)) :
+    ∀ r, ReachableResult m₀ r → P r := by
+  rintro r ⟨m, hr, hs⟩
+  have := hstep m (invariant_reaches cons init hr)
+  rwa [hs] at this
+
 /-- `invariant_sound` from the program's initial config — the special case of
     `invariant_sound_from` at `m₀ = Machine.init program`. -/
 theorem invariant_sound {program : Expr} (I : Machine → Prop)

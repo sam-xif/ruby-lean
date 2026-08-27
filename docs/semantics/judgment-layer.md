@@ -22,6 +22,16 @@
 >   `class_hierarchy` shape: reopen, promoted row, user dispatch), and `egNarrow`
 >   (**the DRuby guard-discrimination shape, through the narrowing rules** — §1.4's
 >   flagship, machine-typed by the J27 stored-atom construction).
+> * **The semantic judgment (J29/J30, 2026-08-27)** — `SemJudge D Γ e c τ`
+>   (`Proof/Judgment/Sem.lean`), defined by **reachability alone** (no `Judge`, no
+>   `MFrag`, no checker in the definiens), with `judge_semJudge` as the
+>   **fundamental lemma** (adequacy of the syntactic `Judge`), `semJudge_sound`
+>   composing type safety through it, and `judge_result_vty` — terminating values
+>   inhabit the judged type — bought by J29's answer-typed `KontOkJ`/`InvJ` for
+>   the price of one `VTy.weaken`. §1.5's "reachability is already the semantic
+>   ground truth" is now a definition rather than a remark, and `SemJudge` is the
+>   layer's **extension point**: out-of-fragment constructs (the Rails direction)
+>   are admitted by proving their `SemJudge` statement directly.
 >
 > The machine-typed fragment (`MFrag`, the eval arm's syntactic gate playing the
 > role `infer`'s partiality played): T1 control core, block-less sends at any
@@ -162,6 +172,17 @@ semantic ground truth** (`type-safety-by-reachability.md` §1), and `invariant_s
 already plays the fundamental lemma's role at the machine level, more cheaply. Do not
 buy step-indexing to answer a question reachability already answers. Recorded so a
 future session doesn't re-derive the option and mistake it for missing.
+
+**Update (J29/J30, 2026-08-27): the first-order rendition of this section is now
+built.** `SemJudge D Γ e c τ` (`Proof/Judgment/Sem.lean`) *is* the unary relation,
+with the step index replaced by reachability — no `▷`, no worlds, first-order and
+`Judge`-free in its definiens — and `judge_semJudge` is its fundamental lemma. What
+stays deliberately unbought is exactly the *step-indexed, behavioral* version:
+`SemJudge`'s value clause is `VTy` (a class tag below `SubJ`), never a behavior set,
+so the flip conditions below are unchanged. The division of roles is now: `Judge` is
+the proof theory, `SemJudge` the meaning, machine typing (`InvJ`) the mechanism —
+and rule-free extension (prove `SemJudge` directly for a construct the fragment
+cannot check) is a stated capability rather than a plan.
 
 **The RustBelt/Iris comparison, pressure-tested (2026-08-26).** The obvious prior art
 for "a semantic type system" is RustBelt (⟦τ⟧ as an Iris predicate; fundamental
@@ -385,7 +406,8 @@ Sized like the C-ladder: each rung is a commit series with a measurable exit.
 (`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
 arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
-(J18–J27).
+(J18–J30; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
+typing — the semantic-judgment rung, with the extension pilot named as J31).
 
 * **J0 — author the judgment.** `Judge`/`KJudge`/`MachineTyped` in Lean, transcribing
   `type-judgments.md` §6–§8 for the T1 control core, **with subsumption and narrowing

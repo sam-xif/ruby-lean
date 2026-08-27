@@ -13586,3 +13586,17 @@ family), two arms per site.
 probe and pass), `lake build Metatheory`, `lake build Judgment`,
 `check-proofs.sh` axiom-clean, tier-0 `--sut lean` unmoved (992 / 0) — nothing on
 the checker path constructs either arm.
+
+## L271 — `invariant_result_sound`: reachable results inherit what the invariant forces of a step
+
+`invariant_sound_from` generalized from `¬ typeStuck` to an arbitrary result
+predicate: if `I` holds initially and is preserved, and every `I`-state's
+`stepFn m` satisfies `P`, then every `ReachableResult` satisfies `P` — because a
+reachable result *is* `stepFn m` at some reachable (hence `I`-satisfying) `m`.
+Four lines; sits next to `invariant_sound_from` in `Proof/TypeSafety.lean`.
+
+The consumer is the judgment layer's J29/J30: the answer-typed `StepOkJ` puts
+`VTy mf.heap v ans` in its `done` arm, and this lemma carries that to every
+reachable `done` outcome — `SemJudge`'s result clause and `judge_result_vty`.
+Nothing before J29 could use it (the pre-J29 `done` arm was `True`), which is why
+it did not exist.

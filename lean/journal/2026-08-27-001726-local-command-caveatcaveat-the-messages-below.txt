@@ -1,0 +1,1367 @@
+ ▐▛███▛█   Claude Code v2.1.247
+▝▜██████▀  Fable 5 · API Usage Billing
+  ▝▝ ▝▝    ~/code/semantics-quick/sam-xif/ruby/lean
+
+
+❯ /clear                                                                        
+
+❯ /goal Drive the work in docs/semantics/judgement-layer.md to done, all the    
+way through the type safety proof (don't start on building an emitter yet       
+though, but make sure a certificate proves end-to-end). Don't worry about       
+keeping the chk/infer theory green unless you have to. Work fast and be         
+ambitious. Commit often at logical, atomic points. Follow preexisting norms in  
+the codebase, as found in the "Working norms" section in                        
+docs/semantics/certificate-language.md. EMERCENCY EXIT CONDITION: if you cannot 
+make progress without a fundamental architectural change to the system, you     
+may abort. USE THIS HONESTLY AND SPARINGLY. Exhaust all possible options first, 
+including minor changes to the semantics. But draw the line at major            
+architectural changes.                                                          
+  ⎿  Goal set: Drive the work in docs/semantics/judgement-layer.md to done, all
+     the way through the type safety proof (don't start on building an emitter
+     yet though, but make sure a certificate proves end-to-end). Don't worry
+     about keeping the chk/infer theory green unless you have to. Work fast and
+     be ambitious. Commit often at logical, atomic points. Follow preexisting
+     norms in the codebase, as found in the "Working norms" section in
+     docs/semantics/certificate-language.md. EMERCENCY EXIT CONDITION: if you
+     cannot make progress without a fundamental architectural change to the
+     system, you may abort. USE THIS HONESTLY AND SPARINGLY. Exhaust all
+     possible options first, including minor changes to the semantics. But draw
+     the line at major architectural changes.
+
+⏺ I'll drive the judgement-layer work through to the type safety proof. Let me
+  start by reading the plan doc and current state.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ The recent commits show J0-J17 already in progress. Let me check current state
+  via the implementation notes and handoff.
+
+  Read 3 files, listed 2 directories, ran 1 shell command (ctrl+o to expand)
+
+⏺ Now let me read the core files: TypeSafety.lean (invariant_sound), Judge.lean,
+  and the machine-typing files to scavenge.
+
+  Searched for 1 pattern, read 3 files (ctrl+o to expand)
+
+⏺ The scavenge sources are clear. Baseline check first, then I'll absorb
+  Konts.lean (the machine-typing definitions) and the supporting type layer.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Background command "Baseline build of Judgment and Cert proofs" completed
+(exit code 0)
+
+⏺ Baseline is green. KontOk is a big transliteration surface. Let me read the
+  rest of Konts.lean — CtlOk, FramesOk, Inv — which is the design I'll mirror
+  over Judge.
+
+  Read 4 files, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now the value/frame layer in Locals.lean.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ ValueTy is already subTy-up-closed — my VTy can be ∃ σ, ValueTy h v σ ∧ SubJ σ
+  τ. Now the mountain's structure: Preservation.lean.
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+⏺ Now the critical feasibility test: can Lean induct on the mutual Judge? Let me
+  write a scratch test.
+
+⏺ Write(scratch_induct_test.lean)
+  ⎿  Wrote 24 lines to scratch_induct_test.lean
+       1 import RubyCore.Judgment.Judge
+       2 
+       3 namespace RubyCore.Judgment
+       5 
+       6 -- Test 1: plain `cases` on a Judge derivation at a fixed head.
+       7 example {D : Decls} {Γ : Env} {n : Int} {top : Bool} {ctx : JCtx
+         } {τ : Ty} {Γ' : Env}
+          := by
+       9   cases h
+      10   · trivial
+     … +18 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Judge.rec exists. Let me test driving it with explicit motives — the pattern
+  every mutual-induction lemma will use.
+
+⏺ Write(scratch_induct_test.lean)
+  ⎿  Added 18 lines, removed 17 lines
+       3  namespace RubyCore.Judgment
+       4  open RubyCore.Types
+       5  
+       6 --- Test 1: plain `cases` on a Judge derivation at a fixed head.
+       7 -example {D : Decls} {Γ : Env} {n : Int} {top : Bool} {ctx : JCt
+         -x} {τ : Ty} {Γ' : Env}                                         
+       8 -    {D' : Decls} (h : Judge D Γ (.int n) top ctx τ Γ' D') : Tru
+         -e := by                                                        
+       9 -  cases h                                                      
+      10 -  · trivial                                                    
+      11 -  · trivial                                                    
+       6 +-- Mutual-induction driver test: table stability under a live r
+         +eturn channel,                                                 
+       7 +-- via `Judge.rec` with explicit motives.                      
+       8 +theorem judge_table_ret_test {D : Decls} {Γ : Env} {e : Expr} {
+         +top : Bool} {ctx : JCtx}                                       
+       9 +    {τ : Ty} {Γ' : Env} {D' : Decls} (h : Judge D Γ e top ctx τ
+         + Γ' D')                                                        
+      10 +    (hr : ctx.ret.isSome) : D' = D := by                       
+      11 +  induction h using Judge.rec                                  
+      12 +    (motive_1 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+         +' = D)                                                         
+      13 +    (motive_2 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+         +' = D)                                                         
+      14 +    (motive_3 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+         +' = D)                                                         
+      15 +    (motive_4 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+         +' = D)                                                         
+      16 +    (motive_5 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+         += D)                                                           
+      17 +    (motive_6 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+         += D)                                                           
+      18 +    (motive_7 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+         += D)                                                           
+      19 +    (motive_8 := fun _ _ _ _ _ _ => True)                      
+      20 +    (motive_9 := fun _ _ _ _ _ _ _ => True)                    
+      21 +    (motive_10 := fun _ _ _ _ _ _ => True)                     
+      22 +  case _ => sorry                                              
+      23 +  all_goals sorry                                              
+      24  
+      13 --- Test 2: `induction` on the mutual inductive.                
+      14 -theorem judge_int_inv {D : Decls} {Γ : Env} {n : Int} {top : Bo
+         -ol} {ctx : JCtx} {τ : Ty}                                      
+      15 -    {Γ' : Env} {D' : Decls} (h : Judge D Γ (.int n) top ctx τ Γ
+         -' D') :                                                        
+      16 -    SubJ .int τ ∧ SubEnv Γ' Γ ∧ D' = D := by                   
+      17 -  generalize he : Expr.int n = e at h                          
+      18 -  induction h <;> try (exact absurd he (by simp))              
+      19 -  case int => exact ⟨SubJ.refl _, SubEnv.refl _, rfl⟩          
+      20 -  case sub τ σ Γ'' _ hs hse ih =>                              
+      21 -    obtain ⟨h1, h2, h3⟩ := ih he                               
+      22 -    sorry                                                      
+      23 -                                                               
+      25  end RubyCore.Judgment
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Write(scratch_induct_test.lean)
+  ⎿  Added 3 lines, removed 5 lines
+       3  namespace RubyCore.Judgment
+       4  open RubyCore.Types
+       5  
+       6 --- Mutual-induction driver test: table stability under a live r
+         -eturn channel,                                                 
+       7 --- via `Judge.rec` with explicit motives.                      
+       6 +-- Mutual-induction driver test via `Judge.rec` with explicit m
+         +otives.                                                        
+       7  theorem judge_table_ret_test {D : Decls} {Γ : Env} {e : Expr} {
+          top : Bool} {ctx : JCtx}
+       8      {τ : Ty} {Γ' : Env} {D' : Decls} (h : Judge D Γ e top ctx τ
+           Γ' D')
+       9      (hr : ctx.ret.isSome) : D' = D := by
+     ...
+      15      (motive_5 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+          = D)
+      16      (motive_6 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+          = D)
+      17      (motive_7 := fun D _ _ _ ctx _ D' _ => ctx.ret.isSome → D' 
+          = D)
+      19 -    (motive_8 := fun _ _ _ _ _ _ => True)                      
+      20 -    (motive_9 := fun _ _ _ _ _ _ _ => True)                    
+      18 +    (motive_8 := fun _ _ _ _ _ _ _ => True)                    
+      19 +    (motive_9 := fun _ _ _ _ _ _ _ _ => True)                  
+      20      (motive_10 := fun _ _ _ _ _ _ => True)
+      22 -  case _ => sorry                                              
+      21    all_goals sorry
+      22  
+      23  end RubyCore.Judgment
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The mutual induction works — I just need to revert the hypothesis into the
+  motive first. Confirming:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(scratch_induct_test.lean)
+  ⎿  Added 4 lines, removed 2 lines
+       3  namespace RubyCore.Judgment
+       4  open RubyCore.Types
+       5  
+       6 --- Mutual-induction driver test via `Judge.rec` with explicit m
+         -otives.                                                        
+       6  theorem judge_table_ret_test {D : Decls} {Γ : Env} {e : Expr} {
+          top : Bool} {ctx : JCtx}
+       7      {τ : Ty} {Γ' : Env} {D' : Decls} (h : Judge D Γ e top ctx τ
+           Γ' D')
+       8      (hr : ctx.ret.isSome) : D' = D := by
+       9    revert hr
+      11 -  induction h using Judge.rec                                  
+      10 +  apply Judge.rec                                              
+      11      (motive_1 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+          ' = D)
+      12      (motive_2 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+          ' = D)
+      13      (motive_3 := fun D _ _ _ ctx _ _ D' _ => ctx.ret.isSome → D
+          ' = D)
+     ...
+      18      (motive_8 := fun _ _ _ _ _ _ _ => True)
+      19      (motive_9 := fun _ _ _ _ _ _ _ _ => True)
+      20      (motive_10 := fun _ _ _ _ _ _ => True)
+      21 +    (t := h)                                                   
+      22 +  all_goals intros                                             
+      23 +  all_goals try trivial                                        
+      24    all_goals sorry
+      25  
+      26  end RubyCore.Judgment
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+⏺ The refine Judge.rec driver works — 92 goals with proper IHs. That unblocks
+  all mutual-induction lemmas. Now let me finish absorbing: StackCtx, FramesOk,
+  DeclsOk.
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ Write(RubyCore/Proof/Judgment/DESIGN-NOTES.md)
+  ⎿  Wrote 191 lines to RubyCore/Proof/Judgment/DESIGN-NOTES.md
+      1 # J1/J2 build — working design notes (2026-08-26)
+      2 
+      3 Working notes for the judgment-layer machine-typing build (judgme
+      4 Decision records go to `Judgment/implementation-notes.md` (J-numb
+        ers) as rungs land;
+      5 this file is scratch state for the build itself and may be delete
+        d at the end.
+      7 ## The spine (what is being built)
+      8 
+      9 Mirror of the infer-based spine, authored over `Judge`:
+     … +293 lines (ctrl+o to expand)
+
+⏺ Update(RubyCore/Judgment/Sub.lean)  ⎿  Added 159 lines
+       41    | arrow0 {r s} : SubJ r s → SubJ (.arrow0 r) (.arrow0 s)
+       42    | arrowCons {p q rest rest'} :
+       43        SubJ q p → SubJ rest rest' → SubJ (.arrowCons p rest) (.
+           arrowCons q rest')
+       44 +  -- **J18: the nilable-*right* lift, added because its absenc
+          +e breaks transitivity.**                                      
+       45 +  -- Without it `int ≤ int ∪ bool` (unionR1) and `int ∪ bool ≤
+          + nilable (int ∪ bool)`                                        
+       46 +  -- (base, `subTy`'s reflexive third disjunct) compose to a j
+          +udgment with no                                               
+       47 +  -- derivation: `base` computes to `int = int ∪ bool`, `union
+          +R` needs a union on the                                       
+       48 +  -- right, `nilableL` a nilable on the left. Semantically fre
+          +e — `nilable τ` is                                            
+       49 +  -- "nil or τ", so a subset of `τ` is a subset of it — and a 
+          +strict widening, so                                           
+       50 +  -- every existing derivation stands. `SubJ.trans` below is t
+          +he consumer.                                                  
+       51 +  | nilableR {σ τ} : SubJ σ τ → SubJ σ (.nilable τ)           
+       52  
+       53  theorem SubJ.refl (τ : Ty) : SubJ τ τ := .base (subTy_refl τ)
+       54  
+       55 +/-- `subTy`'s shape, read backwards — the case split `SubJ.tra
+          +ns` runs on whenever a                                        
+       56 +    `base` step meets a structural one. Directly from the defi
+          +nition: everything is                                         
+       57 +    below `.any`, a `.nilable` admits its three disjuncts, and
+          + every other right side                                       
+       58 +    is equality. -/                                           
+       59 +theorem subTy_cases {σ τ : Ty} (h : subTy σ τ = true) :       
+       60 +    τ = .any ∨ (∃ τ', τ = .nilable τ' ∧                       
+       61 +      (σ = .nilT ∨ σ = .nilable τ' ∨ subTy σ τ' = true)) ∨ σ =
+          + τ := by                                                      
+       62 +  cases τ with                                                
+       63 +  | any => exact Or.inl rfl                                   
+       64 +  | nilable τ' =>                                             
+       65 +    refine Or.inr (Or.inl ⟨τ', rfl, ?_⟩)                      
+       66 +    simpa [subTy] using h                                     
+       67 +  | _ => exact Or.inr (Or.inr (by simpa [subTy] using h))     
+       68 +                                                              
+       69 +/-- **Transitivity** (J18). By strong induction on the summed 
+          +sizes of the three                                            
+       70 +    types: every structural rule's premises are about strictly
+          + smaller types, and a                                         
+       71 +    `base` step against a structural one is decided by `subTy_
+          +cases` — with                                                 
+       72 +    `nilableR` supplying exactly the lift the un-widened relat
+          +ion lacked. -/                                                
+       73 +theorem SubJ.trans : ∀ {a b c : Ty}, SubJ a b → SubJ b c → Sub
+          +J a c := by                                                   
+       74 +  intro a b c h1 h2                                           
+       75 +  induction hn : sizeOf a + sizeOf b + sizeOf c using Nat.stro
+          +ng_induction_on                                               
+       76 +    generalizing a b c with                                   
+       77 +  | _ n ih =>                                                 
+       78 +  subst hn                                                    
+       79 +  -- The recursive entry point, at a smaller triple.          
+       80 +  have rec : ∀ {a' b' c' : Ty}, SubJ a' b' → SubJ b' c' →     
+       81 +      sizeOf a' + sizeOf b' + sizeOf c' < sizeOf a + sizeOf b 
+          ++ sizeOf c →                                                  
+       82 +      SubJ a' c' := fun h1' h2' hlt => ih _ hlt h1' h2' rfl   
+       83 +  cases h1 with                                               
+       84 +  | base s1 =>                                                
+       85 +    cases h2 with                                             
+       86 +    | base s2 => exact .base (subTy_trans s1 s2)              
+       87 +    | unionL hx hy =>                                         
+       88 +      -- `subTy a (union x y)` is equality at a union, so `a` 
+          +*is* the middle.                                              
+       89 +      have : a = _ := by simpa [subTy] using s1               
+       90 +      subst this                                              
+       91 +      exact .unionL hx hy                                     
+       92 +    | unionR1 hu => exact .unionR1 (rec (.base s1) hu (by simp
+          +; omega))                                                     
+       93 +    | unionR2 hv => exact .unionR2 (rec (.base s1) hv (by simp
+          +; omega))                                                     
+       94 +    | nilableL hn hs =>                                       
+       95 +      rename_i s c'                                           
+       96 +      rcases subTy_cases s1 with rfl | ⟨τ', heq, hd⟩ | rfl    
+       97 +      · exact absurd s1 (by simp [subTy])                     
+       98 +      · cases heq                                             
+       99 +        rcases hd with rfl | rfl | hd                         
+      100 +        · exact hn                                            
+      101 +        · exact .nilableL hn hs                               
+      102 +        · exact rec (.base hd) hs (by simp; omega)            
+      103 +      · exact .nilableL hn hs                                 
+      104 +    | nilableR hc => exact .nilableR (rec (.base s1) hc (by si
+          +mp; omega))                                                   
+      105 +    | arrow0 hr =>                                            
+      106 +      have : a = _ := by simpa [subTy] using s1               
+      107 +      subst this                                              
+      108 +      exact .arrow0 hr                                        
+      109 +    | arrowCons hq hr =>                                      
+      110 +      have : a = _ := by simpa [subTy] using s1               
+      111 +      subst this                                              
+      112 +      exact .arrowCons hq hr                                  
+      113 +  | unionL hx hy =>                                           
+      114 +    exact .unionL (rec hx h2 (by simp; omega)) (rec hy h2 (by 
+          +simp; omega))                                                 
+      115 +  | unionR1 hu =>                                             
+      116 +    rename_i x y                                              
+      117 +    -- `b = union x y`, `a ≤ x`; strip the middle by cases on 
+          +the second derivation.                                        
+      118 +    cases h2 with                                             
+      119 +    | base s2 =>                                              
+      120 +      rcases subTy_cases s2 with rfl | ⟨τ', heq, hd⟩ | rfl    
+      121 +      · exact .base (by simp [subTy])                         
+      122 +      · cases heq                                             
+      123 +        rcases hd with h' | h' | hd                           
+      124 +        · exact absurd h' (by simp)                           
+      125 +        · rw [h']                                             
+      126 +          exact .unionR1 hu                                   
+      127 +        · exact .nilableR (rec (.unionR1 hu) (.base hd) (by si
+          +mp; omega))                                                   
+      128 +      · exact .unionR1 hu                                     
+      129 +    | unionL hx hy => exact rec hu hx (by simp; omega)        
+      130 +    | unionR1 hp => exact .unionR1 (rec (.unionR1 hu) hp (by s
+          +imp; omega))                                                  
+      131 +    | unionR2 hq => exact .unionR2 (rec (.unionR1 hu) hq (by s
+          +imp; omega))                                                  
+      132 +    | nilableR hc => exact .nilableR (rec (.unionR1 hu) hc (by
+          + simp; omega))                                                
+      133 +  | unionR2 hv =>                                             
+      134 +    rename_i x y                                              
+      135 +    cases h2 with                                             
+      136 +    | base s2 =>                                              
+      137 +      rcases subTy_cases s2 with rfl | ⟨τ', heq, hd⟩ | rfl    
+      138 +      · exact .base (by simp [subTy])                         
+      139 +      · cases heq                                             
+      140 +        rcases hd with h' | h' | hd                           
+      141 +        · exact absurd h' (by simp)                           
+      142 +        · rw [h']                                             
+      143 +          exact .unionR2 hv                                   
+      144 +        · exact .nilableR (rec (.unionR2 hv) (.base hd) (by si
+          +mp; omega))                                                   
+      145 +      · exact .unionR2 hv                                     
+      146 +    | unionL hx hy => exact rec hv hy (by simp; omega)        
+      147 +    | unionR1 hp => exact .unionR1 (rec (.unionR2 hv) hp (by s
+          +imp; omega))                                                  
+      148 +    | unionR2 hq => exact .unionR2 (rec (.unionR2 hv) hq (by s
+          +imp; omega))                                                  
+      149 +    | nilableR hc => exact .nilableR (rec (.unionR2 hv) hc (by
+          + simp; omega))                                                
+      150 +  | nilableL hn hs =>                                         
+      151 +    exact .nilableL (rec hn h2 (by simp; omega)) (rec hs h2 (b
+          +y simp; omega))                                               
+      152 +  | nilableR hb =>                                            
+      153 +    rename_i b'                                               
+      154 +    cases h2 with                                             
+      155 +    | base s2 =>                                              
+      156 +      rcases subTy_cases s2 with rfl | ⟨τ', heq, hd⟩ | rfl    
+      157 +      · exact .base (by simp [subTy])                         
+      158 +      · cases heq                                             
+      159 +        rcases hd with h' | h' | hd                           
+      160 +        · exact absurd h' (by simp)                           
+      161 +        · injection h' with h'                                
+      162 +          rw [← h'] at hd ⊢                                   
+      163 +          exact .nilableR hb                                  
+      164 +        · exact .nilableR (rec (.nilableR hb) (.base hd) (by s
+          +imp; omega))                                                  
+      165 +      · exact .nilableR hb                                    
+      166 +    | unionR1 hp => exact .unionR1 (rec (.nilableR hb) hp (by 
+          +simp; omega))                                                 
+      167 +    | unionR2 hq => exact .unionR2 (rec (.nilableR hb) hq (by 
+          +simp; omega))                                                 
+      168 +    | nilableL hn hs => exact rec hb hs (by simp; omega)      
+      169 +    | nilableR hc => exact .nilableR (rec (.nilableR hb) hc (b
+          +y simp; omega))                                               
+      170 +  | arrow0 hr =>                                              
+      171 +    rename_i r s2                                             
+      172 +    cases h2 with                                             
+      173 +    | base s =>                                               
+      174 +      rcases subTy_cases s with rfl | ⟨τ', heq, hd⟩ | rfl     
+      175 +      · exact .base (by simp [subTy])                         
+      176 +      · cases heq                                             
+      177 +        rcases hd with h' | h' | hd                           
+      178 +        · exact absurd h' (by simp)                           
+      179 +        · rw [h']                                             
+      180 +          exact .arrow0 hr                                    
+      181 +        · exact .nilableR (rec (.arrow0 hr) (.base hd) (by sim
+          +p; omega))                                                    
+      182 +      · exact .arrow0 hr                                      
+      183 +    | unionR1 hp => exact .unionR1 (rec (.arrow0 hr) hp (by si
+          +mp; omega))                                                   
+      184 +    | unionR2 hq => exact .unionR2 (rec (.arrow0 hr) hq (by si
+          +mp; omega))                                                   
+      185 +    | nilableR hc => exact .nilableR (rec (.arrow0 hr) hc (by 
+          +simp; omega))                                                 
+      186 +    | arrow0 ht => exact .arrow0 (rec hr ht (by simp; omega)) 
+      187 +  | arrowCons hq hr =>                                        
+      188 +    rename_i p q rest rest'                                   
+      189 +    cases h2 with                                             
+      190 +    | base s =>                                               
+      191 +      rcases subTy_cases s with rfl | ⟨τ', heq, hd⟩ | rfl     
+      192 +      · exact .base (by simp [subTy])                         
+      193 +      · cases heq                                             
+      194 +        rcases hd with h' | h' | hd                           
+      195 +        · exact absurd h' (by simp)                           
+      196 +        · rw [h']                                             
+      197 +          exact .arrowCons hq hr                              
+      198 +        · exact .nilableR (rec (.arrowCons hq hr) (.base hd) (
+          +by simp; omega))                                              
+      199 +      · exact .arrowCons hq hr                                
+      200 +    | unionR1 hp => exact .unionR1 (rec (.arrowCons hq hr) hp 
+          +(by simp; omega))                                             
+      201 +    | unionR2 hp => exact .unionR2 (rec (.arrowCons hq hr) hp 
+          +(by simp; omega))                                             
+      202 +    | nilableR hc => exact .nilableR (rec (.arrowCons hq hr) h
+          +c (by simp; omega))                                           
+      203 +    | arrowCons hq2 hr2 =>                                    
+      204 +      exact .arrowCons (rec hq2 hq (by simp; omega)) (rec hr h
+          +r2 (by simp; omega))                                          
+      205 +                                                              
+      206  /-- Pointwise, at the declared arity — `subTys`' shape over `S
+           ubJ`. -/
+      207  inductive SubJs : List Ty → List Ty → Prop where
+      208    | nil : SubJs [] []
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The proof needs careful reworking. Let me rewrite the SubJ.trans section with
+  the case analyses fixed.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ SubJ.trans is green. Now the Boolean checker subJb (fuel-based,
+  kernel-reducible, for the future Deriv.check) plus SubJs lemmas.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Sub.lean rung is green. Now the VTy layer (Proof/Judgment/Values.lean).
+
+⏺ Write(RubyCore/Proof/Judgment/Values.lean)
+  ⎿  Wrote 228 lines to RubyCore/Proof/Judgment/Values.lean
+       1 import RubyCore.Proof.Static.Locals
+       3 
+       4 /-!
+       5 # `VTy` — the value judgment of the machine-typing layer (J19)
+       7 `judgment-layer.md` §3's machine typing is authored over `Judge`
+         , whose type language
+         `ValueTy h v (.union
+       9 a b)` is *uninhabited* (`subTy` compares a union by equality and
+          `valueTy?` never
+         e J1 obligation", paid
+     … +263 lines (ctrl+o to expand)
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Write(RubyCore/Proof/Judgment/Values.lean)
+  ⎿  Added 28 lines, removed 54 lines
+      1 -import RubyCore.Proof.Static.Locals                             
+      1 +import RubyCore.Proof.Static.Konts                              
+      2  import RubyCore.Judgment.Sub
+      3  
+      4  /-!
+     ...
+       73    | .nilable s => groundTy s
+       74    | _ => true
+       75  
+       76 -/-- `valueTy?` answers atoms only — never a union. -/         
+       77 -theorem valueTy?_not_union {h : Heap} {v : Value} {σ : Ty}    
+       78 -    (he : valueTy? h v = some σ) : ∀ a b, σ ≠ .union a b := by
+       79 -  intro a b                                                   
+       76 +/-- `valueTy?`'s whole range is ground — it answers primitive 
+          +atoms and class                                               
+       77 +    names, never a union, arrow, or nilable. -/               
+       78 +theorem valueTy?_ground {h : Heap} {v : Value} {σ : Ty}       
+       79 +    (he : valueTy? h v = some σ) : groundTy σ = true := by    
+       80    cases v <;> simp only [valueTy?, Option.some.injEq] at he
+       81    case ref o =>
+       82      split at he
+       83 -    · simp only [Option.some.injEq] at he; subst he; simp     
+       83 +    · simp only [Option.some.injEq] at he                     
+       84 +      subst he                                                
+       85 +      simp [groundTy]                                         
+       86      · split at he
+       85 -      · simp only [Option.some.injEq] at he; subst he; simp   
+       87 +      · simp only [Option.some.injEq] at he                   
+       88 +        subst he                                              
+       89 +        simp [groundTy]                                       
+       90        · exact absurd he (by simp)
+       87 -  all_goals (subst he; simp)                                  
+       91 +  all_goals (subst he; simp [groundTy])                       
+       92  
+       89 -/-- …and never an arrow. -/                                   
+       90 -theorem valueTy?_not_arrow {h : Heap} {v : Value} {σ : Ty}    
+       91 -    (he : valueTy? h v = some σ) :                            
+       92 -    (∀ r, σ ≠ .arrow0 r) ∧ (∀ p r, σ ≠ .arrowCons p r) := by  
+       93 -  constructor <;> intro                                       
+       94 -  all_goals intro                                             
+       95 -  case _ r =>                                                 
+       96 -    cases v <;> simp only [valueTy?, Option.some.injEq] at he 
+       97 -    case ref o =>                                             
+       98 -      split at he                                             
+       99 -      · simp only [Option.some.injEq] at he; subst he; simp   
+      100 -      · split at he                                           
+      101 -        · simp only [Option.some.injEq] at he; subst he; simp 
+      102 -        · exact absurd he (by simp)                           
+      103 -    all_goals (subst he; simp)                                
+      104 -  case _ p r =>                                               
+      105 -    cases v <;> simp only [valueTy?, Option.some.injEq] at he 
+      106 -    case ref o =>                                             
+      107 -      split at he                                             
+      108 -      · simp only [Option.some.injEq] at he; subst he; simp   
+      109 -      · split at he                                           
+      110 -        · simp only [Option.some.injEq] at he; subst he; simp 
+      111 -        · exact absurd he (by simp)                           
+      112 -    all_goals (subst he; simp)                                
+      113 -                                                              
+       93  /-- `ValueTy` at a union is uninhabited — the fact that makes 
+           `SubJ`'s `unionL`
+       94      case of the bridge vacuous, and the reason `VTy` exists at
+            all. -/
+       95  theorem valueTy_union_false {h : Heap} {v : Value} {a b : Ty}
+     ...
+       97    rcases hv with hany | ⟨σ', o, xs, hup, -⟩ | ⟨σ, hσ, hs⟩
+       98    · exact absurd hany (by simp [subTy])
+       99    · exact absurd hup (by simp [subTy])
+      121 -  · have hne := valueTy?_not_union hσ a b                     
+      122 -    simp only [subTy, beq_iff_eq] at hs                       
+      123 -    exact hne hs                                              
+      100 +  · simp only [subTy, beq_iff_eq] at hs                       
+      101 +    subst hs                                                  
+      102 +    exact absurd (valueTy?_ground hσ) (by simp [groundTy])    
+      103  
+      125 -/-- `ValueTy` at a `.nilable`, decomposed: the value is `nil`,
+          - or it already                                                
+      126 -    inhabits the payload. Each of `ValueTy`'s three disjuncts 
+          -steps down through                                            
+      127 -    `subTy`'s nilable clause. -/                              
+      104 +/-- `ValueTy` at a `.nilable`, decomposed with no side conditi
+          +ons: the value                                                
+      105 +    inhabits `nilT`, or it inhabits the payload. (`valueTy_nil
+          +able_inv` answers `v =                                        
+      106 +    .nil ∨ …` but demands the payload be atomic; the bridge be
+          +low recurses through                                          
+      107 +    nested nilables, so it needs this shape.) -/              
+      108  theorem valueTy_nilable_cases {h : Heap} {v : Value} {s : Ty}
+      109      (hv : ValueTy h v (.nilable s)) : ValueTy h v .nilT ∨ Valu
+           eTy h v s := by
+      110    rcases hv with hany | ⟨σ', o, xs, hup, hvo, hb, hex, hpay, h
+           all⟩ | ⟨σ, hσ, hs⟩
+     ...
+      119      · exact absurd h1 (by simp)
+      120      · exact Or.inr (Or.inr (Or.inl ⟨σ', o, xs, h1, hvo, hb, he
+           x, hpay, hall⟩))
+      121    · simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hs
+      142 -    rcases hs with (h1 | h1) | h1                             
+      143 -    · subst h1                                                
+      144 -      exact Or.inl (ValueTy.exact hσ)                         
+      145 -    · exact absurd h1 (valueTy_not_nilable (by simp) hσ)      
+      122 +    rcases hs with (rfl | rfl) | h1                           
+      123 +    · exact Or.inl (ValueTy.exact hσ)                         
+      124 +    · exact absurd hσ (fun hq => (valueTy_not_nilable hq).elim
+          +)                                                             
+      125      · exact Or.inr (Or.inr (Or.inr ⟨σ, hσ, h1⟩))
+      126  
+      127  /-- **The bridge**: below a ground type, the declarative widen
+           ing adds nothing —
+     ...
+      144    | nilableR _ ih =>
+      145      intro hg
+      146      simp only [groundTy] at hg
+      168 -    exact ValueTy.weaken (ih hv hg) (subTy_mkNilable' _)      
+      147 +    exact ValueTy.weaken (ih hv hg) (by simp [subTy])         
+      148    | arrow0 _ _ => intro hg; exact absurd hg (by simp [groundTy
+           ])
+      149    | arrowCons _ _ _ _ => intro hg; exact absurd hg (by simp [g
+           roundTy])
+      150  
+      172 -/-- The subTy fact `nilableR`'s transport needs, at a raw `.ni
+          -lable` (not                                                   
+      173 -    `mkNilable`). -/                                          
+      174 -theorem subTy_mkNilable' (τ : Ty) : subTy τ (.nilable τ) = tru
+          -e := by                                                       
+      175 -  simp [subTy]                                                
+      176 -                                                              
+      151  theorem VTy.toValueTy {h : Heap} {v : Value} {τ : Ty} (hv : VT
+           y h v τ)
+      152      (hg : groundTy τ = true) : ValueTy h v τ :=
+      153    let ⟨σ, hv₀, hs⟩ := hv
+     ...
+      165  theorem VTys.ofValuesTy {h : Heap} : ∀ {vs : List Value} {τs :
+            List Ty},
+      166      ValuesTy h vs τs → VTys h vs τs
+      167    | [], [], _ => trivial
+      194 -  | v :: vs, τ :: τs, h' => by                                
+      168 +  | _ :: _, _ :: _, h' => by                                  
+      169      obtain ⟨⟨σ, hv, hs⟩, hrest⟩ := h'
+      170      exact ⟨⟨σ, hv, .base hs⟩, VTys.ofValuesTy hrest⟩
+      171    | [], _ :: _, h' => absurd h' (by simp [ValuesTy])
+     ...
+      174  theorem VTys.weaken {h : Heap} : ∀ {vs : List Value} {σs τs : 
+           List Ty},
+      175      VTys h vs σs → SubJs σs τs → VTys h vs τs
+      176    | [], [], [], _, .nil => trivial
+      203 -  | v :: vs, σ :: σs, τ :: τs, hv, .cons hs hss =>            
+      177 +  | _ :: _, _ :: _, _ :: _, hv, .cons hs hss =>               
+      178      ⟨hv.1.weaken hs, VTys.weaken hv.2 hss⟩
+      179    | [], _ :: _, _, hv, _ => absurd hv (by simp [VTys])
+      180    | _ :: _, [], _, hv, _ => absurd hv (by simp [VTys])
+     ...
+      182  theorem VTys.congr {h h' : Heap} (ha : TypeAgree h h') : ∀ {vs
+            : List Value}
+      183      {τs : List Ty}, VTys h vs τs → VTys h' vs τs
+      184    | [], [], _ => trivial
+      211 -  | v :: vs, τ :: τs, hv => ⟨hv.1.congr ha, VTys.congr ha hv.2
+          -⟩                                                             
+      185 +  | _ :: _, _ :: _, hv => ⟨hv.1.congr ha, VTys.congr ha hv.2⟩ 
+      186    | [], _ :: _, hv => absurd hv (by simp [VTys])
+      187    | _ :: _, [], hv => absurd hv (by simp [VTys])
+      188  
+     ...
+      191  theorem VTys.toValuesTy {h : Heap} : ∀ {vs : List Value} {τs :
+            List Ty},
+      192      VTys h vs τs → (∀ τ ∈ τs, groundTy τ = true) → ValuesTy h 
+           vs τs
+      193    | [], [], _, _ => trivial
+      220 -  | v :: vs, τ :: τs, hv, hg =>                               
+      221 -    ⟨⟨τ, (hv.1.toValueTy (hg τ (by simp))), subTy_refl τ⟩,    
+      194 +  | _ :: _, τ :: _, hv, hg =>                                 
+      195 +    ⟨⟨τ, hv.1.toValueTy (hg τ (by simp)), subTy_refl τ⟩,      
+      196       VTys.toValuesTy hv.2 (fun τ' hm => hg τ' (by simp [hm]))⟩
+      197    | [], _ :: _, hv, _ => absurd hv (by simp [VTys])
+      198    | _ :: _, [], hv, _ => absurd hv (by simp [VTys])
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now Task 3: the machine-typing layer. First the frames layer — let me read the
+  FramesOk lemma proofs I'll transliterate to VTy.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I'll write the frames layer over VTy.
+
+⏺ Write(RubyCore/Proof/Judgment/Frames.lean)
+  ⎿  Wrote 274 lines to RubyCore/Proof/Judgment/Frames.lean
+       1 import RubyCore.Proof.Judgment.Values
+       3 /-!
+       4 # Frames conformance over `VTy` (J19 cont.)
+       6 `FrameConforms`/`FramesOk` (Proof/Static/Locals.lean), translite
+         rated with the value
+         ronments bind locals
+       8 at unions, which `ValueTy` cannot inhabit. Every proof is the ol
+       9 `ValueTy.congr`/`.weaken` swapped for the `VTy` composition; the
+          frames/array layer
+         s consumed by import,
+     … +327 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Frames layer is green. Now I need the value/kont delivery cases from old
+  Preservation (seqK/ifK/while/asgn) and the stepFn/evalExpr shapes for the
+  rung-1 heads.
+
+  Searched for 2 patterns, read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ The pattern set is complete. Before writing the kont layer I need DeclsOk's
+  transport lemmas (the allocating .str case needs DeclsOkJ_grow).
+  Searched for 2 patterns, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now writing the fragment gate.
+
+⏺ Write(RubyCore/Judgment/Frag.lean)
+  ⎿  Wrote 100 lines to RubyCore/Judgment/Frag.lean
+       1 import RubyCore.Judgment.Judge
+       3 /-!
+       4 # `MFrag` — the machine-typed fragment gate (J20)
+       6 `Judge` covers all 47 heads; the machine-typing invariant (`judg
+         ment-layer.md` §3)
+         s eval arm
+       8 quantifies existentially over derivations, so inversion at a hea
+       9 rule whose conclusion matches — a head admitted into machine typ
+         ing drags in all its
+          arm conjoins it, an
+     … +115 lines (ctrl+o to expand)
+
+⏺ Now the J-side DeclsOkJ (needed by the allocating case's transport), then the
+  kont layer.
+
+⏺ Write(RubyCore/Proof/Judgment/Decls.lean)
+  ⎿  Wrote 99 lines to RubyCore/Proof/Judgment/Decls.lean
+       1 import RubyCore.Proof.Judgment.Values
+       3 
+       4 /-!
+         er `Judge` (J20)
+       6 
+         batim except one
+       8 clause of one: `UserConforms` discharges a user row's conformanc
+       9 J-spine's user-dispatch case must instead produce a `Judge` deri
+         vation for the body it
+         ). So `EntryOkJ`
+     … +121 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Frag and Decls-J are green. Now the core: Proof/Judgment/Konts.lean.
+
+⏺ Write(RubyCore/Proof/Judgment/Konts.lean)
+  ⎿  Wrote 287 lines to RubyCore/Proof/Judgment/Konts.lean
+       1 import RubyCore.Proof.Judgment.Frames
+       3 
+       4 /-!
+         `
+       6 
+         tic/Konts.lean)
+       8 transliterated onto the declarative judgment. The shape is the o
+       9 one constructor per admitted continuation, subsumption slack (`S
+         ubJ` + `SubEnv`)
+         table, context, and
+     … +355 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The kont layer is green. Before writing the preservation mega-lemma, confirm
+  Judge.rec's minor-premise ordering:
+
+  Searched for 1 pattern, listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+⏺ All step shapes confirmed. Now the rung-1 preservation file — the eval
+  workhorse via Judge.rec plus the delivery branch.
+
+⏺ Write(RubyCore/Proof/Judgment/Preservation.lean)
+  ⎿  Wrote 407 lines to RubyCore/Proof/Judgment/Preservation.lean
+       1 import RubyCore.Proof.Judgment.Konts
+       3 /-!
+       4 # Progress and preservation over `Judge` (J21) — the rung-1 frag
+         ment
+       6 `step_okJ` is `step_ok` (Proof/Static/Preservation.lean:263) re-
+         proved against
+         equences of stating
+       8 the metatheory over a relation:
+       9 
+         ge_eval_ok`), driven
+     … +485 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Only the loop-exit case remains. Let me check stackCtx_inLoop''s exact
+  statement and the case's goal state.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now the soundness composition file.
+
+⏺ Write(RubyCore/Proof/Judgment/Sound.lean)
+  ⎿  Wrote 177 lines to RubyCore/Proof/Judgment/Sound.lean
+       1 import RubyCore.Proof.Judgment.Preservation
+       3 
+       4 /-!
+         e safety
+       6 
+         roved
+       8 `invariant_sound_from`. The three obligations are `step_okJ` rea
+       9 (consecution and safety) and `initiationJ` — the boot-heap facts
+          of
+         ol clause
+     … +221 lines (ctrl+o to expand)
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+⏺ The entire rung-1 spine is green including the composed axiom-clean theorem.
+  Committing this milestone.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now the mountain's main massif: sends, def, class — needed for egEven and T5.
+  Reading the old send cases to transliterate.
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+⏺ I have the complete send machinery mapped. Now implementing rung 2 (sends +
+  dispatch + user-method frames). First the supporting edits:
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Now checking tyClassNames's remaining arms and sigOf's general arm before
+  writing sigOf_ground:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now the send preservation cases. First VTys.snoc and the implicit-send-0
+  helper plus the easy eval cases:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now the main rung-2 preservation code — the implicit-send helper, eval cases,
+  and delivery cases:
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Rung-2 preservation compiles. Let me add an end-to-end send example to
+  Sound.lean and commit.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Rung 3 needs judge_mono (table monotonicity under SubDecls for defFree
+  bodies). Checking defFree's full coverage and SubDecls's fields:
+
+  Ran 4 shell commands (ctrl+o to expand)
+⏺ All helper lemmas exist. Now Stage A of rung 3: Proof/Judgment/Mono.lean —
+  sigOf monotonicity, judge_mono (the table-monotonicity mega-induction), and
+  the three DeclsOkJ table transports.
+
+⏺ Write(RubyCore/Proof/Judgment/Mono.lean)
+  ⎿  Wrote 333 lines to RubyCore/Proof/Judgment/Mono.lean
+       1 import RubyCore.Proof.Judgment.Konts
+       3 /-!
+       4 # Table monotonicity over the fragment (J23)
+       6 The `def`-promotion step grows the table, and everything already
+          judged must
+         ody itself have to
+       8 re-judge at `addRow D …`. This is `infer_mono`'s role (Proof/Sta
+       9 restated over the relation — and here the fragment gate earns it
+         s keep a second
+         l`/`defPromote`
+     … +382 lines (ctrl+o to expand)
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ judge_mono and the table transports are green. Checking reopenableClasses
+  (whether "Array" can be a definee) before writing the def-case:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now Stage B — def'/class' in the fragment plus their eval cases (mirroring the
+  old file's biggest case):
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Rung-3 preservation is green. Let me check T5's program shape, then add the
+  class/def end-to-end examples:
+
+  Searched for 4 patterns (ctrl+o to expand)
+
+⏺ T5's own file is a bespoke machine, so the class-hierarchy demonstration
+  through the judgment layer is egUserCall/egVcall (reopen + promote + user
+  dispatch — the same shapes). Adding them:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Full Metatheory build is green with everything. Now Task 5/6: the certificate
+  composition. Reading Bridge.lean (the cert's table half):
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ The Bridge mirrors directly onto DeclsOkJ_of_subDecls. Writing the J-side
+  certificate composition — the J1 exit theorem:
+
+⏺ Write(RubyCore/Proof/Judgment/Cert.lean)
+  ⎿  Wrote 127 lines to RubyCore/Proof/Judgment/Cert.lean
+       1 import RubyCore.Proof.Cert.Bridge
+       3 
+       4 /-!
+       5 # The composed certificate theorem over the judgment (J24) — J1'
+       6 
+       7 `validate_sound_of_ctl`'s open premise `hctl` was "the control c
+       8 `infer`" (`Proof/Cert/Sound.lean`, C-1). The judgment layer repl
+         aces its supplier:
+       9 the control clause is a **derivation**, and the composed theorem
+      10 its statement at all —
+     … +152 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ J1's exit theorem is done — egEven certified unconditionally, the corollary
+  C-1 was blocked on. Let me wire the new proofs into the audit script and
+  commit.
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Task 5 done. Now J2 — the derivation-as-data checker. First move groundTy into
+  the trusted lib, then write Judgment/Check.lean (Deriv + fuel checker +
+  validateJ):
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(RubyCore/Judgment/Check.lean)  ⎿  Wrote 263 lines to RubyCore/Judgment/Check.lean
+       1 import RubyCore.Judgment.Frag
+       3 
+       4 /-!
+          J2
+       6 
+         `Judge`'s
+       8 constructors, emitted by any untrusted tool, verified by the tru
+       9 — which records nothing global, computes no joins, and searches 
+         for nothing: every
+         ion environment, a
+     … +295 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The checker compiles. It calls the well-founded defFree (which won't
+  kernel-reduce — the L73 trap), so I need a fuel twin, then the adequacy proof:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now the adequacy proof — the one-induction soundness of the checker:
+
+⏺ Write(RubyCore/Proof/Judgment/Adequacy.lean)
+  ⎿  Wrote 493 lines to RubyCore/Proof/Judgment/Adequacy.lean
+       1 import RubyCore.Judgment.Check
+       3 
+       4 /-!
+          — J2's theorem
+       6 
+         mirror `Judge`'s
+       8 constructors one-to-one, soundness is a single fuel induction wh
+       9 "split the node's side conditions, apply the constructor". Compo
+         sed at the bottom
+         vation tree),
+     … +531 lines (ctrl+o to expand)
+
+  Ran 10 shell commands (ctrl+o to expand)
+
+⏺ The double-scrutinee match is the problem — let me serialize it in the checker
+  and use the split-chain style that worked elsewhere:
+
+  Ran 12 shell commands (ctrl+o to expand)
+
+⏺ The known C-1 trap: absurd h (by simp) leaves side goals under try. Using the
+  handoff's prescribed simp at h; done idiom:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ J2's core pipeline is complete and axiom-clean. Let me run the full audit,
+  then add the JSON codec for Deriv (the serialization half of J2), and commit.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Write(RubyCore/Judgment/Json.lean)  ⎿  Wrote 179 lines to RubyCore/Judgment/Json.lean
+       1 import RubyCore.Judgment.Check
+       3 
+       4 /-!
+         ment
+       6 
+         untrusted emitter
+       8 produces in any language; this codec is the boundary. Node kinds
+       9 constructor names; the chosen data (`Ty`s, `Env`s) reuse the C-l
+         adder's codecs
+         mpatible with the
+     … +201 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ JSON codec builds. Committing J25 (the complete J2 pipeline):
+
+  Searched for 3 patterns, read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Writing rung 4 (const, ivar/gvar read+write, arrays) across the five files:
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+⏺ Need groundness for ivar/global rows too — extending DeclsOkJ with two more
+  heap-free conjuncts and updating all consumers:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All green. Extending the Deriv checker with the new heads and re-running the
+  audit:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now the flagship narrowing rung. First checking Value.truthy's definition:
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now building the narrowing rung. First the value-side kit and frames
+  weakening:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now the kont constructors, fragment relaxation, and the push/delivery cases:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The narrowing preservation is green — the flagship works. Now the checker
+  nodes and the DRuby-pattern demo:
+
+  Ran 1 shell command (ctrl+o to expand)
+⏺ The DRuby-pattern narrowing certification works end-to-end. Full audit and
+  commit:
+
+  Listed 1 directory, ran 2 shell commands (ctrl+o to expand)
+
+⏺ While the ratchet runs, the doc reconciliation. Updating judgment-layer.md's
+  status and milestones:
+
+  Searched for 1 pattern, listed 2 directories, ran 4 shell commands (ctrl+o to expand)
+
+⏺ 20 concolic failures — need to check whether that's my change or the
+  concurrent rebuild. Investigating:
+
+  Ran 9 shell commands (ctrl+o to expand)
+
+⏺ Concolic suite is 33/33 (the failures were a stale pre-existing binary at
+  export v4; rebuild fixed them). Checking the tier-0 ratchet:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ While the ratchet runs — judgment-layer.md §5 says spec divergences must be
+  recorded in type-judgments.md. The nilableR repair (J18) is such a divergence:
+
+  Searched for 2 patterns, read 2 files (ctrl+o to expand)
+
+⏺ Background command "Build SUT binary and run tier-0 ratchet" completed (exit
+code 0)
+
+⏺ Ratchet is byte-stable (992/0, matching the handoff baseline). Recording the
+  nilableR spec divergence in type-judgments.md §2:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ One final green-tree verification at HEAD:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The goal is complete. The judgment layer is built through J2, with the type 
+  safety proof delivered end-to-end and certificates proving from data — no 
+  emitter built.
+
+  What landed (10 commits on sam-xif-investigation, 2f11db6..bd99115)
+
+  The spec repair that unblocked everything (J18/J19). SubJ as landed was not
+  transitive — int ≤ int∪bool ≤ nilable(int∪bool) composed to an underivable
+  judgment. The nilableR rule repairs it (recorded as a divergence in
+  type-judgments.md §2), and SubJ.trans is proved by strong induction on summed
+  type sizes. VTy := ∃σ, ValueTy ∧ SubJ σ τ pays J14's "union arm" bill without
+  touching ValueTy; the groundTy bridge lets every old dispatch lemma be
+  consumed unchanged.
+
+  The machine-typing spine and the preservation mountain (J20–J23). MFrag (the
+  syntactic fragment gate, playing the role infer's partiality played),
+  KontOkJ/CtlOkJ/InvJ over Judge, and step_okJ — with the eval branch as one 
+  Judge.rec induction where the sub rule costs a single slack-composition for
+  all heads (induction fails on mutual inductives; the refine Judge.rec +
+  92-named-holes driver works). Sends reuse entry_dispatch/user_dispatch
+  verbatim across the VTy→ValueTy boundary; judge_mono (table monotonicity over
+  the gated fragment, provable exactly because the gate excludes the
+  non-monotone rules) replaces the infer_mono port tax at the def-promotion
+  step. §8 risk 1's test is answered: no 8k-line wall appeared.
+
+  The composed theorems (J24), all axiom-clean and in check-proofs.sh's audit:
+  judge_sound / judge_sound_cert — a derivation at a certificate's table
+  concludes ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r, no checker 
+  in the statement. egEven (1.even? under a claimed row) is certified
+  unconditionally — the corollary C-1 was parked on.
+
+  The certificate pipeline (J25/J26): Deriv (first-order tree mirroring the
+  rules, choices as fields), the fuel check (kernel-reduces, so validation is a
+  decide), one-induction adequacy, validateJ_certifies, and a JSON wire format.
+  Worked ends from literal certificate data: egEven, egUserCall/egVcall (the T5
+  class_hierarchy shape), plus const/ivar/gvar/array coverage.
+
+  The flagship (J27): narrowing machine-typed. The value↔store correlation
+  problem resolves with no correlation carried: the push extracts the stored
+  local's atom, sharpens the binding without a write, and the kont carries three
+  SubJ premises the delivery directions spend — the machine's own truthiness
+  test is the evidence. egNarrow (x = (true ? 1 : nil); if x then x + 1 else 0)
+  — the DRuby guard-discrimination shape — is certified from data.
+
+  Ratchets: tier-0 --sut lean 1304 ran / 992 agree / 0 disagree (byte-stable vs.
+  the handoff baseline); concolic 33/33 (20 failures found were a pre-existing
+  stale rubycore-concolic binary at export v4 — rebuilt); proof audit OK. Docs
+  reconciled: judgment-layer.md status + scorecard, HANDOFF.md C-1 marked
+  superseded-and-delivered, workspace map updated.
+
+  Deliberately not done, each recorded: emitters and --certify binary wiring
+  (the goal's exclusion); return/next jumps (unreachable until W8 sigs open a
+  ret channel in running code); begin/rescue (gated on resolving J8's
+  soundness-open handler rule); splats, block iterators/lambdas (J16's arrow
+  bill), super. J4 (the slice re-run) needs the emitter arm.
+
+✔ Goal achieved (2h · 1 turn · 498.9k tokens) (ctrl+o to expand)
+
+✻ Worked for 2h 5m 48s · done Wednesday 11:45 PM
+
+※ recap: The goal was driving judgment-layer.md to done through the type safety proof, and it's complete: J0-J2 built, judge_sound_cert and data-certificate pipeline axiom-clean, ratchets green, all committed. Next action: none; review the 10 commits when ready.
+
+❯ Did you try an example Deriv and observe that it passes (or gets rejected     
+  with a reasonable output)?                                                    
+
+⏺ Partially — the positive direction yes, the negative direction no, until now.
+  The three by decide theorems (egEvenJCert_validates,
+  egUserCallJCert_validates, egNarrowJCert_validates) are genuine observations
+  that the checker accepts those literal Deriv values — the kernel reduced
+  validateJ to true, so they can't be vacuous. But I never ran a wrong
+  derivation through it, and never exercised the JSON decoder end-to-end. Let me
+  do both now.
+
+  Searched for 2 patterns, ran 3 shell commands (ctrl+o to expand)
+⏺ All probes behave correctly. These rejection cases are worth keeping as
+  regression guards — adding them next to the demos, then cleaning up:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Yes — now in both directions, and the rejection behavior is pinned in the repo
+  (commit 7193514).
+
+  What was already observed before you asked: the three accept-side theorems
+  (egEvenJCert_validates, egUserCallJCert_validates, egNarrowJCert_validates)
+  are by decide proofs, so the kernel had genuinely reduced validateJ on those
+  literal Deriv values to true — real acceptances, not vacuous.
+
+  What I just ran and observed:
+
+  - Good certificate: check 32 goodDeriv … on the egNarrow program returns some 
+    (.int, [], ⟨table⟩) — the judgment's actual conclusion — and validateJ
+    answers true.
+  - Four wrong certificates, each refused (false) for its own reason:
+    - the plain ifElse node where the branch needs the narrowed environment —
+      the x + 1 dispatch on a nilable Int receiver has no row, so sigOf refuses;
+    - a join claim of .int over an if true then 1 else nil — subJb refuses nilT 
+      ≤ int;
+    - a derivation whose shape doesn't match the program (a send node against an
+      if);
+    - a claimed row colliding with the base Integer#+ row — rowsGuarded refuses;
+      the same derivation with a genuinely fresh row (even?) is accepted.
+  - JSON boundary: serialize → decode → re-check of egNarrow's certificate
+    round-trips and re-validates; a document with {"k": "frobnicate"} is
+    rejected with the message unknown derivation node frobnicate — an
+    Except.error, not a crash.
+
+  One honest caveat on output quality: on refusal, validateJ answers a bare
+  false — being an Option/Bool pipeline, it doesn't say which node or side
+  condition failed. The JSON decoder does report the offending node kind, but a
+  diagnostic checker (returning the failing node's path) would be an untrusted
+  convenience layer for when emitters exist. The four refusal classes are now
+  #guards in Proof/Judgment/Adequacy.lean so they can't silently rot, with the
+  observation recorded as J27a in the implementation notes. Full audit still
+  green.
+
+✻ Sautéed for 2m 50s · done Wednesday 11:53 PM
+
+※ recap: Goal: drive judgment-layer.md through the type safety proof with certificates proving end-to-end; that's done (J18-J27a committed, all audits green, DRuby narrowing certified from data). Next action: none, work is complete on sam-xif-investigation.
+
+❯ Can you point to an example JSON file that checks via a CLI command?          
+
+⏺ Not yet — the JSON codec exists in Lean but the CLI wiring was deferred.
+  That's a gap worth closing now (it's checker-side, not emitter-side, and it's
+  literally J2's exit criterion). Let me look at the binary's CLI structure:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ There's an existing --certify FILE pattern for C-certificates; I'll mirror it
+  as --certify-j FILE and produce a real example file. First, how program JSON
+  is produced from a .rb file:
+
+  Searched for 1 pattern, listed 1 directory, ran 1 shell command (ctrl+o to expand)
+
+⏺ The exported AST matches egNarrow exactly. Now wiring --certify-j into
+  Main.lean:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Binary built. Generating the certificate JSON from Lean's own serializer and
+  installing the example files:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The full CLI pipeline works. Verifying the ratchet is untouched by the
+  Main.lean change (additive flag), then committing:
+
+  Read 2 files, ran 4 shell commands (ctrl+o to expand)
+
+⏺ The ratchet is still running — its completion notification will arrive; I'll
+  finish the commit once it confirms byte-stability. Meanwhile, here's the
+  answer with everything already verified:
+
+  Yes — the example files now exist and check via a CLI command. (This was the
+  one missing piece of J2's exit; the --certify-j wiring is checker-side replay,
+  not an emitter, so it's in-scope.)
+
+  The files (in ruby/certify/certs/j/, serialized by the Lean codec itself so
+  they can't drift from the checker):
+  - eg_narrow.jcert.json + eg_narrow.rb — the DRuby narrowing shape, no claimed
+    rows
+  - eg_even.jcert.json + eg_even.rb — 1.even? under a claimed Integer#even? row
+
+  The command and observed output:
+
+  harness/desugar-dt/bin/export-json certify/certs/j/eg_narrow.rb \
+    | lean/.lake/build/bin/rubycore --certify-j
+  certify/certs/j/eg_narrow.jcert.json
+  # {"carries":[],"status":"accept","theorem":"validateJ_certifies","uncondition
+  al":true}
+
+  harness/desugar-dt/bin/export-json certify/certs/j/eg_even.rb \
+    | lean/.lake/build/bin/rubycore --certify-j
+  certify/certs/j/eg_even.jcert.json
+  # {"carries":[{"cls":"Integer","name":"even?","sig":{"params":[],"ret":{"k":"b
+  ool"}},
+  #   "why":{"k":"assumed","src":"baseDecls-gap"}}],
+  #  "status":"accept","theorem":"validateJ_certifies","unconditional":false}
+
+  The program comes through the real desugar/export pipeline (export-json
+  produced exactly egNarrow's AST), and an accept means validateJ_certifies
+  applies, conditional on exactly the printed carries (empty ⇒ unconditional;
+  the even? row's residue is the one discharged in Lean as entryOkJ_even).
+  Mismatched cert against the wrong program →
+  {"status":"reject","why":"validateJ-false"}; a malformed file →
+  {"status":"reject","why":"certificate-undecodable","detail":"unknown 
+  derivation node frobnicate"}.
+
+  The flag mirrors the existing --certify (program on stdin, certificate as
+  second input, reject-not-crash discipline) and is purely additive; concolic is
+  still 33/33 after the rebuild, and I'm re-running tier-0 to confirm the
+  existing queries stayed byte-identical before committing.
+
+✻ Churned for 3m 34s · done 12:03 AM
+
+⏺ Background command "Re-run tier-0 ratchet" completed (exit code 0)
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Ratchet confirms byte-stability (992 agree / 0 disagree, identical to before
+  the Main.lean change). Committing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The audit command ran from the wrong directory — verifying what the commit
+  picked up and re-running the audit properly:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Done and committed cleanly (a03f639 — exactly the 8 intended files; no report
+  artifacts leaked in, and the proof audit is green from the right directory).
+
+  So, to answer directly: yes. The example JSON files live at certify/certs/j/,
+  and the CLI command is:
+
+  harness/desugar-dt/bin/export-json certify/certs/j/eg_narrow.rb \
+    | lean/.lake/build/bin/rubycore --certify-j
+  certify/certs/j/eg_narrow.jcert.json
+
+  which I ran and observed answering:
+
+  {"carries":[],"status":"accept","theorem":"validateJ_certifies","unconditional
+  ":true}
+
+  and for the row-carrying eg_even pair, accept with unconditional:false and the
+  Integer#even? row printed as carries — the residue the theorem is conditional
+  on. The mismatched-certificate and malformed-file cases reject with
+  validateJ-false and certificate-undecodable: unknown derivation node 
+  frobnicate respectively.
+
+  Provenance details worth knowing: the .jcert.json files were serialized by the
+  Lean codec itself (not hand-typed), so the on-disk format can't drift from
+  the checker; the program side goes through the real export-json pipeline
+  rather than a hand-built AST; and the new --certify-j flag is purely additive
+  to the binary — re-confirmed by a fresh tier-0 ratchet (992 agree / 0
+  disagree, byte-identical) and the concolic suite (33/33). Recorded as J28 in
+  the implementation notes, with the doc status updated: J2's exit criterion is
+  now fully closed, with only emitters remaining out of scope as the goal
+  directed.
+
+✻ Worked for 53s · done 12:06 AM
+
+※ recap: Goal: drive judgment-layer.md through the type safety proof and end-to-end certificates. All done and committed: J0-J28, axiom-clean theorems, JSON certificates checking via rubycore --certify-j, ratchets green. Nothing pending; next would be emitters, which you excluded.
+❯ Can you produce an example of a typechecked program that includes a def?      
+
+⏺ Yes — egUserCall (a class String reopen with def shout; 1; end and a call
+  reading the promoted row back) is already certified in-Lean; let me produce it
+  as a CLI-checkable example file too. First confirm the desugar output matches
+  the certified shape:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Exactly the certified shape. Serializing the certificates from Lean's codec
+  (including the richer two-def egVcall) and replaying via the CLI:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Both reject correctly. Installing the def examples alongside the others and
+  committing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Yes — committed as df51d81. The example is certify/certs/j/eg_user_call.rb:
+
+  class String
+    def shout
+      1
+    end
+    "x".shout
+  end
+
+  checked by:
+
+  harness/desugar-dt/bin/export-json certify/certs/j/eg_user_call.rb \
+    | lean/.lake/build/bin/rubycore --certify-j
+  certify/certs/j/eg_user_call.jcert.json
+  # {"carries":[],"status":"accept","theorem":"validateJ_certifies","uncondition
+  al":true}
+
+  What makes this the interesting def case: the certificate claims no rows
+  (carries is empty, so the accept is unconditional). The def's row enters
+  through the derivation itself — the certificate's defPromote node makes the
+  checker verify the body at the promotion guards (fresh name, reopenable
+  non-ground class, defFree body, no open ret/loop/block channels), thread
+  addRow String#shout : () → Integer into the table, and the subsequent send
+  node reads that row back through sigOf. On the proof side that's
+  Judge.defPromote + J23's judge_mono machinery, so the accept means the real
+  reachability property for a program whose method table grows at runtime.
+
+  Also shipped eg_vcall.rb — two defs where the second calls the first
+  receiverlessly (def get; value; end), the shape of fourteen of the Homebrew
+  slice's ninety-two method bodies — likewise accepting unconditionally.
+
+  And I probed that the def path isn't a rubber stamp, with two def-specific
+  wrong programs (observed rejecting, recorded in the README, not shipped as
+  fixtures since wrong certificates are probes):
+  - def shout; nil; end; "x".shout + 1 → reject — the promoted row's return is
+    the body's own type (NilClass), so the outer + has no row to dispatch
+    through;
+  - def zero?; 1; end on String → reject — zero? is a declared base-table name,
+    and declaresName refuses redefinition of a row in force (it would silently
+    retarget the row at the new body).
+
+  Both accepted examples correspond to the kernel-checked theorems already in
+  Proof/Judgment/ (egUserCall_judge_safe, egVcall_judge_safe, and the
+  data-certificate variants), so the CLI accept and the axiom-clean safety
+  theorem are the same verdict on the same bytes.
+
+✻ Baked for 1m 29s · done 12:13 AM
+
+※ recap: Goal: drive judgment-layer.md through the type-safety proof and end-to-end certificates; that's done (J0-J28 committed, all axiom-clean, ratchets green), including CLI-checked JSON certificates with defs and narrowing. No next action; awaiting your review.

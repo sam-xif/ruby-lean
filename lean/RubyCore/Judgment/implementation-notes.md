@@ -519,3 +519,64 @@ live in `certify/certs/j/` (`eg_narrow` unconditional through the narrowing node
 files cannot drift from the checker. This closes the J2 exit criterion's binary
 half without an emitter: the certificates are hand-authored data, and the replay
 path is what a future emitter targets.
+
+## J29 — the answer type: `KontOkJ` remembers what the run is for
+
+`KontOkJ` gains a **parameter** `ans : Ty` — the type the whole continuation stack
+eventually answers at. Every constructor threads it to its tail untouched; only
+`nil` pins it, with a new `SubJ τ ans` premise (an empty continuation's in-flight
+value *is* the answer). `CtlOkJ`/`InvJ` carry it as a parameter, so `InvJ` is now a
+family `InvJ ans m`, and `StepOkJ`'s `done` arm strengthens from `True` to
+`VTy mf.heap v ans`.
+
+Why a parameter and not one more existential: the invariant's existentials are
+re-chosen at every consecution step, and `KontOkJ.nil` accepted *any* in-flight
+type — so by the time the machine reached `done`, the invariant had provably
+forgotten the program's judged type. Safety was intact; result typing was true and
+unprovable. A parameter is constant along the derivation *and* along the run, which
+is exactly the answer type's semantics.
+
+Measured cost, recorded because it prices the §0 diagnosis again: the re-index of
+the whole spine — inductive, `CtlOkJ`, `InvJ`, four helpers, 1,400 lines of
+preservation — was a mechanical threading (the parameter unifies through every
+constructor application untouched) plus **one honest proof line**: the delivery
+branch's `| nil => trivial` became `| nil hsub _ _ => exact VTy.weaken hv hsub`.
+That single `VTy.weaken` is the entire content of result typing; everything else
+was already in the invariant. Safety-only clients instantiate `ans := .any`.
+
+## J30 — `SemJudge`: the semantic judgment, and `Judge`'s adequacy against it
+
+`Proof/Judgment/Sem.lean`. The re-scoping conversation's remaining distance —
+"`Judge` is currently both the proof theory and the definition of meaning" —
+closed: the meaning is now a stated object.
+
+* `Conformant D c Γ m` — the Judge-free half of `InvJ` (heap facts, frame/stack
+  conformance at `Γ`, globals), at an empty continuation and a jump-closed context.
+* `SemJudge D Γ e c τ` — **the semantic judgment**: in every conformant state,
+  running `e` reaches no type-stuck outcome, and every terminating run's value
+  inhabits `τ` (`VTy`). Defined by reachability alone — no `Judge`, no `MFrag`, no
+  checker in the definiens. `judgment-layer.md` §1.5's "the reachability property is
+  already the semantic ground truth", cashed into a definition.
+* `judge_semJudge` — **the fundamental lemma / adequacy**: a derivation yields the
+  semantic judgment. Content = `step_okJ` (the already-climbed mountain); the lemma
+  is assembly through `invJ_of_conformant` (initiation generalized from the boot
+  machine to any conformant state) + `invariant_sound_from` +
+  `invariant_result_sound` (L271).
+* `semJudge_sound` — type safety with `SemJudge` as the *only* typing hypothesis:
+  the composed theorem no longer cares how the semantic judgment was obtained.
+  `judge_sound_via_sem` re-derives `judge_sound` through it, so the factoring
+  `Judge → SemJudge → safety` is a theorem, not a diagram.
+* `judge_result_vty` — the J29 payoff as a headline: a judged program's
+  terminating value inhabits the judged type. Worked ends upgrade the Sound.lean
+  examples: `egIf_result_int`, `egZero_result_bool`, `egUserCall_result_int`.
+
+What this buys, stated for the Rails direction: `SemJudge` is the **extension
+point**. A construct the syntactic fragment cannot check is admitted by proving its
+`SemJudge` statement directly, and it composes with checked code because the
+syntactic route is itself just one way of manufacturing `SemJudge` facts.
+
+Named bills, deliberately unpaid: `Γ'`/`D'` are not in `SemJudge` (recovering the
+out-environment at `done` needs the frame conformance threaded the way `ans` now
+is — same trick, one more parameter, no consumer yet); and the first
+*directly-proved* `SemJudge` fact — the extension pilot, a `define_method`d row
+admitted semantically — is the natural J31.

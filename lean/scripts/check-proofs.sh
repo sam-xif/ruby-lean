@@ -57,7 +57,9 @@ import RubyCore.Proof.Static.Discharge
 import RubyCore.Proof.Cert.Sound
 import RubyCore.Proof.Cert.Ledger
 import RubyCore.Proof.Judgment.Cert
+import RubyCore.Proof.Judgment.Sem
 #print axioms RubyCore.Proof.invariant_sound
+#print axioms RubyCore.Proof.invariant_result_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
 #print axioms RubyCore.Proof.Static.check_sound_withPrelude
@@ -82,6 +84,15 @@ import RubyCore.Proof.Judgment.Cert
 #print axioms RubyCore.Proof.Judgment.judge_mono
 #print axioms RubyCore.Proof.Judgment.egEven_judge_safe
 #print axioms RubyCore.Proof.Judgment.egUserCall_judge_safe
+-- J30 — the semantic judgment: `judge_semJudge` is the fundamental lemma
+-- (adequacy of the syntactic `Judge` for the reachability-defined `SemJudge`),
+-- `semJudge_sound` composes type safety through it, and `judge_result_vty` is
+-- the J29 answer-type payoff (terminating values inhabit the judged type).
+#print axioms RubyCore.Proof.Judgment.judge_semJudge
+#print axioms RubyCore.Proof.Judgment.semJudge_sound
+#print axioms RubyCore.Proof.Judgment.judge_sound_via_sem
+#print axioms RubyCore.Proof.Judgment.judge_result_vty
+#print axioms RubyCore.Proof.Judgment.egIf_result_int
 -- The assertion language (L165). `denote_declAssn` is the faithfulness theorem —
 -- `⟦declAssn D⟧ h ↔ DeclsOk D h`, both directions — and it is what closes
 -- `assertion-language.md` §9.3's honest weak point for the declaration fragment:
