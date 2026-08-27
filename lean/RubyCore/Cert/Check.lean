@@ -707,10 +707,10 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       -- `chk_infer`'s `def` case is a `simp` between *these two* expressions and a
       -- factoring would put a definition between them.
       | none =>
-        if ps.isEmpty && declaresName D name == false && name != "method_added" then
+        if ps.isEmpty && declaresName D name == false && name != "method_added" && name != "define_method" then
           match chk c n D [] body false
               { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
-                         params := some [], inLoop := none, inBlock := false }
+                         params := some [], inClassBody := false, inLoop := none, inBlock := false }
               with
           | some (τb, _, Db) =>
             if Db == D then
@@ -742,7 +742,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
         else
           match chk c n D (bindParams n ps τs []) body false
               { ctx with selfCls := some ctx.cls, ret := some cl.ty, meth := some name,
-                         params := some τs, inLoop := none, inBlock := false }
+                         params := some τs, inClassBody := false, inLoop := none, inBlock := false }
               with
           | some (τb, _, Db) =>
             if Db == D && subTy τb cl.ty then some (.sym, Γ, D) else none
@@ -760,7 +760,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
         let Γb := bindParams n ps τs []
         match chk c n D₁ Γb body false
             { ctx with selfCls := none, ret := claimTy c e, meth := some name,
-                       params := some τs, inLoop := none, inBlock := false } with
+                       params := some τs, inClassBody := false, inLoop := none, inBlock := false } with
         | some (_, _, Db) => if Db == D₁ then some (.sym, Γ₁, D₁) else none
         | none => none
     -- `class C … end` reopens a constant looked up in the *current definee's* own

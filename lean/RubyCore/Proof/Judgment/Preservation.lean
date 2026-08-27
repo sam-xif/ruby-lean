@@ -142,7 +142,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
         FramesOkJ.push hfs⟩
       · rw [getD_push_lt_self]; exact hown
       · intro y σ hy; exact absurd hy (by simp [envGet?])
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -167,6 +167,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
         obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
         exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
       · rw [getD_push_lt_self]; exact fun _ => rfl
+      · exact fun hcb _ => nomatch hcb
       · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
         exact StackCtx.push hlt hsc
     · refine ⟨hglob, ?_⟩
@@ -579,7 +580,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
         (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
         (ClosuresOk.pushFrame hclo rfl rfl rfl),
-        D, ({ cls := name } : JCtx), [], [(ctx, Γk)],
+        D, ({ cls := name, inClassBody := true } : JCtx), [], [(ctx, Γk)],
         htab, ?_, ?_, hgl, ?_⟩
       · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
           ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
@@ -587,7 +588,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · rw [getD_push_lt_self]; simp [hpay]
         · intro y σ hy; exact absurd hy (by simp [envGet?])
       · refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h' => absurd h' (by simp), ?_,
-          StackCtx.push hlt hsc⟩
+          (fun _ _ => by rw [getD_push_lt_self]), StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -615,15 +616,15 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         have hfc : FrameConformsJ m.heap m.frames Γk fid := by
           rw [hst] at hfs; exact hfs.2.2.1
         simpa [curFrame, curFid, hst] using hfc.2.1
-    have hha' : ¬ ("method_added" = name) := fun hh' => hha hh'.symm
     have hlkNH : ∀ md : MethodDef,
         NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
-      fun _ => NoHook_defineMethod hh hha'
+      fun _ => NoHook_defineMethod hh hha
     have hlk : ∀ md : MethodDef,
         lookup (defineMethod m.heap (curFrame m).defmod name md)
           (.ref (curFrame m).defmod) "method_added" = none := fun md =>
       (hlkNH md).2 (curFrame m).defmod
         (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+        "method_added" (by simp [hookFreeNames])
     have hres : ∀ (m₀ : Machine),
         m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
         TypeAgree m.heap m₀.heap → DeclsOkJ A D m₀.heap → NoHook m₀.heap →
@@ -683,15 +684,15 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         have hfc : FrameConformsJ m.heap m.frames Γk fid := by
           rw [hst] at hfs; exact hfs.2.2.1
         simpa [curFrame, curFid, hst] using hfc.2.1
-    have hha' : ¬ ("method_added" = name) := fun hh' => hha hh'.symm
     have hlkNH : ∀ md : MethodDef,
         NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
-      fun _ => NoHook_defineMethod hh hha'
+      fun _ => NoHook_defineMethod hh hha
     have hlk : ∀ md : MethodDef,
         lookup (defineMethod m.heap (curFrame m).defmod name md)
           (.ref (curFrame m).defmod) "method_added" = none := fun md =>
       (hlkNH md).2 (curFrame m).defmod
         (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+        "method_added" (by simp [hookFreeNames])
     have hres : ∀ (m₀ : Machine),
         m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
         TypeAgree m.heap m₀.heap →
@@ -1283,7 +1284,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             FramesOkJ.push hfs⟩
           · rw [getD_push_lt_self]; exact hown
           · intro y σ hy; exact absurd hy (by simp [envGet?])
-        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1304,6 +1305,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
             exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
           · rw [getD_push_lt_self]; exact fun _ => rfl
+          · exact fun hcb _ => nomatch hcb
           · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
             exact StackCtx.push hlt hsc
         · refine ⟨hgl, ?_⟩

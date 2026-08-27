@@ -100,7 +100,7 @@ def methodCtx (ctx : JCtx) (name : String) (τs : List Ty) (ret : Option Ty)
     (bs : Option BlockSig) : JCtx :=
   { ctx with selfCls := some ctx.cls, ret := ret, meth := some name,
              params := some τs, inLoop := none, inBlock := false,
-             blk := bs, inRescue := false }
+             inClassBody := false, blk := bs, inRescue := false }
 
 /-- The context a singleton-method (`defs`) body is judged in: `methodCtx` with
     `selfCls := none` — `self` is the receiver object, which the type language
@@ -659,7 +659,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   -- guards redefinition of a row in force, which would silently retarget it (J9);
   -- `method_added` is the hook that makes a bare `def` run arbitrary code.
   | defDecl {D Γ name ps body top ctx τs σ bs τb Γb' } :
-      declaresName D name = false → name ≠ "method_added" →
+      declaresName D name = false → (name ≠ "method_added" ∧ name ≠ "define_method") →
       τs.length = ps.length →
       Judge A D (bindParamsJ ps τs []) body false (methodCtx ctx name τs (some σ) bs) τb Γb' D →
       SubJ τb σ →
@@ -668,7 +668,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   -- the row it installs comes into force for the rest of the program, and each
   -- premise is a condition on the table the invariant will carry.
   | defPromote {D Γ name body top ctx τb Γb'} :
-      declaresName D name = false → name ≠ "method_added" →
+      declaresName D name = false → (name ≠ "method_added" ∧ name ≠ "define_method") →
       Judge A D [] body false (methodCtx ctx name [] none none) τb Γb' D →
       top = false → name ≠ "initialize" →
       reopenableClasses.contains ctx.cls = true →
@@ -689,7 +689,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   -- threaded out (a `def` inside the class is available afterwards).
   | classTop {D Γ name body ctx τ Γb' Db} :
       reopenableClasses.contains name = true →
-      Judge A D [] body false ({ cls := name } : JCtx) τ Γb' Db →
+      Judge A D [] body false ({ cls := name, inClassBody := true } : JCtx) τ Γb' Db →
       Judge A D Γ (.class' name none body) true ctx τ Γ Db
   -- With an explicit superclass the "reopen" is a *definition*, whose ancestor
   -- chain the boot heap does not have: the body is judged and its extension

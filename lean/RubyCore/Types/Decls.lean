@@ -594,6 +594,14 @@ def blockCtx (ctx : FrameCtx) : FrameCtx :=
   { cls := ctx.cls, selfCls := none, ret := none, meth := none, params := none,
     inLoop := none, inBlock := true }
 
+/-- The names the `NoHook` heap invariant keeps off every class's dispatch chain
+    (J34): `method_added` is the def-hook; `define_method` is the reflective
+    installer, whose *claimed* uses (the semantic-axiom layer) need the dispatch
+    to be invariant-determined — a user override is exactly what it cannot
+    determine. The `def` rules of both checkers and both judgment layers refuse
+    these names, which refuses nothing real. -/
+def hookFreeNames : List String := ["method_added", "define_method"]
+
 /-- **One table is carried by another**: every signature the first supports, the
     second supports identically.
 

@@ -298,7 +298,7 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         | none => none
       | none => none
     | .defDecl τs σ bs db, .def' name ps body =>
-      if declaresName D name || name == "method_added"
+      if declaresName D name || name == "method_added" || name == "define_method"
           || decide (τs.length ≠ ps.length) then none
       else
         match check n A db D (bindParamsJ ps τs [])
@@ -307,7 +307,7 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
           if Db == D && subJb (tyFuel τb σ) τb σ then some (.sym, Γ, D) else none
         | none => none
     | .defPromote db, .def' name [] body =>
-      if declaresName D name || name == "method_added" || top
+      if declaresName D name || name == "method_added" || name == "define_method" || top
           || name == "initialize"
           || !(reopenableClasses.contains ctx.cls)
           || groundClassNames.contains ctx.cls
@@ -322,7 +322,7 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         | none => none
     | .classTop db, .class' name none body =>
       if reopenableClasses.contains name && top then
-        match check n A db D [] body false ({ cls := name } : JCtx) with
+        match check n A db D [] body false ({ cls := name, inClassBody := true } : JCtx) with
         | some (τ, _, Db) => some (τ, Γ, Db)
         | none => none
       else none

@@ -527,7 +527,9 @@ theorem check_sound_all : ∀ (n : Nat),
               obtain ⟨rfl, hjb⟩ := hg2
               simp only [Option.some.injEq, Prod.mk.injEq] at h
               obtain ⟨rfl, rfl, rfl⟩ := h
-              exact .defDecl hguards.1.1 (by simpa using hguards.1.2) hguards.2
+              exact .defDecl hguards.1.1.1
+                ⟨by simpa using hguards.1.1.2, by simpa using hguards.1.2⟩
+                (by simpa using hguards.2)
                 (ihc hb0) (subJb_sound hjb)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
@@ -537,7 +539,7 @@ theorem check_sound_all : ∀ (n : Nat),
         · exact absurd h (by simp)
         · next hguards =>
           simp only [Bool.or_eq_true, not_or, Bool.not_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hfresh, hha⟩, htop⟩, hinit⟩, hreop⟩, hgroundc⟩,
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hfresh, hha⟩, hdm⟩, htop⟩, hinit⟩, hreop⟩, hgroundc⟩,
             hdf⟩, hret⟩, hloop⟩, hblk⟩ := hguards
           split at h
           · next τb Γb Db hb0 =>
@@ -547,11 +549,14 @@ theorem check_sound_all : ∀ (n : Nat),
               subst hg2
               simp only [Option.some.injEq, Prod.mk.injEq] at h
               obtain ⟨rfl, rfl, rfl⟩ := h
-              refine .defPromote hfresh ?_ (ihc hb0) htop ?_ ?_ hgroundc
+              refine .defPromote hfresh ⟨?_, ?_⟩ (ihc hb0) htop ?_ ?_ hgroundc
                 (defFreeB_sound (n := n) ?_) ?_ ?_ hblk
               · intro hq
                 rw [hq] at hha
                 simp at hha
+              · intro hq
+                rw [hq] at hdm
+                simp at hdm
               · intro hq
                 rw [hq] at hinit
                 simp at hinit

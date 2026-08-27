@@ -1602,9 +1602,9 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     {body : Expr} {τ : Ty} {Γ' : Env} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.def' name params body) top ctx = some (τ, Γ', D')) :
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
-      ∧ name ≠ "method_added"
+      ∧ (name ≠ "method_added" ∧ name ≠ "define_method")
       ∧ ∃ τb Γb, infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := none, inBlock := false }
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := none, inBlock := false, inClassBody := false }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧
@@ -1625,12 +1625,12 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
         · next hrow =>
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb,
+          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, by exact hb,
             Or.inr ⟨rfl, hrow.1, hrow.2.1, hrow.2.2.1, hrow.2.2.2.1, hrow.2.2.2.2.1,
               hrow.2.2.2.2.2.2.2⟩⟩
         · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
-          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, hb, Or.inl rfl⟩
+          exact ⟨rfl, rfl, List.isEmpty_iff.mp hp, h1, h2, τb, Γb, by exact hb, Or.inl rfl⟩
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)

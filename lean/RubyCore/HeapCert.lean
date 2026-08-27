@@ -75,7 +75,9 @@ def saturatedB (h : Heap) : Bool :=
 def noHookB (h : Heap) : Bool :=
   (h.classPayload? Boot.objectId).isSome &&
   (List.range h.objs.size).all fun k =>
-    (h.classPayload? k).isNone || (lookup h (.ref k) "method_added").isNone
+    (h.classPayload? k).isNone ||
+      ((lookup h (.ref k) "method_added").isNone &&
+       (lookup h (.ref k) "define_method").isNone)
 
 /-- L178's constant-table clause, decided. The `takeWhile` is the population
     `scripts/consts_probe.lean` measured: `{String, Comparable}` on the slice's

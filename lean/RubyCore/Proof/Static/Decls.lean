@@ -1996,10 +1996,13 @@ def TableOk (h : Heap) : Prop :=
 
     A pure *heap* fact, with the frame's definee carried by `FrameConforms` instead —
     phrasing it at the current frame's `defmod` makes it unprovable across `frameK`,
-    which resumes a different frame. -/
+    which resumes a different frame.
+
+    The clause is quantified over `hookFreeNames` (J34, defined with the fragment
+    tables in `Types/Fragment.lean`). -/
 def NoHook (h : Heap) : Prop :=
   (h.classPayload? Boot.objectId).isSome ∧
-    ∀ k, (h.classPayload? k).isSome → lookup h (.ref k) "method_added" = none
+    ∀ k, (h.classPayload? k).isSome → ∀ n ∈ hookFreeNames, lookup h (.ref k) n = none
 
 /-- **`NoHook` survives an allocating step** (L149, restated at L153's indexing).
 
@@ -2011,24 +2014,28 @@ def NoHook (h : Heap) : Prop :=
     quantifier's own hypothesis. -/
 theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hh : NoHook h) : NoHook h' := by
-  refine ⟨by rw [hg.payload]; exact hh.1, fun k hk => ?_⟩
+  refine ⟨by rw [hg.payload]; exact hh.1, fun k hk n hn => ?_⟩
   have hk' : (h.classPayload? k).isSome := by rw [← hg.payload k]; exact hk
   rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
-  exact hh.2 k hk'
+  exact hh.2 k hk' n hn
 
 /-- **And a `def`** (L153). The receiver's dispatch class is unchanged
     (`classOf_defineMethod`) and the name differs, so `lookup_defineMethod` applies at
     every class object — the same argument L149's Object-only version made, now made
     once per definee rather than once. -/
 theorem NoHook_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
-    (hh : NoHook h) (hne : ¬ ("method_added" = name)) :
+    (hh : NoHook h) (hne : name ≠ "method_added" ∧ name ≠ "define_method") :
     NoHook (defineMethod h cls name md) := by
-  refine ⟨by rw [classPayload?_isSome_defineMethod]; exact hh.1, fun k hk => ?_⟩
+  refine ⟨by rw [classPayload?_isSome_defineMethod]; exact hh.1, fun k hk n hn => ?_⟩
   have hk' : (h.classPayload? k).isSome := by
     rw [← classPayload?_isSome_defineMethod h cls k name md]; exact hk
-  rw [lookup_defineMethod _ _ name "method_added" md _ hne
-    (classOf_defineMethod _ _ _ _ _)]
-  exact hh.2 k hk'
+  have hnn : ¬ (n = name) := by
+    simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+    rcases hn with rfl | rfl
+    · exact fun hEq => hne.1 hEq.symm
+    · exact fun hEq => hne.2 hEq.symm
+  rw [lookup_defineMethod _ _ name n md _ hnn (classOf_defineMethod _ _ _ _ _)]
+  exact hh.2 k hk' n hn
 
 /-- `noHookB` reflects `NoHook` (L153). The out-of-range ids are the only interesting
     step: `classPayload?` answers `none` there, so the clause holds vacuously and the
@@ -2037,13 +2044,16 @@ theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
   unfold noHookB at hb
   simp only [Bool.and_eq_true] at hb
   obtain ⟨hobj, hb⟩ := hb
-  refine ⟨hobj, fun k hk => ?_⟩
+  refine ⟨hobj, fun k hk n hn => ?_⟩
   by_cases hlt : k < h.objs.size
   · have := List.all_eq_true.mp hb k (List.mem_range.mpr hlt)
-    simp only [Bool.or_eq_true, Option.isNone_iff_eq_none] at this
-    rcases this with h1 | h2
+    simp only [Bool.or_eq_true, Bool.and_eq_true, Option.isNone_iff_eq_none] at this
+    rcases this with h1 | ⟨h2, h3⟩
     · exact absurd hk (by rw [h1]; simp)
-    · exact h2
+    · simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+      rcases hn with rfl | rfl
+      · exact h2
+      · exact h3
   · exact absurd hk (by rw [classPayload?_oob h k hlt]; simp)
 
 /-- **The boot `String` id is a class named `"String"`** (L151), and it is the
@@ -2955,7 +2965,9 @@ theorem rowsAndConsts (hi : IvarOnly h h') {D : Decls} (hd : DeclsOk D h) :
 
 theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,
-   fun k hk => by rw [hi.lookup_eq]; exact hn.2 k (by rw [← hi.classPayload]; exact hk)⟩
+   fun k hk n hnn => by
+     rw [hi.lookup_eq]
+     exact hn.2 k (by rw [← hi.classPayload]; exact hk) n hnn⟩
 
 theorem litClsOk (hi : IvarOnly h h') (hs : LitClsOk h) : LitClsOk h' :=
   ⟨⟨by rw [hi.classPayload]; exact hs.1.1, by rw [hi.className_eq]; exact hs.1.2⟩,

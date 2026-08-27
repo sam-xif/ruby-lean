@@ -826,6 +826,13 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- grows the guard that reads it. Nothing else about a block frame is blocked by
       -- the predicates any more.
       (c.inBlock = false → (frames.getD fid default).captured = none) ∧
+      -- **J34: a class body's `self` is the class object it names.** Guarded on the
+      -- new `inClassBody` channel (set only by the `class'` reopen push, which has
+      -- the object in hand). Stated as `self = .ref defmod` — clause 2 then names it
+      -- `c.cls` — because the reflective installers target the *receiver* while
+      -- `def` targets the *definee*, and in a class body they are the same object.
+      (c.inClassBody = true → c.inBlock = false →
+        (frames.getD fid default).self = .ref (frames.getD fid default).defmod) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -865,15 +872,17 @@ theorem StackCtx.cons {h : Heap} {frames : Array Frame} {fid : FrameId}
       (frames.getD fid default).runFromDM = false ∧
       c.params = some [] ∧ c.inBlock = false)
     (h8 : c.inBlock = false → (frames.getD fid default).captured = none)
+    (h9 : c.inClassBody = true → c.inBlock = false →
+      (frames.getD fid default).self = .ref (frames.getD fid default).defmod)
     (ht : StackCtx h frames fids cs) : StackCtx h frames (fid :: fids) (c :: cs) :=
-  ⟨h1, h2, h3, h4, h5, h6, h7, h8, ht⟩
+  ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, ht⟩
 
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -900,7 +909,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
         by rw [hb]; exact hs.2.2.1, by rw [hb]; exact hs.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -1491,6 +1501,12 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
   | [], [], _, _, _, _, _, _, _, _, _, hs => hs
   | fid :: fids, c :: cs, hd, hv, hsf, hcr, hkd, hmt, hrp, hdm, hcp, hs => by
       refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+        (by
+          -- J34: the class-body-self clause reads `self` and `defmod`, both
+          -- frame-array agreements already in hand.
+          intro hcb hnb
+          rw [hsf fid (List.mem_cons_self ..), hd fid (List.mem_cons_self ..)]
+          exact hs.2.2.2.2.2.2.2.2.1 hcb hnb),
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
@@ -1499,7 +1515,7 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           (fun g hg => hmt g (List.mem_cons_of_mem _ hg))
           (fun g hg => hrp g (List.mem_cons_of_mem _ hg))
           (fun g hg => hdm g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2⟩
+          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
@@ -1922,7 +1938,8 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
         classPayload?_isSome_lt hs.1
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ?_,
         hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1, hs.2.2.2.2.2.2.2.1,
-        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2⟩
+        hs.2.2.2.2.2.2.2.2.1,
+        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
       · -- **L209: the chain half, and this is what `TypeAgree`'s sixth clause is for.**

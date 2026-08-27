@@ -677,7 +677,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- table. That is implied by `defFree` and checked anyway, because the rule reads
   -- the body's output.
   | .def' name params body =>
-    if params.isEmpty ∧ declaresName D name = false ∧ name ≠ "method_added" then
+    if params.isEmpty ∧ declaresName D name = false ∧ name ≠ "method_added" ∧ name ≠ "define_method" then
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
@@ -698,7 +698,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- and not an approximation.
       match infer D [] body false
           { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
-                     params := some [], inLoop := none,
+                     params := some [], inClassBody := false, inLoop := none,
                      -- **L249: `inBlock := false` explicitly**, and it is L207/L214's
                      -- point a third time — `{ ctx with … }` would inherit the
                      -- *enclosing* activation's flag, and a `def` body is never a block

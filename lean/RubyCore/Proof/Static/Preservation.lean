@@ -134,7 +134,7 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
         ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩, FramesOk.push hfs⟩
       · rw [getD_push_lt_self]; exact hown
       · intro y σ hy; exact absurd hy (by simp [envGet?])
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb), StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -783,7 +783,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb), StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -823,14 +823,14 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           have hfc : FrameConforms m.heap m.frames Γ' fid := by
             rw [hst] at hfs; exact hfs.2.2.1
           simpa [curFrame, curFid, hst] using hfc.2.1
-      have hha' : ¬ ("method_added" = name) := fun hh => hha hh.symm
+
       -- `hlk` is the raw lookup equation, because `simp` needs it to collapse
       -- `evalExpr`'s hook `match`; `hlkNH` is the invariant's clause, which since L149
       -- also carries `Boot.objectId < objs.size` — preserved because `set!` does not
       -- resize.
       have hlkNH : ∀ md : MethodDef,
           NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
-        fun _ => NoHook_defineMethod hhook hha'
+        fun _ => NoHook_defineMethod hhook hha
       -- L153/L154: one *instance* of the generalized clause, at the definee the frame
       -- names. That the definee is a class is `hdo`, and `classPayload?` is unmoved by
       -- a method-table write.
@@ -839,6 +839,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             (.ref (curFrame m).defmod) "method_added" = none := fun md =>
         (hlkNH md).2 (curFrame m).defmod
           (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+          "method_added" (by simp [hookFreeNames])
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never
       -- has to be written out, and over `m₀` so the `preludeMode` branch — which
       -- differs only in fields `Inv` does not mention — is discharged by the same
@@ -1899,6 +1900,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- `cref` is the caller's (L256) — the clause an empty one refused.
           simp only [withCtl]
           refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn hmn => absurd hmn (by simp), ?_,
+            (fun hcb _ => nomatch hcb),
             StackCtx.push hlt (StackCtx.heap_congr hag hsc)⟩
           · rw [getD_push_lt_self]
             show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
@@ -2064,8 +2066,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             (fun sc hsc' => absurd hsc' (by simp [blockCtx])) ?_ (Or.inr rfl)
             (fun mn hmn => absurd hmn (by simp [blockCtx]))
             (fun hq => absurd hq (by simp [blockCtx]))
+            (fun hcb _ => by simp [blockCtx] at hcb)
             (StackCtx.cons ?_ ?_ ?_ (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
               (fun mn hmn => absurd hmn (by simp)) (fun _ => ?_)
+              (fun hcb _ => nomatch hcb)
               (StackCtx.push
                 (fun g hgm => by
                   simp only [Array.size_push]; exact Nat.lt_succ_of_lt (hlt g hgm))
@@ -2205,7 +2209,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- three that are not are `ClosuresOk`'s (L251) read through
           -- `callClosure`'s copy.
           simp only [withKont]
-          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun _ hb => absurd (hcbi ▸ hb) (by simp)),
+            StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hcappay
           · intro hb; exact absurd (hcbi ▸ hb) (by simp)
           · intro _; rw [getD_push_lt_self]; simp [defVisOfDef]
@@ -2337,7 +2342,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- **is** `md.owner`. `defVis` is the frame literal's default, which is what
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
-          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, StackCtx.push hlt hsc⟩
+          refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb),
+            StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl

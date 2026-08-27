@@ -88,7 +88,7 @@ theorem initiationJ {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
   · show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack (jctxs topJCtx [])
     refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp [topJCtx]),
-      fun _ => rfl, trivial⟩
+      fun _ => rfl, (fun hcb _ => nomatch hcb), trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact fun _ => (show ClassOk (Machine.init p).heap from
@@ -258,14 +258,14 @@ theorem egUserCall_judged : Judge [] (declsOf Static.egUserCall) [] Static.egUse
         { params := [], ret := .int }) (.cls "String") "shout"
       = some ([], .int) := by decide
   have hdef : Judge [] (declsOf Static.egUserCall) [] (.def' "shout" [] (.int 1)) false
-      ({ cls := "String" } : JCtx) .sym []
+      ({ cls := "String", inClassBody := true } : JCtx) .sym []
       (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) :=
     .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
   have hsend : Judge [] (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) []
-      (.send (some (.str "x")) "shout" [] none) false ({ cls := "String" } : JCtx)
+      (.send (some (.str "x")) "shout" [] none) false ({ cls := "String", inClassBody := true } : JCtx)
       .int []
       (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) :=
@@ -294,14 +294,14 @@ theorem egVcall_judged : Judge [] (declsOf Static.egVcall) [] Static.egVcall
         { params := [], ret := .int }) (.cls "String") "get"
       = some ([], .int) := by decide
   have hdefv : Judge [] (declsOf Static.egVcall) [] (.def' "value" [] (.int 1)) false
-      ({ cls := "String" } : JCtx) .sym []
+      ({ cls := "String", inClassBody := true } : JCtx) .sym []
       (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) :=
     .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
   have hdefg : Judge [] (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) []
-      (.def' "get" [] (.vcall "value")) false ({ cls := "String" } : JCtx) .sym []
+      (.def' "get" [] (.vcall "value")) false ({ cls := "String", inClassBody := true } : JCtx) .sym []
       (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"
         { params := [], ret := .int }) :=
@@ -310,7 +310,7 @@ theorem egVcall_judged : Judge [] (declsOf Static.egVcall) [] Static.egVcall
   have hsend : Judge [] (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"
         { params := [], ret := .int }) []
-      (.send (some (.str "x")) "get" [] none) false ({ cls := "String" } : JCtx)
+      (.send (some (.str "x")) "get" [] none) false ({ cls := "String", inClassBody := true } : JCtx)
       .int []
       (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"

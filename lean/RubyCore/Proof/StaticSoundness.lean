@@ -125,7 +125,8 @@ theorem initiation_ctl {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
     decide
   · show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack ({ cls := "Object" } :: [])
-    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), fun _ => rfl, trivial⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp), fun _ => rfl,
+      (fun hcb _ => nomatch hcb), trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact fun _ => (show ClassOk (Machine.init p).heap from

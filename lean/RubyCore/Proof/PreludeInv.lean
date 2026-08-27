@@ -134,7 +134,8 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
     exact ⟨hh.2.1.1, fun _ => hh.2.2.2.2.1, fun hz => absurd rfl hz,
       fun sc hsc => absurd hsc (by simp),
       by simp [Machine.initOn, Array.getD], Or.inr rfl,
-      fun mn h => absurd h (by simp), fun _ => by simp [Machine.initOn, Array.getD], trivial⟩
+      fun mn h => absurd h (by simp), fun _ => by simp [Machine.initOn, Array.getD],
+      (fun hcb _ => nomatch hcb), trivial⟩
   · -- **L228: the globals conjunct**, and here — unlike at `Machine.init` — the list is
     -- *quantified*, because `initWithPrelude` carries phase 1's globals into phase 2. So
     -- it is not vacuous, and what discharges it is `declsOf p`: the checker's own table
@@ -263,7 +264,7 @@ def PreservesHeapOk (m : Machine) : Prop :=
 theorem heapOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hh : HeapOk h)
     (h1 : ¬ (name = "+")) (h2 : ¬ (name = "-")) (h3 : ¬ (name = "*"))
-    (h4 : ¬ ("method_added" = name)) (h5 : ¬ (name = "zero?")) :
+    (h4 : name ≠ "method_added" ∧ name ≠ "define_method") (h5 : ¬ (name = "zero?")) :
     HeapOk (defineMethod h cls name md) :=
   ⟨TableOk_defineMethod hh.1 h1 h2 h3 h5,
    NoHook_defineMethod hh.2.1 h4,

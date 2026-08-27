@@ -605,6 +605,16 @@ structure FrameCtx where
       guard, which refuses nothing today and is what `--check`'s byte-identical diff
       records. -/
   inBlock : Bool := false
+  /-- **Is this activation a class body?** (J34) — the seventh channel. Set by the
+      `class'` reopen rule on the body's context, and by nothing else; `false` at
+      toplevel, in methods, and in blocks. What it buys is a `StackCtx` clause the
+      class-object-receiver constructs need: in a class body, `self` *is* the class
+      object named `cls` — a fact `selfCls` cannot carry (its `some` means "an
+      *instance* of"), and the invariant could not previously state (toplevel also
+      has `selfCls = none`, but its `self` is the main object, not a class). The
+      consumer is the semantic-axiom layer (J35): a claim conditioned on a class
+      body (`SemClaim.reqCls`) reads the receiver's identity from this clause. -/
+  inClassBody : Bool := false
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types
