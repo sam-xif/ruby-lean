@@ -65,7 +65,9 @@ theorem judge_mono {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     (motive_4 := fun D Γ es top ctx τs Γ' D' _ =>
       (∀ e' ∈ es, MFrag e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeArgs D2 Γ es top ctx τs Γ' D2)
-    (motive_5 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_5 := fun D Γ es top ctx Γ' D' _ =>
+      (∀ e' ∈ es, MFrag e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
+        D' = D ∧ JudgeElems D2 Γ es top ctx Γ' D2)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
     (motive_7 := fun _ _ _ _ _ _ _ _ => True)
     (motive_8 := fun _ _ _ _ _ _ _ => True)
@@ -123,6 +125,16 @@ theorem judge_mono {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     obtain ⟨rfl, h1'⟩ := ih1 (hm e (by simp)) hdf.1 hs
     obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hm e' (by simp [he'])) hdf.2 hs
     exact ⟨rfl, .cons h1' hr'⟩
+  -- JudgeElems
+  case _ =>  -- nil
+    intro D Γ top ctx _ _ D2 _
+    exact ⟨rfl, .nil⟩
+  case _ =>  -- cons
+    intro D Γ e rest top ctx τ Γ₁ D₁ Γ' D' h1 hrest ih1 ihr hm hdf D2 hs
+    simp only [defFreeAll, Bool.and_eq_true] at hdf
+    obtain ⟨rfl, h1'⟩ := ih1 (hm e (by simp)) hdf.1 hs
+    obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hm e' (by simp [he'])) hdf.2 hs
+    exact ⟨rfl, .cons h1' hr'⟩
   -- Judge: the fragment heads.
   case hint => exact fun _ _ _ hs => ⟨rfl, .int⟩
   case hflt => exact fun _ _ _ hs => ⟨rfl, .flt⟩
@@ -143,6 +155,39 @@ theorem judge_mono {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     | vasgnLvar hmr =>
       obtain ⟨rfl, h2⟩ := ih hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .vasgnLvar hib h2⟩
+  case hconst =>
+    intro D Γ nm top ctx τ0 hre _ _ D2 hs
+    exact ⟨rfl, .const (by rw [hs.constTy_eq]; exact hre)⟩
+  case hvarIvar =>
+    intro D Γ x top ctx cc σ hcc hiv _ _ D2 hs
+    exact ⟨rfl, .varIvar hcc (by rw [hs.ivarTy_eq]; exact hiv)⟩
+  case hvarGvar =>
+    intro D Γ x top ctx σ hpg hgt _ _ D2 hs
+    exact ⟨rfl, .varGvar hpg (by rw [hs.globalTy_eq]; exact hgt)⟩
+  case hvasgnIvarDecl =>
+    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ σ hcc hrhs hiv hsj ih hmf hdf D2 hs
+    cases hmf with
+    | vasgnIvar hmr =>
+      obtain ⟨rfl, h2⟩ := ih hmr (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .vasgnIvarDecl hcc h2 (by rw [hs.ivarTy_eq]; exact hiv) hsj⟩
+  case hvasgnIvarFresh =>
+    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ hcc hrhs hiv ih hmf hdf D2 hs
+    cases hmf with
+    | vasgnIvar hmr =>
+      obtain ⟨rfl, h2⟩ := ih hmr (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .vasgnIvarFresh hcc h2 (by rw [hs.ivarTy_eq]; exact hiv)⟩
+  case hvasgnGvar =>
+    intro D Γ x rhs top ctx τ0 Γ₁ D₁ σ hpg hrhs hgt hsj ih hmf hdf D2 hs
+    cases hmf with
+    | vasgnGvar hmr =>
+      obtain ⟨rfl, h2⟩ := ih hmr (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .vasgnGvar hpg h2 (by rw [hs.globalTy_eq]; exact hgt) hsj⟩
+  case harray =>
+    intro D Γ es top ctx Γ' D'0 hje ih hmf hdf D2 hs
+    cases hmf with
+    | array hall =>
+      obtain ⟨rfl, h2⟩ := ih hall (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .array h2⟩
   case hvcall =>
     intro D Γ mname top ctx cc τret hcc hsg _ _ D2 hs
     exact ⟨rfl, .vcall hcc (hs.sigOf_eq hsg)⟩
@@ -265,7 +310,9 @@ theorem DeclsOkJ_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOkJ D h)
     fun c x τ hn => hd.2.2.1 c x τ (by rw [← hs.ivarTy_eq]; exact hn),
     fun c n τ hn => hd.2.2.2.1 c n τ (by rw [← hs.scopedConstTy_eq]; exact hn),
     fun c n dd hn => hd.2.2.2.2.1 c n dd (by rw [← hs.superDecl_eq]; exact hn),
-    fun τ n d hdf => ?_⟩
+    fun τ n d hdf => ?_,
+    fun c x τ hn => hd.2.2.2.2.2.2.1 c x τ (by rw [← hs.ivarTy_eq]; exact hn),
+    fun x τ hn => hd.2.2.2.2.2.2.2 x τ (by rw [← hs.globalTy_eq]; exact hn)⟩
   · cases hold : declFor D τ n with
     | none => exact (hnew τ n d hold hdf).1
     | some d0 =>
@@ -281,7 +328,7 @@ theorem DeclsOkJ_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOkJ D h)
       rw [hdf] at heq
       have : d0 = d := (Option.some.inj heq).symm
       subst this
-      exact hd.2.2.2.2.2 τ n d0 hold
+      exact hd.2.2.2.2.2.1 τ n d0 hold
 
 /-- `DeclsOk_defineMethod`, J-flavored — a method-table write at an *undeclared*
     name moves nothing the table invariant reads; the user arm's conformance is
@@ -296,7 +343,7 @@ theorem DeclsOkJ_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : Strin
       (fun heq => by
         rw [heq] at hn
         exact absurd (superDecl?_declaresName hn) (by simp [hfresh])),
-    hd.2.2.2.2.2⟩
+    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq

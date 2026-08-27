@@ -449,3 +449,20 @@ artifact:
   `Ty`/`RowClaim` reuse the C-ladder codecs, so a J-certificate's rows section is
   byte-compatible with `delta_rows`. Binary `--certify` wiring deliberately waits
   for an emitter to feed it (the initiative's stated exclusion).
+
+## J26 — the table-read heads: const, ivars, globals, and the array literal
+
+Fragment parity with the old spine grows: `const` (through `DeclsOkJ`'s constant
+half and `constRead_sole`), ivar reads/writes (the write's delivery re-establishes
+the one `DeclsOkJ` half `IvarOnly` cannot carry, exactly as L196's case did — with
+one J-specific step: the written slot's `VTy` collapses to the `ValueTy` the
+`IvarOk` clause speaks through *row groundness*), global reads/writes
+(`GlobalsOk.read`/`.set`, same collapse), and plain array literals
+(`inv_continueArrayJ`, with the splat branch refuted by `MFrag`'s emptiness at
+splat shapes rather than by a checker's `none`). `DeclsOkJ` gains two more
+heap-free conjuncts — declared ivar and global row types are ground — the same
+J22 bill at the other two tables, vacuous at `baseDecls`. `judge_mono` extends
+per-head (the ivar/global/const tables are *equal* under `SubDecls`, so even the
+fresh-ivar rule's negative premise transports), and the checker gains the
+matching nodes (`vasgnIvar` covers both ivar-assignment rules deterministically:
+the table answers a row or it does not).

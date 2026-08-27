@@ -164,7 +164,9 @@ theorem tableOk_declsOkJ {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
     DeclsOkJ baseDecls h := by
   have hd := tableOk_declsOk ht hcls
   refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2,
-    fun τr mname d hdecl => declFor_baseDecls_ground hdecl⟩
+    fun τr mname d hdecl => declFor_baseDecls_ground hdecl,
+    fun c x τ hn => absurd hn (by simp [ivarTy?, baseDecls]),
+    fun x τ hn => absurd hn (by simp [globalTy?, baseDecls])⟩
   intro τr mname d hdecl
   rcases hd.1 τr mname d hdecl with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
   · exact Or.inl hb

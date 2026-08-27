@@ -76,6 +76,33 @@ inductive KontOkJ : Decls → Heap → List (JCtx × Env) → Ty → List Kont �
       KontOkJ D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (envSet Γ x τ) := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
+  /-- `@x = e`, with the value in flight: the conformance to whatever the table
+      declares rides the kont (J26, mirroring L191/L196). -/
+  | asgnIvar {D h c Γ Γs τ τw x k Γk} :
+      c.selfCls.isSome = true → SubJ τ τw →
+      (∀ cn σ, c.selfCls = some cn → ivarTy? D cn x = some σ → SubJ τ σ) →
+      KontOkJ D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
+  /-- `$x = e`, with the value in flight (J26, mirroring L228). -/
+  | asgnGvar {D h c Γ Γs τ τw x σ k Γk} :
+      plainGlobal x = true →
+      globalTy? D x = some σ →
+      SubJ τ σ →
+      SubJ τ τw →
+      KontOkJ D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.asgnK .gvar x :: k)
+  /-- An array literal's element (J26, mirroring L174): the remaining elements ride
+      as program, the answer is a fresh `Array`, the accumulated values are not
+      mentioned (element types are erased at `.cls "Array"`). -/
+  | arrK {D D' h c Γ Γs τ τw acc rest Γ' k Γk} :
+      (∀ e ∈ rest, MFrag e) →
+      JudgeElems D Γ rest Γs.isEmpty c Γ' D' →
+      SubJ (.cls "Array") τw →
+      KontOkJ D' h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
   /-- The in-flight value is the condition; either branch may run next, judged at
       this constructor's own environment (the condition's exit), below the chosen
       join `τj` with the chosen continuation environment `Γc` — `Judge.ifElse`'s
@@ -184,6 +211,10 @@ theorem KontOkJ.heap_congr' {h' : Heap} :
       intro ha
       exact .argsK (hrv.congr ha) (VTys.congr ha hva) hst hm hrest hsr hsg hw (ih ha) hsu
   | frameK hrt hil _ ih => intro ha; exact .frameK hrt hil (ih ha)
+  | asgnIvar hsc hw hcf _ hsu ih => intro ha; exact .asgnIvar hsc hw hcf (ih ha) hsu
+  | asgnGvar hpg hgt hcf hw _ hsu ih =>
+      intro ha; exact .asgnGvar hpg hgt hcf hw (ih ha) hsu
+  | arrK hm hje hw _ hsu ih => intro ha; exact .arrK hm hje hw (ih ha) hsu
 
 theorem KontOkJ.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     {D : Decls} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont}

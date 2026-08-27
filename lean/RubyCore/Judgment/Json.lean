@@ -51,6 +51,12 @@ partial def derivToJson : Deriv → Json
     Json.mkObj [("k", "while"), ("head", envToJson Γl), ("c", derivToJson c),
       ("b", derivToJson b)]
   | .vcall => Json.mkObj [("k", "vcall")]
+  | .const => Json.mkObj [("k", "const")]
+  | .varIvar => Json.mkObj [("k", "varIvar")]
+  | .varGvar => Json.mkObj [("k", "varGvar")]
+  | .vasgnIvar rhs => Json.mkObj [("k", "vasgnIvar"), ("rhs", derivToJson rhs)]
+  | .vasgnGvar rhs => Json.mkObj [("k", "vasgnGvar"), ("rhs", derivToJson rhs)]
+  | .array ds => Json.mkObj [("k", "array"), ("elems", derivArgsToJson ds)]
   | .send r a =>
     Json.mkObj [("k", "send"), ("recv", derivRecvToJson r), ("args", derivArgsToJson a)]
   | .defDecl τs σ bs b =>
@@ -117,6 +123,12 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
     pure (.while' (← envOfJson (← j.getObjVal? "head"))
       (← derivOfJson (← j.getObjVal? "c")) (← derivOfJson (← j.getObjVal? "b")))
   | "vcall" => pure .vcall
+  | "const" => pure .const
+  | "varIvar" => pure .varIvar
+  | "varGvar" => pure .varGvar
+  | "vasgnIvar" => pure (.vasgnIvar (← derivOfJson (← j.getObjVal? "rhs")))
+  | "vasgnGvar" => pure (.vasgnGvar (← derivOfJson (← j.getObjVal? "rhs")))
+  | "array" => pure (.array (← derivArgsOfJson (← j.getObjVal? "elems")))
   | "send" =>
     pure (.send (← derivRecvOfJson (← j.getObjVal? "recv"))
       (← derivArgsOfJson (← j.getObjVal? "args")))

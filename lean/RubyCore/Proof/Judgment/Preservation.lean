@@ -156,6 +156,44 @@ theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env
         hbu, hsb.trans hsubw, SubEnv.refl _,
         KontOkJ.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) rfl hk⟩
 
+
+/-- **The array literal's loop** (J26, mirroring `inv_continueArray`): nothing left
+    → allocate; a head to run → push `arrK`. Fragment elements are never splats
+    (`MFrag` has no constructor at that shape), so the loop stays on the plain
+    branch. -/
+theorem inv_continueArrayJ {D D' : Decls} {m : Machine} {c : JCtx} {Γ Γ' : Env}
+    {Γs : List (JCtx × Env)} {Γk : Env} {τw : Ty} {acc : List Value} {rest : List Expr}
+    (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
+    (htab : DeclsOkJ D m.heap)
+    (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
+    (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
+    (hgl : GlobalsOk D m.heap m.globals)
+    (hm : ∀ e ∈ rest, MFrag e)
+    (hje : JudgeElems D Γ rest Γs.isEmpty c Γ' D')
+    (hsw : SubJ (.cls "Array") τw)
+    (hk : KontOkJ D' m.heap ((c, Γk) :: Γs) τw m.kont)
+    (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
+    (hclo : ClosuresOk m := by assumption) :
+    StepOkJ (Interp.continueArray m acc rest) := by
+  cases hje with
+  | nil =>
+    simp only [Interp.continueArray, Builtins.allocArr]
+    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+      (VTy.weaken (VTy.ofValueTy
+        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.1 hstr.2.2
+          (fun _ => ⟨_, rfl⟩))) hsw) hk
+  | @cons _ _ e rest' _ _ τe Γ₁ D₁ _ _ he hrest =>
+    have hnsp : ∀ x, e ≠ Expr.splat x := by
+      rintro x rfl
+      exact nomatch hm (Expr.splat x) (by simp)
+    rw [continueArray_plain (by intro x hq; exact absurd hq (hnsp x))]
+    exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+      (by simp [framePopLabels, hks]) (hm e (by simp)) he (SubJ.refl _)
+      (KontOkJ.arrK (fun e' he' => hm e' (by simp [he'])) hrest hsw hk)
+
 set_option maxHeartbeats 2000000 in
 /-- **The eval branch**, by induction over the derivation. -/
 theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
@@ -703,6 +741,114 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
        refine hdecls _ rfl rfl rfl ?_ rfl rfl rfl rfl ?_ rfl
        · simpa [defVisOfDef, hinit] using hvis
        · exact hdm ▸ hcrefCur)
+  -- ## The table-read heads (J26): const, ivar, gvar — reads off `DeclsOkJ`.
+  case hconst =>
+    intro D Γ nm top ctx τ0 hre
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    obtain ⟨v, hconst, hty, hsole⟩ := htab.2.1 nm _ hre
+    have hne : m.stack ≠ [] := (hfs.frameShallow).1
+    cases hst : m.stack with
+    | nil => exact absurd hst hne
+    | cons fid fids =>
+      have hsc' := hsc
+      rw [hst] at hsc'
+      have hcur : m.currentFrame = m.frames.getD fid default := by
+        simp [Machine.currentFrame, hst]
+      have hcref : Boot.objectId ∈ m.currentFrame.cref := by
+        rw [hcur]; exact hsc'.2.2.2.2.1
+      simp only [evalExpr]
+      rw [constRead_sole hcref hconst hsole]
+      exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+        (VTy.weaken (VTy.ofValueTy hty) hsubw) hk
+  case hvarIvar =>
+    intro D Γ x top ctx sc σ hsome hiv
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    have hne : m.stack ≠ [] := (hfs.frameShallow).1
+    have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hne
+      | cons fid fids =>
+        rw [hst] at hsc
+        have := hsc.2.2.2.1 sc hsome
+        rw [show m.currentFrame = m.frames.getD fid default by
+          simp [Machine.currentFrame, hst]]
+        exact this.1
+    obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
+      cases hsv : m.currentFrame.self with
+      | ref o' => exact ⟨o', rfl⟩
+      | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?, subTy]
+    have hpl : plainRecv m.heap o = true := valueTy_ref_plain (hsf ▸ hself)
+    have hcn : className m.heap (m.heap.get o).klass = sc := by
+      have := valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) (hsf ▸ hself)
+      rcases this with ⟨-, hs⟩ | ⟨hc, hs⟩
+      · have := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
+        rw [plainRecv_classOf hpl] at this
+        simpa using this
+      · exact absurd hs (by simp [subTy])
+    have hlt : o < m.heap.objs.size := by
+      unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
+      simpa using hpl.1.1.1.1.1
+    simp only [evalExpr, hsf]
+    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      (VTy.weaken (VTy.ofValueTy ?_) hsubw) hk
+    cases hfind : ((m.heap.get o).ivars.find? (·.1 == x)).map Prod.snd with
+    | none => simpa [hfind] using ValueTy.weaken (ValueTy.exact rfl) (by simp)
+    | some v =>
+      have := htab.2.2.1 sc x σ hiv o hlt hcn v hfind
+      simpa [hfind] using ValueTy.weaken this (by simp)
+  case hvarGvar =>
+    intro D Γ x top ctx σ hpg hgt
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    simp only [evalExpr, matchGlobal_none_of_plain hpg]
+    exact inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      (VTy.weaken (VTy.ofValueTy (GlobalsOk.read hgl hpg hgt)) hsubw) hk
+  case hvasgnIvarDecl =>
+    intro D Γ x rhs top ctx sc τ0 Γ₁ D₁ σ hsome hrhs hiv hsj ih
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | vasgnIvar hmr =>
+      subst htop
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hmr hrhs (SubJ.refl _)
+        (KontOkJ.asgnIvar (by rw [hsome]; rfl) hsubw
+          (fun cn σ' hcn hiv' => by
+            rw [hsome, Option.some.injEq] at hcn
+            subst hcn
+            rw [hiv] at hiv'
+            simp only [Option.some.injEq] at hiv'
+            subst hiv'
+            exact hsj) hk)
+  case hvasgnIvarFresh =>
+    intro D Γ x rhs top ctx sc τ0 Γ₁ D₁ hsome hrhs hiv ih
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | vasgnIvar hmr =>
+      subst htop
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hmr hrhs (SubJ.refl _)
+        (KontOkJ.asgnIvar (by rw [hsome]; rfl) hsubw
+          (fun cn σ' hcn hiv' => by
+            rw [hsome, Option.some.injEq] at hcn
+            subst hcn
+            rw [hiv] at hiv'
+            exact absurd hiv' (by simp)) hk)
+  case hvasgnGvar =>
+    intro D Γ x rhs top ctx τ0 Γ₁ D₁ σ hpg hrhs hgt hsj ih
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | vasgnGvar hmr =>
+      subst htop
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hmr hrhs (SubJ.refl _)
+        (KontOkJ.asgnGvar hpg hgt hsj hsubw hk)
+  case harray =>
+    intro D Γ es top ctx Γ'0 D'0 hje ih
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    subst htop
+    have hall : ∀ e' ∈ es, MFrag e' := by cases hmf; assumption
+    simp only [evalExpr]
+    exact inv_continueArrayJ hfs htab hsc hh hsat hstr hcls hbot hks hgl hall hje
+      hsubw hk
   -- ## `sendCall`'s conclusion is a send head, so the fragment gate's shape
   -- condition (no `call`-named explicit sends) is what refutes it.
   case hsendCall =>
@@ -987,7 +1133,7 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
           sigOf_vty_atomic (by simpa using hsg) hrv
         have hground : ∀ p ∈ psacc ++ [τp], groundTy p = true := by
           intro p hp
-          refine htab.2.2.2.2.2 τr0 mname _ (sigOf_declFor hnilτ hsgA) p ?_
+          refine htab.2.2.2.2.2.1 τr0 mname _ (sigOf_declFor hnilτ hsgA) p ?_
           simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hp
           simp only [List.mem_append, List.mem_cons]
           rcases hp with hp | rfl
@@ -1033,6 +1179,155 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
               (VTys.snoc hva (hv.weaken hst)) hs1
               (fun a' ha' => hm a' (by simp [ha'])) hrest' hs2
               (by simpa using hsg) hsw hk') (hclo := hcloTail hK)
+    | @asgnIvar _ _ _ _ _ _ τw x k _ hsome hsw hcf hk' hsu =>
+      obtain ⟨sc, hsc'⟩ := Option.isSome_iff_exists.mp hsome
+      have hself : ValueTy m.heap m.currentFrame.self (.cls sc) := by
+        cases hst : m.stack with
+        | nil => exact absurd hst (hfs.frameShallow).1
+        | cons fid fids =>
+          have hsc2 := hsc
+          rw [hst] at hsc2
+          have := hsc2.2.2.2.1 sc hsc'
+          rw [show m.currentFrame = m.frames.getD fid default by
+            simp [Machine.currentFrame, hst]]
+          exact this.1
+      obtain ⟨o, hsf⟩ : ∃ o, m.currentFrame.self = .ref o := by
+        cases hsv : m.currentFrame.self with
+        | ref o' => exact ⟨o', rfl⟩
+        | _ => rw [hsv] at hself; simp_all [ValueTy, valueTy?, subTy]
+      have hpl : plainRecv m.heap o = true := valueTy_ref_plain (hsf ▸ hself)
+      have hfz : (m.heap.get o).frozen = false := by
+        unfold plainRecv at hpl
+        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hpl
+        exact hpl.1.1.2
+      have hcnO : className m.heap (m.heap.get o).klass = sc := by
+        rcases valueTy_ref_inv (by simp [subTy]) (by simp [subTy]) (hsf ▸ hself)
+          with ⟨-, hs⟩ | ⟨hc, hs⟩
+        · have hq := (subTy_atomic (τ := Ty.cls sc) (by simp) (by simp)).mp hs
+          rw [plainRecv_classOf hpl] at hq
+          simpa using hq
+        · exact absurd hs (by simp [subTy])
+      have hltO : o < m.heap.objs.size := by
+        unfold plainRecv at hpl; simp only [Bool.and_eq_true] at hpl
+        simpa using hpl.1.1.1.1.1
+      show StepOkJ (match m.currentFrame.self with
+        | .ref o' =>
+          if (m.heap.get o').frozen then _ else
+            .next (withCtl (bindIvar { m with kont := k } x v) (.value v))
+        | selfV => _)
+      rw [hsf]
+      simp only [hfz, if_false]
+      have hi : IvarOnly m.heap (bindIvar { m with kont := k } x v).heap :=
+        bindIvar_fields (m := { m with kont := k })
+      have hag := hi.typeAgree
+      have hfr : (bindIvar { m with kont := k } x v).frames = m.frames := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      have hstk : (bindIvar { m with kont := k } x v).stack = m.stack := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      have hkt : (bindIvar { m with kont := k } x v).kont = k := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      have hgb : (bindIvar { m with kont := k } x v).globals = m.globals := by
+        unfold bindIvar; rw [show ({ m with kont := k } : Machine).currentFrame
+          = m.currentFrame from rfl, hsf]
+      refine ⟨hi.noHook hh, hi.saturated hsat, hi.litClsOk hstr, hi.classOk hcls,
+        by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+                 = m.frames from hfr,
+              show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
+                 = m.stack from hstk]
+           exact hbot,
+        by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
+                 = k from hkt,
+              show (withCtl (bindIvar { m with kont := k } x v) (.value v)).stack
+                 = m.stack from hstk]
+           simpa [framePopLabels] using hks,
+        ClosuresOk.transport (hcloTail hK)
+          (by
+            intro κ hm cl hcl
+            refine ⟨κ, ?_, hcl⟩
+            rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
+              = k from hkt] at hm
+            exact hm)
+          (by
+            rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+              = (bindIvar { m with kont := k } x v).frames from rfl, hfr]
+            exact Nat.le_refl _)
+          (by
+            intro p _
+            rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).frames
+              = (bindIvar { m with kont := k } x v).frames from rfl, hfr]
+            exact FrameShape.rfl' _)
+          (by
+            intro o ho
+            show ((bindIvar { m with kont := k } x v).heap.classPayload? o).isSome = true
+            rw [hi.classPayload]; exact ho),
+        F, ctx, Γk, Γs,
+        ⟨(ivarOnly_rowsAndConstsJ hi htab).1, (ivarOnly_rowsAndConstsJ hi htab).2.1, ?_,
+          (ivarOnly_rowsAndConstsJ hi htab).2.2.1, (ivarOnly_rowsAndConstsJ hi htab).2.2.2,
+          htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2⟩,
+        ?_, ?_, ?_, ?_⟩
+      · intro c' x' σ' hiv' o' ho0 hcn' v' hv'
+        have hsz : (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap.objs.size
+            = m.heap.objs.size := hi.size
+        have ho' : o' < m.heap.objs.size := by omega
+        simp only [withCtl] at hcn' hv'
+        by_cases hoo : o' = o
+        · have hcls' : c' = sc := by
+            rw [← hcn', hoo,
+              show ((bindIvar { m with kont := k } x v).heap.get o).klass
+                = (m.heap.get o).klass from hi.klass o, hi.className_eq]
+            exact hcnO
+          subst hcls'
+          rw [hoo] at hv' ho'
+          by_cases hxx : x' = x
+          · subst hxx
+            have hvv : v' = v := by
+              rw [bindIvar_ivars_self (m := { m with kont := k }) hsf hltO] at hv'
+              simpa using hv'.symm
+            subst hvv
+            -- The written slot: the value's `VTy` at the declared type, collapsed to
+            -- `ValueTy` — the row's type is ground (`DeclsOkJ` has no groundness for
+            -- ivar rows, so go through `ivarTy?`'s… the declared σ' is what `hcf`
+            -- answers at, as a `SubJ`; `IvarOk` is `ValueTy`-based, so collapse.
+            exact ValueTy.congr hag
+              ((VTy.weaken hv (hcf _ σ' hsc' hiv')).toValueTy (htab.2.2.2.2.2.2.1 _ _ _ hiv'))
+          · rw [bindIvar_ivars_self (m := { m with kont := k }) hsf hltO,
+              List.find?_cons_of_neg (by simpa using fun hq => hxx hq.symm),
+              find?_filter_ne _ hxx] at hv'
+            exact ValueTy.congr hag (htab.2.2.1 _ x' σ' hiv' o ho' hcnO v' hv')
+        · rw [bindIvar_get_ne (m := { m with kont := k }) hsf hoo] at hcn' hv'
+          rw [hi.className_eq] at hcn'
+          exact ValueTy.congr hag (htab.2.2.1 c' x' σ' hiv' o' ho' hcn' v' hv')
+      · show FramesOkJ _ (bindIvar { m with kont := k } x v).frames
+          (bindIvar { m with kont := k } x v).stack (Γk :: Γs.map Prod.snd)
+        rw [hfr, hstk]; exact FramesOkJ.heap_congr hag hfs
+      · show StackCtx _ (bindIvar { m with kont := k } x v).frames
+          (bindIvar { m with kont := k } x v).stack (jctxs ctx Γs)
+        rw [hfr, hstk]; exact StackCtx.heap_congr hag hsc
+      · rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).globals
+                 = m.globals from hgb]
+        exact GlobalsOk.congr
+          (h' := (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap) hag hgl
+      · exact ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
+          by rw [show (withCtl (bindIvar { m with kont := k } x v) (.value v)).kont
+                    = k from hkt]
+             exact KontOkJ.heap_congr hag hk'⟩
+    | @asgnGvar _ _ _ _ _ _ τw x σ k _ hpg hgt hcf hsw hk' hsu =>
+      show StepOkJ (.next (Interp.withCtl (({ m with kont := k }).setGlobal x v) (.value v)))
+      rw [setGlobal_of_plain (m := { m with kont := k }) hpg]
+      simp only [Interp.withCtl]
+      refine ⟨hh, hsat, hstr, hcls, hbot, (by simpa [framePopLabels] using hks),
+        ClosuresOk.konts (hcloTail hK) rfl rfl
+          (by intro κ hm; exact Or.inl (by simpa using hm)),
+        F, ctx, Γk, Γs, htab, hfs, hsc,
+        GlobalsOk.set hgl hgt ((hv.weaken hcf).toValueTy (htab.2.2.2.2.2.2.2 _ _ hgt)),
+        ⟨τw, _, VTy.weaken hv hsw, hsu, hk'⟩⟩
+    | @arrK _ D' _ _ _ _ _ τw acc rest Γ' k _ hm hje hsw hk' hsu =>
+      exact inv_continueArrayJ (m := { m with kont := k })
+        hfs htab hsc hh hsat hstr hcls hbot (by simpa [framePopLabels] using hks) hgl
+        hm hje hsw hk' (hclo := hcloTail hK)
     | @frameK _ _ _ cΓ' Γs' _ fid k hrt hil hk' =>
       obtain ⟨c', Γ'⟩ := cΓ'
       have hst2 : ∃ f0 f1 rest, m.stack = f0 :: f1 :: rest := by

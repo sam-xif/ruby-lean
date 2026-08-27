@@ -41,6 +41,12 @@ inductive Deriv where
   | ifNone (cond t : Deriv) (τj : Ty) (Γc : Env)
   | while' (Γl : Env) (cond body : Deriv)
   | vcall
+  | const
+  | varIvar
+  | varGvar
+  | vasgnIvar (rhs : Deriv)
+  | vasgnGvar (rhs : Deriv)
+  | array (elems : DerivArgs)
   | send (recv : DerivRecv) (args : DerivArgs)
   | defDecl (τs : List Ty) (σ : Ty) (bs : Option BlockSig) (body : Deriv)
   | defPromote (body : Deriv)
@@ -146,6 +152,46 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
         | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
         | none => none
     | .seq ds, .seq es => checkSeq n ds D Γ es top ctx
+    | .const, .const nm =>
+      match constTy? D nm with
+      | some τ => some (τ, Γ, D)
+      | none => none
+    | .varIvar, .var .ivar x =>
+      match ctx.selfCls with
+      | some cc =>
+        match ivarTy? D cc x with
+        | some σ => some (mkNilable σ, Γ, D)
+        | none => none
+      | none => none
+    | .varGvar, .var .gvar x =>
+      if plainGlobal x then
+        match globalTy? D x with
+        | some σ => some (mkNilable σ, Γ, D)
+        | none => none
+      else none
+    | .vasgnIvar rhs, .vasgn .ivar x e' =>
+      match ctx.selfCls with
+      | some cc =>
+        match check n rhs D Γ e' top ctx with
+        | some (τ, Γ₁, D₁) =>
+          match ivarTy? D₁ cc x with
+          | some σ => if subJb (tyFuel τ σ) τ σ then some (τ, Γ₁, D₁) else none
+          | none => some (τ, Γ₁, D₁)
+        | none => none
+      | none => none
+    | .vasgnGvar rhs, .vasgn .gvar x e' =>
+      if plainGlobal x then
+        match check n rhs D Γ e' top ctx with
+        | some (τ, Γ₁, D₁) =>
+          match globalTy? D₁ x with
+          | some σ => if subJb (tyFuel τ σ) τ σ then some (τ, Γ₁, D₁) else none
+          | none => none
+        | none => none
+      else none
+    | .array ds, .array es =>
+      match checkElems n ds D Γ es top ctx with
+      | some (Γ', D') => some (.cls "Array", Γ', D')
+      | none => none
     | .ifElse dc dt de τj Γc, .if' cond t (some els) =>
       -- The plain rule only — a bare-lvar condition is the narrowing rung's node.
       if notBareLvar cond then
@@ -283,6 +329,18 @@ def checkArgs : Nat → DerivArgs → Decls → Env → List Expr → Bool → J
         match checkArgs n rest D₁ Γ₁ es' top ctx with
         | some (τs, Γ', D') => some (τ :: τs, Γ', D')
         | none => none
+      | none => none
+    | _, _ => none
+
+def checkElems : Nat → DerivArgs → Decls → Env → List Expr → Bool → JCtx →
+    Option (Env × Decls)
+  | 0, _, _, _, _, _, _ => none
+  | n + 1, da, D, Γ, es, top, ctx =>
+    match da, es with
+    | .nil, [] => some (Γ, D)
+    | .cons d rest, e :: es' =>
+      match check n d D Γ e top ctx with
+      | some (_, Γ₁, D₁) => checkElems n rest D₁ Γ₁ es' top ctx
       | none => none
     | _, _ => none
 

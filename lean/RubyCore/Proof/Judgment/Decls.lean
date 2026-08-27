@@ -76,7 +76,11 @@ def DeclsOkJ (D : Decls) (h : Heap) : Prop :=
   -- (`VTys.toValuesTy`), and groundness of the declared parameters is exactly the
   -- side condition; a certificate row with a union parameter is unwitnessable by a
   -- `ValueTy`-based conformance anyway, so nothing expressible is lost.
-  (∀ τr mname d, declFor D τr mname = some d → ∀ p ∈ d.params, groundTy p = true)
+  (∀ τr mname d, declFor D τr mname = some d → ∀ p ∈ d.params, groundTy p = true) ∧
+  -- …and so are the declared ivar and global rows (their conformance clauses are
+  -- `ValueTy`-based, so the write cases collapse `VTy` through groundness).
+  (∀ c x τ, ivarTy? D c x = some τ → groundTy τ = true) ∧
+  (∀ x τ, globalTy? D x = some τ → groundTy τ = true)
 
 /-- **The J-table invariant survives an allocating step** — `DeclsOk_grow` with the
     user arm's conformance passing straight through (`UserConformsJ` mentions no
@@ -87,7 +91,7 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
     fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
     fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
-    hd.2.2.2.2.2⟩
+    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
@@ -101,6 +105,34 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
       unfold MissesAt lookupIn at hm0 ⊢
       rw [hg.ancestors_eq hsat, lookup_go_grow hg]
       exact hm0⟩)
+
+/-! ## The `IvarOnly` transports (J26) — an ivar write moves no table read -/
+
+theorem ivarOnly_entryOkJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls} {τr : Ty}
+    {mname : String} {d : MethodDecl} (he : EntryOkJ D h τr mname d) :
+    EntryOkJ D h' τr mname d := by
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
+  · exact Or.inl ⟨bid, fun k hk => hi.resolvesAt (hres k (hi.tyClass hk)), hconf⟩
+  · exact Or.inr (Or.inl ⟨md, c, hkey,
+      fun k hk => hi.resolvesUser (hres k (hi.tyClass hk)),
+      by rw [hi.className_eq]; exact hown, hconf⟩)
+  · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k hk => by
+      have hm0 := hmiss k (hi.tyClass hk)
+      unfold MissesAt at hm0 ⊢
+      rw [hi.lookupIn_eq]; exact hm0⟩)
+
+/-- `IvarOnly.rowsAndConsts`, J-flavored — everything but the ivar half, which the
+    write's own conformance check re-establishes. -/
+theorem ivarOnly_rowsAndConstsJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls}
+    (hd : DeclsOkJ D h) :
+    MethodRowsOkJ D h' ∧ (∀ n τ, constTy? D n = some τ → ConstOk h' n τ) ∧
+      (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h' c n τ) ∧
+      (∀ c n d, superDecl? D c n = some d → SuperOk h' c n d) :=
+  ⟨fun τr mname d hf => ivarOnly_entryOkJ hi (hd.1 τr mname d hf),
+   fun n τ hn => hi.constOk (hd.2.1 n τ hn),
+   fun c n τ hn => hi.scopedConstOk (hd.2.2.2.1 c n τ hn),
+   fun c n dd hn => hi.superOk (hd.2.2.2.2.1 c n dd hn)⟩
 
 end Judgment
 end Proof

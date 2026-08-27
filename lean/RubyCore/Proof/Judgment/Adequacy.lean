@@ -141,7 +141,8 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
     | .begin' _ _ _ _ | .alias' _ _ | .undef _ | .defined _
     | .hash _ | .blockpass _ => simp [defFree]
 
-/-- **Adequacy, all four checkers at once** — one fuel induction. -/
+set_option maxHeartbeats 4000000 in
+/-- **Adequacy, all five checkers at once** — one fuel induction. -/
 theorem check_sound_all : ∀ (n : Nat),
     (∀ {d D Γ e top ctx τ Γ' D'}, RubyCore.Judgment.check n d D Γ e top ctx = some (τ, Γ', D') →
        Judge D Γ e top ctx τ Γ' D') ∧
@@ -150,14 +151,18 @@ theorem check_sound_all : ∀ (n : Nat),
     (∀ {ds D Γ es top ctx τ Γ' D'}, checkSeq n ds D Γ es top ctx = some (τ, Γ', D') →
        JudgeSeq D Γ es top ctx τ Γ' D') ∧
     (∀ {da D Γ es top ctx τs Γ' D'}, checkArgs n da D Γ es top ctx = some (τs, Γ', D') →
-       JudgeArgs D Γ es top ctx τs Γ' D') := by
+       JudgeArgs D Γ es top ctx τs Γ' D') ∧
+    (∀ {da D Γ es top ctx Γ' D'}, checkElems n da D Γ es top ctx = some (Γ', D') →
+       JudgeElems D Γ es top ctx Γ' D') := by
   intro n
   induction n with
   | zero =>
-    refine ⟨?_, ?_, ?_, ?_⟩ <;> (intros; simp [RubyCore.Judgment.check, checkRecv, checkSeq, checkArgs] at *)
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
+      (intros; simp [RubyCore.Judgment.check, checkRecv, checkSeq, checkArgs,
+        checkElems] at *)
   | succ n ih =>
-    obtain ⟨ihc, ihr, ihs, iha⟩ := ih
-    refine ⟨?_, ?_, ?_, ?_⟩
+    obtain ⟨ihc, ihr, ihs, iha, ihe⟩ := ih
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩
     · intro d D Γ e top ctx τ Γ' D' h
       match d, e with
       | .int, .int _ =>
@@ -218,6 +223,81 @@ theorem check_sound_all : ∀ (n : Nat),
       | .seq ds, .seq es =>
         simp only [RubyCore.Judgment.check] at h
         exact .seq (ihs h)
+      | .const, .const nm =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next τ0 hre =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .const hre
+        · exact absurd h (by simp)
+      | .varIvar, .var .ivar x =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next cc hcc =>
+          split at h
+          · next σ hiv =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact .varIvar hcc hiv
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .varGvar, .var .gvar x =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hpg =>
+          split at h
+          · next σ hgt =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact .varGvar hpg hgt
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .vasgnIvar rhs, .vasgn .ivar x e' =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next cc hcc =>
+          split at h
+          · next τ0 Γ₁ D₁ hr0 =>
+            split at h
+            · next σ hiv =>
+              split at h
+              · next hsj =>
+                simp only [Option.some.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, rfl, rfl⟩ := h
+                exact .vasgnIvarDecl hcc (ihc hr0) hiv (subJb_sound hsj)
+              · exact absurd h (by simp)
+            · next hiv =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              exact .vasgnIvarFresh hcc (ihc hr0) hiv
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .vasgnGvar rhs, .vasgn .gvar x e' =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hpg =>
+          split at h
+          · next τ0 Γ₁ D₁ hr0 =>
+            split at h
+            · next σ hgt =>
+              split at h
+              · next hsj =>
+                simp only [Option.some.injEq, Prod.mk.injEq] at h
+                obtain ⟨rfl, rfl, rfl⟩ := h
+                exact .vasgnGvar hpg (ihc hr0) hgt (subJb_sound hsj)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .array ds, .array es =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next Γ0 D0 he0 =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .array (ihe he0)
+        · exact absurd h (by simp)
       | .ifElse dc dt de τj Γc, .if' cnd t (some els) =>
         simp only [RubyCore.Judgment.check] at h
         split at h
@@ -435,6 +515,18 @@ theorem check_sound_all : ∀ (n : Nat),
             obtain ⟨rfl, rfl, rfl⟩ := h
             exact .cons (ihc h1) (iha h2)
           · exact absurd h (by simp)
+        · exact absurd h (by simp)
+    · intro da D Γ es top ctx Γ' D' h
+      match da, es with
+      | .nil, [] =>
+        simp only [checkElems, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact .nil
+      | .cons d rest, e :: es' =>
+        simp only [checkElems] at h
+        split at h
+        · next τ1 Γ₁ D₁ h1 =>
+          exact .cons (ihc h1) (ihe h)
         · exact absurd h (by simp)
 
 /-- The headline adequacy statement. -/

@@ -61,6 +61,16 @@ inductive MFrag : Expr → Prop where
   -- runs, so its gate is the eval arm's own.
   | def' {name params body} : MFrag body → MFrag (.def' name params body)
   | classTop {name body} : MFrag body → MFrag (.class' name none body)
+  -- J26: the table-read heads and the array literal. A splat element has no
+  -- constructor here, which is what keeps the literal's loop on the plain branch
+  -- (`continueArray_plain`'s side conditions fall out of `MFrag`'s own emptiness
+  -- at those shapes).
+  | const {n} : MFrag (.const n)
+  | varIvar {x} : MFrag (.var .ivar x)
+  | varGvar {x} : MFrag (.var .gvar x)
+  | vasgnIvar {x rhs} : MFrag rhs → MFrag (.vasgn .ivar x rhs)
+  | vasgnGvar {x rhs} : MFrag rhs → MFrag (.vasgn .gvar x rhs)
+  | array {es} : (∀ e ∈ es, MFrag e) → MFrag (.array es)
 
 /-- The `Bool` form, on fuel (the L73 discipline: the J2 checker runs it under
     `decide`, so it must kernel-reduce; a nested-list structural recursion would
@@ -85,6 +95,12 @@ def mfragB : Nat → Expr → Bool
     | .send none _ args none => args.all (mfragB n)
     | .def' _ _ body => mfragB n body
     | .class' _ none body => mfragB n body
+    | .const _ => true
+    | .var .ivar _ => true
+    | .var .gvar _ => true
+    | .vasgn .ivar _ rhs => mfragB n rhs
+    | .vasgn .gvar _ rhs => mfragB n rhs
+    | .array es => es.all (mfragB n)
     | _ => false
 
 theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e := by
@@ -129,5 +145,13 @@ theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e :
       exact .sendImplicit fun a ha => ih (h a ha)
     | .def' _ _ body => exact .def' (ih (by simpa [mfragB] using h))
     | .class' _ none body => exact .classTop (ih (by simpa [mfragB] using h))
+    | .const _ => exact .const
+    | .var .ivar _ => exact .varIvar
+    | .var .gvar _ => exact .varGvar
+    | .vasgn .ivar _ rhs => exact .vasgnIvar (ih (by simpa [mfragB] using h))
+    | .vasgn .gvar _ rhs => exact .vasgnGvar (ih (by simpa [mfragB] using h))
+    | .array es =>
+      simp only [mfragB, List.all_eq_true] at h
+      exact .array fun e' he' => ih (h e' he')
 
 end RubyCore.Judgment
