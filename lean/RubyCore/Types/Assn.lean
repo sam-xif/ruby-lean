@@ -135,6 +135,8 @@ theorem tyClassNames_singleton_inv {τ : Ty} {c : String} (h : tyClassNames τ =
   | nilable _ => simp [tyClassNames] at h
   | arrayOf _ => simp [tyClassNames] at h
   | union _ _ => simp [tyClassNames] at h
+  | arrow0 _ => simp [tyClassNames] at h
+  | arrowCons _ _ => simp [tyClassNames] at h
   | cls n =>
     simp only [tyClassNames] at h
     split at h
@@ -170,6 +172,11 @@ def tyName : Ty → String
   -- L269. Sorbet's spelling; binary, so a three-way union renders nested — the
   -- price of imposing no normal form.
   | .union σ τ => "T.any(" ++ tyName σ ++ ", " ++ tyName τ ++ ")"
+  -- L270. A human-only rendering of the params spine; the `->` chain is spelling,
+  -- not currying — the spine is one uncurried signature (`Ty.arrowCons`'s
+  -- docstring).
+  | .arrow0 τ => "() -> " ++ tyName τ
+  | .arrowCons p rest => "(" ++ tyName p ++ ") -> " ++ tyName rest
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ

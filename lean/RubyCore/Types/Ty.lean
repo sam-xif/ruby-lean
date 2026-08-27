@@ -167,6 +167,39 @@ inductive Ty where
       the latter normalizes to `.nilable`, keeping the two spellings of "or nil"
       from proliferating). -/
   | union (σ τ : Ty)
+  /-- **An arrow — the type of a value-level callable** (L270), spelled as a
+      **params spine**: `(A, B) → R` is `arrowCons A (arrowCons B (arrow0 R))`,
+      one `arrowCons` cell per parameter (uncurried, arity-exact as Ruby lambdas
+      are), terminated by `arrow0 ret`.
+
+      **Why a spine and not `params : List Ty`**: a list payload makes `Ty` a
+      *nested* inductive, and both derive handlers and the kernel refuse it —
+      `deriving DecidableEq` has no nested handler (measured at this build), and
+      the repo already learned that nested-derived equality does not
+      kernel-reduce (V15's `exprEq`-on-fuel exists for exactly that reason). The
+      spine keeps `Ty` simple-recursive, so `==` stays structural and `chk`'s
+      `decide`s keep reducing (norm 5). The cost: a malformed spine
+      (`arrowCons A .int`) is representable — it is garbage no rule constructs
+      or consumes, harmless the way a nonsense union is.
+
+      **Inert on the checker path, by L269's playbook**: `subTy` compares both
+      arms by the catch-all, nothing in `infer`/`chk` constructs one,
+      `tyClassNames` answers `[]` (an arrow dispatches from no method table —
+      its one consumer is the judgment layer's `call` rule), `TyClass` is
+      `False`, and the JSON codec round-trips both arms.
+
+      **The meaning lives in the judgment layer**: `SubJ.arrow0`/`SubJ.arrowCons`
+      give the standard variance (contravariant per-cell params, covariant ret)
+      cell by cell — arity mismatches refuse structurally, which is the
+      `ArgumentError` family's condition. The `Judge` lambda rule introduces an
+      arrow (body judged at the chosen parameter types) and `Judge.sendCall`
+      eliminates it. **Methods are deliberately *not* arrows**: a method is not
+      a value in Ruby, and `MethodDecl` already *is* the method-arrow
+      (params/ret/blk) keyed in the table — reifying one into an arrow is
+      `method(:f)`'s future rule, not a representation change
+      (`Judgment/implementation-notes.md` J17). -/
+  | arrow0 (ret : Ty)
+  | arrowCons (param : Ty) (rest : Ty)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
@@ -268,6 +301,12 @@ theorem subTy_trans : ∀ {a b c : Ty}, subTy a b = true → subTy b c = true �
   -- carries payloads.
   | a, b, .union x y, hab, hbc => by
     simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  -- L270: same shape at the two arrow-spine arms — equality on the checker-path
+  -- relation.
+  | a, b, .arrow0 r, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  | a, b, .arrowCons p r, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
 
 @[simp] theorem subTys_refl : ∀ (ps : List Ty), subTys ps ps = true
   | [] => rfl
@@ -332,14 +371,14 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
 theorem ne_nilable_self : ∀ (X : Ty), ¬ (X = .nilable X)
   | .nilable Y => by simpa using ne_nilable_self Y
   | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
-  | .arrayOf _ | .union _ _ => by simp
+  | .arrayOf _ | .union _ _ | .arrow0 _ | .arrowCons _ _ => by simp
 
 /-- And the once-nested form, which `joinTy_absorb'`'s *first* branch needs refuted.
     Same induction. -/
 theorem ne_nilable_self2 : ∀ (X : Ty), ¬ (X = .nilable (.nilable X))
   | .nilable Y => by simpa using ne_nilable_self2 Y
   | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
-  | .arrayOf _ | .union _ _ => by simp
+  | .arrayOf _ | .union _ _ | .arrow0 _ | .arrowCons _ _ => by simp
 
 @[simp] theorem joinTy_absorb' (X : Ty) : joinTy X (mkNilable X) = some (mkNilable X) := by
   unfold mkNilable

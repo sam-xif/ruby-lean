@@ -53,6 +53,9 @@ partial def tyToJson : Ty → Json
   -- emits one yet (unions are judgment-layer types today), but a codec gap would be
   -- a silent refusal the day an emitter does.
   | .union σ τ => Json.mkObj [("k", "union"), ("s", tyToJson σ), ("t", tyToJson τ)]
+  -- L270: both spine arms, structurally.
+  | .arrow0 τ => Json.mkObj [("k", "arrow0"), ("t", tyToJson τ)]
+  | .arrowCons p rest => Json.mkObj [("k", "arrowCons"), ("s", tyToJson p), ("t", tyToJson rest)]
 
 partial def tyOfJson (j : Json) : Except String Ty := do
   let k ← (← j.getObjVal? "k").getStr?
@@ -68,6 +71,8 @@ partial def tyOfJson (j : Json) : Except String Ty := do
   | "nilable" => pure (.nilable (← tyOfJson (← j.getObjVal? "t")))
   | "arrayOf" => pure (.arrayOf (← tyOfJson (← j.getObjVal? "t")))
   | "union" => pure (.union (← tyOfJson (← j.getObjVal? "s")) (← tyOfJson (← j.getObjVal? "t")))
+  | "arrow0" => pure (.arrow0 (← tyOfJson (← j.getObjVal? "t")))
+  | "arrowCons" => pure (.arrowCons (← tyOfJson (← j.getObjVal? "s")) (← tyOfJson (← j.getObjVal? "t")))
   | other => throw s!"unknown type kind {other}"
 
 /-! ## 2. `ATy`, `Sig`, `ASig`, `Row` -/

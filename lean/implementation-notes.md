@@ -13546,3 +13546,43 @@ join rules waits on it.
 `check-proofs.sh` axiom-clean (propext + Classical.choice + Quot.sound only). No
 interpreter change; nothing on the checker path constructs the arm, so tier-0 and
 `--assn` cannot move.
+
+## L270 — `Ty.arrow0`/`Ty.arrowCons`: arrows as a params spine, inert on the checker path
+
+The type of a **value-level callable**, added by L269's playbook (inert here,
+meaningful in `Judgment/`), with one representation decision that was *forced,
+measured, not chosen*:
+
+* **Not `arrow (params : List Ty) (ret : Ty)`.** A list payload makes `Ty` a
+  nested inductive, and `deriving DecidableEq` has no handler for it — the build
+  refused outright. Nor is hand-writing the instance safe: the repo already
+  measured that nested equality does not kernel-reduce (V15's `exprEq`-on-fuel
+  exists for exactly that reason), and `==` on `Ty` sits under `subTy` inside
+  `chk`'s `decide`s (norm 5). So the params are a **spine**: `(A, B) → R` is
+  `arrowCons A (arrowCons B (arrow0 R))` — `Ty` stays simple-recursive, the
+  derived instances stay structural, every existing `decide` keeps reducing. The
+  cost: a malformed spine (`arrowCons A .int`) is representable garbage no rule
+  constructs or consumes; `Judgment/Sub.lean`'s `arrowOf`/`arrowParts?` are the
+  only mint and reader.
+* **Inert here**: `subTy` compares both arms by the catch-all, `tyClassNames`
+  answers `[]` (an arrow dispatches from no method table), `TyClass` is `False`,
+  `tyName` renders a `->` chain (spelling, not currying), the JSON codec
+  round-trips both arms, and nothing in `infer`/`chk` constructs one — so
+  `--assn` and every verdict are byte-identical by construction.
+* **Meaning in `Judgment/`** (J16): `SubJ.arrow0`/`SubJ.arrowCons` give the
+  variance cell by cell — contravariant parameters, covariant return, arity
+  refusing by shape (the `ArgumentError` condition as structure); the lambda rule
+  mints an arrow with the body judged below the chosen return; `sendCall`
+  eliminates it.
+* **Methods are deliberately not arrows** (J17): a method is not a value, and
+  `MethodDecl` already *is* the method-arrow keyed in the table.
+
+Proof-tree cost: the same five files as L269, mechanically (`tyClassNames = []`
+family), two arms per site.
+
+### Checks
+
+`lake build` (94 jobs — the `decide`s in `Cert/Validate.lean` are the norm-5
+probe and pass), `lake build Metatheory`, `lake build Judgment`,
+`check-proofs.sh` axiom-clean, tier-0 `--sut lean` unmoved (992 / 0) — nothing on
+the checker path constructs either arm.

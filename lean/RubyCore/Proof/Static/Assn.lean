@@ -212,6 +212,9 @@ theorem mem_declAtoms_iff {D : Decls} {τ : Ty} {n : String} {d : MethodDecl} :
       | nilable _ => exact absurd hc (by simp [tyClassNames])
       -- L269: same, at the union arm.
       | union _ _ => exact absurd hc (by simp [tyClassNames])
+      -- L270: same, at the two arrow-spine arms.
+      | arrow0 _ => exact absurd hc (by simp [tyClassNames])
+      | arrowCons _ _ => exact absurd hc (by simp [tyClassNames])
       | cls c' =>
         -- `tyClassNames (.cls c')` is `[]` or `[c']`, and `c` is in it.
         have hcc : c = c' := by

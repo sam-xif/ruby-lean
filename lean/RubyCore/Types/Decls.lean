@@ -330,6 +330,10 @@ def tyClassNames : Ty → List String
   -- all-members-agree arm (the `sigOf` nilable-union shape, L260) is the future
   -- widening if union receivers ever want direct dispatch.
   | .union _ _ => []
+  -- L270: an arrow dispatches from no method table — its one consumer is the
+  -- judgment layer's `call` rule, never `declFor`.
+  | .arrow0 _ => []
+  | .arrowCons _ _ => []
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.
