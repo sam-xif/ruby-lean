@@ -49,6 +49,7 @@ inductive Deriv where
   | retSome (rhs : Deriv)
   | retNil
   | hash (pairs : DerivPairs)
+  | casgn (rhs : Deriv)
   | varIvar
   | varGvar
   | vasgnIvar (rhs : Deriv)
@@ -108,6 +109,7 @@ def defFreeB : Nat → Expr → Bool
     | .ret e => (match e with | some e' => defFreeB n e' | none => true)
     | .cpath base _ => (match base with | some b => defFreeB n b | none => true)
     | .hash prs => prs.all (fun p => defFreeB n p.1 && defFreeB n p.2)
+    | .casgn _ rhs => defFreeB n rhs
     | .super' args blk =>
       args.all (defFreeB n) && (match blk with | some b => defFreeB n b | none => true)
     | .splat e => (match e with | some e' => defFreeB n e' | none => true)
@@ -210,6 +212,16 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
           | none => none
         else none
       | none => none
+    | .casgn rhs, .casgn nm e' =>
+      if top && !(readableClasses.contains nm) then
+        match check n A rhs D Γ e' top ctx with
+        | some (τ, Γ₁, D₁) =>
+          if (constTy? D₁ nm).isNone &&
+              D₁.scopedConsts.all (fun e => e.1.2 != nm) then
+            some (τ, Γ₁, D₁)
+          else none
+        | none => none
+      else none
     | .hash ds, .hash prs =>
       match checkPairs n A ds D Γ prs top ctx with
       | some (Γ', D') => some (.any, Γ', D')

@@ -133,6 +133,10 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
       cases e with
       | some e' => simp [defFree]
       | none => simp [defFree]
+    | .casgn _ rhs =>
+      simp only [defFreeB] at h
+      simp only [defFree]
+      exact ih h
     | .hash prs =>
       simp only [defFreeB, List.all_eq_true] at h
       simp only [defFree]
@@ -145,7 +149,7 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
         simp only [defFreePairs, Bool.and_eq_true]
         exact ⟨⟨ih hp.1, ih hp.2⟩, ihp (fun q hq => h q (by simp [hq]))⟩
     | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self'
-    | .var _ _ | .const _ | .casgn _ _ | .cpathAsgn _ _ _ | .vcall _
+    | .var _ _ | .const _ | .cpathAsgn _ _ _ | .vcall _
     | .kwargs _ | .fwd | .yield' _ | .dowhile _ _ | .for' _ _ _
     | .brk _ | .retry' | .redo' | .defs _ _ _ _ | .module' _ _
     | .scopedClass _ _ _ | .scopedModule _ _ _ | .sclass _ _
@@ -222,6 +226,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .retSome _, .ret (some _) => simp [fragHead] at hf
       | .retNil, .ret none => simp [fragHead] at hf
       | .hash _, .hash _ => simp [fragHead] at hf
+      | .casgn _, .casgn _ _ => simp [fragHead] at hf
       | .varIvar, .var .ivar _ => simp [fragHead] at hf
       | .varGvar, .var .gvar _ => simp [fragHead] at hf
       | .vasgnIvar _, .vasgn .ivar _ _ => simp [fragHead] at hf
@@ -387,6 +392,37 @@ theorem check_sound_all : ∀ (n : Nat),
                 obtain ⟨rfl, rfl, rfl⟩ := h
                 exact .retSome hσ (by simpa using hms) (ihc hr) (subJb_sound hsb)
               · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .casgn rhs, .casgn nm e' =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hgate =>
+          simp only [Bool.and_eq_true, Bool.not_eq_true'] at hgate
+          split at h
+          · next τ1 Γ₁ D₁ h1 =>
+            split at h
+            · next hfresh =>
+              simp only [Bool.and_eq_true, Option.isNone_iff_eq_none,
+                List.all_eq_true] at hfresh
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              refine .casgn hgate.1 hfresh.1 (fun cn => ?_) hgate.2 (ihc h1)
+              cases hq : scopedConstTy? D₁ cn nm with
+              | none => rfl
+              | some τq =>
+                exfalso
+                unfold scopedConstTy? at hq
+                cases hf2 : D₁.scopedConsts.find? (·.1 == (cn, nm)) with
+                | none => rw [hf2] at hq; simp at hq
+                | some e2 =>
+                  have hmem := List.mem_of_find?_eq_some hf2
+                  have hkey := List.find?_some hf2
+                  have := hfresh.2 e2 hmem
+                  simp only [beq_iff_eq] at hkey
+                  simp only [bne_iff_ne, ne_eq] at this
+                  exact this (by rw [hkey])
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
@@ -1013,6 +1049,23 @@ theorem egRet_data_certified :
 /-- info: 'RubyCore.Proof.Judgment.egRet_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms egRet_data_certified
+
+/-! ## The J41 worked end: a toplevel constant write -/
+
+def egCasgn : Expr := .casgn "ANSWER" (.int 42)
+
+def egCasgnJCert : JCert := { deriv := .casgn .int }
+
+theorem egCasgnJCert_validates : validateJ egCasgnJCert egCasgn 8 = true := by decide
+
+theorem egCasgn_data_certified :
+    ∀ r, ReachableResult (Machine.init egCasgn) r → ¬ typeStuck r :=
+  validateJ_certifies semAxiomsOk_nil egCasgnJCert_validates
+    (fun r hm => by simp [egCasgnJCert] at hm)
+
+/-- info: 'RubyCore.Proof.Judgment.egCasgn_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egCasgn_data_certified
 
 /-! ## The refusal direction, observed
 

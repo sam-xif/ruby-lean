@@ -1681,6 +1681,75 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
       · rw [get_defineMethod_ne h cls o name md hk]; exact hxs,
     by rw [objs_size_defineMethod]; exact Nat.le_refl _⟩
 
+/-! ### `constSetIn` (J41): the same transport at the constant write -/
+
+theorem get_constSetIn_ne (h : Heap) (j o : ObjId) (nm : String) (v : Value)
+    (hk : ¬ o = j) : (constSetIn h j nm v).get o = h.get o := by
+  unfold constSetIn
+  split
+  · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+    rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem classOf_constSetIn (h : Heap) (j : ObjId) (nm : String) (v w : Value) :
+    classOf (constSetIn h j nm v) w = classOf h w := by
+  cases w
+  case ref o =>
+    have hgo := get_constSetIn_fields h j nm v o
+    simp only [classOf, hgo.2.1, hgo.2.2.1]
+  case bool b => cases b <;> rfl
+  all_goals rfl
+
+theorem plainRecv_constSetIn (h : Heap) (j o : ObjId) (nm : String) (v : Value) :
+    plainRecv (constSetIn h j nm v) o = plainRecv h o := by
+  by_cases hk : o = j
+  · subst hk
+    unfold constSetIn
+    split
+    · rename_i c hc
+      have hb : o < h.objs.size := classPayload?_isSome_lt (by rw [hc]; simp)
+      have hpay : (h.get o).payload = .cls c := by
+        unfold Heap.classPayload? at hc
+        split at hc <;> simp_all
+      unfold plainRecv
+      rw [payload_setClassPayload h o _ hb, hpay]
+      simp
+    · rfl
+  · exact plainRecv_congr (objs_size_constSetIn h j nm v)
+      (get_constSetIn_ne h j o nm v hk)
+      (fun k => classPayload?_isSome_constSetIn h j k nm v)
+      (fun k => className_constSetIn h j k nm v)
+
+/-- **`constSetIn`'s transport** (J41) — `typeAgree_defineMethod` clause for
+    clause: a constant write moves no id, no name, no chain, no non-class payload. -/
+theorem typeAgree_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value) :
+    TypeAgree h (constSetIn h j nm v) :=
+  ⟨fun o _ => classOf_constSetIn h j nm v (.ref o),
+    fun k _ => className_constSetIn h j k nm v,
+    fun k _ => classPayload?_isSome_constSetIn h j k nm v,
+    fun o _ hp => (plainRecv_constSetIn h j o nm v).trans hp,
+    fun o _ hc => by
+      unfold classRecv at hc ⊢
+      rw [show (constSetIn h j nm v).objs.size = h.objs.size from
+            objs_size_constSetIn h j nm v,
+        classPayload?_isSome_constSetIn h j o nm v]
+      exact hc,
+    fun k => ancestors_constSetIn h j k nm v,
+    fun o _ xs hxs => by
+      by_cases hk : o = j
+      · subst hk
+        unfold constSetIn
+        cases hc : h.classPayload? o with
+        | none => exact hxs
+        | some c =>
+          exfalso
+          have hpay : (h.get o).payload = .cls c := by
+            unfold Heap.classPayload? at hc
+            split at hc <;> simp_all
+          rw [hpay] at hxs; exact absurd hxs (by simp)
+      · rw [get_constSetIn_ne h j o nm v hk]; exact hxs,
+    by rw [objs_size_constSetIn]; exact Nat.le_refl _⟩
+
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
     for.** One fact does all four clauses: `Array.push` leaves every existing
     index where it was, so every function the type language reads answers the same

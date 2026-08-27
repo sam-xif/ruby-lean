@@ -969,3 +969,36 @@ codec, census mirror.
 **`defFree` walked into L174's trap for the tenth time**: `Judge.hash` threads
 the table through the pairs, so `defFree` gains a `.hash` arm (`defFreePairs`),
 mirrored in `defFreeB` (+ its `sound` case) and `defFreeF`.
+
+## J41 — `casgn` machine-typed, at the toplevel
+
+The constant write, in three commits' worth of structure (a/b landed together
+with the rule):
+
+* **J41a** — `ClassOk` gains the **no-anonymous-classes** clause (`∀ o cp,
+  classPayload? o = some cp → cp.name.isEmpty = false`): the fragment can never
+  create an anonymous class (`Class.new` has no rule; `enterClassBody` and
+  `eigenclassOf` always name), and the clause is what makes the `casgn`
+  delivery's `nameIfAnonymous` — which *renames* a class, moving every
+  `className`-keyed fact at once — a provable no-op (`nameIfAnonymous_noop`).
+  Decided by a `classOkB` scan; three transports extended; two consumer
+  projections renumbered.
+* **The `constSetIn` suite** (`Proof/HeapFacts.lean` + `Static/{Locals,Decls}`):
+  `defineMethod`'s chain with the `methods`↔`consts` roles swapped — every
+  dispatch fact, name, chain, and *differently-named* constant read is unchanged
+  (`find?_filter_ne` again), `typeAgree_constSetIn` carries the values, and the
+  name-sensitive clauses (`ConstOk`/`ScopedConstOk`) take `nm`'s freshness as
+  hypotheses. `ClassOk` is transported **at `j = Object` only**.
+* **The rule** — `Judge.casgn` gains four guards: `top = true` (the write lands
+  on the bottom frame's definee, which `BottomObj` pins to `Object`; a
+  class-body write would break `ClassOk`'s `NoShadowBefore` clause — the
+  reopened class's own constant table must stay empty — so widening to class
+  bodies means refining `NoShadowBefore` per-name first, a **recorded bill**),
+  `constTy? D₁ nm = none`, `∀ cn, scopedConstTy? D₁ cn nm = none`, and
+  `nm ∉ readableClasses`. `KontOkJ.casgnK` pins the env stack to the singleton.
+  `defFree` walked into L174's trap for the **eleventh** time (`casgn` threads
+  the rhs table).
+
+Checker node (guards as one `Bool` gate + the fold-level scoped scan), JSON,
+census mirror, worked end `egCasgn` (`ANSWER = 42`) certified from data,
+axiom-clean.

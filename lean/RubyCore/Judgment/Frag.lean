@@ -100,6 +100,9 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
   -- J39: `return`. The operand is a non-statement position.
   | retSome {e} : fragHead e = true → MFrag A e → MFrag A (.ret (some e))
   | retNil : MFrag A (.ret none)
+  -- J41: the toplevel constant write.
+  | casgn {nm rhs} :
+      fragHead rhs = true → MFrag A rhs → MFrag A (.casgn nm rhs)
   -- J40: the hash literal, at `.any`.
   | hash {prs} :
       (∀ p ∈ prs, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
@@ -601,7 +604,8 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
     | .ret (some e') => fragHead e' && rec e'
     | .hash prs =>
       prs.all (fun p => fragHead p.1 && fragHead p.2) &&
-      prs.all (fun p => rec p.1 && rec p.2) 
+      prs.all (fun p => rec p.1 && rec p.2)
+    | .casgn _ rhs => fragHead rhs && rec rhs 
     | .var .ivar _ => true
     | .var .gvar _ => true
     | .vasgn .ivar _ rhs => fragHead rhs && rec rhs
@@ -697,6 +701,10 @@ theorem mfragB_sound {A : SemAxioms} :
         replace h' : (fragHead e' && mfragB A n e') = true := h'
         simp only [Bool.and_eq_true] at h'
         exact .retSome h'.1 (ih h'.2)
+      | .casgn _ rhs =>
+        replace h' : (fragHead rhs && mfragB A n rhs) = true := h'
+        simp only [Bool.and_eq_true] at h'
+        exact .casgn h'.1 (ih h'.2)
       | .hash prs =>
         replace h' : (prs.all (fun p => fragHead p.1 && fragHead p.2) &&
           prs.all (fun p => mfragB A n p.1 && mfragB A n p.2)) = true := h'
@@ -719,7 +727,6 @@ theorem mfragB_sound {A : SemAxioms} :
         replace h' : (es.all fragHead && es.all (fun e' => mfragB A n e')) = true := h'
         simp only [Bool.and_eq_true, List.all_eq_true] at h'
         exact .array (fun e' he' => h'.1 e' he') fun e' he' => ih (h'.2 e' he')
-      | .casgn _ _ => exact Bool.noConfusion h'
       | .cpathAsgn _ _ _ => exact Bool.noConfusion h'
       | .send (some _) _ _ (some _) => exact Bool.noConfusion h'
       | .send none _ _ (some _) => exact Bool.noConfusion h'

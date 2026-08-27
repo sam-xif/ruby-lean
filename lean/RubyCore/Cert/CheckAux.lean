@@ -96,6 +96,7 @@ def defFreeF : Nat → Expr → Bool
     | .ret eo => match eo with | some e' => defFreeF n e' | none => true
     | .cpath base _ => match base with | some b => defFreeF n b | none => true
     | .hash prs => prs.all (fun p => defFreeF n p.1 && defFreeF n p.2)
+    | .casgn _ rhs => defFreeF n rhs
     | .super' args blk =>
       defFreeFAll (defFreeF n) args &&
         (match blk with | some b => defFreeF n b | none => true)

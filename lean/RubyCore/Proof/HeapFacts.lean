@@ -465,6 +465,251 @@ theorem lookup_go_defineMethod (h : Heap) (cls : ObjId) (name m : String)
         rw [hk]
         split <;> simp [ih]
 
+
+/-! ## `constSetIn` instances (J41) — the constant write
+
+`defineMethod`'s chain with the `methods`↔`consts` roles swapped: the write
+prepends `(nm, v)` to one class's `consts` and filters the old `nm` entry, so
+every other field — and every other class — is untouched, and the `nm`-keyed
+read is the only one that moves (`find?_filter_ne`, the same list trick
+`methods_find_defineMethod` runs on). -/
+
+theorem objs_size_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value) :
+    (constSetIn h j nm v).objs.size = h.objs.size := by
+  unfold constSetIn
+  split
+  · simp [Heap.setClassPayload, Heap.set, Array.set!]
+  · rfl
+
+/-- Every `Object` field except the payload at `j` is untouched — and the payload
+    at `j` stays a class payload. -/
+theorem get_constSetIn_fields (h : Heap) (j : ObjId) (nm : String) (v : Value)
+    (o : ObjId) :
+    ((constSetIn h j nm v).get o).ivars = (h.get o).ivars ∧
+    ((constSetIn h j nm v).get o).klass = (h.get o).klass ∧
+    ((constSetIn h j nm v).get o).eigen = (h.get o).eigen ∧
+    ((constSetIn h j nm v).get o).frozen = (h.get o).frozen := by
+  unfold constSetIn
+  cases hc : h.classPayload? j with
+  | none => exact ⟨rfl, rfl, rfl, rfl⟩
+  | some c =>
+    by_cases ho : o = j
+    · subst ho
+      by_cases hb : o < h.objs.size
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_self _ _ _ hb]
+        exact ⟨rfl, rfl, rfl, rfl⟩
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_oob _ _ _ hb]
+        exact ⟨rfl, rfl, rfl, rfl⟩
+    · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ ho]
+      exact ⟨rfl, rfl, rfl, rfl⟩
+
+/-- The payload of every *other* object is untouched. -/
+theorem payload_constSetIn_ne (h : Heap) (j : ObjId) (nm : String) (v : Value)
+    (o : ObjId) (ho : o ≠ j) :
+    ((constSetIn h j nm v).get o).payload = (h.get o).payload := by
+  unfold constSetIn
+  cases hc : h.classPayload? j with
+  | none => rfl
+  | some c =>
+    simp only [Heap.setClassPayload, Heap.get, Heap.set]
+    rw [objs_getD_set!_ne _ _ _ _ ho]
+
+theorem shape_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map clsShape
+      = (h.classPayload? k).map clsShape := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!, clsShape]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all [clsShape]
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem ancestors_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ancestors (constSetIn h j nm v) k = ancestors h k :=
+  ancestors_congr (fun i => shape_constSetIn h j i nm v)
+    (objs_size_constSetIn h j nm v) k
+
+theorem classPayload?_isSome_constSetIn (h : Heap) (j k : ObjId) (nm : String)
+    (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).isSome = (h.classPayload? k).isSome := by
+  have hsh := shape_constSetIn h j k nm v
+  cases h1 : (constSetIn h j nm v).classPayload? k <;>
+    cases h2 : h.classPayload? k <;> rw [h1, h2] at hsh <;> simp_all
+
+/-- The `methods` table of every class is untouched, so every dispatch fact is. -/
+theorem methods_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map ClassPayload.methods
+      = (h.classPayload? k).map ClassPayload.methods := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem privateConsts_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map ClassPayload.privateConsts
+      = (h.classPayload? k).map ClassPayload.privateConsts := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem clsName_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map (fun c => (c.name, c.isModule))
+      = (h.classPayload? k).map (fun c => (c.name, c.isModule)) := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem className_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    className (constSetIn h j nm v) k = className h k := by
+  have hnm := clsName_constSetIn h j k nm v
+  unfold className
+  cases h1 : (constSetIn h j nm v).classPayload? k <;>
+    cases h2 : h.classPayload? k <;> rw [h1, h2] at hnm <;> simp_all
+
+theorem lookup_go_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value)
+    (m : String) :
+    ∀ chain, lookup.go (constSetIn h j nm v) m chain = lookup.go h m chain := by
+  intro chain
+  induction chain with
+  | nil => rfl
+  | cons k rest ih =>
+    unfold lookup.go
+    have hk := methods_constSetIn h j k nm v
+    cases h1 : (constSetIn h j nm v).classPayload? k with
+    | none =>
+      cases h2 : h.classPayload? k with
+      | none => exact ih
+      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? k with
+      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
+      | some c =>
+        rw [h1, h2] at hk
+        simp only [Option.map_some, Option.some.injEq] at hk
+        dsimp only
+        rw [hk]
+        split <;> simp [ih]
+
+/-- The constant table of every *other* class is untouched. -/
+theorem consts_constSetIn_ne (h : Heap) (j k : ObjId) (nm : String) (v : Value)
+    (hk : k ≠ j) :
+    ((constSetIn h j nm v).classPayload? k).map ClassPayload.consts
+      = (h.classPayload? k).map ClassPayload.consts := by
+  unfold constSetIn
+  split
+  · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+    rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+/-- And at `j` itself, every *differently-named* constant reads as before —
+    `find?_filter_ne` through the prepend-and-filter write. -/
+theorem consts_find_constSetIn (h : Heap) (j k : ObjId) (nm n : String) (v : Value)
+    (hne : ¬ (n = nm)) :
+    ((constSetIn h j nm v).classPayload? k).map (fun c => c.consts.find? (·.1 == n))
+      = (h.classPayload? k).map (fun c => c.consts.find? (·.1 == n)) := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · have hhead : ((nm, v).1 == n) = false := by
+          simp only [beq_eq_false_iff_ne]; exact fun hh => hne hh.symm
+        simp [Array.getD, hb, Array.set!, List.find?, hhead, find?_filter_ne _ hne]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+/-- `constOwn` at any other class, or at any other name, reads as before. -/
+theorem constOwn_constSetIn_ne (h : Heap) (j k : ObjId) (nm n : String) (v : Value)
+    (hor : k ≠ j ∨ ¬ (n = nm)) :
+    constOwn (constSetIn h j nm v) k n = constOwn h k n := by
+  rcases hor with hk | hne
+  · have hc := consts_constSetIn_ne h j k nm v hk
+    unfold constOwn
+    cases h1 : (constSetIn h j nm v).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> rw [h1, h2] at hc <;> simp_all
+  · have hc := consts_find_constSetIn h j k nm n v hne
+    unfold constOwn
+    cases h1 : (constSetIn h j nm v).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> rw [h1, h2] at hc <;> simp_all
+
+/-- The ancestor-walk constant lookup, at any other name, reads as before —
+    per-name `constLookupFrom_congr`. -/
+theorem constLookupFrom_constSetIn_ne (h : Heap) (j k : ObjId) (nm n : String)
+    (v : Value) (hne : ¬ (n = nm)) :
+    constLookupFrom (constSetIn h j nm v) k n = constLookupFrom h k n := by
+  unfold constLookupFrom
+  rw [ancestors_constSetIn]
+  induction ancestors h k with
+  | nil => rfl
+  | cons a rest ih =>
+    have hca := consts_find_constSetIn h j a nm n v hne
+    cases h1 : (constSetIn h j nm v).classPayload? a with
+    | none =>
+      cases h2 : h.classPayload? a with
+      | none => simp [List.firstM, h1, h2, ih]
+      | some c => rw [h1, h2] at hca; exact absurd hca (by simp)
+    | some c' =>
+      cases h2 : h.classPayload? a with
+      | none => rw [h1, h2] at hca; exact absurd hca (by simp)
+      | some c =>
+        rw [h1, h2] at hca
+        simp only [Option.map_some, Option.some.injEq] at hca
+        simp [List.firstM, h1, h2, hca, ih]
+
 /-- `defineMethod` preserves everything `className` reads — the name *and*
     `isModule`, since L124's anonymous-class fallback renders `#<Module:…>` or
     `#<Class:…>` by it. -/

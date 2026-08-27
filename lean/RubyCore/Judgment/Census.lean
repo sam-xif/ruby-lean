@@ -127,7 +127,9 @@ partial def walk (owner : String) (cls : Option String) (stmt sh : Bool)
   -- J40: the hash literal is in the fragment (at `.any`); pairs are walked.
   | .hash prs =>
     prs.flatMap (fun (k, v) => walk owner cls false sh2 k ++ walk owner cls false sh2 v)
-  | e@(.casgn _ rhs) => mkEntry owner "casgn" stmt sh e :: walk owner cls false sh2 rhs
+  -- J41: `casgn` is in the fragment (toplevel-only; the census does not model the
+  -- position gate — a class-body casgn is refused by the rule, not the census).
+  | .casgn _ rhs => walk owner cls false sh2 rhs
   -- J38: cpath is in the fragment; only its base is walked.
   | .cpath none _ => []
   | .cpath (some b) _ => walk owner cls false sh2 b

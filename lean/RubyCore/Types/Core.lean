@@ -193,6 +193,8 @@ def defFree (e : Expr) : Bool :=
   -- and `judge_mono`'s `D' = D` half would be false with the catch-all's vacuous
   -- `true` left in place.
   | .hash prs => defFreePairs prs
+  -- **J41.** Eleventh time: `Judge.casgn` threads the table through the rhs.
+  | .casgn _ rhs => defFree rhs
   -- **L205.** Fourth time (`.array` L174, `.vasgn .ivar` L191, `.ret` L200): `infer`'s
   -- `.cpath (some base)` arm threads the table through the base, so a `def` in there
   -- really does change it and `infer_mono`'s `D₀ = D` half would be **false** with the

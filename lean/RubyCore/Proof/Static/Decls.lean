@@ -3033,5 +3033,201 @@ theorem typeAgree (hi : IvarOnly h h') : TypeAgree h h' :=
 
 end IvarOnly
 
+/-! ## The `constSetIn` transports (J41) — a toplevel constant write moves no
+table read except the one name it writes
+
+Direct mirrors of the `IvarOnly` suite: `constSetIn h j nm v` changes exactly one
+class payload's `consts` list, so every dispatch fact, every name, every chain and
+every *differently-named* constant read is unchanged (`Proof/HeapFacts.lean`'s
+`_constSetIn` chain), and `typeAgree_constSetIn` carries the values. The
+name-sensitive clauses (`ConstOk`, `ScopedConstOk`) take the freshness of `nm` as
+a hypothesis; `ClassOk` is stated at `j = Boot.objectId` — a **class-body** write
+would break its `NoShadowBefore` clause (the reopened class's own constant table
+must stay empty), and machine-typing that is a recorded bill, not an oversight. -/
+
+section ConstSetIn
+
+variable {h : Heap} {j : ObjId} {nm : String} {v : Value}
+
+theorem lookupIn_constSetIn (k : ObjId) (mname : String) :
+    lookupIn (constSetIn h j nm v) k mname = lookupIn h k mname := by
+  simp only [lookupIn, ancestors_constSetIn, lookup_go_constSetIn]
+
+theorem crubyShadow_constSetIn (chain : List ObjId) (mname : String) :
+    crubyShadow (constSetIn h j nm v) chain mname = crubyShadow h chain mname := by
+  simp only [crubyShadow, className_constSetIn]
+
+theorem resolvesAt_constSetIn {k : ObjId} {mname bid : String}
+    (hr : ResolvesAt h k mname bid) : ResolvesAt (constSetIn h j nm v) k mname bid := by
+  obtain ⟨owner, md, hl, hb, hu, hv2, hp, hsh⟩ := hr
+  exact ⟨owner, md, by rw [lookupIn_constSetIn]; exact hl, hb, hu, hv2, hp,
+    by rw [crubyShadow_constSetIn, ancestors_constSetIn]; exact hsh⟩
+
+theorem resolvesUser_constSetIn {k : ObjId} {mname : String} {md : MethodDef}
+    (hr : ResolvesUser h k mname md) : ResolvesUser (constSetIn h j nm v) k mname md := by
+  obtain ⟨owner, hl, hb, hu, hv2, hps, hdc, hcf, hown, hsh, hcref, hchain⟩ := hr
+  refine ⟨owner, by rw [lookupIn_constSetIn]; exact hl, hb, hu, hv2, hps, hdc, hcf,
+    ?_, ?_, hcref, by rw [ancestors_constSetIn]; exact hchain⟩
+  · rw [classPayload?_isSome_constSetIn]; exact hown
+  · rw [crubyShadow_constSetIn, ancestors_constSetIn]
+    exact hsh
+
+theorem tyClass_constSetIn {τ : Ty} {k : ObjId}
+    (ht : TyClass (constSetIn h j nm v) τ k) : TyClass h τ k := by
+  have hps := classPayload?_isSome_constSetIn h j k nm v
+  have hcn := className_constSetIn h j k nm v
+  cases τ with
+  | cls n => exact ⟨hps ▸ ht.1, hcn ▸ ht.2⟩
+  | clsOf n =>
+    obtain ⟨o, hcp, hnm2, hk⟩ := ht
+    have hps' := classPayload?_isSome_constSetIn h j o nm v
+    have hcn' := className_constSetIn h j o nm v
+    refine ⟨o, hps' ▸ hcp, hcn' ▸ hnm2, ?_⟩
+    rw [← classOf_constSetIn h j nm v (.ref o)]
+    exact hk
+  | any => exact ht.elim
+  | nilable _ => exact ht.elim
+  | arrayOf _ => exact ⟨hps ▸ ht.1, hcn ▸ ht.2⟩
+  | _ => exact ht
+
+theorem noHook_constSetIn (hn : NoHook h) : NoHook (constSetIn h j nm v) := by
+  refine ⟨by rw [classPayload?_isSome_constSetIn]; exact hn.1, fun k hk n hnn => ?_⟩
+  have := hn.2 k (by rw [← classPayload?_isSome_constSetIn (v := v)]; exact hk) n hnn
+  unfold lookup at this ⊢
+  rw [classOf_constSetIn, ancestors_constSetIn, lookup_go_constSetIn]
+  exact this
+
+theorem litClsOk_constSetIn (hs : LitClsOk h) : LitClsOk (constSetIn h j nm v) :=
+  ⟨⟨by rw [classPayload?_isSome_constSetIn]; exact hs.1.1,
+    by rw [className_constSetIn]; exact hs.1.2⟩,
+   ⟨by rw [classPayload?_isSome_constSetIn]; exact hs.2.1,
+    by rw [className_constSetIn]; exact hs.2.2⟩⟩
+
+theorem saturated_constSetIn (hs : Saturated h) : Saturated (constSetIn h j nm v) := by
+  have hsz := objs_size_constSetIn h j nm v
+  have hsh : ShapeAgree h (constSetIn h j nm v) := fun k => shape_constSetIn h j k nm v
+  refine ⟨fun mo => ?_, fun k => ?_⟩
+  · rw [hsz, modAncestors_go_congr hsh, modAncestors_go_congr hsh]
+    exact hs.1 mo
+  · rw [hsz, ancestors_go_congr hsh hsz, ancestors_go_congr hsh hsz]
+    exact hs.2 k
+
+theorem constOk_constSetIn {n : String} {τ : Ty} (hne : ¬ (n = nm))
+    (hc : ConstOk h n τ) : ConstOk (constSetIn h j nm v) n τ := by
+  obtain ⟨w, hw, hty, hsole⟩ := hc
+  refine ⟨w, by rw [constOwn_constSetIn_ne h j _ nm n v (Or.inr hne)]; exact hw,
+    ValueTy.congr (typeAgree_constSetIn h j nm v) hty, fun i hi hio => ?_⟩
+  rw [constOwn_constSetIn_ne h j _ nm n v (Or.inr hne)]
+  exact hsole i (by rw [← classPayload?_isSome_constSetIn h j i nm v]; exact hi) hio
+
+theorem ivarOk_constSetIn {c x : String} {τ : Ty} (hiv : IvarOk h c x τ) :
+    IvarOk (constSetIn h j nm v) c x τ := by
+  intro o ho hcn w hw
+  have hsz := objs_size_constSetIn h j nm v
+  have hflds := get_constSetIn_fields h j nm v o
+  rw [hsz] at ho
+  rw [show ((constSetIn h j nm v).get o).klass = (h.get o).klass from hflds.2.1,
+    className_constSetIn] at hcn
+  rw [show ((constSetIn h j nm v).get o).ivars = (h.get o).ivars from hflds.1] at hw
+  exact ValueTy.congr (typeAgree_constSetIn h j nm v) (hiv o ho hcn w hw)
+
+theorem scopedConstOk_constSetIn {c n : String} {τ : Ty} (hne : ¬ (n = nm))
+    (hs : ScopedConstOk h c n τ) : ScopedConstOk (constSetIn h j nm v) c n τ := by
+  intro o ho hcn
+  rw [classPayload?_isSome_constSetIn] at ho
+  rw [className_constSetIn] at hcn
+  obtain ⟨hpriv, w, hw, hty⟩ := hs o ho hcn
+  refine ⟨?_, w, ?_, ValueTy.congr (typeAgree_constSetIn h j nm v) hty⟩
+  · rw [ancestors_constSetIn]
+    rw [List.all_eq_true] at hpriv ⊢
+    intro a ha
+    have hpc := privateConsts_constSetIn h j a nm v
+    have := hpriv a ha
+    revert this
+    cases h1 : (constSetIn h j nm v).classPayload? a <;>
+      cases h2 : h.classPayload? a <;> rw [h1, h2] at hpc <;> simp_all
+  · rw [constLookupFrom_constSetIn_ne h j o nm n v hne]
+    exact hw
+
+theorem superOk_constSetIn {c n : String} {d : MethodDecl} (hs : SuperOk h c n d) :
+    SuperOk (constSetIn h j nm v) c n d := by
+  intro k dm hdm hcn hmem
+  rw [classPayload?_isSome_constSetIn] at hdm
+  rw [className_constSetIn] at hcn
+  rw [ancestors_constSetIn] at hmem
+  obtain ⟨owner, md, bid, hf, hb, hcf⟩ := hs k dm hdm hcn hmem
+  refine ⟨owner, md, bid, ?_, hb, hcf⟩
+  rw [superFound_congr (h := h)
+    (fun i => by
+      have hmm := methods_constSetIn h j i nm v
+      cases h1 : (constSetIn h j nm v).classPayload? i <;>
+        cases h2 : h.classPayload? i <;> rw [h1, h2] at hmm <;> simp_all)
+    (ancestors_constSetIn h j k nm v)]
+  exact hf
+
+/-- **`NoShadowBefore` survives a write on `Object`** — the takeWhile segment
+    stops *at* `Object`, so the written class is never in it. -/
+theorem noShadowBefore_constSetIn_obj {k : ObjId} (hn : NoShadowBefore h k) :
+    NoShadowBefore (constSetIn h Boot.objectId nm v) k := by
+  refine ⟨by rw [ancestors_constSetIn]; exact hn.1, ?_⟩
+  rw [ancestors_constSetIn]
+  intro i hi cp hcp
+  have hio : i ≠ Boot.objectId := by
+    have hall := List.all_takeWhile (l := ancestors h k) (p := (· != Boot.objectId))
+    have hpred := List.all_eq_true.mp hall i hi
+    simpa using hpred
+  have hpc := consts_constSetIn_ne h Boot.objectId i nm v hio
+  cases h2 : h.classPayload? i with
+  | none => rw [hcp, h2] at hpc; exact absurd hpc (by simp)
+  | some cp0 =>
+    rw [hcp, h2] at hpc
+    simp only [Option.map_some, Option.some.injEq] at hpc
+    rw [hpc]
+    exact hn.2 i hi cp0 h2
+
+/-- **`ClassOk` survives a toplevel constant write of a fresh, unreadable name.** -/
+theorem classOk_constSetIn_obj (hnr : nm ∉ Types.readableClasses)
+    (hc : ClassOk h) : ClassOk (constSetIn h Boot.objectId nm v) := by
+  refine ⟨by rw [className_constSetIn]; exact hc.1,
+    noShadowBefore_constSetIn_obj hc.2.1, ?_,
+    fun o cp hcp => ?_⟩
+  · intro n hn
+    obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
+    have hnne : ¬ (n = nm) := fun hq => hnr (hq ▸ hn)
+    have hps := classPayload?_isSome_constSetIn h Boot.objectId k nm v
+    cases hk2 : (constSetIn h Boot.objectId nm v).classPayload? k with
+    | none => rw [hk2, h2] at hps; exact absurd hps (by simp)
+    | some cp' =>
+      have hname := clsName_constSetIn h Boot.objectId k nm v
+      rw [hk2, h2] at hname
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hname
+      refine ⟨k, cp',
+        by rw [constOwn_constSetIn_ne h _ _ nm n v (Or.inr hnne)]; exact h1,
+        hk2, by rw [className_constSetIn]; exact h4,
+        fun i hi hin => ?_, hrx, hmt, fun i hi hio => ?_, fun hmem => ?_⟩
+      · refine h5 i ?_ ?_
+        · rw [← classPayload?_isSome_constSetIn h Boot.objectId i nm v]; exact hi
+        · rw [← className_constSetIn h Boot.objectId i nm v]; exact hin
+      · rw [constOwn_constSetIn_ne h _ _ nm n v (Or.inr hnne)]
+        refine hsole i ?_ hio
+        rw [← classPayload?_isSome_constSetIn h Boot.objectId i nm v]; exact hi
+      · obtain ⟨hmod, hhd, hns⟩ := hreop hmem
+        exact ⟨by rw [hname.2]; exact hmod,
+          by rw [ancestors_constSetIn]; exact hhd,
+          noShadowBefore_constSetIn_obj hns⟩
+  · -- no-anon: names unchanged
+    have hnm2 := clsName_constSetIn h Boot.objectId o nm v
+    rw [hcp] at hnm2
+    cases h2 : h.classPayload? o with
+    | none => rw [h2] at hnm2; exact absurd hnm2 (by simp)
+    | some cp0 =>
+      rw [h2] at hnm2
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+      rw [hnm2.1]
+      exact hc.2.2.2 o cp0 h2
+
+end ConstSetIn
+
+
 end Proof
 end RubyCore

@@ -32,6 +32,18 @@ open RubyCore.Proof.Static
 
 set_option maxRecDepth 100000
 
+/-- **`nameIfAnonymous` is inert at a `ClassOk` heap** (J41): the J41a clause says
+    no class payload has an empty name, so the rename's guard is always false. -/
+theorem nameIfAnonymous_noop {h : Heap} {q : String} {v : Value}
+    (hcls : ClassOk h) : Interp.nameIfAnonymous h q v = h := by
+  unfold Interp.nameIfAnonymous
+  cases v with
+  | ref o =>
+    cases hcp : h.classPayload? o with
+    | none => simp [hcp]
+    | some c => simp [hcp, hcls.2.2.2 o c hcp]
+  | _ => rfl
+
 /-- `StepOk` with the invariant swapped: `.next` carries `InvJ`, `.uncaught` is
     admitted when the exception is not a type error (progress is exactly this
     clause), everything else refused. **J29:** the `done` arm is no longer a mere
@@ -981,6 +993,24 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           (KontOkJ.hshKeyK (hfp (kE, vE) (by simp)).2 (hmv (kE, vE) (by simp))
             (fun p hp => hfp p (by simp [hp])) (fun p hp => hmk p (by simp [hp]))
             (fun p hp => hmv p (by simp [hp])) hvj hrest hsubw hk)
+  -- ## The toplevel constant write (J41): push `casgnK` on the rhs.
+  case hcasgn =>
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hrhs ihr
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | casgn hfr hmr =>
+      subst htop
+      have hΓs : Γs = [] := by
+        cases hq : Γs with
+        | nil => rfl
+        | cons a b => rw [hq] at htopt; simp at htopt
+      subst hΓs
+      simp only [evalExpr]
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
+        (KontOkJ.casgnK hct hsct hrd hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1702,6 +1732,51 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             (fun p hp => hfp p (by simp [hp])) (fun p hp => hmk p (by simp [hp]))
             (fun p hp => hmvs p (by simp [hp])) hvj hrest hw hk')
           (hclo := hcloTail hK)
+    -- **The toplevel constant write's value has arrived** (J41): the rename is
+    -- inert (`nameIfAnonymous_noop`, J41a's clause), the write is `constSetIn` on
+    -- `Object` (`BottomObj` at the singleton stack), and every invariant conjunct
+    -- crosses by the `constSetIn` transports.
+    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hsw hk' hsu =>
+      cases hst : m.stack with
+      | nil => exact absurd hst (hfs.frameShallow).1
+      | cons fid fids =>
+        have hfids : fids = [] := by
+          cases hf2 : fids with
+          | nil => rfl
+          | cons a b =>
+            rw [hst, hf2] at hfs
+            exact absurd hfs (by simp [FramesOkJ])
+        subst hfids
+        have hdm : (m.frames[fid]?.getD default).defmod = Boot.objectId := by
+          have hb := hbot
+          rw [hst] at hb
+          simpa [BottomObj, Array.getD_eq_getD_getElem?] using hb
+        simp only [Machine.currentFrame, List.headD_cons, Array.getD_eq_getD_getElem?,
+          hdm, beq_self_eq_true, if_true,
+          nameIfAnonymous_noop (q := nm) (v := v) hcls]
+        rw [hst] at hbot hfs hsc hks
+        have hag := typeAgree_constSetIn m.heap Boot.objectId nm v
+        have hrows := constSetIn_rowsAndConstsJ (j := Boot.objectId) (v := v)
+          htab hct hsct
+        refine ⟨noHook_constSetIn hh, saturated_constSetIn hsat,
+          litClsOk_constSetIn hstr,
+          classOk_constSetIn_obj (by simpa using hrd) hcls,
+          hbot, (by simpa [framePopLabels, Interp.withCtl] using hks),
+          ClosuresOk.transport (hcloTail hK)
+            (by intro κ hm cl hcl
+                exact ⟨κ, by simpa [Interp.withCtl] using hm, hcl⟩)
+            (by simp [Interp.withCtl])
+            (by intro p _; exact FrameShape.rfl' _)
+            (by intro o ho
+                show ((constSetIn m.heap Boot.objectId nm v).classPayload? o).isSome = true
+                rw [classPayload?_isSome_constSetIn]; exact ho),
+          F, ctx, Γk, [],
+          ⟨hrows.1, hrows.2.1, hrows.2.2.1, hrows.2.2.2.1, hrows.2.2.2.2,
+            htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2⟩,
+          FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
+          GlobalsOk.congr hag hgl,
+          ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
+            KontOkJ.heap_congr hag hk'⟩⟩
     -- **`return e`'s value has arrived** (J39, L200's delivery): `applyKont`'s
     -- `jumpValK .retK` arm is `doReturn`, so this case *creates* the jump.
     | @retValK _ _ _ _ _ _ τ'' σ k _ hσ hms hsub hk' hsu =>

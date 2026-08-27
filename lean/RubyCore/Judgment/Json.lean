@@ -68,6 +68,7 @@ partial def derivToJson : Deriv → Json
   | .retSome rhs => Json.mkObj [("k", "retSome"), ("rhs", derivToJson rhs)]
   | .retNil => Json.mkObj [("k", "retNil")]
   | .hash ds => Json.mkObj [("k", "hash"), ("pairs", derivPairsToJson ds)]
+  | .casgn rhs => Json.mkObj [("k", "casgn"), ("rhs", derivToJson rhs)]
   | .varIvar => Json.mkObj [("k", "varIvar")]
   | .varGvar => Json.mkObj [("k", "varGvar")]
   | .vasgnIvar rhs => Json.mkObj [("k", "vasgnIvar"), ("rhs", derivToJson rhs)]
@@ -162,6 +163,7 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "retSome" => pure (.retSome (← derivOfJson (← j.getObjVal? "rhs")))
   | "retNil" => pure .retNil
   | "hash" => pure (.hash (← derivPairsOfJson (← j.getObjVal? "pairs")))
+  | "casgn" => pure (.casgn (← derivOfJson (← j.getObjVal? "rhs")))
   | "varIvar" => pure .varIvar
   | "varGvar" => pure .varGvar
   | "vasgnIvar" => pure (.vasgnIvar (← derivOfJson (← j.getObjVal? "rhs")))

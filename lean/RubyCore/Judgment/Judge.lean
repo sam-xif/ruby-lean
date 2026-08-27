@@ -211,6 +211,7 @@ def fragHead : Expr → Bool
   | .cpath _ _ => true
   | .ret _ => true
   | .hash _ => true
+  | .casgn _ _ => true
   | .array _ => true
   -- The four *marker* shapes are not evaluable expressions (they occur only as
   -- argument/element/block slots of other heads), so a semantic claim on one has
@@ -446,7 +447,20 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       Judge A D Γ (.cpath (some base) nm) top ctx τ Γ₁ D₁
   -- A constant *write* is judged and its type is **not** installed: `Decls.consts`
   -- belongs to the certificate's table half, where the row is a visible assumption.
+  -- **J41: machine-typed at the toplevel only, with three freshness guards.**
+  -- The write lands on the current definee — `Object`, at the toplevel — and the
+  -- three guards are exactly what the heap invariant charges: a *declared*
+  -- constant's `ConstOk`/`ScopedConstOk` would be falsified by a same-name write
+  -- (the first two), and `ClassOk`'s per-name read clauses by a readable one (the
+  -- third). A **class-body** `casgn` additionally breaks `ClassOk`'s
+  -- `NoShadowBefore` clause (the reopened class's own constant table must stay
+  -- empty), so `top = true` is a soundness gate, not a convenience — widening it
+  -- is a recorded bill (refine `NoShadowBefore` per-name first).
   | casgn {D Γ nm rhs top ctx τ Γ₁ D₁} :
+      top = true →
+      constTy? D₁ nm = none →
+      (∀ cn, scopedConstTy? D₁ cn nm = none) →
+      readableClasses.contains nm = false →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   | cpathAsgn {D Γ base nm rhs top ctx τb Γ₁ D₁ τ Γ₂ D₂} :

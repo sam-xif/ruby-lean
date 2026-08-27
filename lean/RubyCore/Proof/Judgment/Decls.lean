@@ -135,6 +135,44 @@ theorem ivarOnly_rowsAndConstsJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls}
    fun c n τ hn => hi.scopedConstOk (hd.2.2.2.1 c n τ hn),
    fun c n dd hn => hi.superOk (hd.2.2.2.2.1 c n dd hn)⟩
 
+/-! ## The `constSetIn` transports (J41) — the toplevel constant write -/
+
+theorem constSetIn_entryOkJ {h : Heap} {j : ObjId} {nm : String} {v : Value}
+    {D : Decls} {τr : Ty} {mname : String} {d : MethodDecl}
+    (he : EntryOkJ A D h τr mname d) :
+    EntryOkJ A D (constSetIn h j nm v) τr mname d := by
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
+  · exact Or.inl ⟨bid,
+      fun k hk => resolvesAt_constSetIn (hres k (tyClass_constSetIn hk)), hconf⟩
+  · refine Or.inr (Or.inl ⟨md, c, hkey,
+      fun k hk => resolvesUser_constSetIn (hres k (tyClass_constSetIn hk)), ?_, hconf⟩)
+    rw [className_constSetIn]; exact hown
+  · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k hk => by
+      have hm0 := hmiss k (tyClass_constSetIn hk)
+      unfold MissesAt at hm0 ⊢
+      rw [lookupIn_constSetIn]; exact hm0⟩)
+
+/-- The table half across the write, with the two freshness guards supplying the
+    per-name side conditions. -/
+theorem constSetIn_rowsAndConstsJ {h : Heap} {j : ObjId} {nm : String} {v : Value}
+    {D : Decls} (hd : DeclsOkJ A D h)
+    (hct : constTy? D nm = none)
+    (hsct : ∀ cn, scopedConstTy? D cn nm = none) :
+    MethodRowsOkJ A D (constSetIn h j nm v) ∧
+      (∀ n τ, constTy? D n = some τ → ConstOk (constSetIn h j nm v) n τ) ∧
+      (∀ c x τ, ivarTy? D c x = some τ → IvarOk (constSetIn h j nm v) c x τ) ∧
+      (∀ c n τ, scopedConstTy? D c n = some τ →
+        ScopedConstOk (constSetIn h j nm v) c n τ) ∧
+      (∀ c n d, superDecl? D c n = some d → SuperOk (constSetIn h j nm v) c n d) := by
+  refine ⟨fun τr mname d hf => constSetIn_entryOkJ (hd.1 τr mname d hf),
+    fun n τ hn => ?_, fun c x τ hn => ivarOk_constSetIn (hd.2.2.1 c x τ hn),
+    fun c n τ hn => ?_, fun c n dd hn => superOk_constSetIn (hd.2.2.2.2.1 c n dd hn)⟩
+  · have hne : ¬ (n = nm) := fun hq => by rw [hq, hct] at hn; simp at hn
+    exact constOk_constSetIn hne (hd.2.1 n τ hn)
+  · have hne : ¬ (n = nm) := fun hq => by rw [hq, hsct c] at hn; simp at hn
+    exact scopedConstOk_constSetIn hne (hd.2.2.2.1 c n τ hn)
+
 end Judgment
 end Proof
 end RubyCore
