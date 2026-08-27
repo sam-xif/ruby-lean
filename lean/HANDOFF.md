@@ -175,7 +175,20 @@ kernel-reducibility regression (L73).
 
 ---
 
-## C-1 — the one open premise of `validate_sound` (2026-08-26)
+## C-1 — SUPERSEDED AND DELIVERED THROUGH THE JUDGMENT LAYER (2026-08-26, same day)
+
+> The section below is kept as written for its tactical records (the four wrong
+> turns are still traps). Its *task* is done, by the re-scoping
+> `docs/semantics/judgment-layer.md` argued for rather than by the `chk` port it
+> describes: the invariant is stated over the inductive `Judge`
+> (`RubyCore/Proof/Judgment/`, J18–J27), `judge_sound_cert` is the composed
+> theorem with `hctl`'s role filled by a derivation, and `egEven` — the
+> `_certified` corollary below parks on C-1 — is proved **unconditionally**
+> (`Proof/Judgment/Cert.lean`, and again from a data certificate in
+> `Proof/Judgment/Adequacy.lean`). The `chk_table_ret` rung was abandoned
+> deliberately (judgment-layer.md §5); `chk` remains the coverage tier.
+
+## C-1 (historical) — the one open premise of `validate_sound` (2026-08-26)
 
 `validate` no longer calls `infer`; `#check @infer` does not elaborate from
 `RubyCore.Cert.Validate`. The composed certificate theorem is

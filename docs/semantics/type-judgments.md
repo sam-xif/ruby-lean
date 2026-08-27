@@ -99,6 +99,16 @@ heap, not new machinery** (§C.5).
   Δ ⊢ proc [p] r <: proc [p'] r'
 ```
 
+**Mechanization note (J18, 2026-08-26).** The built relation (`Judgment/Sub.lean`'s
+`SubJ`) renders `nilable τ` as a first-class arm rather than `uni [NilClass, τ]`, so
+`(S-UniR)`'s nilable instance is its own rule — and the first cut **omitted it**,
+which made the relation non-transitive (`int ≤ int ∪ bool ≤ nilable (int ∪ bool)`
+composes to an underivable judgment; `(S-Trans)` above is a *rule* here, but the
+mechanization proves transitivity as a theorem instead, precisely so a derivation
+checker never has to search for a middle type). `SubJ.nilableR` is the repair —
+this table's `(S-UniR)` at the nilable spelling — and `SubJ.trans` is proved by
+strong induction on summed type sizes.
+
 `**untyped` deliberately does NOT appear here** — its compatibility is *consistency* (§3),
 which would break transitivity. This is the artifact's running "it is not just subtyping"
 point, enforced structurally. Generic variance (`:out`/`:in`/invariant, §A.6) extends

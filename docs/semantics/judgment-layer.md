@@ -1,13 +1,50 @@
 # The judgment layer — semantic Ruby types, and making the relation the definition of record
 
-> **Status (2026-08-26): design artifact — nothing built.** Origin: a first-principles
-> design conversation prompted by the observation that the type-checking strand feels
-> like wheel-spinning. The conclusion is a **re-scoping of C-1**
-> ([`certificate-language.md`](certificate-language.md) §10.5–10.6, `lean/HANDOFF.md`
-> C-1 entry): state the invariant over an inductive judgment rather than over `chk`.
-> This document **amends but does not edit** those two documents and
-> [`type-judgments.md`](type-judgments.md); when the work lands, their in-flight
-> history should be reconciled against this (the user's stated intent).
+> **Status (2026-08-26, second update the same day): BUILT through J2, plus the
+> narrowing rung.** J0 landed as `lean/RubyCore/Judgment/` (J1–J17 in its
+> implementation-notes); the machine-typing spine, preservation, the composed
+> theorem, and the derivation-checker pipeline landed the same day as J18–J27
+> (`lean/RubyCore/Proof/Judgment/`). The headline theorems, all axiom-clean and in
+> `check-proofs.sh`'s audit:
+>
+> * `judge_sound` / `judge_sound_cert` — a `Judge` derivation at a table sound for
+>   the boot heap certifies `∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r`;
+>   **no checker function in the statement** (§3's `MachineTyped → invariant_sound`
+>   spine, delivered as `InvJ`/`CtlOkJ`/`KontOkJ` + `step_okJ`).
+> * `validateJ_certifies` — §4(3) built: a **data** certificate (claimed rows + a
+>   `Deriv` tree, JSON format in `Judgment/Json.lean`), checked by one
+>   kernel-reduced `Bool` (`Judgment/Check.lean`), concludes the same property; the
+>   claimed rows' residue is the one honest hypothesis, exactly as in
+>   `validate_sound_of_ctl`.
+> * Worked ends from literal certificate data under `decide`: `egIf`/`egZero`
+>   (control core + builtin dispatch), `egEven` (**the claimed-row corollary C-1
+>   was parked on, delivered unconditionally**), `egUserCall`/`egVcall` (the T5
+>   `class_hierarchy` shape: reopen, promoted row, user dispatch), and `egNarrow`
+>   (**the DRuby guard-discrimination shape, through the narrowing rules** — §1.4's
+>   flagship, machine-typed by the J27 stored-atom construction).
+>
+> The machine-typed fragment (`MFrag`, the eval arm's syntactic gate playing the
+> role `infer`'s partiality played): T1 control core, block-less sends at any
+> arity (explicit/implicit/`vcall`/`self`), `def` (install and promote), toplevel
+> class reopens, `const`/ivar/gvar reads and writes, plain array literals, and
+> bare-local `if`-narrowing. Not yet in it (each a recorded rung, none blocked):
+> `return`/`next` jumps (unreachable until a running context opens those channels —
+> W8 sigs), splat elements, block iterators/`lambda` (J16/J19's arrow bill),
+> `begin`/`rescue` (**gated on resolving J8 first** — the entry-env handler rule is
+> the piece preservation would refute), `cpath`, `super`/`zsuper`. Deliberately not
+> built, per the initiative's own exclusion: emitters, and the `--certify` binary
+> wiring that exists to serve them.
+>
+> Origin: a first-principles design conversation prompted by the observation that
+> the type-checking strand feels like wheel-spinning. The conclusion was a
+> **re-scoping of C-1** ([`certificate-language.md`](certificate-language.md)
+> §10.5–10.6, `lean/HANDOFF.md` C-1 entry): state the invariant over an inductive
+> judgment rather than over `chk`. §0's diagnosis is now *measured*: the
+> preservation mountain was climbed in one day of rungs because inversion is
+> `cases`, the `sub` rule costs one slack-composition for every head at a stroke
+> (`judge_eval_ok`), and the `infer_mono` port tax collapsed into one gated
+> induction (`judge_mono`). The §8 risk-1 sentence ("if J1 hits an 8k-line-port-
+> shaped wall anyway, the diagnosis was wrong") is answered: it did not.
 
 Companions: [`type-judgments.md`](type-judgments.md) (the declarative judgments this
 document promotes to definition of record — §6–§9 there are the content, already
@@ -342,6 +379,12 @@ four metatheory files.
 ## 6. Milestones — the J-ladder
 
 Sized like the C-ladder: each rung is a commit series with a measurable exit.
+**Scorecard (2026-08-26): J0 ✓, J1 ✓ (`judge_sound_cert`, audited), J2 ✓
+(`validateJ_certifies` + JSON format; the `--certify` binary wiring waits for an
+emitter to feed it), J3 ✓ in substance (sends/`def` landed with J22/J23; the
+T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
+arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
+(J18–J27).
 
 * **J0 — author the judgment.** `Judge`/`KJudge`/`MachineTyped` in Lean, transcribing
   `type-judgments.md` §6–§8 for the T1 control core, **with subsumption and narrowing
