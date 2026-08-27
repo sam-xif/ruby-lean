@@ -1159,3 +1159,24 @@ the fresh-side facts of the composite heap (NoHook/Saturated/ClassOk/ChainsIn
 at `alloc module ∘ constSetIn ∘ alloc eigenclass ∘ eigen-set`, where the fresh
 chains are literals), `DeclsOkJ` across the composite (old rows via
 `ClsGrow`-versions of the `EntryOkJ` transports), and the eval case itself.
+
+## J44 (design) — the declared-modules channel, and NoHook's per-table rephrasing
+
+Two more facts the `module'` eval case surfaced while being written:
+
+1. **`NoHook` is per-value and the fresh chain needs per-table.** The fresh
+   module's dispatch runs `[eigen] ++ ancestors h Boot.classId`, and no old
+   *value* dispatches along exactly that list — so `lookup h (.ref k) hook =
+   none` facts don't compose. The honest fix is to rephrase `NoHook` as the
+   per-table statement (`∀ j cp, classPayload? j = some cp → ∀ n ∈
+   hookFreeNames, cp.methods.find? (·.1 == n) = none`), which implies the
+   per-value form (walks read tables) and transports identically; `noHookB`
+   already scans tables.
+2. **The channel**: `Decls.modules : List String` (defaulted, so no literal
+   moves), `SubDecls` pins it equal, `DeclsOkJ` gains `∀ n ∈ D.modules,
+   ModuleNameOk h n` (`none-yet ∨ (a module object named n, eigen realized)`),
+   `Judge.casgn` grows a `modules`-freshness guard, and `Judge.module'` (new
+   machine-typed variant) requires membership + the casgn-style name guards.
+   Both `enterClassBody` branches then close: reopen from the second disjunct's
+   facts (the pushed frame's `StackCtx` clauses are exactly its conjuncts);
+   fresh from the composite-heap computation (fresh chains are literals).
