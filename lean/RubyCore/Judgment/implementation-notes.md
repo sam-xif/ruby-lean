@@ -263,3 +263,40 @@ re-opens every proof that cases on rows. The future consumer that *does* want an
 arrow from a row is `method(:f)`/`&method(:f)` reification — that is one Judge
 rule minting `arrowOf d.params d.ret` from the resolved row when the corpus
 demands it, not a representation change.
+
+## J18 — `SubJ` was not transitive; `nilableR` repairs it
+
+Found while pricing the machine-typing layer (`judgment-layer.md` J1), where
+`SubJ.trans` is load-bearing (the invariant's subsumption slack composes at every
+delivery): `int ≤ int ∪ bool` (unionR1) and `int ∪ bool ≤ nilable (int ∪ bool)`
+(base, `subTy`'s reflexive third disjunct) compose to a judgment with **no
+derivation** — `base` computes to a false equality, `unionR` needs a union on the
+right, `nilableL` a nilable on the left. The missing rule is the nilable-**right**
+lift `SubJ σ τ → SubJ σ (nilable τ)`: semantically free (`nilable τ` ⊇ `τ`) and a
+strict widening, so every existing derivation and example stands.
+
+With it, `SubJ.trans` closes by strong induction on the summed sizes of the three
+types (`Sub.lean`): structural rules recurse on smaller types; a `base` step
+against a structural one is decided by `subTy_cases`; the previously-underivable
+compositions all land in exactly the `nilableR` constructor. Also added:
+`SubJs.trans`/`SubJs.length`, and the **fuel-based** algorithmic form
+`subJb`/`subJsb` with soundness only — fuel rather than well-founded recursion by
+the L73 discipline (the J2 `Deriv.check` will run it under `decide`), and no
+completeness theorem because the checker only ever consumes the sound direction.
+
+## J19 — `VTy`: the value judgment, `SubJ`-closed over an untouched `ValueTy`
+
+J14's named bill ("`ValueTy` has no union disjunction arm") is paid without
+touching `ValueTy`: `VTy h v τ := ∃ σ, ValueTy h v σ ∧ SubJ σ τ`
+(`Proof/Judgment/Values.lean`). Weakening is `SubJ.trans`, heap transport is
+`ValueTy.congr`, and the machine-typing layer will state every value obligation
+over `VTy`. The load-bearing bridge is **`VTy.toValueTy`** at a `groundTy`
+(union- and arrow-free) type — `valueTy_subJ`, by induction on the `SubJ`
+derivation, with `ValueTy`-at-union proved uninhabited (`valueTy?_ground`: the
+exact-type function's whole range is ground) and nilables decomposed by a
+side-condition-free `valueTy_nilable_cases`. Since `sigOf` answers only at ground
+receiver types and every declared row is ground, the dispatch lemmas of
+`Proof/Static/` will be consumed **unchanged** — the send cases convert `VTy` →
+`ValueTy` at the boundary and proceed as the old proof does. Arrows deliberately
+have no value witness yet (J16's bill, position unchanged): the J1 fragment
+excludes the lambda-arrow mint, so no reachable value needs one.
