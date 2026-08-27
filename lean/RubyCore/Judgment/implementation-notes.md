@@ -828,3 +828,42 @@ WPs; soundness needs only the direction proved); behavioral method content in
 `duck` (the §1.9 flip condition); elaboration cost of concrete walks (~8 min
 for one dispatch-crossing program — the sibling's caveat 1 reproduced; their
 verified-verifier plan is the recorded fix).
+
+## J37 — `--census-j`: the Judge-side fragment census (J4 groundwork)
+
+The J4 rung ("re-run the slice under the new pipeline") cannot be priced without a
+measurement `--assn` cannot give: `MFrag` is a different fragment from `infer`'s,
+and the J31 claim route depends on two facts `--assn` never computes — statement
+position and `fragHead`. `Judgment/Census.lean` (+ `--census-j` in `Main.lean`,
+report-only, untrusted) walks a program and reports, per method body, every node
+`MFrag` refuses, labelled with *why*, whether it is **claimable** (statement
+position ∧ `fragHead = false` — a `SemClaim` could occupy it today), and whether
+it is **shadowed** (inside a claimable subtree — a claim on the ancestor absorbs
+it). The mirror-drift risk is `fragment-gap.py`'s, guarded the same way: per
+`def` body with no nested definition, `entries = []` is cross-checked against the
+real `mfragB` and a divergence reports `drift = true` (measured 0 across the
+slice).
+
+Findings, measured over the eight slice files (pin `007333f2`):
+
+1. **The `module` wrapper makes `shadowed` a two-edged number.** Five of eight
+   files wrap everything in `module Homebrew`, itself claimable — so
+   `blocked_effective` collapses to 1 while the honest work hides beneath. A
+   claim is only *practically* admissible when its `EvalOkAt` obligation is
+   dischargeable (one `evalExpr` step re-establishing `InvJ`, judgment-layer.md
+   §1.8), which a container never is. Read `summary.total` for pricing;
+   `effective` prices only the leaf-claim strategy.
+2. **`sig_strip` is the architecturally-sanctioned first transform.** The
+   difftest probe (`difftest/ruby/sig_strip.rb`) is already argued (gradual
+   guarantee: stripping removes *traps*), and D12/D9's `sorbetStuck` already
+   excludes sig-boundary raises from the bad state — so a certificate over the
+   stripped program is the right target. Stripping succeeds on 5 of 8 files
+   (`version.rb`/`version/parser.rb` gate on `T::Helpers`, `vulnerability.rb` on
+   `T::Struct`/value-position `T`) and removes most `send-block`/`cpath`/
+   `kwargs` mass.
+3. **The rung ladder, by measured mass on the strippable five**: `return` 33,
+   `cpath` 34 (30 in `identify.rb`), `casgn` 25, `defs` 19, `kwargs`-arg 13,
+   `module` 11, `hash` 8, real-iterator `send-block` 10, `next`/`alias`/`splat`
+   singletons. Every file keeps at least one real block-send, so Wall 1 (the
+   iterator vocabulary, `KontOkJ.iterK`/block frames — the Static side is proved,
+   L242–L255) is on the critical path of even the first whole-file accept.

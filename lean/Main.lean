@@ -15,6 +15,7 @@ import RubyCore.Types.OpenSelf
 import RubyCore.Types.Program
 import RubyCore.Cert.Json
 import RubyCore.Judgment.Json
+import RubyCore.Judgment.Census
 import RubyCore.PreludeBoot
 import RubyCore.Trace
 
@@ -250,6 +251,13 @@ def main (args : List String) : IO UInt32 := do
             Lean.Json.mkObj [
               ("status", Lean.Json.str "unknown"),
               ("out_of_fragment", Lean.Json.str head)]).compress
+        return 0
+      -- `--census-j`: **the Judge-side fragment census** (report-only, untrusted;
+      -- `Judgment/Census.lean`). Per method body, every node `MFrag` refuses, with
+      -- whether the J31 claim route can reach it (statement position + `fragHead`
+      -- false). The map the J4 slice work is priced from; asserts nothing.
+      if args.contains "--census-j" then
+        IO.println (Judgment.censusJ prog).compress
         return 0
       if certifyJFile.isSome then
         let path := certifyJFile.getD ""
