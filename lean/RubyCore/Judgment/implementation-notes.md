@@ -397,3 +397,26 @@ the rule's own premise transported by `judge_mono`.
 End-to-end: `egUserCall` (reopen + promote + user-method dispatch — the T5
 `class_hierarchy` shape) and `egVcall` (receiverless user call through two threaded
 rows) are certified through the judgment layer, axiom-clean.
+
+## J24 — the composed certificate theorem: J1's exit, delivered
+
+`Proof/Judgment/Cert.lean`:
+
+    judge_sound_cert : rowsGuarded (declsOf p) c.deltaRows →
+      (∀ r ∈ c.deltaRows, EntryOkJ (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig) →
+      (claimed params ground) → MFrag p →
+      Judge (c.table p) [] p true topJCtx τ Γ' D' →
+      ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
+
+— `validate_sound_of_ctl` with the open `hctl` premise's *supplier replaced*: the
+control clause is a derivation, and the statement mentions no checker at all
+(judgment-layer.md §5's re-scoping, cashed). The certificate's table half
+(`declsOkJ_table`) consumes `Bridge.lean`'s fold/guard lemmas unchanged through
+`DeclsOkJ_of_subDecls`; the residue is one `EntryOkJ` per claimed row, and a
+discharged old-style residue is a J-residue verbatim (the builtin arm is shared).
+
+`egEven` — `1.even?` under a claimed `Integer#even? : () → Boolean` row — is
+certified **unconditionally**, axiom-clean: the `egEven_certified` corollary C-1
+was parked on, delivered through the judgment instead of through a `chk` port.
+`check-proofs.sh` audits `judge_sound`, `judge_sound_cert`, `step_okJ`,
+`judge_mono`, and the two worked ends.

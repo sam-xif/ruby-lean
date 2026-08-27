@@ -56,6 +56,7 @@ import RubyCore.Proof.Static.Iter
 import RubyCore.Proof.Static.Discharge
 import RubyCore.Proof.Cert.Sound
 import RubyCore.Proof.Cert.Ledger
+import RubyCore.Proof.Judgment.Cert
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_sound_from
 #print axioms RubyCore.Proof.Static.check_sound
@@ -75,6 +76,12 @@ import RubyCore.Proof.Cert.Ledger
 #print axioms RubyCore.Proof.Static.DeclsOk_grow
 #print axioms RubyCore.Proof.Static.inv_grow_value
 #print axioms RubyCore.Proof.Static.infer_mono
+#print axioms RubyCore.Proof.Judgment.judge_sound
+#print axioms RubyCore.Proof.Judgment.judge_sound_cert
+#print axioms RubyCore.Proof.Judgment.step_okJ
+#print axioms RubyCore.Proof.Judgment.judge_mono
+#print axioms RubyCore.Proof.Judgment.egEven_judge_safe
+#print axioms RubyCore.Proof.Judgment.egUserCall_judge_safe
 -- The assertion language (L165). `denote_declAssn` is the faithfulness theorem —
 -- `⟦declAssn D⟧ h ↔ DeclsOk D h`, both directions — and it is what closes
 -- `assertion-language.md` §9.3's honest weak point for the declaration fragment:
