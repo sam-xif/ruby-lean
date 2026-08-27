@@ -1002,3 +1002,39 @@ with the rule):
 Checker node (guards as one `Bool` gate + the fold-level scoped scan), JSON,
 census mirror, worked end `egCasgn` (`ANSWER = 42`) certified from data,
 axiom-clean.
+
+## J42 — `certify/jcert.rb`: the untrusted emitter, and the casgn-read finding
+
+The J4 emitter arm, v1, in Ruby (per the initiative brief): export-json AST →
+`JCert` JSON, replayed by `--certify-j`. It mirrors the checker's deterministic
+threading (env as ordered assoc with `envSet`'s in-place update; the table grown
+only by `defPromote`, in program order) and records the choices: if-joins at
+`mkUnion`, continuation environments as the lookup-agreement meet of the branch
+exits, loop heads at the entry env, `defDecl` params at `.any` with the return
+chosen as the body's own type. Row/constant claims come from sidecar JSON
+(`--rows`, `--scoped-consts`); toplevel `const` reads outside the boot table are
+auto-claimed at `clsOf <name>`. Regression: `certify/tests/jcert_test.sh` — all
+five hand-authored certificates reproduced from source, plus a compound program
+(casgn + hash + array + while + reopen + promote + user dispatch + narrowing)
+accepted unconditionally.
+
+Two mirror bugs the tests caught, recorded for the next mirror: `elseNarrow` is
+`nilT`-when-`boolFree` (not nilable-only — an `Int`-typed local's falsy branch is
+*dead*, and `nilT` is how the judgment says so), and the wire `delta_rows` use
+the C-ladder `RowClaim` codec (nested `sig`, `why` required).
+
+**The casgn-read finding (the J43 bill).** A constant the program *writes* cannot
+be read back: `Judge.casgn`'s freshness guard refuses a declared name, and an
+undeclared name gives the read rule nothing to answer. The two are structurally
+incompatible today — `X = 42; X` has no certificate. The design that fixes it,
+priced: a **threaded written-constants channel** (`Decls.wconsts`, grown by
+`casgn` exactly as `defPromote` grows rows) with a soleness-free invariant clause
+(`WConstOk h n τ := ∃ v, constOwn h Object n = some v ∧ VTy h v τ` — the write
+itself establishes it) and a **toplevel-gated read rule** whose delivery needs the
+bottom frame's `cref` pinned to `[Object]` (a `BottomObj` extension; the cref walk
+must not consult anything that could shadow, and soleness is exactly what the
+channel cannot promise). Bills: `judge_mono` gains a `top = false` hypothesis
+(a `casgn`'s grown table would falsify its `D' = D` conclusion; every consumer is
+already at a method body), and the new `DeclsOkJ` conjunct rides ~15 construction
+sites. Slice payoff is *indirect* — the slice's own casgns are class-body — so it
+queues behind the definition-forms wall.
