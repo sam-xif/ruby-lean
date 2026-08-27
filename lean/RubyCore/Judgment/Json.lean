@@ -200,15 +200,34 @@ partial def derivArgsOfJson (j : Json) : Except String DerivArgs := do
 
 end
 
-/-- The J-certificate document: `{"delta_rows": […], "deriv": {…}}`. -/
+/-- The J-certificate document: `{"delta_rows": […], "delta_consts": […],
+    "delta_scoped_consts": […], "deriv": {…}}` (the constant sections since
+    J38b; both optional and empty by default). -/
 def JCert.toJson (c : JCert) : Json :=
   Json.mkObj [("delta_rows", Json.arr (c.deltaRows.toArray.map rowClaimToJson)),
+    ("delta_consts", Json.arr (c.deltaConsts.toArray.map fun e =>
+      Json.mkObj [("name", Json.str e.1), ("type", tyToJson e.2)])),
+    ("delta_scoped_consts", Json.arr (c.deltaScopedConsts.toArray.map fun e =>
+      Json.mkObj [("cls", Json.str e.1.1), ("name", Json.str e.1.2),
+                  ("type", tyToJson e.2)])),
     ("deriv", derivToJson c.deriv)]
 
 def JCert.ofJson (j : Json) : Except String JCert := do
   let rows ← match j.getObjVal? "delta_rows" with
     | .ok rj => do (← rj.getArr?).toList.mapM rowClaimOfJson
     | .error _ => pure []
-  pure { deltaRows := rows, deriv := (← derivOfJson (← j.getObjVal? "deriv")) }
+  let consts ← match j.getObjVal? "delta_consts" with
+    | .ok cj => do
+      (← cj.getArr?).toList.mapM fun e => do
+        pure ((← e.getObjValAs? String "name"), (← tyOfJson (← e.getObjVal? "type")))
+    | .error _ => pure []
+  let scs ← match j.getObjVal? "delta_scoped_consts" with
+    | .ok cj => do
+      (← cj.getArr?).toList.mapM fun e => do
+        pure (((← e.getObjValAs? String "cls"), (← e.getObjValAs? String "name")),
+          (← tyOfJson (← e.getObjVal? "type")))
+    | .error _ => pure []
+  pure { deltaRows := rows, deltaConsts := consts, deltaScopedConsts := scs,
+         deriv := (← derivOfJson (← j.getObjVal? "deriv")) }
 
 end RubyCore.Judgment

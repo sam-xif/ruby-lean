@@ -889,3 +889,27 @@ mechanical.
 certificate can make either new rule fire. The table half is `deltaConsts`/
 `deltaScopedConsts` on `JCert` with one `ConstOk`/`ScopedConstOk` residue each,
 mirroring `deltaRows`' `EntryOkJ` residue discipline exactly.
+
+## J38b — constant claims: the certificate channel for `const`/`cpath`
+
+`JCert` gains `deltaConsts`/`deltaScopedConsts`, folded into the table *before*
+the row fold (`constExtend`, `JCert.baseTable`) — order matters because
+`DeclsOkJ_of_subDecls` demands `SubDecls`, whose constant halves are *equalities*;
+the constant extension therefore happens at the base (where a fresh
+`tableOk_declsOkJ_constExtend` re-runs `tableOk_declsOkJ`'s walk — the user-arm
+refutation and `declFor` are unchanged definitionally since `constExtend` touches
+no other field) and the rows fold on top exactly as before. `validateJ_certifies`
+is conditional on one `ConstOk`/`ScopedConstOk` per claim (auto-param'd to close
+for empty lists, so no existing call site changed), and both residues are
+**decidable at a concrete heap**: `constOkB`/`scopedConstOkB` bound the
+`∀`-over-`ObjId` clauses by `h.objs.size` (`classPayload?_oob`: an out-of-range
+id answers the default object, whose payload is `.none`), exact types only.
+
+Worked end: `Float::INFINITY` — both new rules, both channels, residues
+discharged by `decide` at the boot heap (`egCpath_data_certified`, axiom-clean);
+binary replay in `certify/certs/j/eg_cpath.*` reporting the claims as
+`carries_consts`/`carries_scoped_consts`.
+
+A claim shadowed by a base entry is inert by construction (claims append after
+the base, `find?` answers the base first), so no collision guard is needed for
+soundness; the residue of a shadowed claim is simply an obligation nothing reads.

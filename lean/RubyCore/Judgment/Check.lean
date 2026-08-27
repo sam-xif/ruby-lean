@@ -418,10 +418,24 @@ end
     activation is judged in. -/
 def topJCtx : JCtx := { cls := "Object" }
 
+/-- Extend a table's two constant halves — the J38b certificate channel. Claims
+    append **after** the base entries, so a base declaration always shadows a
+    claim (a shadowed claim is inert, never unsound — its residue is simply an
+    obligation nothing reads). -/
+def constExtend (D : Decls) (cs : List (String × Ty))
+    (scs : List ((String × String) × Ty)) : Decls :=
+  { D with consts := D.consts ++ cs, scopedConsts := D.scopedConsts ++ scs }
+
 /-- A judgment-layer certificate: the table half (claimed rows, as the C-ladder's
-    `RowClaim`s) and the derivation. -/
+    `RowClaim`s; claimed constants since J38b) and the derivation. -/
 structure JCert where
   deltaRows : List RowClaim := []
+  /-- **J38b**: claimed toplevel constants (`::N : τ`). One `ConstOk` residue each
+      at the boot heap — `constOkB` decides the discharge for exact types. -/
+  deltaConsts : List (String × Ty) := []
+  /-- **J38b**: claimed scoped constants (`C::N : τ`). One `ScopedConstOk` residue
+      each. -/
+  deltaScopedConsts : List ((String × String) × Ty) := []
   /-- **J31**: the semantic axiom set — expressions the certificate claims at the
       canonical judgment. The composed theorem (`validateJ_certifies`) is
       conditional on `SemAxiomsOk` for exactly this list: each claim's `EvalOkAt`
@@ -430,9 +444,15 @@ structure JCert where
   deriv : Deriv
 deriving Repr
 
-/-- The table a J-certificate names — the same fold `Cert.table` uses. -/
+/-- The certificate's base table: the program's own table with the claimed
+    constant halves appended (J38b). -/
+def JCert.baseTable (c : JCert) (p : Expr) : Decls :=
+  constExtend (declsOf p) c.deltaConsts c.deltaScopedConsts
+
+/-- The table a J-certificate names — the row fold over the constant-extended
+    base (the same fold `Cert.table` uses). -/
 def JCert.table (c : JCert) (p : Expr) : Decls :=
-  c.deltaRows.foldl (fun D r => addRow D r.cls r.name r.sig) (declsOf p)
+  c.deltaRows.foldl (fun D r => addRow D r.cls r.name r.sig) (c.baseTable p)
 
 /-- The claimed rows' parameters, checked ground (J22's dispatch-boundary bill). -/
 def rowsGroundB (rows : List RowClaim) : Bool :=
@@ -442,7 +462,7 @@ def rowsGroundB (rows : List RowClaim) : Bool :=
     derivation. `fuel` bounds both the fragment scan and the derivation walk; any
     value at least the program's size works, and the checker is total either way. -/
 def validateJ (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
-  rowsGuarded (declsOf p) c.deltaRows &&
+  rowsGuarded (c.baseTable p) c.deltaRows &&
   rowsGroundB c.deltaRows &&
   fragHead p &&
   mfragB c.semAssumes fuel p &&

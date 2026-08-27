@@ -718,23 +718,106 @@ theorem check_sound {n : Nat} {d : Deriv} {D : Decls} {Γ : Env} {e : Expr}
 
 /-! ## The composed pipeline: `validateJ` accepts ⇒ no reachable type-stuck outcome -/
 
-/-- **The J-certificate theorem** — J2's exit: a *data* certificate (rows + a
-    derivation tree), one kernel-reduced `Bool`, the reachability property. The
-    residue stays the one honest hypothesis, exactly as in
-    `validate_sound_of_ctl`. -/
+/-- **J38b: `tableOk_declsOkJ` at a constant-extended base.** The certificate's
+    constant claims land as the appended halves of `constExtend`, one
+    `ConstOk`/`ScopedConstOk` residue each; every other conjunct is the same walk
+    (`constExtend` touches no other field, so `declFor` and the user-arm
+    refutation are unchanged definitionally). A claim shadowed by a base entry is
+    inert: `find?` answers the base half first, whose conjunct `hd` supplies. -/
+theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
+    {cs : List (String × Ty)} {scs : List ((String × String) × Ty)}
+    (ht : TableOk h) (hcls : ClassOk h)
+    (hc : ∀ e ∈ cs, ConstOk h e.1 e.2)
+    (hsc : ∀ e ∈ scs, ScopedConstOk h e.1.1 e.1.2 e.2) :
+    DeclsOkJ A (constExtend baseDecls cs scs) h := by
+  have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls
+  refine ⟨?_, ?_, hd.2.2.1, ?_, hd.2.2.2.2.1, hd.2.2.2.2.2.1,
+    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
+  · -- Rows: `declFor` reads no constant half, so the row set is the base's; the
+    -- base's builtin/iterator witnesses are table-free and the user arm is refuted
+    -- by `tableOk_declsOkJ`'s own walk (repeated here at the extended index).
+    intro τr mname d hdecl
+    have hdecl' : declFor baseDecls τr mname = some d := hdecl
+    rcases hd.1 τr mname d hdecl' with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
+    · exact Or.inl hb
+    · rcases htys with heq | ⟨⟨e, he⟩, hcu⟩
+      · subst heq
+        by_cases hg : cu ∈ groundClassNames
+        · exact absurd hdecl' (by simp [declFor, tyClassNames, hg])
+        · have hne : ("Integer" == cu) = false := by
+            simp only [beq_eq_false_iff_ne, ne_eq]
+            intro hq
+            exact hg (hq ▸ (by decide))
+          exact absurd hdecl'
+            (by simp [declFor, tyClassNames, hg, declOf?, declsFor, baseDecls, hne])
+      · subst he
+        exact absurd hdecl'
+          (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
+    · exact Or.inr (Or.inr hi)
+  · -- Constants: split the appended list.
+    intro n τ hn
+    have hn' : ((baseDecls.consts ++ cs).find? (·.1 == n)).map (·.2) = some τ := hn
+    rw [List.find?_append] at hn'
+    cases hbase : baseDecls.consts.find? (·.1 == n) with
+    | some e =>
+      rw [hbase] at hn'
+      exact hd.2.1 n τ (by simpa [constTy?, hbase] using hn')
+    | none =>
+      rw [hbase] at hn'
+      simp only [Option.orElse, Option.map_eq_some_iff] at hn'
+      obtain ⟨e, hfind, rfl⟩ := hn'
+      have hmem := List.mem_of_find?_eq_some hfind
+      have hkey : e.1 = n := by
+        have := List.find?_some hfind
+        simpa using this
+      exact hkey ▸ hc e hmem
+  · -- Scoped constants: the same split at the pair key.
+    intro cname n τ hn
+    have hn' : ((baseDecls.scopedConsts ++ scs).find? (·.1 == (cname, n))).map (·.2)
+        = some τ := hn
+    rw [List.find?_append] at hn'
+    cases hbase : baseDecls.scopedConsts.find? (·.1 == (cname, n)) with
+    | some e =>
+      rw [hbase] at hn'
+      exact hd.2.2.2.1 cname n τ (by simpa [scopedConstTy?, hbase] using hn')
+    | none =>
+      rw [hbase] at hn'
+      simp only [Option.orElse, Option.map_eq_some_iff] at hn'
+      obtain ⟨e, hfind, rfl⟩ := hn'
+      have hmem := List.mem_of_find?_eq_some hfind
+      have hkey : e.1 = (cname, n) := by
+        have := List.find?_some hfind
+        simpa using this
+      have := hsc e hmem
+      rw [hkey] at this
+      exact this
+
+/-- **The J-certificate theorem** — J2's exit: a *data* certificate (rows +
+    constant claims + a derivation tree), one kernel-reduced `Bool`, the
+    reachability property. The residue stays the honest hypotheses, exactly as in
+    `validate_sound_of_ctl` — one `EntryOkJ` per claimed row, one
+    `ConstOk`/`ScopedConstOk` per claimed constant (J38b). -/
 theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
     (hax : SemAxiomsOk c.semAssumes)
     (h : validateJ c p fuel = true)
     (ha : ∀ r ∈ c.deltaRows,
-      EntryOkJ c.semAssumes (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig) :
+      EntryOkJ c.semAssumes (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig)
+    (hac : ∀ e ∈ c.deltaConsts, ConstOk Boot.initHeap e.1 e.2 := by
+      intro e he; exact absurd (show e ∈ [] from he) (by simp))
+    (hasc : ∀ e ∈ c.deltaScopedConsts,
+      ScopedConstOk Boot.initHeap e.1.1 e.1.2 e.2 := by
+      intro e he; exact absurd (show e ∈ [] from he) (by simp)) :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
   unfold validateJ at h
   simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
   obtain ⟨⟨⟨⟨hg, hgr⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
-  have htbl : c.table p = rowFold (declsOf p) c.deltaRows := rfl
+  have htbl : c.table p = rowFold (c.baseTable p) c.deltaRows := rfl
   refine judge_sound hax ?_ (mfragB_sound hmf) hfr (check_sound hchk)
   rw [htbl] at ha ⊢
-  refine DeclsOkJ_of_subDecls declsOkJ_declsOf (subDecls_rowFold c.deltaRows _ hg) ?_
+  refine DeclsOkJ_of_subDecls
+    (show DeclsOkJ c.semAssumes (c.baseTable p) Boot.initHeap from
+      tableOk_declsOkJ_constExtend tableOk_initHeap classOk_initHeap hac hasc)
+    (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ0 n0 d0 hnone hsome
   rcases declFor_rowFold_inv c.deltaRows _ hg hsome with ⟨r, hm, hk, rfl, rfl⟩ | hd2
   · have hτ : τ0 = nomTy r.cls := tyClassNames_singleton_inv hk
@@ -801,6 +884,39 @@ theorem egNarrowJCert_validates : validateJ egNarrowJCert egNarrow 12 = true := 
 theorem egNarrow_certified :
     ∀ r, ReachableResult (Machine.init egNarrow) r → ¬ typeStuck r :=
   validateJ_certifies semAxiomsOk_nil egNarrowJCert_validates (fun r hm => by simp [egNarrowJCert] at hm)
+
+/-! ## The J38b worked end: `Float::INFINITY`, from literal data
+
+Both new rules and both constant channels: `Float` claimed at the toplevel
+(`ConstOk` residue, discharged by `constOkB` at the boot heap) and
+`Float::INFINITY` claimed scoped (`ScopedConstOk` residue, `scopedConstOkB`) —
+the first certificate whose table half is constants rather than rows. -/
+
+def egCpath : Expr := .cpath (some (.const "Float")) "INFINITY"
+
+def egCpathJCert : JCert :=
+  { deltaConsts := [("Float", .clsOf "Float")],
+    deltaScopedConsts := [(("Float", "INFINITY"), .float)],
+    deriv := .cpathScoped .const }
+
+theorem egCpathJCert_validates : validateJ egCpathJCert egCpath 8 = true := by decide
+
+theorem egCpath_data_certified :
+    ∀ r, ReachableResult (Machine.init egCpath) r → ¬ typeStuck r :=
+  validateJ_certifies semAxiomsOk_nil egCpathJCert_validates
+    (fun r hm => by simp [egCpathJCert] at hm)
+    (fun e he => by
+      simp only [egCpathJCert, List.mem_singleton] at he
+      subst he
+      exact constOkB_sound (by decide))
+    (fun e he => by
+      simp only [egCpathJCert, List.mem_singleton] at he
+      subst he
+      exact scopedConstOkB_sound (by decide))
+
+/-- info: 'RubyCore.Proof.Judgment.egCpath_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egCpath_data_certified
 
 /-! ## The refusal direction, observed
 

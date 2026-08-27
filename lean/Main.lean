@@ -291,9 +291,22 @@ def main (args : List String) : IO UInt32 := do
                 if Judgment.validateJ cert prog 1_000_000 then
                   Lean.Json.mkObj [("status", Lean.Json.str "accept"),
                     ("theorem", Lean.Json.str "validateJ_certifies"),
-                    ("unconditional", Lean.Json.bool cert.deltaRows.isEmpty),
+                    ("unconditional", Lean.Json.bool (cert.deltaRows.isEmpty &&
+                      cert.deltaConsts.isEmpty && cert.deltaScopedConsts.isEmpty)),
                     ("carries", Lean.Json.arr
-                      (cert.deltaRows.map Cert.rowClaimToJson).toArray)]
+                      (cert.deltaRows.map Cert.rowClaimToJson).toArray),
+                    -- J38b: claimed constants are residue too (one `ConstOk` /
+                    -- `ScopedConstOk` each) — but `constOkB`-decidable, so also
+                    -- report whether each discharges at the boot heap.
+                    ("carries_consts", Lean.Json.arr
+                      (cert.deltaConsts.map (fun e => Lean.Json.mkObj
+                        [("name", Lean.Json.str e.1),
+                         ("type", Cert.tyToJson e.2)])).toArray),
+                    ("carries_scoped_consts", Lean.Json.arr
+                      (cert.deltaScopedConsts.map (fun e => Lean.Json.mkObj
+                        [("cls", Lean.Json.str e.1.1),
+                         ("name", Lean.Json.str e.1.2),
+                         ("type", Cert.tyToJson e.2)])).toArray)]
                 else
                   Lean.Json.mkObj [("status", Lean.Json.str "reject"),
                                    ("why", Lean.Json.str "validateJ-false")]

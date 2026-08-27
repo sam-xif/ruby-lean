@@ -116,6 +116,85 @@ theorem egEven_judge_safe :
       simp [egEvenRow] at hq)
     egEven_mfrag (by decide) egEven_judged
 
+/-! ## J38b: deciding a constant claim's residue at a concrete heap
+
+A claimed constant's residue is `ConstOk`/`ScopedConstOk` at the boot heap — both
+carry a `∀`-over-`ObjId` clause, bounded here by the heap's own size (an
+out-of-range id has no class payload: `Heap.get` answers the default object,
+whose payload is `.none`). Exact types only (`valueTy?`), which is all a
+class-object or literal constant needs. -/
+
+/-- An out-of-range id has no class payload. -/
+theorem classPayload?_oob {h : Heap} {j : ObjId} (hj : ¬ j < h.objs.size) :
+    h.classPayload? j = none := by
+  unfold Heap.classPayload? Heap.get
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (Nat.le_of_not_lt hj)]
+  rfl
+
+/-- `ConstOk`, decided: the toplevel lookup answers a value of exactly `τ`, and no
+    other class object in range owns the name. -/
+def constOkB (h : Heap) (n : String) (τ : Ty) : Bool :=
+  match constOwn h Boot.objectId n with
+  | some v =>
+    (valueTy? h v == some τ) &&
+    (((List.range h.objs.size).filter fun j =>
+        (h.classPayload? j).isSome && j != Boot.objectId).all fun j =>
+      (constOwn h j n).isNone)
+  | none => false
+
+
+theorem constOkB_sound {h : Heap} {n : String} {τ : Ty}
+    (hb : constOkB h n τ = true) : ConstOk h n τ := by
+  unfold constOkB at hb
+  split at hb
+  case h_1 v hv =>
+    simp only [Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
+    refine ⟨v, hv, ValueTy.exact hb.1, ?_⟩
+    intro j hj hjo
+    by_cases hlt : j < h.objs.size
+    · have hmem : j ∈ (List.range h.objs.size).filter fun j =>
+          (h.classPayload? j).isSome && j != Boot.objectId := by
+        rw [List.mem_filter]
+        exact ⟨List.mem_range.mpr hlt, by simp [hj, hjo]⟩
+      have := hb.2 j hmem
+      simpa using this
+    · rw [classPayload?_oob hlt] at hj
+      exact absurd hj (by simp)
+  case h_2 => exact Bool.noConfusion hb
+
+/-- `ScopedConstOk`, decided: every in-range class object named `c` passes the
+    privacy walk and answers a value of exactly `τ`. -/
+def scopedConstOkB (h : Heap) (c n : String) (τ : Ty) : Bool :=
+  ((List.range h.objs.size).filter fun o =>
+      (h.classPayload? o).isSome && className h o == c).all fun o =>
+    ((ancestors h o).all fun a =>
+        match h.classPayload? a with
+        | some cp => !cp.privateConsts.contains n
+        | none => true) &&
+      match constLookupFrom h o n with
+      | some v => valueTy? h v == some τ
+      | none => false
+
+theorem scopedConstOkB_sound {h : Heap} {c n : String} {τ : Ty}
+    (hb : scopedConstOkB h c n τ = true) : ScopedConstOk h c n τ := by
+  unfold scopedConstOkB at hb
+  rw [List.all_eq_true] at hb
+  intro o hpay hcn
+  by_cases hlt : o < h.objs.size
+  · have hmem : o ∈ (List.range h.objs.size).filter fun o =>
+        (h.classPayload? o).isSome && className h o == c := by
+      rw [List.mem_filter]
+      exact ⟨List.mem_range.mpr hlt, by simp [hpay, hcn]⟩
+    have := hb o hmem
+    simp only [Bool.and_eq_true] at this
+    refine ⟨this.1, ?_⟩
+    have h2 := this.2
+    split at h2
+    case h_1 v hv => exact ⟨v, hv, ValueTy.exact (by simpa using h2)⟩
+    case h_2 => exact Bool.noConfusion h2
+  · rw [classPayload?_oob hlt] at hpay
+    exact absurd hpay (by simp)
+
 /-! ## Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Judgment.judge_sound_cert' depends on axioms: [propext, Classical.choice, Quot.sound] -/
