@@ -651,7 +651,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     have hlk : ∀ md : MethodDef,
         lookup (defineMethod m.heap (curFrame m).defmod name md)
           (.ref (curFrame m).defmod) "method_added" = none := fun md =>
-      (hlkNH md).2 (curFrame m).defmod
+      (hlkNH md).2.1 (curFrame m).defmod
         (by rw [classPayload?_isSome_defineMethod]; exact hdo)
         "method_added" (by simp [hookFreeNames])
     have hres : ∀ (m₀ : Machine),
@@ -721,7 +721,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     have hlk : ∀ md : MethodDef,
         lookup (defineMethod m.heap (curFrame m).defmod name md)
           (.ref (curFrame m).defmod) "method_added" = none := fun md =>
-      (hlkNH md).2 (curFrame m).defmod
+      (hlkNH md).2.1 (curFrame m).defmod
         (by rw [classPayload?_isSome_defineMethod]; exact hdo)
         "method_added" (by simp [hookFreeNames])
     have hres : ∀ (m₀ : Machine),

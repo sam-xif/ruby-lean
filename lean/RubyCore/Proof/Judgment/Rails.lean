@@ -210,7 +210,7 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
   -- the lookup miss, from `NoHook` after the allocation
   have hh₁ : NoHook (dmM₁ m).heap := NoHook_grow hg₁ hsat hh
   have hlkdm : lookup (dmM₁ m).heap (.ref (curFrame m).defmod) "define_method" = none :=
-    hh₁.2 (curFrame m).defmod hdo₁ "define_method" (by simp [hookFreeNames])
+    hh₁.2.1 (curFrame m).defmod hdo₁ "define_method" (by simp [hookFreeNames])
   -- the class payload, named
   obtain ⟨cp, hcp⟩ : ∃ cp, ((dmM₁ m).heap.get (curFrame m).defmod).payload = .cls cp := by
     have := hdo₁

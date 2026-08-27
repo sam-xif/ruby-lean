@@ -74,10 +74,16 @@ def saturatedB (h : Heap) : Bool :=
     is **false** at the prelude-booted heap while this one is true. -/
 def noHookB (h : Heap) : Bool :=
   (h.classPayload? Boot.objectId).isSome &&
-  (List.range h.objs.size).all fun k =>
+  ((List.range h.objs.size).all fun k =>
     (h.classPayload? k).isNone ||
       ((lookup h (.ref k) "method_added").isNone &&
-       (lookup h (.ref k) "define_method").isNone)
+       (lookup h (.ref k) "define_method").isNone)) &&
+  -- J44: the per-table half.
+  (List.range h.objs.size).all fun j =>
+    match h.classPayload? j with
+    | some cp => (cp.methods.find? (·.1 == "method_added")).isNone &&
+                 (cp.methods.find? (·.1 == "define_method")).isNone
+    | none => true
 
 /-- L178's constant-table clause, decided. The `takeWhile` is the population
     `scripts/consts_probe.lean` measured: `{String, Comparable}` on the slice's

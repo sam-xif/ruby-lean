@@ -838,7 +838,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       have hlk : ∀ md : MethodDef,
           lookup (defineMethod m.heap (curFrame m).defmod name md)
             (.ref (curFrame m).defmod) "method_added" = none := fun md =>
-        (hlkNH md).2 (curFrame m).defmod
+        (hlkNH md).2.1 (curFrame m).defmod
           (by rw [classPayload?_isSome_defineMethod]; exact hdo)
           "method_added" (by simp [hookFreeNames])
       -- Quantified over `md` so the `MethodDef` literal `evalExpr` builds never

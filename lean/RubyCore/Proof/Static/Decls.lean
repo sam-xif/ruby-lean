@@ -2002,7 +2002,14 @@ def TableOk (h : Heap) : Prop :=
     tables in `Types/Fragment.lean`). -/
 def NoHook (h : Heap) : Prop :=
   (h.classPayload? Boot.objectId).isSome ∧
-    ∀ k, (h.classPayload? k).isSome → ∀ n ∈ hookFreeNames, lookup h (.ref k) n = none
+    (∀ k, (h.classPayload? k).isSome → ∀ n ∈ hookFreeNames, lookup h (.ref k) n = none) ∧
+    -- **J44: the per-table half.** The per-value clause above quantifies over the
+    -- dispatch walks *old values* take; a freshly-allocated class's walk is a new
+    -- list no old value walked, so establishing its hook-freeness needs the fact
+    -- per *table* — which also implies the per-value form (walks read tables), but
+    -- rewriting the consumers is not worth it; the two ride together.
+    ∀ j cp, h.classPayload? j = some cp → ∀ n ∈ hookFreeNames,
+      cp.methods.find? (·.1 == n) = none
 
 /-- **`NoHook` survives an allocating step** (L149, restated at L153's indexing).
 
@@ -2014,10 +2021,11 @@ def NoHook (h : Heap) : Prop :=
     quantifier's own hypothesis. -/
 theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hh : NoHook h) : NoHook h' := by
-  refine ⟨by rw [hg.payload]; exact hh.1, fun k hk n hn => ?_⟩
+  refine ⟨by rw [hg.payload]; exact hh.1, fun k hk n hn => ?_,
+    fun j cp hj => hh.2.2 j cp (by rw [← hg.payload]; exact hj)⟩
   have hk' : (h.classPayload? k).isSome := by rw [← hg.payload k]; exact hk
   rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
-  exact hh.2 k hk' n hn
+  exact hh.2.1 k hk' n hn
 
 /-- **And a `def`** (L153). The receiver's dispatch class is unchanged
     (`classOf_defineMethod`) and the name differs, so `lookup_defineMethod` applies at
@@ -2026,16 +2034,27 @@ theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
 theorem NoHook_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
     (hh : NoHook h) (hne : name ≠ "method_added" ∧ name ≠ "define_method") :
     NoHook (defineMethod h cls name md) := by
-  refine ⟨by rw [classPayload?_isSome_defineMethod]; exact hh.1, fun k hk n hn => ?_⟩
-  have hk' : (h.classPayload? k).isSome := by
-    rw [← classPayload?_isSome_defineMethod h cls k name md]; exact hk
-  have hnn : ¬ (n = name) := by
+  have hnn : ∀ n ∈ hookFreeNames, ¬ (n = name) := by
+    intro n hn
     simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl
     · exact fun hEq => hne.1 hEq.symm
     · exact fun hEq => hne.2 hEq.symm
-  rw [lookup_defineMethod _ _ name n md _ hnn (classOf_defineMethod _ _ _ _ _)]
-  exact hh.2 k hk' n hn
+  refine ⟨by rw [classPayload?_isSome_defineMethod]; exact hh.1, fun k hk n hn => ?_,
+    fun j cp hj n hn => ?_⟩
+  · have hk' : (h.classPayload? k).isSome := by
+      rw [← classPayload?_isSome_defineMethod h cls k name md]; exact hk
+    rw [lookup_defineMethod _ _ name n md _ (hnn n hn) (classOf_defineMethod _ _ _ _ _)]
+    exact hh.2.1 k hk' n hn
+  · have hmm := methods_find_defineMethod h cls j name n md (hnn n hn)
+    rw [hj] at hmm
+    cases hj0 : h.classPayload? j with
+    | none => rw [hj0] at hmm; exact absurd hmm (by simp)
+    | some cp0 =>
+      rw [hj0] at hmm
+      simp only [Option.map_some, Option.some.injEq] at hmm
+      rw [hmm]
+      exact hh.2.2 j cp0 hj0 n hn
 
 /-- `noHookB` reflects `NoHook` (L153). The out-of-range ids are the only interesting
     step: `classPayload?` answers `none` there, so the clause holds vacuously and the
@@ -2043,18 +2062,27 @@ theorem NoHook_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Metho
 theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
   unfold noHookB at hb
   simp only [Bool.and_eq_true] at hb
-  obtain ⟨hobj, hb⟩ := hb
-  refine ⟨hobj, fun k hk n hn => ?_⟩
-  by_cases hlt : k < h.objs.size
-  · have := List.all_eq_true.mp hb k (List.mem_range.mpr hlt)
-    simp only [Bool.or_eq_true, Bool.and_eq_true, Option.isNone_iff_eq_none] at this
-    rcases this with h1 | ⟨h2, h3⟩
-    · exact absurd hk (by rw [h1]; simp)
-    · simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
-      rcases hn with rfl | rfl
-      · exact h2
-      · exact h3
-  · exact absurd hk (by rw [classPayload?_oob h k hlt]; simp)
+  obtain ⟨⟨hobj, hb⟩, htb⟩ := hb
+  refine ⟨hobj, fun k hk n hn => ?_, fun j cp hj n hn => ?_⟩
+  · by_cases hlt : k < h.objs.size
+    · have := List.all_eq_true.mp hb k (List.mem_range.mpr hlt)
+      simp only [Bool.or_eq_true, Bool.and_eq_true, Option.isNone_iff_eq_none] at this
+      rcases this with h1 | ⟨h2, h3⟩
+      · exact absurd hk (by rw [h1]; simp)
+      · simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+        rcases hn with rfl | rfl
+        · exact h2
+        · exact h3
+    · rw [classPayload?_oob h k hlt] at hk
+      exact absurd hk (by simp)
+  · have hjlt : j < h.objs.size := classPayload?_isSome_lt (by rw [hj]; simp)
+    have := List.all_eq_true.mp htb j (List.mem_range.mpr hjlt)
+    rw [hj] at this
+    simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at this
+    simp only [hookFreeNames, List.mem_cons, List.not_mem_nil, or_false] at hn
+    rcases hn with rfl | rfl
+    · exact this.1
+    · exact this.2
 
 /-- **The boot `String` id is a class named `"String"`** (L151), and it is the
     fourth heap conjunct for the same reason the other three are conjuncts rather
@@ -2999,7 +3027,8 @@ theorem noHook (hi : IvarOnly h h') (hn : NoHook h) : NoHook h' :=
   ⟨by rw [hi.classPayload]; exact hn.1,
    fun k hk n hnn => by
      rw [hi.lookup_eq]
-     exact hn.2 k (by rw [← hi.classPayload]; exact hk) n hnn⟩
+     exact hn.2.1 k (by rw [← hi.classPayload]; exact hk) n hnn,
+   fun j cp hj n hnn => hn.2.2 j cp (by rw [← hi.classPayload]; exact hj) n hnn⟩
 
 theorem litClsOk (hi : IvarOnly h h') (hs : LitClsOk h) : LitClsOk h' :=
   ⟨⟨by rw [hi.classPayload]; exact hs.1.1, by rw [hi.className_eq]; exact hs.1.2⟩,
@@ -3099,11 +3128,21 @@ theorem tyClass_constSetIn {τ : Ty} {k : ObjId}
   | _ => exact ht
 
 theorem noHook_constSetIn (hn : NoHook h) : NoHook (constSetIn h j nm v) := by
-  refine ⟨by rw [classPayload?_isSome_constSetIn]; exact hn.1, fun k hk n hnn => ?_⟩
-  have := hn.2 k (by rw [← classPayload?_isSome_constSetIn (v := v)]; exact hk) n hnn
-  unfold lookup at this ⊢
-  rw [classOf_constSetIn, ancestors_constSetIn, lookup_go_constSetIn]
-  exact this
+  refine ⟨by rw [classPayload?_isSome_constSetIn]; exact hn.1, fun k hk n hnn => ?_,
+    fun i cp hi n hnn => ?_⟩
+  · have := hn.2.1 k (by rw [← classPayload?_isSome_constSetIn (v := v)]; exact hk) n hnn
+    unfold lookup at this ⊢
+    rw [classOf_constSetIn, ancestors_constSetIn, lookup_go_constSetIn]
+    exact this
+  · have hmm := methods_constSetIn h j i nm v
+    rw [hi] at hmm
+    cases hi0 : h.classPayload? i with
+    | none => rw [hi0] at hmm; exact absurd hmm (by simp)
+    | some cp0 =>
+      rw [hi0] at hmm
+      simp only [Option.map_some, Option.some.injEq] at hmm
+      rw [hmm]
+      exact hn.2.2 i cp0 hi0 n hnn
 
 theorem litClsOk_constSetIn (hs : LitClsOk h) : LitClsOk (constSetIn h j nm v) :=
   ⟨⟨by rw [classPayload?_isSome_constSetIn]; exact hs.1.1,
