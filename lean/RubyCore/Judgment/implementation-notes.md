@@ -1038,3 +1038,40 @@ channel cannot promise). Bills: `judge_mono` gains a `top = false` hypothesis
 already at a method body), and the new `DeclsOkJ` conjunct rides ~15 construction
 sites. Slice payoff is *indirect* — the slice's own casgns are class-body — so it
 queues behind the definition-forms wall.
+
+## J43 (design) — Wall 2's entry fee, priced from the code
+
+The first whole-file target (`judge-slice.md` §5a) needs `module'` and `defs`,
+both **allocating definitions**. The blocker is exactly the one
+`Proof/HeapGrow.lean`'s header names: a class allocation breaks `PlainGrow`'s
+global `classPayload?` agreement, and `TypeAgree`'s unrelativized ancestors
+clause (L218) is *false* across it — so nothing currently transports the
+invariant. Designed against the code this session:
+
+1. **`ChainsIn h`** (W2a) — every chain-relevant `ObjId` field of an in-bounds
+   object is in-bounds: `klass`, `eigen`, and (for a class payload)
+   `superclass`/`includes`/`prepends`. This is `AncestorsGrow.lean`'s own owed
+   clause ("no in-bounds object has an edge pointing out of bounds"; the probe
+   measures 0 such edges at boot). Machine-free, decidable (`chainsInB`), a new
+   `InvJ` conjunct (the GlobalsOk-insertion pattern, L228). **Not** the full
+   closed-world well-formedness: stored *values* need no bounding — `ValueTy`
+   transports across a class-growth for free because `plainRecv`/`classRecv`/
+   `classPayload?_isSome_lt` carry their own bounds (checked clause by clause).
+2. **`ClsGrow`** (W2b) — the single-class-push relation (old `get`s identical,
+   `classPayload?` pinned at old ids, the fresh id's payload named), with the
+   relativized congruence suite keyed on `ChainsIn`: an old id's
+   ancestors/lookup/className walk never reaches the fresh id.
+3. **The `module'` case** (W2c) is the cheapest instance: a fresh module's
+   eigenclass realization recurses zero times (superclass `none` → `Boot.classId`
+   directly), so the step is `alloc module ∘ constSetIn(Object) ∘ alloc eigenclass
+   ∘ eigen-set(fresh)` — the const write is J41's suite, the eigen-set touches a
+   fresh id only. Rule guards owed: fresh module name ∉ `readableClasses`, no
+   rows/`scopedConsts` keyed at it (a freshly-allocated empty table cannot witness
+   them), plus J41's casgn-style constant-freshness for the name registration.
+4. **`defs` inside a fresh module needs no allocation**: `enterClassBody`'s
+   fresh path eagerly realizes the eigenclass, so `defsK`'s `eigenclassOf` hits
+   the `some` branch and the step is one `defineMethod` (transports exist). The
+   vocabulary owed is a `StackCtx` classBody clause "the definee's eigenclass is
+   realized", established at the module push. (`defs` in a *reopened boot* class
+   would allocate — 60 of 87 boot class objects have no eigenclass — so that
+   variant waits.)
