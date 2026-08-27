@@ -234,6 +234,85 @@ theorem egZero_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egZero) r → ¬ typeStuck r :=
   judge_sound declsOkJ_declsOf egZero_mfrag egZero_judged
 
+/-- **A user-defined method, installed and called, certified through the judgment
+    layer** — `egUserCall` (`class String; def shout; 1; end; "x".shout; end`), the
+    F1b.10 flagship: the `def` step's row is threaded by `Judge.defPromote` and the
+    send reads it back. This is the T5 (`class_hierarchy`) shape end to end. -/
+theorem egUserCall_judged : Judge (declsOf Static.egUserCall) [] Static.egUserCall
+    true topJCtx .int []
+    (addRow (declsOf Static.egUserCall) "String" "shout"
+      { params := [], ret := .int }) := by
+  have hsig : sigOf (addRow (declsOf Static.egUserCall) "String" "shout"
+        { params := [], ret := .int }) (.cls "String") "shout"
+      = some ([], .int) := by decide
+  have hdef : Judge (declsOf Static.egUserCall) [] (.def' "shout" [] (.int 1)) false
+      ({ cls := "String" } : JCtx) .sym []
+      (addRow (declsOf Static.egUserCall) "String" "shout"
+        { params := [], ret := .int }) :=
+    .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
+      (by decide) (by simp [defFree]) rfl rfl rfl
+  have hsend : Judge (addRow (declsOf Static.egUserCall) "String" "shout"
+        { params := [], ret := .int }) []
+      (.send (some (.str "x")) "shout" [] none) false ({ cls := "String" } : JCtx)
+      .int []
+      (addRow (declsOf Static.egUserCall) "String" "shout"
+        { params := [], ret := .int }) :=
+    .send (.expl .str) .nil hsig .nil
+  exact .classTop (by decide) (.seq (.cons hdef (.single hsend)))
+
+theorem egUserCall_mfrag : MFrag Static.egUserCall :=
+  mfragB_sound (n := 12) (by decide)
+
+theorem egUserCall_judge_safe :
+    ∀ r, ReachableResult (Machine.init Static.egUserCall) r → ¬ typeStuck r :=
+  judge_sound declsOkJ_declsOf egUserCall_mfrag egUserCall_judged
+
+/-- **The receiverless user-method call** — `egVcall`, fourteen of the slice's
+    ninety-two method bodies' shape (F1b.11), through two threaded rows. -/
+theorem egVcall_judged : Judge (declsOf Static.egVcall) [] Static.egVcall
+    true topJCtx .int []
+    (addRow (addRow (declsOf Static.egVcall) "String" "value"
+        { params := [], ret := .int }) "String" "get"
+      { params := [], ret := .int }) := by
+  have hsigv : sigOf (addRow (declsOf Static.egVcall) "String" "value"
+        { params := [], ret := .int }) (.cls "String") "value"
+      = some ([], .int) := by decide
+  have hsigg : sigOf (addRow (addRow (declsOf Static.egVcall) "String" "value"
+          { params := [], ret := .int }) "String" "get"
+        { params := [], ret := .int }) (.cls "String") "get"
+      = some ([], .int) := by decide
+  have hdefv : Judge (declsOf Static.egVcall) [] (.def' "value" [] (.int 1)) false
+      ({ cls := "String" } : JCtx) .sym []
+      (addRow (declsOf Static.egVcall) "String" "value"
+        { params := [], ret := .int }) :=
+    .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
+      (by decide) (by simp [defFree]) rfl rfl rfl
+  have hdefg : Judge (addRow (declsOf Static.egVcall) "String" "value"
+        { params := [], ret := .int }) []
+      (.def' "get" [] (.vcall "value")) false ({ cls := "String" } : JCtx) .sym []
+      (addRow (addRow (declsOf Static.egVcall) "String" "value"
+          { params := [], ret := .int }) "String" "get"
+        { params := [], ret := .int }) :=
+    .defPromote (by decide) (by decide) (.vcall rfl hsigv) rfl (by decide)
+      (by decide) (by decide) (by simp [defFree]) rfl rfl rfl
+  have hsend : Judge (addRow (addRow (declsOf Static.egVcall) "String" "value"
+          { params := [], ret := .int }) "String" "get"
+        { params := [], ret := .int }) []
+      (.send (some (.str "x")) "get" [] none) false ({ cls := "String" } : JCtx)
+      .int []
+      (addRow (addRow (declsOf Static.egVcall) "String" "value"
+          { params := [], ret := .int }) "String" "get"
+        { params := [], ret := .int }) :=
+    .send (.expl .str) .nil hsigg .nil
+  exact .classTop (by decide) (.seq (.cons hdefv (.cons hdefg (.single hsend))))
+
+theorem egVcall_mfrag : MFrag Static.egVcall :=
+  mfragB_sound (n := 12) (by decide)
+
+theorem egVcall_judge_safe :
+    ∀ r, ReachableResult (Machine.init Static.egVcall) r → ¬ typeStuck r :=
+  judge_sound declsOkJ_declsOf egVcall_mfrag egVcall_judged
+
 /-! ## Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Judgment.judge_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -247,6 +326,14 @@ theorem egZero_judge_safe :
 /-- info: 'RubyCore.Proof.Judgment.egZero_judge_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms egZero_judge_safe
+
+/-- info: 'RubyCore.Proof.Judgment.egUserCall_judge_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egUserCall_judge_safe
+
+/-- info: 'RubyCore.Proof.Judgment.egVcall_judge_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egVcall_judge_safe
 
 end Judgment
 end Proof

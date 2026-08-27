@@ -1,4 +1,4 @@
-import RubyCore.Proof.Judgment.Konts
+import RubyCore.Proof.Judgment.Mono
 
 /-!
 # Progress and preservation over `Judge` (J21) — the rung-1 fragment
@@ -412,6 +412,297 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
             (KontOkJ.argsK (psacc := []) (VTy.ofValueTy hself) trivial hs1
               (fun a' ha' => hma a' (by simp [ha'])) harest hs2
               (by simpa using hsg) hsubw hk)
+  -- ## `class C … end` — the reopen: a frame push on an untouched heap.
+  case hclassTop =>
+    intro D Γ name body ctx τ0 Γb' Db hmem hbody ihb
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | classTop hmb =>
+      have hΓs : Γs = [] := List.isEmpty_iff.mp htop.symm
+      subst hΓs
+      have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+      have hfs := FramesOkJ.narrowHead hsuE hfs
+      obtain ⟨fid₀, hst⟩ := hfs.stack_singleton
+      have hdefmod : m.currentFrame.defmod = Boot.objectId := by
+        rw [currentFrame_eq hfsh1]; exact BottomObj_curFrame hst hbot
+      obtain ⟨k, cp, hconst, hpay, hnm, huniq, -, -, -, hreop⟩ :=
+        hcls.2.2 name (readable_of_reopenable (List.mem_of_elem_eq_true hmem))
+      obtain ⟨hmod, -, -⟩ := hreop (List.mem_of_elem_eq_true hmem)
+      have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
+        rw [show m.currentFrame = m.frames.getD fid₀ default by
+          simp [Machine.currentFrame, hst]]
+        rw [hst] at hsc
+        exact hsc.2.2.2.2.1
+      simp only [evalExpr, enterClassBody, hdefmod, hconst, hpay, hmod, withKont]
+      have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+      refine ⟨hh, hsat, hstr, hcls,
+        BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
+        (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
+        (ClosuresOk.pushFrame hclo rfl rfl rfl),
+        D, ({ cls := name } : JCtx), [], [(ctx, Γk)],
+        htab, ?_, ?_, hgl, ?_⟩
+      · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+          ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
+          FramesOkJ.push hfs⟩
+        · rw [getD_push_lt_self]; simp [hpay]
+        · intro y σ hy; exact absurd hy (by simp [envGet?])
+      · refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h' => absurd h' (by simp), ?_,
+          StackCtx.push hlt hsc⟩
+        · rw [getD_push_lt_self]; simp [hpay]
+        · rw [getD_push_lt_self]; exact fun _ => hnm
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+        · exact fun sc hsc' => absurd hsc' (by simp)
+        · rw [getD_push_lt_self]
+          exact List.mem_cons_of_mem _ hcrefCur
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+      · exact ⟨hmb, τ0, τw, Γb', Db, Γb', hbody, hsubw, SubEnv.refl _,
+          KontOkJ.frameK (fun _ h' => by simp at h') rfl hk⟩
+  -- ## `def` — the two derivations of the same step: install-only (`defDecl`) and
+  -- row-threading promotion (`defPromote`). The heap write and the value are
+  -- identical; the difference is the table the invariant is re-established at.
+  case hdefDecl =>
+    intro D Γ name ps body top ctx τs σb bs τb Γb'
+    intro hfresh hha hlen hbody hsbb ihb
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+    have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
+    have hfs := FramesOkJ.narrowHead hsuE hfs
+    have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hfsh1
+      | cons fid _ =>
+        have hfc : FrameConformsJ m.heap m.frames Γk fid := by
+          rw [hst] at hfs; exact hfs.2.2.1
+        simpa [curFrame, curFid, hst] using hfc.2.1
+    have hha' : ¬ ("method_added" = name) := fun hh' => hha hh'.symm
+    have hlkNH : ∀ md : MethodDef,
+        NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
+      fun _ => NoHook_defineMethod hh hha'
+    have hlk : ∀ md : MethodDef,
+        lookup (defineMethod m.heap (curFrame m).defmod name md)
+          (.ref (curFrame m).defmod) "method_added" = none := fun md =>
+      (hlkNH md).2 (curFrame m).defmod
+        (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+    have hres : ∀ (m₀ : Machine),
+        m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
+        TypeAgree m.heap m₀.heap → DeclsOkJ D m₀.heap → NoHook m₀.heap →
+        Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
+        GlobalsOk D m₀.heap m₀.globals →
+        InvJ (withCtl m₀ (.value (.sym name))) := by
+      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
+      refine ⟨hh', hsat', hstr', hcls',
+        show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
+        show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
+        ClosuresOk.transport hclo
+          (by intro κ hm cl hcl; simp only [withCtl, hko] at hm; exact ⟨κ, hm, hcl⟩)
+          (by simp only [withCtl]; rw [hfr]; exact Nat.le_refl _)
+          (by intro p _; simp only [withCtl]; rw [hfr]; exact FrameShape.rfl' _)
+          (by
+            intro o ho
+            show (m₀.heap.classPayload? o).isSome = true
+            exact (hag.2.2.1 o (classPayload?_isSome_lt ho)) ▸ ho),
+        D, ctx, Γk, Γs, ht', ?_, ?_, hgl', ?_⟩
+      · show FramesOkJ m₀.heap m₀.frames m₀.stack (Γk :: Γs.map Prod.snd)
+        rw [hfr, hst]; exact FramesOkJ.heap_congr hag hfs
+      · show StackCtx m₀.heap m₀.frames m₀.stack (jctxs ctx Γs)
+        rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
+      · show ∃ σ' Γk', VTy m₀.heap (Value.sym name) σ' ∧ SubEnv Γk' Γk ∧
+            KontOkJ D m₀.heap ((ctx, Γk') :: Γs) σ' m₀.kont
+        exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
+          by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
+    simp only [evalExpr, hdm]
+    by_cases hp : m.preludeMode = true <;>
+      simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+      refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
+        first
+          | rfl
+          | exact typeAgree_defineMethod _ _ _ _
+          | exact DeclsOkJ_defineMethod htab hfresh
+          | exact hlkNH _
+          | exact Saturated_defineMethod hsat _ _ _
+          | exact LitClsOk_defineMethod hstr
+          | exact ClassOk_defineMethod hcls
+          | exact GlobalsOk.congr (typeAgree_defineMethod _ _ _ _) hgl
+  case hdefPromote =>
+    intro D Γ name body top ctx τb Γb'
+    intro hfresh hha hbody htopf hinit hmemctx hgroundc hdfree hretn hloopn hblkn ihb
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    have hmfb : MFrag body := by cases hmf; assumption
+    have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+    have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
+    have hfs := FramesOkJ.narrowHead hsuE hfs
+    have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hfsh1
+      | cons fid _ =>
+        have hfc : FrameConformsJ m.heap m.frames Γk fid := by
+          rw [hst] at hfs; exact hfs.2.2.1
+        simpa [curFrame, curFid, hst] using hfc.2.1
+    have hha' : ¬ ("method_added" = name) := fun hh' => hha hh'.symm
+    have hlkNH : ∀ md : MethodDef,
+        NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
+      fun _ => NoHook_defineMethod hh hha'
+    have hlk : ∀ md : MethodDef,
+        lookup (defineMethod m.heap (curFrame m).defmod name md)
+          (.ref (curFrame m).defmod) "method_added" = none := fun md =>
+      (hlkNH md).2 (curFrame m).defmod
+        (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+    have hres : ∀ (m₀ : Machine),
+        m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
+        TypeAgree m.heap m₀.heap →
+        DeclsOkJ (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap →
+        NoHook m₀.heap → Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
+        GlobalsOk (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
+          m₀.globals →
+        InvJ (withCtl m₀ (.value (.sym name))) := by
+      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hgl'
+      refine ⟨hh', hsat', hstr', hcls',
+        show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
+        show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
+        ClosuresOk.transport hclo
+          (by intro κ hm cl hcl; simp only [withCtl, hko] at hm; exact ⟨κ, hm, hcl⟩)
+          (by simp only [withCtl]; rw [hfr]; exact Nat.le_refl _)
+          (by intro p _; simp only [withCtl]; rw [hfr]; exact FrameShape.rfl' _)
+          (by
+            intro o ho
+            show (m₀.heap.classPayload? o).isSome = true
+            exact (hag.2.2.1 o (classPayload?_isSome_lt ho)) ▸ ho),
+        addRow D ctx.cls name { params := [], ret := τb }, ctx, Γk, Γs,
+        ht', ?_, ?_, hgl', ?_⟩
+      · show FramesOkJ m₀.heap m₀.frames m₀.stack (Γk :: Γs.map Prod.snd)
+        rw [hfr, hst]; exact FramesOkJ.heap_congr hag hfs
+      · show StackCtx m₀.heap m₀.frames m₀.stack (jctxs ctx Γs)
+        rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
+      · show ∃ σ' Γk', VTy m₀.heap (Value.sym name) σ' ∧ SubEnv Γk' Γk ∧
+            KontOkJ (addRow D ctx.cls name { params := [], ret := τb }) m₀.heap
+              ((ctx, Γk') :: Γs) σ' m₀.kont
+        exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
+          by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
+    obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hfsh1
+      | cons a r => exact ⟨a, r, rfl⟩
+    have hΓs : Γs ≠ [] := by
+      intro hz
+      rw [hz] at htop
+      rw [htopf] at htop
+      exact absurd htop.symm (by simp)
+    have hfidsne : fids₀ ≠ [] := by
+      intro hz
+      rw [hst, hz] at hfs
+      cases hΓ : Γs with
+      | nil => exact absurd hΓ hΓs
+      | cons a r => rw [hΓ] at hfs; exact absurd hfs.2.2.2 (by simp [FramesOkJ])
+    have hscc : StackCtx m.heap m.frames (fid₀ :: fids₀)
+        (ctx.toFrameCtx :: (Γs.map Prod.fst).map JCtx.toFrameCtx) := by
+      rw [hst] at hsc; exact hsc
+    have hctx : className m.heap (curFrame m).defmod = ctx.cls := by
+      rw [show curFrame m = m.frames.getD fid₀ default by
+        simp [curFrame, curFid, hst]]
+      exact hscc.2.1 hblkn
+    have hvis : defVisOfDef (curFrame m) = .pub := by
+      rw [show curFrame m = m.frames.getD fid₀ default by
+        simp [curFrame, curFid, hst]]
+      exact hscc.2.2.1 hfidsne
+    have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
+      rw [show m.currentFrame = m.frames.getD fid₀ default by
+        simp [Machine.currentFrame, hst]]
+      exact hscc.2.2.2.2.1
+    have hchain : ∀ md : MethodDef, ∃ rest,
+        ancestors (defineMethod m.heap (curFrame m).defmod name md)
+          (curFrame m).defmod = (curFrame m).defmod :: rest := by
+      intro md
+      obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, hreop₀⟩ :=
+        (ClassOk_defineMethod (name := name) (md := md)
+          (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+          (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
+      obtain ⟨-, hhead₀, -⟩ := hreop₀ (List.mem_of_elem_eq_true hmemctx)
+      have hdefk : (curFrame m).defmod = k₀ :=
+        huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+          (by rw [className_defineMethod]; exact hctx)
+      rw [hdefk] at hdo hhead₀ ⊢
+      cases hanc : ancestors (defineMethod m.heap k₀ name md) k₀ with
+      | nil => rw [hanc] at hhead₀; exact absurd hhead₀ (by simp)
+      | cons a rest =>
+        rw [hanc] at hhead₀
+        simp only [List.head?_cons, Option.some.injEq] at hhead₀
+        exact ⟨rest, by rw [hhead₀]⟩
+    have hdecls : ∀ (md : MethodDef), md.owner = (curFrame m).defmod →
+        md.builtin = none → md.undefined = false → md.visibility = .pub →
+        md.params = [] → md.declared = [] → md.capturedFrame = none →
+        md.body = body → Boot.objectId ∈ md.cref → md.superName = none →
+        DeclsOkJ (addRow D ctx.cls name { params := [], ret := τb })
+          (defineMethod m.heap (curFrame m).defmod name md) := by
+      intro md hown hb hu hvs hpar hdec hcap hbd hcref hsn
+      refine DeclsOkJ_addRow_here (DeclsOkJ_defineMethod htab hfresh) hfresh rfl ?_
+      intro τ0 hk0
+      have hτ0 : τ0 = .cls ctx.cls := by
+        cases τ0 <;> simp only [tyClassNames] at hk0
+        case cls n =>
+          split at hk0
+          · exact absurd hk0 (by simp)
+          · simp only [List.cons.injEq, and_true] at hk0
+            rw [hk0]
+        case int =>
+          simp only [List.cons.injEq, and_true] at hk0
+          rw [← hk0] at hgroundc
+          exact absurd hgroundc (by decide)
+        case float =>
+          simp only [List.cons.injEq, and_true] at hk0
+          rw [← hk0] at hgroundc
+          exact absurd hgroundc (by decide)
+        case nilT =>
+          simp only [List.cons.injEq, and_true] at hk0
+          rw [← hk0] at hgroundc
+          exact absurd hgroundc (by decide)
+        case sym =>
+          simp only [List.cons.injEq, and_true] at hk0
+          rw [← hk0] at hgroundc
+          exact absurd hgroundc (by decide)
+        all_goals exact absurd hk0 (by simp)
+      subst hτ0
+      obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, _⟩ :=
+        (ClassOk_defineMethod (name := name) (md := md)
+          (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+          (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
+      have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
+          (curFrame m).defmod = ctx.cls := by
+        rw [className_defineMethod]; exact hctx
+      have hdefk : (curFrame m).defmod = k₀ :=
+        huniq₀ _ (by rw [classPayload?_isSome_defineMethod]; exact hdo) hctx'
+      obtain ⟨rest, hrest⟩ := hchain md
+      refine Or.inr (Or.inl ⟨md, ctx.cls, UserKey.cls, fun k htc => ?_,
+        by rw [hown]; exact hctx', rfl,
+        rfl, by rw [hbd]; exact hdfree, by rw [hbd]; exact hmfb, ?_⟩)
+      · have hkk : k = (curFrame m).defmod := by
+          rw [hdefk]; exact huniq₀ k htc.1 htc.2
+        subst hkk
+        refine ⟨(curFrame m).defmod, ?_, hb, hu, hvs, hpar, hdec, hcap,
+          by rw [hown, classPayload?_isSome_defineMethod]; exact hdo, ?_, hcref,
+          by rw [hown, hrest]; exact List.mem_cons_self ..,
+          hsn⟩
+        · show lookup.go _ name (ancestors _ _) = _
+          rw [hrest]
+          exact lookup_go_defineMethod_self m.heap _ name md hdo rest
+        · split
+          · rfl
+          · rw [hrest]
+            simp only [List.takeWhile, bne_self_eq_false, decide_false,
+              Bool.false_eq_true, if_false]
+            rfl
+      · obtain ⟨-, hbo'⟩ := judge_mono hbody hmfb hdfree (subDecls_addRow hfresh)
+        exact ⟨Γb', none, τb, by rw [hbd]; exact hbo', SubJ.refl _,
+          fun σ' h' => absurd h' (by simp)⟩
+    simp only [evalExpr, hdm]
+    by_cases hp : m.preludeMode = true <;>
+      simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+      (refine hres _ rfl rfl rfl (typeAgree_defineMethod _ _ _ _) ?_ (hlkNH _)
+        (Saturated_defineMethod hsat _ _ _) (LitClsOk_defineMethod hstr)
+        (ClassOk_defineMethod hcls)
+        (GlobalsOk.congr (typeAgree_defineMethod _ _ _ _) hgl)
+       refine hdecls _ rfl rfl rfl ?_ rfl rfl rfl rfl ?_ rfl
+       · simpa [defVisOfDef, hinit] using hvis
+       · exact hdm ▸ hcrefCur)
   -- ## `sendCall`'s conclusion is a send head, so the fragment gate's shape
   -- condition (no `call`-named explicit sends) is what refutes it.
   case hsendCall =>

@@ -56,6 +56,11 @@ inductive MFrag : Expr → Prop where
       MFrag r → (∀ a ∈ args, MFrag a) → MFrag (.send (some r) mname args none)
   | sendImplicit {mname args} :
       (∀ a ∈ args, MFrag a) → MFrag (.send none mname args none)
+  -- J23: definition forms. The body gate is what the *promotion* derivation's
+  -- installed row needs (`UserConformsJ` carries `MFrag body`); a reopen's body
+  -- runs, so its gate is the eval arm's own.
+  | def' {name params body} : MFrag body → MFrag (.def' name params body)
+  | classTop {name body} : MFrag body → MFrag (.class' name none body)
 
 /-- The `Bool` form, on fuel (the L73 discipline: the J2 checker runs it under
     `decide`, so it must kernel-reduce; a nested-list structural recursion would
@@ -78,6 +83,8 @@ def mfragB : Nat → Expr → Bool
     | .send (some r) mname args none =>
       (mname != "call") && mfragB n r && args.all (mfragB n)
     | .send none _ args none => args.all (mfragB n)
+    | .def' _ _ body => mfragB n body
+    | .class' _ none body => mfragB n body
     | _ => false
 
 theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e := by
@@ -120,5 +127,7 @@ theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e :
     | .send none mname args none =>
       simp only [mfragB, List.all_eq_true] at h
       exact .sendImplicit fun a ha => ih (h a ha)
+    | .def' _ _ body => exact .def' (ih (by simpa [mfragB] using h))
+    | .class' _ none body => exact .classTop (ih (by simpa [mfragB] using h))
 
 end RubyCore.Judgment

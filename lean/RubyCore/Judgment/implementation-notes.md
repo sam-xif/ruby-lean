@@ -371,3 +371,29 @@ by `UserConformsJ`, and `frameK`'s return agreement is `SubJ`-shaped.
 
 `egZero` (`(1 + 2).zero?`) is certified end to end — the first builtin dispatch
 through the judgment layer, axiom-clean.
+
+## J23 — `def`/`class` machine-typed: table growth through `judge_mono`
+
+The fragment gains `def'` (any params — the step is uniform; the *body* gate is
+what `defPromote`'s installed row needs) and toplevel `class'` reopens. The new
+proof content is **table monotonicity** (`Proof/Judgment/Mono.lean`): `Judge`'s
+own rule set is *not* monotone in the table (`alias'`/`defDecl`/`defPromote` carry
+negative `declaresName` premises; the definition heads thread tables), but every
+rule reachable at an `MFrag ∧ defFree` expression reads the table only through
+`sigOf`, which `SubDecls` preserves — so `judge_mono` holds exactly over the gated
+fragment, by the same `Judge.rec` pattern, with the definition heads refuted by the
+`defFree` gate and everything else by `MFrag`. That is `infer_mono`'s role
+(§10.5a's port tax) re-priced at one induction with two gate hypotheses the
+conformance predicate already carries.
+
+Transports mirror cleanly: `EntryOkJ_mono` (user arm re-judges by `judge_mono`),
+`DeclsOkJ_of_subDecls`, `DeclsOkJ_defineMethod`, `DeclsOkJ_addRow_here` — the last
+via `declFor_addRow_self_inv`, with the new row's key pinned to `.cls ctx.cls` by
+the promotion rule's own ground-name guard. The `defPromote` preservation case
+composes them: heap write first (`DeclsOkJ_defineMethod`), then the row
+(`DeclsOkJ_addRow_here`) with a `UserEntryOkJ` witness whose body derivation is
+the rule's own premise transported by `judge_mono`.
+
+End-to-end: `egUserCall` (reopen + promote + user-method dispatch — the T5
+`class_hierarchy` shape) and `egVcall` (receiverless user call through two threaded
+rows) are certified through the judgment layer, axiom-clean.
