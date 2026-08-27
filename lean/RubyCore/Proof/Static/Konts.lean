@@ -510,6 +510,10 @@ def RetTransparent : Kont → Prop
   -- L205: `unwind`'s catch-all, like the nine above — a `.cpathK` on the stack has no
   -- opinion about a jump, so a `.retJ` passes straight through it.
   | .cpathK _ => True
+  -- J40: the hash literal's two konts — `unwind` has no arm for either, so the
+  -- catch-all passes a jump on with the kont popped, same as the ten above.
+  | .hshKeyK .. => True
+  | .hshValK .. => True
   -- **L253: the native iterator's loop marker.** `unwind` has *no arm* for `.iterK` — it
   -- falls to the catch-all, which passes the jump on with the kont popped — so it is
   -- transparent for the same one line of the interpreter the ten above it are. Note the

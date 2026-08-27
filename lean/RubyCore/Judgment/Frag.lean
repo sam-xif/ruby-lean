@@ -100,6 +100,12 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
   -- J39: `return`. The operand is a non-statement position.
   | retSome {e} : fragHead e = true → MFrag A e → MFrag A (.ret (some e))
   | retNil : MFrag A (.ret none)
+  -- J40: the hash literal, at `.any`.
+  | hash {prs} :
+      (∀ p ∈ prs, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
+      (∀ p ∈ prs, MFrag A (Prod.fst p)) →
+      (∀ p ∈ prs, MFrag A (Prod.snd p)) →
+      MFrag A (.hash prs)
   | varIvar {x} : MFrag A (.var .ivar x)
   | varGvar {x} : MFrag A (.var .gvar x)
   | vasgnIvar {x rhs} :
@@ -592,7 +598,10 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
     | .cpath none _ => true
     | .cpath (some b) _ => fragHead b && rec b
     | .ret none => true
-    | .ret (some e') => fragHead e' && rec e' 
+    | .ret (some e') => fragHead e' && rec e'
+    | .hash prs =>
+      prs.all (fun p => fragHead p.1 && fragHead p.2) &&
+      prs.all (fun p => rec p.1 && rec p.2) 
     | .var .ivar _ => true
     | .var .gvar _ => true
     | .vasgn .ivar _ rhs => fragHead rhs && rec rhs
@@ -688,6 +697,14 @@ theorem mfragB_sound {A : SemAxioms} :
         replace h' : (fragHead e' && mfragB A n e') = true := h'
         simp only [Bool.and_eq_true] at h'
         exact .retSome h'.1 (ih h'.2)
+      | .hash prs =>
+        replace h' : (prs.all (fun p => fragHead p.1 && fragHead p.2) &&
+          prs.all (fun p => mfragB A n p.1 && mfragB A n p.2)) = true := h'
+        simp only [Bool.and_eq_true, List.all_eq_true] at h'
+        refine .hash (fun p hp => ?_) (fun p hp => ?_) (fun p hp => ?_)
+        · exact h'.1 p hp
+        · exact ih (h'.2 p hp).1
+        · exact ih (h'.2 p hp).2
       | .var .ivar _ => exact .varIvar
       | .var .gvar _ => exact .varGvar
       | .vasgn .ivar x rhs =>
@@ -712,7 +729,6 @@ theorem mfragB_sound {A : SemAxioms} :
       | .blockpass _ => exact Bool.noConfusion h'
       | .dowhile _ _ => exact Bool.noConfusion h'
       | .for' _ _ _ => exact Bool.noConfusion h'
-      | .hash _ => exact Bool.noConfusion h'
       | .splat _ => exact Bool.noConfusion h'
       | .brk _ => exact Bool.noConfusion h'
       | .nxt _ => exact Bool.noConfusion h'

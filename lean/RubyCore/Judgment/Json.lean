@@ -67,6 +67,7 @@ partial def derivToJson : Deriv → Json
   | .cpathScoped base => Json.mkObj [("k", "cpathScoped"), ("base", derivToJson base)]
   | .retSome rhs => Json.mkObj [("k", "retSome"), ("rhs", derivToJson rhs)]
   | .retNil => Json.mkObj [("k", "retNil")]
+  | .hash ds => Json.mkObj [("k", "hash"), ("pairs", derivPairsToJson ds)]
   | .varIvar => Json.mkObj [("k", "varIvar")]
   | .varGvar => Json.mkObj [("k", "varGvar")]
   | .vasgnIvar rhs => Json.mkObj [("k", "vasgnIvar"), ("rhs", derivToJson rhs)]
@@ -107,6 +108,15 @@ partial def derivArgsToJson : DerivArgs → Json
     match derivArgsToJson rest with
     | .arr a => Json.arr (#[derivToJson d] ++ a)
     | _ => Json.arr #[derivToJson d]
+
+/-- Pairs serialize as a flat array of `{"key": …, "val": …}` objects. -/
+partial def derivPairsToJson : DerivPairs → Json
+  | .nil => Json.arr #[]
+  | .cons k v rest =>
+    let entry := Json.mkObj [("key", derivToJson k), ("val", derivToJson v)]
+    match derivPairsToJson rest with
+    | .arr a => Json.arr (#[entry] ++ a)
+    | _ => Json.arr #[entry]
 
 end
 
@@ -151,6 +161,7 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "cpathScoped" => pure (.cpathScoped (← derivOfJson (← j.getObjVal? "base")))
   | "retSome" => pure (.retSome (← derivOfJson (← j.getObjVal? "rhs")))
   | "retNil" => pure .retNil
+  | "hash" => pure (.hash (← derivPairsOfJson (← j.getObjVal? "pairs")))
   | "varIvar" => pure .varIvar
   | "varGvar" => pure .varGvar
   | "vasgnIvar" => pure (.vasgnIvar (← derivOfJson (← j.getObjVal? "rhs")))
@@ -201,6 +212,18 @@ partial def derivArgsOfJson (j : Json) : Except String DerivArgs := do
     let hd ← derivOfJson d
     let tl ← derivArgsOfJson (Json.arr rest.toArray)
     pure (.cons hd tl)
+
+
+partial def derivPairsOfJson (j : Json) : Except String DerivPairs := do
+  match ← j.getArr? with
+  | #[] => pure .nil
+  | arr =>
+    match arr.toList with
+    | [] => pure .nil
+    | e :: rest => do
+      let k ← derivOfJson (← e.getObjVal? "key")
+      let v ← derivOfJson (← e.getObjVal? "val")
+      pure (.cons k v (← derivPairsOfJson (Json.arr rest.toArray)))
 
 end
 

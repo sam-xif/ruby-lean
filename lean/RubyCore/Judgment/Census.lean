@@ -124,9 +124,9 @@ partial def walk (owner : String) (cls : Option String) (stmt sh : Bool)
     let markers := (es.filterMap markerLabel).eraseDups
     markers.map (fun l => mkEntry owner s!"array-{l}" stmt sh e) ++
       es.flatMap (walk owner cls false sh2)
-  | e@(.hash prs) =>
-    mkEntry owner "hash" stmt sh e ::
-      prs.flatMap (fun (k, v) => walk owner cls false sh2 k ++ walk owner cls false sh2 v)
+  -- J40: the hash literal is in the fragment (at `.any`); pairs are walked.
+  | .hash prs =>
+    prs.flatMap (fun (k, v) => walk owner cls false sh2 k ++ walk owner cls false sh2 v)
   | e@(.casgn _ rhs) => mkEntry owner "casgn" stmt sh e :: walk owner cls false sh2 rhs
   -- J38: cpath is in the fragment; only its base is walked.
   | .cpath none _ => []

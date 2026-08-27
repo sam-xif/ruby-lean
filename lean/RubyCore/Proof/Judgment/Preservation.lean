@@ -957,6 +957,30 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           D, ctx, Γ, Γs, htab, hfs, hsc, hgl,
           ⟨σ, VTy.weaken (VTy.exact rfl) hsj, hro, hff⟩⟩
       · rw [hnone] at hσ; exact absurd hσ (by simp)
+  -- ## The hash literal (J40), at `.any`: empty allocates in one step, otherwise
+  -- the first key runs under `hshKeyK`.
+  case hhash =>
+    intro D Γ prs top ctx Γ' D' hprs ihprs
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | hash hfp hmk hmv =>
+      subst htop
+      cases hprs with
+      | nil =>
+        simp only [evalExpr, Builtins.allocHsh]
+        exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+          (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+          (VTy.weaken VTy.any hsubw) hk
+      | @cons _ _ kE vE rest _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
+        simp only [evalExpr]
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          (by simp [framePopLabels, hks])
+          (hmk (kE, vE) (by simp)) (hfp (kE, vE) (by simp)).1 hkj (SubJ.refl _)
+          (KontOkJ.hshKeyK (hfp (kE, vE) (by simp)).2 (hmv (kE, vE) (by simp))
+            (fun p hp => hfp p (by simp [hp])) (fun p hp => hmk p (by simp [hp]))
+            (fun p hp => hmv p (by simp [hp])) hvj hrest hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1653,6 +1677,31 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       exact inv_continueArrayJ (m := { m with kont := k })
         hfs htab hsc hh hsat hstr hcls hbot (by simpa [framePopLabels] using hks) hgl
         hfm hm hje hsw hk' (hclo := hcloTail hK)
+    -- **The hash literal's key has arrived** (J40): the value expression runs
+    -- next, the key rides the kont untyped.
+    | @hshKeyK _ D₂ D' _ _ _ _ _ vE rest τv Γ₂ Γ' τw acc k _
+        hfv hmv hfp hmk hmvs hjv hpr hw hk' hsu =>
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+        (by simpa [framePopLabels] using hks) hmv hfv hjv (SubJ.refl _)
+        (KontOkJ.hshValK hfp hmk hmvs hpr hw hk') (hclo := hcloTail hK)
+    -- **The hash literal's value has arrived** (J40): accumulate (untyped), then
+    -- allocate or run the next key.
+    | @hshValK _ D' _ _ _ _ _ rest Γ' τw acc key k _ hfp hmk hmvs hpr hw hk' hsu =>
+      cases hpr with
+      | nil =>
+        simp only [Builtins.allocHsh]
+        exact inv_grow_valueJ (m := { m with kont := k }) hfs htab hsc hh hsat hstr
+          hcls hbot (by simpa [framePopLabels] using hks)
+          (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
+          (VTy.weaken VTy.any hw) hk' (hclo := hcloTail hK)
+      | @cons _ _ kE vE rest' _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks)
+          (hmk (kE, vE) (by simp)) (hfp (kE, vE) (by simp)).1 hkj (SubJ.refl _)
+          (KontOkJ.hshKeyK (hfp (kE, vE) (by simp)).2 (hmvs (kE, vE) (by simp))
+            (fun p hp => hfp p (by simp [hp])) (fun p hp => hmk p (by simp [hp]))
+            (fun p hp => hmvs p (by simp [hp])) hvj hrest hw hk')
+          (hclo := hcloTail hK)
     -- **`return e`'s value has arrived** (J39, L200's delivery): `applyKont`'s
     -- `jumpValK .retK` arm is `doReturn`, so this case *creates* the jump.
     | @retValK _ _ _ _ _ _ τ'' σ k _ hσ hms hsub hk' hsu =>

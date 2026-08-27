@@ -188,6 +188,11 @@ def defFree (e : Expr) : Bool :=
   -- `true` left in place. Third time this exact trap has been walked into
   -- (`.array` at L174, `.vasgn .ivar` at L191), which is why it is a comment.
   | .ret e => match e with | some e' => defFree e' | none => true
+  -- **J40.** Tenth time (`.array` L174 …): `Judge.hash` threads the table through
+  -- the pairs via `JudgePairs`, so a `def` in a key or value really does change it
+  -- and `judge_mono`'s `D' = D` half would be false with the catch-all's vacuous
+  -- `true` left in place.
+  | .hash prs => defFreePairs prs
   -- **L205.** Fourth time (`.array` L174, `.vasgn .ivar` L191, `.ret` L200): `infer`'s
   -- `.cpath (some base)` arm threads the table through the base, so a `def` in there
   -- really does change it and `infer_mono`'s `D₀ = D` half would be **false** with the
@@ -229,6 +234,12 @@ def defFreeAll (es : List Expr) : Bool :=
   | [] => true
   | e :: rest => defFree e && defFreeAll rest
 termination_by sizeOf es
+
+def defFreePairs (prs : List (Expr × Expr)) : Bool :=
+  match prs with
+  | [] => true
+  | (k, v) :: rest => defFree k && defFree v && defFreePairs rest
+termination_by sizeOf prs
 
 /-- **The expression neither assigns a local nor opens a loop** (L234), and it is
     `defFree`'s shape at two different constructors.

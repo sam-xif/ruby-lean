@@ -48,6 +48,7 @@ inductive Deriv where
   | cpathScoped (base : Deriv)
   | retSome (rhs : Deriv)
   | retNil
+  | hash (pairs : DerivPairs)
   | varIvar
   | varGvar
   | vasgnIvar (rhs : Deriv)
@@ -77,6 +78,10 @@ deriving Repr
 inductive DerivArgs where
   | nil | cons (d : Deriv) (rest : DerivArgs)
 deriving Repr
+
+inductive DerivPairs where
+  | nil | cons (k v : Deriv) (rest : DerivPairs)
+deriving Repr
 end
 
 /-- `defFree`, on fuel — the original is well-founded (`termination_by sizeOf`),
@@ -102,6 +107,7 @@ def defFreeB : Nat → Expr → Bool
     | .array es => es.all (defFreeB n)
     | .ret e => (match e with | some e' => defFreeB n e' | none => true)
     | .cpath base _ => (match base with | some b => defFreeB n b | none => true)
+    | .hash prs => prs.all (fun p => defFreeB n p.1 && defFreeB n p.2)
     | .super' args blk =>
       args.all (defFreeB n) && (match blk with | some b => defFreeB n b | none => true)
     | .splat e => (match e with | some e' => defFreeB n e' | none => true)
@@ -203,6 +209,10 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
             if subJb (tyFuel τ σ) τ σ then some (.nilT, Γ₁, D₁) else none
           | none => none
         else none
+      | none => none
+    | .hash ds, .hash prs =>
+      match checkPairs n A ds D Γ prs top ctx with
+      | some (Γ', D') => some (.any, Γ', D')
       | none => none
     | .retNil, .ret none =>
       match ctx.ret with
@@ -427,6 +437,21 @@ def checkElems : Nat → SemAxioms → DerivArgs → Decls → Env → List Expr
     | .cons d rest, e :: es' =>
       match check n A d D Γ e top ctx with
       | some (_, Γ₁, D₁) => checkElems n A rest D₁ Γ₁ es' top ctx
+      | none => none
+    | _, _ => none
+
+def checkPairs : Nat → SemAxioms → DerivPairs → Decls → Env → List (Expr × Expr) →
+    Bool → JCtx → Option (Env × Decls)
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, dp, D, Γ, prs, top, ctx =>
+    match dp, prs with
+    | .nil, [] => some (Γ, D)
+    | .cons dk dv rest, (k, v) :: prs' =>
+      match check n A dk D Γ k top ctx with
+      | some (_, Γ₁, D₁) =>
+        match check n A dv D₁ Γ₁ v top ctx with
+        | some (_, Γ₂, D₂) => checkPairs n A rest D₂ Γ₂ prs' top ctx
+        | none => none
       | none => none
     | _, _ => none
 

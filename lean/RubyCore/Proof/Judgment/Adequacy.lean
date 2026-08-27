@@ -133,13 +133,24 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
       cases e with
       | some e' => simp [defFree]
       | none => simp [defFree]
+    | .hash prs =>
+      simp only [defFreeB, List.all_eq_true] at h
+      simp only [defFree]
+      induction prs with
+      | nil => simp [defFreePairs]
+      | cons p rest ihp =>
+        obtain ⟨k, v⟩ := p
+        have hp := h (k, v) (by simp)
+        simp only [Bool.and_eq_true] at hp
+        simp only [defFreePairs, Bool.and_eq_true]
+        exact ⟨⟨ih hp.1, ih hp.2⟩, ihp (fun q hq => h q (by simp [hq]))⟩
     | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self'
     | .var _ _ | .const _ | .casgn _ _ | .cpathAsgn _ _ _ | .vcall _
     | .kwargs _ | .fwd | .yield' _ | .dowhile _ _ | .for' _ _ _
     | .brk _ | .retry' | .redo' | .defs _ _ _ _ | .module' _ _
     | .scopedClass _ _ _ | .scopedModule _ _ _ | .sclass _ _
     | .begin' _ _ _ _ | .alias' _ _ | .undef _ | .defined _
-    | .hash _ | .blockpass _ => simp [defFree]
+    | .blockpass _ => simp [defFree]
 
 /-- The claim-context guard, decoded (J35). -/
 theorem reqClsOkB_sound {cl : SemClaim} {ctx : JCtx} (h : reqClsOkB cl ctx = true) :
@@ -210,6 +221,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .cpathScoped _, .cpath (some _) _ => simp [fragHead] at hf
       | .retSome _, .ret (some _) => simp [fragHead] at hf
       | .retNil, .ret none => simp [fragHead] at hf
+      | .hash _, .hash _ => simp [fragHead] at hf
       | .varIvar, .var .ivar _ => simp [fragHead] at hf
       | .varGvar, .var .gvar _ => simp [fragHead] at hf
       | .vasgnIvar _, .vasgn .ivar _ _ => simp [fragHead] at hf
@@ -238,16 +250,18 @@ theorem check_sound_all : ∀ (n : Nat),
     (∀ {da D Γ es top ctx τs Γ' D'}, checkArgs n A da D Γ es top ctx = some (τs, Γ', D') →
        JudgeArgs A D Γ es top ctx τs Γ' D') ∧
     (∀ {da D Γ es top ctx Γ' D'}, checkElems n A da D Γ es top ctx = some (Γ', D') →
-       JudgeElems A D Γ es top ctx Γ' D') := by
+       JudgeElems A D Γ es top ctx Γ' D') ∧
+    (∀ {dp D Γ prs top ctx Γ' D'}, checkPairs n A dp D Γ prs top ctx = some (Γ', D') →
+       JudgePairs A D Γ prs top ctx Γ' D') := by
   intro n
   induction n with
   | zero =>
-    refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
       (intros; simp [RubyCore.Judgment.check, checkRecv, checkSeq, checkArgs,
-        checkElems] at *)
+        checkElems, checkPairs] at *)
   | succ n ih =>
-    obtain ⟨ihc, ihr, ihs, iha, ihe⟩ := ih
-    refine ⟨?_, ?_, ?_, ?_, ?_⟩
+    obtain ⟨ihc, ihr, ihs, iha, ihe, ihp⟩ := ih
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
     · intro d D Γ e top ctx τ Γ' D' h
       match d, e with
       | .int, .int _ =>
@@ -375,6 +389,14 @@ theorem check_sound_all : ∀ (n : Nat),
               · exact absurd h (by simp)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .hash ds, .hash prs =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next Γ'' D'' hp =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .hash (ihp hp)
         · exact absurd h (by simp)
       | .retNil, .ret none =>
         simp only [RubyCore.Judgment.check] at h
@@ -739,6 +761,21 @@ theorem check_sound_all : ∀ (n : Nat),
         split at h
         · next τ1 Γ₁ D₁ h1 =>
           exact .cons (ihc h1) (ihe h)
+        · exact absurd h (by simp)
+    · intro dp D Γ prs top ctx Γ' D' h
+      match dp, prs with
+      | .nil, [] =>
+        simp only [checkPairs, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        exact .nil
+      | .cons dk dv rest, (k, v) :: prs' =>
+        simp only [checkPairs] at h
+        split at h
+        · next τ1 Γ₁ D₁ h1 =>
+          split at h
+          · next τ2 Γ₂ D₂ h2 =>
+            exact .cons (ihc h1) (ihc h2) (ihp h)
+          · exact absurd h (by simp)
         · exact absurd h (by simp)
 
 /-- The headline adequacy statement. -/

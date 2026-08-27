@@ -245,6 +245,31 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ ans A D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
+  /-- The hash literal's **key** in flight (J40): the pending value expression
+      and remaining pairs ride as program, the answer is `.any` (the rule's own
+      conclusion — a hash value inhabits no narrower type), and the accumulator
+      is erased exactly as `arrK`'s is. -/
+  | hshKeyK {D D₂ D' h c Γ Γs τ vE rest τv Γ₂ Γ' τw acc k Γk} :
+      fragHead vE = true → MFrag A vE →
+      (∀ p ∈ rest, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
+      (∀ p ∈ rest, MFrag A (Prod.fst p)) →
+      (∀ p ∈ rest, MFrag A (Prod.snd p)) →
+      Judge A D Γ vE Γs.isEmpty c τv Γ₂ D₂ →
+      JudgePairs A D₂ Γ₂ rest Γs.isEmpty c Γ' D' →
+      SubJ .any τw →
+      KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.hshKeyK acc vE rest :: k)
+  /-- The hash literal's **value** in flight (J40). -/
+  | hshValK {D D' h c Γ Γs τ rest Γ' τw acc key k Γk} :
+      (∀ p ∈ rest, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
+      (∀ p ∈ rest, MFrag A (Prod.fst p)) →
+      (∀ p ∈ rest, MFrag A (Prod.snd p)) →
+      JudgePairs A D Γ rest Γs.isEmpty c Γ' D' →
+      SubJ .any τw →
+      KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.hshValK acc key rest :: k)
   /-- **`return e`'s value in flight** (J39, mirroring L200's `KontOk.retValK`):
       the delivery is `doReturn`, so the constructor carries what that needs —
       the open return channel below the in-flight type, plus the method channel
@@ -277,6 +302,10 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
   | cpathK hb hsco hsw _ hsu ih => intro ha; exact .cpathK hb hsco hsw (ih ha) hsu
   | retValK hσ hms hsub _ hsu ih => intro ha; exact .retValK hσ hms hsub (ih ha) hsu
+  | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
+      intro ha; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih ha) hsu
+  | hshValK hfp hmk hmvs hpr hw _ hsu ih =>
+      intro ha; exact .hshValK hfp hmk hmvs hpr hw (ih ha) hsu
   | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw _ hsu ih =>
       intro ha; exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih ha) hsu
   | ifNoneK hft hmt ht hjt hjn hct hce hw _ hsu ih =>
@@ -379,6 +408,14 @@ theorem KontOkJ.retOkJ {ans : Ty} {A : SemAxioms} :
       | recvK0 hsg hw hk' hsu => exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
       | argsK hrv hva hst hfm hm hrest hsr hsg hw hk' hsu =>
           have hq : _ = D := judge_args_table_ret hrest (by rw [hσ]; simp) hms htop
+          subst hq
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
+      | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw hk' hsu =>
+          have hq := (judge_pairs_table_ret hpr (by rw [hσ]; simp) hms htop).trans
+            (judge_table_ret hjv (by rw [hσ]; simp) hms htop)
+          exact RetOkJ.skip trivial (KontOkJ.retOkJ (hq ▸ hk') hne σ hσ hms)
+      | hshValK hfp hmk hmvs hpr hw hk' hsu =>
+          have hq : _ = D := judge_pairs_table_ret hpr (by rw [hσ]; simp) hms htop
           subst hq
           exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
       | frameK hrt hil hk' => exact RetOkJ.here (hrt σ hσ) hk'

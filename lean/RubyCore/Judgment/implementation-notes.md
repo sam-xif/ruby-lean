@@ -948,3 +948,24 @@ arms, census mirror. Worked end `egRet` (`def f; return 1; end`) certified from
 data, axiom-clean — the body is judged, not dispatched (no row installed), which
 is honest: dispatching *into* ret-open bodies is the parameterized-user-method
 rung's business (`UserConformsJ` still pins `params = []`, `ret` free).
+
+## J40 — the hash literal, at `.any`
+
+A hash value is excluded from `plainRecv` (deliberate — its payload arm is
+`false`), so `ValueTy h v (.cls "Hash")` is uninhabitable and `Judge.hash`'s old
+`.cls "Hash"` conclusion could never have been machine-typed: the rule's
+conclusion **changes to `.any`** (the L261 weakest-honest-type move at the other
+container; nothing consumed the old conclusion — it was unwitnessable). Then the
+full stack: `MFrag.hash` (with the `∀ p ∈ prs, … ∧ …` premise split in two —
+nested-inductive `And` under a binder is a kernel error), `KontOkJ.hshKeyK`/
+`hshValK` (accumulator erased exactly as `arrK`'s), both konts added to the
+Static `RetTransparent` (`unwind`'s catch-all covers them),
+`judge_pairs_table_ret` (the fourth `TableRet` sibling), `judge_mono`'s
+`JudgePairs` motive + cases, eval/delivery preservation cases (`VTy.any` is the
+whole value story — no `valueTy_alloc_fresh`, no `LitClsOk` growth), checker
+`DerivPairs`/`checkPairs` (the sixth checker in `check_sound_all`), JSON pairs
+codec, census mirror.
+
+**`defFree` walked into L174's trap for the tenth time**: `Judge.hash` threads
+the table through the pairs, so `defFree` gains a `.hash` arm (`defFreePairs`),
+mirrored in `defFreeB` (+ its `sound` case) and `defFreeF`.

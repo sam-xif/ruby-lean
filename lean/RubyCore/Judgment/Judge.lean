@@ -210,6 +210,7 @@ def fragHead : Expr → Bool
   | .const _ => true
   | .cpath _ _ => true
   | .ret _ => true
+  | .hash _ => true
   | .array _ => true
   -- The four *marker* shapes are not evaluable expressions (they occur only as
   -- argument/element/block slots of other heads), so a semantic claim on one has
@@ -787,9 +788,14 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   | array {D Γ es top ctx Γ' D'} :
       JudgeElems A D Γ es top ctx Γ' D' →
       Judge A D Γ (.array es) top ctx (.cls "Array") Γ' D'
+  -- **`.any`, deliberately** (J40): a hash value is excluded from `plainRecv`
+  -- (its payload arm is `false`), so `ValueTy h v (.cls "Hash")` is uninhabitable
+  -- and a `.cls "Hash"` conclusion could never be machine-typed — the L261
+  -- weakest-honest-type move, at the other container. An element-typed Hash is
+  -- `Ty.arrayOf`'s story at another constructor, priced separately.
   | hash {D Γ pairs top ctx Γ' D'} :
       JudgePairs A D Γ pairs top ctx Γ' D' →
-      Judge A D Γ (.hash pairs) top ctx (.cls "Hash") Γ' D'
+      Judge A D Γ (.hash pairs) top ctx .any Γ' D'
   | seq {D Γ es top ctx τ Γ' D'} :
       JudgeSeq A D Γ es top ctx τ Γ' D' →
       Judge A D Γ (.seq es) top ctx τ Γ' D'

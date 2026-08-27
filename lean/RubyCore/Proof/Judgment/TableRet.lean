@@ -252,6 +252,63 @@ theorem judge_elems_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List 
 
 
 
+set_option maxHeartbeats 4000000 in
+/-- `judge_table_ret` at `JudgePairs` (same motives, `JudgePairs.rec`). -/
+theorem judge_pairs_table_ret {A : SemAxioms} {D : Decls} {Γ : Env}
+    {prs : List (Expr × Expr)} {top : Bool}
+    {ctx : JCtx}
+    {Γ' : Env} {D' : Decls} (hj : JudgePairs A D Γ prs top ctx Γ' D')
+    (hret : ctx.ret.isSome = true) (hmeth : ctx.meth.isSome = true)
+    (htop : top = false) : D' = D := by
+  refine JudgePairs.rec
+    (motive_1 := fun D Γ ro top ctx τ Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_2 := fun D Γ ro top ctx τ Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_3 := fun D Γ es top ctx τ Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_4 := fun D Γ es top ctx τs Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_5 := fun D Γ es top ctx Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_6 := fun D Γ prs top ctx Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_7 := fun D Γ es top ctx Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    (motive_8 := fun _ _ _ _ _ _ _ => True)
+    (motive_9 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_10 := fun _ _ _ _ _ _ => True)
+    (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
+      ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
+    ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
+    ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
+    ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
+    ?hwhile ?hdowhile ?hfor
+    ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
+    ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
+    hj hret hmeth htop
+  case hsemantic =>
+    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    have hrows : cl.rows = [] := by
+      rcases hdisc with h | h
+      · exact h
+      · rw [h] at hmeth2; exact Bool.noConfusion hmeth2
+    simp [hrows, addRows]
+  all_goals
+    (intros
+     first
+      | trivial
+      | rfl
+      | simp_all [loopCtx, rescueCtx])
+
+
 end Judgment
 end Proof
 end RubyCore

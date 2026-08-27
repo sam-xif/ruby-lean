@@ -78,7 +78,12 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       (∀ e' ∈ es, fragHead e' = true) →
       (∀ e' ∈ es, MFrag A e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeElems A D2 Γ es top ctx Γ' D2)
-    (motive_6 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_6 := fun D Γ prs top ctx Γ' D' _ =>
+      ctx.meth.isSome = true →
+      (∀ p ∈ prs, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
+      (∀ p ∈ prs, MFrag A (Prod.fst p)) → (∀ p ∈ prs, MFrag A (Prod.snd p)) →
+      defFreePairs prs = true → ∀ {D2 : Decls}, SubDecls D D2 →
+        D' = D ∧ JudgePairs A D2 Γ prs top ctx Γ' D2)
     (motive_7 := fun _ _ _ _ _ _ _ _ => True)
     (motive_8 := fun _ _ _ _ _ _ _ => True)
     (motive_9 := fun _ _ _ _ _ _ _ _ => True)
@@ -195,6 +200,21 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hfa e' (by simp [he']))
       (fun e' he' => hm e' (by simp [he'])) hdf.2 hs
     exact ⟨rfl, .cons h1' hr'⟩
+  -- JudgePairs (J40)
+  case _ =>  -- nil
+    intro D Γ top ctx _ _ _ _ _ D2 _
+    exact ⟨rfl, .nil⟩
+  case _ =>  -- cons
+    intro D Γ k v rest top ctx τk Γ₁ D₁ τv Γ₂ D₂ Γ' D' hk hv hrest ihk ihv ihr
+      hmeth2 hfp hmk hmv hdf D2 hs
+    simp only [defFreePairs, Bool.and_eq_true] at hdf
+    obtain ⟨rfl, hk'⟩ := ihk hmeth2 (hfp (k, v) (by simp)).1 (hmk (k, v) (by simp))
+      hdf.1.1 hs
+    obtain ⟨rfl, hv'⟩ := ihv hmeth2 (hfp (k, v) (by simp)).2 (hmv (k, v) (by simp))
+      hdf.1.2 hs
+    obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun p hp => hfp p (by simp [hp]))
+      (fun p hp => hmk p (by simp [hp])) (fun p hp => hmv p (by simp [hp])) hdf.2 hs
+    exact ⟨rfl, .cons hk' hv' hr'⟩
   -- Judge: the fragment heads.
   case hint => exact fun _ _ _ _ _ hs => ⟨rfl, .int⟩
   case hflt => exact fun _ _ _ _ _ hs => ⟨rfl, .flt⟩
@@ -239,6 +259,13 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
   case hretNil =>
     intro D Γ top ctx σ hσ hms hsj _ _ _ _ D2 hs
     exact ⟨rfl, .retNil hσ hms hsj⟩
+  case hhash =>
+    intro D Γ prs top ctx Γ' D' hprs ih hmeth2 hfhx hmf hdf D2 hs
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | hash hfp hmk hmv =>
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfp hmk hmv (by simpa [defFree] using hdf) hs
+      exact ⟨rfl, .hash h2⟩
   case hvarIvar =>
     intro D Γ x top ctx cc σ hcc hiv _ _ _ _ D2 hs
     exact ⟨rfl, .varIvar hcc (by rw [hs.ivarTy_eq]; exact hiv)⟩
