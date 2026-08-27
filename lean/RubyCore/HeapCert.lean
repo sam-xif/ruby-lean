@@ -78,8 +78,8 @@ def noHookB (h : Heap) : Bool :=
     (h.classPayload? k).isNone ||
       ((lookup h (.ref k) "method_added").isNone &&
        (lookup h (.ref k) "define_method").isNone)) &&
-  -- J44: the per-table half.
-  (List.range h.objs.size).all fun j =>
+  -- J44: the fresh-chain half — `Class`'s chain only.
+  (ancestors h Boot.classId).all fun j =>
     match h.classPayload? j with
     | some cp => (cp.methods.find? (·.1 == "method_added")).isNone &&
                  (cp.methods.find? (·.1 == "define_method")).isNone
