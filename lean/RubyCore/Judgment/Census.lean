@@ -128,7 +128,9 @@ partial def walk (owner : String) (cls : Option String) (stmt sh : Bool)
     mkEntry owner "hash" stmt sh e ::
       prs.flatMap (fun (k, v) => walk owner cls false sh2 k ++ walk owner cls false sh2 v)
   | e@(.casgn _ rhs) => mkEntry owner "casgn" stmt sh e :: walk owner cls false sh2 rhs
-  | e@(.cpath _ _) => [mkEntry owner "cpath" stmt sh e]
+  -- J38: cpath is in the fragment; only its base is walked.
+  | .cpath none _ => []
+  | .cpath (some b) _ => walk owner cls false sh2 b
   | e@(.cpathAsgn _ _ rhs) =>
     mkEntry owner "cpath-asgn" stmt sh e :: walk owner cls false sh2 rhs
   | e@(.yield' args) =>
