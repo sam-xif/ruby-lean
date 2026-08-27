@@ -167,6 +167,10 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   -- the same one `.cls "Array"` carries, which is what makes the arm cost nothing until
   -- a row mentions the element type.
   | .arrayOf _ => (h.classPayload? k).isSome ∧ className h k = "Array"
+  -- L269: `.nilable`'s arm for `.nilable`'s reason — a union value may be either
+  -- side, so there is no one class it dispatches from; `tyClassNames` is `[]` at
+  -- it and `DeclsOk` obliges nothing.
+  | .union _ _ => False
 
 /-- **A receiver hands over its dispatch class** — but only at a type dispatch can
     start from, and since L193 that is a hypothesis rather than a fact about every
@@ -1565,6 +1569,12 @@ theorem DeclsOk_addRow {D : Decls} {h : Heap} {cls : ObjId} {name c : String}
         rw [show declFor (addRow D c mname { params := [], ret := τb }) (.arrayOf e) mname
             = none from by simp [declFor, tyClassNames]] at hdecl
         exact absurd hdecl (by simp)
+      -- L269: the same argument at the union arm — `tyClassNames` is `[]` there too.
+      | union a b =>
+        exfalso
+        rw [show declFor (addRow D c mname { params := [], ret := τb }) (.union a b) mname
+            = none from by simp [declFor, tyClassNames]] at hdecl
+        exact absurd hdecl (by simp)
       | sym =>
         exfalso
         have hn : declFor (addRow D c mname { params := [], ret := τb }) .sym mname = none := by
@@ -1782,6 +1792,7 @@ theorem declFor_addRow_self_inv {D : Decls} {c name : String} {σ : MethodDecl} 
   | clsOf _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
   | nilable _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
   | arrayOf _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
+  | union _ _ => rw [hnil _ (by simp [tyClassNames])] at hdecl; exact absurd hdecl (by simp)
   | cls n =>
     by_cases hng : groundClassNames.contains n = true
     · rw [hnil _ (by simp only [tyClassNames]; rw [if_pos hng])] at hdecl
@@ -2792,6 +2803,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
   | nilable _ => exact absurd hd (by simp [declFor, tyClassNames])
   -- L238, and it is `.any`'s arm for `.any`'s reason today.
   | arrayOf _ => exact absurd hd (by simp [declFor, tyClassNames])
+  | union _ _ => exact absurd hd (by simp [declFor, tyClassNames])
 
 end Static
 

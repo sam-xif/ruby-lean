@@ -322,6 +322,14 @@ def tyClassNames : Ty → List String
   -- So today the arm is a **declaration and parameter** type, like `.any`: inhabited by
   -- values (`ValueTy`'s new arm) and dispatching from nowhere.
   | .arrayOf _ => []
+  -- **L269: a union dispatches from nowhere** — `.nilable`'s reason verbatim: a
+  -- value typed `union σ τ` may be either side, so no single row can be promised
+  -- at it, `declFor` never answers, and `DeclsOk` obliges nothing. Refining a
+  -- union to a dispatchable member is a *narrowing* rule (`Judgment/Sub.lean`
+  -- `dropNil`, and eventually `is_a?`), never this function's business. An
+  -- all-members-agree arm (the `sigOf` nilable-union shape, L260) is the future
+  -- widening if union receivers ever want direct dispatch.
+  | .union _ _ => []
 
 /-- The declared signature of `mname` for a receiver of static type `τ`: `some d`
     only when **every** class such a receiver can have declares it identically.

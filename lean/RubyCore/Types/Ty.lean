@@ -145,6 +145,28 @@ inductive Ty where
       What it buys is the relation and its inversions, which the iterator rung needs
       before it can type a block body. -/
   | arrayOf (elem : Ty)
+  /-- **A union** (L269, `judgment-layer.md` §1.4) — a value of `σ` or of `τ`.
+
+      **Inert on the checker path, by design.** Nothing in `infer`/`chk` constructs
+      one, `subTy` compares it by equality (the catch-all arm), `tyClassNames`
+      answers `[]` (a union dispatches from nowhere until narrowed — `.nilable`'s
+      reason), and `TyClass` is `False` at it. So `--assn` and every certificate
+      verdict are byte-identical, and `subTy` stays structurally recursive on `τ`
+      (norm 5: the checked path must kernel-reduce).
+
+      **The union's meaning lives in the judgment layer** (`Judgment/Sub.lean`):
+      the declarative subtype relation `SubJ` decomposes it on both sides, the
+      join rules of `Judge` may choose it as the widened bound where the branches
+      disagree, and `dropNil` re-narrows it in conditionals. `ValueTy` does not
+      yet have a union disjunction arm — that is the J1 (machine-typing) bill,
+      recorded in `Judgment/implementation-notes.md` J14.
+
+      **Binary, and no normal form is imposed**: `union a (union b c)` and
+      `union (union a b) c` are different `Ty`s related by `SubJ` both ways.
+      `mkUnion` collapses only the degenerate cases (equal sides, a `nilT` side —
+      the latter normalizes to `.nilable`, keeping the two spellings of "or nil"
+      from proliferating). -/
+  | union (σ τ : Ty)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
@@ -241,6 +263,11 @@ theorem subTy_trans : ∀ {a b c : Ty}, subTy a b = true → subTy b c = true �
     simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
   | a, b, .float, hab, hbc => by
     simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
+  -- L269: `union` is compared by equality on this (checker-path) relation, so
+  -- transitivity at it is `arrayOf`'s shape — `Eq.trans`, spelled because the arm
+  -- carries payloads.
+  | a, b, .union x y, hab, hbc => by
+    simp only [subTy, beq_iff_eq] at hbc; subst hbc; exact hab
 
 @[simp] theorem subTys_refl : ∀ (ps : List Ty), subTys ps ps = true
   | [] => rfl
@@ -305,14 +332,14 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
 theorem ne_nilable_self : ∀ (X : Ty), ¬ (X = .nilable X)
   | .nilable Y => by simpa using ne_nilable_self Y
   | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
-  | .arrayOf _ => by simp
+  | .arrayOf _ | .union _ _ => by simp
 
 /-- And the once-nested form, which `joinTy_absorb'`'s *first* branch needs refuted.
     Same induction. -/
 theorem ne_nilable_self2 : ∀ (X : Ty), ¬ (X = .nilable (.nilable X))
   | .nilable Y => by simpa using ne_nilable_self2 Y
   | .int | .bool | .nilT | .sym | .cls _ | .any | .clsOf _ | .float
-  | .arrayOf _ => by simp
+  | .arrayOf _ | .union _ _ => by simp
 
 @[simp] theorem joinTy_absorb' (X : Ty) : joinTy X (mkNilable X) = some (mkNilable X) := by
   unfold mkNilable

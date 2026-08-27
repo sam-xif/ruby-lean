@@ -13504,3 +13504,45 @@ carrying a *larger* table into `Inv` costs a re-proof. It does not; it costs
 and no interpreter change, so `--assn`/`--check` cannot move — verified
 byte-identical on all eight slice files against a worktree binary at `d8b8c7c` — and
 tier 0 is `992 agree, 0 disagree`, unmoved.
+
+## L269 — `Ty.union`, inert on the checker path; its meaning lives in the judgment layer
+
+(L268 is the C-1 thread's `initiation_ctl` factoring, recorded in `HANDOFF.md`; this
+number continues from it.)
+
+`Ty` gains `| union (σ τ : Ty)` — the arm `judgment-layer.md` §1.4 argues is
+load-bearing (join precision and re-narrowing are how untyped Ruby's control-flow
+unions get typed). The design constraint that decided its shape: **`subTy` is on
+`chk`'s kernel-reduction path** (norm 5), and a union-decomposing `subTy` cannot stay
+structurally recursive on `τ` — it must recurse on `σ` too, and the well-founded
+version stops kernel-reducing under `chk` (the L73 trap). So:
+
+* **On the checker path the arm is inert.** `subTy` compares it by the catch-all
+  (`==`), `joinTy` never constructs one, `tyClassNames` answers `[]` (`.nilable`'s
+  reason: a union dispatches from nowhere until narrowed), `TyClass` is `False`,
+  `tyName` renders `T.any(_, _)`, and the certificate JSON codec round-trips it.
+  Nothing in `infer`/`chk` constructs one, so `--assn`/`--check`/certificate verdicts
+  are byte-identical by construction.
+* **The union's semantics live in `Judgment/Sub.lean`** as the declarative relation
+  `SubJ` (`subTy` embedded by `base`; union decomposition both sides; `nilableL` for
+  the left-decomposition `subTy` cannot state), with `mkUnion` (degenerate cases
+  collapsed, `nilT` side normalizing to `.nilable`), `dropNil` (truthy-branch
+  narrowing), `boolFree`/`elseNarrow` (falsy-branch narrowing to `nilT` where `false`
+  is impossible). The `Judge` rules' `subTy`/`subTys` premises became `SubJ`/`SubJs`.
+
+Proof-tree cost, measured: **five files, all mechanical** — the new arm joins the
+`tyClassNames = []` family, so every touched proof is the `.nilable` refutation
+verbatim (`Types/Ty.lean` `subTy_trans`/`ne_nilable_self*`, `Types/Assn.lean`
+`tyName`/`tyClassNames_singleton_inv`, `Types/Decls.lean` `tyClassNames`,
+`Proof/Static/Decls.lean` `TyClass` + three `cases τr` sites, `Proof/Static/Assn.lean`
+`declTys`). The un-paid bill, named: **`ValueTy` has no union disjunction arm**, so no
+value inhabits a union in the machine-typing layer yet — that is the J1 obligation
+(`ValueTy h v (union a b)` iff at `a` or at `b`), and preservation over the union
+join rules waits on it.
+
+### Checks
+
+`lake build` (94 jobs), `lake build Metatheory`, `lake build Judgment`,
+`check-proofs.sh` axiom-clean (propext + Classical.choice + Quot.sound only). No
+interpreter change; nothing on the checker path constructs the arm, so tier-0 and
+`--assn` cannot move.

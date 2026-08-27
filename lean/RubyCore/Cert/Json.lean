@@ -49,6 +49,10 @@ partial def tyToJson : Ty → Json
   | .clsOf n => Json.mkObj [("k", "clsOf"), ("n", Json.str n)]
   | .nilable τ => Json.mkObj [("k", "nilable"), ("t", tyToJson τ)]
   | .arrayOf τ => Json.mkObj [("k", "arrayOf"), ("t", tyToJson τ)]
+  -- L269: the wire form is structural like every other arm; nothing in the C-ladder
+  -- emits one yet (unions are judgment-layer types today), but a codec gap would be
+  -- a silent refusal the day an emitter does.
+  | .union σ τ => Json.mkObj [("k", "union"), ("s", tyToJson σ), ("t", tyToJson τ)]
 
 partial def tyOfJson (j : Json) : Except String Ty := do
   let k ← (← j.getObjVal? "k").getStr?
@@ -63,6 +67,7 @@ partial def tyOfJson (j : Json) : Except String Ty := do
   | "clsOf" => pure (.clsOf (← (← j.getObjVal? "n").getStr?))
   | "nilable" => pure (.nilable (← tyOfJson (← j.getObjVal? "t")))
   | "arrayOf" => pure (.arrayOf (← tyOfJson (← j.getObjVal? "t")))
+  | "union" => pure (.union (← tyOfJson (← j.getObjVal? "s")) (← tyOfJson (← j.getObjVal? "t")))
   | other => throw s!"unknown type kind {other}"
 
 /-! ## 2. `ATy`, `Sig`, `ASig`, `Row` -/

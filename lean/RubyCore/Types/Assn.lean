@@ -134,6 +134,7 @@ theorem tyClassNames_singleton_inv {τ : Ty} {c : String} (h : tyClassNames τ =
   | clsOf _ => simp [tyClassNames] at h
   | nilable _ => simp [tyClassNames] at h
   | arrayOf _ => simp [tyClassNames] at h
+  | union _ _ => simp [tyClassNames] at h
   | cls n =>
     simp only [tyClassNames] at h
     split at h
@@ -166,6 +167,9 @@ def tyName : Ty → String
   -- L238. Sorbet's spelling again, and the report reads back the element type the
   -- `sig` wrote.
   | .arrayOf τ => "T::Array[" ++ tyName τ ++ "]"
+  -- L269. Sorbet's spelling; binary, so a three-way union renders nested — the
+  -- price of imposing no normal form.
+  | .union σ τ => "T.any(" ++ tyName σ ++ ", " ++ tyName τ ++ ")"
 
 def ATy.render : ATy → String
   | .nom τ => tyName τ
