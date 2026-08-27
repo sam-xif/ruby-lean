@@ -117,6 +117,47 @@ inductive KontOkJ : Decls → Heap → List (JCtx × Env) → Ty → List Kont �
       KontOkJ D h ((ctx, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γl := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ D h ((loopCtx ctx Γl, Γl) :: Γs) τ (.whileBodyK c body :: k)
+  /-- The in-flight value is the **receiver** of an argument-bearing send; the
+      first argument runs next. -/
+  | recvK {D D₂ h c Γ Γs τ mname arg args τs ps τret τw Γ₂ k Γk} {site : SendSite} :
+      (∀ a ∈ arg :: args, MFrag a) →
+      JudgeArgs D Γ (arg :: args) Γs.isEmpty c τs Γ₂ D₂ →
+      sigOf D₂ τ mname = some (ps, τret) →
+      SubJs τs ps →
+      SubJ τret τw →
+      KontOkJ D₂ h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ₂ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.recvK mname (arg :: args) .none site :: k)
+  /-- A zero-argument send: the dispatch happens at the delivery itself, so the
+      continuation is already at the return type. -/
+  | recvK0 {D h c Γ Γs τ mname τret τw k Γk} {site : SendSite} :
+      sigOf D τ mname = some ([], τret) →
+      SubJ τret τw →
+      KontOkJ D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.recvK mname [] .none site :: k)
+  /-- The in-flight value is an **argument**; the receiver and the evaluated prefix
+      ride the kont as values, so their types are `VTy` facts against the heap —
+      the constructor `heap_congr'` gains content at. -/
+  | argsK {D D' h c Γ Γs τ mname recv τr psacc τp τrest psrest τret τw acc rest Γ' k Γk}
+      {site : SendSite} :
+      VTy h recv τr →
+      VTys h acc psacc →
+      SubJ τ τp →
+      (∀ a ∈ rest, MFrag a) →
+      JudgeArgs D Γ rest Γs.isEmpty c τrest Γ' D' →
+      SubJs τrest psrest →
+      sigOf D' τr mname = some (psacc ++ τp :: psrest, τret) →
+      SubJ τret τw →
+      KontOkJ D' h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
+  /-- **Method return** — the callee's declared return type is what the caller's
+      continuation expects; the two-deep stack is what makes the pop total. -/
+  | frameK {D h cΓ cΓ' Γs τ fid k} :
+      (∀ σ, cΓ.1.ret = some σ → SubJ σ τ) →
+      cΓ.1.inLoop = none →
+      KontOkJ D h (cΓ' :: Γs) τ k → KontOkJ D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
 
 /-- Transport of the continuation judgment across a heap the step grew — no rung-1
     constructor stores a `VTy` fact, so this is currently structural; the `argsK`
@@ -136,6 +177,13 @@ theorem KontOkJ.heap_congr' {h' : Heap} :
       intro ha; exact .ifNoneK hmt ht hjt hjn hct hce hw (ih ha) hsu
   | whileCond hl hw _ hsu ih => intro ha; exact .whileCond hl hw (ih ha) hsu
   | whileBody hl hw _ hsu ih => intro ha; exact .whileBody hl hw (ih ha) hsu
+  | recvK hm hargs hsg hsub hw _ hsu ih =>
+      intro ha; exact .recvK hm hargs hsg hsub hw (ih ha) hsu
+  | recvK0 hsg hw _ hsu ih => intro ha; exact .recvK0 hsg hw (ih ha) hsu
+  | argsK hrv hva hst hm hrest hsr hsg hw _ hsu ih =>
+      intro ha
+      exact .argsK (hrv.congr ha) (VTys.congr ha hva) hst hm hrest hsr hsg hw (ih ha) hsu
+  | frameK hrt hil _ ih => intro ha; exact .frameK hrt hil (ih ha)
 
 theorem KontOkJ.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     {D : Decls} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont}
@@ -281,6 +329,35 @@ theorem inv_grow_valueJ {F : Decls} {m m' : Machine} {c : JCtx} {Γ : Env}
   · show ∃ σ Γk, VTy m'.heap v σ ∧ SubEnv Γk Γ ∧
         KontOkJ F m'.heap ((c, Γk) :: Γs) σ m'.kont
     exact ⟨τ, _, hv, hsuE, by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
+
+/-! ## The dispatch boundary: `sigOf` answers only at ground receiver types -/
+
+/-- A row is only readable at a type that names classes, and those are ground. -/
+theorem declFor_ground {D : Decls} {σ : Ty} {mname : String} {d : MethodDecl}
+    (h : declFor D σ mname = some d) : groundTy σ = true := by
+  cases σ <;> first
+    | rfl
+    | (exact absurd h (by simp [declFor, tyClassNames]))
+
+theorem sigOf_ground {D : Decls} {τ : Ty} {mname : String} {ps : List Ty} {τret : Ty}
+    (h : sigOf D τ mname = some (ps, τret)) : groundTy τ = true := by
+  cases τ
+  case nilable σ =>
+    obtain ⟨-, h2⟩ := sigOf_nilable h
+    simpa [groundTy] using declFor_ground h2
+  all_goals first
+    | rfl
+    | (exact absurd h (by simp [sigOf, declFor, tyClassNames]))
+
+/-- `sigOf_value_atomic`, lifted to `VTy`: the receiver's widened judgment collapses
+    back to the old `ValueTy` at the (ground) dispatch type, and a nilable receiver
+    reduces to the arm the value actually is. -/
+theorem sigOf_vty_atomic {D : Decls} {h : Heap} {v : Value} {τ : Ty} {mname : String}
+    {ps : List Ty} {τret : Ty}
+    (hsg : sigOf D τ mname = some (ps, τret)) (hv : VTy h v τ) :
+    ∃ τ₀, sigOf D τ₀ mname = some (ps, τret) ∧ ValueTy h v τ₀ ∧
+      (∀ τ', τ₀ ≠ .nilable τ') :=
+  sigOf_value_atomic hsg (hv.toValueTy (sigOf_ground hsg))
 
 end Judgment
 end Proof

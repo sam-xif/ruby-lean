@@ -61,6 +61,101 @@ def EvalOkAt (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : JCtx)
     KontOkJ D' m.heap ((ctx, Γk) :: Γs) τw m.kont →
     StepOkJ (evalExpr m e)
 
+
+@[simp] theorem jctxs_eq (c : JCtx) (Γs : List (JCtx × Env)) :
+    jctxs c Γs = c.toFrameCtx :: (Γs.map Prod.fst).map JCtx.toFrameCtx := rfl
+
+set_option maxHeartbeats 1000000 in
+/-- The zero-argument implicit-self send preserves `InvJ`, whatever the site —
+    `inv_implicit_send0` (Proof/Static/Preservation.lean:66) over the judgment.
+    The dispatch happens *in this step*; the builtin arm ends in
+    `inv_grow_valueJ`, the user arm pushes the activation whose body's `Judge`
+    derivation `UserConformsJ` carries. -/
+theorem inv_implicit_send0J {F : Decls} {m : Machine} {ctx : JCtx} {Γ Γk : Env}
+    {Γs : List (JCtx × Env)} {c mname : String} {τret : Ty} {site : SendSite}
+    (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
+    (htab : DeclsOkJ F m.heap)
+    (hsc : StackCtx m.heap m.frames m.stack (jctxs ctx Γs))
+    (hhook : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
+    (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
+    (hne : m.stack ≠ []) (hsome : ctx.selfCls = some c)
+    (hsg : sigOf F (.cls c) mname = some ([], τret))
+    {τw : Ty} (hsubw : SubJ τret τw)
+    (hk : KontOkJ F m.heap ((ctx, Γk) :: Γs) τw m.kont)
+    (hglob : GlobalsOk F m.heap m.globals := by assumption)
+    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
+    (hclo : ClosuresOk m := by assumption) :
+    StepOkJ (startArgs m m.currentFrame.self site mname [] [] .none) := by
+  have hfs := FramesOkJ.narrowHead hsuE hfs
+  have hself : ValueTy m.heap m.currentFrame.self (.cls c) := by
+    cases hst : m.stack with
+    | nil => exact absurd hst hne
+    | cons fid fids =>
+      rw [hst] at hsc
+      have := hsc.2.2.2.1 c hsome
+      rw [show m.currentFrame = m.frames.getD fid default by
+        simp [Machine.currentFrame, hst]]
+      exact this.1
+  rcases (htab.1 _ mname _ (sigOf_declFor (by simp) hsg)).blockless with hbi |
+    ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
+  · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
+      entry_dispatch (m := m) (recv := m.currentFrame.self) (args := [])
+        (site := site) (by simp) (by simp) (by simp) hbi hself trivial
+    rw [hstep]
+    exact inv_grow_valueJ hfs htab hsc hhook hsat hstr hcls hbot hks hg' hfr' hst' hko'
+      (VTy.weaken (VTy.ofValueTy hw) hsubw) hk hglob hgv'
+  · have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hself)
+    have hown : (m.heap.classPayload? mdu.owner).isSome := by
+      obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
+    rw [user_dispatch (m := m) (site := site) hru hself]
+    have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+    obtain ⟨hdp, hdblk, hdfu, hmfb, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
+    refine ⟨hhook, hsat, hstr, hcls,
+      BottomObj_cons hne (BottomObj_push hlt hbot),
+      (by simp [framePopLabels, hks, dropLast_cons_ne hne]),
+      (ClosuresOk.pushFrame hclo rfl rfl rfl), _,
+      { cls := cu, selfCls := some cu, ret := r, meth := some mname,
+        params := some [] }, [],
+      (ctx, Γk) :: Γs, htab, ?_, ?_, ?_⟩
+    · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+        ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
+        FramesOkJ.push hfs⟩
+      · rw [getD_push_lt_self]; exact hown
+      · intro y σ hy; exact absurd hy (by simp [envGet?])
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · rw [getD_push_lt_self]; exact hown
+      · rw [getD_push_lt_self]; exact fun _ => hnmu
+      · rw [getD_push_lt_self]; exact fun _ => rfl
+      · intro sc hsc'
+        simp only [Option.some.injEq] at hsc'
+        subst hsc'
+        rw [getD_push_lt_self]
+        show ValueTy m.heap m.currentFrame.self (.cls cu) ∧
+          (userFrame m.currentFrame.self mdu mname).defmod ∈
+            ancestors m.heap (classOf m.heap m.currentFrame.self)
+        have hcu : c = cu := UserKey.cls_inv htys
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch, _⟩ := hru
+        exact ⟨hcu ▸ hself, hch⟩
+      · rw [getD_push_lt_self]
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _, _⟩ := hru
+        exact hcr
+      · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
+      · intro mn hmn
+        simp only [Option.some.injEq] at hmn
+        subst hmn
+        rw [getD_push_lt_self]
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
+        exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · rw [getD_push_lt_self]; exact fun _ => rfl
+      · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
+        exact StackCtx.push hlt hsc
+    · refine ⟨hglob, ?_⟩
+      show CtlOkJ F _ [] ((ctx, Γk) :: Γs) _
+      exact ⟨hmfb, τb, τw, Γb, F, Γb,
+        hbu, hsb.trans hsubw, SubEnv.refl _,
+        KontOkJ.frameK (fun σ h => by rw [hag σ (by simpa using h)]; exact hsubw) rfl hk⟩
+
 set_option maxHeartbeats 2000000 in
 /-- **The eval branch**, by induction over the derivation. -/
 theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
@@ -223,6 +318,107 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
         simp [jctxs, loopCtx]
       rw [this]
       exact stackCtx_inLoop (by simpa [jctxs] using hsc)
+  -- ## `self`: the frame's own value, typed by `StackCtx`'s clause.
+  case hself =>
+    intro D Γ top ctx cc hsome
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    refine inv_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
+      (VTy.weaken (VTy.ofValueTy ?_) hsubw) hk
+    have hne : m.stack ≠ [] := (hfs.frameShallow).1
+    cases hst : m.stack with
+    | nil => exact absurd hst hne
+    | cons fid fids =>
+      rw [hst] at hsc
+      have := hsc.2.2.2.1 cc hsome
+      rw [show m.currentFrame = m.frames.getD fid default by
+        simp [Machine.currentFrame, hst]]
+      exact this.1
+  -- ## `vcall`: the implicit-self zero-argument send, dispatched in this step.
+  case hvcall =>
+    intro D Γ mname top ctx cc τret hsome hsg
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    simp only [evalExpr]
+    exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hks
+      (hfs.frameShallow).1 hsome hsg hsubw hk
+  -- ## The block-less send.
+  case hsend =>
+    intro D Γ recvO mname args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps τret
+    intro hrecv hargs hsg hsub ihr iha
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    subst htop
+    cases hrecv with
+    | expl hr =>
+      -- Explicit receiver: push the receiver kont; which constructor depends on
+      -- the argument count, exactly as `applyKont` behaves one step later.
+      cases hmf with
+      | send hne hmr hma =>
+      cases args with
+      | nil =>
+        cases hargs
+        have hps : ps = [] := hsub.nil_inv
+        subst hps
+        simp only [evalExpr]
+        rename_i r
+        cases r <;>
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+            (by simp [framePopLabels, hks]) hmr hr (SubJ.refl _)
+            (KontOkJ.recvK0 hsg hsubw hk)
+      | cons a as =>
+        simp only [evalExpr]
+        rename_i r
+        cases r <;>
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+            (by simp [framePopLabels, hks]) hmr hr (SubJ.refl _)
+            (KontOkJ.recvK (fun a' ha' => hma a' ha') hargs hsg hsub hsubw hk)
+    | @self _ _ _ _ cc hsome =>
+      -- Implicit receiver: `startArgs` on the frame's `self`, with no receiver kont.
+      cases hmf with
+      | sendImplicit hma =>
+      cases args with
+      | nil =>
+        cases hargs
+        have hps : ps = [] := hsub.nil_inv
+        subst hps
+        simp only [evalExpr]
+        exact inv_implicit_send0J hfs htab hsc hh hsat hstr hcls hbot hks
+          (hfs.frameShallow).1 hsome hsg hsubw hk
+      | cons a as =>
+        cases hargs with
+        | cons ha1 harest =>
+          rename_i τe Γm Dm τs'
+          obtain ⟨τp, psrest, rfl, hs1, hs2⟩ := hsub.cons_inv
+          have hself : ValueTy m.heap m.currentFrame.self (.cls cc) := by
+            cases hst : m.stack with
+            | nil => exact absurd hst (hfs.frameShallow).1
+            | cons fid fids =>
+              rw [hst] at hsc
+              have := hsc.2.2.2.1 cc hsome
+              rw [show m.currentFrame = m.frames.getD fid default by
+                simp [Machine.currentFrame, hst]]
+              exact this.1
+          have hsp : ∀ e, a ≠ Expr.splat e := by
+            rintro e rfl
+            exact nomatch hma (Expr.splat e) (by simp)
+          have hkw : ∀ es, a ≠ Expr.kwargs es := by
+            rintro es rfl
+            exact nomatch hma (Expr.kwargs es) (by simp)
+          have hfw : a ≠ Expr.fwd := by
+            rintro rfl
+            exact nomatch hma Expr.fwd (by simp)
+          simp only [evalExpr]
+          rw [startArgs_plain hsp hkw hfw]
+          exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+            (by simp [framePopLabels, hks]) (hma _ (by simp)) ha1 (SubJ.refl _)
+            (KontOkJ.argsK (psacc := []) (VTy.ofValueTy hself) trivial hs1
+              (fun a' ha' => hma a' (by simp [ha'])) harest hs2
+              (by simpa using hsg) hsubw hk)
+  -- ## `sendCall`'s conclusion is a send head, so the fragment gate's shape
+  -- condition (no `call`-named explicit sends) is what refutes it.
+  case hsendCall =>
+    intro D Γ r args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps ret hr hparts hargs hsub ihr iha
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | send hne _ _ => exact absurd rfl hne
   -- ## The subsumption rule: compose the invariant's slack, once for all heads.
   case hsub =>
     intro D Γ e top ctx τ0 Γ'0 D'0 σ Γ'' hj0 hs hse ih
@@ -400,6 +596,173 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
         (KontOkJ.whileCond ⟨hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩
           hsw hk' (hsu := hsu))
         (hsuE := hs1) (hclo := hcloTail hK)
+    | @recvK _ D₂ _ _ _ _ _ mname arg args τs ps τret τw Γ₂ k _ _ hm hargs hsg hsub hsw hk' hsu =>
+      cases hargs with
+      | cons ha1 harest =>
+        rename_i τe Γm Dm τs'
+        obtain ⟨τp, psrest, rfl, hs1, hs2⟩ := hsub.cons_inv
+        have hsp : ∀ e, arg ≠ Expr.splat e := by
+          rintro e rfl
+          exact nomatch hm (Expr.splat e) (by simp)
+        have hkw : ∀ es, arg ≠ Expr.kwargs es := by
+          rintro es rfl
+          exact nomatch hm (Expr.kwargs es) (by simp)
+        have hfw : arg ≠ Expr.fwd := by
+          rintro rfl
+          exact nomatch hm Expr.fwd (by simp)
+        dsimp only
+        rw [startArgs_plain hsp hkw hfw]
+        exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks) (hm _ (by simp)) ha1 (SubJ.refl _)
+          (KontOkJ.argsK (psacc := []) hv trivial hs1
+            (fun a' ha' => hm a' (by simp [ha'])) harest hs2
+            (by simpa using hsg) hsw hk') (hclo := hcloTail hK)
+    | @recvK0 _ _ _ _ _ _ mname τret τw k Γj _ hsg hsw hk' hsu =>
+      have hfs := FramesOkJ.narrowHead hsu hfs
+      dsimp only
+      obtain ⟨τ0, hsg, hv0, hnilτ⟩ := sigOf_vty_atomic hsg hv
+      rcases (htab.1 τ0 mname _ (sigOf_declFor hnilτ hsg)).blockless with hbi |
+        ⟨mdu, cu, htys, hresu, hnmu, hconfu⟩
+      · obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
+          entry_dispatch (m := { m with kont := k }) (recv := v) (args := [])
+            (sigOf_atomic hnilτ hsg).1 (sigOf_atomic hnilτ hsg).2.1
+            (sigOf_atomic hnilτ hsg).2.2 hbi hv0 trivial
+        rw [hstep]
+        exact inv_grow_valueJ (m := { m with kont := k })
+          hfs htab hsc hh hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks) hg' hfr' hst' hko'
+          (VTy.weaken (VTy.ofValueTy hw) hsw) hk' hgl hgv' (hclo := hcloTail hK)
+      · rcases htys with rfl | ⟨⟨e, rfl⟩, rfl⟩
+        case inr =>
+          simp only [sigOf, declFor, tyClassNames] at hsg
+          exact absurd hsg (by simp)
+        have hru := hresu _ (valueTy_tyClass (by simp) (by simp) (by simp) hv0)
+        have hown : (m.heap.classPayload? mdu.owner).isSome := by
+          obtain ⟨_, _, _, _, _, _, _, _, h9, _⟩ := hru; exact h9
+        rw [user_dispatch (m := { m with kont := k }) hru hv0]
+        have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+        obtain ⟨hdp, hdblk, hdfu, hmfb, Γb, r, τb, hbu, hsb, hag⟩ := hconfu
+        refine ⟨hh, hsat, hstr, hcls,
+          BottomObj_cons (hfs.frameShallow).1 (BottomObj_push hlt hbot),
+          (by rw [dropLast_cons_ne (hfs.frameShallow).1]
+              simpa [framePopLabels] using hks),
+          ClosuresOk.pushFrame (hcloTail hK) rfl rfl rfl, _,
+          { cls := cu, selfCls := some cu, ret := r, meth := some mname,
+            params := some [] }, [],
+          (ctx, Γj) :: Γs, htab, ?_, ?_, ?_⟩
+        · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+            ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; rfl), ?_, ?_⟩,
+            FramesOkJ.push hfs⟩
+          · rw [getD_push_lt_self]; exact hown
+          · intro y σ hy; exact absurd hy (by simp [envGet?])
+        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+          · rw [getD_push_lt_self]; exact hown
+          · rw [getD_push_lt_self]; exact fun _ => hnmu
+          · rw [getD_push_lt_self]; exact fun _ => rfl
+          · intro sc hsc'
+            simp only [Option.some.injEq] at hsc'
+            subst hsc'
+            rw [getD_push_lt_self]
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hch, _⟩ := hru
+            exact ⟨hv0, hch⟩
+          · rw [getD_push_lt_self]
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, hcr, _, _⟩ := hru
+            exact hcr
+          · exact Or.inl ⟨by rw [getD_push_lt_self]; rfl, by simp⟩
+          · intro mn hmn
+            simp only [Option.some.injEq] at hmn
+            subst hmn
+            rw [getD_push_lt_self]
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, hsn⟩ := hru
+            exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
+          · rw [getD_push_lt_self]; exact fun _ => rfl
+          · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
+            exact StackCtx.push hlt hsc
+        · refine ⟨hgl, ?_⟩
+          show CtlOkJ _ _ [] ((ctx, Γj) :: Γs) _
+          exact ⟨hmfb, τb, τw, Γb, _, Γb,
+            hbu, hsb.trans hsw, SubEnv.refl _,
+            KontOkJ.frameK (fun σ hσ => by rw [hag σ (by simpa using hσ)]; exact hsw)
+              rfl hk'⟩
+    | @argsK _ D' _ _ _ _ _ mname recv τr psacc τp τrest psrest τret τw acc rest Γ' k _ _
+        hrv hva hst hm hrest hsr hsg hsw hk' hsu =>
+      cases rest with
+      | nil =>
+        cases hrest
+        have hpr : psrest = [] := hsr.nil_inv
+        subst hpr
+        dsimp only
+        obtain ⟨τr0, hsgA, hrv0, hnilτ⟩ :=
+          sigOf_vty_atomic (by simpa using hsg) hrv
+        have hground : ∀ p ∈ psacc ++ [τp], groundTy p = true := by
+          intro p hp
+          refine htab.2.2.2.2.2 τr0 mname _ (sigOf_declFor hnilτ hsgA) p ?_
+          simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hp
+          simp only [List.mem_append, List.mem_cons]
+          rcases hp with hp | rfl
+          · exact Or.inl hp
+          · exact Or.inr (Or.inl rfl)
+        have hbi : BuiltinEntryOk m.heap τr0 mname
+            { params := psacc ++ [τp], ret := τret } := by
+          rcases (htab.1 τr0 mname _ (sigOf_declFor hnilτ hsgA)).blockless with
+            hb | ⟨_, _, _, _, _, hdp, _, _⟩
+          · exact hb
+          · exact absurd hdp (by simp)
+        obtain ⟨w, m', hw, hg', hfr', hst', hko', hgv', hstep⟩ :=
+          entry_dispatch (m := { m with kont := k }) (recv := recv) (args := acc ++ [v])
+            (sigOf_atomic hnilτ hsgA).1 (sigOf_atomic hnilτ hsgA).2.1
+            (sigOf_atomic hnilτ hsgA).2.2
+            hbi (hrv0)
+            ((VTys.snoc hva (hv.weaken hst)).toValuesTy hground)
+        rw [hstep]
+        exact inv_grow_valueJ (m := { m with kont := k })
+          hfs htab hsc hh hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks) hg' hfr' hst' hko'
+          (VTy.weaken (VTy.ofValueTy hw) hsw) hk' hgl hgv' (hclo := hcloTail hK)
+      | cons e rest' =>
+        cases hrest with
+        | cons he1 hrest' =>
+          rename_i τe Γm Dm τrest'
+          obtain ⟨τp', psrest', rfl, hs1, hs2⟩ := hsr.cons_inv
+          have hsp : ∀ x, e ≠ Expr.splat x := by
+            rintro x rfl
+            exact nomatch hm (Expr.splat x) (by simp)
+          have hkw : ∀ es, e ≠ Expr.kwargs es := by
+            rintro es rfl
+            exact nomatch hm (Expr.kwargs es) (by simp)
+          have hfw : e ≠ Expr.fwd := by
+            rintro rfl
+            exact nomatch hm Expr.fwd (by simp)
+          dsimp only
+          rw [startArgs_plain hsp hkw hfw]
+          exact inv_pushJ (m := { m with kont := k })
+            hfs htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks) (hm _ (by simp)) he1 (SubJ.refl _)
+            (KontOkJ.argsK (psacc := psacc ++ [τp]) hrv
+              (VTys.snoc hva (hv.weaken hst)) hs1
+              (fun a' ha' => hm a' (by simp [ha'])) hrest' hs2
+              (by simpa using hsg) hsw hk') (hclo := hcloTail hK)
+    | @frameK _ _ _ cΓ' Γs' _ fid k hrt hil hk' =>
+      obtain ⟨c', Γ'⟩ := cΓ'
+      have hst2 : ∃ f0 f1 rest, m.stack = f0 :: f1 :: rest := by
+        cases hst : m.stack with
+        | nil => rw [hst] at hfs; exact absurd hfs (by simp [FramesOkJ])
+        | cons f0 t =>
+          cases ht : t with
+          | nil => rw [hst, ht] at hfs; exact absurd hfs (by simp [FramesOkJ])
+          | cons f1 rest => exact ⟨f0, f1, rest, rfl⟩
+      obtain ⟨f0, f1, rest, hst⟩ := hst2
+      have hlab : framePopLabels k = m.stack.tail.dropLast := by
+        have hq := hks
+        simp only [framePopLabels] at hq
+        rw [hst] at hq ⊢
+        simp only [List.dropLast_cons_cons, List.cons.injEq] at hq
+        simpa using hq.2
+      refine ⟨hh, hsat, hstr, hcls, BottomObj_tail hbot, hlab,
+        ClosuresOk.konts (hcloTail hK) rfl rfl (by intro κ hm; exact Or.inl hm),
+        _, c', Γ', Γs', htab,
+        hfs.tail, ?_, hgl, ⟨τ, _, hv, SubEnv.refl _, hk'⟩⟩
+      exact StackCtx.tail hsc
   · -- ## control = jump — empty in the rung-1 fragment.
     rw [hctl] at hc
     exact absurd hc (by simp)

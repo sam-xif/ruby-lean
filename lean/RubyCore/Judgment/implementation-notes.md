@@ -348,3 +348,26 @@ axiom-clean, **no checker in the statement**. `tableOk_declsOkJ` converts the bo
 table's witness (its user arm refuted by walking `baseDecls`), and `egIf` is
 re-certified end-to-end from a seven-line hand derivation — the first program whose
 safety theorem goes through the judgment layer.
+
+## J22 — sends machine-typed: dispatch through the `VTy`→`ValueTy` boundary
+
+The fragment (J20) grows `self'`, `vcall`, and block-less sends (explicit and
+implicit receiver, any arity) — with two shape gates: no `call`-named explicit send
+(the arrow eliminator, J19's bill) and no `splat`/`kwargs`/`fwd` argument (their
+own kont path; the shape facts are read *off `MFrag`* where the old proof read them
+off `infer`'s refusal). `KontOkJ` gains `recvK`/`recvK0`/`argsK`/`frameK`;
+`argsK` stores `VTy`/`VTys` facts, so `heap_congr'` gains its first real content.
+
+The dispatch boundary is one lemma: **`sigOf` answers only at ground receiver
+types** (`sigOf_ground` — `tyClassNames` is `[]` at unions and arrows, and a
+nilable's payload is pinned by its own row), so `sigOf_vty_atomic` collapses the
+widened receiver judgment back to `ValueTy` and `entry_dispatch`/`user_dispatch`
+are consumed **unchanged**. Argument lists convert by `VTys.toValuesTy` under a new
+sixth `DeclsOkJ` conjunct — declared parameters are ground — which is heap-free
+(rides every transport untouched) and honest: a union-parameter row is
+unwitnessable by a `ValueTy`-based conformance anyway. The user arm's dispatch
+pushes the activation with the body's `Judge` derivation and `MFrag` fact carried
+by `UserConformsJ`, and `frameK`'s return agreement is `SubJ`-shaped.
+
+`egZero` (`(1 + 2).zero?`) is certified end to end — the first builtin dispatch
+through the judgment layer, axiom-clean.

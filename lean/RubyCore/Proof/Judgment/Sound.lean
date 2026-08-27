@@ -114,10 +114,57 @@ the conversion never meets the user arm. Stated as a lemma about the old
 conclusion rather than a re-derivation, because the old proof's per-row content
 (the `entryOk_int` witnesses) is arm-specific already. -/
 
+/-- Every `baseDecls` row's parameters are ground — by walking the literal. -/
+theorem declFor_baseDecls_ground {τr : Ty} {mname : String} {d : MethodDecl}
+    (h : declFor baseDecls τr mname = some d) :
+    ∀ p ∈ d.params, groundTy p = true := by
+  have hshape : d.params = [Ty.int] ∨ d.params = [] := by
+    unfold declFor at h
+    cases htn : tyClassNames τr with
+    | nil => rw [htn] at h; exact absurd h (by simp)
+    | cons c cs =>
+      rw [htn] at h
+      cases hdo : declOf? baseDecls c mname with
+      | none => simp only [hdo] at h; exact absurd h (by simp)
+      | some d0 =>
+        simp only [hdo] at h
+        have hd0 : d0 = d := by
+          by_cases hall : cs.all (fun c' => declOf? baseDecls c' mname == some d0) = true
+          · simp only [hall, if_true, Option.some.injEq] at h
+            exact h
+          · simp only [hall, Bool.false_eq_true, if_false] at h
+            exact absurd h (by simp)
+        subst hd0
+        unfold declOf? at hdo
+        simp only [Option.map_eq_some_iff] at hdo
+        obtain ⟨e, he, hed⟩ := hdo
+        have hmem := List.mem_of_find?_eq_some he
+        unfold declsFor at hmem
+        cases hf : baseDecls.rows.find? (·.1 == c) with
+        | none => rw [hf] at hmem; simp at hmem
+        | some pr =>
+          rw [hf] at hmem
+          have hpr := List.mem_of_find?_eq_some hf
+          have hpr' : pr = ("Integer",
+              [("+", { params := [Ty.int], ret := Ty.int }),
+               ("-", { params := [Ty.int], ret := Ty.int }),
+               ("*", { params := [Ty.int], ret := Ty.int }),
+               ("zero?", { params := [], ret := Ty.bool })]) := by
+            simpa [baseDecls] using hpr
+          rw [hpr'] at hmem
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+          rcases hmem with rfl | rfl | rfl | rfl <;> (rw [← hed]; simp)
+  rcases hshape with hp | hp <;> rw [hp] <;> intro p hpm
+  · simp only [List.mem_singleton] at hpm
+    subst hpm
+    rfl
+  · simp at hpm
+
 theorem tableOk_declsOkJ {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
     DeclsOkJ baseDecls h := by
   have hd := tableOk_declsOk ht hcls
-  refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2⟩
+  refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2,
+    fun τr mname d hdecl => declFor_baseDecls_ground hdecl⟩
   intro τr mname d hdecl
   rcases hd.1 τr mname d hdecl with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
   · exact Or.inl hb
@@ -170,6 +217,23 @@ theorem egIf_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egIf) r → ¬ typeStuck r :=
   judge_sound declsOkJ_declsOf egIf_mfrag egIf_judged
 
+/-- **The first send certified through the judgment layer**: `(1 + 2).zero?`
+    (`StaticSoundness.lean`'s `egZero`), its derivation reading two `baseDecls`
+    rows — a builtin dispatch end to end. -/
+theorem egZero_judged : Judge (declsOf Static.egZero) [] Static.egZero true topJCtx
+    .bool [] (declsOf Static.egZero) := by
+  have hplus : sigOf (declsOf Static.egZero) .int "+" = some ([.int], .int) := by decide
+  have hzero : sigOf (declsOf Static.egZero) .int "zero?" = some ([], .bool) := by decide
+  exact .send (.expl (.send (.expl .int) (.cons .int .nil) hplus
+    (.cons (SubJ.refl _) .nil))) .nil hzero .nil
+
+theorem egZero_mfrag : MFrag Static.egZero :=
+  mfragB_sound (n := 8) (by decide)
+
+theorem egZero_judge_safe :
+    ∀ r, ReachableResult (Machine.init Static.egZero) r → ¬ typeStuck r :=
+  judge_sound declsOkJ_declsOf egZero_mfrag egZero_judged
+
 /-! ## Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Judgment.judge_sound' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -179,6 +243,10 @@ theorem egIf_judge_safe :
 /-- info: 'RubyCore.Proof.Judgment.egIf_judge_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms egIf_judge_safe
+
+/-- info: 'RubyCore.Proof.Judgment.egZero_judge_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egZero_judge_safe
 
 end Judgment
 end Proof

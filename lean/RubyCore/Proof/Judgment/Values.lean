@@ -186,6 +186,13 @@ theorem VTys.congr {h h' : Heap} (ha : TypeAgree h h') : ∀ {vs : List Value}
   | [], _ :: _, hv => absurd hv (by simp [VTys])
   | _ :: _, [], hv => absurd hv (by simp [VTys])
 
+theorem VTys.snoc {h : Heap} : ∀ {vs : List Value} {τs : List Ty} {v : Value} {τ : Ty},
+    VTys h vs τs → VTy h v τ → VTys h (vs ++ [v]) (τs ++ [τ])
+  | [], [], _, _, _, hv => ⟨hv, trivial⟩
+  | _ :: _, _ :: _, _, _, hvs, hv => ⟨hvs.1, VTys.snoc hvs.2 hv⟩
+  | [], _ :: _, _, _, hvs, _ => absurd hvs (by simp [VTys])
+  | _ :: _, [], _, _, hvs, _ => absurd hvs (by simp [VTys])
+
 /-- The bridge back for argument lists: below ground parameter types, `VTys` *is*
     `ValuesTy` — which is what lets `entry_dispatch` be reused unchanged. -/
 theorem VTys.toValuesTy {h : Heap} : ∀ {vs : List Value} {τs : List Ty},

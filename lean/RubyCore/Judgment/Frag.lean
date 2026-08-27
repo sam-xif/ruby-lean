@@ -45,6 +45,17 @@ inductive MFrag : Expr → Prop where
   | ifNone {cond t} : (∀ x, cond ≠ .var .lvar x) →
       MFrag cond → MFrag t → MFrag (.if' cond t none)
   | while' {c b} : MFrag c → MFrag b → MFrag (.while' c b)
+  -- J22: sends. Block-less only (`blk = none` in the stored shape), and an explicit
+  -- send named `call` stays out — `Judge.sendCall` eliminates arrows, and no
+  -- machine-typed value witnesses one (J19). Argument shapes that take their own
+  -- kont path (`splat`/`kwargs`/`fwd`) are excluded by having no constructor here,
+  -- which is what lets the dispatch cases prove `startArgs` takes the plain branch.
+  | self' : MFrag .self'
+  | vcall {mname} : MFrag (.vcall mname)
+  | send {r mname args} : mname ≠ "call" →
+      MFrag r → (∀ a ∈ args, MFrag a) → MFrag (.send (some r) mname args none)
+  | sendImplicit {mname args} :
+      (∀ a ∈ args, MFrag a) → MFrag (.send none mname args none)
 
 /-- The `Bool` form, on fuel (the L73 discipline: the J2 checker runs it under
     `decide`, so it must kernel-reduce; a nested-list structural recursion would
@@ -62,6 +73,11 @@ def mfragB : Nat → Expr → Bool
       mfragB n cond && mfragB n t &&
       (match els with | some e' => mfragB n e' | none => true)
     | .while' c b => mfragB n c && mfragB n b
+    | .self' => true
+    | .vcall _ => true
+    | .send (some r) mname args none =>
+      (mname != "call") && mfragB n r && args.all (mfragB n)
+    | .send none _ args none => args.all (mfragB n)
     | _ => false
 
 theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e := by
@@ -96,5 +112,13 @@ theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e :
     | .while' c b =>
       simp only [mfragB, Bool.and_eq_true] at h
       exact .while' (ih h.1) (ih h.2)
+    | .self' => exact .self'
+    | .vcall _ => exact .vcall
+    | .send (some r) mname args none =>
+      simp only [mfragB, Bool.and_eq_true, bne_iff_ne, ne_eq, List.all_eq_true] at h
+      exact .send h.1.1 (ih h.1.2) fun a ha => ih (h.2 a ha)
+    | .send none mname args none =>
+      simp only [mfragB, List.all_eq_true] at h
+      exact .sendImplicit fun a ha => ih (h a ha)
 
 end RubyCore.Judgment

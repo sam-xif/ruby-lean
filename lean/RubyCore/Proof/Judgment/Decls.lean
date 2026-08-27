@@ -69,7 +69,14 @@ def DeclsOkJ (D : Decls) (h : Heap) : Prop :=
   (∀ n τ, constTy? D n = some τ → ConstOk h n τ) ∧
   (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ) ∧
   (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h c n τ) ∧
-  (∀ c n d, superDecl? D c n = some d → SuperOk h c n d)
+  (∀ c n d, superDecl? D c n = some d → SuperOk h c n d) ∧
+  -- **The rows' parameters are ground** (J22) — heap-free, so it rides every
+  -- transport untouched. The dispatch cases convert their `VTys` argument facts
+  -- back to the `ValuesTy` the old conformance witnesses consume
+  -- (`VTys.toValuesTy`), and groundness of the declared parameters is exactly the
+  -- side condition; a certificate row with a union parameter is unwitnessable by a
+  -- `ValueTy`-based conformance anyway, so nothing expressible is lost.
+  (∀ τr mname d, declFor D τr mname = some d → ∀ p ∈ d.params, groundTy p = true)
 
 /-- **The J-table invariant survives an allocating step** — `DeclsOk_grow` with the
     user arm's conformance passing straight through (`UserConformsJ` mentions no
@@ -79,7 +86,8 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
   refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
     fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
-    fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2 c nn dd hn)⟩
+    fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
+    hd.2.2.2.2.2⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩

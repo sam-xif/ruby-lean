@@ -225,6 +225,14 @@ theorem SubJs.length : ∀ {a b : List Ty}, SubJs a b → a.length = b.length
   | [], [], .nil => rfl
   | _ :: _, _ :: _, .cons _ hs => by simp [SubJs.length hs]
 
+theorem SubJs.nil_inv {ps : List Ty} (h : SubJs [] ps) : ps = [] := by
+  cases h; rfl
+
+theorem SubJs.cons_inv {σ : Ty} {σs ps : List Ty} (h : SubJs (σ :: σs) ps) :
+    ∃ τp psrest, ps = τp :: psrest ∧ SubJ σ τp ∧ SubJs σs psrest := by
+  cases h with
+  | cons h1 h2 => exact ⟨_, _, rfl, h1, h2⟩
+
 /-! ## The algorithmic form, on fuel
 
 `Deriv.check` (J2) needs a `Bool` that kernel-reduces (norm 5), so the recursion is
