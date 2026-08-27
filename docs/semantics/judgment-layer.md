@@ -690,3 +690,47 @@ lemmas about existing machinery land *there* with L-numbers, never forked.
    grades (`SemJudgeUpTo n`, trace-grade, per-instantiation) must be distinct
    *types of claim* the checker refuses to compose as the unbounded judgment, so
    the gap is unrepresentable rather than merely discouraged.
+
+## 9. The H-layer (J36, 2026-08-27): denotations as types, and the Iris seat
+
+The sibling branch `mdd/ruby-sorbet` (Mike's Sorbet-lean spike, verdict GO)
+validated two things this layer wanted: a **semantic type denotation** over the
+machine's own `isA` (`STy.den : Heap → Value → Prop`), and **iris-lean seated
+over `stepFn` unmodified** — a `Language` instance, whole-heap `ownP`
+ownership, WP proofs by machine walk, and adequacy landing on `Interp.run`.
+J36 brings both in-tree (`lean/RubyCore/HJudge/`, own lake target, toolchain
+4.32.2 — the sibling's G0 fact, re-verified against SUT/Judgment/Metatheory)
+and composes them with §1–§8's spine rather than beside it:
+
+* **`HTy`** is `STy` + `union` + `sem (P : Heap → Value → Prop)`. The nominal
+  core stays first-order and certificate-transportable (§1.7's dividend
+  intact); `sem` is the priced, explicit higher-order door — behavioral duck
+  types today (`HTy.duck`, a `lookup` fact, so `define_method` moves values
+  *into* the type), heaplet/cell refinements later (the gen_heap swap named in
+  `StateInterp.lean` replaces the *lifting*, §1.5's terms, not the content).
+  Subtyping is denotation inclusion (`HSub`) — the syntactic `SubJ` becomes an
+  untrusted emitter's concern, not a trusted relation.
+* **`HSemJudge` follows the J30 formula verbatim**: `SemJudge` with the
+  done-arm's `VTy` replaced by `τh.den` at the final heap, over the same
+  `Conformant` states and the same reachability ground truth. `vty_hden`
+  bridges (`HTy.ofTy?`'s domain; `nilable`/`union` inversions by induction on
+  `SubJ`; `cls`-by-name/`arrayOf`/arrows are named bills).
+* **`HJudge`'s constructors are the admission routes** — `ofJudge` (the whole
+  first-order pipeline, J31/J35 leaves included), `sem` (direct semantic
+  proof), `wp` (an Iris WP per conformant state), `sub` (subsumption) — and
+  `hJudge_semJudge` is its fundamental lemma, so `hJudge_sound` /
+  `hJudge_result_den` restate `semJudge_sound`/`judge_result_vty` one rung up,
+  axiom-clean. The seam between the two ground truths is one new lemma
+  (`run_lift_of_reaches`: a reachable terminal is a finite-fuel run), which
+  re-lands the seat's adequacy on `ReachableResult`.
+* **What the denotation buys, exhibited**: `true : TrueClass` in every
+  environment (`Ty.bool` cannot split its union) by a two-step abstract walk;
+  `(1).zero? : FalseClass` by a concrete `rb_walk` from boot; the J35
+  `define_method` program's result as the machine's `is_a?` **at the mutated
+  final heap**. §1.8's admission discipline applies to `wp`/`sem` leaves
+  unchanged — a WP per conformant state IS a Π-discharge, which is why the
+  `tru` pilot's walk works from an *arbitrary* conformant state and a
+  concrete-boot walk lands only closed program-level facts.
+
+The J-numbers and named bills continue in
+`lean/RubyCore/Judgment/implementation-notes.md` (J36).

@@ -771,3 +771,60 @@ consumed the certificate. Named bills unchanged from J31 (wider positions, JSON
 claim transport, multi-step constructs), plus: `reqCls` names a class, not a
 module/eigenclass position; rows land on reopenable boot classes only (a
 program-defined class has no `TyClass` witness to dispatch from).
+
+## J36 — the H-layer: `HTy` denotations, `HJudge`, and the iris-lean seat
+
+Brought over from the sibling branch `mdd/ruby-sorbet` (spike verdict GO) and
+built on: a **semantic type denotation** and a judgment over it, with iris-lean
+in the dependency graph and seated over the machine exactly as the sibling's
+`mdd/sorbet-lean/` does. All new code in `RubyCore/HJudge/` (own lake lib
+target, `lake build HJudge`); no existing file changed except the toolchain
+pins (Lean 4.32.2 — the sibling's G0 fact, re-verified: SUT + Judgment +
+Metatheory green under it).
+
+* **`HTy`** (`HJudge/HTy.lean`): the sibling's `STy` grammar
+  (`untyped`/`nilTy`/`cls (c : ObjId)`/`nilable`, `den : HTy → Heap → Value →
+  Prop` over the machine's own `isA`), plus `union` (`Ty.bool` denotes
+  `TrueClass ∪ FalseClass`) and **`sem (P : Heap → Value → Prop)` — the
+  higher-order door**: behavioral duck types today (`HTy.duck`, via `lookup`),
+  heaplet/cell refinements later (the gen_heap upgrade path noted in
+  `StateInterp.lean`). `HSub` is denotation inclusion — semantic subtyping,
+  no syntactic relation to trust. Denotation intros are **heap-generic**
+  (`self_mem_ancestors`: `k ∈ ancestors h k` at every heap), where the
+  sibling's were boot-pinned by `decide` — needed because the judgment speaks
+  about final heaps of arbitrary conformant runs.
+* **`HSemJudge`** (`HJudge/Sem.lean`): `SemJudge` with `VTy` replaced by
+  `τh.den` at the final heap — same `Conformant` set, same reachability
+  ground truth. The bridge `vty_hden` covers `HTy.ofTy?`'s domain; its
+  content is `VTy` inversions at `nilable`/`union` by induction on the
+  `SubJ` derivation. `cls`-by-name/`arrayOf`/arrows are named bills.
+* **`HJudge`** (`HJudge/Judge.lean`): four admission routes — `ofJudge`
+  (a `Judge` derivation bridged; J31/J35 semantic-axiom leaves ride along),
+  `sem` (a direct `HSemJudge` — the J30 extension point at denotations),
+  `wp` (an Iris WP per conformant state over the seat), `sub` (subsumption).
+  `hJudge_semJudge` is the fundamental lemma; `hJudge_sound` /
+  `hJudge_result_den` are `semJudge_sound`/`judge_result_vty` one rung up.
+  New metatheory: `run_lift_of_reaches` (a reachable terminal is a
+  finite-fuel run), so the seat's `run_adequate_of_wp` re-lands on
+  `ReachableResult` (`wp_machine_sound`). Axiom-clean, guarded.
+* **The seat** (`HJudge/Lang.lean`/`StateInterp`/`Rules`/`Walk`/`Eval`/
+  `EvalSet`/`Adequacy`): ported from `mdd/sorbet-lean/SorbetLean/*` with the
+  namespace renamed and the restated type-error predicates collapsed onto
+  `Proof.TypeSafety`'s (the sibling's `ParityProbe` becomes `Iff.rfl`).
+* **Worked ends** (`HJudge/Examples.lean`), one per route, each past `Ty`'s
+  reach: `egIf`/`egZero`/`egSem`/`railsE` at denotations (result = the
+  machine's `is_a?` at the final heap — for `railsE`, a heap holding the
+  `define_method`-installed row); `true : TrueClass` in **every** environment
+  by a two-step abstract walk through `HJudge.wp` (`Ty.bool` cannot split its
+  union); `(1).zero? : FalseClass` by a concrete `rb_walk` from boot, landed
+  on `ReachableResult`; duck membership decided at the boot heap.
+
+Named bills: the `cls`-by-name bridge (needs a name→id conformance clause at
+the final heap); `HJudge` structural rules (`seq`/`if` composition — today the
+syntactic route via `ofJudge` is the composition story, which is honest: the
+H-layer adds admission and denotation, not a second preservation mountain);
+the WP←invariant converse (Löb induction — would let `ofJudge` facts become
+WPs; soundness needs only the direction proved); behavioral method content in
+`duck` (the §1.9 flip condition); elaboration cost of concrete walks (~8 min
+for one dispatch-crossing program — the sibling's caveat 1 reproduced; their
+verified-verifier plan is the recorded fix).
