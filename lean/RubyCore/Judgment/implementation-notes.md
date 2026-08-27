@@ -1138,3 +1138,24 @@ Underneath, W2c still owes the mechanical layer: `ClsGrow` (old `get`s pinned,
 suite (`ancestors`/`lookup`/`className`/`ValueTy`/`VTy`/`FramesOkJ`/`StackCtx`/
 `KontOkJ`/`DeclsOkJ` at old ids), an `EigenSet`-at-fresh mini-relation, and the
 composite `module'` case = `ClsGrow ∘ constSetIn ∘ ClsGrow ∘ EigenSet ∘ push`.
+
+## J43d–f (built) — the `ClsGrow` congruence stack
+
+Three files, all green and audited: `Proof/ClsCongr.lean` (`ClsGrow` — old
+`get`s pinned, nothing promised about fresh ids; the fuel-matched
+`ancestors`/`modAncestors` congruences at old ids, with `Saturated` lining the
+two heaps' fuels up, and `ancestors_mem_lt` — the walk-closure `ChainsIn`
+promises); `Proof/Static/ClsValues.lean` (`plainRecv`/`classRecv`/`valueTy?`/
+`ValueTy`/`lookup`/`lookupIn`/`crubyShadow`/`constOwn`/`constLookupFrom` at old
+ids — the bounds coming out of each clause's own size tests); and
+`Proof/Judgment/ClsInv.lean` (`VTy`/`VTys`/`FrameConformsJ`/`FramesOkJ`/
+`GlobalsOk`/`StackCtx`/`KontOkJ` — the last mirroring `heap_congr'`'s
+constructor walk, `argsK` the only heap-fact carrier, and the `StackCtx` chain
+half's bound coming from `classOf_lt_of_mem_ancestors`, "membership *is* the
+bound").
+
+What the `module'` case still owes on top: the declared-modules channel (J43c),
+the fresh-side facts of the composite heap (NoHook/Saturated/ClassOk/ChainsIn
+at `alloc module ∘ constSetIn ∘ alloc eigenclass ∘ eigen-set`, where the fresh
+chains are literals), `DeclsOkJ` across the composite (old rows via
+`ClsGrow`-versions of the `EntryOkJ` transports), and the eval case itself.
