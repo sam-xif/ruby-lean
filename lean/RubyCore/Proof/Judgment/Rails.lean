@@ -341,6 +341,104 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
     exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
       KontOkJ.heap_congr hag₂ hk⟩
 
+/-! ## The sample program, end to end
+
+    class String
+      define_method(:shout) { 1 }
+    end
+    "a".shout
+-/
+
+/-- The program: reopen `String`, generate `shout` reflectively, dispatch on it. -/
+def railsE : Expr :=
+  .seq [.class' "String" none (.seq [dmE]),
+        .send (some (.str "a")) "shout" [] none]
+
+/-- The class-body context the claim is judged in. -/
+def stringBodyCtx : JCtx := { cls := "String", inClassBody := true }
+
+/-- The claim's `reqCls` gate, discharged at `stringBodyCtx`. -/
+theorem dmClaim_reqCls : ∀ cn, dmClaim.reqCls = some cn →
+    stringBodyCtx.cls = cn ∧ stringBodyCtx.inClassBody = true ∧
+      stringBodyCtx.inBlock = false := by
+  intro cn hcn
+  simp only [dmClaim, Option.some.injEq] at hcn
+  exact ⟨hcn, rfl, rfl⟩
+
+theorem dmClaim_fresh : ∀ r ∈ dmClaim.rows, declaresName (declsOf railsE) r.2.1 = false := by
+  intro r hr
+  simp only [dmClaim, List.mem_singleton] at hr
+  subst hr
+  decide
+
+/-- **The derivation**: the `define_method` statement enters as the `semantic`
+    leaf inside the reopened class body, threads the claimed row out through
+    `classTop`, and the final dispatch reads that row off the table. -/
+theorem railsE_judged : Judge [dmClaim] (declsOf railsE) [] railsE true topJCtx
+    .int [] (addRows (declsOf railsE) dmClaim.rows) := by
+  refine .seq (.cons (τ₁ := .sym) (Γ₁ := [])
+    (D₁ := addRows (declsOf railsE) dmClaim.rows)
+    (.classTop (τ := .sym) (Γb' := []) (by decide) ?_) (.single ?_))
+  · exact .seq (.single
+      (.semantic (cl := dmClaim) (by simp) (by decide) dmClaim_reqCls dmClaim_fresh
+        (Or.inr rfl))
+      (hcpl := fun _ => ⟨dmClaim, by simp, rfl, rfl, rfl, rfl, Or.inr rfl,
+        dmClaim_reqCls, dmClaim_fresh⟩))
+  · exact .send (.expl .str) .nil (by decide) .nil
+
+theorem railsE_mfrag : MFrag [dmClaim] railsE :=
+  mfragB_sound (A := [dmClaim]) (n := 12) (by decide)
+
+/-- **The pilot, hand-derivation route**: type safety of a program whose method
+    exists only because a `define_method` ran — via the discharged obligation. -/
+theorem railsE_safe :
+    ∀ r, ReachableResult (Machine.init railsE) r → ¬ typeStuck r :=
+  judge_sound semAxiomsOk_dm declsOkJ_declsOf railsE_mfrag (by decide) railsE_judged
+
+/-- …and the dispatch's *result* is an `Integer` — the generated method's row,
+    trusted because it was executed (J29/J30). -/
+theorem railsE_result_int :
+    ∀ v mf, ReachableResult (Machine.init railsE) (.done v mf) → VTy mf.heap v .int :=
+  judge_result_vty semAxiomsOk_dm declsOkJ_declsOf railsE_mfrag (by decide) railsE_judged
+
+/-! ## The same, from a data certificate -/
+
+/-- The certificate: the claim in `semAssumes`, the `semantic 0` node at the
+    statement position inside `classTop`, the send checked against the claimed
+    row. -/
+def railsJCert : JCert :=
+  { semAssumes := [dmClaim],
+    deriv := .seq (.cons (.classTop (.seq (.single (.semantic 0))))
+      (.single (.send (.expl .str) .nil))) }
+
+theorem railsJCert_validates : validateJ railsJCert railsE 12 = true := by decide
+
+/-- **The pilot, certificate route**: the kernel replays the derivation by
+    `decide`; the one honest hypothesis is the claim's obligation, discharged
+    above by executing the semantics. -/
+theorem railsE_data_certified :
+    ∀ r, ReachableResult (Machine.init railsE) r → ¬ typeStuck r :=
+  validateJ_certifies semAxiomsOk_dm railsJCert_validates
+    (fun r hm => by simp [railsJCert] at hm)
+
+/-! ## Axiom hygiene -/
+
+/-- info: 'RubyCore.Proof.Judgment.semAxiomsOk_dm' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms semAxiomsOk_dm
+
+/-- info: 'RubyCore.Proof.Judgment.railsE_safe' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms railsE_safe
+
+/-- info: 'RubyCore.Proof.Judgment.railsE_result_int' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms railsE_result_int
+
+/-- info: 'RubyCore.Proof.Judgment.railsE_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms railsE_data_certified
+
 end Judgment
 end Proof
 end RubyCore

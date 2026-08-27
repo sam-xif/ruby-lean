@@ -656,3 +656,118 @@ Lean-side data until an `Expr` encoder mirroring the harness export format exist
 step, so constructs with *internal* continuations still need their `KontOkJ`
 vocabulary first — the semantic route removes the type-system obstacle, not the
 machine-coverage one; risk 4 stands).
+
+## J32 — claim records: semantic claims at a claimed type, with claimed rows
+
+`SemClaim` replaces the bare-`Expr` claim carrier: `{e, τ := .any, rows := [],
+reqCls := none}`. A claim now concludes at **its own type** (`cl.τ`, not `.any`),
+and may carry **claimed rows** — `(class, method, MethodDecl)` triples folded into
+the table by `addRows`, exactly as `defPromote` threads a `def`'s row. That is the
+shape Rails-style metaprogramming needs: `define_method(:shout) { 1 }` is worth
+claiming only if the claim *gives the table the row the later dispatch reads*.
+
+The bill, paid in the same three places J31 named:
+
+1. **`Judge.semantic`** concludes at `cl.τ` / `addRows D cl.rows`, with two new
+   premises: **rows-freshness** (`∀ r ∈ cl.rows, declaresName D r.2.1 = false` —
+   an installed row must not collide with a declared one, or `DeclsOkJ_addRow_here`
+   is unusable) and the **rows/method disjunct** (`cl.rows = [] ∨ ctx.meth = none`
+   — a row-bearing claim is a *toplevel/class-body* statement; inside a method body
+   `judge_mono` must rebuild the derivation at a grown table, and a row-install
+   there would not commute).
+2. **`JudgeSeq` couplings** pin the full record (`τ₁ = cl.τ`, `D₁ = addRows …`,
+   the disjunct, `reqCls`, freshness) instead of the J31 canonical triple.
+3. **`SemAxiomsOk`** obliges `EvalOkAt … cl.τ … (addRows D cl.rows)` — the
+   step must deliver a value of the claimed type *and re-establish the invariant
+   at the grown table*, quantified over every table satisfying the freshness
+   premise.
+
+`judge_mono` survives because a claimed statement inside a method body has
+`cl.rows = []` by the disjunct, so `addRows` is the identity and the rebuild is
+J31's.
+
+## J33 — `define_method` made typing-visible: capture erasure + one-step composition
+
+Two **semantics** changes (both observation-preserving, ratchet-verified: 992
+agree, 0 disagree), each removing one obstacle between `tryReflect`'s installed
+`MethodDef` and the invariant's `ResolvesUser` vocabulary:
+
+1. **Capture erasure for closed bodies.** `tryReflect`'s `define_method` installs
+   `capturedFrame := none` when `localFreeB 1000000 cl.body` — a body that can
+   never read or write a local never consults the captured chain, so dropping the
+   pointer is unobservable, and it is what lets `ResolvesUser` (whose heap-only
+   vocabulary cannot validate frame pointers: `capturedFrame = none` is a clause)
+   cover generated methods. `localFreeB` is deliberately conservative: any
+   local-variable node, block params/locals, `block_given?`/`binding`/
+   `local_variables`/`iterator?`, `yield`, `defined?` all refuse (the frame-
+   sensitive-callee list is what the `test_method_204` ratchet disagreement
+   taught). Open bodies keep their capture byte-for-byte.
+2. **One-step composition.** `evalExpr` on the *blockless-send spine* arm
+   `.send none "define_method" [.sym nm] (some (.block ps ls body))` goes straight
+   to `finishSend m self .implicit … (.lit ps ls body)` — the block reification
+   and the dispatch in **one step**, so a claim's `EvalOkAt` obligation (which
+   must re-establish `InvJ` after *one* `evalExpr`) can cover it without new
+   `KontOkJ` vocabulary for the two-step mid-state. The arm scrutinizes the block
+   **first**, so blockless sends still reduce with symbolic name/args (the old
+   spine's example reductions were the regression risk; explicit ≠-guards, not
+   `hookFreeNames.contains`, keep them reducing).
+
+## J34 — the invariant learns what a class body is
+
+Three additions, each one clause the `define_method` obligation reads:
+
+* **`FrameCtx.inClassBody`** (default `false`) + the `StackCtx` clause: in a
+  class-body frame outside a block, **`self` is the class object being defined**
+  (`(frames.getD fid default).self = .ref (….defmod)`). `Judge.classTop` judges
+  its body at `{cls := name, inClassBody := true}`; `methodCtx` resets it. This is
+  the fact that turns the claim's implicit-receiver send into a dispatch *on the
+  class* — without it the invariant simply could not say who `self` is.
+* **`NoHook` extended over `hookFreeNames = ["method_added", "define_method"]`**:
+  no class in the heap defines either name, so a `define_method` send *always*
+  reaches `tryReflect` rather than a user override (the same argument
+  `method_added` already needed, at the new name). Def-guards extended with
+  explicit ≠-pairs everywhere.
+* **`reqCls`** on `SemClaim` (spec half of J35's gate): a claim may demand
+  `ctx.cls = cn ∧ ctx.inClassBody ∧ ¬ctx.inBlock`, delivered to the obligation as
+  a hypothesis and enforced by `Judge.semantic` / the couplings / `reqClsOkB` in
+  the checker.
+
+## J35 — the Rails pilot: `define_method`, claimed, discharged, dispatched
+
+**The goal program** (`Proof/Judgment/Rails.lean`):
+
+    class String
+      define_method(:shout) { 1 }
+    end
+    "a".shout
+
+typed at `.int` — the dispatch reads a row that exists only because a
+`define_method` ran. The claim `dmClaim = {e := define_method(:shout){1},
+τ := .sym, rows := [("String","shout",() → Integer)], reqCls := some "String"}`.
+
+**The obligation, discharged by executing the semantics** (`semAxiomsOk_dm`):
+`evalExpr_dm` reduces the claimed statement to **one equation** — reify the block
+(a `PlainGrow` allocation), walk `invoke → invokeDispatch → dispatchMiss →
+tryReflect` (the lookup *miss* is J34's `NoHook` clause; the receiver's identity
+is J34's class-body-self clause; the classPayload gate is the frame's own
+`StackCtx` head), install the method (capture erased: the body is closed), deliver
+`.sym "shout"`. `InvJ` is re-established at the grown table by `defPromote`'s
+preservation argument, scavenged: `DeclsOkJ_addRow_here` over
+`DeclsOkJ_defineMethod`, `lookup_go_defineMethod_self` for resolution,
+`UserConformsJ` with the body judged by one `Judge.int`, and the reification's
+`PlainGrow` transport composed in front (`typeAgree_trans`, local to the file —
+first two-write step).
+
+**Composed both ways**, axiom-clean: `railsE_safe`/`railsE_result_int` (hand
+derivation — the `.semantic` leaf inside `classTop`'s body, the send checked
+against the claimed row) and `railsE_data_certified` (data certificate
+`railsJCert`, `semAssumes := [dmClaim]`, `Deriv.semantic 0` at the statement
+position, `validateJ` replayed by one `decide`).
+
+What this demonstrates: **the semantic-claim mechanism covers real metaprogramming
+at real types with real table effects** — the type system never saw a rule for
+`define_method`; the *machine* certified it, once, and the syntactic pipeline
+consumed the certificate. Named bills unchanged from J31 (wider positions, JSON
+claim transport, multi-step constructs), plus: `reqCls` names a class, not a
+module/eigenclass position; rows land on reopenable boot classes only (a
+program-defined class has no `TyClass` witness to dispatch from).

@@ -59,6 +59,7 @@ import RubyCore.Proof.Cert.Ledger
 import RubyCore.Proof.Judgment.Cert
 import RubyCore.Proof.Judgment.Sem
 import RubyCore.Proof.Judgment.SemAxiom
+import RubyCore.Proof.Judgment.Rails
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_result_sound
 #print axioms RubyCore.Proof.invariant_sound_from
@@ -101,6 +102,15 @@ import RubyCore.Proof.Judgment.SemAxiom
 #print axioms RubyCore.Proof.Judgment.semAxiomsOk_lam
 #print axioms RubyCore.Proof.Judgment.egSem_semantic_safe
 #print axioms RubyCore.Proof.Judgment.egSem_data_certified
+-- J32–J35 — the Rails pilot: `semAxiomsOk_dm` discharges the row-bearing
+-- `define_method` claim by executing the semantics (one step: reify, dispatch,
+-- install, deliver); `railsE_safe`/`railsE_result_int`/`railsE_data_certified`
+-- type-check `class String; define_method(:shout){1}; end; "a".shout` at `.int`
+-- through both the hand-derivation and data-certificate routes.
+#print axioms RubyCore.Proof.Judgment.semAxiomsOk_dm
+#print axioms RubyCore.Proof.Judgment.railsE_safe
+#print axioms RubyCore.Proof.Judgment.railsE_result_int
+#print axioms RubyCore.Proof.Judgment.railsE_data_certified
 -- The assertion language (L165). `denote_declAssn` is the faithfulness theorem —
 -- `⟦declAssn D⟧ h ↔ DeclsOk D h`, both directions — and it is what closes
 -- `assertion-language.md` §9.3's honest weak point for the declaration fragment:

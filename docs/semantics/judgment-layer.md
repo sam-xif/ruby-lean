@@ -22,6 +22,22 @@
 >   `class_hierarchy` shape: reopen, promoted row, user dispatch), and `egNarrow`
 >   (**the DRuby guard-discrimination shape, through the narrowing rules** — §1.4's
 >   flagship, machine-typed by the J27 stored-atom construction).
+> * **The Rails pilot (J32–J35, 2026-08-27)** — semantic claims grown into
+>   **records** (`SemClaim`: claimed type `τ`, claimed **rows**, a `reqCls`
+>   class-body gate), `define_method` made typing-visible by two ratchet-verified
+>   semantics changes (capture erasure for closed bodies; one-step composition of
+>   reify+dispatch), the invariant taught what a class body *is*
+>   (`FrameCtx.inClassBody` + the `StackCtx` self-identity clause; `NoHook` over
+>   `define_method`), and the goal program
+>   `class String; define_method(:shout) { 1 }; end; "a".shout` **type-checked at
+>   `.int`** (`Proof/Judgment/Rails.lean`): the claim's obligation
+>   (`semAxiomsOk_dm`) discharged **by executing the semantics** — one machine
+>   step, `defPromote`'s preservation argument scavenged at the grown table — and
+>   composed through both the hand derivation (`railsE_safe`,
+>   `railsE_result_int`) and a data certificate replayed by one `decide`
+>   (`railsE_data_certified`). The type system never saw a rule for
+>   `define_method`; the machine certified it once, and the syntactic pipeline
+>   consumed the certificate.
 > * **Semantic axioms (J31, 2026-08-27)** — user-specified semantic judgments as
 >   **`Judge` leaves, invoked from the `Deriv` language**: `SemAxioms` (claims =
 >   expressions at the canonical judgment `.any`/env-/table-preserving, gated to
@@ -420,7 +436,7 @@ Sized like the C-ladder: each rung is a commit series with a measurable exit.
 (`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
 arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
-(J18–J31; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
+(J18–J35; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
 typing, J31 semantic axioms — user-supplied semantic judgments as `Judge` leaves,
 Deriv-invocable, pilot delivered).
 
