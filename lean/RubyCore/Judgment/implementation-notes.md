@@ -420,3 +420,32 @@ certified **unconditionally**, axiom-clean: the `egEven_certified` corollary C-1
 was parked on, delivered through the judgment instead of through a `chk` port.
 `check-proofs.sh` audits `judge_sound`, `judge_sound_cert`, `step_okJ`,
 `judge_mono`, and the two worked ends.
+
+## J25 — `Deriv`: the certificate is a derivation, checked by one kernel `Bool`
+
+J2, built (`Judgment/Check.lean`, `Judgment/Json.lean`,
+`Proof/Judgment/Adequacy.lean`). Design points against §4(3) of the design
+artifact:
+
+* **Nodes mirror rules; only choices are fields.** A `Deriv` node records what a
+  checker cannot recompute (join bounds, continuation environments, loop-head
+  stackmaps, declared signatures); the deterministic data (environments, tables)
+  is threaded by `check`, which is fuel-recursive (the L73 discipline — the whole
+  point is that certificate checking is a `decide`) with side conditions as
+  `subJb`/`subEnvB`/`mfragB` reads. `defFree` needed a fuel twin (`defFreeB`) for
+  the same reason — the well-founded original does not kernel-reduce.
+* **Adequacy is one induction** (`check_sound_all`): fuel-induct, case per node,
+  each "split the side conditions, apply the constructor". Two tactic potholes,
+  both now recorded: the C-1 handoff's `absurd h (by simp)` trap re-bitten inside
+  `try` (use `simp at h; done`), and `split at h` walking *into* an inline
+  shape-`match` in an `if` condition — 47 cases instead of 2 — fixed by naming the
+  gate (`notBareLvar`) so the scrutinee is opaque.
+* **The composed pipeline**: `validateJ` (row guards + ground params + fragment
+  gate + checked derivation) and `validateJ_certifies`, with the claimed rows'
+  residue as the one honest hypothesis. `egEven` (claimed row) and `egUserCall`
+  (class body, promoted row, user dispatch — the T5 shape) are certified from
+  **literal certificate data under `decide`**, axiom-clean.
+* **The wire format** (`Judgment/Json.lean`): node kinds mirror constructors;
+  `Ty`/`RowClaim` reuse the C-ladder codecs, so a J-certificate's rows section is
+  byte-compatible with `delta_rows`. Binary `--certify` wiring deliberately waits
+  for an emitter to feed it (the initiative's stated exclusion).

@@ -62,17 +62,6 @@ theorem VTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
 
 /-! ## The ground fragment of the type language, and the bridge back to `ValueTy` -/
 
-/-- Union- and arrow-free — the types on which `VTy` and `ValueTy` coincide, which
-    is every type the *old* spine can mention (receivers `sigOf` reads, declared
-    rows, `valueTy?`'s range). `arrayOf` counts as ground: `subTy` compares it by
-    equality, so nothing decomposes through its element. -/
-def groundTy : Ty → Bool
-  | .union _ _ => false
-  | .arrow0 _ => false
-  | .arrowCons _ _ => false
-  | .nilable s => groundTy s
-  | _ => true
-
 /-- `valueTy?`'s whole range is ground — it answers primitive atoms and class
     names, never a union, arrow, or nilable. -/
 theorem valueTy?_ground {h : Heap} {v : Value} {σ : Ty}

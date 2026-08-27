@@ -233,6 +233,17 @@ theorem SubJs.cons_inv {σ : Ty} {σs ps : List Ty} (h : SubJs (σ :: σs) ps) :
   cases h with
   | cons h1 h2 => exact ⟨_, _, rfl, h1, h2⟩
 
+/-- Union- and arrow-free — the types on which the widened value judgment and the
+    old spine's `ValueTy` coincide (J19), and the groundness the certificate's row
+    parameters must satisfy (J22/J24). `arrayOf` counts as ground: `subTy` compares
+    it by equality, so nothing decomposes through its element. -/
+def groundTy : Ty → Bool
+  | .union _ _ => false
+  | .arrow0 _ => false
+  | .arrowCons _ _ => false
+  | .nilable s => groundTy s
+  | _ => true
+
 /-! ## The algorithmic form, on fuel
 
 `Deriv.check` (J2) needs a `Bool` that kernel-reduces (norm 5), so the recursion is
