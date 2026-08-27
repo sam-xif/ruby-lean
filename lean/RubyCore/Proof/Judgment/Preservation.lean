@@ -73,6 +73,9 @@ def EvalOkAt (ans : Ty) (A : SemAxioms) (D : Decls) (Γ : Env) (e : Expr) (top :
     extension = one lemma of this shape per claimed expression. -/
 def SemAxiomsOk (A : SemAxioms) : Prop :=
   ∀ cl ∈ A, ∀ (ans : Ty) (D : Decls) (Γ : Env) (top : Bool) (c : JCtx),
+    (∀ cn, cl.reqCls = some cn →
+      c.cls = cn ∧ c.inClassBody = true ∧ c.inBlock = false) →
+    (∀ r ∈ cl.rows, declaresName D r.2.1 = false) →
     EvalOkAt ans A D Γ cl.e top c cl.τ Γ (addRows D cl.rows)
 
 /-- The empty axiom set is vacuously discharged — every pre-J31 theorem is the
@@ -251,7 +254,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hfh
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hdisc hfh
+    intro D Γ top ctx cl hmem hff hreq hfr hdisc hfh
     rw [hff] at hfh
     exact Bool.noConfusion hfh
   -- The ten auxiliary relations' constructors: their motives are `True`.
@@ -342,9 +345,9 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       · -- claimed statement in final position: the coupling pins the claim's
         -- judgment, so the continuation's expectation matches the claimed type
         replace hfe : fragHead e1 = false := by simpa using hfe
-        obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc⟩ := hcpl hfe
+        obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc, hreq, hfr⟩ := hcpl hfe
         exact inv_evalSemJ hfs htab hsc hh hsat hstr hcls hbot hks
-          hclA rfl hfe hdisc hsubw hk
+          hclA rfl hfe hdisc hreq hfr hsubw hk
     | @cons _ _ e1 e₂ rest _ _ τ₁ Γ₁ D₁ _ _ _ hj1 hrest hcpl =>
       by_cases hfe : fragHead e1 = true
       · exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
@@ -354,11 +357,11 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       · -- claimed statement mid-sequence: the value is discarded, the rest was
         -- judged at the (coupling-pinned) environment and effected table
         replace hfe : fragHead e1 = false := by simpa using hfe
-        obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc⟩ := hcpl hfe
+        obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hfr⟩ := hcpl hfe
         subst hD₁
         exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
           (by simp [framePopLabels, hks])
-          hclA rfl hfe hdisc (SubJ.refl cl.τ)
+          hclA rfl hfe hdisc hreq hfr (SubJ.refl cl.τ)
           (KontOkJ.seqCons (fun e' he' => hall e' (List.mem_cons_of_mem _ he'))
             hrest hsubw hk)
   -- ## `if`: push the branch kont on the condition.
@@ -1013,15 +1016,15 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
   · -- ## control = eval e — dispatch on the J31 mode
     rw [hctl] at hc
     rcases hc with ⟨hfh, hmf, τ, τw, Γ', D', Γk, hj, hsubw, hsuE, hk⟩ |
-      ⟨cl, hmem, hcle, hfh, hdisc, τw, Γk, hs', hsuE, hk⟩
+      ⟨cl, hmem, hcle, hfh, hdisc, hreq, hfr, τw, Γk, hs', hsuE, hk⟩
     · simp only [stepFn, hctl]
       exact judge_eval_ok hj hfh m Γs τw Γk rfl hfs htab hsc hh hsat hstr hcls hbot hks
         hgl hclo hmf hsubw hsuE hk
     · -- the semantic leaf: the claim's obligation, applied
       simp only [stepFn, hctl]
       subst hcle
-      exact hax cl hmem ans F Γ Γs.isEmpty ctx m Γs τw Γk rfl hfs htab hsc hh hsat hstr
-        hcls hbot hks hgl hclo (.semantic ⟨cl, hmem, rfl⟩ hfh) hs' hsuE hk
+      exact hax cl hmem ans F Γ Γs.isEmpty ctx hreq hfr m Γs τw Γk rfl hfs htab hsc hh
+        hsat hstr hcls hbot hks hgl hclo (.semantic ⟨cl, hmem, rfl⟩ hfh) hs' hsuE hk
   · -- ## control = value v
     rw [hctl] at hc
     obtain ⟨τ, Γk, hv, hsuE, hk⟩ := hc
@@ -1044,10 +1047,10 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             (KontOkJ.seqNil (SubJ.refl _) hk') (hclo := hcloTail hK)
         · -- claimed final statement: the coupling pins the claim's judgment
           replace hfe : fragHead e₁ = false := by simpa using hfe
-          obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc⟩ := hcpl hfe
+          obtain ⟨cl, hclA, rfl, rfl, rfl, rfl, hdisc, hreq, hfr⟩ := hcpl hfe
           exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
             (by simpa [framePopLabels] using hks)
-            hclA rfl hfe hdisc hsw
+            hclA rfl hfe hdisc hreq hfr hsw
             (KontOkJ.seqNil (SubJ.refl _) hk') (hclo := hcloTail hK)
       | cons hj1 hrest hcpl =>
         by_cases hfe : fragHead e₁ = true
@@ -1057,11 +1060,11 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
               hrest hsw hk') (hclo := hcloTail hK)
         · -- claimed mid-sequence statement: value discarded, threading pinned
           replace hfe : fragHead e₁ = false := by simpa using hfe
-          obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc⟩ := hcpl hfe
+          obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hfr⟩ := hcpl hfe
           subst hD₁
           exact inv_pushSemJ hfs htab hsc hh hsat hstr hcls hbot
             (by simpa [framePopLabels] using hks)
-            hclA rfl hfe hdisc (SubJ.refl cl.τ)
+            hclA rfl hfe hdisc hreq hfr (SubJ.refl cl.τ)
             (KontOkJ.seqCons (fun e' he' => hm e' (List.mem_cons_of_mem _ he'))
               hrest hsw hk') (hclo := hcloTail hK)
     | @asgn _ _ _ _ _ _ τw x k _ hib hsw hk' hsu =>

@@ -130,6 +130,12 @@ def notBareLvar : Expr → Bool
 
 mutual
 
+/-- The claim's context condition, decided (J35). -/
+def reqClsOkB (cl : SemClaim) (ctx : JCtx) : Bool :=
+  match cl.reqCls with
+  | some cn => ctx.cls == cn && ctx.inClassBody && !ctx.inBlock
+  | none => true
+
 /-- **The local checker.** `check n A d D Γ e top ctx = some (τ, Γ', D')` reads:
     the derivation `d` establishes `Judge D Γ e top ctx τ Γ' D'`. Fuel decreases
     on every call. -/
@@ -142,7 +148,8 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       match A[i]? with
       | some cl =>
         if exprEqB (n + 1) cl.e e && !fragHead e &&
-            (cl.rows.isEmpty || ctx.meth.isNone) then
+            (cl.rows.isEmpty || ctx.meth.isNone) && reqClsOkB cl ctx &&
+            cl.rows.all (fun r => !(declaresName D r.2.1)) then
           some (cl.τ, Γ, addRows D cl.rows)
         else none
       | none => none

@@ -231,6 +231,12 @@ structure SemClaim where
   e : Expr
   τ : Ty := .any
   rows : List (String × String × MethodDecl) := []
+  /-- **The claim's context condition (J35)**: `some cn` restricts the claim to
+      class-body position in a reopen of `cn` (the `inClassBody`/`inBlock`
+      channels + the class name), which is what pins the implicit receiver to
+      *the class object named `cn`* — the fact the `define_method` obligation
+      reads through `StackCtx`'s J34 clause. `none` = position-free. -/
+  reqCls : Option String := none
 deriving Repr
 
 /-- The semantic axiom set. -/
@@ -266,14 +272,20 @@ inductive JudgeSeq (A : SemAxioms) : Decls → Env → List Expr → Bool → JC
   | single {D Γ e top ctx τ Γ' D'} :
       Judge A D Γ e top ctx τ Γ' D' →
       (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ = cl.τ ∧ Γ' = Γ ∧
-          D' = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) :=
+          D' = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
+          (∀ cn, cl.reqCls = some cn →
+            ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
+          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ [e] top ctx τ Γ' D'
   | cons {D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D'} :
       Judge A D Γ e top ctx τ₁ Γ₁ D₁ →
       JudgeSeq A D₁ Γ₁ (e₂ :: rest) top ctx τ Γ' D' →
       (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ₁ = cl.τ ∧ Γ₁ = Γ ∧
-          D₁ = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) :=
+          D₁ = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
+          (∀ cn, cl.reqCls = some cn →
+            ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
+          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ (e :: e₂ :: rest) top ctx τ Γ' D'
 
@@ -793,6 +805,11 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       J31). -/
   | semantic {D Γ top ctx} {cl : SemClaim} :
       cl ∈ A → fragHead cl.e = false →
+      (∀ cn, cl.reqCls = some cn →
+        ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) →
+      -- claimed rows must be *fresh* (J35, `defPromote`'s `declaresName` guard for
+      -- the same reason: installing over a row in force would silently retarget it)
+      (∀ r ∈ cl.rows, declaresName D r.2.1 = false) →
       -- **The row discipline (J32)**: a row-bearing claim may not sit inside a
       -- method body (`ctx.meth` is `some` exactly there) — method bodies are
       -- `defFree`, `judge_mono` transports them with the table pinned, and a
