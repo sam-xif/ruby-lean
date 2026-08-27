@@ -47,16 +47,19 @@ set_option maxRecDepth 100000
 /-- `lambda { 1 }` — a block-bearing send, out of the fragment (`fragHead` false). -/
 def lamE : Expr := .send none "lambda" [] (some (.block [] [] (.int 1)))
 
+/-- The claim, at the J31 canonical indices (`.any`, no rows). -/
+def lamClaim : SemClaim := { e := lamE }
+
 /-- **The user-supplied semantic lemma**: the claim's `EvalOkAt` obligation,
     discharged by running the machine — a lambda send is one step to a fresh proc
     value, so the invariant is re-established by the heap-growth helper at `.any`. -/
-theorem semAxiomsOk_lam : SemAxiomsOk [lamE] := by
-  intro e he ans D Γ top c
-  simp only [List.mem_singleton] at he
-  subst he
+theorem semAxiomsOk_lam : SemAxiomsOk [lamClaim] := by
+  intro cl hcl ans D Γ top c
+  simp only [List.mem_singleton] at hcl
+  subst hcl
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw
     hsuE hk
-  simp only [lamE, evalExpr, startArgs, finishSend, reifyBlock]
+  simp only [lamClaim, lamE, evalExpr, startArgs, finishSend, reifyBlock]
   exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hks
     (plainGrow_alloc m.heap _ (by simp) rfl) rfl rfl rfl
     (VTy.weaken VTy.any hsubw) hk hgl rfl hsuE hclo
@@ -66,14 +69,14 @@ def egSem : Expr := .seq [.vasgn .lvar "x" (.int 1), lamE, .var .lvar "x"]
 
 /-- The derivation, its middle leaf `Judge.semantic` — no syntactic rule covers
     `lamE`. The `cons` coupling at the leaf is the canonical triple, by `rfl`. -/
-theorem egSem_judged : Judge [lamE] (declsOf egSem) [] egSem true topJCtx
+theorem egSem_judged : Judge [lamClaim] (declsOf egSem) [] egSem true topJCtx
     .int [("x", .int)] (declsOf egSem) := by
   refine .seq (.cons (.vasgnLvar rfl .int) (.cons ?_ (.single (.varLvar (by decide)))
-    (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)))
-  exact .semantic (by simp) (by decide)
+    (hcpl := fun _ => ⟨lamClaim, by simp, rfl, rfl, rfl, rfl, Or.inl rfl⟩)))
+  exact .semantic (cl := lamClaim) (by simp) (by decide) (Or.inl rfl)
 
-theorem egSem_mfrag : MFrag [lamE] egSem :=
-  mfragB_sound (A := [lamE]) (n := 8) (by decide)
+theorem egSem_mfrag : MFrag [lamClaim] egSem :=
+  mfragB_sound (A := [lamClaim]) (n := 8) (by decide)
 
 /-- **The pilot, hand-derivation route**: safety of a program containing an
     out-of-fragment construct, via the discharged semantic axiom. -/
@@ -91,8 +94,8 @@ theorem egSem_result_int :
 /-- The certificate: the claim in `semAssumes`, invoked by the field-free
     `.semantic` node at the statement position. -/
 def egSemJCert : JCert :=
-  { semAssumes := [lamE],
-    deriv := .seq (.cons (.vasgnLvar .int) (.cons .semantic (.single .varLvar))) }
+  { semAssumes := [lamClaim],
+    deriv := .seq (.cons (.vasgnLvar .int) (.cons (.semantic 0) (.single .varLvar))) }
 
 theorem egSemJCert_validates : validateJ egSemJCert egSem 8 = true := by decide
 

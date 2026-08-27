@@ -44,8 +44,8 @@ open RubyCore.Types
 /-- The machine-typed fragment, as an inductive so preservation cases decompose it
     by `cases`. The Boolean form for the certificate checker is `mfragB` below. -/
 inductive MFrag (A : SemAxioms) : Expr → Prop where
-  /-- **The semantic leaf (J31)**: a claimed expression, out-of-fragment head. -/
-  | semantic {e} : e ∈ A → fragHead e = false → MFrag A e
+  /-- **The semantic leaf (J31/J32)**: a claimed expression, out-of-fragment head. -/
+  | semantic {e} : (∃ cl ∈ A, cl.e = e) → fragHead e = false → MFrag A e
   | int {n} : MFrag A (.int n)
   | flt {x} : MFrag A (.flt x)
   | str {s} : MFrag A (.str s)
@@ -106,7 +106,7 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
     expression at an out-of-fragment head **is** a claim. (Every syntactic
     constructor concludes at a `fragHead`-true shape.) -/
 theorem MFrag.claimed_of_fragHead_false {A : SemAxioms} {e : Expr}
-    (hm : MFrag A e) (hf : fragHead e = false) : e ∈ A := by
+    (hm : MFrag A e) (hf : fragHead e = false) : ∃ cl ∈ A, cl.e = e := by
   cases hm
   case semantic hmem _ => exact hmem
   all_goals simp [fragHead] at hf
@@ -551,12 +551,12 @@ theorem exprEqB_sound {n : Nat} {a b : Expr} (h : exprEqB n a b = true) : a = b 
 
 /-- Claim-list membership, decided by the structural equality. -/
 def claimedB (A : SemAxioms) (n : Nat) (e : Expr) : Bool :=
-  A.any (fun cl => exprEqB n cl e)
+  A.any (fun cl => exprEqB n cl.e e)
 
 theorem claimedB_sound {A : SemAxioms} {n : Nat} {e : Expr}
-    (h : claimedB A n e = true) : e ∈ A := by
+    (h : claimedB A n e = true) : ∃ cl ∈ A, cl.e = e := by
   obtain ⟨cl, hmem, heq⟩ := List.any_eq_true.mp h
-  exact (exprEqB_sound heq) ▸ hmem
+  exact ⟨cl, hmem, exprEqB_sound heq⟩
 
 /-- The syntactic arms of the fragment gate, with the recursive call abstracted
     (`rec` is `mfragB A n`) — a plain non-recursive definition, so every proof step

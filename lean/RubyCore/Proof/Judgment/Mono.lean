@@ -53,23 +53,28 @@ set_option maxHeartbeats 2000000 in
 theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool}
     {ctx : JCtx}
     {τ : Ty} {Γ' : Env} {D' : Decls} (hj : Judge A D Γ e top ctx τ Γ' D')
+    (hmeth : ctx.meth.isSome = true)
     (hfh : fragHead e = true) :
     MFrag A e → defFree e = true → ∀ {D2 : Decls}, SubDecls D D2 →
       D' = D ∧ Judge A D2 Γ e top ctx τ Γ' D2 := by
   refine Judge.rec
     (motive_1 := fun _ _ _ _ _ _ _ _ _ => True)
     (motive_2 := fun D Γ ro top ctx τ Γ' D' _ =>
+      ctx.meth.isSome = true →
       (∀ r, ro = some r → fragHead r = true ∧ MFrag A r ∧ defFree r = true) →
         ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeRecv A D2 Γ ro top ctx τ Γ' D2)
     (motive_3 := fun D Γ es top ctx τ Γ' D' _ =>
+      ctx.meth.isSome = true →
       (∀ e' ∈ es, MFrag A e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeSeq A D2 Γ es top ctx τ Γ' D2)
     (motive_4 := fun D Γ es top ctx τs Γ' D' _ =>
+      ctx.meth.isSome = true →
       (∀ e' ∈ es, fragHead e' = true) →
       (∀ e' ∈ es, MFrag A e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeArgs A D2 Γ es top ctx τs Γ' D2)
     (motive_5 := fun D Γ es top ctx Γ' D' _ =>
+      ctx.meth.isSome = true →
       (∀ e' ∈ es, fragHead e' = true) →
       (∀ e' ∈ es, MFrag A e') → defFreeAll es = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ JudgeElems A D2 Γ es top ctx Γ' D2)
@@ -79,6 +84,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     (motive_9 := fun _ _ _ _ _ _ _ _ => True)
     (motive_10 := fun _ _ _ _ _ _ => True)
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
+      ctx.meth.isSome = true →
       fragHead e = true →
       MFrag A e → defFree e = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ Judge A D2 Γ e top ctx τ Γ' D2)
@@ -95,200 +101,225 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
-    hj hfh
+    hj hmeth hfh
   -- The auxiliary relations whose motives are `True`.
   all_goals try (intros; trivial)
   -- J31: the semantic leaf is table-generic — reapply at the grown table.
   case hsemantic =>
-    intro D Γ e top ctx hmem hff _ _ _ D2 _
-    exact ⟨rfl, .semantic hmem hff⟩
+    intro D Γ top ctx cl hmem hff hdisc hmeth2 _ _ _ D2 _
+    have hrows : cl.rows = [] := by
+      rcases hdisc with h | h
+      · exact h
+      · rw [h] at hmeth2; exact Bool.noConfusion hmeth2
+    refine ⟨by simp [hrows, addRows], ?_⟩
+    have hsem : Judge A D2 Γ cl.e top ctx cl.τ Γ (addRows D2 cl.rows) :=
+      .semantic hmem hff (Or.inl hrows)
+    simp only [hrows, addRows, List.foldl] at hsem
+    exact hsem
   -- JudgeRecv
   case _ =>  -- self
-    intro D Γ top ctx cc hcc _ D2 _
+    intro D Γ top ctx cc hcc _ _ D2 _
     exact ⟨rfl, .self hcc⟩
   case _ =>  -- expl
-    intro D Γ r top ctx τ Γ' D' hr ih hro D2 hs
-    obtain ⟨rfl, hr2⟩ := ih (hro r rfl).1 (hro r rfl).2.1 (hro r rfl).2.2 hs
+    intro D Γ r top ctx τ Γ' D' hr ih hmeth2 hro D2 hs
+    obtain ⟨rfl, hr2⟩ := ih hmeth2 (hro r rfl).1 (hro r rfl).2.1 (hro r rfl).2.2 hs
     exact ⟨rfl, .expl hr2⟩
   -- JudgeSeq
   case _ =>  -- nil
-    intro D Γ top ctx _ _ D2 _
-    exact ⟨rfl, .nil⟩
-  case _ =>  -- single
-    intro D Γ e top ctx τ Γ' D' h1 hcpl ih hm hdf D2 hs
-    by_cases hfe : fragHead e = true
-    · obtain ⟨rfl, h2⟩ := ih hfe (hm e (by simp)) (by simpa [defFreeAll] using hdf) hs
-      exact ⟨rfl, .single h2 (hcpl := fun hff => ⟨(hcpl hff).1, (hcpl hff).2.1, rfl⟩)⟩
-    · -- a claimed element: rebuild via the semantic leaf, canonical by the coupling
-      replace hfe : fragHead e = false := by simpa using hfe
-      obtain ⟨rfl, rfl, rfl⟩ := hcpl hfe
-      exact ⟨rfl, .single
-        (.semantic ((hm e (by simp)).claimed_of_fragHead_false hfe) hfe)
-        (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)⟩
-  case _ =>  -- cons
-    intro D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D' h1 hrest hcpl ih1 ihr hm hdf D2 hs
-    simp only [defFreeAll, Bool.and_eq_true] at hdf
-    by_cases hfe : fragHead e = true
-    · obtain ⟨rfl, h1'⟩ := ih1 hfe (hm e (by simp)) hdf.1 hs
-      obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hm e' (by simp [he']))
-        (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
-      exact ⟨rfl, .cons h1' hr' (hcpl := fun hff => ⟨(hcpl hff).1, (hcpl hff).2.1, rfl⟩)⟩
-    · replace hfe : fragHead e = false := by simpa using hfe
-      obtain ⟨rfl, rfl, rfl⟩ := hcpl hfe
-      obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hm e' (by simp [he']))
-        (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
-      exact ⟨rfl, .cons
-        (.semantic ((hm e (by simp)).claimed_of_fragHead_false hfe) hfe) hr'
-        (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)⟩
-  -- JudgeArgs
-  case _ =>  -- nil
     intro D Γ top ctx _ _ _ D2 _
     exact ⟨rfl, .nil⟩
+  case _ =>  -- single
+    intro D Γ e top ctx τ Γ' D' h1 hcpl ih hmeth2 hm hdf D2 hs
+    by_cases hfe : fragHead e = true
+    · obtain ⟨rfl, h2⟩ := ih hmeth2 hfe (hm e (by simp)) (by simpa [defFreeAll] using hdf) hs
+      exact ⟨rfl, .single h2 (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))⟩
+    · -- a claimed element: rebuild via the semantic leaf, canonical by the coupling
+      replace hfe : fragHead e = false := by simpa using hfe
+      obtain ⟨cl, hclA, rfl, rfl, rfl, hD', hdisc⟩ := hcpl hfe
+      have hrows : cl.rows = [] := by
+        rcases hdisc with h | h
+        · exact h
+        · rw [h] at hmeth2; exact Bool.noConfusion hmeth2
+      subst hD'
+      refine ⟨by simp [hrows, addRows], ?_⟩
+      have hsem : Judge A D2 Γ' cl.e top ctx cl.τ Γ' (addRows D2 cl.rows) :=
+        .semantic hclA hfe (Or.inl hrows)
+      simp only [hrows, addRows, List.foldl] at hsem
+      exact .single hsem
+        (hcpl := fun _ => ⟨cl, hclA, rfl, rfl, rfl, by simp [hrows, addRows], Or.inl hrows⟩)
   case _ =>  -- cons
-    intro D Γ e rest top ctx τ Γ₁ D₁ τs Γ' D' h1 hrest ih1 ihr hfa hm hdf D2 hs
+    intro D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D' h1 hrest hcpl ih1 ihr hmeth2 hm hdf D2 hs
     simp only [defFreeAll, Bool.and_eq_true] at hdf
-    obtain ⟨rfl, h1'⟩ := ih1 (hfa e (by simp)) (hm e (by simp)) hdf.1 hs
-    obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hfa e' (by simp [he']))
+    by_cases hfe : fragHead e = true
+    · obtain ⟨rfl, h1'⟩ := ih1 hmeth2 hfe (hm e (by simp)) hdf.1 hs
+      obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hm e' (by simp [he']))
+        (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
+      exact ⟨rfl, .cons h1' hr' (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))⟩
+    · replace hfe : fragHead e = false := by simpa using hfe
+      obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc⟩ := hcpl hfe
+      have hrows : cl.rows = [] := by
+        rcases hdisc with h | h
+        · exact h
+        · rw [h] at hmeth2; exact Bool.noConfusion hmeth2
+      simp only [hrows, addRows, List.foldl] at hD₁
+      have hD₁' : D₁ = D := hD₁
+      subst hD₁'
+      obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hm e' (by simp [he']))
+        (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
+      have hsem : Judge A D2 Γ₁ cl.e top ctx cl.τ Γ₁ (addRows D2 cl.rows) :=
+        .semantic hclA hfe (Or.inl hrows)
+      simp only [hrows, addRows, List.foldl] at hsem
+      exact ⟨rfl, .cons hsem hr'
+        (hcpl := fun _ => ⟨cl, hclA, rfl, rfl, rfl, by simp [hrows, addRows], Or.inl hrows⟩)⟩
+  -- JudgeArgs
+  case _ =>  -- nil
+    intro D Γ top ctx _ _ _ _ D2 _
+    exact ⟨rfl, .nil⟩
+  case _ =>  -- cons
+    intro D Γ e rest top ctx τ Γ₁ D₁ τs Γ' D' h1 hrest ih1 ihr hmeth2 hfa hm hdf D2 hs
+    simp only [defFreeAll, Bool.and_eq_true] at hdf
+    obtain ⟨rfl, h1'⟩ := ih1 hmeth2 (hfa e (by simp)) (hm e (by simp)) hdf.1 hs
+    obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hfa e' (by simp [he']))
       (fun e' he' => hm e' (by simp [he'])) hdf.2 hs
     exact ⟨rfl, .cons h1' hr'⟩
   -- JudgeElems
   case _ =>  -- nil
-    intro D Γ top ctx _ _ _ D2 _
+    intro D Γ top ctx _ _ _ _ D2 _
     exact ⟨rfl, .nil⟩
   case _ =>  -- cons
-    intro D Γ e rest top ctx τ Γ₁ D₁ Γ' D' h1 hrest ih1 ihr hfa hm hdf D2 hs
+    intro D Γ e rest top ctx τ Γ₁ D₁ Γ' D' h1 hrest ih1 ihr hmeth2 hfa hm hdf D2 hs
     simp only [defFreeAll, Bool.and_eq_true] at hdf
-    obtain ⟨rfl, h1'⟩ := ih1 (hfa e (by simp)) (hm e (by simp)) hdf.1 hs
-    obtain ⟨rfl, hr'⟩ := ihr (fun e' he' => hfa e' (by simp [he']))
+    obtain ⟨rfl, h1'⟩ := ih1 hmeth2 (hfa e (by simp)) (hm e (by simp)) hdf.1 hs
+    obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hfa e' (by simp [he']))
       (fun e' he' => hm e' (by simp [he'])) hdf.2 hs
     exact ⟨rfl, .cons h1' hr'⟩
   -- Judge: the fragment heads.
-  case hint => exact fun _ _ _ _ hs => ⟨rfl, .int⟩
-  case hflt => exact fun _ _ _ _ hs => ⟨rfl, .flt⟩
-  case hstr => exact fun _ _ _ _ hs => ⟨rfl, .str⟩
-  case hsym => exact fun _ _ _ _ hs => ⟨rfl, .sym⟩
-  case htru => exact fun _ _ _ _ hs => ⟨rfl, .tru⟩
-  case hfls => exact fun _ _ _ _ hs => ⟨rfl, .fls⟩
-  case hnil => exact fun _ _ _ _ hs => ⟨rfl, .nil⟩
+  case hint => exact fun _ _ _ _ _ hs => ⟨rfl, .int⟩
+  case hflt => exact fun _ _ _ _ _ hs => ⟨rfl, .flt⟩
+  case hstr => exact fun _ _ _ _ _ hs => ⟨rfl, .str⟩
+  case hsym => exact fun _ _ _ _ _ hs => ⟨rfl, .sym⟩
+  case htru => exact fun _ _ _ _ _ hs => ⟨rfl, .tru⟩
+  case hfls => exact fun _ _ _ _ _ hs => ⟨rfl, .fls⟩
+  case hnil => exact fun _ _ _ _ _ hs => ⟨rfl, .nil⟩
   case hself =>
-    intro D Γ top ctx cc hcc _ _ _ D2 _
+    intro D Γ top ctx cc hcc _ _ _ _ D2 _
     exact ⟨rfl, .self hcc⟩
   case hvarLvar =>
-    intro D Γ x top ctx τ0 hget _ _ _ D2 _
+    intro D Γ x top ctx τ0 hget _ _ _ _ D2 _
     exact ⟨rfl, .varLvar hget⟩
   case hvasgnLvar =>
-    intro D Γ x rhs top ctx τ0 Γ₁ D₁ hib hrhs ih hfhx hmf hdf D2 hs
+    intro D Γ x rhs top ctx τ0 Γ₁ D₁ hib hrhs ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnLvar hfr hmr =>
-      obtain ⟨rfl, h2⟩ := ih hfr hmr (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfr hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .vasgnLvar hib h2⟩
   case hconst =>
-    intro D Γ nm top ctx τ0 hre _ _ _ D2 hs
+    intro D Γ nm top ctx τ0 hre _ _ _ _ D2 hs
     exact ⟨rfl, .const (by rw [hs.constTy_eq]; exact hre)⟩
   case hvarIvar =>
-    intro D Γ x top ctx cc σ hcc hiv _ _ _ D2 hs
+    intro D Γ x top ctx cc σ hcc hiv _ _ _ _ D2 hs
     exact ⟨rfl, .varIvar hcc (by rw [hs.ivarTy_eq]; exact hiv)⟩
   case hvarGvar =>
-    intro D Γ x top ctx σ hpg hgt _ _ _ D2 hs
+    intro D Γ x top ctx σ hpg hgt _ _ _ _ D2 hs
     exact ⟨rfl, .varGvar hpg (by rw [hs.globalTy_eq]; exact hgt)⟩
   case hvasgnIvarDecl =>
-    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ σ hcc hrhs hiv hsj ih hfhx hmf hdf D2 hs
+    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ σ hcc hrhs hiv hsj ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnIvar hfr hmr =>
-      obtain ⟨rfl, h2⟩ := ih hfr hmr (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfr hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .vasgnIvarDecl hcc h2 (by rw [hs.ivarTy_eq]; exact hiv) hsj⟩
   case hvasgnIvarFresh =>
-    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ hcc hrhs hiv ih hfhx hmf hdf D2 hs
+    intro D Γ x rhs top ctx cc τ0 Γ₁ D₁ hcc hrhs hiv ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnIvar hfr hmr =>
-      obtain ⟨rfl, h2⟩ := ih hfr hmr (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfr hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .vasgnIvarFresh hcc h2 (by rw [hs.ivarTy_eq]; exact hiv)⟩
   case hvasgnGvar =>
-    intro D Γ x rhs top ctx τ0 Γ₁ D₁ σ hpg hrhs hgt hsj ih hfhx hmf hdf D2 hs
+    intro D Γ x rhs top ctx τ0 Γ₁ D₁ σ hpg hrhs hgt hsj ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | vasgnGvar hfr hmr =>
-      obtain ⟨rfl, h2⟩ := ih hfr hmr (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hfr hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .vasgnGvar hpg h2 (by rw [hs.globalTy_eq]; exact hgt) hsj⟩
   case harray =>
-    intro D Γ es top ctx Γ' D'0 hje ih hfhx hmf hdf D2 hs
+    intro D Γ es top ctx Γ' D'0 hje ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | array hfa hall =>
-      obtain ⟨rfl, h2⟩ := ih (fun e' he' => hfa e' he') hall (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 (fun e' he' => hfa e' he') hall (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .array h2⟩
   case hvcall =>
-    intro D Γ mname top ctx cc τret hcc hsg _ _ _ D2 hs
+    intro D Γ mname top ctx cc τret hcc hsg _ _ _ _ D2 hs
     exact ⟨rfl, .vcall hcc (hs.sigOf_eq hsg)⟩
   case hseq =>
-    intro D Γ es top ctx τ0 Γ' D'0 hseq ih hfhx hmf hdf D2 hs
+    intro D Γ es top ctx τ0 Γ' D'0 hseq ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | seq hall =>
-      obtain ⟨rfl, h2⟩ := ih hall (by simpa [defFree] using hdf) hs
+      obtain ⟨rfl, h2⟩ := ih hmeth2 hall (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .seq h2⟩
   case hifElse =>
     intro D Γ cond t els top ctx τc Γ₁ D₁ τt Γt Dt τe Γe τj Γc
     intro hcnd ht he hjt hje hct hce ihc iht ihe
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifElse hfc hft hfe hmc hmt hme =>
       simp only [defFree, Bool.and_eq_true] at hdf
-      obtain ⟨rfl, hc'⟩ := ihc hfc hmc hdf.1.1 hs
-      obtain ⟨rfl, ht'⟩ := iht hft hmt hdf.1.2 hs
-      obtain ⟨-, he'⟩ := ihe hfe hme hdf.2 hs
+      obtain ⟨rfl, hc'⟩ := ihc hmeth2 hfc hmc hdf.1.1 hs
+      obtain ⟨rfl, ht'⟩ := iht hmeth2 hft hmt hdf.1.2 hs
+      obtain ⟨-, he'⟩ := ihe hmeth2 hfe hme hdf.2 hs
       exact ⟨rfl, .ifElse hc' ht' he' hjt hje hct hce⟩
   case hifNone =>
     intro D Γ cond t top ctx τc Γ₁ D₁ τt Γt τj Γc
     intro hcnd ht hjt hjn hct hcΓ ihc iht
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifNone hfc hft hmc hmt =>
       simp only [defFree, Bool.and_eq_true] at hdf
-      obtain ⟨rfl, hc'⟩ := ihc hfc hmc hdf.1.1 hs
-      obtain ⟨-, ht'⟩ := iht hft hmt hdf.1.2 hs
+      obtain ⟨rfl, hc'⟩ := ihc hmeth2 hfc hmc hdf.1.1 hs
+      obtain ⟨-, ht'⟩ := iht hmeth2 hft hmt hdf.1.2 hs
       exact ⟨rfl, .ifNone hc' ht' hjt hjn hct hcΓ⟩
   case hifNarrowElse =>
     intro D Γ x t els top ctx τ0 τt Γt Dt τe Γe τj Γc
     intro hget ht he hjt hje hct hce iht ihe
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifElse hfc hft hfe hmc hmt hme =>
       simp only [defFree, Bool.and_eq_true] at hdf
-      obtain ⟨rfl, ht'⟩ := iht hft hmt hdf.1.2 hs
-      obtain ⟨-, he'⟩ := ihe hfe hme hdf.2 hs
+      obtain ⟨rfl, ht'⟩ := iht hmeth2 hft hmt hdf.1.2 hs
+      obtain ⟨-, he'⟩ := ihe hmeth2 hfe hme hdf.2 hs
       exact ⟨rfl, .ifNarrowElse hget ht' he' hjt hje hct hce⟩
   case hifNarrowNone =>
     intro D Γ x t top ctx τ0 τt Γt τj Γc
     intro hget ht hjt hjn hct hcΓ iht
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | ifNone hfc hft hmc hmt =>
       simp only [defFree, Bool.and_eq_true] at hdf
-      obtain ⟨-, ht'⟩ := iht hft hmt hdf.1.2 hs
+      obtain ⟨-, ht'⟩ := iht hmeth2 hft hmt hdf.1.2 hs
       exact ⟨rfl, .ifNarrowNone hget ht' hjt hjn hct hcΓ⟩
   case hwhile =>
     intro D Γ Γl cond body top ctx τc Γ₁ τb Γ₂
     intro hentry hcnd hs1 hbody hs2 ihc ihb
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | while' hfc hfb hmc hmb =>
       simp only [defFree, Bool.and_eq_true] at hdf
-      obtain ⟨-, hc'⟩ := ihc hfc hmc hdf.1 hs
-      obtain ⟨-, hb'⟩ := ihb hfb hmb hdf.2 hs
+      obtain ⟨-, hc'⟩ := ihc hmeth2 hfc hmc hdf.1 hs
+      obtain ⟨-, hb'⟩ := ihb hmeth2 hfb hmb hdf.2 hs
       exact ⟨rfl, .while' hentry hc' hs1 hb' hs2⟩
   case hsend =>
     intro D Γ recvO mname args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps τret
     intro hrecv hargs hsg hsub ihr iha
-    intro hfhx hmf hdf D2 hs
+    intro hmeth2 hfhx hmf hdf D2 hs
     have hro : ∀ r, recvO = some r → fragHead r = true ∧ MFrag A r ∧ defFree r = true := by
       intro r hr
       subst hr
@@ -315,17 +346,17 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       | self _ =>
         simp only [defFree, Bool.and_eq_true] at hdf
         exact hdf.1.2
-    obtain ⟨rfl, hr'⟩ := ihr hro hs
-    obtain ⟨rfl, ha'⟩ := iha hfa hma hdfa hs
+    obtain ⟨rfl, hr'⟩ := ihr hmeth2 hro hs
+    obtain ⟨rfl, ha'⟩ := iha hmeth2 hfa hma hdfa hs
     exact ⟨rfl, .send hr' ha' (hs.sigOf_eq hsg) hsub⟩
   case hsendCall =>
-    intro D Γ r args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps ret hr hparts hargs hsub ihr iha hfhx hmf
+    intro D Γ r args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps ret hr hparts hargs hsub ihr iha hmeth2 hfhx hmf
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | send hne _ _ _ _ => exact absurd rfl hne
   case hsub =>
-    intro D Γ e top ctx τ0 Γ'0 D'0 σ Γ'' hj0 hsj hse ih hfhx hmf hdf D2 hs
-    obtain ⟨rfl, h2⟩ := ih hfhx hmf hdf hs
+    intro D Γ e top ctx τ0 Γ'0 D'0 σ Γ'' hj0 hsj hse ih hmeth2 hfhx hmf hdf D2 hs
+    obtain ⟨rfl, h2⟩ := ih hmeth2 hfhx hmf hdf hs
     exact ⟨rfl, .sub h2 hsj hse⟩
   -- Everything else is out of the gated fragment — refuted by the `MFrag` gate,
   -- or (for the definition heads, which are in `MFrag` but not `defFree`) by the
@@ -349,7 +380,7 @@ theorem EntryOkJ_mono {D D' : Decls} {h : Heap} {τ : Ty} {n : String} {d : Meth
   · refine Or.inr (Or.inl ⟨mdu, cu, htys, hres, hnm,
       hconf.1, hconf.2.1, hconf.2.2.1, hconf.2.2.2.1, hconf.2.2.2.2.1, ?_⟩)
     obtain ⟨Γ', r, τb, hbo, hsb, hag⟩ := hconf.2.2.2.2.2
-    obtain ⟨-, hbo'⟩ := judge_mono hbo hconf.2.2.2.2.1 hconf.2.2.2.1 hconf.2.2.1 hs
+    obtain ⟨-, hbo'⟩ := judge_mono hbo (by simp [methodCtx]) hconf.2.2.2.2.1 hconf.2.2.2.1 hconf.2.2.1 hs
     exact ⟨Γ', r, τb, hbo', hsb, hag⟩
   · exact Or.inr (Or.inr hi)
 

@@ -54,10 +54,12 @@ inductive Deriv where
   | defPromote (body : Deriv)
   | classTop (body : Deriv)
   | sub (d : Deriv) (σ : Ty) (Γ'' : Env)
-  /-- **J31**: the semantic axiom leaf — checks iff the ambient expression is a
-      claim of the certificate's `semAssumes` list with an out-of-fragment head;
-      concludes at the canonical judgment (`.any`, `Γ`/`D` preserved). -/
-  | semantic
+  /-- **J31/J32**: the semantic axiom leaf — `i` indexes the certificate's
+      `semAssumes` list; checks iff the ambient expression is that claim's (an
+      out-of-fragment head, and row-bearing claims only outside method bodies);
+      concludes at the claim's type, environment preserved, the claimed rows
+      folded into the table. -/
+  | semantic (i : Nat)
 deriving Repr
 
 inductive DerivRecv where
@@ -136,8 +138,14 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
   | 0, _, _, _, _, _, _, _ => none
   | n + 1, A, d, D, Γ, e, top, ctx =>
     match d, e with
-    | .semantic, e =>
-      if !fragHead e && claimedB A (n + 1) e then some (.any, Γ, D) else none
+    | .semantic i, e =>
+      match A[i]? with
+      | some cl =>
+        if exprEqB (n + 1) cl.e e && !fragHead e &&
+            (cl.rows.isEmpty || ctx.meth.isNone) then
+          some (cl.τ, Γ, addRows D cl.rows)
+        else none
+      | none => none
     | .int, .int _ => some (.int, Γ, D)
     | .flt, .flt _ => some (.float, Γ, D)
     | .str, .str _ => some (.cls "String", Γ, D)
@@ -398,7 +406,7 @@ structure JCert where
       canonical judgment. The composed theorem (`validateJ_certifies`) is
       conditional on `SemAxiomsOk` for exactly this list: each claim's `EvalOkAt`
       obligation, user-supplied in Lean. Empty list = the unconditional theorem. -/
-  semAssumes : List Expr := []
+  semAssumes : SemAxioms := []
   deriv : Deriv
 deriving Repr
 

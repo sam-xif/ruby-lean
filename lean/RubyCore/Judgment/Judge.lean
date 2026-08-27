@@ -221,8 +221,24 @@ def fragHead : Expr → Bool
   | .fwd => true
   | _ => false
 
-/-- The semantic axiom set: expressions claimed at the canonical judgment. -/
-abbrev SemAxioms := List Expr
+/-- **One semantic claim (J32)**: an out-of-fragment expression judged at a
+    *claimed type* `τ`, environment-preserving, whose evaluation may install the
+    *claimed rows* into the table — the channel by which runtime-generated methods
+    (`define_method`, the Rails shape) become dispatchable, mirroring
+    `defPromote`'s row threading. `rows := []`, `τ := .any` recovers the J31
+    canonical claim. -/
+structure SemClaim where
+  e : Expr
+  τ : Ty := .any
+  rows : List (String × String × MethodDecl) := []
+deriving Repr
+
+/-- The semantic axiom set. -/
+abbrev SemAxioms := List SemClaim
+
+/-- A claim's table effect. -/
+def addRows (D : Decls) (rows : List (String × String × MethodDecl)) : Decls :=
+  rows.foldl (fun D r => addRow D r.1 r.2.1 r.2.2) D
 
 /-! ## 4. The judgment -/
 
@@ -249,13 +265,15 @@ inductive JudgeSeq (A : SemAxioms) : Decls → Env → List Expr → Bool → JC
   | nil {D Γ top ctx} : JudgeSeq A D Γ [] top ctx .nilT Γ D
   | single {D Γ e top ctx τ Γ' D'} :
       Judge A D Γ e top ctx τ Γ' D' →
-      (hcpl : fragHead e = false → τ = .any ∧ Γ' = Γ ∧ D' = D :=
+      (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ = cl.τ ∧ Γ' = Γ ∧
+          D' = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ [e] top ctx τ Γ' D'
   | cons {D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D'} :
       Judge A D Γ e top ctx τ₁ Γ₁ D₁ →
       JudgeSeq A D₁ Γ₁ (e₂ :: rest) top ctx τ Γ' D' →
-      (hcpl : fragHead e = false → τ₁ = .any ∧ Γ₁ = Γ ∧ D₁ = D :=
+      (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ₁ = cl.τ ∧ Γ₁ = Γ ∧
+          D₁ = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ (e :: e₂ :: rest) top ctx τ Γ' D'
 
@@ -773,9 +791,15 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       fragment's head universe, so the two routes never compete for one
       expression (the mixed-state hazard recorded in `implementation-notes.md`
       J31). -/
-  | semantic {D Γ e top ctx} :
-      e ∈ A → fragHead e = false →
-      Judge A D Γ e top ctx .any Γ D
+  | semantic {D Γ top ctx} {cl : SemClaim} :
+      cl ∈ A → fragHead cl.e = false →
+      -- **The row discipline (J32)**: a row-bearing claim may not sit inside a
+      -- method body (`ctx.meth` is `some` exactly there) — method bodies are
+      -- `defFree`, `judge_mono` transports them with the table pinned, and a
+      -- table-growing claim would break that. Class bodies and the toplevel
+      -- (`meth = none`) are exactly where Rails-style generation lives.
+      (cl.rows = [] ∨ ctx.meth = none) →
+      Judge A D Γ cl.e top ctx cl.τ Γ (addRows D cl.rows)
 
 end
 

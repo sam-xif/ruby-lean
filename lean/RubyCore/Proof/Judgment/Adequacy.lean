@@ -150,17 +150,26 @@ set_option maxHeartbeats 1600000 in
 theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
     {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx} {τ : Ty} {Γ' : Env} {D' : Decls}
     (h : RubyCore.Judgment.check n A d D Γ e top ctx = some (τ, Γ', D'))
-    (hf : fragHead e = false) : τ = .any ∧ Γ' = Γ ∧ D' = D := by
+    (hf : fragHead e = false) :
+    ∃ cl ∈ A, cl.e = e ∧ τ = cl.τ ∧ Γ' = Γ ∧ D' = addRows D cl.rows ∧
+      (cl.rows = [] ∨ ctx.meth = none) := by
   match n with
   | 0 => exact absurd h (by simp [RubyCore.Judgment.check])
   | n + 1 =>
     match d, e with
-    | .semantic, e =>
+    | .semantic i, e =>
       simp only [RubyCore.Judgment.check] at h
       split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl, rfl⟩ := h
-        exact ⟨rfl, rfl, rfl⟩
+      · next cl hi =>
+        split at h
+        · next hguard =>
+          simp only [Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
+            List.isEmpty_iff, Option.isNone_iff_eq_none] at hguard
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact ⟨cl, List.mem_of_getElem? hi, exprEqB_sound hguard.1.1, rfl, rfl,
+            rfl, hguard.2⟩
+        · exact absurd h (by simp)
       · exact absurd h (by simp)
     | .sub d' σ Γ'', e =>
       simp [RubyCore.Judgment.check, hf] at h
@@ -244,14 +253,20 @@ theorem check_sound_all : ∀ (n : Nat),
         simp only [RubyCore.Judgment.check, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl, rfl⟩ := h
         exact .nil
-      | .semantic, e =>
+      | .semantic i, e =>
         simp only [RubyCore.Judgment.check] at h
         split at h
-        · next hcl =>
-          simp only [Bool.and_eq_true, Bool.not_eq_true'] at hcl
-          simp only [Option.some.injEq, Prod.mk.injEq] at h
-          obtain ⟨rfl, rfl, rfl⟩ := h
-          exact .semantic (claimedB_sound hcl.2) hcl.1
+        · next cl hi =>
+          split at h
+          · next hguard =>
+            simp only [Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true,
+              List.isEmpty_iff, Option.isNone_iff_eq_none] at hguard
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            have hcle : cl.e = e := exprEqB_sound hguard.1.1
+            subst hcle
+            exact .semantic (List.mem_of_getElem? hi) hguard.1.2 hguard.2
+          · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .self, .self' =>
         simp only [RubyCore.Judgment.check] at h
@@ -598,8 +613,7 @@ theorem check_sound_all : ∀ (n : Nat),
         by_cases hfe : fragHead e = true
         · exact .single (ihc h) (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))
         · replace hfe : fragHead e = false := by simpa using hfe
-          obtain ⟨rfl, rfl, rfl⟩ := check_fragHead_false h hfe
-          exact .single (ihc h) (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)
+          exact .single (ihc h) (hcpl := fun _ => check_fragHead_false h hfe)
       | .cons d rest, e :: e₂ :: es' =>
         simp only [checkSeq] at h
         split at h
@@ -608,8 +622,7 @@ theorem check_sound_all : ∀ (n : Nat),
           · exact .cons (ihc h1) (ihs h)
               (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))
           · replace hfe : fragHead e = false := by simpa using hfe
-            obtain ⟨rfl, rfl, rfl⟩ := check_fragHead_false h1 hfe
-            exact .cons (ihc h1) (ihs h) (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)
+            exact .cons (ihc h1) (ihs h) (hcpl := fun _ => check_fragHead_false h1 hfe)
         · exact absurd h (by simp)
     · intro da D Γ es top ctx τs Γ' D' h
       match da, es with
