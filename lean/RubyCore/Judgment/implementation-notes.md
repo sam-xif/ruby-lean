@@ -300,3 +300,51 @@ receiver types and every declared row is ground, the dispatch lemmas of
 `ValueTy` at the boundary and proceed as the old proof does. Arrows deliberately
 have no value witness yet (J16's bill, position unchanged): the J1 fragment
 excludes the lambda-arrow mint, so no reachable value needs one.
+
+## J20 — `MFrag`, the machine-typed fragment gate, and the J-spine's definitions
+
+The invariant's eval arm quantifies existentially over derivations, so inversion at
+a head surfaces every rule whose conclusion matches — admitting a head into machine
+typing drags in all its rules' preservation cases at once. The boundary is
+therefore **syntactic**: `MFrag` (`Judgment/Frag.lean`, an inductive for `cases` +
+a fuel `mfragB` for the J2 checker), conjoined into `CtlOkJ`'s eval arm — the role
+`infer`'s partiality played for the old spine. Two shape conditions inside admitted
+heads are deliberate: an `if` on a bare local read is out until the narrowing rung
+(its delivery needs the value↔store correlation; the push-time case-split design is
+in `Proof/Judgment/DESIGN-NOTES.md`), and `call`-named sends stay out because no
+machine-typed value witnesses an arrow (J19).
+
+The spine itself (`Proof/Judgment/{Frames,Decls,Konts}.lean`) transliterates
+`FrameConforms`/`FramesOk`, `UserConforms`/`EntryOk`/`DeclsOk`, and
+`KontOk`/`CtlOk`/`Inv` with three systematic changes: `infer*` premises become
+`Judge*` derivations plus the stored program's `MFrag` facts; `subTy`/`ValueTy`
+become `SubJ`/`VTy`; the context is `JCtx`, read by the untouched `StackCtx`
+through `.toFrameCtx`. Heap conjuncts, `GlobalsOk`, the frames/array layer, and all
+dispatch lemmas are consumed by import. One correction surfaced by the delivery
+cases: `ifNoneK` must pin the branch's exit table to its own (as `Judge.ifNone`
+does) — the elseless `if`'s falsy path delivers `nil` at the *registration* table.
+
+## J21 — rung-1 preservation, and the induction pattern that makes `sub` free
+
+`step_okJ` (`Proof/Judgment/Preservation.lean`) over the T1 control core: literals,
+locals, `seq`, `if`, `while`. The eval branch is **one induction over the
+derivation** — `Judge.rec` applied by `refine` with the ten auxiliary motives
+trivial and named holes per constructor (`induction … using Judge.rec` fails on
+mutual inductives; the `refine`-with-92-holes form works). Each constructor case is
+that head's preservation argument; the `sub` case composes the invariant's slack by
+`SubJ.trans`/`SubEnv.trans` **once, for every head** — three lines, where the old
+spine's twenty Mono laws and motive maps lived. Out-of-fragment constructors are
+refuted by a single `all_goals … cases hmf` sweep.
+
+`Proof/Judgment/Sound.lean` composes: `initiationJ` (boot facts of
+`initiation_ctl`, control clause from a derivation), `consecutionJ`/`safetyJ`, and
+the headline
+
+    judge_sound : DeclsOkJ F Boot.initHeap → MFrag p →
+      Judge F [] p true topJCtx τ Γ' D' →
+      ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
+
+axiom-clean, **no checker in the statement**. `tableOk_declsOkJ` converts the boot
+table's witness (its user arm refuted by walking `baseDecls`), and `egIf` is
+re-certified end-to-end from a seven-line hand derivation — the first program whose
+safety theorem goes through the judgment layer.
