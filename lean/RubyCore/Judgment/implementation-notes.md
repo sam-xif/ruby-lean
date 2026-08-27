@@ -580,3 +580,79 @@ out-environment at `done` needs the frame conformance threaded the way `ans` now
 is — same trick, one more parameter, no consumer yet); and the first
 *directly-proved* `SemJudge` fact — the extension pilot, a `define_method`d row
 admitted semantically — is the natural J31.
+
+## J31 — semantic axioms: user-specified semantic judgments, invoked from the Deriv language
+
+The discharge of J30's caveat (2): a semantic fact can now appear as a **leaf inside
+a syntactic derivation**, supplied by the user as a Lean lemma and invoked from the
+certificate language. The pieces:
+
+* **`SemAxioms := List Expr`** (Judge.lean) — a claim is an expression, judged at
+  the **canonical indices**: type `.any`, environment- and table-preserving. The
+  whole `Judge` family, `MFrag`, `KontOkJ`, `CtlOkJ`, `InvJ`, `StepOkJ`, `EvalOkAt`,
+  `DeclsOkJ` and the checker are parameterized by the axiom set `A`; every pre-J31
+  theorem is the `A := []` instance (`semAxiomsOk_nil`).
+* **`Judge.semantic`** — `e ∈ A → fragHead e = false → Judge A D Γ e top ctx .any Γ D`.
+  `fragHead` (one-level shape test) gates claims to **out-of-fragment heads**, and
+  every syntactic `MFrag` constructor concludes at a `fragHead`-true shape — the
+  disjointness that keeps the two routes from ever competing for one expression.
+* **The obligation is `EvalOkAt`** (`SemAxiomsOk`, Preservation.lean): per claim,
+  the machine-level semantic judgment at the canonical indices, at every table,
+  environment, context, and answer type. Chosen because it is *exactly* what
+  `step_okJ`'s eval branch needs — the new preservation case is an application.
+  `CtlOkJ`'s eval arm becomes a two-mode disjunction (syntactic, with the
+  `fragHead` routing bit / semantic, expecting `.any`); `judge_eval_ok`'s motive is
+  gated by `fragHead e = true`, which retired the old empty-`cases hmf` refutations
+  (the semantic arm would have defeated them) for one uniform `Bool.noConfusion`.
+* **The Deriv language**: a field-free **`.semantic` node** — the claim is the
+  ambient expression, membership decided by `claimedB` (see below); `JCert` gains
+  `semAssumes`; `validateJ` checks `fragHead p` at the root and threads the claims;
+  **`validateJ_certifies` is conditional on `SemAxiomsOk c.semAssumes`** — the one
+  new honest hypothesis, discharged in Lean, empty-list = the old unconditional
+  theorem.
+* **`exprEqB`** (Frag.lean) — `Expr` has no derivable `DecidableEq` (opaque
+  `Float`; the mutual block defeats the deriving handler) and the derived `BEq` is
+  unsound for `=` at `.flt` (`-0.0 == 0.0`), so claim membership is decided by a
+  fueled, **float-refusing** structural equality with one-direction soundness
+  (`exprEqB_sound`) — refusing a float-bearing claim is a reject, never an unsound
+  accept.
+
+**The design wall, recorded because it shaped everything: perverse pairings.** A
+*syntactic* derivation applied to a claimed expression (possible — `Judge` has rules
+for all heads) breaks preservation at every store→delivery seam: the stored
+judgment's indices and the claim's have no relation, so neither invariant mode can
+be re-established. Three disciplines close it:
+1. claims are **canonical** (`.any`/`Γ`/`D`) — the one judgment shape whose
+   embedding needs no coordination;
+2. **statement position only** (v1): `MFrag`'s containers other than `seq` require
+   `fragHead`-true subterms, and `JudgeSeq.single`/`.cons` carry **coupling
+   premises** (auto-param'd, so in-fragment derivations pay nothing) that pin a
+   claimed element's threading — `cons`'s also pins `τ₁ = .any`, which is what lets
+   `judge_mono` rebuild a claimed element via `.semantic` at the grown table;
+3. the checker's **`.sub` node is `fragHead`-guarded** (subsumption over a claim
+   would break the canonical coupling; at `.any` there is nothing to weaken to),
+   which is what makes `check_fragHead_false` — the canonical-claim pins, supplying
+   the coupling premises in adequacy with **zero new checker guards** — true.
+
+**The pilot (`Proof/Judgment/SemAxiom.lean`)**: `lamE = lambda { 1 }` — a
+block-bearing send, the J16/J19 arrow bill, no `MFrag` constructor — claimed, its
+obligation **discharged by executing the semantics** (one step, `reifyBlock`
+allocation, `inv_grow_valueJ` at `VTy.any`; eleven lines). Composed both ways:
+`egSem_semantic_safe` (hand derivation with a `.semantic` leaf, plus
+`egSem_result_int` — result typing rides along) and `egSem_data_certified` (the
+data certificate `egSemJCert`, `validateJ` accepted by one `decide`, conditional on
+exactly the discharged obligation). A construct the syntactic system cannot check,
+admitted by a user lemma, invoked from the certificate language, composed into the
+machine-checked safety property — J31's contract, end to end, axiom-clean.
+
+Named bills: **wider positions** (an `if` branch, a send argument — one rung per
+position: its coupling premise and its delivery case); **richer claim indices**
+(claims at a non-`.any` type or with env effects — needs the claim carrier to grow
+from `Expr` to a record, and the couplings to quote it); **`call`-named sends are
+unclaimable** (`fragHead` counts every block-less send syntactic, including `call`);
+**JSON claim transport** (the `.semantic` node serializes; the `semAssumes` list is
+Lean-side data until an `Expr` encoder mirroring the harness export format exists);
+**multi-step constructs** (a claim's obligation must re-establish `InvJ` after one
+step, so constructs with *internal* continuations still need their `KontOkJ`
+vocabulary first — the semantic route removes the type-system obstacle, not the
+machine-coverage one; risk 4 stands).

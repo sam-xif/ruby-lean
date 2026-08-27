@@ -10,7 +10,7 @@ the control clause is a **derivation**, and the composed theorem needs no checke
 its statement at all —
 
     judge_sound_cert : rowsGuarded … → (residue, as `EntryOkJ` per claimed row) →
-      MFrag p → Judge (c.table p) [] p true topJCtx τ Γ' D' →
+      MFrag A p → Judge A (c.table p) [] p true topJCtx τ Γ' D' →
       ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r
 
 The certificate's own half (`declsOkJ_table`) is `declsOk_table`'s proof with the
@@ -41,12 +41,12 @@ set_option maxRecDepth 100000
 /-- **The certificate's table is J-sound at the heap the base table is J-sound
     at** — `declsOk_table`, retargeted. The residue arrives as one `EntryOkJ` per
     claimed row, at the certificate's own table. -/
-theorem declsOkJ_table {c : Cert} {p : Expr} {h : Heap}
-    (hD : DeclsOkJ (declsOf p) h)
+theorem declsOkJ_table {A : SemAxioms} {c : Cert} {p : Expr} {h : Heap}
+    (hD : DeclsOkJ A (declsOf p) h)
     (hg : rowsGuarded (declsOf p) c.deltaRows = true)
-    (ha : ∀ r ∈ c.deltaRows, EntryOkJ (c.table p) h (nomTy r.cls) r.name r.sig)
+    (ha : ∀ r ∈ c.deltaRows, EntryOkJ A (c.table p) h (nomTy r.cls) r.name r.sig)
     (hgr : ∀ r ∈ c.deltaRows, ∀ q ∈ r.sig.params, groundTy q = true) :
-    DeclsOkJ (c.table p) h := by
+    DeclsOkJ A (c.table p) h := by
   refine DeclsOkJ_of_subDecls hD (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ n d hnone hsome
   rcases declFor_rowFold_inv c.deltaRows _ hg hsome with ⟨r, hm, hk, rfl, rfl⟩ | hd2
@@ -59,15 +59,18 @@ theorem declsOkJ_table {c : Cert} {p : Expr} {h : Heap}
 /-- **The composed theorem** (J1's exit): a certificate's table half plus a root
     derivation at that table certify the program — `validate_sound_of_ctl` with
     `hctl` discharged by the judgment layer, and no checker in the statement. -/
-theorem judge_sound_cert {c : Cert} {p : Expr} {τ : Ty} {Γ' : Env} {D' : Decls}
+theorem judge_sound_cert {A : SemAxioms} {c : Cert} {p : Expr} {τ : Ty} {Γ' : Env}
+    {D' : Decls}
+    (hax : SemAxiomsOk A)
     (hg : rowsGuarded (declsOf p) c.deltaRows = true)
     (ha : ∀ r ∈ c.deltaRows,
-      EntryOkJ (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig)
+      EntryOkJ A (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig)
     (hgr : ∀ r ∈ c.deltaRows, ∀ q ∈ r.sig.params, groundTy q = true)
-    (hmf : MFrag p)
-    (hj : Judge (c.table p) [] p true topJCtx τ Γ' D') :
+    (hmf : MFrag A p)
+    (hfr : fragHead p = true)
+    (hj : Judge A (c.table p) [] p true topJCtx τ Γ' D') :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
-  judge_sound (declsOkJ_table declsOkJ_declsOf hg ha hgr) hmf hj
+  judge_sound hax (declsOkJ_table declsOkJ_declsOf hg ha hgr) hmf hfr hj
 
 /-! ## `egEven`, unconditionally — the rung the C-ladder left open
 
@@ -79,8 +82,8 @@ conclusion is the real safety property — where `egEven_certified` waited on C-
 this is that corollary, delivered through the judgment instead. -/
 
 /-- The claimed row's J-residue: the discharged builtin witness, verbatim. -/
-theorem entryOkJ_even {D : Decls} :
-    EntryOkJ D Boot.initHeap .int "even?" { params := [], ret := .bool } :=
+theorem entryOkJ_even {A : SemAxioms} {D : Decls} :
+    EntryOkJ A D Boot.initHeap .int "even?" { params := [], ret := .bool } :=
   Or.inl (entryOk_int_nullary (f := fun x => .bool (x % 2 == 0)) intResolves_even
     (by decide) (by decide) (by decide)
     (fun _ _ => ValueTy.exact rfl)
@@ -89,19 +92,19 @@ theorem entryOkJ_even {D : Decls} :
       simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
         Builtins.toAryDefer?]))
 
-theorem egEven_judged : Judge (Cert.table egEvenCert egEven) [] egEven true topJCtx
+theorem egEven_judged : Judge [] (Cert.table egEvenCert egEven) [] egEven true topJCtx
     .bool [] (Cert.table egEvenCert egEven) := by
   have hsig : sigOf (Cert.table egEvenCert egEven) .int "even?"
       = some ([], .bool) := by decide
   exact .send (.expl .int) .nil hsig .nil
 
-theorem egEven_mfrag : MFrag egEven :=
-  mfragB_sound (n := 4) (by decide)
+theorem egEven_mfrag : MFrag [] egEven :=
+  mfragB_sound (A := []) (n := 4) (by decide)
 
 /-- **The `egEven_certified` C-1 was waiting for.** -/
 theorem egEven_judge_safe :
     ∀ r, ReachableResult (Machine.init egEven) r → ¬ typeStuck r :=
-  judge_sound_cert (by decide)
+  judge_sound_cert semAxiomsOk_nil (by decide)
     (fun r hm => by
       simp only [egEvenCert, List.mem_singleton] at hm
       subst hm
@@ -111,7 +114,7 @@ theorem egEven_judge_safe :
       subst hm
       intro q hq
       simp [egEvenRow] at hq)
-    egEven_mfrag egEven_judged
+    egEven_mfrag (by decide) egEven_judged
 
 /-! ## Axiom hygiene -/
 

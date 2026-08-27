@@ -54,6 +54,10 @@ inductive Deriv where
   | defPromote (body : Deriv)
   | classTop (body : Deriv)
   | sub (d : Deriv) (σ : Ty) (Γ'' : Env)
+  /-- **J31**: the semantic axiom leaf — checks iff the ambient expression is a
+      claim of the certificate's `semAssumes` list with an out-of-fragment head;
+      concludes at the canonical judgment (`.any`, `Γ`/`D` preserved). -/
+  | semantic
 deriving Repr
 
 inductive DerivRecv where
@@ -124,14 +128,16 @@ def notBareLvar : Expr → Bool
 
 mutual
 
-/-- **The local checker.** `check n d D Γ e top ctx = some (τ, Γ', D')` reads:
+/-- **The local checker.** `check n A d D Γ e top ctx = some (τ, Γ', D')` reads:
     the derivation `d` establishes `Judge D Γ e top ctx τ Γ' D'`. Fuel decreases
     on every call. -/
-def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
+def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → JCtx →
     Option (Ty × Env × Decls)
-  | 0, _, _, _, _, _, _ => none
-  | n + 1, d, D, Γ, e, top, ctx =>
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, d, D, Γ, e, top, ctx =>
     match d, e with
+    | .semantic, e =>
+      if !fragHead e && claimedB A (n + 1) e then some (.any, Γ, D) else none
     | .int, .int _ => some (.int, Γ, D)
     | .flt, .flt _ => some (.float, Γ, D)
     | .str, .str _ => some (.cls "String", Γ, D)
@@ -150,10 +156,10 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
     | .vasgnLvar rhs, .vasgn .lvar x e' =>
       if ctx.inBlock then none
       else
-        match check n rhs D Γ e' top ctx with
+        match check n A rhs D Γ e' top ctx with
         | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
         | none => none
-    | .seq ds, .seq es => checkSeq n ds D Γ es top ctx
+    | .seq ds, .seq es => checkSeq n A ds D Γ es top ctx
     | .const, .const nm =>
       match constTy? D nm with
       | some τ => some (τ, Γ, D)
@@ -174,7 +180,7 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
     | .vasgnIvar rhs, .vasgn .ivar x e' =>
       match ctx.selfCls with
       | some cc =>
-        match check n rhs D Γ e' top ctx with
+        match check n A rhs D Γ e' top ctx with
         | some (τ, Γ₁, D₁) =>
           match ivarTy? D₁ cc x with
           | some σ => if subJb (tyFuel τ σ) τ σ then some (τ, Γ₁, D₁) else none
@@ -183,7 +189,7 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
       | none => none
     | .vasgnGvar rhs, .vasgn .gvar x e' =>
       if plainGlobal x then
-        match check n rhs D Γ e' top ctx with
+        match check n A rhs D Γ e' top ctx with
         | some (τ, Γ₁, D₁) =>
           match globalTy? D₁ x with
           | some σ => if subJb (tyFuel τ σ) τ σ then some (τ, Γ₁, D₁) else none
@@ -191,17 +197,17 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
         | none => none
       else none
     | .array ds, .array es =>
-      match checkElems n ds D Γ es top ctx with
+      match checkElems n A ds D Γ es top ctx with
       | some (Γ', D') => some (.cls "Array", Γ', D')
       | none => none
     | .ifElse dc dt de τj Γc, .if' cond t (some els) =>
       -- The plain rule only — a bare-lvar condition is the narrowing rung's node.
       if notBareLvar cond then
-      match check n dc D Γ cond top ctx with
+      match check n A dc D Γ cond top ctx with
       | some (_, Γ₁, D₁) =>
-        match check n dt D₁ Γ₁ t top ctx with
+        match check n A dt D₁ Γ₁ t top ctx with
         | some (τt, Γt, Dt) =>
-          match check n de D₁ Γ₁ els top ctx with
+          match check n A de D₁ Γ₁ els top ctx with
           | some (τe, Γe, Dt') =>
             if Dt' == Dt && subJb (tyFuel τt τj) τt τj && subJb (tyFuel τe τj) τe τj
                 && subEnvB Γc Γt && subEnvB Γc Γe then
@@ -213,9 +219,9 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
       else none
     | .ifNone dc dt τj Γc, .if' cond t none =>
       if notBareLvar cond then
-      match check n dc D Γ cond top ctx with
+      match check n A dc D Γ cond top ctx with
       | some (_, Γ₁, D₁) =>
-        match check n dt D₁ Γ₁ t top ctx with
+        match check n A dt D₁ Γ₁ t top ctx with
         | some (τt, Γt, Dt) =>
           if Dt == D₁ && subJb (tyFuel τt τj) τt τj
               && subJb (tyFuel .nilT τj) .nilT τj
@@ -228,9 +234,9 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
     | .ifNarrowElse dt de τj Γc, .if' (.var .lvar x) t (some els) =>
       match envGet? Γ x with
       | some τ₀ =>
-        match check n dt D (envSet Γ x (dropNil τ₀)) t top ctx with
+        match check n A dt D (envSet Γ x (dropNil τ₀)) t top ctx with
         | some (τt, Γt, Dt) =>
-          match check n de D (envSet Γ x (elseNarrow τ₀)) els top ctx with
+          match check n A de D (envSet Γ x (elseNarrow τ₀)) els top ctx with
           | some (τe, Γe, Dt') =>
             if Dt' == Dt && subJb (tyFuel τt τj) τt τj && subJb (tyFuel τe τj) τe τj
                 && subEnvB Γc Γt && subEnvB Γc Γe then
@@ -242,7 +248,7 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
     | .ifNarrowNone dt τj Γc, .if' (.var .lvar x) t none =>
       match envGet? Γ x with
       | some τ₀ =>
-        match check n dt D (envSet Γ x (dropNil τ₀)) t top ctx with
+        match check n A dt D (envSet Γ x (dropNil τ₀)) t top ctx with
         | some (τt, Γt, Dt) =>
           if Dt == D && subJb (tyFuel τt τj) τt τj
               && subJb (tyFuel .nilT τj) .nilT τj
@@ -253,10 +259,10 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
       | none => none
     | .while' Γl dc db, .while' cond body =>
       if subEnvB Γl Γ then
-        match check n dc D Γl cond top (loopCtx ctx Γl) with
+        match check n A dc D Γl cond top (loopCtx ctx Γl) with
         | some (_, Γ₁, Dc) =>
           if Dc == D && subEnvB Γl Γ₁ then
-            match check n db D Γl body top (loopCtx ctx Γl) with
+            match check n A db D Γl body top (loopCtx ctx Γl) with
             | some (_, Γ₂, Db) =>
               if Db == D && subEnvB Γl Γ₂ then some (.nilT, Γl, D) else none
             | none => none
@@ -271,9 +277,9 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
         | _ => none
       | none => none
     | .send dr da, .send recvO mname args none =>
-      match checkRecv n dr D Γ recvO top ctx with
+      match checkRecv n A dr D Γ recvO top ctx with
       | some (τr, Γ₁, D₁) =>
-        match checkArgs n da D₁ Γ₁ args top ctx with
+        match checkArgs n A da D₁ Γ₁ args top ctx with
         | some (τs, Γ₂, D₂) =>
           match sigOf D₂ τr mname with
           | some (ps, τret) =>
@@ -287,7 +293,7 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
       if declaresName D name || name == "method_added"
           || decide (τs.length ≠ ps.length) then none
       else
-        match check n db D (bindParamsJ ps τs [])
+        match check n A db D (bindParamsJ ps τs [])
             body false (methodCtx ctx name τs (some σ) bs) with
         | some (τb, _, Db) =>
           if Db == D && subJb (tyFuel τb σ) τb σ then some (.sym, Γ, D) else none
@@ -300,7 +306,7 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
           || !(defFreeB n body)
           || !(ctx.ret == none) || !(ctx.inLoop == none) || ctx.inBlock then none
       else
-        match check n db D [] body false (methodCtx ctx name [] none none) with
+        match check n A db D [] body false (methodCtx ctx name [] none none) with
         | some (τb, _, Db) =>
           if Db == D then
             some (.sym, Γ, addRow D ctx.cls name { params := [], ret := τb })
@@ -308,67 +314,73 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
         | none => none
     | .classTop db, .class' name none body =>
       if reopenableClasses.contains name && top then
-        match check n db D [] body false ({ cls := name } : JCtx) with
+        match check n A db D [] body false ({ cls := name } : JCtx) with
         | some (τ, _, Db) => some (τ, Γ, Db)
         | none => none
       else none
     | .sub d' σ Γ'', e =>
-      match check n d' D Γ e top ctx with
-      | some (τ, Γ', D') =>
-        if subJb (tyFuel τ σ) τ σ && subEnvB Γ'' Γ' then some (σ, Γ'', D')
-        else none
-      | none => none
+      -- J31: subsumption over a *claimed* expression is refused — a claim's
+      -- judgment is canonical (`.any`, env-preserving), and weakening its
+      -- environment would break the canonical coupling `checkSeq` relies on
+      -- (`check_fragHead_false`). At `.any` there is nothing to weaken to anyway.
+      if fragHead e then
+        match check n A d' D Γ e top ctx with
+        | some (τ, Γ', D') =>
+          if subJb (tyFuel τ σ) τ σ && subEnvB Γ'' Γ' then some (σ, Γ'', D')
+          else none
+        | none => none
+      else none
     | _, _ => none
 
-def checkRecv : Nat → DerivRecv → Decls → Env → Option Expr → Bool → JCtx →
+def checkRecv : Nat → SemAxioms → DerivRecv → Decls → Env → Option Expr → Bool → JCtx →
     Option (Ty × Env × Decls)
-  | 0, _, _, _, _, _, _ => none
-  | n + 1, dr, D, Γ, ro, top, ctx =>
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, dr, D, Γ, ro, top, ctx =>
     match dr, ro with
     | .self, none =>
       match ctx.selfCls with
       | some cc => some (.cls cc, Γ, D)
       | none => none
-    | .expl d, some r => check n d D Γ r top ctx
+    | .expl d, some r => check n A d D Γ r top ctx
     | _, _ => none
 
-def checkSeq : Nat → DerivSeq → Decls → Env → List Expr → Bool → JCtx →
+def checkSeq : Nat → SemAxioms → DerivSeq → Decls → Env → List Expr → Bool → JCtx →
     Option (Ty × Env × Decls)
-  | 0, _, _, _, _, _, _ => none
-  | n + 1, ds, D, Γ, es, top, ctx =>
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, ds, D, Γ, es, top, ctx =>
     match ds, es with
     | .nil, [] => some (.nilT, Γ, D)
-    | .single d, [e] => check n d D Γ e top ctx
+    | .single d, [e] => check n A d D Γ e top ctx
     | .cons d rest, e :: e₂ :: es' =>
-      match check n d D Γ e top ctx with
-      | some (_, Γ₁, D₁) => checkSeq n rest D₁ Γ₁ (e₂ :: es') top ctx
+      match check n A d D Γ e top ctx with
+      | some (_, Γ₁, D₁) => checkSeq n A rest D₁ Γ₁ (e₂ :: es') top ctx
       | none => none
     | _, _ => none
 
-def checkArgs : Nat → DerivArgs → Decls → Env → List Expr → Bool → JCtx →
+def checkArgs : Nat → SemAxioms → DerivArgs → Decls → Env → List Expr → Bool → JCtx →
     Option (List Ty × Env × Decls)
-  | 0, _, _, _, _, _, _ => none
-  | n + 1, da, D, Γ, es, top, ctx =>
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, da, D, Γ, es, top, ctx =>
     match da, es with
     | .nil, [] => some ([], Γ, D)
     | .cons d rest, e :: es' =>
-      match check n d D Γ e top ctx with
+      match check n A d D Γ e top ctx with
       | some (τ, Γ₁, D₁) =>
-        match checkArgs n rest D₁ Γ₁ es' top ctx with
+        match checkArgs n A rest D₁ Γ₁ es' top ctx with
         | some (τs, Γ', D') => some (τ :: τs, Γ', D')
         | none => none
       | none => none
     | _, _ => none
 
-def checkElems : Nat → DerivArgs → Decls → Env → List Expr → Bool → JCtx →
+def checkElems : Nat → SemAxioms → DerivArgs → Decls → Env → List Expr → Bool → JCtx →
     Option (Env × Decls)
-  | 0, _, _, _, _, _, _ => none
-  | n + 1, da, D, Γ, es, top, ctx =>
+  | 0, _, _, _, _, _, _, _ => none
+  | n + 1, A, da, D, Γ, es, top, ctx =>
     match da, es with
     | .nil, [] => some (Γ, D)
     | .cons d rest, e :: es' =>
-      match check n d D Γ e top ctx with
-      | some (_, Γ₁, D₁) => checkElems n rest D₁ Γ₁ es' top ctx
+      match check n A d D Γ e top ctx with
+      | some (_, Γ₁, D₁) => checkElems n A rest D₁ Γ₁ es' top ctx
       | none => none
     | _, _ => none
 
@@ -382,6 +394,11 @@ def topJCtx : JCtx := { cls := "Object" }
     `RowClaim`s) and the derivation. -/
 structure JCert where
   deltaRows : List RowClaim := []
+  /-- **J31**: the semantic axiom set — expressions the certificate claims at the
+      canonical judgment. The composed theorem (`validateJ_certifies`) is
+      conditional on `SemAxiomsOk` for exactly this list: each claim's `EvalOkAt`
+      obligation, user-supplied in Lean. Empty list = the unconditional theorem. -/
+  semAssumes : List Expr := []
   deriv : Deriv
 deriving Repr
 
@@ -399,7 +416,8 @@ def rowsGroundB (rows : List RowClaim) : Bool :=
 def validateJ (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
   rowsGuarded (declsOf p) c.deltaRows &&
   rowsGroundB c.deltaRows &&
-  mfragB fuel p &&
-  (check fuel c.deriv (c.table p) [] p true topJCtx).isSome
+  fragHead p &&
+  mfragB c.semAssumes fuel p &&
+  (check fuel c.semAssumes c.deriv (c.table p) [] p true topJCtx).isSome
 
 end RubyCore.Judgment

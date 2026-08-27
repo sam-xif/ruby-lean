@@ -63,13 +63,13 @@ mid-loop — those channels are what `KontOkJ.nil` refutes at the empty position
 
 /-- A machine state conformant with table `D`, environment `Γ`, and context `c`:
     the Judge-free half of `InvJ`, at an empty continuation. -/
-def Conformant (D : Decls) (c : JCtx) (Γ : Env) (m : Machine) : Prop :=
+def Conformant (A : SemAxioms) (D : Decls) (c : JCtx) (Γ : Env) (m : Machine) : Prop :=
   NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧ ClassOk m.heap ∧
   BottomObj m.frames m.stack ∧
   m.kont = [] ∧
   framePopLabels m.kont = m.stack.dropLast ∧
   ClosuresOk m ∧
-  DeclsOkJ D m.heap ∧
+  DeclsOkJ A D m.heap ∧
   FramesOkJ m.heap m.frames m.stack [Γ] ∧
   StackCtx m.heap m.frames m.stack (jctxs c []) ∧
   GlobalsOk D m.heap m.globals ∧
@@ -84,8 +84,8 @@ def Conformant (D : Decls) (c : JCtx) (Γ : Env) (m : Machine) : Prop :=
     (the fragment gate is a property of the *syntactic* route, not of the meaning —
     an out-of-fragment construct can still satisfy `SemJudge`, which is the whole
     point of having it). -/
-def SemJudge (D : Decls) (Γ : Env) (e : Expr) (c : JCtx) (τ : Ty) : Prop :=
-  ∀ m : Machine, Conformant D c Γ m → m.ctl = .eval e →
+def SemJudge (A : SemAxioms) (D : Decls) (Γ : Env) (e : Expr) (c : JCtx) (τ : Ty) : Prop :=
+  ∀ m : Machine, Conformant A D c Γ m → m.ctl = .eval e →
     (∀ r, ReachableResult m r → ¬ typeStuck r) ∧
     (∀ v mf, ReachableResult m (.done v mf) → VTy mf.heap v τ)
 
@@ -94,17 +94,18 @@ def SemJudge (D : Decls) (Γ : Env) (e : Expr) (c : JCtx) (τ : Ty) : Prop :=
 /-- A conformant state holding a judged `e` satisfies the answer-typed invariant —
     `initiationJ` generalized from the boot machine to any conformant state, with
     the answer type pinned at the judged `τ` (J29). -/
-theorem invJ_of_conformant {D : Decls} {c : JCtx} {Γ : Env} {m : Machine}
-    {e : Expr} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (hconf : Conformant D c Γ m) (hctl : m.ctl = .eval e)
-    (hmf : MFrag e) (hj : Judge D Γ e true c τ Γ' D') :
-    InvJ τ m := by
+theorem invJ_of_conformant {A : SemAxioms} {D : Decls} {c : JCtx} {Γ : Env}
+    {m : Machine} {e : Expr} {τ : Ty} {Γ' : Env} {D' : Decls}
+    (hconf : Conformant A D c Γ m) (hctl : m.ctl = .eval e)
+    (hmf : MFrag A e) (hfr : fragHead e = true)
+    (hj : Judge A D Γ e true c τ Γ' D') :
+    InvJ τ A m := by
   obtain ⟨hh, hsat, hstr, hcls, hbot, hk0, hks, hclo, htab, hfs, hsc, hgl,
     hret, hloop⟩ := hconf
   refine ⟨hh, hsat, hstr, hcls, hbot, hks, hclo, D, c, Γ, [], htab, hfs, hsc, hgl, ?_⟩
   unfold CtlOkJ
   rw [hctl]
-  refine ⟨hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ', ?_⟩
+  refine Or.inl ⟨hfr, hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ', ?_⟩
   rw [hk0]
   exact KontOkJ.nil (SubJ.refl τ)
     (fun cΓ Γs' hEq => by cases hEq; exact hret)
@@ -116,7 +117,7 @@ def DoneVTy (τ : Ty) : StepResult → Prop
   | .done v mf => VTy mf.heap v τ
   | _ => True
 
-theorem stepOkJ_doneVTy {ans : Ty} {r : StepResult} (h : StepOkJ ans r) :
+theorem stepOkJ_doneVTy {ans : Ty} {A : SemAxioms} {r : StepResult} (h : StepOkJ ans A r) :
     DoneVTy ans r := by
   cases r <;> first | trivial | exact h
 
@@ -124,23 +125,26 @@ theorem stepOkJ_doneVTy {ans : Ty} {r : StepResult} (h : StepOkJ ans r) :
     semantic judgment. The safety half is `invariant_sound_from` at the answer-typed
     invariant; the result half is `invariant_result_sound` reading `StepOkJ`'s J29
     `done` arm. All the content is `step_okJ` — this proof is assembly. -/
-theorem judge_semJudge {D : Decls} {Γ : Env} {e : Expr} {c : JCtx} {τ : Ty}
-    {Γ' : Env} {D' : Decls}
-    (hmf : MFrag e) (hj : Judge D Γ e true c τ Γ' D') :
-    SemJudge D Γ e c τ := by
+theorem judge_semJudge {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {c : JCtx}
+    {τ : Ty} {Γ' : Env} {D' : Decls}
+    (hax : SemAxiomsOk A)
+    (hmf : MFrag A e) (hfr : fragHead e = true)
+    (hj : Judge A D Γ e true c τ Γ' D') :
+    SemJudge A D Γ e c τ := by
   intro m hconf hctl
-  have hinv : InvJ τ m := invJ_of_conformant hconf hctl hmf hj
-  refine ⟨invariant_sound_from (InvJ τ) hinv consecutionJ safetyJ, ?_⟩
+  have hinv : InvJ τ A m := invJ_of_conformant hconf hctl hmf hfr hj
+  refine ⟨invariant_sound_from (InvJ τ A) hinv (consecutionJ hax) (safetyJ hax), ?_⟩
   intro v mf hr
-  exact invariant_result_sound (InvJ τ) hinv consecutionJ
-    (fun m' hm' => stepOkJ_doneVTy (step_okJ hm')) (.done v mf) hr
+  exact invariant_result_sound (InvJ τ A) hinv (consecutionJ hax)
+    (fun m' hm' => stepOkJ_doneVTy (step_okJ hax hm')) (.done v mf) hr
 
 /-! ## Type safety through the semantic judgment -/
 
 /-- The boot machine is conformant at the boot table and top context — the
     heap-side facts of `initiationJ`, verbatim (computations on a literal heap). -/
-theorem conformant_init {p : Expr} {F : Decls} (hD : DeclsOkJ F Boot.initHeap) :
-    Conformant F topJCtx [] (Machine.init p) := by
+theorem conformant_init {A : SemAxioms} {p : Expr} {F : Decls}
+    (hD : DeclsOkJ A F Boot.initHeap) :
+    Conformant A F topJCtx [] (Machine.init p) := by
   refine ⟨
     (show NoHook (Machine.init p).heap from
       noHookB_sound (by decide : noHookB Boot.initHeap = true)),
@@ -179,9 +183,9 @@ theorem conformant_init {p : Expr} {F : Decls} (hD : DeclsOkJ F Boot.initHeap) :
 /-- **Type safety from the semantic judgment alone.** Note the hypothesis: any
     `SemJudge`, however obtained — a `Judge` derivation via `judge_semJudge`, or a
     future direct semantic proof of a construct the fragment cannot check. -/
-theorem semJudge_sound {p : Expr} {F : Decls} {τ : Ty}
-    (hD : DeclsOkJ F Boot.initHeap)
-    (hs : SemJudge F [] p topJCtx τ) :
+theorem semJudge_sound {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty}
+    (hD : DeclsOkJ A F Boot.initHeap)
+    (hs : SemJudge A F [] p topJCtx τ) :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
   (hs _ (conformant_init hD) rfl).1
 
@@ -189,22 +193,29 @@ theorem semJudge_sound {p : Expr} {F : Decls} {τ : Ty}
     `Judge → SemJudge → safety` factoring where the pre-J30 route went
     `Judge → InvJ → safety` directly. Same conclusion; the middle layer is now a
     stated object rather than an implicit path. -/
-theorem judge_sound_via_sem {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (hD : DeclsOkJ F Boot.initHeap)
-    (hmf : MFrag p)
-    (hj : Judge F [] p true topJCtx τ Γ' D') :
+theorem judge_sound_via_sem {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty}
+    {Γ' : Env} {D' : Decls}
+    (hax : SemAxiomsOk A)
+    (hD : DeclsOkJ A F Boot.initHeap)
+    (hmf : MFrag A p)
+    (hfr : fragHead p = true)
+    (hj : Judge A F [] p true topJCtx τ Γ' D') :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
-  semJudge_sound hD (judge_semJudge hmf hj)
+  semJudge_sound hD (judge_semJudge hax hmf hfr hj)
 
 /-- **Result typing** — the new capability: a judged program's terminating value
     inhabits the judged type. Unprovable before J29 (the invariant's existentials
     re-closed `KontOkJ.nil` at whatever type arrived). -/
-theorem judge_result_vty {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (hD : DeclsOkJ F Boot.initHeap)
-    (hmf : MFrag p)
-    (hj : Judge F [] p true topJCtx τ Γ' D') :
+theorem judge_result_vty {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
+    {D' : Decls}
+    (hax : SemAxiomsOk A)
+    (hD : DeclsOkJ A F Boot.initHeap)
+    (hmf : MFrag A p)
+    (hfr : fragHead p = true)
+    (hj : Judge A F [] p true topJCtx τ Γ' D') :
     ∀ v mf, ReachableResult (Machine.init p) (.done v mf) → VTy mf.heap v τ :=
-  fun v mf hr => (judge_semJudge hmf hj _ (conformant_init hD) rfl).2 v mf hr
+  fun v mf hr =>
+    (judge_semJudge hax hmf hfr hj _ (conformant_init hD) rfl).2 v mf hr
 
 /-! ## Worked ends — the Sound.lean examples, upgraded
 
@@ -216,20 +227,20 @@ gains the result-typing conclusion its derivation always promised. -/
 theorem egIf_result_int :
     ∀ v mf, ReachableResult (Machine.init Static.egIf) (.done v mf) →
       VTy mf.heap v .int :=
-  judge_result_vty declsOkJ_declsOf egIf_mfrag egIf_judged
+  judge_result_vty semAxiomsOk_nil declsOkJ_declsOf egIf_mfrag (by decide) egIf_judged
 
 /-- `(1 + 2).zero?` terminates in a `Boolean` — through two `baseDecls` rows. -/
 theorem egZero_result_bool :
     ∀ v mf, ReachableResult (Machine.init Static.egZero) (.done v mf) →
       VTy mf.heap v .bool :=
-  judge_result_vty declsOkJ_declsOf egZero_mfrag egZero_judged
+  judge_result_vty semAxiomsOk_nil declsOkJ_declsOf egZero_mfrag (by decide) egZero_judged
 
 /-- The user-method flagship (`class String; def shout; 1; end; "x".shout; end`)
     terminates in an `Integer` — the promoted row's return type, delivered. -/
 theorem egUserCall_result_int :
     ∀ v mf, ReachableResult (Machine.init Static.egUserCall) (.done v mf) →
       VTy mf.heap v .int :=
-  judge_result_vty declsOkJ_declsOf egUserCall_mfrag egUserCall_judged
+  judge_result_vty semAxiomsOk_nil declsOkJ_declsOf egUserCall_mfrag (by decide) egUserCall_judged
 
 /-! ## Axiom hygiene -/
 

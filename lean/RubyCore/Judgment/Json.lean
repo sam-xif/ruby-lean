@@ -30,6 +30,11 @@ def envOfJson (j : Json) : Except String Env := do
 mutual
 
 partial def derivToJson : Deriv → Json
+  -- J31: the semantic-axiom leaf. The node itself is field-free (the claimed
+  -- expression is the ambient one at the node's position); the *claim list*
+  -- (`JCert.semAssumes`) is Lean-side data in v1 — carrying it on the wire needs
+  -- an `Expr` encoder mirroring the harness export format, a recorded bill.
+  | .semantic => Json.mkObj [("k", "semantic")]
   | .int => Json.mkObj [("k", "int")]
   | .flt => Json.mkObj [("k", "flt")]
   | .str => Json.mkObj [("k", "str")]
@@ -106,6 +111,7 @@ mutual
 partial def derivOfJson (j : Json) : Except String Deriv := do
   let k ← (← j.getObjVal? "k").getStr?
   match k with
+  | "semantic" => pure .semantic
   | "int" => pure .int
   | "flt" => pure .flt
   | "str" => pure .str

@@ -29,18 +29,21 @@ open RubyCore.Proof.Static
 
 set_option maxRecDepth 100000
 
-/-- Preservation, in `invariant_sound_from`'s shape — at every answer type (J29). -/
-theorem consecutionJ {ans : Ty} (m m' : Machine) (h : InvJ ans m) (hs : SmallStep m m') :
-    InvJ ans m' := by
-  have hok := step_okJ h
+/-- Preservation, in `invariant_sound_from`'s shape — at every answer type (J29),
+    conditional on the semantic axioms' obligations (J31). -/
+theorem consecutionJ {ans : Ty} {A : SemAxioms} (hax : SemAxiomsOk A)
+    (m m' : Machine) (h : InvJ ans A m) (hs : SmallStep m m') :
+    InvJ ans A m' := by
+  have hok := step_okJ hax h
   unfold SmallStep at hs
   rw [hs] at hok
   exact hok
 
 /-- Progress: a machine satisfying `InvJ` is never one step from a type error. -/
-theorem safetyJ {ans : Ty} (m : Machine) (h : InvJ ans m) : ¬ aboutToTypeStick m := by
+theorem safetyJ {ans : Ty} {A : SemAxioms} (hax : SemAxiomsOk A)
+    (m : Machine) (h : InvJ ans A m) : ¬ aboutToTypeStick m := by
   intro hbad
-  have hok := step_okJ h
+  have hok := step_okJ hax h
   unfold aboutToTypeStick typeStuck at hbad
   cases hr : stepFn m with
   | next m' => rw [hr] at hbad; exact hbad
@@ -55,10 +58,12 @@ def topJCtx : JCtx := { cls := "Object" }
 /-- **Initiation**: the boot facts of `initiation_ctl`, with the control clause
     from a derivation. The heap-side proofs are the old ones verbatim — they are
     computations on a literal heap and mention no typing layer. -/
-theorem initiationJ {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (hD : DeclsOkJ F Boot.initHeap)
-    (hmf : MFrag p)
-    (hj : Judge F [] p true topJCtx τ Γ' D') : InvJ τ (Machine.init p) := by
+theorem initiationJ {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
+    {D' : Decls}
+    (hD : DeclsOkJ A F Boot.initHeap)
+    (hmf : MFrag A p)
+    (hfr : fragHead p = true)
+    (hj : Judge A F [] p true topJCtx τ Γ' D') : InvJ τ A (Machine.init p) := by
   refine ⟨
     (show NoHook (Machine.init p).heap from
       noHookB_sound (by decide : noHookB Boot.initHeap = true)),
@@ -92,19 +97,23 @@ theorem initiationJ {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
     · exact fun sc hsc => absurd hsc (by simp [topJCtx, jctxs])
     · simp [Machine.init, Machine.initOn, Array.getD]
   · refine ⟨fun x pr σ _ hf _ => absurd hf (by simp [Machine.init, Machine.initOn]), ?_⟩
-    show CtlOkJ F topJCtx [] [] τ (Machine.init p)
-    exact ⟨hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ',
+    show CtlOkJ F topJCtx [] [] τ A (Machine.init p)
+    exact Or.inl ⟨hfr, hmf, τ, τ, Γ', D', Γ', hj, SubJ.refl τ, SubEnv.refl Γ',
       KontOkJ.nil (SubJ.refl τ) (by simp [topJCtx]) (by simp [topJCtx])⟩
 
 /-- **The composed theorem** — a derivation is a type-safety certificate. Note
     what the statement does not mention: `infer`, `chk`, or any checker at all;
     the J2 `Deriv.check` rung supplies `hj` from a serialized certificate. -/
-theorem judge_sound {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (hD : DeclsOkJ F Boot.initHeap)
-    (hmf : MFrag p)
-    (hj : Judge F [] p true topJCtx τ Γ' D') :
+theorem judge_sound {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
+    {D' : Decls}
+    (hax : SemAxiomsOk A)
+    (hD : DeclsOkJ A F Boot.initHeap)
+    (hmf : MFrag A p)
+    (hfr : fragHead p = true)
+    (hj : Judge A F [] p true topJCtx τ Γ' D') :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
-  invariant_sound_from (InvJ τ) (initiationJ hD hmf hj) consecutionJ safetyJ
+  invariant_sound_from (InvJ τ A) (initiationJ hD hmf hfr hj)
+    (consecutionJ hax) (safetyJ hax)
 
 /-! ## The boot table's J-witness
 
@@ -160,8 +169,8 @@ theorem declFor_baseDecls_ground {τr : Ty} {mname : String} {d : MethodDecl}
     rfl
   · simp at hpm
 
-theorem tableOk_declsOkJ {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
-    DeclsOkJ baseDecls h := by
+theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
+    DeclsOkJ A baseDecls h := by
   have hd := tableOk_declsOk ht hcls
   refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2,
     fun τr mname d hdecl => declFor_baseDecls_ground hdecl,
@@ -193,8 +202,9 @@ theorem tableOk_declsOkJ {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
 
 /-- `declsOf` is constant at `baseDecls` today; the J-witness at the boot heap, in
     the shape `judge_sound` consumes. -/
-theorem declsOkJ_declsOf {p : Expr} : DeclsOkJ (declsOf p) Boot.initHeap := by
-  show DeclsOkJ baseDecls Boot.initHeap
+theorem declsOkJ_declsOf {A : SemAxioms} {p : Expr} :
+    DeclsOkJ A (declsOf p) Boot.initHeap := by
+  show DeclsOkJ A baseDecls Boot.initHeap
   exact tableOk_declsOkJ tableOk_initHeap classOk_initHeap
 
 /-! ## The first end-to-end instance
@@ -204,56 +214,56 @@ a hand-built derivation instead of a checker run. -/
 
 /-- The derivation: sequence of an assignment and a branch, every leaf a literal
     rule, the join at `.int` by `SubJ.refl`. -/
-theorem egIf_judged : Judge (declsOf Static.egIf) [] Static.egIf true topJCtx
+theorem egIf_judged : Judge [] (declsOf Static.egIf) [] Static.egIf true topJCtx
     .int [("x", .int)] (declsOf Static.egIf) := by
   refine .seq (.cons (.vasgnLvar (by rfl) .int) (.single (.ifElse .tru ?_ (.int)
     (SubJ.refl _) (SubJ.refl _) (SubEnv.refl _) (SubEnv.refl _))))
   exact .varLvar (by decide)
 
-theorem egIf_mfrag : MFrag Static.egIf :=
-  mfragB_sound (n := 8) (by decide)
+theorem egIf_mfrag : MFrag [] Static.egIf :=
+  mfragB_sound (A := []) (n := 8) (by decide)
 
 /-- **The theorem `check_sound` proves for `egIf`, re-derived through the judgment
     layer** — same conclusion, no checker in the derivation chain. -/
 theorem egIf_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egIf) r → ¬ typeStuck r :=
-  judge_sound declsOkJ_declsOf egIf_mfrag egIf_judged
+  judge_sound semAxiomsOk_nil declsOkJ_declsOf egIf_mfrag (by decide) egIf_judged
 
 /-- **The first send certified through the judgment layer**: `(1 + 2).zero?`
     (`StaticSoundness.lean`'s `egZero`), its derivation reading two `baseDecls`
     rows — a builtin dispatch end to end. -/
-theorem egZero_judged : Judge (declsOf Static.egZero) [] Static.egZero true topJCtx
+theorem egZero_judged : Judge [] (declsOf Static.egZero) [] Static.egZero true topJCtx
     .bool [] (declsOf Static.egZero) := by
   have hplus : sigOf (declsOf Static.egZero) .int "+" = some ([.int], .int) := by decide
   have hzero : sigOf (declsOf Static.egZero) .int "zero?" = some ([], .bool) := by decide
   exact .send (.expl (.send (.expl .int) (.cons .int .nil) hplus
     (.cons (SubJ.refl _) .nil))) .nil hzero .nil
 
-theorem egZero_mfrag : MFrag Static.egZero :=
-  mfragB_sound (n := 8) (by decide)
+theorem egZero_mfrag : MFrag [] Static.egZero :=
+  mfragB_sound (A := []) (n := 8) (by decide)
 
 theorem egZero_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egZero) r → ¬ typeStuck r :=
-  judge_sound declsOkJ_declsOf egZero_mfrag egZero_judged
+  judge_sound semAxiomsOk_nil declsOkJ_declsOf egZero_mfrag (by decide) egZero_judged
 
 /-- **A user-defined method, installed and called, certified through the judgment
     layer** — `egUserCall` (`class String; def shout; 1; end; "x".shout; end`), the
     F1b.10 flagship: the `def` step's row is threaded by `Judge.defPromote` and the
     send reads it back. This is the T5 (`class_hierarchy`) shape end to end. -/
-theorem egUserCall_judged : Judge (declsOf Static.egUserCall) [] Static.egUserCall
+theorem egUserCall_judged : Judge [] (declsOf Static.egUserCall) [] Static.egUserCall
     true topJCtx .int []
     (addRow (declsOf Static.egUserCall) "String" "shout"
       { params := [], ret := .int }) := by
   have hsig : sigOf (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) (.cls "String") "shout"
       = some ([], .int) := by decide
-  have hdef : Judge (declsOf Static.egUserCall) [] (.def' "shout" [] (.int 1)) false
+  have hdef : Judge [] (declsOf Static.egUserCall) [] (.def' "shout" [] (.int 1)) false
       ({ cls := "String" } : JCtx) .sym []
       (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) :=
     .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
-  have hsend : Judge (addRow (declsOf Static.egUserCall) "String" "shout"
+  have hsend : Judge [] (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) []
       (.send (some (.str "x")) "shout" [] none) false ({ cls := "String" } : JCtx)
       .int []
@@ -262,16 +272,16 @@ theorem egUserCall_judged : Judge (declsOf Static.egUserCall) [] Static.egUserCa
     .send (.expl .str) .nil hsig .nil
   exact .classTop (by decide) (.seq (.cons hdef (.single hsend)))
 
-theorem egUserCall_mfrag : MFrag Static.egUserCall :=
-  mfragB_sound (n := 12) (by decide)
+theorem egUserCall_mfrag : MFrag [] Static.egUserCall :=
+  mfragB_sound (A := []) (n := 12) (by decide)
 
 theorem egUserCall_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egUserCall) r → ¬ typeStuck r :=
-  judge_sound declsOkJ_declsOf egUserCall_mfrag egUserCall_judged
+  judge_sound semAxiomsOk_nil declsOkJ_declsOf egUserCall_mfrag (by decide) egUserCall_judged
 
 /-- **The receiverless user-method call** — `egVcall`, fourteen of the slice's
     ninety-two method bodies' shape (F1b.11), through two threaded rows. -/
-theorem egVcall_judged : Judge (declsOf Static.egVcall) [] Static.egVcall
+theorem egVcall_judged : Judge [] (declsOf Static.egVcall) [] Static.egVcall
     true topJCtx .int []
     (addRow (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) "String" "get"
@@ -283,13 +293,13 @@ theorem egVcall_judged : Judge (declsOf Static.egVcall) [] Static.egVcall
           { params := [], ret := .int }) "String" "get"
         { params := [], ret := .int }) (.cls "String") "get"
       = some ([], .int) := by decide
-  have hdefv : Judge (declsOf Static.egVcall) [] (.def' "value" [] (.int 1)) false
+  have hdefv : Judge [] (declsOf Static.egVcall) [] (.def' "value" [] (.int 1)) false
       ({ cls := "String" } : JCtx) .sym []
       (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) :=
     .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
-  have hdefg : Judge (addRow (declsOf Static.egVcall) "String" "value"
+  have hdefg : Judge [] (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) []
       (.def' "get" [] (.vcall "value")) false ({ cls := "String" } : JCtx) .sym []
       (addRow (addRow (declsOf Static.egVcall) "String" "value"
@@ -297,7 +307,7 @@ theorem egVcall_judged : Judge (declsOf Static.egVcall) [] Static.egVcall
         { params := [], ret := .int }) :=
     .defPromote (by decide) (by decide) (.vcall rfl hsigv) rfl (by decide)
       (by decide) (by decide) (by simp [defFree]) rfl rfl rfl
-  have hsend : Judge (addRow (addRow (declsOf Static.egVcall) "String" "value"
+  have hsend : Judge [] (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"
         { params := [], ret := .int }) []
       (.send (some (.str "x")) "get" [] none) false ({ cls := "String" } : JCtx)
@@ -308,12 +318,12 @@ theorem egVcall_judged : Judge (declsOf Static.egVcall) [] Static.egVcall
     .send (.expl .str) .nil hsigg .nil
   exact .classTop (by decide) (.seq (.cons hdefv (.cons hdefg (.single hsend))))
 
-theorem egVcall_mfrag : MFrag Static.egVcall :=
-  mfragB_sound (n := 12) (by decide)
+theorem egVcall_mfrag : MFrag [] Static.egVcall :=
+  mfragB_sound (A := []) (n := 12) (by decide)
 
 theorem egVcall_judge_safe :
     ∀ r, ReachableResult (Machine.init Static.egVcall) r → ¬ typeStuck r :=
-  judge_sound declsOkJ_declsOf egVcall_mfrag egVcall_judged
+  judge_sound semAxiomsOk_nil declsOkJ_declsOf egVcall_mfrag (by decide) egVcall_judged
 
 /-! ## Axiom hygiene -/
 

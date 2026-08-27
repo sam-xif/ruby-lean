@@ -141,19 +141,70 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
     | .begin' _ _ _ _ | .alias' _ _ | .undef _ | .defined _
     | .hash _ | .blockpass _ => simp [defFree]
 
+set_option maxHeartbeats 1600000 in
+/-- **J31 — the canonical-claim pins.** A checked judgment at an out-of-fragment
+    head can only have come from the `.semantic` node (every other node's
+    expression pattern is a `fragHead`-true shape, and the `.sub` node is guarded),
+    so its result is the canonical one. This is what supplies the `JudgeSeq`
+    coupling premises in `check_sound_all` — the checker needs no extra guards. -/
+theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
+    {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx} {τ : Ty} {Γ' : Env} {D' : Decls}
+    (h : RubyCore.Judgment.check n A d D Γ e top ctx = some (τ, Γ', D'))
+    (hf : fragHead e = false) : τ = .any ∧ Γ' = Γ ∧ D' = D := by
+  match n with
+  | 0 => exact absurd h (by simp [RubyCore.Judgment.check])
+  | n + 1 =>
+    match d, e with
+    | .semantic, e =>
+      simp only [RubyCore.Judgment.check] at h
+      split at h
+      · simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        exact ⟨rfl, rfl, rfl⟩
+      · exact absurd h (by simp)
+    | .sub d' σ Γ'', e =>
+      simp [RubyCore.Judgment.check, hf] at h
+      | .int, .int _ => simp [fragHead] at hf
+      | .flt, .flt _ => simp [fragHead] at hf
+      | .str, .str _ => simp [fragHead] at hf
+      | .sym, .sym _ => simp [fragHead] at hf
+      | .tru, .tru => simp [fragHead] at hf
+      | .fls, .fls => simp [fragHead] at hf
+      | .nil, .nil => simp [fragHead] at hf
+      | .self, .self' => simp [fragHead] at hf
+      | .varLvar, .var .lvar _ => simp [fragHead] at hf
+      | .vasgnLvar _, .vasgn .lvar _ _ => simp [fragHead] at hf
+      | .seq _, .seq _ => simp [fragHead] at hf
+      | .const, .const _ => simp [fragHead] at hf
+      | .varIvar, .var .ivar _ => simp [fragHead] at hf
+      | .varGvar, .var .gvar _ => simp [fragHead] at hf
+      | .vasgnIvar _, .vasgn .ivar _ _ => simp [fragHead] at hf
+      | .vasgnGvar _, .vasgn .gvar _ _ => simp [fragHead] at hf
+      | .array _, .array _ => simp [fragHead] at hf
+      | .ifElse _ _ _ _ _, .if' _ _ (some _) => simp [fragHead] at hf
+      | .ifNone _ _ _ _, .if' _ _ none => simp [fragHead] at hf
+      | .ifNarrowElse _ _ _ _, .if' _ _ (some _) => simp [fragHead] at hf
+      | .ifNarrowNone _ _ _, .if' _ _ none => simp [fragHead] at hf
+      | .while' _ _ _, .while' _ _ => simp [fragHead] at hf
+      | .vcall, .vcall _ => simp [fragHead] at hf
+      | .send _ _, .send _ _ _ none => simp [fragHead] at hf
+      | .defDecl _ _ _ _, .def' _ _ _ => simp [fragHead] at hf
+      | .defPromote _, .def' _ _ _ => simp [fragHead] at hf
+      | .classTop _, .class' _ none _ => simp [fragHead] at hf
+
 set_option maxHeartbeats 4000000 in
 /-- **Adequacy, all five checkers at once** — one fuel induction. -/
 theorem check_sound_all : ∀ (n : Nat),
-    (∀ {d D Γ e top ctx τ Γ' D'}, RubyCore.Judgment.check n d D Γ e top ctx = some (τ, Γ', D') →
-       Judge D Γ e top ctx τ Γ' D') ∧
-    (∀ {dr D Γ ro top ctx τ Γ' D'}, checkRecv n dr D Γ ro top ctx = some (τ, Γ', D') →
-       JudgeRecv D Γ ro top ctx τ Γ' D') ∧
-    (∀ {ds D Γ es top ctx τ Γ' D'}, checkSeq n ds D Γ es top ctx = some (τ, Γ', D') →
-       JudgeSeq D Γ es top ctx τ Γ' D') ∧
-    (∀ {da D Γ es top ctx τs Γ' D'}, checkArgs n da D Γ es top ctx = some (τs, Γ', D') →
-       JudgeArgs D Γ es top ctx τs Γ' D') ∧
-    (∀ {da D Γ es top ctx Γ' D'}, checkElems n da D Γ es top ctx = some (Γ', D') →
-       JudgeElems D Γ es top ctx Γ' D') := by
+    (∀ {d D Γ e top ctx τ Γ' D'}, RubyCore.Judgment.check n A d D Γ e top ctx = some (τ, Γ', D') →
+       Judge A D Γ e top ctx τ Γ' D') ∧
+    (∀ {dr D Γ ro top ctx τ Γ' D'}, checkRecv n A dr D Γ ro top ctx = some (τ, Γ', D') →
+       JudgeRecv A D Γ ro top ctx τ Γ' D') ∧
+    (∀ {ds D Γ es top ctx τ Γ' D'}, checkSeq n A ds D Γ es top ctx = some (τ, Γ', D') →
+       JudgeSeq A D Γ es top ctx τ Γ' D') ∧
+    (∀ {da D Γ es top ctx τs Γ' D'}, checkArgs n A da D Γ es top ctx = some (τs, Γ', D') →
+       JudgeArgs A D Γ es top ctx τs Γ' D') ∧
+    (∀ {da D Γ es top ctx Γ' D'}, checkElems n A da D Γ es top ctx = some (Γ', D') →
+       JudgeElems A D Γ es top ctx Γ' D') := by
   intro n
   induction n with
   | zero =>
@@ -193,6 +244,15 @@ theorem check_sound_all : ∀ (n : Nat),
         simp only [RubyCore.Judgment.check, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl, rfl⟩ := h
         exact .nil
+      | .semantic, e =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hcl =>
+          simp only [Bool.and_eq_true, Bool.not_eq_true'] at hcl
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .semantic (claimedB_sound hcl.2) hcl.1
+        · exact absurd h (by simp)
       | .self, .self' =>
         simp only [RubyCore.Judgment.check] at h
         split at h
@@ -503,6 +563,8 @@ theorem check_sound_all : ∀ (n : Nat),
       | .sub d' σ Γ'', e =>
         simp only [RubyCore.Judgment.check] at h
         split at h
+        case isFalse => exact absurd h (by simp)
+        split at h
         · next τ0 Γ0 D0 h0 =>
           split at h
           · next hg2 =>
@@ -533,12 +595,21 @@ theorem check_sound_all : ∀ (n : Nat),
         exact .nil
       | .single d, [e] =>
         simp only [checkSeq] at h
-        exact .single (ihc h)
+        by_cases hfe : fragHead e = true
+        · exact .single (ihc h) (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))
+        · replace hfe : fragHead e = false := by simpa using hfe
+          obtain ⟨rfl, rfl, rfl⟩ := check_fragHead_false h hfe
+          exact .single (ihc h) (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)
       | .cons d rest, e :: e₂ :: es' =>
         simp only [checkSeq] at h
         split at h
         · next τ1 Γ₁ D₁ h1 =>
-          exact .cons (ihc h1) (ihs h)
+          by_cases hfe : fragHead e = true
+          · exact .cons (ihc h1) (ihs h)
+              (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))
+          · replace hfe : fragHead e = false := by simpa using hfe
+            obtain ⟨rfl, rfl, rfl⟩ := check_fragHead_false h1 hfe
+            exact .cons (ihc h1) (ihs h) (hcpl := fun _ => ⟨rfl, rfl, rfl⟩)
         · exact absurd h (by simp)
     · intro da D Γ es top ctx τs Γ' D' h
       match da, es with
@@ -573,8 +644,8 @@ theorem check_sound_all : ∀ (n : Nat),
 /-- The headline adequacy statement. -/
 theorem check_sound {n : Nat} {d : Deriv} {D : Decls} {Γ : Env} {e : Expr}
     {top : Bool} {ctx : JCtx} {τ : Ty} {Γ' : Env} {D' : Decls}
-    (h : RubyCore.Judgment.check n d D Γ e top ctx = some (τ, Γ', D')) :
-    Judge D Γ e top ctx τ Γ' D' := (check_sound_all n).1 h
+    (h : RubyCore.Judgment.check n A d D Γ e top ctx = some (τ, Γ', D')) :
+    Judge A D Γ e top ctx τ Γ' D' := (check_sound_all n).1 h
 
 /-! ## The composed pipeline: `validateJ` accepts ⇒ no reachable type-stuck outcome -/
 
@@ -583,15 +654,16 @@ theorem check_sound {n : Nat} {d : Deriv} {D : Decls} {Γ : Env} {e : Expr}
     residue stays the one honest hypothesis, exactly as in
     `validate_sound_of_ctl`. -/
 theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
+    (hax : SemAxiomsOk c.semAssumes)
     (h : validateJ c p fuel = true)
     (ha : ∀ r ∈ c.deltaRows,
-      EntryOkJ (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig) :
+      EntryOkJ c.semAssumes (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig) :
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
   unfold validateJ at h
   simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
-  obtain ⟨⟨⟨hg, hgr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
+  obtain ⟨⟨⟨⟨hg, hgr⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
   have htbl : c.table p = rowFold (declsOf p) c.deltaRows := rfl
-  refine judge_sound ?_ (mfragB_sound hmf) (check_sound hchk)
+  refine judge_sound hax ?_ (mfragB_sound hmf) hfr (check_sound hchk)
   rw [htbl] at ha ⊢
   refine DeclsOkJ_of_subDecls declsOkJ_declsOf (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ0 n0 d0 hnone hsome
@@ -616,7 +688,7 @@ theorem egEvenJCert_validates : validateJ egEvenJCert egEven 8 = true := by deci
     the pipeline `Deriv` → `check` → `Judge` → `judge_sound`, end to end. -/
 theorem egEven_data_certified :
     ∀ r, ReachableResult (Machine.init egEven) r → ¬ typeStuck r :=
-  validateJ_certifies egEvenJCert_validates
+  validateJ_certifies semAxiomsOk_nil egEvenJCert_validates
     (fun r hm => by
       simp only [egEvenJCert, List.mem_singleton] at hm
       subst hm
@@ -634,7 +706,7 @@ theorem egUserCallJCert_validates :
 /-- The T5 `class_hierarchy` shape, certified from data, unconditionally. -/
 theorem egUserCall_data_certified :
     ∀ r, ReachableResult (Machine.init Static.egUserCall) r → ¬ typeStuck r :=
-  validateJ_certifies egUserCallJCert_validates (fun r hm => by simp [egUserCallJCert] at hm)
+  validateJ_certifies semAxiomsOk_nil egUserCallJCert_validates (fun r hm => by simp [egUserCallJCert] at hm)
 
 /-- **The DRuby pattern, certified**: `x = (true ? 1 : nil); if x then x + 1 else
     0 end` — the local is an optional, the guard narrows it, and the narrowed
@@ -659,7 +731,7 @@ theorem egNarrowJCert_validates : validateJ egNarrowJCert egNarrow 12 = true := 
 
 theorem egNarrow_certified :
     ∀ r, ReachableResult (Machine.init egNarrow) r → ¬ typeStuck r :=
-  validateJ_certifies egNarrowJCert_validates (fun r hm => by simp [egNarrowJCert] at hm)
+  validateJ_certifies semAxiomsOk_nil egNarrowJCert_validates (fun r hm => by simp [egNarrowJCert] at hm)
 
 /-! ## The refusal direction, observed
 

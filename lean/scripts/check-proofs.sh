@@ -58,6 +58,7 @@ import RubyCore.Proof.Cert.Sound
 import RubyCore.Proof.Cert.Ledger
 import RubyCore.Proof.Judgment.Cert
 import RubyCore.Proof.Judgment.Sem
+import RubyCore.Proof.Judgment.SemAxiom
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_result_sound
 #print axioms RubyCore.Proof.invariant_sound_from
@@ -93,6 +94,13 @@ import RubyCore.Proof.Judgment.Sem
 #print axioms RubyCore.Proof.Judgment.judge_sound_via_sem
 #print axioms RubyCore.Proof.Judgment.judge_result_vty
 #print axioms RubyCore.Proof.Judgment.egIf_result_int
+-- J31 — semantic axioms as Judge leaves: `semAxiomsOk_lam` is the first
+-- user-supplied semantic lemma (a lambda send, out of the fragment, discharged by
+-- executing the semantics); `egSem_data_certified` composes it through a data
+-- certificate whose `.semantic` node the kernel replays by one `decide`.
+#print axioms RubyCore.Proof.Judgment.semAxiomsOk_lam
+#print axioms RubyCore.Proof.Judgment.egSem_semantic_safe
+#print axioms RubyCore.Proof.Judgment.egSem_data_certified
 -- The assertion language (L165). `denote_declAssn` is the faithfulness theorem —
 -- `⟦declAssn D⟧ h ↔ DeclsOk D h`, both directions — and it is what closes
 -- `assertion-language.md` §9.3's honest weak point for the declaration fragment:

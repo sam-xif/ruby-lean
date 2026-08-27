@@ -40,10 +40,10 @@ set_option maxRecDepth 100000
 /-- A loop whose condition and body are judged at the loop-head environment `Γl`,
     each exit re-guaranteeing it — `LoopOk` with `chk`'s environment equality
     relaxed to the containment `Judge.while'` carries (J6). -/
-def LoopOkJ (D : Decls) (Γl : Env) (c body : Expr) (top : Bool) (ctx : JCtx) : Prop :=
-  MFrag c ∧ MFrag body ∧
-  (∃ τc Γ₁, Judge D Γl c top ctx τc Γ₁ D ∧ SubEnv Γl Γ₁) ∧
-  (∃ τb Γ₂, Judge D Γl body top ctx τb Γ₂ D ∧ SubEnv Γl Γ₂)
+def LoopOkJ (A : SemAxioms) (D : Decls) (Γl : Env) (c body : Expr) (top : Bool) (ctx : JCtx) : Prop :=
+  fragHead c = true ∧ fragHead body = true ∧ MFrag A c ∧ MFrag A body ∧
+  (∃ τc Γ₁, Judge A D Γl c top ctx τc Γ₁ D ∧ SubEnv Γl Γ₁) ∧
+  (∃ τb Γ₂, Judge A D Γl body top ctx τb Γ₂ D ∧ SubEnv Γl Γ₂)
 
 /-- `KontOk` over the judgment: *the in-flight value has type `τ` (as a `VTy`), the
     environment stack is `Γs`, and `k` is a well-typed continuation.* One
@@ -60,7 +60,7 @@ def LoopOkJ (D : Decls) (Γl : Env) (c body : Expr) (top : Bool) (ctx : JCtx) : 
     machine reached `done` — true safety, vacuous result typing. With the
     parameter, `StepOkJ`'s `done` arm can (and now does) conclude
     `VTy mf.heap v ans`, which is what `SemJudge`'s result clause consumes. -/
-inductive KontOkJ (ans : Ty) : Decls → Heap → List (JCtx × Env) → Ty → List Kont → Prop where
+inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × Env) → Ty → List Kont → Prop where
   /-- Empty stack: the in-flight value is the program's result — so it must sit
       below the answer type. The two `none` channels are what let
       `RetOkJ`/`NxtOkJ` refute the empty position. -/
@@ -68,78 +68,81 @@ inductive KontOkJ (ans : Ty) : Decls → Heap → List (JCtx × Env) → Ty → 
       SubJ τ ans →
       (∀ cΓ Γs', Γs = cΓ :: Γs' → cΓ.1.ret = none) →
       (∀ cΓ Γs', Γs = cΓ :: Γs' → cΓ.1.inLoop = none) →
-      KontOkJ ans D h Γs τ []
+      KontOkJ ans A D h Γs τ []
   /-- `seqK []` yields the in-flight value unchanged. -/
   | seqNil {D h c Γ Γs τ τw k Γk} :
-      SubJ τ τw → KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      SubJ τ τw → KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.seqK [] :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.seqK [] :: k)
   /-- `seqK (e :: es)` discards the in-flight value and runs the rest. -/
   | seqCons {D D' h c Γ Γs τ e es τ' τw Γ' k Γk} :
-      (∀ e' ∈ e :: es, MFrag e') →
-      JudgeSeq D Γ (e :: es) Γs.isEmpty c τ' Γ' D' →
+      (∀ e' ∈ e :: es, MFrag A e') →
+      JudgeSeq A D Γ (e :: es) Γs.isEmpty c τ' Γ' D' →
       SubJ τ' τw →
-      KontOkJ ans D' h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.seqK (e :: es) :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.seqK (e :: es) :: k)
   /-- Assignment binds `x` at the in-flight type and re-yields the value. -/
   | asgn {D h c Γ Γs τ τw x k Γk} :
       c.inBlock = false → SubJ τ τw →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (envSet Γ x τ) := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
   /-- `@x = e`, with the value in flight: the conformance to whatever the table
       declares rides the kont (J26, mirroring L191/L196). -/
   | asgnIvar {D h c Γ Γs τ τw x k Γk} :
       c.selfCls.isSome = true → SubJ τ τw →
       (∀ cn σ, c.selfCls = some cn → ivarTy? D cn x = some σ → SubJ τ σ) →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
   /-- `$x = e`, with the value in flight (J26, mirroring L228). -/
   | asgnGvar {D h c Γ Γs τ τw x σ k Γk} :
       plainGlobal x = true →
       globalTy? D x = some σ →
       SubJ τ σ →
       SubJ τ τw →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.asgnK .gvar x :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.asgnK .gvar x :: k)
   /-- An array literal's element (J26, mirroring L174): the remaining elements ride
       as program, the answer is a fresh `Array`, the accumulated values are not
       mentioned (element types are erased at `.cls "Array"`). -/
   | arrK {D D' h c Γ Γs τ τw acc rest Γ' k Γk} :
-      (∀ e ∈ rest, MFrag e) →
-      JudgeElems D Γ rest Γs.isEmpty c Γ' D' →
+      (∀ e ∈ rest, fragHead e = true) →
+      (∀ e ∈ rest, MFrag A e) →
+      JudgeElems A D Γ rest Γs.isEmpty c Γ' D' →
       SubJ (.cls "Array") τw →
-      KontOkJ ans D' h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
   /-- The in-flight value is the condition; either branch may run next, judged at
       this constructor's own environment (the condition's exit), below the chosen
       join `τj` with the chosen continuation environment `Γc` — `Judge.ifElse`'s
       premises carried onto the continuation. -/
   | ifElseK {D Dt h c Γ Γs τ t els τt Γt τe Γe τj Γc τw k Γk} :
-      MFrag t → MFrag els →
-      Judge D Γ t Γs.isEmpty c τt Γt Dt →
-      Judge D Γ els Γs.isEmpty c τe Γe Dt →
+      fragHead t = true → fragHead els = true →
+      MFrag A t → MFrag A els →
+      Judge A D Γ t Γs.isEmpty c τt Γt Dt →
+      Judge A D Γ els Γs.isEmpty c τe Γe Dt →
       SubJ τt τj → SubJ τe τj →
       SubEnv Γc Γt → SubEnv Γc Γe →
       SubJ τj τw →
-      KontOkJ ans Dt h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A Dt h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.ifK t (some els) :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.ifK t (some els) :: k)
   /-- The elseless `if`: a falsy condition delivers `nil`, so `nil` sits below the
       join (`Judge.ifNone`'s premise). -/
   | ifNoneK {D h c Γ Γs τ t τt Γt τj Γc τw k Γk} :
-      MFrag t →
-      Judge D Γ t Γs.isEmpty c τt Γt D →
+      fragHead t = true →
+      MFrag A t →
+      Judge A D Γ t Γs.isEmpty c τt Γt D →
       SubJ τt τj → SubJ .nilT τj →
       SubEnv Γc Γt → SubEnv Γc Γ →
       SubJ τj τw →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.ifK t none :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.ifK t none :: k)
   /-- **The narrowing `if`** (J27): the condition was a bare read of `x : τ₀`, and
       the machine's own truthiness test is the narrowing evidence. The conclusion's
       environment binds `x` at the *stored value's atom* `a` (chosen at the push by
@@ -149,10 +152,11 @@ inductive KontOkJ (ans : Ty) : Decls → Heap → List (JCtx × Env) → Ty → 
       `hFn`/`hFf` for the two falsy shapes. No value↔store correlation is carried —
       the atom's sharpness *is* the correlation, established once at the push. -/
   | ifNarrowElseK {D Dt h c Γb x τ₀ a t els τt Γt τe Γe τj Γc τw k Γk} :
-      MFrag t → MFrag els →
+      fragHead t = true → fragHead els = true →
+      MFrag A t → MFrag A els →
       envGet? Γb x = some τ₀ →
-      Judge D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt Dt →
-      Judge D (envSet Γb x (elseNarrow τ₀)) els Γs.isEmpty c τe Γe Dt →
+      Judge A D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt Dt →
+      Judge A D (envSet Γb x (elseNarrow τ₀)) els Γs.isEmpty c τe Γe Dt →
       SubJ τt τj → SubJ τe τj →
       SubEnv Γc Γt → SubEnv Γc Γe →
       SubJ a τ₀ →
@@ -160,56 +164,58 @@ inductive KontOkJ (ans : Ty) : Decls → Heap → List (JCtx × Env) → Ty → 
       (SubJ .nilT a → SubJ a (elseNarrow τ₀)) →
       (SubJ .bool a → SubJ a (elseNarrow τ₀)) →
       SubJ τj τw →
-      KontOkJ ans Dt h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A Dt h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, envSet Γb x a) :: Γs) a (.ifK t (some els) :: k)
+      KontOkJ ans A D h ((c, envSet Γb x a) :: Γs) a (.ifK t (some els) :: k)
   | ifNarrowNoneK {D h c Γb x τ₀ a t τt Γt τj Γc τw k Γk} :
-      MFrag t →
+      fragHead t = true →
+      MFrag A t →
       envGet? Γb x = some τ₀ →
-      Judge D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt D →
+      Judge A D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt D →
       SubJ τt τj → SubJ .nilT τj →
       SubEnv Γc Γt → SubEnv Γc Γb →
       SubJ a τ₀ →
       (a = .nilT ∨ SubJ a (dropNil τ₀)) →
       SubJ τj τw →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, envSet Γb x a) :: Γs) a (.ifK t none :: k)
+      KontOkJ ans A D h ((c, envSet Γb x a) :: Γs) a (.ifK t none :: k)
   /-- The loop konts: condition in flight (`whileCond`) or body's value in flight
       (`whileBody`); the loop's own answer is `nil`, delivered to the enclosing
       continuation. The environment index is the loop head `Γl`, which every
       subcomputation exit re-guarantees (`LoopOkJ`). -/
   | whileCond {D h ctx Γl Γs τ τw c body k Γk} :
-      LoopOkJ D Γl c body Γs.isEmpty (loopCtx ctx Γl) →
+      LoopOkJ A D Γl c body Γs.isEmpty (loopCtx ctx Γl) →
       SubJ .nilT τw →
-      KontOkJ ans D h ((ctx, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((ctx, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γl := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((loopCtx ctx Γl, Γl) :: Γs) τ (.whileCondK c body :: k)
+      KontOkJ ans A D h ((loopCtx ctx Γl, Γl) :: Γs) τ (.whileCondK c body :: k)
   | whileBody {D h ctx Γl Γs τ τw c body k Γk} :
-      LoopOkJ D Γl c body Γs.isEmpty (loopCtx ctx Γl) →
+      LoopOkJ A D Γl c body Γs.isEmpty (loopCtx ctx Γl) →
       SubJ .nilT τw →
-      KontOkJ ans D h ((ctx, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((ctx, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γl := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((loopCtx ctx Γl, Γl) :: Γs) τ (.whileBodyK c body :: k)
+      KontOkJ ans A D h ((loopCtx ctx Γl, Γl) :: Γs) τ (.whileBodyK c body :: k)
   /-- The in-flight value is the **receiver** of an argument-bearing send; the
       first argument runs next. -/
   | recvK {D D₂ h c Γ Γs τ mname arg args τs ps τret τw Γ₂ k Γk} {site : SendSite} :
-      (∀ a ∈ arg :: args, MFrag a) →
-      JudgeArgs D Γ (arg :: args) Γs.isEmpty c τs Γ₂ D₂ →
+      (∀ a ∈ arg :: args, fragHead a = true) →
+      (∀ a ∈ arg :: args, MFrag A a) →
+      JudgeArgs A D Γ (arg :: args) Γs.isEmpty c τs Γ₂ D₂ →
       sigOf D₂ τ mname = some (ps, τret) →
       SubJs τs ps →
       SubJ τret τw →
-      KontOkJ ans D₂ h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D₂ h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ₂ := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.recvK mname (arg :: args) .none site :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.recvK mname (arg :: args) .none site :: k)
   /-- A zero-argument send: the dispatch happens at the delivery itself, so the
       continuation is already at the return type. -/
   | recvK0 {D h c Γ Γs τ mname τret τw k Γk} {site : SendSite} :
       sigOf D τ mname = some ([], τret) →
       SubJ τret τw →
-      KontOkJ ans D h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.recvK mname [] .none site :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.recvK mname [] .none site :: k)
   /-- The in-flight value is an **argument**; the receiver and the evaluated prefix
       ride the kont as values, so their types are `VTy` facts against the heap —
       the constructor `heap_congr'` gains content at. -/
@@ -218,61 +224,62 @@ inductive KontOkJ (ans : Ty) : Decls → Heap → List (JCtx × Env) → Ty → 
       VTy h recv τr →
       VTys h acc psacc →
       SubJ τ τp →
-      (∀ a ∈ rest, MFrag a) →
-      JudgeArgs D Γ rest Γs.isEmpty c τrest Γ' D' →
+      (∀ a ∈ rest, fragHead a = true) →
+      (∀ a ∈ rest, MFrag A a) →
+      JudgeArgs A D Γ rest Γs.isEmpty c τrest Γ' D' →
       SubJs τrest psrest →
       sigOf D' τr mname = some (psacc ++ τp :: psrest, τret) →
       SubJ τret τw →
-      KontOkJ ans D' h ((c, Γk) :: Γs) τw k →
+      KontOkJ ans A D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption) →
-      KontOkJ ans D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
   /-- **Method return** — the callee's declared return type is what the caller's
       continuation expects; the two-deep stack is what makes the pop total. -/
   | frameK {D h cΓ cΓ' Γs τ fid k} :
       (∀ σ, cΓ.1.ret = some σ → SubJ σ τ) →
       cΓ.1.inLoop = none →
-      KontOkJ ans D h (cΓ' :: Γs) τ k → KontOkJ ans D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
+      KontOkJ ans A D h (cΓ' :: Γs) τ k → KontOkJ ans A D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
 
 /-- Transport of the continuation judgment across a heap the step grew — no rung-1
     constructor stores a `VTy` fact, so this is currently structural; the `argsK`
     rung is where it gains content (as `KontOk.heap_congr'` did at L137). -/
-theorem KontOkJ.heap_congr' {ans : Ty} {h' : Heap} :
+theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
     ∀ {D : Decls} {h : Heap} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont},
-      KontOkJ ans D h Γs τ k → TypeAgree h h' → KontOkJ ans D h' Γs τ k := by
+      KontOkJ ans A D h Γs τ k → TypeAgree h h' → KontOkJ ans A D h' Γs τ k := by
   intro D h Γs τ k hk
   induction hk with
   | nil hsub hr hl => intro _; exact .nil hsub hr hl
   | seqNil hw _ hsu ih => intro ha; exact .seqNil hw (ih ha) hsu
   | seqCons hm hs hw _ hsu ih => intro ha; exact .seqCons hm hs hw (ih ha) hsu
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
-  | ifElseK hmt hme ht he hjt hje hct hce hw _ hsu ih =>
-      intro ha; exact .ifElseK hmt hme ht he hjt hje hct hce hw (ih ha) hsu
-  | ifNoneK hmt ht hjt hjn hct hce hw _ hsu ih =>
-      intro ha; exact .ifNoneK hmt ht hjt hjn hct hce hw (ih ha) hsu
+  | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw _ hsu ih =>
+      intro ha; exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih ha) hsu
+  | ifNoneK hft hmt ht hjt hjn hct hce hw _ hsu ih =>
+      intro ha; exact .ifNoneK hft hmt ht hjt hjn hct hce hw (ih ha) hsu
   | whileCond hl hw _ hsu ih => intro ha; exact .whileCond hl hw (ih ha) hsu
   | whileBody hl hw _ hsu ih => intro ha; exact .whileBody hl hw (ih ha) hsu
-  | recvK hm hargs hsg hsub hw _ hsu ih =>
-      intro ha; exact .recvK hm hargs hsg hsub hw (ih ha) hsu
+  | recvK hfm hm hargs hsg hsub hw _ hsu ih =>
+      intro ha; exact .recvK hfm hm hargs hsg hsub hw (ih ha) hsu
   | recvK0 hsg hw _ hsu ih => intro ha; exact .recvK0 hsg hw (ih ha) hsu
-  | argsK hrv hva hst hm hrest hsr hsg hw _ hsu ih =>
+  | argsK hrv hva hst hfm hm hrest hsr hsg hw _ hsu ih =>
       intro ha
-      exact .argsK (hrv.congr ha) (VTys.congr ha hva) hst hm hrest hsr hsg hw (ih ha) hsu
+      exact .argsK (hrv.congr ha) (VTys.congr ha hva) hst hfm hm hrest hsr hsg hw (ih ha) hsu
   | frameK hrt hil _ ih => intro ha; exact .frameK hrt hil (ih ha)
   | asgnIvar hsc hw hcf _ hsu ih => intro ha; exact .asgnIvar hsc hw hcf (ih ha) hsu
   | asgnGvar hpg hgt hcf hw _ hsu ih =>
       intro ha; exact .asgnGvar hpg hgt hcf hw (ih ha) hsu
-  | arrK hm hje hw _ hsu ih => intro ha; exact .arrK hm hje hw (ih ha) hsu
-  | ifNarrowElseK hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw _ hsu ih =>
+  | arrK hfm hm hje hw _ hsu ih => intro ha; exact .arrK hfm hm hje hw (ih ha) hsu
+  | ifNarrowElseK hft hfe hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw _ hsu ih =>
       intro ha
-      exact .ifNarrowElseK hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw
+      exact .ifNarrowElseK hft hfe hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw
         (ih ha) hsu
-  | ifNarrowNoneK hmt hget ht hjt hjn hct hcb hs0 hT hjw _ hsu ih =>
+  | ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw _ hsu ih =>
       intro ha
-      exact .ifNarrowNoneK hmt hget ht hjt hjn hct hcb hs0 hT hjw (ih ha) hsu
+      exact .ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw (ih ha) hsu
 
-theorem KontOkJ.heap_congr {ans : Ty} {h h' : Heap} (ha : TypeAgree h h')
+theorem KontOkJ.heap_congr {ans : Ty} {A : SemAxioms} {h h' : Heap} (ha : TypeAgree h h')
     {D : Decls} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont}
-    (hk : KontOkJ ans D h Γs τ k) : KontOkJ ans D h' Γs τ k :=
+    (hk : KontOkJ ans A D h Γs τ k) : KontOkJ ans A D h' Γs τ k :=
   KontOkJ.heap_congr' hk ha
 
 /-- The control clause over the judgment (`CtlOk`, Proof/Static/Konts.lean:925).
@@ -280,14 +287,23 @@ theorem KontOkJ.heap_congr {ans : Ty} {h h' : Heap} (ha : TypeAgree h h')
     that produce jumps (`return`/`next`/`raise`) enter the fragment. `ans` (J29) is
     the answer type the continuation's spine bottoms out at. -/
 def CtlOkJ (D : Decls) (c : JCtx) (Γ : Env) (Γs : List (JCtx × Env))
-    (ans : Ty) (m : Machine) : Prop :=
+    (ans : Ty) (A : SemAxioms) (m : Machine) : Prop :=
   match m.ctl with
   | .eval e =>
-    MFrag e ∧
-    ∃ τ τ' Γ' D' Γk, Judge D Γ e Γs.isEmpty c τ Γ' D' ∧ SubJ τ τ' ∧
-      SubEnv Γk Γ' ∧ KontOkJ ans D' m.heap ((c, Γk) :: Γs) τ' m.kont
+    -- **J31: two modes.** The syntactic mode is the pre-J31 clause plus the
+    -- `fragHead` routing bit; the semantic mode holds a claimed expression at the
+    -- canonical judgment — no derivation, the continuation expecting (at least)
+    -- `.any` at the current environment. `step_okJ`'s eval branch dispatches on
+    -- the disjunction: syntactic → `judge_eval_ok`, semantic → the claim's
+    -- `SemAxiomsOk` obligation, applied.
+    (fragHead e = true ∧ MFrag A e ∧
+      ∃ τ τ' Γ' D' Γk, Judge A D Γ e Γs.isEmpty c τ Γ' D' ∧ SubJ τ τ' ∧
+        SubEnv Γk Γ' ∧ KontOkJ ans A D' m.heap ((c, Γk) :: Γs) τ' m.kont)
+    ∨ (e ∈ A ∧ fragHead e = false ∧
+        ∃ τ' Γk, SubJ .any τ' ∧ SubEnv Γk Γ ∧
+          KontOkJ ans A D m.heap ((c, Γk) :: Γs) τ' m.kont)
   | .value v => ∃ τ Γk, VTy m.heap v τ ∧ SubEnv Γk Γ ∧
-      KontOkJ ans D m.heap ((c, Γk) :: Γs) τ m.kont
+      KontOkJ ans A D m.heap ((c, Γk) :: Γs) τ m.kont
   | .jump _ => False
 
 /-- The `JCtx`-shaped context stack, projected for `StackCtx`. -/
@@ -304,92 +320,135 @@ def jctxs (c : JCtx) (Γs : List (JCtx × Env)) : List FrameCtx :=
     every consecution, and an existential answer type is what made the pre-J29
     invariant forget the judged type (any value re-closes `KontOkJ.nil` at its
     own type). Safety-only clients instantiate `ans := .any`. -/
-def InvJ (ans : Ty) (m : Machine) : Prop :=
+def InvJ (ans : Ty) (A : SemAxioms) (m : Machine) : Prop :=
   NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
     ClassOk m.heap ∧ BottomObj m.frames m.stack ∧
     framePopLabels m.kont = m.stack.dropLast ∧
     ClosuresOk m ∧
     ∃ (F : Decls) (c : JCtx) (Γ : Env) (Γs : List (JCtx × Env)),
-      DeclsOkJ F m.heap ∧
+      DeclsOkJ A F m.heap ∧
       FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd) ∧
       StackCtx m.heap m.frames m.stack (jctxs c Γs) ∧
       GlobalsOk F m.heap m.globals ∧
-      CtlOkJ F c Γ Γs ans m
+      CtlOkJ F c Γ Γs ans A m
 
 /-! ## The five re-establishment helpers (Proof/Static/Konts.lean:1969–2245) -/
 
-theorem inv_evalJ {ans : Ty} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
+theorem inv_evalJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {e : Expr} {τ τ' : Ty} {Γ' : Env} {F' : Decls}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
-    (ht : DeclsOkJ F m.heap)
+    (ht : DeclsOkJ A F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hks : framePopLabels m.kont = m.stack.dropLast)
-    (hmf : MFrag e)
-    (hj : Judge F Γ e Γs.isEmpty c τ Γ' F')
+    (hmf : MFrag A e)
+    (hfh : fragHead e = true)
+    (hj : Judge A F Γ e Γs.isEmpty c τ Γ' F')
     (hsub : SubJ τ τ')
-    (hk : KontOkJ ans F' m.heap ((c, Γk) :: Γs) τ' m.kont)
+    (hk : KontOkJ ans A F' m.heap ((c, Γk) :: Γs) τ' m.kont)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
-    InvJ ans (withCtl m (.eval e)) :=
+    InvJ ans A (withCtl m (.eval e)) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
-   hmf, ⟨τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
+   Or.inl ⟨hfh, hmf, τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
 
-theorem inv_valueJ {ans : Ty} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
+theorem inv_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {v : Value} {τ : Ty}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
-    (ht : DeclsOkJ F m.heap)
+    (ht : DeclsOkJ A F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hks : framePopLabels m.kont = m.stack.dropLast)
-    (hv : VTy m.heap v τ) (hk : KontOkJ ans F m.heap ((c, Γk) :: Γs) τ m.kont)
+    (hv : VTy m.heap v τ) (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ m.kont)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
-    InvJ ans (withCtl m (.value v)) :=
+    InvJ ans A (withCtl m (.value v)) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, Γk, hv, hsuE, hk⟩⟩
 
-theorem inv_pushJ {ans : Ty} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
+theorem inv_pushJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx} {Γ : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {e : Expr} {τ τ' : Ty} {Γ' : Env} {F' : Decls}
     {k : Kont}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
-    (ht : DeclsOkJ F m.heap)
+    (ht : DeclsOkJ A F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
-    (hmf : MFrag e)
-    (hj : Judge F Γ e Γs.isEmpty c τ Γ' F')
+    (hmf : MFrag A e)
+    (hfh : fragHead e = true)
+    (hj : Judge A F Γ e Γs.isEmpty c τ Γ' F')
     (hsub : SubJ τ τ')
-    (hk : KontOkJ ans F' m.heap ((c, Γk) :: Γs) τ' (k :: m.kont))
+    (hk : KontOkJ ans A F' m.heap ((c, Γk) :: Γs) τ' (k :: m.kont))
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ' := by first | exact SubEnv.refl _ | assumption)
     (hkc : KontClosure k = none := by simp [KontClosure])
     (hclo : ClosuresOk m := by assumption) :
-    InvJ ans (withKont m (.eval e) k) :=
+    InvJ ans A (withKont m (.eval e) k) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
-   hmf, ⟨τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
+   Or.inl ⟨hfh, hmf, τ, τ', Γ', F', Γk, hj, hsub, hsuE, hk⟩⟩
 
-theorem inv_grow_valueJ {ans : Ty} {F : Decls} {m m' : Machine} {c : JCtx} {Γ : Env}
+/-- **Semantic-mode re-establishment (J31)** — the eval arm's `Or.inr`, for a
+    claimed expression becoming `ctl` with the current continuation. -/
+theorem inv_evalSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx}
+    {Γ : Env} {Γs : List (JCtx × Env)} {Γk : Env} {e : Expr} {τ' : Ty}
+    (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
+    (ht : DeclsOkJ A F m.heap)
+    (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
+    (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hks : framePopLabels m.kont = m.stack.dropLast)
+    (hmem : e ∈ A) (hfh : fragHead e = false)
+    (hs' : SubJ .any τ')
+    (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ' m.kont)
+    (hgl : GlobalsOk F m.heap m.globals := by assumption)
+    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
+    (hclo : ClosuresOk m := by assumption) :
+    InvJ ans A (withCtl m (.eval e)) :=
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+   Or.inr ⟨hmem, hfh, τ', Γk, hs', hsuE, hk⟩⟩
+
+/-- Semantic-mode push: a claimed expression becoming `ctl` under a freshly pushed
+    continuation frame. -/
+theorem inv_pushSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : JCtx}
+    {Γ : Env} {Γs : List (JCtx × Env)} {Γk : Env} {e : Expr} {τ' : Ty} {k : Kont}
+    (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
+    (ht : DeclsOkJ A F m.heap)
+    (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
+    (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
+    (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
+    (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
+    (hmem : e ∈ A) (hfh : fragHead e = false)
+    (hs' : SubJ .any τ')
+    (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ' (k :: m.kont))
+    (hgl : GlobalsOk F m.heap m.globals := by assumption)
+    (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
+    (hkc : KontClosure k = none := by simp [KontClosure])
+    (hclo : ClosuresOk m := by assumption) :
+    InvJ ans A (withKont m (.eval e) k) :=
+  ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
+   Or.inr ⟨hmem, hfh, τ', Γk, hs', hsuE, hk⟩⟩
+
+theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} {c : JCtx} {Γ : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {v : Value} {τ : Ty}
     (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs.map Prod.snd))
-    (ht : DeclsOkJ F m.heap)
+    (ht : DeclsOkJ A F m.heap)
     (hsc : StackCtx m.heap m.frames m.stack (jctxs c Γs))
     (hh : NoHook m.heap) (hsat : Saturated m.heap) (hstr : LitClsOk m.heap)
     (hcls : ClassOk m.heap) (hbot : BottomObj m.frames m.stack)
     (hks : framePopLabels m.kont = m.stack.dropLast)
     (hg : PlainGrow m.heap m'.heap)
     (hfr : m'.frames = m.frames) (hst : m'.stack = m.stack) (hko : m'.kont = m.kont)
-    (hv : VTy m'.heap v τ) (hk : KontOkJ ans F m.heap ((c, Γk) :: Γs) τ m.kont)
+    (hv : VTy m'.heap v τ) (hk : KontOkJ ans A F m.heap ((c, Γk) :: Γs) τ m.kont)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hgv : m'.globals = m.globals := by rfl)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
     (hclo : ClosuresOk m := by assumption) :
-    InvJ ans (withCtl m' (.value v)) := by
+    InvJ ans A (withCtl m' (.value v)) := by
   have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
   refine ⟨NoHook_grow hg hsat hh,
     Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
@@ -421,7 +480,7 @@ theorem inv_grow_valueJ {ans : Ty} {F : Decls} {m m' : Machine} {c : JCtx} {Γ :
     rw [hgv]
     exact GlobalsOk.congr hag hgl
   · show ∃ σ Γk, VTy m'.heap v σ ∧ SubEnv Γk Γ ∧
-        KontOkJ ans F m'.heap ((c, Γk) :: Γs) σ m'.kont
+        KontOkJ ans A F m'.heap ((c, Γk) :: Γs) σ m'.kont
     exact ⟨τ, _, hv, hsuE, by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
 
 /-! ## The dispatch boundary: `sigOf` answers only at ground receiver types -/

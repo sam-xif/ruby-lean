@@ -28,44 +28,45 @@ open RubyCore.Proof.Static
     (the body becomes `ctl` at dispatch, so the eval arm's gate must already hold).
     Heap-free, like the original — which is what keeps every transport below one
     pass-through. -/
-def UserConformsJ (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl) :
+def UserConformsJ (A : SemAxioms) (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl) :
     Prop :=
-  d.params = [] ∧ d.blk = none ∧ defFree md.body = true ∧ MFrag md.body ∧
-  ∃ Γ' r τb, Judge D [] md.body false
+  d.params = [] ∧ d.blk = none ∧ defFree md.body = true ∧ MFrag A md.body ∧
+  fragHead md.body = true ∧
+  ∃ Γ' r τb, Judge A D [] md.body false
       { cls := c, selfCls := some c, ret := r, meth := some mname,
         params := some [] } τb Γ' D ∧
     SubJ τb d.ret ∧ (∀ σ, r = some σ → σ = d.ret)
 
 /-- The user witness, with conformance over `Judge`. -/
-def UserEntryOkJ (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
+def UserEntryOkJ (A : SemAxioms) (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
   ∃ md c, UserKey τr c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
-    className h md.owner = c ∧ UserConformsJ D c mname md d
+    className h md.owner = c ∧ UserConformsJ A D c mname md d
 
 /-- `EntryOk` with the user arm swapped; the builtin and iterator arms are the old
     predicates unchanged. -/
-def EntryOkJ (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
-  BuiltinEntryOk h τr mname d ∨ UserEntryOkJ D h τr mname d ∨ IterEntryOk h τr mname d
+def EntryOkJ (A : SemAxioms) (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
+  BuiltinEntryOk h τr mname d ∨ UserEntryOkJ A D h τr mname d ∨ IterEntryOk h τr mname d
 
 /-- A blockless row is witnessed by one of the two resolving arms —
     `EntryOk.blockless`, restated. -/
-theorem EntryOkJ.blockless {D : Decls} {h : Heap} {τr : Ty} {mname : String}
+theorem EntryOkJ.blockless {A : SemAxioms} {D : Decls} {h : Heap} {τr : Ty} {mname : String}
     {ps : List Ty} {τret : Ty}
-    (he : EntryOkJ D h τr mname { params := ps, ret := τret, blk := none }) :
+    (he : EntryOkJ A D h τr mname { params := ps, ret := τret, blk := none }) :
     BuiltinEntryOk h τr mname { params := ps, ret := τret, blk := none } ∨
-      UserEntryOkJ D h τr mname { params := ps, ret := τret, blk := none } := by
+      UserEntryOkJ A D h τr mname { params := ps, ret := τret, blk := none } := by
   rcases he with h1 | h2 | ⟨-, -, -, -, ⟨br, hdb⟩, -⟩
   · exact Or.inl h1
   · exact Or.inr h2
   · exact absurd hdb (by simp)
 
-def MethodRowsOkJ (D : Decls) (h : Heap) : Prop :=
-  ∀ τr mname d, declFor D τr mname = some d → EntryOkJ D h τr mname d
+def MethodRowsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
+  ∀ τr mname d, declFor D τr mname = some d → EntryOkJ A D h τr mname d
 
 /-- The refinement invariant's table half, J-flavored: `DeclsOk` with its first
     conjunct restated, the other four consumed unchanged. -/
-def DeclsOkJ (D : Decls) (h : Heap) : Prop :=
-  MethodRowsOkJ D h ∧
+def DeclsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
+  MethodRowsOkJ A D h ∧
   (∀ n τ, constTy? D n = some τ → ConstOk h n τ) ∧
   (∀ c x τ, ivarTy? D c x = some τ → IvarOk h c x τ) ∧
   (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h c n τ) ∧
@@ -86,7 +87,7 @@ def DeclsOkJ (D : Decls) (h : Heap) : Prop :=
     user arm's conformance passing straight through (`UserConformsJ` mentions no
     heap, exactly as `UserConforms` did). -/
 theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hd : DeclsOkJ D h) : DeclsOkJ D h' := by
+    (hsat : Saturated h) (hd : DeclsOkJ A D h) : DeclsOkJ A D h' := by
   refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
     fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
@@ -109,8 +110,8 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
 /-! ## The `IvarOnly` transports (J26) — an ivar write moves no table read -/
 
 theorem ivarOnly_entryOkJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls} {τr : Ty}
-    {mname : String} {d : MethodDecl} (he : EntryOkJ D h τr mname d) :
-    EntryOkJ D h' τr mname d := by
+    {mname : String} {d : MethodDecl} (he : EntryOkJ A D h τr mname d) :
+    EntryOkJ A D h' τr mname d := by
   rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩ |
     ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid, fun k hk => hi.resolvesAt (hres k (hi.tyClass hk)), hconf⟩
@@ -125,8 +126,8 @@ theorem ivarOnly_entryOkJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls} {τr : 
 /-- `IvarOnly.rowsAndConsts`, J-flavored — everything but the ivar half, which the
     write's own conformance check re-establishes. -/
 theorem ivarOnly_rowsAndConstsJ {h h' : Heap} (hi : IvarOnly h h') {D : Decls}
-    (hd : DeclsOkJ D h) :
-    MethodRowsOkJ D h' ∧ (∀ n τ, constTy? D n = some τ → ConstOk h' n τ) ∧
+    (hd : DeclsOkJ A D h) :
+    MethodRowsOkJ A D h' ∧ (∀ n τ, constTy? D n = some τ → ConstOk h' n τ) ∧
       (∀ c n τ, scopedConstTy? D c n = some τ → ScopedConstOk h' c n τ) ∧
       (∀ c n d, superDecl? D c n = some d → SuperOk h' c n d) :=
   ⟨fun τr mname d hf => ivarOnly_entryOkJ hi (hd.1 τr mname d hf),

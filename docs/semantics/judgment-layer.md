@@ -22,6 +22,20 @@
 >   `class_hierarchy` shape: reopen, promoted row, user dispatch), and `egNarrow`
 >   (**the DRuby guard-discrimination shape, through the narrowing rules** — §1.4's
 >   flagship, machine-typed by the J27 stored-atom construction).
+> * **Semantic axioms (J31, 2026-08-27)** — user-specified semantic judgments as
+>   **`Judge` leaves, invoked from the `Deriv` language**: `SemAxioms` (claims =
+>   expressions at the canonical judgment `.any`/env-/table-preserving, gated to
+>   out-of-fragment heads by `fragHead`), `Judge.semantic`, the field-free
+>   `Deriv.semantic` node, `JCert.semAssumes`, and `validateJ_certifies` now
+>   conditional on `SemAxiomsOk` (one `EvalOkAt` obligation per claim — exactly
+>   the statement `step_okJ`'s eval branch consumes, so the preservation case is
+>   an application). v1 embeds claims in **statement position** (`seq`), with the
+>   `JudgeSeq` coupling premises + the checker's `fragHead`-guarded `.sub` node
+>   closing the perverse-pairing hazard. Pilot delivered end to end
+>   (`Proof/Judgment/SemAxiom.lean`): `lambda { 1 }` — a block-bearing send, the
+>   arrow bill, no syntactic route — claimed, its obligation **discharged by
+>   executing the semantics**, and the program certified both by hand derivation
+>   and from a data certificate replayed by one `decide`.
 > * **The semantic judgment (J29/J30, 2026-08-27)** — `SemJudge D Γ e c τ`
 >   (`Proof/Judgment/Sem.lean`), defined by **reachability alone** (no `Judge`, no
 >   `MFrag`, no checker in the definiens), with `judge_semJudge` as the
@@ -406,8 +420,9 @@ Sized like the C-ladder: each rung is a commit series with a measurable exit.
 (`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
 arm).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
-(J18–J30; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
-typing — the semantic-judgment rung, with the extension pilot named as J31).
+(J18–J31; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
+typing, J31 semantic axioms — user-supplied semantic judgments as `Judge` leaves,
+Deriv-invocable, pilot delivered).
 
 * **J0 — author the judgment.** `Judge`/`KJudge`/`MachineTyped` in Lean, transcribing
   `type-judgments.md` §6–§8 for the T1 control core, **with subsumption and narrowing
