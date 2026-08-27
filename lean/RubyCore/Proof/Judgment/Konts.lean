@@ -128,6 +128,41 @@ inductive KontOkJ : Decls → Heap → List (JCtx × Env) → Ty → List Kont �
       KontOkJ D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ D h ((c, Γ) :: Γs) τ (.ifK t none :: k)
+  /-- **The narrowing `if`** (J27): the condition was a bare read of `x : τ₀`, and
+      the machine's own truthiness test is the narrowing evidence. The conclusion's
+      environment binds `x` at the *stored value's atom* `a` (chosen at the push by
+      `vty_narrow_kit`), the in-flight index is that same atom, and the three
+      `SubJ` premises are exactly what each delivery direction spends: `hT` for the
+      then-branch (or `a = nilT`, whose values are `nil` and refute truthiness),
+      `hFn`/`hFf` for the two falsy shapes. No value↔store correlation is carried —
+      the atom's sharpness *is* the correlation, established once at the push. -/
+  | ifNarrowElseK {D Dt h c Γb x τ₀ a t els τt Γt τe Γe τj Γc τw k Γk} :
+      MFrag t → MFrag els →
+      envGet? Γb x = some τ₀ →
+      Judge D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt Dt →
+      Judge D (envSet Γb x (elseNarrow τ₀)) els Γs.isEmpty c τe Γe Dt →
+      SubJ τt τj → SubJ τe τj →
+      SubEnv Γc Γt → SubEnv Γc Γe →
+      SubJ a τ₀ →
+      (a = .nilT ∨ SubJ a (dropNil τ₀)) →
+      (SubJ .nilT a → SubJ a (elseNarrow τ₀)) →
+      (SubJ .bool a → SubJ a (elseNarrow τ₀)) →
+      SubJ τj τw →
+      KontOkJ Dt h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, envSet Γb x a) :: Γs) a (.ifK t (some els) :: k)
+  | ifNarrowNoneK {D h c Γb x τ₀ a t τt Γt τj Γc τw k Γk} :
+      MFrag t →
+      envGet? Γb x = some τ₀ →
+      Judge D (envSet Γb x (dropNil τ₀)) t Γs.isEmpty c τt Γt D →
+      SubJ τt τj → SubJ .nilT τj →
+      SubEnv Γc Γt → SubEnv Γc Γb →
+      SubJ a τ₀ →
+      (a = .nilT ∨ SubJ a (dropNil τ₀)) →
+      SubJ τj τw →
+      KontOkJ D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γc := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ D h ((c, envSet Γb x a) :: Γs) a (.ifK t none :: k)
   /-- The loop konts: condition in flight (`whileCond`) or body's value in flight
       (`whileBody`); the loop's own answer is `nil`, delivered to the enclosing
       continuation. The environment index is the loop head `Γl`, which every
@@ -215,6 +250,13 @@ theorem KontOkJ.heap_congr' {h' : Heap} :
   | asgnGvar hpg hgt hcf hw _ hsu ih =>
       intro ha; exact .asgnGvar hpg hgt hcf hw (ih ha) hsu
   | arrK hm hje hw _ hsu ih => intro ha; exact .arrK hm hje hw (ih ha) hsu
+  | ifNarrowElseK hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw _ hsu ih =>
+      intro ha
+      exact .ifNarrowElseK hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw
+        (ih ha) hsu
+  | ifNarrowNoneK hmt hget ht hjt hjn hct hcb hs0 hT hjw _ hsu ih =>
+      intro ha
+      exact .ifNarrowNoneK hmt hget ht hjt hjn hct hcb hs0 hT hjw (ih ha) hsu
 
 theorem KontOkJ.heap_congr {h h' : Heap} (ha : TypeAgree h h')
     {D : Decls} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont}

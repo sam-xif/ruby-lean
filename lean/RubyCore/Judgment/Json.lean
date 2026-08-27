@@ -50,6 +50,12 @@ partial def derivToJson : Deriv → Json
   | .while' Γl c b =>
     Json.mkObj [("k", "while"), ("head", envToJson Γl), ("c", derivToJson c),
       ("b", derivToJson b)]
+  | .ifNarrowElse t e τj Γc =>
+    Json.mkObj [("k", "ifNarrowElse"), ("t", derivToJson t), ("e", derivToJson e),
+      ("join", tyToJson τj), ("env", envToJson Γc)]
+  | .ifNarrowNone t τj Γc =>
+    Json.mkObj [("k", "ifNarrowNone"), ("t", derivToJson t),
+      ("join", tyToJson τj), ("env", envToJson Γc)]
   | .vcall => Json.mkObj [("k", "vcall")]
   | .const => Json.mkObj [("k", "const")]
   | .varIvar => Json.mkObj [("k", "varIvar")]
@@ -123,6 +129,13 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
     pure (.while' (← envOfJson (← j.getObjVal? "head"))
       (← derivOfJson (← j.getObjVal? "c")) (← derivOfJson (← j.getObjVal? "b")))
   | "vcall" => pure .vcall
+  | "ifNarrowElse" =>
+    pure (.ifNarrowElse (← derivOfJson (← j.getObjVal? "t"))
+      (← derivOfJson (← j.getObjVal? "e"))
+      (← tyOfJson (← j.getObjVal? "join")) (← envOfJson (← j.getObjVal? "env")))
+  | "ifNarrowNone" =>
+    pure (.ifNarrowNone (← derivOfJson (← j.getObjVal? "t"))
+      (← tyOfJson (← j.getObjVal? "join")) (← envOfJson (← j.getObjVal? "env")))
   | "const" => pure .const
   | "varIvar" => pure .varIvar
   | "varGvar" => pure .varGvar

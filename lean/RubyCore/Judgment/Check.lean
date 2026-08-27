@@ -40,6 +40,8 @@ inductive Deriv where
   | ifElse (cond t els : Deriv) (τj : Ty) (Γc : Env)
   | ifNone (cond t : Deriv) (τj : Ty) (Γc : Env)
   | while' (Γl : Env) (cond body : Deriv)
+  | ifNarrowElse (t els : Deriv) (τj : Ty) (Γc : Env)
+  | ifNarrowNone (t : Deriv) (τj : Ty) (Γc : Env)
   | vcall
   | const
   | varIvar
@@ -223,6 +225,32 @@ def check : Nat → Deriv → Decls → Env → Expr → Bool → JCtx →
         | none => none
       | none => none
       else none
+    | .ifNarrowElse dt de τj Γc, .if' (.var .lvar x) t (some els) =>
+      match envGet? Γ x with
+      | some τ₀ =>
+        match check n dt D (envSet Γ x (dropNil τ₀)) t top ctx with
+        | some (τt, Γt, Dt) =>
+          match check n de D (envSet Γ x (elseNarrow τ₀)) els top ctx with
+          | some (τe, Γe, Dt') =>
+            if Dt' == Dt && subJb (tyFuel τt τj) τt τj && subJb (tyFuel τe τj) τe τj
+                && subEnvB Γc Γt && subEnvB Γc Γe then
+              some (τj, Γc, Dt)
+            else none
+          | none => none
+        | none => none
+      | none => none
+    | .ifNarrowNone dt τj Γc, .if' (.var .lvar x) t none =>
+      match envGet? Γ x with
+      | some τ₀ =>
+        match check n dt D (envSet Γ x (dropNil τ₀)) t top ctx with
+        | some (τt, Γt, Dt) =>
+          if Dt == D && subJb (tyFuel τt τj) τt τj
+              && subJb (tyFuel .nilT τj) .nilT τj
+              && subEnvB Γc Γt && subEnvB Γc Γ then
+            some (τj, Γc, D)
+          else none
+        | none => none
+      | none => none
     | .while' Γl dc db, .while' cond body =>
       if subEnvB Γl Γ then
         match check n dc D Γl cond top (loopCtx ctx Γl) with

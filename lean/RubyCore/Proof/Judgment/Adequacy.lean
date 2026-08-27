@@ -343,6 +343,47 @@ theorem check_sound_all : ∀ (n : Nat),
         exact .ifNone (ihc hc0) (ihc ht0)
           (subJb_sound hjt) (subJb_sound hjn)
           (subEnvB_sound hct) (subEnvB_sound hcΓ)
+      | .ifNarrowElse dt de τj Γc, .if' (.var .lvar x) t (some els) =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        all_goals try (simp at h; done)
+        rename_i hget
+        split at h
+        all_goals try (simp at h; done)
+        rename_i ht0
+        split at h
+        all_goals try (simp at h; done)
+        rename_i he0
+        split at h
+        all_goals try (simp at h; done)
+        rename_i hguards
+        simp only [Bool.and_eq_true, beq_iff_eq] at hguards
+        obtain ⟨⟨⟨⟨heq, hjt⟩, hje⟩, hct⟩, hce⟩ := hguards
+        subst heq
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        exact .ifNarrowElse hget (ihc ht0) (ihc he0)
+          (subJb_sound hjt) (subJb_sound hje)
+          (subEnvB_sound hct) (subEnvB_sound hce)
+      | .ifNarrowNone dt τj Γc, .if' (.var .lvar x) t none =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        all_goals try (simp at h; done)
+        rename_i hget
+        split at h
+        all_goals try (simp at h; done)
+        rename_i ht0
+        split at h
+        all_goals try (simp at h; done)
+        rename_i hguards
+        simp only [Bool.and_eq_true, beq_iff_eq] at hguards
+        obtain ⟨⟨⟨⟨heq, hjt⟩, hjn⟩, hct⟩, hcΓ⟩ := hguards
+        subst heq
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl⟩ := h
+        exact .ifNarrowNone hget (ihc ht0)
+          (subJb_sound hjt) (subJb_sound hjn)
+          (subEnvB_sound hct) (subEnvB_sound hcΓ)
       | .while' Γl dc db, .while' cnd body =>
         simp only [RubyCore.Judgment.check] at h
         split at h
@@ -595,6 +636,31 @@ theorem egUserCall_data_certified :
     ∀ r, ReachableResult (Machine.init Static.egUserCall) r → ¬ typeStuck r :=
   validateJ_certifies egUserCallJCert_validates (fun r hm => by simp [egUserCallJCert] at hm)
 
+/-- **The DRuby pattern, certified**: `x = (true ? 1 : nil); if x then x + 1 else
+    0 end` — the local is an optional, the guard narrows it, and the narrowed
+    branch dispatches on it. This is T4's flagship shape (the guard-discrimination
+    false-positive class the narrowing rules exist to kill), certified from
+    certificate data end to end. -/
+def egNarrow : Expr :=
+  .seq [ .vasgn .lvar "x" (.if' .tru (.int 1) (some .nil)),
+         .if' (.var .lvar "x")
+           (.send (some (.var .lvar "x")) "+" [.int 1] none)
+           (some (.int 0)) ]
+
+def egNarrowJCert : JCert :=
+  { deriv := .seq (.cons
+      (.vasgnLvar (.ifElse .tru .int .nil (.nilable .int) []))
+      (.single (.ifNarrowElse
+        (.send (.expl .varLvar) (.cons .int .nil))
+        .int .int []))) }
+
+theorem egNarrowJCert_validates : validateJ egNarrowJCert egNarrow 12 = true := by
+  decide
+
+theorem egNarrow_certified :
+    ∀ r, ReachableResult (Machine.init egNarrow) r → ¬ typeStuck r :=
+  validateJ_certifies egNarrowJCert_validates (fun r hm => by simp [egNarrowJCert] at hm)
+
 /-! ## Axiom hygiene -/
 
 /-- info: 'RubyCore.Proof.Judgment.validateJ_certifies' depends on axioms: [propext, Classical.choice, Quot.sound] -/
@@ -608,6 +674,10 @@ theorem egUserCall_data_certified :
 /-- info: 'RubyCore.Proof.Judgment.egUserCall_data_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms egUserCall_data_certified
+
+/-- info: 'RubyCore.Proof.Judgment.egNarrow_certified' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms egNarrow_certified
 
 end Judgment
 end Proof

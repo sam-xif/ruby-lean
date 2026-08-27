@@ -307,7 +307,7 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
-    | ifElse hshape hmc hmt hme =>
+    | ifElse hmc hmt hme =>
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
         (by simp [framePopLabels, hks]) hmc hcnd (SubJ.refl _)
         (KontOkJ.ifElseK hmt hme ht he hjt hje hct hce hsubw hk)
@@ -317,25 +317,47 @@ theorem judge_eval_ok {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
     subst htop
     cases hmf with
-    | ifNone hshape hmc hmt =>
+    | ifNone hmc hmt =>
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot
         (by simp [framePopLabels, hks]) hmc hcnd (SubJ.refl _)
         (KontOkJ.ifNoneK hmt ht hjt hjn hct hcΓ hsubw hk)
-  -- ## Narrowing derivations at a bare-local condition: out of the rung-1 fragment
-  -- (`MFrag`'s shape condition; the narrowing rung's delivery needs the value↔store
-  -- correlation — see DESIGN-NOTES).
+  -- ## The narrowing `if` (J27): the push chooses the stored value's atom by
+  -- `vty_narrow_kit`, sharpens the binding (no write — `FramesOkJ.setHead`), and
+  -- registers the narrowing kont; the machine's own truthiness test at the
+  -- delivery is the narrowing evidence.
   case hifNarrowElse =>
     intro D Γ x t els top ctx τ0 τt Γt Dt τe Γe τj Γc
     intro hget ht he hjt hje hct hce iht ihe
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    subst htop
     cases hmf with
-    | ifElse hshape _ _ _ => exact absurd rfl (hshape x)
+    | ifElse hmc hmt hme =>
+      have hv0 : VTy m.heap (m.getLocal x) τ0 := hfs.localsOk x τ0 hget
+      obtain ⟨a, hva, hs0, hT, hFn, hFf⟩ := vty_narrow_kit hv0
+      have hfs' := FramesOkJ.setHead hfs hva
+      simp only [evalExpr]
+      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) MFrag.varLvar
+        (Judge.varLvar (by rw [envGet?_set]; simp))
+        (SubJ.refl _)
+        (KontOkJ.ifNarrowElseK hmt hme hget ht he hjt hje hct hce hs0 hT hFn hFf
+          hsubw hk)
   case hifNarrowNone =>
     intro D Γ x t top ctx τ0 τt Γt τj Γc
     intro hget ht hjt hjn hct hcΓ iht
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hks hgl hclo hmf hsubw hsuE hk
+    subst htop
     cases hmf with
-    | ifNone hshape _ _ => exact absurd rfl (hshape x)
+    | ifNone hmc hmt =>
+      have hv0 : VTy m.heap (m.getLocal x) τ0 := hfs.localsOk x τ0 hget
+      obtain ⟨a, hva, hs0, hT, hFn, hFf⟩ := vty_narrow_kit hv0
+      have hfs' := FramesOkJ.setHead hfs hva
+      simp only [evalExpr]
+      exact inv_pushJ (Γ := envSet Γ x a) hfs' htab hsc hh hsat hstr hcls hbot
+        (by simp [framePopLabels, hks]) MFrag.varLvar
+        (Judge.varLvar (by rw [envGet?_set]; simp))
+        (SubJ.refl _)
+        (KontOkJ.ifNarrowNoneK hmt hget ht hjt hjn hct hcΓ hs0 hT hsubw hk)
   -- ## `while`: enter the loop at the chosen head environment.
   case hwhile =>
     intro D Γ Γl cond body top ctx τc Γ₁ τb Γ₂
@@ -1006,6 +1028,40 @@ theorem step_okJ {m : Machine} (h : InvJ m) : StepOkJ (stepFn m) := by
           (by simpa [framePopLabels] using hks)
           (VTy.weaken (VTy.exact rfl) (hjn.trans hjw)) hk'
           (hsuE := SubEnv.trans hsu hcΓ) (hclo := hcloTail hK)
+    | ifNarrowElseK hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw hk' hsu =>
+      by_cases hb : v.truthy
+      · rcases hT with rfl | hdrop
+        · exact absurd hb (by rw [vty_nilT_eq hv]; simp [Value.truthy])
+        · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set hdrop) hfs
+          simp only [hb, if_true]
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks) hmt ht (hjt.trans hjw) hk'
+            (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
+      · simp only [hb]
+        rcases truthy_false_cases (by simpa using hb) with rfl | rfl
+        · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set (hFn (vty_nil_subJ hv))) hfs
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks) hme he (hje2.trans hjw) hk'
+            (hsuE := SubEnv.trans hsu hce) (hclo := hcloTail hK)
+        · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set (hFf (vty_false_subJ hv))) hfs
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks) hme he (hje2.trans hjw) hk'
+            (hsuE := SubEnv.trans hsu hce) (hclo := hcloTail hK)
+    | ifNarrowNoneK hmt hget ht hjt hjn hct hcb hs0 hT hjw hk' hsu =>
+      by_cases hb : v.truthy
+      · rcases hT with rfl | hdrop
+        · exact absurd hb (by rw [vty_nilT_eq hv]; simp [Value.truthy])
+        · have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_set hdrop) hfs
+          simp only [hb, if_true]
+          exact inv_evalJ hfs' htab hsc hh hsat hstr hcls hbot
+            (by simpa [framePopLabels] using hks) hmt ht (hjt.trans hjw) hk'
+            (hsuE := SubEnv.trans hsu hct) (hclo := hcloTail hK)
+      · simp only [hb]
+        have hfs' := FramesOkJ.narrowHeadJ (subEnvJ_unset hget hs0) hfs
+        exact inv_valueJ hfs' htab hsc hh hsat hstr hcls hbot
+          (by simpa [framePopLabels] using hks)
+          (VTy.weaken (VTy.exact rfl) (hjn.trans hjw)) hk'
+          (hsuE := SubEnv.trans hsu hcb) (hclo := hcloTail hK)
     | @whileCond _ _ ctx' Γl _ _ τw c body k _ hloop hsw hk' hsu =>
       obtain ⟨hmc, hmb, ⟨τc, Γ₁, hcnd, hs1⟩, ⟨τb, Γ₂, hbody, hs2⟩⟩ := hloop
       by_cases hb : v.truthy

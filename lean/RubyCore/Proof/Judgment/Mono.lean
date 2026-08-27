@@ -202,7 +202,7 @@ theorem judge_mono {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     intro hcnd ht he hjt hje hct hce ihc iht ihe
     intro hmf hdf D2 hs
     cases hmf with
-    | ifElse hshape hmc hmt hme =>
+    | ifElse hmc hmt hme =>
       simp only [defFree, Bool.and_eq_true] at hdf
       obtain ⟨rfl, hc'⟩ := ihc hmc hdf.1.1 hs
       obtain ⟨rfl, ht'⟩ := iht hmt hdf.1.2 hs
@@ -213,21 +213,30 @@ theorem judge_mono {D : Decls} {Γ : Env} {e : Expr} {top : Bool} {ctx : JCtx}
     intro hcnd ht hjt hjn hct hcΓ ihc iht
     intro hmf hdf D2 hs
     cases hmf with
-    | ifNone hshape hmc hmt =>
+    | ifNone hmc hmt =>
       simp only [defFree, Bool.and_eq_true] at hdf
       obtain ⟨rfl, hc'⟩ := ihc hmc hdf.1.1 hs
       obtain ⟨-, ht'⟩ := iht hmt hdf.1.2 hs
       exact ⟨rfl, .ifNone hc' ht' hjt hjn hct hcΓ⟩
   case hifNarrowElse =>
     intro D Γ x t els top ctx τ0 τt Γt Dt τe Γe τj Γc
-    intro hget ht he hjt hje hct hce iht ihe hmf
+    intro hget ht he hjt hje hct hce iht ihe
+    intro hmf hdf D2 hs
     cases hmf with
-    | ifElse hshape _ _ _ => exact absurd rfl (hshape x)
+    | ifElse hmc hmt hme =>
+      simp only [defFree, Bool.and_eq_true] at hdf
+      obtain ⟨rfl, ht'⟩ := iht hmt hdf.1.2 hs
+      obtain ⟨-, he'⟩ := ihe hme hdf.2 hs
+      exact ⟨rfl, .ifNarrowElse hget ht' he' hjt hje hct hce⟩
   case hifNarrowNone =>
     intro D Γ x t top ctx τ0 τt Γt τj Γc
-    intro hget ht hjt hjn hct hcΓ iht hmf
+    intro hget ht hjt hjn hct hcΓ iht
+    intro hmf hdf D2 hs
     cases hmf with
-    | ifNone hshape _ _ => exact absurd rfl (hshape x)
+    | ifNone hmc hmt =>
+      simp only [defFree, Bool.and_eq_true] at hdf
+      obtain ⟨-, ht'⟩ := iht hmt hdf.1.2 hs
+      exact ⟨rfl, .ifNarrowNone hget ht' hjt hjn hct hcΓ⟩
   case hwhile =>
     intro D Γ Γl cond body top ctx τc Γ₁ τb Γ₂
     intro hentry hcnd hs1 hbody hs2 ihc ihb

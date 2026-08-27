@@ -142,6 +142,139 @@ theorem VTy.toValueTy {h : Heap} {v : Value} {τ : Ty} (hv : VTy h v τ)
   let ⟨σ, hv₀, hs⟩ := hv
   valueTy_subJ hv₀ hs hg
 
+/-! ## The narrowing kit's value side (J27) -/
+
+/-- Falsiness has exactly two shapes. -/
+theorem truthy_false_cases {v : Value} (h : v.truthy = false) :
+    v = .nil ∨ v = .bool false := by
+  cases v with
+  | nil => exact Or.inl rfl
+  | bool b =>
+    cases b with
+    | false => exact Or.inr rfl
+    | true => exact absurd h (by simp [Value.truthy])
+  | _ => exact absurd h (by simp [Value.truthy])
+
+/-- A `nilT`-typed value is `nil` — through the ground bridge. -/
+theorem vty_nilT_eq {h : Heap} {v : Value} (hv : VTy h v .nilT) : v = .nil :=
+  valueTy_nilT (ValueTy.atomic (by simp) (by simp) (by simp)
+    (hv.toValueTy (by simp [groundTy])))
+
+/-- `nil` sits below anything it inhabits, at `nilT`. -/
+theorem vty_nil_subJ {h : Heap} {τ : Ty} (hv : VTy h (.nil : Value) τ) :
+    SubJ .nilT τ := by
+  obtain ⟨σ, hσ, hs⟩ := hv
+  rcases hσ with hany | ⟨σ', o, xs, hup, hvo, -⟩ | ⟨σ', h', hsub⟩
+  · exact SubJ.trans (.base (subTy_trans (by simp [subTy]) hany)) hs
+  · exact absurd hvo (by simp)
+  · have hq : σ' = .nilT := by
+      have := h'
+      simp only [valueTy?, Option.some.injEq] at this
+      exact this.symm
+    subst hq
+    exact SubJ.trans (.base hsub) hs
+
+/-- …and `false`, at `bool`. -/
+theorem vty_false_subJ {h : Heap} {τ : Ty} (hv : VTy h (.bool false) τ) :
+    SubJ .bool τ := by
+  obtain ⟨σ, hσ, hs⟩ := hv
+  rcases hσ with hany | ⟨σ', o, xs, hup, hvo, -⟩ | ⟨σ', h', hsub⟩
+  · exact SubJ.trans (.base (subTy_trans (by simp [subTy]) hany)) hs
+  · exact absurd hvo (by simp)
+  · have hq : σ' = .bool := by
+      have := h'
+      simp only [valueTy?, Option.some.injEq] at this
+      exact this.symm
+    subst hq
+    exact SubJ.trans (.base hsub) hs
+
+/-- Nothing `SubJ`-below `nilT`… (the wrong-direction twin lives in `Sub.lean`);
+    here: nothing atom-shaped has `nilT` below it. -/
+theorem subJ_nilT_below {a : Ty} (h : SubJ .nilT a) (h1 : a ≠ .nilT) (h2 : a ≠ .any)
+    (h3 : ∀ τ', a ≠ .nilable τ') (h4 : ∀ x y, a ≠ .union x y) : False := by
+  cases h with
+  | base hb =>
+    cases a <;> simp_all [subTy]
+  | unionR1 _ => exact h4 _ _ rfl
+  | unionR2 _ => exact h4 _ _ rfl
+  | nilableR _ => exact h3 _ rfl
+
+theorem subJ_bool_below {a : Ty} (h : SubJ .bool a) (h1 : a ≠ .bool) (h2 : a ≠ .any)
+    (h3 : ∀ τ', a ≠ .nilable τ') (h4 : ∀ x y, a ≠ .union x y) : False := by
+  cases h with
+  | base hb =>
+    cases a <;> simp_all [subTy]
+  | unionR1 _ => exact h4 _ _ rfl
+  | unionR2 _ => exact h4 _ _ rfl
+  | nilableR _ => exact h3 _ rfl
+
+/-- **The push-time atom analysis** (J27): every conforming value yields an atom
+    `a` — its exact type, `.any`, or an `arrayOf` — carrying exactly the four
+    facts the narrowing kont's delivery spends: the atom is below the original,
+    below `dropNil` unless it *is* `nilT`, and below `elseNarrow` whenever the
+    delivered value could be falsy (read off `SubJ nilT/bool a`). -/
+theorem vty_narrow_kit {h : Heap} {v : Value} {τ₀ : Ty} (hv : VTy h v τ₀) :
+    ∃ a, VTy h v a ∧ SubJ a τ₀ ∧
+      (a = .nilT ∨ SubJ a (dropNil τ₀)) ∧
+      (SubJ .nilT a → SubJ a (elseNarrow τ₀)) ∧
+      (SubJ .bool a → SubJ a (elseNarrow τ₀)) := by
+  obtain ⟨σ, hσ, hs⟩ := hv
+  have helse : ∀ b : Ty, SubJ b τ₀ → boolFree τ₀ = false → SubJ b (elseNarrow τ₀) := by
+    intro b hb hbf
+    unfold elseNarrow
+    rw [hbf]
+    simpa using hb
+  rcases hσ with hany | ⟨σ', o, xs, hup, hvo, hb, hex, hpay, hall⟩ | ⟨a, h', hsub⟩
+  · -- The `.any` disjunct: the atom is `.any` itself.
+    refine ⟨.any, VTy.any, ?_, Or.inr ?_, fun _ => ?_, fun _ => ?_⟩
+    · exact SubJ.trans (.base hany) hs
+    · exact subJ_dropNil (SubJ.trans (.base hany) hs) (by simp) (by simp) (by simp)
+    · exact helse _ (SubJ.trans (.base hany) hs)
+        (boolFree_false_of_subJ (SubJ.trans (.base hany) hs) (Or.inr rfl))
+    · exact helse _ (SubJ.trans (.base hany) hs)
+        (boolFree_false_of_subJ (SubJ.trans (.base hany) hs) (Or.inr rfl))
+  · -- The `arrayOf` disjunct: the atom is the parameterised type itself.
+    refine ⟨.arrayOf σ', ?_, ?_, Or.inr ?_, fun hn => ?_, fun hf => ?_⟩
+    · exact ⟨.arrayOf σ',
+        Or.inr (Or.inl ⟨σ', o, xs, by simp, hvo, hb, hex, hpay, hall⟩), SubJ.refl _⟩
+    · exact SubJ.trans (.base hup) hs
+    · exact subJ_dropNil (SubJ.trans (.base hup) hs) (by simp) (by simp) (by simp)
+    · exact absurd hn (fun hq => subJ_nilT_below hq (by simp) (by simp) (by simp) (by simp))
+    · exact absurd hf (fun hq => subJ_bool_below hq (by simp) (by simp) (by simp) (by simp))
+  · -- The exact disjunct: the atom is `valueTy?`'s answer.
+    have ha0 : SubJ a τ₀ := SubJ.trans (.base hsub) hs
+    have hgnd := valueTy?_ground h'
+    have hnn : ∀ τ', a ≠ .nilable τ' := fun τ' hq =>
+      (valueTy_not_nilable (hq ▸ h')).elim
+    have hnu : ∀ x y, a ≠ .union x y := fun x y hq => by
+      rw [hq] at hgnd
+      simp [groundTy] at hgnd
+    have hna : a ≠ .any := fun hq => by
+      cases v <;> simp only [valueTy?, Option.some.injEq] at h'
+      case ref o =>
+        split at h'
+        · simp only [Option.some.injEq] at h'; rw [hq] at h'; simp at h'
+        · split at h'
+          · simp only [Option.some.injEq] at h'; rw [hq] at h'; simp at h'
+          · exact absurd h' (by simp)
+      all_goals (rw [hq] at h'; simp at h')
+    refine ⟨a, VTy.exact h', ha0, ?_, fun hn => ?_, fun hf => ?_⟩
+    · by_cases hq : a = .nilT
+      · exact Or.inl hq
+      · exact Or.inr (subJ_dropNil ha0 hq hnn hnu)
+    · by_cases hq : a = .nilT
+      · subst hq
+        by_cases hbf : boolFree τ₀ = true
+        · unfold elseNarrow
+          rw [hbf]
+          exact SubJ.refl _
+        · exact helse _ ha0 (by simpa using hbf)
+      · exact absurd hn (fun hh => subJ_nilT_below hh hq hna hnn hnu)
+    · by_cases hq : a = .bool
+      · subst hq
+        exact helse _ ha0 (boolFree_false_of_subJ ha0 (Or.inl rfl))
+      · exact absurd hf (fun hh => subJ_bool_below hh hq hna hnn hnu)
+
 /-! ## The list forms -/
 
 /-- Pointwise `VTy`, arity-forcing — `ValuesTy`'s shape over the widened value

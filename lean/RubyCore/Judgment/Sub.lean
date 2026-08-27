@@ -405,4 +405,108 @@ def boolFree : Ty → Bool
 def elseNarrow (τ : Ty) : Ty :=
   if boolFree τ then .nilT else τ
 
+/-! ## The narrowing kit (J27)
+
+The facts the value↔store step of the machine-typed narrowing rung runs on. All
+are one `cases`/induction each; `subJ_dropNil` is the load-bearing one — a
+non-nil-shaped subtype survives the nil-stripping of its upper bound. -/
+
+/-- Nothing atom-shaped sits below `nilT` but `nilT` itself (or a union/nilable,
+    excluded by shape). -/
+theorem subJ_below_nilT {σ : Ty} (h : SubJ σ .nilT) (h1 : σ ≠ .nilT)
+    (h2 : ∀ τ', σ ≠ .nilable τ') (h3 : ∀ a b, σ ≠ .union a b) : False := by
+  cases h with
+  | base hb =>
+    simp only [subTy, beq_iff_eq] at hb
+    exact h1 hb
+  | unionL _ _ => exact h3 _ _ rfl
+  | nilableL _ _ => exact h2 _ rfl
+
+/-- A non-nil-shaped subtype survives `dropNil` on its upper bound. -/
+theorem subJ_dropNil {σ τ : Ty} (h : SubJ σ τ) (h1 : σ ≠ .nilT)
+    (h2 : ∀ τ', σ ≠ .nilable τ') (h3 : ∀ a b, σ ≠ .union a b) :
+    SubJ σ (dropNil τ) := by
+  induction h with
+  | base hb =>
+    rename_i σ0 τ0
+    cases τ0 with
+    | nilT =>
+      simp only [subTy, beq_iff_eq] at hb
+      exact absurd hb h1
+    | nilable τ' =>
+      simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hb
+      rcases hb with (rfl | rfl) | hb
+      · exact absurd rfl h1
+      · exact absurd rfl (h2 τ')
+      · exact .base hb
+    | union a b =>
+      simp only [subTy, beq_iff_eq] at hb
+      exact absurd hb (h3 a b)
+    | _ => exact .base hb
+  | unionL _ _ _ _ => exact absurd rfl (h3 _ _)
+  | unionR1 ha iha =>
+    rename_i σ0 a b
+    simp only [dropNil]
+    by_cases hqa : a = .nilT
+    · subst hqa
+      exact absurd ha (fun hq => subJ_below_nilT hq h1 h2 h3)
+    · have hba : (a == Ty.nilT) = false := by simpa using hqa
+      simp only [hba, Bool.false_eq_true, if_false]
+      by_cases hqb : b = .nilT
+      · have hbb : (b == Ty.nilT) = true := by simpa using hqb
+        simp only [hbb, if_true]
+        exact iha h1 h2 h3
+      · have hbb : (b == Ty.nilT) = false := by simpa using hqb
+        simp only [hbb, Bool.false_eq_true, if_false]
+        exact .unionR1 (iha h1 h2 h3)
+  | unionR2 hb ihb =>
+    rename_i σ0 a b
+    simp only [dropNil]
+    by_cases hqa : a = .nilT
+    · have hba : (a == Ty.nilT) = true := by simpa using hqa
+      simp only [hba, if_true]
+      exact ihb h1 h2 h3
+    · have hba : (a == Ty.nilT) = false := by simpa using hqa
+      simp only [hba, Bool.false_eq_true, if_false]
+      by_cases hqb : b = .nilT
+      · subst hqb
+        exact absurd hb (fun hq => subJ_below_nilT hq h1 h2 h3)
+      · have hbb : (b == Ty.nilT) = false := by simpa using hqb
+        simp only [hbb, Bool.false_eq_true, if_false]
+        exact .unionR2 (ihb h1 h2 h3)
+  | nilableL _ _ _ _ => exact absurd rfl (h2 _)
+  | nilableR hs ih => exact hs
+  | arrow0 hr => exact .arrow0 hr
+  | arrowCons hq hr => exact .arrowCons hq hr
+
+/-- `boolFree` is false above `.bool` or `.any`. -/
+theorem boolFree_false_of_subJ {σ τ : Ty} (h : SubJ σ τ)
+    (hσ : σ = .bool ∨ σ = .any) : boolFree τ = false := by
+  induction h with
+  | base hb =>
+    rename_i σ0 τ0
+    induction τ0 with
+    | nilable τ' ihn =>
+      simp only [subTy, Bool.or_eq_true, beq_iff_eq] at hb
+      rcases hσ with rfl | rfl <;>
+        (rcases hb with (hb | hb) | hb
+         · exact absurd hb (by simp)
+         · exact absurd hb (by simp)
+         · simpa [boolFree] using ihn hb)
+    | any => rfl
+    | bool => rfl
+    | _ =>
+      rcases hσ with rfl | rfl <;> simp_all [subTy]
+  | unionL _ _ ih1 ih2 =>
+    rcases hσ with h' | h' <;> simp at h'
+  | unionR1 _ ih => simp [boolFree, ih hσ]
+  | unionR2 _ ih => simp [boolFree, ih hσ]
+  | nilableL _ _ _ _ =>
+    rcases hσ with h' | h' <;> simp at h'
+  | nilableR _ ih => simpa [boolFree] using ih hσ
+  | arrow0 _ _ =>
+    rcases hσ with h' | h' <;> simp at h'
+  | arrowCons _ _ _ _ =>
+    rcases hσ with h' | h' <;> simp at h'
+
 end RubyCore.Judgment

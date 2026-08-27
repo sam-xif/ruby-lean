@@ -269,6 +269,86 @@ theorem FramesOkJ.heap_congr {h h' : Heap} {frames : Array Frame}
   | [], _ :: _, hf => absurd hf (by simp [FramesOkJ])
   | _ :: _, [], hf => absurd hf (by simp [FramesOkJ])
 
+/-! ## Pointwise-`SubJ` environment weakening (J27) -/
+
+/-- Every lookup of the first environment resolves in the second, at a subtype —
+    `SubEnv`'s pointwise-widened cousin (J13's exact-type ceiling lifted, on the
+    invariant side only). -/
+def SubEnvJ (Γ Γ' : Env) : Prop :=
+  ∀ x τ, envGet? Γ x = some τ → ∃ σ, envGet? Γ' x = some σ ∧ SubJ σ τ
+
+theorem FrameConformsJ.narrowJ {h : Heap} {frames : Array Frame} {Γ Γ' : Env}
+    {fid : FrameId} (hs : SubEnvJ Γ Γ') (hc : FrameConformsJ h frames Γ' fid) :
+    FrameConformsJ h frames Γ fid :=
+  ⟨hc.1, hc.2.1, fun x τ hx =>
+    let ⟨σ, hσ, hsj⟩ := hs x τ hx
+    (hc.2.2 x σ hσ).weaken hsj⟩
+
+theorem FramesOkJ.narrowHeadJ {hp : Heap} {frames : Array Frame} :
+    ∀ {st : List FrameId} {Γ Γ' : Env} {Γs : List Env}, SubEnvJ Γ Γ' →
+      FramesOkJ hp frames st (Γ' :: Γs) → FramesOkJ hp frames st (Γ :: Γs)
+  | [], _, _, _, _, hf => absurd hf (by simp [FramesOkJ])
+  | _ :: _, _, _, _, hs, hf =>
+      ⟨hf.1, hf.2.1, FrameConformsJ.narrowJ hs hf.2.2.1, hf.2.2.2⟩
+
+/-- Rebinding one variable at a subtype of its declared type. -/
+theorem subEnvJ_set {Γ : Env} {x : String} {σ τ' : Ty} (h : SubJ σ τ') :
+    SubEnvJ (envSet Γ x τ') (envSet Γ x σ) := by
+  intro y τ hy
+  rw [envGet?_set] at hy ⊢
+  by_cases hq : y = x
+  · rw [if_pos hq] at hy ⊢
+    simp only [Option.some.injEq] at hy
+    subst hy
+    exact ⟨σ, rfl, h⟩
+  · rw [if_neg hq] at hy ⊢
+    exact ⟨τ, hy, SubJ.refl _⟩
+
+/-- …and the un-narrowing direction: the original environment reads through the
+    sharpened binding. -/
+theorem subEnvJ_unset {Γ : Env} {x : String} {a τ₀ : Ty}
+    (hget : envGet? Γ x = some τ₀) (h : SubJ a τ₀) :
+    SubEnvJ Γ (envSet Γ x a) := by
+  intro y τ hy
+  rw [envGet?_set]
+  by_cases hq : y = x
+  · subst hq
+    rw [hget] at hy
+    simp only [Option.some.injEq] at hy
+    subst hy
+    exact ⟨a, by simp, h⟩
+  · rw [if_neg hq]
+    exact ⟨τ, hy, SubJ.refl _⟩
+
+/-- **Sharpening the head binding at the stored value's own type** — the
+    narrowing push's frame move: no write happens, so conformance at the new
+    binding is the stored value's `VTy`, read where the machine reads it. -/
+theorem FramesOkJ.setHead {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
+    {τ' : Ty} (hfs : FramesOkJ m.heap m.frames m.stack (Γ :: Γs))
+    (hv : VTy m.heap (m.getLocal x) τ') :
+    FramesOkJ m.heap m.frames m.stack (envSet Γ x τ' :: Γs) := by
+  have hsh := hfs.frameShallow
+  cases hst : m.stack with
+  | nil => rw [hst] at hfs; exact absurd hfs (by simp [FramesOkJ])
+  | cons fid fids =>
+    rw [hst] at hfs
+    obtain ⟨hlt, hgt, hcf, hrest⟩ := hfs
+    refine ⟨hlt, hgt, ⟨hcf.1, hcf.2.1, ?_⟩, hrest⟩
+    intro y σ hy
+    rw [envGet?_set] at hy
+    by_cases hq : y = x
+    · rw [if_pos hq] at hy
+      simp only [Option.some.injEq] at hy
+      subst hy
+      subst hq
+      have := getLocal_curIn hsh y
+      rw [show curFrame m = m.frames.getD fid default by
+        simp [curFrame, curFid, hst]] at this
+      rw [← this]
+      exact hv
+    · rw [if_neg hq] at hy
+      exact hcf.2.2 y σ hy
+
 end Judgment
 end Proof
 end RubyCore

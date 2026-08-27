@@ -15,12 +15,10 @@ The fragment grows head by head, each with its preservation case; the current li
 the J-ladder's progress marker. Two exclusions are *shape* conditions inside admitted
 heads rather than head exclusions, and each is a recorded design point:
 
-* an `if` whose condition is a **bare local read** is out until the narrowing rung —
-  the same expression admits `Judge.ifNarrowElse/ifNarrowNone` derivations, whose
-  delivery needs the value↔store correlation (the push-time case-split of
-  `DESIGN-NOTES.md`); gating the shape defers those cases without touching the spec;
 * a send named **`call`** stays out even after sends land — `Judge.sendCall`
   eliminates arrows, and no machine-typed value witnesses an arrow yet (J19).
+  (The bare-local-`if` shape gate this list used to open with is gone: J27's
+  narrowing rung machine-types those derivations.)
 -/
 
 namespace RubyCore.Judgment
@@ -40,9 +38,9 @@ inductive MFrag : Expr → Prop where
   | varLvar {x} : MFrag (.var .lvar x)
   | vasgnLvar {x rhs} : MFrag rhs → MFrag (.vasgn .lvar x rhs)
   | seq {es} : (∀ e ∈ es, MFrag e) → MFrag (.seq es)
-  | ifElse {cond t els} : (∀ x, cond ≠ .var .lvar x) →
+  | ifElse {cond t els} :
       MFrag cond → MFrag t → MFrag els → MFrag (.if' cond t (some els))
-  | ifNone {cond t} : (∀ x, cond ≠ .var .lvar x) →
+  | ifNone {cond t} :
       MFrag cond → MFrag t → MFrag (.if' cond t none)
   | while' {c b} : MFrag c → MFrag b → MFrag (.while' c b)
   -- J22: sends. Block-less only (`blk = none` in the stored shape), and an explicit
@@ -84,7 +82,6 @@ def mfragB : Nat → Expr → Bool
     | .vasgn .lvar _ rhs => mfragB n rhs
     | .seq es => es.all (mfragB n)
     | .if' cond t els =>
-      (match cond with | .var .lvar _ => false | _ => true) &&
       mfragB n cond && mfragB n t &&
       (match els with | some e' => mfragB n e' | none => true)
     | .while' c b => mfragB n c && mfragB n b
@@ -124,14 +121,10 @@ theorem mfragB_sound : ∀ {n : Nat} {e : Expr}, mfragB n e = true → MFrag e :
       exact .seq fun e' he' => ih (h e' he')
     | .if' cond t els =>
       simp only [mfragB, Bool.and_eq_true] at h
-      obtain ⟨⟨⟨hshape, hc⟩, ht⟩, he2⟩ := h
-      have hnl : ∀ x, cond ≠ .var .lvar x := by
-        intro x hq
-        subst hq
-        simp at hshape
+      obtain ⟨⟨hc, ht⟩, he2⟩ := h
       cases els with
-      | some e' => exact .ifElse hnl (ih hc) (ih ht) (ih (by simpa using he2))
-      | none => exact .ifNone hnl (ih hc) (ih ht)
+      | some e' => exact .ifElse (ih hc) (ih ht) (ih (by simpa using he2))
+      | none => exact .ifNone (ih hc) (ih ht)
     | .while' c b =>
       simp only [mfragB, Bool.and_eq_true] at h
       exact .while' (ih h.1) (ih h.2)

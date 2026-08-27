@@ -466,3 +466,29 @@ per-head (the ivar/global/const tables are *equal* under `SubDecls`, so even the
 fresh-ivar rule's negative premise transports), and the checker gains the
 matching nodes (`vasgnIvar` covers both ivar-assignment rules deterministically:
 the table answers a row or it does not).
+
+## J27 — narrowing machine-typed: the atom is the correlation
+
+The open design problem of the rung (recorded at J20): the `ifNarrow*` deliveries
+need the delivered value to be the stored local — a value↔store correlation the
+kont vocabulary cannot express. The resolution carries **no correlation at all**:
+at the *push*, the stored value's own atom `a` is extracted (`vty_narrow_kit`:
+its `valueTy?` answer, `.any`, or an `arrayOf` — one per `ValueTy` disjunct), the
+head binding is *sharpened* to `a` with no write (`FramesOkJ.setHead`), and the
+kont is registered at index `a` with three `SubJ` facts as premises — `a` below
+`dropNil τ₀` (or `a = nilT`, whose only value refutes the truthy direction), and
+`a` below `elseNarrow τ₀` conditional on `SubJ nilT/bool a`. At the delivery the
+machine's truthiness test plus the delivered value's `VTy` at the *sharp* index
+decide everything: truthy at a `nilT` index is `vty_nilT_eq`-refuted; falsy is
+`nil` or `false` (`truthy_false_cases`), whose `vty_nil/false_subJ` facts unlock
+the conditional premises. The environment moves are pointwise-`SubJ` weakenings
+(`SubEnvJ`/`narrowHeadJ` — J13's exact-type ceiling lifted on the invariant side
+only), and the kit lemmas (`subJ_dropNil`, `boolFree_false_of_subJ`,
+`subJ_nilT/bool_below`) are each one induction.
+
+The fragment's bare-local-`if` shape gate is gone; the checker gains
+`ifNarrowElse`/`ifNarrowNone` nodes; and `egNarrow` — `x = (true ? 1 : nil);
+if x then x + 1 else 0 end`, the DRuby guard-discrimination shape T4 names as the
+false-positive class narrowing exists to kill — is certified from certificate
+data, axiom-clean: the optional flows into the guard, the guard narrows, the
+narrowed branch dispatches.
