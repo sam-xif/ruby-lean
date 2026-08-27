@@ -102,6 +102,11 @@ def classOkB (h : Heap) : Bool :=
   (className h Boot.objectId == "Object") &&
   -- L178, at `Object` itself: the toplevel frame's definee.
   noShadowBeforeB h Boot.objectId &&
+  -- J41: no anonymous classes (the clause that makes `nameIfAnonymous` inert).
+  ((List.range h.objs.size).all fun o =>
+    match h.classPayload? o with
+    | some cp => !cp.name.isEmpty
+    | none => true) &&
   -- L194: quantified over the *read* table, with the reopen-only clauses guarded by
   -- membership in the smaller one — mirroring `ClassOk`'s own shape.
   Types.readableClasses.all fun n =>

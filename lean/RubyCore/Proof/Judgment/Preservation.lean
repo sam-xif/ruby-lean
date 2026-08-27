@@ -570,7 +570,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       have hdefmod : m.currentFrame.defmod = Boot.objectId := by
         rw [currentFrame_eq hfsh1]; exact BottomObj_curFrame hst hbot
       obtain ⟨k, cp, hconst, hpay, hnm, huniq, -, -, -, hreop⟩ :=
-        hcls.2.2 name (readable_of_reopenable (List.mem_of_elem_eq_true hmem))
+        hcls.2.2.1 name (readable_of_reopenable (List.mem_of_elem_eq_true hmem))
       obtain ⟨hmod, -, -⟩ := hreop (List.mem_of_elem_eq_true hmem)
       have hcrefCur : Boot.objectId ∈ m.currentFrame.cref := by
         rw [show m.currentFrame = m.frames.getD fid₀ default by
@@ -763,7 +763,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       intro md
       obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, hreop₀⟩ :=
         (ClassOk_defineMethod (name := name) (md := md)
-          (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+          (cls := (curFrame m).defmod) hcls).2.2.1 ctx.cls
           (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
       obtain ⟨-, hhead₀, -⟩ := hreop₀ (List.mem_of_elem_eq_true hmemctx)
       have hdefk : (curFrame m).defmod = k₀ :=
@@ -812,7 +812,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       subst hτ0
       obtain ⟨k₀, cp, _, _, hnm₀, huniq₀, _, _, _, _⟩ :=
         (ClassOk_defineMethod (name := name) (md := md)
-          (cls := (curFrame m).defmod) hcls).2.2 ctx.cls
+          (cls := (curFrame m).defmod) hcls).2.2.1 ctx.cls
           (readable_of_reopenable (List.mem_of_elem_eq_true hmemctx))
       have hctx' : className (defineMethod m.heap (curFrame m).defmod name md)
           (curFrame m).defmod = ctx.cls := by

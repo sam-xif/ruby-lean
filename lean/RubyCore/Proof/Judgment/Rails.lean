@@ -245,7 +245,7 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
     intro md
     obtain ⟨k₀, cp₀, _, _, hnm₀, huniq₀, _, _, _, hreop₀⟩ :=
       (ClassOk_defineMethod (name := "shout") (md := md)
-        (cls := (curFrame m).defmod) hcls₁).2.2 "String"
+        (cls := (curFrame m).defmod) hcls₁).2.2.1 "String"
         (readable_of_reopenable hmemS)
     obtain ⟨-, hhead₀, -⟩ := hreop₀ hmemS
     have hdefk : (curFrame m).defmod = k₀ :=
@@ -279,7 +279,7 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
     subst hτ0
     obtain ⟨k₀, cp₀, _, _, hnm₀, huniq₀, _, _, _, _⟩ :=
       (ClassOk_defineMethod (name := "shout") (md := md)
-        (cls := (curFrame m).defmod) hcls₁).2.2 "String"
+        (cls := (curFrame m).defmod) hcls₁).2.2.1 "String"
         (readable_of_reopenable hmemS)
     have hctx' : className (defineMethod (dmM₁ m).heap (curFrame m).defmod "shout" md)
         (curFrame m).defmod = "String" := by

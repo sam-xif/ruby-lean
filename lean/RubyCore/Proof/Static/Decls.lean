@@ -2327,7 +2327,7 @@ def ClassOk (h : Heap) : Prop :=
   -- One quantified block rather than two, with the difference as an implication: two
   -- blocks would double every `ClassOk` transport (`_grow`, `_defineMethod`,
   -- `IvarOnly.classOk`), and the transports are the whole cost of this predicate.
-  ∀ n ∈ readableClasses, ∃ k cp,
+  (∀ n ∈ readableClasses, ∃ k cp,
     constOwn h Boot.objectId n = some (.ref k) ∧
     h.classPayload? k = some cp ∧
     -- **The constant's object is a class *named* `n`** (F1b.9). Without this the
@@ -2378,13 +2378,27 @@ def ClassOk (h : Heap) : Prop :=
       -- `NoShadowBefore` is what makes *that* read reach `Object`'s table. This is
       -- the clause `Float` fails, and L194's split is what makes the failure cost
       -- nothing: the read of `Float`'s own name never enters a `Float` frame.
-      NoShadowBefore h k)
+      NoShadowBefore h k)) ∧
+  -- **No anonymous classes (J41).** `nameIfAnonymous` — applied by every
+  -- constant-assignment path — renames a class whose name is empty, and a rename
+  -- moves every `className`-keyed fact at once (`ScopedConstOk`'s keys, `valueTy?`'s
+  -- class arm, the uniqueness rows above). The fragment can never *create* an
+  -- anonymous class (`Class.new` has no rule; `enterClassBody` and `eigenclassOf`
+  -- always name), so the clause is free at every producer and it is what makes the
+  -- `casgn` delivery's `nameIfAnonymous` a provable no-op.
+  ∀ o cp, h.classPayload? o = some cp → cp.name.isEmpty = false
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
 theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
   simp only [classOkB, Bool.and_eq_true, beq_iff_eq] at hb
-  refine ⟨hb.1.1, noShadowBeforeB_sound hb.1.2, ?_⟩
+  have hanon : ∀ o cp, h.classPayload? o = some cp → cp.name.isEmpty = false := by
+    intro o cp hcp
+    have hlt : o < h.objs.size := classPayload?_isSome_lt (by simp [hcp])
+    have := List.all_eq_true.mp hb.1.2 o (List.mem_range.mpr hlt)
+    rw [hcp] at this
+    simpa using this
+  refine ⟨hb.1.1.1, noShadowBeforeB_sound hb.1.1.2, ?_, hanon⟩
   intro n hn
   have := List.all_eq_true.mp hb.2 n hn
   revert this
@@ -2435,9 +2449,10 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
 theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hc : ClassOk h) : ClassOk h' := by
   refine ⟨by rw [hg.className_eq]; exact hc.1,
-    NoShadowBefore_grow hg hsat hc.2.1, ?_⟩
+    NoShadowBefore_grow hg hsat hc.2.1, ?_,
+    fun o cp hcp => hc.2.2.2 o cp (by rw [← hg.payload]; exact hcp)⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2 n hn
+  obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
     by rw [hg.payload]; exact h2, ?_, fun j hj hjn => ?_,
     hrx, hmt, fun j hj hjo => ?_, fun hmem => ?_⟩
@@ -2463,9 +2478,20 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
 theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : ClassOk h) : ClassOk (defineMethod h cls name md) := by
   refine ⟨by rw [className_defineMethod]; exact hc.1,
-    NoShadowBefore_defineMethod hc.2.1, ?_⟩
+    NoShadowBefore_defineMethod hc.2.1, ?_,
+    -- J41: names survive a method-table write (`clsName_defineMethod`).
+    fun o cp' hcp' => by
+      have hnm := clsName_defineMethod h cls o name md
+      rw [hcp'] at hnm
+      cases hcp : h.classPayload? o with
+      | none => rw [hcp] at hnm; simp at hnm
+      | some cp0 =>
+        rw [hcp] at hnm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm
+        rw [hnm.1]
+        exact hc.2.2.2 o cp0 hcp⟩
   intro n hn
-  obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2 n hn
+  obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, ?_⟩
   rw [constOwn_defineMethod h cls Boot.objectId name n md]
   -- The payload at `k` may genuinely differ — this is the in-body `def` case — so
@@ -2662,7 +2688,7 @@ theorem constOk_of_classOk {h : Heap} {n : String} {τ : Ty} (hcls : ClassOk h)
       rw [show baseDecls.consts = baseConsts from rfl, baseConsts] at hn
       exact hn)
   obtain ⟨hmem, rfl⟩ := hmem
-  obtain ⟨k, cp, hco, hpay, hnm, -, hrx, hmt, hsole, -⟩ := hcls.2.2 n hmem
+  obtain ⟨k, cp, hco, hpay, hnm, -, hrx, hmt, hsole, -⟩ := hcls.2.2.1 n hmem
   have hlt : k < h.objs.size := classPayload?_isSome_lt (by rw [hpay]; simp)
   refine ⟨.ref k, hco, ValueTy.exact ?_, hsole⟩
   have hcr : classRecv h k = true := by
@@ -2987,8 +3013,9 @@ theorem noShadowBefore (hi : IvarOnly h h') {k : ObjId} (hn : NoShadowBefore h k
   exact hn.2 j hj cp (by rw [← hi.classPayload]; exact hcp)
 
 theorem classOk (hi : IvarOnly h h') (hc : ClassOk h) : ClassOk h' := by
-  refine ⟨by rw [hi.className_eq]; exact hc.1, hi.noShadowBefore hc.2.1, fun n hn => ?_⟩
-  obtain ⟨k, cp, hco, hcp, hnm, huniq, hre, hma, hsole, hreop⟩ := hc.2.2 n hn
+  refine ⟨by rw [hi.className_eq]; exact hc.1, hi.noShadowBefore hc.2.1, fun n hn => ?_,
+    fun o cp hcp => hc.2.2.2 o cp (by rw [← hi.classPayload]; exact hcp)⟩
+  obtain ⟨k, cp, hco, hcp, hnm, huniq, hre, hma, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, cp, by rw [hi.constOwn_eq]; exact hco, by rw [hi.classPayload]; exact hcp,
     by rw [hi.className_eq]; exact hnm, ?_, hre, hma, ?_, fun hmem => ?_⟩
   · intro j hj hjn
