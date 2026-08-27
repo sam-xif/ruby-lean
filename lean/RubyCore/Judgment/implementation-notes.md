@@ -1102,3 +1102,39 @@ throughout.
 Still owed for the module rung (W2c): `ClsGrow` + the relativized congruence
 suite keyed on `ChainsIn` (old walks never reach the fresh id), then the
 `module'` eval case.
+
+## J43c (design, refined) — `module'` needs a declared-modules channel
+
+Pricing the `module'` eval case against `enterClassBody` surfaced two cases the
+first design missed, both consequences of quantifying over *conformant* heaps:
+
+1. **The reopen branch is reachable** — an undeclared heap constant named
+   `Vulns` can exist (conformant heaps are arbitrary), so `constOwn` can hit; if
+   it hits a module object whose *own* name differs (`X = SomeModule` aliasing),
+   the pushed class-body frame breaks `StackCtx`'s `className defmod = ctx.cls`
+   clause.
+2. **The `TypeError` branch is reachable** — a hit on a non-module value raises,
+   and `CtlOkJ` has no raise vocabulary, so preservation would be false outright.
+
+The fix is the `defPromote` pattern at the constant table: a **declared-modules
+channel** (`Decls.modules : List String`, certificate-visible), with one
+invariant clause per declared name —
+
+    ModuleNameOk h name :=
+      (constOwn h Boot.objectId name = none) ∨
+      (∃ k, constOwn h Boot.objectId name = some (.ref k) ∧
+        (h.classPayload? k matches a module) ∧ className h k = name ∧
+        (h.get k).eigen.isSome)
+
+— which pins the branch: miss → the fresh path; hit → a *bona fide* module named
+`name` with its eigenclass realized (the `defs` rung's fact, carried from birth).
+Every step preserves it (the write rules' freshness guards grow "not a declared
+module name"; the module step itself re-establishes the right disjunct), and the
+boot table declares none. `Judge.module'` then carries `name ∈ D.modules` plus
+the casgn-style guards.
+
+Underneath, W2c still owes the mechanical layer: `ClsGrow` (old `get`s pinned,
+`classPayload?` pinned at old ids) + the `ChainsIn`-keyed relativized congruence
+suite (`ancestors`/`lookup`/`className`/`ValueTy`/`VTy`/`FramesOkJ`/`StackCtx`/
+`KontOkJ`/`DeclsOkJ` at old ids), an `EigenSet`-at-fresh mini-relation, and the
+composite `module'` case = `ClsGrow ∘ constSetIn ∘ ClsGrow ∘ EigenSet ∘ push`.
