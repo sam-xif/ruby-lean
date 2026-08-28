@@ -49,7 +49,7 @@ set_option maxHeartbeats 1600000
 
 /-! ## Array facts -/
 
-theorem objs_getD_push_lt (a : Array Object) (x : Object) {o : Nat}
+theorem objs_getD_push_lt (a : Array Object) (x : Object) (o : Nat)
     (ho : o < a.size) : (a.push x).getD o default = a.getD o default := by
   simp only [Array.getD]
   rw [dif_pos (by rw [Array.size_push]; omega), dif_pos ho]
@@ -90,7 +90,7 @@ theorem constSetIn_alloc_comm (h : Heap) (obj : Object) (d : ObjId)
     constSetIn (h.alloc obj).2 d name v = ((constSetIn h d name v).alloc obj).2 := by
   have hget : (h.alloc obj).2.get d = h.get d := by
     show (h.objs.push obj).getD d default = h.objs.getD d default
-    exact objs_getD_push_lt h.objs obj hdlt
+    exact objs_getD_push_lt h.objs obj d hdlt
   have hcp : (h.alloc obj).2.classPayload? d = h.classPayload? d := by
     unfold Heap.classPayload?
     rw [hget]
@@ -144,7 +144,7 @@ theorem freshModHeap_machine (h₀ : Heap) (d : ObjId) (name q : String)
       h₀.objs.size = modObj q := by
     show (((hmidOf h₀ d name).objs.push (modObj q)).push (eigObj q)).getD
         h₀.objs.size default = modObj q
-    rw [objs_getD_push_lt _ _ (by rw [Array.size_push, hmid_size]; omega),
+    rw [objs_getD_push_lt _ _ h₀.objs.size (by rw [Array.size_push, hmid_size]; omega),
       show h₀.objs.size = (hmidOf h₀ d name).objs.size from (hmid_size h₀ d name).symm,
       objs_getD_push_self]
   rw [hgetk, hsz2]
@@ -248,6 +248,68 @@ theorem evalExpr_module_fresh {m : Machine} {name q : String} {body : Expr}
       = freshModHeap m.heap m.currentFrame.defmod name q
     from freshModHeap_machine m.heap m.currentFrame.defmod name q hdlt]
   rfl
+
+/-! ## Reading the composite -/
+
+section Reads
+
+variable {h₀ : Heap} {d : ObjId} {name q : String}
+
+theorem freshModHeap_size :
+    (freshModHeap h₀ d name q).objs.size = h₀.objs.size + 2 := by
+  show ((((hmidOf h₀ d name).objs.push (modObj q)).push (eigObj q)).set! _ _).size = _
+  simp [Array.set!, Array.size_setIfInBounds, Array.size_push, hmid_size,
+    show ((hmidOf h₀ d name).objs.size = h₀.objs.size) from hmid_size h₀ d name]
+
+theorem freshModHeap_get_old {o : ObjId} (ho : o < h₀.objs.size) :
+    (freshModHeap h₀ d name q).get o = (hmidOf h₀ d name).get o := by
+  show ((((hmidOf h₀ d name).objs.push (modObj q)).push (eigObj q)).set!
+      h₀.objs.size _).getD o default = (hmidOf h₀ d name).objs.getD o default
+  rw [objs_getD_set!_ne _ _ _ _ (Nat.ne_of_lt ho),
+    objs_getD_push_lt _ _ o (by rw [Array.size_push, hmid_size]; exact Nat.lt_succ_of_lt ho),
+    objs_getD_push_lt _ _ o (by rw [hmid_size]; exact ho)]
+
+theorem freshModHeap_get_k :
+    (freshModHeap h₀ d name q).get h₀.objs.size = modObjE q (h₀.objs.size + 1) := by
+  show ((((hmidOf h₀ d name).objs.push (modObj q)).push (eigObj q)).set!
+      h₀.objs.size _).getD h₀.objs.size default = _
+  rw [objs_getD_set!_self _ _ _
+    (by rw [Array.size_push, Array.size_push, hmid_size]; omega)]
+
+theorem freshModHeap_get_e :
+    (freshModHeap h₀ d name q).get (h₀.objs.size + 1) = eigObj q := by
+  show ((((hmidOf h₀ d name).objs.push (modObj q)).push (eigObj q)).set!
+      h₀.objs.size _).getD (h₀.objs.size + 1) default = _
+  rw [objs_getD_set!_ne _ _ _ _ (by omega),
+    show h₀.objs.size + 1 = ((hmidOf h₀ d name).objs.push (modObj q)).size by
+      rw [Array.size_push, hmid_size],
+    objs_getD_push_self]
+
+/-- The J43 relation, delivered: old ids read as in `hmid`. -/
+theorem clsGrow_hmid_fresh : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+  ⟨by rw [freshModHeap_size, hmid_size]; omega,
+   fun o ho => freshModHeap_get_old (by rwa [hmid_size h₀ d name] at ho)⟩
+
+theorem freshModHeap_cp_k :
+    (freshModHeap h₀ d name q).classPayload? h₀.objs.size =
+      some { superclass := none, name := q, isModule := true } := by
+  unfold Heap.classPayload?
+  rw [freshModHeap_get_k]
+
+theorem freshModHeap_cp_e :
+    (freshModHeap h₀ d name q).classPayload? (h₀.objs.size + 1) =
+      some { superclass := some Boot.classId,
+             name := "#<Class:" ++ q ++ ">", isModule := false } := by
+  unfold Heap.classPayload?
+  rw [freshModHeap_get_e]
+
+theorem freshModHeap_cp_oob {o : ObjId} (ho : h₀.objs.size + 2 ≤ o) :
+    (freshModHeap h₀ d name q).classPayload? o = none := by
+  apply classPayload?_oob
+  rw [freshModHeap_size]
+  exact Nat.not_lt.mpr ho
+
+end Reads
 
 end Judgment
 end Proof
