@@ -751,19 +751,22 @@ theorem check_sound_all : ∀ (n : Nat),
         split at h
         · next hguards =>
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true, Bool.and_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩ := hguards
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩ := hguards
           split at h
           · next τ0 Γb Db hb0 =>
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl, rfl⟩ := h
-            refine .module' ?_ (by simpa using hg2) ?_
+            refine .module' ?_ (by simpa using hg1e) (by simpa using hg1m)
+              (by simpa using hg2) ?_
               (by simpa using hg4)
               (?_ : ∀ cn, scopedConstTy? D cn name = none)
               (by simpa using hg6) (ihc hb0)
             · exact List.contains_iff_mem.mp hg1
             · rcases Bool.or_eq_true _ _ |>.mp hg3 with hobj | hmb
-              · exact Or.inl (by simpa using hobj)
+              · simp only [Bool.and_eq_true, beq_iff_eq] at hobj
+                exact Or.inl hobj
               · simp only [Bool.and_eq_true] at hmb
                 exact Or.inr hmb
             · intro cn

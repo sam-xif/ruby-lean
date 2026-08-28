@@ -632,6 +632,103 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · rw [getD_push_lt_self]; exact fun _ => rfl
       · exact Or.inl ⟨hfb, hmb, τ0, τw, Γb', Db, Γb', hbody, hsubw, SubEnv.refl _,
           KontOkJ.frameK (fun _ h' => by simp at h') rfl hk⟩
+  -- ## `module'` (J48) — Wall 2's definition half. The declared-modules channel
+  -- pins `enterClassBody`'s branch: `ModuleNameOk` at the frame's definee (a
+  -- `ModOwner` by the position guard) says the constant is absent (fresh path)
+  -- or a bona fide module named the qualified name with its eigenclass realized
+  -- (reopen path — a pure frame push, `classTop`'s argument with the J44c facts
+  -- carried into the new frame's clauses).
+  case hmodule =>
+    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hmn hnbk hpos hct hsct hrd hbody ihb
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    obtain ⟨hfb, hmb⟩ : fragHead body = true ∧ MFrag A body := by
+      cases hmf with
+      | semantic hmem hff => simp [fragHead] at hff
+      | module' hfb hmb => exact ⟨hfb, hmb⟩
+    have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+    have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
+    have hfs := FramesOkJ.narrowHead hsuE hfs
+    obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hfsh1
+      | cons a r => exact ⟨a, r, rfl⟩
+    have hscc : StackCtx m.heap m.frames (fid₀ :: fids₀)
+        (ctx.toFrameCtx :: (Γs.map Prod.fst).map JCtx.toFrameCtx) := by
+      rw [hst] at hsc; exact hsc
+    have hcur : curFrame m = m.frames.getD fid₀ default := by
+      simp [curFrame, curFid, hst]
+    have hcn : className m.heap (curFrame m).defmod = ctx.cls := by
+      rw [hcur]; exact hscc.2.1 hnbk
+    have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
+      rw [hcur]; exact hscc.1
+    have hcrefCur : Boot.objectId ∈ (curFrame m).cref := by
+      rw [hcur]; exact hscc.2.2.2.2.1
+    have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
+    -- the frame's definee denotes the rule's owner
+    have hmow : ModOwner m.heap ctx.cls (curFrame m).defmod := by
+      rcases hpos with ⟨htt, hobj⟩ | ⟨hicb, himb⟩
+      · left
+        refine ⟨hobj, ?_⟩
+        have hΓs : Γs = [] := List.isEmpty_iff.mp (htt ▸ htop).symm
+        subst hΓs
+        obtain ⟨fid₁, hst1⟩ := hfs.stack_singleton
+        exact BottomObj_curFrame hst1 hbot
+      · right
+        rw [hcur]
+        obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
+          hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+        exact ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    have hmno := htab.2.2.2.2.2.2.2.2 _ hmemMods
+    rcases hmno _ hmow with hmiss | ⟨kk, cp', hhit, hcp', hism', hqn', heig', hoff', hlt'⟩
+    · -- ## the fresh path: alloc + register + eigenclass + push (the ClsGrow composite)
+      sorry
+    · -- ## the reopen path: a pure frame push into the bona fide module
+      have hqne : RubyCore.Types.qualifyMod ctx.cls name ≠ "" := by
+        unfold RubyCore.Types.qualifyMod
+        split
+        · exact hne0
+        · intro hq
+          have := congrArg String.length hq
+          simp [String.length_append] at this
+      have hkps : (m.heap.classPayload? kk).isSome = true := by rw [hcp']; rfl
+      have hknm : className m.heap kk = RubyCore.Types.qualifyMod ctx.cls name := by
+        unfold className
+        rw [hcp']
+        simp only [hqn']
+        rw [if_neg (by simpa using hqne)]
+      have hcrefCur' : Boot.objectId ∈ m.currentFrame.cref := by
+        rw [hdm]; exact hcrefCur
+      rw [← hdm] at hhit
+      simp only at hhit
+      simp only [evalExpr, enterClassBody, hhit, hcp', hism', bne_self_eq_false,
+        Bool.false_eq_true, if_false, withKont]
+      refine ⟨hh, hsat, hchn, hstr, hcls,
+        BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
+        (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
+        (ClosuresOk.pushFrame hclo rfl rfl rfl),
+        D, ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
+              inClassBody := true, inModuleBody := true } : JCtx), [], ((ctx, Γk) :: Γs),
+        htab, ?_, ?_, hgl, ?_⟩
+      · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+          ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
+          FramesOkJ.push hfs⟩
+        · rw [getD_push_lt_self]; exact hkps
+        · intro y σ hy; exact absurd hy (by simp [envGet?])
+      · refine StackCtx.cons ?_ ?_ ?_
+          (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
+          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (StackCtx.push hlt hsc)
+        · rw [getD_push_lt_self]; exact hkps
+        · rw [getD_push_lt_self]; exact fun _ => hknm
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+        · rw [getD_push_lt_self]
+          exact List.mem_cons_of_mem _ hcrefCur'
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+        · rw [getD_push_lt_self]; exact fun _ _ => rfl
+        · rw [getD_push_lt_self]
+          exact fun _ _ => ⟨cp', hcp', hism', hqn', heig', hoff'⟩
+      · exact Or.inl ⟨hfb, hmb, τ0, τw, Γb', Db', Γb', hbody, hsubw, SubEnv.refl _,
+          KontOkJ.frameK (fun _ h' => by simp at h') rfl hk⟩
   -- ## `def` — the two derivations of the same step: install-only (`defDecl`) and
   -- row-threading promotion (`defPromote`). The heap write and the value are
   -- identical; the difference is the table the invariant is re-established at.

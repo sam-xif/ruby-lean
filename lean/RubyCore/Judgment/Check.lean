@@ -401,15 +401,15 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
     -- class/module-body channels set. The body's env and table are dropped, as the
     -- rule drops them.
     | .module' db, .module' name body =>
-      if D.modules.contains (ctx.cls, name) && !ctx.inBlock &&
-          (ctx.cls == "Object" || (ctx.inClassBody && ctx.inModuleBody)) &&
+      if D.modules.contains (ctx.cls, name) && name != "" && ctx.meth.isNone && !ctx.inBlock &&
+          ((top && ctx.cls == "Object") || (ctx.inClassBody && ctx.inModuleBody)) &&
           (constTy? D name).isNone &&
           D.scopedConsts.all (fun e => e.1.2 != name) &&
           !(readableClasses.contains name) then
         match check n A db D [] body false
             ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
                inClassBody := true, inModuleBody := true } : JCtx) with
-        | some (τ, _, _) => some (τ, Γ, D)
+        | some (τ, _, Db) => some (τ, Γ, Db)
         | none => none
       else none
     | .sub d' σ Γ'', e =>
