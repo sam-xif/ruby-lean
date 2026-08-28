@@ -1,4 +1,5 @@
 import RubyCore.Types.SlotClaim
+import RubyCore.Types.SlotWalk
 
 /-!
 # The two measured blockers, cleared — `#guard`ed
@@ -109,6 +110,64 @@ def bothToS : SlotClaim :=
 #guard framedB bothToS
   [Install.defM comparableId "to_s", Install.defM objectId "hash",
    Install.ancestry pkgVersionId]
+
+/-! ## §5 step 2 — the walk, on syntax
+
+The inventory is what makes the closed world closed, so it is worth seeing it
+read a program.
+-/
+
+/-! `class Version; def to_s; end; end` — one install, at `Version`. -/
+#guard installsOf (.class' "Version" none (.def' "to_s" [] .nil)) 20
+  == [InstallN.defM "Version" "to_s"]
+
+/-! `class Version; include Comparable; end` — an ancestry mutation at `Version`
+    (definition-position, so SF9 puts it in the boot prefix). -/
+#guard installsOf (.class' "Version" none (.send none "include" [.const "Comparable"] none)) 20
+  == [InstallN.ancestry "Version"]
+
+/-! A literal-keyed `define_method` is an ordinary slot write... -/
+#guard installsOf (.class' "V" none (.send none "define_method" [.sym "f"] none)) 20
+  == [InstallN.defM "V" "f"]
+
+/-! ...and a laundered one (SF6a) is the ⊤ key set at that class. -/
+#guard installsOf (.class' "V" none
+    (.send none "define_method" [.var .lvar "n"] none)) 20
+  == [InstallN.anyName "V"]
+
+/-! `attr_accessor :x` is two slots, which is exactly the sort of arithmetic the
+    name-global guard could not do. -/
+#guard installsOf (.class' "V" none (.send none "attr_accessor" [.sym "x"] none)) 20
+  == [InstallN.defM "V" "x", InstallN.defM "V" "x="]
+
+/-! `eval` is not readable, so the *program* is rejectable — §5's honest cost,
+    and the same polarity as every other gate. -/
+#guard (installsOf (.send none "class_eval" [] none) 20).any
+  (fun i => match i with | .opaque_ _ => true | _ => false)
+
+/-! A computed *dispatch* is not a write and is invisible to the frame. -/
+#guard installsOf (.send (some (.var .lvar "o")) "send" [.var .lvar "n"] none) 20 == []
+
+/-- End to end: the resolver maps the two names, the inventory misses the
+    footprint, `framedProgB` accepts. -/
+def egResolver : String → Option ObjId
+  | "Version" => some versionId
+  | "String" => some stringId
+  | "Comparable" => some comparableId
+  | _ => none
+
+#guard framedProgB rowStringToS egResolver
+  (.class' "Version" none (.def' "to_s" [] .nil)) 20
+
+/-! And the same program does *not* frame a claim that reads `Version#to_s`'s
+    slot — the additive monkey-patch is only free for claims elsewhere. -/
+#guard !framedProgB rowVersionToS egResolver
+  (.class' "Version" none (.def' "to_s" [] .nil)) 20
+
+/-! An install at a class the resolver cannot name is a rejection, not a silent
+    drop. -/
+#guard !framedProgB rowStringToS egResolver
+  (.class' "Unknown" none (.def' "to_s" [] .nil)) 20
 
 end SlotEg
 end RubyCore.Types
