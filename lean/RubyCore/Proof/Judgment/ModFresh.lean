@@ -1722,15 +1722,16 @@ theorem moduleNameOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
 
 /-- `ModuleNameOk` at the composite, for **the written pair**: the write is the
     hit, and its facts are the fresh module's literals. -/
-theorem moduleNameOk_self_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem moduleNameOk_name_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
-    {owner : String}
+    (hcls0 : ClassOk h₀)
+    {owner owner' : String}
     (hdo : (h₀.classPayload? d).isSome = true)
     (hdn : className h₀ d = owner)
     (hqq : q = RubyCore.Types.qualifyMod owner name)
-    (hqow : q ≠ owner)
-    (hmo : ModuleNameOk h₀ owner name) :
-    ModuleNameOk (freshModHeap h₀ d name q) owner name := by
+    (hqow : q ≠ owner')
+    (hmo : ModuleNameOk h₀ owner' name) :
+    ModuleNameOk (freshModHeap h₀ d name q) owner' name := by
   have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
   have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
   have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
@@ -1758,7 +1759,31 @@ theorem moduleNameOk_self_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
               (fun hlt2 => not_lt_add_two h1 h2 h3 hlt2))] at hcp
             exact absurd hcp.symm (by simp)
   by_cases hod : o = d
-  · -- the write's own hit
+  · -- the write's own hit; the pair's owner is pinned to the definee's name
+    have howeq : owner' = owner := by
+      rcases ho with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+      · have hdobj : d = Boot.objectId := by rw [← hod, h2]
+        rw [h1, ← hdn, hdobj]
+        exact hcls0.1.symm
+      · rw [← hnm, ← hdn]
+        rw [hod] at hcp
+        rw [freshModHeap_cp_old hdlt hdlt] at hcp
+        have hnmm := clsName_constSetIn h₀ d d name (Value.ref h₀.objs.size)
+        rw [hcp] at hnmm
+        cases hcp0 : h₀.classPayload? d with
+        | none => rw [hcp0] at hdo; exact absurd hdo (by simp)
+        | some cp0 =>
+          rw [hcp0] at hnmm
+          simp only [Option.map_some, Option.some.injEq] at hnmm
+          have hnm0 : cp.name = cp0.name := congrArg Prod.fst hnmm
+          unfold className
+          rw [hcp0]
+          show cp.name = (if cp0.name.isEmpty = true then _ else cp0.name)
+          rw [if_neg (by
+            rw [hcls0.2.2.2 d cp0 hcp0]
+            exact Bool.false_ne_true)]
+          exact hnm0
+    rw [howeq] at hqow ⊢
     right
     refine ⟨h₀.objs.size, { superclass := none, name := q, isModule := true },
       ?_, freshModHeap_cp_k, rfl, hqq, ?_,
@@ -1775,7 +1800,7 @@ theorem moduleNameOk_self_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
       exact Nat.lt_succ_of_lt (Nat.lt_succ_self _)
   · -- some other owner-named object: the old fact, values pinned (`o ≠ d`)
     have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
-    have hoo : ModOwner h₀ owner o := by
+    have hoo : ModOwner h₀ owner' o := by
       rcases ho with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
       · exact Or.inl ⟨h1, h2⟩
       · rw [freshModHeap_cp_old hdlt holt] at hcp
@@ -1846,6 +1871,68 @@ theorem moduleNameOk_self_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           (modOffChains_constSetIn hoff)
       · rw [freshModHeap_size]
         exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+
+/-- **The table invariant at the composite** — every clause assembled. -/
+theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
+    (hch : ChainsIn h₀) (hsat : Saturated h₀) (hdlt : d < h₀.objs.size)
+    (hqne : ¬ q.isEmpty = true)
+    (hcls0 : ClassOk h₀)
+    (hcO : ClassOk (hmidOf h₀ d name)) (hnoO : NoHook (hmidOf h₀ d name))
+    (htab : DeclsOkJ A D h₀)
+    (hct : constTy? D name = none)
+    (hsct : ∀ cn, scopedConstTy? D cn name = none)
+    (hdfr : declClsFresh D q = true)
+    {owner : String}
+    (hdo : (h₀.classPayload? d).isSome = true)
+    (hdn : className h₀ d = owner)
+    (hqq : q = RubyCore.Types.qualifyMod owner name) :
+    DeclsOkJ A D (freshModHeap h₀ d name q) := by
+  obtain ⟨hkR, hkI, hkS, hkP, hkM⟩ := declClsFresh_sound hdfr
+  have hmidsuite := constSetIn_rowsAndConstsJ
+    (v := Value.ref h₀.objs.size) (j := d) htab hct hsct
+  refine ⟨?_, ?_, ?_, ?_, ?_, htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1,
+    htab.2.2.2.2.2.2.2.1, ?_⟩
+  · intro τr mname dd hf
+    obtain ⟨hnee, hkeys⟩ := declFor_keys hf
+    exact entryOkJ_fresh hch hsat hdlt hqne hcO hnoO
+      (fun c hc => by obtain ⟨rs, hrs⟩ := hkeys c hc; exact hkR (c, rs) hrs)
+      hnee (hmidsuite.1 τr mname dd hf)
+  · exact fun n τ hn => constOk_fresh hch hsat hdlt (hmidsuite.2.1 n τ hn)
+  · exact fun c x τ hn => ivarOk_fresh hch hsat hdlt (hmidsuite.2.2.1 c x τ hn)
+  · intro c n τ hn
+    refine scopedConstOk_fresh hch hsat hdlt hqne ?_ (hmidsuite.2.2.2.1 c n τ hn)
+    have hn' := hn
+    unfold scopedConstTy? at hn'
+    cases hfind : D.scopedConsts.find? (·.1 == (c, n)) with
+    | none => rw [hfind] at hn'; exact absurd hn' (by simp)
+    | some e =>
+      have hmem := List.mem_of_find?_eq_some hfind
+      have hp := List.find?_some hfind
+      simp only [beq_iff_eq] at hp
+      have := hkS e hmem
+      rw [hp] at this
+      exact this
+  · intro c n dd hn
+    refine superOk_fresh hch hsat hdlt hqne ?_ (hmidsuite.2.2.2.2 c n dd hn)
+    have hn' := hn
+    unfold superDecl? at hn'
+    cases hfind : D.supers.find? (·.1 == (c, n)) with
+    | none => rw [hfind] at hn'; exact absurd hn' (by simp)
+    | some e =>
+      have hmem := List.mem_of_find?_eq_some hfind
+      have hp := List.find?_some hfind
+      simp only [beq_iff_eq] at hp
+      have := hkP e hmem
+      rw [hp] at this
+      exact this
+  · intro pr hpr
+    have hkey := hkM pr hpr
+    by_cases hnm : pr.2 = name
+    · rw [hnm]
+      exact moduleNameOk_name_fresh hch hsat hdlt hqne hcls0 hdo hdn hqq
+        (Ne.symm hkey.1) (hnm ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
+    · exact moduleNameOk_fresh hch hsat hdlt hqne hkey hnm
+        (htab.2.2.2.2.2.2.2.2 pr hpr)
 
 end Table
 
