@@ -156,7 +156,8 @@ def reqClsOkB (cl : SemClaim) (ctx : JCtx) : Bool :=
 
 /-- The claim's module-body condition, decided (J47). -/
 def reqModOkB (cl : SemClaim) (ctx : JCtx) : Bool :=
-  !cl.reqMod || (ctx.inClassBody && ctx.inModuleBody && !ctx.inBlock)
+  !cl.reqMod ||
+    (ctx.inClassBody && !ctx.inBlock && (ctx.inModuleBody || ctx.inFreshClass))
 
 /-- **The local checker.** `check n A d D Γ e top ctx = some (τ, Γ', D')` reads:
     the derivation `d` establishes `Judge D Γ e top ctx τ Γ' D'`. Fuel decreases
@@ -553,6 +554,20 @@ def modOwnerB (h : Heap) (owner : String) (o : ObjId) : Bool :=
        && modOffChainsB h o
    | none => false)
 
+/-- `ClassNameOk`, decided (J53) — `moduleNameOkB` at the classes table's hit
+    facts (`isModule = false`, no chain half). -/
+def classNameOkB (h : Heap) (owner nm : String) : Bool :=
+  (List.range h.objs.size).all fun o =>
+    !(modOwnerB h owner o) ||
+    (match constOwn h o nm with
+     | none => true
+     | some (.ref k) =>
+       (match h.classPayload? k with
+        | some cp => !cp.isModule && cp.name == RubyCore.Types.qualifyMod owner nm
+            && (h.get k).eigen.isSome && decide (k < h.objs.size)
+        | none => false)
+     | some _ => false)
+
 /-- `ModuleNameOk`, decided (J48): what `validateJ` checks of each declared
     module pair **at the boot heap**, so module-declaring certificates stay
     unconditional. -/
@@ -604,6 +619,10 @@ structure JCert where
       `ModuleNameOk` at the boot heap is checked by `validateJ` itself
       (`moduleNameOkB`), so the accept stays unconditional. -/
   deltaModules : List (String × String) := []
+  /-- **J53**: the declared fresh-class pairs, `deltaModules`' shape at the
+      classes table — checked at the boot heap by `validateJ` (`classNameOkB`),
+      so class-declaring certificates stay unconditional too. -/
+  deltaClasses : List (String × String) := []
   deriv : Deriv
 deriving Repr
 
@@ -611,7 +630,7 @@ deriving Repr
     constant halves appended (J38b). -/
 def JCert.baseTable (c : JCert) (p : Expr) : Decls :=
   { constExtend (declsOf p) c.deltaConsts c.deltaScopedConsts with
-    modules := c.deltaModules }
+    modules := c.deltaModules, classes := c.deltaClasses }
 
 /-- The table a J-certificate names — the row fold over the constant-extended
     base (the same fold `Cert.table` uses). -/
@@ -629,6 +648,7 @@ def validateJ (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
   rowsGuarded (c.baseTable p) c.deltaRows &&
   rowsGroundB c.deltaRows &&
   c.deltaModules.all (fun pr => moduleNameOkB Boot.initHeap pr.1 pr.2) &&
+  c.deltaClasses.all (fun pr => classNameOkB Boot.initHeap pr.1 pr.2) &&
   fragHead p &&
   mfragB c.semAssumes fuel p &&
   (check fuel c.semAssumes c.deriv (c.table p) [] p true topJCtx).isSome

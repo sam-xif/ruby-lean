@@ -174,7 +174,8 @@ theorem reqModOkB_sound {cl : SemClaim} {ctx : JCtx} (h : reqModOkB cl ctx = tru
   intro hq
   unfold reqModOkB at h
   rw [hq] at h
-  simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, Bool.not_eq_true'] at h
+  simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_true] at h
   exact ⟨h.1.1, h.1.2, h.2⟩
 
 set_option maxHeartbeats 1600000 in
@@ -971,15 +972,16 @@ theorem check_sound {n : Nat} {d : Deriv} {D : Decls} {Γ : Env} {e : Expr}
     inert: `find?` answers the base half first, whose conjunct `hd` supplies. -/
 theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
     {cs : List (String × Ty)} {scs : List ((String × String) × Ty)}
-    {ms : List (String × String)}
+    {ms ks : List (String × String)}
     (ht : TableOk h) (hcls : ClassOk h)
     (hc : ∀ e ∈ cs, ConstOk h e.1 e.2)
     (hsc : ∀ e ∈ scs, ScopedConstOk h e.1.1 e.1.2 e.2)
-    (hm : ∀ pr ∈ ms, ModuleNameOk h pr.1 pr.2) :
-    DeclsOkJ A { constExtend baseDecls cs scs with modules := ms } h := by
+    (hm : ∀ pr ∈ ms, ModuleNameOk h pr.1 pr.2)
+    (hkc : ∀ pr ∈ ks, ClassNameOk h pr.1 pr.2) :
+    DeclsOkJ A { constExtend baseDecls cs scs with modules := ms, classes := ks } h := by
   have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls
   refine ⟨?_, ?_, hd.2.2.1, ?_, hd.2.2.2.2.1, hd.2.2.2.2.2.1,
-    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm, hd.2.2.2.2.2.2.2.2.2⟩
+    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm, hkc⟩
   · -- Rows: `declFor` reads no constant half, so the row set is the base's; the
     -- base's builtin/iterator witnesses are table-free and the user arm is refuted
     -- by `tableOk_declsOkJ`'s own walk (repeated here at the extended index).
@@ -1115,6 +1117,28 @@ theorem moduleNameOkB_sound {h : Heap} {owner nm : String}
     · next hcp => exact absurd hall (by simp)
   · next v hco hnr => exact absurd hall (by simp)
 
+/-- The validator's per-pair boot check implies the `DeclsOkJ` classes clause
+    (J53) — `moduleNameOkB_sound` at the class hit facts. -/
+theorem classNameOkB_sound {h : Heap} {owner nm : String}
+    (hobj : Boot.objectId < h.objs.size)
+    (hb : classNameOkB h owner nm = true) : ClassNameOk h owner nm := by
+  intro o hmo
+  have hlt : o < h.objs.size := modOwner_lt hobj hmo
+  have hall := List.all_eq_true.mp hb o (List.mem_range.mpr hlt)
+  rw [modOwnerB_complete hmo] at hall
+  simp only [Bool.not_true, Bool.false_or] at hall
+  split at hall
+  · next hco => exact Or.inl hco
+  · next k hco =>
+    split at hall
+    · next cp hcp =>
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq,
+        Bool.not_eq_true'] at hall
+      obtain ⟨⟨⟨him, hnm'⟩, hei⟩, hk⟩ := hall
+      exact Or.inr ⟨k, cp, hco, hcp, him, hnm', hei, hk⟩
+    · next hcp => exact absurd hall (by simp)
+  · next v hco hnr => exact absurd hall (by simp)
+
 /-- **The J-certificate theorem** — J2's exit: a *data* certificate (rows +
     constant claims + a derivation tree), one kernel-reduced `Bool`, the
     reachability property. The residue stays the honest hypotheses, exactly as in
@@ -1133,7 +1157,7 @@ theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
   unfold validateJ at h
   simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
-  obtain ⟨⟨⟨⟨⟨hg, hgr⟩, hmod⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨hg, hgr⟩, hmod⟩, hkls⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
   have htbl : c.table p = rowFold (c.baseTable p) c.deltaRows := rfl
   refine judge_sound hax ?_ (mfragB_sound hmf) hfr (check_sound hchk)
   rw [htbl] at ha ⊢
@@ -1141,7 +1165,9 @@ theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
     (show DeclsOkJ c.semAssumes (c.baseTable p) Boot.initHeap from
       tableOk_declsOkJ_constExtend tableOk_initHeap classOk_initHeap hac hasc
         (fun pr hpr => moduleNameOkB_sound (by decide)
-          (List.all_eq_true.mp hmod pr hpr)))
+          (List.all_eq_true.mp hmod pr hpr))
+        (fun pr hpr => classNameOkB_sound (by decide)
+          (List.all_eq_true.mp hkls pr hpr)))
     (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ0 n0 d0 hnone hsome
   rcases declFor_rowFold_inv c.deltaRows _ hg hsome with ⟨r, hm, hk, rfl, rfl⟩ | hd2

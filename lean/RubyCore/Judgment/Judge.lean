@@ -263,7 +263,8 @@ deriving Repr
 /-- The `reqMod` condition, as the guard every consumer states (J47). -/
 def SemClaim.reqModOk (cl : SemClaim) (ctx : JCtx) : Prop :=
   cl.reqMod = true →
-    ctx.inClassBody = true ∧ ctx.inModuleBody = true ∧ ctx.inBlock = false
+    ctx.inClassBody = true ∧ ctx.inBlock = false ∧
+      (ctx.inModuleBody = true ∨ ctx.inFreshClass = true)
 
 /-- A position-free claim's `reqMod` guard is vacuous. -/
 theorem SemClaim.reqModOk_false {cl : SemClaim} {ctx : JCtx}

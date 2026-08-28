@@ -86,7 +86,7 @@ theorem semAxiomsOk_defsAll {A : SemAxioms}
     SemAxiomsOk A := by
   intro cl hcl ans D Γ top c _hreq hqm hfr hfn
   obtain ⟨name, ps, body, rfl, hna1, hna2⟩ := h cl hcl
-  obtain ⟨hicb, himb, hnbk⟩ := hqm rfl
+  obtain ⟨hicb, hnbk, hor⟩ := hqm rfl
   have hfresh : declaresName D name = false := hfn name (by simp [defsClaim])
   have hha : name ≠ "method_added" ∧ name ≠ "define_method" := ⟨hna1, hna2⟩
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
@@ -107,10 +107,17 @@ theorem semAxiomsOk_defsAll {A : SemAxioms}
   have hself : (curFrame m).self = .ref (curFrame m).defmod := by
     rw [hcur]
     exact hscc.2.2.2.2.2.2.2.2.1 hicb hnbk
-  -- J44c: the definee's eigenclass is realized.
-  obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
-    hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
-  rw [← hcur] at heig
+  -- J44c / J53: the definee's eigenclass is realized — the module clause or
+  -- the fresh-class clause, whichever the position guard supplies.
+  have heig : ((m.heap.get (curFrame m).defmod).eigen).isSome := by
+    rw [hcur]
+    rcases hor with himb | hifc
+    · obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
+        hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+      exact heig
+    · obtain ⟨cp, hcp, hism, hnm, heig⟩ :=
+        hscc.2.2.2.2.2.2.2.2.2.2.1 hifc hnbk
+      exact heig
   obtain ⟨e₀, he₀⟩ := Option.isSome_iff_exists.mp heig
   -- the step, reduced
   simp only [defsClaim]

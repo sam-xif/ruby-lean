@@ -281,6 +281,8 @@ def JCert.toJson (c : JCert) : Json :=
                   ("type", tyToJson e.2)])),
     ("delta_modules", Json.arr (c.deltaModules.toArray.map fun e =>
       Json.mkObj [("owner", Json.str e.1), ("name", Json.str e.2)])),
+    ("delta_classes", Json.arr (c.deltaClasses.toArray.map fun e =>
+      Json.mkObj [("owner", Json.str e.1), ("name", Json.str e.2)])),
     ("deriv", derivToJson c.deriv)]
 
 def JCert.ofJson (j : Json) : Except String JCert := do
@@ -303,11 +305,16 @@ def JCert.ofJson (j : Json) : Except String JCert := do
       (← mj.getArr?).toList.mapM fun e => do
         pure ((← e.getObjValAs? String "owner"), (← e.getObjValAs? String "name"))
     | .error _ => pure []
+  let kls ← match j.getObjVal? "delta_classes" with
+    | .ok mj => do
+      (← mj.getArr?).toList.mapM fun e => do
+        pure ((← e.getObjValAs? String "owner"), (← e.getObjValAs? String "name"))
+    | .error _ => pure []
   let sems ← match j.getObjVal? "sem_assumes" with
     | .ok sj => do (← sj.getArr?).toList.mapM semClaimOfJson
     | .error _ => pure []
   pure { deltaRows := rows, deltaConsts := consts, deltaScopedConsts := scs,
-         deltaModules := ms, semAssumes := sems,
+         deltaModules := ms, deltaClasses := kls, semAssumes := sems,
          deriv := (← derivOfJson (← j.getObjVal? "deriv")) }
 
 end RubyCore.Judgment
