@@ -54,7 +54,7 @@ def lamClaim : SemClaim := { e := lamE }
     discharged by running the machine — a lambda send is one step to a fresh proc
     value, so the invariant is re-established by the heap-growth helper at `.any`. -/
 theorem semAxiomsOk_lam : SemAxiomsOk [lamClaim] := by
-  intro cl hcl ans D Γ top c _hreq _hfr
+  intro cl hcl ans D Γ top c _hreq _hqm _hfr
   simp only [List.mem_singleton] at hcl
   subst hcl
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
@@ -79,9 +79,11 @@ theorem egSem_judged : Judge [lamClaim] (declsOf egSem) [] egSem true topJCtx
   refine .seq (.cons (.vasgnLvar rfl .int) (.cons ?_ (.single (.varLvar (by decide)))
     (hcpl := fun _ => ⟨lamClaim, by simp, rfl, rfl, rfl, rfl, Or.inl rfl,
       fun cn hcn => by simp [lamClaim] at hcn,
+      SemClaim.reqModOk_false rfl,
       fun r hr => by simp [lamClaim] at hr⟩)))
   exact .semantic (cl := lamClaim) (by simp) (by decide)
     (fun cn hcn => by simp [lamClaim] at hcn)
+    (SemClaim.reqModOk_false rfl)
     (fun r hr => by simp [lamClaim] at hr) (Or.inl rfl)
 
 theorem egSem_mfrag : MFrag [lamClaim] egSem :=

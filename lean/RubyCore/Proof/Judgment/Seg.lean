@@ -193,13 +193,14 @@ def SemAxiomsOkS (A : SemAxioms) : Prop :=
   ∀ cl ∈ A, ∀ (ans : Ty) (D : Decls) (Γ : Env) (top : Bool) (c : JCtx),
     (∀ cn, cl.reqCls = some cn →
       c.cls = cn ∧ c.inClassBody = true ∧ c.inBlock = false) →
+    cl.reqModOk c →
     (∀ r ∈ cl.rows, declaresName D r.2.1 = false) →
     SegOkAt ans A D Γ cl.e top c cl.τ Γ (addRows D cl.rows)
 
 /-- One-step axiom sets are segment axiom sets. -/
 theorem semAxiomsOk_toS {A : SemAxioms} (h : SemAxiomsOk A) : SemAxiomsOkS A :=
-  fun cl hcl ans D Γ top c hreq hrows =>
-    evalOkAt_segOkAt (h cl hcl ans D Γ top c hreq hrows)
+  fun cl hcl ans D Γ top c hreq hqm hrows =>
+    evalOkAt_segOkAt (h cl hcl ans D Γ top c hreq hqm hrows)
 
 /-! ## Axiom hygiene -/
 

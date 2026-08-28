@@ -72,7 +72,7 @@ theorem judge_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top :
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hret2 hmeth2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h
@@ -127,7 +127,7 @@ theorem judge_seq_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List Ex
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hret2 hmeth2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h
@@ -182,7 +182,7 @@ theorem judge_args_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List E
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hret2 hmeth2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h
@@ -237,7 +237,7 @@ theorem judge_elems_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List 
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hret2 hmeth2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h
@@ -295,7 +295,7 @@ theorem judge_pairs_table_ret {A : SemAxioms} {D : Decls} {Γ : Env}
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hret2 hmeth2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hret2 hmeth2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h

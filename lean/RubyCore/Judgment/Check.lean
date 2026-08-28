@@ -148,6 +148,10 @@ def reqClsOkB (cl : SemClaim) (ctx : JCtx) : Bool :=
   | some cn => ctx.cls == cn && ctx.inClassBody && !ctx.inBlock
   | none => true
 
+/-- The claim's module-body condition, decided (J47). -/
+def reqModOkB (cl : SemClaim) (ctx : JCtx) : Bool :=
+  !cl.reqMod || (ctx.inClassBody && ctx.inModuleBody && !ctx.inBlock)
+
 /-- **The local checker.** `check n A d D Γ e top ctx = some (τ, Γ', D')` reads:
     the derivation `d` establishes `Judge D Γ e top ctx τ Γ' D'`. Fuel decreases
     on every call. -/
@@ -161,6 +165,7 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       | some cl =>
         if exprEqB (n + 1) cl.e e && !fragHead e &&
             (cl.rows.isEmpty || ctx.meth.isNone) && reqClsOkB cl ctx &&
+            reqModOkB cl ctx &&
             cl.rows.all (fun r => !(declaresName D r.2.1)) then
           some (cl.τ, Γ, addRows D cl.rows)
         else none

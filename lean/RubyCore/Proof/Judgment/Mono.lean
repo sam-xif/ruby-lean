@@ -111,14 +111,14 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
   all_goals try (intros; trivial)
   -- J31: the semantic leaf is table-generic — reapply at the grown table.
   case hsemantic =>
-    intro D Γ top ctx cl hmem hff hreq hfr hdisc hmeth2 _ _ _ D2 _
+    intro D Γ top ctx cl hmem hff hreq hqm hfr hdisc hmeth2 _ _ _ D2 _
     have hrows : cl.rows = [] := by
       rcases hdisc with h | h
       · exact h
       · rw [h] at hmeth2; exact Bool.noConfusion hmeth2
     refine ⟨by simp [hrows, addRows], ?_⟩
     have hsem : Judge A D2 Γ cl.e top ctx cl.τ Γ (addRows D2 cl.rows) :=
-      .semantic hmem hff hreq (by rw [hrows]; simp) (Or.inl hrows)
+      .semantic hmem hff hreq hqm (by rw [hrows]; simp) (Or.inl hrows)
     simp only [hrows, addRows, List.foldl] at hsem
     exact hsem
   -- JudgeRecv
@@ -140,7 +140,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       exact ⟨rfl, .single h2 (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))⟩
     · -- a claimed element: rebuild via the semantic leaf, canonical by the coupling
       replace hfe : fragHead e = false := by simpa using hfe
-      obtain ⟨cl, hclA, rfl, rfl, rfl, hD', hdisc, hreq, hfr⟩ := hcpl hfe
+      obtain ⟨cl, hclA, rfl, rfl, rfl, hD', hdisc, hreq, hqm, hfr⟩ := hcpl hfe
       have hrows : cl.rows = [] := by
         rcases hdisc with h | h
         · exact h
@@ -148,11 +148,11 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       subst hD'
       refine ⟨by simp [hrows, addRows], ?_⟩
       have hsem : Judge A D2 Γ' cl.e top ctx cl.τ Γ' (addRows D2 cl.rows) :=
-        .semantic hclA hfe hreq (by rw [hrows]; simp) (Or.inl hrows)
+        .semantic hclA hfe hreq hqm (by rw [hrows]; simp) (Or.inl hrows)
       simp only [hrows, addRows, List.foldl] at hsem
       exact .single hsem
         (hcpl := fun _ => ⟨cl, hclA, rfl, rfl, rfl, by simp [hrows, addRows],
-          Or.inl hrows, hreq, by rw [hrows]; simp⟩)
+          Or.inl hrows, hreq, hqm, by rw [hrows]; simp⟩)
   case _ =>  -- cons
     intro D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D' h1 hrest hcpl ih1 ihr hmeth2 hm hdf D2 hs
     simp only [defFreeAll, Bool.and_eq_true] at hdf
@@ -162,7 +162,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
         (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
       exact ⟨rfl, .cons h1' hr' (hcpl := fun hh => Bool.noConfusion (hfe.symm.trans hh))⟩
     · replace hfe : fragHead e = false := by simpa using hfe
-      obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hfr⟩ := hcpl hfe
+      obtain ⟨cl, hclA, rfl, rfl, rfl, hD₁, hdisc, hreq, hqm, hfr⟩ := hcpl hfe
       have hrows : cl.rows = [] := by
         rcases hdisc with h | h
         · exact h
@@ -173,11 +173,11 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       obtain ⟨rfl, hr'⟩ := ihr hmeth2 (fun e' he' => hm e' (by simp [he']))
         (by simp only [defFreeAll, Bool.and_eq_true]; exact hdf.2) hs
       have hsem : Judge A D2 Γ₁ cl.e top ctx cl.τ Γ₁ (addRows D2 cl.rows) :=
-        .semantic hclA hfe hreq (by rw [hrows]; simp) (Or.inl hrows)
+        .semantic hclA hfe hreq hqm (by rw [hrows]; simp) (Or.inl hrows)
       simp only [hrows, addRows, List.foldl] at hsem
       exact ⟨rfl, .cons hsem hr'
         (hcpl := fun _ => ⟨cl, hclA, rfl, rfl, rfl, by simp [hrows, addRows],
-          Or.inl hrows, hreq, by rw [hrows]; simp⟩)⟩
+          Or.inl hrows, hreq, hqm, by rw [hrows]; simp⟩)⟩
   -- JudgeArgs
   case _ =>  -- nil
     intro D Γ top ctx _ _ _ _ D2 _

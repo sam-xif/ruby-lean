@@ -241,7 +241,24 @@ structure SemClaim where
       *the class object named `cn`* — the fact the `define_method` obligation
       reads through `StackCtx`'s J34 clause. `none` = position-free. -/
   reqCls : Option String := none
+  /-- **The claim's module-body condition (J47)**: `true` restricts the claim to
+      (machine-typed) module-body position — the `inClassBody`/`inModuleBody`/
+      `inBlock` channels — which is what hands the claim's obligation J34's
+      "self is the definee" and J44c's "the definee is a realized module"
+      (`StackCtx`'s tenth clause: payload present, `isModule`, eigen realized,
+      `ModOffChains`). The `defs` schema reads both. `false` = position-free. -/
+  reqMod : Bool := false
 deriving Repr
+
+/-- The `reqMod` condition, as the guard every consumer states (J47). -/
+def SemClaim.reqModOk (cl : SemClaim) (ctx : JCtx) : Prop :=
+  cl.reqMod = true →
+    ctx.inClassBody = true ∧ ctx.inModuleBody = true ∧ ctx.inBlock = false
+
+/-- A position-free claim's `reqMod` guard is vacuous. -/
+theorem SemClaim.reqModOk_false {cl : SemClaim} {ctx : JCtx}
+    (h : cl.reqMod = false) : cl.reqModOk ctx :=
+  fun hq => absurd hq (by simp [h])
 
 /-- The semantic axiom set. -/
 abbrev SemAxioms := List SemClaim
@@ -279,6 +296,7 @@ inductive JudgeSeq (A : SemAxioms) : Decls → Env → List Expr → Bool → JC
           D' = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
           (∀ cn, cl.reqCls = some cn →
             ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
+          cl.reqModOk ctx ∧
           (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ [e] top ctx τ Γ' D'
@@ -289,6 +307,7 @@ inductive JudgeSeq (A : SemAxioms) : Decls → Env → List Expr → Bool → JC
           D₁ = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
           (∀ cn, cl.reqCls = some cn →
             ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
+          cl.reqModOk ctx ∧
           (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ (e :: e₂ :: rest) top ctx τ Γ' D'
@@ -839,6 +858,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       cl ∈ A → fragHead cl.e = false →
       (∀ cn, cl.reqCls = some cn →
         ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) →
+      cl.reqModOk ctx →
       -- claimed rows must be *fresh* (J35, `defPromote`'s `declaresName` guard for
       -- the same reason: installing over a row in force would silently retarget it)
       (∀ r ∈ cl.rows, declaresName D r.2.1 = false) →

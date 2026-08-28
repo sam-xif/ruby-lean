@@ -60,7 +60,7 @@ def lamClaimS (ps : List Param) (ls : List String) (b : Expr) : SemClaim :=
     `b` is owed (and none is given — see the header's fine print). -/
 theorem semAxiomsOk_lambdas (insts : List (List Param × List String × Expr)) :
     SemAxiomsOk (insts.map fun t => lamClaimS t.1 t.2.1 t.2.2) := by
-  intro cl hcl ans D Γ top c _hreq _hrows
+  intro cl hcl ans D Γ top c _hreq _hqm _hrows
   obtain ⟨⟨ps, ls, b⟩, -, rfl⟩ := List.mem_map.mp hcl
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
     hsubw hsuE hk
@@ -177,7 +177,7 @@ theorem evalOkAt_defined_str {A : SemAxioms} {a : Expr} {s : String}
 theorem semAxiomsOk_definedStr (args : List Expr)
     (hargs : ∀ a ∈ args, (definedStr? a).isSome) :
     SemAxiomsOk (args.map definedClaim) := by
-  intro cl hcl ans D Γ top c _hreq _hrows
+  intro cl hcl ans D Γ top c _hreq _hqm _hrows
   obtain ⟨a, hmem, rfl⟩ := List.mem_map.mp hcl
   obtain ⟨s, hs⟩ := Option.isSome_iff_exists.mp (hargs a hmem)
   exact evalOkAt_defined_str hs ans D Γ top c
@@ -212,17 +212,21 @@ theorem egDefined_judged : Judge egDefinedAxioms (declsOf egDefined) [] egDefine
       (hcpl := fun _ => ⟨definedClaim (.var .lvar "x"), by simp [egDefinedAxioms],
         rfl, rfl, rfl, rfl, Or.inl rfl,
         fun cn hcn => by simp [definedClaim] at hcn,
+        SemClaim.reqModOk_false rfl,
         fun r hr => by simp [definedClaim] at hr⟩))
     (hcpl := fun _ => ⟨definedClaim .self', by simp [egDefinedAxioms],
       rfl, rfl, rfl, rfl, Or.inl rfl,
       fun cn hcn => by simp [definedClaim] at hcn,
+      SemClaim.reqModOk_false rfl,
       fun r hr => by simp [definedClaim] at hr⟩)))
   · exact .semantic (cl := definedClaim .self') (by simp [egDefinedAxioms]) (by decide)
       (fun cn hcn => by simp [definedClaim] at hcn)
+      (SemClaim.reqModOk_false rfl)
       (fun r hr => by simp [definedClaim] at hr) (Or.inl rfl)
   · exact .semantic (cl := definedClaim (.var .lvar "x")) (by simp [egDefinedAxioms])
       (by decide)
       (fun cn hcn => by simp [definedClaim] at hcn)
+      (SemClaim.reqModOk_false rfl)
       (fun r hr => by simp [definedClaim] at hr) (Or.inl rfl)
 
 /-- Safety, hand-derivation route. -/

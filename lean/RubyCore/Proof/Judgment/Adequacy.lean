@@ -166,6 +166,15 @@ theorem reqClsOkB_sound {cl : SemClaim} {ctx : JCtx} (h : reqClsOkB cl ctx = tru
   simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at h
   exact ⟨h.1.1, h.1.2, h.2⟩
 
+/-- The claim-module guard, decoded (J47). -/
+theorem reqModOkB_sound {cl : SemClaim} {ctx : JCtx} (h : reqModOkB cl ctx = true) :
+    cl.reqModOk ctx := by
+  intro hq
+  unfold reqModOkB at h
+  rw [hq] at h
+  simp only [Bool.not_true, Bool.false_or, Bool.and_eq_true, Bool.not_eq_true'] at h
+  exact ⟨h.1.1, h.1.2, h.2⟩
+
 set_option maxHeartbeats 1600000 in
 /-- **J31 — the canonical-claim pins.** A checked judgment at an out-of-fragment
     head can only have come from the `.semantic` node (every other node's
@@ -180,6 +189,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       (cl.rows = [] ∨ ctx.meth = none) ∧
       (∀ cn, cl.reqCls = some cn →
         ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
+      cl.reqModOk ctx ∧
       (∀ r ∈ cl.rows, declaresName D r.2.1 = false) := by
   match n with
   | 0 => exact absurd h (by simp [RubyCore.Judgment.check])
@@ -192,9 +202,10 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
         split at h
         · next hguard =>
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true] at hguard
-          obtain ⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg5⟩ := hguard
+            Bool.and_eq_true, Bool.and_eq_true] at hguard
+          obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩ := hguard
           have hreq := reqClsOkB_sound hg4
+          have hqm := reqModOkB_sound hg4m
           have hfr : ∀ r ∈ cl.rows, declaresName D r.2.1 = false := by
             intro r hr
             have := List.all_eq_true.mp hg5 r hr
@@ -204,7 +215,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨cl, List.mem_of_getElem? hi, exprEqB_sound hg1, rfl, rfl,
-            rfl, hg3, hreq, hfr⟩
+            rfl, hg3, hreq, hqm, hfr⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     | .sub d' σ Γ'', e =>
@@ -304,9 +315,10 @@ theorem check_sound_all : ∀ (n : Nat),
           split at h
           · next hguard =>
             rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-              Bool.and_eq_true] at hguard
-            obtain ⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg5⟩ := hguard
+              Bool.and_eq_true, Bool.and_eq_true] at hguard
+            obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩ := hguard
             have hreq := reqClsOkB_sound hg4
+            have hqm := reqModOkB_sound hg4m
             have hfr : ∀ r ∈ cl.rows, declaresName D r.2.1 = false := by
               intro r hr
               have := List.all_eq_true.mp hg5 r hr
@@ -317,8 +329,8 @@ theorem check_sound_all : ∀ (n : Nat),
             obtain ⟨rfl, rfl, rfl⟩ := h
             have hcle : cl.e = e := exprEqB_sound hg1
             subst hcle
-            exact .semantic (List.mem_of_getElem? hi) (by simpa using hg2) hreq hfr
-              hg3
+            exact .semantic (List.mem_of_getElem? hi) (by simpa using hg2) hreq hqm
+              hfr hg3
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .self, .self' =>
