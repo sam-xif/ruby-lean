@@ -87,6 +87,11 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
       fragHead body = true → MFrag A body → MFrag A (.def' name params body)
   | classTop {name body} :
       fragHead body = true → MFrag A body → MFrag A (.class' name none body)
+  -- J48: the machine-typed `module'` — the body is the one subterm, and it is a
+  -- `seq` in every real program (fragHead-true), so claims embed in it exactly
+  -- as they do at the toplevel.
+  | module' {name body} :
+      fragHead body = true → MFrag A body → MFrag A (.module' name body)
   -- J26: the table-read heads and the array literal. A splat element has no
   -- constructor here, which is what keeps the literal's loop on the plain branch
   -- (`continueArray_plain`'s side conditions fall out of `MFrag`'s own emptiness
@@ -597,6 +602,7 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
     | .send none _ args none => args.all fragHead && args.all rec
     | .def' _ _ body => fragHead body && rec body
     | .class' _ none body => fragHead body && rec body
+    | .module' _ body => fragHead body && rec body
     | .const _ => true
     | .cpath none _ => true
     | .cpath (some b) _ => fragHead b && rec b
@@ -690,6 +696,10 @@ theorem mfragB_sound {A : SemAxioms} :
         replace h' : (fragHead body && mfragB A n body) = true := h'
         simp only [Bool.and_eq_true] at h'
         exact .classTop h'.1 (ih h'.2)
+      | .module' _ body =>
+        replace h' : (fragHead body && mfragB A n body) = true := h'
+        simp only [Bool.and_eq_true] at h'
+        exact .module' h'.1 (ih h'.2)
       | .const _ => exact .const
       | .cpath none _ => exact .cpathAbs
       | .cpath (some b) _ =>
@@ -742,7 +752,6 @@ theorem mfragB_sound {A : SemAxioms} :
       | .retry' => exact Bool.noConfusion h'
       | .redo' => exact Bool.noConfusion h'
       | .class' _ (some _) _ => exact Bool.noConfusion h'
-      | .module' _ _ => exact Bool.noConfusion h'
       | .scopedClass _ _ _ => exact Bool.noConfusion h'
       | .scopedModule _ _ _ => exact Bool.noConfusion h'
       | .sclass _ _ => exact Bool.noConfusion h'

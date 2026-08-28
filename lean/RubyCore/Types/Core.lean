@@ -161,6 +161,7 @@ def defFree (e : Expr) : Bool :=
   match e with
   | .def' _ _ _ => false
   | .class' _ _ _ => false
+  | .module' _ _ => false
   | .seq es => defFreeAll es
   | .if' c t els =>
     defFree c && defFree t && (match els with | some e' => defFree e' | none => true)

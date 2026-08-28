@@ -77,6 +77,13 @@ structure MethodDecl where
   blk : Option BlockSig := none
 deriving DecidableEq, Repr, Inhabited
 
+/-- The machine's qualified-name computation, table-side: `enterClassBody` names
+    a nested definition `Owner::name` and a toplevel one bare (`defmod = Object`).
+    Lives in the Types layer so both the `Judge.module'` rule and the proof-side
+    `ModuleNameOk` read the same spelling. -/
+def qualifyMod (owner nm : String) : String :=
+  if owner = "Object" then nm else owner ++ "::" ++ nm
+
 /-- The static declaration table.
 
     **A structure with two fields since L176**, where it was an association list

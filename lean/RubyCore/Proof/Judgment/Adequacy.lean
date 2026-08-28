@@ -46,6 +46,7 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
     match e with
     | .def' _ _ _ => exact absurd h (by simp [defFreeB])
     | .class' _ _ _ => exact absurd h (by simp [defFreeB])
+    | .module' _ _ => exact absurd h (by simp [defFreeB])
     | .seq es =>
       simp only [defFreeB, List.all_eq_true] at h
       simp only [defFree]
@@ -151,7 +152,7 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
     | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self'
     | .var _ _ | .const _ | .cpathAsgn _ _ _ | .vcall _
     | .kwargs _ | .fwd | .yield' _ | .dowhile _ _ | .for' _ _ _
-    | .brk _ | .retry' | .redo' | .defs _ _ _ _ | .module' _ _
+    | .brk _ | .retry' | .redo' | .defs _ _ _ _
     | .scopedClass _ _ _ | .scopedModule _ _ _ | .sclass _ _
     | .begin' _ _ _ _ | .alias' _ _ | .undef _ | .defined _
     | .blockpass _ => simp [defFree]
@@ -258,6 +259,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .defDecl _ _ _ _, .def' _ _ _ => simp [fragHead] at hf
       | .defPromote _, .def' _ _ _ => simp [fragHead] at hf
       | .classTop _, .class' _ none _ => simp [fragHead] at hf
+      | .module' _, .module' _ _ => simp [fragHead] at hf
 
 set_option maxHeartbeats 4000000 in
 /-- **Adequacy, all five checkers at once** — one fuel induction. -/
@@ -742,6 +744,39 @@ theorem check_sound_all : ∀ (n : Nat),
             have htop : top = true := hguards.2
             subst htop
             exact .classTop hguards.1 (ihc hb0)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .module' db, .module' name body =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hguards =>
+          rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true, Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩ := hguards
+          split at h
+          · next τ0 Γb Db hb0 =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            refine .module' ?_ (by simpa using hg2) ?_
+              (by simpa using hg4)
+              (?_ : ∀ cn, scopedConstTy? D cn name = none)
+              (by simpa using hg6) (ihc hb0)
+            · exact List.contains_iff_mem.mp hg1
+            · rcases Bool.or_eq_true _ _ |>.mp hg3 with hobj | hmb
+              · exact Or.inl (by simpa using hobj)
+              · simp only [Bool.and_eq_true] at hmb
+                exact Or.inr hmb
+            · intro cn
+              unfold scopedConstTy?
+              cases hfind : D.scopedConsts.find? (·.1 == (cn, name)) with
+              | none => rfl
+              | some e =>
+                have hmem := List.find?_some hfind
+                have hin := List.mem_of_find?_eq_some hfind
+                have := List.all_eq_true.mp hg5 e hin
+                simp only [beq_iff_eq] at hmem
+                simp only [bne_iff_ne, ne_eq] at this
+                exact absurd (by rw [hmem]) this
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .sub d' σ Γ'', e =>

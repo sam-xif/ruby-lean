@@ -680,8 +680,7 @@ theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
 
 /-- The machine's qualified-name computation, table-side: `enterClassBody` names a
     nested definition `Owner::name` and a toplevel one bare (`defmod = Object`). -/
-def qualifyMod (owner nm : String) : String :=
-  if owner = "Object" then nm else owner ++ "::" ++ nm
+abbrev qualifyMod := RubyCore.Types.qualifyMod
 
 /-- **`o` sits on no pre-`Object` chain segment** — of any class whose chain
     reaches `Object` at all. `NoShadowBefore` (the clause every readable class

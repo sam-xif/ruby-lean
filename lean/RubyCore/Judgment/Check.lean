@@ -59,6 +59,7 @@ inductive Deriv where
   | defDecl (τs : List Ty) (σ : Ty) (bs : Option BlockSig) (body : Deriv)
   | defPromote (body : Deriv)
   | classTop (body : Deriv)
+  | module' (body : Deriv)
   | sub (d : Deriv) (σ : Ty) (Γ'' : Env)
   /-- **J31/J32**: the semantic axiom leaf — `i` indexes the certificate's
       `semAssumes` list; checks iff the ambient expression is that claim's (an
@@ -94,6 +95,7 @@ def defFreeB : Nat → Expr → Bool
     match e with
     | .def' _ _ _ => false
     | .class' _ _ _ => false
+    | .module' _ _ => false
     | .seq es => es.all (defFreeB n)
     | .if' c t els =>
       defFreeB n c && defFreeB n t &&
@@ -391,6 +393,23 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       if reopenableClasses.contains name && top then
         match check n A db D [] body false ({ cls := name, inClassBody := true } : JCtx) with
         | some (τ, _, Db) => some (τ, Γ, Db)
+        | none => none
+      else none
+    -- J48: the machine-typed `module'` — the `Judge.module'` side conditions,
+    -- decided (membership in the declared-modules table; position; the casgn-style
+    -- constant guards), the body checked at the qualified name with the
+    -- class/module-body channels set. The body's env and table are dropped, as the
+    -- rule drops them.
+    | .module' db, .module' name body =>
+      if D.modules.contains (ctx.cls, name) && !ctx.inBlock &&
+          (ctx.cls == "Object" || (ctx.inClassBody && ctx.inModuleBody)) &&
+          (constTy? D name).isNone &&
+          D.scopedConsts.all (fun e => e.1.2 != name) &&
+          !(readableClasses.contains name) then
+        match check n A db D [] body false
+            ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
+               inClassBody := true, inModuleBody := true } : JCtx) with
+        | some (τ, _, _) => some (τ, Γ, D)
         | none => none
       else none
     | .sub d' σ Γ'', e =>

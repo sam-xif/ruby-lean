@@ -81,6 +81,7 @@ def defFreeF : Nat → Expr → Bool
     match e with
     | .def' _ _ _ => false
     | .class' _ _ _ => false
+    | .module' _ _ => false
     | .seq es => defFreeFAll (defFreeF n) es
     | .if' cnd t els =>
       defFreeF n cnd && defFreeF n t &&

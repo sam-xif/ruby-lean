@@ -207,6 +207,7 @@ def fragHead : Expr → Bool
   | .send _ _ _ none => true
   | .def' _ _ _ => true
   | .class' _ none _ => true
+  | .module' _ _ => true
   | .const _ => true
   | .cpath _ _ => true
   | .ret _ => true
@@ -764,8 +765,28 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       Judge A D Γ s top ctx τs' Γ₁ D₁ →
       Judge A D₁ [] body false ({ cls := name } : JCtx) τ Γb' Db' →
       Judge A D Γ (.class' name (some s) body) top ctx τ Γ₁ D₁
+  -- **J48: the machine-typed `module'`** (Wall 2's definition half). The
+  -- declared-modules channel (J44) pins `enterClassBody`'s branch: membership
+  -- gives `ModuleNameOk` from `DeclsOkJ`, whose hit disjunct is a bona-fide
+  -- module named the qualified name with its eigenclass realized (the reopen
+  -- push's `StackCtx` facts verbatim), and whose miss disjunct sends the step
+  -- down the fresh path (alloc + register + eigenclass, the `ClsGrow`
+  -- composite). The position guard is what makes the frame's `defmod` a
+  -- `ModOwner` for `ctx.cls` (toplevel via `BottomObj`, module bodies via
+  -- J44c's clause); the constant guards are the `casgn` rule's, because the
+  -- fresh path *is* a constant write into the definee. The body is judged at
+  -- the machine's qualified name with the class/module-body channels set —
+  -- which is what arms J34/J44c for `defs` claims and nested `module'`s. -/
   | module' {D Γ name body top ctx τ Γb' Db'} :
-      Judge A D [] body false ({ cls := name } : JCtx) τ Γb' Db' →
+      (ctx.cls, name) ∈ D.modules →
+      ctx.inBlock = false →
+      (ctx.cls = "Object" ∨ (ctx.inClassBody = true ∧ ctx.inModuleBody = true)) →
+      constTy? D name = none →
+      (∀ cn, scopedConstTy? D cn name = none) →
+      readableClasses.contains name = false →
+      Judge A D [] body false
+        ({ cls := qualifyMod ctx.cls name,
+           inClassBody := true, inModuleBody := true } : JCtx) τ Γb' Db' →
       Judge A D Γ (.module' name body) top ctx τ Γ D
   | scopedClass {D Γ base name body top ctx τb' Γ₁ D₁ τ Γb' Db'} :
       JudgeOpt A D Γ base top ctx τb' Γ₁ D₁ →
