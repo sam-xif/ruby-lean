@@ -183,6 +183,110 @@ theorem takeWhile_append_prefix {x : ObjId} {l : List ObjId} (hx : x ∈ l) :
       exact ⟨u, by simp [hu]⟩
 
 
+
+/-! ## SF5 — composition is `∗`, and SF7 — `Row` is derived
+
+The PCM would be decoration if composing two claims did not mean conjoining what
+they assert, and `row` would be decoration if owning it did not *entail the
+resolution*. Both below. Together they are why §7's two measured blockers clear
+by construction: two `Row`s through one mixin compose (they agree on the shared
+`defined` slot and own disjoint `empty` segments), and each still resolves.
+-/
+
+/-- Composition is conjunction — both directions, since composition concatenates. -/
+theorem holds_compose {a b c : SlotClaim} {h : Heap}
+    (hcomp : SlotClaim.compose a b = some c) :
+    (c.Holds h ↔ a.Holds h ∧ b.Holds h) := by
+  unfold SlotClaim.compose at hcomp
+  split at hcomp
+  · injection hcomp with hcomp
+    subst hcomp
+    unfold SlotClaim.Holds
+    simp only [List.mem_append]
+    constructor
+    · rintro ⟨hd, he, hs, hm⟩
+      exact ⟨⟨fun x hx => hd x (Or.inl hx), fun x hx => he x (Or.inl hx),
+              fun x hx => hs x (Or.inl hx), fun k hk => hm k (Or.inl hk)⟩,
+             fun x hx => hd x (Or.inr hx), fun x hx => he x (Or.inr hx),
+             fun x hx => hs x (Or.inr hx), fun k hk => hm k (Or.inr hk)⟩
+    · rintro ⟨⟨had, hae, has, ham⟩, hbd, hbe, hbs, hbm⟩
+      exact ⟨fun x hx => hx.elim (had x) (hbd x), fun x hx => hx.elim (hae x) (hbe x),
+             fun x hx => hx.elim (has x) (hbs x), fun k hk => hk.elim (ham k) (hbm k)⟩
+  · exact absurd hcomp (by simp)
+
+/-- A walk over all-empty slots finds nothing. -/
+theorem lookup_go_none {h : Heap} {m : String} {l : List ObjId}
+    (hall : ∀ k ∈ l, slotOf h k m = none) : lookup.go h m l = none := by
+  induction l with
+  | nil => rfl
+  | cons k rest ih =>
+    have hk := hall k (by simp)
+    unfold lookup.go
+    cases hc : h.classPayload? k with
+    | none => exact ih fun j hj => hall j (by simp [hj])
+    | some c =>
+      dsimp only
+      cases hf : c.methods.find? (·.1 == m) with
+      | none => exact ih fun j hj => hall j (by simp [hj])
+      | some e => simp [slotOf, hc, hf] at hk
+
+/-- Nothing before, something here: the walk stops at the owner. -/
+theorem lookup_go_hit {h : Heap} {m : String} {before : List ObjId} {owner : ObjId}
+    {md : MethodDef} (hb : ∀ k ∈ before, slotOf h k m = none)
+    (hown : slotOf h owner m = some md) {rest : List ObjId} :
+    lookup.go h m (before ++ owner :: rest) = some (owner, md) := by
+  induction before with
+  | nil =>
+    rw [List.nil_append]
+    unfold lookup.go
+    cases hc : h.classPayload? owner with
+    | none => simp [slotOf, hc] at hown
+    | some c =>
+      dsimp only
+      cases hf : c.methods.find? (·.1 == m) with
+      | none => simp [slotOf, hc, hf] at hown
+      | some e =>
+        have : e.2 = md := by simpa [slotOf, hc, hf] using hown
+        simp [this]
+  | cons k rest' ih =>
+    have hk := hb k (by simp)
+    rw [List.cons_append]
+    unfold lookup.go
+    cases hc : h.classPayload? k with
+    | none => exact ih fun j hj => hb j (by simp [hj])
+    | some c =>
+      dsimp only
+      cases hf : c.methods.find? (·.1 == m) with
+      | none => exact ih fun j hj => hb j (by simp [hj])
+      | some e => simp [slotOf, hc, hf] at hk
+
+/-- **SF7 — owning `row C seg owner m σ` entails the resolution it stands for.**
+    The `Row` the type system consumes is not primitive: it is a spine, an `empty`
+    segment, a `noMM` segment and one `defined` slot, and *this* is the proof that
+    those four add up to "`C` resolves `m` at `owner`". -/
+theorem row_lookupIn {h : Heap} {C owner : ObjId} {seg : List ObjId} {m : String}
+    {σ : MethodDecl} (hmem : owner ∈ seg)
+    (hh : (SlotClaim.row C seg owner m σ).Holds h) :
+    ∃ md, lookupIn h C m = some (owner, md) ∧
+      md.params.length = σ.params.length ∧ md.undefined = false ∧
+      md.visibility = .pub := by
+  obtain ⟨hd, he, hs, _⟩ := hh
+  obtain ⟨md, hslot, hp, hu, hv⟩ := hd (owner, m, σ) (by simp [SlotClaim.row])
+  refine ⟨md, ?_, hp, hu, hv⟩
+  have hbefore : ∀ k ∈ seg.takeWhile (· != owner), slotOf h k m = none := by
+    intro k hk
+    refine he (k, m) ?_
+    simp only [SlotClaim.row, List.mem_map]
+    exact ⟨k, hk, rfl⟩
+  have hspine : seg <+: ancestors h C :=
+    List.isPrefixOf_iff_prefix.mp (hs (C, seg) (by simp [SlotClaim.row]))
+  have hseg : seg.takeWhile (· != owner) ++ [owner] <+: seg :=
+    takeWhile_append_prefix hmem
+  obtain ⟨t, ht⟩ := hseg.trans hspine
+  unfold lookupIn
+  rw [← ht, List.append_assoc, List.cons_append, List.nil_append]
+  exact lookup_go_hit hbefore hslot
+
 /-! ## SF-T2 — a whole `SlotClaim` is framed by a non-conflicting write
 
 The rung the design asks for: not "this one resolution survives" but "the

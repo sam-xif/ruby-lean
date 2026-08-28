@@ -67,6 +67,16 @@ by the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own
 directories** (`lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
 `certify/` untrusted with E-numbers; import-only dependence on the existing trees).
 
+**Design (extends the above):** [The slot frame](slot-frame.md) — local heap
+stability as a first-order resource algebra (**SF-numbers**, 2026-08-28): the method
+table as slot maps (`defined`/`empty`/`default`/`spine`) forming a PCM, a decidable
+frame/conflict check over the certificate's footprint replacing the name-global
+`declaresName` guard, `method_missing` as a write to the default component, boot
+prefix outside the frame (`SemJudge`'s conformant start state). Priced against
+[`../../homebrew/slice-inventory.md`](../../homebrew/slice-inventory.md), the
+four-tier semantic-judgment inventory for typing the whole Homebrew slice with
+bodies checked.
+
 **Design (amends the above):** [The judgment layer](judgment-layer.md) — the 2026-08-26
 re-scoping of **C-1**: state the invariant over an **inductive judgment** (`Judge`/
 `KJudge`/`MachineTyped`, transcribing `type-judgments.md` §6–§8 into Lean as the

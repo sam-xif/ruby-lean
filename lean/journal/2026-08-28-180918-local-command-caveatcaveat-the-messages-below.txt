@@ -1,0 +1,1712 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.250
+           Opus 5 · API Usage Billing
+  ▘▘ ▝▝    ~/code/semantics-quick/sam-xif/ruby/lean
+
+
+❯ /model                                                                        
+  ⎿  Set model to Opus 5 (1M context) and saved as your default for new sessions
+
+❯ /model                                                                        
+  ⎿  Set model to Opus 5 (1M context) and saved as your default for new sessions
+     with low effort
+
+❯ Let's build a second tab in the playground tool that is a "homebrew slice     
+  explorer." I want to be able to select different files that we are trying to  
+  type check in the homebrew slice, view the source in an editor that I can     
+  make changes to, run the desugarer, run the source in the Lean model, and in  
+  CRuby, and run the type derivation script, and finally attempt to validate    
+  the derivation with a view into the output. I also want to be able to run the 
+  homebrew linker and do all these things for the full linked source code of    
+  the slice. I want to maintain the same semantic step-based view we currently  
+  have in the playground, but have it toggleable so that we can save screen     
+  real estate if we don't need to be showing the steps.                         
+
+  Listed 3 directories, ran 4 shell commands (ctrl+o to expand)
+
+⏺ Now the UI.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Now wire the routes.
+
+  Ran 11 shell commands (ctrl+o to expand)
+
+⏺ Now the slice pane markup.
+
+  Searched for 1 pattern, ran 10 shell commands (ctrl+o to expand)
+
+⏺ Now the README section.
+
+  Ran 2 shell commands (ctrl+o to expand)
+⏺ Built and verified end-to-end. Two files changed: playground/server.py,
+  playground/index.html (+ README section).
+
+  Tab bar in the header (Stepper | Homebrew slice explorer) plus a semantic 
+  steps checkbox that hides the right-hand step pane and collapses the layout to
+  one column. Hiding is layout-only — the trace is kept, and the slice tab's
+  Step it ▶ turns it back on.
+
+  Slice tab, one editable buffer feeding every stage:
+
+  - Load file — a picker over homebrew/PLAN.md §2's eight files from the
+    vendored homebrew/vendor/brew checkout (GET /slice/files, POST 
+    /slice/source).
+  - Link whole slice — homebrew/slice-driver/build.py (boot stubs + linker over
+    the three entries + driver.rb), 2,159 lines. Two details copied from run.sh
+    rather than rediscovered: it runs under uv from ruby/difftest, and the brew
+    root is passed realpath'd (a .. is a KeyError inside the linker).
+  - Strip ▸ — certify-file.sh's six-filter chain, run one filter at a time so a
+    failure names the transform.
+  - Desugar / Lean model ▶ / CRuby ▶ — export-json, rubycore (the Obs.lean
+    observation record, not the stepper rendering), and the oracle, with status
+    pills and an agree pill diffing stdout the way run.sh does.
+  - Derive (jcert) and Validate ✓ as two buttons, not certify-file.sh's one
+    pipe: the certificate sits in an editable box between them, so a reject is a
+    fact about JSON you can read. The pane prints accept/reject, the why, and
+    whether the accept was unconditional; a derive failure lifts
+    JCert::Blocked's named head out of the backtrace.
+
+  Verified live: vulns/semver.rb and vulns/cvss.rb strip → desugar → model →
+  derive → accept, unconditional (validateJ_certifies_defs); the linked whole
+  slice links, desugars (160 KB of RubyCore), runs in the model in ~3s and
+  matches CRuby stdout exactly. Deriving over the linked program blocks at
+  implicit send outside a method body — surfaced as a named coverage fact.
+
+  One server-wide change worth flagging: the desugar timeout went 15s → 120s and
+  executing calls got a separate 900s budget, since the toy budget can't hold a
+  2,151-line program.
+
+✻ Worked for 6m 46s · done 1:33 PM
+
+❯ restart the server                                                            
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Server restarted on http://localhost:8077 (responding 200). Log at
+  /tmp/playground.log.
+
+✻ Brewed for 11s · done 1:35 PM
+
+※ recap: Goal was adding a Homebrew slice explorer tab to the playground; it's built, verified end-to-end, and the server is restarted on localhost:8077. Next: open the page and try the slice tab yourself. (disable recaps in /config)
+
+❯ Great. It looks like the type derivation is rejecting on a send outside a     
+  method body. Is this a limitation of our judgements, and if so why?           
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+⏺ Yes — it's the judgment layer, not just the emitter. jcert.rb:293 is mirroring
+  a rule that doesn't exist.
+
+  Where the wall is. Every implicit-receiver rule carries the same premise:
+
+  - JudgeRecv.self (Judge.lean:405) — ctx.selfCls = some cc → … (.cls cc)
+  - Judge.self' (:541), vcall (:725), varIvar (:548) — likewise
+
+  and selfCls is set by exactly one function, methodCtx (:102, selfCls := some 
+  ctx.cls). Toplevel, class bodies and module bodies all have selfCls = none, so
+  there is simply no rule to apply. Same for 1 + 1? No — that has an explicit
+  receiver and goes through JudgeRecv.expl. It is specifically the implicit
+  self.
+
+  Why it's none there. selfCls = some C is defined to mean "self in this
+  activation is an instance of C" (Types/Ty.lean:514). The two non-method
+  positions have opposite truths:
+
+  - class/module body — self is the class object. Its type is .clsOf C, not .cls
+    C, and no self rule produces a .clsOf. Judge.lean:537 names this as a
+    candidate widening and refuses it.
+  - toplevel — self is main, which genuinely is an Object instance, so .cls 
+    "Object" would be correct here and only here.
+
+  One rule can't serve both, and the two positions aren't distinguished in a way
+  the rules consume: the comment at :539 says exactly this — "top's threading 
+  does not pin the two cases apart yet". J34 added inClassBody precisely because
+  "self is the class object named cls" is a fact selfCls structurally cannot
+  carry (Ty.lean:610), but its only consumer today is the semantic-axiom layer
+  (SemClaim.reqCls), not a self rule.
+
+  So this is a missing derivation, not a refutation — the block says the emitter
+  had no rule, never that the program is ill-typed.
+
+  Cost to lift, and it's very uneven:
+
+  - Toplevel is cheap: set selfCls = some "Object" when top = true, plus the
+    Object#puts-style rows. The premise would be discharged by the
+    machine-typing invariant on the bottom frame, which already knows its self
+    is main.
+  - Class bodies are not: you'd need self : .clsOf C, rows keyed on .clsOf C,
+    and — the real cost — the implicit sends that actually occur there are
+    include / extend / attr_reader / private, which mutate the method table. D
+    would have to model their effect, which is the reflective-metaprogramming
+    problem, not a missing rule.
+
+  Why the explorer shows it the way it does. The linked whole-slice program
+  blocks on essentially its first line (require "sorbet-runtime" is an implicit
+  send at toplevel; the boot stub class Module; include T::Sig is one in a class
+  body). The individual files certify because the strip chain removes exactly 
+  those: require_strip takes the toplevel implicit sends, visibility_strip the
+  class-body ones. That's a large part of what the strip chain is for — and it
+  also means the whole-slice Derive button won't go green from a stripping fix
+  alone.
+
+✻ Churned for 1m 22s · done 1:48 PM
+
+❯ In cvss.rb, the whole file type checks based on the derivation, but when I    
+  take round_up out to the top level, that function alone doesn't generate a    
+  cert; the cert generator says "need row any#*". Why were we able to derive a  
+  fact that * is available for the given value in the module certification?     
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ We never derived that. The cvss.rb certificate says nothing at all about
+  round_up's body — and the same is true of the other four methods in that file.
+
+  What the module certificate actually contains. certify/jcert.rb:421, the defs
+  arm: def self.x in module-body position is not machine-typed. It's emitted as
+  a J31 semantic claim (Deriv.semantic), and the arm destructures the node as _,
+  recv, name, _params, _body — the underscores are the whole story. The claim
+  is only "this step defines a method named round_up at the realized eigenclass 
+  and evaluates to :round_up": τ = sym, req_mod = true, fresh_names = 
+  ["round_up"], discharged Lean-side by semAxiomsOk_defsSelf
+  (Proof/Judgment/SchemaDefs.lean). The body is never visited.
+
+  The certificate you validated bears this out — five sem-assumes, one per def 
+  self.:
+
+  ['base_score'] sym   ['severity'] sym   ['parse'] sym
+  ['valid_values?'] sym   ['round_up'] sym
+
+  That's also why it still reads unconditional: Main.lean:304 counts
+  all-defsShapeB claims as discharged (validateJ_certifies_defs), so a file of
+  def self.s can certify with every body unexamined.
+
+  Why the toplevel version is harder, not easier. At toplevel def 
+  round_up(value) is a plain def with a parameter, so it takes the defDecl arm
+  (:387) — which does judge the body. And v1 opens parameters at any:
+
+  tys = (params || []).map { Ty::ANY }
+
+  So value * 100_000 is a send at receiver type .any, sig_of finds no row, and
+  you get needed row any#*. Reproduced: your toplevel round_up blocks there; the
+  same body inside module … def self.round_up certifies with zero rows about
+  it.
+
+  So the asymmetry runs the other way from how it reads. The whole-file accept
+  is the weaker claim: it discharges each definition as a fact about the
+  defining step and declines to look inside. Hoisting round_up to toplevel is
+  the first time anything asks what its body means, and the answer is that the
+  type language has no upper bound to put on a parameter — any has no rows,
+  which is the same wall --assn's def g(n) 1 + n end hits from the other side
+  (§6.5's deferred family, an upper bound on a variable).
+
+  Two consequences worth keeping straight: round_up inside the module is not
+  certified in any sense you could quote, and the fix for the toplevel case
+  isn't a rule for * on any — it's parameter types (a declared row, i.e. reading
+  the sig the strip chain just deleted, or C6's per-call-site instantiation).
+
+✻ Crunched for 1m 9s · done 1:56 PM
+
+❯ Okay, it is alarming that we can't check bodies of methods yet. What about    
+  this approach: we generate a semantic schema lemma for each function/method   
+  that's defined, and then type check that way.                                 
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+⏺ Directionally right — and the scaffolding for it exists (SemJudge, J31, the
+  H-layer). But before designing it, two corrections to the premise, and the
+  second one relocates the problem entirely.
+
+  We can check bodies. That isn't the gap.
+
+  Judge.defDecl (Judge.lean:870) judges the body, and it is already fully
+  general in the parameter types:
+
+  lean
+  | defDecl {… τs σ …} :
+      τs.length = ps.length →
+      Judge A D (bindParamsJ ps τs []) body false (methodCtx ctx name τs (some
+  σ) bs) τb Γb' D →
+      SubJ τb σ → …
+
+  Arbitrary chosen τs, arbitrary declared return, SubJ τb σ. The any is purely
+  the emitter's v1 choice (jcert.rb:388, "v1 takes params at any"). So the Lean
+  side needs nothing new for typed parameters — that fix is emitter-only, and
+  the sig that would supply the types is the one the strip chain deletes
+  (certify/rbi.py already parses them, E6).
+
+  The real wall is the declaration table, not the method rules
+
+  baseDecls is four rows, all on Integer: +, -, *, zero? (Decls.lean:1005).
+  Everything else is assumed rows from core-rows.txt — carried in the
+  certificate, quantified over by validate_sound, making the accept conditional.
+  And that file's header states the hard constraint:
+
+  ▎ ONE ROW PER METHOD NAME, for the whole program. declaresName D name = false 
+  ▎ per claim is name-global, so a second row at any class with the same name 
+  ▎ rejects the whole certificate.
+
+  So the table can hold String#to_s or Integer#to_s, never both. Now price your
+  own example. With value : Float, round_up's four lines need: Float#*(Integer),
+  Float#round, Integer#%, Integer#/(Integer) and Integer#/(Float). That is two
+  rows at the same name / with different argument types — refused by
+  name-globality — and Decls.lean:999 says the absences are deliberate: / and %
+  raise ZeroDivisionError, and "the Float promotions would need the argument
+  type unpinned". A Decls row is a single pinned signature; Integer#/ genuinely
+  isn't one.
+
+  round_up is hard for a structural reason, not an accidental one.
+
+  Where your idea actually pays — and it's not on the user methods
+
+  A schema is proved once over a syntactic pattern and discharged by reducing 
+  the machine: the lambda schema is one proc allocation, semAxiomsOk_defsSelf is
+  one defineMethod at a realized eigenclass. That's why SchemaDefs.lean can say
+  it "carries no premise on the body" — the body is inert data. A method body
+  is not one step, so a per-method schema must carry a body premise, and
+  discharging that premise is the original problem wearing a hat. Worse, a
+  parameterized body's obligation is universally quantified over inputs, so the
+  J31 discharge-by-execution trick (eleven lines for lambda { 1 }) doesn't
+  apply; you'd be on the Iris WP route (J36) per method.
+
+  And literal per-method Lean codegen costs the posture: today the certificate
+  is data and validation is one kernel Bool with no lake build in the loop and a
+  frankly untrusted emitter. Generated lemmas keep soundness (the kernel still
+  checks) but put minutes on the critical path — the slice ratchet stops being
+  runnable.
+
+  But invert the target and the idea gets strong. A semantic fact is about a
+  specific expression at a specific receiver type — it does not go through
+  Decls, so it is not name-global and it is not restricted to one pinned
+  argument type. That is precisely the wall above. SemJudge (J30) is already
+  Judge-free and reachability-defined, judge_semJudge already says the syntactic
+  route is just one way of manufacturing SemJudge facts, and the H-layer's
+  HTy.sem door already hosts exactly this. So the unit worth building is:
+
+  ▎ a semantic fact per builtin call shape (Integer#/ at Integer and at Float, 
+  ▎ as two facts), consumed by the send rule alongside a Decls row.
+
+  That sidesteps name-globality and argument-unpinning in one move, it's a
+  bounded number of facts (the core library, not the user's program), each is
+  reusable across every file forever, and it reuses J31's existing plumbing
+  rather than inventing per-program codegen.
+
+  Suggested order
+
+  1. Typed params in defDecl — emitter-only, no metatheory, and it makes "bodies
+     are checked" true in practice rather than vacuous. Needs sigs preserved
+     rather than stripped.
+  2. Route defs to the machine-typed path instead of the claim exit, so def 
+     self. bodies stop being install-and-forget. This is the .clsOf self-typing
+     question from earlier and it's the smaller half.
+  3. Semantic admission for builtin rows — the above. This is where your
+     instinct is buying something the table structurally cannot.
+
+  Steps 1–2 will make more files fail loudly than pass, because they stop
+  skipping bodies. That's the point, and it's worth wanting: the current cvss.rb
+  accept is unconditional precisely because it looks at nothing.
+
+✻ Worked for 2m 14s · done 3:06 PM
+
+※ recap: We built a Homebrew slice explorer tab in the playground, and found the type checker can't meaningfully check method bodies. Next: give jcert.rb typed parameters from Sorbet sigs instead of opening every parameter at `any`. (disable recaps in /config)
+
+❯ Interesting. That makes sense. I guess then we'd just have to condition our   
+  final acceptance on nothing shadowing the builtins, which I feel like is      
+  probably okay as a starting point                                             
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Right, and it's not even a new axiom — that side condition is already the
+  residue shape the certificate uses.
+
+  EntryOkJ A D h τ name sig is precisely "at heap h, everything of type τ
+  resolves name to a body conforming to sig" (Proof/Judgment/Cert.lean:47,
+  discharged at Boot.initHeap for entryOk_int_nullary). And the "nothing
+  clobbers it later" half is already proved: Decls.lean:1298 gives ResolvesAt
+  survives defineMethod given the names differ — which is exactly the freshNames
+  channel the defs claims already carry. So per-name non-redefinition has
+  machinery, a preservation lemma, and a place in the printed assumptions a
+  reader can reject. That's the project's normal posture, not a weakening of it.
+
+  I measured whether it holds. The answer splits cleanly, and the split is
+  unlucky.
+
+  Free exactly where round_up needs it — definitions across
+  lean/prelude/prelude.rb and the eight slice files:
+
+  /      prelude:0   slice:0
+  %      prelude:0   slice:0
+  *      prelude:0   slice:0
+  -      prelude:0   slice:0
+  round  prelude:0   slice:0
+
+  Nobody redefines arithmetic. For the operators you'd want semantic facts
+  about, the assumption costs nothing.
+
+  Not free where the slice actually lives:
+
+  <=>    prelude:4   slice:12
+  ==     prelude:3   slice:2
+
+  Comparison is redefined sixteen times, and version comparison is what this
+  slice does. So a semantic fact about <=> is the one thing you can't assume
+  away — which is fine, because those are user methods that should be checked,
+  not builtins to be assumed. It does mean the condition buys you round_up and
+  buys you nothing on Version#<=>.
+
+  One trap worth naming, because it will look like shadowing and isn't. The
+  slice defines to_s, to_i, to_f, hash, inspect on Version, PkgVersion, Purl —
+  different classes, so Ruby-wise nothing is shadowed. But declaresName is
+  name-global, so those collide with core-rows.txt's
+  String#to_s/String#hash/NilClass#inspect and reject the whole certificate.
+  That's a self-inflicted constraint, not a soundness fact — and it's a second
+  reason to prefer semantic facts keyed on receiver type, which dissolve it. A
+  Decls row structurally cannot.
+
+  So scope the condition per-name, not as "the builtins." A blanket "nothing
+  shadows builtins" is already false for the composed slice — the boot stubs add
+  Object#blank?, Pathname#stem, and class Module; include T::Sig. Those are
+  additive monkey-patches and entirely benign; a blanket gate would reject them
+  and nobody could pass it. "The names we claim are not redefined" is true,
+  decidable at the boot heap, preserved by the existing step lemma, and
+  printable as a list.
+
+  One consequence to decide deliberately rather than discover: this makes
+  accepts conditional. The six current whole-file accepts are unconditional
+  partly because they inspect nothing inside bodies — validateJ_certifies_defs
+  counts all-defsShapeB claims as discharged. Trading six vacuous unconditional
+  accepts for conditional accepts that actually typed a body is the right trade,
+  but it moves a consumed number, so it's worth saying out loud in
+  judge-slice.md before it looks like a regression.
+
+✻ Sautéed for 1m 34s · done 3:17 PM
+
+❯ I wonder if the fact that we only have a nominal understanding of class       
+  object behavior is stunting us here.                                          
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ That's the right suspicion, but it's worth scoring it against the three
+  blockers we actually established, because it only explains one of them — and
+  then it explains a fourth one we hadn't named, catastrophically.
+
+  Class-body self: yes, that's nominality. Ty.cls is keyed on a name —
+  Ty.lean:37, "keyed on the name, not on an ObjId" — so a class object needs a
+  separate .clsOf C arm and its own rules. Compare HTy.cls (c : ObjId), whose
+  denotation is isA h v c, the machine's own is_a?. A class object is just a
+  value with an id; there's nothing to add.
+
+  Integer#/ at two argument types: no. That's the absence of
+  overloading/intersection on MethodDecl, and HTy.union doesn't fix it — union
+  is a predicate on values, not a method with two signatures. Orthogonal axis.
+
+  Name-globality: not nominality either — but it multiplies with it, and that
+  product is where we're actually stuck.
+
+  The mixin arithmetic
+
+  The slice has three include Comparable (version.rb:8, version.rb:21,
+  pkg_version.rb:8). Each gets <, >, <=, >=, ==, between?, clamp derived from
+  one <=>. Nominally that's ~21 rows, each a DeclsOk proof obligation. But
+  declaresName is name-global, so < can be claimed at most once program-wide —
+  for one of the three classes. Not "we haven't written the rows yet": the
+  nominal table cannot hold the slice's central abstraction. Structurally it's
+  one statement, duck ["<=>"], said once.
+
+  You already built the answer — and it has no checker
+
+  RubyCore/HJudge/HTy.lean:90:
+
+  lean
+  def duck (ms : List String) : HTy :=
+    .sem fun h v => ∀ m ∈ ms, (lookup h v m).isSome
+
+  Heap-indexed, so a define_method moves a value into the type rather than being
+  assumed away — exactly the property the nominal table can't have. That's the
+  fix to the mixin problem, and it's proved sound already.
+
+  But HJudge is 225 lines with four constructors and no structural rules of its 
+  own — ofJudge, sem, wp, sub (Judge.lean:140–157). It's an admission calculus,
+  not a type system. So every fact either re-enters via ofJudge (dragging the
+  whole nominal Judge and all its limits with it) or is a hand-written Lean
+  proof. The H-layer proves nominality isn't foundational; it doesn't currently
+  relieve the pipeline of it.
+
+  And there's a hard reason it can't, as built: HTy.sem is Heap → Value → Prop.
+  Not decidable, so it cannot ride a JSON certificate checked by one kernel
+  Bool. Structural typing and the data-certificate posture are in real tension —
+  the same wall the per-method-codegen idea hit, reached from the other side.
+
+  Where that points
+
+  Not "go structural everywhere" — that trades the ratchet for proof
+  obligations. The move is a decidable structural fragment: duck's predicate is
+  (lookup h v m).isSome, which is computable at a heap. A row-shaped arm on Ty —
+  ⟨ <=> : (α) → Integer ⟩, discharged by lookup rather than by a name-keyed
+  table lookup — stays inside decide, kills the mixin arithmetic, and drops the
+  name-global guard for those rows because the claim is about a receiver, not a
+  global name.
+
+  The suggestive part: --assn already speaks this language. Its output is
+  literally Box ⊒ ⟨ value : () → α1 ⟩ — structural rows, in the trusted
+  checker's sibling. Types/Assn.lean has the vocabulary; Judge/Ty don't, so the
+  certificate boundary is where it gets thrown away. That's a narrower and much
+  more tractable question than "should we be nominal", and it's the one I'd want
+  answered first: what stops Judge from carrying Assn's row constraints?
+
+✻ Brewed for 1m 44s · done 3:33 PM
+
+❯ What then, in your view, is the structural problem preventing us from getting 
+  to where we want to be?                                                       
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ My view: it isn't nominality, and it isn't the missing rules. It's that the 
+  system has no frame — no way to say a heap fact is locally stable — so
+  stability gets bought globally or not at all.
+
+  The thesis
+
+  Every typing fact here is a claim about a mutable heap. EntryOkJ A D h τ name 
+  sig says "at heap h, everything of type τ resolves name to a conforming body."
+  Ruby's openness means any subsequent step can falsify it. So each fact needs
+  an answer to "why is this still true later?", and the system has exactly one
+  answer available: nobody redefines that name, anywhere, ever.
+
+  That's declaresName, and it's name-global by construction (Decls.lean:329):
+  D.rows.any fun cd => cd.2.any fun md => md.1 == name. Any class, any row. Its
+  own docstring admits what it's standing in for:
+
+  ▎ installing a name the declarations do not mention is an addition, and 
+  ▎ additions are free; installing one they do mention is a redefinition, which 
+  ▎ F1c is where the conformance check lands.
+
+  That is frame reasoning, done globally because no local version exists. F1c —
+  the actual check — is unbuilt, so the placeholder is a sledgehammer.
+
+  Everything we hit is a symptom of that
+
+  - The table is four rows. Each row's stability must be established against all
+    future steps, so each is expensive, so there are almost none.
+  - The mixin arithmetic is impossible. Three include Comparable, one claimable
+    < program-wide. Not a missing row — a frame condition too coarse to
+    distinguish three unrelated classes.
+  - String#to_s blocks Version#to_s. Two classes sharing no resolution path
+    below Object, refused by a name match.
+  - Bodies go unchecked. A body is exactly where you need local reasoning —
+    these parameters, this receiver — and a global frame has the least to say
+    there. Hence params at any, hence defs taking the semantic-claim exit.
+  - HTy can't ride a certificate. sem : Heap → Value → Prop is the honest form
+    of a local behavioral fact, and it's undecidable, so it can't be a JSON row
+    checked by decide. Nominality isn't what's blocking that; locality is.
+
+  Note the shape: the certificate posture wants every fact decidable at a fixed 
+  heap, and Ruby makes the interesting facts true only relative to a frame.
+  Decidable-at-boot-heap plus a name-global guard is the one corner satisfying
+  both, and there's nearly nothing in it. That's the structural problem.
+
+  What I'd do about it
+
+  Replace the global guard with a certificate footprint, and it does not require
+  Iris.
+
+  A row at .cls C is threatened only by an install of that name on a class on 
+  C's resolution path — that's what Decls.lean:463 actually quantifies (∀ k, 
+  TyClass h τr k → ResolvesAt h k mname bid). So:
+
+  1. The certificate carries its footprint: the (class, name) pairs the
+     derivation depends on. Data, printable, auditable — the same posture as
+     carries: today.
+  2. The checker walks the program for method-installing steps and verifies none
+     lands on an ancestor of a footprint class. Syntactic, decidable, stays
+     inside decide.
+  3. The preservation lemma already exists — resolvesAt_defineMethod
+     (Decls.lean:1298) with its name-inequality premise. It needs quantifying
+     over a footprint set instead of a single name.
+
+  def to_s at toplevel still gets refused (it installs on Object, genuinely on
+  String's path — the global guard wasn't crazy, just undiscriminating). def 
+  to_s inside class Version stops being refused, because Version isn't on
+  String's path. That one change gives you multi-class core rows, the three
+  Comparable classes, and therefore typed bodies — which is most of what the
+  last hour has been about.
+
+  Iris/wp is the general solution to the same problem and it's already in the
+  dependency graph (J36). I'd hold it in reserve: the footprint buys the slice
+  at a small fraction of the cost, and unlike wp it doesn't put proof terms in
+  the certificate.
+
+  What this does not fix
+
+  Worth stating so it isn't oversold. Integer#/ at both Integer and Float
+  arguments is a genuinely separate gap — MethodDecl is one pinned signature and
+  there are no intersections; a frame doesn't help. And behavioral content
+  ("responds to each with a block yielding τ") remains the recorded
+  step-indexing flip condition (HTy.lean:87). Those are real, but they're
+  features to add, not a corner the design is stuck in. The frame is the corner.
+
+✻ Churned for 1m 15s · done 4:03 PM
+
+※ recap: We built a Homebrew slice explorer tab in the playground (load/link, strip, desugar, run in Lean and CRuby, derive and validate certificates) and then diagnosed why method bodies go unchecked. Next: decide whether to implement the certificate-footprint replacement for the name-global guard. (disable recaps in /config)
+
+❯ Ok, so at a high level, there are three big classes of problems: 1. method    
+  overloading, 2. the prelude rewriting terms, 3. no notion of a frame. Does    
+  this sound right?                                                             
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Roughly right — I'd restate #2, broaden #1, and add a fourth thing that isn't
+  a problem but decides which fixes are allowed.
+
+  1. Signature expressiveness (your "overloading") — yes, broaden it
+
+  MethodDecl is one pinned signature per (class, name). Integer#/ at Integer and
+  at Float is two, and Decls.lean:999 names this as the reason the Float
+  promotions are absent: they "would need the argument type unpinned."
+
+  The same ceiling shows up from the other side in --assn: def g(n) 1 + n end is
+  unknown because it needs α1 ≤ Integer, an upper bound on a variable, which
+  Types/Assn.lean deliberately doesn't have. So the class is the signature 
+  language can't say what the method does — no intersections, no bounds.
+  Overloading is the loudest instance.
+
+  2. The prelude — real, but it's not term rewriting
+
+  The precise problem is that the core library is Ruby, and the row machinery's 
+  main arm only recognises builtins. ResolvesAt (Proof/Static/Decls.lean:109)
+  requires:
+
+  lean
+  md.builtin = some bid ∧ md.fromPrelude = false
+
+  A prelude-Ruby method has builtin = none, so it can never satisfy it — "a
+  prelude method has no bid to run" (:257). There is a second arm, ResolvesUser,
+  built exactly for this, and its docstring calls it D8's dominant category:
+  153 of 285 prelude methods. But it carries md.params = [] ∧ md.declared = [] —
+  nullary only. So today: builtins are witnessable, nullary prelude methods are
+  witnessable, and everything else in the core library can only be assumed
+  (core-rows.txt).
+
+  Your abs intuition is the related second-order effect: defined twice in the
+  prelude, so the crubyShadow clause kills the row even at the boot heap.
+
+  3. No frame — yes, my thesis
+
+  Nothing to add beyond last turn: declaresName is name-global because there's
+  no local stability notion, and its own docstring admits it stands in for an
+  unbuilt check (F1c).
+
+  4. The posture constraint — not a problem, but it's why the obvious fixes are 
+  barred
+
+  The certificate is data, validated by one kernel Bool, with an untrusted
+  emitter and no lake build in the loop. That's what killed the two most natural
+  ideas in this conversation: per-method generated lemmas (proof terms in the
+  loop) and HTy (sem : Heap → Value → Prop, undecidable). Any fix has to stay
+  inside decide or the posture changes — and that's a deliberate decision
+  someone should make explicitly rather than discover.
+
+  How they compose
+
+  They're not peers; they stack.
+
+  - #3 unlocks coverage. A footprint frame lets rows exist at many receivers at
+    once — three Comparable classes, String#to_s alongside Version#to_s. That's
+    what makes typed bodies possible at all.
+  - #2 then decides whether those rows are proved or assumed. With #3 fixed, the
+    mixin rows you want are Comparable's </>/between? — which are prelude Ruby 
+    with parameters, so ResolvesAt can't witness them and ResolvesUser won't
+    take them. You'd get conditional accepts. That's fine as a starting point
+    (it's already the core-rows.txt posture), but #2 is what converts
+    assumptions into discharged obligations.
+  - #1 is orthogonal and caps specific methods regardless of the other two.
+    round_up stays blocked on Integer#/ at two argument types even with a
+    perfect frame and a fully witnessed prelude.
+
+  So if I had to sequence: #3 first (largest unlock, stays decidable, reuses
+  resolvesAt_defineMethod), #2 second (arity on ResolvesUser, converting the
+  biggest assumed block into proofs), #1 last and separately, since it's a
+  change to the type language rather than to the heap reasoning.
+
+✻ Baked for 1m 1s · done 4:17 PM
+
+❯ Okay. I agree with your take that local heap stability is arguably the most   
+  important thing we can start to be able to reason about. Let's work together  
+  on a solution. My first thought is that we should extend the semantic         
+  judgement framework to be able to prove local heap stability for certain      
+  slices of program. And perhaps we can even prove that anything that subset of 
+  the syntactic judgements successfully type is adequate for claiming heap      
+  stability. Do you think this helps at all?                                    
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Yes, it helps — but the first half is closer to done than you'd expect, and
+  that changes what to build.
+
+  The stability property already exists and is already preserved
+
+  InvJ (Proof/Judgment/Konts.lean:530) is, in part:
+
+  lean
+  ∃ (F : Decls) (c : JCtx) (Γ : Env) (Γs : …),
+    DeclsOkJ A F m.heap ∧ FramesOkJ … ∧ StackCtx … ∧ GlobalsOk F … ∧ CtlOkJ F …
+
+  F is existentially quantified and DeclsOkJ A F m.heap is a conjunct that
+  step_okJ already proves every step preserves. That is local heap stability for
+  the footprint F, machine-checked, today. And the transport lemma is already
+  the right shape:
+
+  lean
+  resolvesAt_defineMethod : ResolvesAt h k mname bid → ¬(mname = name) →
+                            ResolvesAt (defineMethod h cls name md) k mname bid
+
+  So we don't need a new judgment for (a). We need to change how one 
+  preservation case discharges its premise: hne : ¬(mname = name), currently
+  supplied globally by declaresName D name = false, replaced by
+  path-disjointness — cls is not on the resolution chain of any footprint entry.
+  One lemma generalization, in the case that is already load-bearing. That's
+  the whole of your first idea, and it's small.
+
+  Your second idea is the part that's genuinely new
+
+  And it matters for a reason worth stating: my footprint proposal, on its own,
+  needs a syntactic walk over the entire program to find method installs —
+  including code we never typed. "Typed ⇒ stable" turns that into a walk over
+  only the untyped remainder, which is compositional and shrinks as the fragment
+  grows. That's the right architecture.
+
+  I'd sharpen the statement, though. Not "typed ⇒ stable" — that's either false
+  or vacuous depending on how you read the escape hatches. Rather:
+
+  ▎ Every admission route declares what it installs, and the theorem is 
+  ▎ disjointness: if a derivation's declared install-set misses F's resolution 
+  ▎ paths, running it preserves F.
+
+  The precedent already exists — SemClaim.freshNames is exactly this channel,
+  invented ad hoc for the defs schema and consumed by DeclsOkJ_defineMethod. The
+  move is to promote it from a per-schema hack to the layer's stability
+  channel: defPromote already declares its install (it returns addRow D cls 
+  name), defDecl/defForget install into the heap and would declare there, and
+  Judge.semantic gets a footprint field beside freshNames. Then "typed ⇒ stable"
+  is a real induction over Judge with a genuine content.
+
+  The hole in both of our proposals
+
+  ResolvesAt's last clause:
+
+  lean
+  crubyShadow h ((ancestors h k).takeWhile (· != owner)) mname = none
+
+  A row can be invalidated without anyone installing that name on a class we 
+  track — by mutating the chain. prepend inserts into ancestry; include on a
+  superclass does too. So the footprint cannot be a set of (class, name) pairs.
+  It has to be names plus the chain segments they resolve through, and the
+  adversary is untyped code doing include/prepend/extend.
+
+  This is not hypothetical for our target. The slice has three include 
+  Comparable, and the boot stubs do class Module; include T::Sig; end — and
+  Module is on essentially everything's chain. That one could invalidate the
+  entire footprint in a single step.
+
+  What I'd do first
+
+  Before designing the footprint representation, I'd spend an hour on a
+  measurement, because it decides the shape:
+
+  Which ancestry mutations does the slice actually perform, and do they touch 
+  the chains we'd claim rows on? If the answer is "three include Comparable at
+  fresh user classes plus one include on Module", then the design is:
+  chain-shape stability is a boot-time fact plus a small allowlist, and the
+  footprint stays name-keyed. If untyped code mutates chains under our feet at
+  arbitrary points, the footprint has to carry chain segments and the whole
+  thing gets heavier.
+
+  Then the first proof I'd attempt is the smallest load-bearing one: generalize
+  resolvesAt_defineMethod from ¬(mname = name) to path-disjointness, and push it
+  through the defineMethod case of step_okJ. If that goes through, the rest is
+  plumbing and your adequacy theorem is a clean induction. If it doesn't, we
+  find out in one lemma instead of after building a judgment layer.
+
+  Want me to run that measurement over the slice now, or go straight at the
+  lemma?
+
+✻ Sautéed for 1m 34s · done 4:23 PM
+
+❯ Aren't we approaching separation logic now at this point? It sounds like      
+  basically what you're saying is that we need to be able to claim that a given 
+  derivation consumes only the resources it needs and everything else is left   
+  unchanged.                                                                    
+
+⏺ That's exactly it, and naming it that way is useful because it tells us which
+  parts are textbook and which parts aren't.
+
+  The frame rule is precisely the theorem I was groping toward: {P} e {Q} ⟹ {P *
+  R} e {Q * R}. My "declared install-set disjoint from F" is its side
+  condition, and your "typed ⇒ stable" is the claim that a Judge derivation has
+  a bounded footprint — which is what makes the frame rule applicable at all.
+
+  Two ways this is harder than the textbook case, and both are real:
+
+  1. The resource is a negative fact. In vanilla SL, ownership is per-cell and
+  disjointness is x ≠ y. But ResolvesAt's last clause is
+
+  lean
+  crubyShadow h ((ancestors h k).takeWhile (· != owner)) mname = none
+
+  — no class on this chain segment defines mname. An absence, quantified over an
+  unbounded set of locations. You can't own an absence cell-wise; you own it by
+  owning the region totally. The name-global declaresName guard is the
+  degenerate way to do that: own the name everywhere, forever.
+
+  The encouraging part is that the region here is small and mostly static — a
+  chain segment between a receiver's class and the owner. "Own the segment" is a
+  realistic footprint, not a hopeless one. That's what makes a bespoke version
+  plausible where general SL-over-Ruby would not be.
+
+  2. The footprint's shape is itself mutable. prepend doesn't write a cell we
+  own; it changes which cells the assertion quantifies over. That's the
+  linked-list-spliced-from-outside case, and the standard answer is to own the
+  spine as well as the slots. So the assertion needs two components:
+
+  Row(C, m, σ)  owns   slots:  {(K, m) : K ∈ ancestors(C) up to owner}
+                       spine:  the chain ancestors(C) up to owner
+
+  Disjointness is then: a derivation's installs miss the slots, and its
+  include/prepend/extend targets miss the spines. Both decidable from the class
+  graph.
+
+  And here's the observation that rescues the boot stubs. I flagged class 
+  Module; include T::Sig as potentially fatal — it mutates the spine of
+  everything. But it's a boot stub: it runs in the prefix, before any claim is
+  made. SemJudge already quantifies over a conformant start state rather than
+  the initial heap, so the footprint is taken after boot and that mutation is
+  simply outside the frame. The existing definition accommodates this for free.
+
+  The strategic point
+
+  We're not choosing between separation logic and something else. Iris is
+  already in the dependency graph (J36), and HJudge.wp is already one of the
+  four admission routes — the frame rule is available today for anything we're
+  willing to prove by hand. The design question is only where to put the 
+  boundary:
+
+  - Decidable footprint — our assertions are nearly all one shape (Row over a
+    chain segment), disjointness for that shape is computable, it stays inside
+    decide, and it preserves the data-certificate posture that is this project's
+    actual differentiator.
+  - HJudge.wp — the general frame rule, for the cases the decidable check can't
+    see.
+
+  That's the same escape-hatch architecture the layer already has, applied one
+  level down. My view is: build the decidable footprint as a specialization of
+  the frame rule — same statement, computable side condition — and leave wp as
+  the door for what it can't express. If we design it as an ad-hoc guard we'll
+  rediscover the frame rule badly; if we design it as the frame rule with a
+  decidable disjointness check, wp composes with it later instead of replacing
+  it.
+
+  Concretely, the smallest thing that would tell us whether this works: define
+  Row's footprint as (slots, spine), and generalize resolvesAt_defineMethod from
+  ¬(mname = name) to slot-disjointness. That lemma is the frame rule for one
+  step, and everything else is induction. Want me to draft that statement and
+  see what the existing proof gives us for free?
+
+✻ Cogitated for 51s · done 4:25 PM
+
+❯ The ownership idea is powerful I think. Basically, nonlocal reasoning becomes 
+  a lot easier if we create in essence a reader-writer lock over certain        
+  resources. For instance, if I want to reopen a class, I need to claim write   
+  ownership over its previously defined fields in order to overwrite them. If   
+  there is a class that extends the reopened class, then the write side of the  
+  lock can't be obtained because there                                          
+  ⎿  Interrupted · What should Claude do instead?
+❯ The ownership idea is powerful I think. Basically, nonlocal reasoning becomes 
+  a lot easier if we create in essence a reader-writer lock over certain        
+  resources. For instance, if I want to reopen a class, I need to claim write   
+  ownership over its previously defined fields in order to overwrite them. If   
+  there is a class that extends the reopened class, then the write side of the  
+  lock can't be obtained because there's already a reader (the subclass).       
+  However, perhaps it's okay for me to define net-new rows in the class by      
+  claiming a separate write permission on those new slots.                      
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ That's the move that makes it work, and it fixes the problem I raised last
+  turn — which I hadn't seen a clean answer to.
+
+  Why: it makes the negative fact ownable
+
+  I said the hard part is that ResolvesAt depends on an absence (crubyShadow … =
+  none), and you can't own an absence cell-wise. Your slot framing dissolves
+  that: make the slot's empty state a resource in its own right. Two per-(class,
+  name) predicates instead of one:
+
+  defined(K, m, body)     — the slot is filled
+  empty(K, m)             — the slot is known empty      ← the ownable negative
+  fact
+
+  Then a row assertion is just a conjunction of slot permissions along the
+  chain:
+
+  Row(C, m, σ)  ≜  empty(K, m)  for each K in ancestors(C) before the owner
+                ∗  defined(owner, m, b),  b conforming to σ
+                ∗  spine(C .. owner)
+
+  Now everything is a normal resource and disjointness is ordinary separation.
+  The empty permission is what a subclass holds against its superclass's shadow
+  path — your "there's already a reader."
+
+  One correction: net-new is not always free
+
+  Your last step needs a side condition. Take Row(Version, to_s, σ) resolving at
+  Object#to_s. Defining a net-new to_s on Version is an addition at Version —
+  and it breaks that row, because Version sits on its own shadow segment. So the
+  rule isn't "additions are free"; it's:
+
+  ▎ adding m at K requires the write side of empty(K, m) — which is held as a 
+  ▎ reader by every Row(C, m, _) whose shadow segment contains K.
+
+  Net-new is free exactly when nobody is reading that slot's emptiness. Which is
+  the honest version of the distinction declaresName's own docstring draws
+  ("additions are free; redefinition is where F1c lands") — you've given it a
+  mechanism, and the mechanism is what makes it local instead of global.
+
+  Worth noting ancestors (Heap.lean:527) puts prepends ahead of k, then k, then
+  includes, then the superclass. So prepend on C writes directly into the head
+  of the shadow segment of every Row(C, m, _) — your spine ownership catches
+  exactly that, and it's why spine has to be a resource and not just a derived
+  fact.
+
+  It demonstrably clears both of our blockers
+
+  Mixins. Row(Version, <, σ) and Row(PkgVersion, <, σ') both need
+  defined(Comparable, <, …) — the same slot, read-shared, no conflict — plus
+  empty on their own disjoint segments. Both claims coexist. That is precisely
+  the case name-globality forbids today, and the three include Comparable stop
+  being an arithmetic impossibility.
+
+  String#to_s alongside Version#to_s. Version isn't on String's chain, so
+  defined(Version, to_s) touches no slot Row(String, to_s, …) owns. No conflict.
+  Also solved.
+
+  Two for two on the things we actually measured.
+
+  Why this stays inside decide
+
+  The reason we can have reader-writer semantics without a runtime protocol: we 
+  have a closed world. One linked program, one certificate, one enumerable claim
+  set. Conflict detection is a static check over that set — for each install
+  the program performs, does any claim hold a reader on the slot? — not a lock
+  anyone acquires. Read permissions can be freely duplicable rather than
+  fractional, because the writer's obligation is discharged by enumeration, not
+  by counting.
+
+  That's what keeps this a decidable specialization of the frame rule rather
+  than a reimplementation of Iris. And where the closed world fails — Class.new,
+  define_method in a loop, runtime prepend — the claim simply can't be made,
+  and that case falls out to HJudge.wp, which is what it's for.
+
+  The theorem to aim at
+
+  ▎ If the claim set's slot permissions are conflict-free with respect to the 
+  ▎ program's installs and spine mutations, then every step preserves DeclsOkJ A
+  ▎ F m.heap.
+
+  That's my resolvesAt_defineMethod generalization, but with the hypothesis
+  structured the way you've described instead of as a bare disjointness side
+  condition — which I think is strictly better, because the empty/defined split
+  is what lets the induction go through the shadow clause rather than around it.
+
+  Shall I write the Slot / Row definitions and the generalized lemma statement,
+  and see how much of the existing resolvesAt_defineMethod proof survives?
+  That's the cheapest way to find out whether the shadow clause cooperates.
+
+✻ Crunched for 1m 12s · done 4:37 PM
+
+❯ Ah, this is interesting. So we can model a ruby object as an abstraction of   
+  infinitely many slots. Some of those slots are filled, some aren't. And to    
+  check if a slot is filled, and what's inside, no matter what, you need the    
+  reader lock on that slot. To update a slot, you need the writer lock. This    
+  helps with reasoning about method_missing too. method_missing essentially     
+  populates all of the unfilled slots. So if a method_missing is present, then  
+  when a slot is found to be empty, the method missing value takes that slot.   
+  So it's like a null coalescing operation. And resolving a slot also takes     
+  into account ancestors. I am visualizing a projection of the entire           
+  ancestors' slot stack into a single slot, with the slot value closest to the  
+  front taking precedence. So to change any slot, you also need to own write    
+  permission for all the other slots in front of it (all subclasses).           
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The co-finite version of "infinitely many slots" is what makes this
+  implementable, and it lands method_missing in exactly the right place.
+
+  Slots as a map with a default
+
+  You can't enumerate infinite slots, so empty has to be held co-finitely:
+
+  slots(K)  =  finite map (name ↦ defined(body))  ⊎  default
+
+  Ordinary classes have default = ⊥ (lookup falls through to the next ancestor).
+  And then your point 3 is literally: method_missing is a write to the default 
+  component. Not a write to any named slot — a write to the one resource that
+  every unnamed slot's emptiness is derived from. That's why it feels like
+  "populates all the unfilled slots": it does, in one step, by changing the
+  default.
+
+  The permission consequence is sharp and, I think, exactly right:
+
+  - defined(K, m, b) readers are unaffected by method_missing. Positive
+    resolution finds m before the default is consulted.
+  - empty(K, m) readers are all invalidated at once. Emptiness stops meaning
+    "falls through."
+
+  The warning that comes with it
+
+  This is currently free, and the slot design is what makes it cost something.
+  hookFreeNames = ["method_added", "define_method"] (Types/Decls.lean:694) —
+  method_missing is not in it, and that's sound today precisely because a Row
+  only ever asserts positive resolution (lookupIn h k m = some (owner, md)),
+  which method_missing cannot disturb. Nothing in the system currently owns
+  emptiness.
+
+  Make empty a first-class resource — which we must, because that's the whole
+  point of handling the shadow clause — and method_missing becomes load-bearing
+  for the first time. That's a real new obligation, not a reason to back off,
+  but it should be a deliberate cost rather than a surprise.
+
+  One correction: it's still one slot, one lock
+
+  ▎ to change any slot, you also need to own write permission for all the other 
+  ▎ slots in front of it (all subclasses)
+
+  Stronger than needed, and the difference matters. Writing (K, m) requires the
+  write side of (K, m) alone. What produces the "all subclasses" feeling is that
+  the readers of (K, m) are indexed by subclasses — every Row(C, m, _) whose
+  chain passes through it, either as owner (defined) or as shadow segment
+  (empty). You need those readers' absence, not ownership of their slots.
+
+  Practically decisive: "own all front slots" is unbounded — it quantifies over
+  subclasses that don't exist yet — whereas "no outstanding reader on this slot"
+  is enumerable over the certificate's claim set. The second stays inside
+  decide; the first can't.
+
+  Both of your directions then collapse into one rule:
+
+  ▎ To write (K, m): no claim may hold a reader on (K, m). Overwriting conflicts
+  ▎ with defined readers; adding conflicts with empty readers; method_missing 
+  ▎ conflicts with every empty reader on chains through K.
+
+  The model has already done this argument by hand
+
+  Worth seeing, because it's the strongest evidence the framing is right. From
+  NoHook's docstring (Proof/Static/Decls.lean:2011):
+
+  ▎ the prelude's T::Sig legitimately carries method_added (the sig-enforcement 
+  ▎ hook), and it is reachable only from a class that extends it — which the 
+  ▎ fragment never does and the per-value clause already polices.
+
+  That is a locality argument — this hook exists, but no chain we care about 
+  reaches it — written in prose as a special case, propping up a global
+  invariant. It's the same shape as declaresName standing in for F1c. Two global
+  sledgehammers, both already documented as approximations of a locality
+  argument nobody had a mechanism for. The slot permissions are that mechanism,
+  and they'd retire both.
+
+  Next
+
+  I'd write, in this order: Slot (defined/empty/default), Row(C, m, σ) as the
+  chain-segment conjunction, and then the generalized resolvesAt_defineMethod
+  with slot-disjointness in place of ¬(mname = name). The third one is the test
+  — if the shadow clause cooperates with the empty decomposition, the design
+  holds; if it fights, we'll know within a lemma rather than after a layer.
+
+  Want me to draft those three?
+
+✻ Sautéed for 1m 40s · done 4:45 PM
+
+❯ Do you think we need to use Iris here? Or is it worth trying to model this as 
+  a new semantic model of ruby types within our first-order world that we've    
+  already started building?                                                     
+
+⏺ First-order, and I'd say that fairly strongly — but build it as a resource
+  algebra so the Iris door stays open and mechanical.
+
+  Why first-order
+
+  Decidability is the binding constraint, and it's the one we've hit three 
+  times. Per-method codegen died on it, HTy.sem : Heap → Value → Prop died on
+  it, and an Iris wp obligation dies on it too — all three produce proof terms
+  where the certificate needs data checked by one kernel Bool. A first-order
+  slot model where conflict-freedom is computed over an enumerable claim set is
+  the only shape that fits the posture we've spent this whole conversation
+  trying to protect.
+
+  The assertion language is four predicates. defined(K,m,b), empty(K,m),
+  default(K), spine(C..owner). Iris gives higher-order ghost state, invariants,
+  step-indexing, the later modality — and we'd use essentially none of it.
+  That's not free: it's a dependency in the critical path plus a mental tax on
+  every future reader of the proof.
+
+  The closed world is doing the work, not the logic. Reader-writer conflict
+  detection reduces to enumeration precisely because there's one linked program
+  and one claim set. Iris's machinery exists for settings where you can't
+  enumerate — open, concurrent, ownership transferred at runtime. We've designed
+  that away deliberately, and Ruby's table mutation is sequential besides.
+
+  TCB. The J-layer metatheory is axiom-clean today; iris-lean sits in the
+  H-layer only. Putting Iris under invariant_sound/judge_sound_cert changes the
+  trust story for the main theorem in exchange for machinery we're not using.
+
+  And the work is smaller than it sounds: InvJ already carries DeclsOkJ A F 
+  m.heap existentially quantified over F, step_okJ already preserves it,
+  resolvesAt_defineMethod is already the transport lemma. We're generalizing one
+  hypothesis, not building a logic. Our "frame rule" is a single lemma about
+  defineMethod, not the general theorem — a day, not a project.
+
+  The one thing I'd insist on
+
+  Define the slot resource as a partial commutative monoid: composition is
+  disjoint union of slot maps with agreement on shared defined entries, ⊥ is the
+  empty map, and conflict is failure of composition. If you do that, it is a
+  resource algebra — essentially the gmap RA — and lifting it into Iris later is
+  mechanical, with HJudge/StateInterp.lean as the seat to connect it to the
+  real Heap.
+
+  If instead conflict-freedom gets written as an ad-hoc Bool over lists, we'll
+  have built something correct that has to be thrown away to grow. The PCM
+  discipline costs nothing now and buys the option.
+
+  They're not competitors
+
+  HJudge already has four admission routes with wp among them. First-order slots
+  would be the fast path — decidable, in the certificate, covering the static
+  majority — with Iris as the slow path for what the enumeration can't see:
+  Class.new in a loop, define_method over a computed list, runtime prepend.
+  That's the same fast/slow structure Judge and SemJudge already have one level
+  up. Building first-order forecloses nothing.
+
+  One clarification on your framing, since it matters for what to write: HTy
+  already is a semantic model of Ruby types — denotational, over values (den : 
+  Heap → Value → Prop). What's missing isn't a value model; it's a resource 
+  model of the method table. Different axis, and the slot algebra is the thing
+  that doesn't exist yet in either layer.
+
+  What would change my mind
+
+  If the footprint turns out to need existential quantification over unboundedly
+  many runtime-created classes, enumeration fails and you need real ghost
+  state. That's measurable before we commit, and the early evidence points the
+  other way: the slice's ancestry structure is static — three include Comparable
+  at known classes and one include on Module that happens at boot, before any
+  claim is taken.
+
+  I'd measure that first, then write the PCM. Want me to run the
+  ancestry-mutation survey over the slice, or start on the slot algebra?
+
+✻ Churned for 53s · done 4:50 PM
+
+❯ /model                                                                        
+  ⎿  Set model to Fable 5 and saved as your default for new sessions
+
+❯ Before doing this, let's think a bit more about how to operationalize this.   
+  What is a reasonable semantic judgement inventory that we can now generate to 
+  help us accomplish our goal of typing the entire homebrew slice?              
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Good instinct to inventory before building — and the census gives us real
+  numbers to plan against, so this can be a bill of materials rather than a wish
+  list. The key organizing move: not everything blocked should become a 
+  semantic judgment. There are four tiers, and putting a construct in the wrong
+  tier is how the inventory blows up.
+
+  Tier 0 — generated slot resources (data, zero proofs)
+
+  The slot algebra's whole point is that these are emitter-generated and 
+  kernel-checked, never hand-written:
+
+  ┌────────────────────┬─────────────────────────────┬─────────────────────┐
+  │      resource      │        count (slice)        │       source        │
+  ├────────────────────┼─────────────────────────────┼─────────────────────┤
+  │ defined(K, m,      │ ~114 (one per def)          │ walk of the linked  │
+  │ body)              │                             │ program             │
+  ├────────────────────┼─────────────────────────────┼─────────────────────┤
+  │ spine(C..owner)    │ ~35 classes/modules; chain  │ class graph + the 3 │
+  │                    │ graph static after boot     │  include Comparable │
+  ├────────────────────┼─────────────────────────────┼─────────────────────┤
+  │ empty(K, m) shadow │ derived per claimed Row,    │ footprint           │
+  │  segments          │ not authored                │ computation         │
+  ├────────────────────┼─────────────────────────────┼─────────────────────┤
+  │ method_missing     │ 1 fact (nothing in the      │ one grep-shaped     │
+  │ absence            │ slice defines it)           │ check, decide       │
+  └────────────────────┴─────────────────────────────┴─────────────────────┘
+
+  This tier is the frame machinery itself. It has one metatheory bill — the
+  generalized resolvesAt_defineMethod and its induction through step_okJ — paid
+  once, amortized over everything below.
+
+  Tier 1 — builtin call-shape facts (hand-proved once, reusable forever)
+
+  The semantic-admission inventory proper: facts keyed on (receiver type, name, 
+  arg types), bypassing Decls' name-globality and one-signature limits. From the
+  slice's actual call sites:
+
+  - Arithmetic family (~12): Integer#/ at Integer and Float (the two-shape
+    case), Integer#%, Float#{*,+,<=,>=,round}, Array#min at [Float]. Unblocks
+    round_up and base_score.
+  - String family (~15): scan, match, start_with?, split, gsub, sub, to_str, tr,
+    delete_prefix, []. The slice is a parser; this family is its diet.
+  - Hash/Array non-block ops (~8): fetch (62 sites!), dig, key?, [], join,
+    first, last, compact.
+  - Comparable-derived ops (~6): <, >, <=, >=, between?, clamp at the mixin —
+    the three-include Comparable payoff, expressible only once Tier 0 exists.
+
+  Order 40 facts. Each is a small lemma in the entryOk_even / inv_grow_valueJ
+  style; many are near-copies of each other. This tier is embarrassingly 
+  parallel and never has to be re-done for the next target program.
+
+  Tier 2 — schema lemmas (one lemma, many sites)
+
+  The J47-style constructs, now with bodies checked instead of forgotten:
+
+  schema: yielding builtin + block (map/select/any?/find/sort_by…)
+  sites: ~149 (send-block, the dominant head)
+  note: one schema per builtin shape, ~10 shapes; block body judged under the
+  schema, which is the J16/J19 arrow bill paid semantically
+  ────────────────────────────────────────
+  schema: defs with a checked body
+  sites: 27
+  note: replaces install-and-forget; eigenclass is just another slot owner in
+  the
+  model
+  ────────────────────────────────────────
+  schema: class C < D + zsuper
+  sites: 13 + 9
+  note: the Token hierarchy; zsuper is literally a read of the superclass's slot
+
+  — the slot model's native idiom
+  ────────────────────────────────────────
+  schema: alias
+  sites: 2
+  note: a slot copy: reader on (K, old), writer on (K, new) — almost a demo of
+  the algebra
+
+  Tier 3 — syntactic rungs; keep them out of the inventory
+
+  kwargs (~149 sites, second-dominant), next, begin/rescue, splat, send-call:
+  these are parameter-binding and control-flow, with nothing heap-shaped about
+  them. Making them semantic claims would be using the escape hatch as a front
+  door — they're ordinary Judge rules plus emitter arms, and cheaper there.
+
+  Sequencing by unlock
+
+  1. Tier 0 + arithmetic/String slice of Tier 1 → cvss.rb and semver.rb with
+     typed bodies (their remaining heads are defs/module/1–2 send-blocks).
+  2. defs schema (Tier 2) → purl.rb, pkg_version.rb mostly fall (plus alias,
+     plus kwargs from Tier 3).
+  3. kwargs rung (Tier 3) → identify.rb (24 of its 40 blocked heads are kwargs).
+  4. Yielding-builtin schemas + class-sup/zsuper → parser.rb, then the two big
+     files, version.rb and vulnerability.rb, whose 297 combined blocked heads
+     are ~75% send-block+kwargs.
+
+  Notice the shape: the two biggest files are blocked mostly on Tier 2's one big
+  schema family and Tier 3's one rung — not on hundreds of distinct facts. The
+  long tail is short.
+
+  If this looks right, the two artifacts to write first are the slot PCM (Tier
+  0's foundation) and a slice-inventory.md recording exactly this table with its
+  census provenance — the latter so the ratchet has something to consume as
+  tiers land. Want me to draft both?
+
+✻ Churned for 1m 20s · done 4:55 PM
+
+❯ /model                                                                        
+  ⎿  Set model to Fable 5 and saved as your default for new sessions
+
+❯ Let's draft both. Also, when thinking about this for the writeup: don't stay  
+  married to any of the machinery we've already built. We are free to rip out   
+  old cruft as needed in order to make this cleaner.                            
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Write(~/code/semantics-quick/sam-xif/ruby/docs/semantics/slot-frame.md)
+  ⎿  Wrote 269 lines to ../docs/semantics/slot-frame.md
+       1 # The slot frame — local heap stability as a first-order resourc
+       2 
+          design conversation
+         observation that the
+         tic, unchecked bodies,
+       6 `HTy`'s undecidability at the certificate boundary) are symptoms
+       7 absence: **no way to say a heap fact is *locally* stable**, so s
+       8 globally (`declaresName`, name-global) or not at all. Decisions 
+       9 
+         slice-inventory.md) —
+     … +419 lines (ctrl+o to expand)
+
+⏺ Write(~/code/semantics-quick/sam-xif/ruby/homebrew/slice-inventory.md)
+  ⎿  Wrote 106 lines to ../homebrew/slice-inventory.md
+       1 # The slice inventory — semantic judgments needed to type the wh
+       2 
+         ping all eight slice
+         laces the current
+         bout the *defining
+       6 step* and never look inside a body (`jcert.rb`'s `defs` arm dest
+       7 `_params, _body`; `validateJ_certifies_defs` counts those claims
+       8 
+         s/slot-frame.md)
+         ass rows possible at
+     … +165 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+⏺ Both drafted, plus an index entry in docs/semantics/README.md.
+
+  docs/semantics/slot-frame.md — the foundation, as SF-numbers:
+
+  - §1 names the three stand-ins the frame replaces, each quoted against its own
+    docstring admitting it's a placeholder (declaresName/F1c, core-rows.txt's
+    one-row-per-name, NoHook's T::Sig prose case).
+  - §2–§3 the model: slot maps with a co-finite default, method_missing as a
+    default write (and the honest note that this makes it load-bearing for the
+    first time — hookFreeNames omits it soundly only because nothing owns
+    emptiness today), spine as a resource because prepend splices the
+    projection, and the PCM (SlotClaim.compose, gmap-RA shape so the Iris lift
+    stays mechanical).
+  - SF6/SF8 are the two decisions from our discussion, recorded with their
+    corrections: reads duplicable / writes discharged by enumeration over the
+    closed world (not lock transfer), and write-conflict checked at one slot
+    against its readers rather than "own all front slots" — with the reason (the
+    latter quantifies over classes that don't exist yet).
+  - §4 the boot-prefix move, carrying the survey data: 8 ancestry mutations, all
+    definition-position, 0 at runtime.
+  - §6 the theorem ladder, SF-T1 (generalize resolvesAt_defineMethod)
+    deliberately first and small — it's where the design meets the shadow
+    clause, so failure is discovered in one lemma.
+  - §7 exercises your demolition license explicitly: name-globality, the
+    one-row-per-name rule, freshNames (subsumed by install-sets), the NoHook
+    prose case — all listed for removal — plus a candidate flag on Assn's
+    store-cancellation overlapping Row. Fixed points stated too: the
+    data-certificate posture and SemJudge's formula.
+  - §8/§9 record the no-Iris decision with its flip condition, and what this
+    doesn't fix (overloading, prelude arity, block behavioral content).
+
+  homebrew/slice-inventory.md — the four tiers with measured counts and
+  provenance (§5a census + today's measurements), the Tier-1 honesty row
+  (Comparable ops enter as assumed witnesses until ResolvesUser grows arity),
+  the four-step unlock sequence ending at version.rb/vulnerability.rb, and a
+  consumption rule so it behaves like the other ratchets — counts move only with
+  a named discharging artifact, and the first conditional accept gets recorded
+  in judge-slice.md so it isn't misread as a regression against today's
+  unconditional-but-vacuous six.
+
+  Natural next step when you're ready: SF-T1 — state the slot-disjoint
+  generalization of resolvesAt_defineMethod and see how much of the existing
+  proof survives contact with crubyShadow.
+
+✻ Cogitated for 3m 58s · done 5:01 PM
+
+❯ Do any of the open-world deficiencies of the first-order slot frame           
+  construction apply to programs that take some serialized input as data? For   
+  instance, a CLI that takes some list<string> of command line arguments. To    
+  me, this still feels somewhat "closed-world" because the program definition   
+  is (ideally) static. It is just the input, which we can make a claim is well  
+  typed (string, bytes), that changes .                                         
+
+⏺ Short answer: no — and the reason is worth pinning down precisely, because it
+  tells you exactly where the boundary actually sits.
+
+  The closed world is about write sites, not the value space
+
+  SF6's enumeration never needed the program's inputs to be known. It needs the
+  inventory of table-mutating actions to be statically over-approximable: every
+  def, defs, alias, include/prepend/extend, method_missing install. In a static
+  program text, those sites are enumerable regardless of what argv holds. Input
+  affects two things, and neither breaks the check:
+
+  1. Which sites execute. The conflict check already assumes every site may run
+     — it's a may-analysis over the whole text. Input choosing a subset of them
+     only makes the over-approximation more conservative, never wrong. (This is
+     also why the boot-prefix split (SF9) is by position, not by execution
+     path.)
+  2. What values flow through typed slots. argv : Array[String] is exactly your
+     "the input is well typed" claim, and it's the same shape as every parameter
+     judgment: a Judge derivation is already universally quantified over
+     conformant inputs — SemJudge says every conformant start state, and a
+     string parameter's Γ entry says any String. Data varying over a typed
+     domain is the normal case, not an open-world case.
+
+  So a CLI over List<String> is squarely inside the frame. Your instinct is
+  right.
+
+  Where the boundary actually is: data laundered into names
+
+  Ruby's specific danger is that the data/code boundary is porous. The failure
+  mode isn't "input exists"; it's input flowing into the name coordinate of a 
+  write site:
+
+  define_method(argv[0]) { ... }     # the site is static; the (class, name) KEY
+  is not
+  Kernel.eval(File.read(argv[1]))    # the site set itself is not static
+
+  The first is the interesting case, and it degrades gracefully: the site is
+  still enumerated, but its key set must be over-approximated to ⊤ at the name
+  coordinate — "installs some name on this class" — which conflicts with every
+  empty reader on chains through that class. Result: the claims are rejected (or
+  that site exits to wp with a hand proof that, say, the name is drawn from a
+  validated whitelist). Soundness is never at stake; completeness is lost 
+  exactly at the laundering sites. eval is the one true open-world hole — it
+  makes the site inventory itself dynamic — and it's already gated out at the
+  desugar.
+
+  Two non-dangers worth separating from these, because they look similar:
+
+  - obj.send(argv[0]) — a computed dispatch, not a write. The frame doesn't care
+    (nothing is installed); it's untypable for the ordinary reason that you
+    can't produce a Row for an unknown name. A typing gap, not a frame gap.
+  - Input as hash keys / version strings — the slice's actual usage
+    (fetch(data_key), Version.new(argv_string)). Pure data flow through typed
+    slots; invisible to the frame.
+
+  So the checkable criterion is: no input-tainted value reaches the name 
+  position of a table-mutating head. That's a syntactic/dataflow condition an
+  emitter can check per site, and on the slice it holds vacuously — every
+  def/include in those eight files has a literal name.
+
+  The pleasing convergence
+
+  This lands the slot frame on the same posture the rest of the project already
+  committed to: bounded-effect-checking.md's concolic design is concrete boot 
+  heap, symbolic inputs, and type-safety-by-reachability.md's verification
+  direction quantifies over input-parameterized runs. "Program static, input
+  symbolic over a typed domain" is this system's definition of closed-world —
+  the slot frame didn't add a new assumption, it inherited the existing one.
+  Might be worth a sentence in slot-frame.md §6/SF6 recording that the closed
+  world means closed write-site inventory with literal name keys, not closed 
+  input space — want me to add it?
+
+✻ Brewed for 40s · done 5:10 PM
+
+❯ loss of completeness at such laundering sites is honestly okay with me. In a  
+  real-world setting, this may be considered a flag to programmers that their   
+  code is not defensive enough.                                                 
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Recorded as SF6a in slot-frame.md, with your stance made explicit as a design
+  decision rather than a caveat:
+
+  ▎ Soundness is never at stake; completeness is lost exactly at laundering 
+  ▎ sites, and that loss is accepted as a feature: a rejection there flags code 
+  ▎ whose metaprogramming is driven by unvalidated input — a defensiveness 
+  ▎ signal to the programmer, not a checker deficiency to engineer away.
+
+  It also pins the definition we converged on (closed write-site inventory with 
+  literal name keys, not closed input space), ties it to the existing concolic
+  posture in bounded-effect-checking.md (concrete boot heap, symbolic inputs),
+  separates the two non-dangers (computed dispatch, data through typed slots),
+  and leaves the wp door for a site a hand proof can bound — the
+  validated-whitelist case.
+
+  One thought your framing suggests for later, not acted on: since the emitter
+  must detect laundering sites anyway to over-approximate their keys, the list 
+  of those sites is nearly free to surface as a report — "your metaprogramming
+  is input-driven here and here" — which is a diagnostic artifact people might
+  value independently of certification, much like --fragment's list is context
+  beside the verdict. Could be a cheap deliverable to hang off the conflict
+  check when it lands.
+
+✻ Cogitated for 25s · done 5:12 PM
+
+※ recap: Goal: type the whole Homebrew slice with bodies checked, via a first-order slot-frame for local heap stability. Both design docs (slot-frame.md, slice-inventory.md) are drafted. Next: attempt SF-T1, the slot-disjoint generalization of resolvesAt_defineMethod.
+
+❯ Does this mean we'll struggle with typing realistic Rails programs?           
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Less than the laundering discussion would suggest — because Rails'
+  metaprogramming is mostly not input laundering. It's worth separating the
+  taxonomy, since each kind lands in a different bucket, and only one bucket is
+  genuinely hard.
+
+  1. DSL macros: computed installs, literal names — the good bucket
+
+  has_many :users, delegate :name, to: :profile, attr_accessor :count, validates
+  … — the names being installed derive from literal symbols in the program 
+  text, not from input. Statically, has_many :users is a macro that installs
+  users, users=, user_ids… — a computable function of a literal argument. That's
+  schema-lemma territory (the Tier-2 pattern: one lemma per macro shape, many
+  sites), and the footprint stays fully enumerable: the emitter expands the
+  macro's install-set the way it already expands def's.
+
+  This isn't speculative — it's the pilot that's already built.
+  Proof/Judgment/Rails.lean (J35) does exactly this shape end to end:
+  define_method(:shout) { 1 } inside class String, admitted as a semantic claim
+  carrying the row String#shout : () → Integer, discharged by executing the 
+  semantics, with subsequent dispatch on the generated row syntactically typed.
+  has_many is that pilot with a bigger install-set and a body you don't execute
+  but assume (next bucket).
+
+  2. Schema-derived methods: external data, but static external data
+
+  ActiveRecord attribute methods come from the DB schema — which in a real app
+  is db/schema.rb, a checked-in artifact. So the rows are assumptions
+  conditioned on a static file, ingestable exactly the way certify/rbi.py
+  ingests sigs. And there's strong precedent that this is the right posture:
+  tapioca does precisely this for Sorbet — untrusted DSL compilers emitting row
+  declarations from the schema and the association graph. Our version is the
+  same architecture with a better story: the assumptions are per-slot, printed
+  in carries:, and the frame says they stay true, rather than being ambient
+  trust.
+
+  3. The genuinely hard bucket — and it's specific, not diffuse
+
+  Three real problems, none of them the argv kind:
+
+  - Lazy definition post-boot. Modern AR defines attribute methods on first call
+    via method_missing, then installs them. That's a post-boot write with a
+    semi-computed name, and method_missing live on every model chain kills noMM
+    — so empty ownership on model chains is mostly unavailable. Mitigations
+    exist (define_attribute_methods can be forced eagerly at boot, pulling the
+    writes into the SF9 prefix; or one wp-door lemma per Rails-internal pattern,
+    proved once per Rails version and reused), but this is real work.
+  - Zeitwerk autoloading. const_missing → require at first reference makes the
+    file set lazy. For us that's the linker's dynamic-require gate, hit earlier
+    in the pipeline than the frame — you'd eager-load
+    (Zeitwerk::Loader#eager_load exists precisely to make this static) and link
+    the closure.
+  - Long framework-owned spines. An AR model's ancestor chain is ~60 modules
+    with prepends (dirty tracking, callbacks). spine claims become large and
+    brittle against framework upgrades — manageable (spines are data,
+    regenerated per Rails version), but it means claims are versioned against
+    the framework.
+
+  The honest strategic answer
+
+  Nobody types Rails by analyzing Rails' internals — Sorbet doesn't, Steep
+  doesn't. The viable posture, which the frame supports rather than obstructs,
+  is: treat boot as producing a conformant heap, take claims after it (SF9 
+  already says this), source the framework's rows from schema+DSL expansion as 
+  assumptions (tapioca posture), and type the application code against them. Our
+  marginal advantages over Sorbet in that world are the ones this whole design
+  bought: assumptions that are local, printed, and auditable; some dischargeable
+  by actually executing boot in the model (the J35 trick, which no RBI-based
+  system can do); and a frame theorem saying app code can't silently invalidate
+  them.
+
+  So: the slice → a Sinatra-scale CLI app is mostly Tier-1/Tier-2 growth. Rails
+  is a genuine campaign — but the blockers are the three named ones above, not
+  an open-world wall, and SF6a's laundering rejection would fire on
+  approximately none of idiomatic Rails app code (its metaprogramming is
+  literal-symbol-driven). Where it fires — define_method(params[:name]) in a
+  controller — you'd want it to.
+
+✻ Brewed for 1m 5s · done 5:20 PM
+
+❯ /export                                                                       
+  ⎿  Conversation exported to:
+     /Users/samxifaras/code/semantics-quick/sam-xif/ruby/lean/journal/2026-08-28
+     -174237-local-command-caveatcaveat-the-messages-below.txt
+
+❯ Can you explain more on how this will be operationalized? Will we take        
+  predicates over SlotClaims as hypotheses for all of our judgements?           
+
+⏺ Good question to press on, because the naive answer — thread a SlotClaim
+  hypothesis through every rule — is exactly the mistake to avoid, and the
+  codebase has already learned it (Decls.lean:1995 calls it "the same
+  put-the-condition-in-the-judgement trade, measured for the fifth time").
+  Here's the operationalization I'd defend, layer by layer.
+
+  1. The judgment gets one ambient parameter, not per-rule hypotheses
+
+  There's a precise precedent: J31 added A : SemAxioms as an index on Judge —
+  ambient, threaded structurally, read by exactly one arm (semantic). The claim
+  set S : SlotClaim enters the same way:
+
+  lean
+  inductive Judge (A : SemAxioms) (S : SlotClaim) : Decls → Env → Expr → …
+
+  Most rules never look at S. The only rules that read it are the write rules,
+  and there it's a point-for-point premise replacement, same shape, different
+  content:
+
+  ┌─────────────────────┬──────────────────────┬────────────────────────────┐
+  │        rule         │ today (name-global)  │  after (local, decidable)  │
+  ├─────────────────────┼──────────────────────┼────────────────────────────┤
+  │ defPromote /        │ declaresName D name  │ writeOk S ctx.cls name =   │
+  │ defDecl             │ = false              │ true                       │
+  ├─────────────────────┼──────────────────────┼────────────────────────────┤
+  │ defs schema claim   │ freshNames           │ writeOk S eigen name =     │
+  │                     │ checker-enforced     │ true                       │
+  ├─────────────────────┼──────────────────────┼────────────────────────────┤
+  │                     │                      │ reader (K, old) ∈          │
+  │ alias (new)         │ —                    │ S-compatible, writeOk S K  │
+  │                     │                      │ new                        │
+  ├─────────────────────┼──────────────────────┼────────────────────────────┤
+  │ future              │                      │                            │
+  │ include/prepend     │ —                    │ spineOk S K = true         │
+  │ rung                │                      │                            │
+  └─────────────────────┴──────────────────────┴────────────────────────────┘
+
+  writeOk is "no claim in S holds defined or empty on (K, name)" — a list
+  lookup, decide-able, checked by validateJ at that derivation node exactly the
+  way it checks declaresName today. So the checker's work per node barely
+  changes; what changes is that the premise stopped quantifying over the whole
+  namespace.
+
+  Crucially, the read side is untouched. The send rule keeps reading D; the
+  connection is that D is now derived from S (D := rowsOf S — each Row C m σ
+  yields its table entry). Sends don't know slots exist.
+
+  2. SlotsOk is one invariant conjunct, not a judgment premise
+
+  The Prop-level predicate over SlotClaim appears in exactly one hypothesis
+  position: inside InvJ, refounding DeclsOkJ:
+
+  lean
+  SlotsOk (S : SlotClaim) (h : Heap) : Prop
+  -- every `defined (K,m,md)` ∈ S: the table at K has md at m
+  -- every `empty (K,m)` ∈ S: lookup misses, and K's method_missing is absent
+  per noMM
+  -- every `spine (C,seg)` ∈ S: ancestors h C's segment = seg
+
+  InvJ today is … ∧ DeclsOkJ A F m.heap ∧ … with F existential (Konts.lean:530).
+  It becomes … ∧ SlotsOk S m.heap ∧ DeclsOkJ A (rowsOf S) m.heap ∧ … — where
+  the second conjunct is now a lemma from the first (slotsOk_declsOk), not an
+  independent obligation. So preservation (step_okJ) re-establishes SlotsOk per
+  step, and the frame lemma (SF-T1's generalization) is the tool its
+  defineMethod case uses: the step's install passed writeOk, writeOk implies
+  slot-disjointness from every claim, transport.
+
+  Note what this buys structurally: the disjointness fact preservation needs at
+  each write step arrives through the derivation itself — the writeOk premise at
+  that node — rather than through a whole-program side condition that would
+  have to be threaded to an arbitrary step. That's why Option "keep it entirely
+  out of the judgment" loses: per-step re-establishment needs a per-step fact,
+  and the derivation node is the natural carrier. This is the same reason
+  declaresName sits in the rules today; we're keeping the topology and fixing
+  the granularity.
+
+  3. What the certificate and validateJ carry
+
+  Wire-format side, all data:
+
+  1. JCert gains slot_claims — the composed footprint (the emitter computes it
+     per claimed Row; SF7).
+  2. validateJ gains three checks: compose ≠ none over the claims;
+     writeOk/spineOk at each write node (it's already walking every node); and
+     the untyped-remainder sweep — installs in program text outside any
+     derivation (the boot prefix is exempted per SF9, everything else must be
+     covered by a derivation or be disjoint).
+  3. Witness check: each defined either discharges at the conformant heap (the
+     constOkB pattern, per slot) or is printed as a carried assumption — the
+     core-rows.txt successor, now per-(class, name).
+
+  The composed theorem's statement changes shape only in its residue:
+
+  validateJ cert prog = true
+  → SemAxiomsOk … → (per-slot defined-witness residue)
+  → safety, AND every claimed Row stable through the run
+
+  — same formula as validateJ_certifies, with the frame hypothesis absorbed into
+  the Bool and the name-global guard gone from the rules.
+
+  4. Who computes what (the division of labor)
+
+  ┌─────────────┬─────────────────────────────────────────┬────────────────┐
+  │  component  │                  role                   │    trusted?    │
+  ├─────────────┼─────────────────────────────────────────┼────────────────┤
+  │             │ picks the claim set, computes           │ no — wrong     │
+  │ jcert.rb    │ footprints and install-sets             │ footprint =    │
+  │             │                                         │ reject         │
+  ├─────────────┼─────────────────────────────────────────┼────────────────┤
+  │ validateJ   │ recomputes composition, decides writeOk │ yes, one Bool  │
+  │             │  per node, sweeps the remainder         │                │
+  ├─────────────┼─────────────────────────────────────────┼────────────────┤
+  │ SF-T1/T2    │ writeOk = true → SlotsOk survives the   │ proved once    │
+  │ lemmas      │ step                                    │                │
+  ├─────────────┼─────────────────────────────────────────┼────────────────┤
+  │ SF-T3       │ typed subterms' installs are exactly    │                │
+  │ (adequacy)  │ their declared install-sets, so the     │ proved once    │
+  │             │ remainder sweep may skip them           │                │
+  └─────────────┴─────────────────────────────────────────┴────────────────┘
+
+  So to answer the question directly: predicates over SlotClaims appear as 
+  hypotheses in exactly two places — writeOk-style decidable premises on the
+  handful of write rules (replacing declaresName premises one-for-one), and the
+  single SlotsOk conjunct in InvJ. Every other rule sees S only as an inert
+  index, the way it already sees A. The alternative — a frame hypothesis on
+  every rule, separation-logic style — would buy generality no rule consumes and
+  re-state the whole preservation mountain; the ambient-index pattern is the
+  one the layer has already paid for twice (A, and D itself).
+
+  If you want, I can append this as an "operationalization" section (§5a) to
+  slot-frame.md — it's the part of the design a fresh implementer would
+  otherwise have to re-derive.
+
+✻ Worked for 1m 11s · done 5:44 PM
+
+❯ So then do the write rules leave an S' behind?                                
+
+⏺ Yes — and the pleasing thing is that the judgment already has this channel:
+  it's the out-table. defPromote's conclusion is
+
+  lean
+  Judge A D Γ (.def' name [] body) top ctx .sym Γ (addRow D ctx.cls name {…})
+
+  — D in, D' = addRow D … out, threaded left-to-right through JudgeSeq in
+  program order. The S-threading is that channel, generalized: Judge A S Γ e top
+  ctx τ Γ' S', where a write rule's conclusion is S' = S ⊕ rowClaim(K, name, σ)
+  and everything else passes S through unchanged. Program order on the spine =
+  the machine's actual install order, which is exactly what preservation needs.
+
+  Four things fall out, one of which is a demolition candidate:
+
+  1. What grows is the footprint, not just the row. S' gains the new Row's whole
+  claim — defined (K, name) plus its empty shadow segment plus its spine
+  dependency. So the premise at a write node is really two checks folded
+  together: writeOk S K name (no existing reader on the slot being written) and
+  (S ⊕ rowClaim …) ≠ none (the new claim's own empty/spine reads compose with
+  everything already claimed). The second is what catches the subtle case: a new
+  Row whose shadow segment passes through a slot some earlier write filled.
+  Both are the same compose call.
+
+  2. Growth is monotone — nothing ever leaves S. This is forced by SF6, not
+  chosen separately: reads are freely duplicable, so a claim can't be revoked —
+  you can never prove nobody else copied it. Consequence: a genuine overwrite of
+  a claimed slot is refused, period. The alternative (writer retires the claim,
+  writes, re-claims — a strong update) requires linear/fractional permissions,
+  which is precisely the machinery we declined to buy. If a real program in
+  scope ever needs a checked redefinition, that's a wp-door case or the flip
+  condition firing, and we'd want to know.
+
+  3. Joins take the meet, and today that's nearly vacuous. An if whose branches
+  produce S₁', S₂' continues with the claims both agree on — the same shape as
+  the env join (env_meet / the chosen continuation environment below both
+  exits). In practice the position guards (top = false, class-body-only, inBlock
+  = false…) bar writes inside branches almost everywhere, so the join rarely
+  has anything to decide — but the rule should be stated meet-wise so it's sound
+  when a rung loosens a guard later.
+
+  4. The demolition candidate: D' becomes derived and the second channel goes 
+  away. Once D := rowsOf S, threading both is redundant — Judge A S Γ e … Γ' S'
+  with rowsOf applied wherever a read rule wants a table. That's one thread
+  instead of two, addRow becomes ⊕ composed with rowsOf, and the "one table
+  carries another" slack (tableCarries) becomes a corollary of claim-set
+  inclusion. It's exactly the kind of cruft-removal you licensed — though I'd
+  sequence it after SF-T2, not with it: first prove preservation with S
+  alongside the existing D threading (so the diff against step_okJ is one
+  premise per write case), then collapse the channels as a separate refactor
+  with the metatheory already green. Doing both at once turns a one-lemma
+  experiment into a layer rewrite.
+
+  One honest asterisk on the semantic side: S' in the judgment is
+  syntax-directed bookkeeping, but its meaning — SlotsOk S' h' after the step —
+  is the preservation obligation, and the new Row's empty segment must actually
+  hold at h'. That's where SF-T1 earns its position at the top of the ladder:
+  the transport has to deliver not just "old claims survive the write" but "the
+  write's own claim is established," which is the lookup_go_defineMethod_self +
+  shadow-clause pairing the existing defPromote preservation case already makes
+  for D. Same argument, slot-shaped.
+
+✻ Brewed for 55s · done 5:48 PM
+
+❯ /model                                                                        
+  ⎿  Set model to Opus 5 (1M context) and saved as your default for new sessions

@@ -106,32 +106,26 @@ namespace SlotClaim
 /-- The unit of the monoid: reads nothing, framed by every write. -/
 def unit : SlotClaim := {}
 
-/-- Prefix-compatibility of two owned segments of the *same* class: one is a
-    prefix of the other. Both are prefixes of one `ancestors` list, so this is
-    exactly agreement (and is what `compose` must check to stay a PCM). -/
-def segCompat (a b : List ObjId) : Bool :=
-  a.isPrefixOf b || b.isPrefixOf a
+/-- SF5 — **composition.** The guard is `defined`-agreement on overlap; the
+    components themselves are *concatenated*, not merged.
 
-/-- The longer of two compatible segments — the composed spine claim. -/
-def segJoin (a b : List ObjId) : List ObjId :=
-  if a.length ≤ b.length then b else a
-
-/-- SF5 — **composition: `defined`-overlap must agree, spines must be
-    prefix-compatible, everything else unions. `none` is conflict.** -/
+    That is a deliberate simplification of the first draft, which deduplicated
+    and joined same-class spines: reads are duplicable (SF6), so a duplicate
+    entry is a redundant reader and costs nothing but a repeated check, whereas a
+    merge makes "the composite holds ⟹ each conjunct holds" — the only direction
+    a consumer of a `Row` needs — an argument about joins instead of an argument
+    about sublists. `none` is conflict, and the guard is what makes composition
+    *partial*: two claims that pin the same slot to different signatures cannot
+    both be read, and the emitter learns it at compose time rather than the
+    validator learning it as an unexplained `holdsB = false`. -/
 def compose (a b : SlotClaim) : Option SlotClaim :=
   if a.defined.all (fun x => b.defined.all fun y =>
         !(x.1 == y.1 && x.2.1 == y.2.1) || x.2.2 == y.2.2)
-     && a.spines.all (fun x => b.spines.all fun y => !(x.1 == y.1) || segCompat x.2 y.2)
   then some
-    { defined := a.defined ++ b.defined.filter (fun y => !a.defined.any (fun x =>
-                    x.1 == y.1 && x.2.1 == y.2.1))
-      empty := a.empty ++ b.empty.filter (fun y => !a.empty.contains y)
-      spines := a.spines.map (fun x =>
-                    match b.spines.find? (fun y => y.1 == x.1) with
-                    | some y => (x.1, segJoin x.2 y.2)
-                    | none => x)
-                ++ b.spines.filter (fun y => !a.spines.any (fun x => x.1 == y.1))
-      noMM := a.noMM ++ b.noMM.filter (fun k => !a.noMM.contains k) }
+    { defined := a.defined ++ b.defined
+      empty := a.empty ++ b.empty
+      spines := a.spines ++ b.spines
+      noMM := a.noMM ++ b.noMM }
   else none
 
 /-- The footprint of a certificate: the composition of its `Row`s' claims (SF7).
