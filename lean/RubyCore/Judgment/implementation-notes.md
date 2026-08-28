@@ -1303,3 +1303,69 @@ Conditional shapes (`defined?(@iv)` — String *or* nil) are a recorded next
 instance: the same schema at a nilable String, one `strIf` case split, its value
 half `VTy .nilT ≤ nilable` on the nil branch. Fuel note: `validateJ`'s fuel also
 feeds `exprEqB`'s walk of claimed expressions — the J45 demos use 32.
+
+## J46 (M0 + reprice) — the measurement, and the boot-dead-code finding
+
+**M0 ran first, as `schema-strategy.md` §2 ordered, and it reordered everything.**
+The scan is `homebrew/m0.rb` (untrusted, Ruby, over the exported ASTs): classify
+each slice file's *boot-executed* statements — the statements that run when the
+file is `Machine.init p` — separately from code inside `def`/`defs` bodies,
+which **never runs at boot** and is therefore dead weight for a whole-file
+certificate (it matters for *row* claims later, not for the accept).
+
+Measured, across the five strippable files (semver/cvss/purl/identify/
+pkg_version, sig-stripped):
+
+* **Zero `send-block` and zero `kwargs` execute at boot** (one `delegate`
+  kwargs-send in pkg_version aside). The 60+ iterator masses and the kwargs
+  masses of the census are all inside method bodies. **S2 (the iterator schema)
+  drops out of the whole-file-accept critical path entirely**, and with it the
+  J46-segment/J47-frame machinery it required — those remain the recorded route
+  for *body-row* certification, a later initiative.
+* The boot statements are exactly: `module` wrappers (every file), fresh
+  `class` (purl, pkg_version), `def self.x` (defs, every file), plain `def`,
+  module-body `casgn` (rhs = string literals and block-less builtin send
+  chains — the desugared regex literals), and a short list of block-less
+  implicit sends: `private_constant`, `private_class_method(defs)`,
+  `attr_reader`, `include`/`extend`, `alias`, `require` (identify,
+  pkg_version), `delegate` (pkg_version).
+
+### The reprice (decisions of record)
+
+1. **Containers go machine-typed, with the body derivation as certificate
+   data.** The S4 module-container schema was examined and found dominated: a
+   container claim's obligation must type the body's *mid-run* states (the
+   body's judged statements execute arbitrary in-fragment code), which needs
+   `KontOkJ`-typed konts either way — and `KontOkJ.frameK` already exists (the
+   `classTop` rung uses it). Seating the container at `Judge.module'` (the rule
+   exists; the gate is `MFrag` + one preservation case) keeps the body's
+   derivation in the *certificate* (replayed by the kernel `decide`), where a
+   schema-lemma premise would have forced per-file `Judge` terms authored in
+   Lean. The one generic preservation case *is* the schema lemma, seated where
+   the data reaches it. It consumes the parked J43/J44 stack exactly as
+   predicted (fresh path: `ClsGrow` + the ClsInv suite + `constSetIn` suite +
+   the eager eigenclass; the body ctx sets `inClassBody`/`inModuleBody`, so
+   J44c's clause is finally *set* by something). Same case covers fresh
+   `class'` with no superclass (same `enterClassBody` fresh path).
+2. **`defs` stays semantic — a one-step composed claim.** `def self.x` has no
+   syntactic route (`self'` in a class body is untypable by design: `selfCls`
+   is `none` there), which is exactly what claims are for. The J33 composition
+   precedent applies verbatim: `.defs .self' name ps body`'s receiver eval is
+   pure, so the interpreter composes it to one step (byte-identical observable
+   behaviour; tier-0 re-run required), and the claim's obligation is an
+   ordinary `EvalOkAt` — one `defineMethod` on the *realized* eigenclass, the
+   J44c fact, read through a new `reqMod` guard on `SemClaim` (the J35 `reqCls`
+   shape, one more channel). One schema lemma (`∀ name ps body cn`), every
+   `defs` site in the slice.
+3. **`private_class_method(defs)` is unreachable by both routes** (send head is
+   `fragHead`-true ⇒ unclaimable; `defs` arg is `fragHead`-false ⇒ not
+   `MFrag.sendImplicit`-admissible). Resolved by a *transform*, sig_strip's
+   precedent: `pcm_split` rewrites `private_class_method def self.x ...` to
+   `def self.x ...; private_class_method :x` — CRuby-identical end state, the
+   statement value (discarded in statement position) differs. Argued in
+   `homebrew/judge-slice.md` when it lands.
+4. **Boot sends ride claimed rows** (`deltaRows`, carried `EntryOkJ` residue) —
+   no new Lean; emitter work.
+5. `alias` (needs a defined-names channel to refute the miss raise), `require`/
+   `delegate` (unmodeled ⇒ `.unsupported`, refused at the J-grade) are deferred
+   to their files' phase; semver → cvss target order.
