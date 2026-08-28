@@ -1180,3 +1180,98 @@ Two more facts the `module'` eval case surfaced while being written:
    Both `enterClassBody` branches then close: reopen from the second disjunct's
    facts (the pushed frame's `StackCtx` clauses are exactly its conjuncts);
    fresh from the composite-heap computation (fresh chains are literals).
+
+## J45 (pivot) — the segment layer and schema judgments
+
+**A deliberate pivot off the rung ladder** (Wall 2 parked mid-flight; J43a–f and
+the J44 design stand and will be consumed later). The observation that priced it:
+the Homebrew census's blocked mass clusters into ~4 *patterns* (iterator
+block-sends, `defs`-with-typed-body, `module` wrappers, kwargs call sites), and a
+machine rung pays per-head × per-invariant-clause while a **semantic lemma
+quantified over a pattern's subterms** — a *schema* — pays once per pattern. The
+J31 route already admits out-of-fragment expressions by claim; what it lacked was
+(a) claims covering **multi-step** evaluations (the one-step `EvalOkAt` is why
+"claims are leaves, not containers") and (b) one lemma discharging **many sites**
+(claims are exact-match expressions). J45 builds the vocabulary for (a) and the
+first working instance of (b).
+
+### Built (`Proof/Judgment/Seg.lean`, `Proof/Judgment/Schema.lean`, both axiom-clean)
+
+1. **`RunSafe ans m`** — the semantic ground truth at an arbitrary mid-machine
+   state: no reachable result type-stuck, terminating value in `ans`. It is
+   *definitionally* `SemJudge`'s body (`semJudge_runSafe_iff` is `Iff.rfl`):
+   the segment layer generalizes `SemJudge` from conformant empty-kont states to
+   any state. Consecution is free (`RunSafe.step` — reachability from a successor
+   was reachability), and **the collapse** `invJ_runSafe` re-reads the composed
+   soundness theorems as "`InvJ` anywhere implies `RunSafe` there".
+2. **The S-grade**: `InvS := InvJ ∨ RunSafe` (the right arm absorbing),
+   `StepOkS` = `StepOkJ` with `.next` weakened to `InvS` **and
+   `.stuck`/`.unsupported` tolerated**. The grade choice is recorded: `StepOkJ`'s
+   refusal of those arms is a progress promise the semantic layer never makes —
+   `SemJudge`/`typeStuck` tolerate out-of-model halts — and a claim discharged by
+   executing the semantics over arbitrary conformant heaps can promise no more.
+   `stepOkJ_toS` and `stepOkS_of_runSafe` are the two case-closers J46 needs.
+3. **`SegOkAt`** — `EvalOkAt` verbatim with the conclusion weakened to `StepOkS`:
+   the step out of a claim may land mid-segment. `evalOkAt_segOkAt` embeds every
+   existing claim (`SemAxiomsOkS`, `semAxiomsOk_toS`), so one-step claims are
+   degenerate segment claims and nothing re-proves.
+4. **The schema pilot** (`Schema.lean`): `semAxiomsOk_lambdas` — *any list* of
+   `lambda { |ps| b }` claims discharged by one lemma, `b` bound by a bare `∀`
+   with **no premise** (`reifyBlock` captures without evaluating; `ClosuresOk`
+   reads captured-frame facts only). Proof = J31's eleven lines, generalized.
+   End-to-end demo `egSchema_certified`: a program with **two different** claimed
+   lambdas — one body (`1.nope`) would `NoMethodError` if ever run — certified
+   from a data certificate (`validateJ … 32`, one kernel `decide`; note the
+   checker fuel must also cover `exprEqB`'s walk of the claimed expression, which
+   is why 8 no longer suffices), both obligations by the single schema instance.
+
+### Decisions of record
+
+* **Schemas are Lean lemmas, never certificate data.** A schema's side conditions
+  are load-bearing for soundness (a wrong one is a hole, not a dead certificate),
+  so they live beside `semAxiomsOk_lam`, and the *checker is unchanged* — the
+  certificate still carries exact-match instances in `semAssumes`; the schema is
+  a lemma factory for discharging their obligations. Zero trusted-surface growth
+  this rung.
+* **Schema statements must be sampled, not named** (the J8 lesson transposed):
+  premises in machine-sampled quantities — values/ObjIds at segment entry, the
+  environment as an explicit loop invariant (`SubEnv`-stable bodies), receivers
+  restricted to `fragHead`-true pure reads in v1 — never in source names whose
+  meaning can step out from under the lemma.
+* **The lambda schema's fine print is the honest contract**: it certifies the
+  proc *value*, nothing about calling it (`call` stays fragment-excluded, J19).
+  The `1.nope` demo is deliberate — the schema is exactly as strong as the
+  machine's one step.
+
+### J46 (priced, not built) — consuming `SegOkAt` from derivations
+
+Threading the S-grade through preservation: `step_okS` with hypothesis
+`SemAxiomsOkS A` and conclusion `StepOkS`, mechanically `stepOkJ_toS ∘` at every
+existing case close, with the semantic-claim case applying the segment
+obligation. Two honest bills before it:
+
+1. **The circularity hazard.** A multi-step obligation discharged as
+   `RunSafe m'` covers the run *past its own delivery*, and re-establishing that
+   tail from `InvJ`-at-delivery needs the S-grade soundness of the **full** axiom
+   set — each claim's obligation would assume all obligations. Resolution
+   direction: the inductive vehicle for J46 is **delivery-conditional**, a
+   segment-local invariant arm (`SegInv`: safe up to delivery below the entry
+   kont, and delivery re-establishes `InvJ` at the entry `KontOkJ`) rather than
+   the absorbing `RunSafe` arm; `RunSafe`/`InvS` stay as the collapse target the
+   composed theorem lands in. `SegOkAt` as built is the degenerate/absorbing
+   form, correct today for axiom sets whose *other* claims are one-step.
+2. **The stability vocabulary.** Multi-step schemas (the iterator, `defs`-body,
+   `module`-body patterns the census clusters into) take grow-relation-indexed
+   premises — the segment stays within `Pure ⊑ IvarOnly ⊑ PlainGrow ⊑ ClsGrow`
+   (× `SubDecls`, × per-object frames) — and discharge iteration-stability by the
+   **existing transport suites**, which get a second life with the quantifier
+   moved from steps to segments. `Step.heap_monotone` gives ObjId validity
+   globally for free; the v1 iterator schema (pure-read receiver, `SubEnv`-stable
+   `MFrag` body, `.any` delivery, invariant keyed on the dispatched ObjId) needs
+   only the bottom of the lattice.
+
+Slice impact (`judge-slice.md`): once J46 lands, the §3 rung table reprices —
+`send-block`/`defs`/`module`-wrapper mass becomes schema territory (one lemma per
+pattern) and the "claims are leaves" finding partially dissolves (containers with
+covered statements become claimable); `kwargs` stays a machine rung (value
+position, per-row facts).

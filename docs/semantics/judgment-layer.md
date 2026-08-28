@@ -62,6 +62,23 @@
 >   ground truth" is now a definition rather than a remark, and `SemJudge` is the
 >   layer's **extension point**: out-of-fragment constructs (the Rails direction)
 >   are admitted by proving their `SemJudge` statement directly.
+> * **The segment layer + schema judgments (J45, 2026-08-27)** — the extension
+>   point exercised, two ways (`Proof/Judgment/Seg.lean`, `Schema.lean`).
+>   **Segments**: `RunSafe` (the rest of the run is safe — definitionally
+>   `SemJudge`'s body at an arbitrary mid-machine state), the absorbing
+>   `InvS := InvJ ∨ RunSafe` with the collapse `invJ_runSafe`, the S-grade
+>   `StepOkS` (`.next` may land mid-segment; `.stuck`/`.unsupported` tolerated —
+>   the semantic grade), and `SegOkAt` = `EvalOkAt` with the one-step conclusion
+>   weakened, embedding every existing claim (`semAxiomsOk_toS`). **Schemas**:
+>   semantic lemmas quantified over a pattern's subterms — `semAxiomsOk_lambdas`
+>   discharges *any list* of `lambda { |ps| b }` claims with **no premise on the
+>   body** (captured, never evaluated), demoed end to end on a two-lambda program
+>   from a data certificate; schemas are Lean lemmas, never certificate data, so
+>   the checker is unchanged. Priced next (J46): threading `StepOkS` through
+>   `step_okJ` so `Judge.semantic` leaves carry *multi-step* segment obligations —
+>   the delivery-conditional invariant arm that dissolves "claims are leaves" —
+>   and the grow-relation-indexed stability premises that let the transport suites
+>   discharge iterator/`defs`/`module`-body schemas over the Homebrew slice.
 >
 > The machine-typed fragment (`MFrag`, the eval arm's syntactic gate playing the
 > role `infer`'s partiality played): T1 control core, block-less sends at any
