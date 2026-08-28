@@ -311,6 +311,218 @@ theorem freshModHeap_cp_oob {o : ObjId} (ho : h₀.objs.size + 2 ≤ o) :
 
 end Reads
 
+/-! ## Chains at the composite -/
+
+section Chains
+
+variable {h₀ : Heap} {d : ObjId} {name q : String}
+
+theorem freshModHeap_modanc_go_k (f : Nat) :
+    modAncestors.go (freshModHeap h₀ d name q) h₀.objs.size (f + 1)
+      = [h₀.objs.size] := by
+  rw [modAncestors.go.eq_def]
+  rw [freshModHeap_cp_k]
+  simp
+
+theorem freshModHeap_modanc_go_e (f : Nat) :
+    modAncestors.go (freshModHeap h₀ d name q) (h₀.objs.size + 1) (f + 1)
+      = [h₀.objs.size + 1] := by
+  rw [modAncestors.go.eq_def]
+  rw [freshModHeap_cp_e]
+  simp
+
+theorem freshModHeap_anc_go_k (f : Nat) :
+    ancestors.go (freshModHeap h₀ d name q) h₀.objs.size (f + 1)
+      = [h₀.objs.size] := by
+  rw [ancestors.go.eq_def]
+  rw [freshModHeap_cp_k]
+  simp
+
+theorem freshModHeap_anc_go_e (f : Nat) :
+    ancestors.go (freshModHeap h₀ d name q) (h₀.objs.size + 1) (f + 1)
+      = (h₀.objs.size + 1) ::
+        ancestors.go (freshModHeap h₀ d name q) Boot.classId f := by
+  rw [ancestors.go.eq_def]
+  rw [freshModHeap_cp_e]
+  simp
+
+theorem modanc_go_oob {h : Heap} {o : ObjId} (ho : ¬ o < h.objs.size) (f : Nat) :
+    modAncestors.go h o (f + 1) = [o] := by
+  rw [modAncestors.go.eq_def]
+  rw [classPayload?_oob h o ho]
+
+theorem anc_go_oob {h : Heap} {o : ObjId} (ho : ¬ o < h.objs.size) (f : Nat) :
+    ancestors.go h o (f + 1) = [o] := by
+  rw [ancestors.go.eq_def]
+  rw [classPayload?_oob h o ho]
+
+theorem not_lt_add_two {a s : Nat} (h1 : ¬ a < s) (h2 : a ≠ s) (h3 : a ≠ s + 1) :
+    ¬ a < s + 2 := by
+  intro h4
+  rcases Nat.eq_or_lt_of_le (Nat.le_of_not_lt h1) with h | h
+  · exact h2 h.symm
+  · rcases Nat.eq_or_lt_of_le (Nat.succ_le_of_lt h) with h7 | h7
+    · exact h3 h7.symm
+    · exact Nat.not_lt.mpr (Nat.succ_le_of_lt h7) (by simpa using h4)
+
+theorem chainsIn_hmid (hch : ChainsIn h₀) : ChainsIn (hmidOf h₀ d name) :=
+  chainsIn_constSetIn hch
+
+theorem saturated_hmid (hsat : Saturated h₀) : Saturated (hmidOf h₀ d name) :=
+  saturated_constSetIn hsat
+
+/-- `Saturated` at the composite: old walks are `hmid`'s (fuel-lifted), fresh
+    walks are literals. -/
+theorem saturated_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) :
+    Saturated (freshModHeap h₀ d name q) := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hszH : (freshModHeap h₀ d name q).objs.size = h₀.objs.size + 2 :=
+    freshModHeap_size
+  have hszm : (hmidOf h₀ d name).objs.size = h₀.objs.size :=
+    hmid_size h₀ d name
+  have hb1 : (hmidOf h₀ d name).objs.size + 1 ≤ h₀.objs.size + 2 + 1 := by
+    rw [hszm]; exact Nat.add_le_add_left (show (1:Nat) ≤ 3 by decide) _
+  have hb2 : (hmidOf h₀ d name).objs.size + 1 ≤ h₀.objs.size + 2 := by
+    rw [hszm]; exact Nat.add_le_add_left (show (1:Nat) ≤ 2 by decide) _
+  have hb3 : (hmidOf h₀ d name).objs.size + 1 ≤ h₀.objs.size + 1 := by
+    rw [hszm]; exact Nat.le_refl _
+  constructor
+  · intro mo
+    rw [hszH]
+    by_cases hmo : mo < h₀.objs.size
+    · have hold : ∀ f, modAncestors.go (freshModHeap h₀ d name q) mo f
+          = modAncestors.go (hmidOf h₀ d name) mo f :=
+        fun f => ClsGrow.modAncestors_go_old hg hchm f mo (hszm ▸ hmo)
+      have hL := (hold _).trans (modAncestors_go_ge hsm.1 hb1 mo)
+      have hR := (hold _).trans (modAncestors_go_ge hsm.1 hb2 mo)
+      exact hL.trans hR.symm
+    · by_cases hk : mo = h₀.objs.size
+      · subst hk
+        exact (freshModHeap_modanc_go_k (h₀.objs.size + 2)).trans
+          (freshModHeap_modanc_go_k (h₀.objs.size + 1)).symm
+      · by_cases he : mo = h₀.objs.size + 1
+        · subst he
+          exact (freshModHeap_modanc_go_e (h₀.objs.size + 2)).trans
+            (freshModHeap_modanc_go_e (h₀.objs.size + 1)).symm
+        · have hoob : ¬ mo < (freshModHeap h₀ d name q).objs.size := by
+            rw [hszH]
+            exact not_lt_add_two hmo hk he
+          exact (modanc_go_oob hoob (h₀.objs.size + 2)).trans
+            (modanc_go_oob hoob (h₀.objs.size + 1)).symm
+  · intro k'
+    rw [hszH]
+    by_cases hmo : k' < h₀.objs.size
+    · have hold : ∀ f, ancestors.go (freshModHeap h₀ d name q) k' f
+          = ancestors.go (hmidOf h₀ d name) k' f :=
+        fun f => ClsGrow.ancestors_go_old hg hchm hsm f k' (hszm ▸ hmo)
+      have hL := (hold _).trans (ancestors_go_ge hsm.2 hb1 k')
+      have hR := (hold _).trans (ancestors_go_ge hsm.2 hb2 k')
+      exact hL.trans hR.symm
+    · by_cases hk : k' = h₀.objs.size
+      · subst hk
+        exact (freshModHeap_anc_go_k (h₀.objs.size + 2)).trans
+          (freshModHeap_anc_go_k (h₀.objs.size + 1)).symm
+      · by_cases he : k' = h₀.objs.size + 1
+        · subst he
+          have hcb : Boot.classId < h₀.objs.size := hch.boot.1
+          have hold : ∀ f, ancestors.go (freshModHeap h₀ d name q) Boot.classId f
+              = ancestors.go (hmidOf h₀ d name) Boot.classId f :=
+            fun f => ClsGrow.ancestors_go_old hg hchm hsm f Boot.classId
+              (hszm ▸ hcb)
+          have hT1 := (hold (h₀.objs.size + 2)).trans (ancestors_go_ge hsm.2 hb2 Boot.classId)
+          have hT2 := (hold (h₀.objs.size + 1)).trans (ancestors_go_ge hsm.2 hb3 Boot.classId)
+          rw [freshModHeap_anc_go_e (h₀.objs.size + 2),
+            freshModHeap_anc_go_e (h₀.objs.size + 1), hT1, hT2]
+        · have hoob : ¬ k' < (freshModHeap h₀ d name q).objs.size := by
+            rw [hszH]
+            exact not_lt_add_two hmo hk he
+          exact (anc_go_oob hoob (h₀.objs.size + 2)).trans
+            (anc_go_oob hoob (h₀.objs.size + 1)).symm
+
+/-- `ChainsIn` at the composite: old edges are `hmid`'s, fresh edges are boot
+    ids and the fresh eigenclass. -/
+theorem chainsIn_fresh (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size) :
+    ChainsIn (freshModHeap h₀ d name q) := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hszH : (freshModHeap h₀ d name q).objs.size = h₀.objs.size + 2 :=
+    freshModHeap_size
+  have hszm : (hmidOf h₀ d name).objs.size = h₀.objs.size := hmid_size h₀ d name
+  have hbound : ∀ x, x < h₀.objs.size → x < (freshModHeap h₀ d name q).objs.size := by
+    intro x hx; rw [hszH]; exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hx)
+  refine ⟨⟨hbound _ hch.boot.1, hbound _ hch.boot.2.1, hbound _ hch.boot.2.2.1,
+    hbound _ hch.boot.2.2.2.1, hbound _ hch.boot.2.2.2.2⟩,
+    fun o hlt => ?_, fun o hlt e' he' => ?_, fun o cp hlt hcp => ?_⟩
+  · by_cases ho : o < h₀.objs.size
+    · rw [freshModHeap_get_old ho, (get_constSetIn_fields h₀ d name _ o).2.1]
+      exact hbound _ (hch.klass o ho)
+    · by_cases hk : o = h₀.objs.size
+      · subst hk; rw [freshModHeap_get_k]; exact hbound _ hch.boot.2.1
+      · by_cases he2 : o = h₀.objs.size + 1
+        · subst he2; rw [freshModHeap_get_e]; exact hbound _ hch.boot.1
+        · exact absurd hlt (by rw [hszH]; exact not_lt_add_two ho hk he2)
+  · by_cases ho : o < h₀.objs.size
+    · rw [freshModHeap_get_old ho, (get_constSetIn_fields h₀ d name _ o).2.2.1] at he'
+      exact hbound _ (hch.eigen o ho e' he')
+    · by_cases hk : o = h₀.objs.size
+      · subst hk
+        rw [freshModHeap_get_k] at he'
+        cases he'
+        rw [hszH]
+        exact Nat.lt_succ_self _
+      · by_cases he2 : o = h₀.objs.size + 1
+        · subst he2
+          rw [freshModHeap_get_e] at he'
+          cases he'
+        · exact absurd hlt (by rw [hszH]; exact not_lt_add_two ho hk he2)
+  · by_cases ho : o < h₀.objs.size
+    · have hcpm : (hmidOf h₀ d name).classPayload? o = some cp := by
+        unfold Heap.classPayload? at hcp ⊢
+        rw [freshModHeap_get_old ho] at hcp
+        exact hcp
+      have hsh := shape_constSetIn h₀ d o name (Value.ref h₀.objs.size)
+      rw [show constSetIn h₀ d name (Value.ref h₀.objs.size) = hmidOf h₀ d name
+        from rfl, hcpm] at hsh
+      cases hcp0 : h₀.classPayload? o with
+      | none => rw [hcp0] at hsh; simp at hsh
+      | some cp0 =>
+        rw [hcp0] at hsh
+        simp only [Option.map_some, Option.some.injEq] at hsh
+        have hpre : cp.prepends = cp0.prepends := congrArg Prod.fst hsh
+        have hinc : cp.includes = cp0.includes := congrArg (Prod.fst ∘ Prod.snd) hsh
+        have hsup : cp.superclass = cp0.superclass :=
+          congrArg (Prod.snd ∘ Prod.snd) hsh
+        obtain ⟨hsup0, hinc0, hpre0⟩ := hch.chain o cp0 ho hcp0
+        exact ⟨fun s hs => hbound _ (hsup0 s (hsup ▸ hs)),
+          fun i hi => hbound _ (hinc0 i (hinc ▸ hi)),
+          fun p hp => hbound _ (hpre0 p (hpre ▸ hp))⟩
+    · by_cases hk : o = h₀.objs.size
+      · subst hk
+        rw [freshModHeap_cp_k] at hcp
+        cases hcp
+        refine ⟨fun s hs => ?_, fun i hi => ?_, fun p hp => ?_⟩
+        · exact absurd hs (by simp)
+        · exact absurd hi (by simp)
+        · exact absurd hp (by simp)
+      · by_cases he2 : o = h₀.objs.size + 1
+        · subst he2
+          rw [freshModHeap_cp_e] at hcp
+          cases hcp
+          refine ⟨fun s hs => ?_, fun i hi => ?_, fun p hp => ?_⟩
+          · simp only [Option.some.injEq] at hs
+            subst hs
+            exact hbound _ hch.boot.1
+          · exact absurd hi (by simp)
+          · exact absurd hp (by simp)
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two ho hk he2 hlt2))] at hcp
+          cases hcp
+
+end Chains
+
 end Judgment
 end Proof
 end RubyCore
