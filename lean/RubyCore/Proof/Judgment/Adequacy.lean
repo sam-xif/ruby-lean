@@ -1205,7 +1205,7 @@ theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
   unfold validateJ at h
   simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
-  obtain ⟨⟨⟨⟨⟨⟨hg, hgr⟩, hmod⟩, hkls⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨⟨_hframe, hg⟩, hgr⟩, hmod⟩, hkls⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
   have htbl : c.table p = rowFold (c.baseTable p) c.deltaRows := rfl
   refine judge_sound hax ?_ (mfragB_sound hmf) hfr (check_sound hchk)
   rw [htbl] at ha ⊢
@@ -1413,6 +1413,31 @@ def clashRow : RowClaim :=
 -- …while a fresh row rides along fine.
 #guard validateJ { deltaRows := [egEvenRow], deriv := egNarrowJCert.deriv }
   egNarrow 32 == true
+
+/-! ## SF-T4 — the frame check, carrying a real footprint
+
+`egEven`'s row, restated as a *slot* claim: `Integer` resolves `even?` at
+`Integer` itself. The certificate now says so locally — spine, owner slot, empty
+segment — and `validateJ` decides both halves (§5 step 4: the claim holds at the
+conformant heap; §5 steps 2–3: no install in the program lands on it).
+-/
+
+def egEvenFootprint : SlotClaimN :=
+  SlotClaimN.row "Integer" ["Integer"] "Integer" "even?"
+    { params := [], ret := .bool }
+
+#guard validateJ { egEvenJCert with footprint := egEvenFootprint } egEven 8
+
+/-! And it is a real check, not a decoration: a program that redefines the very
+    slot the footprint reads is rejected, where the name-global guard would have
+    had to be consulted about every class at once. -/
+#guard validateJ { egEvenJCert with footprint := egEvenFootprint }
+  (.seq [.class' "Integer" none (.def' "even?" [] .tru), egEven]) 32 == false
+
+/-! A footprint the boot heap does not bear out is rejected too (wrong owner). -/
+#guard validateJ { egEvenJCert with
+    footprint := SlotClaimN.row "Integer" ["Integer"] "Object" "even?"
+      { params := [], ret := .bool } } egEven 8 == false
 
 /-! ## Axiom hygiene -/
 

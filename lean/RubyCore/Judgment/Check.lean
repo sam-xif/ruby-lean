@@ -2,6 +2,7 @@ import RubyCore.Judgment.Frag
 import RubyCore.Cert.Validate
 import RubyCore.Heap
 import RubyCore.Regex.Parse
+import RubyCore.Types.SlotWalk
 
 /-!
 # `Deriv` and its local checker (J25) — judgment-layer.md §4(3), J2
@@ -639,6 +640,20 @@ structure JCert where
       classes table — checked at the boot heap by `validateJ` (`classNameOkB`),
       so class-declaring certificates stay unconditional too. -/
   deltaClasses : List (String × String) := []
+  /-- **SF-T4**: the certificate's **footprint** (`slot-frame.md` §5/§7) — the
+      composition of its `Row`s' slot claims, spelled in class names. Two checks
+      ride on it, both decidable and both `validateJ`'s (`frameOkB`):
+
+      1. the claim *holds* at the conformant start state (§5 step 4, per slot
+         instead of per name-global row), and
+      2. no install the program performs lands on it (§5 steps 2–3, SF8).
+
+      Default `{}` is the trivial claim, which every write frames — so a
+      certificate that makes no local stability claim is checked exactly as
+      before, and the name-global `declaresName` guard is still what carries it.
+      The frame is the *replacement* for that guard, opt-in per certificate
+      until the rows themselves are re-keyed per `(class, name)` (§7.1). -/
+  footprint : SlotClaimN := {}
   deriv : Deriv
 deriving Repr
 
@@ -657,10 +672,22 @@ def JCert.table (c : JCert) (p : Expr) : Decls :=
 def rowsGroundB (rows : List RowClaim) : Bool :=
   rows.all fun r => r.sig.params.all groundTy
 
-/-- **The J-validator**: the table guards, the fragment gate, and the checked
-    derivation. `fuel` bounds both the fragment scan and the derivation walk; any
-    value at least the program's size works, and the checker is total either way. -/
+/-- **SF-T4 — the frame check.** One kernel `Bool` (§7.2): resolve the footprint
+    at the boot classes, decide it at the conformant heap, and check it against
+    the program's install inventory. An unresolvable name, an unreadable install
+    site, or a genuine conflict all reject — see `InstallN.framedBy` for why the
+    three are one verdict here. -/
+def frameOkB (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
+  match c.footprint.resolve bootResolver with
+  | some fp => fp.holdsB Boot.initHeap && framedProgB fp bootResolver p fuel
+  | none => false
+
+/-- **The J-validator**: the frame check (SF-T4), the table guards, the fragment
+    gate, and the checked derivation. `fuel` bounds the fragment scan, the
+    derivation walk and the install walk; any value at least the program's size
+    works, and the checker is total either way. -/
 def validateJ (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
+  frameOkB c p fuel &&
   rowsGuarded (c.baseTable p) c.deltaRows &&
   rowsGroundB c.deltaRows &&
   c.deltaModules.all (fun pr => moduleNameOkB Boot.initHeap pr.1 pr.2) &&

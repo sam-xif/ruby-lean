@@ -164,16 +164,79 @@ def InstallN.resolve (f : String → Option ObjId) : InstallN → Option Install
   | .anyName cls => (f cls).map Install.anyName
   | .opaque_ _ => none
 
-/-- §5 step 3, over a program: **every enumerated install misses the footprint**.
+/-- Is the claim trivial? The unit of the PCM reads nothing, so *every* write
+    frames it — including a write the walk could not read. -/
+def SlotClaim.isTrivial (c : SlotClaim) : Bool :=
+  c.defined.isEmpty && c.empty.isEmpty && c.spines.isEmpty && c.noMM.isEmpty
 
-    `false` on any of: an unreadable site (`opaque_`), an unresolvable class
-    name, or a genuine conflict. The three are deliberately one verdict at this
-    boundary — the certificate either frames its claims or it does not — with the
-    distinction available to a caller that wants to report it. -/
-def framedProgB (c : SlotClaim) (f : String → Option ObjId) (p : Expr) (fuel : Nat) : Bool :=
-  (installsOf p fuel).all fun i =>
+/-- One site against one footprint. The two unreadable cases — an `opaque_` site
+    and a class name the resolver cannot place — collapse to the same verdict,
+    and it is the conservative one: an unknown write might be *any* write, so
+    only the trivial claim survives it. That is what keeps the default
+    (no footprint claimed) certificate unaffected by this check while making a
+    real claim pay for every site the walk cannot read. -/
+def InstallN.framedBy (c : SlotClaim) (f : String → Option ObjId) : InstallN → Bool
+  | .opaque_ _ => SlotClaim.isTrivial c
+  | i =>
     match i.resolve f with
     | some inst => !inst.conflicts c
-    | none => false
+    | none => SlotClaim.isTrivial c
+
+/-- §5 step 3, over a program: **every enumerated install misses the footprint**. -/
+def framedProgB (c : SlotClaim) (f : String → Option ObjId) (p : Expr) (fuel : Nat) : Bool :=
+  (installsOf p fuel).all (InstallN.framedBy c f)
+
+/-! ## The wire shape: claims are written in names
+
+A certificate is a static text and names classes; a slot is a heap cell and is
+an id. `SlotClaimN` is the name-keyed surface, `resolve` the bridge, and the
+bridge is total-or-nothing: a footprint mentioning a class the resolver cannot
+place is a rejected certificate, never a silently shrunk one.
+-/
+
+/-- SF5's footprint, keyed by class name — the JSON-facing shape. -/
+structure SlotClaimN where
+  defined : List (String × String × MethodDecl) := []
+  empty : List (String × String) := []
+  spines : List (String × List String) := []
+  noMM : List String := []
+deriving Repr, Inhabited, DecidableEq
+
+namespace SlotClaimN
+
+private def mapM' {α β : Type} (f : α → Option β) : List α → Option (List β)
+  | [] => some []
+  | x :: xs => match f x, mapM' f xs with
+    | some y, some ys => some (y :: ys)
+    | _, _ => none
+
+/-- Resolve every name, or fail. -/
+def resolve (c : SlotClaimN) (f : String → Option ObjId) : Option SlotClaim := do
+  let d ← mapM' (fun x => (f x.1).map (fun k => (k, x.2.1, x.2.2))) c.defined
+  let e ← mapM' (fun x => (f x.1).map (fun k => (k, x.2))) c.empty
+  let s ← mapM' (fun x => do
+    let k ← f x.1
+    let seg ← mapM' f x.2
+    pure (k, seg)) c.spines
+  let n ← mapM' f c.noMM
+  pure { defined := d, empty := e, spines := s, noMM := n }
+
+/-- The name-keyed `Row` (SF7), so a certificate can spell one directly. -/
+def row (C : String) (seg : List String) (owner : String) (m : String)
+    (σ : MethodDecl) : SlotClaimN :=
+  let before := seg.takeWhile (· != owner)
+  { defined := [(owner, m, σ)]
+    empty := before.map (fun k => (k, m))
+    spines := [(C, seg)]
+    noMM := before }
+
+end SlotClaimN
+
+/-- The boot classes, as a resolver. Every class the boot heap registers; a
+    program-created class is *not* here, so a footprint naming one is rejected
+    until the claim layer is taken at the post-prefix conformant state (SF9's
+    "re-measure per target"). -/
+def bootResolver (n : String) : Option ObjId :=
+  (Boot.classTable.find? (fun r => r.2.1 == n)).map (·.1)
 
 end RubyCore.Types
