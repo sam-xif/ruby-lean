@@ -1427,3 +1427,41 @@ freeze_strip | require_strip | const_inline → export-json → `certify/jcert.r
 * Prelude-heap J-certificates (`validateJ_certifies` is at the bare
   `Machine.init`; the static layer's `check_sound_withPrelude` shape is the
   template).
+
+## J53–J55 (2026-08-28, later): the fresh-class stack — six whole-file accepts
+
+* **J53 `classM`** (fresh user class): `Decls.classes`/`ClassNameOk` (the
+  `ModuleNameOk` sibling at `isModule = false`, no chain half — a class sits on
+  its own chain before `Object`, which is also why `casgnM` stays barred in
+  class bodies), `declClsFresh` widened with the classes clause, the
+  `inFreshClass` `FrameCtx` channel + 11th `StackCtx` clause, boot-realized
+  `Object`/`BasicObject` eigenclasses (+ `LitClsOk`'s carrying clause — the
+  fresh-class composite is then two allocations, `ModFresh`'s shape), the
+  `ClsFresh.lean` composite theory (transcribed+adapted from `ModFresh`;
+  fresh-class chains run `k :: ancestors Object`, `NoHook` at the fresh class
+  walks `Object`'s eigen chain via `lookup_go_none_inv` on clause 2 at
+  `Object`), `hclassM` preservation (both branches), `deltaClasses` +
+  `classNameOkB` checked by `validateJ` at boot (unconditional).
+* **`defForget`** (install-and-forget instance `def`): required moving `MFrag`
+  into `Judge.lean` so `Judge.defPromote` carries its own
+  `fragHead body`/`MFrag body` premises; the gate (`mfragB`) is now *lenient at
+  `def'`* (`MFrag.defForget`), so forget-install bodies need not be in shape.
+  Sound because rows are name-keyed, the fresh class's name is off every keyed
+  channel, and its id is on no declared dispatch chain.
+* **`reqModOk` widened**: `defs` claims (the `defsShapeB` schema) discharge in
+  fresh-class bodies through the 11th clause — `semAxiomsOk_defsAll` branches
+  module/fresh-class for the realized eigenclass.
+* **`class_sugar_strip`**: `attr_*`/`alias`/`Struct.new(keyword_init:)` expand
+  to plain `def`s/classes (per-hunk behavior deltas argued in-file; `alias`'s
+  raise-on-miss is unwritable while `CtlOkJ` has no raise mode).
+
+**The funnel (recorded)**: every next construct — `class X < ProgramClass`
+(osv's `ApiError < Error`), constant read-back (`FORGES = {… => WRITTEN}`
+beyond `const_inline`'s literal scope), module-scoped constant reads, nested
+class-in-class registration — reduces to **NamesUnique**: global uniqueness of
+class/module names plus registration permanence (constants are never unset in
+the fragment, so "the constant is absent at the owner" implies "no object of
+the qualified name exists anywhere"). `ClassOk` already carries it for readable
+names, measured; the general clause is the J56 foundation. Cross-file files
+(`< CachedFeed`, `include Utils::…`) are composition territory (file
+concatenation in load order), which lands on the same rungs.
