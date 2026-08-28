@@ -73,15 +73,52 @@
   .verdict .k { color:var(--dim); } .verdict .ty { color:var(--warn); }
   .census { font-family:var(--mono); font-size:12px; color:var(--dim); }
   .err-inline { color:var(--bad); }
+  .ok { color:var(--good); } .no { color:var(--warn); }
+
+  /* ── tabs + the toggleable step view ─────────────────────────────────── */
+  .tabs { display:flex; gap:6px; margin-left:4px; }
+  .tab { background:transparent; color:var(--dim); border:1px solid transparent;
+    border-radius:6px; padding:5px 12px; font-weight:600; font-size:13px; cursor:pointer; }
+  .tab.on { background:var(--panel2); color:var(--fg); border-color:var(--edge); }
+  header .spacer { flex:1; }
+  header label.toggle { color:var(--dim); font-size:12px; display:flex; gap:6px;
+    align-items:center; cursor:pointer; }
+  /* One column when the step view is hidden — that is the screen real estate. */
+  .wrap.nosteps { grid-template-columns:1fr; }
+  .wrap.nosteps .right { display:none; }
+  .pane { display:none; }
+  .pane.on { display:block; }
+  select, input[type=text] { background:var(--panel); color:var(--fg);
+    border:1px solid var(--edge); border-radius:6px; padding:5px 8px;
+    font-family:var(--mono); font-size:12px; }
+  .stage { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    margin:10px 0 4px; }
+  .stage h2 { margin:0; }
+  .pill { font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:10px;
+    background:var(--panel2); color:var(--dim); border:1px solid var(--edge); }
+  .pill.ok { color:var(--good); border-color:#33502b; }
+  .pill.no { color:var(--bad); border-color:#4a2530; }
+  .pill.warn { color:var(--warn); }
+  textarea.cert { height:150px; font-size:12px; }
+  pre.out.tall { max-height:300px; overflow:auto; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Ruby → Lean stepper</h1>
-  <span class="hint">write Ruby · Run · step with ← → · or type it: infer / inferOpen</span>
+  <h1>Ruby → Lean</h1>
+  <div class="tabs">
+    <button class="tab on" id="tab-stepper-btn">Stepper</button>
+    <button class="tab" id="tab-slice-btn">Homebrew slice explorer</button>
+  </div>
+  <span class="hint" id="tabhint">write Ruby · Run · step with ← → · or type it: infer / inferOpen</span>
+  <span class="spacer"></span>
+  <label class="toggle" title="the semantic step view — hide it to give the editor the whole window">
+    <input type="checkbox" id="showsteps" checked> semantic steps
+  </label>
 </header>
-<div class="wrap">
+<div class="wrap" id="wrap">
   <div class="left">
+   <div class="pane on" id="pane-stepper">
     <textarea id="src" spellcheck="false"></textarea>
     <div class="row">
       <button id="run">Step in Lean ▶</button>
@@ -108,6 +145,66 @@
     <pre class="out" id="out"></pre>
     <h2>CRuby stdout (real Ruby)</h2>
     <pre class="out" id="rubyout"><span class="empty">— press “Run in CRuby”</span></pre>
+   </div>
+
+   <!-- ── Tab 2: the Homebrew slice explorer ───────────────────────────────
+        One editable buffer and the pipeline that the ratchets already run over
+        these files, one stage at a time:
+
+          load / link ▸ strip ▸ desugar ▸ { Lean model | CRuby } ▸ derive ▸ validate
+
+        Nothing here is a second implementation. Each button is the tool named
+        beside it (`difftest/ruby/*_strip.rb`, `export-json`, `rubycore`,
+        `certify/jcert.rb`, `rubycore --certify-j`), run on whatever the buffer
+        holds — so an edit you make in the box is what every stage downstream
+        sees, which is the point of having an editor here at all.
+
+        `derive` and `validate` are two buttons rather than `certify-file.sh`'s
+        one pipe on purpose: the certificate is the artifact between them, it is
+        editable, and a `false` from the kernel is then a fact about a JSON you
+        can read. -->
+   <div class="pane" id="pane-slice">
+    <div class="row">
+      <select id="slicefile" title="homebrew/PLAN.md §2's eight files, from the vendored brew checkout"></select>
+      <button class="ghost" id="sliceload">Load file</button>
+      <button class="ghost" id="slicelink" title="linker over the three entries + boot stubs + driver.rb (homebrew/slice-driver/build.py) — the whole slice as one program">Link whole slice</button>
+      <button class="ghost" id="slicestrip" title="certify-file.sh's chain: sig · visibility · freeze · require · const_inline · class_sugar">Strip ▸</button>
+      <span id="slicemsg" class="detail"></span>
+    </div>
+    <div id="sliceerr"></div>
+    <textarea id="slicesrc" spellcheck="false" style="height:320px"></textarea>
+
+    <div class="stage">
+      <h2>Run it</h2>
+      <button class="ghost" id="slicedesugar" title="harness/desugar-dt/bin/export-json">Desugar</button>
+      <button class="ghost" id="slicemodel" title="rubycore — the observation record the difftest compares, not the stepper's rendering">Lean model ▶</button>
+      <button class="ghost" id="slicecruby" title="the oracle">CRuby ▶</button>
+      <button class="ghost" id="slicestep" title="trace this buffer in the stepper pane — use the window, the linked slice is 825,259 steps">Step it ▶</button>
+      <label class="detail">start at <input id="sliceat" size="16" placeholder="send .compare("></label>
+      <label class="detail">or step <input id="slicefrom" size="7" placeholder="0"></label>
+      <span id="slicerunmsg" class="detail"></span>
+    </div>
+    <div class="row"><span class="pill" id="pilldesugar">desugar —</span>
+      <span class="pill" id="pillmodel">model —</span>
+      <span class="pill" id="pillcruby">CRuby —</span>
+      <span class="pill" id="pilldiff">agree —</span></div>
+    <h2>Desugared RubyCore (s-expression)</h2>
+    <pre class="out sexpr" id="slicesexpr"><span class="empty">— press “Desugar”</span></pre>
+    <h2>Lean model — observation record</h2>
+    <pre class="out tall" id="slicemodelout"><span class="empty">— press “Lean model”</span></pre>
+    <h2>CRuby stdout</h2>
+    <pre class="out tall" id="slicecrubyout"><span class="empty">— press “CRuby”</span></pre>
+
+    <div class="stage">
+      <h2>Type it — derivation certificate</h2>
+      <button class="ghost" id="slicederive" title="certify/jcert.rb: the untrusted J emitter. A wrong certificate costs a body, never a false accept.">Derive (jcert)</button>
+      <button class="ghost" id="slicevalidate" title="rubycore --certify-j: the trusted kernel Bool (validateJ_certifies)">Validate ✓</button>
+      <span id="slicecertmsg" class="detail"></span>
+    </div>
+    <textarea id="slicecert" class="cert" spellcheck="false" placeholder="the JCert JSON appears here — it is editable, and Validate checks whatever is in this box"></textarea>
+    <h2>Validation — <span class="detail">rubycore --certify-j</span></h2>
+    <pre class="out tall" id="slicevalout"><span class="empty">— derive a certificate, then validate it</span></pre>
+   </div>
   </div>
   <div class="right">
     <div class="row stepbar">
@@ -184,17 +281,20 @@ async function countSteps() {
   finally { $('count').disabled = false; }
 }
 
-async function run() {
-  $('run').disabled = true; $('msg').textContent = 'running…';
+// The stepper's trace, factored so both tabs can drive it: the slice explorer
+// steps its own buffer through the same `/trace` and the same right-hand pane.
+// One trace at a time — whichever tab ran last owns the step view, and the
+// counter says which step of which program you are looking at.
+async function traceSource(source, at, from, btn, msgEl) {
+  btn.disabled = true; msgEl.textContent = 'running…';
   $('errbox').innerHTML = '';
   try {
     // A whole-program trace is only viable for a small program: the model runs
     // the Homebrew slice in 825,259 steps, and the cap is 4,000. `at`/`from`
     // pick the window; the server passes them to `rubycore --trace-at/--trace-from`.
-    const at = $('at').value.trim(), from = $('from').value.trim();
     const body = (at || from)
-      ? JSON.stringify({source: $('src').value, at: at || null, from: from ? Number(from) : null})
-      : $('src').value;
+      ? JSON.stringify({source, at: at || null, from: from ? Number(from) : null})
+      : source;
     const r = await fetch('/trace', {method:'POST', body});
     const d = await r.json();
     $('sexpr').innerHTML = d.ast ? fmtSexpr(d.ast)
@@ -202,20 +302,25 @@ async function run() {
     if (d.error) {
       trace = null;
       $('errbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-      $('msg').textContent = '';
+      msgEl.textContent = `[${d.error}] ${d.message||''}`;
       render();
       return;
     }
     trace = d; i = 0;
     $('slider').max = Math.max(0, d.steps.length - 1);
     const base = d.first_step || 0;
-    $('msg').textContent = d.steps.length
+    msgEl.textContent = d.steps.length
       ? `${d.steps.length} steps` + (base ? ` from step ${base.toLocaleString()}` : '')
       : `no steps in this window — ${d.status}: ${d.detail || ''}`;
     render();
   } catch(e) {
     $('errbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
-  } finally { $('run').disabled = false; }
+  } finally { btn.disabled = false; }
+}
+
+function run() {
+  return traceSource($('src').value, $('at').value.trim(), $('from').value.trim(),
+                     $('run'), $('msg'));
 }
 
 function render() {
@@ -423,6 +528,195 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') { go(i-1); e.preventDefault(); }
   if (e.key === 'ArrowRight') { go(i+1); e.preventDefault(); }
 });
+
+// ── Tabs and the toggleable step view ────────────────────────────────────
+// The step view is the same pane for both tabs; hiding it is a layout change
+// only (the trace is kept), which is what makes it safe to leave off.
+const HINTS = {
+  stepper: 'write Ruby · Run · step with ← → · or type it: infer / inferOpen',
+  slice:   'pick a slice file or link the whole slice · strip ▸ desugar ▸ run ▸ derive ▸ validate',
+};
+function showTab(name) {
+  for (const n of ['stepper', 'slice']) {
+    $('pane-' + n).classList.toggle('on', n === name);
+    $('tab-' + n + '-btn').classList.toggle('on', n === name);
+  }
+  $('tabhint').textContent = HINTS[name];
+}
+$('tab-stepper-btn').onclick = () => showTab('stepper');
+$('tab-slice-btn').onclick = () => showTab('slice');
+$('showsteps').onchange = e => $('wrap').classList.toggle('nosteps', !e.target.checked);
+
+// ── The Homebrew slice explorer ──────────────────────────────────────────
+// Every call here is one existing tool over the buffer's current text. The
+// buffer is the single source of truth: load or link fills it, strip rewrites
+// it, and every downstream stage reads it — so an edit is a first-class input
+// and not a thing the pipeline can silently ignore.
+const post = (path, body) => fetch(path, {method:'POST', body: JSON.stringify(body)})
+  .then(r => r.json());
+const srcText = () => $('slicesrc').value;
+function sliceErr(d) {
+  $('sliceerr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
+}
+function pill(id, text, cls) {
+  $(id).textContent = text;
+  $(id).className = 'pill' + (cls ? ' ' + cls : '');
+}
+async function withBtn(id, msgId, label, fn) {
+  $(id).disabled = true; $(msgId).textContent = label;
+  $('sliceerr').innerHTML = '';
+  try { await fn(); } catch(e) { $('sliceerr').innerHTML = `<div class="err">${esc(String(e))}</div>`; }
+  finally { $(id).disabled = false; }
+}
+
+async function loadFiles() {
+  const d = await (await fetch('/slice/files')).json();
+  $('slicefile').innerHTML =
+    d.files.map(f => `<option value="${esc(f.file)}"${f.exists?'':' disabled'}>` +
+      `${esc(f.file)} — ${f.lines} lines${f.exists?'':' (missing)'}</option>`).join('');
+  $('slicemsg').textContent = d.root;
+}
+
+const resetStages = () => {
+  for (const [id, l] of [['pilldesugar','desugar —'],['pillmodel','model —'],
+                         ['pillcruby','CRuby —'],['pilldiff','agree —']]) pill(id, l);
+  $('slicesexpr').innerHTML = '<span class="empty">— press “Desugar”</span>';
+  $('slicemodelout').innerHTML = '<span class="empty">— press “Lean model”</span>';
+  $('slicecrubyout').innerHTML = '<span class="empty">— press “CRuby”</span>';
+  lastModelOut = null; lastCrubyOut = null;
+  $('slicecert').value = ''; $('slicecertmsg').textContent = '';
+  $('slicevalout').innerHTML = '<span class="empty">— derive a certificate, then validate it</span>';
+};
+
+$('sliceload').onclick = () => withBtn('sliceload','slicemsg','loading…', async () => {
+  const d = await post('/slice/source', {file: $('slicefile').value});
+  if (d.error) return sliceErr(d);
+  $('slicesrc').value = d.source; resetStages();
+  $('slicemsg').textContent = `${d.file} — ${d.source.split('\n').length} lines (as vendored, unstripped)`;
+});
+
+// The linked program is the slice as the model actually eats it: boot stubs the
+// brew boot path would have supplied, the eight files with their `require`s
+// resolved by `linker`, and `driver.rb`'s main.
+$('slicelink').onclick = () => withBtn('slicelink','slicemsg','linking…', async () => {
+  const d = await post('/slice/link', {});
+  if (d.error) return sliceErr(d);
+  $('slicesrc').value = d.source; resetStages();
+  $('slicemsg').textContent =
+    `linked slice program — ${d.source.split('\n').length} lines` + (d.report ? ` · ${d.report}` : '');
+});
+
+$('slicestrip').onclick = () => withBtn('slicestrip','slicemsg','stripping…', async () => {
+  const d = await post('/slice/strip', {source: srcText()});
+  if (d.error) { sliceErr(d); $('slicemsg').textContent = `stopped after ${(d.applied||[]).join(' · ') || 'nothing'}`; return; }
+  $('slicesrc').value = d.source;
+  $('slicemsg').textContent = `stripped: ${d.applied.join(' · ')} — ${d.source.split('\n').length} lines`;
+});
+
+$('slicedesugar').onclick = () => withBtn('slicedesugar','slicerunmsg','desugaring…', async () => {
+  const d = await post('/slice/desugar', {source: srcText()});
+  if (d.error) { sliceErr(d); pill('pilldesugar', `desugar ${d.error}`, 'no'); return; }
+  $('slicesexpr').innerHTML = fmtSexpr(d.ast);
+  pill('pilldesugar', `desugar ok · ${d.bytes.toLocaleString()} B of RubyCore`, 'ok');
+  $('slicerunmsg').textContent = '';
+});
+
+// `rubycore` with no flags: the Ruby-faithful observation (`Obs.lean`), which is
+// what the difftest compares — deliberately not the stepper's lossy rendering.
+$('slicemodel').onclick = () => withBtn('slicemodel','slicerunmsg','running in the model…', async () => {
+  const d = await post('/slice/model', {source: srcText()});
+  if (d.error) {
+    sliceErr(d);
+    // A gate is not a disagreement, and it is not a pass either.
+    pill('pillmodel', `model ${d.error}`, d.error === 'gate' ? 'warn' : 'no');
+    return;
+  }
+  const L = [];
+  L.push(d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>');
+  L.push(`<span class="empty">result: ${esc(String(d.result_repr))}</span>`);
+  if (d.exception) L.push(`<span class="err-inline">uncaught: ${esc(String(d.exception))}</span>`);
+  if (d.timed_out) L.push('<span class="err-inline">timed out</span>');
+  $('slicemodelout').innerHTML = L.join('\n');
+  pill('pillmodel', d.exception ? 'model uncaught' : 'model ok', d.exception ? 'warn' : 'ok');
+  lastModelOut = d.stdout; sliceDiff();
+  $('slicerunmsg').textContent = '';
+});
+
+$('slicecruby').onclick = () => withBtn('slicecruby','slicerunmsg','running in CRuby…', async () => {
+  const d = await post('/slice/cruby', {source: srcText()});
+  if (d.error) { sliceErr(d); pill('pillcruby', `CRuby ${d.error}`, 'no'); return; }
+  let html = d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>';
+  if (d.stderr) html += `\n<span class="err-inline">${esc(d.stderr)}</span>`;
+  $('slicecrubyout').innerHTML = html + (d.returncode ? `\n<span class="empty">exit ${d.returncode}</span>` : '');
+  pill('pillcruby', d.returncode ? `CRuby exit ${d.returncode}` : 'CRuby ok', d.returncode ? 'warn' : 'ok');
+  lastCrubyOut = d.stdout; sliceDiff();
+  $('slicerunmsg').textContent = '';
+});
+
+// The comparison the whole exercise is for. Compares *stdout only*, which is
+// what `slice-driver/run.sh` diffs; the model's result and any exception are
+// printed beside it rather than folded in.
+let lastModelOut = null, lastCrubyOut = null;
+function sliceDiff() {
+  if (lastModelOut === null || lastCrubyOut === null) { pill('pilldiff', 'agree —'); return; }
+  const same = lastModelOut === lastCrubyOut;
+  pill('pilldiff', same ? 'agree — identical stdout' : 'DISAGREE on stdout', same ? 'ok' : 'no');
+}
+
+$('slicestep').onclick = () => {
+  if (!$('showsteps').checked) { $('showsteps').checked = true;
+    $('wrap').classList.remove('nosteps'); }
+  return traceSource(srcText(), $('sliceat').value.trim(), $('slicefrom').value.trim(),
+                     $('slicestep'), $('slicerunmsg'));
+};
+
+// Derive, then validate — two buttons, with the certificate visible and
+// editable in between. `jcert.rb` is untrusted by construction (a wrong
+// certificate dies at the kernel `Bool`), so its failures name the blocking
+// head rather than deciding anything.
+$('slicederive').onclick = () => withBtn('slicederive','slicecertmsg','deriving…', async () => {
+  const d = await post('/slice/derive', {source: srcText()});
+  if (d.error) {
+    $('slicecertmsg').innerHTML =
+      `<span class="err-inline">[${d.error}] ${esc(d.blocked||'')}</span>`;
+    $('slicevalout').innerHTML = `<span class="err-inline">${esc(d.message||'')}</span>`;
+    return;
+  }
+  $('slicecert').value = d.cert;
+  $('slicecertmsg').textContent =
+    `certificate: ${d.cert.length.toLocaleString()} B (untrusted — nothing is claimed until it validates)`;
+});
+
+$('slicevalidate').onclick = () => withBtn('slicevalidate','slicecertmsg','validating…', async () => {
+  const cert = $('slicecert').value.trim();
+  if (!cert) { $('slicecertmsg').textContent = 'no certificate in the box'; return; }
+  const d = await post('/slice/validate', {source: srcText(), cert});
+  if (d.error) {
+    $('slicecertmsg').innerHTML = `<span class="err-inline">[${d.error}]</span>`;
+    $('slicevalout').innerHTML = `<span class="err-inline">${esc(d.message||'')}</span>`;
+    return;
+  }
+  // `--certify-j` answers `accept` / `reject`, and on a reject says `why`
+  // (`certificate-undecodable`, `certificate-unreadable`, a failed claim). An
+  // accept also reports whether it was **unconditional** — a certificate that
+  // carries rows is an accept *relative to* those assumptions, and the pane says
+  // so rather than printing one word.
+  const r = d.report;
+  const ok = r && r.status === 'accept';
+  $('slicecertmsg').innerHTML = r
+    ? (ok ? `<span class="ok">accept</span>` +
+            (r.unconditional === false ? ' <span class="empty">— conditional: carries assumptions</span>'
+                                       : ' <span class="empty">— unconditional</span>')
+          : `<span class="err-inline">reject — ${esc(r.why||'')}</span>`)
+    : `exit ${d.returncode}`;
+  $('slicevalout').innerHTML =
+    (d.stdout ? esc(r ? JSON.stringify(r, null, 2) : d.stdout) : '<span class="empty">(no output)</span>') +
+    (d.stderr ? `\n<span class="err-inline">${esc(d.stderr)}</span>` : '');
+});
+
+loadFiles();
+showTab('stepper');
+
 $('src').value = SAMPLE;
 run();
 </script>

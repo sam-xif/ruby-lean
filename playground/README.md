@@ -193,6 +193,56 @@ uses, while an open-params accept factors through a body-only judgement no `def`
 rule exists for (`infer`'s `def` arm still requires `params.isEmpty`). Merging
 them would report an accept rate the checker does not have.
 
+## Tab 2 — the Homebrew slice explorer
+
+The second tab drives the **slice** — `homebrew/PLAN.md` §2's eight files, from
+the vendored `homebrew/vendor/brew` checkout — through the pipeline the ratchets
+already run, one stage at a time and with the artifact between each pair of
+stages visible:
+
+```
+load a file  ─┐
+              ├─▶ [buffer] ─▶ strip ─▶ desugar ─┬─▶ rubycore          (Lean model)
+link whole   ─┘                                 ├─▶ ruby              (CRuby oracle)
+slice                                           ├─▶ rubycore --trace  (the step view)
+                                                └─▶ jcert.rb ─▶ rubycore --certify-j
+```
+
+Nothing here is a second implementation; every button is the tool named on it.
+
+| button | what runs |
+|---|---|
+| **Load file** | the file as vendored, unstripped |
+| **Link whole slice** | `homebrew/slice-driver/build.py` — boot stubs + `linker` over the three entries (all eight files, 8 spliced, 0 cycles) + `driver.rb`. 2,159 lines |
+| **Strip ▸** | `certify-file.sh`'s chain: `sig` · `visibility` · `freeze` · `require` · `const_inline` · `class_sugar` |
+| **Desugar** | `harness/desugar-dt/bin/export-json`, printed as the s-expression |
+| **Lean model ▶** | `rubycore` with no flags — the `Obs.lean` observation record (stdout, `result_repr`, uncaught), *not* the stepper's lossy rendering |
+| **CRuby ▶** | the oracle. The **agree** pill compares stdout, which is what `slice-driver/run.sh` diffs |
+| **Step it ▶** | the same `/trace` as tab 1, over this buffer, into the same step pane |
+| **Derive (jcert)** | `certify/jcert.rb`, the untrusted emitter |
+| **Validate ✓** | `rubycore --certify-j`, the trusted kernel `Bool` (`validateJ_certifies`) |
+
+**The buffer is the input.** Loading or linking fills it, stripping rewrites it,
+and every stage downstream reads whatever it currently holds — so an edit you
+type is a first-class input rather than something the pipeline can ignore.
+
+**Derive and validate are two buttons, not `certify-file.sh`'s one pipe.** That
+script pipes the emitter into the kernel, so a failure is one word. Here the
+certificate is an editable artifact between them: you can read it, change it,
+and re-validate, and a `reject` is then a fact about *that JSON* — with the
+`why` (`certificate-undecodable`, `certificate-unreadable`, a failed claim)
+printed beside it. An accept says whether it was **unconditional**, because a
+certificate that carries rows is an accept *relative to* those assumptions.
+
+A `derive` failure names the blocking head (`jcert.rb` raises `JCert::Blocked`),
+which is a coverage fact about `MFrag` and not a verdict on the program. The
+linked whole-slice program blocks today on *implicit send outside a method
+body*; the individual stripped files certify.
+
+The **semantic steps** checkbox in the header hides the step pane and gives the
+editor the whole window. It is a layout change only — the trace is kept, and
+**Step it ▶** switches it back on.
+
 ## Notes
 
 - The `--trace N` step cap defaults to 4000 (server) / 3000 (binary) — a tight
