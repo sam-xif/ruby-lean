@@ -1,6 +1,6 @@
 # The slot frame — local heap stability as a first-order resource algebra
 
-**Design artifact (2026-08-28). Designed, not built.** Origin: a design conversation
+**Design artifact (2026-08-28). §§1–5 and SF-T1/SF-T2/SF-T4 now BUILT — see §10.** Origin: a design conversation
 against the machinery as it stands after J56, starting from the observation that the
 judgment layer's blockers (the four-row table, the mixin arithmetic, unchecked bodies,
 `HTy`'s undecidability at the certificate boundary) are symptoms of one structural
@@ -226,10 +226,10 @@ grows instead of staying whole-program forever.
 
 | rung | statement | anchor |
 |---|---|---|
-| **SF-T1** | `resolvesAt_defineMethod` generalized: hypothesis `¬(mname = name)` → *slot-disjointness* (`(cls, name)` not in the claim's `defined ∪ empty`, `cls` not on its spine) | `Proof/Static/Decls.lean:1298` — the existing lemma is the `name`-only special case |
-| **SF-T2** | the `defineMethod` case of `step_okJ` re-proved with SF-T1; `DeclsOkJ A F m.heap` becomes `DeclsOkJ` *per framed claim*. `InvJ` already existentially quantifies `F` and threads it (`Proof/Judgment/Konts.lean:530`) — this rung changes how one premise is discharged, not the invariant's shape | `step_okJ` |
-| **SF-T3** | install-sets on `Judge` (SF10) + adequacy: typed code frames every disjoint claim | new; subsumes `freshNames` |
-| **SF-T4** | wire format: footprint in `JCert`, conflict check in `validateJ`, `validateJ_certifies` restated with the frame hypothesis | `Judgment/Json.lean`, `Check.lean` |
+| **SF-T1** | `resolvesAt_defineMethod` generalized: hypothesis `¬(mname = name)` → *slot-disjointness* (`(cls, name)` not in the claim's `defined ∪ empty`, `cls` not on its spine) | **BUILT** — `Proof/Static/Frame.lean`, `ResolvesAt_defineMethod_frame` / `_slot` |
+| **SF-T2** | the `defineMethod` case re-proved with SF-T1; `DeclsOkJ` per framed claim | **BUILT for the claim** — `Holds_defineMethod` frames a whole footprint across a `defineMethod`. Not yet threaded into `step_okJ`'s `InvJ`, which still discharges its premise the name-global way |
+| **SF-T3** | install-sets on `Judge` (SF10) + adequacy: typed code frames every disjoint claim | **not built** — the one rung that changes `Judge` itself; §5's walk still covers the whole program rather than its untyped remainder |
+| **SF-T4** | wire format: footprint in `JCert`, conflict check in `validateJ`, `validateJ_certifies` restated with the frame hypothesis | **BUILT, minus the restatement** — `JCert.footprint : SlotClaimN`, `frameOkB` inside `validateJ`. `validateJ_certifies` is unchanged: the frame check only *strengthens* its hypothesis, so it stays true; using the footprint to weaken `declaresName` is SF-T3's job |
 
 SF-T1 is deliberately first and small: **it is the frame rule for one step**, and it is
 where the design meets the shadow clause (`crubyShadow` quantifies builtin-name
@@ -287,3 +287,43 @@ rewrite.
   discharge it.
 * **Behavioral block content** ("responds to `each` with a block yielding τ") — the
   recorded step-indexing flip condition (`HJudge/HTy.lean`), untouched here.
+
+---
+
+## §10 — What was built (2026-08-28, same day)
+
+| file | contents |
+|---|---|
+| `lean/RubyCore/Types/SlotClaim.lean` | SF1/SF2 (`slotOf`, `SlotDefined`/`SlotEmpty`/`NoMM`), SF3/SF4 (`Spine`), SF5/SF6 (`SlotClaim`, `compose`, `composeAll`), the semantic `Holds` + kernel `holdsB` + `holdsB_iff`, SF7 (`row`), SF8 (`Install`, `Install.conflicts`, `framedB`) |
+| `lean/RubyCore/Types/SlotWalk.lean` | §5 step 2 — `InstallN`, `installsGo`/`installsOf` (fuel-bounded, **not** `partial`, so SF-T3 can reason about it), `InstallN.framedBy`, `framedProgB`, the name-keyed wire shape `SlotClaimN` + `resolve`, `bootResolver` |
+| `lean/RubyCore/Types/SlotClaimEg.lean` | §1's two measured blockers cleared, SF8's table in both polarities, the walk on syntax — all `#guard` |
+| `lean/RubyCore/Proof/Static/Frame.lean` | SF-T1, SF-T2, `holds_compose` (composition *is* conjunction), `row_lookupIn` (SF7 entails the resolution). Axiom-clean |
+| `lean/RubyCore/Judgment/Check.lean` | SF-T4's half: `JCert.footprint`, `frameOkB`, the new `validateJ` conjunct |
+| `lean/RubyCore/Proof/Judgment/Adequacy.lean` | `egEven`'s row as a slot claim, validating; rejected on a redefining program and on a wrong-owner footprint |
+
+**Two design changes made while building, both recorded in-file:**
+
+1. **`compose` concatenates**; it does not deduplicate or join same-class spines.
+   Reads are duplicable (SF6), so a duplicate entry is a redundant reader, and
+   merging turned "the composite holds ⟹ each conjunct holds" — the only
+   direction a `Row` consumer needs — into an argument about joins. The
+   `defined`-agreement guard stays, and is what makes composition partial.
+2. **The unreadable cases collapse to one verdict.** An `opaque_` site and an
+   unresolvable class name are both "an unknown write, which might be any
+   write", so both are framed only by the *trivial* claim. This is what lets the
+   frame ride every existing certificate at zero cost (default footprint `{}`)
+   while making a real claim pay for every site the walk cannot read.
+
+**Known gaps, in the order they bite:**
+
+* **User classes are unresolvable.** `bootResolver` knows the boot classes only,
+  so a footprint naming a program-declared class is rejected. SF9 says claims
+  are taken at the conformant *start* state; realizing that means resolving
+  names against the post-prefix heap, not `Boot.classTable`.
+* **SF-T3.** Until install-sets land on `Judge`, the walk covers the whole
+  program forever instead of shrinking to its untyped remainder, and
+  `declaresName`'s name-globality (§7.1's first demolition target) cannot
+  actually be removed — the frame is additive, not yet a replacement.
+* **`defs` / `class << self` are `opaque_`.** The heap has no eigenclass, so the
+  walk cannot say which slot a singleton write is; it declines rather than
+  guess. Every `defs`-bearing program therefore needs a trivial footprint.

@@ -67,7 +67,7 @@ by the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own
 directories** (`lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
 `certify/` untrusted with E-numbers; import-only dependence on the existing trees).
 
-**Design (extends the above):** [The slot frame](slot-frame.md) — local heap
+**Design + BUILT through SF-T4 (extends the above):** [The slot frame](slot-frame.md) — local heap
 stability as a first-order resource algebra (**SF-numbers**, 2026-08-28): the method
 table as slot maps (`defined`/`empty`/`default`/`spine`) forming a PCM, a decidable
 frame/conflict check over the certificate's footprint replacing the name-global
@@ -75,7 +75,12 @@ frame/conflict check over the certificate's footprint replacing the name-global
 prefix outside the frame (`SemJudge`'s conformant start state). Priced against
 [`../../homebrew/slice-inventory.md`](../../homebrew/slice-inventory.md), the
 four-tier semantic-judgment inventory for typing the whole Homebrew slice with
-bodies checked.
+bodies checked. **Built the same day** (`slot-frame.md` §10): the algebra and its
+kernel `Bool` (`Types/SlotClaim.lean`), the install walk (`Types/SlotWalk.lean`),
+SF-T1/SF-T2 + `holds_compose` + `row_lookupIn` (`Proof/Static/Frame.lean`,
+axiom-clean), and the footprint riding `JCert` with `frameOkB` inside `validateJ`.
+Still open: SF-T3's install-sets on `Judge` — until they land the frame is
+*additive*, and `declaresName`'s name-globality cannot actually be removed.
 
 **Design (amends the above):** [The judgment layer](judgment-layer.md) — the 2026-08-26
 re-scoping of **C-1**: state the invariant over an **inductive judgment** (`Judge`/
