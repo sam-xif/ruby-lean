@@ -431,9 +431,9 @@ theorem check_sound_all : ∀ (n : Nat),
                 List.all_eq_true] at hfresh
               simp only [Option.some.injEq, Prod.mk.injEq] at h
               obtain ⟨rfl, rfl, rfl⟩ := h
-              refine .casgn hgate.1 hfresh.1.1 (fun cn => ?_)
-                hgate.2 (fun pr hpr => ?_) (ihc h1)
-              · cases hq : scopedConstTy? D₁ cn nm with
+              have hsctA : ∀ cn, scopedConstTy? D₁ cn nm = none := by
+                intro cn
+                cases hq : scopedConstTy? D₁ cn nm with
                 | none => rfl
                 | some τq =>
                   exfalso
@@ -447,8 +447,16 @@ theorem check_sound_all : ∀ (n : Nat),
                     simp only [beq_iff_eq] at hkey
                     simp only [bne_iff_ne, ne_eq] at this
                     exact this (by rw [hkey])
-              · have := hfresh.2 pr hpr
+              have hmodsA : ∀ pr ∈ D₁.modules, pr.2 ≠ nm := by
+                intro pr hpr
+                have := hfresh.2 pr hpr
                 simpa using this
+              rcases Bool.or_eq_true _ _ |>.mp hgate.1 with htop2 | hmb
+              · exact .casgn htop2 hfresh.1.1 hsctA hgate.2 hmodsA (ihc h1)
+              · simp only [Bool.and_eq_true, Option.isNone_iff_eq_none,
+                  Bool.not_eq_true'] at hmb
+                exact .casgnM hmb.1.1.1.1 hmb.1.1.1.2 hmb.1.1.2 hmb.1.2 hmb.2
+                  hfresh.1.1 hsctA hgate.2 hmodsA (ihc h1)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)

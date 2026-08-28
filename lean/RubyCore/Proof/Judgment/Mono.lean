@@ -97,7 +97,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -419,6 +419,12 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     intro D Γ e top ctx τ0 Γ'0 D'0 σ Γ'' hj0 hsj hse ih hmeth2 hfhx hmf hdf D2 hs
     obtain ⟨rfl, h2⟩ := ih hmeth2 hfhx hmf hdf hs
     exact ⟨rfl, .sub h2 hsj hse⟩
+  -- J49: `casgnM` sits in a module body, whose `meth` channel is closed.
+  case hcasgnM =>
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret hmeth0 hct hsct hrd hmods hrhs ihr
+    intro hmeth2 _ _ _ D2 _
+    rw [hmeth0] at hmeth2
+    exact Bool.noConfusion hmeth2
   -- Everything else is out of the gated fragment — refuted by the `MFrag` gate,
   -- or (for the definition heads, which are in `MFrag` but not `defFree`) by the
   -- `defFree` gate.

@@ -61,7 +61,7 @@ theorem judge_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top :
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -116,7 +116,7 @@ theorem judge_seq_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List Ex
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -171,7 +171,7 @@ theorem judge_args_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List E
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -226,7 +226,7 @@ theorem judge_elems_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List 
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -284,7 +284,7 @@ theorem judge_pairs_table_ret {A : SemAxioms} {D : Decls} {Γ : Env}
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone

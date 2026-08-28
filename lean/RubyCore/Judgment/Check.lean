@@ -221,7 +221,9 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         else none
       | none => none
     | .casgn rhs, .casgn nm e' =>
-      if top && !(readableClasses.contains nm) then
+      if (top || (ctx.inClassBody && ctx.inModuleBody && !ctx.inBlock &&
+            ctx.ret.isNone && ctx.meth.isNone)) &&
+          !(readableClasses.contains nm) then
         match check n A rhs D Γ e' top ctx with
         | some (τ, Γ₁, D₁) =>
           if (constTy? D₁ nm).isNone &&

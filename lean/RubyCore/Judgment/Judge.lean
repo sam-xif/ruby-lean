@@ -496,6 +496,20 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
+  -- **J49: the module-body constant write.** The write's target is the machine's
+  -- current definee — the module the J34/J44c `StackCtx` clauses pin — so the
+  -- position guard is `module'`'s and the freshness guards are `casgn`'s. The
+  -- ret/meth pins are what lets a `return`-in-flight walk skip the kont: both
+  -- channels are closed in a module body by construction.
+  | casgnM {D Γ nm rhs top ctx τ Γ₁ D₁} :
+      ctx.inClassBody = true → ctx.inModuleBody = true → ctx.inBlock = false →
+      ctx.ret = none → ctx.meth = none →
+      constTy? D₁ nm = none →
+      (∀ cn, scopedConstTy? D₁ cn nm = none) →
+      readableClasses.contains nm = false →
+      (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
+      Judge A D Γ rhs top ctx τ Γ₁ D₁ →
+      Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   | cpathAsgn {D Γ base nm rhs top ctx τb Γ₁ D₁ τ Γ₂ D₂} :
       JudgeOpt A D Γ base top ctx τb Γ₁ D₁ →
       Judge A D₁ Γ₁ rhs top ctx τ Γ₂ D₂ →

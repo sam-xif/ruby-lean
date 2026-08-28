@@ -283,6 +283,20 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       KontOkJ ans A D h [(c, Γk)] τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
       KontOkJ ans A D h [(c, Γ)] τ (.casgnK nm :: k)
+  /-- **J49: the module-body constant write, in flight.** `casgnK`'s guards at
+      the module-body position (J34/J44c supply the definee's identity at the
+      delivery); the ret/meth pins close the jump channels. -/
+  | casgnMK {D h c Γ Γs τ τw nm k Γk} :
+      c.inClassBody = true → c.inModuleBody = true → c.inBlock = false →
+      c.ret = none → c.meth = none →
+      constTy? D nm = none →
+      (∀ cn, scopedConstTy? D cn nm = none) →
+      readableClasses.contains nm = false →
+      (∀ pr ∈ D.modules, pr.2 ≠ nm) →
+      SubJ τ τw →
+      KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
+      (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
+      KontOkJ ans A D h ((c, Γ) :: Γs) τ (.casgnK nm :: k)
   /-- **`return e`'s value in flight** (J39, mirroring L200's `KontOk.retValK`):
       the delivery is `doReturn`, so the constructor carries what that needs —
       the open return channel below the in-flight type, plus the method channel
@@ -317,6 +331,9 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | retValK hσ hms hsub _ hsu ih => intro ha; exact .retValK hσ hms hsub (ih ha) hsu
   | casgnK hct hsct hrd hmods hsub _ hsu ih =>
       intro ha; exact .casgnK hct hsct hrd hmods hsub (ih ha) hsu
+  | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub _ hsu ih =>
+      intro ha
+      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub (ih ha) hsu
   | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
       intro ha; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih ha) hsu
   | hshValK hfp hmk hmvs hpr hw _ hsu ih =>
@@ -434,6 +451,8 @@ theorem KontOkJ.retOkJ {ans : Ty} {A : SemAxioms} :
           subst hq
           exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
       | casgnK hct hsct hrd hmods hsub hk' hsu => exact absurd rfl hne
+      | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub hk' hsu =>
+          exact absurd hσ (by rw [hret]; simp)
       | frameK hrt hil hk' => exact RetOkJ.here (hrt σ hσ) hk'
 
 /-- `firstFrameK_of_retOk`, J-flavored: along a chain that carries a `.retJ`, the

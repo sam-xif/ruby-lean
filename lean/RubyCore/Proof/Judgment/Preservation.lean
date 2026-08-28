@@ -269,7 +269,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
-    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcpathAsgn
+    ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
     ?hsend ?hsendIter0 ?hsendIterA ?hsendLambda ?hsendLambdaArrow ?hsendCall
     ?hsendBlockpass ?hvcall ?hkwargs ?hfwd ?hsplatAnon ?hsplatArray ?hsplatArrayOf
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
@@ -1298,6 +1298,19 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
         (KontOkJ.casgnK hct hsct hrd hmods hsubw hk)
+  -- ## The module-body constant write (J49): same push, the `casgnMK` kont.
+  case hcasgnM =>
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hrhs ihr
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    cases hmf with
+    | semantic hmem hff => simp [fragHead] at hff
+    | casgn hfr hmr =>
+      subst htop
+      simp only [evalExpr]
+      exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
+        (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
+        (KontOkJ.casgnMK hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -2081,6 +2094,62 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           GlobalsOk.congr hag hgl,
           ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
             KontOkJ.heap_congr hag hk'⟩⟩
+    -- **The module-body constant write's delivery** (J49): the definee is the
+    -- module the J34/J44c clauses pin; the write's transports are the `_off`
+    -- suite (or `_obj` when the enclosing definee happens to be `Object`).
+    | @casgnMK _ _ _ _ _ _ τw nm k _ hicb himb hnbk hret0 hmeth0 hct hsct hrd
+        hmods hsw hk' hsu =>
+      have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+      obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
+        cases hst : m.stack with
+        | nil => exact absurd hst hfsh1
+        | cons a r => exact ⟨a, r, rfl⟩
+      have hscc : StackCtx m.heap m.frames (fid₀ :: fids₀)
+          (ctx.toFrameCtx :: (List.map Prod.fst Γs).map JCtx.toFrameCtx) := by
+        rw [hst] at hsc; exact hsc
+      have hcur : curFrame m = m.frames.getD fid₀ default := by
+        simp [curFrame, curFid, hst]
+      have hdm2 : m.currentFrame = curFrame m := currentFrame_eq hfsh1
+      have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
+        rw [hcur]; exact hscc.1
+      obtain ⟨cpd, hcpd, hismd, hnmd, heigd, hoffd⟩ :=
+        hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+      have hag := typeAgree_constSetIn m.heap (m.currentFrame).defmod nm v
+      have hrows := constSetIn_rowsAndConstsJ
+        (j := (m.currentFrame).defmod) (v := v) htab hct hsct
+      have hclsW : ClassOk (constSetIn m.heap m.currentFrame.defmod nm v) := by
+        by_cases hdobj : m.currentFrame.defmod = Boot.objectId
+        · rw [hdobj]
+          exact classOk_constSetIn_obj (by simpa using hrd) hcls
+        · refine classOk_constSetIn_off hdobj ?_ (by simpa using hrd) hcls
+          rw [hdm2, hcur]
+          rw [hdm2, hcur] at hdobj
+          exact hoffd
+      simp only []
+      rw [nameIfAnonymous_noop (v := v) hcls]
+      refine ⟨noHook_constSetIn hh, saturated_constSetIn hsat,
+        chainsIn_constSetIn hchn,
+        litClsOk_constSetIn hstr,
+        hclsW,
+        hbot, (by simpa [framePopLabels, Interp.withCtl] using hks),
+        ClosuresOk.transport (hcloTail hK)
+          (by intro κ hm2 cl hcl
+              exact ⟨κ, by simpa [Interp.withCtl] using hm2, hcl⟩)
+          (by simp [Interp.withCtl])
+          (by intro p _; exact FrameShape.rfl' _)
+          (by intro o ho
+              show ((constSetIn m.heap m.currentFrame.defmod nm v).classPayload? o).isSome
+                = true
+              rw [classPayload?_isSome_constSetIn]; exact ho),
+        F, ctx, Γk, Γs,
+        ⟨hrows.1, hrows.2.1, hrows.2.2.1, hrows.2.2.2.1, hrows.2.2.2.2,
+          htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
+          fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
+            (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
+        FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
+        GlobalsOk.congr hag hgl,
+        ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
+          KontOkJ.heap_congr hag hk'⟩⟩
     -- **`return e`'s value has arrived** (J39, L200's delivery): `applyKont`'s
     -- `jumpValK .retK` arm is `doReturn`, so this case *creates* the jump.
     | @retValK _ _ _ _ _ _ τ'' σ k _ hσ hms hsub hk' hsu =>
