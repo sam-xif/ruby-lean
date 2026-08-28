@@ -816,10 +816,35 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       constTy? D name = none →
       (∀ cn, scopedConstTy? D cn name = none) →
       readableClasses.contains name = false →
+      -- J53: the registered constant must not be a declared *class* pair of the
+      -- same owner — its `ClassNameOk` hit facts say `isModule = false`.
+      (∀ pr ∈ D.classes, ¬(pr.1 = ctx.cls ∧ pr.2 = name)) →
       Judge A D [] body false
         ({ cls := qualifyMod ctx.cls name,
            inClassBody := true, inModuleBody := true } : JCtx) τ Γb' Db' →
       Judge A D Γ (.module' name body) top ctx τ Γ Db'
+  -- **J53: the machine-typed fresh `class`** — `module'`'s sibling at
+  -- `isModule = false`, superclass `Object` (the no-superclass form only). The
+  -- declared pair obliges `ClassNameOk` (checked at boot by `validateJ`); the
+  -- body runs at the qualified name with the fresh-class channel set — no
+  -- `inModuleBody` (a class is *on* its own chain before `Object`, so the
+  -- module-body writes stay barred there).
+  | classM {D Γ name body top ctx τ Γb' Db'} :
+      (ctx.cls, name) ∈ D.classes →
+      name ≠ "" → name ≠ "Object" →
+      declClsFresh D (qualifyMod ctx.cls name) name = true →
+      ctx.meth = none →
+      ctx.inBlock = false →
+      (top = true ∧ ctx.cls = "Object" ∨
+        ctx.inClassBody = true ∧ ctx.inModuleBody = true ∧ ctx.cls ≠ "Object") →
+      constTy? D name = none →
+      (∀ cn, scopedConstTy? D cn name = none) →
+      readableClasses.contains name = false →
+      (∀ pr ∈ D.modules, ¬(pr.1 = ctx.cls ∧ pr.2 = name)) →
+      Judge A D [] body false
+        ({ cls := qualifyMod ctx.cls name,
+           inClassBody := true, inFreshClass := true } : JCtx) τ Γb' Db' →
+      Judge A D Γ (.class' name none body) top ctx τ Γ Db'
   | scopedClass {D Γ base name body top ctx τb' Γ₁ D₁ τ Γb' Db'} :
       JudgeOpt A D Γ base top ctx τb' Γ₁ D₁ →
       Judge A D₁ [] body false ({ cls := name } : JCtx) τ Γb' Db' →

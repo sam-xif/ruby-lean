@@ -63,6 +63,7 @@ inductive Deriv where
   | defPromote (body : Deriv)
   | classTop (body : Deriv)
   | module' (body : Deriv)
+  | classM (body : Deriv)
   | sub (d : Deriv) (σ : Ty) (Γ'' : Env)
   /-- **J31/J32**: the semantic axiom leaf — `i` indexes the certificate's
       `semAssumes` list; checks iff the ambient expression is that claim's (an
@@ -415,10 +416,29 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
             (ctx.inClassBody && ctx.inModuleBody && ctx.cls != "Object")) &&
           (constTy? D name).isNone &&
           D.scopedConsts.all (fun e => e.1.2 != name) &&
-          !(readableClasses.contains name) then
+          !(readableClasses.contains name) &&
+          D.classes.all (fun pr => pr.1 != ctx.cls || pr.2 != name) then
         match check n A db D [] body false
             ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
                inClassBody := true, inModuleBody := true } : JCtx) with
+        | some (τ, _, Db) => some (τ, Γ, Db)
+        | none => none
+      else none
+    -- J53: the machine-typed fresh `class` — `module'`'s guards at the classes
+    -- table, the body at the fresh-class channel.
+    | .classM db, .class' name none body =>
+      if D.classes.contains (ctx.cls, name) && name != "" && name != "Object" &&
+          declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) name &&
+          ctx.meth.isNone && !ctx.inBlock &&
+          ((top && ctx.cls == "Object") ||
+            (ctx.inClassBody && ctx.inModuleBody && ctx.cls != "Object")) &&
+          (constTy? D name).isNone &&
+          D.scopedConsts.all (fun e => e.1.2 != name) &&
+          !(readableClasses.contains name) &&
+          D.modules.all (fun pr => pr.1 != ctx.cls || pr.2 != name) then
+        match check n A db D [] body false
+            ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
+               inClassBody := true, inFreshClass := true } : JCtx) with
         | some (τ, _, Db) => some (τ, Γ, Db)
         | none => none
       else none

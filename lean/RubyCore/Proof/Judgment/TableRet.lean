@@ -67,7 +67,7 @@ theorem judge_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top :
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
@@ -122,7 +122,7 @@ theorem judge_seq_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List Ex
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
@@ -177,7 +177,7 @@ theorem judge_args_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List E
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
@@ -232,7 +232,7 @@ theorem judge_elems_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List 
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop
@@ -290,7 +290,7 @@ theorem judge_pairs_table_ret {A : SemAxioms} {D : Decls} {Γ : Env}
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hret hmeth htop

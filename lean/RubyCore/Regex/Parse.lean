@@ -98,12 +98,70 @@ def escChar (c : Char) : Char :=
   else if c == '0' then Char.ofNat 0
   else c
 
+/-- A hex digit's value. -/
+def hexVal? (c : Char) : Option Nat :=
+  if c.isDigit then some (c.toNat - '0'.toNat)
+  else if 'a' ≤ c && c ≤ 'f' then some (c.toNat - 'a'.toNat + 10)
+  else if 'A' ≤ c && c ≤ 'F' then some (c.toNat - 'A'.toNat + 10)
+  else none
+
+/-- `\u{XXXX}` (J54): the braced unicode escape, positioned just past the `u`.
+    Returns the character and the state past the closing `}`; `none` if
+    malformed (the caller reports the unsupported-escape error as before). The
+    bare 4-digit `\uXXXX` form is also read. -/
+def readUnicode (fuel : Nat) (s : PState) : Option (Char × PState) :=
+  match peek s with
+  | some '{' => go fuel (adv s) 0 false
+  | _ =>
+    -- bare `\uXXXX`: exactly four hex digits
+    match peek s with
+    | some c1 =>
+      match hexVal? c1 with
+      | none => none
+      | some d1 =>
+        match peek (adv s) with
+        | none => none
+        | some c2 =>
+          match hexVal? c2 with
+          | none => none
+          | some d2 =>
+            match peek (adv (adv s)) with
+            | none => none
+            | some c3 =>
+              match hexVal? c3 with
+              | none => none
+              | some d3 =>
+                match peek (adv (adv (adv s))) with
+                | none => none
+                | some c4 =>
+                  match hexVal? c4 with
+                  | none => none
+                  | some d4 =>
+                    let v := ((d1 * 16 + d2) * 16 + d3) * 16 + d4
+                    if v.isValidChar then
+                      some (Char.ofNat v, adv (adv (adv (adv s))))
+                    else none
+    | none => none
+where
+  go : Nat → PState → Nat → Bool → Option (Char × PState)
+    | 0, _, _, _ => none
+    | f + 1, s, acc, seen =>
+      match peek s with
+      | some '}' =>
+        if seen then
+          if acc.isValidChar then some (Char.ofNat acc, adv s) else none
+        else none
+      | some c =>
+        match hexVal? c with
+        | some d => go f (adv s) (acc * 16 + d) true
+        | none => none
+      | none => none
+
 /-- Escapes we refuse rather than approximate. None occur in the slice. -/
 def unsupportedEsc? (c : Char) : Option String :=
   if c == 'b' || c == 'B' then some "\\b / \\B word boundary"
   else if c == 'p' || c == 'P' then some "\\p{…} unicode property"
   else if c == 'x' then some "\\x hex escape"
-  else if c == 'u' then some "\\u unicode escape"
   else if c == 'G' then some "\\G"
   else if c == 'k' then some "\\k<…> named backreference"
   else if c == 'c' || c == 'C' || c == 'M' then some "control/meta escape"

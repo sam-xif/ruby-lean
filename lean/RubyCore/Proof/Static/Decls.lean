@@ -1166,7 +1166,7 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       exact hd
   -- L195/L196/L205/L211/L228/J44: `SubDecls` is a septuple now, and `addRow` touches
   -- `rows` only — so all six other table halves are `rfl`.
-  refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with

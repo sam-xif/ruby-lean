@@ -195,6 +195,13 @@ structure Decls where
       judging context's `cls` — `"Object"` at toplevel, the enclosing module's
       qualified name inside a module body. -/
   modules : List (String × String) := []
+  /-- **The declared user classes** (J53), keyed like `modules`: `(owner, name)`
+      per machine-typed fresh `class name` (no explicit superclass) under a
+      definee named `owner`. Each entry obliges `ClassNameOk`: at every object
+      the owner name can denote, the constant is absent or a bona-fide *class*
+      named `qualifyMod owner name`, superclassing `Object`, eigenclass
+      realized. -/
+  classes : List (String × String) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
@@ -219,7 +226,8 @@ def declClsFresh (D : Decls) (q nm : String) : Bool :=
   -- table is empty, so a `q`-owned pair's obligation holds at it trivially
   -- (J50). Only the self-shadowing pair `(q, nm)` and machine-minted
   -- eigenclass owners stay barred.
-  D.modules.all (fun pr => (pr.1 != q || pr.2 != nm) && pr.1.data.head? != some '#')
+  D.modules.all (fun pr => (pr.1 != q || pr.2 != nm) && pr.1.data.head? != some '#') &&
+  D.classes.all (fun pr => (pr.1 != q || pr.2 != nm) && pr.1.data.head? != some '#')
 
 /-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
     which the read rule reports as a *missing declaration* rather than as a missing
@@ -681,7 +689,9 @@ def SubDecls (F F' : Decls) : Prop :=
   F.globals = F'.globals ∧
   -- J44: and the declared-modules table — the `module'` rule reads membership out
   -- of it, and the invariant clause it obliges is per-entry.
-  F.modules = F'.modules
+  F.modules = F'.modules ∧
+  -- J53: and the declared-classes table, `modules`' reason.
+  F.classes = F'.classes
 
 /-- **`blockSend?` is monotone in the table** (L255), which is the half `infer_mono` needs:
     it reads `declFor` and nothing else, and `SubDecls`' first component is exactly that
@@ -725,14 +735,15 @@ theorem SubDecls.blockSendA_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
              exact h)
 
 theorem SubDecls.refl (F : Decls) : SubDecls F F :=
-  ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
     SubDecls F F'' :=
   ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1,
     h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.1.trans h₂.2.2.2.1,
     h₁.2.2.2.2.1.trans h₂.2.2.2.2.1, h₁.2.2.2.2.2.1.trans h₂.2.2.2.2.2.1,
-    h₁.2.2.2.2.2.2.trans h₂.2.2.2.2.2.2⟩
+    h₁.2.2.2.2.2.2.1.trans h₂.2.2.2.2.2.2.1,
+    h₁.2.2.2.2.2.2.2.trans h₂.2.2.2.2.2.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
@@ -761,7 +772,11 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
 
 /-- And the declared-modules table's (J44). -/
 @[simp] theorem SubDecls.modules_eq {F F' : Decls} (hs : SubDecls F F') :
-    F'.modules = F.modules := hs.2.2.2.2.2.2.symm
+    F'.modules = F.modules := hs.2.2.2.2.2.2.1.symm
+
+/-- And the declared-classes table's (J53). -/
+@[simp] theorem SubDecls.classes_eq {F F' : Decls} (hs : SubDecls F F') :
+    F'.classes = F.classes := hs.2.2.2.2.2.2.2.symm
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}

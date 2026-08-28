@@ -262,6 +262,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .defPromote _, .def' _ _ _ => simp [fragHead] at hf
       | .classTop _, .class' _ none _ => simp [fragHead] at hf
       | .module' _, .module' _ _ => simp [fragHead] at hf
+      | .classM _, .class' _ none _ => simp [fragHead] at hf
 
 set_option maxHeartbeats 4000000 in
 /-- **Adequacy, all five checkers at once** — one fuel induction. -/
@@ -770,9 +771,10 @@ theorem check_sound_all : ∀ (n : Nat),
         · next hguards =>
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
             Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgf⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩ :=
-            hguards
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgf⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩,
+            hg6⟩, hg7⟩ := hguards
           split at h
           · next τ0 Γb Db hb0 =>
             simp only [Option.some.injEq, Prod.mk.injEq] at h
@@ -781,7 +783,61 @@ theorem check_sound_all : ∀ (n : Nat),
               (by simpa using hg1m) (by simpa using hg2) ?_
               (by simpa using hg4)
               (?_ : ∀ cn, scopedConstTy? D cn name = none)
-              (by simpa using hg6) (ihc hb0)
+              (by simpa using hg6)
+              (fun pr hpr => by
+                have := List.all_eq_true.mp hg7 pr hpr
+                simp only [Bool.or_eq_true, bne_iff_ne, ne_eq] at this
+                rintro ⟨h1, h2⟩
+                rcases this with h' | h'
+                · exact h' h1
+                · exact h' h2)
+              (ihc hb0)
+            · exact List.contains_iff_mem.mp hg1
+            · rcases Bool.or_eq_true _ _ |>.mp hg3 with hobj | hmb
+              · simp only [Bool.and_eq_true, beq_iff_eq] at hobj
+                exact Or.inl hobj
+              · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hmb
+                exact Or.inr ⟨hmb.1.1, hmb.1.2, hmb.2⟩
+            · intro cn
+              unfold scopedConstTy?
+              cases hfind : D.scopedConsts.find? (·.1 == (cn, name)) with
+              | none => rfl
+              | some e =>
+                have hmem := List.find?_some hfind
+                have hin := List.mem_of_find?_eq_some hfind
+                have := List.all_eq_true.mp hg5 e hin
+                simp only [beq_iff_eq] at hmem
+                simp only [bne_iff_ne, ne_eq] at this
+                exact absurd (by rw [hmem]) this
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      | .classM db, .class' name none body =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hguards =>
+          rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgf⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩,
+            hg6⟩, hg7⟩ := hguards
+          split at h
+          · next τ0 Γb Db hb0 =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            refine .classM ?_ (by simpa using hg1e) (by simpa using hg1o) hgf
+              (by simpa using hg1m) (by simpa using hg2) ?_
+              (by simpa using hg4)
+              (?_ : ∀ cn, scopedConstTy? D cn name = none)
+              (by simpa using hg6)
+              (fun pr hpr => by
+                have := List.all_eq_true.mp hg7 pr hpr
+                simp only [Bool.or_eq_true, bne_iff_ne, ne_eq] at this
+                rintro ⟨h1, h2⟩
+                rcases this with h' | h'
+                · exact h' h1
+                · exact h' h2)
+              (ihc hb0)
             · exact List.contains_iff_mem.mp hg1
             · rcases Bool.or_eq_true _ _ |>.mp hg3 with hobj | hmb
               · simp only [Bool.and_eq_true, beq_iff_eq] at hobj

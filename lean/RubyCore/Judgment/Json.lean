@@ -89,6 +89,7 @@ partial def derivToJson : Deriv → Json
   | .defPromote b => Json.mkObj [("k", "defPromote"), ("body", derivToJson b)]
   | .classTop b => Json.mkObj [("k", "classTop"), ("body", derivToJson b)]
   | .module' b => Json.mkObj [("k", "module"), ("body", derivToJson b)]
+  | .classM b => Json.mkObj [("k", "classM"), ("body", derivToJson b)]
   | .sub d σ Γ'' =>
     Json.mkObj [("k", "sub"), ("d", derivToJson d), ("ty", tyToJson σ),
       ("env", envToJson Γ'')]
@@ -188,6 +189,7 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "defPromote" => pure (.defPromote (← derivOfJson (← j.getObjVal? "body")))
   | "classTop" => pure (.classTop (← derivOfJson (← j.getObjVal? "body")))
   | "module" => pure (.module' (← derivOfJson (← j.getObjVal? "body")))
+  | "classM" => pure (.classM (← derivOfJson (← j.getObjVal? "body")))
   | "sub" =>
     pure (.sub (← derivOfJson (← j.getObjVal? "d"))
       (← tyOfJson (← j.getObjVal? "ty")) (← envOfJson (← j.getObjVal? "env")))

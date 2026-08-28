@@ -276,7 +276,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule
+    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hfh
@@ -677,7 +677,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   -- (reopen path — a pure frame push, `classTop`'s argument with the J44c facts
   -- carried into the new frame's clauses).
   case hmodule =>
-    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hneo hdfr hmn hnbk hpos hct hsct hrd hbody ihb
+    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hneo hdfr hmn hnbk hpos hct hsct hrd hclsg hbody ihb
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨hfb, hmb⟩ : fragHead body = true ∧ MFrag A body := by

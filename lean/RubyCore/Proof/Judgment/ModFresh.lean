@@ -1095,18 +1095,21 @@ theorem declClsFresh_sound {D : Decls} {nm : String}
     (hf : declClsFresh D q nm = true) :
     (∀ r ∈ D.rows, KeyFresh q r.1) ∧ (∀ r ∈ D.ivars, KeyFresh q r.1.1) ∧
     (∀ r ∈ D.scopedConsts, KeyFresh q r.1.1) ∧ (∀ r ∈ D.supers, KeyFresh q r.1.1) ∧
-    (∀ pr ∈ D.modules, (pr.1 ≠ q ∨ pr.2 ≠ nm) ∧ pr.1.data.head? ≠ some '#') := by
+    (∀ pr ∈ D.modules, (pr.1 ≠ q ∨ pr.2 ≠ nm) ∧ pr.1.data.head? ≠ some '#') ∧
+    (∀ pr ∈ D.classes, (pr.1 ≠ q ∨ pr.2 ≠ nm) ∧ pr.1.data.head? ≠ some '#') := by
   unfold declClsFresh at hf
   simp only [Bool.and_eq_true, List.all_eq_true, bne_iff_ne, ne_eq,
     Bool.or_eq_true, Bool.not_eq_true'] at hf
-  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := hf
+  obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := hf
   refine ⟨fun r hr => ?_, fun r hr => ?_, fun r hr => ?_, fun r hr => ?_,
-    fun pr hpr => ?_⟩
+    fun pr hpr => ?_, fun pr hpr => ?_⟩
   · have := h1 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h2 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h3 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h4 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h5 pr hpr
+    exact ⟨this.1, by simpa using this.2⟩
+  · have := h6 pr hpr
     exact ⟨this.1, by simpa using this.2⟩
 
 theorem declFor_keys {D : Decls} {τ : Ty} {mname : String} {dd : MethodDecl}
@@ -1991,7 +1994,7 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
     (hdn : className h₀ d = owner)
     (hqq : q = RubyCore.Types.qualifyMod owner name) :
     DeclsOkJ A D (freshModHeap h₀ d name q) := by
-  obtain ⟨hkR, hkI, hkS, hkP, hkM⟩ := declClsFresh_sound hdfr
+  obtain ⟨hkR, hkI, hkS, hkP, hkM, hkC⟩ := declClsFresh_sound hdfr
   have hmidsuite := constSetIn_rowsAndConstsJ
     (v := Value.ref h₀.objs.size) (j := d) htab hct hsct
   refine ⟨?_, ?_, ?_, ?_, ?_, htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1,
