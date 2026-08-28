@@ -1275,3 +1275,31 @@ Slice impact (`judge-slice.md`): once J46 lands, the §3 rung table reprices —
 pattern) and the "claims are leaves" finding partially dissolves (containers with
 covered statements become claimable); `kwargs` stays a machine rung (value
 position, per-row facts).
+
+## J45a — the non-`.any` schema pilot: `defined?` at `.cls "String"`
+
+The second schema (`Schema.lean`), chosen to make the claimed type *do work*.
+Candidates rejected first, both informative: `lambda` at `.cls "Proc"` is
+**undischargeable** — `valueTy?` deliberately answers `none` for a proc payload
+(the arrow bill again: procs have no nominal type in the value judgment), so the
+J31 pilot's `.any` was forced, not lazy; `alias` at `.nilT` is unsound as an
+unconditional claim — `SemAxiomsOk` quantifies over *every* table `D`, and an
+alias shadowing a declared row breaks `DeclsOkJ` (the same reason `alias'`
+carries freshness guards).
+
+`defined?` fits exactly: out of the fragment (`fragHead` false), and for the
+covered argument shapes (`definedStr?`: `nil`/`true`/`false`/`self`/bare local —
+the last static per the desugarer, L72) it is one **unconditional** `allocStr`
+step. The obligation proves the type exactly — `valueTy_alloc_fresh` (L151) off
+`LitClsOk`'s String clause, `VTy.exact` where the lambda schema had `VTy.any` —
+and the demo claims it in **final** statement position, so the claim's τ becomes
+the program's judged type: `egDefined_result_string` concludes every terminating
+run's value is a String, through `judge_result_vty`, from a schema-discharged
+claim. Certificate route included (`.semantic` under the checker's seq-final
+position; `JudgeSeq.single` carries the same coupling premise as `.cons`, so
+final-position claims were already admissible — this is the first use).
+
+Conditional shapes (`defined?(@iv)` — String *or* nil) are a recorded next
+instance: the same schema at a nilable String, one `strIf` case split, its value
+half `VTy .nilT ≤ nilable` on the nil branch. Fuel note: `validateJ`'s fuel also
+feeds `exprEqB`'s walk of claimed expressions — the J45 demos use 32.
