@@ -1624,6 +1624,229 @@ theorem modOffChains_fresh_k (hch : ChainsIn h₀) (hsat : Saturated h₀)
         exact absurd (by rw [← hEq]; exact hch.boot.2.2.2.2 : k' < h₀.objs.size)
           hko
 
+/-- `ModOwner` at the composite lands at an old id (fresh names are keyed
+    fresh), and transfers back to `hmid`. -/
+theorem modOwner_fresh_old (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {owner : String} (hko : KeyFresh q owner) {o : ObjId}
+    (hmo : ModOwner (freshModHeap h₀ d name q) owner o) :
+    o < h₀.objs.size ∧ ModOwner (hmidOf h₀ d name) owner o := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  rcases hmo with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+  · exact ⟨h2 ▸ hch.boot.2.2.2.2, Or.inl ⟨h1, h2⟩⟩
+  · by_cases ho : o < h₀.objs.size
+    · have hom : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact ho
+      refine ⟨ho, Or.inr ⟨cp, by rw [← hg.payloadOld hom]; exact hcp, hism, hnm, ?_, ?_⟩⟩
+      · rw [← hg.get o hom]
+        rw [freshModHeap_get_old ho] at heig ⊢
+        exact heig
+      · intro k' hmem
+        have hkm : Boot.objectId ∈ ancestors (freshModHeap h₀ d name q) k' := by
+          by_cases hkb : k' < (hmidOf h₀ d name).objs.size
+          · rw [ClsGrow.ancestors_old hg hchm hsm hkb]; exact hmem
+          · -- an oob chain in `hmid` is `[k']`, so `Object = k'`, contradicting oob
+            exfalso
+            have : ancestors (hmidOf h₀ d name) k' = [k'] := by
+              unfold ancestors
+              rw [anc_go_oob hkb]
+              rfl
+            rw [this] at hmem
+            have hEq := List.mem_singleton.mp hmem
+            rw [hmid_size] at hkb
+            exact hkb (by rw [← hEq]; exact hch.boot.2.2.2.2)
+        have hkb : k' < (hmidOf h₀ d name).objs.size := by
+          by_cases hkb : k' < (hmidOf h₀ d name).objs.size
+          · exact hkb
+          · exfalso
+            have : ancestors (hmidOf h₀ d name) k' = [k'] := by
+              unfold ancestors
+              rw [anc_go_oob hkb]
+              rfl
+            rw [this] at hmem
+            have hEq := List.mem_singleton.mp hmem
+            rw [hmid_size] at hkb
+            exact hkb (by rw [← hEq]; exact hch.boot.2.2.2.2)
+        have := hoff k' hkm
+        rw [ClsGrow.ancestors_old hg hchm hsm hkb] at this
+        exact this
+    · exfalso
+      by_cases hok : o = h₀.objs.size
+      · subst hok
+        rw [freshModHeap_cp_k] at hcp
+        cases hcp
+        exact hko.1 hnm.symm
+      · by_cases hoe : o = h₀.objs.size + 1
+        · subst hoe
+          rw [freshModHeap_cp_e] at hcp
+          cases hcp
+          exact Bool.noConfusion hism
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two ho hok hoe hlt2))] at hcp
+          exact absurd hcp.symm (by simp)
+
+/-- `ModuleNameOk` at the composite, for a pair whose name is not the one
+    written. -/
+theorem moduleNameOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {owner nm : String} (hko : KeyFresh q owner) (hnn : nm ≠ name)
+    (hmo : ModuleNameOk h₀ owner nm) :
+    ModuleNameOk (freshModHeap h₀ d name q) owner nm := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hmoM : ModuleNameOk (hmidOf h₀ d name) owner nm :=
+    moduleNameOk_constSetIn hnn hmo
+  intro o ho
+  obtain ⟨holt, hom⟩ := modOwner_fresh_old hch hsat hdlt hqne hko ho
+  have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+  rcases hmoM o hom with hnone | ⟨kk, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+  · left
+    rw [ClsGrow.constOwn_old hg homm]
+    exact hnone
+  · right
+    refine ⟨kk, cp, by rw [ClsGrow.constOwn_old hg homm]; exact hco,
+      by rw [hg.payloadOld hlt]; exact hcp, hism, hqn, ?_,
+      modOffChains_fresh_old hch hsat hdlt (by rw [← hmid_size h₀ d name]; exact hlt)
+        hoff, ?_⟩
+    · rw [show ((freshModHeap h₀ d name q).get kk).eigen
+          = ((hmidOf h₀ d name).get kk).eigen from
+        congrArg Object.eigen (hg.get kk hlt)]
+      exact heig
+    · rw [freshModHeap_size]
+      rw [hmid_size] at hlt
+      exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+
+/-- `ModuleNameOk` at the composite, for **the written pair**: the write is the
+    hit, and its facts are the fresh module's literals. -/
+theorem moduleNameOk_self_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {owner : String}
+    (hdo : (h₀.classPayload? d).isSome = true)
+    (hdn : className h₀ d = owner)
+    (hqq : q = RubyCore.Types.qualifyMod owner name)
+    (hqow : q ≠ owner)
+    (hmo : ModuleNameOk h₀ owner name) :
+    ModuleNameOk (freshModHeap h₀ d name q) owner name := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro o ho
+  -- the owner cannot be the fresh module (its name is `q ≠ owner`) nor the
+  -- eigenclass (not a module); so `o` is old
+  have holt : o < h₀.objs.size := by
+    rcases ho with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact h2 ▸ hch.boot.2.2.2.2
+    · by_cases h1 : o < h₀.objs.size
+      · exact h1
+      · exfalso
+        by_cases h2 : o = h₀.objs.size
+        · subst h2
+          rw [freshModHeap_cp_k] at hcp
+          cases hcp
+          exact hqow hnm
+        · by_cases h3 : o = h₀.objs.size + 1
+          · subst h3
+            rw [freshModHeap_cp_e] at hcp
+            cases hcp
+            exact Bool.noConfusion hism
+          · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+              (fun hlt2 => not_lt_add_two h1 h2 h3 hlt2))] at hcp
+            exact absurd hcp.symm (by simp)
+  by_cases hod : o = d
+  · -- the write's own hit
+    right
+    refine ⟨h₀.objs.size, { superclass := none, name := q, isModule := true },
+      ?_, freshModHeap_cp_k, rfl, hqq, ?_,
+      modOffChains_fresh_k hch hsat hdlt, ?_⟩
+    · rw [show constOwn (freshModHeap h₀ d name q) o name
+          = constOwn (hmidOf h₀ d name) o name from by
+        unfold constOwn
+        rw [freshModHeap_cp_old hdlt holt]]
+      rw [hod]
+      exact constOwn_constSetIn_self hdo hdlt
+    · rw [freshModHeap_get_k]
+      rfl
+    · rw [freshModHeap_size]
+      exact Nat.lt_succ_of_lt (Nat.lt_succ_self _)
+  · -- some other owner-named object: the old fact, values pinned (`o ≠ d`)
+    have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+    have hoo : ModOwner h₀ owner o := by
+      rcases ho with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+      · exact Or.inl ⟨h1, h2⟩
+      · rw [freshModHeap_cp_old hdlt holt] at hcp
+        have hcpn := payload_constSetIn_ne h₀ d name (Value.ref h₀.objs.size) o hod
+        have hcp0 : h₀.classPayload? o = some cp := by
+          unfold Heap.classPayload? at hcp ⊢
+          rw [← hcpn]
+          exact hcp
+        refine Or.inr ⟨cp, hcp0, hism, hnm, ?_, ?_⟩
+        · rw [← (get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) o).2.2.1]
+          rw [freshModHeap_get_old holt] at heig
+          exact heig
+        · intro k' hmem
+          have hkb : k' < h₀.objs.size := by
+            by_cases hkb : k' < h₀.objs.size
+            · exact hkb
+            · exfalso
+              have hanc : ancestors h₀ k' = [k'] := by
+                unfold ancestors
+                rw [anc_go_oob hkb]
+                rfl
+              rw [hanc] at hmem
+              have hEq := List.mem_singleton.mp hmem
+              exact hkb (by rw [← hEq]; exact hch.boot.2.2.2.2)
+          have hkm : k' < (hmidOf h₀ d name).objs.size := by
+            rw [hmid_size]; exact hkb
+          have := hoff k' (by
+            rw [ClsGrow.ancestors_old hg hchm hsm hkm,
+              ancestors_constSetIn h₀ d k' name]
+            exact hmem)
+          rw [ClsGrow.ancestors_old hg hchm hsm hkm,
+            ancestors_constSetIn h₀ d k' name] at this
+          exact this
+    rcases hmo o hoo with hnone | ⟨kk, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+    · left
+      rw [ClsGrow.constOwn_old hg homm]
+      rw [constOwn_constSetIn_ne h₀ d o name name (Value.ref h₀.objs.size) (Or.inl hod)]
+      exact hnone
+    · right
+      have hkkm : kk < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hlt
+      -- the hit object's payload at the composite: same name/flag, possibly a
+      -- richer constant table (when the hit is the definee itself)
+      have hnmm := clsName_constSetIn h₀ d kk name (Value.ref h₀.objs.size)
+      rw [hcp] at hnmm
+      obtain ⟨cp2, hcp2⟩ : ∃ cp2, (hmidOf h₀ d name).classPayload? kk = some cp2 := by
+        cases hx : (hmidOf h₀ d name).classPayload? kk with
+        | none => rw [hx] at hnmm; exact absurd hnmm.symm (by simp)
+        | some c2 => exact ⟨c2, rfl⟩
+      rw [hcp2] at hnmm
+      simp only [Option.map_some, Option.some.injEq] at hnmm
+      refine ⟨kk, cp2, ?_,
+        by rw [hg.payloadOld hkkm]; exact hcp2,
+        by rw [show cp2.isModule = cp.isModule from congrArg Prod.snd hnmm]
+           exact hism,
+        by rw [show cp2.name = cp.name from congrArg Prod.fst hnmm]
+           exact hqn, ?_, ?_, ?_⟩
+      · rw [ClsGrow.constOwn_old hg homm]
+        rw [constOwn_constSetIn_ne h₀ d o name name (Value.ref h₀.objs.size) (Or.inl hod)]
+        exact hco
+      · have he1 : ((freshModHeap h₀ d name q).get kk).eigen
+            = ((hmidOf h₀ d name).get kk).eigen :=
+          congrArg Object.eigen (hg.get kk hkkm)
+        have he2 : ((hmidOf h₀ d name).get kk).eigen = (h₀.get kk).eigen :=
+          (get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) kk).2.2.1
+        rw [he1, he2]
+        exact heig
+      · exact modOffChains_fresh_old hch hsat hdlt hlt
+          (modOffChains_constSetIn hoff)
+      · rw [freshModHeap_size]
+        exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+
 end Table
 
 end Judgment
