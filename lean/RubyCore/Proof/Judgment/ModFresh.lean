@@ -1313,6 +1313,200 @@ theorem entryOkJ_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
             rw [freshModHeap_size]
             exact fun hlt2 => not_lt_add_two hko hkk hke hlt2) mname
 
+theorem constOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) {n : String} {τ : Ty}
+    (hc : ConstOk (hmidOf h₀ d name) n τ) :
+    ConstOk (freshModHeap h₀ d name q) n τ := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hobj : Boot.objectId < (hmidOf h₀ d name).objs.size := by
+    rw [hmid_size]; exact hch.boot.2.2.2.2
+  obtain ⟨v, hv, hty, hsole⟩ := hc
+  refine ⟨v, by rw [ClsGrow.constOwn_old hg hobj]; exact hv,
+    ClsGrow.valueTy_old hg hchm hty, fun j hj hjo => ?_⟩
+  by_cases hjlt : j < h₀.objs.size
+  · rw [ClsGrow.constOwn_old hg (by rw [hmid_size]; exact hjlt)]
+    refine hsole j ?_ hjo
+    rw [← hg.payloadOld (by rw [hmid_size]; exact hjlt)]; exact hj
+  · by_cases hjk : j = h₀.objs.size
+    · subst hjk; exact constOwn_fresh_k
+    · by_cases hje : j = h₀.objs.size + 1
+      · subst hje; exact constOwn_fresh_e
+      · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+          (fun hlt2 => not_lt_add_two hjlt hjk hje hlt2))] at hj
+        exact absurd hj (by simp)
+
+theorem ivarOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) {c x : String} {τ : Ty}
+    (hi : IvarOk (hmidOf h₀ d name) c x τ) :
+    IvarOk (freshModHeap h₀ d name q) c x τ := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro o ho hcn v hfind
+  by_cases holt : o < h₀.objs.size
+  · have hom : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+    rw [freshModHeap_get_old holt] at hcn hfind
+    have hklt : ((hmidOf h₀ d name).get o).klass < (hmidOf h₀ d name).objs.size :=
+      hchm.klass o hom
+    rw [ClsGrow.className_old hg hklt] at hcn
+    exact ClsGrow.valueTy_old hg hchm (hi o hom hcn v hfind)
+  · by_cases hok : o = h₀.objs.size
+    · subst hok
+      rw [freshModHeap_get_k] at hfind
+      exact absurd hfind (by simp)
+    · by_cases hoe : o = h₀.objs.size + 1
+      · subst hoe
+        rw [freshModHeap_get_e] at hfind
+        exact absurd hfind (by simp)
+      · rw [freshModHeap_size] at ho
+        exact absurd ho (not_lt_add_two holt hok hoe)
+
+theorem scopedConstOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {c n : String} {τ : Ty} (hkc : KeyFresh q c)
+    (hs : ScopedConstOk (hmidOf h₀ d name) c n τ) :
+    ScopedConstOk (freshModHeap h₀ d name q) c n τ := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro o ho hcn
+  by_cases holt : o < h₀.objs.size
+  · have hom : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+    rw [hg.payloadOld hom] at ho
+    rw [ClsGrow.className_old hg hom] at hcn
+    obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
+    have hanc : ancestors (freshModHeap h₀ d name q) o
+        = ancestors (hmidOf h₀ d name) o :=
+      ClsGrow.ancestors_old hg hchm hsm hom
+    refine ⟨?_, v, ?_, ClsGrow.valueTy_old hg hchm hty⟩
+    · rw [hanc]
+      refine List.all_eq_true.mpr (fun a ha => ?_)
+      have halt : a < (hmidOf h₀ d name).objs.size :=
+        ClsGrow.ancestors_mem_lt hchm hom a ha
+      rw [hg.payloadOld halt]
+      exact List.all_eq_true.mp hpriv a ha
+    · rw [ClsGrow.constLookupFrom_old hg hchm hsm hom]
+      exact hv
+  · by_cases hok : o = h₀.objs.size
+    · subst hok
+      rw [className_fresh_k hqne] at hcn
+      exact absurd hcn.symm hkc.1
+    · by_cases hoe : o = h₀.objs.size + 1
+      · subst hoe
+        rw [className_fresh_e] at hcn
+        exact absurd hcn.symm (keyFresh_ne_ename hkc)
+      · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+          (fun hlt2 => not_lt_add_two holt hok hoe hlt2))] at ho
+        exact absurd ho (by simp)
+
+/-- `firstM` over `Option` is pointwise-congruent. -/
+theorem firstM_congr {α β : Type} {l : List α} {f g : α → Option β}
+    (h : ∀ a ∈ l, f a = g a) : l.firstM f = l.firstM g := by
+  induction l with
+  | nil => rfl
+  | cons a rest ih =>
+    simp only [List.firstM]
+    rw [h a (by simp), ih (fun a' ha' => h a' (List.mem_cons_of_mem _ ha'))]
+
+theorem superOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {c mname : String} {dd : MethodDecl} (hkc : KeyFresh q c)
+    (hs : SuperOk (hmidOf h₀ d name) c mname dd) :
+    SuperOk (freshModHeap h₀ d name q) c mname dd := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro k dm hdm hdc hmem
+  have hdmo : dm < h₀.objs.size := by
+    by_cases h1 : dm < h₀.objs.size
+    · exact h1
+    · exfalso
+      by_cases h2 : dm = h₀.objs.size
+      · subst h2
+        rw [className_fresh_k hqne] at hdc
+        exact hkc.1 hdc.symm
+      · by_cases h3 : dm = h₀.objs.size + 1
+        · subst h3
+          rw [className_fresh_e] at hdc
+          exact keyFresh_ne_ename hkc hdc.symm
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two h1 h2 h3 hlt2))] at hdm
+          exact absurd hdm (by simp)
+  have hdmm : dm < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hdmo
+  by_cases hko : k < h₀.objs.size
+  · have hkm : k < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hko
+    have hanc : ancestors (freshModHeap h₀ d name q) k
+        = ancestors (hmidOf h₀ d name) k :=
+      ClsGrow.ancestors_old hg hchm hsm hkm
+    obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs k dm
+      (by rw [← hg.payloadOld hdmm]; exact hdm)
+      (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
+      (by rw [← hanc]; exact hmem)
+    refine ⟨owner, md, bid, ?_, hb, hcf⟩
+    unfold superFound at hsf ⊢
+    rw [hanc]
+    rw [firstM_congr (fun j hj => by
+      have hjo : j < h₀.objs.size := by
+        rw [← hmid_size h₀ d name]
+        refine ClsGrow.ancestors_mem_lt hchm hkm j ?_
+        exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
+            (ancestors (hmidOf h₀ d name) k))).trans
+          (List.dropWhile_sublist (· != dm))).mem hj)
+      rw [freshModHeap_cp_old hdlt hjo])]
+    exact hsf
+  · by_cases hkk : k = h₀.objs.size
+    · subst hkk
+      rw [ancestors_fresh_k] at hmem
+      have hEq : dm = h₀.objs.size := List.mem_singleton.mp hmem
+      exact absurd hdmo (by rw [hEq]; exact Nat.lt_irrefl _)
+    · by_cases hke : k = h₀.objs.size + 1
+      · subst hke
+        rw [ancestors_fresh_e hch hsat] at hmem
+        rcases List.mem_cons.mp hmem with hEq | hmem2
+        · exact absurd hdmo (by rw [hEq]; exact Nat.not_lt.mpr (Nat.le_add_right _ 1))
+        · have hcb : Boot.classId < h₀.objs.size := hch.boot.1
+          have hcbm : Boot.classId < (hmidOf h₀ d name).objs.size := by
+            rw [hmid_size]; exact hcb
+          have hancC : ancestors (hmidOf h₀ d name) Boot.classId
+              = ancestors h₀ Boot.classId :=
+            ancestors_constSetIn h₀ d Boot.classId name _
+          obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs Boot.classId dm
+            (by rw [← hg.payloadOld hdmm]; exact hdm)
+            (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
+            (by rw [hancC]; exact hmem2)
+          refine ⟨owner, md, bid, ?_, hb, hcf⟩
+          unfold superFound at hsf ⊢
+          rw [ancestors_fresh_e hch hsat]
+          rw [List.dropWhile_cons_of_pos (by
+            simp only [bne_iff_ne, ne_eq]
+            intro h1
+            exact absurd hdmo (by rw [← h1]
+                                  exact Nat.not_lt.mpr (Nat.le_add_right _ 1)))]
+          rw [show ancestors h₀ Boot.classId
+              = ancestors (hmidOf h₀ d name) Boot.classId from hancC.symm]
+          rw [firstM_congr (fun j hj => by
+            have hjo : j < h₀.objs.size := by
+              rw [← hmid_size h₀ d name]
+              refine ClsGrow.ancestors_mem_lt hchm hcbm j ?_
+              exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
+                  (ancestors (hmidOf h₀ d name) Boot.classId))).trans
+                (List.dropWhile_sublist (· != dm))).mem hj)
+            rw [freshModHeap_cp_old hdlt hjo])]
+          exact hsf
+      · rw [show ancestors (freshModHeap h₀ d name q) k = [k] from by
+          unfold ancestors
+          rw [anc_go_oob (by
+            rw [freshModHeap_size]
+            exact fun hlt2 => not_lt_add_two hko hkk hke hlt2)]
+          rfl] at hmem
+        have hEq : dm = k := List.mem_singleton.mp hmem
+        exact absurd hdmo (by rw [hEq]; exact hko)
+
 end Table
 
 end Judgment
