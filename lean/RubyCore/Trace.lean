@@ -42,6 +42,7 @@ partial def valBrief (h : Heap) : Nat → Value → String
 def exprBrief : Expr → String
   | .int n => s!"int {n}"
   | .flt x => s!"flt {x}"
+  | .regexpLit s o => s!"regexpLit /{s}/{o}"
   | .str s => s!"str \"{s}\""
   | .sym s => s!"sym :{s}"
   | .tru => "true" | .fls => "false" | .nil => "nil" | .self' => "self"

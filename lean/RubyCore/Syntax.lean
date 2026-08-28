@@ -25,6 +25,12 @@ deriving Repr, DecidableEq, Inhabited
 mutual
 inductive Expr where
   | int (n : Int)
+  /-- A regexp literal `/src/opts` (J52): its own head, because CRuby compiles
+      the literal at parse time — no `::Regexp` lookup happens at runtime — and
+      because the desugar shape (`::Regexp.new("src", n)`) would otherwise split
+      the generic send arm in every proof that reduces it. The exporter emits
+      this head exactly for that literal shape. -/
+  | regexpLit (src : String) (opts : Nat)
   /-- A float literal, carried as its IEEE-754 **bit pattern** (J50): the
       syntax layer needs decidable equality (`exprEqB` matches semantic claims
       against program subterms), and `Float` has none — so the `Float` is made
@@ -339,6 +345,7 @@ partial def expr (j : Json) : M Expr := do
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
+  | "regexp_lit", #[_, s, o] => return .regexpLit (← asStr s) (← asInt o).toNat
   | "str",   #[_, s] => .str <$> asStr s
   | "sym",   #[_, s] => .sym <$> asStr s
   | "true",  #[_] => return .tru

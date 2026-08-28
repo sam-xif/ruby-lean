@@ -46,7 +46,22 @@ module Export
   def jsonable(x)
     case x
     when Symbol then x.to_s
-    when Array  then x.map { |e| jsonable(e) }
+    when Array
+      # J52: the regex-literal lowering (`::Regexp.new("src", opts)`, desugar
+      # C33) exports as its own head — in CRuby the literal consults no
+      # constant at runtime, and on the Lean side a dedicated head is one
+      # machine step (and one `Judge` rung) instead of a class-object send.
+      # (A hand-written literal `::Regexp.new("s", n)` matches too; it only
+      # differs if `::Regexp` was reassigned, which the model does not chase.)
+      if x[0] == :send && x[1] == [:cpath, nil, "Regexp"] && x[2] == "new" &&
+         x[4].nil? && x[3].is_a?(Array) && x[3].length == 2 &&
+         x[3][0].is_a?(Array) && x[3][0].length == 2 && x[3][0][0] == :str &&
+         x[3][1].is_a?(Array) && x[3][1].length == 2 && x[3][1][0] == :int &&
+         x[3][1][1].is_a?(Integer) && x[3][1][1] >= 0
+        ["regexp_lit", x[3][0][1], x[3][1][1]]
+      else
+        x.map { |e| jsonable(e) }
+      end
     when nil, Integer, String then x
     when Float
       raise ArgumentError, "non-finite Float in RubyCore: #{x}" unless x.finite?

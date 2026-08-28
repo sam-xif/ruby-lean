@@ -304,6 +304,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
     -- ## Literals — derived, immediate, and each one `evalExpr`'s own answer.
     | .int _ => some (.int, Γ, D)
     | .flt _ => some (.float, Γ, D)
+    | .regexpLit _ _ => none
     | .str _ => some (.cls "String", Γ, D)
     | .sym _ => some (.sym, Γ, D)
     | .tru => some (.bool, Γ, D)

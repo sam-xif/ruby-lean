@@ -191,6 +191,20 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match base with
     | none => .next (withKont m (.eval rhs) (.cpathAsgnValK name Boot.objectId))
     | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathAsgnK name rhs))
+  -- **J52 — the regexp literal, one step.** In CRuby a regexp *literal* is
+  -- compiled at parse time — it consults no constant at runtime — so `.regexpLit`
+  -- steps directly to the constructed object (one allocation, the same payload
+  -- the `Regexp.new` builtin makes). A bad pattern gates exactly where the
+  -- builtin gates (`Rx.parse`). The exporter emits this head for the literal
+  -- desugar shape `::Regexp.new("src", opts)`; a runtime-built
+  -- `Regexp.new(expr, …)` still takes the generic send path.
+  | .regexpLit src opts =>
+    match Rx.parse src opts with
+    | .error e => .unsupported e
+    | .ok _ =>
+      let (o, h) := m.heap.alloc
+        { klass := Boot.regexpId, payload := .regexp src opts }
+      .next (withCtl { m with heap := h } (.value (.ref o)))
   | .send recv mname args blk =>
     let pblk : PendingBlk := match blk with
       | none => .none

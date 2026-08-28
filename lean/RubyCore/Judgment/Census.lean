@@ -73,6 +73,7 @@ partial def walk (owner : String) (cls : Option String) (stmt sh : Bool)
   let sh2 := sh || clm stmt e0
   match e0 with
   | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil => []
+  | .regexpLit _ _ => []
   | .self' | .vcall _ | .const _ => []
   | .var .lvar _ | .var .ivar _ | .var .gvar _ => []
   | e@(.var .cvar _) => [mkEntry owner "cvar-read" stmt sh e]
