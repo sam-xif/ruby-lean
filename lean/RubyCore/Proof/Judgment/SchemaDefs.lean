@@ -58,6 +58,11 @@ theorem eigenclassOf_realized {m : Machine} {o e₀ : ObjId}
     (he : (m.heap.get o).eigen = some e₀) : eigenclassOf m o = (e₀, m) := by
   simp only [eigenclassOf, eigenclassOf.go, he]
 
+/-- The `MethodDef` the composed step installs. -/
+def defsMd (m : Machine) (ps : List Param) (body : Expr) (e₀ : ObjId) : MethodDef :=
+  { params := ps, body := body, owner := e₀,
+    cref := m.currentFrame.cref, fromPrelude := m.preludeMode }
+
 /-- The composed step, reduced: at a realized-eigenclass `self`, `evalExpr` on
     the claim is one `defineMethod`. -/
 theorem evalExpr_defsSelf {m : Machine} {name : String} {ps : List Param}
@@ -65,11 +70,9 @@ theorem evalExpr_defsSelf {m : Machine} {name : String} {ps : List Param}
     (hself : m.currentFrame.self = .ref o)
     (he : (m.heap.get o).eigen = some e₀) :
     evalExpr m (defsSelfE name ps body) =
-      .next (withCtl { m with heap := defineMethod m.heap e₀ name
-          { params := ps, body := body, owner := e₀,
-            cref := m.currentFrame.cref, fromPrelude := m.preludeMode } }
+      .next (withCtl { m with heap := defineMethod m.heap e₀ name (defsMd m ps body e₀) }
         (.value (.sym name))) := by
-  simp only [defsSelfE, evalExpr, hself, eigenclassOf_realized he]
+  simp only [defsSelfE, evalExpr, hself, eigenclassOf_realized he, defsMd]
 
 /-- **The schema lemma** — one proof, every `def self.name` site in a module
     body: any list of `defs`-shaped claims (names off the hook list) is a
@@ -101,17 +104,15 @@ theorem semAxiomsOk_defsSelf (insts : List (String × List Param × Expr))
     rw [hcur]
     exact hscc.2.2.2.2.2.2.2.2.1 hicb hnbk
   -- J44c: the definee's eigenclass is realized.
-  obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ := by
-    rw [hcur] at hscc ⊢
-    exact hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+  obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
+    hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+  rw [← hcur] at heig
   obtain ⟨e₀, he₀⟩ := Option.isSome_iff_exists.mp heig
   -- the step, reduced
-  rw [evalExpr_defsSelf (by rw [hdm, hcur]; rw [hcur] at hself; exact hself)
-    (by rw [hdm, hcur]; exact he₀)]
+  simp only [defsClaim]
+  rw [evalExpr_defsSelf (by rw [hdm]; exact hself) he₀]
   -- the invariant, re-established across the one method-table write
-  have hag : TypeAgree m.heap (defineMethod m.heap e₀ name
-      { params := ps, body := body, owner := e₀,
-        cref := m.currentFrame.cref, fromPrelude := m.preludeMode }) :=
+  have hag : TypeAgree m.heap (defineMethod m.heap e₀ name (defsMd m ps body e₀)) :=
     typeAgree_defineMethod _ _ _ _
   refine ⟨NoHook_defineMethod hh hha,
     Saturated_defineMethod hsat _ _ _,
@@ -132,7 +133,7 @@ theorem semAxiomsOk_defsSelf (insts : List (String × List Param × Expr))
     FramesOkJ.heap_congr hag hfs,
     StackCtx.heap_congr hag (hst ▸ hscc),
     GlobalsOk.congr hag hgl,
-    ⟨.sym, Γk, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
+    ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
       KontOkJ.heap_congr hag hk⟩⟩
 
 /-! ## The demo: two `def self.` claims inside a hand-built machine state
@@ -146,12 +147,9 @@ theorem egDefsAxioms_ok : SemAxiomsOk
      defsClaim "parse" [.req "v"] .nil] :=
   semAxiomsOk_defsSelf
     [("compare", [.req "l", .req "r"], .int 1), ("parse", [.req "v"], .nil)]
-    (by intro i hi; rcases hi with hi | hi | h
-        · subst hi; exact ⟨by decide, by decide⟩
-        · rcases hi with rfl | h
-          · exact ⟨by decide, by decide⟩
-          · exact absurd h (by simp)
-        · exact absurd h (by simp))
+    (by intro i hi
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+        rcases hi with rfl | rfl <;> exact ⟨by decide, by decide⟩)
 
 /-! ## Axiom hygiene -/
 
