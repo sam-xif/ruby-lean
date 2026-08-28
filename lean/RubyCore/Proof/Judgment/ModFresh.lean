@@ -1507,6 +1507,123 @@ theorem superOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
         have hEq : dm = k := List.mem_singleton.mp hmem
         exact absurd hdmo (by rw [hEq]; exact hko)
 
+/-- The write's own read: the fresh constant is there. -/
+theorem constOwn_constSetIn_self {h : Heap} {j : ObjId} {nm : String} {v : Value}
+    (hdo : (h.classPayload? j).isSome = true) (hjlt : j < h.objs.size) :
+    constOwn (constSetIn h j nm v) j nm = some v := by
+  unfold constOwn constSetIn
+  cases hcp : h.classPayload? j with
+  | none => rw [hcp] at hdo; exact absurd hdo (by simp)
+  | some c =>
+    unfold Heap.classPayload? Heap.setClassPayload Heap.set Heap.get
+    rw [objs_getD_set!_self _ _ _ hjlt]
+    simp
+
+/-- `ModOffChains` lifts from `hmid` to the composite at an old id: the two
+    fresh chains either fail to reach `Object` (the module's own) or extend an
+    old `Object`-reaching chain by a fresh head. -/
+theorem modOffChains_fresh_old (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) {o : ObjId} (ho : o < h₀.objs.size)
+    (hoff : ModOffChains (hmidOf h₀ d name) o) :
+    ModOffChains (freshModHeap h₀ d name q) o := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro k' hmem
+  by_cases hko : k' < h₀.objs.size
+  · have hkm : k' < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hko
+    rw [ClsGrow.ancestors_old hg hchm hsm hkm] at hmem ⊢
+    exact hoff k' hmem
+  · by_cases hkk : k' = h₀.objs.size
+    · subst hkk
+      rw [ancestors_fresh_k] at hmem
+      have hEq0 := List.mem_singleton.mp hmem
+      exact absurd hEq0 (Nat.ne_of_lt hch.boot.2.2.2.2)
+    · by_cases hke : k' = h₀.objs.size + 1
+      · subst hke
+        rw [ancestors_fresh_e hch hsat] at hmem ⊢
+        have hobjne : Boot.objectId ∈ ancestors h₀ Boot.classId := by
+          rcases List.mem_cons.mp hmem with hEq | hm2
+          · exfalso
+            have hb := hch.boot.2.2.2.2
+            rw [hEq] at hb
+            exact Nat.not_lt.mpr (Nat.le_add_right _ 1) hb
+          · exact hm2
+        rw [List.takeWhile_cons_of_pos (by
+          simp only [bne_iff_ne, ne_eq]
+          intro h1
+          have := hch.boot.2.2.2.2
+          rw [← h1] at this
+          exact Nat.not_lt.mpr (Nat.le_add_right _ 1) this)]
+        intro hmm
+        rcases List.mem_cons.mp hmm with hEq | hm2
+        · rw [hEq] at ho
+          exact Nat.not_lt.mpr (Nat.le_add_right _ 1) ho
+        · have hoffC := hoff Boot.classId (by
+            rw [show ancestors (hmidOf h₀ d name) Boot.classId
+              = ancestors h₀ Boot.classId from ancestors_constSetIn h₀ d _ name _]
+            exact hobjne)
+          rw [show ancestors (hmidOf h₀ d name) Boot.classId
+            = ancestors h₀ Boot.classId from ancestors_constSetIn h₀ d _ name _] at hoffC
+          exact hoffC hm2
+      · rw [show ancestors (freshModHeap h₀ d name q) k' = [k'] from by
+          unfold ancestors
+          rw [anc_go_oob (by
+            rw [freshModHeap_size]
+            exact fun hlt2 => not_lt_add_two hko hkk hke hlt2)]
+          rfl] at hmem
+        have hEq := List.mem_singleton.mp hmem
+        exact absurd (by rw [← hEq]; exact hch.boot.2.2.2.2 : k' < h₀.objs.size)
+          hko
+
+/-- ... and the fresh module itself is off every `Object`-reaching chain. -/
+theorem modOffChains_fresh_k (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) :
+    ModOffChains (freshModHeap h₀ d name q) h₀.objs.size := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  intro k' hmem
+  by_cases hko : k' < h₀.objs.size
+  · have hkm : k' < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hko
+    rw [ClsGrow.ancestors_old hg hchm hsm hkm] at hmem ⊢
+    intro hmm
+    have := ClsGrow.ancestors_mem_lt hchm hkm h₀.objs.size
+      ((List.takeWhile_sublist _).mem hmm)
+    rw [hmid_size] at this
+    exact Nat.lt_irrefl _ this
+  · by_cases hkk : k' = h₀.objs.size
+    · subst hkk
+      rw [ancestors_fresh_k] at hmem
+      have hEq0 := List.mem_singleton.mp hmem
+      exact absurd hEq0 (Nat.ne_of_lt hch.boot.2.2.2.2)
+    · by_cases hke : k' = h₀.objs.size + 1
+      · subst hke
+        rw [ancestors_fresh_e hch hsat]
+        rw [List.takeWhile_cons_of_pos (by
+          simp only [bne_iff_ne, ne_eq]
+          intro h1
+          have := hch.boot.2.2.2.2
+          rw [← h1] at this
+          exact Nat.not_lt.mpr (Nat.le_add_right _ 1) this)]
+        intro hmm
+        rcases List.mem_cons.mp hmm with hEq | hm2
+        · exact absurd hEq (Nat.ne_of_lt (Nat.lt_succ_self _))
+        · have := ClsGrow.ancestors_mem_lt hch hch.boot.1 h₀.objs.size
+            ((List.takeWhile_sublist _).mem hm2)
+          exact Nat.lt_irrefl _ this
+      · rw [show ancestors (freshModHeap h₀ d name q) k' = [k'] from by
+          unfold ancestors
+          rw [anc_go_oob (by
+            rw [freshModHeap_size]
+            exact fun hlt2 => not_lt_add_two hko hkk hke hlt2)]
+          rfl] at hmem
+        have hEq := List.mem_singleton.mp hmem
+        exact absurd (by rw [← hEq]; exact hch.boot.2.2.2.2 : k' < h₀.objs.size)
+          hko
+
 end Table
 
 end Judgment
