@@ -103,7 +103,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
+    ?hdefDecl ?hdefPromote ?hdefForget ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hmeth hfh

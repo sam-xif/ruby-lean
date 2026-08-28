@@ -38,6 +38,7 @@ partial def derivToJson : Deriv → Json
   | .int => Json.mkObj [("k", "int")]
   | .flt => Json.mkObj [("k", "flt")]
   | .regexpLit => Json.mkObj [("k", "regexpLit")]
+  | .defForget => Json.mkObj [("k", "defForget")]
   | .str => Json.mkObj [("k", "str")]
   | .sym => Json.mkObj [("k", "sym")]
   | .tru => Json.mkObj [("k", "tru")]
@@ -133,6 +134,7 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "int" => pure .int
   | "flt" => pure .flt
   | "regexpLit" => pure .regexpLit
+  | "defForget" => pure .defForget
   | "str" => pure .str
   | "sym" => pure .sym
   | "tru" => pure .tru

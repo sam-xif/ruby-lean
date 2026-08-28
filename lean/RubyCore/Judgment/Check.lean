@@ -61,6 +61,7 @@ inductive Deriv where
   | send (recv : DerivRecv) (args : DerivArgs)
   | defDecl (τs : List Ty) (σ : Ty) (bs : Option BlockSig) (body : Deriv)
   | defPromote (body : Deriv)
+  | defForget
   | classTop (body : Deriv)
   | module' (body : Deriv)
   | classM (body : Deriv)
@@ -385,12 +386,19 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         | some (τb, _, Db) =>
           if Db == D && subJb (tyFuel τb σ) τb σ then some (.sym, Γ, D) else none
         | none => none
+    | .defForget, .def' name _ body =>
+      if ctx.inClassBody && ctx.inFreshClass && !ctx.inBlock &&
+          !(declaresName D name) && name != "method_added" &&
+          name != "define_method" then
+        some (.sym, Γ, D)
+      else none
     | .defPromote db, .def' name [] body =>
       if declaresName D name || name == "method_added" || name == "define_method" || top
           || name == "initialize"
           || !(reopenableClasses.contains ctx.cls)
           || groundClassNames.contains ctx.cls
           || !(defFreeB n body)
+          || !(fragHead body) || !(mfragB A n body)
           || !(ctx.ret == none) || !(ctx.inLoop == none) || ctx.inBlock then none
       else
         match check n A db D [] body false (methodCtx ctx name [] none none) with

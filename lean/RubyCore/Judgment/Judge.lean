@@ -278,6 +278,116 @@ abbrev SemAxioms := List SemClaim
 def addRows (D : Decls) (rows : List (String × String × MethodDecl)) : Decls :=
   rows.foldl (fun D r => addRow D r.1 r.2.1 r.2.2) D
 
+/-- The machine-typed fragment, as an inductive so preservation cases decompose it
+    by `cases`. The Boolean form for the certificate checker is `mfragB` below. -/
+inductive MFrag (A : SemAxioms) : Expr → Prop where
+  /-- **The semantic leaf (J31/J32)**: a claimed expression, out-of-fragment head. -/
+  | semantic {e} : (∃ cl ∈ A, cl.e = e) → fragHead e = false → MFrag A e
+  | int {n} : MFrag A (.int n)
+  | flt {x} : MFrag A (.flt x)
+  | regexpLit {src opts} : MFrag A (.regexpLit src opts)
+  | str {s} : MFrag A (.str s)
+  | sym {s} : MFrag A (.sym s)
+  | tru : MFrag A .tru
+  | fls : MFrag A .fls
+  | nil : MFrag A .nil
+  | varLvar {x} : MFrag A (.var .lvar x)
+  | vasgnLvar {x rhs} :
+      fragHead rhs = true → MFrag A rhs → MFrag A (.vasgn .lvar x rhs)
+  /-- The one container that admits semantic leaves — statement position. -/
+  | seq {es} : (∀ e ∈ es, MFrag A e) → MFrag A (.seq es)
+  | ifElse {cond t els} :
+      fragHead cond = true → fragHead t = true → fragHead els = true →
+      MFrag A cond → MFrag A t → MFrag A els → MFrag A (.if' cond t (some els))
+  | ifNone {cond t} :
+      fragHead cond = true → fragHead t = true →
+      MFrag A cond → MFrag A t → MFrag A (.if' cond t none)
+  | while' {c b} :
+      fragHead c = true → fragHead b = true →
+      MFrag A c → MFrag A b → MFrag A (.while' c b)
+  -- J22: sends. Block-less only (`blk = none` in the stored shape), and an explicit
+  -- send named `call` stays out — `Judge.sendCall` eliminates arrows, and no
+  -- machine-typed value witnesses one (J19). Argument shapes that take their own
+  -- kont path (`splat`/`kwargs`/`fwd`) are excluded by having no constructor here,
+  -- which is what lets the dispatch cases prove `startArgs` takes the plain branch.
+  | self' : MFrag A .self'
+  | vcall {mname} : MFrag A (.vcall mname)
+  | send {r mname args} : mname ≠ "call" →
+      fragHead r = true → (∀ a ∈ args, fragHead a = true) →
+      MFrag A r → (∀ a ∈ args, MFrag A a) → MFrag A (.send (some r) mname args none)
+  | sendImplicit {mname args} :
+      (∀ a ∈ args, fragHead a = true) →
+      (∀ a ∈ args, MFrag A a) → MFrag A (.send none mname args none)
+  -- J23: definition forms. The body gate is what the *promotion* derivation's
+  -- installed row needs (`UserConformsJ` carries `MFrag body`); a reopen's body
+  -- runs, so its gate is the eval arm's own.
+  | def' {name params body} :
+      fragHead body = true → MFrag A body → MFrag A (.def' name params body)
+  -- J53: the gate is lenient at `def` — an install-and-forget method's body is
+  -- never checked (and never runs off a declared dispatch chain), and a
+  -- promoted `def`'s body-fragment facts are `Judge.defPromote`'s own premises.
+  | defForget {name params body} : MFrag A (.def' name params body)
+  | classTop {name body} :
+      fragHead body = true → MFrag A body → MFrag A (.class' name none body)
+  -- J48: the machine-typed `module'` — the body is the one subterm, and it is a
+  -- `seq` in every real program (fragHead-true), so claims embed in it exactly
+  -- as they do at the toplevel.
+  | module' {name body} :
+      fragHead body = true → MFrag A body → MFrag A (.module' name body)
+  -- J26: the table-read heads and the array literal. A splat element has no
+  -- constructor here, which is what keeps the literal's loop on the plain branch
+  -- (`continueArray_plain`'s side conditions fall out of `MFrag`'s own emptiness
+  -- at those shapes).
+  | const {n} : MFrag A (.const n)
+  -- J38: scoped constant reads. `::n` is one step (a toplevel lookup); `b::n`
+  -- pushes `.cpathK` on the base, whose delivery only *reads* (`ScopedConstOk`).
+  | cpathAbs {n} : MFrag A (.cpath none n)
+  | cpathScoped {b n} :
+      fragHead b = true → MFrag A b → MFrag A (.cpath (some b) n)
+  -- J39: `return`. The operand is a non-statement position.
+  | retSome {e} : fragHead e = true → MFrag A e → MFrag A (.ret (some e))
+  | retNil : MFrag A (.ret none)
+  -- J41: the toplevel constant write.
+  | casgn {nm rhs} :
+      fragHead rhs = true → MFrag A rhs → MFrag A (.casgn nm rhs)
+  -- J40: the hash literal, at `.any`.
+  | hash {prs} :
+      (∀ p ∈ prs, fragHead (Prod.fst p) = true ∧ fragHead (Prod.snd p) = true) →
+      (∀ p ∈ prs, MFrag A (Prod.fst p)) →
+      (∀ p ∈ prs, MFrag A (Prod.snd p)) →
+      MFrag A (.hash prs)
+  | varIvar {x} : MFrag A (.var .ivar x)
+  | varGvar {x} : MFrag A (.var .gvar x)
+  | vasgnIvar {x rhs} :
+      fragHead rhs = true → MFrag A rhs → MFrag A (.vasgn .ivar x rhs)
+  | vasgnGvar {x rhs} :
+      fragHead rhs = true → MFrag A rhs → MFrag A (.vasgn .gvar x rhs)
+  | array {es} :
+      (∀ e ∈ es, fragHead e = true) →
+      (∀ e ∈ es, MFrag A e) → MFrag A (.array es)
+
+/-- The disjointness the `semantic` arm's gate buys, cashed: an in-fragment
+    expression at an out-of-fragment head **is** a claim. (Every syntactic
+    constructor concludes at a `fragHead`-true shape.) -/
+theorem MFrag.claimed_of_fragHead_false {A : SemAxioms} {e : Expr}
+    (hm : MFrag A e) (hf : fragHead e = false) : ∃ cl ∈ A, cl.e = e := by
+  cases hm
+  case semantic hmem _ => exact hmem
+  all_goals simp [fragHead] at hf
+
+/-! ## Claim membership, decidably (J31)
+
+`Float` is opaque, so `Expr` has no derivable `DecidableEq` (the V15 note at the
+`BEq` instance), and the derived `BEq` is *unsound for propositional equality* at
+`.flt` (`-0.0 == 0.0`). The checker therefore decides claim membership with a
+**float-refusing structural equality**: sound (`= true → =`, the only direction
+the soundness proofs need), complete except at `.flt` fields — and a claim with a
+float literal in it simply cannot be checker-matched, which is the safe direction
+(the refusal is a reject, never an unsound accept). Fueled, per the L73
+kernel-reduction discipline. -/
+
+
+
 /-! ## 4. The judgment -/
 
 mutual
@@ -764,6 +874,11 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   -- premise is a condition on the table the invariant will carry.
   | defPromote {D Γ name body top ctx τb Γb'} :
       declaresName D name = false → (name ≠ "method_added" ∧ name ≠ "define_method") →
+      -- J53: the row's body-fragment facts are the rule's own premises now that
+      -- `MFrag` lives upstream — the gate walk no longer supplies them (its
+      -- `def'` arm is `defForget`-lenient, so bodies of install-and-forget
+      -- methods need not be in shape).
+      fragHead body = true → MFrag A body →
       Judge A D [] body false (methodCtx ctx name [] none none) τb Γb' D →
       top = false → name ≠ "initialize" →
       reopenableClasses.contains ctx.cls = true →
@@ -772,6 +887,17 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       ctx.ret = none → ctx.inLoop = none → ctx.inBlock = false →
       Judge A D Γ (.def' name [] body) top ctx .sym Γ
         (addRow D ctx.cls name { params := [], ret := τb })
+  -- **J53: the install-and-forget instance `def`** — a method installed on a
+  -- *fresh user class* (`classM`'s body), body unchecked, no row threaded.
+  -- Sound because nothing can ever dispatch it: rows are keyed on class names,
+  -- the fresh class's name is off every keyed channel (`declClsFresh` at its
+  -- creation), and its id is on no declared dispatch chain. The name freshness
+  -- and the hook guards are `defDecl`'s.
+  | defForget {D Γ name ps body top ctx} :
+      ctx.inClassBody = true → ctx.inFreshClass = true → ctx.inBlock = false →
+      declaresName D name = false →
+      name ≠ "method_added" → name ≠ "define_method" →
+      Judge A D Γ (.def' name ps body) top ctx .sym Γ D
   -- `def self.name` / `def obj.name`: the receiver is judged, the body is judged at
   -- a chosen declaration with `selfCls := none` (`self` is the receiver object,
   -- unnameable), and no row is threaded — a singleton row is `deltaRows` territory.

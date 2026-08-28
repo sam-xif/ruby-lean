@@ -277,7 +277,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     ?hyield ?hifElse ?hifNone ?hifNarrowElse ?hifNarrowNone
     ?hwhile ?hdowhile ?hfor
     ?hretSome ?hretNil ?hnxtNil ?hnxtSome ?hbrkNil ?hbrkSome ?hretry ?hredo
-    ?hdefDecl ?hdefPromote ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
+    ?hdefDecl ?hdefPromote ?hdefForget ?hdefs ?hclassTop ?hclassSup ?hmodule ?hclassM
     ?hscopedClass ?hscopedModule ?hsclass ?hbegin ?hsuper ?hzsuper ?halias
     ?hdefined ?harray ?hhash ?hseq ?hsub ?hsemantic
     hj hfh
@@ -1252,15 +1252,79 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           | exact LitClsOk_defineMethod hstr
           | exact ClassOk_defineMethod hcls
           | exact GlobalsOk.congr (typeAgree_defineMethod _ _ _ _) hgl
-  case hdefPromote =>
-    intro D Γ name body top ctx τb Γb'
-    intro hfresh hha hbody htopf hinit hmemctx hgroundc hdfree hretn hloopn hblkn ihb
+  -- ## J53: the install-and-forget instance `def` — `defDecl`'s machine step
+  -- (one `defineMethod`, hook miss by `NoHook`), no row, table unchanged.
+  case hdefForget =>
+    intro D Γ name ps body top ctx hicb hifc hnbk hfresh hha1 hha2
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
-    obtain ⟨hffb, hmfb⟩ : fragHead body = true ∧ MFrag A body := by
-      cases hmf with
-      | semantic hmem hff => simp [fragHead] at hff
-      | def' hfb hmb => exact ⟨hfb, hmb⟩
+    have hha : name ≠ "method_added" ∧ name ≠ "define_method" := ⟨hha1, hha2⟩
+    have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
+    have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
+    have hfs := FramesOkJ.narrowHead hsuE hfs
+    have hdo : (m.heap.classPayload? (curFrame m).defmod).isSome := by
+      cases hst : m.stack with
+      | nil => exact absurd hst hfsh1
+      | cons fid _ =>
+        have hfc : FrameConformsJ m.heap m.frames Γk fid := by
+          rw [hst] at hfs; exact hfs.2.2.1
+        simpa [curFrame, curFid, hst] using hfc.2.1
+    have hlkNH : ∀ md : MethodDef,
+        NoHook (defineMethod m.heap (curFrame m).defmod name md) :=
+      fun _ => NoHook_defineMethod hh hha
+    have hlk : ∀ md : MethodDef,
+        lookup (defineMethod m.heap (curFrame m).defmod name md)
+          (.ref (curFrame m).defmod) "method_added" = none := fun md =>
+      (hlkNH md).2.1 (curFrame m).defmod
+        (by rw [classPayload?_isSome_defineMethod]; exact hdo)
+        "method_added" (by simp [hookFreeNames])
+    have hres : ∀ (m₀ : Machine),
+        m₀.frames = m.frames → m₀.stack = m.stack → m₀.kont = m.kont →
+        TypeAgree m.heap m₀.heap → DeclsOkJ A D m₀.heap → NoHook m₀.heap →
+        Saturated m₀.heap → LitClsOk m₀.heap → ClassOk m₀.heap →
+        ChainsIn m₀.heap →
+        GlobalsOk D m₀.heap m₀.globals →
+        InvJ ans A (withCtl m₀ (.value (.sym name))) := by
+      intro m₀ hfr hst hko hag ht' hh' hsat' hstr' hcls' hchn' hgl'
+      refine ⟨hh', hsat', hchn', hstr', hcls',
+        show BottomObj m₀.frames m₀.stack by rw [hfr, hst]; exact hbot,
+        show framePopLabels m₀.kont = m₀.stack.dropLast by rw [hko, hst]; exact hks,
+        ClosuresOk.transport hclo
+          (by intro κ hm cl hcl; simp only [withCtl, hko] at hm; exact ⟨κ, hm, hcl⟩)
+          (by simp only [withCtl]; rw [hfr]; exact Nat.le_refl _)
+          (by intro p _; simp only [withCtl]; rw [hfr]; exact FrameShape.rfl' _)
+          (by
+            intro o ho
+            show (m₀.heap.classPayload? o).isSome = true
+            exact (hag.2.2.1 o (classPayload?_isSome_lt ho)) ▸ ho),
+        D, ctx, Γk, Γs, ht', ?_, ?_, hgl', ?_⟩
+      · show FramesOkJ m₀.heap m₀.frames m₀.stack (Γk :: Γs.map Prod.snd)
+        rw [hfr, hst]; exact FramesOkJ.heap_congr hag hfs
+      · show StackCtx m₀.heap m₀.frames m₀.stack (jctxs ctx Γs)
+        rw [hfr, hst]; exact StackCtx.heap_congr hag hsc
+      · show ∃ σ' Γk', VTy m₀.heap (Value.sym name) σ' ∧ SubEnv Γk' Γk ∧
+            KontOkJ ans A D m₀.heap ((ctx, Γk') :: Γs) σ' m₀.kont
+        exact ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
+          by rw [hko]; exact KontOkJ.heap_congr hag hk⟩
+    simp only [evalExpr, hdm]
+    by_cases hp : m.preludeMode = true <;>
+      simp only [hp, if_true, if_false, Bool.false_eq_true, hlk] <;>
+      refine hres _ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ <;>
+        first
+          | rfl
+          | exact chainsIn_defineMethod hchn
+          | exact typeAgree_defineMethod _ _ _ _
+          | exact DeclsOkJ_defineMethod htab hfresh
+          | exact hlkNH _
+          | exact Saturated_defineMethod hsat _ _ _
+          | exact LitClsOk_defineMethod hstr
+          | exact ClassOk_defineMethod hcls
+          | exact GlobalsOk.congr (typeAgree_defineMethod _ _ _ _) hgl
+  case hdefPromote =>
+    intro D Γ name body top ctx τb Γb'
+    intro hfresh hha hffb hmfb hbody htopf hinit hmemctx hgroundc hdfree hretn hloopn hblkn ihb
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
     have hdm : m.currentFrame = curFrame m := currentFrame_eq hfsh1
     have hfs := FramesOkJ.narrowHead hsuE hfs

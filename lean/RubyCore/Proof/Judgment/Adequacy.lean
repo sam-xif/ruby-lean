@@ -261,6 +261,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       | .send _ _, .send _ _ _ none => simp [fragHead] at hf
       | .defDecl _ _ _ _, .def' _ _ _ => simp [fragHead] at hf
       | .defPromote _, .def' _ _ _ => simp [fragHead] at hf
+      | .defForget, .def' _ _ _ => simp [fragHead] at hf
       | .classTop _, .class' _ none _ => simp [fragHead] at hf
       | .module' _, .module' _ _ => simp [fragHead] at hf
       | .classM _, .class' _ none _ => simp [fragHead] at hf
@@ -723,14 +724,25 @@ theorem check_sound_all : ∀ (n : Nat),
                 (ihc hb0) (subJb_sound hjb)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
+      | .defForget, .def' name ps body =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hguards =>
+          simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at hguards
+          obtain ⟨⟨⟨⟨⟨hicb, hifc⟩, hnbk⟩, hfresh⟩, hma⟩, hdm⟩ := hguards
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .defForget hicb hifc hnbk hfresh (by simpa using hma)
+            (by simpa using hdm)
+        · exact absurd h (by simp)
       | .defPromote db, .def' name [] body =>
         simp only [RubyCore.Judgment.check] at h
         split at h
         · exact absurd h (by simp)
         · next hguards =>
           simp only [Bool.or_eq_true, not_or, Bool.not_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hfresh, hha⟩, hdm⟩, htop⟩, hinit⟩, hreop⟩, hgroundc⟩,
-            hdf⟩, hret⟩, hloop⟩, hblk⟩ := hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hfresh, hha⟩, hdm⟩, htop⟩, hinit⟩, hreop⟩, hgroundc⟩,
+            hdf⟩, hfrb⟩, hmfb⟩, hret⟩, hloop⟩, hblk⟩ := hguards
           split at h
           · next τb Γb Db hb0 =>
             split at h
@@ -739,7 +751,9 @@ theorem check_sound_all : ∀ (n : Nat),
               subst hg2
               simp only [Option.some.injEq, Prod.mk.injEq] at h
               obtain ⟨rfl, rfl, rfl⟩ := h
-              refine .defPromote hfresh ⟨?_, ?_⟩ (ihc hb0) htop ?_ ?_ hgroundc
+              refine .defPromote hfresh ⟨?_, ?_⟩ (by simpa using hfrb)
+                (mfragB_sound (n := n) (by simpa using hmfb))
+                (ihc hb0) htop ?_ ?_ hgroundc
                 (defFreeB_sound (n := n) ?_) ?_ ?_ hblk
               · intro hq
                 rw [hq] at hha

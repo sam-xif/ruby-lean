@@ -271,7 +271,7 @@ theorem egUserCall_judged : Judge [] (declsOf Static.egUserCall) [] Static.egUse
       ({ cls := "String", inClassBody := true } : JCtx) .sym []
       (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) :=
-    .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
+    .defPromote (by decide) (by decide) rfl .int .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
   have hsend : Judge [] (addRow (declsOf Static.egUserCall) "String" "shout"
         { params := [], ret := .int }) []
@@ -307,7 +307,7 @@ theorem egVcall_judged : Judge [] (declsOf Static.egVcall) [] Static.egVcall
       ({ cls := "String", inClassBody := true } : JCtx) .sym []
       (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) :=
-    .defPromote (by decide) (by decide) .int rfl (by decide) (by decide)
+    .defPromote (by decide) (by decide) rfl .int .int rfl (by decide) (by decide)
       (by decide) (by simp [defFree]) rfl rfl rfl
   have hdefg : Judge [] (addRow (declsOf Static.egVcall) "String" "value"
         { params := [], ret := .int }) []
@@ -315,7 +315,7 @@ theorem egVcall_judged : Judge [] (declsOf Static.egVcall) [] Static.egVcall
       (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"
         { params := [], ret := .int }) :=
-    .defPromote (by decide) (by decide) (.vcall rfl hsigv) rfl (by decide)
+    .defPromote (by decide) (by decide) rfl .vcall (.vcall rfl hsigv) rfl (by decide)
       (by decide) (by decide) (by simp [defFree]) rfl rfl rfl
   have hsend : Judge [] (addRow (addRow (declsOf Static.egVcall) "String" "value"
           { params := [], ret := .int }) "String" "get"
