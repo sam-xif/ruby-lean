@@ -1,4 +1,5 @@
 import RubyCore.Proof.Judgment.Mono
+import RubyCore.Proof.Judgment.ModFresh
 
 /-!
 # Progress and preservation over `Judge` (J21) — the rung-1 fragment
@@ -682,7 +683,168 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     have hmno := htab.2.2.2.2.2.2.2.2 _ hmemMods
     rcases hmno _ hmow with hmiss | ⟨kk, cp', hhit, hcp', hism', hqn', heig', hoff', hlt'⟩
     · -- ## the fresh path: alloc + register + eigenclass + push (the ClsGrow composite)
-      sorry
+      have hdlt2 : (curFrame m).defmod < m.heap.objs.size := classPayload?_isSome_lt hdo
+      have hdlt2' : m.currentFrame.defmod < m.heap.objs.size := by rw [hdm]; exact hdlt2
+      -- position dividends: at toplevel the definee is `Object`; nested it is not
+      have hposd : ((curFrame m).defmod = Boot.objectId ∧ ctx.cls = "Object")
+          ∨ ((curFrame m).defmod ≠ Boot.objectId ∧ ctx.cls ≠ "Object"
+              ∧ ModOffChains m.heap (curFrame m).defmod) := by
+        rcases hpos with ⟨htt, hobj⟩ | ⟨hicb, himb, hno⟩
+        · left
+          refine ⟨?_, hobj⟩
+          have hΓs : Γs = [] := List.isEmpty_iff.mp (htt ▸ htop).symm
+          subst hΓs
+          obtain ⟨fid₁, hst1⟩ := hfs.stack_singleton
+          exact BottomObj_curFrame hst1 hbot
+        · right
+          refine ⟨?_, hno, ?_⟩
+          · intro hEq
+            apply hno
+            rw [← hcn, hEq]
+            exact hcls.1
+          · rw [hcur]
+            obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
+              hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
+            exact hoff
+      -- the qualified name, machine-side = rule-side
+      have hqm : (if m.currentFrame.defmod == Boot.objectId then name
+          else className m.heap m.currentFrame.defmod ++ "::" ++ name)
+          = RubyCore.Types.qualifyMod ctx.cls name := by
+        rw [hdm]
+        rcases hposd with ⟨hdobj, hobj⟩ | ⟨hdneq, hno, -⟩
+        · rw [hdobj]
+          rw [if_pos (by simp)]
+          rw [hobj]
+          unfold RubyCore.Types.qualifyMod
+          rw [if_pos rfl]
+        · rw [if_neg (by simpa using hdneq)]
+          unfold RubyCore.Types.qualifyMod
+          rw [if_neg hno, hcn]
+      have hqne2 : ¬ (RubyCore.Types.qualifyMod ctx.cls name).isEmpty = true := by
+        simp only [String.isEmpty_iff]
+        exact qualifyMod_ne_empty hne0
+      simp only at hmiss
+      rw [show (curFrame m).defmod = m.currentFrame.defmod from
+        congrArg Frame.defmod hdm.symm] at hmiss
+      rw [evalExpr_module_fresh hmiss hdlt2' hqm hqne2]
+      rw [show m.currentFrame.defmod = (curFrame m).defmod from
+        congrArg Frame.defmod hdm]
+      rw [show m.currentFrame.cref = (curFrame m).cref from
+        congrArg Frame.cref hdm]
+      have hchm : ChainsIn (hmidOf m.heap (curFrame m).defmod name) :=
+        chainsIn_hmid hchn
+      have hsm : Saturated (hmidOf m.heap (curFrame m).defmod name) :=
+        saturated_hmid hsat
+      have hgc : ClsGrow (hmidOf m.heap (curFrame m).defmod name)
+          (freshModHeap m.heap (curFrame m).defmod name (RubyCore.Types.qualifyMod ctx.cls name)) := clsGrow_hmid_fresh
+      have hagc : TypeAgree m.heap (hmidOf m.heap (curFrame m).defmod name) :=
+        typeAgree_constSetIn m.heap (curFrame m).defmod name _
+      have hnr : name ∉ Types.readableClasses := by
+        intro hmemr
+        have := List.contains_iff_mem.mpr hmemr
+        rw [hrd] at this
+        exact Bool.noConfusion this
+      have hcO : ClassOk (hmidOf m.heap (curFrame m).defmod name) := by
+        rcases hposd with ⟨hdobj, -⟩ | ⟨hdneq, -, hoffd⟩
+        · rw [show hmidOf m.heap (curFrame m).defmod name
+              = constSetIn m.heap Boot.objectId name (.ref m.heap.objs.size) from by
+            rw [hdobj]]
+          exact classOk_constSetIn_obj hnr hcls
+        · exact classOk_constSetIn_off hdneq hoffd hnr hcls
+      have hnoO : NoHook (hmidOf m.heap (curFrame m).defmod name) :=
+        noHook_constSetIn hh
+      have hqrd : ∀ n ∈ Types.readableClasses, n ≠ RubyCore.Types.qualifyMod ctx.cls name := by
+        rcases hposd with ⟨-, hobj⟩ | ⟨-, hno, -⟩
+        · rw [hobj]
+          rw [show RubyCore.Types.qualifyMod "Object" name = name from by
+            unfold RubyCore.Types.qualifyMod
+            rw [if_pos rfl]]
+          exact hqrd_of_toplevel hrd
+        · exact hqrd_of_nested hno
+      -- the machine-structure transports (heap-side facts first)
+      have hfsH : FramesOkJ (freshModHeap m.heap (curFrame m).defmod name (RubyCore.Types.qualifyMod ctx.cls name))
+          m.frames m.stack (Γk :: Γs.map Prod.snd) :=
+        FramesOkJ.clsGrow hgc hchm (FramesOkJ.heap_congr hagc hfs)
+      have hscH : StackCtx (freshModHeap m.heap (curFrame m).defmod name (RubyCore.Types.qualifyMod ctx.cls name))
+          m.frames m.stack (jctxs ctx Γs) :=
+        StackCtx.clsGrow hgc hchm hsm
+          (fun o ho hoffo => modOffChains_fresh_old hchn hsat hdlt2
+            (by rw [← hmid_size m.heap (curFrame m).defmod name]; exact ho) hoffo)
+          (StackCtx.heap_congr hagc hsc)
+      have hkH : KontOkJ ans A Db' (freshModHeap m.heap (curFrame m).defmod name (RubyCore.Types.qualifyMod ctx.cls name))
+          ((ctx, Γk) :: Γs) τw m.kont :=
+        KontOkJ.clsGrow (KontOkJ.heap_congr hagc hk) hgc hchm
+      have hglH : GlobalsOk D (freshModHeap m.heap (curFrame m).defmod name
+          (RubyCore.Types.qualifyMod ctx.cls name)) m.globals :=
+        GlobalsOk.clsGrow hgc hchm (GlobalsOk.congr hagc hgl)
+      have hpayl : ∀ o, (m.heap.classPayload? o).isSome = true →
+          ((freshModHeap m.heap (curFrame m).defmod name
+            (RubyCore.Types.qualifyMod ctx.cls name)).classPayload? o).isSome = true := by
+        intro o ho
+        have holt : o < m.heap.objs.size := classPayload?_isSome_lt ho
+        rw [freshModHeap_cp_old hdlt2 holt]
+        rw [classPayload?_isSome_constSetIn]
+        exact ho
+      simp only [freshModMachine]
+      refine ⟨noHook_fresh hh hchn hsat hdlt2,
+        saturated_fresh hchn hsat hdlt2,
+        chainsIn_fresh hchn hdlt2,
+        litClsOk_fresh hstr hdlt2 hchn,
+        classOk_fresh hchn hsat hdlt2 hcO hqne2 hqrd hqe_of,
+        BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
+        (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
+        ClosuresOk.transport hclo
+          (fun κ hm2 cl hcl => by
+            rcases List.mem_cons.mp hm2 with rfl | hin
+            · simp [KontClosure] at hcl
+            · exact ⟨κ, hin, hcl⟩)
+          (by rw [Array.size_push]; exact Nat.le_succ _)
+          (fun p hp => by
+            rw [show (m.frames.push (freshModFrame m.heap.objs.size
+                (curFrame m).cref)).getD p default = m.frames.getD p default from by
+              simp only [Array.getD]
+              rw [dif_pos (by rw [Array.size_push]; exact Nat.lt_succ_of_lt hp),
+                dif_pos hp]
+              exact Array.getElem_push_lt hp]
+            exact FrameShape.rfl' _)
+          hpayl,
+        D, ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
+              inClassBody := true, inModuleBody := true } : JCtx), [], ((ctx, Γk) :: Γs),
+        declsOkJ_fresh hchn hsat hdlt2 hqne2 hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl,
+        ?_, ?_, hglH, ?_⟩
+      · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
+          ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
+          FramesOkJ.push hfsH⟩
+        · rw [getD_push_lt_self]
+          rw [show (freshModFrame m.heap.objs.size (curFrame m).cref).defmod
+            = m.heap.objs.size from rfl]
+          rw [freshModHeap_cp_k]
+          rfl
+        · intro y σ hy; exact absurd hy (by simp [envGet?])
+      · refine StackCtx.cons ?_ ?_ ?_
+          (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
+          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (StackCtx.push hlt hscH)
+        · rw [getD_push_lt_self]
+          rw [show (freshModFrame m.heap.objs.size (curFrame m).cref).defmod
+            = m.heap.objs.size from rfl]
+          rw [freshModHeap_cp_k]
+          rfl
+        · rw [getD_push_lt_self]
+          exact fun _ => className_fresh_k hqne2
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+        · rw [getD_push_lt_self]
+          exact List.mem_cons_of_mem _ hcrefCur
+        · rw [getD_push_lt_self]; exact fun _ => rfl
+        · rw [getD_push_lt_self]; exact fun _ _ => rfl
+        · rw [getD_push_lt_self]
+          exact fun _ _ => ⟨_, freshModHeap_cp_k, rfl, rfl,
+            (by rw [show (freshModFrame m.heap.objs.size (curFrame m).cref).defmod
+                = m.heap.objs.size from rfl]
+                rw [freshModHeap_get_k]
+                rfl),
+            modOffChains_fresh_k hchn hsat hdlt2⟩
+      · exact Or.inl ⟨hfb, hmb, τ0, τw, Γb', Db', Γb', hbody, hsubw, SubEnv.refl _,
+          KontOkJ.frameK (fun _ h' => by simp at h') rfl hkH⟩
     · -- ## the reopen path: a pure frame push into the bona fide module
       have hqne : RubyCore.Types.qualifyMod ctx.cls name ≠ "" := by
         unfold RubyCore.Types.qualifyMod

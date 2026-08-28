@@ -156,11 +156,13 @@ theorem freshModHeap_machine (h₀ : Heap) (d : ObjId) (name q : String)
 def freshModFrame (k : ObjId) (cref₀ : List ObjId) : Frame :=
   { self := .ref k, defmod := k, kind := .classBody, cref := k :: cref₀ }
 
-/-- The successor machine, whole. -/
-def freshModMachine (m : Machine) (name q : String) (body : Expr) : Machine :=
+/-- The successor machine, whole (`d`/`cref₀` split out so call sites can
+    rewrite them to their own spellings of the current frame). -/
+def freshModMachine (m : Machine) (d : ObjId) (cref₀ : List ObjId)
+    (name q : String) (body : Expr) : Machine :=
   { m with
-    heap := freshModHeap m.heap m.currentFrame.defmod name q,
-    frames := m.frames.push (freshModFrame m.heap.objs.size m.currentFrame.cref),
+    heap := freshModHeap m.heap d name q,
+    frames := m.frames.push (freshModFrame m.heap.objs.size cref₀),
     stack := m.frames.size :: m.stack,
     kont := .frameK m.frames.size :: m.kont,
     ctl := .eval body }
@@ -202,7 +204,8 @@ theorem evalExpr_module_fresh {m : Machine} {name q : String} {body : Expr}
            else className m.heap m.currentFrame.defmod ++ "::" ++ name) = q)
     (hqne : ¬ q.isEmpty = true) :
     evalExpr m (.module' name body) =
-      .next (freshModMachine m name q body) := by
+      .next (freshModMachine m m.currentFrame.defmod m.currentFrame.cref
+        name q body) := by
   have hqq : (if m.currentFrame.defmod == Boot.objectId then name
       else s!"{className m.heap m.currentFrame.defmod}::{name}") = q := by
     rw [← hq]
@@ -239,7 +242,8 @@ theorem evalExpr_module_fresh {m : Machine} {name q : String} {body : Expr}
         frames := m.frames.push (freshModFrame m.heap.objs.size m.currentFrame.cref),
         stack := m.frames.size :: m.stack }
       (.eval body) (.frameK m.frames.size)) =
-    StepResult.next (freshModMachine m name q body)
+    StepResult.next (freshModMachine m m.currentFrame.defmod m.currentFrame.cref
+      name q body)
   rw [show (attachEigen ((constSetIn (m.heap.alloc (modObj q)).2
       m.currentFrame.defmod name (.ref m.heap.objs.size)).alloc (eigObj q)).2
       m.heap.objs.size
@@ -1933,6 +1937,57 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
         (Ne.symm hkey.1) (hnm ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
     · exact moduleNameOk_fresh hch hsat hdlt hqne hkey hnm
         (htab.2.2.2.2.2.2.2.2 pr hpr)
+
+/-! ## Call-site string facts -/
+
+theorem qualifyMod_ne_empty {owner nm : String} (hnm : nm ≠ "") :
+    RubyCore.Types.qualifyMod owner nm ≠ "" := by
+  unfold RubyCore.Types.qualifyMod
+  split
+  · exact hnm
+  · intro hq
+    have h1 := congrArg String.length hq
+    simp [String.length_append] at h1
+
+theorem colon_mem_qual {owner nm : String} (ho : ¬ owner = "Object") :
+    ':' ∈ (RubyCore.Types.qualifyMod owner nm).data := by
+  unfold RubyCore.Types.qualifyMod
+  rw [if_neg ho]
+  rw [show ((owner ++ "::" ++ nm)).data = owner.data ++ ("::" ++ nm).data from by
+    rw [String.append_assoc]
+    exact String.data_append]
+  refine List.mem_append.mpr (Or.inr ?_)
+  rw [show ("::" ++ nm).data = "::".data ++ nm.data from String.data_append]
+  exact List.mem_append.mpr (Or.inl (by decide))
+
+/-- The readable names carry neither `:` nor a `#` head — decidable over the
+    literal list, and what pins them off both machine-minted name shapes. -/
+theorem readable_no_colon :
+    ∀ r ∈ Types.readableClasses, ':' ∉ r.data ∧ r.data.head? ≠ some '#' := by
+  decide
+
+theorem hqrd_of_toplevel {nm : String}
+    (hrd : Types.readableClasses.contains nm = false) :
+    ∀ n ∈ Types.readableClasses, n ≠ nm := by
+  intro n hn hEq
+  rw [hEq] at hn
+  have := List.contains_iff_mem.mpr hn
+  rw [hrd] at this
+  exact Bool.noConfusion this
+
+theorem hqrd_of_nested {owner nm : String} (ho : ¬ owner = "Object") :
+    ∀ n ∈ Types.readableClasses, n ≠ RubyCore.Types.qualifyMod owner nm := by
+  intro n hn hEq
+  have := (readable_no_colon n hn).1
+  rw [hEq] at this
+  exact this (colon_mem_qual ho)
+
+theorem hqe_of {qq : String} :
+    ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ qq ++ ">" := by
+  intro n hn hEq
+  have := (readable_no_colon n hn).2
+  rw [hEq] at this
+  exact this ename_head
 
 end Table
 
