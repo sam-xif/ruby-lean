@@ -1369,3 +1369,61 @@ pkg_version, sig-stripped):
 5. `alias` (needs a defined-names channel to refute the miss raise), `require`/
    `delegate` (unmodeled ⇒ `.unsupported`, refused at the J-grade) are deferred
    to their files' phase; semver → cvss target order.
+
+## J48–J52 (2026-08-28): the first whole-file accepts — `cvss.rb` and `semver.rb`, unconditional
+
+The M0 reprice paid off. The rungs, in landing order:
+
+* **J48 `module'`** (machine-typed, both branches) and **J49 `casgnM`** — prior session.
+* **J50 certificate plumbing** — `JCert.deltaModules` (checked *by `validateJ`* at the
+  boot heap via `moduleNameOkB`, so module pairs do NOT condition the accept;
+  soundness `moduleNameOkB_sound` under `modOwner_lt`/`modOffChainsB_sound`) and
+  `sem_assumes` on the wire (`semClaimOfJson`, the claimed `e` riding as a
+  harness-export AST node through the same `Decode.expr` as the program).
+* **J51 `Expr.flt` carries bits** — `exprEqB`'s `.flt` arm was `false` by design
+  (`Float` has no `DecidableEq`), so *any float-bearing claim could never match*.
+  The syntax layer now stores the IEEE bit pattern (`UInt64`, decidable); the
+  `Float` is made at evaluation (`Float.ofBits`). Wire format unchanged. Tier-0
+  sampled twice, 0 disagree.
+  Also J51: `declClsFresh`'s modules clause was contradictory with *nested*
+  modules (a child pair's owner IS the parent's qualified name) — weakened to bar
+  only the self-pair `(q, name)` and `#`-headed owners; the fresh module's empty
+  constant table discharges `q`-owned pairs (`moduleNameOk_fresh_ownq`).
+* **J51b `defsShapeB`** — the `defs` claim residue pre-discharged by one `Bool`:
+  `semAxiomsOk_defsAll` (the schema generalized shape-wise) + `defsShapeB_sound` +
+  **`validateJ_certifies_defs`** (axiom-clean). An accept whose claims are all
+  `defs`-shaped and whose row/const deltas are empty is **unconditional**; the CLI
+  reports `sem_assumes_defs_shape` and picks the theorem name.
+* **J52 `Expr.regexpLit`** — the regex-literal lowering (`::Regexp.new("src", n)`,
+  desugar C33) gets its own head at *export* (faithful: CRuby compiles literals at
+  parse time, no constant read) and one allocation step in `evalExpr`. `LitClsOk`
+  gains the Regexp clause (every transport + `heapOkB`). `Judge.regexpLit` carries
+  the `Rx.parse` premise (progress); preservation is the `.str` producer case at
+  `Boot.regexpId`. First tried as a composed arm *inside* the generic send arm —
+  reverted: it splits the match every send-reducing proof reduces (Static
+  preservation broke on contact). New-constructor composition is the repeatable
+  pattern; overlapping-arm composition is not.
+
+**Pipeline**: `certify/certify-file.sh` = sig_strip | visibility_strip |
+freeze_strip | require_strip | const_inline → export-json → `certify/jcert.rb`
+(module'/casgnM/regexpLit nodes; `def self.` statements as `defs` claims with
+`req_mod` + `fresh_names`) → `rubycore --certify-j`. Certificates:
+`certify/certs/{cvss,semver}.jcert.json` — both **accept, unconditional:true**
+(`theorem: validateJ_certifies_defs`).
+
+**Recorded bills** (what blocks the next files):
+* `Struct.new` (identify's `RegistryPackage`) — prelude-implemented, deeply
+  multi-step; needs the J46 segment threading or a struct→class patch plus:
+* **the fresh user-class rung** (`class X` in module body / toplevel; purl,
+  pkg_version, identify-via-patch) — the `module'` fresh path's sibling
+  (`freshModHeap` hardcodes `isModule := true`; a class variant needs
+  superclass `Object` and the instance-`def` install-and-forget claims, which
+  are the `defs` schema minus the eigenclass).
+* J42 constant threading (`casgnM` growing the table for later reads) — the
+  `const_inline` transform is the stopgap, sound only for literal-valued
+  constants.
+* `alias`/`attr_reader`/`include`/`extend`/`delegate` at boot (purl,
+  pkg_version) — each a one-or-few-step claim schema in the `defs` mold.
+* Prelude-heap J-certificates (`validateJ_certifies` is at the bare
+  `Machine.init`; the static layer's `check_sound_withPrelude` shape is the
+  template).
