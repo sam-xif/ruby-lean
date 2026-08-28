@@ -676,7 +676,19 @@ def rowsGroundB (rows : List RowClaim) : Bool :=
     at the boot classes, decide it at the conformant heap, and check it against
     the program's install inventory. An unresolvable name, an unreadable install
     site, or a genuine conflict all reject — see `InstallN.framedBy` for why the
-    three are one verdict here. -/
+    three are one verdict here.
+
+    **What is and is not proved, stated where it can be read.** The two halves
+    are each backed: the claim's decision by `holdsB_iff`, and disjointness by
+    SF-T2 (`Holds_defineMethod`), which frames a whole footprint across a
+    `defineMethod` whose `Install` misses it. What is **not** yet proved is the
+    bridge between them — that every `defineMethod` the machine performs while
+    running `p` is one of the installs `installsOf p` enumerated. That is SF-T3's
+    content and it is an induction over `stepFn`, not a lemma. Until it lands,
+    `frameOkB` is a *check* the certificate passes, not a hypothesis any theorem
+    consumes: `validateJ_certifies` is still carried by `declaresName`'s
+    name-global guard, and adding this conjunct only strengthens its hypothesis.
+    Nothing downstream may assume otherwise. -/
 def frameOkB (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
   match c.footprint.resolve bootResolver with
   | some fp => fp.holdsB Boot.initHeap && framedProgB fp bootResolver p fuel
