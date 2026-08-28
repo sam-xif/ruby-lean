@@ -1164,9 +1164,9 @@ theorem subDecls_addRow {D : Decls} {cls name : String} {d : MethodDecl}
       unfold declOf?
       rw [hdb]
       exact hd
-  -- L195/L196/L205/L211/L228: `SubDecls` is a sextuple now, and `addRow` touches `rows`
-  -- only — so all five other table halves are `rfl`.
-  refine ⟨?_, rfl, rfl, rfl, rfl, rfl⟩
+  -- L195/L196/L205/L211/L228/J44: `SubDecls` is a septuple now, and `addRow` touches
+  -- `rows` only — so all six other table halves are `rfl`.
+  refine ⟨?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
   intro τ mname dd hdf
   unfold declFor at hdf ⊢
   cases hcs : tyClassNames τ with
@@ -2325,6 +2325,220 @@ theorem constRead_sole {h : Heap} {n : String} {v : Value} {cref : List ObjId}
           · exact h'
         simp [List.firstM, hnone, ih htail]
   rw [hlex]; rfl
+
+/-! ## J44: the declared-modules channel
+
+A machine-typed `module name … end` must know which `enterClassBody` branch it
+takes, and at a conformant heap the constant it probes is arbitrary. A declared
+`(owner, name)` pair in `Decls.modules` obliges the invariant clause below —
+`enterClassBody`'s probe is `constOwn defmod name`, and the clause pins its
+answer to exactly the two branches preservation can type: *absent* (the fresh
+path — allocate, register, realize the eigenclass, push) or *a bona-fide module
+named the qualified name with its eigenclass realized* (the reopen path — no
+`TypeError`, and the pushed frame's `StackCtx` clauses are the disjunct's own
+conjuncts). -/
+
+/-- The machine's qualified-name computation, table-side: `enterClassBody` names a
+    nested definition `Owner::name` and a toplevel one bare (`defmod = Object`). -/
+def qualifyMod (owner nm : String) : String :=
+  if owner = "Object" then nm else owner ++ "::" ++ nm
+
+/-- **`o` sits on no pre-`Object` chain segment** — of any class whose chain reaches
+    `Object` at all. `NoShadowBefore` (the clause every readable class carries) says
+    the modules *before* `Object` on such chains own no constants, so a module the
+    fragment writes constants into must live off those segments; this is that fact,
+    carried from the module's birth (a fresh id is beyond every old chain, and the
+    fragment has no `include`/`prepend`). -/
+def ModOffChains (h : Heap) (o : ObjId) : Prop :=
+  ∀ k, Boot.objectId ∈ ancestors h k →
+    o ∉ (ancestors h k).takeWhile (· != Boot.objectId)
+
+/-- The objects a declared owner name can denote: `Object` itself for `"Object"`,
+    or any bona-fide module of that name with its eigenclass realized, off the
+    shadowing segments. Quantified (`ModuleNameOk` is `∀ o, ModOwner … →`) rather
+    than functional, so no uniqueness clause is needed: the frame the `module'`
+    step runs in satisfies it (the `StackCtx` module clause, or `BottomObj` +
+    `ClassOk` at toplevel), and every satisfying object is obliged alike. -/
+def ModOwner (h : Heap) (owner : String) (o : ObjId) : Prop :=
+  (owner = "Object" ∧ o = Boot.objectId) ∨
+  (∃ cp, h.classPayload? o = some cp ∧ cp.isModule = true ∧ cp.name = owner ∧
+    (h.get o).eigen.isSome ∧ ModOffChains h o)
+
+/-- What one declared `(owner, name)` pair obliges (J44): at every object the owner
+    name can denote, the constant is absent or a realized module named the
+    qualified name — with the bound and `ModOffChains` the fresh path will need to
+    keep re-establishing it. -/
+def ModuleNameOk (h : Heap) (owner nm : String) : Prop :=
+  ∀ o, ModOwner h owner o →
+    constOwn h o nm = none ∨
+    ∃ k cp, constOwn h o nm = some (.ref k) ∧ h.classPayload? k = some cp ∧
+      cp.isModule = true ∧ cp.name = qualifyMod owner nm ∧
+      (h.get k).eigen.isSome ∧ ModOffChains h k ∧ k < h.objs.size
+
+/-- `ModOffChains` across an allocation: old chains are pinned, and a fresh id's
+    chain is `[k]`, which reaches `Object` only if `k` *is* `Object` — an old id. -/
+theorem modOffChains_grow {h h' : Heap} {o : ObjId} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hm : ModOffChains h o) : ModOffChains h' o := by
+  intro k hmem
+  by_cases hk : k < h.objs.size
+  · rw [hg.ancestors_eq hsat] at hmem ⊢
+    exact hm k hmem
+  · have hnone : h'.classPayload? k = none := by
+      rw [hg.payload]; exact classPayload?_oob h k hk
+    rw [ancestors_of_not_class hnone] at hmem
+    have hko : Boot.objectId = k := List.mem_singleton.mp hmem
+    exact absurd (hko ▸ hobj) hk
+
+theorem modOffChains_grow' {h h' : Heap} {o : ObjId} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hm : ModOffChains h' o) : ModOffChains h o := by
+  intro k hmem
+  by_cases hk : k < h.objs.size
+  · rw [← hg.ancestors_eq hsat] at hmem ⊢
+    exact hm k hmem
+  · rw [ancestors_of_not_class (classPayload?_oob h k hk)] at hmem
+    have hko : Boot.objectId = k := List.mem_singleton.mp hmem
+    exact absurd (hko ▸ hobj) hk
+
+theorem modOffChains_constSetIn {h : Heap} {o : ObjId} {j : ObjId} {nm : String}
+    {v : Value} (hm : ModOffChains h o) : ModOffChains (constSetIn h j nm v) o := by
+  intro k hmem
+  rw [ancestors_constSetIn] at hmem ⊢
+  exact hm k hmem
+
+theorem modOffChains_defineMethod {h : Heap} {o : ObjId} {cls : ObjId}
+    {name : String} {md : MethodDef} (hm : ModOffChains h o) :
+    ModOffChains (defineMethod h cls name md) o := by
+  intro k hmem
+  rw [ancestors_defineMethod] at hmem ⊢
+  exact hm k hmem
+
+/-- `ModuleNameOk` across an allocation. Both directions of `ModOwner` move:
+    the quantifier's hypothesis reads the *new* heap, the conclusion writes it. -/
+theorem moduleNameOk_grow {h h' : Heap} {owner nm : String} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hmo : ModuleNameOk h owner nm) : ModuleNameOk h' owner nm := by
+  intro o ho
+  have ho0 : ModOwner h owner o := by
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · rw [hg.payload] at hcp
+      have holt : o < h.objs.size := classPayload?_isSome_lt (by rw [hcp]; simp)
+      rw [hg.get o holt] at heig
+      exact Or.inr ⟨cp, hcp, hism, hnm, heig, modOffChains_grow' hg hsat hobj hoff⟩
+  rcases hmo o ho0 with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+  · left; unfold constOwn at hnone ⊢; rw [hg.payload]; exact hnone
+  · right
+    exact ⟨k, cp, by unfold constOwn at hco ⊢; rw [hg.payload]; exact hco,
+      by rw [hg.payload]; exact hcp, hism, hqn,
+      by rw [hg.get k hlt]; exact heig, modOffChains_grow hg hsat hobj hoff,
+      Nat.lt_of_lt_of_le hlt hg.size⟩
+
+/-- `ModuleNameOk` across a constant write at a **different** name (the `casgn`
+    guard): every field the clause reads is pinned. -/
+theorem moduleNameOk_constSetIn {h : Heap} {owner nm : String} {j : ObjId}
+    {nm₀ : String} {v : Value} (hne : nm ≠ nm₀)
+    (hmo : ModuleNameOk h owner nm) : ModuleNameOk (constSetIn h j nm₀ v) owner nm := by
+  have hown : ∀ o, ModOwner (constSetIn h j nm₀ v) owner o → ModOwner h owner o := by
+    intro o ho
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · have hnmm := clsName_constSetIn h j o nm₀ v
+      rw [hcp] at hnmm
+      cases hcp0 : h.classPayload? o with
+      | none => rw [hcp0] at hnmm; exact absurd hnmm (by simp)
+      | some cp0 =>
+        rw [hcp0] at hnmm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+        refine Or.inr ⟨cp0, hcp0, ?_, ?_, ?_, ?_⟩
+        · rw [← hnmm.2]; exact hism
+        · rw [← hnmm.1]; exact hnm
+        · rw [← (get_constSetIn_fields h j nm₀ v o).2.2.1]; exact heig
+        · intro k hmem
+          have := hoff k (by rw [ancestors_constSetIn]; exact hmem)
+          rw [ancestors_constSetIn] at this
+          exact this
+  intro o ho
+  rcases hmo o (hown o ho) with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+  · left; rw [constOwn_constSetIn_ne h j o nm₀ nm v (Or.inr hne)]; exact hnone
+  · right
+    have hnmm := clsName_constSetIn h j k nm₀ v
+    rw [hcp] at hnmm
+    cases hcp1 : (constSetIn h j nm₀ v).classPayload? k with
+    | none => rw [hcp1] at hnmm; exact absurd hnmm.symm (by simp)
+    | some cp1 =>
+      rw [hcp1] at hnmm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+      refine ⟨k, cp1, ?_, hcp1, by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn,
+        ?_, modOffChains_constSetIn hoff, ?_⟩
+      · rw [constOwn_constSetIn_ne h j o nm₀ nm v (Or.inr hne)]; exact hco
+      · rw [(get_constSetIn_fields h j nm₀ v k).2.2.1]; exact heig
+      · rw [objs_size_constSetIn]; exact hlt
+
+/-- `ModuleNameOk` across a method install: `defineMethod` moves no field the
+    clause reads. -/
+theorem moduleNameOk_defineMethod {h : Heap} {owner nm : String} {cls : ObjId}
+    {name : String} {md : MethodDef}
+    (hmo : ModuleNameOk h owner nm) : ModuleNameOk (defineMethod h cls name md) owner nm := by
+  have hown : ∀ o, ModOwner (defineMethod h cls name md) owner o → ModOwner h owner o := by
+    intro o ho
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · have hnmm := clsName_defineMethod h cls o name md
+      rw [hcp] at hnmm
+      cases hcp0 : h.classPayload? o with
+      | none => rw [hcp0] at hnmm; exact absurd hnmm (by simp)
+      | some cp0 =>
+        rw [hcp0] at hnmm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+        refine Or.inr ⟨cp0, hcp0, by rw [← hnmm.2]; exact hism,
+          by rw [← hnmm.1]; exact hnm,
+          by rw [← get_defineMethod_eigen h cls name md o]; exact heig, ?_⟩
+        intro k hmem
+        have := hoff k (by rw [ancestors_defineMethod]; exact hmem)
+        rw [ancestors_defineMethod] at this
+        exact this
+  intro o ho
+  rcases hmo o (hown o ho) with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+  · left; rw [constOwn_defineMethod]; exact hnone
+  · right
+    have hnmm := clsName_defineMethod h cls k name md
+    rw [hcp] at hnmm
+    cases hcp1 : (defineMethod h cls name md).classPayload? k with
+    | none => rw [hcp1] at hnmm; exact absurd hnmm.symm (by simp)
+    | some cp1 =>
+      rw [hcp1] at hnmm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+      exact ⟨k, cp1, by rw [constOwn_defineMethod]; exact hco, hcp1,
+        by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn,
+        by rw [get_defineMethod_eigen]; exact heig,
+        modOffChains_defineMethod hoff,
+        by rw [objs_size_defineMethod]; exact hlt⟩
+
+/-- `ModuleNameOk` across an ivar write: every field the clause reads is pinned. -/
+theorem moduleNameOk_ivarOnly {h h' : Heap} {owner nm : String} (hi : IvarOnly h h')
+    (hmo : ModuleNameOk h owner nm) : ModuleNameOk h' owner nm := by
+  have hco : ∀ o n, constOwn h' o n = constOwn h o n := by
+    intro o n; unfold constOwn; rw [hi.classPayload]
+  have hoff : ∀ o, ModOffChains h o → ModOffChains h' o := by
+    intro o hm k hmem
+    rw [hi.ancestors_eq] at hmem ⊢
+    exact hm k hmem
+  intro o ho
+  have ho0 : ModOwner h owner o := by
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hof⟩
+    · exact Or.inl h1
+    · rw [hi.classPayload] at hcp
+      rw [hi.eigen] at heig
+      refine Or.inr ⟨cp, hcp, hism, hnm, heig, fun k hmem => ?_⟩
+      have := hof k (by rw [hi.ancestors_eq]; exact hmem)
+      rw [hi.ancestors_eq] at this
+      exact this
+  rcases hmo o ho0 with hnone | ⟨k, cp, hc, hcp, hism, hqn, heig, hof, hlt⟩
+  · left; rw [hco]; exact hnone
+  · exact Or.inr ⟨k, cp, by rw [hco]; exact hc, by rw [hi.classPayload]; exact hcp,
+      hism, hqn, by rw [hi.eigen]; exact heig, hoff k hof, by rw [hi.size]; exact hlt⟩
 
 /-- **Every reopenable class name really names a reopenable class**: `Object`'s own
     constant table binds it to a class object that is not a module.

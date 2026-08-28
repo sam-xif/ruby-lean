@@ -1018,7 +1018,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
             (fun p hp => hmv p (by simp [hp])) hvj hrest hsubw hk)
   -- ## The toplevel constant write (J41): push `casgnK` on the rhs.
   case hcasgn =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hrhs ihr
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
@@ -1033,7 +1033,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       simp only [evalExpr]
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
-        (KontOkJ.casgnK hct hsct hrd hsubw hk)
+        (KontOkJ.casgnK hct hsct hrd hmods hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1630,7 +1630,8 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         F, ctx, Γk, Γs,
         ⟨(ivarOnly_rowsAndConstsJ hi htab).1, (ivarOnly_rowsAndConstsJ hi htab).2.1, ?_,
           (ivarOnly_rowsAndConstsJ hi htab).2.2.1, (ivarOnly_rowsAndConstsJ hi htab).2.2.2,
-          htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2⟩,
+          htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
+          fun pr hpr => moduleNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
         ?_, ?_, ?_, ?_⟩
       · intro c' x' σ' hiv' o' ho0 hcn' v' hv'
         have hsz : (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap.objs.size
@@ -1686,7 +1687,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         ClosuresOk.konts (hcloTail hK) rfl rfl
           (by intro κ hm; exact Or.inl (by simpa using hm)),
         F, ctx, Γk, Γs, htab, hfs, hsc,
-        GlobalsOk.set hgl hgt ((hv.weaken hcf).toValueTy (htab.2.2.2.2.2.2.2 _ _ hgt)),
+        GlobalsOk.set hgl hgt ((hv.weaken hcf).toValueTy (htab.2.2.2.2.2.2.2.1 _ _ hgt)),
         ⟨τw, _, VTy.weaken hv hsw, hsu, hk'⟩⟩
     -- **`C::n`, at the delivery** (J38, transliterating L205's delivery): the
     -- in-flight value is a class object, the constant is not private, and the walk
@@ -1770,7 +1771,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     -- inert (`nameIfAnonymous_noop`, J41a's clause), the write is `constSetIn` on
     -- `Object` (`BottomObj` at the singleton stack), and every invariant conjunct
     -- crosses by the `constSetIn` transports.
-    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hsw hk' hsu =>
+    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hmods hsw hk' hsu =>
       cases hst : m.stack with
       | nil => exact absurd hst (hfs.frameShallow).1
       | cons fid fids =>
@@ -1807,7 +1808,9 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
                 rw [classPayload?_isSome_constSetIn]; exact ho),
           F, ctx, Γk, [],
           ⟨hrows.1, hrows.2.1, hrows.2.2.1, hrows.2.2.2.1, hrows.2.2.2.2,
-            htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2⟩,
+            htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
+            fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
+              (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
           FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
           GlobalsOk.congr hag hgl,
           ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,

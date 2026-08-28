@@ -709,7 +709,7 @@ def chk (c : Cert) : Nat → Decls → Env → Expr → Bool → FrameCtx →
       | none =>
         if ps.isEmpty && declaresName D name == false && name != "method_added" && name != "define_method" then
           match chk c n D [] body false
-              { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
+              { ctx with selfCls := some ctx.cls, ret := none, meth := some name, inModuleBody := false,
                          params := some [], inClassBody := false, inLoop := none, inBlock := false }
               with
           | some (τb, _, Db) =>

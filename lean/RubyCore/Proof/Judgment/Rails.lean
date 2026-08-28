@@ -225,7 +225,7 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
   -- with the reification's `PlainGrow` transport composed in front.
   have hha : ("shout" : String) ≠ "method_added" ∧ ("shout" : String) ≠ "define_method" :=
     ⟨by decide, by decide⟩
-  have htab₁ : DeclsOkJ [dmClaim] D (dmM₁ m).heap := DeclsOkJ_grow hg₁ hsat htab
+  have htab₁ : DeclsOkJ [dmClaim] D (dmM₁ m).heap := DeclsOkJ_grow hg₁ hsat hchn.boot.2.2.2.2 htab
   have hsat₁ : Saturated (dmM₁ m).heap := Saturated_grow hg₁.shapeAgree hg₁.size hsat
   have hstr₁ : LitClsOk (dmM₁ m).heap := LitClsOk_grow hg₁ hstr
   have hcls₁ : ClassOk (dmM₁ m).heap := ClassOk_grow hg₁ hsat hcls

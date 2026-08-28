@@ -100,7 +100,7 @@ def methodCtx (ctx : JCtx) (name : String) (τs : List Ty) (ret : Option Ty)
     (bs : Option BlockSig) : JCtx :=
   { ctx with selfCls := some ctx.cls, ret := ret, meth := some name,
              params := some τs, inLoop := none, inBlock := false,
-             inClassBody := false, blk := bs, inRescue := false }
+             inClassBody := false, inModuleBody := false, blk := bs, inRescue := false }
 
 /-- The context a singleton-method (`defs`) body is judged in: `methodCtx` with
     `selfCls := none` — `self` is the receiver object, which the type language
@@ -461,6 +461,11 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       constTy? D₁ nm = none →
       (∀ cn, scopedConstTy? D₁ cn nm = none) →
       readableClasses.contains nm = false →
+      -- J44: and the declared-modules clause — a same-name write at `Object`
+      -- would falsify `ModuleNameOk` for a declared `("Object", nm)` pair (and
+      -- `nameIfAnonymous` could mint a fake owner), so the name must be off the
+      -- modules table entirely.
+      (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   | cpathAsgn {D Γ base nm rhs top ctx τb Γ₁ D₁ τ Γ₂ D₂} :

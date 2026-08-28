@@ -250,13 +250,14 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       obtain ⟨rfl, h2⟩ := ih hmeth2 hfb hmb (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .cpathScoped h2 (by rw [hs.scopedConstTy_eq]; exact hsco)⟩
   case hcasgn =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hrhs ih hmeth2 hfhx hmf hdf D2 hs
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hrhs ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | casgn hfr hmr =>
       obtain ⟨rfl, h2⟩ := ih hmeth2 hfr hmr (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .casgn htopt (by rw [hs.constTy_eq]; exact hct)
-        (fun cn => by rw [hs.scopedConstTy_eq]; exact hsct cn) hrd h2⟩
+        (fun cn => by rw [hs.scopedConstTy_eq]; exact hsct cn) hrd
+        (fun pr hpr => hmods pr (by rw [← hs.modules_eq]; exact hpr)) h2⟩
   case hretSome =>
     intro D Γ e' top ctx σ τ0 Γ₁ D₁ hσ hms hj0 hsj ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
@@ -455,7 +456,8 @@ theorem DeclsOkJ_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOkJ A D h)
     fun c n dd hn => hd.2.2.2.2.1 c n dd (by rw [← hs.superDecl_eq]; exact hn),
     fun τ n d hdf => ?_,
     fun c x τ hn => hd.2.2.2.2.2.2.1 c x τ (by rw [← hs.ivarTy_eq]; exact hn),
-    fun x τ hn => hd.2.2.2.2.2.2.2 x τ (by rw [← hs.globalTy_eq]; exact hn)⟩
+    fun x τ hn => hd.2.2.2.2.2.2.2.1 x τ (by rw [← hs.globalTy_eq]; exact hn),
+    fun pr hpr => hd.2.2.2.2.2.2.2.2 pr (by rw [← hs.modules_eq]; exact hpr)⟩
   · cases hold : declFor D τ n with
     | none => exact (hnew τ n d hold hdf).1
     | some d0 =>
@@ -486,7 +488,8 @@ theorem DeclsOkJ_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : Strin
       (fun heq => by
         rw [heq] at hn
         exact absurd (superDecl?_declaresName hn) (by simp [hfresh])),
-    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
+    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
+    fun pr hpr => moduleNameOk_defineMethod (hd.2.2.2.2.2.2.2.2 pr hpr)⟩
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq

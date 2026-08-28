@@ -278,6 +278,7 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       constTy? D nm = none →
       (∀ cn, scopedConstTy? D cn nm = none) →
       readableClasses.contains nm = false →
+      (∀ pr ∈ D.modules, pr.2 ≠ nm) →
       SubJ τ τw →
       KontOkJ ans A D h [(c, Γk)] τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
@@ -314,8 +315,8 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
   | cpathK hb hsco hsw _ hsu ih => intro ha; exact .cpathK hb hsco hsw (ih ha) hsu
   | retValK hσ hms hsub _ hsu ih => intro ha; exact .retValK hσ hms hsub (ih ha) hsu
-  | casgnK hct hsct hrd hsub _ hsu ih =>
-      intro ha; exact .casgnK hct hsct hrd hsub (ih ha) hsu
+  | casgnK hct hsct hrd hmods hsub _ hsu ih =>
+      intro ha; exact .casgnK hct hsct hrd hmods hsub (ih ha) hsu
   | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
       intro ha; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih ha) hsu
   | hshValK hfp hmk hmvs hpr hw _ hsu ih =>
@@ -432,7 +433,7 @@ theorem KontOkJ.retOkJ {ans : Ty} {A : SemAxioms} :
           have hq : _ = D := judge_pairs_table_ret hpr (by rw [hσ]; simp) hms htop
           subst hq
           exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
-      | casgnK hct hsct hrd hsub hk' hsu => exact absurd rfl hne
+      | casgnK hct hsct hrd hmods hsub hk' hsu => exact absurd rfl hne
       | frameK hrt hil hk' => exact RetOkJ.here (hrt σ hσ) hk'
 
 /-- `firstFrameK_of_retOk`, J-flavored: along a chain that carries a `.retJ`, the
@@ -669,7 +670,7 @@ theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} 
           intro o ho
           show (m'.heap.classPayload? o).isSome = true
           rw [hag.2.2.1 o (classPayload?_isSome_lt ho)]; exact ho),
-    F, c, Γ, Γs, DeclsOkJ_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
+    F, c, Γ, Γs, DeclsOkJ_grow hg hsat hchn.boot.2.2.2.2 ht, ?_, ?_, ?_, ?_⟩
   · show FramesOkJ m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
     exact FramesOkJ.heap_congr hag hfs

@@ -176,6 +176,18 @@ structure Decls where
       carries `plainGlobal` for exactly that, and `GlobalsOk` is quantified over the
       plain names only. -/
   globals : List (String × Ty) := []
+  /-- **(owner class name, module name) → a declared `module name … end` site** (J44).
+
+      The seventh table, and the first about *definitions* rather than reads: a
+      machine-typed `module'` must know which `enterClassBody` branch it takes, and
+      at a conformant heap the constant it probes is arbitrary. A declared pair
+      obliges `ModuleNameOk` (`Proof/Static/Decls.lean`): the owner's constant `name`
+      is either absent (the fresh branch) or a bona-fide module named
+      `qualifyMod owner name` with its eigenclass realized and its id off every
+      readable pre-`Object` chain segment (the reopen branch). The owner key is the
+      judging context's `cls` — `"Object"` at toplevel, the enclosing module's
+      qualified name inside a module body. -/
+  modules : List (String × String) := []
 deriving DecidableEq, Repr, Inhabited
 
 /-- The declared type of a constant, or `none` for "not declared". `declOf?`'s
@@ -640,7 +652,10 @@ def SubDecls (F F' : Decls) : Prop :=
   -- false rather than merely unprovable.
   F.supers = F'.supers ∧
   -- L228: and the globals table, same reason a fourth time.
-  F.globals = F'.globals
+  F.globals = F'.globals ∧
+  -- J44: and the declared-modules table — the `module'` rule reads membership out
+  -- of it, and the invariant clause it obliges is per-entry.
+  F.modules = F'.modules
 
 /-- **`blockSend?` is monotone in the table** (L255), which is the half `infer_mono` needs:
     it reads `declFor` and nothing else, and `SubDecls`' first component is exactly that
@@ -683,13 +698,15 @@ theorem SubDecls.blockSendA_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
              rw [hs.1 τr mname d hd]
              exact h)
 
-theorem SubDecls.refl (F : Decls) : SubDecls F F := ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl⟩
+theorem SubDecls.refl (F : Decls) : SubDecls F F :=
+  ⟨fun _ _ _ h => h, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
 theorem SubDecls.trans {F F' F'' : Decls} (h₁ : SubDecls F F') (h₂ : SubDecls F' F'') :
     SubDecls F F'' :=
   ⟨fun τ m d h => h₂.1 τ m d (h₁.1 τ m d h), h₁.2.1.trans h₂.2.1,
     h₁.2.2.1.trans h₂.2.2.1, h₁.2.2.2.1.trans h₂.2.2.2.1,
-    h₁.2.2.2.2.1.trans h₂.2.2.2.2.1, h₁.2.2.2.2.2.trans h₂.2.2.2.2.2⟩
+    h₁.2.2.2.2.1.trans h₂.2.2.2.2.1, h₁.2.2.2.2.2.1.trans h₂.2.2.2.2.2.1,
+    h₁.2.2.2.2.2.2.trans h₂.2.2.2.2.2.2⟩
 
 /-- The constant-table form, which is what the `.const` rule reads. -/
 theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
@@ -714,7 +731,11 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
 /-- And the globals table's (L228). -/
 @[simp] theorem SubDecls.globalTy_eq {F F' : Decls} (hs : SubDecls F F') (x : String) :
     globalTy? F' x = globalTy? F x := by
-  unfold globalTy?; rw [hs.2.2.2.2.2]
+  unfold globalTy?; rw [hs.2.2.2.2.2.1]
+
+/-- And the declared-modules table's (J44). -/
+@[simp] theorem SubDecls.modules_eq {F F' : Decls} (hs : SubDecls F F') :
+    F'.modules = F.modules := hs.2.2.2.2.2.2.symm
 
 /-- The `sigOf` form, which is what the type rules read. -/
 theorem SubDecls.sigOf_eq {F F' : Decls} (hs : SubDecls F F') {τ : Ty} {mname : String}

@@ -408,21 +408,24 @@ theorem check_sound_all : ∀ (n : Nat),
                 List.all_eq_true] at hfresh
               simp only [Option.some.injEq, Prod.mk.injEq] at h
               obtain ⟨rfl, rfl, rfl⟩ := h
-              refine .casgn hgate.1 hfresh.1 (fun cn => ?_) hgate.2 (ihc h1)
-              cases hq : scopedConstTy? D₁ cn nm with
-              | none => rfl
-              | some τq =>
-                exfalso
-                unfold scopedConstTy? at hq
-                cases hf2 : D₁.scopedConsts.find? (·.1 == (cn, nm)) with
-                | none => rw [hf2] at hq; simp at hq
-                | some e2 =>
-                  have hmem := List.mem_of_find?_eq_some hf2
-                  have hkey := List.find?_some hf2
-                  have := hfresh.2 e2 hmem
-                  simp only [beq_iff_eq] at hkey
-                  simp only [bne_iff_ne, ne_eq] at this
-                  exact this (by rw [hkey])
+              refine .casgn hgate.1 hfresh.1.1 (fun cn => ?_)
+                hgate.2 (fun pr hpr => ?_) (ihc h1)
+              · cases hq : scopedConstTy? D₁ cn nm with
+                | none => rfl
+                | some τq =>
+                  exfalso
+                  unfold scopedConstTy? at hq
+                  cases hf2 : D₁.scopedConsts.find? (·.1 == (cn, nm)) with
+                  | none => rw [hf2] at hq; simp at hq
+                  | some e2 =>
+                    have hmem := List.mem_of_find?_eq_some hf2
+                    have hkey := List.find?_some hf2
+                    have := hfresh.1.2 e2 hmem
+                    simp only [beq_iff_eq] at hkey
+                    simp only [bne_iff_ne, ne_eq] at this
+                    exact this (by rw [hkey])
+              · have := hfresh.2 pr hpr
+                simpa using this
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)

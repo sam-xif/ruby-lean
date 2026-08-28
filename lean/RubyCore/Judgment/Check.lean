@@ -217,7 +217,8 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         match check n A rhs D Γ e' top ctx with
         | some (τ, Γ₁, D₁) =>
           if (constTy? D₁ nm).isNone &&
-              D₁.scopedConsts.all (fun e => e.1.2 != nm) then
+              D₁.scopedConsts.all (fun e => e.1.2 != nm) &&
+              D₁.modules.all (fun pr => pr.2 != nm) then
             some (τ, Γ₁, D₁)
           else none
         | none => none

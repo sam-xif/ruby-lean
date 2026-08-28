@@ -710,7 +710,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- not this body's. The rule requires `params.isEmpty` anyway, so `[]` is the truth
       -- and not an approximation.
       match infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name,
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, inModuleBody := false,
                      params := some [], inClassBody := false, inLoop := none,
                      -- **L249: `inBlock := false` explicitly**, and it is L207/L214's
                      -- point a third time — `{ ctx with … }` would inherit the

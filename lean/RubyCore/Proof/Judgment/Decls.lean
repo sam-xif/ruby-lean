@@ -81,18 +81,24 @@ def DeclsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
   -- …and so are the declared ivar and global rows (their conformance clauses are
   -- `ValueTy`-based, so the write cases collapse `VTy` through groundness).
   (∀ c x τ, ivarTy? D c x = some τ → groundTy τ = true) ∧
-  (∀ x τ, globalTy? D x = some τ → groundTy τ = true)
+  (∀ x τ, globalTy? D x = some τ → groundTy τ = true) ∧
+  -- **J44: the declared-modules clause** — one `ModuleNameOk` per declared
+  -- `(owner, name)` pair, which is what pins `enterClassBody`'s branch for the
+  -- machine-typed `module'`.
+  (∀ p ∈ D.modules, ModuleNameOk h p.1 p.2)
 
 /-- **The J-table invariant survives an allocating step** — `DeclsOk_grow` with the
     user arm's conformance passing straight through (`UserConformsJ` mentions no
     heap, exactly as `UserConforms` did). -/
 theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hd : DeclsOkJ A D h) : DeclsOkJ A D h' := by
+    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hd : DeclsOkJ A D h) : DeclsOkJ A D h' := by
   refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
     fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
     fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
-    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
+    hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
+    fun pr hpr => moduleNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2 pr hpr)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩

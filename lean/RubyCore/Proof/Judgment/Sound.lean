@@ -178,7 +178,8 @@ theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : Cla
   refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2,
     fun τr mname d hdecl => declFor_baseDecls_ground hdecl,
     fun c x τ hn => absurd hn (by simp [ivarTy?, baseDecls]),
-    fun x τ hn => absurd hn (by simp [globalTy?, baseDecls])⟩
+    fun x τ hn => absurd hn (by simp [globalTy?, baseDecls]),
+    fun pr hpr => absurd hpr (by simp [baseDecls])⟩
   intro τr mname d hdecl
   rcases hd.1 τr mname d hdecl with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
   · exact Or.inl hb

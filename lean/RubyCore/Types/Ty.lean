@@ -615,6 +615,12 @@ structure FrameCtx where
       consumer is the semantic-axiom layer (J35): a claim conditioned on a class
       body (`SemClaim.reqCls`) reads the receiver's identity from this clause. -/
   inClassBody : Bool := false
+  /-- **This is the body of a machine-typed `module` definition** (J44). Set only by
+      the `module'` rule's body context; read by the nested `module'` (the frame's
+      `defmod` is then a bona-fide realized module named `cls`, off every readable
+      pre-`Object` chain — the `StackCtx` module clause) and by the write rules whose
+      registration lands in that definee. -/
+  inModuleBody : Bool := false
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types
