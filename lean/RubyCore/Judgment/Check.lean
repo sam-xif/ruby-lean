@@ -234,7 +234,8 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
         | some (τ, Γ₁, D₁) =>
           if (constTy? D₁ nm).isNone &&
               D₁.scopedConsts.all (fun e => e.1.2 != nm) &&
-              D₁.modules.all (fun pr => pr.2 != nm) then
+              D₁.modules.all (fun pr => pr.2 != nm) &&
+              D₁.classes.all (fun pr => pr.2 != nm) then
             some (τ, Γ₁, D₁)
           else none
         | none => none

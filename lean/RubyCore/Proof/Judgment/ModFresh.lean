@@ -1979,6 +1979,176 @@ theorem moduleNameOk_name_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
       · rw [freshModHeap_size]
         exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
 
+/-- **`ClassNameOk` at the fresh-module composite** (J53), for a pair whose
+    owner is old (`KeyFresh`) and which the write cannot hit: either the names
+    differ, or the pair's owner is not the definee's name (`ownerD`), so the
+    written slot is never a witness's. -/
+theorem classNameOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    (hcls0 : ClassOk h₀)
+    {owner nm ownerD : String} (hko : KeyFresh q owner)
+    (hdn : className h₀ d = ownerD)
+    (hcase : nm ≠ name ∨ owner ≠ ownerD)
+    (hmo : ClassNameOk h₀ owner nm) :
+    ClassNameOk (freshModHeap h₀ d name q) owner nm := by
+  intro o ho
+  obtain ⟨holt, hom⟩ := modOwner_fresh_old hch hsat hdlt hqne hko ho
+  -- the witness is not the definee unless the names collide the guarded way
+  have hod : o ≠ d ∨ nm ≠ name := by
+    rcases hcase with hnn | hown
+    · exact Or.inr hnn
+    · left
+      intro hEq
+      apply hown
+      rcases hom with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+      · rw [h1, ← hdn, ← hEq, h2]
+        exact hcls0.1.symm
+      · have hnmm := clsName_constSetIn h₀ d o name (Value.ref h₀.objs.size)
+        rw [show (hmidOf h₀ d name).classPayload? o = (constSetIn h₀ d name
+          (Value.ref h₀.objs.size)).classPayload? o from rfl] at hcp
+        rw [hcp] at hnmm
+        cases hcp0 : h₀.classPayload? o with
+        | none => rw [hcp0] at hnmm; exact absurd hnmm.symm (by simp)
+        | some cp0 =>
+          rw [hcp0] at hnmm
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+          rw [← hdn, ← hEq]
+          unfold className
+          rw [hcp0]
+          show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
+          rw [if_neg (by rw [hcls0.2.2.2 o cp0 hcp0]; exact Bool.false_ne_true)]
+          rw [← hnmm.1]
+          exact hnm.symm
+  -- back to h₀'s ModOwner
+  have hoo : ModOwner h₀ owner o := by
+    rcases hom with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl ⟨h1, h2⟩
+    · have hcpn := clsName_constSetIn h₀ d o name (Value.ref h₀.objs.size)
+      rw [show (hmidOf h₀ d name).classPayload? o
+          = (constSetIn h₀ d name (Value.ref h₀.objs.size)).classPayload? o from rfl,
+        hcp] at hcpn
+      cases hcp0 : h₀.classPayload? o with
+      | none => rw [hcp0] at hcpn; exact absurd hcpn (by simp)
+      | some cp0 =>
+        rw [hcp0] at hcpn
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hcpn
+        refine Or.inr ⟨cp0, hcp0, by rw [← hcpn.2]; exact hism,
+          by rw [← hcpn.1]; exact hnm, ?_, fun k' hmem => ?_⟩
+        · rw [← (get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) o).2.2.1]
+          exact heig
+        · have := hoff k' (by rw [ancestors_constSetIn]; exact hmem)
+          rw [ancestors_constSetIn] at this
+          exact this
+  -- transport the fact
+  have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hcoeq : constOwn (freshModHeap h₀ d name q) o nm = constOwn h₀ o nm := by
+    rw [ClsGrow.constOwn_old hg homm]
+    show constOwn (constSetIn h₀ d name (Value.ref h₀.objs.size)) o nm = _
+    rcases hod with hone | hnn
+    · exact constOwn_constSetIn_ne h₀ d o name nm _ (Or.inl (by exact hone))
+    · exact constOwn_constSetIn_ne h₀ d o name nm _ (Or.inr hnn)
+  rcases hmo o hoo with hnone | ⟨kk, cp, hco, hcp, hism, hqn, heig, hlt⟩
+  · left; rw [hcoeq]; exact hnone
+  · right
+    have hcpH : (freshModHeap h₀ d name q).classPayload? kk
+        = (hmidOf h₀ d name).classPayload? kk := by
+      unfold Heap.classPayload?; rw [freshModHeap_get_old hlt]
+    have hnmm := clsName_constSetIn h₀ d kk name (Value.ref h₀.objs.size)
+    rw [hcp] at hnmm
+    cases hcp1 : (hmidOf h₀ d name).classPayload? kk with
+    | none =>
+      rw [show (hmidOf h₀ d name).classPayload? kk = (constSetIn h₀ d name
+        (Value.ref h₀.objs.size)).classPayload? kk from rfl] at hcp1
+      rw [hcp1] at hnmm
+      exact absurd hnmm.symm (by simp)
+    | some cp1 =>
+      rw [show (hmidOf h₀ d name).classPayload? kk = (constSetIn h₀ d name
+        (Value.ref h₀.objs.size)).classPayload? kk from rfl] at hcp1
+      rw [hcp1] at hnmm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+      refine ⟨kk, cp1, by rw [hcoeq]; exact hco, by rw [hcpH]; exact hcp1,
+        by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn, ?_, ?_⟩
+      · rw [show ((freshModHeap h₀ d name q).get kk).eigen
+            = ((hmidOf h₀ d name).get kk).eigen from by rw [freshModHeap_get_old hlt]]
+        rw [(get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) kk).2.2.1]
+        exact heig
+      · rw [freshModHeap_size]
+        exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+
+/-- `classNameOk_fresh` for a pair **owned by `q`** (the fresh module): old
+    witnesses cannot exist... rather, the fresh module is a new witness with an
+    empty constant table, and old witnesses transport. -/
+theorem classNameOk_fresh_ownq (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {nm : String} (hnn : nm ≠ name)
+    (hmo : ClassNameOk h₀ q nm) :
+    ClassNameOk (freshModHeap h₀ d name q) q nm := by
+  intro o ho
+  rcases modOwner_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
+      hch hsat ho with ⟨holt, hom⟩ | hok
+  · -- old witness: mirror `classNameOk_fresh`'s transport at `nm ≠ name`
+    have hoo : ModOwner h₀ q o := by
+      rcases hom with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+      · exact Or.inl ⟨h1, h2⟩
+      · have hcpn := clsName_constSetIn h₀ d o name (Value.ref h₀.objs.size)
+        rw [show (hmidOf h₀ d name).classPayload? o
+            = (constSetIn h₀ d name (Value.ref h₀.objs.size)).classPayload? o from rfl,
+          hcp] at hcpn
+        cases hcp0 : h₀.classPayload? o with
+        | none => rw [hcp0] at hcpn; exact absurd hcpn (by simp)
+        | some cp0 =>
+          rw [hcp0] at hcpn
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hcpn
+          refine Or.inr ⟨cp0, hcp0, by rw [← hcpn.2]; exact hism,
+            by rw [← hcpn.1]; exact hnm, ?_, fun k' hmem => ?_⟩
+          · rw [← (get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) o).2.2.1]
+            exact heig
+          · have := hoff k' (by rw [ancestors_constSetIn]; exact hmem)
+            rw [ancestors_constSetIn] at this
+            exact this
+    have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+    have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+      clsGrow_hmid_fresh
+    have hcoeq : constOwn (freshModHeap h₀ d name q) o nm = constOwn h₀ o nm := by
+      rw [ClsGrow.constOwn_old hg homm]
+      exact constOwn_constSetIn_ne h₀ d o name nm _ (Or.inr hnn)
+    rcases hmo o hoo with hnone | ⟨kk, cp, hco, hcp, hism, hqn, heig, hlt⟩
+    · left; rw [hcoeq]; exact hnone
+    · right
+      have hcpH : (freshModHeap h₀ d name q).classPayload? kk
+          = (hmidOf h₀ d name).classPayload? kk := by
+        unfold Heap.classPayload?; rw [freshModHeap_get_old hlt]
+      have hnmm := clsName_constSetIn h₀ d kk name (Value.ref h₀.objs.size)
+      rw [hcp] at hnmm
+      cases hcp1 : (hmidOf h₀ d name).classPayload? kk with
+      | none =>
+        rw [show (hmidOf h₀ d name).classPayload? kk = (constSetIn h₀ d name
+          (Value.ref h₀.objs.size)).classPayload? kk from rfl] at hcp1
+        rw [hcp1] at hnmm
+        exact absurd hnmm.symm (by simp)
+      | some cp1 =>
+        rw [show (hmidOf h₀ d name).classPayload? kk = (constSetIn h₀ d name
+          (Value.ref h₀.objs.size)).classPayload? kk from rfl] at hcp1
+        rw [hcp1] at hnmm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+        refine ⟨kk, cp1, by rw [hcoeq]; exact hco, by rw [hcpH]; exact hcp1,
+          by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn, ?_, ?_⟩
+        · rw [show ((freshModHeap h₀ d name q).get kk).eigen
+              = ((hmidOf h₀ d name).get kk).eigen from by rw [freshModHeap_get_old hlt]]
+          rw [(get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) kk).2.2.1]
+          exact heig
+        · rw [freshModHeap_size]
+          exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+  · -- the fresh module itself: empty constant table
+    subst hok
+    left
+    unfold constOwn
+    rw [freshModHeap_cp_k]
+    rfl
+
+
 /-- **The table invariant at the composite** — every clause assembled. -/
 theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
     (hch : ChainsIn h₀) (hsat : Saturated h₀) (hdlt : d < h₀.objs.size)
@@ -1992,13 +2162,15 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
     {owner : String}
     (hdo : (h₀.classPayload? d).isSome = true)
     (hdn : className h₀ d = owner)
-    (hqq : q = RubyCore.Types.qualifyMod owner name) :
+    (hqq : q = RubyCore.Types.qualifyMod owner name)
+    -- J53: the write must not hit a declared *class* pair of the same owner.
+    (hclsg : ∀ pr ∈ D.classes, ¬(pr.1 = owner ∧ pr.2 = name)) :
     DeclsOkJ A D (freshModHeap h₀ d name q) := by
   obtain ⟨hkR, hkI, hkS, hkP, hkM, hkC⟩ := declClsFresh_sound hdfr
   have hmidsuite := constSetIn_rowsAndConstsJ
     (v := Value.ref h₀.objs.size) (j := d) htab hct hsct
   refine ⟨?_, ?_, ?_, ?_, ?_, htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1,
-    htab.2.2.2.2.2.2.2.1, ?_⟩
+    htab.2.2.2.2.2.2.2.1, ?_, ?_⟩
   · intro τr mname dd hf
     obtain ⟨hnee, hkeys⟩ := declFor_keys hf
     exact entryOkJ_fresh hch hsat hdlt hqne hcO hnoO
@@ -2042,15 +2214,37 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
         · exact absurd hown h
         · exact h
       have := moduleNameOk_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
-        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
+        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2.1 pr hpr)
       rw [hown]
       exact this
     · by_cases hnm : pr.2 = name
       · rw [hnm]
         exact moduleNameOk_name_fresh hch hsat hdlt hqne hcls0 hdo hdn hqq
-          (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
+          (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2.1 pr hpr)
       · exact moduleNameOk_fresh hch hsat hdlt hqne ⟨hown, hkey.2⟩ hnm
-          (htab.2.2.2.2.2.2.2.2 pr hpr)
+          (htab.2.2.2.2.2.2.2.2.1 pr hpr)
+  · -- J53: the classes clause — the fresh module is never a `ClassNameOk`
+    -- witness (`isModule = true` there refutes the hit; its own constant table
+    -- is empty), and the write is barred from every declared class pair by the
+    -- rule's collision guard.
+    intro pr hpr
+    have hkey := hkC pr hpr
+    by_cases hown : pr.1 = q
+    · have hnm : pr.2 ≠ name := by
+        rcases hkey.1 with h | h
+        · exact absurd hown h
+        · exact h
+      have := classNameOk_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
+        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2.2 pr hpr)
+      rw [hown]
+      exact this
+    · by_cases hnm : pr.2 = name
+      · refine classNameOk_fresh hch hsat hdlt hqne hcls0 ⟨hown, hkey.2⟩ hdn
+          (Or.inr ?_) (htab.2.2.2.2.2.2.2.2.2 pr hpr)
+        intro hEq
+        exact hclsg pr hpr ⟨hEq, hnm⟩
+      · exact classNameOk_fresh hch hsat hdlt hqne hcls0 ⟨hown, hkey.2⟩ hdn
+          (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2 pr hpr)
 
 /-! ## Call-site string facts -/
 

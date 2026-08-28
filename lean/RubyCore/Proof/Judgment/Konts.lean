@@ -279,6 +279,7 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       (∀ cn, scopedConstTy? D cn nm = none) →
       readableClasses.contains nm = false →
       (∀ pr ∈ D.modules, pr.2 ≠ nm) →
+      (∀ pr ∈ D.classes, pr.2 ≠ nm) →
       SubJ τ τw →
       KontOkJ ans A D h [(c, Γk)] τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
@@ -293,6 +294,7 @@ inductive KontOkJ (ans : Ty) (A : SemAxioms) : Decls → Heap → List (JCtx × 
       (∀ cn, scopedConstTy? D cn nm = none) →
       readableClasses.contains nm = false →
       (∀ pr ∈ D.modules, pr.2 ≠ nm) →
+      (∀ pr ∈ D.classes, pr.2 ≠ nm) →
       SubJ τ τw →
       KontOkJ ans A D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
@@ -329,11 +331,11 @@ theorem KontOkJ.heap_congr' {ans : Ty} {A : SemAxioms} {h' : Heap} :
   | asgn hib hw _ hsu ih => intro ha; exact .asgn hib hw (ih ha) hsu
   | cpathK hb hsco hsw _ hsu ih => intro ha; exact .cpathK hb hsco hsw (ih ha) hsu
   | retValK hσ hms hsub _ hsu ih => intro ha; exact .retValK hσ hms hsub (ih ha) hsu
-  | casgnK hct hsct hrd hmods hsub _ hsu ih =>
-      intro ha; exact .casgnK hct hsct hrd hmods hsub (ih ha) hsu
-  | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub _ hsu ih =>
+  | casgnK hct hsct hrd hmods hclss hsub _ hsu ih =>
+      intro ha; exact .casgnK hct hsct hrd hmods hclss hsub (ih ha) hsu
+  | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hsub _ hsu ih =>
       intro ha
-      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub (ih ha) hsu
+      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hsub (ih ha) hsu
   | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
       intro ha; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih ha) hsu
   | hshValK hfp hmk hmvs hpr hw _ hsu ih =>
@@ -450,8 +452,8 @@ theorem KontOkJ.retOkJ {ans : Ty} {A : SemAxioms} :
           have hq : _ = D := judge_pairs_table_ret hpr (by rw [hσ]; simp) hms htop
           subst hq
           exact RetOkJ.skip trivial (KontOkJ.retOkJ hk' hne σ hσ hms)
-      | casgnK hct hsct hrd hmods hsub hk' hsu => exact absurd rfl hne
-      | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hsub hk' hsu =>
+      | casgnK hct hsct hrd hmods hclss hsub hk' hsu => exact absurd rfl hne
+      | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hsub hk' hsu =>
           exact absurd hσ (by rw [hret]; simp)
       | frameK hrt hil hk' => exact RetOkJ.here (hrt σ hσ) hk'
 

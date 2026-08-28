@@ -2535,6 +2535,135 @@ theorem moduleNameOk_ivarOnly {h h' : Heap} {owner nm : String} (hi : IvarOnly h
   · exact Or.inr ⟨k, cp, by rw [hco]; exact hc, by rw [hi.classPayload]; exact hcp,
       hism, hqn, by rw [hi.eigen]; exact heig, hoff k hof, by rw [hi.size]; exact hlt⟩
 
+/-- What one declared `(owner, name)` **class** pair obliges (J53): at every
+    object the owner name can denote, the constant is absent or a bona-fide
+    *class* (not a module) named the qualified name with its eigenclass
+    realized. `ModuleNameOk` minus the chain half — a class sits on its own
+    chain before `Object`, so no `ModOffChains` is stated (and consequently no
+    constant may ever be written *into* it: the `casgn`/`casgnM` rules bar
+    class-body position). -/
+def ClassNameOk (h : Heap) (owner nm : String) : Prop :=
+  ∀ o, ModOwner h owner o →
+    constOwn h o nm = none ∨
+    ∃ k cp, constOwn h o nm = some (.ref k) ∧ h.classPayload? k = some cp ∧
+      cp.isModule = false ∧ cp.name = qualifyMod owner nm ∧
+      (h.get k).eigen.isSome ∧ k < h.objs.size
+
+theorem classNameOk_grow {h h' : Heap} {owner nm : String} (hg : PlainGrow h h')
+    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hmo : ClassNameOk h owner nm) : ClassNameOk h' owner nm := by
+  intro o ho
+  have ho0 : ModOwner h owner o := by
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · rw [hg.payload] at hcp
+      have holt : o < h.objs.size := classPayload?_isSome_lt (by rw [hcp]; simp)
+      rw [hg.get o holt] at heig
+      exact Or.inr ⟨cp, hcp, hism, hnm, heig, modOffChains_grow' hg hsat hobj hoff⟩
+  rcases hmo o ho0 with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hlt⟩
+  · left; unfold constOwn at hnone ⊢; rw [hg.payload]; exact hnone
+  · right
+    exact ⟨k, cp, by unfold constOwn at hco ⊢; rw [hg.payload]; exact hco,
+      by rw [hg.payload]; exact hcp, hism, hqn,
+      by rw [hg.get k hlt]; exact heig,
+      Nat.lt_of_lt_of_le hlt hg.size⟩
+
+theorem classNameOk_constSetIn {h : Heap} {owner nm : String} {j : ObjId}
+    {nm₀ : String} {v : Value} (hne : nm ≠ nm₀)
+    (hmo : ClassNameOk h owner nm) : ClassNameOk (constSetIn h j nm₀ v) owner nm := by
+  have hown : ∀ o, ModOwner (constSetIn h j nm₀ v) owner o → ModOwner h owner o := by
+    intro o ho
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · have hnmm := clsName_constSetIn h j o nm₀ v
+      rw [hcp] at hnmm
+      cases hcp0 : h.classPayload? o with
+      | none => rw [hcp0] at hnmm; exact absurd hnmm (by simp)
+      | some cp0 =>
+        rw [hcp0] at hnmm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+        refine Or.inr ⟨cp0, hcp0, ?_, ?_, ?_, ?_⟩
+        · rw [← hnmm.2]; exact hism
+        · rw [← hnmm.1]; exact hnm
+        · rw [← (get_constSetIn_fields h j nm₀ v o).2.2.1]; exact heig
+        · intro k hmem
+          have := hoff k (by rw [ancestors_constSetIn]; exact hmem)
+          rw [ancestors_constSetIn] at this
+          exact this
+  intro o ho
+  rcases hmo o (hown o ho) with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hlt⟩
+  · left; rw [constOwn_constSetIn_ne h j o nm₀ nm v (Or.inr hne)]; exact hnone
+  · right
+    have hnmm := clsName_constSetIn h j k nm₀ v
+    rw [hcp] at hnmm
+    cases hcp1 : (constSetIn h j nm₀ v).classPayload? k with
+    | none => rw [hcp1] at hnmm; exact absurd hnmm.symm (by simp)
+    | some cp1 =>
+      rw [hcp1] at hnmm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+      refine ⟨k, cp1, ?_, hcp1, by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn,
+        ?_, ?_⟩
+      · rw [constOwn_constSetIn_ne h j o nm₀ nm v (Or.inr hne)]; exact hco
+      · rw [(get_constSetIn_fields h j nm₀ v k).2.2.1]; exact heig
+      · rw [objs_size_constSetIn]; exact hlt
+
+theorem classNameOk_defineMethod {h : Heap} {owner nm : String} {cls : ObjId}
+    {name : String} {md : MethodDef}
+    (hmo : ClassNameOk h owner nm) :
+    ClassNameOk (defineMethod h cls name md) owner nm := by
+  have hown : ∀ o, ModOwner (defineMethod h cls name md) owner o → ModOwner h owner o := by
+    intro o ho
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+    · exact Or.inl h1
+    · have hnmm := clsName_defineMethod h cls o name md
+      rw [hcp] at hnmm
+      cases hcp0 : h.classPayload? o with
+      | none => rw [hcp0] at hnmm; exact absurd hnmm (by simp)
+      | some cp0 =>
+        rw [hcp0] at hnmm
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+        refine Or.inr ⟨cp0, hcp0, by rw [← hnmm.2]; exact hism,
+          by rw [← hnmm.1]; exact hnm,
+          by rw [← get_defineMethod_eigen h cls name md o]; exact heig, ?_⟩
+        intro k hmem
+        have := hoff k (by rw [ancestors_defineMethod]; exact hmem)
+        rw [ancestors_defineMethod] at this
+        exact this
+  intro o ho
+  rcases hmo o (hown o ho) with hnone | ⟨k, cp, hco, hcp, hism, hqn, heig, hlt⟩
+  · left; rw [constOwn_defineMethod]; exact hnone
+  · right
+    have hnmm := clsName_defineMethod h cls k name md
+    rw [hcp] at hnmm
+    cases hcp1 : (defineMethod h cls name md).classPayload? k with
+    | none => rw [hcp1] at hnmm; exact absurd hnmm.symm (by simp)
+    | some cp1 =>
+      rw [hcp1] at hnmm
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+      exact ⟨k, cp1, by rw [constOwn_defineMethod]; exact hco, hcp1,
+        by rw [hnmm.2]; exact hism, by rw [hnmm.1]; exact hqn,
+        by rw [get_defineMethod_eigen]; exact heig,
+        by rw [objs_size_defineMethod]; exact hlt⟩
+
+theorem classNameOk_ivarOnly {h h' : Heap} {owner nm : String} (hi : IvarOnly h h')
+    (hmo : ClassNameOk h owner nm) : ClassNameOk h' owner nm := by
+  have hco : ∀ o n, constOwn h' o n = constOwn h o n := by
+    intro o n; unfold constOwn; rw [hi.classPayload]
+  intro o ho
+  have ho0 : ModOwner h owner o := by
+    rcases ho with h1 | ⟨cp, hcp, hism, hnm, heig, hof⟩
+    · exact Or.inl h1
+    · rw [hi.classPayload] at hcp
+      rw [hi.eigen] at heig
+      refine Or.inr ⟨cp, hcp, hism, hnm, heig, fun k hmem => ?_⟩
+      have := hof k (by rw [hi.ancestors_eq]; exact hmem)
+      rw [hi.ancestors_eq] at this
+      exact this
+  rcases hmo o ho0 with hnone | ⟨k, cp, hc, hcp, hism, hqn, heig, hlt⟩
+  · left; rw [hco]; exact hnone
+  · exact Or.inr ⟨k, cp, by rw [hco]; exact hc, by rw [hi.classPayload]; exact hcp,
+      hism, hqn, by rw [hi.eigen]; exact heig, by rw [hi.size]; exact hlt⟩
+
 /-- **Every reopenable class name really names a reopenable class**: `Object`'s own
     constant table binds it to a class object that is not a module.
 

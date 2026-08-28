@@ -85,7 +85,11 @@ def DeclsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
   -- **J44: the declared-modules clause** — one `ModuleNameOk` per declared
   -- `(owner, name)` pair, which is what pins `enterClassBody`'s branch for the
   -- machine-typed `module'`.
-  (∀ p ∈ D.modules, ModuleNameOk h p.1 p.2)
+  (∀ p ∈ D.modules, ModuleNameOk h p.1 p.2) ∧
+  -- **J53: the declared-classes clause** — one `ClassNameOk` per declared
+  -- `(owner, name)` pair, which is what pins `enterClassBody`'s branch for the
+  -- machine-typed `classM`.
+  (∀ p ∈ D.classes, ClassNameOk h p.1 p.2)
 
 /-- **The J-table invariant survives an allocating step** — `DeclsOk_grow` with the
     user arm's conformance passing straight through (`UserConformsJ` mentions no
@@ -98,7 +102,8 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
     fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
     fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
     hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
-    fun pr hpr => moduleNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2 pr hpr)⟩
+    fun pr hpr => moduleNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.1 pr hpr),
+    fun pr hpr => classNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.2 pr hpr)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩

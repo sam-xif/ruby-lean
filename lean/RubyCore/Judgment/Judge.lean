@@ -504,6 +504,8 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       -- `nameIfAnonymous` could mint a fake owner), so the name must be off the
       -- modules table entirely.
       (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
+      -- J53: and the declared-classes clause, `modules`' reason.
+      (∀ pr ∈ D₁.classes, pr.2 ≠ nm) →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   -- **J49: the module-body constant write.** The write's target is the machine's
@@ -518,6 +520,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       (∀ cn, scopedConstTy? D₁ cn nm = none) →
       readableClasses.contains nm = false →
       (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
+      (∀ pr ∈ D₁.classes, pr.2 ≠ nm) →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   | cpathAsgn {D Γ base nm rhs top ctx τb Γ₁ D₁ τ Γ₂ D₂} :

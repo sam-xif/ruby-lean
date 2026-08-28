@@ -717,7 +717,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ :=
           hscc.2.2.2.2.2.2.2.2.2.1 himb hnbk
         exact ⟨cp, hcp, hism, hnm, heig, hoff⟩
-    have hmno := htab.2.2.2.2.2.2.2.2 _ hmemMods
+    have hmno := htab.2.2.2.2.2.2.2.2.1 _ hmemMods
     rcases hmno _ hmow with hmiss | ⟨kk, cp', hhit, hcp', hism', hqn', heig', hoff', hlt'⟩
     · -- ## the fresh path: alloc + register + eigenclass + push (the ClsGrow composite)
       have hdlt2 : (curFrame m).defmod < m.heap.objs.size := classPayload?_isSome_lt hdo
@@ -847,7 +847,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           hpayl,
         D, ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
               inClassBody := true, inModuleBody := true } : JCtx), [], ((ctx, Γk) :: Γs),
-        declsOkJ_fresh hchn hsat hdlt2 hqne2 hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl,
+        declsOkJ_fresh hchn hsat hdlt2 hqne2 hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl hclsg,
         ?_, ?_, hglH, ?_⟩
       · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
           ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
@@ -1319,7 +1319,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
             (fun p hp => hmv p (by simp [hp])) hvj hrest hsubw hk)
   -- ## The toplevel constant write (J41): push `casgnK` on the rhs.
   case hcasgn =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hclss hrhs ihr
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
@@ -1334,10 +1334,10 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       simp only [evalExpr]
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
-        (KontOkJ.casgnK hct hsct hrd hmods hsubw hk)
+        (KontOkJ.casgnK hct hsct hrd hmods hclss hsubw hk)
   -- ## The module-body constant write (J49): same push, the `casgnMK` kont.
   case hcasgnM =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hrhs ihr
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
@@ -1347,7 +1347,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       simp only [evalExpr]
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
-        (KontOkJ.casgnMK hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hsubw hk)
+        (KontOkJ.casgnMK hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -1948,7 +1948,8 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         ⟨(ivarOnly_rowsAndConstsJ hi htab).1, (ivarOnly_rowsAndConstsJ hi htab).2.1, ?_,
           (ivarOnly_rowsAndConstsJ hi htab).2.2.1, (ivarOnly_rowsAndConstsJ hi htab).2.2.2,
           htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
-          fun pr hpr => moduleNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
+          fun pr hpr => moduleNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2.1 pr hpr),
+          fun pr hpr => classNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
         ?_, ?_, ?_, ?_⟩
       · intro c' x' σ' hiv' o' ho0 hcn' v' hv'
         have hsz : (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap.objs.size
@@ -2088,7 +2089,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     -- inert (`nameIfAnonymous_noop`, J41a's clause), the write is `constSetIn` on
     -- `Object` (`BottomObj` at the singleton stack), and every invariant conjunct
     -- crosses by the `constSetIn` transports.
-    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hmods hsw hk' hsu =>
+    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hmods hclss hsw hk' hsu =>
       cases hst : m.stack with
       | nil => exact absurd hst (hfs.frameShallow).1
       | cons fid fids =>
@@ -2127,7 +2128,9 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           ⟨hrows.1, hrows.2.1, hrows.2.2.1, hrows.2.2.2.1, hrows.2.2.2.2,
             htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
             fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
-              (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
+              (htab.2.2.2.2.2.2.2.2.1 pr hpr),
+            fun pr hpr => classNameOk_constSetIn (hclss pr hpr)
+              (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
           FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
           GlobalsOk.congr hag hgl,
           ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
@@ -2136,7 +2139,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     -- module the J34/J44c clauses pin; the write's transports are the `_off`
     -- suite (or `_obj` when the enclosing definee happens to be `Object`).
     | @casgnMK _ _ _ _ _ _ τw nm k _ hicb himb hnbk hret0 hmeth0 hct hsct hrd
-        hmods hsw hk' hsu =>
+        hmods hclss hsw hk' hsu =>
       have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
       obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
         cases hst : m.stack with
@@ -2183,7 +2186,9 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         ⟨hrows.1, hrows.2.1, hrows.2.2.1, hrows.2.2.2.1, hrows.2.2.2.2,
           htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
           fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
-            (htab.2.2.2.2.2.2.2.2 pr hpr)⟩,
+            (htab.2.2.2.2.2.2.2.2.1 pr hpr),
+          fun pr hpr => classNameOk_constSetIn (hclss pr hpr)
+            (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
         FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
         GlobalsOk.congr hag hgl,
         ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
