@@ -1,5 +1,6 @@
 import RubyCore.Judgment.Frag
 import RubyCore.Cert.Validate
+import RubyCore.Heap
 
 /-!
 # `Deriv` and its local checker (J25) — judgment-layer.md §4(3), J2
@@ -512,6 +513,37 @@ def constExtend (D : Decls) (cs : List (String × Ty))
     (scs : List ((String × String) × Ty)) : Decls :=
   { D with consts := D.consts ++ cs, scopedConsts := D.scopedConsts ++ scs }
 
+/-- `ModOffChains`, decided over the in-range ids (out-of-range chains are
+    singletons that reach `Object` only by being it). -/
+def modOffChainsB (h : Heap) (o : ObjId) : Bool :=
+  (List.range h.objs.size).all fun k =>
+    !((ancestors h k).contains Boot.objectId) ||
+    !(((ancestors h k).takeWhile (· != Boot.objectId)).contains o)
+
+/-- `ModOwner`, decided. -/
+def modOwnerB (h : Heap) (owner : String) (o : ObjId) : Bool :=
+  (owner == "Object" && o == Boot.objectId) ||
+  (match h.classPayload? o with
+   | some cp => cp.isModule && cp.name == owner && (h.get o).eigen.isSome
+       && modOffChainsB h o
+   | none => false)
+
+/-- `ModuleNameOk`, decided (J48): what `validateJ` checks of each declared
+    module pair **at the boot heap**, so module-declaring certificates stay
+    unconditional. -/
+def moduleNameOkB (h : Heap) (owner nm : String) : Bool :=
+  (List.range h.objs.size).all fun o =>
+    !(modOwnerB h owner o) ||
+    (match constOwn h o nm with
+     | none => true
+     | some (.ref k) =>
+       (match h.classPayload? k with
+        | some cp => cp.isModule && cp.name == RubyCore.Types.qualifyMod owner nm
+            && (h.get k).eigen.isSome && modOffChainsB h k
+            && decide (k < h.objs.size)
+        | none => false)
+     | some _ => false)
+
 /-- A judgment-layer certificate: the table half (claimed rows, as the C-ladder's
     `RowClaim`s; claimed constants since J38b) and the derivation. -/
 structure JCert where
@@ -527,13 +559,19 @@ structure JCert where
       conditional on `SemAxiomsOk` for exactly this list: each claim's `EvalOkAt`
       obligation, user-supplied in Lean. Empty list = the unconditional theorem. -/
   semAssumes : SemAxioms := []
+  /-- **J48**: the declared module pairs — `(owner, name)` per `module name`
+      under a definee named `owner`. Folded into `Decls.modules`;
+      `ModuleNameOk` at the boot heap is checked by `validateJ` itself
+      (`moduleNameOkB`), so the accept stays unconditional. -/
+  deltaModules : List (String × String) := []
   deriv : Deriv
 deriving Repr
 
 /-- The certificate's base table: the program's own table with the claimed
     constant halves appended (J38b). -/
 def JCert.baseTable (c : JCert) (p : Expr) : Decls :=
-  constExtend (declsOf p) c.deltaConsts c.deltaScopedConsts
+  { constExtend (declsOf p) c.deltaConsts c.deltaScopedConsts with
+    modules := c.deltaModules }
 
 /-- The table a J-certificate names — the row fold over the constant-extended
     base (the same fold `Cert.table` uses). -/
@@ -550,6 +588,7 @@ def rowsGroundB (rows : List RowClaim) : Bool :=
 def validateJ (c : JCert) (p : Expr) (fuel : Nat) : Bool :=
   rowsGuarded (c.baseTable p) c.deltaRows &&
   rowsGroundB c.deltaRows &&
+  c.deltaModules.all (fun pr => moduleNameOkB Boot.initHeap pr.1 pr.2) &&
   fragHead p &&
   mfragB c.semAssumes fuel p &&
   (check fuel c.semAssumes c.deriv (c.table p) [] p true topJCtx).isSome

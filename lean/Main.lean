@@ -291,8 +291,14 @@ def main (args : List String) : IO UInt32 := do
                 if Judgment.validateJ cert prog 1_000_000 then
                   Lean.Json.mkObj [("status", Lean.Json.str "accept"),
                     ("theorem", Lean.Json.str "validateJ_certifies"),
+                    -- J48: `delta_modules` does NOT condition the accept —
+                    -- `validateJ` itself discharges each pair at the boot heap
+                    -- (`moduleNameOkB`). Nonempty `sem_assumes` DOES: each claim
+                    -- is a `SemAxiomsOk` residue, discharged Lean-side by a
+                    -- schema lemma (e.g. `semAxiomsOk_defsSelf`).
                     ("unconditional", Lean.Json.bool (cert.deltaRows.isEmpty &&
-                      cert.deltaConsts.isEmpty && cert.deltaScopedConsts.isEmpty)),
+                      cert.deltaConsts.isEmpty && cert.deltaScopedConsts.isEmpty &&
+                      cert.semAssumes.isEmpty)),
                     ("carries", Lean.Json.arr
                       (cert.deltaRows.map Cert.rowClaimToJson).toArray),
                     -- J38b: claimed constants are residue too (one `ConstOk` /
@@ -306,7 +312,22 @@ def main (args : List String) : IO UInt32 := do
                       (cert.deltaScopedConsts.map (fun e => Lean.Json.mkObj
                         [("cls", Lean.Json.str e.1.1),
                          ("name", Lean.Json.str e.1.2),
-                         ("type", Cert.tyToJson e.2)])).toArray)]
+                         ("type", Cert.tyToJson e.2)])).toArray),
+                    ("modules_checked", Lean.Json.arr
+                      (cert.deltaModules.map (fun e => Lean.Json.mkObj
+                        [("owner", Lean.Json.str e.1),
+                         ("name", Lean.Json.str e.2)])).toArray),
+                    ("carries_sem_assumes", Lean.Json.arr
+                      (cert.semAssumes.map (fun cl => Lean.Json.mkObj
+                        [("e", Lean.Json.str (toString (repr cl.e))),
+                         ("ty", Cert.tyToJson cl.τ),
+                         ("rows", Lean.Json.num cl.rows.length),
+                         ("req_cls", match cl.reqCls with
+                           | some cn => Lean.Json.str cn
+                           | none => Lean.Json.null),
+                         ("req_mod", Lean.Json.bool cl.reqMod),
+                         ("fresh_names", Lean.Json.arr
+                           (cl.freshNames.map Lean.Json.str).toArray)])).toArray)]
                 else
                   Lean.Json.mkObj [("status", Lean.Json.str "reject"),
                                    ("why", Lean.Json.str "validateJ-false")]

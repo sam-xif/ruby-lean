@@ -901,13 +901,15 @@ theorem check_sound {n : Nat} {d : Deriv} {D : Decls} {Γ : Env} {e : Expr}
     inert: `find?` answers the base half first, whose conjunct `hd` supplies. -/
 theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
     {cs : List (String × Ty)} {scs : List ((String × String) × Ty)}
+    {ms : List (String × String)}
     (ht : TableOk h) (hcls : ClassOk h)
     (hc : ∀ e ∈ cs, ConstOk h e.1 e.2)
-    (hsc : ∀ e ∈ scs, ScopedConstOk h e.1.1 e.1.2 e.2) :
-    DeclsOkJ A (constExtend baseDecls cs scs) h := by
+    (hsc : ∀ e ∈ scs, ScopedConstOk h e.1.1 e.1.2 e.2)
+    (hm : ∀ pr ∈ ms, ModuleNameOk h pr.1 pr.2) :
+    DeclsOkJ A { constExtend baseDecls cs scs with modules := ms } h := by
   have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls
   refine ⟨?_, ?_, hd.2.2.1, ?_, hd.2.2.2.2.1, hd.2.2.2.2.2.1,
-    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2⟩
+    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm⟩
   · -- Rows: `declFor` reads no constant half, so the row set is the base's; the
     -- base's builtin/iterator witnesses are table-free and the user arm is refuted
     -- by `tableOk_declsOkJ`'s own walk (repeated here at the extended index).
@@ -967,6 +969,75 @@ theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
       rw [hkey] at this
       exact this
 
+/-! ## The `moduleNameOkB` bridge (J48) — the validator's boot-heap module check -/
+
+theorem modOffChainsB_sound {h : Heap} {o : ObjId}
+    (hobj : Boot.objectId < h.objs.size)
+    (hb : modOffChainsB h o = true) : ModOffChains h o := by
+  intro k hmem
+  by_cases hk : k < h.objs.size
+  · have hall := List.all_eq_true.mp hb k (List.mem_range.mpr hk)
+    simp only [Bool.or_eq_true, Bool.not_eq_true'] at hall
+    rcases hall with hc | hc
+    · exact absurd (List.contains_iff_mem.mpr hmem) (by simp [hc])
+    · intro hin
+      exact absurd (List.contains_iff_mem.mpr hin) (by simp [hc])
+  · rw [ancestors_of_not_class (RubyCore.Proof.classPayload?_oob h k hk)] at hmem
+    have hko : Boot.objectId = k := List.mem_singleton.mp hmem
+    exact absurd (hko ▸ hobj) hk
+
+theorem modOffChainsB_complete {h : Heap} {o : ObjId}
+    (hm : ModOffChains h o) : modOffChainsB h o = true := by
+  refine List.all_eq_true.mpr fun k _ => ?_
+  simp only [Bool.or_eq_true, Bool.not_eq_true']
+  by_cases hc : Boot.objectId ∈ ancestors h k
+  · refine Or.inr ?_
+    by_cases hin : o ∈ (ancestors h k).takeWhile (· != Boot.objectId)
+    · exact absurd hin (hm k hc)
+    · exact (Bool.not_eq_true _).mp fun hcon =>
+        hin (List.contains_iff_mem.mp hcon)
+  · exact Or.inl ((Bool.not_eq_true _).mp fun hcon =>
+      hc (List.contains_iff_mem.mp hcon))
+
+theorem modOwner_lt {h : Heap} {owner : String} {o : ObjId}
+    (hobj : Boot.objectId < h.objs.size)
+    (hmo : ModOwner h owner o) : o < h.objs.size := by
+  rcases hmo with ⟨-, rfl⟩ | ⟨cp, hcp, -⟩
+  · exact hobj
+  · by_cases hlt : o < h.objs.size
+    · exact hlt
+    · rw [RubyCore.Proof.classPayload?_oob h o hlt] at hcp
+      exact absurd hcp (by simp)
+
+theorem modOwnerB_complete {h : Heap} {owner : String} {o : ObjId}
+    (hmo : ModOwner h owner o) : modOwnerB h owner o = true := by
+  rcases hmo with ⟨h1, h2⟩ | ⟨cp, hcp, him, hnm, hei, hoff⟩
+  · simp [modOwnerB, h1, h2]
+  · unfold modOwnerB
+    rw [hcp]
+    simp [him, hnm, hei, modOffChainsB_complete hoff]
+
+/-- The validator's per-pair boot check implies the `DeclsOkJ` modules clause. -/
+theorem moduleNameOkB_sound {h : Heap} {owner nm : String}
+    (hobj : Boot.objectId < h.objs.size)
+    (hb : moduleNameOkB h owner nm = true) : ModuleNameOk h owner nm := by
+  intro o hmo
+  have hlt : o < h.objs.size := modOwner_lt hobj hmo
+  have hall := List.all_eq_true.mp hb o (List.mem_range.mpr hlt)
+  rw [modOwnerB_complete hmo] at hall
+  simp only [Bool.not_true, Bool.false_or] at hall
+  split at hall
+  · next hco => exact Or.inl hco
+  · next k hco =>
+    split at hall
+    · next cp hcp =>
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hall
+      obtain ⟨⟨⟨⟨him, hnm'⟩, hei⟩, hoff⟩, hk⟩ := hall
+      exact Or.inr ⟨k, cp, hco, hcp, him, hnm', hei,
+        modOffChainsB_sound hobj hoff, hk⟩
+    · next hcp => exact absurd hall (by simp)
+  · next v hco hnr => exact absurd hall (by simp)
+
 /-- **The J-certificate theorem** — J2's exit: a *data* certificate (rows +
     constant claims + a derivation tree), one kernel-reduced `Bool`, the
     reachability property. The residue stays the honest hypotheses, exactly as in
@@ -985,13 +1056,15 @@ theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
     ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r := by
   unfold validateJ at h
   simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
-  obtain ⟨⟨⟨⟨hg, hgr⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
+  obtain ⟨⟨⟨⟨⟨hg, hgr⟩, hmod⟩, hfr⟩, hmf⟩, ⟨τ, Γ', D'⟩, hchk⟩ := h
   have htbl : c.table p = rowFold (c.baseTable p) c.deltaRows := rfl
   refine judge_sound hax ?_ (mfragB_sound hmf) hfr (check_sound hchk)
   rw [htbl] at ha ⊢
   refine DeclsOkJ_of_subDecls
     (show DeclsOkJ c.semAssumes (c.baseTable p) Boot.initHeap from
-      tableOk_declsOkJ_constExtend tableOk_initHeap classOk_initHeap hac hasc)
+      tableOk_declsOkJ_constExtend tableOk_initHeap classOk_initHeap hac hasc
+        (fun pr hpr => moduleNameOkB_sound (by decide)
+          (List.all_eq_true.mp hmod pr hpr)))
     (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ0 n0 d0 hnone hsome
   rcases declFor_rowFold_inv c.deltaRows _ hg hsome with ⟨r, hm, hk, rfl, rfl⟩ | hd2

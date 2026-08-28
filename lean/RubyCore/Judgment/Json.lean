@@ -231,9 +231,43 @@ partial def derivPairsOfJson (j : Json) : Except String DerivPairs := do
 
 end
 
+/-- **A semantic claim on the wire (J48)** — the J31 claim list, previously
+    Lean-side only. The claimed expression rides as a harness-export AST node
+    (export.rb's format), decoded by the same `Decode.expr` the program itself
+    comes in through — so the emitter serializes `e` exactly as it serializes
+    the program. Decode-only: `SemAxiomsOk` is a *proof* residue discharged
+    Lean-side against the decoded list (an accept with claims is conditional,
+    reported as `carries_sem_assumes`), so nothing round-trips out. -/
+def semClaimOfJson (j : Json) : Except String SemClaim := do
+  let e ← RubyCore.Decode.expr (← j.getObjVal? "e")
+  let τ ← match j.getObjVal? "ty" with
+    | .ok tj => tyOfJson tj
+    | .error _ => pure .any
+  let rows ← match j.getObjVal? "rows" with
+    | .ok rj => do
+      (← rj.getArr?).toList.mapM fun x => do
+        let r ← rowClaimOfJson x
+        pure (r.cls, r.name, r.sig)
+    | .error _ => pure []
+  let reqCls ← match j.getObjVal? "req_cls" with
+    | .ok .null => pure none
+    | .ok cj => some <$> cj.getStr?
+    | .error _ => pure none
+  let reqMod ← match j.getObjVal? "req_mod" with
+    | .ok bj => bj.getBool?
+    | .error _ => pure false
+  let fresh ← match j.getObjVal? "fresh_names" with
+    | .ok fj => do (← fj.getArr?).toList.mapM (·.getStr?)
+    | .error _ => pure []
+  pure { e := e, τ := τ, rows := rows, reqCls := reqCls, reqMod := reqMod,
+         freshNames := fresh }
+
 /-- The J-certificate document: `{"delta_rows": […], "delta_consts": […],
-    "delta_scoped_consts": […], "deriv": {…}}` (the constant sections since
-    J38b; both optional and empty by default). -/
+    "delta_scoped_consts": […], "delta_modules": […], "sem_assumes": […],
+    "deriv": {…}}` (the constant sections since J38b, the module and claim
+    sections since J48; all optional and empty by default). `sem_assumes` is
+    decode-only (no Lean-side `Expr` encoder), so `toJson` requires it empty
+    at the use sites (round-trip tests). -/
 def JCert.toJson (c : JCert) : Json :=
   Json.mkObj [("delta_rows", Json.arr (c.deltaRows.toArray.map rowClaimToJson)),
     ("delta_consts", Json.arr (c.deltaConsts.toArray.map fun e =>
@@ -241,6 +275,8 @@ def JCert.toJson (c : JCert) : Json :=
     ("delta_scoped_consts", Json.arr (c.deltaScopedConsts.toArray.map fun e =>
       Json.mkObj [("cls", Json.str e.1.1), ("name", Json.str e.1.2),
                   ("type", tyToJson e.2)])),
+    ("delta_modules", Json.arr (c.deltaModules.toArray.map fun e =>
+      Json.mkObj [("owner", Json.str e.1), ("name", Json.str e.2)])),
     ("deriv", derivToJson c.deriv)]
 
 def JCert.ofJson (j : Json) : Except String JCert := do
@@ -258,7 +294,16 @@ def JCert.ofJson (j : Json) : Except String JCert := do
         pure (((← e.getObjValAs? String "cls"), (← e.getObjValAs? String "name")),
           (← tyOfJson (← e.getObjVal? "type")))
     | .error _ => pure []
+  let ms ← match j.getObjVal? "delta_modules" with
+    | .ok mj => do
+      (← mj.getArr?).toList.mapM fun e => do
+        pure ((← e.getObjValAs? String "owner"), (← e.getObjValAs? String "name"))
+    | .error _ => pure []
+  let sems ← match j.getObjVal? "sem_assumes" with
+    | .ok sj => do (← sj.getArr?).toList.mapM semClaimOfJson
+    | .error _ => pure []
   pure { deltaRows := rows, deltaConsts := consts, deltaScopedConsts := scs,
+         deltaModules := ms, semAssumes := sems,
          deriv := (← derivOfJson (← j.getObjVal? "deriv")) }
 
 end RubyCore.Judgment
