@@ -621,6 +621,13 @@ structure FrameCtx where
       pre-`Object` chain — the `StackCtx` module clause) and by the write rules whose
       registration lands in that definee. -/
   inModuleBody : Bool := false
+  /-- **This is the body of a machine-typed fresh `class` definition** (J53). Set
+      only by the `classM` rule's body context; read by `defs`-schema claims (the
+      definee's eigenclass is realized — `enterClassBody` builds it eagerly on the
+      fresh path) through the `StackCtx` fresh-class clause. Unlike
+      `inModuleBody`, carries no `ModOffChains` (a class sits on its own chain
+      before `Object`), so module-registration and `casgnM` stay barred here. -/
+  inFreshClass : Bool := false
 deriving DecidableEq, Repr, Inhabited
 
 end RubyCore.Types

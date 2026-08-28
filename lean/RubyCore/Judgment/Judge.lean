@@ -101,7 +101,8 @@ def methodCtx (ctx : JCtx) (name : String) (τs : List Ty) (ret : Option Ty)
     (bs : Option BlockSig) : JCtx :=
   { ctx with selfCls := some ctx.cls, ret := ret, meth := some name,
              params := some τs, inLoop := none, inBlock := false,
-             inClassBody := false, inModuleBody := false, blk := bs, inRescue := false }
+             inClassBody := false, inModuleBody := false, inFreshClass := false,
+             blk := bs, inRescue := false }
 
 /-- The context a singleton-method (`defs`) body is judged in: `methodCtx` with
     `selfCls := none` — `self` is the receiver object, which the type language

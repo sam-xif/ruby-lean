@@ -861,6 +861,15 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
           cp.isModule = true ∧ cp.name = c.cls ∧
           (h.get (frames.getD fid default).defmod).eigen.isSome ∧
           ModOffChains h (frames.getD fid default).defmod) ∧
+      -- **J53: a fresh-class body's definee is a class named `cls`, realized.**
+      -- Set only by the machine-typed `classM` push (the fresh path just built
+      -- the object and its eigenclass); read by the `defs` schema (the realized
+      -- eigenclass is where the singleton install lands). No `ModOffChains` —
+      -- a class sits on its own chain before `Object`.
+      (c.inFreshClass = true → c.inBlock = false →
+        ∃ cp, h.classPayload? (frames.getD fid default).defmod = some cp ∧
+          cp.isModule = false ∧ cp.name = c.cls ∧
+          (h.get (frames.getD fid default).defmod).eigen.isSome) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -907,15 +916,19 @@ theorem StackCtx.cons {h : Heap} {frames : Array Frame} {fid : FrameId}
         cp.isModule = true ∧ cp.name = c.cls ∧
         (h.get (frames.getD fid default).defmod).eigen.isSome ∧
         ModOffChains h (frames.getD fid default).defmod)
+    (h11 : c.inFreshClass = true → c.inBlock = false →
+      ∃ cp, h.classPayload? (frames.getD fid default).defmod = some cp ∧
+        cp.isModule = false ∧ cp.name = c.cls ∧
+        (h.get (frames.getD fid default).defmod).eigen.isSome)
     (ht : StackCtx h frames fids cs) : StackCtx h frames (fid :: fids) (c :: cs) :=
-  ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, ht⟩
+  ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, ht⟩
 
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -944,7 +957,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
         by rw [hb]; exact hs.2.2.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.2.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.2.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.2.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -1560,6 +1574,11 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           intro hmb hnb
           rw [hd fid (List.mem_cons_self ..)]
           exact hs.2.2.2.2.2.2.2.2.2.1 hmb hnb),
+        (by
+          -- J53: the fresh-class clause, same shape.
+          intro hfc hnb
+          rw [hd fid (List.mem_cons_self ..)]
+          exact hs.2.2.2.2.2.2.2.2.2.2.1 hfc hnb),
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
@@ -1568,7 +1587,7 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           (fun g hg => hmt g (List.mem_cons_of_mem _ hg))
           (fun g hg => hrp g (List.mem_cons_of_mem _ hg))
           (fun g hg => hdm g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2⟩
+          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
@@ -2088,7 +2107,21 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
           · intro k hmem
             rw [ha.2.2.2.2.2.1] at hmem ⊢
             exact hoff k hmem),
-        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2.2.2⟩
+        (by
+          -- J53: the fresh-class clause, the module clause's argument minus the
+          -- chain half.
+          intro hfc hnb
+          obtain ⟨cp, hcp, hism, hnm, heig⟩ := hs.2.2.2.2.2.2.2.2.2.2.1 hfc hnb
+          have hsome : (h'.classPayload? (frames.getD fid default).defmod).isSome := by
+            rw [ha.2.2.1 _ hlt, hcp]; rfl
+          obtain ⟨cp', hcp'⟩ := Option.isSome_iff_exists.mp hsome
+          have hisme := ha.2.2.2.2.2.2.2.1 _ hlt
+          rw [hcp, hcp'] at hisme
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hisme
+          refine ⟨cp', hcp', by rw [hisme.2]; exact hism, by rw [hisme.1]; exact hnm, ?_⟩
+          rw [ha.2.2.2.2.2.2.2.2.1 _ hlt]
+          exact heig),
+        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
       · -- **L209: the chain half, and this is what `TypeAgree`'s sixth clause is for.**

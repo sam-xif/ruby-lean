@@ -712,6 +712,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- and not an approximation.
       match infer D [] body false
           { ctx with selfCls := some ctx.cls, ret := none, meth := some name, inModuleBody := false,
+                     inFreshClass := false,
                      params := some [], inClassBody := false, inLoop := none,
                      -- **L249: `inBlock := false` explicitly**, and it is L207/L214's
                      -- point a third time — `{ ctx with … }` would inherit the

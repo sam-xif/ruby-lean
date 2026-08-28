@@ -163,7 +163,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
         FramesOkJ.push hfs⟩
       · rw [getD_push_lt_self]; exact hown
       · intro y σ hy; exact absurd hy (by simp [envGet?])
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -191,6 +191,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
       · exact fun hcb _ => nomatch hcb
       · intro hmb _
         simp at hmb
+      · exact fun hfc _ => nomatch hfc
       · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
         exact StackCtx.push hlt hsc
     · refine ⟨hglob, ?_⟩
@@ -658,7 +659,8 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · intro y σ hy; exact absurd hy (by simp [envGet?])
       · refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h' => absurd h' (by simp), ?_,
           (fun _ _ => by rw [getD_push_lt_self]),
-          (fun hmb _ => nomatch hmb), StackCtx.push hlt hsc⟩
+          (fun hmb _ => nomatch hmb), (fun hfc _ => nomatch hfc),
+          StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -858,7 +860,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · intro y σ hy; exact absurd hy (by simp [envGet?])
       · refine StackCtx.cons ?_ ?_ ?_
           (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
-          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (StackCtx.push hlt hscH)
+          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (fun hfc _ => nomatch hfc) (StackCtx.push hlt hscH)
         · rw [getD_push_lt_self]
           rw [show (freshModFrame m.heap.objs.size (curFrame m).cref).defmod
             = m.heap.objs.size from rfl]
@@ -914,7 +916,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · intro y σ hy; exact absurd hy (by simp [envGet?])
       · refine StackCtx.cons ?_ ?_ ?_
           (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
-          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (StackCtx.push hlt hsc)
+          (fun mn h' => absurd h' (by simp)) ?_ ?_ ?_ (fun hfc _ => nomatch hfc) (StackCtx.push hlt hsc)
         · rw [getD_push_lt_self]; exact hkps
         · rw [getD_push_lt_self]; exact fun _ => hknm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1762,7 +1764,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             FramesOkJ.push hfs⟩
           · rw [getD_push_lt_self]; exact hown
           · intro y σ hy; exact absurd hy (by simp [envGet?])
-        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1786,6 +1788,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           · exact fun hcb _ => nomatch hcb
           · intro hmb _
             simp at hmb
+          · exact fun hfc _ => nomatch hfc
           · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
             exact StackCtx.push hlt hsc
         · refine ⟨hgl, ?_⟩

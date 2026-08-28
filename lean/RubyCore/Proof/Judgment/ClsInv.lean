@@ -82,7 +82,12 @@ theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturate
           obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ := hs.2.2.2.2.2.2.2.2.2.1 hmb hnb
           refine ⟨cp, by rw [hg.payloadOld hlt]; exact hcp, hism, hnm,
             by rw [hg.get _ hlt]; exact heig, hmoff _ hlt hoff⟩),
-        StackCtx.clsGrow hg hch hsat hmoff hs.2.2.2.2.2.2.2.2.2.2⟩
+        (by
+          intro hfc hnb
+          obtain ⟨cp, hcp, hism, hnm, heig⟩ := hs.2.2.2.2.2.2.2.2.2.2.1 hfc hnb
+          exact ⟨cp, by rw [hg.payloadOld hlt]; exact hcp, hism, hnm,
+            by rw [hg.get _ hlt]; exact heig⟩),
+        StackCtx.clsGrow hg hch hsat hmoff hs.2.2.2.2.2.2.2.2.2.2.2⟩
       · rw [hg.classPayload?_isSome_old hlt]; exact hs.1
       · rw [hg.className_old hlt]; exact hs.2.1
       · obtain ⟨hv, hchain⟩ := hs.2.2.2.1 sc hsc

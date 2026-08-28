@@ -93,7 +93,8 @@ theorem initiationJ {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
   · show StackCtx (Machine.init p).heap (Machine.init p).frames
       (Machine.init p).stack (jctxs topJCtx [])
     refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h => absurd h (by simp [topJCtx]),
-      fun _ => rfl, (fun hcb _ => nomatch hcb), (fun hmb _ => nomatch hmb), trivial⟩
+      fun _ => rfl, (fun hcb _ => nomatch hcb), (fun hmb _ => nomatch hmb),
+      (fun hfc _ => nomatch hfc), trivial⟩
     · show (Boot.initHeap.classPayload? Boot.objectId).isSome = true
       decide
     · exact fun _ => (show ClassOk (Machine.init p).heap from

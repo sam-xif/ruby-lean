@@ -1608,7 +1608,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     τ = .sym ∧ Γ' = Γ ∧ params = [] ∧ declaresName D name = false
       ∧ (name ≠ "method_added" ∧ name ≠ "define_method")
       ∧ ∃ τb Γb, infer D [] body false
-          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := none, inBlock := false, inClassBody := false, inModuleBody := false }
+          { ctx with selfCls := some ctx.cls, ret := none, meth := some name, params := some [], inLoop := none, inBlock := false, inClassBody := false, inModuleBody := false, inFreshClass := false }
           = some (τb, Γb, D)
       ∧ (D' = D ∨
           (D' = addRow D ctx.cls name { params := [], ret := τb } ∧
