@@ -119,7 +119,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
 def evalExpr (m : Machine) (e : Expr) : StepResult :=
   match e with
   | .int n => .next (withCtl m (.value (.int n)))
-  | .flt x => .next (withCtl m (.value (.flt x)))
+  | .flt x => .next (withCtl m (.value (.flt (Float.ofBits x))))
   | .str s =>
     -- string literals allocate a fresh unfrozen String [V]
     let (v, m) := Builtins.allocStr m s

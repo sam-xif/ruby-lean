@@ -150,7 +150,7 @@ def exprEqB : Nat → Expr → Expr → Bool
   | n + 1, a, b =>
     match a, b with
     | .int x, .int y => decide (x = y)
-    | .flt _, .flt _ => false
+    | .flt x, .flt y => decide (x = y)
     | .str x, .str y => decide (x = y)
     | .sym x, .sym y => decide (x = y)
     | .tru, .tru => true
@@ -311,7 +311,10 @@ theorem exprEqB_sound_all : ∀ n : Nat,
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · intro a b h
       match a, b with
-      | .flt _, .flt _ => exact Bool.noConfusion h
+      | .flt a1, .flt b1 =>
+        replace h : (decide (a1 = b1)) = true := h
+        replace h := of_decide_eq_true h
+        rw [h]
       | .int a1, .int b1 =>
         replace h : (decide (a1 = b1)) = true := h
         replace h := of_decide_eq_true h

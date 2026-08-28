@@ -208,12 +208,18 @@ def constTy? (D : Decls) (n : String) : Option Ty :=
     either name would suddenly resolve through the fresh object and its (empty)
     tables, so freshness of the *name* against every keyed channel is a side
     condition — checker-decidable, one scan. -/
-def declClsFresh (D : Decls) (q : String) : Bool :=
+def declClsFresh (D : Decls) (q nm : String) : Bool :=
   D.rows.all (fun r => r.1 != q && r.1.data.head? != some '#') &&
   D.ivars.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
   D.scopedConsts.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
   D.supers.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
-  D.modules.all (fun pr => pr.1 != q && pr.1.data.head? != some '#')
+  -- Declared module pairs may be *owned by* `q` (that is exactly how nested
+  -- modules are declared: the child pair's owner is the parent's qualified
+  -- name, checked before the parent exists) — the fresh module's own constant
+  -- table is empty, so a `q`-owned pair's obligation holds at it trivially
+  -- (J50). Only the self-shadowing pair `(q, nm)` and machine-minted
+  -- eigenclass owners stay barred.
+  D.modules.all (fun pr => (pr.1 != q || pr.2 != nm) && pr.1.data.head? != some '#')
 
 /-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
     which the read rule reports as a *missing declaration* rather than as a missing

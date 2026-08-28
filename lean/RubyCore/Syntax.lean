@@ -25,7 +25,12 @@ deriving Repr, DecidableEq, Inhabited
 mutual
 inductive Expr where
   | int (n : Int)
-  | flt (x : Float)
+  /-- A float literal, carried as its IEEE-754 **bit pattern** (J50): the
+      syntax layer needs decidable equality (`exprEqB` matches semantic claims
+      against program subterms), and `Float` has none — so the `Float` is made
+      only at evaluation (`Float.ofBits`). The wire format is unchanged (a JSON
+      float; `Decode` takes `.toBits`). -/
+  | flt (bits : UInt64)
   | str (s : String)
   | sym (s : String)
   | tru
@@ -333,7 +338,7 @@ partial def expr (j : Json) : M Expr := do
   let head ← asStr hd
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
-  | "flt",   #[_, x] => .flt <$> asFloat x
+  | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
   | "str",   #[_, s] => .str <$> asStr s
   | "sym",   #[_, s] => .sym <$> asStr s
   | "true",  #[_] => return .tru

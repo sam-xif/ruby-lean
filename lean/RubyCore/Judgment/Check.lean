@@ -405,7 +405,7 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
     -- rule drops them.
     | .module' db, .module' name body =>
       if D.modules.contains (ctx.cls, name) && name != "" && name != "Object" &&
-          declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) &&
+          declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) name &&
           ctx.meth.isNone && !ctx.inBlock &&
           ((top && ctx.cls == "Object") ||
             (ctx.inClassBody && ctx.inModuleBody && ctx.cls != "Object")) &&

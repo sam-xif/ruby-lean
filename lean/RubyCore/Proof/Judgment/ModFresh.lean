@@ -1086,13 +1086,14 @@ theorem tyClass_fresh_old (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size)
   | arrowCons _ _ => exact ht.elim
   | union _ _ => exact ht.elim
 
-theorem declClsFresh_sound {D : Decls} (hf : declClsFresh D q = true) :
+theorem declClsFresh_sound {D : Decls} {nm : String}
+    (hf : declClsFresh D q nm = true) :
     (∀ r ∈ D.rows, KeyFresh q r.1) ∧ (∀ r ∈ D.ivars, KeyFresh q r.1.1) ∧
     (∀ r ∈ D.scopedConsts, KeyFresh q r.1.1) ∧ (∀ r ∈ D.supers, KeyFresh q r.1.1) ∧
-    (∀ pr ∈ D.modules, KeyFresh q pr.1) := by
+    (∀ pr ∈ D.modules, (pr.1 ≠ q ∨ pr.2 ≠ nm) ∧ pr.1.data.head? ≠ some '#') := by
   unfold declClsFresh at hf
   simp only [Bool.and_eq_true, List.all_eq_true, bne_iff_ne, ne_eq,
-    Bool.not_eq_true'] at hf
+    Bool.or_eq_true, Bool.not_eq_true'] at hf
   obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := hf
   refine ⟨fun r hr => ?_, fun r hr => ?_, fun r hr => ?_, fun r hr => ?_,
     fun pr hpr => ?_⟩
@@ -1100,7 +1101,8 @@ theorem declClsFresh_sound {D : Decls} (hf : declClsFresh D q = true) :
   · have := h2 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h3 r hr; exact ⟨this.1, by simpa using this.2⟩
   · have := h4 r hr; exact ⟨this.1, by simpa using this.2⟩
-  · have := h5 pr hpr; exact ⟨this.1, by simpa using this.2⟩
+  · have := h5 pr hpr
+    exact ⟨this.1, by simpa using this.2⟩
 
 theorem declFor_keys {D : Decls} {τ : Ty} {mname : String} {dd : MethodDecl}
     (hf : declFor D τ mname = some dd) :
@@ -1724,6 +1726,99 @@ theorem moduleNameOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
       rw [hmid_size] at hlt
       exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
 
+/-- `modOwner_fresh_old` for an owner named `q` itself (a nested pair's owner,
+    J50): the fresh module *is* a new witness, so the conclusion gains the
+    `o = k` disjunct. -/
+theorem modOwner_fresh_ownq (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    {o : ObjId}
+    (hmo : ModOwner (freshModHeap h₀ d name q) q o) :
+    (o < h₀.objs.size ∧ ModOwner (hmidOf h₀ d name) q o) ∨ o = h₀.objs.size := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  rcases hmo with ⟨h1, h2⟩ | ⟨cp, hcp, hism, hnm, heig, hoff⟩
+  · exact Or.inl ⟨h2 ▸ hch.boot.2.2.2.2, Or.inl ⟨h1, h2⟩⟩
+  · by_cases ho : o < h₀.objs.size
+    · have hom : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact ho
+      refine Or.inl ⟨ho, Or.inr ⟨cp, by rw [← hg.payloadOld hom]; exact hcp,
+        hism, hnm, ?_, ?_⟩⟩
+      · rw [← hg.get o hom]
+        rw [freshModHeap_get_old ho] at heig ⊢
+        exact heig
+      · intro k' hmem
+        have hkb : k' < (hmidOf h₀ d name).objs.size := by
+          by_cases hkb : k' < (hmidOf h₀ d name).objs.size
+          · exact hkb
+          · exfalso
+            have : ancestors (hmidOf h₀ d name) k' = [k'] := by
+              unfold ancestors
+              rw [anc_go_oob hkb]
+              rfl
+            rw [this] at hmem
+            have hEq := List.mem_singleton.mp hmem
+            rw [hmid_size] at hkb
+            exact hkb (by rw [← hEq]; exact hch.boot.2.2.2.2)
+        have hkm : Boot.objectId ∈ ancestors (freshModHeap h₀ d name q) k' := by
+          rw [ClsGrow.ancestors_old hg hchm hsm hkb]; exact hmem
+        have := hoff k' hkm
+        rw [ClsGrow.ancestors_old hg hchm hsm hkb] at this
+        exact this
+    · by_cases hok : o = h₀.objs.size
+      · exact Or.inr hok
+      · exfalso
+        by_cases hoe : o = h₀.objs.size + 1
+        · subst hoe
+          rw [freshModHeap_cp_e] at hcp
+          cases hcp
+          exact Bool.noConfusion hism
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two ho hok hoe hlt2))] at hcp
+          exact absurd hcp.symm (by simp)
+
+/-- `ModuleNameOk` at the composite, for a pair **owned by `q`** with a name
+    other than the written one (J50: how a nested module declares its children —
+    the pair's owner is the parent's qualified name, checked before the parent
+    exists). Old witnesses transport; the fresh module is a new witness whose own
+    constant table is *empty*, so the obligation there is the `none` arm. -/
+theorem moduleNameOk_fresh_ownq (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    {nm : String} (hnn : nm ≠ name)
+    (hmo : ModuleNameOk h₀ q nm) :
+    ModuleNameOk (freshModHeap h₀ d name q) q nm := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hmoM : ModuleNameOk (hmidOf h₀ d name) q nm :=
+    moduleNameOk_constSetIn hnn hmo
+  intro o ho
+  rcases modOwner_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
+      hch hsat ho with ⟨holt, hom⟩ | hok
+  · have homm : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
+    rcases hmoM o hom with hnone | ⟨kk, cp, hco, hcp, hism, hqn, heig, hoff, hlt⟩
+    · left
+      rw [ClsGrow.constOwn_old hg homm]
+      exact hnone
+    · right
+      refine ⟨kk, cp, by rw [ClsGrow.constOwn_old hg homm]; exact hco,
+        by rw [hg.payloadOld hlt]; exact hcp, hism, hqn, ?_,
+        modOffChains_fresh_old hch hsat hdlt
+          (by rw [← hmid_size h₀ d name]; exact hlt) hoff, ?_⟩
+      · rw [show ((freshModHeap h₀ d name q).get kk).eigen
+            = ((hmidOf h₀ d name).get kk).eigen from
+          congrArg Object.eigen (hg.get kk hlt)]
+        exact heig
+      · rw [freshModHeap_size]
+        rw [hmid_size] at hlt
+        exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
+  · -- the fresh module itself: its constant table is the empty literal
+    subst hok
+    left
+    unfold constOwn
+    rw [freshModHeap_cp_k]
+    rfl
+
 /-- `ModuleNameOk` at the composite, for **the written pair**: the write is the
     hit, and its facts are the fresh module's literals. -/
 theorem moduleNameOk_name_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
@@ -1885,7 +1980,7 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
     (htab : DeclsOkJ A D h₀)
     (hct : constTy? D name = none)
     (hsct : ∀ cn, scopedConstTy? D cn name = none)
-    (hdfr : declClsFresh D q = true)
+    (hdfr : declClsFresh D q name = true)
     {owner : String}
     (hdo : (h₀.classPayload? d).isSome = true)
     (hdn : className h₀ d = owner)
@@ -1931,12 +2026,23 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
       exact this
   · intro pr hpr
     have hkey := hkM pr hpr
-    by_cases hnm : pr.2 = name
-    · rw [hnm]
-      exact moduleNameOk_name_fresh hch hsat hdlt hqne hcls0 hdo hdn hqq
-        (Ne.symm hkey.1) (hnm ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
-    · exact moduleNameOk_fresh hch hsat hdlt hqne hkey hnm
-        (htab.2.2.2.2.2.2.2.2 pr hpr)
+    by_cases hown : pr.1 = q
+    · -- a pair owned by `q` itself (a nested child): the self-pair is barred,
+      -- so `pr.2 ≠ name`; the fresh witness's constant table is empty.
+      have hnm : pr.2 ≠ name := by
+        rcases hkey.1 with h | h
+        · exact absurd hown h
+        · exact h
+      have := moduleNameOk_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
+        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
+      rw [hown]
+      exact this
+    · by_cases hnm : pr.2 = name
+      · rw [hnm]
+        exact moduleNameOk_name_fresh hch hsat hdlt hqne hcls0 hdo hdn hqq
+          (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2 pr hpr)
+      · exact moduleNameOk_fresh hch hsat hdlt hqne ⟨hown, hkey.2⟩ hnm
+          (htab.2.2.2.2.2.2.2.2 pr hpr)
 
 /-! ## Call-site string facts -/
 

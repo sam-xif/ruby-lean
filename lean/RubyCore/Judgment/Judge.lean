@@ -796,7 +796,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       name ≠ "" → name ≠ "Object" →
       -- the fresh path's class object is named `qualifyMod ctx.cls name`; no
       -- table key may denote it (or any machine-minted `#<…>` eigenclass name)
-      declClsFresh D (qualifyMod ctx.cls name) = true →
+      declClsFresh D (qualifyMod ctx.cls name) name = true →
       -- CRuby refuses `module` in a method body outright; the guard is also what
       -- keeps `judge_table_ret` (method bodies never move the table) true.
       ctx.meth = none →

@@ -51,7 +51,7 @@ inductive Step : Machine → Machine → Prop where
   | intLit {m n} :
       m.ctl = .eval (.int n) → Step m (withCtl m (.value (.int n)))
   | fltLit {m x} :
-      m.ctl = .eval (.flt x) → Step m (withCtl m (.value (.flt x)))
+      m.ctl = .eval (.flt x) → Step m (withCtl m (.value (.flt (Float.ofBits x))))
   | strLit {m s} :
       m.ctl = .eval (.str s) →
       Step m (withCtl
