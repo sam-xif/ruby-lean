@@ -37,6 +37,7 @@ partial def derivToJson : Deriv → Json
   | .semantic i => Json.mkObj [("k", "semantic"), ("i", Json.num i)]
   | .int => Json.mkObj [("k", "int")]
   | .flt => Json.mkObj [("k", "flt")]
+  | .regexpLit => Json.mkObj [("k", "regexpLit")]
   | .str => Json.mkObj [("k", "str")]
   | .sym => Json.mkObj [("k", "sym")]
   | .tru => Json.mkObj [("k", "tru")]
@@ -130,6 +131,7 @@ partial def derivOfJson (j : Json) : Except String Deriv := do
   | "semantic" => pure (.semantic (← (← j.getObjVal? "i").getNat?))
   | "int" => pure .int
   | "flt" => pure .flt
+  | "regexpLit" => pure .regexpLit
   | "str" => pure .str
   | "sym" => pure .sym
   | "tru" => pure .tru

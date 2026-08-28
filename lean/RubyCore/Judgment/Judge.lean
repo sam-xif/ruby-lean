@@ -1,4 +1,5 @@
 import RubyCore.Judgment.Sub
+import RubyCore.Regex.Parse
 
 /-!
 # `Judge` — the declarative typing judgment (the definition of record)
@@ -197,6 +198,7 @@ mixed states preservation cannot discharge (J31's design note). -/
     is the disjointness the semantic arm's gate rests on. -/
 def fragHead : Expr → Bool
   | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil => true
+  | .regexpLit _ _ => true
   | .var .lvar _ | .var .ivar _ | .var .gvar _ => true
   | .vasgn .lvar _ _ | .vasgn .ivar _ _ | .vasgn .gvar _ _ => true
   | .seq _ => true
@@ -413,6 +415,13 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   | tru {D Γ top ctx} : Judge A D Γ .tru top ctx .bool Γ D
   | fls {D Γ top ctx} : Judge A D Γ .fls top ctx .bool Γ D
   | nil {D Γ top ctx} : Judge A D Γ .nil top ctx .nilT Γ D
+  -- J52: the regexp literal — one allocation at `Boot.regexpId`, so `.cls
+  -- "Regexp"` exactly as `.str` is `.cls "String"`. The parse premise is the
+  -- progress half: a bad pattern is the machine's `.unsupported`, which
+  -- `StepOkJ` refuses, so the rule only admits patterns the step constructs.
+  | regexpLit {D Γ src opts top ctx} :
+      (Rx.parse src opts).toOption.isSome = true →
+      Judge A D Γ (.regexpLit src opts) top ctx (.cls "Regexp") Γ D
   -- `self` has a type only where it is an *instance*; in a class body it is the
   -- class object (a `.clsOf ctx.cls` rule is a candidate widening — refused for
   -- now because at toplevel `self` is `main`, an Object *instance*, and `top`'s

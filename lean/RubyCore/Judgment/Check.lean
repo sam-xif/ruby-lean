@@ -1,6 +1,7 @@
 import RubyCore.Judgment.Frag
 import RubyCore.Cert.Validate
 import RubyCore.Heap
+import RubyCore.Regex.Parse
 
 /-!
 # `Deriv` and its local checker (J25) — judgment-layer.md §4(3), J2
@@ -34,6 +35,7 @@ everything a checker cannot recompute deterministically. -/
 mutual
 inductive Deriv where
   | int | flt | str | sym | tru | fls | nil
+  | regexpLit
   | self
   | varLvar
   | vasgnLvar (rhs : Deriv)
@@ -176,6 +178,8 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       | none => none
     | .int, .int _ => some (.int, Γ, D)
     | .flt, .flt _ => some (.float, Γ, D)
+    | .regexpLit, .regexpLit src opts =>
+      if (Rx.parse src opts).toOption.isSome then some (.cls "Regexp", Γ, D) else none
     | .str, .str _ => some (.cls "String", Γ, D)
     | .sym, .sym _ => some (.sym, Γ, D)
     | .tru, .tru => some (.bool, Γ, D)

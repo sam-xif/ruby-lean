@@ -58,7 +58,7 @@ theorem judge_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top :
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -113,7 +113,7 @@ theorem judge_seq_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List Ex
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -168,7 +168,7 @@ theorem judge_args_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List E
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -223,7 +223,7 @@ theorem judge_elems_table_ret {A : SemAxioms} {D : Decls} {Γ : Env} {es : List 
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -281,7 +281,7 @@ theorem judge_pairs_table_ret {A : SemAxioms} {D : Decls} {Γ : Env}
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       ctx.ret.isSome = true → ctx.meth.isSome = true → top = false → D' = D)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn

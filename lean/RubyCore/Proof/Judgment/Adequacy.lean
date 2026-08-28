@@ -229,6 +229,7 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
       simp [RubyCore.Judgment.check, hf] at h
       | .int, .int _ => simp [fragHead] at hf
       | .flt, .flt _ => simp [fragHead] at hf
+      | .regexpLit, .regexpLit _ _ => simp [fragHead] at hf
       | .str, .str _ => simp [fragHead] at hf
       | .sym, .sym _ => simp [fragHead] at hf
       | .tru, .tru => simp [fragHead] at hf
@@ -296,6 +297,14 @@ theorem check_sound_all : ∀ (n : Nat),
         simp only [RubyCore.Judgment.check, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl, rfl⟩ := h
         exact .flt
+      | .regexpLit, .regexpLit src opts =>
+        simp only [RubyCore.Judgment.check] at h
+        split at h
+        · next hok =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          exact .regexpLit hok
+        · exact absurd h (by simp)
       | .str, .str _ =>
         simp only [RubyCore.Judgment.check, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl, rfl⟩ := h

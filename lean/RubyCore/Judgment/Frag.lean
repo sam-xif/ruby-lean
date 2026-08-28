@@ -48,6 +48,7 @@ inductive MFrag (A : SemAxioms) : Expr → Prop where
   | semantic {e} : (∃ cl ∈ A, cl.e = e) → fragHead e = false → MFrag A e
   | int {n} : MFrag A (.int n)
   | flt {x} : MFrag A (.flt x)
+  | regexpLit {src opts} : MFrag A (.regexpLit src opts)
   | str {s} : MFrag A (.str s)
   | sym {s} : MFrag A (.sym s)
   | tru : MFrag A .tru
@@ -151,6 +152,7 @@ def exprEqB : Nat → Expr → Expr → Bool
     match a, b with
     | .int x, .int y => decide (x = y)
     | .flt x, .flt y => decide (x = y)
+    | .regexpLit s o, .regexpLit s' o' => decide (s = s') && decide (o = o')
     | .str x, .str y => decide (x = y)
     | .sym x, .sym y => decide (x = y)
     | .tru, .tru => true
@@ -315,6 +317,10 @@ theorem exprEqB_sound_all : ∀ n : Nat,
         replace h : (decide (a1 = b1)) = true := h
         replace h := of_decide_eq_true h
         rw [h]
+      | .regexpLit s1 o1, .regexpLit s2 o2 =>
+        replace h : (decide (s1 = s2) && decide (o1 = o2)) = true := h
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+        rw [h.1, h.2]
       | .int a1, .int b1 =>
         replace h : (decide (a1 = b1)) = true := h
         replace h := of_decide_eq_true h
@@ -590,6 +596,7 @@ def mfragBody (A : SemAxioms) (rec : Expr → Bool) : Expr → Bool
   | e =>
     match e with
     | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil => true
+    | .regexpLit _ _ => true
     | .var .lvar _ => true
     | .vasgn .lvar _ rhs => fragHead rhs && rec rhs
     | .seq es => es.all rec
@@ -649,6 +656,7 @@ theorem mfragB_sound {A : SemAxioms} :
       match e with
       | .int _ => exact .int
       | .flt _ => exact .flt
+      | .regexpLit _ _ => exact .regexpLit
       | .str _ => exact .str
       | .sym _ => exact .sym
       | .tru => exact .tru

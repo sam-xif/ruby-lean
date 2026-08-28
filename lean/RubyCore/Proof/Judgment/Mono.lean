@@ -94,7 +94,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       MFrag A e → defFree e = true → ∀ {D2 : Decls}, SubDecls D D2 →
         D' = D ∧ Judge A D2 Γ e top ctx τ Γ' D2)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -221,6 +221,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
   -- Judge: the fragment heads.
   case hint => exact fun _ _ _ _ _ hs => ⟨rfl, .int⟩
   case hflt => exact fun _ _ _ _ _ hs => ⟨rfl, .flt⟩
+  case hregexpLit => exact fun hok _ _ _ _ _ hs => ⟨rfl, .regexpLit hok⟩
   case hstr => exact fun _ _ _ _ _ hs => ⟨rfl, .str⟩
   case hsym => exact fun _ _ _ _ _ hs => ⟨rfl, .sym⟩
   case htru => exact fun _ _ _ _ _ hs => ⟨rfl, .tru⟩

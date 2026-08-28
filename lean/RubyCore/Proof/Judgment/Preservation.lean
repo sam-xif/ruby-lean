@@ -266,7 +266,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     (motive_11 := fun D Γ e top ctx τ Γ' D' _ =>
       fragHead e = true → EvalOkAt ans A D Γ e top ctx τ Γ' D')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hself
+    ?hint ?hflt ?hstr ?hsym ?htru ?hfls ?hnil ?hregexpLit ?hself
     ?hvarLvar ?hvarIvar ?hvarGvar ?hvarCvar
     ?hvasgnLvar ?hvasgnIvarDecl ?hvasgnIvarFresh ?hvasgnGvar ?hvasgnCvar
     ?hconst ?hcpathAbs ?hcpathScoped ?hcasgn ?hcasgnM ?hcpathAsgn
@@ -334,6 +334,41 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.1.1 hstr.1.2 (by simp))) hsubw)
       (hchn' := chainsIn_plainGrow
         (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.1.1) rfl)
+        hchn)
+      (hk := hk)
+  -- ## The regexp literal (J52): the other producer — same shape, `Regexp`'s
+  -- clause of `LitClsOk`, the step reduced through the rule's parse premise.
+  case hregexpLit =>
+    intro D Γ src opts top ctx hok
+    intro _hfh
+    intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
+    obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp hok
+    have hr' : Rx.parse src opts = .ok r := by
+      cases hpr : Rx.parse src opts with
+      | ok a =>
+        rw [hpr] at hr
+        simp only [Except.toOption, Option.some.injEq] at hr
+        rw [hr]
+      | error e =>
+        rw [hpr] at hr
+        exact absurd hr (by simp [Except.toOption])
+    rw [show evalExpr m (.regexpLit src opts)
+        = .next (withCtl
+            { m with heap := (m.heap.alloc
+                { klass := Boot.regexpId, payload := .regexp src opts }).2 }
+            (.value (.ref (m.heap.alloc
+                { klass := Boot.regexpId, payload := .regexp src opts }).1)))
+      from by simp only [evalExpr, hr']]
+    exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
+      (plainGrow_alloc m.heap _ (by simp) rfl
+        (classPayload?_isSome_lt hstr.2.2.2.2.1) rfl)
+      rfl rfl rfl
+      (VTy.weaken (VTy.ofValueTy
+        (valueTy_alloc_fresh (by simp) rfl rfl rfl hstr.2.2.2.2.1 hstr.2.2.2.2.2
+          (by simp))) hsubw)
+      (hchn' := chainsIn_plainGrow
+        (plainGrow_alloc m.heap _ (by simp) rfl
+          (classPayload?_isSome_lt hstr.2.2.2.2.1) rfl)
         hchn)
       (hk := hk)
   -- ## Local read: `LocalsOkJ`, off the head frame's conformance.
