@@ -521,6 +521,108 @@ theorem chainsIn_fresh (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size) :
             (fun hlt2 => not_lt_add_two ho hk he2 hlt2))] at hcp
           cases hcp
 
+/-! ## Whole-chain reads -/
+
+/-- The dedup fold peels a head no later element repeats. -/
+theorem foldl_dedup_cons {L : List ObjId} {a : ObjId} (ha : ∀ x ∈ L, x ≠ a) :
+    ∀ acc : List ObjId, a ∉ acc →
+      L.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) (a :: acc)
+        = a :: L.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) acc := by
+  induction L with
+  | nil => intro acc _; rfl
+  | cons x xs ih =>
+    intro acc hacc
+    simp only [List.foldl]
+    have hxa : x ≠ a := ha x (by simp)
+    have hct : (a :: acc).contains x = acc.contains x := by
+      simp [List.contains_cons, hxa]
+    rw [hct]
+    by_cases hc : acc.contains x
+    · rw [if_pos hc, if_pos hc]
+      exact ih (fun y hy => ha y (by simp [hy])) acc hacc
+    · rw [if_neg hc, if_neg hc]
+      rw [show a :: acc ++ [x] = a :: (acc ++ [x]) from rfl]
+      exact ih (fun y hy => ha y (by simp [hy]))
+        (acc ++ [x]) (by
+          intro hmem
+          rcases List.mem_append.mp hmem with h1 | h1
+          · exact hacc h1
+          · exact hxa (List.mem_singleton.mp h1).symm)
+
+theorem ancestors_fresh_k :
+    ancestors (freshModHeap h₀ d name q) h₀.objs.size = [h₀.objs.size] := by
+  unfold ancestors
+  rw [show (freshModHeap h₀ d name q).objs.size + 1 = (h₀.objs.size + 2) + 1 from
+    by rw [freshModHeap_size]]
+  rw [freshModHeap_anc_go_k]
+  rfl
+
+theorem ancestors_old_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    {o : ObjId} (ho : o < h₀.objs.size) :
+    ancestors (freshModHeap h₀ d name q) o = ancestors h₀ o := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  rw [ClsGrow.ancestors_old clsGrow_hmid_fresh hchm hsm
+    (by rw [hmid_size]; exact ho)]
+  exact ancestors_constSetIn h₀ d o name _
+
+theorem ancestors_fresh_e (hch : ChainsIn h₀) (hsat : Saturated h₀) :
+    ancestors (freshModHeap h₀ d name q) (h₀.objs.size + 1)
+      = (h₀.objs.size + 1) :: ancestors h₀ Boot.classId := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hcb : Boot.classId < h₀.objs.size := hch.boot.1
+  unfold ancestors
+  rw [show (freshModHeap h₀ d name q).objs.size + 1 = (h₀.objs.size + 2) + 1 from
+    by rw [freshModHeap_size]]
+  rw [freshModHeap_anc_go_e (h₀.objs.size + 2)]
+  rw [ClsGrow.ancestors_go_old clsGrow_hmid_fresh hchm hsm _ Boot.classId
+    (by rw [hmid_size]; exact hcb)]
+  rw [ancestors_go_ge hsm.2 (by
+    rw [hmid_size]
+    exact Nat.add_le_add_left (show (1:Nat) ≤ 2 by decide) _) Boot.classId]
+  have hgo := ClsGrow.ancestors_go_mem_lt hchm ((hmidOf h₀ d name).objs.size + 1)
+    Boot.classId (by rw [hmid_size]; exact hcb)
+  have hne : ∀ x ∈ ancestors.go (hmidOf h₀ d name) Boot.classId
+      ((hmidOf h₀ d name).objs.size + 1), x ≠ h₀.objs.size + 1 := by
+    intro x hx hEq
+    have := hgo x hx
+    rw [hmid_size] at this
+    subst hEq
+    exact Nat.not_lt.mpr (Nat.le_succ _) this
+  show List.foldl _ [] (_ :: _) = _
+  rw [show List.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
+      ((h₀.objs.size + 1) :: ancestors.go (hmidOf h₀ d name) Boot.classId
+        ((hmidOf h₀ d name).objs.size + 1))
+      = List.foldl _ ([h₀.objs.size + 1])
+        (ancestors.go (hmidOf h₀ d name) Boot.classId
+          ((hmidOf h₀ d name).objs.size + 1)) from rfl]
+  rw [show ([h₀.objs.size + 1] : List ObjId) = (h₀.objs.size + 1) :: [] from rfl]
+  rw [foldl_dedup_cons hne [] (by simp)]
+  congr 1
+  -- the tail's dedup is `ancestors hmid classId`, which `constSetIn` pins to h₀'s
+  have : ancestors (hmidOf h₀ d name) Boot.classId = ancestors h₀ Boot.classId :=
+    ancestors_constSetIn h₀ d Boot.classId name _
+  unfold ancestors at this
+  rw [← hmid_size h₀ d name] at this ⊢
+  exact this
+
+theorem classOf_fresh_k :
+    classOf (freshModHeap h₀ d name q) (.ref h₀.objs.size) = h₀.objs.size + 1 := by
+  have h1 : classOf (freshModHeap h₀ d name q) (.ref h₀.objs.size)
+      = match ((freshModHeap h₀ d name q).get h₀.objs.size).eigen with
+        | some e => e
+        | none => ((freshModHeap h₀ d name q).get h₀.objs.size).klass := rfl
+  rw [h1, freshModHeap_get_k]
+
+theorem classOf_fresh_e :
+    classOf (freshModHeap h₀ d name q) (.ref (h₀.objs.size + 1)) = Boot.classId := by
+  have h1 : classOf (freshModHeap h₀ d name q) (.ref (h₀.objs.size + 1))
+      = match ((freshModHeap h₀ d name q).get (h₀.objs.size + 1)).eigen with
+        | some e => e
+        | none => ((freshModHeap h₀ d name q).get (h₀.objs.size + 1)).klass := rfl
+  rw [h1, freshModHeap_get_e]
+
 end Chains
 
 end Judgment
