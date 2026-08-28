@@ -186,11 +186,12 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
     (h : RubyCore.Judgment.check n A d D Γ e top ctx = some (τ, Γ', D'))
     (hf : fragHead e = false) :
     ∃ cl ∈ A, cl.e = e ∧ τ = cl.τ ∧ Γ' = Γ ∧ D' = addRows D cl.rows ∧
-      (cl.rows = [] ∨ ctx.meth = none) ∧
+      (cl.rows = [] ∧ cl.freshNames = [] ∨ ctx.meth = none) ∧
       (∀ cn, cl.reqCls = some cn →
         ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
       cl.reqModOk ctx ∧
-      (∀ r ∈ cl.rows, declaresName D r.2.1 = false) := by
+      (∀ r ∈ cl.rows, declaresName D r.2.1 = false) ∧
+      (∀ n ∈ cl.freshNames, declaresName D n = false) := by
   match n with
   | 0 => exact absurd h (by simp [RubyCore.Judgment.check])
   | n + 1 =>
@@ -202,20 +203,24 @@ theorem check_fragHead_false {n : Nat} {A : SemAxioms} {d : Deriv} {D : Decls}
         split at h
         · next hguard =>
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true, Bool.and_eq_true] at hguard
-          obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩ := hguard
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true] at hguard
+          obtain ⟨⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩, hg6⟩ := hguard
           have hreq := reqClsOkB_sound hg4
           have hqm := reqModOkB_sound hg4m
           have hfr : ∀ r ∈ cl.rows, declaresName D r.2.1 = false := by
             intro r hr
             have := List.all_eq_true.mp hg5 r hr
             simpa using this
-          simp only [Bool.or_eq_true, List.isEmpty_iff,
+          have hfn : ∀ n ∈ cl.freshNames, declaresName D n = false := by
+            intro nn hn
+            have := List.all_eq_true.mp hg6 nn hn
+            simpa using this
+          simp only [Bool.or_eq_true, Bool.and_eq_true, List.isEmpty_iff,
             Option.isNone_iff_eq_none] at hg3
           simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl, rfl⟩ := h
           exact ⟨cl, List.mem_of_getElem? hi, exprEqB_sound hg1, rfl, rfl,
-            rfl, hg3, hreq, hqm, hfr⟩
+            rfl, hg3, hreq, hqm, hfr, hfn⟩
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     | .sub d' σ Γ'', e =>
@@ -315,22 +320,26 @@ theorem check_sound_all : ∀ (n : Nat),
           split at h
           · next hguard =>
             rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-              Bool.and_eq_true, Bool.and_eq_true] at hguard
-            obtain ⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩ := hguard
+              Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true] at hguard
+            obtain ⟨⟨⟨⟨⟨⟨hg1, hg2⟩, hg3⟩, hg4⟩, hg4m⟩, hg5⟩, hg6⟩ := hguard
             have hreq := reqClsOkB_sound hg4
             have hqm := reqModOkB_sound hg4m
             have hfr : ∀ r ∈ cl.rows, declaresName D r.2.1 = false := by
               intro r hr
               have := List.all_eq_true.mp hg5 r hr
               simpa using this
-            simp only [Bool.or_eq_true, List.isEmpty_iff,
+            have hfn : ∀ n ∈ cl.freshNames, declaresName D n = false := by
+              intro nn hn
+              have := List.all_eq_true.mp hg6 nn hn
+              simpa using this
+            simp only [Bool.or_eq_true, Bool.and_eq_true, List.isEmpty_iff,
               Option.isNone_iff_eq_none] at hg3
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl, rfl⟩ := h
             have hcle : cl.e = e := exprEqB_sound hg1
             subst hcle
             exact .semantic (List.mem_of_getElem? hi) (by simpa using hg2) hreq hqm
-              hfr hg3
+              hfr hfn hg3
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       | .self, .self' =>

@@ -165,7 +165,7 @@ theorem typeAgree_trans {a b c : Heap} (h1 : TypeAgree a b) (h2 : TypeAgree b c)
 
 /-- **The user-supplied semantic lemma** — the Rails claim's obligation. -/
 theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
-  intro cl hcl ans D Γ top c hreq _hqm hfr
+  intro cl hcl ans D Γ top c hreq _hqm hfr _hfn
   simp only [List.mem_singleton] at hcl
   subst hcl
   obtain ⟨hccls, hicb, hnbk⟩ := hreq "String" rfl
@@ -387,9 +387,11 @@ theorem railsE_judged : Judge [dmClaim] (declsOf railsE) [] railsE true topJCtx
   · exact .seq (.single
       (.semantic (cl := dmClaim) (by simp) (by decide) dmClaim_reqCls
         (SemClaim.reqModOk_false rfl) dmClaim_fresh
+        (fun n hn => by simp [dmClaim] at hn)
         (Or.inr rfl))
       (hcpl := fun _ => ⟨dmClaim, by simp, rfl, rfl, rfl, rfl, Or.inr rfl,
-        dmClaim_reqCls, SemClaim.reqModOk_false rfl, dmClaim_fresh⟩))
+        dmClaim_reqCls, SemClaim.reqModOk_false rfl, dmClaim_fresh,
+        fun n hn => by simp [dmClaim] at hn⟩))
   · exact .send (.expl .str) .nil (by decide) .nil
 
 theorem railsE_mfrag : MFrag [dmClaim] railsE :=

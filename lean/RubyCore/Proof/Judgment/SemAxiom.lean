@@ -54,7 +54,7 @@ def lamClaim : SemClaim := { e := lamE }
     discharged by running the machine — a lambda send is one step to a fresh proc
     value, so the invariant is re-established by the heap-growth helper at `.any`. -/
 theorem semAxiomsOk_lam : SemAxiomsOk [lamClaim] := by
-  intro cl hcl ans D Γ top c _hreq _hqm _hfr
+  intro cl hcl ans D Γ top c _hreq _hqm _hfr _hfn
   simp only [List.mem_singleton] at hcl
   subst hcl
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
@@ -77,14 +77,16 @@ def egSem : Expr := .seq [.vasgn .lvar "x" (.int 1), lamE, .var .lvar "x"]
 theorem egSem_judged : Judge [lamClaim] (declsOf egSem) [] egSem true topJCtx
     .int [("x", .int)] (declsOf egSem) := by
   refine .seq (.cons (.vasgnLvar rfl .int) (.cons ?_ (.single (.varLvar (by decide)))
-    (hcpl := fun _ => ⟨lamClaim, by simp, rfl, rfl, rfl, rfl, Or.inl rfl,
+    (hcpl := fun _ => ⟨lamClaim, by simp, rfl, rfl, rfl, rfl, Or.inl ⟨rfl, rfl⟩,
       fun cn hcn => by simp [lamClaim] at hcn,
       SemClaim.reqModOk_false rfl,
-      fun r hr => by simp [lamClaim] at hr⟩)))
+      fun r hr => by simp [lamClaim] at hr,
+      fun n hn => by simp [lamClaim] at hn⟩)))
   exact .semantic (cl := lamClaim) (by simp) (by decide)
     (fun cn hcn => by simp [lamClaim] at hcn)
     (SemClaim.reqModOk_false rfl)
-    (fun r hr => by simp [lamClaim] at hr) (Or.inl rfl)
+    (fun r hr => by simp [lamClaim] at hr)
+    (fun n hn => by simp [lamClaim] at hn) (Or.inl ⟨rfl, rfl⟩)
 
 theorem egSem_mfrag : MFrag [lamClaim] egSem :=
   mfragB_sound (A := [lamClaim]) (n := 8) (by decide)
