@@ -625,6 +625,170 @@ theorem classOf_fresh_e :
 
 end Chains
 
+/-! ## The predicate layer at the composite -/
+
+section Preds
+
+variable {h₀ : Heap} {d : ObjId} {name q : String}
+
+theorem freshModHeap_cp_old (hdlt : d < h₀.objs.size) {o : ObjId}
+    (ho : o < h₀.objs.size) :
+    (freshModHeap h₀ d name q).classPayload? o
+      = (hmidOf h₀ d name).classPayload? o := by
+  unfold Heap.classPayload?
+  rw [freshModHeap_get_old ho]
+
+theorem className_old_fresh (hdlt : d < h₀.objs.size) {o : ObjId}
+    (ho : o < h₀.objs.size) :
+    className (freshModHeap h₀ d name q) o = className h₀ o := by
+  unfold className
+  rw [freshModHeap_cp_old hdlt ho]
+  rw [show (hmidOf h₀ d name).classPayload? o = ((hmidOf h₀ d name).classPayload? o)
+    from rfl]
+  have := clsName_constSetIn h₀ d o name (Value.ref h₀.objs.size)
+  cases hcp : h₀.classPayload? o with
+  | none =>
+    rw [hcp] at this
+    cases hcp2 : (hmidOf h₀ d name).classPayload? o with
+    | none => rfl
+    | some c2 => rw [hcp2] at this; exact absurd this (by simp)
+  | some c =>
+    rw [hcp] at this
+    cases hcp2 : (hmidOf h₀ d name).classPayload? o with
+    | none => rw [hcp2] at this; exact absurd this (by simp)
+    | some c2 =>
+      rw [hcp2] at this
+      simp only [Option.map_some, Option.some.injEq] at this
+      have hpair := Prod.ext_iff.mp this
+      dsimp only
+      rw [show c2.name = c.name from hpair.1,
+        show c2.isModule = c.isModule from hpair.2]
+
+theorem className_fresh_k (hqne : ¬ q.isEmpty = true) :
+    className (freshModHeap h₀ d name q) h₀.objs.size = q := by
+  unfold className
+  rw [freshModHeap_cp_k]
+  show (if q.isEmpty then _ else q) = q
+  rw [if_neg hqne]
+
+theorem className_fresh_e :
+    className (freshModHeap h₀ d name q) (h₀.objs.size + 1)
+      = "#<Class:" ++ q ++ ">" := by
+  unfold className
+  rw [freshModHeap_cp_e]
+  show (if ("#<Class:" ++ q ++ ">").isEmpty then _ else _) = _
+  rw [if_neg (by
+    simp only [String.isEmpty_iff]
+    intro hq
+    have h1 := congrArg String.length hq
+    simp [String.length_append] at h1)]
+
+/-- A hook-free walk answers `none`. -/
+theorem lookupGo_none_of_hookfree {h : Heap} {nn : String} :
+    ∀ l : List ObjId,
+      (∀ j ∈ l, ∀ cp, h.classPayload? j = some cp →
+        cp.methods.find? (·.1 == nn) = none) →
+      lookup.go h nn l = none := by
+  intro l
+  induction l with
+  | nil => intro _; rfl
+  | cons j rest ih =>
+    intro hall
+    unfold lookup.go
+    cases hcp : h.classPayload? j with
+    | none => exact ih (fun j' hj' => hall j' (List.mem_cons_of_mem _ hj'))
+    | some c =>
+      dsimp only
+      rw [hall j (by simp) c hcp]
+      exact ih (fun j' hj' => hall j' (List.mem_cons_of_mem _ hj'))
+
+/-- `NoHook` at the composite. -/
+theorem noHook_fresh (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) :
+    NoHook (freshModHeap h₀ d name q) := by
+  have hhm : NoHook (hmidOf h₀ d name) := noHook_constSetIn hh
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  -- hook-free tables along `Class`'s chain, at the composite (clause 3 first —
+  -- clauses 2's fresh cases read it)
+  have hanc3 : ∀ j ∈ ancestors (freshModHeap h₀ d name q) Boot.classId,
+      ∀ cp, (freshModHeap h₀ d name q).classPayload? j = some cp →
+      ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
+    intro j hj cp hcp n hn
+    rw [ancestors_old_fresh hch hsat hch.boot.1] at hj
+    have hjlt : j < h₀.objs.size := ClsGrow.ancestors_mem_lt hch hch.boot.1 j hj
+    rw [freshModHeap_cp_old hdlt hjlt] at hcp
+    have hms := methods_constSetIn h₀ d j name (Value.ref h₀.objs.size)
+    cases hcp0 : h₀.classPayload? j with
+    | none => rw [hcp0] at hms; rw [hcp] at hms; exact absurd hms (by simp)
+    | some cp0 =>
+      rw [hcp0, hcp] at hms
+      simp only [Option.map_some, Option.some.injEq] at hms
+      rw [hms]
+      exact hh.2.2 j hj cp0 hcp0 n hn
+  refine ⟨?_, fun k hk n hn => ?_, hanc3⟩
+  · rw [freshModHeap_cp_old hdlt hch.boot.2.2.2.2]
+    rw [classPayload?_isSome_constSetIn]
+    exact hh.1
+  · by_cases hko : k < h₀.objs.size
+    · unfold lookup
+      rw [ClsGrow.classOf_old hg hchm (by rw [hmid_size]; exact hko),
+        ClsGrow.ancestors_old hg hchm hsm
+          (ClsGrow.classOf_lt hchm (by rw [hmid_size]; exact hko)),
+        ClsGrow.lookup_go_old hg _
+          (ClsGrow.ancestors_mem_lt hchm
+            (ClsGrow.classOf_lt hchm (by rw [hmid_size]; exact hko)))]
+      have := hhm.2.1 k (by
+        rw [freshModHeap_cp_old hdlt hko] at hk
+        exact hk) n hn
+      unfold lookup at this
+      exact this
+    · by_cases hkk : k = h₀.objs.size
+      · subst hkk
+        unfold lookup
+        rw [classOf_fresh_k, ancestors_fresh_e hch hsat]
+        have hstep : lookup.go (freshModHeap h₀ d name q) n
+            ((h₀.objs.size + 1) :: ancestors h₀ Boot.classId)
+            = lookup.go (freshModHeap h₀ d name q) n (ancestors h₀ Boot.classId) := by
+          rw [lookup.go.eq_def]
+          simp only []
+          rw [freshModHeap_cp_e]
+          simp
+        rw [hstep]
+        refine lookupGo_none_of_hookfree _ (fun j hj cp hcp => ?_)
+        exact hanc3 j (by rw [ancestors_old_fresh hch hsat hch.boot.1]; exact hj)
+          cp hcp n hn
+      · by_cases hke : k = h₀.objs.size + 1
+        · subst hke
+          unfold lookup
+          rw [classOf_fresh_e, ancestors_old_fresh hch hsat hch.boot.1]
+          refine lookupGo_none_of_hookfree _ (fun j hj cp hcp => ?_)
+          exact hanc3 j (by rw [ancestors_old_fresh hch hsat hch.boot.1]; exact hj)
+            cp hcp n hn
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hko hkk hke hlt2))] at hk
+          exact absurd hk (by simp)
+
+theorem litClsOk_fresh (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
+    (hch : ChainsIn h₀) : LitClsOk (freshModHeap h₀ d name q) := by
+  have hlt : ∀ x, (h₀.classPayload? x).isSome = true → x < h₀.objs.size :=
+    fun x hx => classPayload?_isSome_lt hx
+  have hsm : LitClsOk (hmidOf h₀ d name) := litClsOk_constSetIn hs
+  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_⟩
+  · rw [freshModHeap_cp_old hdlt (hlt _ hs.1.1)]; exact hsm.1.1
+  · rw [show className (freshModHeap h₀ d name q) Boot.stringId
+      = className h₀ Boot.stringId from
+        className_old_fresh hdlt (hlt _ hs.1.1)]
+    exact hs.1.2
+  · rw [freshModHeap_cp_old hdlt (hlt _ hs.2.1.1)]; exact hsm.2.1.1
+  · rw [className_old_fresh hdlt (hlt _ hs.2.1.1)]; exact hs.2.1.2
+  · rw [freshModHeap_cp_old hdlt (hlt _ hs.2.2.1)]; exact hsm.2.2.1
+  · rw [freshModHeap_cp_old hdlt (hlt _ hs.2.2.2)]; exact hsm.2.2.2
+
+end Preds
+
 end Judgment
 end Proof
 end RubyCore
