@@ -639,7 +639,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   -- (reopen path — a pure frame push, `classTop`'s argument with the J44c facts
   -- carried into the new frame's clauses).
   case hmodule =>
-    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hmn hnbk hpos hct hsct hrd hbody ihb
+    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hneo hdfr hmn hnbk hpos hct hsct hrd hbody ihb
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨hfb, hmb⟩ : fragHead body = true ∧ MFrag A body := by
@@ -667,7 +667,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     have hlt : ∀ g ∈ m.stack, g < m.frames.size := hfs.mem_lt
     -- the frame's definee denotes the rule's owner
     have hmow : ModOwner m.heap ctx.cls (curFrame m).defmod := by
-      rcases hpos with ⟨htt, hobj⟩ | ⟨hicb, himb⟩
+      rcases hpos with ⟨htt, hobj⟩ | ⟨hicb, himb, -⟩
       · left
         refine ⟨hobj, ?_⟩
         have hΓs : Γs = [] := List.isEmpty_iff.mp (htt ▸ htop).symm

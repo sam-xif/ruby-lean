@@ -779,13 +779,16 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   -- which is what arms J34/J44c for `defs` claims and nested `module'`s. -/
   | module' {D Γ name body top ctx τ Γb' Db'} :
       (ctx.cls, name) ∈ D.modules →
-      name ≠ "" →
+      name ≠ "" → name ≠ "Object" →
+      -- the fresh path's class object is named `qualifyMod ctx.cls name`; no
+      -- table key may denote it (or any machine-minted `#<…>` eigenclass name)
+      declClsFresh D (qualifyMod ctx.cls name) = true →
       -- CRuby refuses `module` in a method body outright; the guard is also what
       -- keeps `judge_table_ret` (method bodies never move the table) true.
       ctx.meth = none →
       ctx.inBlock = false →
       (top = true ∧ ctx.cls = "Object" ∨
-        ctx.inClassBody = true ∧ ctx.inModuleBody = true) →
+        ctx.inClassBody = true ∧ ctx.inModuleBody = true ∧ ctx.cls ≠ "Object") →
       constTy? D name = none →
       (∀ cn, scopedConstTy? D cn name = none) →
       readableClasses.contains name = false →

@@ -401,8 +401,11 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
     -- class/module-body channels set. The body's env and table are dropped, as the
     -- rule drops them.
     | .module' db, .module' name body =>
-      if D.modules.contains (ctx.cls, name) && name != "" && ctx.meth.isNone && !ctx.inBlock &&
-          ((top && ctx.cls == "Object") || (ctx.inClassBody && ctx.inModuleBody)) &&
+      if D.modules.contains (ctx.cls, name) && name != "" && name != "Object" &&
+          declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) &&
+          ctx.meth.isNone && !ctx.inBlock &&
+          ((top && ctx.cls == "Object") ||
+            (ctx.inClassBody && ctx.inModuleBody && ctx.cls != "Object")) &&
           (constTy? D name).isNone &&
           D.scopedConsts.all (fun e => e.1.2 != name) &&
           !(readableClasses.contains name) then

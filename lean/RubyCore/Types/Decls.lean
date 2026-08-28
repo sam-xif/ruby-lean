@@ -202,6 +202,19 @@ deriving DecidableEq, Repr, Inhabited
 def constTy? (D : Decls) (n : String) : Option Ty :=
   (D.consts.find? (·.1 == n)).map (·.2)
 
+/-- **No table key denotes the class name `q`, nor any machine-minted eigenclass
+    name (J48).** The `module'` rule's fresh path allocates a class object named
+    `q` and an eigenclass named `"#<Class:" ++ q ++ ">"`; a declared row keyed on
+    either name would suddenly resolve through the fresh object and its (empty)
+    tables, so freshness of the *name* against every keyed channel is a side
+    condition — checker-decidable, one scan. -/
+def declClsFresh (D : Decls) (q : String) : Bool :=
+  D.rows.all (fun r => r.1 != q && !(r.1.startsWith "#<")) &&
+  D.ivars.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
+  D.scopedConsts.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
+  D.supers.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
+  D.modules.all (fun pr => pr.1 != q && !(pr.1.startsWith "#<"))
+
 /-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
     which the read rule reports as a *missing declaration* rather than as a missing
     rule (L196). -/
