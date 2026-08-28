@@ -453,11 +453,32 @@ def initHeap : Heap :=
             [("NAN", Value.flt (0.0 / 0.0)), ("INFINITY", Value.flt (1.0 / 0.0))] }
     | Option.none => hBuiltins
   -- register every class name as a constant on Object
-  match hBuiltins.classPayload? objectId with
-  | some c =>
-    hBuiltins.setClassPayload objectId
-      { c with consts := classTable.map (fun (o, name, _) => (name, Value.ref o)) }
-  | Option.none => hBuiltins
+  let hConsts : Heap := match hBuiltins.classPayload? objectId with
+    | some c =>
+      hBuiltins.setClassPayload objectId
+        { c with consts := classTable.map (fun (o, name, _) => (name, Value.ref o)) }
+    | Option.none => hBuiltins
+  -- **J53: the eigenclasses of `BasicObject` and `Object`, realized at boot.**
+  -- `enterClassBody` eagerly realizes a fresh class's metaclass chain, and at a
+  -- heap where `Object.eigen` is `none` that walk *also* allocates the two
+  -- ancestors' eigenclasses — a heap shape the invariant would otherwise have
+  -- to case on. Realizing them here (exactly the objects `eigenclassOf.go`
+  -- would create, same names, same superclasses, allocated in the same order)
+  -- makes every fresh-class composite two allocations, like the module's.
+  -- Appended after `main`, so every fixed id (`classTable`, `mainId`) is
+  -- unmoved.
+  let eB := hConsts.objs.size
+  let hE := (hConsts.alloc
+    { klass := classId,
+      payload := .cls { superclass := some classId,
+                        name := "#<Class:BasicObject>", isModule := false } }).2
+  let hE := hE.set basicObjectId { hE.get basicObjectId with eigen := some eB }
+  let eO := hE.objs.size
+  let hE := (hE.alloc
+    { klass := classId,
+      payload := .cls { superclass := some eB,
+                        name := "#<Class:Object>", isModule := false } }).2
+  hE.set objectId { hE.get objectId with eigen := some eO }
 
 end Boot
 
