@@ -787,6 +787,107 @@ theorem litClsOk_fresh (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
   · rw [freshModHeap_cp_old hdlt (hlt _ hs.2.2.1)]; exact hsm.2.2.1
   · rw [freshModHeap_cp_old hdlt (hlt _ hs.2.2.2)]; exact hsm.2.2.2
 
+theorem constOwn_fresh_k {n : String} :
+    constOwn (freshModHeap h₀ d name q) h₀.objs.size n = none := by
+  unfold constOwn
+  rw [freshModHeap_cp_k]
+  rfl
+
+theorem constOwn_fresh_e {n : String} :
+    constOwn (freshModHeap h₀ d name q) (h₀.objs.size + 1) n = none := by
+  unfold constOwn
+  rw [freshModHeap_cp_e]
+  rfl
+
+theorem constOwn_old_fresh (hdlt : d < h₀.objs.size) {o : ObjId}
+    (ho : o < h₀.objs.size) {n : String} :
+    constOwn (freshModHeap h₀ d name q) o n = constOwn (hmidOf h₀ d name) o n := by
+  unfold constOwn
+  rw [freshModHeap_cp_old hdlt ho]
+
+/-- `NoShadowBefore` survives a constant write at an id off the shadowing
+    segments (the module-target variant of `noShadowBefore_constSetIn_obj`). -/
+theorem noShadowBefore_constSetIn_off {h : Heap} {dd k : ObjId} {nm : String}
+    {v : Value} (hoff : ModOffChains h dd) (hn : NoShadowBefore h k) :
+    NoShadowBefore (constSetIn h dd nm v) k := by
+  refine ⟨by rw [ancestors_constSetIn]; exact hn.1, ?_⟩
+  rw [ancestors_constSetIn]
+  intro i hi cp hcp
+  by_cases hid : i = dd
+  · subst hid
+    exact absurd hi (hoff k hn.1)
+  · have hpay := payload_constSetIn_ne h dd nm v i hid
+    have hcp0 : h.classPayload? i = some cp := by
+      unfold Heap.classPayload? at hcp ⊢
+      rw [← hpay]
+      exact hcp
+    exact hn.2 i hi cp hcp0
+
+/-- `ClassOk` survives a constant write of a fresh, unreadable name at an id
+    off the shadowing segments — the `_obj` lemma's argument with the
+    `takeWhile`-membership refutation swapped for `ModOffChains`. -/
+theorem classOk_constSetIn_off {h : Heap} {dd : ObjId} {nm : String} {v : Value}
+    (hdo : dd ≠ Boot.objectId) (hoff : ModOffChains h dd)
+    (hnr : nm ∉ Types.readableClasses)
+    (hc : ClassOk h) : ClassOk (constSetIn h dd nm v) := by
+  refine ⟨by rw [className_constSetIn]; exact hc.1,
+    noShadowBefore_constSetIn_off hoff hc.2.1, ?_, fun o cp hcp => ?_⟩
+  · intro n hn
+    obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
+    have hps := classPayload?_isSome_constSetIn h dd k nm v
+    cases hk2 : (constSetIn h dd nm v).classPayload? k with
+    | none => rw [hk2, h2] at hps; exact absurd hps (by simp)
+    | some cp' =>
+      have hname := clsName_constSetIn h dd k nm v
+      rw [hk2, h2] at hname
+      simp only [Option.map_some, Option.some.injEq] at hname
+      have hpair := Prod.ext_iff.mp hname
+      refine ⟨k, cp',
+        by rw [constOwn_constSetIn_ne h dd Boot.objectId nm n v
+          (Or.inr (fun hq => hnr (hq ▸ hn)))]; exact h1,
+        hk2, by rw [className_constSetIn]; exact h4,
+        fun i hi hin => ?_, hrx, hmt, fun i hi hio => ?_, fun hmem => ?_⟩
+      · refine h5 i ?_ ?_
+        · rw [← classPayload?_isSome_constSetIn h dd i nm v]; exact hi
+        · rw [← className_constSetIn h dd i nm v]; exact hin
+      · by_cases hidd : i = dd
+        · subst hidd
+          have hpsi : (h.classPayload? i).isSome = true := by
+            rw [← classPayload?_isSome_constSetIn h i i nm v]
+            exact hi
+          have hold := hsole i hpsi hio
+          have hcs := consts_find_constSetIn h i i nm n v (fun hq => hnr (hq ▸ hn))
+          unfold constOwn at hold ⊢
+          cases hicp : (constSetIn h i nm v).classPayload? i with
+          | none => rfl
+          | some cpi =>
+            cases hicp0 : h.classPayload? i with
+            | none => rw [hicp0] at hpsi; exact absurd hpsi (by simp)
+            | some cpi0 =>
+              rw [hicp, hicp0] at hcs
+              simp only [Option.map_some, Option.some.injEq] at hcs
+              rw [hicp0] at hold
+              simp only [Option.bind_some] at hold ⊢
+              rw [hcs]
+              exact hold
+        · rw [constOwn_constSetIn_ne h dd i nm n v (Or.inr (fun hq => hnr (hq ▸ hn)))]
+          refine hsole i ?_ hio
+          rw [← classPayload?_isSome_constSetIn h dd i nm v]; exact hi
+      · obtain ⟨hmod, hhd, hns⟩ := hreop hmem
+        exact ⟨by rw [show cp'.isModule = cp.isModule from congrArg Prod.snd hname]
+                  exact hmod,
+          by rw [ancestors_constSetIn]; exact hhd,
+          noShadowBefore_constSetIn_off hoff hns⟩
+  · have hnm2 := clsName_constSetIn h dd o nm v
+    rw [hcp] at hnm2
+    cases h2 : h.classPayload? o with
+    | none => rw [h2] at hnm2; exact absurd hnm2 (by simp)
+    | some cp0 =>
+      rw [h2] at hnm2
+      simp only [Option.map_some, Option.some.injEq] at hnm2
+      rw [show cp.name = cp0.name from congrArg Prod.fst hnm2]
+      exact hc.2.2.2 o cp0 h2
+
 end Preds
 
 end Judgment
