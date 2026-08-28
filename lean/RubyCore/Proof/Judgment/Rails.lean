@@ -150,16 +150,18 @@ theorem evalExpr_dm (m : Machine) {cp : ClassPayload}
     then `defineMethod`) is the first to need it. -/
 theorem typeAgree_trans {a b c : Heap} (h1 : TypeAgree a b) (h2 : TypeAgree b c) :
     TypeAgree a c := by
-  obtain ⟨c1, c2, c3, c4, c5, c6, c7, c8⟩ := h1
-  obtain ⟨d1, d2, d3, d4, d5, d6, d7, d8⟩ := h2
-  refine ⟨fun o ho => (d1 o (Nat.lt_of_lt_of_le ho c8)).trans (c1 o ho),
-    fun k hk => (d2 k (Nat.lt_of_lt_of_le hk c8)).trans (c2 k hk),
-    fun k hk => (d3 k (Nat.lt_of_lt_of_le hk c8)).trans (c3 k hk),
-    fun o ho hp => d4 o (Nat.lt_of_lt_of_le ho c8) (c4 o ho hp),
-    fun o ho hp => d5 o (Nat.lt_of_lt_of_le ho c8) (c5 o ho hp),
+  obtain ⟨c1, c2, c3, c4, c5, c6, c7, c8, c9, c10⟩ := h1
+  obtain ⟨d1, d2, d3, d4, d5, d6, d7, d8, d9, d10⟩ := h2
+  refine ⟨fun o ho => (d1 o (Nat.lt_of_lt_of_le ho c10)).trans (c1 o ho),
+    fun k hk => (d2 k (Nat.lt_of_lt_of_le hk c10)).trans (c2 k hk),
+    fun k hk => (d3 k (Nat.lt_of_lt_of_le hk c10)).trans (c3 k hk),
+    fun o ho hp => d4 o (Nat.lt_of_lt_of_le ho c10) (c4 o ho hp),
+    fun o ho hp => d5 o (Nat.lt_of_lt_of_le ho c10) (c5 o ho hp),
     fun k => (d6 k).trans (c6 k),
-    fun o ho xs hx => d7 o (Nat.lt_of_lt_of_le ho c8) xs (c7 o ho xs hx),
-    Nat.le_trans c8 d8⟩
+    fun o ho xs hx => d7 o (Nat.lt_of_lt_of_le ho c10) xs (c7 o ho xs hx),
+    fun k hk => (d8 k (Nat.lt_of_lt_of_le hk c10)).trans (c8 k hk),
+    fun o ho => (d9 o (Nat.lt_of_lt_of_le ho c10)).trans (c9 o ho),
+    Nat.le_trans c10 d10⟩
 
 /-- **The user-supplied semantic lemma** — the Rails claim's obligation. -/
 theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by

@@ -2338,20 +2338,7 @@ named the qualified name with its eigenclass realized* (the reopen path — no
 `TypeError`, and the pushed frame's `StackCtx` clauses are the disjunct's own
 conjuncts). -/
 
-/-- The machine's qualified-name computation, table-side: `enterClassBody` names a
-    nested definition `Owner::name` and a toplevel one bare (`defmod = Object`). -/
-def qualifyMod (owner nm : String) : String :=
-  if owner = "Object" then nm else owner ++ "::" ++ nm
 
-/-- **`o` sits on no pre-`Object` chain segment** — of any class whose chain reaches
-    `Object` at all. `NoShadowBefore` (the clause every readable class carries) says
-    the modules *before* `Object` on such chains own no constants, so a module the
-    fragment writes constants into must live off those segments; this is that fact,
-    carried from the module's birth (a fresh id is beyond every old chain, and the
-    fragment has no `include`/`prepend`). -/
-def ModOffChains (h : Heap) (o : ObjId) : Prop :=
-  ∀ k, Boot.objectId ∈ ancestors h k →
-    o ∉ (ancestors h k).takeWhile (· != Boot.objectId)
 
 /-- The objects a declared owner name can denote: `Object` itself for `"Object"`,
     or any bona-fide module of that name with its eigenclass realized, off the

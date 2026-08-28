@@ -676,6 +676,23 @@ theorem getD_push_lt (a : Array Frame) (j : Nat) (f : Frame) (h : j < a.size) :
   rw [dif_pos h, dif_pos (show j < (a.push f).size by simp [Array.size_push]; omega)]
   exact Array.getElem_push_lt h
 
+/-! ## J44: the off-chain fact the module channel carries -/
+
+/-- The machine's qualified-name computation, table-side: `enterClassBody` names a
+    nested definition `Owner::name` and a toplevel one bare (`defmod = Object`). -/
+def qualifyMod (owner nm : String) : String :=
+  if owner = "Object" then nm else owner ++ "::" ++ nm
+
+/-- **`o` sits on no pre-`Object` chain segment** — of any class whose chain
+    reaches `Object` at all. `NoShadowBefore` (the clause every readable class
+    carries) says the modules *before* `Object` on such chains own no constants,
+    so a module the fragment writes constants into must live off those segments;
+    this is that fact, carried from the module's birth (a fresh id is beyond
+    every old chain, and the fragment has no `include`/`prepend`). -/
+def ModOffChains (h : Heap) (o : ObjId) : Prop :=
+  ∀ k, Boot.objectId ∈ ancestors h k →
+    o ∉ (ancestors h k).takeWhile (· != Boot.objectId)
+
 /-- **Each activation's definee, named** (F1b.9) — the static counterpart of
     `FrameConforms`'s *the definee is a class*, and the fact a declaration row
     needs.
@@ -833,6 +850,18 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- `def` targets the *definee*, and in a class body they are the same object.
       (c.inClassBody = true → c.inBlock = false →
         (frames.getD fid default).self = .ref (frames.getD fid default).defmod) ∧
+      -- **J44: a module body's definee is the module it names, realized.** Set only
+      -- by the machine-typed `module'` push, whose two branches each have the facts
+      -- in hand (the fresh path just built them; the reopen path read them out of
+      -- `ModuleNameOk`'s hit disjunct). Read by the *nested* `module'` — whose
+      -- registration constant lands in this definee, so the write needs the definee
+      -- to be the declared owner and off the shadowing segments — and, later, by
+      -- `defs` (the realized eigenclass is where a singleton row installs).
+      (c.inModuleBody = true → c.inBlock = false →
+        ∃ cp, h.classPayload? (frames.getD fid default).defmod = some cp ∧
+          cp.isModule = true ∧ cp.name = c.cls ∧
+          (h.get (frames.getD fid default).defmod).eigen.isSome ∧
+          ModOffChains h (frames.getD fid default).defmod) ∧
       StackCtx h frames fids cs
   | _, _ => False
 
@@ -874,15 +903,20 @@ theorem StackCtx.cons {h : Heap} {frames : Array Frame} {fid : FrameId}
     (h8 : c.inBlock = false → (frames.getD fid default).captured = none)
     (h9 : c.inClassBody = true → c.inBlock = false →
       (frames.getD fid default).self = .ref (frames.getD fid default).defmod)
+    (h10 : c.inModuleBody = true → c.inBlock = false →
+      ∃ cp, h.classPayload? (frames.getD fid default).defmod = some cp ∧
+        cp.isModule = true ∧ cp.name = c.cls ∧
+        (h.get (frames.getD fid default).defmod).eigen.isSome ∧
+        ModOffChains h (frames.getD fid default).defmod)
     (ht : StackCtx h frames fids cs) : StackCtx h frames (fid :: fids) (c :: cs) :=
-  ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, ht⟩
+  ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, ht⟩
 
 theorem StackCtx.tail {h : Heap} {frames : Array Frame} {fids : List FrameId}
     {c : FrameCtx} {cs : List FrameCtx} (hs : StackCtx h frames fids (c :: cs)) :
     StackCtx h frames fids.tail cs := by
   cases fids with
   | nil => exact absurd hs (by simp [StackCtx])
-  | cons fid rest => exact hs.2.2.2.2.2.2.2.2.2
+  | cons fid rest => exact hs.2.2.2.2.2.2.2.2.2.2
 
 theorem StackCtx.head {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -910,7 +944,8 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
         by rw [hb]; exact hs.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.2.2.1, by rw [hb]; exact hs.2.2.2.2.2.2.2.1,
         by rw [hb]; exact hs.2.2.2.2.2.2.2.2.1,
-        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2⟩
+        by rw [hb]; exact hs.2.2.2.2.2.2.2.2.2.1,
+        StackCtx.push (fun g hg => hlt g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2⟩
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
@@ -1466,11 +1501,24 @@ def TypeAgree (h h' : Heap) : Prop :=
     -- and that weakening is the same invariance check `Ty.arrayOf`'s docstring prices.
     (∀ o, o < h.objs.size → ∀ xs, (h.get o).payload = .arr xs →
       (h'.get o).payload = .arr xs) ∧
+    -- **J44's ninth and tenth clauses: a module stays a module, and an old id's
+    -- eigenclass field is unmoved.** What the `StackCtx` module clause reads: a
+    -- module-body frame's definee is a bona-fide *module* (`isModule` — the
+    -- `enterClassBody` reopen test) with its eigenclass *realized* (`defs`'s
+    -- future read), and neither is a function of the clauses above (`className`
+    -- answers for classes and modules alike; `classOf` reads `eigen` only
+    -- through `getD`). Every producer pins both: the four writers move
+    -- `methods`, `consts`, `ivars` or the object count.
+    (∀ k, k < h.objs.size →
+      ((h'.classPayload? k).map (fun c => (c.name, c.isModule)))
+        = ((h.classPayload? k).map (fun c => (c.name, c.isModule)))) ∧
+    (∀ o, o < h.objs.size → (h'.get o).eigen = (h.get o).eigen) ∧
     h.objs.size ≤ h'.objs.size
 
 theorem TypeAgree.rfl' (h : Heap) : TypeAgree h h :=
   ⟨fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, fun _ _ hp => hp,
-   fun _ _ hc => hc, fun _ => Eq.refl _, fun _ _ _ hp => hp, Nat.le_refl _⟩
+   fun _ _ hc => hc, fun _ => Eq.refl _, fun _ _ _ hp => hp,
+   fun _ _ => Eq.refl _, fun _ _ => Eq.refl _, Nat.le_refl _⟩
 
 /-- **Transport across a frame-array rewrite**, the counterpart of
     `BottomObj_congr`. `setLocal` writes one frame's `locals`, and this predicate
@@ -1507,6 +1555,12 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           intro hcb hnb
           rw [hsf fid (List.mem_cons_self ..), hd fid (List.mem_cons_self ..)]
           exact hs.2.2.2.2.2.2.2.2.1 hcb hnb),
+        (by
+          -- J44: the module clause reads only `defmod` off the frame; the heap is
+          -- the same on both sides.
+          intro hmb hnb
+          rw [hd fid (List.mem_cons_self ..)]
+          exact hs.2.2.2.2.2.2.2.2.2.1 hmb hnb),
         StackCtx_congr (fun g hg => hd g (List.mem_cons_of_mem _ hg))
           (fun g hg => hv g (List.mem_cons_of_mem _ hg))
           (fun g hg => hsf g (List.mem_cons_of_mem _ hg))
@@ -1515,7 +1569,7 @@ theorem StackCtx_congr {h : Heap} {f₁ f₂ : Array Frame} :
           (fun g hg => hmt g (List.mem_cons_of_mem _ hg))
           (fun g hg => hrp g (List.mem_cons_of_mem _ hg))
           (fun g hg => hdm g (List.mem_cons_of_mem _ hg))
-          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2⟩
+          (fun g hg => hcp g (List.mem_cons_of_mem _ hg)) hs.2.2.2.2.2.2.2.2.2.2⟩
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.1
       · rw [hd fid (List.mem_cons_self ..)]; exact hs.2.1
       · rw [hv fid (List.mem_cons_self ..)]; exact hs.2.2.1
@@ -1679,6 +1733,8 @@ theorem typeAgree_defineMethod (h : Heap) (cls : ObjId) (name : String)
             split at hc <;> simp_all
           rw [hpay] at hxs; exact absurd hxs (by simp)
       · rw [get_defineMethod_ne h cls o name md hk]; exact hxs,
+    fun k _ => clsName_defineMethod h cls k name md,
+    fun o _ => get_defineMethod_eigen h cls name md o,
     by rw [objs_size_defineMethod]; exact Nat.le_refl _⟩
 
 /-! ### `constSetIn` (J41): the same transport at the constant write -/
@@ -1748,6 +1804,8 @@ theorem typeAgree_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value) :
             split at hc <;> simp_all
           rw [hpay] at hxs; exact absurd hxs (by simp)
       · rw [get_constSetIn_ne h j o nm v hk]; exact hxs,
+    fun k _ => clsName_constSetIn h j k nm v,
+    fun o _ => (get_constSetIn_fields h j nm v o).2.2.1,
     by rw [objs_size_constSetIn]; exact Nat.le_refl _⟩
 
 /-- **`alloc` satisfies the relativized transport, and this is what item 2 was
@@ -1767,7 +1825,9 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     -- hypothesis. Every caller has it from a lemma written for another consumer.
     (hanc : ∀ k, ancestors h' k = ancestors h k) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
-    fun o ho hc => ?_, hanc, fun o ho xs hxs => by rw [hget o ho]; exact hxs, hsz⟩
+    fun o ho hc => ?_, hanc, fun o ho xs hxs => by rw [hget o ho]; exact hxs,
+    fun k hk => by simp only [Heap.classPayload?, hget k hk],
+    fun o ho => by rw [hget o ho], hsz⟩
   · simp only [classOf, hget o ho]
   · simp only [className, Heap.classPayload?, hget k hk]
   · simp only [Heap.classPayload?, hget k hk]
@@ -1857,7 +1917,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
     intro k; simp only [Heap.classPayload?, hpl k]
   refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_,
-    fun k => ?_, ?_, ?_⟩
+    fun k => ?_, ?_, ?_, ?_, ?_⟩
   · simp only [classOf, hei o, hkl o]
   · simp only [className, hcp k]
   · rw [hcp k]
@@ -1878,6 +1938,8 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   · -- L239's eighth: this lemma is stated over the *four* fields a write can move, and
     -- `payload` is not one of them — `hpl` is the agreement, already a hypothesis.
     intro o _ xs hxs; rw [hpl o]; exact hxs
+  · intro k _; simp only [Heap.classPayload?, hpl k]
+  · intro o _; rw [hei o]
   · exact Nat.le_of_eq hsz
 
 /-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
@@ -1958,7 +2020,7 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
   -- payload is unmoved at every old id, so the same `xs` is there in `h'`; each element's
   -- exact type transports by `valueTy?_congr`. This is the arm that would be *false*
   -- without the clause — a step that rewrote the array would break the claim, correctly.
-  · exact Or.inr (Or.inl ⟨σ', o, xs, hup, rfl, Nat.lt_of_lt_of_le hb ha.2.2.2.2.2.2.2,
+  · exact Or.inr (Or.inl ⟨σ', o, xs, hup, rfl, Nat.lt_of_lt_of_le hb ha.2.2.2.2.2.2.2.2.2,
       valueTy?_congr ha hex, by
       rw [ha.2.2.2.2.2.2.1 o hb xs hpay],
       fun v' hv' => by
@@ -2009,7 +2071,25 @@ theorem StackCtx.heap_congr {h h' : Heap} (ha : TypeAgree h h') {frames : Array 
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ?_,
         hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1, hs.2.2.2.2.2.2.2.1,
         hs.2.2.2.2.2.2.2.2.1,
-        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2.2⟩
+        (by
+          -- J44: the module clause across `TypeAgree` — `isModule` + name by the
+          -- ninth clause, `eigen` by the tenth, the off-chain fact by the
+          -- ancestors clause.
+          intro hmb hnb
+          obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ := hs.2.2.2.2.2.2.2.2.2.1 hmb hnb
+          have hsome : (h'.classPayload? (frames.getD fid default).defmod).isSome := by
+            rw [ha.2.2.1 _ hlt, hcp]; rfl
+          obtain ⟨cp', hcp'⟩ := Option.isSome_iff_exists.mp hsome
+          have hisme := ha.2.2.2.2.2.2.2.1 _ hlt
+          rw [hcp, hcp'] at hisme
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hisme
+          refine ⟨cp', hcp', by rw [hisme.2]; exact hism, by rw [hisme.1]; exact hnm,
+            ?_, ?_⟩
+          · rw [ha.2.2.2.2.2.2.2.2.1 _ hlt]; exact heig
+          · intro k hmem
+            rw [ha.2.2.2.2.2.1] at hmem ⊢
+            exact hoff k hmem),
+        StackCtx.heap_congr ha hs.2.2.2.2.2.2.2.2.2.2⟩
       · rw [ha.2.2.1 _ hlt]; exact hs.1
       · rw [ha.2.1 _ hlt]; exact hs.2.1
       · -- **L209: the chain half, and this is what `TypeAgree`'s sixth clause is for.**

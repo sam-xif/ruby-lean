@@ -134,7 +134,8 @@ theorem inv_implicit_send0 {F : Decls} {m : Machine} {ctx : FrameCtx} {Γ Γk : 
         ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩, FramesOk.push hfs⟩
       · rw [getD_push_lt_self]; exact hown
       · intro y σ hy; exact absurd hy (by simp [envGet?])
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb), StackCtx.push hlt hsc⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb),
+        (fun hmb _ => nomatch hmb), StackCtx.push hlt hsc⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -784,7 +785,8 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
       -- the constant names, and that object is named `name`. `defVis` comes out of
       -- the frame literal's default, which is what makes a `def` in this body public
       -- where a toplevel one is private.
-      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb), StackCtx.push hlt hsc⟩
+      · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb),
+        (fun hmb _ => nomatch hmb), StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1904,7 +1906,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- `cref` is the caller's (L256) — the clause an empty one refused.
           simp only [withCtl]
           refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn hmn => absurd hmn (by simp), ?_,
-            (fun hcb _ => nomatch hcb),
+            (fun hcb _ => nomatch hcb), (fun hmb _ => nomatch hmb),
             StackCtx.push hlt (StackCtx.heap_congr hag hsc)⟩
           · rw [getD_push_lt_self]
             show (Heap.classPayload? _ (classOf _ (.ref o))).isSome = true
@@ -2071,9 +2073,10 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             (fun mn hmn => absurd hmn (by simp [blockCtx]))
             (fun hq => absurd hq (by simp [blockCtx]))
             (fun hcb _ => by simp [blockCtx] at hcb)
+            (fun hmb _ => by simp [blockCtx] at hmb)
             (StackCtx.cons ?_ ?_ ?_ (fun sc hsc' => absurd hsc' (by simp)) ?_ (Or.inr rfl)
               (fun mn hmn => absurd hmn (by simp)) (fun _ => ?_)
-              (fun hcb _ => nomatch hcb)
+              (fun hcb _ => nomatch hcb) (fun hmb _ => nomatch hmb)
               (StackCtx.push
                 (fun g hgm => by
                   simp only [Array.size_push]; exact Nat.lt_succ_of_lt (hlt g hgm))
@@ -2214,7 +2217,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- `callClosure`'s copy.
           simp only [withKont]
           refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun _ hb => absurd (hcbi ▸ hb) (by simp)),
-            StackCtx.push hlt hsc⟩
+            (fun _ hb => absurd (hcbi ▸ hb) (by simp)), StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hcappay
           · intro hb; exact absurd (hcbi ▸ hb) (by simp)
           · intro _; rw [getD_push_lt_self]; simp [defVisOfDef]
@@ -2347,7 +2350,7 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           -- makes a `def` in a method body public — and it is `UserConforms`'s
           -- `defFree` restriction, not this, that keeps one out of the fragment.
           refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, (fun hcb _ => nomatch hcb),
-            StackCtx.push hlt hsc⟩
+            (fun hmb _ => nomatch hmb), StackCtx.push hlt hsc⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl

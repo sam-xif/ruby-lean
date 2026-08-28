@@ -62,6 +62,11 @@ set_option maxHeartbeats 1000000 in
     over: the chain half runs on `ancestors_old` (the id bounds coming out of
     `valueTy_ref_lt` and membership), everything else on the pinned reads. -/
 theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturated h)
+    -- J44: the module clause's `ModOffChains` quantifies over *every* chain of the
+    -- new heap, including the fresh ids' — which `ClsGrow` deliberately says
+    -- nothing about. The caller knows the fresh chains concretely (they are
+    -- literals of the allocating step), so it supplies the transport.
+    (hmoff : ∀ o, o < h.objs.size → ModOffChains h o → ModOffChains h' o)
     {frames : Array Frame} :
     ∀ {st : List FrameId} {cs : List FrameCtx},
       StackCtx h frames st cs → StackCtx h' frames st cs
@@ -72,7 +77,12 @@ theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturate
       refine ⟨?_, ?_, hs.2.2.1, fun sc hsc => ?_,
         hs.2.2.2.2.1, hs.2.2.2.2.2.1, hs.2.2.2.2.2.2.1, hs.2.2.2.2.2.2.2.1,
         hs.2.2.2.2.2.2.2.2.1,
-        StackCtx.clsGrow hg hch hsat hs.2.2.2.2.2.2.2.2.2⟩
+        (by
+          intro hmb hnb
+          obtain ⟨cp, hcp, hism, hnm, heig, hoff⟩ := hs.2.2.2.2.2.2.2.2.2.1 hmb hnb
+          refine ⟨cp, by rw [hg.payloadOld hlt]; exact hcp, hism, hnm,
+            by rw [hg.get _ hlt]; exact heig, hmoff _ hlt hoff⟩),
+        StackCtx.clsGrow hg hch hsat hmoff hs.2.2.2.2.2.2.2.2.2.2⟩
       · rw [hg.classPayload?_isSome_old hlt]; exact hs.1
       · rw [hg.className_old hlt]; exact hs.2.1
       · obtain ⟨hv, hchain⟩ := hs.2.2.2.1 sc hsc

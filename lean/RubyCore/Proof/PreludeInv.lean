@@ -136,7 +136,7 @@ theorem initiation_on {p : Expr} {h : Heap} {g : List (String × Value)}
       fun sc hsc => absurd hsc (by simp),
       by simp [Machine.initOn, Array.getD], Or.inr rfl,
       fun mn h => absurd h (by simp), fun _ => by simp [Machine.initOn, Array.getD],
-      (fun hcb _ => nomatch hcb), trivial⟩
+      (fun hcb _ => nomatch hcb), (fun hmb _ => nomatch hmb), trivial⟩
   · -- **L228: the globals conjunct**, and here — unlike at `Machine.init` — the list is
     -- *quantified*, because `initWithPrelude` carries phase 1's globals into phase 2. So
     -- it is not vacuous, and what discharges it is `declsOf p`: the checker's own table

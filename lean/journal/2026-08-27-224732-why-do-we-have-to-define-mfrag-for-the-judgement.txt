@@ -1,0 +1,1098 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.247
+           Fable 5 · API Usage Billing
+  ▘▘ ▝▝    ~/code/semantics-quick/sam-xif/ruby/lean
+
+
+❯ Why do we have to define MFrag for the judgement work?                        
+
+⏺ Let me look at where MFrag is defined and how the judgment layer docs motivate
+  it.
+
+  Searched for 2 patterns, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Short answer: because Judge is total over the syntax but preservation is not, 
+  and something syntactic has to hold that boundary — the role that infer's 
+  partiality played in the old checker-based spine.
+
+  The detail (from Frag.lean's header and judgment-layer.md):
+
+  1. The invariant's eval arm is existential over derivations. The
+     machine-typing invariant InvJ/step_okJ says "the expression being evaluated
+     has some Judge derivation." When preservation inverts that at a given
+     head, cases surfaces every Judge rule whose conclusion could match that
+     head. Judge deliberately covers all 47 expression heads (so the judgment
+     can state things about full programs), but only a subset has its
+     preservation cases proved. Without a gate, admitting the invariant at any
+     state would drag every rule's preservation obligation in at once — you'd
+     owe the whole mountain before proving anything.
+  2. MFrag is the gate the eval arm conjoins. The invariant becomes "judged and
+     in MFrag." Now, when the machine steps into an out-of-fragment head,
+     preservation refutes that case by one MFrag inversion (a syntactic check)
+     instead of by typing work. In the old chk/infer spine this refutation came
+     for free: infer was partial and simply returned nothing outside its
+     fragment. An inductive Judge has no partiality, so the fragment boundary
+     has to be reified as its own predicate. MFrag growing head-by-head is
+     literally the J-ladder's progress marker — each new head admitted means its
+     preservation cases got proved.
+  3. Since J31 it also carries the semantic-axiom door. MFrag is indexed by the
+     axiom set A: a claimed expression with an out-of-fragment head enters via
+     the semantic arm (guarded by fragHead e = false, so the syntactic and
+     semantic routes never compete at the same head, and only in seq statement
+     position so the coupling premises preservation needs are available). That's
+     how a program containing a semantic leaf like lambda { 1 } stays
+     machine-typed end to end.
+
+  So MFrag isn't a second type system — SemJudge stays MFrag-free and
+  reachability-defined. It's purely a proof-engineering device: a decidable
+  syntactic fence that keeps preservation's obligation set matched to what's
+  actually been proved, while letting the fragment (and the axiom-claimed
+  leaves) grow incrementally.
+
+✻ Baked for 40s · done 9:59 PM
+
+❯ Why is preservation not total over the syntax?                                
+
+  Searched for 2 patterns, ran 1 shell command (ctrl+o to expand)
+
+⏺ It's not one reason — the out-of-fragment heads fall into three genuinely
+  different buckets, and only one of them is "we just haven't done the work
+  yet."
+
+  1. Unclimbed rungs (true but unproved). Heads like cpath, splat elements,
+  super/zsuper, and the return/next jump channels are believed preservable, but
+  each preservation case is real proof work: you have to show that when the
+  machine steps into that construct, every intermediate configuration —
+  including the continuation frames it pushes — stays typed under KontOkJ/InvJ.
+  The jumps are an instructive sub-case: they're not even reachable obligations
+  until some running context opens those channels (the W8 method signatures), so
+  proving them now would be typing states the invariant can't yet produce. The
+  fragment is the ledger of which of these bills have been paid.
+
+  2. Rules where preservation would be false as written. The J8 begin/rescue
+  rule is the clean example (implementation-notes.md:83): transcribed from chk,
+  it judges handlers at the region's entry environment. But if the body retypes
+  a local (x = "s" after x : Int) and then raises, the handler actually runs at
+  the mid-body environment — the entry-env assumption about x is simply wrong
+  there. So this isn't a missing proof; attempting the preservation case would
+  refute the rule. Admitting that head means first fixing the rule (mask
+  body-assigned locals, or per-raise-point environments). This is exactly why
+  preservation-over-everything can't be assumed: some of Judge's 47-head
+  coverage is transcription of chk rules that were never in chk's sound tier
+  either.
+
+  3. Missing type-level machinery. A send named call stays out even though sends
+  are in, because Judge.sendCall eliminates an arrow type and no machine-typed
+  value introduces one yet (the J16/J19 "arrow bill"). Preservation for
+  elimination is unprovable until the value typing VTy has a witness for arrows
+  — there's nothing for the receiver's typing to invert into. Blocks/lambda sit
+  behind the same bill.
+
+  And behind all three there's the structural fact: this is Ruby. Some
+  constructs (the metaprogramming/Rails direction) have no sound syntactic
+  typing rule at any price — that's precisely why SemJudge exists as the
+  reachability-defined ground truth and why J31 added the semantic-axiom door.
+  For those, "preservation" is discharged per-claim by executing the semantics
+  (EvalOkAt obligations), not by a rule case. So totality of preservation over
+  the syntax isn't just deferred — for a slice of the language it's not the plan
+  at all; MFrag is the fence that keeps the proved-syntactic slice, the
+  claimed-semantic leaves, and the not-yet-touched heads from contaminating each
+  other's obligations.
+
+✻ Cooked for 43s · done 10:00 PM
+
+❯ What does this mean for the ongoing homebrew work? Is MFrag sufficient?       
+
+⏺ Let me check what the homebrew work actually needs from the judgment layer.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ For the Homebrew work, the non-totality of preservation is the whole cost
+  model — and MFrag is sufficient as the mechanism, but not yet as populated.
+  The distinction matters.
+
+  As a mechanism, yes — nothing on the slice falls outside its two routes. The
+  J37 census (--census-j) walks each file and reports exactly what MFrag
+  refuses, and every blocker lands in one of two buckets: (1) a claimable leaf —
+  statement position, fragHead = false, one-step-reducible, so the J31 semantic
+  arm can admit it with a dischargeable EvalOkAt obligation (the
+  define_method/lambda pilots), or (2) a machine-coverage rung — grow the
+  fragment by one head and pay its preservation case. The census found no third
+  category, so the architecture doesn't need another door. But it also delivered
+  the sobering finding that shapes the plan: claims are leaves, not containers.
+  Five of eight files wrap everything in module Homebrew, which is technically
+  claimable — but a container's EvalOkAt obligation is never dischargeable, so
+  you can't claim away the wrapper; the honest work underneath is all rungs. The
+  semantic route removes the type-system obstacle, not the machine-coverage
+  one.
+
+  As populated, no — zero of eight files accept today, and the bill is itemized.
+  Because certification is whole-program (Machine.init p), a single
+  out-of-fragment head anywhere blocks the file. After the J38–J42 rungs (cpath,
+  return, hash, toplevel casgn, the emitter), the first accept — stripped
+  vulns/semver.rb — costs exactly three more rungs:
+
+  - module' and defs, both behind Wall 2: a fresh module/class object is an
+    allocating definition — not PlainGrow, and TypeAgree's ancestors clause is
+    false across it — so the entry fee is a class-allocation grow relation with
+    its own transport suite. This is precisely what the current branch is paying
+    down (J43f's ClsInv, J44's Decls.modules/NoHook in the recent commits).
+  - One real block-send, behind Wall 1 on the J-spine: the Static-side invariant
+    work is already proved (Proof/Static/Iter.lean, L242–L255); the rung
+    transliterates it to KontOkJ.iterK and admits Judge.sendIter0/A into
+    preservation.
+
+  Beyond semver, the tails are honest: kwargs mass (24 in identify.rb, ~56 each
+  in version.rb/vulnerability.rb) and send-block (60+ each in the two big files)
+  are all machine rungs. And two blockers aren't just unproved-rung-shaped:
+  begin/rescue in vulnerability.rb sits behind the J8 soundness fix (the
+  entry-env handler rule must be changed, not just proved), and parameterized
+  user methods stay permanently carried rows under the current UserConformsJ
+  (params = [] pin) — a recorded bill, not a rung.
+
+  So the practical answer: MFrag plus the semantic arm is the right and complete
+  vocabulary for the slice — the ongoing work is exactly the rung ladder that
+  populates it, currently mid-Wall-2, with semver.rb's whole-file accept as the
+  next ratchet click.
+
+✻ Baked for 47s · done 10:02 PM
+
+❯ What does "transport suite" mean?                                             
+
+  Searched for 2 patterns, ran 1 shell command (ctrl+o to expand)
+
+⏺ "Transport" here is the proof-engineering term this codebase uses for carrying
+  an invariant clause across a state-changing step, and a "transport suite" is
+  the family of such lemmas that a given kind of step requires — one per
+  invariant component — all stated against a shared "grow relation" describing
+  what that step does to the heap.
+
+  Concretely, from Proof/HeapGrow.lean: when the machine allocates a plain
+  (non-class) object, the proof doesn't reason about the raw before/after heaps
+  at every preservation case. Instead there's one relation, PlainGrow h h',
+  capturing exactly what such a step supplies — the heap only grows, every old
+  id reads back identically, and classPayload? agrees at every id. Then the
+  suite is the collection of lemmas saying each thing the invariant is made of
+  survives that relation:
+
+  - PlainGrow.className_eq, classOf_eq, ancestors_eq, lookup_go_grow — the
+    resolution reads answer the same in the new heap;
+  - chainsIn_plainGrow — the chain well-formedness clause re-establishes;
+  - plus, on the judgment spine, the ValueTy/KontOkJ/EntryOkJ/DeclsOkJ versions
+    (the "table transports, J-flavored" section of Proof/Judgment/Mono.lean).
+
+  Every preservation case for a heap-touching rule is then structured as: show
+  the step produces PlainGrow h h', then discharge each invariant clause by one
+  application of the corresponding transport lemma. The suite is reusable — a
+  new rule whose step is plain-growing pays nothing new.
+
+  Why Wall 2 needs "its own transport suite": allocating a module/class object
+  breaks PlainGrow's load-bearing clause — the fresh id has a .cls payload, so
+  classPayload? no longer agrees globally, and TypeAgree's unrelativized
+  ancestors clause is outright false across the step. None of the existing
+  lemmas apply. So the entry fee is a new grow relation (a class-allocation
+  grow, the ClsGrow/ClsInv work in the recent J43/J44 commits) plus re-proving
+  the whole family against it — every invariant component needs its "survives a
+  class allocation" lemma, including genuinely new obligations the plain case
+  never had (the ancestors walk now can reach the fresh class, hence the
+  NoHook/Decls.modules clauses). That re-proved family is the transport suite
+  the module' and defs rungs are priced at.
+
+✻ Brewed for 31s · done 10:03 PM
+
+❯ Why is proving transport lemmata proving to be difficult? Or more generally,  
+  why are these walls so hard to overcome?                                      
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The short version: a wall is where a step stops merely growing data under the
+  type structure and starts mutating the type structure itself. In this model
+  the heap is Ruby's class table — ancestors, lookup, className are heap walks —
+  so allocating a module changes the ground the entire invariant stands on, and
+  every lemma keyed on "the type-relevant heap is fixed" dies simultaneously.
+  The J43/J44 notes show five distinct ways that cost lands:
+
+  1. The old transport suite's power came from one global clause, and the wall 
+  breaks exactly that clause. PlainGrow works because classPayload? agrees at
+  every id — so no congruence needs to know whether a walk stays inside the old
+  heap; agreement is global. A class allocation falsifies that at the fresh id
+  and nothing else. The replacement (ClsGrow) can only offer relativized
+  congruences — "an old id's walk never reaches the fresh id" — and that
+  relativization isn't provable from the existing invariant. It needs a new
+  well-formedness clause (ChainsIn: no in-bounds object has a chain edge
+  pointing out of bounds) just to be stateable. So the entry fee includes
+  discovering, deciding, boot-discharging, and threading a new InvJ conjunct
+  through every construction site (~15 sites, the hstr.2.1.* renumbering) before
+  the first congruence can be written.
+
+  2. Preservation quantifies over arbitrary conformant heaps, so branches no 
+  real program hits must still be typed. Pricing the module' eval case surfaced
+  two: a conformant heap may already contain an undeclared constant named Vulns
+  (so the reopen branch fires against an aliased object and breaks StackCtx's
+  naming clause), and a hit on a non-module value raises where CtlOkJ has no
+  raise vocabulary — preservation would be false outright, not just unproved.
+  The fix isn't proof labor; it's a design change to the judgment: a new
+  certificate-visible channel (Decls.modules, ModuleNameOk) whose invariant pins
+  which branch runs. That's the deeper reason walls are slow — they keep
+  converting "prove a lemma" into "redesign the invariant so the lemma becomes
+  true."
+
+  3. New channels couple every other rule. Once DeclsOkJ carries ModuleNameOk
+  per declared name, every heap-writing rule owes its preservation — casgn needs
+  a new freshness guard ("not a declared module name"), and each existing
+  transport family grows one more clause. Invariant conjuncts multiply the
+  suite: N clauses × M step shapes.
+
+  4. Facts proved at the wrong granularity don't compose. J44's NoHook example:
+  it was stated per-value (lookup h v hook = none), but the fresh module's
+  dispatch chain is [eigen] ++ ancestors Boot.classId — a list no old value ever
+  dispatched along, so no old fact applies. The honest fix is rephrasing the
+  clause per-table (which implies the per-value form) and re-transporting it.
+  You only discover these mismatches by attempting the eval case.
+
+  5. One source step is a composite of heap operations. module' is ClsGrow ∘ 
+  constSetIn ∘ ClsGrow ∘ EigenSet ∘ push — two allocations, a constant write, an
+  eigen-set, a frame push — and the invariant must survive each intermediate
+  heap, with the fresh-side facts (NoHook/Saturated/ClassOk/ChainsIn on the
+  literal fresh chains) computed by hand.
+
+  Plus the mundane Lean friction underneath (omega failing under large contexts,
+  autoParam positioning), which taxes every one of the above.
+
+  Why the walls specifically and not the other rungs: cpath, return, hash were
+  cheap because they either read the heap or grow it plainly — the existing
+  suite applies verbatim, so each rung was "one kont arm + one delivery case."
+  Walls 1 and 2 are precisely the two places the machine does something the
+  invariant's transport vocabulary has never described (block frames;
+  class-table growth), so the first instance pays for the vocabulary itself. The
+  consolation, visible in the ratchet: it's an entry fee, not a toll — J43d–f's
+  congruence stack (ClsCongr/ClsValues/ClsInv) is reusable, and
+  defs-in-a-fresh-module then costs one defineMethod whose transports already
+  exist.
+
+✻ Worked for 47s · done 10:05 PM
+
+❯ Do we still have a heap monotonicity hypothesis that we're imposing?          
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Yes and no — "heap monotonicity" splits into three different things here, and
+  only one of them is global, and it's proved, not assumed:
+
+  1. Size/identity monotonicity: a proved global fact. Step.heap_monotone
+  (Proof/Adequacy.lean:59) proves by induction over the step relation that the
+  heap never shrinks and ObjIds are never reused. That's not a hypothesis we
+  impose — it's a true fact of the machine, which has no GC or deallocation.
+  (It's also honest about the model's scope: the Lean machine deliberately never
+  frees, so id-stability is real, not idealized.)
+
+  2. Content monotonicity: deliberately not assumed. There is no global "old ids
+  read back identically" hypothesis. PlainGrow.get pins old ids, but PlainGrow
+  is a per-step-shape fact established at each producer — and plenty of steps
+  don't satisfy it. defineMethod, constSetIn, ivar writes, and the eigen-set all
+  mutate existing objects, and each has its own relation and transport family
+  (IvarOnly, the constSetIn suite, EigenSet, the defineMethod transports). The
+  module' composite is exactly a chain of these different shapes. So the proofs
+  are keyed to what each step actually does to the heap, not to an append-only
+  assumption. Relatedly, Proof/Static/Konts.lean records that DeclsOk is
+  "neither monotone nor antitone" — the architecture explicitly gave up on a
+  single monotonicity story there.
+
+  3. Table monotonicity: proved, but gated and carrying real hypotheses — this 
+  is the one closest to "imposed." judge_mono (Proof/Judgment/Mono.lean, J23)
+  proves Judge is monotone along SubDecls, but only over the MFrag-gated 
+  fragment — Judge's full rule set is genuinely non-monotone
+  (alias'/defDecl/defPromote carry freshness guards that a bigger table can
+  falsify). And the gate has been tightening as channels grow: the J42 casgn
+  design added a top = false hypothesis (a toplevel casgn grows wconsts,
+  falsifying the D' = D conclusion), and J44's SubDecls pins Decls.modules equal
+  rather than letting it grow. So where a monotonicity assumption survives,
+  it's as explicit hypotheses on a proved lemma whose consumers are checked to
+  sit inside the gate — every time a new channel would break it, the recorded
+  move has been to weaken the lemma's scope rather than assume the property.
+
+  The axiom-cleanliness checks (check-proofs.sh) are the backstop: nothing in
+  this area is an unproven axiom or sorry — the only assumed things in the whole
+  layer are the user-declared SemAxioms claims, and those are discharged
+  per-claim by executing the semantics.
+
+✻ Churned for 48s · done 10:08 PM
+❯ Can you think of any ways we can extend the semantic judgement beyond judging 
+  a single expression evaluation? What if we were able to judge sequences of    
+  machine steps/steps up to the next kont?                                      
+
+⏺ Let me look at the actual SemJudge and EvalOkAt definitions to ground this.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Yes — and the "up to the next kont" idea is, I think, exactly the right axis,
+  because it attacks the two recorded limitations of the current design at once.
+  Let me lay out what the current shape can't do and then the concrete
+  extensions.
+
+  What's limiting today. SemJudge is a whole-run judgment: it quantifies over
+  conformant states with an empty continuation (m.kont = [] is baked into
+  Conformant) and speaks only about final outcomes. Two consequences, both
+  already recorded as bills in Sem.lean's header and the census findings:
+
+  - No post-state: Γ' and D' aren't in SemJudge, so two SemJudge facts don't
+    compose sequentially — you can't chain "run e₁, then e₂" semantically.
+  - Claims are leaves in statement position only: the EvalOkAt obligation must
+    re-establish InvJ in one evalExpr step at .any, delivered into the ambient
+    kont. That's why module Homebrew wrappers can't be claimed and why a claim
+    can't sit in an if condition or a send argument — a value-position claim
+    would have to say what value arrives at the surrounding frame, which a
+    whole-run judgment can't express.
+
+  Extension 1 — the segment judgment (your "up to the next kont"), as a safety 
+  property. Define something like:
+
+  SemSeg A D Γ e c τ Γ' D' :=
+    ∀ m K, ConformantAt A D c Γ m K → m.ctl = .eval e → m.kont = K →
+      every state reachable before the machine pops below K is not type-stuck, ∧
+      if the machine ever delivers to K, the delivered value inhabits τ
+      and the state is conformant at (Γ', D')
+
+  The key design choice: phrase delivery as a conditional ("if it ever pops back
+  to K"), not a promise. That keeps it a safety property — provable by the same
+  invariant reasoning, no step-indexing — which matters because §1.5 explicitly
+  declined to buy step-indexing, and a total-correctness version ("it will
+  deliver") would smuggle termination in. Notice this judgment is precisely the
+  semantic counterpart of what CtlOkJ's eval arm + KontOkJ already say
+  syntactically, rule by rule: you'd be reifying the preservation invariant's
+  mid-machine shape as a first-class semantic statement, the same move J30 made
+  for whole runs. The fundamental lemma (judge_semSeg) is again the already-paid
+  step_okJ, repackaged.
+
+  What it buys immediately: multi-step EvalOkAt. The current obligation is "one
+  step re-establishes InvJ" — that's what makes containers unclaimable. A SemSeg
+  obligation is "any number of steps, safety throughout, conformance at
+  delivery." Then module Homebrew ... end is claimable: its segment is long but
+  its delivery fact is simple. That would collapse a real fraction of the
+  Homebrew rung ladder — the walls exist because machine-coverage rungs are the
+  only way to get through a container; a segment claim is a second way, priced
+  at one semantic lemma (or one bounded execution) instead of a transport suite.
+  And value-position claims (send arguments, if conditions) stop needing a
+  per-position coupling rung: the segment judgment carries the delivered τ/Γ'/D'
+  the surrounding frame needs.
+
+  Extension 2 — biorthogonal quantification over continuations. Instead of
+  "empty kont" or "fixed K," define the judgment by interaction: e is
+  semantically typed at τ iff for every KontOkJ-conformant continuation
+  expecting τ, the composite machine is safe. This is the classic ⊤⊤-closure/CPS
+  semantic typing. Its payoff is that composition becomes plugging —
+  sequencing, argument positions, everything, uniformly — and it's the natural
+  first-order shadow of what the H-layer already did: J36's route 3 (Iris WP per
+  conformant state) is a judgment over machine-step sequences; a biorthogonal
+  SemSeg would be its cheap sibling, with an adequacy lemma connecting them
+  instead of two parallel stories.
+
+  Extension 3 — the bounded/fuel-indexed variant, for discharge by execution.
+  SemSeg_n: safety for n steps from every conformant state. This is
+  decidable-ish per concrete start state (the concolic engine's territory) and
+  gives the three-valued verdict structure bounded-effect-checking.md wants:
+  proved segment / refuted (witness trace) / frontier at fuel n. A claim
+  discharged at bound n composes into a certificate that is honest about its
+  frontier — the check-vs-prove spectrum landing inside the judgment layer
+  itself.
+
+  Extension 4 — decorate the segment with its trace. Once the judgment is about
+  a step sequence rather than an endpoint, it can speak about the sequence's
+  labels: "this segment emits only effects in policy P," "this segment's heap
+  delta touches only these class tables." The second one is worth flagging
+  specifically: a semantic-diff/confinement claim over a module body's segment
+  is exactly the "metaprogramming backdoor is a heap delta" story from the
+  shared framing docs — the segment judgment is where that vocabulary would
+  attach to the proved spine.
+
+  The honest costs. (1) Conformant currently is "empty kont + closed jump
+  channels"; a segment version needs a mid-machine conformance (ConformantAt … 
+  K) — essentially exposing KontOkJ in the trusted statement, which grows the
+  audit surface of what a certificate consumer must believe. (2) The
+  perverse-pairing hazard J31 closed with fragHead-guarded .sub gets a new
+  instance per admissible position — each position where a segment claim can sit
+  needs its coupling premise, same as the recorded per-position rung note in
+  Frag.lean. (3) Jump channels: a segment inside a method body has ret/inLoop
+  open, so SemSeg needs the jump vocabulary (RetOkJ etc.) in its delivery clause
+  — which conveniently is the same vocabulary the return rung already opened
+  (J39).
+
+  If I had to pick an order: Extension 1 phrased as safety, with the multi-step
+  EvalOkAt as its first consumer and a claimed module body as the pilot — it's
+  the smallest statement that dissolves the "claims are leaves" finding, and
+  it's on the critical path of the Homebrew ratchet, unlike 2–4 which are
+  architecture for later.
+
+✻ Baked for 1m 20s · done 10:11 PM
+
+❯ What do you think is the extension that most lends itself to rapidly          
+  expanding the covered fragment via targeted lemmata that judge uncovered      
+  areas of the code (ideally generally, but if we have to, specific to the      
+  homebrew slice), and why?                                                     
+
+⏺ The segment judgment — but only if it's paired with a second extension that I
+  under-weighted last turn: parameterized semantic axioms (claim schemas rather
+  than claim leaves). Neither alone gives you rapid expansion; together they do.
+  Let me argue it from the census numbers.
+
+  Why per-site claims don't scale, even with segments. Suppose the segment
+  judgment lands and containers become claimable. The current SemAxioms design
+  matches claims by exact expression (cl.e = e). The Homebrew mass is send-block
+  67 + kwargs 56 in version.rb alone, similar in vulnerability.rb. Sixty-seven
+  hand-discharged EvalOkAt-style obligations is more work than the Wall-1 rung
+  it would replace — the syntactic rung costs a transport suite once and then
+  covers every instance free. Exact-match claims only beat rungs when instances
+  are few (lambda { 1 } was fine as a leaf). So the rapid-expansion question is
+  really: what makes one lemma cover many sites?
+
+  The answer is schemas: semantic lemmas quantified over subterms. The blocked
+  mass isn't 67 distinct constructs — it's a handful of patterns instantiated 67
+  times: iterator sends (each/map/select over a machine-typed body), defs with
+  a machine-typed body (install-and-forget, per the J43 note), module bodies
+  whose statements are all covered, kwargs call sites against a claimed row. A
+  schematic semantic lemma has the shape:
+
+  ▎ for all b with MFrag A b and SemSeg … b … τb, the segment for xs.each { |x| 
+  ▎ b } is safe and delivers .any
+
+  One proof, dozens of sites. And here's why this is cheap rather than
+  wall-priced: the proof content for the iterator schema already exists — the
+  Static-side block-frame invariant work is proved (Proof/Static/Iter.lean,
+  L242–L255). The Wall-1 rung is expensive because admitting Judge.sendIter0/A
+  into preservation means building the full KontOkJ.iterK vocabulary so
+  arbitrary judged code can flow through block frames forever after. A schema
+  lemma only has to walk the segment for its own pattern, using the existing
+  transports, with the body handled by its SemSeg premise — it buys coverage
+  without buying vocabulary. That's the structural reason this route is faster:
+  rungs pay per-head × per-invariant-clause; schemas pay per-pattern.
+
+  Why the segment judgment is the prerequisite, not optional. A schema's premise
+  ("the body is judged") and conclusion ("the whole send is safe and delivers 
+  into the surrounding frame") are both mid-machine, mid-continuation
+  statements. Whole-run SemJudge can't express either — you need the "safe up to
+  delivery at K, conformant at (τ, Γ′, D′)" form to state the lemma at all, and
+  you need multi-step obligations because an iterator segment is many steps.
+  So: segment judgment is the statement language, schemas are the multiplier.
+
+  What it covers on the slice, concretely. Ranked by census mass: an iterator
+  schema kills most of send-block (60+ each in the two big files, 1–6 elsewhere
+  — including semver.rb's last blocker); a defs-with-typed-body schema kills
+  defs (4–7 per file, in every file); a module-body schema (statements all
+  covered ⇒ container covered) removes the wrapper problem generally instead of
+  per-wall — and note it would have subsumed much of what Wall 2 is currently
+  buying rung-by-rung. kwargs is the one mass I'd not route this way: kwargs
+  sends sit in value position against specific rows, so the schema
+  side-conditions degenerate to per-row facts — that one is honestly a machine
+  rung (hash-packing kont), and it's transport-cheap since J40's hash work.
+  T::Struct's prop rows (vulnerability.rb, not strippable) are the poster child
+  for a slice-specific schema: "a prop statement installs a claimed row" —
+  exactly the shape the doc already calls "certificate territory."
+
+  The costs, stated honestly. (1) The checker changes character: exact-match
+  claims are checked by one decide; schemas need instantiation-matching plus
+  side-condition checks (MFrag of the bound subterms) in validateJ — the
+  perverse-pairing hazard returns and must be re-closed per schema, the same
+  discipline as fragHead-guarded .sub. (2) The trusted statement grows:
+  SemAxiomsOk for a schema quantifies over instantiations, so a wrong side
+  condition is a soundness hole rather than a dead certificate — schemas belong
+  beside entryOkJ_even as Lean lemmas, not as user-supplied JSON. (3) It's
+  deliberately a coverage shortcut, not vocabulary: code inside a schema-covered
+  segment can't itself be judged syntactically deeper than the schema's
+  premises reach. That's the right trade for the slice — and it's reversible,
+  since a later real rung strictly subsumes a schema and the certificates don't
+  change shape.
+
+  So: general answer, segment judgment + schema-shaped semantic lemmas, because
+  it converts the two walls from "build the full invariant vocabulary for a new
+  step shape" into "prove one safety lemma per code pattern, reusing proved
+  material" — and the Homebrew census says the blocked mass clusters into ~4
+  patterns.
+
+✻ Cogitated for 1m 1s · done 10:14 PM
+
+❯ I think the one thing that would need to be accounted for in a semantic       
+  schema lemma might be that the meaning of xs might change over time, if it's  
+  referencing a specific variable in the environment                            
+
+⏺ You're right, and it's worth pinning down exactly where the drift can happen,
+  because it's three distinct timepoints — and the failure shape is one the
+  project has already met twice (J8's handlers-at-entry-env, and the redo note
+  about mid-body retyping re-entering a loop with a stale assumption). A schema
+  stated over source names rather than sampled machine quantities would
+  reproduce that bug class at the semantic layer, where a wrong side condition
+  is a soundness hole rather than a refused certificate.
+
+  Drift point 1: the receiver's own evaluation. If the schema admits arbitrary
+  receiver expressions, xs is evaluated inside the segment, and its evaluation
+  can itself mutate the heap and table before the iteration starts. The body's
+  premise would then need to hold at the receiver's out-state, not the claim's
+  entry state — that's the Γ′/D′ threading the segment judgment carries, but it
+  means the schema's premises are chained, not independent. The v1 discipline is
+  the same one MFrag already uses for containers: restrict schema receivers to
+  fragHead-true pure reads (a bare local, a literal), so the receiver's meaning
+  is sampled in one step under entry conformance and the chaining collapses.
+
+  Drift point 2: per-iteration environment drift — the J8 shape. The body's
+  premise is stated at some environment Γ, but iteration n+1 starts at iteration
+  n's out-environment. If the body can retype a local (x = "s" after x : Int),
+  the premise you invoked at entry is false at the second iteration — exactly
+  J8's counterexample transposed from handlers to loop bodies. So the schema
+  can't just take SemSeg … b … Γ → …; it needs the body env-stable: its
+  out-environment a SubEnv of its in-environment, making the entry env a genuine
+  loop invariant. (The alternatives are J8's candidate fixes recurring: mask
+  body-assigned locals out of the premise env, or quantify the body premise over
+  every reachable iteration env — the latter is technically the honest
+  statement but pushes the induction onto whoever discharges the premise.)
+  Env-stability is checkable — it's a conclusion of the body's own judgment — so
+  it's a legitimate schema side condition rather than trusted fine print.
+
+  Drift point 3: the object vs. the name. Ruby's each samples the receiver once
+  at dispatch — rebinding the local mid-iteration doesn't change what's
+  iterated, but mutating the object does (xs.push inside the block). So the
+  schema lemma's inductive invariant must be stated about the ObjId captured at
+  send time, never about the name xs — the name's meaning is only consulted at
+  drift point 1. Then heap mutation is the remaining threat: does the segment
+  invariant survive the body pushing an ill-typed element into the very array
+  being walked? Here the .any pilot earns its keep: if the schema delivers the
+  block parameter at .any, element-type stability is vacuous and mutation during
+  iteration is harmless — conformance (which the body's premise re-establishes)
+  is all the invariant needs. A τ-typed-element schema is a different animal:
+  it needs "the body doesn't write this object" as a side condition, which is a
+  frame/confinement fact about the body's segment — notably, that's Extension
+  4's trace vocabulary showing up as a schema premise, which I'd take as
+  evidence the extensions are one design, not four.
+
+  The general principle your observation points at: schema premises must be 
+  stated in quantities the machine samples, at the moment it samples them —
+  values and ObjIds at segment entry, environments as explicit loop invariants —
+  with source-level names appearing only where a conformance clause pins their
+  reading. It's the semantic analogue of why Judge is non-monotone: the
+  freshness guards there exist because a name's meaning can grow out from under
+  a derivation; here a name's meaning can step out from under a schema. The v1
+  schema that respects all three points — pure-read receiver, env-stable MFrag
+  body, .any delivery, invariant keyed on the dispatched ObjId — is still cheap
+  to prove and still covers the census's iterator mass, since Homebrew's
+  iterator sites overwhelmingly have bare-local receivers and statement-position
+  bodies.
+
+✻ Baked for 57s · done 10:19 PM
+
+❯ So I guess this is where the monotonicity predicate over the surface          
+  syntax/machine steps is useful? We can use it to make proving the safety of   
+  these short segments easier.                                                  
+
+⏺ Yes — that's exactly the role the grow relations would play, with one
+  refinement: what a schema needs isn't one monotonicity predicate but a small
+  lattice of them, indexed on the segment, and the existing transport suites are
+  then the pre-paid proof automation for each point in the lattice.
+
+  Spelling it out against the three drift points:
+
+  - Id stability comes free, globally. Step.heap_monotone already proves ObjIds
+    are never reused, so the ObjId sampled at dispatch remains valid across any
+    body segment, no side condition needed. That's the one genuinely global
+    monotonicity fact, and it's load-bearing for keying the schema invariant on
+    the object.
+  - Env drift is an order condition: body's out-env SubEnv its in-env. That's
+    monotonicity (well, antitonicity) over the environment, and judge_mono-style
+    lemmas are what let the body's premise re-apply at iteration n+1's env.
+  - Receiver-object stability is relativized content monotonicity: "old id k
+    reads back identically" — a per-object slice of PlainGrow.get, not the
+    global clause.
+
+  The refinement matters because the global predicates are too strong to demand
+  of real bodies. A body containing one ivar write fails PlainGrow; one def
+  fails D′ = D. If the schema's premise were "the body's segment is PlainGrow,"
+  you'd have rebuilt the wall as a side condition — nothing on the slice would
+  satisfy it. What you want is the segment judgment carrying a grow-relation 
+  index — SemSeg at effect G, where G ranges over the vocabulary the proofs
+  already have (Pure ⊑ IvarOnly ⊑ PlainGrow ⊑ ClsGrow, composed with SubDecls on
+  the table side, plus a per-object frame "k untouched"). Then:
+
+  1. The schema lemma takes "body's segment ⊑ G" as its stability premise and
+     discharges iteration-invariance by applying the transport suite for G —
+     which is precisely the reuse you're pointing at. The suites were priced as
+     preservation infrastructure; here they get a second life as the entire
+     proof content of schema lemmas. The iterator schema's induction becomes:
+     sample the object, apply the body premise, transport the invariant across
+     G, repeat — a dozen lines per schema, not a wall.
+  2. The index is derivable, not trusted: an MFrag/judged body's segment effect
+     can be read off its head set (this is what the effect-summary machinery in
+     bounded-effect-checking.md §incrementality wanted anyway — "a
+     metaprogramming backdoor is a heap delta" is exactly "the segment's G is
+     bigger than claimed"). So the checker can compute a sound
+     over-approximation of G per body and the certificate never states it as
+     fine print.
+  3. The lattice explains the pricing cleanly: the .any-delivery iterator schema
+     needs only id-stability + SubEnv (bottom of the lattice — almost free); a
+     τ-typed-element version adds the per-object frame; a schema whose body
+     defines methods needs SubDecls transport; a body that opens a class needs
+     ClsGrow — and at that point you're paying Wall-2 material once, inside one 
+     lemma, rather than as a preservation case for every rule.
+
+  So the picture that falls out: the walls built a vocabulary of "what kind of
+  growth does this step cause + what survives it," and the schema route inverts
+  it into "what kind of growth does this segment stay within + therefore what
+  survives it." Same lemmas, quantifier moved from steps to segments. The one
+  new thing to build is small: the effect index on SemSeg, the lattice order,
+  and a per-body effect computation — the transport suites themselves, which
+  were the expensive part, are already on the shelf.
+
+✻ Cooked for 36s · done 10:22 PM
+
+❯ I know there's in-flight work in the repo, but I think this direction is much 
+  more promising, so let's pivot to it. Let's extend the semantic judgement     
+  system as we've discussed here, documenting our decisions in the J* notes,    
+  and getting a small proof of concept up of judging a program involving blocks 
+  and/or other complex ruby features with schema judgements.                    
+
+⏺ This is a real pivot with several moving pieces, so let me proceed in order:
+  check the repo's build state, read the exact current definitions (EvalOkAt,
+  SemAxioms, the claim plumbing), write the design note (J45), then build the
+  Lean proof-of-concept incrementally.
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Background command "Build Lean project to check green state" completed (exit
+code 0)
+
+⏺ Build is green with the in-flight work included. Now let me read the exact
+  EvalOkAt shape and how the eval branch consumes it.
+
+  Searched for 4 patterns, read 1 file, ran 6 shell commands (ctrl+o to expand)
+
+⏺ Background command "Baseline build of Metatheory lib" completed (exit code 0)
+
+⏺ Baseline Metatheory build is green, J45 is the next free number. Writing the
+  segment layer file first.
+⏺ Write(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Wrote 213 lines to RubyCore/Proof/Judgment/Seg.lean
+       1 import RubyCore.Proof.Judgment.Sem
+       3 /-!
+       4 # J45 — the segment layer: `RunSafe`, the S-grade invariant, and
+       5 
+         semantic-judgment
+       7 system from *whole-run* facts (`SemJudge`, conformant start stat
+       8 continuation) to *segment* facts — statements about a machine mi
+         d-run, mid-kont —
+          than one step**
+         f one machine
+     … +280 lines (ctrl+o to expand)
+
+⏺ Update(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Added 2 lines, removed 1 line
+      133    | next m' => exact Or.inl h
+      134    | done v mf => exact h
+      135    | uncaught exc m => exact h
+      136 -  | _ => trivial                                              
+      136 +  | unsupported reason => trivial                             
+      137 +  | stuck msg => trivial                                      
+      138  
+      139  /-- A `RunSafe` state's own step satisfies the S-grade conclus
+           ion — the case
+      140      J46's `step_okS` will use for the absorbing arm. -/
+
+⏺ Update(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Added 2 lines, removed 1 line
+      147        have := h.1 (stepFn m) reachableResult_self
+      148        rw [hs] at this
+      149        exact this
+      150 -  | _ => trivial                                              
+      150 +  | unsupported reason => trivial                             
+      151 +  | stuck msg => trivial                                      
+      152  
+      153  /-! ## `SegOkAt` — the segment obligation
+      154  
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The SegOkAt identifiers live in the Proof.Static namespace (same open Sem.lean
+  uses). Fixing:
+
+⏺ Update(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Added 1 line
+      55  open Interp
+      56  open RubyCore.Types
+      57  open RubyCore.Judgment
+      58 +open RubyCore.Proof.Static                                     
+      59  
+      60  /-! ## `RunSafe` — the semantic ground truth at a mid-machine s
+          tate -/
+      61  
+
+⏺ Update(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Added 1 line, removed 1 line
+      142  theorem stepOkS_of_runSafe {ans : Ty} {A : SemAxioms} {m : Mac
+           hine}
+      143      (h : RunSafe ans m) : StepOkS ans A (stepFn m) := by
+      144    cases hs : stepFn m with
+      145 -  | next m' => exact Or.inr (h.step hs)                       
+      145 +  | next m'' => exact Or.inr (h.step hs)                      
+      146    | done v mf => exact h.2 v mf (hs ▸ reachableResult_self)
+      147    | uncaught exc me =>
+      148        have := h.1 (stepFn m) reachableResult_self
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Update(RubyCore/Proof/Judgment/Seg.lean)
+  ⎿  Added 1 line, removed 1 line
+      131  theorem stepOkJ_toS {ans : Ty} {A : SemAxioms} {r : StepResult
+           }
+      132      (h : StepOkJ ans A r) : StepOkS ans A r := by
+      133    cases r with
+      134 -  | next m' => exact Or.inl h                                 
+      134 +  | next _ => exact Or.inl h                                  
+      135    | done v mf => exact h
+      136    | uncaught exc m => exact h
+      137    | unsupported reason => trivial
+
+⏺ Seg layer is green. Now the schema pilot file:
+
+⏺ Write(RubyCore/Proof/Judgment/Schema.lean)
+  ⎿  Wrote 130 lines to RubyCore/Proof/Judgment/Schema.lean
+       1 import RubyCore.Proof.Judgment.Seg
+       3 
+       4 /-!
+       5 # J45 — the schema pilot: one lemma, every `lambda` site
+       7 The first **schema judgment**: a semantic lemma quantified over 
+         a pattern's
+         y* claim
+       9 instantiating the pattern. J31's pilot discharged `lambda { 1 }`
+          — one fixed
+          it to
+     … +169 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The checker rejects the certificate — let me read how validateJ handles
+  .semantic nodes and seq statements.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Fuel was the issue — validateJ … 32 = true. Fixing the fuel:
+
+⏺ Update(RubyCore/Proof/Judgment/Schema.lean)
+  ⎿  Added 1 line, removed 1 line
+      104      deriv := .seq (.cons (.vasgnLvar .int)
+      105        (.cons (.semantic 0) (.cons (.semantic 1) (.single .varL
+           var)))) }
+      106  
+      107 -theorem egSchemaJCert_validates : validateJ egSchemaJCert egSc
+          -hema 8 = true := by                                           
+      107 +theorem egSchemaJCert_validates : validateJ egSchemaJCert egSc
+          +hema 32 = true := by                                          
+      108    decide
+      109  
+      110  /-- **The pilot, end to end**: a program with two out-of-fragm
+           ent block-bearing
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Both files green and axiom-clean. Now the J45 note in implementation-notes.md:
+
+  Read 2 files (ctrl+o to expand)
+
+⏺ Now the summary bullet in judgment-layer.md:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(~/code/semantics-quick/sam-xif/ruby/docs/semantics/judgment-layer.md)  ⎿  Added 17 lines
+      62  >   ground truth" is now a definition rather than a remark, and
+           `SemJudge` is the
+      63  >   layer's **extension point**: out-of-fragment constructs (th
+          e Rails direction)
+      64  >   are admitted by proving their `SemJudge` statement directly
+          .
+      65 +> * **The segment layer + schema judgments (J45, 2026-08-27)** 
+         +— the extension                                                
+      66 +>   point exercised, two ways (`Proof/Judgment/Seg.lean`, `Sche
+         +ma.lean`).                                                     
+      67 +>   **Segments**: `RunSafe` (the rest of the run is safe — defi
+         +nitionally                                                     
+      68 +>   `SemJudge`'s body at an arbitrary mid-machine state), the a
+         +bsorbing                                                       
+      69 +>   `InvS := InvJ ∨ RunSafe` with the collapse `invJ_runSafe`, 
+         +the S-grade                                                    
+      70 +>   `StepOkS` (`.next` may land mid-segment; `.stuck`/`.unsuppo
+         +rted` tolerated —                                              
+      71 +>   the semantic grade), and `SegOkAt` = `EvalOkAt` with the on
+         +e-step conclusion                                              
+      72 +>   weakened, embedding every existing claim (`semAxiomsOk_toS`
+         +). **Schemas**:                                                
+      73 +>   semantic lemmas quantified over a pattern's subterms — `sem
+         +AxiomsOk_lambdas`                                              
+      74 +>   discharges *any list* of `lambda { |ps| b }` claims with **
+         +no premise on the                                              
+      75 +>   body** (captured, never evaluated), demoed end to end on a 
+         +two-lambda program                                             
+      76 +>   from a data certificate; schemas are Lean lemmas, never cer
+         +tificate data, so                                              
+      77 +>   the checker is unchanged. Priced next (J46): threading `Ste
+         +pOkS` through                                                  
+      78 +>   `step_okJ` so `Judge.semantic` leaves carry *multi-step* se
+         +gment obligations —                                            
+      79 +>   the delivery-conditional invariant arm that dissolves "clai
+         +ms are leaves" —                                               
+      80 +>   and the grow-relation-indexed stability premises that let t
+         +he transport suites                                            
+      81 +>   discharge iterator/`defs`/`module`-body schemas over the Ho
+         +mebrew slice.                                                  
+      82  >
+      83  > The machine-typed fragment (`MFrag`, the eval arm's syntactic
+           gate playing the
+      84  > role `infer`'s partiality played): T1 control core, block-les
+          s sends at any
+
+⏺ Update(~/code/semantics-quick/sam-xif/ruby/homebrew/judge-slice.md)
+  ⎿  Added 14 lines
+      138  methods (`UserConformsJ` pins `params = []`, so claimed rows a
+           bout the slice's
+      139  own parameterized methods stay carried, never discharged).
+      140  
+      141 +## 5b. The J45 pivot (2026-08-27) — schemas over rungs        
+      142 +                                                              
+      143 +Mid-Wall-2 the initiative pivoted (`implementation-notes.md` J
+          +45): the blocked                                              
+      144 +mass above clusters into ~4 *patterns*, and a **schema judgmen
+          +t** — one semantic                                            
+      145 +lemma quantified over a pattern's subterms — prices at one pro
+          +of per pattern                                                
+      146 +where a machine rung prices at one transport suite per head. L
+          +anded: the segment                                            
+      147 +layer (`Proof/Judgment/Seg.lean`) and the first schema        
+      148 +(`semAxiomsOk_lambdas`, every `lambda` site by one lemma, demo
+          +ed end to end).                                               
+      149 +Gating the slice payoff: **J46** (multi-step claim consumption
+          + — the                                                        
+      150 +delivery-conditional invariant arm), then the iterator/`defs`/
+          +`module`-body                                                 
+      151 +schemas that reprice the §3 table. The J43a–f/J44 Wall-2 mater
+          +ial is parked, not                                            
+      152 +discarded — the `ClsGrow` congruence stack is exactly the stab
+          +ility vocabulary a                                            
+      153 +`module`-body schema's premises will consume. `kwargs` stays a
+          + machine rung.                                                
+      154 +                                                              
+      155  ## 6. Ratchets
+      156  
+      157  * `--census-j` per slice file: `blocked_total` per head (moves
+            down as rungs land) —
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The pivot has landed, all green through the full proof gate (check-proofs.sh:
+  axiom-clean, everything on propext + Classical.choice + Quot.sound only). The
+  in-flight J43/J44 Wall-2 files are untouched — parked, not discarded. Here's
+  what exists now:
+
+  Proof/Judgment/Seg.lean — the segment layer (J45).
+  - RunSafe ans m — "the rest of the run is safe": no reachable result
+    type-stuck, terminating value in ans. The satisfying fact: it's
+    definitionally SemJudge's body (semJudge_runSafe_iff is Iff.rfl), so the
+    segment layer is exactly SemJudge generalized from conformant empty-kont
+    states to arbitrary mid-machine states.
+  - Consecution comes free (RunSafe.step), and the collapse invJ_runSafe
+    re-reads the composed soundness theorems as "InvJ anywhere implies RunSafe
+    there."
+  - The S-grade machinery: InvS := InvJ ∨ RunSafe (right arm absorbing), StepOkS
+    (the .next arm may land mid-segment; .stuck/.unsupported tolerated — a
+    deliberate, recorded grade choice matching what SemJudge itself promises),
+    and SegOkAt — EvalOkAt verbatim with the one-step conclusion weakened. Every
+    existing claim embeds (semAxiomsOk_toS), so one-step claims are degenerate
+    segment claims.
+
+  Proof/Judgment/Schema.lean — the schema pilot, end to end.
+  - semAxiomsOk_lambdas: one lemma discharging any list of lambda { |ps| b } 
+    claims, with the body bound by a bare ∀ and no premise at all — reifyBlock
+    captures without evaluating, and ClosuresOk reads only captured-frame facts.
+    The proof is J31's eleven lines, generalized.
+  - egSchema_certified: a program with two different claimed lambdas — one of
+    whose bodies (1.nope) would NoMethodError if ever run — certified from a
+    data certificate replayed by one kernel decide, both obligations by the
+    single schema lemma. The ill-typed body is the honest demo of the contract:
+    the schema certifies the proc value; call stays fragment-excluded. (One
+    practical find: the checker fuel must also cover exprEqB's walk of claimed
+    expressions — 8 no longer sufficed, 32 does.)
+
+  Design decisions documented in implementation-notes.md (J45 entry), with a
+  milestone bullet in judgment-layer.md and a §5b pivot note in
+  homebrew/judge-slice.md:
+  - Schemas are Lean lemmas, never certificate data — side conditions are
+    load-bearing for soundness, so the checker is unchanged and the trusted
+    surface grew by zero this rung.
+  - Schema statements must be sampled, not named (the J8 lesson transposed):
+    ObjIds at entry, SubEnv-stable bodies, pure-read receivers in v1.
+  - J46 priced, not built: threading StepOkS through step_okJ so Judge.semantic
+    leaves can carry multi-step obligations. The note records the two honest
+    bills — the circularity hazard (an absorbing RunSafe obligation covers the
+    run past its own delivery, so the inductive vehicle must be a
+    delivery-conditional segment arm re-establishing InvJ at the entry KontOkJ;
+    SegOkAt as built is the degenerate form, correct when other claims are
+    one-step) and the stability vocabulary (grow-relation-indexed premises so
+    the existing transport suites — including the parked ClsGrow stack —
+    discharge iterator/defs/module-body schemas).
+
+  Nothing is committed — say the word and I'll commit this as J45. The natural
+  next rung is J46's delivery-conditional invariant arm, which is what converts
+  the Homebrew send-block/defs/module mass into schema territory.
+
+✻ Crunched for 14m 55s · done 10:38 PM
+
+❯ Do we need to change SemAxiomsOk to be in terms of SegOkAt? Why or why not?   
+
+⏺ No — not now, and when the time comes it's an "add alongside," not a "change."
+  Three reasons:
+
+  1. Today it would break the mountain without buying anything. The only
+  consumer of SemAxiomsOk is step_okJ's semantic-claim case, and that case must
+  produce StepOkJ — whose .next arm demands InvJ at the successor state. An
+  EvalOkAt obligation hands it exactly that; a SegOkAt obligation hands it
+  StepOkS, whose .next arm may be RunSafe — and there is no way back from
+  RunSafe m' to InvJ m' (that's the whole point of the absorbing arm). So
+  redefining SemAxiomsOk over SegOkAt makes step_okJ unprovable as stated, and
+  nothing exists yet (step_okS is J46) to consume the weaker form. Meanwhile no
+  claim we can currently discharge needs the weaker form — every claim that can
+  ride Judge.semantic today is one-step anyway.
+
+  2. The implication only runs one way, so "change" means "strengthen every 
+  composed theorem." SemAxiomsOk → SemAxiomsOkS (semAxiomsOk_toS); the converse
+  is false. Since these predicates sit in hypothesis position of
+  validateJ_certifies/judge_sound, swapping in the weaker one strengthens those
+  theorems — which is precisely the content of J46's step_okS, not a
+  definitional edit. Put differently: the definition change is the preservation
+  re-proof; doing the former without the latter is just breakage.
+
+  3. Even at J46, SegOkAt as currently built may not be the final shape. The J45
+  note records the circularity hazard: for genuinely multi-step claims, the
+  absorbing RunSafe conclusion covers the run past its own delivery, so
+  discharging it needs S-grade soundness of the full axiom set — each obligation
+  assuming all obligations. The likely resolution is a third,
+  delivery-conditional shape (safe up to delivery, delivery re-establishes InvJ
+  at the entry KontOkJ). Churning the definition of record onto the degenerate
+  form now, then again onto the conditional form, is two migrations for one.
+
+  There's also an audit-surface argument for never replacing it: SemAxiomsOk is
+  the named condition a certificate consumer reads in validateJ_certifies's
+  statement ("the composed theorem is conditional on exactly this"). Silently
+  changing what that name means is exactly the kind of trusted-statement drift
+  the layer has been careful to avoid. The right end state, post-J46:
+  SemAxiomsOkS (or its delivery-conditional successor) appears explicitly in the
+  new S-grade composed theorem; SemAxiomsOk survives as the stronger form that
+  one-step dischargers naturally prove, embedded by semAxiomsOk_toS wherever the
+  weak form is wanted. Existing certificates and lemmas (semAxiomsOk_lam,
+  semAxiomsOk_lambdas) then work under both theorems unchanged.
+
+  So the current state — both predicates defined, the embedding proved,
+  SemAxiomsOk untouched as the definition of record — is the right resting point
+  until step_okS exists.
+
+✻ Baked for 31s · done 10:40 PM
+
+❯ So how does InvS relate to InvJ?                                              
+
+⏺ InvS is InvJ ∨ RunSafe, and the relationship has three layers worth
+  separating: logical, dynamic, and proof-structural.
+
+  Logically: strictly weaker as a predicate, equal in consequence. InvJ → InvS
+  trivially (left injection), and the converse fails — a mid-segment state
+  satisfies RunSafe but not InvJ (its control is an out-of-fragment expression
+  no CtlOkJ arm describes). But once the axiom set is discharged, the collapse
+  invJ_runSafe gives InvJ → RunSafe, so InvS ↔ RunSafe: the disjunction adds
+  nothing semantically over its right arm. Both certify exactly the reachability
+  property (¬ typeStuck plus result typing) — with one honest downgrade: InvJ
+  alone also carries progress (an InvJ state never steps to
+  .stuck/.unsupported), and that is lost in InvS, deliberately, because RunSafe
+  — like SemJudge — never promised it.
+
+  Dynamically: a one-way valve. In a run, InvJ states step to InvJ states
+  (that's step_okJ) until the machine enters a semantically-claimed segment;
+  there (once J46 wires it) the run crosses into the RunSafe arm and never comes
+  back — RunSafe.step makes the right arm absorbing, so there is no re-entry
+  obligation into the syntactic discipline. Note the crossing is at the
+  invariant level, not the program level: the machine may well pop out of the
+  segment back into syntactically judged code, but the proof doesn't need to
+  notice, because RunSafe at the segment's entry already covered that entire
+  future (which is also exactly why the multi-step obligation is hard to
+  discharge — the circularity bill in the J45 note).
+
+  Proof-structurally: the two arms have opposite cost profiles, and the 
+  disjunction exists to pair them. InvJ is a conjunction of per-state,
+  locally-checkable facts (heap well-formedness, frame conformance, KontOkJ, a
+  Judge derivation for the control) — expensive to preserve (the whole
+  transport-suite economy) but the only form that supports case-by-case step
+  analysis and boot-time initiation by decide. RunSafe is a property of the
+  entire future — trivially preserved (one line), but with no internal structure
+  to induct on; it can only be established, either via the collapse from InvJ
+  or by a direct semantic proof (a schema lemma, execution of the semantics). So
+  InvS is the standard shape for grafting semantic facts into an inductive
+  proof: the left arm is the establishment engine, the right arm is the
+  absorption sink, and stepOkJ_toS/stepOkS_of_runSafe are the two case-closers
+  that make its preservation (J46's step_okS) a wrapper around work already
+  done.
+
+  A fair one-sentence summary: InvJ is a certificate for RunSafe — syntactic,
+  inductive, checkable evidence for the semantic property — and InvS is the
+  invariant that lets a single run switch, once and irreversibly, from carrying
+  the certificate to carrying the property itself.
+
+✻ Crunched for 33s · done 10:41 PM
+
+❯ Why do we need to absorb RunSafe in the first place in a segment lemma?       
+
+⏺ Because the safety theorem is quantified over every reachable state, and a
+  multi-step segment's interior states are reachable — so the invariant must
+  hold something at them, and InvJ is false there by construction (the control
+  is an out-of-fragment expression, the konts are shapes KontOkJ has no
+  vocabulary for — that missing vocabulary being exactly the machine rung the
+  schema route declined to build). The chain of forced moves:
+
+  1. You can't skip the interior. invariant_sound concludes ¬ typeStuck at each
+  reachable state by holding the invariant at that state and applying progress
+  there. A type-stuck outcome can occur three steps into the segment, so the
+  interior states can't be glossed as one big meta-step — each one needs an
+  invariant arm that covers it.
+
+  2. Whatever covers them must be step-closed, and a non-syntactic predicate can
+  only close on itself by being future-facing. InvJ closes under steps because
+  its per-state structure (judged control + typed konts) is transported case by
+  case — that's the expensive machinery. A segment arm has no such structure to
+  transport; the only way a structureless predicate survives an arbitrary step
+  is if it already quantified over what comes next. So the segment arm is
+  necessarily some form of "everything from here is fine" — a safety statement
+  about the future.
+
+  3. The only real choice is where the future ends, and absorption is the 
+  degenerate choice. Two candidates:
+
+  - RunSafe (absorbing): the future never ends — "the entire rest of the run is
+    safe." Closure is one line (RunSafe.step: the successor's reachable set is a
+    subset). No barrier bookkeeping, no re-entry obligation, definable with
+    zero new vocabulary. The cost surfaces in the obligation: a discharger must
+    certify the run past its own delivery, which drags in the soundness of the
+    whole axiom set — the circularity bill.
+  - SegInv (delivery-conditional): the future ends at the entry kont — "safe
+    until the machine pops below K, and delivery re-establishes InvJ."
+    Obligations become segment-local (no circularity), but now the predicate
+    must carry the barrier as data (which kont suffix is K, what KontOkJ fact
+    was true of it at entry), its closure lemma must show a mid-segment step
+    stays above the barrier or delivers across it, and the delivery case owes an
+    InvJ reconstruction. That's real new machinery — it's J46's actual bill.
+
+  So "why absorb": absorption is what you get for free, and free was the right
+  price for J45. It made the layer definable and provable in an afternoon with
+  no new vocabulary, it is exactly sufficient for the claims that exist today
+  (one-step claims, where the "future" the discharger certifies is a single
+  delivery the existing EvalOkAt proof already handles — evalOkAt_segOkAt is the
+  embedding), and it correctly stakes out the semantic grade of the whole
+  layer. The delivery-conditional form isn't an alternative to absorption so
+  much as absorption with a barrier installed — RunSafe is SegInv with K = ⊥ and
+  re-entry never.
+
+  One more distinction worth keeping sharp: absorption appears in two places,
+  and only one is problematic. At the top of the composed theorem, everything
+  collapses into RunSafe anyway (invS_runSafe) — harmless and unavoidable; the
+  final claim is a whole-future statement. It's absorption inside the per-claim 
+  obligation that costs: that's where "certify your own segment" silently became
+  "certify everything after it too." J46's job is precisely to move the
+  absorbing arm out of the obligation and keep it only in the final assembly.
+
+✻ Churned for 51s · done 10:45 PM

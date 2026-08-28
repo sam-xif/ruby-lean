@@ -160,7 +160,7 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
         FramesOkJ.push hfs⟩
       · rw [getD_push_lt_self]; exact hown
       · intro y σ hy; exact absurd hy (by simp [envGet?])
-    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · rw [getD_push_lt_self]; exact hown
       · rw [getD_push_lt_self]; exact fun _ => hnmu
       · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -186,6 +186,8 @@ theorem inv_implicit_send0J {ans : Ty} {F : Decls} {m : Machine} {ctx : JCtx} {�
         exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
       · rw [getD_push_lt_self]; exact fun _ => rfl
       · exact fun hcb _ => nomatch hcb
+      · intro hmb _
+        simp at hmb
       · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
         exact StackCtx.push hlt hsc
     · refine ⟨hglob, ?_⟩
@@ -617,7 +619,8 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         · rw [getD_push_lt_self]; simp [hpay]
         · intro y σ hy; exact absurd hy (by simp [envGet?])
       · refine ⟨?_, ?_, ?_, ?_, ?_, Or.inr rfl, fun mn h' => absurd h' (by simp), ?_,
-          (fun _ _ => by rw [getD_push_lt_self]), StackCtx.push hlt hsc⟩
+          (fun _ _ => by rw [getD_push_lt_self]),
+          (fun hmb _ => nomatch hmb), StackCtx.push hlt hsc⟩
         · rw [getD_push_lt_self]; simp [hpay]
         · rw [getD_push_lt_self]; exact fun _ => hnm
         · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1450,7 +1453,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             FramesOkJ.push hfs⟩
           · rw [getD_push_lt_self]; exact hown
           · intro y σ hy; exact absurd hy (by simp [envGet?])
-        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+        · refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
           · rw [getD_push_lt_self]; exact hown
           · rw [getD_push_lt_self]; exact fun _ => hnmu
           · rw [getD_push_lt_self]; exact fun _ => rfl
@@ -1472,6 +1475,8 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             exact ⟨by simp [userFrame, hsn], rfl, rfl, rfl, rfl, rfl, rfl⟩
           · rw [getD_push_lt_self]; exact fun _ => rfl
           · exact fun hcb _ => nomatch hcb
+          · intro hmb _
+            simp at hmb
           · show StackCtx m.heap (m.frames.push _) m.stack (jctxs ctx Γs)
             exact StackCtx.push hlt hsc
         · refine ⟨hgl, ?_⟩
