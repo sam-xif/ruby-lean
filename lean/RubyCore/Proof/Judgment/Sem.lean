@@ -160,7 +160,9 @@ theorem conformant_init {A : SemAxioms} {p : Expr} {F : Decls}
        (by decide : (Boot.initHeap.classPayload? Boot.procId).isSome = true),
        (by decide : (Boot.initHeap.classPayload? Boot.hashId).isSome = true),
        ⟨(by decide : (Boot.initHeap.classPayload? Boot.regexpId).isSome = true),
-        (by rfl : className Boot.initHeap Boot.regexpId = "Regexp")⟩⟩),
+        (by rfl : className Boot.initHeap Boot.regexpId = "Regexp")⟩,
+       ⟨(by decide : (Boot.initHeap.classPayload? Boot.objectId).isSome = true),
+        (by decide : ((Boot.initHeap.get Boot.objectId).eigen).isSome = true)⟩⟩),
     (show ClassOk (Machine.init p).heap from classOk_initHeap),
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),

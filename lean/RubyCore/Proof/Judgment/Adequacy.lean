@@ -454,20 +454,24 @@ theorem check_sound_all : ∀ (n : Nat),
                   | some e2 =>
                     have hmem := List.mem_of_find?_eq_some hf2
                     have hkey := List.find?_some hf2
-                    have := hfresh.1.2 e2 hmem
+                    have := hfresh.1.1.2 e2 hmem
                     simp only [beq_iff_eq] at hkey
                     simp only [bne_iff_ne, ne_eq] at this
                     exact this (by rw [hkey])
               have hmodsA : ∀ pr ∈ D₁.modules, pr.2 ≠ nm := by
                 intro pr hpr
+                have := hfresh.1.2 pr hpr
+                simpa using this
+              have hclssA : ∀ pr ∈ D₁.classes, pr.2 ≠ nm := by
+                intro pr hpr
                 have := hfresh.2 pr hpr
                 simpa using this
               rcases Bool.or_eq_true _ _ |>.mp hgate.1 with htop2 | hmb
-              · exact .casgn htop2 hfresh.1.1 hsctA hgate.2 hmodsA (ihc h1)
+              · exact .casgn htop2 hfresh.1.1.1 hsctA hgate.2 hmodsA hclssA (ihc h1)
               · simp only [Bool.and_eq_true, Option.isNone_iff_eq_none,
                   Bool.not_eq_true'] at hmb
                 exact .casgnM hmb.1.1.1.1 hmb.1.1.1.2 hmb.1.1.2 hmb.1.2 hmb.2
-                  hfresh.1.1 hsctA hgate.2 hmodsA (ihc h1)
+                  hfresh.1.1.1 hsctA hgate.2 hmodsA hclssA (ihc h1)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
@@ -975,7 +979,7 @@ theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
     DeclsOkJ A { constExtend baseDecls cs scs with modules := ms } h := by
   have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls
   refine ⟨?_, ?_, hd.2.2.1, ?_, hd.2.2.2.2.1, hd.2.2.2.2.2.1,
-    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm⟩
+    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm, hd.2.2.2.2.2.2.2.2.2⟩
   · -- Rows: `declFor` reads no constant half, so the row set is the base's; the
     -- base's builtin/iterator witnesses are table-free and the user arm is refuted
     -- by `tableOk_declsOkJ`'s own walk (repeated here at the extended index).

@@ -78,7 +78,9 @@ theorem initiationJ {A : SemAxioms} {p : Expr} {F : Decls} {τ : Ty} {Γ' : Env}
        (by decide : (Boot.initHeap.classPayload? Boot.procId).isSome = true),
        (by decide : (Boot.initHeap.classPayload? Boot.hashId).isSome = true),
        ⟨(by decide : (Boot.initHeap.classPayload? Boot.regexpId).isSome = true),
-        (by rfl : className Boot.initHeap Boot.regexpId = "Regexp")⟩⟩),
+        (by rfl : className Boot.initHeap Boot.regexpId = "Regexp")⟩,
+       ⟨(by decide : (Boot.initHeap.classPayload? Boot.objectId).isSome = true),
+        (by decide : ((Boot.initHeap.get Boot.objectId).eigen).isSome = true)⟩⟩),
     (show ClassOk (Machine.init p).heap from classOk_initHeap),
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),
@@ -182,6 +184,7 @@ theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : Cla
     fun τr mname d hdecl => declFor_baseDecls_ground hdecl,
     fun c x τ hn => absurd hn (by simp [ivarTy?, baseDecls]),
     fun x τ hn => absurd hn (by simp [globalTy?, baseDecls]),
+    fun pr hpr => absurd hpr (by simp [baseDecls]),
     fun pr hpr => absurd hpr (by simp [baseDecls])⟩
   intro τr mname d hdecl
   rcases hd.1 τr mname d hdecl with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi

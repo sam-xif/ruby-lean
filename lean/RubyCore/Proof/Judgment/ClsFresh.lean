@@ -793,7 +793,7 @@ theorem litClsOk_freshC (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
   have hlt : ∀ x, (h₀.classPayload? x).isSome = true → x < h₀.objs.size :=
     fun x hx => classPayload?_isSome_lt hx
   have hsm : LitClsOk (hmidOf h₀ d name) := litClsOk_constSetIn hs
-  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_⟩⟩
+  refine ⟨⟨?_, ?_⟩, ⟨?_, ?_⟩, ?_, ?_, ⟨?_, ?_⟩, ⟨?_, ?_⟩⟩
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.1.1)]; exact hsm.1.1
   · rw [show className (freshClsHeap h₀ d name q eO) Boot.stringId
       = className h₀ Boot.stringId from
@@ -803,11 +803,15 @@ theorem litClsOk_freshC (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
   · rw [className_old_freshC hdlt (hlt _ hs.2.1.1)]; exact hs.2.1.2
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.1)]; exact hsm.2.2.1
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.1)]; exact hsm.2.2.2.1
-  · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.2.1)]; exact hsm.2.2.2.2.1
+  · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.2.1.1)]; exact hsm.2.2.2.2.1.1
   · rw [show className (freshClsHeap h₀ d name q eO) Boot.regexpId
       = className h₀ Boot.regexpId from
-        className_old_freshC hdlt (hlt _ hs.2.2.2.2.1)]
-    exact hs.2.2.2.2.2
+        className_old_freshC hdlt (hlt _ hs.2.2.2.2.1.1)]
+    exact hs.2.2.2.2.1.2
+  · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.2.2.1)]; exact hsm.2.2.2.2.2.1
+  · rw [freshClsHeap_get_old (hlt _ hs.2.2.2.2.2.1),
+      (get_constSetIn_fields h₀ d name (Value.ref h₀.objs.size) Boot.objectId).2.2.1]
+    exact hs.2.2.2.2.2.2
 
 theorem constOwn_freshC_k {n : String} :
     constOwn (freshClsHeap h₀ d name q eO) h₀.objs.size n = none := by

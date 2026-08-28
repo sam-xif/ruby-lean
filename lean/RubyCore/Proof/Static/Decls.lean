@@ -2114,7 +2114,12 @@ def LitClsOk (h : Heap) : Prop :=
     -- J52: the regexp literal's class — the composed `Regexp.new` literal step
     -- allocates at `Boot.regexpId` and the value is judged at `.cls "Regexp"`,
     -- so both presence and name are read.
-    ((h.classPayload? Boot.regexpId).isSome ∧ className h Boot.regexpId = "Regexp")
+    ((h.classPayload? Boot.regexpId).isSome ∧ className h Boot.regexpId = "Regexp") ∧
+    -- J53: `Object`'s eigenclass is realized (boot does it eagerly since J53's
+    -- groundwork), which is what makes the fresh-class composite two
+    -- allocations: `eigenclassOf.go`'s superclass walk stops at `Object`.
+    -- Presence of the payload rides along for the bound.
+    ((h.classPayload? Boot.objectId).isSome ∧ (h.get Boot.objectId).eigen.isSome)
 
 /-- **`LitClsOk` survives an allocating step**, and unlike `NoHook_grow` it needs
     neither a bound nor saturation: `PlainGrow` pins `classPayload?` at *every* id
@@ -2125,8 +2130,11 @@ theorem LitClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hs : LitClsOk h) :
   ⟨⟨by rw [hg.payload]; exact hs.1.1, by rw [hg.className_eq]; exact hs.1.2⟩,
    ⟨by rw [hg.payload]; exact hs.2.1.1, by rw [hg.className_eq]; exact hs.2.1.2⟩,
    by rw [hg.payload]; exact hs.2.2.1, by rw [hg.payload]; exact hs.2.2.2.1,
-   ⟨by rw [hg.payload]; exact hs.2.2.2.2.1,
-    by rw [hg.className_eq]; exact hs.2.2.2.2.2⟩⟩
+   ⟨by rw [hg.payload]; exact hs.2.2.2.2.1.1,
+    by rw [hg.className_eq]; exact hs.2.2.2.2.1.2⟩,
+   ⟨by rw [hg.payload]; exact hs.2.2.2.2.2.1,
+    by rw [hg.get Boot.objectId (classPayload?_isSome_lt hs.2.2.2.2.2.1)]
+       exact hs.2.2.2.2.2.2⟩⟩
 
 /-- **And a `def`**, from the same two facts `TyClass_defineMethod` uses. A
     `defineMethod` at `Boot.stringId` itself rewrites the payload, but
@@ -2140,8 +2148,10 @@ theorem LitClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     by rw [className_defineMethod h cls Boot.arrayId name md]; exact hs.2.1.2⟩,
    by rw [classPayload?_isSome_defineMethod h cls Boot.procId name md]; exact hs.2.2.1,
    by rw [classPayload?_isSome_defineMethod h cls Boot.hashId name md]; exact hs.2.2.2.1,
-   ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.regexpId name md]; exact hs.2.2.2.2.1,
-    by rw [className_defineMethod h cls Boot.regexpId name md]; exact hs.2.2.2.2.2⟩⟩
+   ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.regexpId name md]; exact hs.2.2.2.2.1.1,
+    by rw [className_defineMethod h cls Boot.regexpId name md]; exact hs.2.2.2.2.1.2⟩,
+   ⟨by rw [classPayload?_isSome_defineMethod h cls Boot.objectId name md]; exact hs.2.2.2.2.2.1,
+    by rw [get_defineMethod_eigen h cls name md Boot.objectId]; exact hs.2.2.2.2.2.2⟩⟩
 
 /-! ### The reopen promise
 
@@ -3379,8 +3389,10 @@ theorem litClsOk (hi : IvarOnly h h') (hs : LitClsOk h) : LitClsOk h' :=
    ⟨by rw [hi.classPayload]; exact hs.2.1.1, by rw [hi.className_eq]; exact hs.2.1.2⟩,
    by rw [hi.classPayload]; exact hs.2.2.1,
    by rw [hi.classPayload]; exact hs.2.2.2.1,
-   ⟨by rw [hi.classPayload]; exact hs.2.2.2.2.1,
-    by rw [hi.className_eq]; exact hs.2.2.2.2.2⟩⟩
+   ⟨by rw [hi.classPayload]; exact hs.2.2.2.2.1.1,
+    by rw [hi.className_eq]; exact hs.2.2.2.2.1.2⟩,
+   ⟨by rw [hi.classPayload]; exact hs.2.2.2.2.2.1,
+    by rw [hi.eigen]; exact hs.2.2.2.2.2.2⟩⟩
 
 theorem saturated (hi : IvarOnly h h') (hs : Saturated h) : Saturated h' := by
   refine ⟨fun mo => ?_, fun k => ?_⟩
@@ -3497,8 +3509,11 @@ theorem litClsOk_constSetIn (hs : LitClsOk h) : LitClsOk (constSetIn h j nm v) :
     by rw [className_constSetIn]; exact hs.2.1.2⟩,
    by rw [classPayload?_isSome_constSetIn]; exact hs.2.2.1,
    by rw [classPayload?_isSome_constSetIn]; exact hs.2.2.2.1,
-   ⟨by rw [classPayload?_isSome_constSetIn]; exact hs.2.2.2.2.1,
-    by rw [className_constSetIn]; exact hs.2.2.2.2.2⟩⟩
+   ⟨by rw [classPayload?_isSome_constSetIn]; exact hs.2.2.2.2.1.1,
+    by rw [className_constSetIn]; exact hs.2.2.2.2.1.2⟩,
+   ⟨by rw [classPayload?_isSome_constSetIn]; exact hs.2.2.2.2.2.1,
+    by rw [(get_constSetIn_fields h j nm v Boot.objectId).2.2.1]
+       exact hs.2.2.2.2.2.2⟩⟩
 
 theorem saturated_constSetIn (hs : Saturated h) : Saturated (constSetIn h j nm v) := by
   have hsz := objs_size_constSetIn h j nm v
