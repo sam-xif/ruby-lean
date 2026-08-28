@@ -999,6 +999,322 @@ theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
 
 end Preds
 
+/-! ## `DeclsOkJ` at the composite -/
+
+section Table
+
+variable {h₀ : Heap} {d : ObjId} {name q : String}
+
+/-- Names the `declClsFresh` guard clears: every keyed class name is neither the
+    fresh module's nor `#`-headed (the machine-minted eigenclass shape). -/
+def KeyFresh (q c : String) : Prop :=
+  c ≠ q ∧ c.data.head? ≠ some '#'
+
+theorem ename_head : ("#<Class:" ++ q ++ ">").data.head? = some '#' := by
+  rw [show ("#<Class:" ++ q ++ ">") = "#<Class:" ++ (q ++ ">") from by
+    simp [String.append_assoc]]
+  rw [show ("#<Class:" ++ (q ++ ">")).data = "#<Class:".data ++ (q ++ ">").data from
+    String.data_append]
+  rfl
+
+theorem keyFresh_ne_ename {c : String} (hk : KeyFresh q c) :
+    c ≠ "#<Class:" ++ q ++ ">" := by
+  intro hEq
+  exact hk.2 (hEq ▸ ename_head)
+
+theorem lookupIn_oob {h : Heap} {k : ObjId} (hk : ¬ k < h.objs.size)
+    (mname : String) : lookupIn h k mname = none := by
+  unfold lookupIn
+  have hanc : ancestors h k = [k] := by
+    unfold ancestors
+    rw [anc_go_oob hk]
+    rfl
+  rw [hanc]
+  rw [lookup.go.eq_def]
+  simp only []
+  rw [classPayload?_oob h k hk]
+  rfl
+
+/-- `TyClass` at the composite lands at an old id, given the name is keyed
+    fresh. (`.any`/`.nilable` are refuted by the arm itself.) -/
+theorem tyClass_fresh_old (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size)
+    (hqne : ¬ q.isEmpty = true) {τ : Ty} {k : ObjId}
+    (hkeys : ∀ c ∈ tyClassNames τ, KeyFresh q c)
+    (hnee : tyClassNames τ ≠ [])
+    (ht : TyClass (freshModHeap h₀ d name q) τ k) :
+    k < h₀.objs.size → TyClass (hmidOf h₀ d name) τ k := by
+  intro hko
+  have hpin : ∀ o, o < h₀.objs.size →
+      (freshModHeap h₀ d name q).classPayload? o
+        = (hmidOf h₀ d name).classPayload? o :=
+    fun o ho => freshModHeap_cp_old hdlt ho
+  have hcn : ∀ o, o < h₀.objs.size →
+      className (freshModHeap h₀ d name q) o = className (hmidOf h₀ d name) o := by
+    intro o ho
+    unfold className
+    rw [hpin o ho]
+  cases τ with
+  | cls n => exact ⟨(hpin k hko) ▸ ht.1, (hcn k hko) ▸ ht.2⟩
+  | arrayOf e => exact absurd (rfl : tyClassNames (Ty.arrayOf e) = []) hnee
+  | clsOf n =>
+    obtain ⟨o, hcp, hnm2, hk⟩ := ht
+    by_cases ho : o < h₀.objs.size
+    · refine ⟨o, (hpin o ho) ▸ hcp, (hcn o ho) ▸ hnm2, ?_⟩
+      rw [hk]
+      have h1 : classOf (freshModHeap h₀ d name q) (.ref o)
+          = match ((freshModHeap h₀ d name q).get o).eigen with
+            | some e => e
+            | none => ((freshModHeap h₀ d name q).get o).klass := rfl
+      have h2 : classOf (hmidOf h₀ d name) (.ref o)
+          = match ((hmidOf h₀ d name).get o).eigen with
+            | some e => e
+            | none => ((hmidOf h₀ d name).get o).klass := rfl
+      rw [h1, h2, freshModHeap_get_old ho]
+    · exact absurd (rfl : tyClassNames (Ty.clsOf n) = []) hnee
+  | any => exact ht.elim
+  | nilable _ => exact ht.elim
+  | int => exact ht
+  | float => exact ht
+  | bool => exact ht
+  | nilT => exact ht
+  | sym => exact ht
+  | arrow0 _ => exact ht.elim
+  | arrowCons _ _ => exact ht.elim
+  | union _ _ => exact ht.elim
+
+theorem declClsFresh_sound {D : Decls} (hf : declClsFresh D q = true) :
+    (∀ r ∈ D.rows, KeyFresh q r.1) ∧ (∀ r ∈ D.ivars, KeyFresh q r.1.1) ∧
+    (∀ r ∈ D.scopedConsts, KeyFresh q r.1.1) ∧ (∀ r ∈ D.supers, KeyFresh q r.1.1) ∧
+    (∀ pr ∈ D.modules, KeyFresh q pr.1) := by
+  unfold declClsFresh at hf
+  simp only [Bool.and_eq_true, List.all_eq_true, bne_iff_ne, ne_eq,
+    Bool.not_eq_true'] at hf
+  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := hf
+  refine ⟨fun r hr => ?_, fun r hr => ?_, fun r hr => ?_, fun r hr => ?_,
+    fun pr hpr => ?_⟩
+  · have := h1 r hr; exact ⟨this.1, by simpa using this.2⟩
+  · have := h2 r hr; exact ⟨this.1, by simpa using this.2⟩
+  · have := h3 r hr; exact ⟨this.1, by simpa using this.2⟩
+  · have := h4 r hr; exact ⟨this.1, by simpa using this.2⟩
+  · have := h5 pr hpr; exact ⟨this.1, by simpa using this.2⟩
+
+theorem declFor_keys {D : Decls} {τ : Ty} {mname : String} {dd : MethodDecl}
+    (hf : declFor D τ mname = some dd) :
+    tyClassNames τ ≠ [] ∧ ∀ c ∈ tyClassNames τ, ∃ rs, (c, rs) ∈ D.rows := by
+  unfold declFor at hf
+  cases hns : tyClassNames τ with
+  | nil => rw [hns] at hf; exact absurd hf (by simp)
+  | cons c cs =>
+    rw [hns] at hf
+    simp only [] at hf
+    refine ⟨by simp, ?_⟩
+    have hkey : ∀ c' dd', declOf? D c' mname = some dd' → ∃ rs, (c', rs) ∈ D.rows := by
+      intro c' dd' hd
+      unfold declOf? declsFor at hd
+      cases hfind : D.rows.find? (·.1 == c') with
+      | none => rw [hfind] at hd; exact absurd hd (by simp)
+      | some rs =>
+        have hmem := List.mem_of_find?_eq_some hfind
+        have hp := List.find?_some hfind
+        simp only [beq_iff_eq] at hp
+        exact ⟨rs.2, by rw [← hp]; exact (by simpa using hmem)⟩
+    cases hd0 : declOf? D c mname with
+    | none => rw [hd0] at hf; exact absurd hf (by simp)
+    | some dd0 =>
+      rw [hd0] at hf
+      simp only [] at hf
+      split at hf
+      · next hall =>
+        simp only [Option.some.injEq] at hf
+        subst hf
+        intro c' hc'
+        rcases List.mem_cons.mp hc' with rfl | hc'
+        · exact hkey c' dd0 hd0
+        · have := List.all_eq_true.mp hall c' hc'
+          simp only [beq_iff_eq] at this
+          exact hkey c' dd0 this
+      · exact absurd hf (by simp)
+
+/-- `ResolvesAt` lifts from `hmid` to the composite at an old class. -/
+theorem resolvesAt_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    {k : ObjId} (hk : k < h₀.objs.size) {mname bid : String}
+    (hr : ResolvesAt (hmidOf h₀ d name) k mname bid) :
+    ResolvesAt (freshModHeap h₀ d name q) k mname bid := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hkm : k < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hk
+  obtain ⟨owner, md, hl, hb, hu, hv2, hp, hsh⟩ := hr
+  refine ⟨owner, md, by rw [ClsGrow.lookupIn_old hg hchm hsm hkm]; exact hl,
+    hb, hu, hv2, hp, ?_⟩
+  rw [ClsGrow.ancestors_old hg hchm hsm hkm]
+  rw [ClsGrow.crubyShadow_old hg _ (fun j hj =>
+    ClsGrow.ancestors_mem_lt hchm hkm j ((List.takeWhile_sublist _).mem hj))]
+  exact hsh
+
+theorem resolvesUser_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size)
+    {k : ObjId} (hk : k < h₀.objs.size) {mname : String} {md : MethodDef}
+    (hr : ResolvesUser (hmidOf h₀ d name) k mname md) :
+    ResolvesUser (freshModHeap h₀ d name q) k mname md := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hkm : k < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact hk
+  obtain ⟨owner, hl, hb, hu, hv2, hps, hdc, hcf, hown, hsh, hcref, hchain⟩ := hr
+  have hownlt : md.owner < (hmidOf h₀ d name).objs.size :=
+    classPayload?_isSome_lt hown
+  refine ⟨owner, by rw [ClsGrow.lookupIn_old hg hchm hsm hkm]; exact hl,
+    hb, hu, hv2, hps, hdc, hcf,
+    by rw [hg.classPayload?_isSome_old hownlt]; exact hown, ?_, hcref,
+    by rw [ClsGrow.ancestors_old hg hchm hsm hkm]; exact hchain⟩
+  cases hmd : md.fromPrelude with
+  | true =>
+    simp only [hmd, if_true] at hsh ⊢
+    rw [show crubyShadow (freshModHeap h₀ d name q) [] mname
+        = crubyShadow (hmidOf h₀ d name) [] mname from rfl]
+    exact hsh
+  | false =>
+    simp only [hmd, Bool.false_eq_true, if_false] at hsh ⊢
+    rw [ClsGrow.ancestors_old hg hchm hsm hkm]
+    rw [ClsGrow.crubyShadow_old hg _ (fun j hj =>
+      ClsGrow.ancestors_mem_lt hchm hkm j ((List.takeWhile_sublist _).mem hj))]
+    exact hsh
+
+/-- Off the old bounds, a fresh-keyed `TyClass` collapses to the ground arms
+    (which are heap-free) — the `.cls`-shaped arms are refuted by the fresh
+    names. -/
+theorem tyClass_fresh_ground (hqne : ¬ q.isEmpty = true) {τ : Ty} {k : ObjId}
+    (hkeys : ∀ c ∈ tyClassNames τ, KeyFresh q c)
+    (hnee : tyClassNames τ ≠ [])
+    (hko : ¬ k < h₀.objs.size)
+    (ht : TyClass (freshModHeap h₀ d name q) τ k) :
+    TyClass (hmidOf h₀ d name) τ k := by
+  cases τ with
+  | cls n =>
+    exfalso
+    obtain ⟨hps, hcn⟩ := ht
+    by_cases hgr : groundClassNames.contains n
+    · refine hnee ?_
+      show (if groundClassNames.contains n = true then ([] : List String) else [n]) = []
+      rw [if_pos hgr]
+    · have hn : n ∈ tyClassNames (Ty.cls n) := by
+        show n ∈ (if groundClassNames.contains n = true then ([] : List String) else [n])
+        rw [if_neg hgr]
+        simp
+      by_cases hkk : k = h₀.objs.size
+      · subst hkk
+        rw [className_fresh_k hqne] at hcn
+        exact (hkeys n hn).1 hcn.symm
+      · by_cases hke : k = h₀.objs.size + 1
+        · subst hke
+          rw [className_fresh_e] at hcn
+          exact keyFresh_ne_ename (hkeys n hn) hcn.symm
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hko hkk hke hlt2))] at hps
+          exact absurd hps (by simp)
+  | arrayOf e => exact absurd (rfl : tyClassNames (Ty.arrayOf e) = []) hnee
+  | clsOf n => exact absurd (rfl : tyClassNames (Ty.clsOf n) = []) hnee
+  | any => exact ht.elim
+  | nilable _ => exact ht.elim
+  | int => exact ht
+  | float => exact ht
+  | bool => exact ht
+  | nilT => exact ht
+  | sym => exact ht
+  | arrow0 _ => exact ht.elim
+  | arrowCons _ _ => exact ht.elim
+  | union _ _ => exact ht.elim
+
+/-- `EntryOkJ` at the composite: old-key rows transport, fresh-name receivers
+    cannot occur (the `declClsFresh` guard), and out-of-bounds dispatch classes
+    contradict the old obligation itself. -/
+theorem entryOkJ_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
+    (hcO : ClassOk (hmidOf h₀ d name)) (hnoO : NoHook (hmidOf h₀ d name))
+    {A : SemAxioms} {D : Decls} {τr : Ty} {mname : String} {dd : MethodDecl}
+    (hkeys : ∀ c ∈ tyClassNames τr, KeyFresh q c)
+    (hnee : tyClassNames τr ≠ [])
+    (he : EntryOkJ A D (hmidOf h₀ d name) τr mname dd) :
+    EntryOkJ A D (freshModHeap h₀ d name q) τr mname dd := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  rcases he with ⟨bid, hres, hconf⟩ | ⟨md, c, hkey, hres, hown, hconf⟩ |
+    ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
+  · refine Or.inl ⟨bid, fun k hk => ?_, hconf⟩
+    by_cases hko : k < h₀.objs.size
+    · exact resolvesAt_fresh hch hsat hko
+        (hres k (tyClass_fresh_old hch hdlt hqne hkeys hnee hk hko))
+    · exfalso
+      obtain ⟨owner, md, hl, -⟩ :=
+        hres k (tyClass_fresh_ground hqne hkeys hnee hko hk)
+      rw [lookupIn_oob (by rw [hmid_size]; exact hko)] at hl
+      exact absurd hl.symm (by simp)
+  · refine Or.inr (Or.inl ⟨md, c, hkey, fun k hk => ?_, ?_, hconf⟩)
+    · by_cases hko : k < h₀.objs.size
+      · exact resolvesUser_fresh hch hsat hdlt hko
+          (hres k (tyClass_fresh_old hch hdlt hqne hkeys hnee hk hko))
+      · exfalso
+        obtain ⟨owner, hl, -⟩ :=
+          hres k (tyClass_fresh_ground hqne hkeys hnee hko hk)
+        rw [lookupIn_oob (by rw [hmid_size]; exact hko)] at hl
+        exact absurd hl.symm (by simp)
+    · -- `className md.owner = c`, pinned
+      have hownlt : md.owner < (hmidOf h₀ d name).objs.size := by
+        by_cases hb : md.owner < (hmidOf h₀ d name).objs.size
+        · exact hb
+        · -- an out-of-bounds owner forces `c = "Object"`, at which the row's
+          -- resolution clause is non-vacuous (`Object` exists) and pins the
+          -- owner in bounds — contradiction.
+          exfalso
+          have hcobj : c = "Object" := by
+            rw [← hown]
+            unfold className
+            rw [classPayload?_oob _ _ hb]
+          have hty : TyClass (hmidOf h₀ d name) τr Boot.objectId := by
+            rcases hkey with rfl | ⟨⟨e, rfl⟩, rfl⟩
+            · exact ⟨hnoO.1, by rw [hcO.1, hcobj]⟩
+            · exact absurd (rfl : tyClassNames (Ty.arrayOf e) = []) hnee
+          obtain ⟨owner', -, -, -, -, -, -, -, hown', -⟩ := hres Boot.objectId hty
+          exact hb (classPayload?_isSome_lt hown')
+      rw [ClsGrow.className_old hg hownlt]
+      exact hown
+  · refine Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k hk => ?_⟩)
+    subst hτ
+    by_cases hko : k < h₀.objs.size
+    · have := hmiss k (tyClass_fresh_old hch hdlt hqne hkeys hnee hk hko)
+      unfold MissesAt at this ⊢
+      rw [ClsGrow.lookupIn_old hg hchm hsm (by rw [hmid_size]; exact hko)]
+      exact this
+    · by_cases hkk : k = h₀.objs.size
+      · subst hkk
+        obtain ⟨hps, hcn⟩ := hk
+        rw [className_fresh_k hqne] at hcn
+        exact absurd hcn.symm (hkeys "Array" (by
+          show "Array" ∈ (if groundClassNames.contains "Array" = true
+            then ([] : List String) else ["Array"])
+          rw [if_neg (by decide)]
+          simp)).1
+      · by_cases hke : k = h₀.objs.size + 1
+        · subst hke
+          obtain ⟨hps, hcn⟩ := hk
+          rw [className_fresh_e] at hcn
+          exact absurd hcn.symm (keyFresh_ne_ename (hkeys "Array" (by
+            show "Array" ∈ (if groundClassNames.contains "Array" = true
+              then ([] : List String) else ["Array"])
+            rw [if_neg (by decide)]
+            simp)))
+        · unfold MissesAt
+          exact lookupIn_oob (by
+            rw [freshModHeap_size]
+            exact fun hlt2 => not_lt_add_two hko hkk hke hlt2) mname
+
+end Table
+
 end Judgment
 end Proof
 end RubyCore

@@ -209,11 +209,11 @@ def constTy? (D : Decls) (n : String) : Option Ty :=
     tables, so freshness of the *name* against every keyed channel is a side
     condition — checker-decidable, one scan. -/
 def declClsFresh (D : Decls) (q : String) : Bool :=
-  D.rows.all (fun r => r.1 != q && !(r.1.startsWith "#<")) &&
-  D.ivars.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
-  D.scopedConsts.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
-  D.supers.all (fun r => r.1.1 != q && !(r.1.1.startsWith "#<")) &&
-  D.modules.all (fun pr => pr.1 != q && !(pr.1.startsWith "#<"))
+  D.rows.all (fun r => r.1 != q && r.1.data.head? != some '#') &&
+  D.ivars.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
+  D.scopedConsts.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
+  D.supers.all (fun r => r.1.1 != q && r.1.1.data.head? != some '#') &&
+  D.modules.all (fun pr => pr.1 != q && pr.1.data.head? != some '#')
 
 /-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
     which the read rule reports as a *missing declaration* rather than as a missing
