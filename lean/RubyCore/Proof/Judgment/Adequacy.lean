@@ -979,9 +979,16 @@ theorem modOffChainsB_sound {h : Heap} {o : ObjId}
   · have hall := List.all_eq_true.mp hb k (List.mem_range.mpr hk)
     simp only [Bool.or_eq_true, Bool.not_eq_true'] at hall
     rcases hall with hc | hc
-    · exact absurd (List.contains_iff_mem.mpr hmem) (by simp [hc])
+    · exfalso
+      have hct : (ancestors h k).contains Boot.objectId = true :=
+        List.contains_iff_mem.mpr hmem
+      rw [hc] at hct
+      exact Bool.noConfusion hct
     · intro hin
-      exact absurd (List.contains_iff_mem.mpr hin) (by simp [hc])
+      have hct : ((ancestors h k).takeWhile (· != Boot.objectId)).contains o
+          = true := List.contains_iff_mem.mpr hin
+      rw [hc] at hct
+      exact Bool.noConfusion hct
   · rw [ancestors_of_not_class (RubyCore.Proof.classPayload?_oob h k hk)] at hmem
     have hko : Boot.objectId = k := List.mem_singleton.mp hmem
     exact absurd (hko ▸ hobj) hk

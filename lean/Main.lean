@@ -290,15 +290,21 @@ def main (args : List String) : IO UInt32 := do
                 -- are linear, so a large constant is safe and total.
                 if Judgment.validateJ cert prog 1_000_000 then
                   Lean.Json.mkObj [("status", Lean.Json.str "accept"),
-                    ("theorem", Lean.Json.str "validateJ_certifies"),
+                    ("theorem", Lean.Json.str
+                      (if !cert.semAssumes.isEmpty &&
+                          cert.semAssumes.all Judgment.defsShapeB then
+                        "validateJ_certifies_defs" else "validateJ_certifies")),
                     -- J48: `delta_modules` does NOT condition the accept —
                     -- `validateJ` itself discharges each pair at the boot heap
                     -- (`moduleNameOkB`). Nonempty `sem_assumes` DOES: each claim
                     -- is a `SemAxiomsOk` residue, discharged Lean-side by a
                     -- schema lemma (e.g. `semAxiomsOk_defsSelf`).
+                    -- all-`defsShapeB` claims count as discharged
+                    -- (`validateJ_certifies_defs`); other claims condition it.
                     ("unconditional", Lean.Json.bool (cert.deltaRows.isEmpty &&
                       cert.deltaConsts.isEmpty && cert.deltaScopedConsts.isEmpty &&
-                      cert.semAssumes.isEmpty)),
+                      (cert.semAssumes.isEmpty ||
+                        cert.semAssumes.all Judgment.defsShapeB))),
                     ("carries", Lean.Json.arr
                       (cert.deltaRows.map Cert.rowClaimToJson).toArray),
                     -- J38b: claimed constants are residue too (one `ConstOk` /
@@ -313,6 +319,11 @@ def main (args : List String) : IO UInt32 := do
                         [("cls", Lean.Json.str e.1.1),
                          ("name", Lean.Json.str e.1.2),
                          ("type", Cert.tyToJson e.2)])).toArray),
+                    -- J51: all claims `defs`-shaped ⇒ the semantic residue is
+                    -- pre-discharged (`validateJ_certifies_defs`), so an accept
+                    -- with this flag and empty rows/consts is unconditional.
+                    ("sem_assumes_defs_shape",
+                      Lean.Json.bool (cert.semAssumes.all Judgment.defsShapeB)),
                     ("modules_checked", Lean.Json.arr
                       (cert.deltaModules.map (fun e => Lean.Json.mkObj
                         [("owner", Lean.Json.str e.1),

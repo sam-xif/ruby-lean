@@ -544,6 +544,21 @@ def moduleNameOkB (h : Heap) (owner nm : String) : Bool :=
         | none => false)
      | some _ => false)
 
+/-- **The `defs`-schema shape, decided (J51)**: is this claim exactly the one
+    `semAxiomsOk_defsSelf` discharges — `def self.name(ps) body end` claimed at
+    `.sym`, module-body position, the installed name (off the hook list) its
+    only `freshNames` entry, no rows, no `reqCls`? A certificate whose claims
+    ALL pass this is accepted **with the residue pre-discharged**
+    (`validateJ_certifies_defs`), i.e. effectively unconditionally; the CLI
+    reports the flag. Untrusted-side mirror of the Proof-side schema. -/
+def defsShapeB (cl : SemClaim) : Bool :=
+  match cl.e with
+  | .defs .self' name _ _ =>
+    name != "method_added" && name != "define_method" &&
+    cl.τ == Ty.sym && cl.rows.isEmpty && cl.reqCls.isNone && cl.reqMod &&
+    cl.freshNames == [name]
+  | _ => false
+
 /-- A judgment-layer certificate: the table half (claimed rows, as the C-ladder's
     `RowClaim`s; claimed constants since J38b) and the derivation. -/
 structure JCert where

@@ -1,4 +1,5 @@
 import RubyCore.Proof.Judgment.Schema
+import RubyCore.Proof.Judgment.Adequacy
 
 /-!
 # J47 — the `defs` schema: one lemma, every `def self.name` site
@@ -75,16 +76,19 @@ theorem evalExpr_defsSelf {m : Machine} {name : String} {ps : List Param}
   simp only [defsSelfE, evalExpr, hself, eigenclassOf_realized he, defsMd]
 
 /-- **The schema lemma** — one proof, every `def self.name` site in a module
-    body: any list of `defs`-shaped claims (names off the hook list) is a
-    discharged axiom set. -/
-theorem semAxiomsOk_defsSelf (insts : List (String × List Param × Expr))
-    (hna : ∀ i ∈ insts, i.1 ≠ "method_added" ∧ i.1 ≠ "define_method") :
-    SemAxiomsOk (insts.map fun t => defsClaim t.1 t.2.1 t.2.2) := by
+    body: any axiom set of `defs`-shaped claims (names off the hook list) is
+    discharged. Stated shape-wise (J51) so the wire-decoded claim list is
+    covered directly, with the mapped-list form (`semAxiomsOk_defsSelf`) a
+    corollary. -/
+theorem semAxiomsOk_defsAll {A : SemAxioms}
+    (h : ∀ cl ∈ A, ∃ n ps b, cl = defsClaim n ps b ∧
+      n ≠ "method_added" ∧ n ≠ "define_method") :
+    SemAxiomsOk A := by
   intro cl hcl ans D Γ top c _hreq hqm hfr hfn
-  obtain ⟨⟨name, ps, body⟩, hmem, rfl⟩ := List.mem_map.mp hcl
+  obtain ⟨name, ps, body, rfl, hna1, hna2⟩ := h cl hcl
   obtain ⟨hicb, himb, hnbk⟩ := hqm rfl
   have hfresh : declaresName D name = false := hfn name (by simp [defsClaim])
-  have hha := hna _ hmem
+  have hha : name ≠ "method_added" ∧ name ≠ "define_method" := ⟨hna1, hna2⟩
   intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf
     hsubw hsuE hk
   have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
@@ -136,6 +140,57 @@ theorem semAxiomsOk_defsSelf (insts : List (String × List Param × Expr))
     ⟨_, _, VTy.weaken (VTy.exact rfl) hsubw, SubEnv.refl _,
       KontOkJ.heap_congr hag hk⟩⟩
 
+/-- The mapped-list form, re-derived. -/
+theorem semAxiomsOk_defsSelf (insts : List (String × List Param × Expr))
+    (hna : ∀ i ∈ insts, i.1 ≠ "method_added" ∧ i.1 ≠ "define_method") :
+    SemAxiomsOk (insts.map fun t => defsClaim t.1 t.2.1 t.2.2) :=
+  semAxiomsOk_defsAll (by
+    intro cl hcl
+    obtain ⟨t, ht, rfl⟩ := List.mem_map.mp hcl
+    exact ⟨t.1, t.2.1, t.2.2, rfl, (hna t ht).1, (hna t ht).2⟩)
+
+/-- `defsShapeB` (the checker-side shape test) names exactly a `defsClaim`. -/
+theorem defsShapeB_sound {cl : SemClaim} (h : defsShapeB cl = true) :
+    ∃ n ps b, cl = defsClaim n ps b ∧
+      n ≠ "method_added" ∧ n ≠ "define_method" := by
+  unfold defsShapeB at h
+  split at h
+  · next name ps body heq =>
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, beq_iff_eq,
+      List.isEmpty_iff, Option.isNone_iff_eq_none] at h
+    obtain ⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩ := h
+    refine ⟨name, ps, body, ?_, h1, h2⟩
+    obtain ⟨e, τ, rows, rc, rm, fn⟩ := cl
+    simp only at heq h3 h4 h5 h6 h7
+    subst heq h3 h4 h5 h7
+    simp only [defsClaim, defsSelfE]
+    rw [h6]
+  · exact absurd h (by simp)
+
+/-- **The wire-decoded axiom set, discharged by one `Bool`** (J51): every claim
+    passes `defsShapeB` ⇒ the set is sound. -/
+theorem semAxiomsOk_defsShape {A : SemAxioms}
+    (h : A.all defsShapeB = true) : SemAxiomsOk A :=
+  semAxiomsOk_defsAll fun cl hcl => defsShapeB_sound (List.all_eq_true.mp h cl hcl)
+
+/-- **The composed accept for `defs`-claim certificates** — `validateJ` accepts
+    and the claim list is all-`defsShapeB` ⇒ reachability type safety, with the
+    same row/constant residues as `validateJ_certifies` and the semantic residue
+    GONE. A certificate with empty `delta_rows`/`delta_consts` and all-shaped
+    claims is therefore **unconditional**. -/
+theorem validateJ_certifies_defs {c : JCert} {p : Expr} {fuel : Nat}
+    (hshape : c.semAssumes.all defsShapeB = true)
+    (h : validateJ c p fuel = true)
+    (ha : ∀ r ∈ c.deltaRows,
+      EntryOkJ c.semAssumes (c.table p) Boot.initHeap (nomTy r.cls) r.name r.sig)
+    (hac : ∀ e ∈ c.deltaConsts, ConstOk Boot.initHeap e.1 e.2 := by
+      intro e he; exact absurd (show e ∈ [] from he) (by simp))
+    (hasc : ∀ e ∈ c.deltaScopedConsts,
+      ScopedConstOk Boot.initHeap e.1.1 e.1.2 e.2 := by
+      intro e he; exact absurd (show e ∈ [] from he) (by simp)) :
+    ∀ r, ReachableResult (Machine.init p) r → ¬ typeStuck r :=
+  validateJ_certifies (semAxiomsOk_defsShape hshape) h ha hac hasc
+
 /-! ## The demo: two `def self.` claims inside a hand-built machine state
 
 The end-to-end exercise (a `module` wrapper machine-typed around them) lands
@@ -156,6 +211,10 @@ theorem egDefsAxioms_ok : SemAxiomsOk
 /-- info: 'RubyCore.Proof.Judgment.semAxiomsOk_defsSelf' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs in
 #print axioms semAxiomsOk_defsSelf
+
+/-- info: 'RubyCore.Proof.Judgment.validateJ_certifies_defs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms validateJ_certifies_defs
 
 end Judgment
 end Proof
