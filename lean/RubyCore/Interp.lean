@@ -344,7 +344,26 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | none => .unsupported "absolute-scoped module definition (::Name)"
   | .sclass obj body => .next (withKont m (.eval obj) (.sclassK body))
   | .defs recv name params body =>
-    .next (withKont m (.eval recv) (.defsK name params body))
+    match recv with
+    | .self' =>
+      -- **J47: `def self.name` composes to one step** (the J33 precedent). The
+      -- receiver eval is a pure `currentFrame.self` read (no heap effect), so
+      -- the two-step route (push `defsK` / deliver `self` / install) and this
+      -- direct install have byte-identical observable behaviour — only the
+      -- step count differs. Composing it is what makes the construct's
+      -- *semantic-claim obligation* provable: the invariant need not cover the
+      -- intermediate `defsK` state, whose `KontOkJ` constructor does not exist.
+      -- The body below is `applyKont`'s `defsK` arm verbatim at `v := self`.
+      match m.currentFrame.self with
+      | .ref o =>
+        let (e, m) := eigenclassOf m o
+        let md : MethodDef :=
+          { params, body, owner := e, cref := m.currentFrame.cref,
+            fromPrelude := m.preludeMode }
+        let m := { m with heap := defineMethod m.heap e name md }
+        .next (withCtl m (.value (.sym name)))
+      | _ => .unsupported "singleton def on an immediate"
+    | recv => .next (withKont m (.eval recv) (.defsK name params body))
   | .super' args blk =>
     -- explicit `super(args)`; forward the method's block unless a literal one
     -- is given here (block-pass on super is beyond L2b)

@@ -164,9 +164,10 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
       match A[i]? with
       | some cl =>
         if exprEqB (n + 1) cl.e e && !fragHead e &&
-            (cl.rows.isEmpty || ctx.meth.isNone) && reqClsOkB cl ctx &&
-            reqModOkB cl ctx &&
-            cl.rows.all (fun r => !(declaresName D r.2.1)) then
+            ((cl.rows.isEmpty && cl.freshNames.isEmpty) || ctx.meth.isNone) &&
+            reqClsOkB cl ctx && reqModOkB cl ctx &&
+            cl.rows.all (fun r => !(declaresName D r.2.1)) &&
+            cl.freshNames.all (fun n => !(declaresName D n)) then
           some (cl.τ, Γ, addRows D cl.rows)
         else none
       | none => none

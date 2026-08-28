@@ -472,11 +472,12 @@ def CtlOkJ (D : Decls) (c : JCtx) (Γ : Env) (Γs : List (JCtx × Env))
       ∃ τ τ' Γ' D' Γk, Judge A D Γ e Γs.isEmpty c τ Γ' D' ∧ SubJ τ τ' ∧
         SubEnv Γk Γ' ∧ KontOkJ ans A D' m.heap ((c, Γk) :: Γs) τ' m.kont)
     ∨ (∃ cl ∈ A, cl.e = e ∧ fragHead e = false ∧
-        (cl.rows = [] ∨ c.meth = none) ∧
+        (cl.rows = [] ∧ cl.freshNames = [] ∨ c.meth = none) ∧
         (∀ cn, cl.reqCls = some cn →
           c.cls = cn ∧ c.inClassBody = true ∧ c.inBlock = false) ∧
         cl.reqModOk c ∧
         (∀ r ∈ cl.rows, declaresName D r.2.1 = false) ∧
+        (∀ n ∈ cl.freshNames, declaresName D n = false) ∧
         ∃ τ' Γk, SubJ cl.τ τ' ∧ SubEnv Γk Γ ∧
           KontOkJ ans A (addRows D cl.rows) m.heap ((c, Γk) :: Γs) τ' m.kont)
   | .value v => ∃ τ Γk, VTy m.heap v τ ∧ SubEnv Γk Γ ∧
@@ -591,11 +592,12 @@ theorem inv_evalSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hks : framePopLabels m.kont = m.stack.dropLast)
     {cl : SemClaim}
     (hmem : cl ∈ A) (hcle : cl.e = e) (hfh : fragHead e = false)
-    (hdisc : cl.rows = [] ∨ c.meth = none)
+    (hdisc : cl.rows = [] ∧ cl.freshNames = [] ∨ c.meth = none)
     (hreq : ∀ cn, cl.reqCls = some cn →
       c.cls = cn ∧ c.inClassBody = true ∧ c.inBlock = false)
     (hqm : cl.reqModOk c)
     (hfr : ∀ r ∈ cl.rows, declaresName F r.2.1 = false)
+    (hfn : ∀ n ∈ cl.freshNames, declaresName F n = false)
     (hs' : SubJ cl.τ τ')
     (hk : KontOkJ ans A (addRows F cl.rows) m.heap ((c, Γk) :: Γs) τ' m.kont)
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
@@ -603,7 +605,7 @@ theorem inv_evalSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withCtl m (.eval e)) :=
   ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
-   Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hqm, hfr, τ', Γk, hs', hsuE, hk⟩⟩
+   Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hqm, hfr, hfn, τ', Γk, hs', hsuE, hk⟩⟩
 
 /-- Semantic-mode push: a claimed expression becoming `ctl` under a freshly pushed
     continuation frame. -/
@@ -618,11 +620,12 @@ theorem inv_pushSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hks : framePopLabels (k :: m.kont) = m.stack.dropLast)
     {cl : SemClaim}
     (hmem : cl ∈ A) (hcle : cl.e = e) (hfh : fragHead e = false)
-    (hdisc : cl.rows = [] ∨ c.meth = none)
+    (hdisc : cl.rows = [] ∧ cl.freshNames = [] ∨ c.meth = none)
     (hreq : ∀ cn, cl.reqCls = some cn →
       c.cls = cn ∧ c.inClassBody = true ∧ c.inBlock = false)
     (hqm : cl.reqModOk c)
     (hfr : ∀ r ∈ cl.rows, declaresName F r.2.1 = false)
+    (hfn : ∀ n ∈ cl.freshNames, declaresName F n = false)
     (hs' : SubJ cl.τ τ')
     (hk : KontOkJ ans A (addRows F cl.rows) m.heap ((c, Γk) :: Γs) τ' (k :: m.kont))
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
@@ -631,7 +634,7 @@ theorem inv_pushSemJ {ans : Ty} {A : SemAxioms} {F : Decls} {m : Machine} {c : J
     (hclo : ClosuresOk m := by assumption) :
     InvJ ans A (withKont m (.eval e) k) :=
   ⟨hh, hsat, hchn, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
-   Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hqm, hfr, τ', Γk, hs', hsuE, hk⟩⟩
+   Or.inr ⟨cl, hmem, hcle, hfh, hdisc, hreq, hqm, hfr, hfn, τ', Γk, hs', hsuE, hk⟩⟩
 
 theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} {c : JCtx} {Γ : Env}
     {Γs : List (JCtx × Env)} {Γk : Env} {v : Value} {τ : Ty}

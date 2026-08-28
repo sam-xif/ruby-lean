@@ -248,6 +248,12 @@ structure SemClaim where
       (`StackCtx`'s tenth clause: payload present, `isModule`, eigen realized,
       `ModOffChains`). The `defs` schema reads both. `false` = position-free. -/
   reqMod : Bool := false
+  /-- **Names the claim installs without rows (J47)**: methods the claim's step
+      defines on objects *off* the declared-row resolution paths (a `defs`
+      eigenclass install). No row is threaded, but the freshness guard below —
+      checker-enforced, like the rows' — is what lets the obligation transport
+      `DeclsOkJ` across the write (`DeclsOkJ_defineMethod`'s `hfresh`). -/
+  freshNames : List String := []
 deriving Repr
 
 /-- The `reqMod` condition, as the guard every consumer states (J47). -/
@@ -293,22 +299,24 @@ inductive JudgeSeq (A : SemAxioms) : Decls → Env → List Expr → Bool → JC
   | single {D Γ e top ctx τ Γ' D'} :
       Judge A D Γ e top ctx τ Γ' D' →
       (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ = cl.τ ∧ Γ' = Γ ∧
-          D' = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
+          D' = addRows D cl.rows ∧ (cl.rows = [] ∧ cl.freshNames = [] ∨ ctx.meth = none) ∧
           (∀ cn, cl.reqCls = some cn →
             ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
           cl.reqModOk ctx ∧
-          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
+          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) ∧
+          (∀ n ∈ cl.freshNames, declaresName D n = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ [e] top ctx τ Γ' D'
   | cons {D Γ e e₂ rest top ctx τ₁ Γ₁ D₁ τ Γ' D'} :
       Judge A D Γ e top ctx τ₁ Γ₁ D₁ →
       JudgeSeq A D₁ Γ₁ (e₂ :: rest) top ctx τ Γ' D' →
       (hcpl : fragHead e = false → ∃ cl ∈ A, cl.e = e ∧ τ₁ = cl.τ ∧ Γ₁ = Γ ∧
-          D₁ = addRows D cl.rows ∧ (cl.rows = [] ∨ ctx.meth = none) ∧
+          D₁ = addRows D cl.rows ∧ (cl.rows = [] ∧ cl.freshNames = [] ∨ ctx.meth = none) ∧
           (∀ cn, cl.reqCls = some cn →
             ctx.cls = cn ∧ ctx.inClassBody = true ∧ ctx.inBlock = false) ∧
           cl.reqModOk ctx ∧
-          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) :=
+          (∀ r ∈ cl.rows, declaresName D r.2.1 = false) ∧
+          (∀ n ∈ cl.freshNames, declaresName D n = false) :=
         by intro hh; simp [fragHead] at hh) →
       JudgeSeq A D Γ (e :: e₂ :: rest) top ctx τ Γ' D'
 
@@ -862,12 +870,14 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       -- claimed rows must be *fresh* (J35, `defPromote`'s `declaresName` guard for
       -- the same reason: installing over a row in force would silently retarget it)
       (∀ r ∈ cl.rows, declaresName D r.2.1 = false) →
+      -- ... and so must the row-less installed names (J47)
+      (∀ n ∈ cl.freshNames, declaresName D n = false) →
       -- **The row discipline (J32)**: a row-bearing claim may not sit inside a
       -- method body (`ctx.meth` is `some` exactly there) — method bodies are
       -- `defFree`, `judge_mono` transports them with the table pinned, and a
       -- table-growing claim would break that. Class bodies and the toplevel
       -- (`meth = none`) are exactly where Rails-style generation lives.
-      (cl.rows = [] ∨ ctx.meth = none) →
+      (cl.rows = [] ∧ cl.freshNames = [] ∨ ctx.meth = none) →
       Judge A D Γ cl.e top ctx cl.τ Γ (addRows D cl.rows)
 
 end
