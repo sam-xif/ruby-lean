@@ -52,6 +52,38 @@ visitor = Class.new(Prism::Visitor) do
     end
     super(node)
   end
+  # `X = Struct.new(:a, :b, keyword_init: true)` => an explicit class with
+  # keyword initializer + accessors. Covers the slice's used surface (`.new`
+  # with keywords, field readers); Struct's `==`/`to_a`/`members`/pattern
+  # matching are NOT reproduced (unused in the slice — grep before relying).
+  define_method(:visit_constant_write_node) do |node|
+    v = node.value
+    if v.is_a?(Prism::CallNode) && v.name == :new &&
+       v.receiver.is_a?(Prism::ConstantReadNode) && v.receiver.name == :Struct &&
+       v.arguments
+      args = v.arguments.arguments
+      syms = args.take_while { |a| a.is_a?(Prism::SymbolNode) }.map(&:unescaped)
+      rest = args.drop(syms.length)
+      kw_init = rest.length == 1 && rest[0].is_a?(Prism::KeywordHashNode) &&
+                rest[0].elements.length == 1 &&
+                rest[0].elements[0].key.unescaped == "keyword_init" &&
+                rest[0].elements[0].value.is_a?(Prism::TrueNode)
+      if kw_init && syms.any?
+        indent = " " * node.location.start_column
+        nl = "\n"
+        body = +"class #{node.name}#{nl}"
+        syms.each do |s2|
+          body << "#{indent}  def #{s2} = @#{s2}#{nl}"
+          body << "#{indent}  def #{s2}=(v)#{nl}#{indent}    @#{s2} = v#{nl}#{indent}  end#{nl}"
+        end
+        body << "#{indent}  def initialize(#{syms.map { |s2| "#{s2}: nil" }.join(", ")})#{nl}"
+        syms.each { |s2| body << "#{indent}    @#{s2} = #{s2}#{nl}" }
+        body << "#{indent}  end#{nl}#{indent}end"
+        edits << [node.location.start_offset, node.location.end_offset, body]
+      end
+    end
+    super(node)
+  end
 end.new
 result.value.accept(visitor)
 out = src.dup
