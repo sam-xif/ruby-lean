@@ -118,7 +118,9 @@ theorem initiation_ctl {p : Expr} {F : Decls} (hD : DeclsOk F Boot.initHeap)
        ⟨(by decide : (Boot.initHeap.classPayload? Boot.arrayId).isSome = true),
         (by rfl : className Boot.initHeap Boot.arrayId = "Array")⟩,
        (by decide : (Boot.initHeap.classPayload? Boot.procId).isSome = true),
-       (by decide : (Boot.initHeap.classPayload? Boot.hashId).isSome = true)⟩),
+       (by decide : (Boot.initHeap.classPayload? Boot.hashId).isSome = true),
+       ⟨(by decide : (Boot.initHeap.classPayload? Boot.regexpId).isSome = true),
+        (by rfl : className Boot.initHeap Boot.regexpId = "Regexp")⟩⟩),
     (show ClassOk (Machine.init p).heap from classOk_initHeap),
     (show BottomObj (Machine.init p).frames (Machine.init p).stack by
       simp [Machine.init, Machine.initOn, BottomObj]),

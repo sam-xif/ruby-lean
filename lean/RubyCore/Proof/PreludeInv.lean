@@ -180,11 +180,12 @@ theorem intResolvesB_sound {h : Heap} {mname bid : String}
 theorem heapOkB_sound {h : Heap} (hb : heapOkB h = true) : HeapOk h := by
   unfold heapOkB at hb
   simp only [Bool.and_eq_true] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩, h6a⟩, h7a⟩, hpc⟩, hhc⟩, h8⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, hz⟩, hnh⟩, h5⟩, h6⟩, h7⟩, h6a⟩, h7a⟩, hpc⟩, hhc⟩, hrc⟩, hrn⟩, h8⟩ := hb
   exact ⟨⟨intResolvesB_sound h1, intResolvesB_sound h2, intResolvesB_sound h3,
       intResolvesB_sound hz⟩,
     noHookB_sound hnh, saturatedB_sound h5,
-    ⟨⟨h6, by simpa using h7⟩, ⟨h6a, by simpa using h7a⟩, hpc, hhc⟩,
+    ⟨⟨h6, by simpa using h7⟩, ⟨h6a, by simpa using h7a⟩, hpc, hhc,
+     ⟨hrc, by simpa using hrn⟩⟩,
     classOkB_sound h8⟩
 
 /-- **F0, certificate form.** A checked `Bool` about the machine in hand plus an

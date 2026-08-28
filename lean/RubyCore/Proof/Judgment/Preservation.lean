@@ -1265,12 +1265,12 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       | nil =>
         simp only [evalExpr, Builtins.allocHsh]
         exact inv_grow_valueJ hfs htab hsc hh hsat hstr hcls hbot hchn hks
-          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2) rfl)
+          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2.1) rfl)
           rfl rfl rfl
           (VTy.weaken VTy.any hsubw)
           (hchn' := chainsIn_plainGrow
             (plainGrow_alloc m.heap _ (by simp) rfl
-              (classPayload?_isSome_lt hstr.2.2.2) rfl) hchn)
+              (classPayload?_isSome_lt hstr.2.2.2.1) rfl) hchn)
           (hk := hk)
       | @cons _ _ kE vE rest _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
         simp only [evalExpr]
@@ -2031,12 +2031,12 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         simp only [Builtins.allocHsh]
         exact inv_grow_valueJ (m := { m with kont := k }) hfs htab hsc hh hsat hstr
           hcls hbot hchn (by simpa [framePopLabels] using hks)
-          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2) rfl)
+          (plainGrow_alloc m.heap _ (by simp) rfl (classPayload?_isSome_lt hstr.2.2.2.1) rfl)
           rfl rfl rfl
           (VTy.weaken VTy.any hw)
           (hchn' := chainsIn_plainGrow
             (plainGrow_alloc m.heap _ (by simp) rfl
-              (classPayload?_isSome_lt hstr.2.2.2) rfl) hchn)
+              (classPayload?_isSome_lt hstr.2.2.2.1) rfl) hchn)
           (hk := hk') (hclo := hcloTail hK)
       | @cons _ _ kE vE rest' _ _ τk Γ₁ D₁ τv Γ₂ D₂ _ _ hkj hvj hrest =>
         exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn

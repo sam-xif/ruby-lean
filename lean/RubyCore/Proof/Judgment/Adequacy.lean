@@ -92,6 +92,7 @@ theorem defFreeB_sound : ∀ {n : Nat} {e : Expr}, defFreeB n e = true → defFr
       simp only [defFreeB, List.all_eq_true] at h
       simp only [defFree]
       exact defFreeAll_of_forall fun e' he' => ih (h e' he')
+    | .regexpLit _ _ => simp [defFree]
     | .ret e =>
       cases e with
       | some e' =>

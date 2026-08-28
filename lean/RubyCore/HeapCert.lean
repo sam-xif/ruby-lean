@@ -172,6 +172,9 @@ def heapOkB (h : Heap) : Bool :=
     (className h Boot.arrayId == "Array") &&
     (h.classPayload? Boot.procId).isSome &&
     (h.classPayload? Boot.hashId).isSome &&
+    -- J52's regexp-literal producer.
+    (h.classPayload? Boot.regexpId).isSome &&
+    (className h Boot.regexpId == "Regexp") &&
     -- L156's sixth conjunct, folded in for the same reason L148 folded `saturatedB`:
     -- one certificate, decided once, rather than a second probe to keep in step.
     classOkB h
