@@ -237,7 +237,9 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
           if (constTy? D₁ nm).isNone &&
               D₁.scopedConsts.all (fun e => e.1.2 != nm) &&
               D₁.modules.all (fun pr => pr.2 != nm) &&
-              D₁.classes.all (fun pr => pr.2 != nm) then
+              D₁.classes.all (fun pr => pr.2 != nm) &&
+              !(nm.data.contains ':') &&
+              !(RubyCore.Types.bootConstNames.contains nm) then
             some (τ, Γ₁, D₁)
           else none
         | none => none
@@ -420,6 +422,9 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
     -- rule drops them.
     | .module' db, .module' name body =>
       if D.modules.contains (ctx.cls, name) && name != "" && name != "Object" &&
+          !(name.data.contains ':') && name.data.head? != some '#' &&
+          ctx.cls.data.head? != some '#' &&
+          freshNameOkB name &&
           declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) name &&
           ctx.meth.isNone && !ctx.inBlock &&
           ((top && ctx.cls == "Object") ||
@@ -438,6 +443,9 @@ def check : Nat → SemAxioms → Deriv → Decls → Env → Expr → Bool → 
     -- table, the body at the fresh-class channel.
     | .classM db, .class' name none body =>
       if D.classes.contains (ctx.cls, name) && name != "" && name != "Object" &&
+          !(name.data.contains ':') && name.data.head? != some '#' &&
+          ctx.cls.data.head? != some '#' &&
+          freshNameOkB name &&
           declClsFresh D (RubyCore.Types.qualifyMod ctx.cls name) name &&
           ctx.meth.isNone && !ctx.inBlock &&
           ((top && ctx.cls == "Object") ||

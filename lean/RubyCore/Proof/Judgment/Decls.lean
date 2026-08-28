@@ -89,7 +89,16 @@ def DeclsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
   -- **J53: the declared-classes clause** — one `ClassNameOk` per declared
   -- `(owner, name)` pair, which is what pins `enterClassBody`'s branch for the
   -- machine-typed `classM`.
-  (∀ p ∈ D.classes, ClassNameOk h p.1 p.2)
+  (∀ p ∈ D.classes, ClassNameOk h p.1 p.2) ∧
+  -- **J56: name provenance** — every '#'-free class/module name is a boot name
+  -- or a declared pair's qualification (parser-shaped). What discharges the
+  -- `casgn` deliveries' slot-freshness against `Registered`: the write's guards
+  -- bar exactly the boot and pair names.
+  (∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+    cp.name ∈ bootConstNames ∨
+    ∃ pr, (pr ∈ D.modules ∨ pr ∈ D.classes) ∧
+      cp.name = RubyCore.Types.qualifyMod pr.1 pr.2 ∧ ':' ∉ pr.2.data ∧
+      pr.2.data.head? ≠ some '#')
 
 /-- **The J-table invariant survives an allocating step** — `DeclsOk_grow` with the
     user arm's conformance passing straight through (`UserConformsJ` mentions no
@@ -103,7 +112,11 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
     fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
     hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
     fun pr hpr => moduleNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.1 pr hpr),
-    fun pr hpr => classNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.2 pr hpr)⟩
+    fun pr hpr => classNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.2.1 pr hpr),
+    (by
+      intro j cp hj hhd
+      rw [hg.payload] at hj
+      exact hd.2.2.2.2.2.2.2.2.2.2 j cp hj hhd)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩

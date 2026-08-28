@@ -2674,6 +2674,275 @@ theorem classNameOk_ivarOnly {h h' : Heap} {owner nm : String} (hi : IvarOnly h 
   · exact Or.inr ⟨k, cp, by rw [hco]; exact hc, by rw [hi.classPayload]; exact hcp,
       hism, hqn, by rw [hi.eigen]; exact heig, by rw [hi.size]; exact hlt⟩
 
+/-- `(x ++ "::" ++ nm).data`, split (J56) — the two `String.data_append`s as
+    ascriptions (the lemma is `.toList`-stated; `.data` is its defeq alias). -/
+theorem data_qual_split (x nm : String) :
+    (x ++ "::" ++ nm).data = x.data ++ (':' :: ':' :: nm.data) := by
+  rw [String.append_assoc]
+  rw [show (x ++ ("::" ++ nm)).data = x.data ++ ("::" ++ nm).data from
+    String.data_append]
+  rw [show ("::" ++ nm).data = ':' :: ':' :: nm.data from String.data_append]
+
+/-- `::` is in every non-`Object`-owner qualified name (J56; the Judgment-layer
+    `colon_mem_qual` restated where `qualifyMod_inj` can see it). -/
+theorem colon_mem_qual' {owner : String} {nm : String} (ho : ¬ owner = "Object") :
+    ':' ∈ (qualifyMod owner nm).data := by
+  show ':' ∈ (if owner = "Object" then nm else owner ++ "::" ++ nm).data
+  rw [if_neg ho]
+  rw [show ((owner ++ "::" ++ nm)).data = owner.data ++ (':' :: ':' :: nm.data) from data_qual_split _ _]
+  exact List.mem_append.mpr (Or.inr (by simp))
+
+/-! ### J56 — `qualifyMod` injectivity (the last-`::`-split is unique) -/
+
+/-- Splitting at a `[':', ':']` block whose right part is colon-free is
+    unique — the list-level heart of `qualifyMod_inj`. -/
+theorem append_colon2_inj : ∀ {u₁ : List Char} {v₁ : List Char} {u₂ v₂ : List Char},
+    ':' ∉ v₁ → ':' ∉ v₂ →
+    u₁ ++ ':' :: ':' :: v₁ = u₂ ++ ':' :: ':' :: v₂ → u₁ = u₂ ∧ v₁ = v₂ := by
+  intro u₁
+  induction u₁ with
+  | nil =>
+    intro v₁ u₂ v₂ hv₁ hv₂ h
+    cases u₂ with
+    | nil =>
+      simp only [List.nil_append, List.cons.injEq] at h
+      exact ⟨rfl, h.2.2⟩
+    | cons b u₂' =>
+      simp only [List.nil_append, List.cons_append, List.cons.injEq] at h
+      obtain ⟨-, h2⟩ := h
+      exfalso
+      cases u₂' with
+      | nil =>
+        simp only [List.nil_append, List.cons.injEq] at h2
+        exact hv₁ (h2.2 ▸ List.mem_cons_self ..)
+      | cons c u₂'' =>
+        simp only [List.cons_append, List.cons.injEq] at h2
+        apply hv₁
+        rw [h2.2]
+        exact List.mem_append.mpr (Or.inr (by simp))
+  | cons a u₁' ih =>
+    intro v₁ u₂ v₂ hv₁ hv₂ h
+    cases u₂ with
+    | nil =>
+      simp only [List.cons_append, List.nil_append, List.cons.injEq] at h
+      obtain ⟨-, h2⟩ := h
+      exfalso
+      cases u₁' with
+      | nil =>
+        simp only [List.nil_append, List.cons.injEq] at h2
+        exact hv₂ (h2.2.symm ▸ List.mem_cons_self ..)
+      | cons c u₁'' =>
+        simp only [List.cons_append, List.cons.injEq] at h2
+        apply hv₂
+        rw [← h2.2]
+        exact List.mem_append.mpr (Or.inr (by simp))
+    | cons b u₂' =>
+      simp only [List.cons_append, List.cons.injEq] at h
+      obtain ⟨rfl, h2⟩ := h
+      obtain ⟨he, hv⟩ := ih hv₁ hv₂ h2
+      exact ⟨by rw [he], hv⟩
+
+/-- The qualified-name computation is injective on parser-shaped (`::`-free,
+    nonempty) plain names (J56): a qualified name determines its pair. -/
+theorem qualifyMod_inj {a b c d : String}
+    (hb : ':' ∉ b.data) (hd : ':' ∉ d.data)
+    (h : qualifyMod a b = qualifyMod c d) : a = c ∧ b = d := by
+  replace h : (if a = "Object" then b else a ++ "::" ++ b)
+      = (if c = "Object" then d else c ++ "::" ++ d) := h
+  by_cases ha : a = "Object" <;> by_cases hc : c = "Object"
+  · rw [if_pos ha, if_pos hc] at h
+    exact ⟨ha.trans hc.symm, h⟩
+  · rw [if_pos ha, if_neg hc] at h
+    exfalso
+    apply hb
+    rw [h]
+    rw [show ((c ++ "::" ++ d)).data = c.data ++ (':' :: ':' :: d.data) from data_qual_split _ _]
+    exact List.mem_append.mpr (Or.inr (by simp))
+  · rw [if_neg ha, if_pos hc] at h
+    exfalso
+    apply hd
+    rw [← h]
+    rw [show ((a ++ "::" ++ b)).data = a.data ++ (':' :: ':' :: b.data) from data_qual_split _ _]
+    exact List.mem_append.mpr (Or.inr (by simp))
+  · rw [if_neg ha, if_neg hc] at h
+    have hdata := congrArg String.data h
+    rw [show (a ++ "::" ++ b).data = a.data ++ (':' :: ':' :: b.data) from data_qual_split _ _,
+      show (c ++ "::" ++ d).data = c.data ++ (':' :: ':' :: d.data) from data_qual_split _ _] at hdata
+    obtain ⟨h1, h2⟩ := append_colon2_inj hb hd hdata
+    exact ⟨String.ext h1, String.ext h2⟩
+
+/-- **No two class/module objects share a machine-readable name** (J56).
+    Machine-minted eigenclass names (`#<…>`) are exempt — `eigenclassOf` mints
+    one per object and CRuby's are lazily materialised, so their names collide
+    by design across heaps. The `readableClasses` uniqueness rows in `ClassOk`
+    are this clause restricted to the read table; the general form is what the
+    fresh-definition paths need — together with `NamedImpliesRegistered` it
+    makes *"the constant is absent at the owner"* imply *"no object of the
+    qualified name exists anywhere"* (`freshName_not_taken`). Measured before
+    assumed: `scripts/names_probe.lean` reports no two of the prelude-booted
+    heap's class objects share a name at all. -/
+def NamesUnique (h : Heap) : Prop :=
+  ∀ j k cpj cpk, h.classPayload? j = some cpj → h.classPayload? k = some cpk →
+    cpj.name = cpk.name → cpj.name.data.head? ≠ some '#' → j = k
+
+theorem namesUnique_grow {h h' : Heap} (hg : PlainGrow h h')
+    (hu : NamesUnique h) : NamesUnique h' := by
+  intro j k cpj cpk hj hk hnm hhd
+  rw [hg.payload] at hj hk
+  exact hu j k cpj cpk hj hk hnm hhd
+
+/-- A payload-name-pinning step (`defineMethod`/`constSetIn`) preserves the
+    clause: the *names* are what it reads, and those are pinned. Stated over the
+    pinning fact so both writes share the proof. -/
+theorem namesUnique_of_namePin {h h' : Heap}
+    (hpin : ∀ o, (h'.classPayload? o).map (fun c => c.name)
+      = (h.classPayload? o).map (fun c => c.name))
+    (hu : NamesUnique h) : NamesUnique h' := by
+  intro j k cpj cpk hj hk hnm hhd
+  have hj' := hpin j
+  have hk' := hpin k
+  rw [hj] at hj'
+  rw [hk] at hk'
+  cases hj0 : h.classPayload? j with
+  | none => rw [hj0] at hj'; exact absurd hj'.symm (by simp)
+  | some cpj0 =>
+    cases hk0 : h.classPayload? k with
+    | none => rw [hk0] at hk'; exact absurd hk'.symm (by simp)
+    | some cpk0 =>
+      rw [hj0] at hj'
+      rw [hk0] at hk'
+      simp only [Option.map_some, Option.some.injEq] at hj' hk'
+      exact hu j k cpj0 cpk0 hj0 hk0 (by rw [← hj', ← hk']; exact hnm)
+        (by rw [← hj']; exact hhd)
+
+theorem namesUnique_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hu : NamesUnique h) :
+    NamesUnique (defineMethod h cls name md) := by
+  refine namesUnique_of_namePin (fun o => ?_) hu
+  have := clsName_defineMethod h cls o name md
+  cases hcp : (defineMethod h cls name md).classPayload? o with
+  | none =>
+    rw [hcp] at this
+    cases hcp0 : h.classPayload? o with
+    | none => simp
+    | some c0 => rw [hcp0] at this; exact absurd this (by simp)
+  | some c' =>
+    rw [hcp] at this
+    cases hcp0 : h.classPayload? o with
+    | none => rw [hcp0] at this; exact absurd this (by simp)
+    | some c0 =>
+      rw [hcp0] at this
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at this
+      simp [this.1]
+
+theorem namesUnique_constSetIn {h : Heap} {j : ObjId} {nm : String} {v : Value}
+    (hu : NamesUnique h) : NamesUnique (constSetIn h j nm v) := by
+  refine namesUnique_of_namePin (fun o => ?_) hu
+  have := clsName_constSetIn h j o nm v
+  cases hcp : (constSetIn h j nm v).classPayload? o with
+  | none =>
+    rw [hcp] at this
+    cases hcp0 : h.classPayload? o with
+    | none => simp
+    | some c0 => rw [hcp0] at this; exact absurd this (by simp)
+  | some c' =>
+    rw [hcp] at this
+    cases hcp0 : h.classPayload? o with
+    | none => rw [hcp0] at this; exact absurd this (by simp)
+    | some c0 =>
+      rw [hcp0] at this
+      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at this
+      simp [this.1]
+
+/-- **Every '#'-free-named class/module is registered** (J56): some namespace
+    object holds it as a constant under a `::`-free plain name, and its own name
+    is the qualification of the owner's. `Object` itself is the base. Together
+    with `NamesUnique` this is what makes *"the constant is absent at the
+    owner"* imply *"no object of the qualified name exists anywhere"*
+    (`freshName_not_taken`): a would-be collision's registration slot decomposes
+    (`qualifyMod_inj`) to exactly the owner and name at hand. -/
+def Registered (h : Heap) : Prop :=
+  ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+    (j = Boot.objectId ∧ cp.name = "Object") ∨
+    ∃ d nm, (h.classPayload? d).isSome = true ∧
+      constOwn h d nm = some (.ref j) ∧
+      cp.name = qualifyMod (className h d) nm ∧
+      ':' ∉ nm.data ∧ nm.data.head? ≠ some '#'
+
+theorem registered_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hr : Registered h) : Registered h' := by
+  intro j cp hj hhd
+  rw [hg.payload] at hj
+  rcases hr j cp hj hhd with hobj | ⟨d, nm, hdo, hco, hqn, hnc, hnh⟩
+  · exact Or.inl hobj
+  · refine Or.inr ⟨d, nm, by rw [hg.payload]; exact hdo, ?_, ?_, hnc, hnh⟩
+    · unfold constOwn at hco ⊢; rw [hg.payload]; exact hco
+    · rw [hg.className_eq]; exact hqn
+
+theorem registered_defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hr : Registered h) :
+    Registered (defineMethod h cls name md) := by
+  intro j cp hj hhd
+  have hnmm := clsName_defineMethod h cls j name md
+  rw [hj] at hnmm
+  cases hj0 : h.classPayload? j with
+  | none => rw [hj0] at hnmm; exact absurd hnmm (by simp)
+  | some cp0 =>
+    rw [hj0] at hnmm
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+    rcases hr j cp0 hj0 (by rw [← hnmm.1]; exact hhd) with ⟨hje, hne⟩ | ⟨d, nm, hdo, hco, hqn, hnc, hnh⟩
+    · exact Or.inl ⟨hje, by rw [hnmm.1]; exact hne⟩
+    · refine Or.inr ⟨d, nm, by rw [classPayload?_isSome_defineMethod]; exact hdo,
+        by rw [constOwn_defineMethod]; exact hco, ?_, hnc, hnh⟩
+      rw [hnmm.1, className_defineMethod]
+      exact hqn
+
+theorem registered_ivarOnly {h h' : Heap} (hi : IvarOnly h h')
+    (hr : Registered h) : Registered h' := by
+  intro j cp hj hhd
+  rw [hi.classPayload] at hj
+  rcases hr j cp hj hhd with hobj | ⟨d, nm, hdo, hco, hqn, hnc, hnh⟩
+  · exact Or.inl hobj
+  · refine Or.inr ⟨d, nm, by rw [hi.classPayload]; exact hdo, ?_, ?_, hnc, hnh⟩
+    · unfold constOwn at hco ⊢; rw [hi.classPayload]; exact hco
+    · rw [hi.className_eq]; exact hqn
+
+/-- `Registered` across a constant write, given the written slot registers no
+    '#'-free class (the `casgn` rules' new guards discharge it: the old value,
+    were it such a registration, would name a boot or pair name the write
+    bars). -/
+theorem registered_constSetIn {h : Heap} {d0 : ObjId} {nm0 : String} {v : Value}
+    (hslot : ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+      constOwn h d0 nm0 = some (.ref j) →
+      cp.name = qualifyMod (className h d0) nm0 → False)
+    (hr : Registered h) : Registered (constSetIn h d0 nm0 v) := by
+  intro j cp hj hhd
+  have hnmm := clsName_constSetIn h d0 j nm0 v
+  rw [show (constSetIn h d0 nm0 v).classPayload? j
+      = (constSetIn h d0 nm0 v).classPayload? j from rfl, hj] at hnmm
+  cases hj0 : h.classPayload? j with
+  | none => rw [hj0] at hnmm; exact absurd hnmm (by simp)
+  | some cp0 =>
+    rw [hj0] at hnmm
+    simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
+    rcases hr j cp0 hj0 (by rw [← hnmm.1]; exact hhd) with ⟨hje, hne⟩ | ⟨d, nm, hdo, hco, hqn, hnc, hnh⟩
+    · exact Or.inl ⟨hje, by rw [hnmm.1]; exact hne⟩
+    · -- the old witness, unless it IS the written slot — which `hslot` refutes
+      by_cases hsame : d = d0 ∧ nm = nm0
+      · exfalso
+        exact hslot j cp0 hj0 (by rw [← hnmm.1]; exact hhd)
+          (by rw [← hsame.1, ← hsame.2]; exact hco)
+          (by rw [← hsame.1, ← hsame.2]; exact hqn)
+      · have hne2 : d ≠ d0 ∨ nm ≠ nm0 := by
+          by_cases h1 : d = d0
+          · exact Or.inr (fun h2 => hsame ⟨h1, h2⟩)
+          · exact Or.inl h1
+        refine Or.inr ⟨d, nm, by rw [classPayload?_isSome_constSetIn]; exact hdo, ?_, ?_, hnc, hnh⟩
+        · rw [constOwn_constSetIn_ne h d0 d nm0 nm v hne2]
+          exact hco
+        · rw [hnmm.1, className_constSetIn]
+          exact hqn
+
 /-- **Every reopenable class name really names a reopenable class**: `Object`'s own
     constant table binds it to a class object that is not a module.
 
@@ -2773,7 +3042,81 @@ def ClassOk (h : Heap) : Prop :=
   -- anonymous class (`Class.new` has no rule; `enterClassBody` and `eigenclassOf`
   -- always name), so the clause is free at every producer and it is what makes the
   -- `casgn` delivery's `nameIfAnonymous` a provable no-op.
-  ∀ o cp, h.classPayload? o = some cp → cp.name.isEmpty = false
+  (∀ o cp, h.classPayload? o = some cp → cp.name.isEmpty = false) ∧
+  -- **J56: global name uniqueness** — the readable-table rows above, at every
+  -- '#'-free name. What the fresh-definition freshness argument reads.
+  NamesUnique h ∧
+  -- **J56: registration** — with uniqueness, "the constant is absent at the
+  -- owner" implies "no object of the qualified name exists"
+  -- (`freshName_not_taken`).
+  Registered h ∧
+  -- `Object` is a class, not a module (the `"Object"`-named-module corner of
+  -- the `casgnM` slot analysis).
+  (∃ cpO, h.classPayload? Boot.objectId = some cpO ∧ cpO.isModule = false)
+
+/-- Boot constant names are `::`-free (J56) — one `decide`. -/
+theorem bootConstNames_colon_free : ∀ b ∈ Types.bootConstNames, ':' ∉ b.data := by
+  decide
+
+/-- **J56, cashed**: at a `NamesUnique`+`Registered` heap, a constant missing at
+    the (unique) `owner`-named object means no object bears the qualified name
+    at all — the freshness fact both fresh-definition composites consume. -/
+theorem freshName_not_taken {h : Heap} {d : ObjId} {owner name : String}
+    (hu : NamesUnique h) (hr : Registered h)
+    (hdo : (h.classPayload? d).isSome = true)
+    (hdn : className h d = owner)
+    (hanon : ∀ o cp, h.classPayload? o = some cp → cp.name.isEmpty = false)
+    (hoh : owner.data.head? ≠ some '#')
+    (hnc : ':' ∉ name.data) (hnh : name.data.head? ≠ some '#')
+    (hne0 : name ≠ "") (hneo : name ≠ "Object")
+    (hmiss : constOwn h d name = none) :
+    ∀ j cp, h.classPayload? j = some cp →
+      cp.name ≠ qualifyMod owner name := by
+  intro j cp hj hqe
+  -- q's head is owner's head (or name's, at Object), never '#'
+  have hqh : cp.name.data.head? ≠ some '#' := by
+    rw [hqe]
+    show (if owner = "Object" then name else owner ++ "::" ++ name).data.head? ≠ some '#'
+    split
+    · exact hnh
+    · next ho =>
+      rw [data_qual_split]
+      cases howd : owner.data with
+      | nil => simp [howd]
+      | cons a as =>
+        simp only [List.cons_append, List.head?_cons, ne_eq, Option.some.injEq]
+        intro hEq
+        exact hoh (by rw [howd, hEq]; rfl)
+  rcases hr j cp hj hqh with ⟨-, hno⟩ | ⟨d', nm', hdo', hco', hqn', hnc', hnh'⟩
+  · -- j is Object: q = "Object" is impossible
+    apply hneo
+    rw [hno] at hqe
+    have := qualifyMod_inj (a := "Object") (b := "Object") (c := owner) (d := name)
+      (by decide) hnc (by rw [← hqe]; rfl)
+    exact this.2.symm
+  · -- the registration decomposes to (owner, name); uniqueness pins d' = d
+    rw [hqe] at hqn'
+    obtain ⟨hown, hnm⟩ := qualifyMod_inj hnc' hnc hqn'.symm
+    -- both d and d' are payload'd objects named `owner`
+    obtain ⟨cpd, hcpd⟩ := Option.isSome_iff_exists.mp hdo
+    obtain ⟨cpd', hcpd'⟩ := Option.isSome_iff_exists.mp hdo'
+    have hnamed : cpd.name = owner := by
+      unfold className at hdn
+      rw [hcpd] at hdn
+      rw [← hdn]
+      show cpd.name = (if cpd.name.isEmpty = true then _ else cpd.name)
+      rw [if_neg (by rw [hanon d cpd hcpd]; exact Bool.false_ne_true)]
+    have hnamed' : cpd'.name = owner := by
+      unfold className at hown
+      rw [hcpd'] at hown
+      rw [← hown]
+      show cpd'.name = (if cpd'.name.isEmpty = true then _ else cpd'.name)
+      rw [if_neg (by rw [hanon d' cpd' hcpd']; exact Bool.false_ne_true)]
+    have hdd : d' = d := hu d' d cpd' cpd hcpd' hcpd
+      (by rw [hnamed', hnamed]) (by rw [hnamed']; exact hoh)
+    rw [hdd, hnm] at hco'
+    rw [hmiss] at hco'
+    exact absurd hco' (by simp)
 
 /-- The `Bool` decides the `Prop`. Same shape as `noHookB_sound`: the certificate
     computes, the invariant quantifies, and this is the one place they meet. -/
@@ -2785,7 +3128,51 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
     have := List.all_eq_true.mp hb.1.2 o (List.mem_range.mpr hlt)
     rw [hcp] at this
     simpa using this
-  refine ⟨hb.1.1.1, noShadowBeforeB_sound hb.1.1.2, ?_, hanon⟩
+  have hcnObj : className h Boot.objectId = "Object" := hb.1.1.1.1.1.1
+  have hnu : NamesUnique h := by
+    intro j k cpj cpk hj hk hnm hhd
+    have hjlt : j < h.objs.size := classPayload?_isSome_lt (by simp [hj])
+    have hklt : k < h.objs.size := classPayload?_isSome_lt (by simp [hk])
+    have := List.all_eq_true.mp
+      (List.all_eq_true.mp hb.1.1.1.1.1.2 j (List.mem_range.mpr hjlt))
+      k (List.mem_range.mpr hklt)
+    rw [hj, hk] at this
+    simp only [Bool.or_eq_true, Bool.not_eq_true', beq_iff_eq, beq_eq_false_iff_ne,
+      ne_eq] at this
+    rcases this with (h1 | h1) | h1
+    · exact absurd hnm h1
+    · exact absurd h1 hhd
+    · exact h1
+  have hobjcls : ∃ cpO, h.classPayload? Boot.objectId = some cpO ∧ cpO.isModule = false := by
+    have := hb.1.1.1.2
+    revert this
+    cases hp : h.classPayload? Boot.objectId with
+    | none => simp
+    | some cp => intro hx; exact ⟨cp, rfl, by simpa using hx⟩
+  have hreg : Registered h := by
+    intro j cp hj hhd
+    have hjlt : j < h.objs.size := classPayload?_isSome_lt (by simp [hj])
+    have := List.all_eq_true.mp hb.1.1.1.1.2 j (List.mem_range.mpr hjlt)
+    rw [hj] at this
+    simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at this
+    rcases this with (hhd' | ⟨hje, hne⟩) | ⟨hcw, hnc⟩
+    · exact absurd hhd' hhd
+    · exact Or.inl ⟨hje, hne⟩
+    · refine Or.inr ⟨Boot.objectId, cp.name,
+        by rw [hobjcls.choose_spec.1]; rfl, ?_, ?_, ?_, hhd⟩
+      · revert hcw
+        cases hcw2 : constOwn h Boot.objectId cp.name with
+        | none => simp
+        | some v =>
+          cases v with
+          | ref k => simp only [beq_iff_eq]; rintro rfl; rfl
+          | _ => simp
+      · rw [hcnObj]
+        show cp.name = (if ("Object" : String) = "Object" then cp.name
+          else "Object" ++ "::" ++ cp.name)
+        rw [if_pos rfl]
+      · simpa using hnc
+  refine ⟨hcnObj, noShadowBeforeB_sound hb.1.1.2, ?_, hanon, hnu, hreg, hobjcls⟩
   intro n hn
   have := List.all_eq_true.mp hb.2 n hn
   revert this
@@ -2837,7 +3224,11 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     (hc : ClassOk h) : ClassOk h' := by
   refine ⟨by rw [hg.className_eq]; exact hc.1,
     NoShadowBefore_grow hg hsat hc.2.1, ?_,
-    fun o cp hcp => hc.2.2.2 o cp (by rw [← hg.payload]; exact hcp)⟩
+    fun o cp hcp => hc.2.2.2.1 o cp (by rw [← hg.payload]; exact hcp),
+    namesUnique_grow hg hc.2.2.2.2.1,
+    registered_grow hg hsat hc.2.2.2.2.2.1,
+    (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
+        exact ⟨cpO, by rw [hg.payload]; exact h1, h2⟩)⟩
   intro n hn
   obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, cp, by unfold constOwn at h1 ⊢; rw [hg.payload]; exact h1,
@@ -2876,7 +3267,18 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
         rw [hcp] at hnm
         simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm
         rw [hnm.1]
-        exact hc.2.2.2 o cp0 hcp⟩
+        exact hc.2.2.2.1 o cp0 hcp,
+    namesUnique_defineMethod hc.2.2.2.2.1,
+    registered_defineMethod hc.2.2.2.2.2.1,
+    (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
+        have hnm2 := clsName_defineMethod h cls Boot.objectId name md
+        rw [h1] at hnm2
+        cases hp : (defineMethod h cls name md).classPayload? Boot.objectId with
+        | none => rw [hp] at hnm2; exact absurd hnm2.symm (by simp)
+        | some cpO' =>
+          rw [hp] at hnm2
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+          exact ⟨cpO', rfl, hnm2.2 ▸ h2⟩)⟩
   intro n hn
   obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, ?_⟩
@@ -3409,7 +3811,14 @@ theorem noShadowBefore (hi : IvarOnly h h') {k : ObjId} (hn : NoShadowBefore h k
 
 theorem classOk (hi : IvarOnly h h') (hc : ClassOk h) : ClassOk h' := by
   refine ⟨by rw [hi.className_eq]; exact hc.1, hi.noShadowBefore hc.2.1, fun n hn => ?_,
-    fun o cp hcp => hc.2.2.2 o cp (by rw [← hi.classPayload]; exact hcp)⟩
+    fun o cp hcp => hc.2.2.2.1 o cp (by rw [← hi.classPayload]; exact hcp),
+    (by
+      intro j k cpj cpk hj hk hnm hhd
+      rw [hi.classPayload] at hj hk
+      exact hc.2.2.2.2.1 j k cpj cpk hj hk hnm hhd),
+    registered_ivarOnly hi hc.2.2.2.2.2.1,
+    (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
+        exact ⟨cpO, by rw [hi.classPayload]; exact h1, h2⟩)⟩
   obtain ⟨k, cp, hco, hcp, hnm, huniq, hre, hma, hsole, hreop⟩ := hc.2.2.1 n hn
   refine ⟨k, cp, by rw [hi.constOwn_eq]; exact hco, by rw [hi.classPayload]; exact hcp,
     by rw [hi.className_eq]; exact hnm, ?_, hre, hma, ?_, fun hmem => ?_⟩
@@ -3599,10 +4008,23 @@ theorem noShadowBefore_constSetIn_obj {k : ObjId} (hn : NoShadowBefore h k) :
 
 /-- **`ClassOk` survives a toplevel constant write of a fresh, unreadable name.** -/
 theorem classOk_constSetIn_obj (hnr : nm ∉ Types.readableClasses)
+    (hsl : ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+      constOwn h Boot.objectId nm = some (.ref j) →
+      cp.name = Types.qualifyMod (className h Boot.objectId) nm → False)
     (hc : ClassOk h) : ClassOk (constSetIn h Boot.objectId nm v) := by
   refine ⟨by rw [className_constSetIn]; exact hc.1,
     noShadowBefore_constSetIn_obj hc.2.1, ?_,
-    fun o cp hcp => ?_⟩
+    fun o cp hcp => ?_, namesUnique_constSetIn hc.2.2.2.2.1,
+    registered_constSetIn hsl hc.2.2.2.2.2.1,
+    (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
+        have hnm2 := clsName_constSetIn h Boot.objectId Boot.objectId nm v
+        rw [h1] at hnm2
+        cases hp : (constSetIn h Boot.objectId nm v).classPayload? Boot.objectId with
+        | none => rw [hp] at hnm2; exact absurd hnm2.symm (by simp)
+        | some cpO' =>
+          rw [hp] at hnm2
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+          exact ⟨cpO', rfl, hnm2.2 ▸ h2⟩)⟩
   · intro n hn
     obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
     have hnne : ¬ (n = nm) := fun hq => hnr (hq ▸ hn)
@@ -3636,7 +4058,7 @@ theorem classOk_constSetIn_obj (hnr : nm ∉ Types.readableClasses)
       rw [h2] at hnm2
       simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
       rw [hnm2.1]
-      exact hc.2.2.2 o cp0 h2
+      exact hc.2.2.2.1 o cp0 h2
 
 end ConstSetIn
 

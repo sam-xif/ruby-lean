@@ -862,7 +862,14 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hcm : ClassOk (hmidOf h₀ d name))
     (hqne : ¬ q.isEmpty = true)
     (hqrd : ∀ n ∈ Types.readableClasses, n ≠ q)
-    (hqe : ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ q ++ ">") :
+    (hqe : ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ q ++ ">")
+    (hfnt : ∀ j cp, (hmidOf h₀ d name).classPayload? j = some cp →
+      j ≠ h₀.objs.size → cp.name ≠ q)
+    (hreg : constOwn (hmidOf h₀ d name) d name = some (.ref h₀.objs.size))
+    (hdnm : className (hmidOf h₀ d name) d = className h₀ d)
+    (hqq : q = RubyCore.Types.qualifyMod (className h₀ d) name)
+    (hnc : ':' ∉ name.data) (hnh : name.data.head? ≠ some '#')
+    (hdom : (h₀.classPayload? d).isSome = true) :
     ClassOk (freshClsHeap h₀ d name q eO) := by
   have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
   have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
@@ -871,7 +878,27 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   have hszm := hmid_size h₀ d name
   have hobj : Boot.objectId < (hmidOf h₀ d name).objs.size := by
     rw [hszm]; exact hch.boot.2.2.2.2
-  refine ⟨?_, ?_, ?_, ?_⟩
+  have hclassify : ∀ x cpx, (freshClsHeap h₀ d name q eO).classPayload? x = some cpx →
+      cpx.name.data.head? ≠ some '#' →
+      (x < h₀.objs.size ∧ (hmidOf h₀ d name).classPayload? x = some cpx) ∨
+      (x = h₀.objs.size ∧ cpx.name = q) := by
+    intro x cpx hx hxh
+    by_cases hxo : x < h₀.objs.size
+    · exact Or.inl ⟨hxo, by rw [← hg.payloadOld (by rw [hszm]; exact hxo)]; exact hx⟩
+    · by_cases hxk : x = h₀.objs.size
+      · subst hxk
+        rw [freshClsHeap_cp_k] at hx
+        cases hx
+        exact Or.inr ⟨rfl, rfl⟩
+      · by_cases hxe : x = h₀.objs.size + 1
+        · subst hxe
+          rw [freshClsHeap_cp_e] at hx
+          cases hx
+          exact absurd ename_head hxh
+        · rw [freshClsHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hxo hxk hxe hlt2))] at hx
+          exact absurd hx (by simp)
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [ClsGrow.className_old hg hobj]
     exact hcm.1
   · exact noShadowBefore_freshC hch hsat hch.boot.2.2.2.2 hcm.2.1
@@ -920,7 +947,7 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   · intro o cp hcp
     by_cases ho : o < h₀.objs.size
     · rw [hg.payloadOld (by rw [hszm]; exact ho)] at hcp
-      exact hcm.2.2.2 o cp hcp
+      exact hcm.2.2.2.1 o cp hcp
     · by_cases hk : o = h₀.objs.size
       · subst hk
         rw [freshClsHeap_cp_k] at hcp
@@ -939,6 +966,35 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
         · rw [freshClsHeap_cp_oob (Nat.le_of_not_lt
             (fun hlt2 => not_lt_add_two ho hk he2 hlt2))] at hcp
           cases hcp
+  · intro j k' cpj cpk hj hk hnmx hhd
+    rcases hclassify j cpj hj hhd with ⟨hjo, hjm⟩ | ⟨hjk, hjq⟩ <;>
+      rcases hclassify k' cpk hk (by rw [← hnmx]; exact hhd) with ⟨hko, hkm⟩ | ⟨hkk, hkq⟩
+    · exact hcm.2.2.2.2.1 j k' cpj cpk hjm hkm hnmx hhd
+    · exact absurd (by rw [hnmx, hkq]) (hfnt j cpj hjm (Nat.ne_of_lt hjo))
+    · exact absurd (by rw [← hnmx, hjq]) (hfnt k' cpk hkm (Nat.ne_of_lt hko))
+    · rw [hjk, hkk]
+  · intro j cp hj hhd
+    rcases hclassify j cp hj hhd with ⟨hjo, hjm⟩ | ⟨hjk, hjq⟩
+    · rcases hcm.2.2.2.2.2.1 j cp hjm hhd with hobj2 | ⟨d', nm', hdo', hco', hqn', hnc', hnh'⟩
+      · exact Or.inl hobj2
+      · have hd'lt : d' < (hmidOf h₀ d name).objs.size := classPayload?_isSome_lt hdo'
+        refine Or.inr ⟨d', nm', by rw [hg.payloadOld hd'lt]; exact hdo', ?_, ?_, hnc', hnh'⟩
+        · rw [ClsGrow.constOwn_old hg hd'lt]; exact hco'
+        · rw [ClsGrow.className_old hg hd'lt]; exact hqn'
+    · subst hjk
+      have hdm : d < (hmidOf h₀ d name).objs.size := by rw [hszm]; exact hdlt
+      refine Or.inr ⟨d, name, ?_, ?_, ?_, hnc, hnh⟩
+      · rw [hg.payloadOld hdm]
+        rw [show (hmidOf h₀ d name).classPayload? d = (constSetIn h₀ d name
+          (Value.ref h₀.objs.size)).classPayload? d from rfl,
+          classPayload?_isSome_constSetIn]
+        exact hdom
+      · rw [ClsGrow.constOwn_old hg hdm]
+        exact hreg
+      · rw [hjq, ClsGrow.className_old hg hdm, hdnm]
+        exact hqq
+  · obtain ⟨cpO, h1, h2⟩ := hcm.2.2.2.2.2.2
+    exact ⟨cpO, by rw [hg.payloadOld hobj]; exact h1, h2⟩
 
 end PredsC
 
@@ -1539,7 +1595,7 @@ theorem moduleNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           unfold className
           rw [hcp0]
           show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by rw [hcls0.2.2.2 o cp0 hcp0]; exact Bool.false_ne_true)]
+          rw [if_neg (by rw [hcls0.2.2.2.1 o cp0 hcp0]; exact Bool.false_ne_true)]
           rw [← hnmm.1]
           exact hnm.symm
   have hoo : ModOwner h₀ owner o := by
@@ -1633,7 +1689,7 @@ theorem classNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           unfold className
           rw [hcp0]
           show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by rw [hcls0.2.2.2 o cp0 hcp0]; exact Bool.false_ne_true)]
+          rw [if_neg (by rw [hcls0.2.2.2.1 o cp0 hcp0]; exact Bool.false_ne_true)]
           rw [← hnmm.1]
           exact hnm.symm
   have hoo : ModOwner h₀ owner o := by
@@ -1751,7 +1807,7 @@ theorem classNameOk_name_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           rw [hcp0]
           show cp.name = (if cp0.name.isEmpty = true then _ else cp0.name)
           rw [if_neg (by
-            rw [hcls0.2.2.2 d cp0 hcp0]
+            rw [hcls0.2.2.2.1 d cp0 hcp0]
             exact Bool.false_ne_true)]
           exact hnm0
     rw [howeq] at hqow ⊢
@@ -1855,13 +1911,15 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
     (hdn : className h₀ d = owner)
     (hqq : q = RubyCore.Types.qualifyMod owner name)
     -- the write must not hit a declared *module* pair of the same owner
-    (hmodg : ∀ pr ∈ D.modules, ¬(pr.1 = owner ∧ pr.2 = name)) :
+    (hmodg : ∀ pr ∈ D.modules, ¬(pr.1 = owner ∧ pr.2 = name))
+    (hprm : (owner, name) ∈ D.classes)
+    (hnc : ':' ∉ name.data) (hnh : name.data.head? ≠ some '#') :
     DeclsOkJ A D (freshClsHeap h₀ d name q eO) := by
   obtain ⟨hkR, hkI, hkS, hkP, hkM, hkC⟩ := declClsFresh_sound hdfr
   have hmidsuite := constSetIn_rowsAndConstsJ
     (v := Value.ref h₀.objs.size) (j := d) htab hct hsct
   refine ⟨?_, ?_, ?_, ?_, ?_, htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1,
-    htab.2.2.2.2.2.2.2.1, ?_, ?_⟩
+    htab.2.2.2.2.2.2.2.1, ?_, ?_, ?_⟩
   · intro τr mname dd hf
     obtain ⟨hnee, hkeys⟩ := declFor_keys hf
     exact entryOkJ_freshC hch hsat hdlt hqne hcO hnoO
@@ -1915,9 +1973,43 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
         · exact absurd hnm h
       rw [hnm]
       exact classNameOk_name_freshC hch hsat hdlt hqne hcls0 hdo hdn hqq
-        (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2.2 pr hpr)
+        (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
     · exact classNameOkC_fresh hch hsat hdlt hqne hcls0 hdn
-        (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2 pr hpr)
+        (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
+  · -- J56: name provenance — mirror of the module composite's bullet.
+    intro j cp hj hhd
+    by_cases hjo : j < h₀.objs.size
+    · have hgx : ClsGrow (hmidOf h₀ d name) (freshClsHeap h₀ d name q eO) :=
+        clsGrow_hmid_freshC
+      have hjm : (hmidOf h₀ d name).classPayload? j = some cp := by
+        rw [← hgx.payloadOld (by rw [hmid_size]; exact hjo)]
+        exact hj
+      have hnm2 := clsName_constSetIn h₀ d j name (Value.ref h₀.objs.size)
+      rw [show (hmidOf h₀ d name).classPayload? j = (constSetIn h₀ d name
+        (Value.ref h₀.objs.size)).classPayload? j from rfl] at hjm
+      rw [hjm] at hnm2
+      cases hj00 : h₀.classPayload? j with
+      | none => rw [hj00] at hnm2; exact absurd hnm2 (by simp)
+      | some cp0 =>
+        rw [hj00] at hnm2
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+        rw [hnm2.1]
+        exact htab.2.2.2.2.2.2.2.2.2.2 j cp0 hj00 (by rw [← hnm2.1]; exact hhd)
+    · by_cases hjk : j = h₀.objs.size
+      · subst hjk
+        rw [freshClsHeap_cp_k] at hj
+        cases hj
+        refine Or.inr ⟨(owner, name), Or.inr hprm, ?_, hnc, hnh⟩
+        show q = RubyCore.Types.qualifyMod owner name
+        exact hqq
+      · by_cases hje : j = h₀.objs.size + 1
+        · subst hje
+          rw [freshClsHeap_cp_e] at hj
+          cases hj
+          exact absurd ename_head hhd
+        · rw [freshClsHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hjo hjk hje hlt2))] at hj
+          exact absurd hj (by simp)
 
 end TableC
 

@@ -842,9 +842,23 @@ theorem noShadowBefore_constSetIn_off {h : Heap} {dd k : ObjId} {nm : String}
 theorem classOk_constSetIn_off {h : Heap} {dd : ObjId} {nm : String} {v : Value}
     (hdo : dd ≠ Boot.objectId) (hoff : ModOffChains h dd)
     (hnr : nm ∉ Types.readableClasses)
+    (hsl : ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+      constOwn h dd nm = some (.ref j) →
+      cp.name = RubyCore.Types.qualifyMod (className h dd) nm → False)
     (hc : ClassOk h) : ClassOk (constSetIn h dd nm v) := by
   refine ⟨by rw [className_constSetIn]; exact hc.1,
-    noShadowBefore_constSetIn_off hoff hc.2.1, ?_, fun o cp hcp => ?_⟩
+    noShadowBefore_constSetIn_off hoff hc.2.1, ?_, fun o cp hcp => ?_,
+    namesUnique_constSetIn hc.2.2.2.2.1,
+    registered_constSetIn hsl hc.2.2.2.2.2.1,
+    (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
+        have hnm2 := clsName_constSetIn h dd Boot.objectId nm v
+        rw [h1] at hnm2
+        cases hp : (constSetIn h dd nm v).classPayload? Boot.objectId with
+        | none => rw [hp] at hnm2; exact absurd hnm2.symm (by simp)
+        | some cpO' =>
+          rw [hp] at hnm2
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+          exact ⟨cpO', rfl, hnm2.2 ▸ h2⟩)⟩
   · intro n hn
     obtain ⟨k, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hc.2.2.1 n hn
     have hps := classPayload?_isSome_constSetIn h dd k nm v
@@ -899,7 +913,7 @@ theorem classOk_constSetIn_off {h : Heap} {dd : ObjId} {nm : String} {v : Value}
       rw [h2] at hnm2
       simp only [Option.map_some, Option.some.injEq] at hnm2
       rw [show cp.name = cp0.name from congrArg Prod.fst hnm2]
-      exact hc.2.2.2 o cp0 h2
+      exact hc.2.2.2.1 o cp0 h2
 
 /-- `NoShadowBefore` lifts from `hmid` to the composite at any old class. -/
 theorem noShadowBefore_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
@@ -927,12 +941,29 @@ theorem noShadowBefore_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
   exact hn.2 j hj cp hcp
 
 /-- `ClassOk` at the composite. -/
+theorem ename_head : ("#<Class:" ++ q ++ ">").data.head? = some '#' := by
+  rw [show ("#<Class:" ++ q ++ ">") = "#<Class:" ++ (q ++ ">") from by
+    simp [String.append_assoc]]
+  rw [show ("#<Class:" ++ (q ++ ">")).data = "#<Class:".data ++ (q ++ ">").data from
+    String.data_append]
+  rfl
+
+
 theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size)
     (hcm : ClassOk (hmidOf h₀ d name))
     (hqne : ¬ q.isEmpty = true)
     (hqrd : ∀ n ∈ Types.readableClasses, n ≠ q)
-    (hqe : ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ q ++ ">") :
+    (hqe : ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ q ++ ">")
+    -- J56: the composite's naming clauses need global freshness of `q` and the
+    -- pair-shaped registration; both flow from the caller's rule guards.
+    (hfnt : ∀ j cp, (hmidOf h₀ d name).classPayload? j = some cp →
+      j ≠ h₀.objs.size → cp.name ≠ q)
+    (hreg : constOwn (hmidOf h₀ d name) d name = some (.ref h₀.objs.size))
+    (hdnm : className (hmidOf h₀ d name) d = className h₀ d)
+    (hqq : q = RubyCore.Types.qualifyMod (className h₀ d) name)
+    (hnc : ':' ∉ name.data) (hnh : name.data.head? ≠ some '#')
+    (hdom : (h₀.classPayload? d).isSome = true) :
     ClassOk (freshModHeap h₀ d name q) := by
   have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
   have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
@@ -941,7 +972,29 @@ theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
   have hszm := hmid_size h₀ d name
   have hobj : Boot.objectId < (hmidOf h₀ d name).objs.size := by
     rw [hszm]; exact hch.boot.2.2.2.2
-  refine ⟨?_, ?_, ?_, ?_⟩
+  -- classify a '#'-free-named payload at the composite: old (pinned to hmid)
+  -- or the fresh module itself.
+  have hclassify : ∀ x cpx, (freshModHeap h₀ d name q).classPayload? x = some cpx →
+      cpx.name.data.head? ≠ some '#' →
+      (x < h₀.objs.size ∧ (hmidOf h₀ d name).classPayload? x = some cpx) ∨
+      (x = h₀.objs.size ∧ cpx.name = q) := by
+    intro x cpx hx hxh
+    by_cases hxo : x < h₀.objs.size
+    · exact Or.inl ⟨hxo, by rw [← hg.payloadOld (by rw [hszm]; exact hxo)]; exact hx⟩
+    · by_cases hxk : x = h₀.objs.size
+      · subst hxk
+        rw [freshModHeap_cp_k] at hx
+        cases hx
+        exact Or.inr ⟨rfl, rfl⟩
+      · by_cases hxe : x = h₀.objs.size + 1
+        · subst hxe
+          rw [freshModHeap_cp_e] at hx
+          cases hx
+          exact absurd ename_head hxh
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hxo hxk hxe hlt2))] at hx
+          exact absurd hx (by simp)
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [ClsGrow.className_old hg hobj]
     exact hcm.1
   · exact noShadowBefore_fresh hch hsat hch.boot.2.2.2.2 hcm.2.1
@@ -990,7 +1043,7 @@ theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
   · intro o cp hcp
     by_cases ho : o < h₀.objs.size
     · rw [hg.payloadOld (by rw [hszm]; exact ho)] at hcp
-      exact hcm.2.2.2 o cp hcp
+      exact hcm.2.2.2.1 o cp hcp
     · by_cases hk : o = h₀.objs.size
       · subst hk
         rw [freshModHeap_cp_k] at hcp
@@ -1009,6 +1062,40 @@ theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
         · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
             (fun hlt2 => not_lt_add_two ho hk he2 hlt2))] at hcp
           cases hcp
+  · -- NamesUnique: old pairs by `hmid`'s clause; a fresh/old '#'-free collision
+    -- is exactly what `hfnt` bars; fresh/fresh is `rfl`.
+    intro j k' cpj cpk hj hk hnmx hhd
+    rcases hclassify j cpj hj hhd with ⟨hjo, hjm⟩ | ⟨hjk, hjq⟩ <;>
+      rcases hclassify k' cpk hk (by rw [← hnmx]; exact hhd) with ⟨hko, hkm⟩ | ⟨hkk, hkq⟩
+    · exact hcm.2.2.2.2.1 j k' cpj cpk hjm hkm hnmx hhd
+    · exact absurd (by rw [hnmx, hkq]) (hfnt j cpj hjm (Nat.ne_of_lt hjo))
+    · exact absurd (by rw [← hnmx, hjq]) (hfnt k' cpk hkm (Nat.ne_of_lt hko))
+    · rw [hjk, hkk]
+  · -- Registered: old witnesses pinned; the fresh module is registered at the
+    -- definee under `name`, by the composite's own write.
+    intro j cp hj hhd
+    rcases hclassify j cp hj hhd with ⟨hjo, hjm⟩ | ⟨hjk, hjq⟩
+    · rcases hcm.2.2.2.2.2.1 j cp hjm hhd with hobj2 | ⟨d', nm', hdo', hco', hqn', hnc', hnh'⟩
+      · exact Or.inl hobj2
+      · have hd'lt : d' < (hmidOf h₀ d name).objs.size := classPayload?_isSome_lt hdo'
+        refine Or.inr ⟨d', nm', by rw [hg.payloadOld hd'lt]; exact hdo', ?_, ?_, hnc', hnh'⟩
+        · rw [ClsGrow.constOwn_old hg hd'lt]; exact hco'
+        · rw [ClsGrow.className_old hg hd'lt]; exact hqn'
+    · subst hjk
+      have hdm : d < (hmidOf h₀ d name).objs.size := by rw [hszm]; exact hdlt
+      refine Or.inr ⟨d, name, ?_, ?_, ?_, hnc, hnh⟩
+      · rw [hg.payloadOld hdm]
+        rw [show (hmidOf h₀ d name).classPayload? d = (constSetIn h₀ d name
+          (Value.ref h₀.objs.size)).classPayload? d from rfl,
+          classPayload?_isSome_constSetIn]
+        exact hdom
+      · rw [ClsGrow.constOwn_old hg hdm]
+        exact hreg
+      · rw [hjq, ClsGrow.className_old hg hdm, hdnm]
+        exact hqq
+  · -- Object is (still) a class.
+    obtain ⟨cpO, h1, h2⟩ := hcm.2.2.2.2.2.2
+    exact ⟨cpO, by rw [hg.payloadOld hobj]; exact h1, h2⟩
 
 end Preds
 
@@ -1022,13 +1109,6 @@ variable {h₀ : Heap} {d : ObjId} {name q : String}
     fresh module's nor `#`-headed (the machine-minted eigenclass shape). -/
 def KeyFresh (q c : String) : Prop :=
   c ≠ q ∧ c.data.head? ≠ some '#'
-
-theorem ename_head : ("#<Class:" ++ q ++ ">").data.head? = some '#' := by
-  rw [show ("#<Class:" ++ q ++ ">") = "#<Class:" ++ (q ++ ">") from by
-    simp [String.append_assoc]]
-  rw [show ("#<Class:" ++ (q ++ ">")).data = "#<Class:".data ++ (q ++ ">").data from
-    String.data_append]
-  rfl
 
 theorem keyFresh_ne_ename {c : String} (hk : KeyFresh q c) :
     c ≠ "#<Class:" ++ q ++ ">" := by
@@ -1891,7 +1971,7 @@ theorem moduleNameOk_name_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           rw [hcp0]
           show cp.name = (if cp0.name.isEmpty = true then _ else cp0.name)
           rw [if_neg (by
-            rw [hcls0.2.2.2 d cp0 hcp0]
+            rw [hcls0.2.2.2.1 d cp0 hcp0]
             exact Bool.false_ne_true)]
           exact hnm0
     rw [howeq] at hqow ⊢
@@ -2020,7 +2100,7 @@ theorem classNameOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           unfold className
           rw [hcp0]
           show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by rw [hcls0.2.2.2 o cp0 hcp0]; exact Bool.false_ne_true)]
+          rw [if_neg (by rw [hcls0.2.2.2.1 o cp0 hcp0]; exact Bool.false_ne_true)]
           rw [← hnmm.1]
           exact hnm.symm
   -- back to h₀'s ModOwner
@@ -2168,13 +2248,16 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
     (hdn : className h₀ d = owner)
     (hqq : q = RubyCore.Types.qualifyMod owner name)
     -- J53: the write must not hit a declared *class* pair of the same owner.
-    (hclsg : ∀ pr ∈ D.classes, ¬(pr.1 = owner ∧ pr.2 = name)) :
+    (hclsg : ∀ pr ∈ D.classes, ¬(pr.1 = owner ∧ pr.2 = name))
+    -- J56: the pair itself + its parser shape (the provenance clause's fuel).
+    (hprm : (owner, name) ∈ D.modules)
+    (hnc : ':' ∉ name.data) (hnh : name.data.head? ≠ some '#') :
     DeclsOkJ A D (freshModHeap h₀ d name q) := by
   obtain ⟨hkR, hkI, hkS, hkP, hkM, hkC⟩ := declClsFresh_sound hdfr
   have hmidsuite := constSetIn_rowsAndConstsJ
     (v := Value.ref h₀.objs.size) (j := d) htab hct hsct
   refine ⟨?_, ?_, ?_, ?_, ?_, htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1,
-    htab.2.2.2.2.2.2.2.1, ?_, ?_⟩
+    htab.2.2.2.2.2.2.2.1, ?_, ?_, ?_⟩
   · intro τr mname dd hf
     obtain ⟨hnee, hkeys⟩ := declFor_keys hf
     exact entryOkJ_fresh hch hsat hdlt hqne hcO hnoO
@@ -2239,16 +2322,51 @@ theorem declsOkJ_fresh {A : SemAxioms} {D : Decls}
         · exact absurd hown h
         · exact h
       have := classNameOk_fresh_ownq (h₀ := h₀) (d := d) (name := name) (q := q)
-        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2.2 pr hpr)
+        hch hsat hdlt hqne hnm (hown ▸ htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
       rw [hown]
       exact this
     · by_cases hnm : pr.2 = name
       · refine classNameOk_fresh hch hsat hdlt hqne hcls0 ⟨hown, hkey.2⟩ hdn
-          (Or.inr ?_) (htab.2.2.2.2.2.2.2.2.2 pr hpr)
+          (Or.inr ?_) (htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
         intro hEq
         exact hclsg pr hpr ⟨hEq, hnm⟩
       · exact classNameOk_fresh hch hsat hdlt hqne hcls0 ⟨hown, hkey.2⟩ hdn
-          (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2 pr hpr)
+          (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
+  · -- J56: name provenance — old names pinned; the fresh module is exactly the
+    -- rule's pair's qualification; the eigenclass is '#'-exempt.
+    intro j cp hj hhd
+    by_cases hjo : j < h₀.objs.size
+    · have hjm : (hmidOf h₀ d name).classPayload? j = some cp := by
+        have hgx : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+          clsGrow_hmid_fresh
+        rw [← hgx.payloadOld (by rw [hmid_size]; exact hjo)]
+        exact hj
+      have hnm2 := clsName_constSetIn h₀ d j name (Value.ref h₀.objs.size)
+      rw [show (hmidOf h₀ d name).classPayload? j = (constSetIn h₀ d name
+        (Value.ref h₀.objs.size)).classPayload? j from rfl] at hjm
+      rw [hjm] at hnm2
+      cases hj00 : h₀.classPayload? j with
+      | none => rw [hj00] at hnm2; exact absurd hnm2 (by simp)
+      | some cp0 =>
+        rw [hj00] at hnm2
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+        rw [hnm2.1]
+        exact htab.2.2.2.2.2.2.2.2.2.2 j cp0 hj00 (by rw [← hnm2.1]; exact hhd)
+    · by_cases hjk : j = h₀.objs.size
+      · subst hjk
+        rw [freshModHeap_cp_k] at hj
+        cases hj
+        refine Or.inr ⟨(owner, name), Or.inl hprm, ?_, hnc, hnh⟩
+        show q = RubyCore.Types.qualifyMod owner name
+        exact hqq
+      · by_cases hje : j = h₀.objs.size + 1
+        · subst hje
+          rw [freshModHeap_cp_e] at hj
+          cases hj
+          exact absurd ename_head hhd
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two hjo hjk hje hlt2))] at hj
+          exact absurd hj (by simp)
 
 /-! ## Call-site string facts -/
 

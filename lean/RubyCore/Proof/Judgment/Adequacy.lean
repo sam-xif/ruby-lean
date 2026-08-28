@@ -456,24 +456,39 @@ theorem check_sound_all : ∀ (n : Nat),
                   | some e2 =>
                     have hmem := List.mem_of_find?_eq_some hf2
                     have hkey := List.find?_some hf2
-                    have := hfresh.1.1.2 e2 hmem
+                    have := hfresh.1.1.1.1.2 e2 hmem
                     simp only [beq_iff_eq] at hkey
                     simp only [bne_iff_ne, ne_eq] at this
                     exact this (by rw [hkey])
               have hmodsA : ∀ pr ∈ D₁.modules, pr.2 ≠ nm := by
                 intro pr hpr
-                have := hfresh.1.2 pr hpr
+                have := hfresh.1.1.1.2 pr hpr
                 simpa using this
               have hclssA : ∀ pr ∈ D₁.classes, pr.2 ≠ nm := by
                 intro pr hpr
-                have := hfresh.2 pr hpr
+                have := hfresh.1.1.2 pr hpr
                 simpa using this
+              have hncA : ':' ∉ nm.data := by
+                have := hfresh.1.2
+                simp only [Bool.not_eq_true'] at this
+                intro hmem2
+                have := List.contains_iff_mem.mpr hmem2
+                rw [this] at *
+                simp_all
+              have hbnA : nm ∉ Types.bootConstNames := by
+                have := hfresh.2
+                simp only [Bool.not_eq_true'] at this
+                intro hmem2
+                have h2 := List.contains_iff_mem.mpr hmem2
+                rw [this] at h2
+                exact Bool.noConfusion h2
               rcases Bool.or_eq_true _ _ |>.mp hgate.1 with htop2 | hmb
-              · exact .casgn htop2 hfresh.1.1.1 hsctA hgate.2 hmodsA hclssA (ihc h1)
+              · exact .casgn htop2 hfresh.1.1.1.1.1 hsctA hgate.2 hmodsA hclssA
+                  hncA hbnA (ihc h1)
               · simp only [Bool.and_eq_true, Option.isNone_iff_eq_none,
                   Bool.not_eq_true'] at hmb
                 exact .casgnM hmb.1.1.1.1 hmb.1.1.1.2 hmb.1.1.2 hmb.1.2 hmb.2
-                  hfresh.1.1.1 hsctA hgate.2 hmodsA hclssA (ihc h1)
+                  hfresh.1.1.1.1.1 hsctA hgate.2 hmodsA hclssA hncA hbnA (ihc h1)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
@@ -791,14 +806,22 @@ theorem check_sound_all : ∀ (n : Nat),
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
             Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
             Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgf⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩,
-            hg6⟩, hg7⟩ := hguards
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true, Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgnc⟩, hgnh⟩, hgch⟩, hgfn⟩, hgf⟩,
+            hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩, hg7⟩ := hguards
           split at h
           · next τ0 Γb Db hb0 =>
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl, rfl⟩ := h
-            refine .module' ?_ (by simpa using hg1e) (by simpa using hg1o) hgf
+            refine .module' ?_ (by simpa using hg1e) (by simpa using hg1o)
+              (by
+                intro hmem2
+                have := List.contains_iff_mem.mpr hmem2
+                simp only [Bool.not_eq_true'] at hgnc
+                rw [hgnc] at this
+                exact Bool.noConfusion this)
+              (by simpa using hgnh) (by simpa using hgch) hgfn hgf
               (by simpa using hg1m) (by simpa using hg2) ?_
               (by simpa using hg4)
               (?_ : ∀ cn, scopedConstTy? D cn name = none)
@@ -837,14 +860,22 @@ theorem check_sound_all : ∀ (n : Nat),
           rw [Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
             Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
             Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
-            Bool.and_eq_true] at hguards
-          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgf⟩, hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩,
-            hg6⟩, hg7⟩ := hguards
+            Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+            Bool.and_eq_true, Bool.and_eq_true] at hguards
+          obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hg1, hg1e⟩, hg1o⟩, hgnc⟩, hgnh⟩, hgch⟩, hgfn⟩, hgf⟩,
+            hg1m⟩, hg2⟩, hg3⟩, hg4⟩, hg5⟩, hg6⟩, hg7⟩ := hguards
           split at h
           · next τ0 Γb Db hb0 =>
             simp only [Option.some.injEq, Prod.mk.injEq] at h
             obtain ⟨rfl, rfl, rfl⟩ := h
-            refine .classM ?_ (by simpa using hg1e) (by simpa using hg1o) hgf
+            refine .classM ?_ (by simpa using hg1e) (by simpa using hg1o)
+              (by
+                intro hmem2
+                have := List.contains_iff_mem.mpr hmem2
+                simp only [Bool.not_eq_true'] at hgnc
+                rw [hgnc] at this
+                exact Bool.noConfusion this)
+              (by simpa using hgnh) (by simpa using hgch) hgfn hgf
               (by simpa using hg1m) (by simpa using hg2) ?_
               (by simpa using hg4)
               (?_ : ∀ cn, scopedConstTy? D cn name = none)
@@ -991,11 +1022,14 @@ theorem tableOk_declsOkJ_constExtend {A : SemAxioms} {h : Heap}
     (hc : ∀ e ∈ cs, ConstOk h e.1 e.2)
     (hsc : ∀ e ∈ scs, ScopedConstOk h e.1.1 e.1.2 e.2)
     (hm : ∀ pr ∈ ms, ModuleNameOk h pr.1 pr.2)
-    (hkc : ∀ pr ∈ ks, ClassNameOk h pr.1 pr.2) :
+    (hkc : ∀ pr ∈ ks, ClassNameOk h pr.1 pr.2)
+    (hboot : ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+      cp.name ∈ Types.bootConstNames) :
     DeclsOkJ A { constExtend baseDecls cs scs with modules := ms, classes := ks } h := by
-  have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls
+  have hd : DeclsOkJ A baseDecls h := tableOk_declsOkJ ht hcls hboot
   refine ⟨?_, ?_, hd.2.2.1, ?_, hd.2.2.2.2.1, hd.2.2.2.2.2.1,
-    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm, hkc⟩
+    hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1, hm, hkc,
+    fun j cp hj hhd => Or.inl (hboot j cp hj hhd)⟩
   · -- Rows: `declFor` reads no constant half, so the row set is the base's; the
     -- base's builtin/iterator witnesses are table-free and the user arm is refuted
     -- by `tableOk_declsOkJ`'s own walk (repeated here at the extended index).
@@ -1181,7 +1215,8 @@ theorem validateJ_certifies {c : JCert} {p : Expr} {fuel : Nat}
         (fun pr hpr => moduleNameOkB_sound (by decide)
           (List.all_eq_true.mp hmod pr hpr))
         (fun pr hpr => classNameOkB_sound (by decide)
-          (List.all_eq_true.mp hkls pr hpr)))
+          (List.all_eq_true.mp hkls pr hpr))
+        initHeap_names_boot)
     (subDecls_rowFold c.deltaRows _ hg) ?_
   intro τ0 n0 d0 hnone hsome
   rcases declFor_rowFold_inv c.deltaRows _ hg hsome with ⟨r, hm, hk, rfl, rfl⟩ | hd2

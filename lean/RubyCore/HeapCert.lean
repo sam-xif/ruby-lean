@@ -95,6 +95,32 @@ def noShadowBeforeB (h : Heap) (k : ObjId) : Bool :=
       | some cp => cp.consts.isEmpty
       | none => true
 
+/-- J56: `NamesUnique`, decided — quadratic over the ids, name-compares only
+    where both are classes and the shared name is not machine-minted. -/
+def namesUniqueB (h : Heap) : Bool :=
+  (List.range h.objs.size).all fun j =>
+    (List.range h.objs.size).all fun k =>
+      match h.classPayload? j, h.classPayload? k with
+      | some cpj, some cpk =>
+        !(cpj.name == cpk.name) || cpj.name.data.head? == some '#' || j == k
+      | _, _ => true
+
+/-- J56: `Registered` at a boot-shaped heap, decided — every '#'-free-named
+    class is registered on `Object` under its own (`::`-free) name. Stronger
+    than `Registered` (the witness is pinned to `Object`), which is what makes
+    it decidable; `classOkB_sound` weakens it to the existential. -/
+def registeredBootB (h : Heap) : Bool :=
+  (List.range h.objs.size).all fun j =>
+    match h.classPayload? j with
+    | some cp =>
+      cp.name.data.head? == some '#' ||
+      (j == Boot.objectId && cp.name == "Object") ||
+      ((match constOwn h Boot.objectId cp.name with
+        | some (.ref k) => k == j
+        | _ => false) &&
+        !(cp.name.data.contains ':'))
+    | none => true
+
 /-- Executable form of `ClassOk` (L156): every reopenable class name is bound, in
     `Object`'s **own** constant table, to a class object that is not a module.
 
@@ -106,6 +132,14 @@ def noShadowBeforeB (h : Heap) (k : ObjId) : Bool :=
     the wrong lookup would be worse than none. -/
 def classOkB (h : Heap) : Bool :=
   (className h Boot.objectId == "Object") &&
+  -- J56: global name uniqueness.
+  namesUniqueB h &&
+  -- J56: registration (boot-shaped: on `Object`, own name).
+  registeredBootB h &&
+  -- J56: `Object` is a class.
+  (match h.classPayload? Boot.objectId with
+   | some cp => !cp.isModule
+   | none => false) &&
   -- L178, at `Object` itself: the toplevel frame's definee.
   noShadowBeforeB h Boot.objectId &&
   -- J41: no anonymous classes (the clause that makes `nameIfAnonymous` inert).

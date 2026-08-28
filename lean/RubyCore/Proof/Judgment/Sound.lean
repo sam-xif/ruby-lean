@@ -177,7 +177,12 @@ theorem declFor_baseDecls_ground {τr : Ty} {mname : String} {d : MethodDecl}
     rfl
   · simp at hpm
 
-theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
+theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : ClassOk h)
+    -- J56: the base table has no pairs, so name provenance collapses to
+    -- "every '#'-free name is a boot name" — a fact of the *heap*, decided at
+    -- boot and threaded here.
+    (hboot : ∀ j cp, h.classPayload? j = some cp → cp.name.data.head? ≠ some '#' →
+      cp.name ∈ Types.bootConstNames) :
     DeclsOkJ A baseDecls h := by
   have hd := tableOk_declsOk ht hcls
   refine ⟨?_, hd.2.1, hd.2.2.1, hd.2.2.2.1, hd.2.2.2.2,
@@ -185,7 +190,8 @@ theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : Cla
     fun c x τ hn => absurd hn (by simp [ivarTy?, baseDecls]),
     fun x τ hn => absurd hn (by simp [globalTy?, baseDecls]),
     fun pr hpr => absurd hpr (by simp [baseDecls]),
-    fun pr hpr => absurd hpr (by simp [baseDecls])⟩
+    fun pr hpr => absurd hpr (by simp [baseDecls]),
+    fun j cp hj hhd => Or.inl (hboot j cp hj hhd)⟩
   intro τr mname d hdecl
   rcases hd.1 τr mname d hdecl with hb | ⟨mdu, cu, htys, hres, hnm, hconf⟩ | hi
   · exact Or.inl hb
@@ -210,12 +216,30 @@ theorem tableOk_declsOkJ {A : SemAxioms} {h : Heap} (ht : TableOk h) (hcls : Cla
       exact absurd hdecl (by simp [declFor, tyClassNames, declOf?, declsFor, baseDecls])
   · exact Or.inr (Or.inr hi)
 
+/-- J56: every '#'-free boot name is on the boot constant table — one bounded
+    `decide` over `initHeap`. -/
+theorem initHeap_names_boot : ∀ j cp, Boot.initHeap.classPayload? j = some cp →
+    cp.name.data.head? ≠ some '#' → cp.name ∈ Types.bootConstNames := by
+  intro j cp hj hhd
+  have hlt : j < Boot.initHeap.objs.size := classPayload?_isSome_lt (by simp [hj])
+  have hb : (List.range Boot.initHeap.objs.size).all (fun o =>
+      match Boot.initHeap.classPayload? o with
+      | some cp0 => cp0.name.data.head? == some '#'
+          || Types.bootConstNames.contains cp0.name
+      | none => true) = true := by decide
+  have := List.all_eq_true.mp hb j (List.mem_range.mpr hlt)
+  rw [hj] at this
+  simp only [Bool.or_eq_true, beq_iff_eq] at this
+  rcases this with h1 | h1
+  · exact absurd h1 hhd
+  · exact List.contains_iff_mem.mp h1
+
 /-- `declsOf` is constant at `baseDecls` today; the J-witness at the boot heap, in
     the shape `judge_sound` consumes. -/
 theorem declsOkJ_declsOf {A : SemAxioms} {p : Expr} :
     DeclsOkJ A (declsOf p) Boot.initHeap := by
   show DeclsOkJ A baseDecls Boot.initHeap
-  exact tableOk_declsOkJ tableOk_initHeap classOk_initHeap
+  exact tableOk_declsOkJ tableOk_initHeap classOk_initHeap initHeap_names_boot
 
 /-! ## The first end-to-end instance
 

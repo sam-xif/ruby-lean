@@ -617,6 +617,9 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
       -- J53: and the declared-classes clause, `modules`' reason.
       (∀ pr ∈ D₁.classes, pr.2 ≠ nm) →
+      -- J56: the written slot must never be a class's sole registration —
+      -- parser-shaped name, off the boot table (`Registered`'s bill).
+      ':' ∉ nm.data → nm ∉ bootConstNames →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   -- **J49: the module-body constant write.** The write's target is the machine's
@@ -632,6 +635,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       readableClasses.contains nm = false →
       (∀ pr ∈ D₁.modules, pr.2 ≠ nm) →
       (∀ pr ∈ D₁.classes, pr.2 ≠ nm) →
+      ':' ∉ nm.data → nm ∉ bootConstNames →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
       Judge A D Γ (.casgn nm rhs) top ctx τ Γ₁ D₁
   | cpathAsgn {D Γ base nm rhs top ctx τb Γ₁ D₁ τ Γ₂ D₂} :
@@ -934,6 +938,13 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   | module' {D Γ name body top ctx τ Γb' Db'} :
       (ctx.cls, name) ∈ D.modules →
       name ≠ "" → name ≠ "Object" →
+      -- J56: parser-shaped name — `::`-free, not machine-minted — so the
+      -- qualified name decomposes uniquely (`qualifyMod_inj`) and is never
+      -- an eigenclass name.
+      ':' ∉ name.data → name.data.head? ≠ some '#' → ctx.cls.data.head? ≠ some '#' →
+      -- J56: parser-shaped and off the boot table — the naming-integrity
+      -- clause's freshness argument reads exactly this.
+      freshNameOkB name = true →
       -- the fresh path's class object is named `qualifyMod ctx.cls name`; no
       -- table key may denote it (or any machine-minted `#<…>` eigenclass name)
       declClsFresh D (qualifyMod ctx.cls name) name = true →
@@ -962,6 +973,8 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
   | classM {D Γ name body top ctx τ Γb' Db'} :
       (ctx.cls, name) ∈ D.classes →
       name ≠ "" → name ≠ "Object" →
+      ':' ∉ name.data → name.data.head? ≠ some '#' → ctx.cls.data.head? ≠ some '#' →
+      freshNameOkB name = true →
       declClsFresh D (qualifyMod ctx.cls name) name = true →
       ctx.meth = none →
       ctx.inBlock = false →

@@ -43,7 +43,7 @@ theorem nameIfAnonymous_noop {h : Heap} {q : String} {v : Value}
   | ref o =>
     cases hcp : h.classPayload? o with
     | none => simp [hcp]
-    | some c => simp [hcp, hcls.2.2.2 o c hcp]
+    | some c => simp [hcp, hcls.2.2.2.1 o c hcp]
   | _ => rfl
 
 /-- `StepOk` with the invariant swapped: `.next` carries `InvJ`, `.uncaught` is
@@ -678,7 +678,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   -- (reopen path — a pure frame push, `classTop`'s argument with the J44c facts
   -- carried into the new frame's clauses).
   case hmodule =>
-    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hneo hdfr hmn hnbk hpos hct hsct hrd hclsg hbody ihb
+    intro D Γ name body top ctx τ0 Γb' Db' hmemMods hne0 hneo hnc hnh hclsh hfno hdfr hmn hnbk hpos hct hsct hrd hclsg hbody ihb
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨hfb, hmb⟩ : fragHead body = true ∧ MFrag A body := by
@@ -782,13 +782,50 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         have := List.contains_iff_mem.mpr hmemr
         rw [hrd] at this
         exact Bool.noConfusion this
+      have hmiss' : constOwn m.heap (curFrame m).defmod name = none := by
+        rw [show (curFrame m).defmod = m.currentFrame.defmod from
+          congrArg Frame.defmod hdm.symm]
+        exact hmiss
+      have hslm : ∀ j cp, m.heap.classPayload? j = some cp →
+          cp.name.data.head? ≠ some '#' →
+          constOwn m.heap (curFrame m).defmod name = some (.ref j) →
+          cp.name = RubyCore.Types.qualifyMod (className m.heap (curFrame m).defmod) name →
+          False := by
+        intro j cp _ _ hco _
+        rw [hmiss'] at hco
+        exact absurd hco (by simp)
       have hcO : ClassOk (hmidOf m.heap (curFrame m).defmod name) := by
         rcases hposd with ⟨hdobj, -⟩ | ⟨hdneq, -, hoffd⟩
         · rw [show hmidOf m.heap (curFrame m).defmod name
               = constSetIn m.heap Boot.objectId name (.ref m.heap.objs.size) from by
             rw [hdobj]]
-          exact classOk_constSetIn_obj hnr hcls
-        · exact classOk_constSetIn_off hdneq hoffd hnr hcls
+          refine classOk_constSetIn_obj hnr ?_ hcls
+          intro j cp hj hhd hco hqn
+          exact hslm j cp hj hhd (by rw [hdobj]; exact hco) (by rw [hdobj]; exact hqn)
+        · exact classOk_constSetIn_off hdneq hoffd hnr hslm hcls
+      have hfnt0 := freshName_not_taken hcls.2.2.2.2.1 hcls.2.2.2.2.2.1 hdo hcn
+        hcls.2.2.2.1 hclsh hnc hnh hne0 hneo hmiss'
+      have hfnt : ∀ j cp, (hmidOf m.heap (curFrame m).defmod name).classPayload? j = some cp →
+          j ≠ m.heap.objs.size → cp.name ≠ RubyCore.Types.qualifyMod ctx.cls name := by
+        intro j cp hj hjk
+        have hnm2 := clsName_constSetIn m.heap (curFrame m).defmod j name
+          (Value.ref m.heap.objs.size)
+        rw [show (hmidOf m.heap (curFrame m).defmod name).classPayload? j
+          = (constSetIn m.heap (curFrame m).defmod name
+            (Value.ref m.heap.objs.size)).classPayload? j from rfl, hj] at hnm2
+        cases hj0 : m.heap.classPayload? j with
+        | none => rw [hj0] at hnm2; exact absurd hnm2.symm (by simp)
+        | some cp0 =>
+          rw [hj0] at hnm2
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+          rw [hnm2.1]
+          exact hfnt0 j cp0 hj0
+      have hregm : constOwn (hmidOf m.heap (curFrame m).defmod name)
+          (curFrame m).defmod name = some (.ref m.heap.objs.size) :=
+        constOwn_constSetIn_self hdo hdlt2
+      have hqq' : RubyCore.Types.qualifyMod ctx.cls name
+          = RubyCore.Types.qualifyMod (className m.heap (curFrame m).defmod) name := by
+        rw [hcn]
       have hnoO : NoHook (hmidOf m.heap (curFrame m).defmod name) :=
         noHook_constSetIn hh
       have hqrd : ∀ n ∈ Types.readableClasses, n ≠ RubyCore.Types.qualifyMod ctx.cls name := by
@@ -828,7 +865,9 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         saturated_fresh hchn hsat hdlt2,
         chainsIn_fresh hchn hdlt2,
         litClsOk_fresh hstr hdlt2 hchn,
-        classOk_fresh hchn hsat hdlt2 hcO hqne2 hqrd hqe_of,
+        classOk_fresh hchn hsat hdlt2 hcO hqne2 hqrd hqe_of hfnt hregm
+          (className_constSetIn m.heap (curFrame m).defmod (curFrame m).defmod name
+            (Value.ref m.heap.objs.size)) hqq' hnc hnh hdo,
         BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
         (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
         ClosuresOk.transport hclo
@@ -848,7 +887,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           hpayl,
         D, ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
               inClassBody := true, inModuleBody := true } : JCtx), [], ((ctx, Γk) :: Γs),
-        declsOkJ_fresh hchn hsat hdlt2 hqne2 hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl hclsg,
+        declsOkJ_fresh hchn hsat hdlt2 hqne2 hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl hclsg hmemMods hnc hnh,
         ?_, ?_, hglH, ?_⟩
       · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
           ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
@@ -932,7 +971,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
   -- ## J53: the machine-typed fresh `class` — `hmodule`'s mirror at the classes
   -- table, the `ClsFresh` composite, and the fresh-class `StackCtx` clause.
   case hclassM =>
-    intro D Γ name body top ctx τ0 Γb' Db' hmemCls hne0 hneo hdfr hmn hnbk hpos hct hsct hrd hmodg hbody ihb
+    intro D Γ name body top ctx τ0 Γb' Db' hmemCls hne0 hneo hnc hnh hclsh hfno hdfr hmn hnbk hpos hct hsct hrd hmodg hbody ihb
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     obtain ⟨hfb, hmb⟩ : fragHead body = true ∧ MFrag A body := by
@@ -976,7 +1015,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
     have hobj2 : Boot.objectId < m.heap.objs.size := hchn.boot.2.2.2.2
     obtain ⟨eO, heO0⟩ := Option.isSome_iff_exists.mp hstr.2.2.2.2.2.2
     have heOlt : eO < m.heap.objs.size := hchn.eigen _ hobj2 eO heO0
-    have hcno := htab.2.2.2.2.2.2.2.2.2 _ hmemCls
+    have hcno := htab.2.2.2.2.2.2.2.2.2.1 _ hmemCls
     rcases hcno _ hmow with hmiss | ⟨kk, cp', hhit, hcp', hism', hqn', heig', hlt'⟩
     · -- ## the fresh path: alloc + register + eigenclass + push
       have hdlt2 : (curFrame m).defmod < m.heap.objs.size := classPayload?_isSome_lt hdo
@@ -1038,13 +1077,50 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         have := List.contains_iff_mem.mpr hmemr
         rw [hrd] at this
         exact Bool.noConfusion this
+      have hmiss' : constOwn m.heap (curFrame m).defmod name = none := by
+        rw [show (curFrame m).defmod = m.currentFrame.defmod from
+          congrArg Frame.defmod hdm.symm]
+        exact hmiss
+      have hslm : ∀ j cp, m.heap.classPayload? j = some cp →
+          cp.name.data.head? ≠ some '#' →
+          constOwn m.heap (curFrame m).defmod name = some (.ref j) →
+          cp.name = RubyCore.Types.qualifyMod (className m.heap (curFrame m).defmod) name →
+          False := by
+        intro j cp _ _ hco _
+        rw [hmiss'] at hco
+        exact absurd hco (by simp)
       have hcO : ClassOk (hmidOf m.heap (curFrame m).defmod name) := by
         rcases hposd with ⟨hdobj, -⟩ | ⟨hdneq, -, hoffd⟩
         · rw [show hmidOf m.heap (curFrame m).defmod name
               = constSetIn m.heap Boot.objectId name (.ref m.heap.objs.size) from by
             rw [hdobj]]
-          exact classOk_constSetIn_obj hnr hcls
-        · exact classOk_constSetIn_off hdneq hoffd hnr hcls
+          refine classOk_constSetIn_obj hnr ?_ hcls
+          intro j cp hj hhd hco hqn
+          exact hslm j cp hj hhd (by rw [hdobj]; exact hco) (by rw [hdobj]; exact hqn)
+        · exact classOk_constSetIn_off hdneq hoffd hnr hslm hcls
+      have hfnt0 := freshName_not_taken hcls.2.2.2.2.1 hcls.2.2.2.2.2.1 hdo hcn
+        hcls.2.2.2.1 hclsh hnc hnh hne0 hneo hmiss'
+      have hfnt : ∀ j cp, (hmidOf m.heap (curFrame m).defmod name).classPayload? j = some cp →
+          j ≠ m.heap.objs.size → cp.name ≠ RubyCore.Types.qualifyMod ctx.cls name := by
+        intro j cp hj hjk
+        have hnm2 := clsName_constSetIn m.heap (curFrame m).defmod j name
+          (Value.ref m.heap.objs.size)
+        rw [show (hmidOf m.heap (curFrame m).defmod name).classPayload? j
+          = (constSetIn m.heap (curFrame m).defmod name
+            (Value.ref m.heap.objs.size)).classPayload? j from rfl, hj] at hnm2
+        cases hj0 : m.heap.classPayload? j with
+        | none => rw [hj0] at hnm2; exact absurd hnm2.symm (by simp)
+        | some cp0 =>
+          rw [hj0] at hnm2
+          simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+          rw [hnm2.1]
+          exact hfnt0 j cp0 hj0
+      have hregm : constOwn (hmidOf m.heap (curFrame m).defmod name)
+          (curFrame m).defmod name = some (.ref m.heap.objs.size) :=
+        constOwn_constSetIn_self hdo hdlt2
+      have hqq' : RubyCore.Types.qualifyMod ctx.cls name
+          = RubyCore.Types.qualifyMod (className m.heap (curFrame m).defmod) name := by
+        rw [hcn]
       have hnoO : NoHook (hmidOf m.heap (curFrame m).defmod name) :=
         noHook_constSetIn hh
       have hqrd : ∀ n ∈ Types.readableClasses, n ≠ RubyCore.Types.qualifyMod ctx.cls name := by
@@ -1083,7 +1159,9 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
         saturated_freshC hchn hsat hdlt2 heOlt,
         chainsIn_freshC hchn hdlt2 heOlt,
         litClsOk_freshC hstr hdlt2 hchn,
-        classOk_freshC hchn hsat hdlt2 hcO hqne2 hqrd hqe_of,
+        classOk_freshC hchn hsat hdlt2 hcO hqne2 hqrd hqe_of hfnt hregm
+          (className_constSetIn m.heap (curFrame m).defmod (curFrame m).defmod name
+            (Value.ref m.heap.objs.size)) hqq' hnc hnh hdo,
         BottomObj_cons hfsh1 (BottomObj_push hlt hbot),
         (by simp [framePopLabels, hks, dropLast_cons_ne hfsh1]),
         ClosuresOk.transport hclo
@@ -1103,7 +1181,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
           hpayl,
         D, ({ cls := RubyCore.Types.qualifyMod ctx.cls name,
               inClassBody := true, inFreshClass := true } : JCtx), [], ((ctx, Γk) :: Γs),
-        declsOkJC_fresh hchn hsat hdlt2 hqne2 heOlt hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl hmodg,
+        declsOkJC_fresh hchn hsat hdlt2 hqne2 heOlt hcls hcO hnoO htab hct hsct hdfr hdo hcn rfl hmodg hmemCls hnc hnh,
         ?_, ?_, hglH, ?_⟩
       · refine ⟨by rw [Array.size_push]; exact Nat.lt_succ_self _, hlt,
           ⟨ShallowChain.of_none (by rw [getD_push_lt_self]; try rfl), ?_, ?_⟩,
@@ -1638,7 +1716,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
             (fun p hp => hmv p (by simp [hp])) hvj hrest hsubw hk)
   -- ## The toplevel constant write (J41): push `casgnK` on the rhs.
   case hcasgn =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hclss hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hclss hnc hbn hrhs ihr
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
@@ -1653,10 +1731,10 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       simp only [evalExpr]
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
-        (KontOkJ.casgnK hct hsct hrd hmods hclss hsubw hk)
+        (KontOkJ.casgnK hct hsct hrd hmods hclss hnc hbn hsubw hk)
   -- ## The module-body constant write (J49): same push, the `casgnMK` kont.
   case hcasgnM =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hnc hbn hrhs ihr
     intro _hfh
     intro m Γs τw Γk htop hfs htab hsc hh hsat hstr hcls hbot hchn hks hgl hclo hmf hsubw hsuE hk
     cases hmf with
@@ -1666,7 +1744,7 @@ theorem judge_eval_ok {ans : Ty} {A : SemAxioms} {D : Decls} {Γ : Env} {e : Exp
       simp only [evalExpr]
       exact inv_pushJ hfs htab hsc hh hsat hstr hcls hbot hchn
         (by simp [framePopLabels, hks]) hmr hfr hrhs (SubJ.refl _)
-        (KontOkJ.casgnMK hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hsubw hk)
+        (KontOkJ.casgnMK hicb himb hnbk hret0 hmeth0 hct hsct hrd hmods hclss hnc hbn hsubw hk)
   case hvarIvar =>
     intro D Γ x top ctx sc σ hsome hiv
     intro _hfh
@@ -2268,7 +2346,13 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           (ivarOnly_rowsAndConstsJ hi htab).2.2.1, (ivarOnly_rowsAndConstsJ hi htab).2.2.2,
           htab.2.2.2.2.2.1, htab.2.2.2.2.2.2.1, htab.2.2.2.2.2.2.2.1,
           fun pr hpr => moduleNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2.1 pr hpr),
-          fun pr hpr => classNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
+          fun pr hpr => classNameOk_ivarOnly hi (htab.2.2.2.2.2.2.2.2.2.1 pr hpr),
+          (by
+            intro j cp hj hhd
+            have hj' : m.heap.classPayload? j = some cp := by
+              rw [← hi.classPayload]
+              exact hj
+            exact htab.2.2.2.2.2.2.2.2.2.2 j cp hj' hhd)⟩,
         ?_, ?_, ?_, ?_⟩
       · intro c' x' σ' hiv' o' ho0 hcn' v' hv'
         have hsz : (withCtl (bindIvar { m with kont := k } x v) (.value v)).heap.objs.size
@@ -2408,7 +2492,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     -- inert (`nameIfAnonymous_noop`, J41a's clause), the write is `constSetIn` on
     -- `Object` (`BottomObj` at the singleton stack), and every invariant conjunct
     -- crosses by the `constSetIn` transports.
-    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hmods hclss hsw hk' hsu =>
+    | @casgnK _ _ _ _ _ τw nm k _ hct hsct hrd hmods hclss hnc hbn hsw hk' hsu =>
       cases hst : m.stack with
       | nil => exact absurd hst (hfs.frameShallow).1
       | cons fid fids =>
@@ -2433,7 +2517,31 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         refine ⟨noHook_constSetIn hh, saturated_constSetIn hsat,
           chainsIn_constSetIn hchn,
           litClsOk_constSetIn hstr,
-          classOk_constSetIn_obj (by simpa using hrd) hcls,
+          classOk_constSetIn_obj (by simpa using hrd)
+            (by
+              -- J56: the slot registers no '#'-free class — provenance + guards
+              intro j cp hj hhd hco hqn
+              rw [hcls.1] at hqn
+              rw [show RubyCore.Types.qualifyMod "Object" nm = nm from by
+                show (if ("Object" : String) = "Object" then nm else _) = nm
+                rw [if_pos rfl]] at hqn
+              rcases htab.2.2.2.2.2.2.2.2.2.2 j cp hj hhd with hb | ⟨pr, hpr, hq, hnc2, -⟩
+              · rw [hqn] at hb
+                exact hbn hb
+              · rw [hqn] at hq
+                by_cases hpo : pr.1 = "Object"
+                · rw [hpo] at hq
+                  rw [show RubyCore.Types.qualifyMod "Object" pr.2 = pr.2 from by
+                    show (if ("Object" : String) = "Object" then pr.2 else _) = pr.2
+                    rw [if_pos rfl]] at hq
+                  rcases hpr with hm | hcl2
+                  · exact hmods pr hm hq.symm
+                  · exact hclss pr hcl2 hq.symm
+                · have hcolon : ':' ∈ (RubyCore.Types.qualifyMod pr.1 pr.2).data :=
+                    colon_mem_qual' hpo
+                  rw [show RubyCore.Types.qualifyMod pr.1 pr.2 = nm from hq.symm] at hcolon
+                  exact hnc hcolon)
+            hcls,
           hbot, (by simpa [framePopLabels, Interp.withCtl] using hks),
           ClosuresOk.transport (hcloTail hK)
             (by intro κ hm cl hcl
@@ -2449,7 +2557,19 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
             fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
               (htab.2.2.2.2.2.2.2.2.1 pr hpr),
             fun pr hpr => classNameOk_constSetIn (hclss pr hpr)
-              (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
+              (htab.2.2.2.2.2.2.2.2.2.1 pr hpr),
+            (by
+              intro j cp hj hhd
+              have hj2 : (constSetIn m.heap Boot.objectId nm v).classPayload? j = some cp := hj
+              have hnm2 := clsName_constSetIn m.heap Boot.objectId j nm v
+              rw [hj2] at hnm2
+              cases hj0 : m.heap.classPayload? j with
+              | none => rw [hj0] at hnm2; exact absurd hnm2 (by simp)
+              | some cp0 =>
+                rw [hj0] at hnm2
+                simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+                rw [hnm2.1]
+                exact htab.2.2.2.2.2.2.2.2.2.2 j cp0 hj0 (by rw [← hnm2.1]; exact hhd))⟩,
           FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
           GlobalsOk.congr hag hgl,
           ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,
@@ -2458,7 +2578,7 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
     -- module the J34/J44c clauses pin; the write's transports are the `_off`
     -- suite (or `_obj` when the enclosing definee happens to be `Object`).
     | @casgnMK _ _ _ _ _ _ τw nm k _ hicb himb hnbk hret0 hmeth0 hct hsct hrd
-        hmods hclss hsw hk' hsu =>
+        hmods hclss hnc hbn hsw hk' hsu =>
       have hfsh1 : m.stack ≠ [] := (hfs.frameShallow).1
       obtain ⟨fid₀, fids₀, hst⟩ : ∃ fid fids, m.stack = fid :: fids := by
         cases hst : m.stack with
@@ -2477,11 +2597,51 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
       have hag := typeAgree_constSetIn m.heap (m.currentFrame).defmod nm v
       have hrows := constSetIn_rowsAndConstsJ
         (j := (m.currentFrame).defmod) (v := v) htab hct hsct
+      have hcpd' : m.heap.classPayload? m.currentFrame.defmod = some cpd := by
+        rw [hdm2, hcur]; exact hcpd
+      have hcndm : className m.heap m.currentFrame.defmod = ctx.cls := by
+        unfold className
+        rw [hcpd']
+        show (if cpd.name.isEmpty = true then _ else cpd.name) = ctx.cls
+        rw [if_neg (by rw [hcls.2.2.2.1 _ cpd hcpd']; exact Bool.false_ne_true)]
+        exact hnmd
+      have hslM : ∀ j cp, m.heap.classPayload? j = some cp →
+          cp.name.data.head? ≠ some '#' →
+          constOwn m.heap m.currentFrame.defmod nm = some (.ref j) →
+          cp.name = RubyCore.Types.qualifyMod (className m.heap m.currentFrame.defmod) nm →
+          False := by
+        intro j cp hj hhd hco hqn
+        rw [hcndm] at hqn
+        rcases htab.2.2.2.2.2.2.2.2.2.2 j cp hj hhd with hb | ⟨pr, hpr, hq, hnc2, -⟩
+        · by_cases hco2 : ctx.cls = "Object"
+          · obtain ⟨cpO, hOp, hOm⟩ := hcls.2.2.2.2.2.2
+            have hOn : cpO.name = "Object" := by
+              have h1 : className m.heap Boot.objectId = "Object" := hcls.1
+              unfold className at h1
+              rw [hOp] at h1
+              rw [← h1]
+              show cpO.name = (if cpO.name.isEmpty = true then _ else cpO.name)
+              rw [if_neg (by rw [hcls.2.2.2.1 _ cpO hOp]; exact Bool.false_ne_true)]
+            have hdd : m.currentFrame.defmod = Boot.objectId :=
+              hcls.2.2.2.2.1 _ _ cpd cpO hcpd' hOp
+                (by rw [hnmd, hco2, hOn]) (by rw [hnmd, hco2]; decide)
+            rw [hdd, hOp] at hcpd'
+            have hce : cpO = cpd := Option.some.inj hcpd'
+            rw [← hce, hOm] at hismd
+            exact Bool.noConfusion hismd
+          · rw [hqn] at hb
+            exact bootConstNames_colon_free _ hb (colon_mem_qual' hco2)
+        · obtain ⟨-, hbd⟩ := qualifyMod_inj hnc hnc2 (hqn.symm.trans hq)
+          rcases hpr with hm | hcl2
+          · exact hmods pr hm hbd.symm
+          · exact hclss pr hcl2 hbd.symm
       have hclsW : ClassOk (constSetIn m.heap m.currentFrame.defmod nm v) := by
         by_cases hdobj : m.currentFrame.defmod = Boot.objectId
         · rw [hdobj]
-          exact classOk_constSetIn_obj (by simpa using hrd) hcls
-        · refine classOk_constSetIn_off hdobj ?_ (by simpa using hrd) hcls
+          refine classOk_constSetIn_obj (by simpa using hrd) ?_ hcls
+          intro j cp hj hhd hco hqn
+          exact hslM j cp hj hhd (by rw [hdobj]; exact hco) (by rw [hdobj]; exact hqn)
+        · refine classOk_constSetIn_off hdobj ?_ (by simpa using hrd) hslM hcls
           rw [hdm2, hcur]
           rw [hdm2, hcur] at hdobj
           exact hoffd
@@ -2507,7 +2667,20 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
           fun pr hpr => moduleNameOk_constSetIn (hmods pr hpr)
             (htab.2.2.2.2.2.2.2.2.1 pr hpr),
           fun pr hpr => classNameOk_constSetIn (hclss pr hpr)
-            (htab.2.2.2.2.2.2.2.2.2 pr hpr)⟩,
+            (htab.2.2.2.2.2.2.2.2.2.1 pr hpr),
+          (by
+            intro j cp hj hhd
+            have hj2 : (constSetIn m.heap m.currentFrame.defmod nm v).classPayload? j
+                = some cp := hj
+            have hnm2 := clsName_constSetIn m.heap m.currentFrame.defmod j nm v
+            rw [hj2] at hnm2
+            cases hj0 : m.heap.classPayload? j with
+            | none => rw [hj0] at hnm2; exact absurd hnm2 (by simp)
+            | some cp0 =>
+              rw [hj0] at hnm2
+              simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+              rw [hnm2.1]
+              exact htab.2.2.2.2.2.2.2.2.2.2 j cp0 hj0 (by rw [← hnm2.1]; exact hhd))⟩,
         FramesOkJ.heap_congr hag hfs, StackCtx.heap_congr hag hsc,
         GlobalsOk.congr hag hgl,
         ⟨τw, _, VTy.congr hag (VTy.weaken hv hsw), hsu,

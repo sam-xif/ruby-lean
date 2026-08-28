@@ -254,7 +254,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       obtain ⟨rfl, h2⟩ := ih hmeth2 hfb hmb (by simpa [defFree] using hdf) hs
       exact ⟨rfl, .cpathScoped h2 (by rw [hs.scopedConstTy_eq]; exact hsco)⟩
   case hcasgn =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hclss hrhs ih hmeth2 hfhx hmf hdf D2 hs
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ htopt hct hsct hrd hmods hclss hnc hbn hrhs ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
     | semantic hmem hff => simp [fragHead] at hff
     | casgn hfr hmr =>
@@ -262,7 +262,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
       exact ⟨rfl, .casgn htopt (by rw [hs.constTy_eq]; exact hct)
         (fun cn => by rw [hs.scopedConstTy_eq]; exact hsct cn) hrd
         (fun pr hpr => hmods pr (by rw [← hs.modules_eq]; exact hpr))
-        (fun pr hpr => hclss pr (by rw [← hs.classes_eq]; exact hpr)) h2⟩
+        (fun pr hpr => hclss pr (by rw [← hs.classes_eq]; exact hpr)) hnc hbn h2⟩
   case hretSome =>
     intro D Γ e' top ctx σ τ0 Γ₁ D₁ hσ hms hj0 hsj ih hmeth2 hfhx hmf hdf D2 hs
     cases hmf with
@@ -423,7 +423,7 @@ theorem judge_mono {A : SemAxioms} {D : Decls} {Γ : Env} {e : Expr} {top : Bool
     exact ⟨rfl, .sub h2 hsj hse⟩
   -- J49: `casgnM` sits in a module body, whose `meth` channel is closed.
   case hcasgnM =>
-    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret hmeth0 hct hsct hrd hmods hclss hrhs ihr
+    intro D Γ nm rhs top ctx τ0 Γ₁ D₁ hicb himb hnbk hret hmeth0 hct hsct hrd hmods hclss hnc hbn hrhs ihr
     intro hmeth2 _ _ _ D2 _
     rw [hmeth0] at hmeth2
     exact Bool.noConfusion hmeth2
@@ -469,7 +469,15 @@ theorem DeclsOkJ_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOkJ A D h)
     fun c x τ hn => hd.2.2.2.2.2.2.1 c x τ (by rw [← hs.ivarTy_eq]; exact hn),
     fun x τ hn => hd.2.2.2.2.2.2.2.1 x τ (by rw [← hs.globalTy_eq]; exact hn),
     fun pr hpr => hd.2.2.2.2.2.2.2.2.1 pr (by rw [← hs.modules_eq]; exact hpr),
-    fun pr hpr => hd.2.2.2.2.2.2.2.2.2 pr (by rw [← hs.classes_eq]; exact hpr)⟩
+    fun pr hpr => hd.2.2.2.2.2.2.2.2.2.1 pr (by rw [← hs.classes_eq]; exact hpr),
+    (by
+      intro j cp hj hhd
+      rcases hd.2.2.2.2.2.2.2.2.2.2 j cp hj hhd with hb | ⟨pr, hpr, hq, hnc2, hnh2⟩
+      · exact Or.inl hb
+      · refine Or.inr ⟨pr, ?_, hq, hnc2, hnh2⟩
+        rcases hpr with hm | hcl
+        · exact Or.inl (by rw [hs.modules_eq]; exact hm)
+        · exact Or.inr (by rw [hs.classes_eq]; exact hcl))⟩
   · cases hold : declFor D τ n with
     | none => exact (hnew τ n d hold hdf).1
     | some d0 =>
@@ -502,7 +510,18 @@ theorem DeclsOkJ_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : Strin
         exact absurd (superDecl?_declaresName hn) (by simp [hfresh])),
     hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
     fun pr hpr => moduleNameOk_defineMethod (hd.2.2.2.2.2.2.2.2.1 pr hpr),
-    fun pr hpr => classNameOk_defineMethod (hd.2.2.2.2.2.2.2.2.2 pr hpr)⟩
+    fun pr hpr => classNameOk_defineMethod (hd.2.2.2.2.2.2.2.2.2.1 pr hpr),
+    (by
+      intro j cp hj hhd
+      have hnm2 := clsName_defineMethod h cls j name md
+      rw [hj] at hnm2
+      cases hj0 : h.classPayload? j with
+      | none => rw [hj0] at hnm2; exact absurd hnm2 (by simp)
+      | some cp0 =>
+        rw [hj0] at hnm2
+        simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnm2
+        rw [hnm2.1]
+        exact hd.2.2.2.2.2.2.2.2.2.2 j cp0 hj0 (by rw [← hnm2.1]; exact hhd))⟩
   intro τr mname decl hdecl
   have hne : ¬ (mname = name) := by
     intro heq

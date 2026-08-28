@@ -126,11 +126,11 @@ theorem KontOkJ.clsGrow {ans : Ty} {A : SemAxioms} :
       intro hg hch; exact .cpathK hb hsco hsw (ih hg hch) hsu
   | retValK hσ hms hsub _ hsu ih =>
       intro hg hch; exact .retValK hσ hms hsub (ih hg hch) hsu
-  | casgnK hct hsct hrd hmods hclss hsub _ hsu ih =>
-      intro hg hch; exact .casgnK hct hsct hrd hmods hclss hsub (ih hg hch) hsu
-  | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hsub _ hsu ih =>
+  | casgnK hct hsct hrd hmods hclss hnc hbn hsub _ hsu ih =>
+      intro hg hch; exact .casgnK hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch) hsu
+  | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hnc hbn hsub _ hsu ih =>
       intro hg hch
-      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hsub (ih hg hch) hsu
+      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch) hsu
   | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
       intro hg hch; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih hg hch) hsu
   | hshValK hfp hmk hmvs hpr hw _ hsu ih =>

@@ -77,6 +77,51 @@ structure MethodDecl where
   blk : Option BlockSig := none
 deriving DecidableEq, Repr, Inhabited
 
+/-- **Every boot-registered constant name** (J56): `classTable`'s names, spelled
+    in the Types layer so the `casgn` rules can bar them (overwriting a boot
+    class's registration would orphan it from `Registered`). Correspondence
+    with `Boot.classTable` is decided at the boot heap (`classOkB`). -/
+def bootConstNames : List String :=
+  ["BasicObject",
+   "Object",
+   "Module",
+   "Class",
+   "NilClass",
+   "TrueClass",
+   "FalseClass",
+   "Integer",
+   "Float",
+   "String",
+   "Symbol",
+   "Array",
+   "Hash",
+   "Exception",
+   "StandardError",
+   "RuntimeError",
+   "ArgumentError",
+   "TypeError",
+   "NameError",
+   "NoMethodError",
+   "ZeroDivisionError",
+   "LocalJumpError",
+   "FrozenError",
+   "IndexError",
+   "KeyError",
+   "RangeError",
+   "StopIteration",
+   "NotImplementedError",
+   "ScriptError",
+   "Proc",
+   "Random",
+   "Math",
+   "Range",
+   "Kernel",
+   "Numeric",
+   "UncaughtThrowError",
+   "Regexp",
+   "MatchData",
+   "RegexpError"]
+
 /-- The machine's qualified-name computation, table-side: `enterClassBody` names
     a nested definition `Owner::name` and a toplevel one bare (`defmod = Object`).
     Lives in the Types layer so both the `Judge.module'` rule and the proof-side
@@ -881,6 +926,31 @@ own those names too, so sole ownership fails — and `Regexp` is refused because
 `classRecv` excludes its id (L106). -/
 def readableClasses : List String :=
   reopenableClasses ++ ["Float"]
+
+/-- **The boot heap's class and module names** (J56) — `Boot.classTable`'s name
+    column as a literal the Types layer can see (`Boot` lives in `Heap.lean`,
+    downstream); the agreement is a `decide` in the Proof layer. Read by the
+    `module'`/`classM` freshness guard: a fresh definition may not take a boot
+    name, which is what keeps the **naming-integrity** clause (`NamesUnique` /
+    `NamedImpliesRegistered`) inductive — a name off this list and off the
+    declared pairs' qualified names denotes no object. -/
+def bootClassNames : List String :=
+  ["BasicObject", "Object", "Module", "Class", "NilClass", "TrueClass",
+   "FalseClass", "Integer", "Float", "String", "Symbol", "Array", "Hash",
+   "Exception", "StandardError", "RuntimeError", "ArgumentError", "TypeError",
+   "NameError", "NoMethodError", "ZeroDivisionError", "LocalJumpError",
+   "FrozenError", "IndexError", "KeyError", "RangeError", "StopIteration",
+   "NotImplementedError", "ScriptError", "Proc", "Random", "Math", "Range",
+   "Kernel", "Numeric", "UncaughtThrowError", "Regexp", "MatchData",
+   "RegexpError"]
+
+/-- **A well-formed fresh definition name** (J56): nonempty, no `::` (the parser
+    cannot produce one for a bare `module`/`class` head — scoped heads have
+    their own rules), not machine-minted (`#<…>`), and off the boot table. What
+    `qualifyMod`-injectivity and the naming-integrity clause need of `name`. -/
+def freshNameOkB (name : String) : Bool :=
+  !name.isEmpty && name.data.all (· ≠ ':') && name.data.head? != some '#' &&
+    !(bootClassNames.contains name)
 
 /-- Every reopenable name is readable — the inclusion `ClassOk`'s consumers use to
     read the reopen clauses out of the one quantified block. `simp` proves it because
