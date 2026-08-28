@@ -76,6 +76,20 @@ class Collector < Prism::Visitor
     super()
   end
 
+  # `X = T.type_alias { … }` — Sorbet-only: the constant exists solely to be
+  # referenced inside sigs, which this transform removes. Deleting the whole
+  # assignment is behavior-preserving for code whose only reads of X are in
+  # (removed) sigs; the fixpoint checker flags any remaining runtime read.
+  def visit_constant_write_node(node)
+    v = node.value
+    if v.is_a?(Prism::CallNode) && const_t?(v.receiver) && v.name == :type_alias
+      @edits << Edit.new(node.location.start_character_offset,
+                         node.location.end_character_offset, nil)
+      return
+    end
+    super
+  end
+
   def visit_call_node(node)
     if sig_call?(node) || extend_t_sig?(node)
       @edits << Edit.new(node.location.start_character_offset, node.location.end_character_offset, nil)
