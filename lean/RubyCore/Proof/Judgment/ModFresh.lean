@@ -888,6 +888,115 @@ theorem classOk_constSetIn_off {h : Heap} {dd : ObjId} {nm : String} {v : Value}
       rw [show cp.name = cp0.name from congrArg Prod.fst hnm2]
       exact hc.2.2.2 o cp0 h2
 
+/-- `NoShadowBefore` lifts from `hmid` to the composite at any old class. -/
+theorem noShadowBefore_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    {k' : ObjId} (hk' : k' < h₀.objs.size)
+    (hn : NoShadowBefore (hmidOf h₀ d name) k') :
+    NoShadowBefore (freshModHeap h₀ d name q) k' := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hszm := hmid_size h₀ d name
+  have hanc : ancestors (freshModHeap h₀ d name q) k'
+      = ancestors (hmidOf h₀ d name) k' :=
+    ClsGrow.ancestors_old hg hchm hsm (by rw [hszm]; exact hk')
+  refine ⟨by rw [hanc]; exact hn.1, ?_⟩
+  rw [hanc]
+  intro j hj cp hcp
+  have hjm : j ∈ ancestors (hmidOf h₀ d name) k' := by
+    have := List.takeWhile_sublist (l := ancestors (hmidOf h₀ d name) k')
+      (p := (· != Boot.objectId))
+    exact this.mem hj
+  have hjlt : j < (hmidOf h₀ d name).objs.size :=
+    ClsGrow.ancestors_mem_lt hchm (by rw [hszm]; exact hk') j hjm
+  rw [hg.payloadOld hjlt] at hcp
+  exact hn.2 j hj cp hcp
+
+/-- `ClassOk` at the composite. -/
+theorem classOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+    (hdlt : d < h₀.objs.size)
+    (hcm : ClassOk (hmidOf h₀ d name))
+    (hqne : ¬ q.isEmpty = true)
+    (hqrd : ∀ n ∈ Types.readableClasses, n ≠ q)
+    (hqe : ∀ n ∈ Types.readableClasses, n ≠ "#<Class:" ++ q ++ ">") :
+    ClassOk (freshModHeap h₀ d name q) := by
+  have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
+  have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
+  have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
+    clsGrow_hmid_fresh
+  have hszm := hmid_size h₀ d name
+  have hobj : Boot.objectId < (hmidOf h₀ d name).objs.size := by
+    rw [hszm]; exact hch.boot.2.2.2.2
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [ClsGrow.className_old hg hobj]
+    exact hcm.1
+  · exact noShadowBefore_fresh hch hsat hch.boot.2.2.2.2 hcm.2.1
+  · intro n hn
+    obtain ⟨kn, cp, h1, h2, h4, h5, hrx, hmt, hsole, hreop⟩ := hcm.2.2.1 n hn
+    have hknlt : kn < (hmidOf h₀ d name).objs.size :=
+      classPayload?_isSome_lt (by rw [h2]; simp)
+    refine ⟨kn, cp,
+      by rw [ClsGrow.constOwn_old hg hobj]; exact h1,
+      by rw [hg.payloadOld hknlt]; exact h2,
+      by rw [ClsGrow.className_old hg hknlt]; exact h4,
+      ?_, hrx, hmt, ?_, ?_⟩
+    · intro j hji hjn
+      by_cases hjo : j < h₀.objs.size
+      · refine h5 j ?_ ?_
+        · rw [← hg.payloadOld (by rw [hszm]; exact hjo)]; exact hji
+        · rw [← ClsGrow.className_old hg (by rw [hszm]; exact hjo)]; exact hjn
+      · by_cases hjk : j = h₀.objs.size
+        · subst hjk
+          rw [className_fresh_k hqne] at hjn
+          exact absurd hjn.symm (hqrd n hn)
+        · by_cases hje : j = h₀.objs.size + 1
+          · subst hje
+            rw [className_fresh_e] at hjn
+            exact absurd hjn.symm (hqe n hn)
+          · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+              (fun hlt2 => not_lt_add_two hjo hjk hje hlt2))] at hji
+            exact absurd hji (by simp)
+    · intro j hji hjo
+      by_cases hjlt : j < h₀.objs.size
+      · rw [ClsGrow.constOwn_old hg (by rw [hszm]; exact hjlt)]
+        refine hsole j ?_ hjo
+        rw [← hg.payloadOld (by rw [hszm]; exact hjlt)]; exact hji
+      · by_cases hjk : j = h₀.objs.size
+        · subst hjk; exact constOwn_fresh_k
+        · by_cases hje : j = h₀.objs.size + 1
+          · subst hje; exact constOwn_fresh_e
+          · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+              (fun hlt2 => not_lt_add_two hjlt hjk hje hlt2))] at hji
+            exact absurd hji (by simp)
+    · intro hmem
+      obtain ⟨hmod, hhd, hns⟩ := hreop hmem
+      refine ⟨hmod, ?_, noShadowBefore_fresh hch hsat (by rw [← hszm]; exact hknlt) hns⟩
+      rw [ClsGrow.ancestors_old hg hchm hsm hknlt]
+      exact hhd
+  · intro o cp hcp
+    by_cases ho : o < h₀.objs.size
+    · rw [hg.payloadOld (by rw [hszm]; exact ho)] at hcp
+      exact hcm.2.2.2 o cp hcp
+    · by_cases hk : o = h₀.objs.size
+      · subst hk
+        rw [freshModHeap_cp_k] at hcp
+        cases hcp
+        exact Bool.eq_false_iff.mpr hqne
+      · by_cases he2 : o = h₀.objs.size + 1
+        · subst he2
+          rw [freshModHeap_cp_e] at hcp
+          cases hcp
+          refine Bool.eq_false_iff.mpr ?_
+          show ¬ ("#<Class:" ++ q ++ ">").isEmpty = true
+          simp only [String.isEmpty_iff]
+          intro hq
+          have h1 := congrArg String.length hq
+          simp [String.length_append] at h1
+        · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
+            (fun hlt2 => not_lt_add_two ho hk he2 hlt2))] at hcp
+          cases hcp
+
 end Preds
 
 end Judgment
