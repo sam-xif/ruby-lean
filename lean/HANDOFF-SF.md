@@ -62,3 +62,46 @@ frame cannot replace `declaresName` before it can preserve a claim across a run.
 * `Types/SlotClaimEg.lean` is the executable spec of the intended behaviour —
   §1's two measured blockers, SF8's table in both polarities, the walk on
   syntax. Extend it before changing semantics; every entry there is a `#guard`.
+
+---
+
+## Session log (2026-08-28) — final verified state
+
+Branch `sam-xif-investigation`, working tree clean. Seven commits, oldest first:
+
+| commit | what |
+|---|---|
+| `4c6552d` | SF1–SF8 + SF-T1/SF-T2 — the algebra and the frame rule for one step |
+| `fd34fa9` | `compose` simplified to concatenation; `holds_compose`; `row_lookupIn` |
+| `f5b0781` | `SlotClaimEg` — the two measured blockers cleared, SF8 in both polarities |
+| `83bfcb7` | `SlotWalk` — §5 step 2, the install inventory |
+| `644c9f6` | SF-T4's wire half — `JCert.footprint`, `frameOkB` in `validateJ` |
+| `286a5f6` | docs — `slot-frame.md` §10, ladder status, `docs/semantics/README.md` |
+| `f474901`, `cde8891` | this handoff + the honesty caveat on `frameOkB` |
+
+(Run `git log --oneline` for the exact first hash; the table is the order, not a
+promise about rebases.)
+
+### Verification actually run
+
+* `lake build` (the SUT + `rubycore` exe) — 110 jobs, success.
+* `lake build Judgment Metatheory` — 106 jobs, success. `validateJ_certifies`
+  needed only its `obtain` pattern widened for the new `&&` conjunct.
+* `lake build HJudge` — 298 jobs, success (Iris seat unaffected).
+* `#print axioms` on the four new headline theorems: `propext`, `Quot.sound`,
+  and `Classical.choice` for `ResolvesAt_defineMethod_slot`. No `sorryAx`.
+* Every `#guard` in `SlotClaimEg.lean` and the three new ones in
+  `Proof/Judgment/Adequacy.lean` elaborate.
+
+**One pre-existing red, not mine:** `scripts/check-proofs.sh` ends with
+`heapOkB (prelude-booted): false` / `FAIL: the prelude-booted heap does not
+satisfy the heap half of Inv`. Verified by stashing the whole working tree and
+re-running — identical failure without any SF code. Untouched here; it wants its
+own session.
+
+### If you are picking this up cold
+
+Read, in order: `../docs/semantics/slot-frame.md` §§1–3 (why locality), then
+`Types/SlotClaimEg.lean` (the intended behaviour, executable), then "The one
+thing that is *not* proved" above. Do not read `Proof/Static/Frame.lean` first —
+its lemmas are elementary and will make the layer look more finished than it is.
