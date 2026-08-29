@@ -71,7 +71,7 @@ Branch `sam-xif-investigation`, working tree clean. Seven commits, oldest first:
 
 | commit | what |
 |---|---|
-| `4c6552d` | SF1–SF8 + SF-T1/SF-T2 — the algebra and the frame rule for one step |
+| `0859d48` | SF1–SF8 + SF-T1/SF-T2 — the algebra and the frame rule for one step |
 | `fd34fa9` | `compose` simplified to concatenation; `holds_compose`; `row_lookupIn` |
 | `f5b0781` | `SlotClaimEg` — the two measured blockers cleared, SF8 in both polarities |
 | `83bfcb7` | `SlotWalk` — §5 step 2, the install inventory |
@@ -79,7 +79,7 @@ Branch `sam-xif-investigation`, working tree clean. Seven commits, oldest first:
 | `286a5f6` | docs — `slot-frame.md` §10, ladder status, `docs/semantics/README.md` |
 | `f474901`, `cde8891` | this handoff + the honesty caveat on `frameOkB` |
 
-(Run `git log --oneline` for the exact first hash; the table is the order, not a
+(Hashes are this branch as of the commit above; the table is the order, not a
 promise about rebases.)
 
 ### Verification actually run
