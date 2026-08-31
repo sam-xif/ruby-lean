@@ -82,6 +82,24 @@ axiom-clean), and the footprint riding `JCert` with `frameOkB` inside `validateJ
 Still open: SF-T3's install-sets on `Judge` — until they land the frame is
 *additive*, and `declaresName`'s name-globality cannot actually be removed.
 
+**Plan (2026-08-30, sequences the two above):**
+[Typing the slice — milestone plan](typing-the-slice-milestones.md) — the *machinery*
+path from the measured baseline (**all six whole-file certificates carry zero rows**;
+`sem_assumes` equals each file's `def self.x` count, so the accepts are real but never
+look inside a body) to typed bodies. **M0 is the reordering finding**: the frame
+half-breaks the layer's own semantic-judgment discipline — `SlotClaim.Holds` is a
+*single-state* predicate and `frameOkB` conflates it with a claim about the program
+text, so the property SF-T3 should prove is *defined nowhere*. Fix is a definition
+(`SemFrame`, reachability-shaped like `SemJudge`, quantified over intermediate states
+because a row is consumed at every dispatch) with `frameOkB` demoted to one of four
+admission routes. **M0a** is the cheap one found by censusing all eight files: the only AST head in the slice with no rung in any plan is `fwd` (argument forwarding), and it exists only because `class_sugar_strip.rb` expands `alias` into `def m(...) = n(...)` — no slice source contains `(...)`; the rule that falls out is *a strip transform may only emit heads that already have a rung, else gate*. Then M1 metaclass hygiene (two real model defects found while
+measuring), M2 qualified names pinning ids, M3 `srows` (`slice-verdict.md` §4a rung 3,
+designed but unbuilt), M4 `self` at `.clsOf` in a `defs` body (the J11 widening), M5
+the eigenclass-aware install walk (26/26 `opaque_` sites are `def self.x`), M6 dropping
+name-globality, M7 the bodies. Interlocks with
+[`../../homebrew/slice-inventory.md`](../../homebrew/slice-inventory.md), which prices
+the *judgments* this sequences the machinery for.
+
 **Design (amends the above):** [The judgment layer](judgment-layer.md) — the 2026-08-26
 re-scoping of **C-1**: state the invariant over an **inductive judgment** (`Judge`/
 `KJudge`/`MachineTyped`, transcribing `type-judgments.md` §6–§8 into Lean as the

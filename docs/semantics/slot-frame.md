@@ -324,6 +324,49 @@ rewrite.
   program forever instead of shrinking to its untyped remainder, and
   `declaresName`'s name-globality (§7.1's first demolition target) cannot
   actually be removed — the frame is additive, not yet a replacement.
+
+  **2026-08-30 — and it needs a statement before it needs a proof.**
+  `typing-the-slice-milestones.md` §3 (M0): `Holds` is a *single-state* predicate,
+  so `frameOkB` conflates a decided instance of it with `framedProgB`, a claim
+  about the program text — the property SF-T3 should establish is defined
+  nowhere, which is why the obligation reads as unbounded. Define `SemFrame` by
+  reachability first (`SemJudge`'s idiom, over intermediate states), then SF-T3 is
+  the *syntactic route's* adequacy theorem and three other routes exist.
 * **`defs` / `class << self` are `opaque_`.** The heap has no eigenclass, so the
   walk cannot say which slot a singleton write is; it declines rather than
   guess. Every `defs`-bearing program therefore needs a trivial footprint.
+
+### Measured, 2026-08-29 — the experiment memo's E2 and E3
+
+[`slot-frame-experiment.md`](slot-frame-experiment.md) E2 and E3 were run in
+`../../spikes/slot-frame/` (numbers and reproduction: `RESULTS.md` there; session
+log: `../../lean/HANDOFF-SF.md`). Nothing in `RubyCore/` changed — E3's weakened
+guard is a name-distinct local copy.
+
+* **E2 (V2, decidability) — pass.** 25 rows × the largest real slice AST
+  (`identify.rb`, 787 nodes) decides in **0.32 s** by `decide`, no
+  `native_decide`; the cost is linear in both footprint size and install count
+  (200 → 800 sites with no short-circuit: 1.21 s → 4.06 s at 25 rows).
+  `maxRecDepth` must exceed the default 512 — 4000 covers the whole sweep — which
+  the judgment layer already sets. **The footprint representation stays as built**;
+  the memo's per-class-name-set redesign is not needed.
+* **E3 (the artifact) — pass, with the negative case.** For
+  `"abc".to_s.length + 1.to_s.length` under three rows, today's `validateJ`
+  rejects with `rowsGuarded` as its *only* failing conjunct; with the frame
+  consulted it accepts; against `class String; def to_s; 1; end; end` it rejects
+  with `frameOkB = false`, and `frameOkB` alone accepts a benign `def
+  Symbol#shout` while rejecting a redefinition of *either* slot a row reads. So
+  the frame discriminates rather than merely permits, and
+  `Install.conflicts` showed no soundness bug.
+* **E4 (V3, the closed world) — fail, measured as a byproduct.** All five
+  certificated `vulns/` slice files carry `opaque_` install sites and every one is
+  `def self.x` (`semver` 4/4, `cvss` 5/5, `osv_export` 8/8, `purl` 2/11,
+  `identify` 7/16). Since `InstallN.framedBy` treats `opaque_` class-blind, a
+  nontrivial footprint over any of these files is rejected today. **Eigenclass
+  modelling is the prerequisite** — the third gap listed above is not a residual
+  cost, it is the binding one on this slice.
+
+So the state after the experiment: the algebra is coherent (§6), the check is
+cheap (E2), it buys a real accept and discriminates (E3) — and what stands
+between that and the slice is the eigenclass, ahead of both SF-T3 and §7.1's
+re-keying in priority order.

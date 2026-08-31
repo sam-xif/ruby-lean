@@ -36,7 +36,26 @@ by `declaresName`'s name-global guard, and adding `frameOkB` only strengthens
 untouched. The caveat is written into `frameOkB`'s docstring so it cannot be
 read off the code as more than it is.
 
-### Proof plan for the bridge (this is SF-T3's core)
+### The bridge needs a *statement* first (2026-08-30)
+
+`../docs/semantics/typing-the-slice-milestones.md` §3 (milestone **M0**) revises the
+plan below rather than replacing it. The diagnosis: `SlotClaim.Holds` is a
+**single-state** predicate, and `frameOkB` conflates a decided instance of it
+(`holdsB Boot.initHeap`) with `framedProgB`, a claim about the *program text* — an
+admission route wearing the property's clothes. The property the route should establish
+is defined nowhere, which is why the obligation below reads as unbounded: it is phrased
+over the checker's enumeration, so it has no natural induction hypothesis and no other
+route can discharge it.
+
+Define it in `SemJudge`'s idiom first — `SemFrame … fp` = in every conformant state at
+which `fp.Holds` holds, `fp.Holds` holds at every **reachable** state (intermediate
+states, not just results: a row is consumed at every dispatch). Then the plan below is
+the *syntactic route's adequacy theorem*, three more routes exist (direct semantic,
+Iris WP, subsumption via `holds_compose`), and consumers can be stated with `frameOkB`
+absent from the statement. M0 must land before the frame replaces `declaresName`, or
+that replaces a proof with a check.
+
+### Proof plan for the syntactic route (this is SF-T3's core)
 
 1. State it as a step-level obligation: `stepFn` at a machine state whose control
    is a subterm of `p` either leaves the method tables alone, or performs a
@@ -105,3 +124,66 @@ Read, in order: `../docs/semantics/slot-frame.md` §§1–3 (why locality), then
 `Types/SlotClaimEg.lean` (the intended behaviour, executable), then "The one
 thing that is *not* proved" above. Do not read `Proof/Static/Frame.lean` first —
 its lemmas are elementary and will make the layer look more finished than it is.
+
+---
+
+## Session log (2026-08-29) — E2 and E3 of the experiment memo
+
+`../docs/semantics/slot-frame-experiment.md` E2 (V2, decidability cost) and E3
+(the artifact) were run in `../spikes/slot-frame/`; full numbers and the
+reproduction script are in `../spikes/slot-frame/RESULTS.md`. Nothing under
+`RubyCore/` was touched — the E3 weakening is a name-distinct local copy
+(`validateJF`), so `validateJ_certifies` still cannot depend on the unproved
+bridge.
+
+**E2 — PASS.** `by decide` on `frameOkB`'s inlined body, baseline-subtracted,
+best of two, no `native_decide`:
+
+| program | installs | 3 rows | 10 rows | 25 rows | 50 rows |
+|---|---|---|---|---|---|
+| `egEven` | 0 | 0.19s | 0.27s | 0.39s | 0.51s |
+| `semver.rb` (201 nodes) | 4 | 0.14s | 0.22s | 0.32s | 0.45s |
+| `identify.rb` (787 nodes, largest slice AST) | 16 | 0.13s | 0.26s | 0.32s | 0.42s |
+| `synth200` (no short-circuit) | 200 | 0.64s | 0.83s | 1.21s | 1.71s |
+| `synth800` (no short-circuit) | 800 | 2.10s | 2.74s | 4.06s | 5.73s |
+
+Threshold was "25 rows × a real slice AST in a few seconds": **0.32 s**. Linear
+in both dimensions (×16.7 in rows costs ×2.7; ×4 in sites costs ×3.4), so the
+memo's redesign branch — per-class name sets instead of per-slot lists — is not
+needed and the current footprint shape can be built on. `maxRecDepth` must rise
+above the default 512 (2048 for `identify` × 25, 4000 for the whole grid);
+`Proof/Judgment/Adequacy.lean` already sets 100000, so certificates pay nothing
+new. The real-slice rows short-circuit at their first `opaque_` site, which is
+why the `synth` rows are there — they resolve every site and conflict on none,
+so they pay the full installs × footprint cross-product.
+
+**E3 — PASS, negative case included.** `"abc".to_s.length + 1.to_s.length` with
+three rows (`String#to_s`, `Integer#to_s`, `String#length` — `length` is forced
+too, so the set collides at *two* names). Today's `validateJ` rejects and
+`rowsGuarded` is the **only** failing conjunct (`frameOk=true check=true
+mfrag=true fragHead=true ground=true`): the name-global guard is solely what
+rejects it. With the disjunct, `validateJF = true`. Against
+`class String; def to_s; 1; end; end` it rejects with `frameOk=false`. Isolating
+the frame from the other conjuncts, `frameOkB` alone is `true` on the bare
+program, `false` after `def String#to_s` *and* after `def String#length`, `true`
+after a benign `def Symbol#shout` (so it is not merely permissive), and `false`
+after `def Version#to_s` (the closed-world cost — `bootResolver` cannot place a
+program-declared class). The kill criterion "the negative case accepts" did not
+fire; no soundness bug in `Install.conflicts`. The accepted program runs on the
+model to `Value.int 4`.
+
+**E4, answered as a byproduct — FAIL.** E2 needed real slice ASTs and therefore
+the census. All five certificated `vulns/` files carry `opaque_` sites, and every
+single one is `def self.x`: `semver.rb` 4/4, `cvss.rb` 5/5, `osv_export.rb` 8/8,
+`purl.rb` 2/11, `identify.rb` 7/16. No `anyName`, no `eval`, no `class << self`.
+So V3 fails on this slice as written — a nontrivial footprint over any of these
+files is rejected today, and **eigenclass modelling is the prerequisite**, per
+the memo's own kill row. Note also that E4's stated pass criterion is not the one
+the code implements: `InstallN.framedBy` maps `opaque_` to
+`SlotClaim.isTrivial`, class-blind, so *any* `opaque_` anywhere kills every
+nontrivial claim. Counting only "`opaque_` on classes a row reads" would have
+reported zero — a pass — for a check that rejects. Count sites.
+
+**Not run:** E1 (row density, sizes the prize). Its numbers are the input to the
+park-or-invest decision, and the E4 result above changes what that decision is
+about: on this slice the binding constraint is the eigenclass, not row density.

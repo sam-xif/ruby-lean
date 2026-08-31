@@ -16,6 +16,16 @@
 #   attr_accessor :a     =>  both
 #   alias new old        =>  def new(...) = old(...)
 #
+# PLANNED CHANGE (M0a, `docs/semantics/typing-the-slice-milestones.md` §4.1): the
+# `alias` expansion must stop emitting `(...)`. `pfwd`/`fwd` is the only AST head in
+# the whole slice with no rung in any plan — and it exists only because this transform
+# emits it (no slice source contains `(...)`). The rule: a strip transform may only
+# emit heads that already have a rung; otherwise gate, do not emit. Reduction, in
+# order: explicit arity when the target's `def` is in the same body (`version.rb`,
+# `vulns/purl.rb`); else `*args` (`pkg_version.rb` — it `include Comparable` and
+# defines no `==`), whose splat heads do have rungs; gate if the target may take a
+# block, since `&blk`/`blockpass` has no rung either.
+#
 # Behavior deltas, argued acceptable per hunk: `attr_*` returns an array of
 # installed names (the expansion's last `def` returns a Symbol) — discarded in
 # statement position, which is every use in the slice; `alias` captures the
