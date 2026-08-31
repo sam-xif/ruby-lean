@@ -199,6 +199,49 @@ Exit: the checker accepts a distilled `comparator_for` (write it as a
 `difftest/ruby/` case) and rejects each of: body result type ≁ `cod`; a
 post-capture assignment violating a pin; wrong arity.
 
+### §L2-results (2026-08-31) — done, in the standalone checker
+
+Built in `Types/LambdaArrow.lean` (`RubyCore.Types.TL` namespace), per the
+L0-results note above — not as new `infer` arms. `difftest/ruby/lambda_comparator.rb`:
+
+```ruby
+sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
+def comparator_for
+  tiebreak = 0
+  cmp = ->(a, b) { tiebreak }
+  cmp
+end
+
+def use_comparator
+  cmp = comparator_for
+  cmp.call("foo", "barbaz")
+end
+
+use_comparator
+```
+
+`rubycore --check-tl` on this: `{"decision":"accept","type":"Integer"}` — L1+L2+L4
+all fire (the arrow rides `comparator_for`'s declared return type through
+`use_comparator`'s local `cmp` to the `.call`). `difftest replay … --sut lean`:
+**agree** (0 disagree; full tier-0/tier-4 ratchets re-run clean, 0 disagree
+each). Three mutations (`difftest/ruby/mutations/`), each **rejected**
+(`"decision":"unknown"`) while still **agree**ing on the machine:
+`lambda_comparator_mut_body.rb` (`cmp`'s body returns `"wrong"` instead of
+`tiebreak`), `lambda_comparator_mut_arg.rb` (`.call(1, "barbaz")`),
+`lambda_comparator_mut_pin.rb` (`tiebreak = "oops"` inserted between the
+lambda literal and the `cmp` read — needed `chkSeq`'s copy-propagation
+extension, since the lambda is no longer the sequence's syntactic tail once a
+pin-violating reassignment sits between it and the read that returns it).
+
+One deliberate simplification from the plan's §0 design, recorded because it
+changes what "capture" means operationally: **the capture set is the whole
+enclosing `Γ`**, not `freeVars(body)`. Pinning therefore rides in `Γ` itself
+(a reserved-key shadow entry, `Types/Ty.lean`'s `pinKey`/`pinTy?`/`addPins`),
+not in a side table — which is what keeps this checker's own soundness
+argument from needing anything `Decls`-shaped at all (§L3 below). Sound
+(over-pinning only rejects more), and it is why no `freeVars : Expr → List
+String` walk of `Expr` was written.
+
 ## L3 — the semantic side: `LamTy`, the ghost table, preservation
 
 The proof stage. Everything lands in `Proof/Static/`.
@@ -236,6 +279,53 @@ Exit: `lake build Metatheory` green, axiom-clean; the fundamental lemma and vari
 lemma stated *without* the checker in their statements (house rule, cf.
 `judge_sound_cert`).
 
+### §L3-results (2026-08-31) — done, and not the way this section describes
+
+Built in `Proof/Static/LambdaArrow.lean`. **No `Inv` ghost table** — the
+L0-results architecture note applies here at full force: `LamTy` is stated
+directly over the machine (`Reaches`/`SmallStep`/`typeStuck`,
+`Proof/TypeSafety.lean`) and `ValueTy`/`ValuesTy`/`FrameConforms`
+(`Proof/Static/Locals.lean`), with no `Decls`/`CtlOk`/`DeclsOk` involved and
+therefore no *(certified)*/*(coherence)* conjuncts to add to `Inv` and no
+preservation-across-an-arbitrary-step proof obligation — `Types.TL.chkTop`
+closes its return-type table once, up front (no `def` is ever nested), so
+there is no growing table for a ghost entry to ride beside.
+
+* `LamTy Γcap dom cod p` (checker-free): for any machine `m`/closure `c`/args/
+  `brk` with `p`'s payload `c`, `c.lam`, the two `c.captured`-liveness/shallow
+  side conditions, `FrameConforms … Γcap c.captured`, and `ValuesTy … args dom`
+  — and `callClosure m c args brk = .next m'` — some state reachable from `m'`
+  has the pre-call stack/kont restored, holding a value typed `cod`.
+* **Fundamental lemma, `lamTy_of_capture_read`**: for the *shape*
+  `comparator_for`'s closure actually has (arity-`n`, body a bare read of one
+  captured, non-parameter name `y`), those six hypotheses give `LamTy`. Proved
+  by chasing the concrete deterministic two-`SmallStep` trace `callClosure`'s
+  own unfolding (`callClosure_req2_lam`, mirroring `Proof/Static/Iter.lean`'s
+  `callClosure_req1` at `lam = true`/arity 2) lands in: the body read
+  (`evalExpr`'s `.var .lvar` case, one step) then the `blkFrameK` pop
+  (`applyKont`, one step) — `getLocal_curIn`/`localOfIn_of_captured_none`
+  (`Proof/Static/Locals.lean`, unmodified) connect what `Machine.getLocal`
+  reads to what `FrameConforms`'s clause already types. A worked-end `example`
+  instantiates it at `comparator_for`'s exact types (`[String, String] → Integer`,
+  `tiebreak : Integer`), so it is not vacuous.
+* **Variance lemma, `LamTy.variance`**: contravariant in `dom`/covariant in
+  `cod`, `ValuesTy.weaken` (a new pointwise lemma, `subTys`-indexed) composed
+  with the existing `ValueTy.weaken` — no machine reasoning, exactly the "cheap
+  early sanity check" the plan called it.
+* **Scope, honestly, restated**: this is a *direct semantic proof*
+  (`SemFrame`'s admission-route menu, §3), sized to the one body shape the
+  distilled example needs — not an induction over every shape `chk`'s
+  body-checker could admit. A general body-checker soundness theorem is the
+  natural next step if a body ever needs more than a capture read; the file's
+  own header says so.
+
+`lake build Metatheory`: green, 104 jobs. `#print axioms` on
+`LamTy.variance`/`lamTy_of_capture_read`/`callClosure_req2_lam`/`ValuesTy.weaken`:
+`[propext, Classical.choice, Quot.sound]` only — no `sorryAx`. (`scripts/check-proofs.sh`'s
+separate `heapOkB`-at-the-prelude-booted-heap diagnostic fails independently
+of this work — reproduced on `f020d91`, i.e. pre-existing, not a regression;
+out of scope here.)
+
 ## L4 — the `.call` elimination
 
 * Checker: send `call` on receiver typed `.proc dom cod`, plain args only (no block,
@@ -250,6 +340,20 @@ lemma stated *without* the checker in their statements (house rule, cf.
   (lambda created in one method, returned, called in another) type-checks, runs green
   under `--sut lean`, and a mutated version (lambda body returns a String) is
   rejected by the checker while the unmutated machine run is unchanged.
+
+### §L4-results (2026-08-31) — done, folded into §L2/§L3
+
+`Types.TL.chk`'s `.call` arm (`Types/LambdaArrow.lean`): receiver's checked
+type read via `arrowParts?` (`Ty.arrow0`/`arrowCons`, reused per L1's note —
+no separate `.proc` key to gate on), args checked via `subTys` at exact arity,
+answer `cod`. No preservation *case* was needed at `callClosure` — §L3's
+`LamTy` is proved directly against `callClosure`'s unfolding rather than via
+an `Inv` conjunct a `.call` step would have to preserve, so there is no
+separate "the pushed frame conforms" obligation to discharge here; it is
+`lamTy_of_capture_read`'s own proof. `use_comparator` is exactly the
+"lambda created in one method, returned, called in another" shape the exit
+criterion asks for (no second slice file needed); the mutation is
+`lambda_comparator_mut_arg.rb`, §L2-results.
 
 ## L5 — follow-ons, explicitly not this hand-off
 
@@ -266,6 +370,49 @@ lemma stated *without* the checker in their statements (house rule, cf.
   end-to-end slice file needs `.nilable (.proc …)` to *compose*, which L1's arm gives
   for free, plus a nil-check narrow before `.call` — confirm the existing `nilable`
   narrowing rules cover it).
+
+### §5 stretch assessment (2026-08-31) — not attempted, gap reported precisely
+
+The goal's exit condition (item 5) explicitly permits stopping at the
+distilled version and reporting this gap rather than closing it; that is what
+this is. The actual `vulnerability.rb:197-218` slice needs, beyond L1-L4 as
+built:
+
+1. **`.nilable (arrowOf dom cod)` composition** — `comparator_for`'s real
+   signature is `T.nilable(T.proc.params(...).returns(Integer))`
+   (`range_type` may make neither branch fire, though in fact both of
+   `comparator_for`'s branches do return a lambda — the nilable is Sorbet
+   being conservative about a two-armed `if` with no `else`, which is exactly
+   `Ty.joinTy`'s "if-with-no-final-else" case, `Types/Ty.lean` L204's note).
+   `SigRead.lean`'s `toTy` would need a `.nilable` arm composing with `.procT`
+   (mechanical — `readTy`'s existing `.nilable` case already recurses through
+   `toTy`-independent `readTy`, so this is purely in the `toTy`/`readTy`
+   bridge, not in `chk`).
+2. **A nil-narrow before `.call`** — `in_interval?`'s real body guards
+   `cmp.call(...)` behind nothing (its `cmp` parameter is declared
+   non-nilable `T.proc...` directly — only `comparator_for`'s *return* is
+   nilable), so the actual narrowing obligation is smaller than first
+   feared: the caller of `comparator_for` (not written in the cited lines)
+   is where a nil-check would have to sit. Not exercised by
+   `vulnerability.rb:197-218` alone.
+3. **Real method parameters** — `in_interval?` takes five parameters
+   (`target`, `lower`, `nilable(String)`, `Boolean`, and the `T.proc`-typed
+   `cmp`), and `comparator_for` takes one (`range_type`). `Types.TL.chkTop`
+   only closes rows for **zero-arg** top-level `def`s (mirroring
+   `Types/Core.lean`'s own `.def'` restriction, L0-results item 4) — real
+   parameter binding (checking a `def`'s own params against a sig, and
+   threading them into `Γ` for the body) was not built, because the
+   distilled example does not need it (§0's design already permits a
+   parameter-free arrow to ride through a local and a `.call` alone). This is
+   the largest of the three gaps.
+
+None of these are deep changes to what is built — (1)-(2) are `SigRead.lean`
+extensions in the same style as L1's, and (3) is `Types/LambdaArrow.lean`
+gaining a `chkTop` arm for parameterized `def`s (checking each param's
+declared type from a sig, à la `readKw`, and prepending to `Γ`) — but doing
+them is real work this hand-off did not spend on, since the distilled slice
+demonstrates the mechanism (L1+L2+L4 firing, backed by the L3 proof) without
+needing them.
 
 ## Pitfalls (read twice)
 
