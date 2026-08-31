@@ -168,3 +168,27 @@ Numbers into `HANDOFF-SF.md`'s session log, verdict into `slot-frame.md` §10 as
 a dated line. A failed experiment is recorded with the same weight as a passed
 one; the point of fixing thresholds beforehand is to make that cheap to do
 honestly.
+
+---
+
+## Results (added 2026-08-29, after running E2 → E3)
+
+Run in `../../spikes/slot-frame/`; raw numbers, tables and `run.sh` in
+[`../../spikes/slot-frame/RESULTS.md`](../../spikes/slot-frame/RESULTS.md),
+session log in `../../lean/HANDOFF-SF.md`, verdict in
+[`slot-frame.md`](slot-frame.md) §10.
+
+* **E2 — pass.** 0.32 s at 25 rows × the largest real slice AST, `decide` only,
+  linear in both dimensions. Footprint representation stays as built.
+* **E3 — pass, negative case included.** The control rejects with `rowsGuarded`
+  as its only failing conjunct; the frame buys the accept; the redefining program
+  still rejects, and `frameOkB` alone accepts a benign install while rejecting a
+  redefinition of either read slot. No bug in `Install.conflicts`.
+* **E4 — fail, measured as a byproduct** (E2 needed the ASTs). Every
+  certificated slice file carries `opaque_` sites and all of them are
+  `def self.x`. Eigenclass modelling is the prerequisite. Also: this memo's E4
+  pass criterion (`opaque_` on classes a row reads) is **not** what
+  `InstallN.framedBy` implements — it is class-blind, so any `opaque_` anywhere
+  rejects. Count sites.
+* **E1 — not run.** It sizes the prize; E4's result changes what the park-or-invest
+  decision is about, so E1's number is no longer the next thing worth knowing.
