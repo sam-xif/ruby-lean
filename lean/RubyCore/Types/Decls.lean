@@ -201,13 +201,19 @@ structure Decls where
       receiver's chain, so the answer depends on both the class the body is written in
       and the method it is written in. The alternative — a `parent : String → String`
       table plus `declOf?` on the parent's rows — needs a heap clause tying a *name* to
-      a chain position, and `ClassOk`'s uniqueness clause covers only
-      `readableClasses`, so a program class's name does not pin an id.
+      a chain position, and `ClassOk`'s own uniqueness clause covers only
+      `readableClasses` (the fixed boot names `.const` can read), not program classes.
+      **M2** (`docs/semantics/typing-the-slice-milestones.md`) closes the general case:
+      `NamesUnique` (`Proof/Static/Decls.lean`) is already the unrestricted clause, and
+      `className_inj_of_namesUnique` is its corollary stated over `className` — so a
+      *qualified* program name (`Outer::Inner`) does pin an id, given `NamesUnique h`.
 
       What a row obliges is `SuperOk` (`Proof/Static/Decls.lean`), and read it before
       adding one: it is quantified over **every** class object named `c` and every
       chain that class is on, because `doSuper` starts its walk at the frame's `defmod`
-      and the invariant knows that definee only by its name. -/
+      and the invariant knows that definee only by its name — `className_inj_of_namesUnique`
+      is what would let a future row collapse that quantifier to the one object M3's
+      resolver names, not something this table does today. -/
   supers : List ((String × String) × MethodDecl) := []
   /-- **global-variable name → the type of its contents** (L228).
 

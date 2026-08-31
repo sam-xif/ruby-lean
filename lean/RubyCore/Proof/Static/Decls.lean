@@ -2812,6 +2812,58 @@ def NamesUnique (h : Heap) : Prop :=
   ∀ j k cpj cpk, h.classPayload? j = some cpj → h.classPayload? k = some cpk →
     cpj.name = cpk.name → cpj.name.data.head? ≠ some '#' → j = k
 
+/-- **A program class's (qualified) name pins an id** (M2,
+    `docs/semantics/typing-the-slice-milestones.md` §4): the corollary of
+    `NamesUnique` stated over `className` rather than the raw payload, which is
+    the form a certificate-declared name (`Outer::Inner`, never `#<Class:…>`)
+    is read at. `Decls.supers`' docstring names the general problem this closes:
+    a row keyed on a class's name alone is otherwise quantified over every class
+    object of that name, because nothing said there was only one. Both `k`/`k'`
+    must actually be class objects — `className` answers `"Object"` at any
+    non-class id, so the claim is false without that hypothesis (every
+    non-class object would "share" that name). -/
+theorem fakeClassNameHead (isMod : Bool) (o : ObjId) :
+    (s!"#<{if isMod then "Module" else "Class"}:{fakeAddr o}>").data.head? = some '#' := by
+  cases isMod
+  · show ("#<" ++ "Class" ++ ":" ++ fakeAddr o ++ ">" : String).data.head? = some '#'
+    simp only [String.append_assoc]
+    rw [show ("#<" ++ ("Class" ++ (":" ++ (fakeAddr o ++ ">"))) : String).data
+        = "#<".data ++ ("Class" ++ (":" ++ (fakeAddr o ++ ">"))).data from String.data_append]
+    rfl
+  · show ("#<" ++ "Module" ++ ":" ++ fakeAddr o ++ ">" : String).data.head? = some '#'
+    simp only [String.append_assoc]
+    rw [show ("#<" ++ ("Module" ++ (":" ++ (fakeAddr o ++ ">"))) : String).data
+        = "#<".data ++ ("Module" ++ (":" ++ (fakeAddr o ++ ">"))).data from String.data_append]
+    rfl
+
+theorem className_inj_of_namesUnique {h : Heap} (hu : NamesUnique h)
+    {k k' : ObjId} {n : String}
+    (hkc : (h.classPayload? k).isSome) (hk'c : (h.classPayload? k').isSome)
+    (hn : n.data.head? ≠ some '#')
+    (hk : className h k = n) (hk' : className h k' = n) : k = k' := by
+  cases hcp : h.classPayload? k with
+  | none => exact absurd hcp (Option.isSome_iff_ne_none.mp hkc)
+  | some cp =>
+    cases hcp' : h.classPayload? k' with
+    | none => exact absurd hcp' (Option.isSome_iff_ne_none.mp hk'c)
+    | some cp' =>
+      have hnk : className h k = if cp.name.isEmpty then
+          s!"#<{if cp.isModule then "Module" else "Class"}:{fakeAddr k}>" else cp.name := by
+        unfold className; rw [hcp]
+      have hnk' : className h k' = if cp'.name.isEmpty then
+          s!"#<{if cp'.isModule then "Module" else "Class"}:{fakeAddr k'}>" else cp'.name := by
+        unfold className; rw [hcp']
+      rw [hnk] at hk; rw [hnk'] at hk'
+      have hcpn : cp.name = n := by
+        by_cases he : cp.name.isEmpty
+        · rw [if_pos he] at hk; exact absurd (hk ▸ fakeClassNameHead cp.isModule k) hn
+        · rwa [if_neg he] at hk
+      have hcpn' : cp'.name = n := by
+        by_cases he : cp'.name.isEmpty
+        · rw [if_pos he] at hk'; exact absurd (hk' ▸ fakeClassNameHead cp'.isModule k') hn
+        · rwa [if_neg he] at hk'
+      exact hu k k' cp cp' hcp hcp' (hcpn.trans hcpn'.symm) (hcpn ▸ hn)
+
 theorem namesUnique_grow {h h' : Heap} (hg : PlainGrow h h')
     (hu : NamesUnique h) : NamesUnique h' := by
   intro j k cpj cpk hj hk hnm hhd
