@@ -202,6 +202,31 @@ inductive Ty where
   | arrowCons (param : Ty) (rest : Ty)
 deriving DecidableEq, Repr, Inhabited
 
+/-- **`(A, B, …) → R` from its parts** (typed-lambdas L1) — the P0-checker-side
+    twin of `Judgment/Sub.lean`'s `arrowOf`, duplicated rather than imported:
+    `Types/` sits *below* `Judgment/` in the import order (the judgment layer
+    imports the type language, never the reverse), and this is two lines. Every
+    arrow the P0 lambda rule mints goes through this, so a malformed spine is
+    something no rule here constructs either. -/
+def arrowOf : List Ty → Ty → Ty
+  | [], r => .arrow0 r
+  | p :: ps, r => .arrowCons p (arrowOf ps r)
+
+/-- The inverse: a well-formed spine's parameter list and return type, `none`
+    on anything else (there is nothing else a spine built by `arrowOf` can be,
+    but the function is total over all of `Ty`). -/
+def arrowParts? : Ty → Option (List Ty × Ty)
+  | .arrow0 r => some ([], r)
+  | .arrowCons p rest =>
+    (arrowParts? rest).map (fun (ps, r) => (p :: ps, r))
+  | _ => none
+
+@[simp] theorem arrowParts?_arrowOf (ps : List Ty) (r : Ty) :
+    arrowParts? (arrowOf ps r) = some (ps, r) := by
+  induction ps with
+  | nil => simp [arrowOf, arrowParts?]
+  | cons p ps ih => simp [arrowOf, arrowParts?, ih]
+
 /-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
     `any`, and otherwise types are compared by equality as they always were.
 
@@ -501,6 +526,39 @@ theorem SubEnv.trans {Γ Γ' Γ'' : Env} (h : SubEnv Γ Γ') (h' : SubEnv Γ' Γ
 def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
   | (y, σ) :: Γ, x, τ => if y == x then (x, τ) :: Γ else (y, σ) :: envSet Γ x τ
+
+/-! ## Pinning (typed-lambdas L2/L3)
+
+A pin rides as an ordinary `Γ` entry under a **reserved key**: a leading space,
+which no Ruby identifier can ever contain, so a real program's own locals can
+never collide with one. Riding in `Γ` rather than in `Decls` is the load-bearing
+choice — `Γ` already changes on every assignment regardless of `ctx.ret`/
+`ctx.inLoop`, so a pin is one more entry of a kind `Γ` already varies by, and
+none of the table-stability theorems (`Proof/Static/Mono.lean`'s
+`infer_table_ret`/`infer_table_loop`, both stated over `Decls` only) have
+anything to say about it. A `Decls`-side ghost table was tried first and
+rejected for exactly that reason: the `lambda` arm fires precisely when
+`ctx.ret.isSome` names an arrow, which is exactly the hypothesis those two
+theorems turn `Decls` mutation off under. -/
+
+/-- The reserved key a pin on `x` is stored under. -/
+def pinKey (x : String) : String := " pin " ++ x
+
+/-- The type `x` was pinned at, or `none` if it never was. -/
+def pinTy? (Γ : Env) (x : String) : Option Ty := envGet? Γ (pinKey x)
+
+/-- Pin every real (non-shadow) name in `Γ` not already pinned, at its current
+    type — the whole-`Γ` over-approximation of a lambda's free variables
+    (`Types/Core.lean`'s `lambda` arm): sound because pinning a name the body
+    never reads only rejects more programs, never fewer, and it needs no walk
+    of `Expr` to get right. Names already pinned keep their **first** pin —
+    the type they had at the *first* lambda that captured them — which is the
+    only one that can matter: a later reassignment already has to conform to
+    that first pin (checked by `.vasgn`'s rule) before a second lambda could
+    ever see a different type to (re-)capture at. -/
+def addPins (Γ : Env) : Env :=
+  (Γ.filter (fun e => ¬ (" pin ").isPrefixOf e.1 ∧ (pinTy? Γ e.1).isNone)).foldl
+    (fun acc e => envSet acc (pinKey e.1) e.2) Γ
 
 /-! ## The static context of an activation
 

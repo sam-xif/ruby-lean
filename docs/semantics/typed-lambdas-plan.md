@@ -95,6 +95,52 @@ Each is a command plus a recorded answer in this file's §L0-results (append it)
    *produces* for one and where that surfaces in `Decls` row construction — the L1
    bridge lands there.
 
+### §L0-results (2026-08-31)
+
+1. **Stabby desugar confirmed** [V]: `harness/desugar-dt/bin/export-json` on
+   `->(a) { a }` gives `["send",null,"lambda",[],["block",[["preq","a"],...` —
+   exactly `send none "lambda" [] (block-literal)`, no new head.
+2. **Not run against the eight slice files** — the distilled example (below)
+   was built standalone rather than against `homebrew/`'s slice, so the census
+   was not needed to scope pinning; the distilled file has exactly one capture
+   site by construction (the pin-mutation falsifier).
+3. **Not run** — the distilled file uses `.call` only (no `.()`/`[]`/`===`),
+   by construction.
+4. **Measured, and it changed the design**: `SigRead.lean`'s `.procT` was a
+   **bare marker** — `rootsAtTProc` *detected* a `T.proc...` chain but nothing
+   read its `.params`/`.returns` — and it fed **nothing**: `--sigs` is the only
+   consumer anywhere in the tree (`Main.lean`), `declsOf` ignores the program
+   entirely (`declsOf p := baseDecls`), and a `def` with a *non-empty* param
+   list has no row-declaring rule at all in `Types/Core.lean`'s `infer`
+   (`.def'`'s rule requires `params.isEmpty`). L1 below extends `.procT` to
+   *carry* its params/return and built the `toTy` bridge to `Ty.arrowCons`/
+   `arrow0` (already in `Ty.lean` for the judgment layer's arrows, J16 —
+   reused rather than a new `Ty.proc` constructor, see L1's note). The
+   `params.isEmpty` finding is *why* the distilled file's `def`s are all
+   zero-arg (§0's design already permits this — nothing requires the arrow to
+   ride through a parameter, only through a local and a `.call`).
+
+**One more finding, made after L1 started and worth recording before L2:**
+`infer`'s `mutual` block (`Types/Core.lean`) is shared with the whole P0
+fragment, and `Proof/Static/Mono.lean`'s three `infer.induct` sites address
+cases by **positional auto-generated name** (`case113` and friends — the
+file's own comment already warns "measured: the flag version cost a full
+renumbering of `Mono.lean` twice"). A first attempt added the lambda/`.call`
+rules as new `infer` branches; it built, but broke `Metatheory` in four
+different theorems the moment a nested `if`/`match` shifted the case
+numbering, confirming the file's own warning applies exactly as hard to this
+feature. **Response: build a second, small, self-contained checker**
+(`Types/LambdaArrow.lean`, `RubyCore.Types.TL` namespace) over exactly this
+fragment, sharing `Ty`/`Env`/`subTy`/`pinKey`/`addPins`/`arrowOf`/
+`arrowParts?` (all added to `Types/Ty.lean`, genuinely shared) and
+`readSigChain`/`toTy` (`Types/SigRead.lean`) with the P0 checker, but with its
+own `mutual` group and its own induction principle that nothing else in the
+tree depends on. `infer`/`Types/Core.lean` and every existing `Proof/Static/`
+theorem are **byte-for-byte unchanged** — confirmed by rebuilding `Metatheory`
+green before and after. This is a deliberate, load-bearing deviation from the
+plan's §0 framing ("everything here lives in ... `Types/`, `Proof/Static/`");
+see L2/L3/L4 below for what it costs and what it buys back.
+
 ## L1 — the `Ty.proc` arm (mechanical)
 
 * Add `| proc (dom : List Ty) (cod : Ty)` to `Ty` (`Types/Ty.lean:23`), with a

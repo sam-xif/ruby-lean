@@ -11,6 +11,7 @@ import RubyCore.Obs
 import RubyCore.Types.Fragment
 import RubyCore.Types.Core
 import RubyCore.Types.SigRead
+import RubyCore.Types.LambdaArrow
 import RubyCore.Types.OpenSelf
 import RubyCore.Types.Program
 import RubyCore.Cert.Json
@@ -62,6 +63,12 @@ def main (args : List String) : IO UInt32 := do
   -- `Proof/StaticSoundness.check_sound` licenses; `reject` is a claim about our
   -- rules only (`static-soundness-poc.md` §2.2); `unknown` claims nothing.
   let checkOnly := args.contains "--check"
+  -- `--check-tl`: the standalone typed-lambdas checker (`Types/LambdaArrow.lean`,
+  -- `docs/semantics/typed-lambdas-plan.md`) — a second, small checker over its
+  -- own fragment (top-level zero-arg `def`s, optionally sig-preceded, returning
+  -- `T.proc`-typed lambdas consumed at a distant `.call`), kept off `--check`'s
+  -- `infer` on purpose (see the file's own header for why).
+  let checkTLOnly := args.contains "--check-tl"
   -- `--sigs`: report the Sorbet signatures the program *declares*, as read off
   -- the AST (`RubyCore/Types/SigRead.lean`). Static, and deliberately separate
   -- from `--check`: reading a declared type is unblocked, whereas concluding
@@ -423,6 +430,12 @@ def main (args : List String) : IO UInt32 := do
             ("basis", Lean.Json.str basis),
             ("verdict", Lean.Json.str verdict)] ++
            (if ty == "" then [] else [("type", Lean.Json.str ty)]))).compress
+        return 0
+      if checkTLOnly then
+        IO.println (Lean.Json.mkObj
+          (match Types.TL.checkTL prog with
+           | some t => [("decision", Lean.Json.str "accept"), ("type", Lean.Json.str (Types.tyName t))]
+           | none => [("decision", Lean.Json.str "unknown")])).compress
         return 0
       if fragmentOnly then
         let vs := Types.violationSummary prog
