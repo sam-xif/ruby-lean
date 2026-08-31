@@ -187,3 +187,79 @@ reported zero — a pass — for a check that rejects. Count sites.
 **Not run:** E1 (row density, sizes the prize). Its numbers are the input to the
 park-or-invest decision, and the E4 result above changes what that decision is
 about: on this slice the binding constraint is the eigenclass, not row density.
+
+---
+
+## Session log (2026-08-30) — M0a, M1, M2 (`typing-the-slice-milestones.md`)
+
+All three landed. Details, verification, and re-measured numbers are in
+`../docs/semantics/typing-the-slice-milestones.md`'s own record and
+`../homebrew/judge-slice.md` §5a (M0a's re-census); this is the short version.
+
+**M0a — strip hygiene.** `difftest/ruby/class_sugar_strip.rb`'s `alias` expansion
+no longer emits `(...)` (`fwd`/`pfwd`, the one head in the slice with no rung):
+explicit arity when the target `def` is in the same body (`version.rb:650`,
+`vulns/purl.rb:56` — adds no head at all), else `*args` (`pkg_version.rb:59` —
+`include Comparable`, no in-file `==` to read arity from), gate (`exit 3`) if the
+target takes a block (no site does). Re-census over the five strippable files:
+no `fwd`/`pfwd` anywhere, every head already on the ladder, and all four
+whole-file certs that existed before this session (`semver`, `purl`, `cvss`,
+`identify`) still `--certify-j accept` unconditionally, including the committed
+`certify/certs/purl.jcert.json` against the regenerated AST (its `sem_assumes`
+never mentioned `eql?` to begin with). `version.rb`'s pre-session "~44 → 68"
+drift is *not* explained by this fix (measured before/after: 69→67 effective,
+155→153 total — exactly the `fwd`+`send-fwd-arg` pair removed, nothing else) and
+stays open; a partial, unverified lead (nested `Token` classes) is noted in
+`judge-slice.md` §5a.
+
+**M1 — metaclass hygiene.** One-line model fix, `Interp/Dispatch.lean`'s
+`eigenclassOf`: the `none` arm (top of the metaclass chain) now answers
+`Boot.moduleId` for a module, `Boot.classId` for a class, matching CRuby
+(`Class.superclass == Module`). `enterScopedClassBody` already realized the
+eigenclass eagerly (symmetric with `enterClassBody`); the plan's second defect
+was stale. Verified against `ruby -e` for module/class/nested-module
+(`spikes/slot-frame/Probe4.lean`) — ancestors match exactly. Ratchets: tier-0
+940→**992** agree (0 disagree, up), tier-4 **25/28** agree (0 disagree,
+unchanged). Regression case added
+(`difftest/corpus/regressions/module-new-nomethoderror.{rb,json}`) — filed as
+the tripwire for a wrong `Module#new` resolution, and it turned out to already
+*agree* with CRuby (`NoMethodError`) once the fix landed, no separate builtin
+needed; sidecar declared `fixed`, not `open`.
+
+**The trap the plan named, and it was real:** the fix broke
+`NoHook`'s "J44 fresh-chain half" (`Proof/Static/Decls.lean`) — its docstring's
+own claim that "a freshly-allocated class's walk... tail is always `Class`'s
+chain" is now false for *modules*. Not a hardcoded `ObjId` (the T5Loop
+precedent); a genuine missing case. Fix: widened `NoHook` to a fourth conjunct,
+hook-freeness along `Module`'s chain, mirroring the `Class`-chain clause
+structurally at every construction site (`NoHook_grow`, `NoHook_defineMethod`,
+`noHookB`/`noHookB_sound`, `noHook` (`IvarOnly`), `noHook_constSetIn`,
+`noHook_fresh`, `noHook_freshC`) — six sites, each a copy-paste of the existing
+clause at `Boot.moduleId` instead of `Boot.classId`. A first attempt tried to
+derive the module clause *from* the class one (a `ChainsIn.classSup` field
+recording `Class.superclass = Module`) — abandoned mid-flight, reverted clean,
+because it needed the invariant to carry through every allocation site for a
+fact `NoHook`'s parallel clause gets for free. `lake build` (110 jobs),
+`Judgment Metatheory` (106 jobs), `HJudge` (298 jobs) all clean;
+`noHook_fresh`/`noHook_freshC`/`NoHook_grow`/`NoHook_defineMethod`/
+`noHookB_sound`/`noHook_constSetIn` all `#print axioms` clean (`propext`,
+`Quot.sound`, only `Classical.choice` where it was already there).
+`check-proofs.sh` ends exactly at the pre-existing `heapOkB (prelude-booted):
+false` — no new red.
+
+**M2 — qualified names pin an id.** `NamesUnique` (`Proof/Static/Decls.lean`)
+was already the *general* uniqueness clause (any two class objects sharing a
+non-`#`-headed name are the same object) — already proven at boot, already
+preserved through every step including fresh module/class allocation
+(`classOk_fresh`/`classOk_freshC` already carry it). What was missing was the
+corollary stated the way a certificate reads a name: `className_inj_of_namesUnique`,
+proved in the same file, `className h k = n → className h k' = n → k = k'`
+given both `k`/`k'` are class objects and `n` isn't `#`-headed. `Decls.supers`'
+docstring (`Types/Decls.lean`) updated to point at it instead of naming the gap.
+Verified with an executable check (`spikes/m2-qualnames/`, Probe4.lean's
+idiom rather than an inlined `#guard` — the five ASTs are 200-1300 nodes from
+the gitignored vendor checkout): for all five strippable files, the certificate's
+static `(owner, name)` spelling resolves, post-run, to a heap object literally
+named `qualifyMod owner name` — PASS, including `pkg_version.rb`, which gates
+on `Comparable` mid-body but has already allocated `PkgVersion` correctly by
+then. `lake build Metatheory Judgment` axiom-clean.
