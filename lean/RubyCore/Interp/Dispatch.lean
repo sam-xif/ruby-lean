@@ -196,7 +196,10 @@ where
       let (supr, m) := match obj.payload with
         | .cls c => match c.superclass with
           | some s => go m s fuel
-          | none => (Boot.classId, m)   -- top of the metaclass chain
+          -- top of the metaclass chain: a module's own metaclass superclasses
+          -- `Module` (CRuby: `M.singleton_class.superclass == Module`), a
+          -- class's superclasses `Class`.
+          | none => ((if c.isModule then Boot.moduleId else Boot.classId), m)
         | _ => (obj.klass, m)
       -- CRuby names an eigenclass after the object it is attached to, by
       -- `rb_any_to_s` — so a *class*'s metaclass is `#<Class:Foo>` but a plain

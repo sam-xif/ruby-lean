@@ -37,10 +37,11 @@ set_option maxHeartbeats 1600000
     payload := .cls { superclass := none, name := q, isModule := true } }
 
 /-- Its eigenclass (allocated eagerly; the machine names it by `anyToS`, which
-    for a class object with a nonempty name is that name). -/
+    for a class object with a nonempty name is that name). A module's metaclass
+    superclasses `Module`, not `Class` (`eigenclassOf`'s `isModule` arm). -/
 @[reducible] def eigObj (q : String) : Object :=
   { klass := Boot.classId,
-    payload := .cls { superclass := some Boot.classId,
+    payload := .cls { superclass := some Boot.moduleId,
                       name := "#<Class:" ++ q ++ ">", isModule := false } }
 
 /-- The module object once its eigenclass is realized. -/
@@ -180,7 +181,7 @@ def attachEigen (h : Heap) (o e : ObjId) : Heap :=
   h.set o { h.get o with eigen := some e }
 
 /-- `eigenclassOf` at the just-allocated module: one unfold — the eigen is
-    `none`, the superclass is `none`, so the metaclass parent is `Class` and one
+    `none`, the superclass is `none`, so the metaclass parent is `Module` and one
     eigenclass is allocated and attached. -/
 theorem eigenclassOf_modObj {mm : Machine} {o : ObjId} {q : String}
     (hget : mm.heap.get o = modObj q)
@@ -302,7 +303,7 @@ theorem freshModHeap_cp_k :
 
 theorem freshModHeap_cp_e :
     (freshModHeap h₀ d name q).classPayload? (h₀.objs.size + 1) =
-      some { superclass := some Boot.classId,
+      some { superclass := some Boot.moduleId,
              name := "#<Class:" ++ q ++ ">", isModule := false } := by
   unfold Heap.classPayload?
   rw [freshModHeap_get_e]
@@ -345,7 +346,7 @@ theorem freshModHeap_anc_go_k (f : Nat) :
 theorem freshModHeap_anc_go_e (f : Nat) :
     ancestors.go (freshModHeap h₀ d name q) (h₀.objs.size + 1) (f + 1)
       = (h₀.objs.size + 1) ::
-        ancestors.go (freshModHeap h₀ d name q) Boot.classId f := by
+        ancestors.go (freshModHeap h₀ d name q) Boot.moduleId f := by
   rw [ancestors.go.eq_def]
   rw [freshModHeap_cp_e]
   simp
@@ -432,13 +433,13 @@ theorem saturated_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           (freshModHeap_anc_go_k (h₀.objs.size + 1)).symm
       · by_cases he : k' = h₀.objs.size + 1
         · subst he
-          have hcb : Boot.classId < h₀.objs.size := hch.boot.1
-          have hold : ∀ f, ancestors.go (freshModHeap h₀ d name q) Boot.classId f
-              = ancestors.go (hmidOf h₀ d name) Boot.classId f :=
-            fun f => ClsGrow.ancestors_go_old hg hchm hsm f Boot.classId
+          have hcb : Boot.moduleId < h₀.objs.size := hch.boot.2.1
+          have hold : ∀ f, ancestors.go (freshModHeap h₀ d name q) Boot.moduleId f
+              = ancestors.go (hmidOf h₀ d name) Boot.moduleId f :=
+            fun f => ClsGrow.ancestors_go_old hg hchm hsm f Boot.moduleId
               (hszm ▸ hcb)
-          have hT1 := (hold (h₀.objs.size + 2)).trans (ancestors_go_ge hsm.2 hb2 Boot.classId)
-          have hT2 := (hold (h₀.objs.size + 1)).trans (ancestors_go_ge hsm.2 hb3 Boot.classId)
+          have hT1 := (hold (h₀.objs.size + 2)).trans (ancestors_go_ge hsm.2 hb2 Boot.moduleId)
+          have hT2 := (hold (h₀.objs.size + 1)).trans (ancestors_go_ge hsm.2 hb3 Boot.moduleId)
           rw [freshModHeap_anc_go_e (h₀.objs.size + 2),
             freshModHeap_anc_go_e (h₀.objs.size + 1), hT1, hT2]
         · have hoob : ¬ k' < (freshModHeap h₀ d name q).objs.size := by
@@ -518,7 +519,7 @@ theorem chainsIn_fresh (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size) :
           refine ⟨fun s hs => ?_, fun i hi => ?_, fun p hp => ?_⟩
           · simp only [Option.some.injEq] at hs
             subst hs
-            exact hbound _ hch.boot.1
+            exact hbound _ hch.boot.2.1
           · exact absurd hi (by simp)
           · exact absurd hp (by simp)
         · rw [freshModHeap_cp_oob (Nat.le_of_not_lt
@@ -572,22 +573,22 @@ theorem ancestors_old_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
 
 theorem ancestors_fresh_e (hch : ChainsIn h₀) (hsat : Saturated h₀) :
     ancestors (freshModHeap h₀ d name q) (h₀.objs.size + 1)
-      = (h₀.objs.size + 1) :: ancestors h₀ Boot.classId := by
+      = (h₀.objs.size + 1) :: ancestors h₀ Boot.moduleId := by
   have hchm : ChainsIn (hmidOf h₀ d name) := chainsIn_hmid hch
   have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
-  have hcb : Boot.classId < h₀.objs.size := hch.boot.1
+  have hcb : Boot.moduleId < h₀.objs.size := hch.boot.2.1
   unfold ancestors
   rw [show (freshModHeap h₀ d name q).objs.size + 1 = (h₀.objs.size + 2) + 1 from
     by rw [freshModHeap_size]]
   rw [freshModHeap_anc_go_e (h₀.objs.size + 2)]
-  rw [ClsGrow.ancestors_go_old clsGrow_hmid_fresh hchm hsm _ Boot.classId
+  rw [ClsGrow.ancestors_go_old clsGrow_hmid_fresh hchm hsm _ Boot.moduleId
     (by rw [hmid_size]; exact hcb)]
   rw [ancestors_go_ge hsm.2 (by
     rw [hmid_size]
-    exact Nat.add_le_add_left (show (1:Nat) ≤ 2 by decide) _) Boot.classId]
+    exact Nat.add_le_add_left (show (1:Nat) ≤ 2 by decide) _) Boot.moduleId]
   have hgo := ClsGrow.ancestors_go_mem_lt hchm ((hmidOf h₀ d name).objs.size + 1)
-    Boot.classId (by rw [hmid_size]; exact hcb)
-  have hne : ∀ x ∈ ancestors.go (hmidOf h₀ d name) Boot.classId
+    Boot.moduleId (by rw [hmid_size]; exact hcb)
+  have hne : ∀ x ∈ ancestors.go (hmidOf h₀ d name) Boot.moduleId
       ((hmidOf h₀ d name).objs.size + 1), x ≠ h₀.objs.size + 1 := by
     intro x hx hEq
     have := hgo x hx
@@ -596,17 +597,17 @@ theorem ancestors_fresh_e (hch : ChainsIn h₀) (hsat : Saturated h₀) :
     exact Nat.not_lt.mpr (Nat.le_succ _) this
   show List.foldl _ [] (_ :: _) = _
   rw [show List.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
-      ((h₀.objs.size + 1) :: ancestors.go (hmidOf h₀ d name) Boot.classId
+      ((h₀.objs.size + 1) :: ancestors.go (hmidOf h₀ d name) Boot.moduleId
         ((hmidOf h₀ d name).objs.size + 1))
       = List.foldl _ ([h₀.objs.size + 1])
-        (ancestors.go (hmidOf h₀ d name) Boot.classId
+        (ancestors.go (hmidOf h₀ d name) Boot.moduleId
           ((hmidOf h₀ d name).objs.size + 1)) from rfl]
   rw [show ([h₀.objs.size + 1] : List ObjId) = (h₀.objs.size + 1) :: [] from rfl]
   rw [foldl_dedup_cons hne [] (by simp)]
   congr 1
-  -- the tail's dedup is `ancestors hmid classId`, which `constSetIn` pins to h₀'s
-  have : ancestors (hmidOf h₀ d name) Boot.classId = ancestors h₀ Boot.classId :=
-    ancestors_constSetIn h₀ d Boot.classId name _
+  -- the tail's dedup is `ancestors hmid moduleId`, which `constSetIn` pins to h₀'s
+  have : ancestors (hmidOf h₀ d name) Boot.moduleId = ancestors h₀ Boot.moduleId :=
+    ancestors_constSetIn h₀ d Boot.moduleId name _
   unfold ancestors at this
   rw [← hmid_size h₀ d name] at this ⊢
   exact this
@@ -715,8 +716,8 @@ theorem noHook_fresh (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated 
   have hsm : Saturated (hmidOf h₀ d name) := saturated_hmid hsat
   have hg : ClsGrow (hmidOf h₀ d name) (freshModHeap h₀ d name q) :=
     clsGrow_hmid_fresh
-  -- hook-free tables along `Class`'s chain, at the composite (clause 3 first —
-  -- clauses 2's fresh cases read it)
+  -- hook-free tables along `Class`'s chain and `Module`'s, at the composite
+  -- (clauses 3/4 first — clause 2's fresh cases read them)
   have hanc3 : ∀ j ∈ ancestors (freshModHeap h₀ d name q) Boot.classId,
       ∀ cp, (freshModHeap h₀ d name q).classPayload? j = some cp →
       ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
@@ -731,8 +732,23 @@ theorem noHook_fresh (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated 
       rw [hcp0, hcp] at hms
       simp only [Option.map_some, Option.some.injEq] at hms
       rw [hms]
-      exact hh.2.2 j hj cp0 hcp0 n hn
-  refine ⟨?_, fun k hk n hn => ?_, hanc3⟩
+      exact hh.2.2.1 j hj cp0 hcp0 n hn
+  have hanc4 : ∀ j ∈ ancestors (freshModHeap h₀ d name q) Boot.moduleId,
+      ∀ cp, (freshModHeap h₀ d name q).classPayload? j = some cp →
+      ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
+    intro j hj cp hcp n hn
+    rw [ancestors_old_fresh hch hsat hch.boot.2.1] at hj
+    have hjlt : j < h₀.objs.size := ClsGrow.ancestors_mem_lt hch hch.boot.2.1 j hj
+    rw [freshModHeap_cp_old hdlt hjlt] at hcp
+    have hms := methods_constSetIn h₀ d j name (Value.ref h₀.objs.size)
+    cases hcp0 : h₀.classPayload? j with
+    | none => rw [hcp0] at hms; rw [hcp] at hms; exact absurd hms (by simp)
+    | some cp0 =>
+      rw [hcp0, hcp] at hms
+      simp only [Option.map_some, Option.some.injEq] at hms
+      rw [hms]
+      exact hh.2.2.2 j hj cp0 hcp0 n hn
+  refine ⟨?_, fun k hk n hn => ?_, hanc3, hanc4⟩
   · rw [freshModHeap_cp_old hdlt hch.boot.2.2.2.2]
     rw [classPayload?_isSome_constSetIn]
     exact hh.1
@@ -754,15 +770,15 @@ theorem noHook_fresh (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated 
         unfold lookup
         rw [classOf_fresh_k, ancestors_fresh_e hch hsat]
         have hstep : lookup.go (freshModHeap h₀ d name q) n
-            ((h₀.objs.size + 1) :: ancestors h₀ Boot.classId)
-            = lookup.go (freshModHeap h₀ d name q) n (ancestors h₀ Boot.classId) := by
+            ((h₀.objs.size + 1) :: ancestors h₀ Boot.moduleId)
+            = lookup.go (freshModHeap h₀ d name q) n (ancestors h₀ Boot.moduleId) := by
           rw [lookup.go.eq_def]
           simp only []
           rw [freshModHeap_cp_e]
           simp
         rw [hstep]
         refine lookupGo_none_of_hookfree _ (fun j hj cp hcp => ?_)
-        exact hanc3 j (by rw [ancestors_old_fresh hch hsat hch.boot.1]; exact hj)
+        exact hanc4 j (by rw [ancestors_old_fresh hch hsat hch.boot.2.1]; exact hj)
           cp hcp n hn
       · by_cases hke : k = h₀.objs.size + 1
         · subst hke
@@ -1567,13 +1583,13 @@ theorem superOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
         rw [ancestors_fresh_e hch hsat] at hmem
         rcases List.mem_cons.mp hmem with hEq | hmem2
         · exact absurd hdmo (by rw [hEq]; exact Nat.not_lt.mpr (Nat.le_add_right _ 1))
-        · have hcb : Boot.classId < h₀.objs.size := hch.boot.1
-          have hcbm : Boot.classId < (hmidOf h₀ d name).objs.size := by
+        · have hcb : Boot.moduleId < h₀.objs.size := hch.boot.2.1
+          have hcbm : Boot.moduleId < (hmidOf h₀ d name).objs.size := by
             rw [hmid_size]; exact hcb
-          have hancC : ancestors (hmidOf h₀ d name) Boot.classId
-              = ancestors h₀ Boot.classId :=
-            ancestors_constSetIn h₀ d Boot.classId name _
-          obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs Boot.classId dm
+          have hancC : ancestors (hmidOf h₀ d name) Boot.moduleId
+              = ancestors h₀ Boot.moduleId :=
+            ancestors_constSetIn h₀ d Boot.moduleId name _
+          obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs Boot.moduleId dm
             (by rw [← hg.payloadOld hdmm]; exact hdm)
             (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
             (by rw [hancC]; exact hmem2)
@@ -1585,14 +1601,14 @@ theorem superOk_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
             intro h1
             exact absurd hdmo (by rw [← h1]
                                   exact Nat.not_lt.mpr (Nat.le_add_right _ 1)))]
-          rw [show ancestors h₀ Boot.classId
-              = ancestors (hmidOf h₀ d name) Boot.classId from hancC.symm]
+          rw [show ancestors h₀ Boot.moduleId
+              = ancestors (hmidOf h₀ d name) Boot.moduleId from hancC.symm]
           rw [firstM_congr (fun j hj => by
             have hjo : j < h₀.objs.size := by
               rw [← hmid_size h₀ d name]
               refine ClsGrow.ancestors_mem_lt hchm hcbm j ?_
               exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
-                  (ancestors (hmidOf h₀ d name) Boot.classId))).trans
+                  (ancestors (hmidOf h₀ d name) Boot.moduleId))).trans
                 (List.dropWhile_sublist (· != dm))).mem hj)
             rw [freshModHeap_cp_old hdlt hjo])]
           exact hsf
@@ -1641,7 +1657,7 @@ theorem modOffChains_fresh_old (hch : ChainsIn h₀) (hsat : Saturated h₀)
     · by_cases hke : k' = h₀.objs.size + 1
       · subst hke
         rw [ancestors_fresh_e hch hsat] at hmem ⊢
-        have hobjne : Boot.objectId ∈ ancestors h₀ Boot.classId := by
+        have hobjne : Boot.objectId ∈ ancestors h₀ Boot.moduleId := by
           rcases List.mem_cons.mp hmem with hEq | hm2
           · exfalso
             have hb := hch.boot.2.2.2.2
@@ -1658,12 +1674,12 @@ theorem modOffChains_fresh_old (hch : ChainsIn h₀) (hsat : Saturated h₀)
         rcases List.mem_cons.mp hmm with hEq | hm2
         · rw [hEq] at ho
           exact Nat.not_lt.mpr (Nat.le_add_right _ 1) ho
-        · have hoffC := hoff Boot.classId (by
-            rw [show ancestors (hmidOf h₀ d name) Boot.classId
-              = ancestors h₀ Boot.classId from ancestors_constSetIn h₀ d _ name _]
+        · have hoffC := hoff Boot.moduleId (by
+            rw [show ancestors (hmidOf h₀ d name) Boot.moduleId
+              = ancestors h₀ Boot.moduleId from ancestors_constSetIn h₀ d _ name _]
             exact hobjne)
-          rw [show ancestors (hmidOf h₀ d name) Boot.classId
-            = ancestors h₀ Boot.classId from ancestors_constSetIn h₀ d _ name _] at hoffC
+          rw [show ancestors (hmidOf h₀ d name) Boot.moduleId
+            = ancestors h₀ Boot.moduleId from ancestors_constSetIn h₀ d _ name _] at hoffC
           exact hoffC hm2
       · rw [show ancestors (freshModHeap h₀ d name q) k' = [k'] from by
           unfold ancestors
@@ -1709,7 +1725,7 @@ theorem modOffChains_fresh_k (hch : ChainsIn h₀) (hsat : Saturated h₀)
         intro hmm
         rcases List.mem_cons.mp hmm with hEq | hm2
         · exact absurd hEq (Nat.ne_of_lt (Nat.lt_succ_self _))
-        · have := ClsGrow.ancestors_mem_lt hch hch.boot.1 h₀.objs.size
+        · have := ClsGrow.ancestors_mem_lt hch hch.boot.2.1 h₀.objs.size
             ((List.takeWhile_sublist _).mem hm2)
           exact Nat.lt_irrefl _ this
       · rw [show ancestors (freshModHeap h₀ d name q) k' = [k'] from by

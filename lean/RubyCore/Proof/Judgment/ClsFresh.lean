@@ -745,8 +745,25 @@ theorem noHook_freshC (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated
       rw [hcp0, hcp] at hms
       simp only [Option.map_some, Option.some.injEq] at hms
       rw [hms]
-      exact hh.2.2 j hj cp0 hcp0 n hn
-  refine ⟨?_, fun k hk n hn => ?_, hanc3⟩
+      exact hh.2.2.1 j hj cp0 hcp0 n hn
+  -- ... and `Module`'s chain, unaffected by this def (a fresh class's eigenclass
+  -- still bottoms at `Class`, so this is just clause 4 carried across).
+  have hanc4 : ∀ j ∈ ancestors (freshClsHeap h₀ d name q eO) Boot.moduleId,
+      ∀ cp, (freshClsHeap h₀ d name q eO).classPayload? j = some cp →
+      ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
+    intro j hj cp hcp n hn
+    rw [ancestors_old_freshC hch hsat hch.boot.2.1] at hj
+    have hjlt : j < h₀.objs.size := ClsGrow.ancestors_mem_lt hch hch.boot.2.1 j hj
+    rw [freshClsHeap_cp_old hdlt hjlt] at hcp
+    have hms := methods_constSetIn h₀ d j name (Value.ref h₀.objs.size)
+    cases hcp0 : h₀.classPayload? j with
+    | none => rw [hcp0] at hms; rw [hcp] at hms; exact absurd hms (by simp)
+    | some cp0 =>
+      rw [hcp0, hcp] at hms
+      simp only [Option.map_some, Option.some.injEq] at hms
+      rw [hms]
+      exact hh.2.2.2 j hj cp0 hcp0 n hn
+  refine ⟨?_, fun k hk n hn => ?_, hanc3, hanc4⟩
   · rw [freshClsHeap_cp_old hdlt hch.boot.2.2.2.2]
     rw [classPayload?_isSome_constSetIn]
     exact hh.1

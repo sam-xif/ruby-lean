@@ -78,8 +78,16 @@ def noHookB (h : Heap) : Bool :=
     (h.classPayload? k).isNone ||
       ((lookup h (.ref k) "method_added").isNone &&
        (lookup h (.ref k) "define_method").isNone)) &&
-  -- J44: the fresh-chain half — `Class`'s chain only.
-  (ancestors h Boot.classId).all fun j =>
+  -- J44: the fresh-chain half — `Class`'s chain (a fresh class's eigenclass) and
+  -- `Module`'s chain (a fresh module's — `RubyCore.Interp.eigenclassOf`'s
+  -- `isModule` arm), separately: `Module` is *in* `Class`'s chain, but nothing
+  -- says the reverse, so checking one does not decide the other.
+  (ancestors h Boot.classId).all (fun j =>
+    match h.classPayload? j with
+    | some cp => (cp.methods.find? (·.1 == "method_added")).isNone &&
+                 (cp.methods.find? (·.1 == "define_method")).isNone
+    | none => true) &&
+  (ancestors h Boot.moduleId).all fun j =>
     match h.classPayload? j with
     | some cp => (cp.methods.find? (·.1 == "method_added")).isNone &&
                  (cp.methods.find? (·.1 == "define_method")).isNone
