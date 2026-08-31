@@ -14,17 +14,19 @@
 #   attr_reader :a, :b   =>  def a = @a           (one per name)
 #   attr_writer :a       =>  def a=(v); @a = v; end
 #   attr_accessor :a     =>  both
-#   alias new old        =>  def new(...) = old(...)
+#   alias new old        =>  def new(other) = self.old(other)   (explicit arity, when
+#                             old's `def` is visible in the same body)
+#                        =>  def new(*args) = self.old(*args)    (otherwise)
 #
-# PLANNED CHANGE (M0a, `docs/semantics/typing-the-slice-milestones.md` §4.1): the
-# `alias` expansion must stop emitting `(...)`. `pfwd`/`fwd` is the only AST head in
-# the whole slice with no rung in any plan — and it exists only because this transform
-# emits it (no slice source contains `(...)`). The rule: a strip transform may only
-# emit heads that already have a rung; otherwise gate, do not emit. Reduction, in
-# order: explicit arity when the target's `def` is in the same body (`version.rb`,
-# `vulns/purl.rb`); else `*args` (`pkg_version.rb` — it `include Comparable` and
-# defines no `==`), whose splat heads do have rungs; gate if the target may take a
-# block, since `&blk`/`blockpass` has no rung either.
+# `alias`'s target form must never be `(...)` (`fwd`/`pfwd`) — that AST head has no
+# rung in any plan, and no slice source contains it; it would exist only because this
+# transform emitted it. The rule generally: a strip transform may only emit heads that
+# already have a rung; otherwise gate (`exit 3`), do not emit. Reduction, in order:
+# explicit arity when the target's `def` is visible in the same class/module body
+# (recovered by scanning sibling `def`s' parameter lists); else `*args`, whose splat
+# head has a rung; gate if the target's `def` takes a block param, since
+# `&blk`/`blockpass` has no rung either. (`**kw` unimplemented — no slice site needs
+# it; add it the same way if one does.)
 #
 # Behavior deltas, argued acceptable per hunk: `attr_*` returns an array of
 # installed names (the expansion's last `def` returns a Symbol) — discarded in
@@ -38,6 +40,21 @@ src = $stdin.read
 result = Prism.parse(src)
 edits = []
 visitor = Class.new(Prism::Visitor) do
+  define_method(:initialize) do
+    super()
+    @body_defs = [[]] # stack of def-nodes seen so far in the enclosing class/module body
+  end
+  %i[visit_class_node visit_module_node visit_singleton_class_node].each do |m|
+    define_method(m) do |node|
+      @body_defs.push([])
+      super(node)
+      @body_defs.pop
+    end
+  end
+  define_method(:visit_def_node) do |node|
+    @body_defs.last << node
+    super(node)
+  end
   define_method(:visit_call_node) do |node|
     if node.receiver.nil? && %i[attr_reader attr_writer attr_accessor].include?(node.name) &&
        node.arguments && node.arguments.arguments.all? { |a| a.is_a?(Prism::SymbolNode) }
@@ -57,8 +74,28 @@ visitor = Class.new(Prism::Visitor) do
     if node.new_name.is_a?(Prism::SymbolNode) && node.old_name.is_a?(Prism::SymbolNode)
       newn = node.new_name.unescaped
       oldn = node.old_name.unescaped
+      recv = oldn.match?(/\A[a-z_][A-Za-z0-9_]*[?!]?\z/) ? "" : "self."
+
+      target = @body_defs.last.reverse.find { |d| d.name == oldn.to_sym }
+      params = target&.parameters
+      if params&.block
+        warn "class_sugar_strip: alias #{newn} #{oldn} forwards to a def with a block parameter; no rung for blockpass"
+        exit 3
+      end
+
+      explicit = !target.nil? &&
+                 (params.nil? ||
+                  (params.optionals.empty? && params.rest.nil? && params.keywords.empty? &&
+                   params.keyword_rest.nil? && params.posts.empty? &&
+                   params.requireds.all? { |p| p.is_a?(Prism::RequiredParameterNode) }))
+      arglist = if explicit
+                  (params&.requireds || []).map { |p| p.name.to_s }.join(", ")
+                else
+                  "*args"
+                end
+
       edits << [node.location.start_offset, node.location.end_offset,
-                oldn.match?(/\A[a-z_][A-Za-z0-9_]*[?!]?\z/) ? "def #{newn}(...) = #{oldn}(...)" : "def #{newn}(...) = self.#{oldn}(...)"]
+                "def #{newn}(#{arglist}) = #{recv}#{oldn}(#{arglist})"]
     end
     super(node)
   end
