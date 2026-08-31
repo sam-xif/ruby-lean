@@ -69,7 +69,7 @@
     border:1px solid var(--edge); border-left:3px solid var(--dim);
     border-radius:6px; padding:9px 11px; margin:0; }
   .verdict.accept { border-left-color:var(--good); }
-  .verdict.reject { border-left-color:var(--warn); }
+  .verdict.reject, .verdict.unknown { border-left-color:var(--warn); }
   .verdict .k { color:var(--dim); } .verdict .ty { color:var(--warn); }
   .census { font-family:var(--mono); font-size:12px; color:var(--dim); }
   .err-inline { color:var(--bad); }
@@ -141,6 +141,20 @@
     </div>
     <div id="verdictbox"></div>
     <pre class="out assn" id="assnout"><span class="empty">— press “Per-body (inferOpen)”</span></pre>
+    <h2>Typed lambdas — a second, standalone checker</h2>
+    <div class="row">
+      <label class="detail">load
+        <select id="tlsample" title="difftest/ruby/lambda_comparator.rb and its three mutations">
+          <option value="base">comparator_for (accepted)</option>
+          <option value="mut_body">mutation: lambda body returns a String</option>
+          <option value="mut_arg">mutation: .call passed an Integer</option>
+          <option value="mut_pin">mutation: captured var reassigned after capture</option>
+        </select>
+      </label>
+      <button class="ghost" id="checktl" title="rubycore --check-tl: the standalone typed-lambdas checker (Types/LambdaArrow.lean) — reads a sig-declared T.proc.params(...).returns(...) type and checks a returned lambda literal against it, arity + body + pinning of captured locals">Typed lambdas (check-tl)</button>
+      <span id="tlmsg" class="detail"></span>
+    </div>
+    <div id="tlverdictbox"></div>
     <h2>Model stdout (Lean stepper, at current step)</h2>
     <pre class="out" id="out"></pre>
     <h2>CRuby stdout (real Ruby)</h2>
@@ -495,6 +509,112 @@ async function runCheck() {
   } finally { $('check').disabled = false; }
 }
 
+// ── Typed lambdas: a second, standalone checker ───────────────────────────
+// `difftest/ruby/lambda_comparator.rb` + its three mutations
+// (`difftest/ruby/mutations/`), verbatim — same source the checker's own
+// difftest cases are. Not generated here: this is the actual committed
+// fixture, so what the panel shows is what the ratchet runs.
+const TL_SAMPLES = {
+  base: `# typed: true
+require "sorbet-runtime"
+extend T::Sig
+
+sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
+def comparator_for
+  tiebreak = 0
+  cmp = ->(a, b) { tiebreak }
+  cmp
+end
+
+def use_comparator
+  cmp = comparator_for
+  cmp.call("foo", "barbaz")
+end
+
+use_comparator`,
+  mut_body: `# typed: true
+require "sorbet-runtime"
+extend T::Sig
+
+sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
+def comparator_for
+  tiebreak = 0
+  cmp = ->(a, b) { "wrong" }
+  cmp
+end
+
+def use_comparator
+  cmp = comparator_for
+  cmp.call("foo", "barbaz")
+end
+
+use_comparator`,
+  mut_arg: `# typed: true
+require "sorbet-runtime"
+extend T::Sig
+
+sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
+def comparator_for
+  tiebreak = 0
+  cmp = ->(a, b) { tiebreak }
+  cmp
+end
+
+def use_comparator
+  cmp = comparator_for
+  cmp.call(1, "barbaz")
+end
+
+use_comparator`,
+  mut_pin: `# typed: true
+require "sorbet-runtime"
+extend T::Sig
+
+sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
+def comparator_for
+  tiebreak = 0
+  cmp = ->(a, b) { tiebreak }
+  tiebreak = "oops"
+  cmp
+end
+
+def use_comparator
+  cmp = comparator_for
+  cmp.call("foo", "barbaz")
+end
+
+use_comparator`,
+};
+
+$('tlsample').onchange = () => {
+  $('src').value = TL_SAMPLES[$('tlsample').value];
+  $('tlverdictbox').innerHTML = '';
+};
+
+async function runCheckTL() {
+  $('checktl').disabled = true; $('tlmsg').textContent = 'check-tl…';
+  try {
+    const r = await fetch('/check-tl', {method:'POST', body: $('src').value});
+    const d = await r.json();
+    $('tlmsg').textContent = '';
+    if (d.error) {
+      $('tlverdictbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
+      return;
+    }
+    // `--check-tl`'s verdict is total but two-valued, not three: `accept` (with
+    // the checked type) or `unknown` — there is no separate `reject` basis here,
+    // because this checker has no refutation pass, only a fragment/acceptance one.
+    const bits = d.decision === 'accept'
+      ? [`<span class="k">decision</span> accept`,
+         `<span class="k">type</span> <span class="ty">${esc(d.type||'')}</span>`]
+      : [`<span class="k">decision</span> unknown`];
+    $('tlverdictbox').innerHTML =
+      `<div class="verdict ${esc(d.decision)}">${bits.join('   ')}</div>`;
+  } catch(e) {
+    $('tlverdictbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
+  } finally { $('checktl').disabled = false; }
+}
+
 async function runRuby() {
   $('runruby').disabled = true;
   $('rubyout').innerHTML = '<span class="empty">running in CRuby…</span>';
@@ -516,6 +636,7 @@ $('run').onclick = run;
 $('runruby').onclick = runRuby;
 $('count').onclick = countSteps;
 $('check').onclick = runCheck;
+$('checktl').onclick = runCheckTL;
 $('assn').onclick = runAssn;
 $('assnprog').onclick = runAssnProgram;
 $('first').onclick = () => go(0);

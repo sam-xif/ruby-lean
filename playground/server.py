@@ -6,10 +6,12 @@ Pipeline per request:  Ruby source -> export-json (desugar) -> rubycore --trace
 
 The static queries take the same first hop and a different flag: `--check` (the
 nominal `infer`, whole-program), `--assn` (the open front end `inferOpen`, one
-verdict per method body, in the assertion language) and `--assn-program` (L263/L264:
+verdict per method body, in the assertion language), `--assn-program` (L263/L264:
 the open front end over the *whole* program, so a class's own `def`s cancel against
-its own bodies' requirements). None of them executes anything, so none boots the
-prelude and none depends on model coverage.
+its own bodies' requirements), and `--check-tl` (the standalone typed-lambdas
+checker, `docs/semantics/typed-lambdas-plan.md` — a *second* checker, not a flag
+on `infer`, see `Types/LambdaArrow.lean`'s header for why). None of them executes
+anything, so none boots the prelude and none depends on model coverage.
 
 Run:  python3 server.py [port]      (default 8077)
 Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../lean && lake build).
@@ -153,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
             result = self.SLICE_ROUTES[self.path](q)
             self._send(200, json.dumps(result).encode("utf-8"), "application/json")
             return
-        if self.path not in ("/trace", "/run", "/steps", "/check", "/assn",
+        if self.path not in ("/trace", "/run", "/steps", "/check", "/check-tl", "/assn",
                              "/assn-program"):
             self._send(404, b"not found", "text/plain")
             return
@@ -172,6 +174,8 @@ class Handler(BaseHTTPRequestHandler):
             result = steps(source)
         elif self.path == "/check":
             result = check(source)
+        elif self.path == "/check-tl":
+            result = check_tl(source)
         elif self.path == "/assn":
             result = assn(source, top=self.headers.get("X-Assn-Top") == "1")
         elif self.path == "/assn-program":
@@ -260,6 +264,24 @@ def check(source: str) -> dict:
     frag = lean_query(core, "--fragment")
     out["fragment"] = frag
     return out
+
+
+def check_tl(source: str) -> dict:
+    """`rubycore --check-tl` — the standalone typed-lambdas checker
+    (`docs/semantics/typed-lambdas-plan.md`, `lean/RubyCore/Types/LambdaArrow.lean`).
+
+    Deliberately a separate query from `check()`/`--check`, the way the two
+    checkers are separate in the Lean tree: this one reads a `sig`-declared
+    `T.proc.params(...).returns(...)` return type and checks a returned
+    lambda literal against it (arity, body, pinning of captured locals),
+    which `infer`/`--check` does not — `declsOf` ignores the program and no
+    `def` with parameters ever gets a row there. `--check-tl`'s own fragment
+    is a flat sequence of zero-arg top-level `def`s, each optionally
+    sig-preceded, plus a driver — narrower than `--check`'s, on purpose."""
+    core, err = desugar(source)
+    if err:
+        return err
+    return lean_query(core, "--check-tl")
 
 
 def assn(source: str, top: bool = False) -> dict:
