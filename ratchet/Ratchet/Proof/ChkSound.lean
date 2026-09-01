@@ -111,6 +111,47 @@ theorem builtinCls?_sound {n : String} (h : builtinCls? n = true) : BuiltinCls n
   · exact .hash
   · exact absurd h (by simp)
 
+/-- `comparable?` never admits a type `Comparable` does not. -/
+theorem comparable?_sound {ρ : Ty} (h : comparable? ρ = true) : Comparable ρ := by
+  unfold comparable? at h
+  split at h
+  · exact .int
+  · exact .float
+  · exact .str
+  · exact absurd h (by simp)
+
+/-- **The two halves of the iterator table only ever agree with `IterSig`.**
+
+`iterParams?` and `iterResult?` are separate functions because `chk` needs the first before it
+can compute the second's `ρ` argument (see `IterSig`), and this is the lemma that they are two
+views of one relation rather than two independent tables that could drift. Proved by exhausting
+`iterParams?`'s rows: each row fixes the method name and the argument list, at which point
+`iterResult?` reduces. -/
+theorem iterSig?_sound {m : String} {τ : Ty} {as βs : List Ty} {ρ res : Ty}
+    (hp : iterParams? m τ as = some βs) (hr : iterResult? m τ as ρ = some res) :
+    IterSig m τ as βs ρ res := by
+  unfold iterParams? at hp
+  split at hp
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .each
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .map
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .select
+  · -- `sort_by`: `simp` has already reduced the guarded row to its two conjuncts
+    injection hp with hp; subst hp
+    simp [iterResult?] at hr
+    obtain ⟨hcmp, hres⟩ := hr
+    subst hres
+    exact .sortBy (comparable?_sound hcmp)
+  · -- `inject`: likewise, and the first conjunct *is* the accumulator fixed point
+    injection hp with hp; subst hp
+    simp [iterResult?] at hr
+    obtain ⟨hfix, hres⟩ := hr
+    subst hfix; subst hres
+    exact .inject
+  · exact absurd hp (by simp)
+
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
 theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
     BareNameError m := by
@@ -462,6 +503,89 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             · exact absurd h (by simp)
             · exact absurd h (by simp)
     · exact absurd h (by simp)
+  · -- tier 9c: `send (some recv) m args (some (block …))` -- a builtin iterator with a block
+    -- literal. Receiver must synthesize `arrayOf elem`; the block's body is typed here.
+    split at h
+    · rename_i hrecv
+      split at h
+      · rename_i hargs
+        split at h
+        · rename_i hpar
+          split at h
+          · rename_i hpe
+            split at h
+            · rename_i hbody
+              split at h
+              · rename_i hI
+                split at h
+                · rename_i hcap
+                  split at h
+                  · rename_i hres
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .iterBlock (chk_sound hrecv) (chkAll_sound hargs)
+                      (iterSig?_sound hpar hres) hpe
+                      (by subst hI; exact chk_sound hbody) hcap
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- tier 9c: `send (some recv) m args (some (blockpass (some pe)))` -- the two `&` forms.
+    split at h
+    · rename_i hrecv
+      split at h
+      · rename_i hargs
+        split at h
+        · rename_i hpar
+          split at h
+          · -- `&:sym`: `Symbol#to_proc`, so the block's return type is a `PrimSig` row's
+            split at h
+            · rename_i hsig
+              split at h
+              · rename_i hres
+                injection h with h
+                injection h with h h'; injection h' with h' h''
+                subst h; subst h'; subst h''
+                exact .iterSymPass (chk_sound hrecv) (chkAll_sound hargs)
+                  (iterSig?_sound hpar hres) (primSig?_sound hsig)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · -- `&expr`: the expression has to synthesize a `Ty.clos`
+            split at h
+            · rename_i hpe
+              split at h
+              · rename_i hclos
+                split at h
+                · rename_i hΓb
+                  split at h
+                  · rename_i hbody
+                    split at h
+                    · rename_i hI
+                      split at h
+                      · rename_i hcap
+                        split at h
+                        · rename_i hres
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact .iterClosPass (chk_sound hrecv) (chkAll_sound hargs)
+                            (chk_sound hpe) (iterSig?_sound hpar hres) hclos hΓb
+                            (by subst hI; exact chk_sound hbody) hcap
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- `send (some recv) m args` with no block: strictness on the receiver, then on the
     -- arguments, then tier 7's dispatch keyed on the receiver's type, then `PrimSig`.
     split at h
@@ -747,6 +871,8 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 
 #print axioms nilQSafe?_sound
 #print axioms builtinCls?_sound
+#print axioms comparable?_sound
+#print axioms iterSig?_sound
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound

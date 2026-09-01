@@ -56,6 +56,32 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
 
+/-- The decidable counterpart of `Judge.lean`'s `Comparable`. -/
+def comparable? : Ty → Bool
+  | .int | .float | .cls "String" => true
+  | _ => false
+
+/-- `IterSig`'s **first half**: the types an iterator binds its block's parameters at, from the
+receiver's element type and the call's argument types. Needed before the body is typed. -/
+def iterParams? : String → Ty → List Ty → Option (List Ty)
+  | "each", τ, [] => some [τ]
+  | "map", τ, [] => some [τ]
+  | "select", τ, [] => some [τ]
+  | "sort_by", τ, [] => some [τ]
+  | "inject", τ, [α] => some [α, τ]
+  | _, _, _ => none
+
+/-- `IterSig`'s **second half**: the call's result, from the same inputs plus the type the
+block's body came back at. The two side conditions live here because both are about `ρ` —
+`sort_by`'s comparison and `inject`'s accumulator fixed point (see `IterSig`). -/
+def iterResult? : String → Ty → List Ty → Ty → Option Ty
+  | "each", τ, [], _ => some (.arrayOf τ)
+  | "map", _, [], ρ => some (.arrayOf ρ)
+  | "select", τ, [], _ => some (.arrayOf τ)
+  | "sort_by", τ, [], ρ => if comparable? ρ then some (.arrayOf τ) else none
+  | "inject", _, [α], ρ => if ρ = α then some α else none
+  | _, _, _, _ => none
+
 /-- The decidable counterpart of `Judge.lean`'s `BuiltinCls`, row for row. -/
 def builtinCls? : String → Bool
   | "Integer" | "Float" | "String" | "Symbol" | "NilClass"
@@ -302,6 +328,74 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             | some _ => none
             | none => none
     | none => none
+  | f + 1, .send (some recv) m args (some (.block ps locs body)) =>
+    -- Tier 9c: a builtin iterator with a block literal (`Judge.iterBlock`). The receiver must
+    -- be an array; the block's body is typed here, at `iterParams?`'s types, in
+    -- parameters-then-block-locals-then-enclosing order.
+    match chk f κ Γ I recv with
+    | some (.arrayOf elem, Γ₁, I₁) =>
+      match chkAll f κ Γ₁ I₁ args with
+      | some (argTys, Γ₂, I₂) =>
+        match iterParams? m elem argTys with
+        | some βs =>
+          match paramEnv ps βs with
+          | some Γb =>
+            match chk f κ (Γb ++ blockLocals locs ++ Γ₂) I₂ (bodyResult body) with
+            | some (ρ, Γb', Iout) =>
+              if Iout = I₂ then
+                if capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ Γ₂) Γb' then
+                  match iterResult? m elem argTys ρ with
+                  | some res => some (res, Γ₂, I₂)
+                  | none => none
+                else none
+              else none
+            | none => none
+          | none => none
+        | none => none
+      | none => none
+    | _ => none
+  | f + 1, .send (some recv) m args (some (.blockpass (some pe))) =>
+    -- Tier 9c: the two `&` forms. Both need a one-parameter iterator; which one applies is
+    -- decided by the `&` expression -- a Symbol literal is a `to_proc` coercion
+    -- (`Judge.iterSymPass`), anything else has to synthesize a `Ty.clos`
+    -- (`Judge.iterClosPass`).
+    match chk f κ Γ I recv with
+    | some (.arrayOf elem, Γ₁, I₁) =>
+      match chkAll f κ Γ₁ I₁ args with
+      | some (argTys, Γ₂, I₂) =>
+        match iterParams? m elem argTys with
+        | some [β] =>
+          match pe with
+          | .sym s =>
+            match primSig? β s [] with
+            | some ρ =>
+              match iterResult? m elem argTys ρ with
+              | some res => some (res, Γ₂, I₂)
+              | none => none
+            | none => none
+          | _ =>
+            match chk f κ Γ₂ I₂ pe with
+            | some (.clos idx cap, Γ₃, I₃) =>
+              match closGet? κ.closures idx with
+              | some c =>
+                match paramEnv c.params [β] with
+                | some Γb =>
+                  match chk f κ (Γb ++ spineToEnv cap) I₃ (bodyResult c.body) with
+                  | some (ρ, Γb', Iout) =>
+                    if Iout = I₃ then
+                      if capIntact cap (Γb ++ spineToEnv cap) Γb' then
+                        match iterResult? m elem argTys ρ with
+                        | some res => some (res, Γ₃, I₃)
+                        | none => none
+                      else none
+                    else none
+                  | none => none
+                | none => none
+              | none => none
+            | _ => none
+        | _ => none
+      | none => none
+    | _ => none
   | f + 1, .send (some recv) m args none =>
     -- Written as explicit nested `match`es rather than `do`/`<|>` on purpose: this is
     -- the trusted checker, and every route to a `some` should be visible on the page

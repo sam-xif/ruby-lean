@@ -574,7 +574,90 @@ def controls : List Control :=
               .def' "get" [] (.var .ivar "@x")]),
             .vasgn .lvar "c" (.send (some (.const "C")) "new" [] none),
             .send (some (.var .lvar "c")) "m" [.tru] none,
-            .send (some (.send (some (.var .lvar "c")) "get" [] none)) "+" [.int 1] none]⟩ ]
+            .send (some (.send (some (.var .lvar "c")) "get" [] none)) "+" [.int 1] none]⟩
+    -- ### Tier 9c's iterator controls
+    --
+    -- (ii) **`sort_by`'s `Comparable` side condition is a soundness requirement**, and the
+    -- failure mode is worth stating precisely, because the obvious guess is wrong: it is *not*
+    -- that some key type has no `<=>` at all. `nil <=> nil` is `0`, so
+    -- `["a","b"].sort_by { |s| nil }` sorts fine. What raises is a key type whose `<=>` is not
+    -- total **across its own values** -- a union (`1 <=> "a"` is `nil`, hence
+    -- `ArgumentError: comparison of Integer with String failed`, *inside* the family), or a
+    -- user class that inherits `Object#<=>` (which answers `0` for identical objects and `nil`
+    -- otherwise). `Comparable`'s three rows are exactly the types this `Ty` can produce a
+    -- genuinely ordered array of. Its sibling `select`, two controls down, shows the contrast:
+    -- `select` needs no condition on `ρ`, because a `select` block's result is only ever tested
+    -- for truthiness.
+  , ⟨"[1, \"a\"].sort_by { |x| x }",
+      .send (some (.array [.int 1, .str "a"])) "sort_by" []
+        (some (.block [.req "x"] [] (.var .lvar "x")))⟩
+    -- (jj) …and the same block under `select`, which is safe Ruby and *validates* -- so this
+    -- is not a control but a note; what is recorded here instead is the `select` shape that
+    -- must NOT validate: a block body that is itself type-stuck. The iterator wrapper must
+    -- not launder it, exactly as `block-bad-arith` requires of `each`.
+  , ⟨"[1, 2].select { |x| x + \"a\" }",
+      .send (some (.array [.int 1, .int 2])) "select" []
+        (some (.block [.req "x"] []
+          (.send (some (.var .lvar "x")) "+" [.str "a"] none)))⟩
+    -- (kk) **`inject`'s accumulator fixed point, from the inside.** The block returns an
+    -- `Integer` on one path and a `String` on the other, so the accumulator *changes type
+    -- between iterations*: iteration 1 sees `acc = 0`, takes the then-branch and returns
+    -- `"s"`; iteration 2 sees `acc = "s"`, takes the else-branch, and `"s" + 1` raises
+    -- TypeError. No single `Ty` describes that accumulator, which is exactly why
+    -- `IterSig.inject` requires the body to come back at the initial value's type -- here the
+    -- body comes back at `union(String, Int)`, and the row rejects it.
+  , ⟨"[1, 2].inject(0) { |acc, x| if acc == 0 then \"s\" else acc + 1 end }",
+      .send (some (.array [.int 1, .int 2])) "inject" [.int 0]
+        (some (.block [.req "acc", .req "x"] []
+          (.if' (.send (some (.var .lvar "acc")) "==" [.int 0] none)
+            (.str "s")
+            (some (.send (some (.var .lvar "acc")) "+" [.int 1] none)))))⟩
+    -- (kk2) …and from the outside: `inject`'s *result* is the initial value's type only
+    -- because the block is required to reproduce it. Here the block returns a `String` every
+    -- time, so the real result is `"2"` and `+ 1` raises TypeError. Certified by any
+    -- implementation that reports `inject`'s result as `init`'s type without checking the
+    -- block against it.
+  , ⟨"[1, 2].inject(0) { |acc, x| x.to_s } + 1",
+      .send (some (.send (some (.array [.int 1, .int 2])) "inject" [.int 0]
+        (some (.block [.req "acc", .req "x"] []
+          (.send (some (.var .lvar "x")) "to_s" [] none))))) "+" [.int 1] none⟩
+    -- (ll) **`each` returns the receiver, not the block's value.** `[1,2].each { |x| x.to_s }`
+    -- is an `Array`, so `+ "!"` raises TypeError ("no implicit conversion of String into
+    -- Array"). Certified by any implementation that gives `each` `map`'s row.
+  , ⟨"[1, 2].each { |x| x.to_s } + \"!\"",
+      .send (some (.send (some (.array [.int 1, .int 2])) "each" []
+        (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "to_s" [] none)))))
+        "+" [.str "!"] none⟩
+    -- (mm) **`select` returns the receiver's elements, not the block's.** The block answers a
+    -- `Bool`, and `[true, false]` would have no `+ 1`; the result really is `[1, 2]`, so this
+    -- is the *sound* direction -- `x + 1` on an element. Kept as a control because it is
+    -- rejected: `arrayOf Int` is not an `Integer`, and there is no `Array#+ Integer`. The
+    -- point is that it fails for the *arity* reason and not because `select` was mistyped.
+  , ⟨"[1, 2].select { |x| x > 1 } + 1 (safe-ish; no Array#+ Integer row)",
+      .send (some (.send (some (.array [.int 1, .int 2])) "select" []
+        (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) ">" [.int 1] none)))))
+        "+" [.int 1] none⟩
+    -- (nn) **The `&` forms are not a free pass.** `[1,2].map(&:foo_bar)` has no `PrimSig` row
+    -- for `Integer#foo_bar`, and really raises NoMethodError. This is the control that says
+    -- `iterSymPass` reads a *table* rather than assuming any symbol coerces to something
+    -- total.
+  , ⟨"[1, 2].map(&:foo_bar)",
+      .send (some (.array [.int 1, .int 2])) "map" []
+        (some (.blockpass (some (.sym "foo_bar"))))⟩
+    -- (oo) **A block passed to an iterator may not retype a captured local**, the clink-11
+    -- rule one syntax over: `each` carries the enclosing environment out unchanged, so
+    -- `capIntact` is what stops the caller keeping a stale type. Really raises TypeError.
+  , ⟨"a = 1; [1, 2].each { |x| a = \"s\" }; a + 1",
+      .seq [.vasgn .lvar "a" (.int 1),
+            .send (some (.array [.int 1, .int 2])) "each" []
+              (some (.block [.req "x"] [] (.vasgn .lvar "a" (.str "s")))),
+            .send (some (.var .lvar "a")) "+" [.int 1] none]⟩
+    -- (pp) A non-array receiver has no iterator rule at all. `{"a"=>1}.map { … }` is
+    -- perfectly safe Ruby; `iterBlock` requires `arrayOf elem`, and `Ty` has no `hashOf` to
+    -- read an element type out of (the third recorded `Ty` language gap).
+  , ⟨"{\"a\" => 1}.map { |p| p } (safe; iterators need an arrayOf receiver)",
+      .send (some (.hash [(.str "a", .int 1)])) "map" []
+        (some (.block [.req "p"] [] (.var .lvar "p")))⟩ ]
 
 mutual
 
@@ -603,6 +686,11 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .block ps ls body => do
     let ps' ← ps.mapM toRubyCoreParam
     return .block ps' ls (← toRubyCore body)
+  -- Tier 9c: `&expr` as a block argument.
+  | .blockpass e =>
+    match e with
+    | none => some (.blockpass none)
+    | some x => (toRubyCore x).map (fun x' => .blockpass (some x'))
   | .send none m args (some blk) => do
     let args' ← args.mapM toRubyCore
     return .send none m args' (some (← toRubyCore blk))

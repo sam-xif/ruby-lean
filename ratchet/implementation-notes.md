@@ -1810,3 +1810,138 @@ mistake proposed for aliases.
 rungs (`each`/`map`/`select`/`inject`/`sort_by` and the two `blockpass` forms) plus tier 12's
 `narrow-in-block`, and they need a genuinely new *kind* of rule — a builtin whose signature
 mentions a block — rather than a new piece of state.
+
+## Clink 18 (2026-09-01) — tier 9c: the builtin iterators: 97 → 108
+
+The biggest single clink on the ladder: **eleven rungs**, and the first one where a rule for
+one tier climbed rungs in three (tier 9's nine iterator rungs, tier 11's `xc-ivar-array-map`,
+tier 12's `narrow-in-block`). 108 derivations, 67/67 controls, 136/136 agreement, ten theorems
+axiom-clean. Mismatches 25 → **14**, and tier 9 is now at 19/22 — every rung it targets.
+
+### `PrimSig` cannot state an iterator's signature, so the signature is split in two
+
+An iterator's result depends on what its **block** returns, and that is not known until the
+block's body has been typed. `PrimSig` relates a receiver type, a name and a list of *argument*
+types to a result; there is nowhere in it for a block to go. So:
+
+- **`iterParams?`** — given the receiver's element type and the call's arguments, at what types
+  does the block's parameter list get bound? Needed *before* typing the body.
+- **`iterResult?`** — given that the body came back at `ρ`, what does the call return? After.
+- **`IterSig`** is the relation that joins them, one constructor per iterator, and
+  `iterSig?_sound` is the lemma that the two functions never drift apart from it.
+
+That split is the reusable idea: a *bidirectional* table, where half the row is read before the
+subterm and half after. Anything higher-order added later (`Hash#each_pair`, `Enumerable#group_by`)
+takes the same shape.
+
+### The five iterators differ in exactly the way that matters
+
+| method | block params | result |
+|---|---|---|
+| `each` | `[elem]` | the **receiver** |
+| `map` | `[elem]` | `arrayOf` (block's return) |
+| `select` | `[elem]` | `arrayOf elem` |
+| `sort_by` | `[elem]` | `arrayOf elem`, **if** the block's return is `Comparable` |
+| `inject(init)` | `[α, elem]` | `α`, **if** the block returns `α` |
+
+Clink 12's prediction ("a single block rule would get three of five wrong") was right, and each
+difference now has a control that fails without it: `[1,2].each { |x| x.to_s } + "!"` raises
+`TypeError` because `each` answers the *array*, not the strings.
+
+**`sort_by`'s side condition, and why the obvious justification for it is false.** The first
+draft of this clink justified `Comparable ρ` with "`["a"].sort_by { |s| nil }` raises
+ArgumentError". It does not — `nil <=> nil` is `0`, and that program sorts fine. The real
+failure mode is a key type whose `<=>` is not total **across its own values**: a union
+(`[1, "a"].sort_by { |x| x }` → `ArgumentError: comparison of Integer with String failed`,
+*inside* the family) or a user class inheriting `Object#<=>`, which answers `0` for identical
+objects and `nil` otherwise. Both verified against CRuby 4.0.5 before the docstring was
+rewritten. `Comparable`'s three rows (`int`, `float`, `.cls "String"`) are exactly the types
+this `Ty` can produce a genuinely ordered array of; a union is excluded *because* it is not one
+constructor.
+
+**`inject`'s accumulator is a fixed point**, and it needs two controls, one from each side.
+From the inside: a block returning `Int` on one path and `String` on the other really does
+change the accumulator's type between iterations, and no single `Ty` describes it. From the
+outside: `inject`'s result is the initial value's type *only because* the block is required to
+reproduce it — `[1,2].inject(0) { |acc,x| x.to_s } + 1` raises `TypeError`, and an
+implementation that reported `init`'s type without checking the block would certify it. Same
+assume-then-verify shape as `Judge.callDef`'s recursion, with the initial value as the candidate.
+
+### `iterBlock` is cheaper than `closCall`, and the reason is worth keeping
+
+The block is **syntactically present at the call site**, so its body is typed *right there*, at
+`iterParams?`'s types. No whole-program block table, no `Ty.clos` index, no captured-environment
+spine. Nesting therefore costs nothing (`block-nested-map`: the rule applies to itself), and the
+`|x; y|` block-locals `Judge.lambdaLit` has always refused come free — `blockLocals` binds each
+at `.nilT`, which is what Ruby does.
+
+**No `κ.selfTy = none` premise**, unlike `closCall`/`callDefBlk`, and that omission is what
+climbed tier 11's `xc-ivar-array-map`. Those two rules need the restriction because they build a
+`Ty.clos` whose captured environment is only meaningful at a creation site this judgment can
+describe. Here nothing is captured into a type and `κ` passes through unchanged, so `self`
+inside the body *is* `self` outside it — exactly Ruby. An iterator may therefore appear inside a
+method body, over an ivar receiver.
+
+**`capIntact` over the enclosing environment**, and the argument for carrying `Γ₂` out unchanged
+is a two-sided one worth spelling out, because either half alone would be wrong: a block may run
+**zero** times (an empty receiver), so the outgoing environment cannot be the body's; and
+`capIntact` says the body changed no outer name's *type*, so it cannot be wrong to use the
+incoming one. `narrow-in-block`'s `s = s + y` sits exactly on that boundary — the value changes,
+the type does not — and `a = 1; [1,2].each { |x| a = "s" }; a + 1` is the control on the other
+side of it.
+
+### The two `&` forms, and one pleasing result
+
+`map(&:to_s)` needed **no new claim about types at all**. `Symbol#to_proc` builds a
+one-parameter callable that sends that name to its argument, so the block's return type is the
+result of a send — and this judgment already has a table of those. `iterSymPass`'s premise is
+`PrimSig β s [] ρ`: the *same* row `map { |x| x.to_s }` uses, reached from the other syntax. The
+control that this reads a table rather than assuming totality is `[1,2].map(&:foo_bar)`, which
+really raises `NoMethodError`.
+
+`map(&some_lambda)` is `closCall` with the argument types supplied by `IterSig` instead of by a
+call site; the `&` expression is typed after the receiver and the arguments (Ruby's order), and
+what `capIntact` protects there is the `cap` *spine*, because a value-level callable really did
+capture into one.
+
+### **A cross-check bug this clink found: the two legs were running different models**
+
+The most important thing in this clink is not a rule. `Semantics/Interp.lean`'s `run` was
+`Interp.run fuel (Machine.init p)`, and its docstring claimed this was "the same `Machine.init`
+the real `rubycore` executable and the difftest engine use". **It was not.** The difftest SUT
+boots the prelude (`Prelude.initWithPrelude`) — RubyCore's core library written *in RubyCore*,
+which is where `Enumerable#select` and `Enumerable#sort_by` live — and `Machine.init` does not.
+
+So for eleven clinks, `checkrungs` was validating hand-derived types against a **strictly
+smaller model** than `run_agreement.sh` was comparing to CRuby. It went unnoticed because
+nothing below tier 9c reached a prelude-defined method. `block-select-with-if` and
+`block-sort-by-length` are the first, and they came back
+`unsupported(unmodeled method Array#select)` from `checkrungs` while the agreement gate reported
+136/136 agree — two numbers disagreeing about the same model, which is precisely what the
+two-legged design exists to surface.
+
+Fixed: `run` now boots the prelude, with `Prelude.boot` hoisted into a nullary `def` so the
+~200k-step boot is paid once per process rather than per rung (the whole run still takes ~2s). A
+boot failure is reported as `unsupported` rather than falling back to the unbooted heap — a
+cross-check against the wrong heap is worse than no cross-check, which is the lesson this bug
+teaches. Both rungs now confirm, and no other rung's verdict changed.
+
+The generalisable point: **a cross-check is only as good as its agreement with the thing it
+claims to be checking**, and "the same X the real engine uses" is a claim that should be
+mechanically true (a shared function) rather than asserted in a docstring. `run` calling
+`Prelude.initWithPrelude`'s own body inline is a step toward that; sharing the function outright
+would be better and is not free, because `initWithPrelude` re-boots per call.
+
+### Two `Ty` gaps re-confirmed, neither new
+
+`{"a" => 1}.map { |p| p }` is safe Ruby that no iterator rule types, because `iterBlock`
+requires an `arrayOf elem` receiver and `Ty` has no `hashOf` to read an element type out of.
+That is the third recorded gap (clink 4), now with a second symptom. And `proc-arity-leniency`
+remains the arity gap; tier 9's 19/22 is *every* rung it targets, the other three being two
+`unsafe_program`s and that gap.
+
+State after this clink: **108 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 19/22 —
+every targeted rung, tier 11 at 2/10, tier 12 at 7/12), 108/108 cross-checked against the real
+semantics **on the prelude-booted heap**, 67/67 negative controls rejected, corpus agreement
+**136/136 with 0 disagreements**, all ten soundness theorems axiom-clean (`propext`,
+`Quot.sound`).

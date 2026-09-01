@@ -1,4 +1,5 @@
 import RubyCore.Interp
+import RubyCore.PreludeBoot
 
 /-!
 The real semantics — **imported**, not copied, from `../lean/RubyCore/` via the local
@@ -45,11 +46,36 @@ def typeStuck : Interp.RunResult → Bool
   | .uncaught exc m => isTypeError m.heap exc
   | _ => false
 
-/-- Run a program to completion (or until fuel runs out) from the booted heap — the
-same `Machine.init` the real `rubycore` executable and the difftest engine use, so a
-rung runs against the *actual* prelude/class hierarchy, not a reimplementation of it. -/
+/-- The machine after **booting the prelude** — RubyCore's core library written *in RubyCore*
+(Enumerable/Comparable/Range). Computed once: a nullary `def` is a closed term, so the
+compiler initialises it a single time rather than per rung, which matters because the boot
+itself costs `PreludeBoot.bootFuel` steps.
+
+**Corrected at tier 9c, and the correction is the finding.** This function used to be
+`Interp.run fuel (Machine.init p)`, whose docstring claimed it ran "the same `Machine.init`
+the real `rubycore` executable and the difftest engine use". That was wrong: the difftest
+SUT boots the prelude (`PreludeBoot.initWithPrelude`), and `Machine.init` does not — so the
+cross-check was running rungs against a *smaller* model than the agreement gate. It went
+unnoticed for eleven clinks because nothing below tier 9c reached a prelude-defined method;
+`Array#select` and `Array#sort_by` are the first, and `checkrungs` reported them as
+`unsupported(unmodeled method Array#select)` while `run_agreement.sh` reported 136/136
+agree. Two numbers disagreeing about the same model is exactly what the two-legged design is
+supposed to surface, and it did. -/
+def bootedMachine : Except String Machine := Prelude.boot
+
+/-- Run a program to completion (or until fuel runs out) from the **prelude-booted** heap —
+the same heap the difftest engine's `--sut lean` uses, so a rung runs against the *actual*
+core library, not a reimplementation of it and not a subset of it.
+
+A boot failure is reported as `unsupported` rather than silently falling back to the
+unbooted heap: a cross-check against the wrong heap is worse than no cross-check. -/
 def run (fuel : Nat) (p : Expr) : Interp.RunResult :=
-  Interp.run fuel (Machine.init p)
+  match bootedMachine with
+  | .ok mp =>
+    -- Exactly `Prelude.initWithPrelude`, spelled out so the `boot` result is shared across
+    -- every rung in a run rather than recomputed per rung.
+    Interp.run fuel { Machine.initOn mp.heap p with globals := mp.globals }
+  | .error msg => .unsupported s!"prelude boot failed: {msg}" (Machine.init p)
 
 /-- Which outcome a run landed on, for a report line. -/
 def outcomeLabel : Interp.RunResult → String

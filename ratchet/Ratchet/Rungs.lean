@@ -1652,6 +1652,235 @@ def r129 : Rung :=
       · exact .prim .ivarRead (.cons .intLit .nil) .intAdd
       · exact .prim .ivarRead (.cons .strLit .nil) .strAdd)⟩
 
+/-! ## Tier 9c — the builtin iterators
+
+The nine rungs `Judge.iterBlock`/`iterSymPass`/`iterClosPass` climb, and the reason they are
+worth reading as a group is that **five of them differ only in the iterator's name** and yet
+come out at five different types. That is the whole content of `IterSig` (see its section
+docstring in `Judge.lean`): a single "block rule" would get most of these wrong.
+
+Every derivation below has the same shape — receiver, arguments, signature, the block's
+parameter environment, the block's body, `capIntact` — because the rule does. What differs is
+the last thing: the *result*, and which premise justifies it. -/
+
+/-- `[1, 2, 3].each { |x| x + 1 }` → `arrayOf Int`, **the receiver**.
+
+    `each`'s block return type appears nowhere in the result, which is the point of it being a
+    separate `IterSig` row from `map`'s: the block is run for effect and its value discarded.
+    The body still has to *type* — `[1,2].each { |x| x + "a" }` is a permanent
+    `unsafe_program` negative (`block-bad-arith`) precisely because the block wrapper must not
+    launder a `TypeError`. -/
+def r091 : Rung :=
+  ⟨"block-each-int",
+    .send (some (.array [.int 1, .int 2, .int 3])) "each" []
+      (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none))),
+    .arrayOf .int, [],
+    .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))) .nil
+      .each rfl (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl⟩
+
+/-- `[1, 2, 3].map { |n| n.to_s }` → `arrayOf String`. The `each` rung with one word changed,
+    and a different result type: `map`'s row is the one that reads the block's return type. -/
+def r092 : Rung :=
+  ⟨"block-map-to-s",
+    .send (some (.array [.int 1, .int 2, .int 3])) "map" []
+      (some (.block [.req "n"] [] (.send (some (.var .lvar "n")) "to_s" [] none))),
+    .arrayOf (.cls "String"), [],
+    .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))) .nil
+      .map rfl (.prim (.var rfl) .nil .intToS) rfl⟩
+
+/-- `[1, 2].map do |x| y = x * 2; y + 1 end` → `arrayOf Int`.
+
+    **The `|x; y|` block-local rung.** The desugarer records `y` in the `block` node's *third*
+    field, because a local first assigned inside a `do`/`end` body is block-scoped in Ruby, and
+    `blockLocals` binds each of them at `.nilT` — which is what Ruby does (a block-local read
+    before assignment is `nil`) and is why the name is in scope at all. `Judge.lambdaLit` still
+    refuses a block with locals; nothing needed to change there, because a block passed to an
+    iterator never becomes a `Ty.clos`. -/
+def r093 : Rung :=
+  ⟨"block-doend-with-block-local",
+    .send (some (.array [.int 1, .int 2])) "map" []
+      (some (.block [.req "x"] ["y"]
+        (.seq [.vasgn .lvar "y" (.send (some (.var .lvar "x")) "*" [.int 2] none),
+               .send (some (.var .lvar "y")) "+" [.int 1] none]))),
+    .arrayOf .int, [],
+    .iterBlock (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil .map rfl
+      (.seq (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .intMul))
+        (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))) rfl⟩
+
+/-- `[1, 2].map(&:to_s)` → `arrayOf String`.
+
+    **`Symbol#to_proc`, and the pleasing part is that it needed no new claim about types.** The
+    coerced proc sends `to_s` to each element, so the block's return type is the result of a
+    send — and `.intToS` below is the *same* `PrimSig` row `block-map-to-s` uses. Two syntaxes,
+    one table row. -/
+def r096 : Rung :=
+  ⟨"block-pass-symbol-to-proc",
+    .send (some (.array [.int 1, .int 2])) "map" [] (some (.blockpass (some (.sym "to_s")))),
+    .arrayOf (.cls "String"), [],
+    .iterSymPass (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil .map .intToS⟩
+
+/-- `double = ->(x) { x * 2 }; [1, 2].map(&double)` → `arrayOf Int`.
+
+    The other `&` form: the block is a **callable value**, so this is `closCall` with the
+    argument types supplied by `IterSig` instead of by a call site. `double`'s type is
+    `clos 0 ivar0` — a reference to block 0 of the program plus the (empty) environment it
+    captured — and `iterClosPass` instantiates its body at the receiver's element type. -/
+def r097 : Rung :=
+  ⟨"block-pass-lambda-variable",
+    .seq [.vasgn .lvar "double" (.send none "lambda" []
+            (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
+          .send (some (.array [.int 1, .int 2])) "map" []
+            (some (.blockpass (some (.var .lvar "double"))))],
+    .arrayOf .int, [("double", .clos 0 .ivar0)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+      (.last (.iterClosPass (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil
+        (.var rfl) .map rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
+
+/-- `[[1, 2], [3, 4]].map { |row| row.map { |x| x + 1 } }` → `arrayOf (arrayOf Int)`.
+
+    Nesting costs nothing, and that is worth checking rather than assuming: the outer block's
+    body *is* an iterator call, so the rule applies to itself, with `row : arrayOf Int` coming
+    from the outer receiver's element type. Note there is no block *table* involved anywhere —
+    `iterBlock` types the block where it stands, so a block inside a block needs no index and
+    no captured-environment spine. -/
+def r101 : Rung :=
+  ⟨"block-nested-map",
+    .send (some (.array [.array [.int 1, .int 2], .array [.int 3, .int 4]])) "map" []
+      (some (.block [.req "row"] []
+        (.send (some (.var .lvar "row")) "map" []
+          (some (.block [.req "x"] []
+            (.send (some (.var .lvar "x")) "+" [.int 1] none)))))),
+    .arrayOf (.arrayOf .int), [],
+    .iterBlock
+      (.arrayLit (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil)))
+        (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil))) .nil .map rfl
+      (.iterBlock (.var rfl) .nil .map rfl
+        (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl) rfl⟩
+
+/-- `[1, 2, 3].inject(0) { |acc, x| acc + x }` → `Integer`.
+
+    **The two-parameter iterator, and the only one with an accumulator fixed point.** `α` is
+    the initial value's type (`Int`), the block is typed with `acc : α` and `x : elem`, and the
+    body is *required to come back at `α`* — because the block's result is the next iteration's
+    accumulator. A block that returned something else really would change the accumulator's
+    type between iterations, and no single `Ty` describes that. Same assume-then-verify shape as
+    `Judge.callDef`'s recursion, with the initial value playing the part of the candidate.
+
+    The result is `α` rather than the block's return type, and they are the same type by that
+    premise — which matters for the empty receiver, where `inject` returns `init` and the block
+    never runs. -/
+def r102 : Rung :=
+  ⟨"block-two-params-inject",
+    .send (some (.array [.int 1, .int 2, .int 3])) "inject" [.int 0]
+      (some (.block [.req "acc", .req "x"] []
+        (.send (some (.var .lvar "acc")) "+" [.var .lvar "x"] none))),
+    .int, [],
+    .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))
+      (.cons .intLit .nil) .inject rfl
+      (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl⟩
+
+/-- `[1, 2, 3, 4].select { |x| if x > 2 then true else false end }` → `arrayOf Int`.
+
+    `select`'s block result is only ever tested for **truthiness**, which never raises in Ruby,
+    so `IterSig.select` leaves the block's return type unconstrained — the one iterator row with
+    no side condition on `ρ` besides `map`'s (which consumes it) and `each`'s (which discards
+    it). The `if` in the body is incidental; it is here because a corpus that only ever put a
+    single send in a block body would not have exercised a block body with control flow. -/
+def r103 : Rung :=
+  ⟨"block-select-with-if",
+    .send (some (.array [.int 1, .int 2, .int 3, .int 4])) "select" []
+      (some (.block [.req "x"] []
+        (.if' (.send (some (.var .lvar "x")) ">" [.int 2] none) .tru (some .fls)))),
+    .arrayOf .int, [],
+    .iterBlock
+      (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))) .nil
+      .select rfl (.if' (.prim (.var rfl) (.cons .intLit .nil) .intGt) .truLit .flsLit rfl)
+      rfl⟩
+
+/-- `["aaa", "b"].sort_by { |s| s.length }` → `arrayOf String`.
+
+    **The iterator whose side condition is a soundness requirement, not precision.**
+    `sort_by` compares the block's results with `<=>`, and
+    `["a"].sort_by { |s| nil }` raises `ArgumentError` ("comparison of NilClass with NilClass
+    failed") — *inside* the NoMethodError/ArgumentError/TypeError family this ladder defines
+    type-safety over. So `IterSig.sortBy` carries `Comparable ρ`, discharged here by
+    `Comparable.int` because `String#length` answers an `Integer`. An unconstrained `sort_by`
+    row would be unsound; `select`'s, in the rung above, is not. -/
+def r104 : Rung :=
+  ⟨"block-sort-by-length",
+    .send (some (.array [.str "aaa", .str "b"])) "sort_by" []
+      (some (.block [.req "s"] [] (.send (some (.var .lvar "s")) "length" [] none))),
+    .arrayOf (.cls "String"), [],
+    .iterBlock (.arrayLit (.cons .strLit (.cons .strLit .nil))) .nil (.sortBy .int) rfl
+      (.prim (.var rfl) .nil .strLength) rfl⟩
+
+/-- `class Shelf; def initialize(items); @items = items; end; def names; @items.map { |i|
+    i.to_s }; end; end; Shelf.new([1, 2]).names` → `arrayOf String` (tier 11).
+
+    **The cross-product rung tier 9c unblocked for free**, and the reason it came free is a
+    deliberate omission in `iterBlock`: unlike `closCall` and `callDefBlk`, it has **no
+    `κ.selfTy = none` premise**. Those two need one because they build a `Ty.clos` whose
+    captured environment is only meaningful at a creation site this judgment can describe; here
+    nothing is captured into a type, `κ` passes through unchanged, and so `self` inside the
+    block body is the `self` outside it — which is exactly Ruby. Hence an iterator may appear
+    inside a method body, over an ivar receiver. -/
+def r122 : Rung :=
+  ⟨"xc-ivar-array-map",
+    .seq [.class' "Shelf" none (.seq [
+            .def' "initialize" [.req "items"] (.vasgn .ivar "@items" (.var .lvar "items")),
+            .def' "names" []
+              (.send (some (.var .ivar "@items")) "map" []
+                (some (.block [.req "i"] []
+                  (.send (some (.var .lvar "i")) "to_s" [] none))))]),
+          .send (some (.send (some (.const "Shelf")) "new"
+            [.array [.int 1, .int 2]] none)) "names" [] none],
+    .arrayOf (.cls "String"), [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil)
+          rfl rfl (.ivarAsgn (.var rfl)))
+        .nil rfl rfl
+        (.iterBlock .ivarRead .nil .map rfl (.prim (.var rfl) .nil .intToS) rfl))))⟩
+
+/-- `t = [1, 2]; s = 0; t.each do |x| y = [10, 20][x]; if y then s = s + y end end; s`
+    → `Integer` (tier 12).
+
+    **Narrowing inside a block body**, and the rung that shows the two capabilities compose
+    without either one knowing about the other. `[10,20][x]` is `nilable Int`
+    (`PrimSig.arrayIndex`), `if y` narrows it to `Int` in the then-branch (clink 13), and the
+    accumulation `s = s + y` is admissible because it leaves `s`'s *type* alone — which is
+    `capIntact`, the clink-11 premise, discharged by the final `rfl`.
+
+    Worth being precise about why carrying the enclosing environment out unchanged is right
+    here and not merely convenient: `each` may run the block **zero** times, so the outgoing
+    environment cannot be the body's; and `capIntact` says the body did not change any outer
+    name's type, so it cannot be wrong to use the incoming one either. The two facts together
+    are what make a single environment correct for both cases. -/
+def r134 : Rung :=
+  ⟨"narrow-in-block",
+    .seq [.vasgn .lvar "t" (.array [.int 1, .int 2]),
+          .vasgn .lvar "s" (.int 0),
+          .send (some (.var .lvar "t")) "each" []
+            (some (.block [.req "x"] ["y"]
+              (.seq [.vasgn .lvar "y"
+                       (.send (some (.array [.int 10, .int 20])) "[]"
+                         [.var .lvar "x"] none),
+                     .if' (.var .lvar "y")
+                       (.vasgn .lvar "s"
+                         (.send (some (.var .lvar "s")) "+" [.var .lvar "y"] none))
+                       none]))),
+          .var .lvar "s"],
+    .int, [("t", .arrayOf .int), ("s", .int)],
+    .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit .nil))))
+      (.cons (.vasgn .intLit)
+        (.cons (.iterBlock (.var rfl) .nil .each rfl
+                 (.seq (.cons (.vasgn (.prim (.arrayLit (.cons .intLit (.cons .intLit .nil)))
+                                        (.cons (.var rfl) .nil) .arrayIndex))
+                   (.last (.ifNoElse (.var rfl)
+                     (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))))
+                 rfl)
+          (.last (.var rfl)))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1663,9 +1892,10 @@ def rungs : List Rung :=
    r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
    r074, r075, r076,
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
-   r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
-   r121,
-   r125, r126, r127, r129, r130, r131]
+   r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
+   r101, r102, r103, r104, r105,
+   r121, r122,
+   r125, r126, r127, r129, r130, r131, r134]
 
 /-! ## `chk` answers exactly what was derived by hand
 

@@ -879,6 +879,91 @@ def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
   | .block none :: ps, τs => paramEnvB blk ps τs
   | _, _ => none
 
+/-! ## Tier 9c: the builtin iterators
+
+The last piece of tier 9, and a genuinely new *kind* of rule: a builtin whose signature
+mentions a **block**. `PrimSig` cannot state one — it relates a receiver type, a name and a
+list of argument types to a result, and an iterator's result depends on what its *block*
+returns, which is not known until the block's body has been typed.
+
+So the signature is split in two, and the split is the design:
+
+- **`iterParams?`** answers "given the receiver's element type and the call's arguments, at
+  what types does the block's parameter list get bound?" — the information needed *before*
+  typing the body.
+- **`iterResult?`** answers "given that the body came back at `ρ`, what does the call
+  return?" — after.
+
+`IterSig` is the relation that joins them, with one constructor per iterator, and
+`iterSig?_sound` is the lemma that the two functions only ever agree with it.
+
+**The five iterators differ in exactly the way that matters**, which is why a single "block
+rule" would get most of them wrong:
+
+| method | block params | result |
+|---|---|---|
+| `each` | `[elem]` | the **receiver** |
+| `map` | `[elem]` | `arrayOf` (block's return) |
+| `select` | `[elem]` | `arrayOf elem` (a subset of the receiver) |
+| `sort_by` | `[elem]` | `arrayOf elem`, **if** the block's return is comparable |
+| `inject(init)` | `[α, elem]` | `α`, **if** the block returns `α` |
+
+The two side conditions are not decoration:
+
+- **`sort_by` needs `Comparable ρ`**, and the failure mode is not the obvious one. It is not
+  that some key type lacks `<=>`: `nil <=> nil` is `0`, so `["a","b"].sort_by { |s| nil }`
+  sorts fine. What raises is a key type whose `<=>` is not total **across its own values** —
+  a union (`[1, "a"].sort_by { |x| x }` raises `ArgumentError: comparison of Integer with
+  String failed`, *inside* the family) or a user class inheriting `Object#<=>`, which answers
+  `0` for identical objects and `nil` otherwise (`[Z.new, Z.new].sort_by { |x| x }` raises).
+  So an unconstrained `sort_by` row would be unsound, unlike `select`'s — a `select` block's
+  result is only ever tested for truthiness, which never raises.
+- **`inject`'s accumulator must be a fixed point.** `α` is the type of the initial value, the
+  block is typed with its first parameter at `α`, and the body is *required to come back at
+  `α`* — because the block's result is the next iteration's accumulator. A block that returns
+  something else really does change the accumulator's type between iterations, and no single
+  `Ty` describes it. This is the same assume-then-verify shape as `Judge.callDef`'s recursion,
+  with the initial value playing the part of the candidate. -/
+
+/-- Receivers of `<=>` for which `sort_by`'s comparison is total. One row per type this
+`Ty` can actually produce a homogeneous array of; a `union` is deliberately absent, because
+`[1, "a"].sort_by { |x| x }` really does raise `ArgumentError`. -/
+inductive Comparable : Ty → Prop
+  | int : Comparable .int
+  | float : Comparable .float
+  | str : Comparable (.cls "String")
+
+/-- `IterSig m elem args βs ρ res`: sending `m` with argument types `args` and a block to an
+`arrayOf elem` binds the block's parameters at `βs`; if the block's body then has type `ρ`,
+the call's result is `res`. See the section docstring for the table and the two side
+conditions. -/
+inductive IterSig : String → Ty → List Ty → List Ty → Ty → Ty → Prop
+  /-- `Array#each { |x| … } → self`. The block's return value is discarded entirely. -/
+  | each {τ ρ : Ty} : IterSig "each" τ [] [τ] ρ (.arrayOf τ)
+  /-- `Array#map { |x| … } → Array` of whatever the block returned. -/
+  | map {τ ρ : Ty} : IterSig "map" τ [] [τ] ρ (.arrayOf ρ)
+  /-- `Array#select { |x| … } → Array` of the *receiver's* elements. The block's result is
+      only tested for truthiness, and truthiness never raises, so `ρ` is unconstrained. -/
+  | select {τ ρ : Ty} : IterSig "select" τ [] [τ] ρ (.arrayOf τ)
+  /-- `Array#sort_by { |x| … } → Array` of the receiver's elements, ordered by the block's
+      results — which are compared with `<=>`, hence `Comparable`. -/
+  | sortBy {τ ρ : Ty} : Comparable ρ → IterSig "sort_by" τ [] [τ] ρ (.arrayOf τ)
+  /-- `Array#inject(init) { |acc, x| … } → α`, where `α` is `init`'s type and the block is
+      required to *return* `α`. An empty receiver returns `init`, which is why the result is
+      `α` rather than the block's return type — they are the same type by the premise. -/
+  | inject {τ α : Ty} : IterSig "inject" τ [α] [α, τ] α α
+
+/-- The block-local list of a `|x; y|` block (the desugarer's third `block` field), bound at
+`.nilT`.
+
+`.nilT` and not "unbound" because that is what Ruby does: a block-local is *declared* by the
+`; y`, and reading it before assigning yields `nil` — the same fact `ivarGet?`'s defaulting
+records one state over. Every rung that has one assigns before reading, so the value is never
+observed; binding it anyway is what makes the name in scope at all. -/
+def blockLocals : List String → Env
+  | [] => []
+  | x :: xs => (x, .nilT) :: blockLocals xs
+
 /-- **Every name a closure captured still has the type it had on entry to its body.**
 
 The premise that stops a block from retyping a captured local out from under its caller —
@@ -1749,6 +1834,93 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) ρ Γb' I₂ →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+  -- ### Tier 9c — the builtin iterators
+  --
+  -- Three rules, one per *way a block reaches an iterator*: written out at the call site, or
+  -- passed with `&` as a Symbol, or passed with `&` as a callable value. See the `IterSig`
+  -- section for the signature table and why it is split in two.
+  /-- **`arr.each { |x| … }` and friends — an iterator with a block literal.**
+
+      The block's body is typed **right here**, at the parameter types `iterParams?` gives,
+      rather than being turned into a `Ty.clos` and called later (`closCall`). That is the
+      whole reason this rule is cheap: the block is syntactically present, so there is no need
+      for the whole-program block table, no index, and no captured-environment spine.
+
+      **The body's environment is `Γb ++ blockLocals locs ++ Γ₂`** — parameters, then the
+      block's own `|x; y|` locals, then *the enclosing environment as of the end of the
+      argument list*. All three layers matter: `envGet?` takes the first match, so a parameter
+      shadows a block-local which shadows an outer local, which is Ruby's scoping; and the
+      outer environment being there at all is what makes `block-two-params-inject`'s and
+      `narrow-in-block`'s closure reads work.
+
+      **`capIntact` over the enclosing environment**, not over a `cap` spine, and it is the
+      same soundness premise clink 11 added for `closCall`: a block captures locals **by
+      reference**, this rule carries `Γ₂` out unchanged, so a body that retyped an outer local
+      would leave the caller believing a stale type. Note the two directions this covers at
+      once — a block may run *zero* times (an empty receiver), so the outgoing environment
+      cannot be the body's either; requiring the types to be unchanged is what makes carrying
+      `Γ₂` right in both cases.
+
+      **The ivar spine may not be retyped either** (`… ρ Γb' I₂`, the incoming spine on both
+      sides), for the same reason and by the same argument as `callMethod`'s.
+
+      No `κ.selfTy = none` premise, unlike `closCall`/`callDefBlk`. Those two have it because
+      they build a `Ty.clos` whose captured environment is only meaningful at a creation site
+      this judgment can describe; here nothing is captured into a type, `κ` is passed through
+      unchanged, and so `self` inside the body is the `self` outside it — which is exactly
+      Ruby. That is deliberate rather than incidental: it is what lets an iterator appear inside
+      a method body (tier 11's `xc-ivar-array-map`). -/
+  | iterBlock {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {ps : List Param}
+      {locs : List String} {body : Expr} {elem : Ty} {βs : List Ty} {ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      IterSig m elem argTys βs ρ res →
+      paramEnv ps βs = some Γb →
+      Judge κ (Γb ++ blockLocals locs ++ Γ₂) I₂ (bodyResult body) ρ Γb' I₂ →
+      capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ Γ₂) Γb' = true →
+      Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res Γ₂ I₂
+  /-- **`arr.map(&:to_s)` — a Symbol coerced to a block.**
+
+      `Symbol#to_proc` builds a one-parameter callable that *sends that name to its argument*,
+      so the block's return type is exactly the result of a send — and this judgment already
+      has a table of those. The premise is therefore `PrimSig β s [] ρ`: the same row
+      `arr.map { |x| x.to_s }` would use, reached from the other syntax.
+
+      Restricted to a one-parameter iterator (`βs = [β]`), because that is what
+      `Symbol#to_proc` produces. `inject(&:+)` is legal Ruby and needs a two-parameter reading
+      of the same coercion; no rung writes it, and admitting it would be a second claim about
+      `to_proc` rather than a generalisation of this one. -/
+  | iterSymPass {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {m s : String} {args : List Expr} {argTys : List Ty} {elem β ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      IterSig m elem argTys [β] ρ res →
+      PrimSig β s [] ρ →
+      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some (.sym s))))) res Γ₂ I₂
+  /-- **`arr.map(&some_lambda)` — a callable value passed as the block.**
+
+      The `&` expression is typed (it is an ordinary expression — a local read, in
+      `block-pass-lambda-variable`), and its type has to be a `Ty.clos`, at which point this is
+      `closCall` with the argument list supplied by `iterParams?` instead of by a call site.
+      Everything about the body's environment and `capIntact` is `closCall`'s, unchanged: a
+      value-level callable *did* capture into a spine, so here the spine is what is protected,
+      not the enclosing environment.
+
+      Note the `&` expression is typed **after** the receiver and the arguments, which is
+      Ruby's order, and its outgoing states thread into the body. -/
+  | iterClosPass {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ Γb Γb' : Env} {I I₁ I₂ I₃ : Ty} {recv pe : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {idx : Nat} {cap : Ty}
+      {c : Clos} {elem β ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      Judge κ Γ₂ I₂ pe (.clos idx cap) Γ₃ I₃ →
+      IterSig m elem argTys [β] ρ res →
+      closGet? κ.closures idx = some c →
+      paramEnv c.params [β] = some Γb →
+      Judge κ (Γb ++ spineToEnv cap) I₃ (bodyResult c.body) ρ Γb' I₃ →
+      capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
+      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some pe)))) res Γ₃ I₃
   -- ### Tier 9b — a block reaching a method
   --
   -- Four rules. `callDefBlk` is the call site that carries a block; `yieldExpr` is the one
