@@ -544,3 +544,150 @@ tier 6 matching its recorded target), 54/54 cross-checked against the real seman
 24/24 negative controls rejected — three of the four new ones *sound* rejections, one per
 premise added this clink — corpus agreement 0 disagreements, and all six soundness
 theorems axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 6 (2026-09-01) — tier 7's object model: 54 → 67
+
+Rungs added: thirteen of tier 7's sixteen — `class-basic`, `class-method-with-param`,
+`class-two-getters`, `class-method-calls-method`, `class-inheritance-override`,
+`class-multiple-instances`, `class-no-initialize`, `class-ivar-lazy-nil`,
+`class-array-of-instances`, `class-instance-in-hash`, `class-setter-method`,
+`class-instance-as-fun-arg`, `class-self-returning-method`. The three left
+(`class-inheritance-field`, `class-super-call`, `class-factory-method`) are the *hierarchy* —
+method lookup up the superclass chain, `super`, and singleton methods — and are deliberately
+a separate clink; this one is the object model.
+
+### 1. `Ty.inst`: an object's type carries its instance variables
+
+The forcing observation: **an object's observable type is not its class name.**
+`Point.new(1, 2)` and `Point.new("a", "b")` are both `Point`s, and `getX` returns an
+`Integer` from one and a `String` from the other. Nothing in the class *declaration* decides
+that, because Ruby writes no ivar types, so the only moment the information exists is the
+instantiation — and the only place to keep it is the type of the object.
+
+Hence `Ty.inst (name) (ivars)`, where `ivars` is an **ivar spine**
+(`ivar0`/`ivarCons name ty rest`). The spine rather than a `List (String × Ty)` payload for
+exactly the reason `arrowOf` is a spine: a list payload makes `Ty` a nested inductive and
+nested-derived `DecidableEq` does not kernel-reduce, which `Rungs.lean`'s per-rung `rfl`
+checks depend on. `.cls name` stays, for the builtin classes whose instances have no ivars
+this checker models (`String`, `Hash`).
+
+`class-basic` is the payoff and worth reading as one: the `Int` in its type travels from the
+literal `1`, through `initialize`'s parameter, into the spine inside `Ty.inst "Point" …`, out
+through `getX`'s `@x` — with **no annotation anywhere in the program** — and the derivation
+term is the record of that trip.
+
+### 2. `Ctx`: five indices bundled into one
+
+`Judge` needed a class table on top of tier 6's two, plus a `self` type, plus a *second*
+threaded state (the ivar spine). That is eight or nine indices, which is unreadable, so the
+four **input-only** components — `classes`, `defs`, `asms`, `selfTy` — are bundled as `Ctx`
+and the judgment is `Judge κ Γ I e τ Γ' I'`. Nothing about the bundling is semantic; the
+split is exactly *input-only vs. threaded*, and it is chosen so that reading a rule tells you
+how state flows.
+
+Cost, paid once: every rule, every `chk` arm and every proof case was rewritten. `Rung.deriv`
+became `Judge ctx0 [] .ivar0 program ty outEnv .ivar0`, and all 54 earlier rungs re-derive
+unchanged except for the two rules that grew premises.
+
+### 3. Method dispatch: the receiver's *type* is the dispatch table
+
+`callMethod` reads both halves of what dispatch needs off `.inst n Iself` — which class to
+look the method up in, and what the object's ivars are — and then does tier 6's trick again:
+the body is judged in `paramEnv`'s fresh locals, with `Iself` as its ivar state and
+`some (.inst n Iself)` as the type of `self`.
+
+`newInst` is where a spine is *manufactured*: `initialize`'s body is judged with the call's
+argument types as its parameters and `.ivar0` as its state, and the spine that comes out
+becomes the object's type. `newInstNoInit` is a separate rule rather than a defaulting clause,
+because the arity condition differs and it matters: `Object#new` inherited unchanged takes
+**zero** arguments and raises `ArgumentError` on any (control on file).
+
+`selfCall` handles a bare name inside a body that names one of `self`'s own methods —
+`class Rect; def describe; "area=" + area.to_s; end` — which is a `vcall`, not a local read
+and not a top-level function call.
+
+### 4. The one genuinely load-bearing invariant: **a method may not retype an ivar**
+
+`callMethod`'s last premise ends `… Γb' Iself` — the body's *outgoing* spine must be the one
+it started with. This is the soundness argument for the entire ivar mechanism, and the
+control that shows it is the most important in `CheckRungs.lean`:
+
+```ruby
+class C
+  def initialize(x); @x = x; end
+  def set; @x = "s"; end
+  def get; @x; end
+end
+c = C.new(1); c.set; c.get + 1        # TypeError
+```
+
+Without the premise the caller keeps its stale `.inst C {@x: Int}` after `c.set`, `c.get`
+answers `Int`, and this validates. With it, `set` has no derivation.
+
+The premise also buys the invariant that `ivarRead`'s defaulting depends on: **a spine is
+complete** — it records every ivar the object will ever have — because a method that added
+one would lengthen the spine and be rejected. That is what makes
+`(ivarGet? I x).getD .nilT` sound rather than a guess, and `class-ivar-lazy-nil`
+(`Box.new.reveal` is `nil`, checked by execution) the rung that states it.
+
+`class-setter-method` is the boundary case: `@size = @size + 1` really does mutate, and is
+admissible only because `Integer + Integer` is an `Integer` — the ivar's *type* is unchanged
+even though its value is not. The conservative cost is measured by a second control: a method
+that lazily creates an ivar is safe Ruby and is rejected.
+
+### 5. `self` is not typed inside `initialize`, and that is a soundness requirement
+
+`newInst` judges `initialize`'s body with `κ` **unchanged**, so `κ.selfTy` stays whatever the
+caller's was (`none` in every rung). This looks like an omission and is not: `initialize`'s
+job is to *change* the spine, so there is no single spine that describes `self` throughout it
+and therefore no honest `.inst n _` to offer. A method called on `self` from inside
+`initialize` would read a half-built spine and claim `nil` for an ivar about to be an
+`Integer` — unsound. A rule that wants it needs a fixpoint over the spine; no rung asks.
+
+### 6. `bareName` grew its second premise, for the same reason it grew its first
+
+Tier 6 added `defGet? κ.defs m = none`. Tier 7 adds `κ.selfTy = none`, and it is the identical
+failure one level down: inside a method body a bare name resolves against *that object*, so
+`class C; def x; 1 + true; end; def go; x; end; end; C.new.go` would launder a stuck body
+through the one `BareNameError` row. Control on file. The rule is now explicitly a top-level
+rule, which every earlier version of its docstring already claimed it was.
+
+### 7. `if`'s spine is not joined — the branches must agree
+
+`Judge.if'` gained `I₁ = I₂` as a premise rather than a `joinEnv`-style widening, and the
+asymmetry with locals is deliberate: a spine is not merely state, it is part of the *type* of
+`self`, and there is no pointwise widening of it that keeps that type honest. A branch that
+assigns an ivar at a new type is rejected rather than widened. No rung needs the precision.
+
+### 8. What was left out, on purpose
+
+- **Inheritance.** `extendClasses` *records* `Cls.super?` and nothing reads it; lookup is
+  `defGet? c.methods`, one class deep. `class-inheritance-override` still climbs, and the
+  note in its docstring says why that is not luck: `Dog` overrides `speak` and declares no
+  `initialize`. `class-inheritance-field`, whose `Dog` inherits both, is the rung that needs
+  the walk and is the one still unclimbed.
+- **No assumption table for methods.** Unlike `callDef`, `callMethod` has no
+  assume-then-verify machinery, so a recursive method exhausts fuel and is rejected. The fix,
+  if wanted, is to key `AsmTable` by receiver type as well as name.
+- **Class bodies are restricted to `def`s and `nil`** (`classMethods?`). That single premise
+  does double duty: it is what makes the body safe to *evaluate* unchecked (a `def` statement
+  never runs its body) and what makes the class readable into `CTable`. A body with anything
+  else is not typed. `class' `'s type is `.any` because a class body's value is its last
+  statement's (`class Foo; def hi; end; end` really is `:hi`) and nothing reads it.
+
+### 9. An elaboration note worth keeping: `ivarSet` is not invertible by unification
+
+`class-setter-method`'s derivation needed two explicit annotations (`Iself := boxSpine`,
+`I' := boxSpine`). The body's outgoing spine is `ivarSet ?I' "@size" ?τ`, `callMethod`
+requires it to equal `Iself` — itself an unreduced `ivarSet …` from `newInst` — and Lean
+matches the two applications *structurally*, solving `?I' := .ivar0`, which is the wrong
+environment. Pinning both to a named literal spine turns the check into a reduction
+(`ivarSet boxSpine "@size" .int` really is `boxSpine`) instead of a match. Recorded because
+it is not a workaround: it is the same fact the rung is about, showing up in the elaborator.
+
+State after this clink: **67 rungs climbed** (tiers 1–6 complete, tier 7 at 13/16), 67/67
+cross-checked against the real semantics, 29/29 negative controls rejected — three of the
+five new ones *sound* rejections, one per premise added this clink — corpus agreement 0
+disagreements, and all six soundness theorems axiom-clean (`propext`, `Quot.sound`).

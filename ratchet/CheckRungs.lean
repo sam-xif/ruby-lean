@@ -56,6 +56,13 @@ def expectedClasses : Ty → List String
   -- contents. What backs the element type instead is `arrayLit`'s premise: each element
   -- has its own derivation, and each of those would be a row here if it were a rung.
   | .arrayOf _ => ["Array"]
+  -- Tier 7: a user-class instance's class is its name. The *ivar spine* is not
+  -- cross-checked against the semantics here — this harness compares the class of the
+  -- result value and nothing in it reaches inside an object. What backs the spine instead
+  -- is that every rung whose type *depends* on it (`class-basic`'s `Integer`,
+  -- `class-ivar-lazy-nil`'s `NilClass`) reads an ivar out through a method call, so a wrong
+  -- spine shows up as a wrong result class on that rung.
+  | .inst n _ => [n]
   | _ => []
 
 /-- Fuel: these are small literal/arithmetic programs; a few hundred steps is already
@@ -246,7 +253,56 @@ def controls : List Control :=
     -- checker declines because `Param.opt` answers `none` (AGENTS.md §Frontier item 3).
   , ⟨"def f(x = 1); x; end; f() (safe; optional param unsupported)",
       .seq [.def' "f" [.opt "x" (.int 1)] (.var .lvar "x"),
-            .send none "f" [] none]⟩ ]
+            .send none "f" [] none]⟩
+    -- ### Tier 7's controls
+    --
+    -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
+    -- important one in this file. `set` stores a String into an ivar the caller's type says
+    -- is an Integer; afterwards `c.get + 1` really raises TypeError. Without the premise the
+    -- caller keeps its stale `.inst C {@x: Int}`, `c.get` answers Int, and the whole thing
+    -- validates. This is also, transitively, the control for `ivarRead`'s `nil` default:
+    -- that default is sound only because a spine records *every* ivar the object will ever
+    -- have, which is precisely what the premise buys.
+  , ⟨"class C; @x=x; def set; @x=\"s\"; end; …; c.set; c.get + 1",
+      .seq [.class' "C" none (.seq [
+              .def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x")),
+              .def' "set" [] (.vasgn .ivar "@x" (.str "s")),
+              .def' "get" [] (.var .ivar "@x")]),
+            .vasgn .lvar "c" (.send (some (.const "C")) "new" [.int 1] none),
+            .send (some (.var .lvar "c")) "set" [] none,
+            .send (some (.send (some (.var .lvar "c")) "get" [] none)) "+"
+              [.int 1] none]⟩
+    -- (b) `newInstNoInit`'s `argTys = []` premise: `Object#new` inherited unchanged takes no
+    -- arguments, and passing one raises ArgumentError — inside the family.
+  , ⟨"class G; def hi; \"hi\"; end; end; G.new(1)",
+      .seq [.class' "G" none (.def' "hi" [] (.str "hi")),
+            .send (some (.const "G")) "new" [.int 1] none]⟩
+    -- (c) `bareName`'s `κ.selfTy = none` premise, the tier-7 twin of tier 6's `defGet?`
+    -- one. `x` is the single `BareNameError` row, and here it is also a method of `self`
+    -- with a type-stuck body; the program raises TypeError. Without the premise the `vcall`
+    -- inside `go` would take the bare-name route to `.any` and validate.
+  , ⟨"class C; def x; 1 + true; end; def go; x; end; end; C.new.go",
+      .seq [.class' "C" none (.seq [
+              .def' "x" [] (.send (some (.int 1)) "+" [.tru] none),
+              .def' "go" [] (.vcall "x")]),
+            .send (some (.send (some (.const "C")) "new" [] none)) "go" [] none]⟩
+    -- (d) The same premise's *conservative* cost, measured: a method that lazily creates an
+    -- ivar the constructor never set is perfectly safe Ruby (this returns 1) and is
+    -- rejected, because its outgoing spine is longer than its incoming one.
+  , ⟨"class C; def set; @y = 1; end; def get; @y; end; end; c = C.new; c.set; c.get "
+      ++ "(safe; a method may not add an ivar)",
+      .seq [.class' "C" none (.seq [
+              .def' "set" [] (.vasgn .ivar "@y" (.int 1)),
+              .def' "get" [] (.var .ivar "@y")]),
+            .vasgn .lvar "c" (.send (some (.const "C")) "new" [] none),
+            .send (some (.var .lvar "c")) "set" [] none,
+            .send (some (.var .lvar "c")) "get" [] none]⟩
+    -- (e) `constCls`'s "declared classes only": an undeclared constant. Runs to a
+    -- NameError, which is *outside* the family (like `bare-undeclared-var`), so the harness
+    -- reports this as a conservative rejection of a program that nevertheless crashes —
+    -- the same distinction `PrimSig.intDiv` established.
+  , ⟨"Undeclared.new (no class statement)",
+      .send (some (.const "Undeclared")) "new" [] none⟩ ]
 
 mutual
 
@@ -272,6 +328,15 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match e with
     | none => return .if' c' t' none
     | some e => return .if' c' t' (some (← toRubyCore e))
+  | .self' => some .self'
+  | .const n => some (.const n)
+  | .var .ivar x => some (.var .ivar x)
+  | .vasgn .ivar x e => (toRubyCore e).map (fun e' => .vasgn .ivar x e')
+  | .class' n sup body => do
+    let body' ← toRubyCore body
+    match sup with
+    | none => return .class' n none body'
+    | some sup => return .class' n (some (← toRubyCore sup)) body'
   | .def' n ps body => do
     let ps' ← ps.mapM toRubyCoreParam
     return .def' n ps' (← toRubyCore body)

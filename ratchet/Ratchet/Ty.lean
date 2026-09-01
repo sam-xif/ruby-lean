@@ -81,6 +81,27 @@ inductive Ty where
       nested, and nested-derived equality doesn't kernel-reduce). -/
   | arrow0 (ret : Ty)
   | arrowCons (param : Ty) (rest : Ty)
+  /-- **An instance of a user-defined class, carrying its instance variables' types.**
+      Added at tier 7; this package's own constructor, not in the ported file.
+
+      Why this rather than reusing `.cls name`: an object's observable type is not its class
+      name. `Point.new(1, 2)` and `Point.new("a", "b")` are both `Point`s, and `getX`
+      returns an `Integer` from one and a `String` from the other. Nothing about the class
+      *declaration* decides that — Ruby writes no ivar types — so the only place the
+      information exists is the instantiation, and the only way to keep it is to put it in
+      the type. `.cls name` stays for the builtin classes (`String`, `Hash`), whose
+      instances have no ivars this checker models.
+
+      `ivars` is an **ivar spine** (`ivar0`/`ivarCons`), for exactly the reason `arrowOf` is
+      a spine rather than a `List Ty`: a list payload would make `Ty` a nested inductive,
+      and nested-derived `DecidableEq` does not kernel-reduce — which `Ratchet/Rungs.lean`'s
+      per-rung `rfl` checks depend on. -/
+  | inst (name : String) (ivars : Ty)
+  /-- The empty ivar spine — an object with no instance variables set. -/
+  | ivar0
+  /-- One instance variable in a spine. The name includes the `@` (the desugarer's own
+      convention: `Expr.var .ivar "@x"`). -/
+  | ivarCons (name : String) (ty : Ty) (rest : Ty)
 deriving DecidableEq, BEq, Repr, Inhabited
 
 /-- `(A, B, …) → R` from its parts. -/
@@ -216,6 +237,35 @@ def joinT (σ τ : Ty) : Ty :=
   else match joinTy σ τ with
   | some ρ => ρ
   | none => unionOf (dedupTys (unionMems σ ++ unionMems τ))
+
+/-! ## Ivar spines
+
+An object's instance-variable state is a `Ty` (a spine), not an `Env`, so that it can sit
+inside `Ty.inst`. These two functions are the spine's `envGet?`/`envSet`, and the
+difference from `Env`'s pair is the whole content of `class-ivar-lazy-nil`. -/
+
+/-- An ivar's type, or `none` if the object has never been given one.
+
+Callers must decide what `none` means, and the judgment's answer is `.nilT`: in Ruby,
+reading an instance variable that was never assigned yields `nil` — it does not raise, and
+it does not even warn under `-w` for a *read* in a method. That is `class-ivar-lazy-nil`
+(`class Box; def reveal; @secret; end; end; Box.new.reveal` is `nil`), and it is why the
+lookup is separated from the defaulting. -/
+def ivarGet? : Ty → String → Option Ty
+  | .ivarCons n τ rest, x => if n == x then some τ else ivarGet? rest x
+  | _, _ => none
+
+/-- Record an ivar's type, replacing in place, appending at the end otherwise.
+
+The last case — a `Ty` that is not a spine at all — returns it unchanged rather than
+failing. That case is unreachable from the judgment, which only ever builds spines starting
+from `.ivar0`, and making the function total is cheaper than threading an `Option` through
+every assignment rule. -/
+def ivarSet : Ty → String → Ty → Ty
+  | .ivar0, x, ρ => .ivarCons x ρ .ivar0
+  | .ivarCons n τ rest, x, ρ =>
+    if n == x then .ivarCons x ρ rest else .ivarCons n τ (ivarSet rest x ρ)
+  | other, _, _ => other
 
 /-- The names bound in an environment, in order. -/
 def envKeys : Env → List String

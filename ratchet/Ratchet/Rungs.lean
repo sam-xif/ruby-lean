@@ -41,12 +41,17 @@ structure Rung where
       binds nothing; tier 3's rungs are the first with anything in it, and printing it
       is how one reads off what the checker thinks each local ended up as. -/
   outEnv : Env
-  /-- The derivation, at the **empty** def and assumption tables. Both emptinesses matter
-      and for different reasons: `D = []` because nothing is defined before a program's
-      first statement, and `Δ = []` because a derivation with an assumption in it is only a
-      conditional claim (see `AsmTable`). Tier 6's `def` statements grow `D` from inside,
-      via `JudgeSeq.cons`. -/
-  deriv : Judge [] [] [] program ty outEnv
+  /-- The derivation, in `ctx0` — every table empty and no `self` — from the empty local
+      environment and the empty ivar spine, and coming back to the empty spine. Each of
+      those emptinesses matters for a different reason, and `ctx0`'s docstring says which.
+      A program's own `def`/`class` statements grow the syntax tables from inside, via
+      `JudgeSeq.cons`, which is why no rung writes a table down.
+
+      The **outgoing spine is required to be `.ivar0` too**, and that is a real (if
+      currently free) restriction: a rung whose top-level code assigned an instance variable
+      would not fit this structure. None does; `@x = 1` at `main` is legal Ruby that this
+      judgment types but that no rung exercises. -/
+  deriv : Judge ctx0 [] .ivar0 program ty outEnv .ivar0
 
 /-! ## Tier 1 — the eight literals
 
@@ -239,7 +244,7 @@ def r031 : Rung :=
     because the program contains no `def`; the control that makes it non-trivial is
     `def x; 1 + true; end; x` in `CheckRungs.lean`. -/
 def r032 : Rung :=
-  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x rfl⟩
+  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x rfl rfl⟩
 
 /-- `x = 1; y = 2; x + y` → `Integer`, leaving both locals bound. Two *different* names,
     where the previous rungs rebind one — so this is the rung that would catch an
@@ -280,20 +285,20 @@ these from compiling. -/
     on them and no union appears. -/
 def r035 : Rung :=
   ⟨"if-true-branch", .if' .tru (.int 1) (some (.int 2)), .int, [],
-    .if' .truLit .intLit .intLit⟩
+    .if' .truLit .intLit .intLit rfl⟩
 
 /-- `if true then 1 end` (no `else`) → `nilable Int`. The absent branch contributes
     `nil`, and `joinT .int .nilT` is `mkNilable .int`. -/
 def r036 : Rung :=
   ⟨"if-no-else", .if' .tru (.int 1) none, .nilable .int, [],
-    .ifNoElse .truLit .intLit⟩
+    .ifNoElse .truLit .intLit rfl⟩
 
 /-- `if 5 then 1 else 2` → `Integer`. The rung that pins the condition being
     unconstrained: `5` is a perfectly good Ruby condition (only `nil`/`false` are falsy)
     and `Judge.if'` never looks at `σ`. -/
 def r037 : Rung :=
   ⟨"if-condition-not-bool", .if' (.int 5) (.int 1) (some (.int 2)), .int, [],
-    .if' .intLit .intLit .intLit⟩
+    .if' .intLit .intLit .intLit rfl⟩
 
 /-- `if true then 1 else "a"` → `union(Int, String)`. The first type in this package that
     is not the type of any single value: `Ty.union` was in the grammar and inert, and
@@ -301,7 +306,7 @@ def r037 : Rung :=
 def r038 : Rung :=
   ⟨"if-branch-mismatch", .if' .tru (.int 1) (some (.str "a")),
     .union .int (.cls "String"), [],
-    .if' .truLit .intLit .strLit⟩
+    .if' .truLit .intLit .strLit rfl⟩
 
 /-- `if true then 1 elsif false then 2 else "a"` → `union(Int, String)`, **not**
     `union(Int, union(Int, String))`. `elsif` is nested `if'`, so the outer join sees
@@ -311,25 +316,25 @@ def r039 : Rung :=
   ⟨"elsif-chain-mismatch",
     .if' .tru (.int 1) (some (.if' .fls (.int 2) (some (.str "a")))),
     .union .int (.cls "String"), [],
-    .if' .truLit .intLit (.if' .flsLit .intLit .strLit)⟩
+    .if' .truLit .intLit (.if' .flsLit .intLit .strLit rfl) rfl⟩
 
 /-- `if nil then 1 else 2` → `Integer`. `nil` is falsy, never a type error. -/
 def r040 : Rung :=
   ⟨"if-nil-condition", .if' .nil (.int 1) (some (.int 2)), .int, [],
-    .if' .nilLit .intLit .intLit⟩
+    .if' .nilLit .intLit .intLit rfl⟩
 
 /-- A nested `if` in the then-branch → `Integer`. -/
 def r041 : Rung :=
   ⟨"nested-if",
     .if' .tru (.if' .fls (.int 1) (some (.int 2))) (some (.int 3)), .int, [],
-    .if' .truLit (.if' .flsLit .intLit .intLit) .intLit⟩
+    .if' .truLit (.if' .flsLit .intLit .intLit rfl) .intLit rfl⟩
 
 /-- `if true then 1 elsif false then 2 else 3` → `Integer`: the uniform three-way
     chain, joining twice. -/
 def r043 : Rung :=
   ⟨"elsif-chain",
     .if' .tru (.int 1) (some (.if' .fls (.int 2) (some (.int 3)))), .int, [],
-    .if' .truLit .intLit (.if' .flsLit .intLit .intLit)⟩
+    .if' .truLit .intLit (.if' .flsLit .intLit .intLit rfl) rfl⟩
 
 /-! ### Tier 2's stragglers: `&&` and `||`
 
@@ -351,7 +356,7 @@ def r016 : Rung :=
     .bool, [("__dt_t1", .bool)],
     .seq (.cons (.vasgn .truLit)
       (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
-                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) .flsLit (.var rfl))))⟩
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) .flsLit (.var rfl) rfl)))⟩
 
 /-- `false || true` → `Bool`. Same shape, branches swapped. -/
 def r017 : Rung :=
@@ -361,7 +366,7 @@ def r017 : Rung :=
     .bool, [("__dt_t1", .bool)],
     .seq (.cons (.vasgn .flsLit)
       (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
-                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) (.var rfl) .truLit)))⟩
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) (.var rfl) .truLit rfl)))⟩
 
 /-! ## Tier 5 — array and hash literals, and `#[]`
 
@@ -573,7 +578,312 @@ def r060 : Rung :=
           (.prim (.var rfl)
             (.cons (.callAsm
               (.cons (.prim (.var rfl) (.cons .intLit .nil) .intSub) .nil) rfl) .nil)
-            .intMul)))))⟩
+            .intMul)
+          rfl))))⟩
+
+/-! ## Tier 7 — the object model
+
+Where tier 6's derivations stopped being shaped like their programs, these stop being
+shaped like anything on the page at all: a `class` statement is one leaf (`classStmt`), and
+every method body's derivation hangs off a **`new` or a dispatch** somewhere else entirely.
+`class-basic`'s derivation is a `classStmt`, then a `callMethod` whose sixth premise is
+`@x`'s one-line read — and whose *receiver* premise contains the entire derivation of
+`initialize`.
+
+The `ty` fields are worth reading as the payoff. `class-basic` claims `Int` for
+`Point.new(1, 2).getX` with **no annotation anywhere in the program**: the `Int` travelled
+from the literal `1`, through `initialize`'s parameter, into the ivar spine inside
+`Ty.inst "Point" …`, out through `getX`'s `@x`, and the derivation is the record of that
+trip. `class-array-of-instances` is where the spine becomes visible in a rung's own type.
+
+The four `rfl`s that show up per dispatch are `clsGet?` (the class is declared),
+`defGet?` (it has that method), `paramEnv` (the arity matched), and — inside a `vcall` —
+`κ.selfTy`. Each is a computation on a table the derivation carries, so a wrong table fails
+the `rfl` rather than passing quietly.
+
+Inheritance, `super` and singleton methods are the other three rungs and are not here; see
+`AGENTS.md` §Frontier. -/
+
+/-- The ivar spine `Point.new(x)` produces for a one-parameter `initialize` that stores it.
+Written once because five rungs share it, and spelled out rather than computed so that a
+wrong `ivarSet` would not compile. -/
+def pointSpine1 : Ty := .ivarCons "@x" .int .ivar0
+
+/-- `Box`'s spine, needed by name for a reason worth recording: `ivarSet` is **not
+invertible by unification**. In `class-setter-method` the body's outgoing spine is
+`ivarSet ?I' "@size" ?τ` and `callMethod` requires it to equal `Iself`, which is itself an
+unreduced `ivarSet …`; Lean matches the two `ivarSet` applications structurally and solves
+`?I' := .ivar0`, which is the wrong environment. Pinning both to this literal spine makes
+the check a *reduction* (`ivarSet boxSpine "@size" .int` really is `boxSpine`) instead of a
+match — which is exactly the fact the rung is about. -/
+def boxSpine : Ty := .ivarCons "@size" .int .ivar0
+
+/-- `class Point; def initialize(x, y); @x = x; @y = y; end; def getX; @x; end; end;
+    Point.new(1, 2).getX` → `Integer`. **Tier 7's headline rung.**
+
+    Nothing in this program says `@x` is an `Integer`. The type comes from the literal `1`,
+    through `initialize`'s parameter `x`, into the spine that `newInst` builds and stores in
+    `Ty.inst "Point" …`, and back out through `getX`'s `ivarRead`. Read the derivation
+    inside out and it is that path, in order. -/
+def r061 : Rung :=
+  ⟨"class-basic",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x", .req "y"]
+              (.seq [.vasgn .ivar "@x" (.var .lvar "x"),
+                     .vasgn .ivar "@y" (.var .lvar "y")]),
+            .def' "getX" [] (.var .ivar "@x")]),
+          .send (some (.send (some (.const "Point")) "new" [.int 1, .int 2] none))
+            "getX" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl rfl
+          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
+        .nil rfl rfl rfl .ivarRead)))⟩
+
+/-- `class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; end;
+    c = Counter.new(10); c.add(5)` → `Integer`. An instance stored in a local, so the
+    `outEnv` below is the first place an `.inst` type with its spine is printed as part of
+    the environment rather than only as a result. -/
+def r062 : Rung :=
+  ⟨"class-method-with-param",
+    .seq [.class' "Counter" none (.seq [
+            .def' "initialize" [.req "n"] (.vasgn .ivar "@n" (.var .lvar "n")),
+            .def' "add" [.req "k"]
+              (.send (some (.var .ivar "@n")) "+" [.var .lvar "k"] none)]),
+          .vasgn .lvar "c" (.send (some (.const "Counter")) "new" [.int 10] none),
+          .send (some (.var .lvar "c")) "add" [.int 5] none],
+    .int, [("c", .inst "Counter" (.ivarCons "@n" .int .ivar0))],
+    .seq (.cons (.classStmt rfl)
+      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                (.ivarAsgn (.var rfl))))
+        (.last (.callMethod (.var rfl) (.cons .intLit .nil) rfl rfl rfl
+          (.prim .ivarRead (.cons (.var rfl) .nil) .intAdd)))))⟩
+
+/-- `p.getX + p.getY` on a two-ivar `Point` → `Integer`. Two dispatches on the *same*
+    receiver type, each reading a different ivar out of the same spine — so this is the rung
+    that would catch an `ivarGet?` that answered positionally rather than by name. -/
+def r063 : Rung :=
+  ⟨"class-two-getters",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x", .req "y"]
+              (.seq [.vasgn .ivar "@x" (.var .lvar "x"),
+                     .vasgn .ivar "@y" (.var .lvar "y")]),
+            .def' "getX" [] (.var .ivar "@x"),
+            .def' "getY" [] (.var .ivar "@y")]),
+          .vasgn .lvar "p" (.send (some (.const "Point")) "new" [.int 3, .int 4] none),
+          .send (some (.send (some (.var .lvar "p")) "getX" [] none)) "+"
+            [.send (some (.var .lvar "p")) "getY" [] none] none],
+    .int, [("p", .inst "Point" (.ivarCons "@x" .int (.ivarCons "@y" .int .ivar0)))],
+    .seq (.cons (.classStmt rfl)
+      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil))
+                rfl rfl rfl
+                (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))
+        (.last (.prim
+          (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)
+          (.cons (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead) .nil)
+          .intAdd))))⟩
+
+/-- `class Rect; …; def area; @w * @h; end; def describe; "area=" + area.to_s; end; end;
+    Rect.new(3, 4).describe` → `String`. The rung `selfCall` exists for: the `area` inside
+    `describe` is a **`vcall`**, not a local read and not a top-level function call, and
+    resolving it needs `κ.selfTy` — which is why `bareName` had to be restricted to top
+    level in the same clink. -/
+def r064 : Rung :=
+  ⟨"class-method-calls-method",
+    .seq [.class' "Rect" none (.seq [
+            .def' "initialize" [.req "w", .req "h"]
+              (.seq [.vasgn .ivar "@w" (.var .lvar "w"),
+                     .vasgn .ivar "@h" (.var .lvar "h")]),
+            .def' "area" [] (.send (some (.var .ivar "@w")) "*" [.var .ivar "@h"] none),
+            .def' "describe" []
+              (.send (some (.str "area=")) "+"
+                [.send (some (.vcall "area")) "to_s" [] none] none)]),
+          .send (some (.send (some (.const "Rect")) "new" [.int 3, .int 4] none))
+            "describe" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl rfl
+          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
+        .nil rfl rfl rfl
+        (.prim .strLit
+          (.cons (.prim (.selfCall rfl rfl rfl rfl
+                    (.prim .ivarRead (.cons .ivarRead .nil) .intMul))
+                   .nil .intToS) .nil)
+          .strAdd))))⟩
+
+/-- `class Animal; def speak; "..."; end; end; class Dog < Animal; def speak; "Woof"; end;
+    end; Dog.new.speak` → `String`.
+
+    This rung climbs **without any inheritance support**, and it is worth saying why rather
+    than letting it look like a lucky pass: `Dog` overrides `speak`, so lookup never has to
+    walk up; and `Dog` declares no `initialize`, so `newInstNoInit` handles `Dog.new`.
+    `extendClasses` does record `Dog`'s superclass — `Cls.super?` is populated and read by
+    nothing yet — and `class-inheritance-field`, whose `Dog` inherits both, is exactly the
+    rung that needs the walk and is exactly the one still unclimbed. -/
+def r066 : Rung :=
+  ⟨"class-inheritance-override",
+    .seq [.class' "Animal" none (.def' "speak" [] (.str "...")),
+          .class' "Dog" (some (.const "Animal")) (.def' "speak" [] (.str "Woof")),
+          .send (some (.send (some (.const "Dog")) "new" [] none)) "speak" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
+        .nil rfl rfl rfl .strLit))))⟩
+
+/-- `a = Point.new(1); b = Point.new(2); a.getX + b.getX` → `Integer`. Two instances of one
+    class, and the point is that they get the *same* type — `pointSpine1` both times —
+    because they were built at the same argument shape. Two `new`s at different shapes would
+    get different types, which is `newInst`'s whole design and something no rung tests
+    directly. -/
+def r068 : Rung :=
+  ⟨"class-multiple-instances",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x")),
+            .def' "getX" [] (.var .ivar "@x")]),
+          .vasgn .lvar "a" (.send (some (.const "Point")) "new" [.int 1] none),
+          .vasgn .lvar "b" (.send (some (.const "Point")) "new" [.int 2] none),
+          .send (some (.send (some (.var .lvar "a")) "getX" [] none)) "+"
+            [.send (some (.var .lvar "b")) "getX" [] none] none],
+    .int, [("a", .inst "Point" pointSpine1), ("b", .inst "Point" pointSpine1)],
+    .seq (.cons (.classStmt rfl)
+      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                (.ivarAsgn (.var rfl))))
+        (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                  (.ivarAsgn (.var rfl))))
+          (.last (.prim
+            (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)
+            (.cons (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead) .nil)
+            .intAdd)))))⟩
+
+/-- `class Greeter; def hi; "hi"; end; end; Greeter.new.hi` → `String`. The rung that pins
+    `newInstNoInit`: no `initialize`, so the spine is empty and — the load-bearing part —
+    the argument list must be empty too, because `Object#new` inherited unchanged raises
+    `ArgumentError` on any argument. -/
+def r069 : Rung :=
+  ⟨"class-no-initialize",
+    .seq [.class' "Greeter" none (.def' "hi" [] (.str "hi")),
+          .send (some (.send (some (.const "Greeter")) "new" [] none)) "hi" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
+        .nil rfl rfl rfl .strLit)))⟩
+
+/-- `class Box; def reveal; @secret; end; end; Box.new.reveal` → **`Nil`**. Reading an
+    instance variable that was never assigned yields `nil` in Ruby — it does not raise — so
+    `ivarRead`'s `.getD .nilT` is the rule's content rather than a fallback, and this is the
+    rung that says so. The claim is checked by execution: the semantics really produces a
+    `NilClass` here. -/
+def r070 : Rung :=
+  ⟨"class-ivar-lazy-nil",
+    .seq [.class' "Box" none (.def' "reveal" [] (.var .ivar "@secret")),
+          .send (some (.send (some (.const "Box")) "new" [] none)) "reveal" [] none],
+    .nilT, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
+        .nil rfl rfl rfl .ivarRead)))⟩
+
+/-- `[Point.new(1), Point.new(2)]` → `arrayOf (inst Point {@x: Int})`. The rung where the
+    ivar spine appears in a rung's *own* declared type rather than only inside a derivation,
+    and where tier 5's `elemTy` meets tier 7's instances: the two elements have the same
+    `.inst` type, so `joinT`'s equality case answers and no union appears. Two instances at
+    different argument shapes would produce a union here — correctly, and no rung asks. -/
+def r071 : Rung :=
+  ⟨"class-array-of-instances",
+    .seq [.class' "Point" none
+            (.def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x"))),
+          .array [.send (some (.const "Point")) "new" [.int 1] none,
+                  .send (some (.const "Point")) "new" [.int 2] none]],
+    .arrayOf (.inst "Point" pointSpine1), [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.arrayLit
+        (τs := [.inst "Point" pointSpine1, .inst "Point" pointSpine1])
+        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                 (.ivarAsgn (.var rfl)))
+          (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                   (.ivarAsgn (.var rfl))) .nil)))))⟩
+
+/-- `{"origin" => Point.new(0)}` → `.cls "Hash"`. The instance's type is derived and then
+    discarded, because `Ty` has no `hashOf` (§Ty language gaps) — the same gap tier 5's
+    `hash-lit` records, now throwing away something the checker worked harder for. -/
+def r072 : Rung :=
+  ⟨"class-instance-in-hash",
+    .seq [.class' "Point" none
+            (.def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x"))),
+          .hash [(.str "origin", .send (some (.const "Point")) "new" [.int 0] none)]],
+    .cls "Hash", [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.hashLit (.cons .strLit
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+          (.ivarAsgn (.var rfl))) .nil))))⟩
+
+/-- `class Box; def initialize(size); @size = size; end; def grow; @size = @size + 1; end;
+    end; Box.new(1).grow` → `Integer`.
+
+    **The boundary case for `callMethod`'s no-retyping premise.** `grow` really does mutate
+    an instance variable, and it is admissible only because `Integer + Integer` is an
+    `Integer` — the ivar's *type* is unchanged even though its value is not, so
+    `ivarSet I "@size" .int` is the spine it started with and the premise `… Iself` holds by
+    `rfl`. A `grow` that stored a `String` would be rejected. -/
+def r074 : Rung :=
+  ⟨"class-setter-method",
+    .seq [.class' "Box" none (.seq [
+            .def' "initialize" [.req "size"] (.vasgn .ivar "@size" (.var .lvar "size")),
+            .def' "grow" []
+              (.vasgn .ivar "@size"
+                (.send (some (.var .ivar "@size")) "+" [.int 1] none))]),
+          .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+          (.ivarAsgn (.var rfl)))
+        (Iself := boxSpine) .nil rfl rfl rfl
+        (.ivarAsgn (I' := boxSpine)
+          (.prim .ivarRead (.cons .intLit .nil) .intAdd)))))⟩
+
+/-- `def describe(p); p.getX; end; describe(Point.new(5))` → `Integer`. Tier 6's
+    per-call-site instantiation meeting tier 7's instances: `describe`'s parameter `p` is
+    bound to a full `.inst "Point" {@x: Int}` — spine included — so the `p.getX` inside its
+    body dispatches with everything it needs. Nothing declares `describe` to take a
+    `Point`. -/
+def r075 : Rung :=
+  ⟨"class-instance-as-fun-arg",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x")),
+            .def' "getX" [] (.var .ivar "@x")]),
+          .def' "describe" [.req "p"] (.send (some (.var .lvar "p")) "getX" [] none),
+          .send none "describe" [.send (some (.const "Point")) "new" [.int 5] none] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl) (.cons .defStmt
+      (.last (.callDef
+        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+                 (.ivarAsgn (.var rfl))) .nil)
+        rfl rfl
+        (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)))))⟩
+
+/-- `Point.new(7).myself.getX` where `def myself; self; end` → `Integer`. The rung
+    `selfExpr` exists for, and the reason its type is `κ.selfTy` rather than "a `Point`":
+    `myself` returns a value whose type still carries `@x : Integer`, so the `.getX` chained
+    onto it can still read the ivar out. A `self` typed as the bare `.cls "Point"` would
+    lose the spine and this rung would not climb. -/
+def r076 : Rung :=
+  ⟨"class-self-returning-method",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x")),
+            .def' "getX" [] (.var .ivar "@x"),
+            .def' "myself" [] .self']),
+          .send (some (.send (some (.send (some (.const "Point")) "new" [.int 7] none))
+            "myself" [] none)) "getX" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.callMethod
+          (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+            (.ivarAsgn (.var rfl)))
+          .nil rfl rfl rfl (.selfExpr rfl))
+        .nil rfl rfl rfl .ivarRead)))⟩
 
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
@@ -582,7 +892,8 @@ def rungs : List Rung :=
    r029, r030, r031, r032, r033, r034,
    r035, r036, r037, r038, r039, r040, r041, r043,
    r044, r045, r046, r047, r048, r049, r050, r051,
-   r052, r055, r057, r058, r059, r060]
+   r052, r055, r057, r058, r059, r060,
+   r061, r062, r063, r064, r066, r068, r069, r070, r071, r072, r074, r075, r076]
 
 /-! ## `chk` answers exactly what was derived by hand
 
@@ -592,7 +903,8 @@ and the hand-authored judgment have not drifted apart anywhere on this fragment.
 
 theorem chk_agrees_with_hand_derivations :
     rungs.all (fun r =>
-      chk fuelDefault [] [] [] r.program == some (r.ty, r.outEnv)) = true := by rfl
+      chk fuelDefault ctx0 [] .ivar0 r.program
+        == some (r.ty, r.outEnv, Ty.ivar0)) = true := by rfl
 
 /-- And therefore `validate` — the number the ratchet runner reports — says `true` on all
 13. Stated separately from the above because it is the weaker fact (it forgets *which*

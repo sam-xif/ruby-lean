@@ -10,32 +10,39 @@ ratchet: a rung is only honestly "climbed" when there is a derivation
 `Judge Γ p τ Γ'` one can read and check by eye, not merely a `Bool` that came out
 `true`.
 
-## Scope: tiers 1–5, and no more
+## Scope: tiers 1–7's object model, and no more
 
 Deliberately authored for the rungs reached so far (tier 1's eight literals, tier 2's
 `send`-shaped rungs, tier 3's `var`/`vasgn`/`seq`/bare-`vcall`, tier 4's conditionals,
-tier 5's array and hash literals and their `#[]`), and nothing else.
-Consequences, each a real limitation to lift later, not an oversight:
+tier 5's array and hash literals and their `#[]`, tier 6's top-level `def` and
+implicit-self calls, and tier 7's classes, `new`, instance variables, instance-method
+dispatch and `self`), and nothing else. Consequences, each a real limitation to lift later,
+not an oversight:
 
-- **The environment threads, and it is flat.** `Judge Γ e τ Γ'` reads: *in local
-  environment `Γ`, `e` synthesizes `τ` and leaves `Γ'` behind*. The output environment
-  is what makes `x = 1; x = true; x` typeable — an assignment is an expression whose
-  effect on the environment the next expression sees. It is deliberately a *flat*
+- **Two things thread, and both are flat.** `Judge κ Γ I e τ Γ' I'` reads: *in context `κ`,
+  with locals `Γ` and instance variables `I`, `e` synthesizes `τ` and leaves `Γ'` and `I'`
+  behind*. The output states are what make `x = 1; x = true; x` typeable — an assignment is
+  an expression whose effect the next expression sees. Locals are a *flat*
   `List (String × Ty)` with `envSet` overwriting in place: real Ruby locals are not
-  single-typed, so re-binding a name at a different type is correct behaviour, not a
-  gap (rung `reassign-different-type`).
-- **Locals only.** Rules mention `VarKind.lvar` explicitly; `@ivar`/`@@cvar`/`$gvar`
-  are tiers 7+ and have no rule, so a program touching one is simply not typed.
+  single-typed, so re-binding a name at a different type is correct behaviour, not a gap
+  (rung `reassign-different-type`). Instance variables are a `Ty` spine rather than an
+  `Env`, because they also have to sit inside `Ty.inst` — see there.
+- **Locals and `@ivar`s only.** Rules mention `VarKind.lvar`/`.ivar` explicitly;
+  `@@cvar`/`$gvar` have no rule, so a program touching one is simply not typed.
 - **No `subTy` anywhere.** Every rule below matches types by construction. `subTy`
-  exists in `Ratchet/Ty.lean` and is unused here on purpose: with no parameters, there
-  is nothing yet for subsumption to do, and a subsumption rule admitted "for later" is
-  a rule whose soundness nobody has had to justify against a rung.
-- **No `def`, no dispatch, no user classes.** Tiers 6–10. The absence of a `def'` rule
-  is *load-bearing* for `BareNameError` below — see its docstring.
-- **Top-level `self`.** Every judged program runs at the top-level object, because no
-  rule types a `def'`/`class'`/`module'`/block body. Two rules quietly depend on this
-  (`prim`'s "explicit receiver only" restriction, and `bareName`), and both would need
-  a `self` type in the judgment the moment that changes.
+  exists in `Ratchet/Ty.lean` and is unused here on purpose: nothing yet has a subtype
+  worth exploiting, and a subsumption rule admitted "for later" is a rule whose soundness
+  nobody has had to justify against a rung. Tier 7's second clink — inheritance — is where
+  that stops being true.
+- **No inheritance, no `super`, no singleton methods.** `Cls.super?` is *recorded* by
+  `extendClasses` and read by nothing: method lookup is `defGet? c.methods`, one class deep.
+  So `class Dog < Animal` declares fine and `Dog.new` finds no `initialize`.
+- **No blocks, modules or metaprogramming.** Tiers 8–10.
+- **`self` is typed only inside an instance-method body**, and only as `.inst n Iself`.
+  At top level `κ.selfTy` is `none`, which two rules depend on: `bareName` (which requires
+  it) and `prim`'s "explicit receiver only" restriction (an implicit-self send at top level
+  goes to the `defs` table). Inside `initialize` it is deliberately *also* `none` — see
+  `newInst` for why that is a soundness requirement and not an omission.
 
 ## Every rule is a synthesis rule
 
@@ -306,46 +313,129 @@ def paramEnv : List Param → List Ty → Option Env
   | .req x :: ps, τ :: τs => (paramEnv ps τs).map (fun Γ => (x, τ) :: Γ)
   | _, _ => none
 
+/-! ## Tier 7's class table, and the context bundle
+
+A class is a *third* kind of thing the checker has to remember, and unlike a `def` it
+carries two method tables and a superclass. At that point `Judge`'s index list stops being
+readable, so the four **input-only** components — classes, methods, assumptions and the type
+of `self` — are bundled into one `Ctx`. Nothing about the bundling is semantic; it is the
+difference between five indices and one.
+
+What is *not* in `Ctx` is what threads: the local environment and (new at tier 7) the ivar
+spine. Those stay explicit, before and after, because reading a rule means reading how they
+flow. -/
+
+/-- One class declaration, as the checker sees it: a name, an optional superclass name, and
+its instance methods. No types, and no ivar list — Ruby declares neither. -/
+structure Cls where
+  name : String
+  super? : Option String
+  methods : List Defn
+
+abbrev CTable := List Cls
+
+def clsGet? (C : CTable) (n : String) : Option Cls := C.find? (·.name == n)
+
+/-- `C` after performing statement `e`: one entry longer if `e` is a class declaration whose
+body this checker can read, unchanged otherwise.
+
+**Only a `seq`-of-`def`s or a single `def` body is read**, and a class whose body contains
+anything else (an ivar assignment at class level, a `defs`, a nested class) simply does not
+enter the table, so a program using it is not typed. That is conservative in the direction
+that costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
+def classMethods? : Expr → Option (List Defn)
+  | .def' n ps body => some [⟨n, ps, body⟩]
+  | .seq es => es.mapM (fun e => match e with
+      | .def' n ps body => some (⟨n, ps, body⟩ : Defn)
+      | _ => none)
+  | .nil => some []
+  | _ => none
+
+def extendClasses (C : CTable) : Expr → CTable
+  | .class' n sup body =>
+    match classMethods? body with
+    | some ms =>
+      match sup with
+      | none => ⟨n, none, ms⟩ :: C
+      | some (.const sn) => ⟨n, some sn, ms⟩ :: C
+      | some _ => C
+    | none => C
+  | _ => C
+
+/-- The read-only half of the judgment's state, bundled. `classes`/`defs` grow at statement
+boundaries (`JudgeSeq.cons`), `asms` grows at a call site being discharged
+(`Judge.callDef`), and `selfTy` is set once, on entry to a method body, and never
+threaded. -/
+structure Ctx where
+  classes : CTable
+  defs : DefTable
+  asms : AsmTable
+  /-- The type of `self`, or `none` at top level.
+
+      `none` rather than "the type of `main`" because this judgment has no rule that needs
+      it: at top level, `self'` is not typed and an implicit-self send goes to the `defs`
+      table. Inside a method body it is `some (.inst c ivars)`, which is what makes
+      `class-self-returning-method` work — `self` there is not merely "a `Point`", it is
+      *this* `Point`, ivars and all. -/
+  selfTy : Option Ty
+
+/-- Entering a method body whose `self` has type `σ`. Only `selfTy` changes: the class and
+method tables are the ones in force at the call site, and the assumption table is *kept*,
+because a recursive call made from inside a body must still find the assumption discharging
+it. The body's *locals* are not in `Ctx` at all — they are the threaded `Env`, and a call
+rule supplies `paramEnv`'s fresh one. -/
+def Ctx.inMethod (κ : Ctx) (σ : Ty) : Ctx := { κ with selfTy := some σ }
+
+/-- `κ` after performing statement `e`: both syntax tables grow, nothing else changes. Used
+only by `JudgeSeq.cons`, which is the only rule that knows about statement order. -/
+def Ctx.afterStmt (κ : Ctx) (e : Expr) : Ctx :=
+  { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e }
+
 mutual
 
-/-- `Judge D Δ Γ e τ Γ'`: with methods `D` defined and instantiations `Δ` assumed, in
-local environment `Γ` the expression `e` synthesizes type `τ` and leaves environment `Γ'`
-Nothing is trusted — see the module docstring, and `AsmTable` for what a non-empty `Δ`
-means.
+/-- `Judge κ Γ I e τ Γ' I'`: in context `κ` (classes, methods, assumptions, the type of
+`self`), with locals `Γ` and instance variables `I`, the expression `e` synthesizes type `τ`
+and leaves locals `Γ'` and instance variables `I'`. Nothing is trusted — see the module
+docstring, and `AsmTable` for what a non-empty `κ.asms` means.
 
 Read each literal rule as an assertion about the real semantics: evaluating this literal
 yields a value whose class is the one `τ` names. `CheckRungs.lean` checks precisely that,
 by running the actual `stepFn`.
 
-The environment threads left-to-right through every compound rule, in evaluation order.
-For the rules below tier 3 that is invisible (a literal returns `Γ` unchanged), but it
-is *not* cosmetic even at tier 2: Ruby evaluates a send's receiver before its arguments
-and its arguments left to right, and each of them may contain an assignment, so `prim`
-threads `Γ → Γ₁ → Γ₂` rather than typing all three parts in the same `Γ`. -/
-inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
+**Two things thread, in evaluation order.** `Γ` (locals) and `I` (the ivar spine of the
+object `self` denotes). For the rules below tier 3 both are invisible — a literal returns
+them unchanged — but neither is cosmetic: Ruby evaluates a send's receiver before its
+arguments and its arguments left to right, and any of them may assign to a local *or* to an
+instance variable, so the compound rules thread `Γ → Γ₁ → Γ₂` and `I → I₁ → I₂` rather than
+typing every part in the same state. -/
+inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   /-- An integer literal — including a negative one: `-5` desugars to `int (-5)`, not to
       a unary send (rung 008), so this single rule covers both. -/
-  | intLit {D : DefTable} {Δ : AsmTable} {Γ : Env} {n : Int} : Judge D Δ Γ (.int n) .int Γ
+  | intLit {κ : Ctx} {Γ : Env} {I : Ty} {n : Int} :
+      Judge κ Γ I (.int n) .int Γ I
   /-- A float literal. `Expr.flt` carries IEEE bits; the type does not depend on them,
       so no side condition. -/
-  | fltLit {D : DefTable} {Δ : AsmTable} {Γ : Env} {bits : UInt64} : Judge D Δ Γ (.flt bits) .float Γ
+  | fltLit {κ : Ctx} {Γ : Env} {I : Ty} {bits : UInt64} :
+      Judge κ Γ I (.flt bits) .float Γ I
   /-- A string literal is *an instance of* `String` — `.cls "String"`, never a
       dedicated `str` type; this type language has none (`Ratchet/Ty.lean`). -/
-  | strLit {D : DefTable} {Δ : AsmTable} {Γ : Env} {s : String} : Judge D Δ Γ (.str s) (.cls "String") Γ
-  | symLit {D : DefTable} {Δ : AsmTable} {Γ : Env} {s : String} : Judge D Δ Γ (.sym s) .sym Γ
+  | strLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} :
+      Judge κ Γ I (.str s) (.cls "String") Γ I
+  | symLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} :
+      Judge κ Γ I (.sym s) .sym Γ I
   /-- `true` and `false` share one type. `Ty` has no singleton-`true` type, and Ruby's
       two distinct classes (`TrueClass`/`FalseClass`) are not distinguished here —
       `Ty.bool` covers both, which is why rungs 002 and 003 both target `.bool`. -/
-  | truLit {D : DefTable} {Δ : AsmTable} {Γ : Env} : Judge D Δ Γ .tru .bool Γ
-  | flsLit {D : DefTable} {Δ : AsmTable} {Γ : Env} : Judge D Δ Γ .fls .bool Γ
+  | truLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .tru .bool Γ I
+  | flsLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .fls .bool Γ I
   /-- `nil : Nil` — the singleton type, not `nilable` of anything. -/
-  | nilLit {D : DefTable} {Δ : AsmTable} {Γ : Env} : Judge D Δ Γ .nil .nilT Γ
+  | nilLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .nil .nilT Γ I
   /-- Reading a local: its type is whatever the environment last recorded for it, and
       the read binds nothing. A name *not* in `Γ` has no rule — and correctly so, since
       the desugarer only emits `var lvar x` where Ruby's parser saw an assignment to `x`
       earlier in the same scope; a bare name it did not is a `vcall` (see `bareName`). -/
-  | var {D : DefTable} {Δ : AsmTable} {Γ : Env} {x : String} {τ : Ty} :
-      envGet? Γ x = some τ → Judge D Δ Γ (.var .lvar x) τ Γ
+  | var {κ : Ctx} {Γ : Env} {I : Ty} {x : String} {τ : Ty} :
+      envGet? Γ x = some τ → Judge κ Γ I (.var .lvar x) τ Γ I
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`),
       and its *effect* is to record that type for `x` in the outgoing environment.
 
@@ -354,15 +444,15 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       what a Ruby local *is* (rung `reassign-different-type`). Note the ordering: the
       right-hand side is typed in `Γ` and may itself assign (`y = (x = 1) + 1`), so the
       binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`. -/
-  | vasgn {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {x : String} {e : Expr} {τ : Ty} :
-      Judge D Δ Γ e τ Γ' → Judge D Δ Γ (.vasgn .lvar x e) τ (envSet Γ' x τ)
-  /-- A statement sequence: the whole thing has the *last* statement's type, and the
-      environment threads through all of them. Delegated to `JudgeSeq` so the
-      non-empty requirement is structural, and because `JudgeSeq` is also where the *def
-      table* threads (a `def` is visible to the statements after it and to nothing else —
-      see `DefTable`). -/
-  | seq {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {es : List Expr} {τ : Ty} :
-      JudgeSeq D Δ Γ es τ Γ' → Judge D Δ Γ (.seq es) τ Γ'
+  | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ Γ' I' → Judge κ Γ I (.vasgn .lvar x e) τ (envSet Γ' x τ) I'
+  /-- A statement sequence: the whole thing has the *last* statement's type, and both
+      threaded states flow through all of them. Delegated to `JudgeSeq` so the non-empty
+      requirement is structural, and because `JudgeSeq` is also where the *syntax tables*
+      thread (a `def` or a `class` is visible to the statements after it and to nothing
+      else — see `DefTable`). -/
+  | seq {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τ : Ty} :
+      JudgeSeq κ Γ I es τ Γ' I' → Judge κ Γ I (.seq es) τ Γ' I'
   /-- A bare identifier that is not a local: `x` desugars to `vcall "x"`, a method-call
       attempt on implicit `self`. When the name resolves to nothing (`BareNameError`),
       evaluating it raises `NameError` — which is *outside* the
@@ -373,21 +463,27 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       `PrimSig` row and is not `EqSafe`, so no rule can consume it either. Type safety
       here is not crash-freedom, and this rung is the sharpest place that shows.
 
-      **The `defGet? D m = none` premise is tier 6's doing, and it was predicted.** Until
-      tier 6 no rule typed a `def'`, so a program that defined `x` and then called it bare
-      could not be judged at all, and that accident was what made the one `BareNameError`
-      row sound. Tier 6 types `def'`, so the accident is gone: without this premise,
-      `def x; 1 + true; end; x` would take the `bareName` route to `.any` and validate a
-      program that raises `TypeError`. The premise restores the property by *checking* it
-      instead of relying on it — a bare name is a `NameError` only if nothing has defined
-      it. `CheckRungs.lean` carries exactly that program as a control.
+      **Two guarding premises, added in the two tiers that could have broken this rule.**
 
-      Note the shape of the remaining conservatism: there is no rule for a `vcall` that
-      *does* name a defined method (`def get5; 5; end; get5`, no parentheses), because the
-      desugarer emits a `vcall` rather than an argument-less `send` there and no rung asks
-      for it. Such a program is simply not typed. -/
-  | bareName {D : DefTable} {Δ : AsmTable} {Γ : Env} {m : String} :
-      BareNameError m → defGet? D m = none → Judge D Δ Γ (.vcall m) .any Γ
+      `defGet? κ.defs m = none` is tier 6's. Until then no rule typed a `def'`, so a
+      program that defined `x` and then called it bare could not be judged at all, and that
+      accident was what made the one `BareNameError` row sound. With `defStmt` in place,
+      `def x; 1 + true; end; x` would otherwise take this route to `.any` and validate a
+      program that raises `TypeError`. The premise restores the property by *checking* it.
+
+      `κ.selfTy = none` is tier 7's, and it is the same failure one level down: inside a
+      method body a bare name resolves against *that object*, so a `vcall "x"` in a `Point`
+      method with a `Point#x` would launder the same way. Restricting the rule to top level
+      is the honest fix — the docstring of every earlier version of it already said the rule
+      assumed top-level `self`, and now it says so in the premise. Implicit-self dispatch
+      inside a body is `selfCall`'s job instead.
+
+      Remaining conservatism, recorded: there is no rule for a top-level `vcall` that *does*
+      name a defined method (`def get5; 5; end; get5`, no parentheses — the desugarer emits
+      a `vcall`, not an argument-less `send`). Such a program is simply not typed. -/
+  | bareName {κ : Ctx} {Γ : Env} {I : Ty} {m : String} :
+      BareNameError m → defGet? κ.defs m = none → κ.selfTy = none →
+      Judge κ Γ I (.vcall m) .any Γ I
   /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
 
       **The condition's type is unconstrained.** `σ` appears nowhere in the conclusion.
@@ -405,19 +501,29 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       branch ran. Carrying `Γ` (the pre-`if` environment) forward instead would certify
       `corpus/042-if-does-not-leak-reassignment`, which really raises `TypeError`. So the
       outgoing environment is `joinEnv Γ₁ Γ₂`, and a name the two branches disagree about
-      ends up at a union that no rule can consume. -/
-  | if' {Γ Γc Γ₁ Γ₂ : Env} {c t e : Expr} {σ τ₁ τ₂ : Ty} :
-      Judge D Δ Γ c σ Γc → Judge D Δ Γc t τ₁ Γ₁ → Judge D Δ Γc e τ₂ Γ₂ →
-      Judge D Δ Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂)
+      ends up at a union that no rule can consume.
+
+      **The ivar spine is *not* joined; the two branches must agree on it.** `I₁ = I₂` is a
+      premise, not a join, and the difference from the locals is deliberate: a spine is not
+      just state, it is part of the *type* of `self` (see `Ty.inst`), and there is no
+      pointwise widening of it that keeps that type honest. A branch that assigns an
+      instance variable at a new type is therefore rejected rather than widened. No rung
+      needs the precision, and the conservatism is in the safe direction. -/
+  | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ : Ty} {c t e : Expr}
+      {σ τ₁ τ₂ : Ty} :
+      Judge κ Γ I c σ Γc Ic → Judge κ Γc Ic t τ₁ Γ₁ I₁ → Judge κ Γc Ic e τ₂ Γ₂ I₂ →
+      I₁ = I₂ →
+      Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₁
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
       this is the same rule with the else-branch's type fixed at `.nilT` and its
-      environment fixed at `Γc` — the environment as of the end of the condition.
-      `joinT τ .nilT` is `mkNilable τ` (rung `if-no-else`). -/
-  | ifNoElse {D : DefTable} {Δ : AsmTable} {Γ Γc Γ₁ : Env} {c t : Expr} {σ τ : Ty} :
-      Judge D Δ Γ c σ Γc → Judge D Δ Γc t τ Γ₁ →
-      Judge D Δ Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ Γc)
+      environment fixed at `Γc` — the state as of the end of the condition.
+      `joinT τ .nilT` is `mkNilable τ` (rung `if-no-else`). The absent branch cannot touch
+      the ivar spine, so the same agreement premise reads `I₁ = Ic`. -/
+  | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ : Ty} {c t : Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ Γc Ic → Judge κ Γc Ic t τ Γ₁ I₁ → I₁ = Ic →
+      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ Γc) Ic
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
-      threads the environment in exactly Ruby's element-evaluation order, so this rule
+      threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
       their join.
 
@@ -431,8 +537,8 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       eventually rather than now: covariance is unsound under mutation-through-aliasing,
       and there is as yet no rule for `Array#<<` or `Array#[]=`. Whichever tier adds one
       inherits the obligation. -/
-  | arrayLit {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {es : List Expr} {τs : List Ty} :
-      JudgeAll D Δ Γ es τs Γ' → Judge D Δ Γ (.array es) (.arrayOf (elemTy τs)) Γ'
+  | arrayLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τs : List Ty} :
+      JudgeAll κ Γ I es τs Γ' I' → Judge κ Γ I (.array es) (.arrayOf (elemTy τs)) Γ' I'
   /-- A hash literal, typed as the bare `.cls "Hash"`.
 
       **The key and value types are discarded, and the premise is still not vacuous.**
@@ -440,42 +546,43 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       is nowhere to record what a hash maps to — but every key and every value expression
       must still be *typeable*, because evaluating one can be type-stuck all on its own
       (`{"a" => 1 + "b"}` must not type). `JudgePairs` is what carries that requirement,
-      and it also threads the environment in Ruby's order: key then value, pair by pair.
+      and it also threads in Ruby's order: key then value, pair by pair.
 
       This is the rung the corpus records as a `Ty` language gap rather than a missing
       rule, and `PrimSig.hashIndex` is where the gap becomes visible. -/
-  | hashLit {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {pairs : List (Expr × Expr)} :
-      JudgePairs D Δ Γ pairs Γ' → Judge D Δ Γ (.hash pairs) (.cls "Hash") Γ'
+  | hashLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {pairs : List (Expr × Expr)} :
+      JudgePairs κ Γ I pairs Γ' I' → Judge κ Γ I (.hash pairs) (.cls "Hash") Γ' I'
   /-- A top-level `def` **statement**. Its type is `.sym`: `def foo; end` evaluates to
       `:foo` in Ruby, which is easy to forget because nobody uses the value.
 
       **The body is not checked here, and that is correct rather than lazy.** A method that
       is never called never runs, so `def bad(x); x + true; end` with no call site is
       perfectly safe Ruby and validates. What the rule *does* is nothing at all to the
-      environment — a `def` binds no local — while `JudgeSeq.cons` separately extends `D`
-      with it (see `extendDefs`). Keeping those two effects in different places is
+      environment — a `def` binds no local — while `JudgeSeq.cons` separately extends the
+      def table with it (see `extendDefs`). Keeping those two effects in different places is
       deliberate: the type of a `def` is a fact about the expression, whereas its effect on
-      `D` is a fact about *statement order*, and only `JudgeSeq` knows about order.
+      the table is a fact about *statement order*, and only `JudgeSeq` knows about order.
 
       The body's obligation arrives instead at each call site, via `callDef`. -/
-  | defStmt {D : DefTable} {Δ : AsmTable} {Γ : Env} {n : String}
+  | defStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String}
       {ps : List Param} {body : Expr} :
-      Judge D Δ Γ (.def' n ps body) .sym Γ
+      Judge κ Γ I (.def' n ps body) .sym Γ I
   /-- A call to a method whose instantiation is **assumed**.
 
-      On its own this rule is unsound in the most obvious way: `Δ` is an index, so a
-      derivation may start from any `Δ` at all. It is sound *in context* because
-      `callDef` below is the only rule that ever grows `Δ`, and it grows it by exactly the
-      assumption it then discharges — so a derivation at `Δ = []`, which is where
-      `validate` starts, contains no undischarged assumption. See `AsmTable`.
+      On its own this rule is unsound in the most obvious way: `κ.asms` is an index, so a
+      derivation may start from any assumption table at all. It is sound *in context*
+      because `callDef` below is the only rule that ever grows it, and it grows it by
+      exactly the assumption it then discharges — so a derivation with an empty table,
+      which is where `validate` starts, contains no undischarged assumption. See
+      `AsmTable`.
 
       The lookup is keyed by the argument types as well as the name, because this checker
       has no notion of "the" signature of a method: it types a body once per call-site
       argument shape. -/
-  | callAsm {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {m : String}
+  | callAsm {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {ρ : Ty} :
-      JudgeAll D Δ Γ args argTys Γ' → asmGet? Δ m argTys = some ρ →
-      Judge D Δ Γ (.send none m args none) ρ Γ'
+      JudgeAll κ Γ I args argTys Γ' I' → asmGet? κ.asms m argTys = some ρ →
+      Judge κ Γ I (.send none m args none) ρ Γ' I'
   /-- **A call to a defined method, with its body checked at this call site's argument
       types.** The centre of tier 6.
 
@@ -494,20 +601,22 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       - **The body's errors are found by looking through the `def`.** `fun-body-mismatch`
         (`def bad(x) = x + true; bad(1)`) is rejected here and nowhere else: the call site
         looks fine, and the `TypeError` is inside a body that only dispatch reaches.
-      - **The caller's environment is untouched.** The outgoing environment is `Γ'` — the
-        caller's, after the arguments — never the body's. A Ruby method body neither sees
-        nor writes the caller's locals.
+      - **The caller's state is untouched.** The outgoing locals are `Γ'` — the caller's,
+        after the arguments — never the body's. A Ruby method body neither sees nor writes
+        the caller's locals. The body's own ivar spine is `.ivar0` and must come back
+        `.ivar0`: a *top-level* method runs with `self` = main, whose instance variables this
+        judgment does not model, so a body that assigns one is simply not typed.
 
       **Recursion, and why the assumption is discharged rather than believed.** `fact`
       calls itself, so its body cannot be judged before its return type is known, and its
       return type comes from its body. The cycle is broken by *assume-then-verify*: `ρ`
-      appears in the premise as an assumption (`(m, argTys, ρ) :: Δ`, which `callAsm` picks
-      up at the recursive occurrence) **and** as the type the body must synthesize under
-      that assumption. Nothing here says where `ρ` came from; `Ratchet/Validate.lean` finds
-      a candidate by typing the body once with the recursive call at `.never` and then
-      *re-runs* the check with the candidate in place. The first pass is an untrusted hint
-      — a wrong hint fails the second pass — which is why no version of it appears in this
-      rule.
+      appears in the premise as an assumption (`(m, argTys, ρ)` pushed onto `κ.asms`, which
+      `callAsm` picks up at the recursive occurrence) **and** as the type the body must
+      synthesize under that assumption. Nothing here says where `ρ` came from;
+      `Ratchet/Validate.lean` finds a candidate by typing the body once with the recursive
+      call at `.never` and then *re-runs* the check with the candidate in place. The first
+      pass is an untrusted hint — a wrong hint fails the second pass — which is why no
+      version of it appears in this rule.
 
       That the discharge is legitimate is an induction on the *execution*, not on the
       derivation: each use of `callAsm` inside the body corresponds to an actual recursive
@@ -519,12 +628,12 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       `TypeError`, and the *first* pass alone would have accepted it (the recursive call
       typed at `.never` makes the whole `else` branch `.never`, which the join then
       discards). -/
-  | callDef {D : DefTable} {Δ : AsmTable} {Γ Γ' Γb Γb' : Env} {m : String}
+  | callDef {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {d : Defn} {ρ : Ty} :
-      JudgeAll D Δ Γ args argTys Γ' → defGet? D m = some d →
+      JudgeAll κ Γ I args argTys Γ' I' → defGet? κ.defs m = some d →
       paramEnv d.params argTys = some Γb →
-      Judge D (⟨m, argTys, ρ⟩ :: Δ) Γb d.body ρ Γb' →
-      Judge D Δ Γ (.send none m args none) ρ Γ'
+      Judge { κ with asms := ⟨m, argTys, ρ⟩ :: κ.asms } Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.send none m args none) ρ Γ' I'
   /-- **Strictness for an explicit-receiver send**: if the receiver or any argument has
       type `.never`, the send itself has type `.never`.
 
@@ -544,19 +653,173 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       `if` with a `.never` condition, an array literal with a `.never` element, and so on
       are all equally justified and equally absent; each would be a rule of its own, and
       none has a rung. -/
-  | primNever {D : DefTable} {Δ : AsmTable} {Γ Γ₁ Γ₂ : Env} {recv : Expr}
+  | primNever {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {m : String} {args : List Expr} {σ : Ty} {argTys : List Ty} :
-      Judge D Δ Γ recv σ Γ₁ → JudgeAll D Δ Γ₁ args argTys Γ₂ →
+      Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       (σ = .never ∨ argTys.contains .never = true) →
-      Judge D Δ Γ (.send (some recv) m args none) .never Γ₂
+      Judge κ Γ I (.send (some recv) m args none) .never Γ₂ I₂
   /-- Strictness for an implicit-self call: the same argument as `primNever`, with no
       receiver to consider. Placed *before* `callAsm`/`callDef` in `Validate.lean`'s
       match, so a call with a non-returning argument is `.never` whether or not the method
       is defined — which is right: an undefined method is never reached either. -/
-  | callNever {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {m : String}
+  | callNever {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} :
-      JudgeAll D Δ Γ args argTys Γ' → argTys.contains .never = true →
-      Judge D Δ Γ (.send none m args none) .never Γ'
+      JudgeAll κ Γ I args argTys Γ' I' → argTys.contains .never = true →
+      Judge κ Γ I (.send none m args none) .never Γ' I'
+  -- ### Tier 7 — the object model
+  --
+  -- Eight rules. `classStmt`/`constCls` are the declaration side; `newInst`/
+  -- `newInstNoInit`/`callMethod`/`selfCall` are dispatch; `selfExpr`/`ivarRead`/`ivarAsgn`
+  -- are the state. Inheritance, `super` and singleton methods are a separate tier-7 clink
+  -- and have no rule here.
+  /-- A `class` declaration statement.
+
+      **Its type is `.any` because a class body's value is its last statement's**
+      (`class Foo; def hi; end; end` really evaluates to `:hi`), and nothing in the corpus
+      reads it. `.any` is sound and inert, so the imprecision cannot leak; a rung that used
+      the value would need this rule split by body shape.
+
+      **The premise is the load-bearing part.** `classMethods? body = some ms` restricts the
+      body to a `def`, a sequence of `def`s, or `nil` — which is simultaneously what makes
+      the body safe to *evaluate* unchecked (a `def` statement never runs its body, and
+      `nil` is `nil`) and what makes the class readable into `CTable` by `extendClasses`.
+      A class body containing anything else is not typed at all, which is conservative in
+      the direction that costs rungs rather than soundness.
+
+      As with `defStmt`, this rule does nothing to any table; `JudgeSeq.cons` extends
+      `κ.classes` separately, because only `JudgeSeq` knows statement order. -/
+  | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
+      {body : Expr} {ms : List Defn} :
+      classMethods? body = some ms →
+      Judge κ Γ I (.class' n sup body) .any Γ I
+  /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
+      `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
+      `Point` and `Point.new` cannot be confused. Only declared classes get a rule: a
+      constant this checker has never seen a `class` statement for is not typed, so
+      `Undeclared.new` fails here rather than at dispatch. -/
+  | constCls {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {c : Cls} :
+      clsGet? κ.classes n = some c → Judge κ Γ I (.const n) (.clsOf n) Γ I
+  /-- **`C.new(args)` — allocation, and where an instance's type is manufactured.**
+
+      The receiver must be a class object (`.clsOf n`), so this rule is reached through
+      `constCls`. What it produces is `.inst n Iout`, and `Iout` — the ivar spine — is the
+      whole content of the rule: it is computed by *judging `initialize`'s body* with the
+      call's argument types as its parameters and the empty spine as its state, and taking
+      the spine that comes out.
+
+      That is why `Ty.inst` carries ivars at all. Ruby declares no ivar types, so the only
+      moment the information exists is this one, and the only place to keep it is the type
+      of the object. `Point.new(1, 2)` and `Point.new("a", "b")` get *different* types from
+      the same class, which is what makes `getX` return an `Integer` from one and a
+      `String` from the other with no annotation anywhere (rung `class-basic`).
+
+      **`self` is not typed inside `initialize`.** The context is `κ` unchanged, so
+      `κ.selfTy` is whatever the caller's was, and in every rung that is `none`. The reason
+      is not laziness: `initialize`'s job is to *change* the spine, so there is no single
+      spine that describes `self` throughout it, and therefore no honest `.inst n _` to
+      offer. A method called on `self` from inside `initialize` would read a spine that is
+      still being built, and claim `nil` for an ivar that is about to be an `Integer` —
+      unsound. Refusing to type `self` there is the conservative fix; a rule that wants it
+      needs a fixpoint over the spine, and no rung asks. -/
+  | newInst {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iout : Ty} {recv : Expr}
+      {n : String} {args : List Expr} {argTys : List Ty} {c : Cls} {d : Defn}
+      {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      clsGet? κ.classes n = some c → defGet? c.methods "initialize" = some d →
+      paramEnv d.params argTys = some Γb →
+      Judge κ Γb .ivar0 d.body ρ Γb' Iout →
+      Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) Γ₂ I₂
+  /-- `C.new` for a class with **no `initialize`**: the object starts with no instance
+      variables, so its spine is `.ivar0`.
+
+      A separate rule rather than a defaulting clause inside `newInst`, because the arity
+      condition is different and it matters: `Object#new` inherited unchanged takes **zero**
+      arguments, and passing any raises `ArgumentError` — inside the family. Hence
+      `argTys = []` as a premise (rungs `class-no-initialize`, `class-ivar-lazy-nil`). -/
+  | newInstNoInit {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {n : String} {args : List Expr} {c : Cls} :
+      Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
+      clsGet? κ.classes n = some c → defGet? c.methods "initialize" = none →
+      Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) Γ₂ I₂
+  /-- **An instance method call.** The receiver's type carries both halves of what dispatch
+      needs: `.inst n Iself` says which class to look the method up in *and* what the
+      object's instance variables are, so the body is judged with `Iself` as its state and
+      `some (.inst n Iself)` as the type of `self`.
+
+      **The last premise's outgoing spine is `Iself` again, and that equation is the
+      soundness argument for the whole ivar mechanism.** It says a method may not change any
+      instance variable's *type* — not widen it, not add a new one. Without it, a caller
+      holding `.inst n Iself` would keep using a stale spine after the callee had
+      invalidated it, and the `nil` that `ivarRead` hands back for an absent ivar would be a
+      lie for objects some other method had since initialized. With it, a spine built by
+      `initialize` is **stable and complete** for the object's whole life, which is exactly
+      the invariant `ivarRead`'s defaulting depends on.
+
+      What it costs: `def set(v); @v = v; end` called at a type other than `@v`'s is
+      rejected, as is any method that lazily creates an ivar. `class-setter-method`
+      (`@size = @size + 1`) passes because `Integer + Integer` is an `Integer` — the type is
+      unchanged even though the value is not. That rung is exactly the boundary case.
+
+      **No assumption table for methods.** Unlike `callDef`, this rule has no
+      assume-then-verify machinery, so a directly or mutually recursive method exhausts
+      `chk`'s fuel and is rejected. Conservative, and no rung asks for it; the fix, if one
+      is ever wanted, is to key `AsmTable` by receiver type as well as name. -/
+  | callMethod {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {n : String} {c : Cls}
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      clsGet? κ.classes n = some c → defGet? c.methods m = some d →
+      paramEnv d.params argTys = some Γb →
+      Judge (κ.inMethod (.inst n Iself)) Γb Iself d.body ρ Γb' Iself →
+      Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+  /-- **Implicit-self dispatch inside a method body**: a bare name that names one of the
+      object's own methods. `class Rect; def describe; "area=" + area.to_s; end; …` — the
+      `area` there is a `vcall`, not a local read and not a top-level function call, and it
+      is what `class-method-calls-method` needs.
+
+      `κ.selfTy` supplies the receiver, so this rule is only available inside a body, which
+      is also why `bareName` had to grow its `κ.selfTy = none` premise: without that, the two
+      rules would overlap on a name that is both a `BareNameError` row and a method of
+      `self`, and the wrong one would answer.
+
+      Zero arguments, because a `vcall` *is* the zero-argument bare-name form (an
+      implicit-self call with arguments is `send none m args`, which goes to
+      `callDef`/`callAsm`). Extending that to instance methods is what tier 7's second clink
+      needs for `super`, and is deliberately not done here. -/
+  | selfCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iself : Ty} {m : String} {n : String}
+      {c : Cls} {d : Defn} {ρ : Ty} :
+      κ.selfTy = some (.inst n Iself) →
+      clsGet? κ.classes n = some c → defGet? c.methods m = some d →
+      paramEnv d.params [] = some Γb →
+      Judge (κ.inMethod (.inst n Iself)) Γb Iself d.body ρ Γb' Iself →
+      Judge κ Γ I (.vcall m) ρ Γ I
+  /-- `self`. Its type is whatever the context says, which inside a method body is
+      `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
+      what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still
+      records `@x : Integer` (rung `class-self-returning-method`). At top level `κ.selfTy`
+      is `none` and there is no rule. -/
+  | selfExpr {κ : Ctx} {Γ : Env} {I : Ty} {σ : Ty} :
+      κ.selfTy = some σ → Judge κ Γ I .self' σ Γ I
+  /-- Reading an instance variable. `(ivarGet? I x).getD .nilT` — and the defaulting is the
+      rule's content, not a fallback: **reading an instance variable that was never assigned
+      yields `nil` in Ruby**; it does not raise. So `class Box; def reveal; @secret; end;
+      end; Box.new.reveal` is `nil`, and that is rung `class-ivar-lazy-nil`.
+
+      The default is sound only because the spine is *complete* — every ivar the object has
+      ever been given a value for appears in it — which is what `callMethod`'s
+      no-retyping premise buys. Without that premise this rule would be the place the
+      unsoundness surfaced. -/
+  | ivarRead {κ : Ctx} {Γ : Env} {I : Ty} {x : String} :
+      Judge κ Γ I (.var .ivar x) ((ivarGet? I x).getD .nilT) Γ I
+  /-- Assigning an instance variable. Value is the right-hand side's, exactly as for a
+      local; effect is on the spine rather than on `Γ`, and lands in `I'` — the spine the
+      right-hand side left behind — for the same evaluation-order reason `vasgn` adds to
+      `Γ'`. -/
+  | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ Γ' I' → Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
@@ -564,41 +827,46 @@ inductive Judge : DefTable → AsmTable → Env → Expr → Ty → Env → Prop
       nobody to dispatch on in this fragment), `blk = none` (a block would need
       `Expr.block` typing, tier ≥ 9), and `PrimSig` matching the *synthesized* argument
       types exactly (no subsumption — see the module docstring). -/
-  | prim {D : DefTable} {Δ : AsmTable} {Γ Γ₁ Γ₂ : Env} {recv : Expr} {m : String} {args : List Expr}
-      {σ τ : Ty} {argTys : List Ty} :
-      Judge D Δ Γ recv σ Γ₁ → JudgeAll D Δ Γ₁ args argTys Γ₂ → PrimSig σ m argTys τ →
-      Judge D Δ Γ (.send (some recv) m args none) τ Γ₂
+  | prim {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
+      {args : List Expr} {σ τ : Ty} {argTys : List Ty} :
+      Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      PrimSig σ m argTys τ →
+      Judge κ Γ I (.send (some recv) m args none) τ Γ₂ I₂
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
-the environment threaded left to right (Ruby's argument evaluation order). -/
-inductive JudgeAll : DefTable → AsmTable → Env → List Expr → List Ty → Env → Prop
-  | nil {D : DefTable} {Δ : AsmTable} {Γ : Env} : JudgeAll D Δ Γ [] [] Γ
-  | cons {D : DefTable} {Δ : AsmTable} {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
-      Judge D Δ Γ e τ Γ₁ → JudgeAll D Δ Γ₁ es τs Γ₂ → JudgeAll D Δ Γ (e :: es) (τ :: τs) Γ₂
+both states threaded left to right (Ruby's argument evaluation order). -/
+inductive JudgeAll : Ctx → Env → Ty → List Expr → List Ty → Env → Ty → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgeAll κ Γ I [] [] Γ I
+  | cons {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e : Expr} {es : List Expr}
+      {τ : Ty} {τs : List Ty} :
+      Judge κ Γ I e τ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ es τs Γ₂ I₂ →
+      JudgeAll κ Γ I (e :: es) (τ :: τs) Γ₂ I₂
 
-/-- Key-then-value `Judge` over a hash literal's pairs, threading the environment in
+/-- Key-then-value `Judge` over a hash literal's pairs, threading both states in
 Ruby's evaluation order. No types appear in the conclusion: this relation exists purely
 to require that each key and each value *has* one (see `Judge.hashLit`). -/
-inductive JudgePairs : DefTable → AsmTable → Env → List (Expr × Expr) → Env → Prop
-  | nil {D : DefTable} {Δ : AsmTable} {Γ : Env} : JudgePairs D Δ Γ [] Γ
-  | cons {D : DefTable} {Δ : AsmTable} {Γ Γ₁ Γ₂ Γ₃ : Env} {k v : Expr} {ps : List (Expr × Expr)} {κ ν : Ty} :
-      Judge D Δ Γ k κ Γ₁ → Judge D Δ Γ₁ v ν Γ₂ → JudgePairs D Δ Γ₂ ps Γ₃ →
-      JudgePairs D Δ Γ ((k, v) :: ps) Γ₃
+inductive JudgePairs : Ctx → Env → Ty → List (Expr × Expr) → Env → Ty → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgePairs κ Γ I [] Γ I
+  | cons {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ : Env} {I I₁ I₂ I₃ : Ty} {k v : Expr}
+      {ps : List (Expr × Expr)} {σ ν : Ty} :
+      Judge κ Γ I k σ Γ₁ I₁ → Judge κ Γ₁ I₁ v ν Γ₂ I₂ → JudgePairs κ Γ₂ I₂ ps Γ₃ I₃ →
+      JudgePairs κ Γ I ((k, v) :: ps) Γ₃ I₃
 
 /-- A non-empty statement sequence. The result type is the last statement's; every
 earlier statement must still type (a statement nobody reads can still be type-stuck),
-and each one's outgoing environment is the next one's incoming.
+and each one's outgoing state is the next one's incoming.
 
-**Also where `D` grows.** `cons` continues with `extendDefs D e`, so a top-level `def`
-becomes visible to the statements that follow it and to no earlier one. This is the only
-rule in the file that changes `D`, and it is why `foo(); def foo; end` has no
-derivation. -/
-inductive JudgeSeq : DefTable → AsmTable → Env → List Expr → Ty → Env → Prop
-  | last {D : DefTable} {Δ : AsmTable} {Γ Γ' : Env} {e : Expr} {τ : Ty} : Judge D Δ Γ e τ Γ' → JudgeSeq D Δ Γ [e] τ Γ'
-  | cons {D : DefTable} {Δ : AsmTable} {Γ Γ₁ Γ₂ : Env} {e e' : Expr}
+**Also where the syntax tables grow.** `cons` continues with `κ.afterStmt e`, so a
+top-level `def` or `class` becomes visible to the statements that follow it and to no
+earlier one. This is the only rule in the file that changes `κ.defs`/`κ.classes`, and it is
+why `foo(); def foo; end` has no derivation. -/
+inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → Prop
+  | last {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ Γ' I' → JudgeSeq κ Γ I [e] τ Γ' I'
+  | cons {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e e' : Expr}
       {es : List Expr} {σ τ : Ty} :
-      Judge D Δ Γ e σ Γ₁ → JudgeSeq (extendDefs D e) Δ Γ₁ (e' :: es) τ Γ₂ →
-      JudgeSeq D Δ Γ (e :: e' :: es) τ Γ₂
+      Judge κ Γ I e σ Γ₁ I₁ → JudgeSeq (κ.afterStmt e) Γ₁ I₁ (e' :: es) τ Γ₂ I₂ →
+      JudgeSeq κ Γ I (e :: e' :: es) τ Γ₂ I₂
 
 end
 

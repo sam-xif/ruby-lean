@@ -13,15 +13,17 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **54 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **67 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–6**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–6 and 13/16 of tier 7**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
 `BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
-literals with their `#[]`, and tier 6's top-level `def` plus implicit-self calls — 54
-rungs. Every rung at or below tier 6 now matches its recorded target.
+literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
+`class`/`new`/`@ivar`/instance dispatch/`self` — 67 rungs. Every rung at or below tier 6
+matches its recorded target; tier 7's three remaining rungs are the *hierarchy*
+(inheritance, `super`, singleton methods).
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -54,6 +56,19 @@ a second pass that must reproduce it** — the first pass is a hint, and `chk_so
 visibly never uses its derivation. `chk` takes fuel from here on, which is a completeness
 knob and not a soundness one. Clink 5 has all of it, including the three controls (one per
 premise added) whose rejections are *sound* rather than conservative.
+
+**Tier 7's object model is where the type language starts describing objects.** `Ty.inst n
+ivars` carries an instance's **ivar spine**, because an object's observable type is not its
+class name: `Point.new(1,2)` and `Point.new("a","b")` are both `Point`s and `getX` answers
+differently, and Ruby writes no ivar types, so the instantiation is the only moment the
+information exists. `Judge` bundled its input-only components into one `Ctx` (classes,
+methods, assumptions, the type of `self`) and grew a *second* threaded state, the spine:
+`Judge κ Γ I e τ Γ' I'`. Dispatch reads both halves of what it needs off the receiver's type.
+The one genuinely load-bearing invariant is that **a method may not retype an instance
+variable** (`callMethod`'s outgoing spine must be its incoming one) — without it a caller
+keeps a stale type after a setter runs, and clink 6's most important control is the program
+that then raises. That premise is also what makes spines *complete*, which is what makes
+`ivarRead`'s `nil`-for-never-assigned sound rather than a guess.
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
@@ -476,6 +491,13 @@ ladder is reported: 114/114 (§Architecture).
    `bareName` grew the `defGet? D m = none` premise clink 2 predicted it would need.
 7. **Classes (16 rungs).** Real, varied class-based Ruby (construction, ivars,
    inheritance, `super`, singleton "factory" methods, instances in arrays/hashes).
+   **13/16 climbed** (`implementation-notes.md` clink 6) — the whole object model:
+   `Ty.inst` carries an instance's ivar spine, `newInst` manufactures one by judging
+   `initialize` at the call's argument types, `callMethod`/`selfCall` dispatch off the
+   receiver's type, and `selfExpr` keeps the spine so `x.myself.getX` still reads an ivar.
+   The three left are the *hierarchy*: `class-inheritance-field` needs method lookup up
+   `Cls.super?` (recorded by `extendClasses`, read by nothing yet), `class-super-call` needs
+   `super`, `class-factory-method` needs `defs`.
    Wants a declaration table over class bodies, ancestor-chain dispatch, and ivar types
    inferred from `initialize`'s writes — with `class-ivar-lazy-nil` pinning the corner
    (an ivar read with no write is `nil`, not an error). See §Design notes.
@@ -658,24 +680,29 @@ The full climb, in roughly the order that costs least to unlock the most:
    restriction and the top-level-`self` assumption survived intact — a method body is judged
    with a locals-only environment and no `self`, so the moment a body needs `self` (tier 7's
    `@ivar`s, its very first rung) both come due at once.
-3. **Tier 7, classes** (16 rungs) — the next rung group, and much the largest. Needs, at
-   minimum: a `self` type in the judgment (tier 6 deliberately did not add one); instance
-   variables, which are a *second* mutable environment with a lifetime longer than a call;
-   `.clsOf` receivers, so `Point.new` can be distinguished from a `Point`; and inheritance,
-   which is the first thing in this ladder that `subTy` might actually be for. `class-basic`
-   alone needs the first three.
-4. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
+3. ~~**Tier 7, classes**~~ — **13/16 done** (clink 6). Every prediction here held; what the
+   entry under-weighted is that the ivar environment had to go in the *type* (`Ty.inst`), not
+   just in the judgment, because two instances of one class need different types.
+4. **Tier 7's hierarchy: the last three rungs.** `class-inheritance-field` wants method
+   lookup to walk `Cls.super?` — one recursive `defGet?`, plus a termination story for a
+   cyclic table. `class-super-call` wants `Expr.super'`, whose rule needs *the class the
+   currently-executing method was found in*, which is not in `Ctx` today (`selfTy` names the
+   receiver's class, not the definition site) — that is the real design question of the three.
+   `class-factory-method` wants `Expr.defs` (a singleton-method table on `Cls`) and an
+   implicit-self `new`, i.e. an implicit-self send resolved against `κ.selfTy` when it is a
+   `.clsOf`. This is also where `subTy` finally has something to do.
+5. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
    *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
-5. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
+6. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
    actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
-6. **Classes and modules**: a declaration table (something like the real project's
+7. **Modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
    node (accumulating across reopenings for free), each method's signature *inferred*
@@ -685,9 +712,9 @@ The full climb, in roughly the order that costs least to unlock the most:
    for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
    10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
    constructor except the one item below.
-7. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
+8. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
-8. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
+9. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is
