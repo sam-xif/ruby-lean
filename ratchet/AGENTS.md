@@ -347,6 +347,64 @@ everywhere; **`<=>` dispatch from a builtin collection operation** is unmodeled,
 routed around all of them rather than smoothed over, per §Frontier item 15 — a rung must
 not attach a type to a program the model cannot execute.
 
+## Semantic denotation status (`Denote/`): **built, first-order fragment proved, arrow specified**
+
+**A detour from the ladder, and it moves no rungs.** `Ratchet/Judge.lean` says what the
+checker *derives*; `Denote/` says what a `Ty` **means** — a predicate over the real
+`RubyCore` heap and values, so that "why is `Judge` right?" becomes a question with a
+statable answer instead of a docstring. Maintained separately from the syntactic judgment:
+`Denote/` imports `Ratchet/Ty.lean` and `Semantics/`, imports no `Judge`, and nothing else
+in the package imports it. Its own design record is [`Denote/notes.md`](Denote/notes.md).
+
+It generalises `CheckRungs.lean`'s `expectedClasses` — a `Ty → List String` reading a type as
+"the class names its values can have", whose docstrings say three times that it cannot look
+inside an array, an object, or a Proc. A denotation that recurses closes all three.
+
+- **`Denote/Val.lean`** — the probes: immediate shape, nominal-through-the-heap
+  (`classNamed?`/`isAName`, so `.cls "Foo"` is the machine's own `is_a?` at the *current*
+  heap and a class the program has not defined yet has no instances), payload projections.
+- **`Denote/Apply.lean`** — `applyIn`: how you *call* a Proc value from inside a proposition.
+  Values are not syntax, so it pre-binds them as locals in a pushed frame and evaluates
+  `__den_f.call(__den_a0, …)`. Plus `Returns`, `Reaches` (the reflexive-transitive closure of
+  `Interp.stepFn`), and the closure-scope readers `frameLocal`/`closSelf`/`closLocal`.
+- **`Denote/Den.lean`** — the master `denM : Ty → Machine → Value → Prop` (mutual with the
+  arrow-spine walk `denApp` and the binding-spine walk `denSpine`), the heap-only view
+  `den : Ty → Heap → Value → Prop`, `FirstOrder`, and **`denM_heap_only`**: the machine
+  argument is irrelevant for every arrow-free/`clos`-free type, so the brief's
+  `Ty → Heap → Value` signature is met exactly where it is meaningful. Every `Ty`
+  constructor has an arm, `sameAs`/`ivar0`/`never` included.
+- **`Denote/DenB.lean`** — the computable core `denB : Ty → Heap → Value → Bool`, plus
+  `closB` (machine-indexed, because `clos` *is* decidable once you have frames).
+  `denB_sound` at every type; `denB_iff` (an `↔`) on `FirstOrder`.
+- **`Denote/Arrow.lean`** — `ArrowFlat` (the uncurried arrow) and `denM_arrowOf` proving it
+  equals the spine denotation; `ArrowStable` (the arrow at every *reachable* machine — the
+  honest target for a call-it-later arrow, strictly stronger, and not what the checker infers
+  today); `ClosArrow`, the shape of the bridge a `Judge.closCall` soundness proof would need.
+- **`Denote/ArrowCheck.lean`** — the arrow's computable half, stated in the only sound
+  direction: a true arrow passes every sample (`arrowCheck_of_arrowFlat`), so **a failing
+  sample refutes the arrow** and is the counterexample. Same move as
+  `../bounded-effect-checking.md`'s bounded search and `../type-safety-by-reachability.md`'s
+  witness direction, applied to arrows.
+- **`Denote/Examples.lean`** — **31 `#guard`s that run real programs under the real `stepFn`
+  from the real prelude-booted heap** and ask the denotation about the value produced. The
+  build is the gate: if the denotation and the semantics disagree, `lake build Denote` fails.
+  They cover what `expectedClasses` could not — `[1,2,3] : arrayOf int` but not
+  `arrayOf float`, `[] : arrayOf never` (the "provably empty" reading, confirmed),
+  `hashOf String Float` on a real hash payload, `Box.new(1) : inst "Box" {@x: int}` and the
+  lazy-nil ivar, a lambda's captured `x = 7` read out of `Machine.frames`, and both halves of
+  the arrow (`(Integer) → Integer` survives; `(Integer) → String` is refuted).
+
+Run it with **`scripts/run_denote.sh`** — a third leg alongside `run_ratchet.sh` and
+`run_check_rungs.sh`, kept separate for the same reason `checkrungs` is a separate exe.
+Axiom-clean throughout (`propext`/`Classical.choice`/`Quot.sound` only); every proof file
+ends with its own `#print axioms`, as `Ratchet/Proof/ChkSound.lean` does.
+
+**Not built, on purpose** (see `Denote/notes.md` §What is deliberately not built): no
+`Judge` soundness theorem (it needs an evaluation relation for `Ratchet.Expr`, and the only
+executable one is over `RubyCore.Expr` — the two are separately-copied inductives), no
+`subTy` soundness, no narrowing soundness. Each is now *statable*, which is the point of
+having built this first.
+
 ## Semantics status: **imported, and wired up for the covered fragment**
 
 `Semantics/Interp.lean` imports the real `stepFn` (and its whole dependency closure —
@@ -633,7 +691,10 @@ over. `Semantics/` is the one deliberate exception (§Semantics status): it `req
 directly, because hand-copying `stepFn`'s ~24k-line dependency closure the way
 `Expr`/`Ty` were copied would trade a small, auditable diff for an enormous,
 unmaintainable one. `Ratchet/` does not import `Semantics/` (or vice versa) — see
-§Architecture for exactly where the line is drawn. Own `lakefile.toml`, own
+§Architecture for exactly where the line is drawn. **`Denote/` is the one library that
+imports both** (`Ratchet/Ty.lean` + `Semantics/Interp.lean`), because a denotation is by
+definition a statement relating the two languages; it imports no `Judge` and no
+`Ratchet/Expr.lean`, and nothing imports it (§Semantic denotation status). Own `lakefile.toml`, own
 `lean-toolchain` (pinned to the same `v4.32.2` as `../lean/`, which the `require` now
 makes an actual constraint, not just a coincidence).
 

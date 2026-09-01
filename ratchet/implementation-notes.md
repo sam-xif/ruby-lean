@@ -3698,3 +3698,83 @@ agreement 232/232, axiom-clean.
 §Frontier's items B, C, D, E and A are all discharged; F (a pair type) and G (the
 length-indexed array) remain, and they are what the last two `lib-*` clusters and every
 `a, b = s.split("-")` in the slice are waiting for.
+
+---
+
+## Clink 42 (2026-09-01) — a detour: the semantic denotation (`Denote/`). **177 rungs, unchanged**
+
+No rung moved and none was meant to. This clink builds the thing every clink so far has
+gestured at in prose: **what a `Ty` means**, as a predicate over the real machine. The
+full design record is [`Denote/notes.md`](Denote/notes.md); this entry is the *why now*
+and the two decisions that were genuinely open.
+
+**Why now, and why not sooner.** Everything proved in this package to date is syntactic:
+`validate_sound_syntactic` says `chk` agrees with `Judge`, and `Judge` is the
+specification. That is the right order — a checker with no ladder was the original
+complaint — but it means the ladder's headline number rests on 41 clinks of docstring
+argument about what each `PrimSig` row claims. The one extensional check on file,
+`CheckRungs.lean`'s `expectedClasses`, is a `Ty → List String`: it compares the *class name*
+of a run's result, and its own docstrings admit three times over that it cannot look inside
+an array, inside an object, or at a Proc at all. Those three admissions are precisely the
+constructors the last ten clinks added (`arrayOf`, `hashOf`, `inst`, `clos`), so the
+cross-check has been getting weaker exactly where the type language has been getting
+stronger. A recursive denotation is what stops that drift, and it is cheap to build *now*
+because `Semantics/` already imports the real `stepFn`.
+
+**Decision 1: machine-indexed, not heap-indexed — forced by the model, not chosen.** The
+brief was `Ty → Heap → Value → Bool`, and it cannot hold for a Proc:
+`RubyCore.Closure.captured`/`.home` are `FrameId`s, so **a closure's captured environment is
+not in the heap**. Handed a bare heap, `callClosure` would run a lambda's body against
+`frames.getD cl.captured default` — a default frame, wrong `self`, no captured locals — and
+the call modelled would not be the call the program makes. The rejected alternative worth
+recording is the one that *keeps* the signature: quantify over all machines with that heap.
+It looks conservative (a stronger obligation) and it is broken — a machine with the right
+heap and arbitrary frames sends `captured` at garbage, so the obligation is false for procs
+that are fine. What was built instead: master `denM : Ty → Machine → Value → Prop`, heap-only
+view `den`, and **`denM_heap_only`** proving the machine argument is irrelevant for every
+arrow-free/`clos`-free type. The brief's signature is met exactly on the fragment where it
+means something, and a theorem — not a comment — draws the line (`FirstOrder`, a hypothesis
+of four results rather than a caveat in prose). Bonus that fell out: because the frames are
+in hand, `Ty.clos`'s captured spine gets *real* semantic content, and `closB` decides it. So
+the arrow is the only genuinely undecidable arm, not one of three.
+
+**Decision 2: the arrow gathers, it does not curry.** `Ty`'s arrow is a params spine
+(`arrowCons A (arrowCons B (arrow0 R))`), and reading a spine as curried is the obvious
+move — `A → (B → R)`. It would be wrong about Ruby: `f.call(a, b)` is one call with two
+arguments, and the curried reading is a claim about an `f.call(a)` that raises
+`ArgumentError`. So `denApp` accumulates arguments down the spine and states the obligation
+once at the `arrow0`, and `denM_arrowOf` proves the spine version equals the flat
+argument-list version (`ArrowFlat`) — the form to cite. Four things are load-bearing in the
+arrow and each is argued in `Denote/notes.md`: partial correctness (a proc that raises or
+diverges owes nothing — required for consistency with `Ty.never`'s reading), codomain checked
+at the *post* machine (a call can reopen a class, and the nominal arms are `isA` at the heap
+they are given), domain at the pre machine, and variance as a consequence of quantifier
+position rather than a rule.
+
+**What is proved, and what is only stated.** Proved and axiom-clean: `denM_heap_only`,
+`den_iff_denM`, `denB_sound` (at *every* type — by its own induction, because
+`FirstOrder τ = false` does not localise: `nilable (arrow0 int)` is higher-order without
+being an arrow), `denB_iff` (an `↔` on the first-order fragment), `closB_sound`,
+`denM_arrowOf`, `ArrowStable.mono`, and `arrowCheck_of_arrowFlat` with its usable
+contrapositive `not_arrowFlat_of_arrowCheck_false`. Stated but not proved, deliberately:
+`ArrowStable` (the arrow at every reachable machine — what a call-it-later arrow *should*
+mean; only `ArrowStable.here` is provable, and the gap is Ruby's open classes) and
+`ClosArrow` (the shape of the `Judge.closCall` soundness bridge). Not attempted: `Judge`
+soundness itself, which needs an evaluation relation for `Ratchet.Expr` while the only
+executable one is over `RubyCore.Expr`; `subTy` soundness; narrowing soundness. All three are
+now *statable*, which is the whole return on this detour.
+
+**The gate.** `Denote/Examples.lean` is 31 `#guard`s that run real programs under the real
+`stepFn` from the real prelude-booted heap and ask the denotation about the value produced —
+so `lake build Denote` fails if the two ever disagree. They deliberately exercise the three
+things `expectedClasses` cannot: element types (`[1,2,3] : arrayOf int` yes,
+`arrayOf float` no, `[] : arrayOf never` yes, `[1,2,3] : arrayOf never` no), ivar spines
+(`Box.new(1)` against `{@x: int}`, plus the lazy-nil `@y : nilT`), and Procs — a lambda's
+captured `x = 7` read out of `Machine.frames`, and both halves of the arrow:
+`(Integer) → Integer` survives every sample, `(Integer) → String` is refuted by the first.
+
+### State
+
+**177 rungs of 232**, unchanged — this clink adds no rung and no `PrimSig` row, and
+`Ratchet/` is untouched. New: `Denote/` (6 Lean files, a new `lean_lib` on the default
+target), 31 semantic `#guard`s, 12 theorems, axiom-clean.

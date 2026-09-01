@@ -1,6 +1,6 @@
 name = "ratchet"
 version = "0.1.0"
-defaultTargets = ["ratchet", "Semantics"]
+defaultTargets = ["ratchet", "Semantics", "Denote"]
 
 # `Ratchet/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
 # `Validate`) is deliberately isolated from `../lean/`'s `rubycore` package: no
@@ -24,6 +24,16 @@ globs = ["Ratchet.+"]
 name = "Semantics"
 srcDir = "."
 globs = ["Semantics.+"]
+
+# `Denote/` — the *semantic* denotation of `Ratchet.Ty` (`Ty -> Heap -> Value -> Prop`,
+# plus its computable `Bool` core). The one library that imports **both** `Ratchet/`'s
+# copied type language and `Semantics/`'s real machine, on purpose: a denotation is by
+# definition a statement relating the two. Maintained separately from the syntactic
+# judgment (`Ratchet/Judge.lean`), which it does not import and which does not import it.
+[[lean_lib]]
+name = "Denote"
+srcDir = "."
+globs = ["Denote.+"]
 
 [[lean_exe]]
 name = "ratchet"
