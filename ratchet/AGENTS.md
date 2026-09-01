@@ -13,20 +13,22 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **14 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **24 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` is real again, but only over a deliberately tiny
-fragment: **tier 1's eight literals plus `+`/`-`/`*`/`/` on `Integer` and `+` on
-`String`** — the first 13 rungs of the ladder, which is exactly where the 2026-08-31
-(evening) pass stopped on purpose (see the next section). `nested-arith` falls out for
-free as a 14th, being nothing but those rules nested.
+`Ratchet/Validate.lean`'s `validate` covers **all of tier 1 and every `send`-shaped
+rung of tier 2**: the eight literals, `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the
+integer comparisons, the nullary total queries (`to_s`/`zero?`/`length`), `!`, and `==`
+with an unconstrained argument (see `EqSafe`) — 24 rungs. The only tier-2 rungs left are
+`bool-and`/`bool-or`, which are not sends at all: Ruby's `&&`/`||` desugar to a temporary
+local plus a `seq` and an `if`, so they are tier-3/4 work (see
+`implementation-notes.md` clink 1).
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
 constructor per rule — and every rung in the covered fragment has a **derivation term**
-on file in `Ratchet/Rungs13.lean` that Lean's kernel checks, plus
+on file in `Ratchet/Rungs.lean` that Lean's kernel checks, plus
 `Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk e = some τ → Judge e τ` tying the
-executable checker back to it. And `14` is now the *only* number
+executable checker back to it. And `24` is now the *only* number
 `scripts/run_ratchet.sh` reports, because there is no longer a second, softer way for a
 rung to count: certificates are gone (§Claim-free).
 
@@ -39,7 +41,7 @@ via a local Lake `require`, and provides `Ratchet.Semantics.run`/`typeStuck`/
 for why this one piece is imported rather than copied, unlike `Expr`/`Ty`.
 
 It is now **wired into the corpus for the 13 rungs the judgment covers**, by the separate
-`check13` executable (`Check13.lean`, `scripts/run_check13.sh`) rather than by an
+`checkrungs` executable (`CheckRungs.lean`, `scripts/run_check_rungs.sh`) rather than by an
 `expect_stuck` field on every rung: for each rung it decodes the committed `program` JSON
 a second time with the real `RubyCore.Decode.program`, runs it under the real `stepFn`
 from the real booted heap, and checks the value's actual class against the class the
@@ -51,7 +53,7 @@ declines for lack of a rule (honest incompleteness, printed rather than hidden).
 
 What is still *not* wired: rungs 14+ (nothing to cross-check yet — `chk` cannot type
 them) and any per-rung `expect_stuck` recorded in the corpus JSON itself. Whether that
-field is ever worth adding, given `check13` derives the same information by running the
+field is ever worth adding, given `checkrungs` derives the same information by running the
 program, is an open call.
 
 ## 2026-08-31 rebuild: real `Expr`/`Ty`, real desugared Ruby
@@ -126,9 +128,9 @@ every `cert` field in the corpus JSON: deleted. The rationale and the fallout ar
 §Claim-free; the short version is that a claim was trusted, so a "claim-assisted" rung
 was a rung nobody had checked, and the honest headline is **14**, not 23. `Judge` is now
 `Expr → Ty → Prop` with no trusted leaf at all, `validate : Expr → Bool`, and
-`Rungs13.lean` no longer needs `empty_cert_lookup` to argue its derivations are
+`Rungs.lean` no longer needs `empty_cert_lookup` to argue its derivations are
 claim-free — there is nothing to be free of. Proofs still go through unchanged in
-substance (`chk_sound`, `validate_sound_syntactic`, axiom-clean), and `check13` still
+substance (`chk_sound`, `validate_sound_syntactic`, axiom-clean), and `checkrungs` still
 reports 13/13 + 7/7.
 
 The corpus rewrite that fell out of (2) is the useful part: ~34 rung descriptions said
@@ -180,6 +182,24 @@ send, i.e. the checker was trusting the answer, not computing it. *Superseded th
 day*: claims are gone (§Claim-free), so tier 9 is 0/22 and the whole tier is a demand
 list. Structural was and is 14.
 
+## 2026-08-31 (night): tier 2's `send` fragment finished — 14 → 24
+
+Ten more rungs, all of them ordinary `send`s, plus a derivation term for `nested-arith`
+(which `chk` already answered but which had none on file). The design content is four
+new *kinds* of `PrimSig` row — a constrained comparison, a nullary total query, `!` (an
+ordinary send, so unary operators need no new `Expr` node or rule shape), and `==`, the
+ladder's first rule polymorphic in an argument type and its first *conditional* row, with
+the new `EqSafe` side condition on the receiver in place of an unfalsifiable wildcard.
+Six negative controls came with them. Full rationale, including why `objEq` has no
+sound-rejection control and why `bool-and`/`bool-or` are not tier-2 work at all, is in
+**`implementation-notes.md`** (clink 1) — that file is now the running log of
+non-obvious choices, one clink per section.
+
+Renames that fell out: `Rungs13.lean` → `Rungs.lean`, `Check13.lean` →
+`CheckRungs.lean`, the `check13` exe → `checkrungs`. And `run_ratchet.sh` now runs
+`checkrungs` inline between the agreement gate and the ladder, so one command covers all
+three legs.
+
 ## 2026-08-31 (evening): the first 13 rungs, typed by hand
 
 The instruction that produced this pass: *work through how to type the first 13 rungs
@@ -212,10 +232,10 @@ have produced confident nonsense:
    semantics in its statement — but it is the reduction that makes the `Bool` worth
    reading: trusting `validate` on this fragment now means trusting the ~13 constructors
    of `Judge`/`PrimSig`, not `chk`'s control flow.
-4. **`Ratchet/Rungs13.lean` + `Check13.lean` — the confidence.** Thirteen `Rung` records,
+4. **`Ratchet/Rungs.lean` + `CheckRungs.lean` — the confidence.** Thirteen `Rung` records,
    each carrying a hand-written **derivation term** (a wrong `ty` does not compile), plus
    `chk_agrees_with_hand_derivations` — one `rfl` per rung, the `Judge ⇒ chk` direction
-   that `chk_sound` does not give. `Check13.lean` then closes the two gaps no proof in
+   that `chk_sound` does not give. `CheckRungs.lean` then closes the two gaps no proof in
    this package can: that each hand-written `Expr` really is what the desugarer emitted
    (decoded from the committed corpus JSON and compared with `==`), and that running the
    **real semantics** yields a value of the class the derived `Ty` names (§Semantics
@@ -233,7 +253,7 @@ over:
   `send (int 5) "-@" []` — a fact about the desugarer that a hand derivation would get
   wrong in the other direction, and the reason rung 008 is `intLit` again.
 - **`Ty.bool` covers both boolean classes.** `true` really runs to a `TrueClass` and
-  `false` to a `FalseClass`; `Ty` does not distinguish them, so `Check13.lean`'s
+  `false` to a `FalseClass`; `Ty` does not distinguish them, so `CheckRungs.lean`'s
   `expectedClasses` maps `.bool` to both. Recorded because it is the one place the
   cross-check has to be *loosened* to pass, and a loosened cross-check should be
   deliberate.
@@ -308,9 +328,9 @@ makes an actual constraint, not just a coincidence).
   (§Claim-free).
 - **`Ratchet/Proof/ChkSound.lean`** — `primSig?_sound`, `chk_sound`/`chkAll_sound`,
   `validate_sound_syntactic`. Axiom-clean; the file ends with its own `#print axioms`.
-- **`Ratchet/Rungs13.lean`** — the 13 rungs as `Rung` records carrying hand-written
-  `Judge` derivation terms, plus `chk_agrees_with_hand_derivations` (one `rfl` per
-  rung).
+- **`Ratchet/Rungs.lean`** — every climbed rung as a `Rung` record carrying a
+  hand-written `Judge` derivation term, plus `chk_agrees_with_hand_derivations` (one
+  `rfl` per rung) and `validate_all_rungs`.
 - **`corpus/NNN-id.rb` + `corpus/NNN-id.json`** — each rung is real Ruby source (the
   `.rb`, for human reading) plus a generated `.json` (`{id, tier, description, program,
   expect_validate, false_reason}`) where `program` is a **committed snapshot** of
@@ -328,7 +348,7 @@ makes an actual constraint, not just a coincidence).
   number per tier now, §Claim-free), a dedicated always-shown list of `ty_language_gap`
   rungs (§Ty language gaps), plus a count of rungs where today's answer differs from the
   target (still large, by design — see §Checker status). `Main.lean` imports
-  `Ratchet.Rungs13` but not `Semantics/`: the ratchet's headline number stays a pure
+  `Ratchet.Rungs` but not `Semantics/`: the ratchet's headline number stays a pure
   statement about `validate`.
 - **`scripts/run_agreement.sh`** — **every rung, under CRuby and under the Lean
   semantics, compared.** Delegates to the real difftest engine
@@ -338,10 +358,10 @@ makes an actual constraint, not just a coincidence).
   program the model executes differently from Ruby is a program whose type is a
   statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
   disagreement. Currently **114/114 agree**. Needs `uv` and a CRuby; skip with
-  `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `check13`: this compares
-  *the model against Ruby* over the whole corpus, `check13` compares *a hand-derived type
+  `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `checkrungs`: this compares
+  *the model against Ruby* over the whole corpus, `checkrungs` compares *a hand-derived type
   against the model* over the 13 covered rungs.
-- **`Check13.lean`** / **`scripts/run_check13.sh`** (the `check13` exe) — the evidence
+- **`CheckRungs.lean`** / **`scripts/run_check_rungs.sh`** (the `checkrungs` exe) — the evidence
   behind the covered rungs, and the **one file allowed to see both sides**: it imports
   `Ratchet/` *and* `Semantics/`, decodes each rung's JSON twice (once into
   `Ratchet.Expr` to compare against the hand-written derivation's subject, once into
@@ -355,7 +375,7 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (10 tiers, 114 rungs, 14 climbed)
+## The ladder (10 tiers, 114 rungs, 24 climbed)
 
 **Every rung's target is `expect_validate = true`, with exactly nine, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
@@ -366,11 +386,13 @@ module docstring for the two reasons a rung is allowed to target `false` at all.
 ladder is reported: 114/114 (§Architecture).
 
 1. Literals (8 rungs) — all eight climbed.
-2. Arithmetic/string/bool `send`s (20 rungs) — a small hardcoded builtin dispatch table
-   (`PrimSig`), five rows of which exist. The rest of the tier names the rows still
-   wanted: real-but-unmodeled totals (`5.zero?`, `"abc".length`), comparison operators,
-   and `Object#==`, which must accept unrelated types (`1 == "a"` is safe Ruby — see
-   §Design notes).
+2. Arithmetic/string/bool `send`s (20 rungs) — **16 climbed**, via a hardcoded builtin
+   dispatch table (`PrimSig`) now fourteen rows deep: arithmetic, the integer
+   comparisons, the nullary total queries (`5.zero?`, `"abc".length`, `5.to_s`), `!` (an
+   ordinary send, not syntax), and `Object#==`, whose argument is unconstrained because
+   `1 == "a"` is safe Ruby — its receiver instead carries the `EqSafe` side condition.
+   The two unclimbed non-negative rungs, `bool-and`/`bool-or`, are `&&`/`||`, which
+   desugar to `seq`/`vasgn`/`if` and so belong to tiers 3–4.
 3. `var`/`vasgn`/`seq` (6 rungs) — real Ruby scoping (mutable locals, not the `let` of a
    from-scratch toy language), including the NameError-is-not-a-type-error subtlety
    (`bare-undeclared-var`, §Design notes).
@@ -416,17 +438,18 @@ Run `scripts/run_ratchet.sh` for current numbers:
 ```
 corpus agreement (CRuby vs the Lean semantics): 114/114 agree, 0 disagree
 
-tier 1: 8/8    tier 2: 6/20   tier 3: 0/6    tier 4: 0/9    tier 5: 0/8
+tier 1: 8/8    tier 2: 16/20  tier 3: 0/6    tier 4: 0/9    tier 5: 0/8
 tier 6: 0/9    tier 7: 0/16   tier 8: 0/10   tier 9: 0/22   tier 10: 0/6
 flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs not yet climbed: 91
+rungs not yet climbed: 81
 ```
 
-All 14 are synthesized by `chk` itself — tier 1's eight, plus
-`add`/`sub`/`mul`/`div`/`str-concat` and `nested-arith`. (This used to read "23
+All 24 are synthesized by `chk` itself — tier 1's eight, plus every `send`-shaped rung
+of tier 2. (This used to read "23
 validating, of which 14 structural"; the other nine were rungs a certificate claim
-answered for. See §Claim-free.) `scripts/run_check13.sh` is the companion number: 13/13
-of those cross-checked against the real semantics, 7/7 negative controls rejected.
+answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number (also run inline by
+`run_ratchet.sh`): 24/24 of those cross-checked against the real semantics, 12/12
+negative controls rejected.
 
 The number to watch as `chk` grows is **"rungs not yet climbed" going down**, tier
 fraction by tier fraction. The "flagged Ty language gaps" count is a *different* number:
@@ -544,13 +567,13 @@ assumes that version didn't have, plus everything tiers 7–10 need beyond it:
 
 The full climb, in roughly the order that costs least to unlock the most:
 
-0. **Continue the tier 2–6 climb from rung 14** (§Design notes) — the fragment through
-   rung 13 is done, judgment-first (§2026-08-31 (evening)); next up in corpus order is
-   comparison/boolean/`to_s` sends (`cmp-lt` … `nil-eq-nil`), then tier 3's `var`/`vasgn`/
-   `seq` — which is where `Judge` grows its `Env` and every rule's shape changes, so it is
-   the one step worth designing before writing. Keep the discipline that produced rungs
+0. **Continue the tier 3–6 climb** (§Design notes) — tier 2's `send` fragment is done
+   (§2026-08-31 (night)); next is tier 3's `var`/`vasgn`/`seq`, which is where `Judge`
+   grows its `Env` and every rule's shape changes, so it is the one step worth designing
+   before writing. It also unblocks the last two tier-2 rungs: `&&`/`||` desugar to
+   `seq`/`vasgn`/`if`, so `bool-and`/`bool-or` need tier 3 *and* tier 4. Keep the discipline that produced rungs
    1–13: a rule in `Judge.lean` before a case in `chk`, a derivation term per rung in
-   `Rungs13.lean`'s successor, and a `check13` row cross-checking it against the real
+   `Rungs.lean`'s successor, and a `checkrungs` row cross-checking it against the real
    semantics — plus negative controls for every new `PrimSig` row, since confirming rungs
    pass never shows a signature is too generous.
 1. **Environment merging across `if` branches** (`SubEnv`/a real join over `Env`, not
@@ -581,14 +604,14 @@ The full climb, in roughly the order that costs least to unlock the most:
 5. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
 6. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
-   fragment (§Semantics status, `Check13.lean`) and it grows a row at a time as `chk`
+   fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is
    still open is (a) the real theorem — `validate p = true → ∀ r,
    Reachable p r → ¬ typeStuck r`, which needs the semantics *in the statement*, not just
    in a test harness, and would be the point at which `Judge`'s constructors stop being
    assertions and start being lemmas — and (b) whether a recorded `expect_stuck` field
-   per rung earns its keep given `check13` derives the same fact by running the program.
+   per rung earns its keep given `checkrungs` derives the same fact by running the program.
    The original framing of this item, kept because the plumbing note is still accurate:
    the semantics itself is no longer missing —
    `Semantics/Interp.lean` imports the real `stepFn` and exposes `run`/`typeStuck` over
@@ -616,7 +639,7 @@ that forces them (tier 3 and a declared-parameter type respectively). See
 `validate_sound` is the model for what would come next — `validate c p = true → ∀ r,
 Reachable p r → ¬ typeStuck r`. `Ratchet/Proof/ChkSound.lean` proves only the *syntactic*
 half (`chk ⇒ Judge`); the semantic half needs the semantics in the statement (§Frontier
-item 6), and until then `check13`'s per-rung execution is evidence, not proof.
+item 6), and until then `checkrungs`'s per-rung execution is evidence, not proof.
 
 **No `Types/Decls.lean`-style declaration table.** The real project's checker resolves
 `send` against a genuine per-class method table built from the whole program (plus a

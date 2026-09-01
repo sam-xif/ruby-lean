@@ -1,11 +1,11 @@
 import Ratchet.Corpus
-import Ratchet.Rungs13
+import Ratchet.Rungs
 import Semantics.Interp
 
 /-!
-# `check13` — pinning the 13 hand-authored derivations to reality
+# `checkrungs` — pinning the hand-authored derivations to reality
 
-`Ratchet/Rungs13.lean` proves that 13 hand-written `Judge` derivations typecheck and that
+`Ratchet/Rungs.lean` proves that the hand-written `Judge` derivations typecheck and that
 `chk` agrees with each. Neither of those facts, on its own, rules out the two ways a
 hand-authored judgment can be confidently wrong:
 
@@ -23,7 +23,7 @@ This is the one file in the package allowed to see both sides (`Ratchet/`'s copi
 language and `../lean/RubyCore`'s semantics); see `Semantics/Interp.lean`'s docstring for
 why the boundary is drawn that way. It is a separate executable from `ratchet` on
 purpose: the ratchet's headline number stays a pure statement about `validate`, and this
-is the evidence behind the 13 rungs it now counts.
+is the evidence behind the rungs it now counts.
 -/
 
 open Ratchet
@@ -33,7 +33,7 @@ open Lean (Json)
 the only place a `Ty` is given an extensional reading in this package.
 
 `.bool` maps to *both* boolean classes because `Ty` does not distinguish them
-(`Judge.truLit`). Only the constructors the 13 rungs use are listed; anything else
+(`Judge.truLit`). Only the constructors the climbed rungs use are listed; anything else
 returns `[]`, which fails loudly rather than passing vacuously. -/
 def expectedClasses : Ty → List String
   | .int => ["Integer"]
@@ -44,7 +44,7 @@ def expectedClasses : Ty → List String
   | .cls n => [n]
   | _ => []
 
-/-- Fuel: these are 13 literal/arithmetic programs; a few hundred steps is already
+/-- Fuel: these are small literal/arithmetic programs; a few hundred steps is already
 generous, and `outOfFuel` is reported as a failure rather than silently passing. -/
 def fuel : Nat := 20000
 
@@ -100,9 +100,9 @@ def checkRung (corpusDir : System.FilePath) (files : List System.FilePath)
 
 /-! ## Negative controls for `PrimSig`
 
-Confirming the 13 rungs pass says nothing about whether `PrimSig`'s five rows are too
+Confirming the climbed rungs pass says nothing about whether `PrimSig`'s five rows are too
 *generous* — a table with `PrimSig.intAdd : PrimSig .int "+" [.any] .int` would also pass
-all 13. These controls are the other side: neighbours of the rungs, one syntactic step
+them all. These controls are the other side: neighbours of the rungs, one syntactic step
 away, that `chk` must **not** certify. Each is hand-written syntax (not a corpus rung) —
 that is the point, since what is being probed is the table's argument types, and it is
 run under the real semantics to say which kind of rejection it is:
@@ -111,6 +111,16 @@ run under the real semantics to say which kind of rejection it is:
 - **conservative rejection** — the program is safe and `chk` still says no. Honest
   incompleteness, recorded rather than hidden: `1 + 1.5` is fine Ruby, and `PrimSig` has
   no `Integer#+ Float` row because no rung has needed one yet.
+
+The tier-2 rows added alongside `objEq` each get a control of the same kind: `1 < "a"`
+and `1.length` and `nil.zero?` probe the receiver/argument constraints of the comparison
+and nullary-query rows (all three genuinely raise), while `!nil`, `"a" < "b"` and
+`5.to_s(2)` are the conservative side — safe Ruby whose signature is deliberately not in
+the table. `PrimSig.objEq` has no *sound-rejection* control at all, and that is not an
+oversight: `==` really is total on every receiver `EqSafe` admits, so there is no
+neighbouring `==` program in this fragment that raises. What constrains it is `EqSafe`
+itself, and the only way to violate that is with a `Ty` (`.any`, an arrow) no expression
+in this fragment synthesizes.
 
 The check fails only on a `validate = true` here; a conservative rejection is expected. -/
 structure Control where
@@ -124,7 +134,13 @@ def controls : List Control :=
   , ⟨"1 + nil", .send (some (.int 1)) "+" [.nil] none⟩
   , ⟨"1 + 1.5 (safe; no PrimSig row)", .send (some (.int 1)) "+" [.flt (Float.toBits 1.5)] none⟩
   , ⟨"1.5 + 1 (safe; no PrimSig row)", .send (some (.flt (Float.toBits 1.5))) "+" [.int 1] none⟩
-  , ⟨"1.zero? (safe; unmodeled builtin)", .send (some (.int 1)) "zero?" [] none⟩ ]
+  , ⟨"1 < \"a\"", .send (some (.int 1)) "<" [.str "a"] none⟩
+  , ⟨"1.length", .send (some (.int 1)) "length" [] none⟩
+  , ⟨"nil.zero?", .send (some .nil) "zero?" [] none⟩
+  , ⟨"!nil (safe; no PrimSig row)", .send (some .nil) "!" [] none⟩
+  , ⟨"\"a\" < \"b\" (safe; no PrimSig row)", .send (some (.str "a")) "<" [.str "b"] none⟩
+  , ⟨"5.to_s(2) (safe; no PrimSig row for the base form)",
+      .send (some (.int 5)) "to_s" [.int 2] none⟩ ]
 
 /-- `Ratchet.Expr` → `RubyCore.Expr` for the controls only: they are hand-written on this
 package's side of the isolation boundary, so there is no JSON to decode twice the way a
@@ -148,9 +164,9 @@ def main (args : List String) : IO UInt32 := do
   let corpusDir : System.FilePath := args.headD "corpus"
   let dirEntries ← corpusDir.readDir
   let files := (dirEntries.map (·.path)).toList.filter (fun p => p.toString.endsWith ".json")
-  let rows ← rungs13.mapM (checkRung corpusDir files)
+  let rows ← rungs.mapM (checkRung corpusDir files)
 
-  IO.println "--- rungs 1-13: hand-authored derivations, pinned to corpus + semantics ---"
+  IO.println "--- climbed rungs: hand-authored derivations, pinned to corpus + semantics ---"
   for r in rows do
     let cls := r.actualClass.getD "-"
     let mark := if rowOk r then "ok  " else "FAIL"
@@ -175,7 +191,7 @@ def main (args : List String) : IO UInt32 := do
   IO.println s!"\n{rows.length - bad.length}/{rows.length} rungs confirmed: the hand derivation's type agrees with the class the real semantics produced, on the real desugarer's syntax, with nothing trusted anywhere."
   IO.println s!"{controls.length - controlFails.length}/{controls.length} negative controls rejected as required."
   if bad.isEmpty && controlFails.isEmpty then
-    IO.println "CHECK13 OK"
+    IO.println "CHECKRUNGS OK"
     return 0
   else
     for r in bad do IO.eprintln s!"  FAIL: {r.id}"

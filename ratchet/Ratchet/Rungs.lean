@@ -1,7 +1,7 @@
 import Ratchet.Proof.ChkSound
 
 /-!
-# The first 13 rungs, typed by hand
+# The climbed rungs, typed by hand
 
 One entry per rung of `corpus/001-*` … `corpus/013-*`, each carrying a **derivation term**
 `Judge program ty` written out by hand. The point is that the ladder's claim
@@ -14,7 +14,7 @@ One entry per rung of `corpus/001-*` … `corpus/013-*`, each carrying a **deriv
   same type by `rfl`, per rung. So `chk` and the hand-authored judgment are pinned to
   each other in both directions on this fragment: `chk_sound` gives
   `chk ⇒ Judge` in general, and these 13 `rfl`s give `Judge ⇒ chk` where it matters.
-- `Check13.lean` (the `check13` exe) closes the remaining two gaps that no proof in this
+- `CheckRungs.lean` (the `checkrungs` exe) closes the remaining two gaps that no proof in this
   package can: that each `program` below is *really* what the desugarer emitted for that
   rung's Ruby (decoded from `corpus/*.json` and compared with `==`), and that running the
   **real semantics** on it yields a value of the class `ty` names.
@@ -42,7 +42,7 @@ structure Rung where
 /-! ## Tier 1 — the eight literals
 
 Each derivation is a single rule application. What each one asserts about the real
-semantics is in the comment: the class of the value CRuby produces. `Check13.lean`
+semantics is in the comment: the class of the value CRuby produces. `CheckRungs.lean`
 checks that assertion by running `stepFn`. -/
 
 /-- `1` → `Integer`. -/
@@ -101,9 +101,74 @@ def r013 : Rung :=
   ⟨"str-concat", .send (some (.str "a")) "+" [.str "b"] none, .cls "String",
     .prim .strLit (.cons .strLit .nil) .strAdd⟩
 
-/-- The 13 rungs, in corpus order. -/
-def rungs13 : List Rung :=
-  [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013]
+/-! ## Tier 2's second half — comparisons, queries, `!`, and `==`
+
+Same one rule per rung: `Judge.prim` over a receiver derivation, an argument-list
+derivation, and one `PrimSig` row. What is new is *which* rows, and each of the four
+shapes below is a different kind of claim about the semantics — see `PrimSig`'s
+docstrings. -/
+
+/-- `(1 + 2) * 3` → `Integer`. Nothing new in the rules: the outer send's *receiver* is
+    itself a send, so the derivation nests. This is the rung the checker has always got
+    "for free" from tiers 1–2's first half; it now has a derivation term like the rest. -/
+def r027 : Rung :=
+  ⟨"nested-arith",
+    .send (some (.send (some (.int 1)) "+" [.int 2] none)) "*" [.int 3] none, .int,
+    .prim (.prim .intLit (.cons .intLit .nil) .intAdd) (.cons .intLit .nil) .intMul⟩
+
+/-- `3 < 5` → a boolean. The `[.int]` argument type is load-bearing: `3 < "a"` raises
+    `ArgumentError`, which is in the type-stuck family. -/
+def r014 : Rung :=
+  ⟨"cmp-lt", .send (some (.int 3)) "<" [.int 5] none, .bool,
+    .prim .intLit (.cons .intLit .nil) .intLt⟩
+/-- `1 <= 2` → a boolean. -/
+def r024 : Rung :=
+  ⟨"cmp-le", .send (some (.int 1)) "<=" [.int 2] none, .bool,
+    .prim .intLit (.cons .intLit .nil) .intLe⟩
+/-- `1 >= 2` → a boolean (`false`, but the *type* is what is derived). -/
+def r025 : Rung :=
+  ⟨"cmp-ge", .send (some (.int 1)) ">=" [.int 2] none, .bool,
+    .prim .intLit (.cons .intLit .nil) .intGe⟩
+/-- `!true` → a boolean. Note the syntax: `!` is not an operator in the `Expr` grammar,
+    the desugarer emits `send (tru) "!" []`, so this is `Judge.prim` with an *empty*
+    argument list — no new rule shape was needed for a unary operator. -/
+def r015 : Rung :=
+  ⟨"not-expr", .send (some .tru) "!" [] none, .bool,
+    .prim .truLit .nil .notBool⟩
+/-- `5.to_s` → an instance of `String`. -/
+def r019 : Rung :=
+  ⟨"to-s-call", .send (some (.int 5)) "to_s" [] none, .cls "String",
+    .prim .intLit .nil .intToS⟩
+/-- `5.zero?` → a boolean. Sibling of `unknown-method` (`5.foo_bar_baz`), which is a
+    permanent negative: the difference between them is entirely in whether `PrimSig` has
+    a row, which is exactly what a hardcoded builtin table is for at this rung. -/
+def r022 : Rung :=
+  ⟨"unmodeled-builtin-zero-p", .send (some (.int 5)) "zero?" [] none, .bool,
+    .prim .intLit .nil .intZeroP⟩
+/-- `"abc".length` → an `Integer` — the same nullary-query shape on a different
+    receiver class. -/
+def r028 : Rung :=
+  ⟨"str-length", .send (some (.str "abc")) "length" [] none, .int,
+    .prim .strLit .nil .strLength⟩
+/-- `1 == 1` → a boolean, by `PrimSig.objEq` with an `Integer` receiver. -/
+def r020 : Rung :=
+  ⟨"eq-same-type", .send (some (.int 1)) "==" [.int 1] none, .bool,
+    .prim .intLit (.cons .intLit .nil) (.objEq .int)⟩
+/-- `1 == "a"` → a boolean. The rung that forces `objEq`'s argument to be unconstrained:
+    this is safe Ruby answering `false`, and a rule demanding matching operand types
+    would reject it for no semantic reason. -/
+def r021 : Rung :=
+  ⟨"eq-different-type", .send (some (.int 1)) "==" [.str "a"] none, .bool,
+    .prim .intLit (.cons .strLit .nil) (.objEq .int)⟩
+/-- `nil == nil` → a boolean, receiver `NilClass`. -/
+def r026 : Rung :=
+  ⟨"nil-eq-nil", .send (some .nil) "==" [.nil] none, .bool,
+    .prim .nilLit (.cons .nilLit .nil) (.objEq .nilT)⟩
+
+/-- Every rung with a hand-authored derivation, in corpus order. -/
+def rungs : List Rung :=
+  [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
+   r014, r015, r019, r020, r021, r022, r024, r025, r026, r027, r028]
 
 /-! ## `chk` answers exactly what was derived by hand
 
@@ -112,12 +177,12 @@ and the one that matters for trusting a `true`); together they say the executabl
 and the hand-authored judgment have not drifted apart anywhere on this fragment. -/
 
 theorem chk_agrees_with_hand_derivations :
-    rungs13.all (fun r => chk r.program == some r.ty) = true := by rfl
+    rungs.all (fun r => chk r.program == some r.ty) = true := by rfl
 
 /-- And therefore `validate` — the number the ratchet runner reports — says `true` on all
 13. Stated separately from the above because it is the weaker fact (it forgets *which*
 type), and it is the one `Main.lean` observes. -/
-theorem validate_all_13 : rungs13.all (fun r => validate r.program) = true := by
+theorem validate_all_rungs : rungs.all (fun r => validate r.program) = true := by
   rfl
 
 end Ratchet

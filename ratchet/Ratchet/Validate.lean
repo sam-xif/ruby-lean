@@ -18,15 +18,30 @@ one direction that matters for trusting a `true` answer:
 
 namespace Ratchet
 
+/-- The decidable counterpart of `Judge.lean`'s `EqSafe`: the receivers for which `==`
+is total. -/
+def eqSafe? : Ty → Bool
+  | .int | .float | .bool | .nilT | .sym | .cls _ => true
+  | _ => false
+
 /-- The executable primitive table — the decidable counterpart of `Judge.lean`'s
 `PrimSig`, kept in exact one-to-one correspondence with it (`primSig?_sound`). A miss is
 `none`, never a guess. -/
 def primSig? : Ty → String → List Ty → Option Ty
+  | σ, "==", [_] => if eqSafe? σ then some .bool else none
   | .int, "+", [.int] => some .int
   | .int, "-", [.int] => some .int
   | .int, "*", [.int] => some .int
   | .int, "/", [.int] => some .int
   | .cls "String", "+", [.cls "String"] => some (.cls "String")
+  | .int, "<", [.int] => some .bool
+  | .int, "<=", [.int] => some .bool
+  | .int, ">", [.int] => some .bool
+  | .int, ">=", [.int] => some .bool
+  | .int, "to_s", [] => some (.cls "String")
+  | .int, "zero?", [] => some .bool
+  | .cls "String", "length", [] => some .int
+  | .bool, "!", [] => some .bool
   | _, _, _ => none
 
 mutual

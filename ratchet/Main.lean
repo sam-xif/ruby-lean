@@ -1,5 +1,5 @@
 import Ratchet.Corpus
-import Ratchet.Rungs13
+import Ratchet.Rungs
 
 /-!
 The ratchet runner: load every `corpus/*.json` entry (real desugared Ruby) and check
@@ -72,12 +72,12 @@ def main (args : List String) : IO UInt32 := do
   for g in gaps do
     IO.println s!"  {g.id} (tier {g.tier})"
 
-  IO.println s!"\nhand-authored derivations on file (Ratchet/Rungs13.lean): {rungs13.length} \
--- each one a `Judge` proof term, cross-checked against the real semantics by `lake exe check13`"
+  IO.println s!"\nhand-authored derivations on file (Ratchet/Rungs.lean): {rungs.length} \
+-- each one a `Judge` proof term, cross-checked against the real semantics by `lake exe checkrungs`"
 
   let mismatches := reports.filter (fun r => !r.validateOk)
   IO.println s!"\nrungs where validate's current answer differs from the recorded target (expect_validate): {mismatches.length}"
-  IO.println "(chk covers tier 1 + Integer/String arithmetic today, and nothing is \
+  IO.println "(chk covers tiers 1-2's send fragment today, and nothing is \
 trusted; everything above that is the climb still ahead -- not a bug; see AGENTS.md)"
   for m in mismatches do
     IO.eprintln s!"  not yet climbed: {m.id} (tier {m.tier})"

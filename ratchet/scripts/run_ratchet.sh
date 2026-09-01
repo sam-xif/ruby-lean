@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Two steps, in the order that matters:
+# Three steps, in the order that matters:
 #
 #   1. **Agreement** (`scripts/run_agreement.sh`): every rung's `.rb` run under
 #      CRuby and under the Lean semantics, observations compared. This runs
@@ -7,15 +7,16 @@
 #      program the model executes differently from Ruby is typing a fiction.
 #      Any disagreement aborts before the ladder is even reported. Skip with
 #      RATCHET_SKIP_AGREEMENT=1 (see that script for when that is reasonable).
-#   2. **The ladder**: `validate`'s verdict per rung against the corpus's
+#   2. **The evidence** (`scripts/run_check_rungs.sh`, inlined): each climbed
+#      rung's hand-authored `Judge` derivation checked against the corpus syntax
+#      and against what the real semantics computes, plus the `PrimSig` negative
+#      controls -- so one command covers everything.
+#   3. **The ladder**: `validate`'s verdict per rung against the corpus's
 #      recorded target, plus the tier summary. One number per tier, all of it
 #      synthesized -- there are no certificates and nothing is trusted (see
 #      Main.lean's docstring). Exit code is nonzero while any rung's actual
 #      verdict differs from its target, which today is most rungs above tier 2:
 #      the climb, not a bug.
-#
-# `scripts/run_check13.sh` is the third piece: the evidence behind the rungs the
-# hand-authored judgment (`Ratchet/Judge.lean`) actually covers.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -27,6 +28,10 @@ else
   echo
 fi
 
-echo "=== the ladder (validate vs each rung's target) ==="
+echo "=== the evidence behind the climbed rungs (hand derivations vs corpus + semantics) ==="
 lake build
+.lake/build/bin/checkrungs corpus
+echo
+
+echo "=== the ladder (validate vs each rung's target) ==="
 exec .lake/build/bin/ratchet corpus

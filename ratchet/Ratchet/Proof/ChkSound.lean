@@ -21,18 +21,52 @@ Axiom-clean: the `#print axioms` at the bottom is part of the file.
 
 namespace Ratchet
 
+/-- `eqSafe?` never admits a receiver `EqSafe` does not. -/
+theorem eqSafe?_sound {σ : Ty} (h : eqSafe? σ = true) : EqSafe σ := by
+  cases σ
+  all_goals
+    first
+      | exact .int
+      | exact .float
+      | exact .bool
+      | exact .nilT
+      | exact .sym
+      | exact .cls
+      | exact absurd h (by simp [eqSafe?])
+
 /-- `primSig?` and `PrimSig` agree in the direction that matters: the executable table
-never invents a signature the specification lacks. Proved by `decide`-style case
-exhaustion over the five table rows. -/
+never invents a signature the specification lacks. Proved by case exhaustion over the
+table rows, in the order they are written in `Validate.lean`: the guarded `==` row
+first, then the fixed rows, then the catch-all `none` (which contradicts `h`). -/
 theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
     (h : primSig? σ m argTys = some τ) : PrimSig σ m argTys τ := by
   unfold primSig? at h
-  split at h <;> simp_all
-  · exact h ▸ .intAdd
-  · exact h ▸ .intSub
-  · exact h ▸ .intMul
-  · exact h ▸ .intDiv
-  · exact h ▸ .strAdd
+  split at h
+  · -- the guarded `==` row: the receiver had to pass `eqSafe?`
+    split at h
+    · injection h with h
+      subst h
+      exact .objEq (eqSafe?_sound (by assumption))
+    · exact absurd h (by simp)
+  all_goals
+    first
+      | (injection h with h
+         subst h
+         first
+           | exact .intAdd
+           | exact .intSub
+           | exact .intMul
+           | exact .intDiv
+           | exact .strAdd
+           | exact .intLt
+           | exact .intLe
+           | exact .intGt
+           | exact .intGe
+           | exact .intToS
+           | exact .intZeroP
+           | exact .strLength
+           | exact .notBool)
+      | simp at h
 
 mutual
 

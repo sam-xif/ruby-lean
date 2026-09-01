@@ -44,6 +44,28 @@ rung is climbed only when the checker really can synthesize it. See `AGENTS.md`
 
 namespace Ratchet
 
+/-- The receiver types for which `==` is a **total** method — it answers a boolean for
+*any* argument and never raises.
+
+Needed because `PrimSig.objEq` is the ladder's first rule that is polymorphic in an
+argument type (`1 == "a"` is safe Ruby, rung 021), and a rule that generous should say
+out loud which receivers it is claiming this for. Every class listed here inherits
+`Object#==` (or overrides it with an equally total one: `Integer#==`, `String#==`,
+`NilClass#==`, `Symbol#==`, `Float#==`), all of which answer `false` on an unrelated
+argument rather than raising.
+
+Deliberately *not* including `.any`: `.any` also denotes a `BasicObject`, and while
+`BasicObject#==` does exist, nothing in the corpus needs it and admitting `.any` here
+would make the rule unfalsifiable by any rung. -/
+inductive EqSafe : Ty → Prop
+  | int : EqSafe .int
+  | float : EqSafe .float
+  | bool : EqSafe .bool
+  | nilT : EqSafe .nilT
+  | sym : EqSafe .sym
+  /-- Any named class: `Object#==` is inherited by every one of them. -/
+  | cls {n : String} : EqSafe (.cls n)
+
 /-- The primitive-method signature table, as a **relation** with one constructor per
 justified builtin. A relation rather than a function because this is the specification:
 each constructor is a claim about what the real `stepFn` does, to be read and checked
@@ -53,7 +75,7 @@ to only ever produce a `PrimSig` (`primSig?_sound`).
 Every constructor here is a signature for a **total** method on the given argument
 types: for these receiver/argument combinations, CRuby (and `RubyCore`'s `Builtins`)
 neither raises nor coerces, and the result class is fixed. Deliberately *narrow*: no
-`Integer#+ Float`, no `String#*`, no comparison operators — a signature is added when a
+`Integer#+ Float`, no `String#*`, no `Integer#to_s(base)` — a signature is added when a
 rung needs it and its result has been checked against the semantics, not because it
 looks obviously true. -/
 inductive PrimSig : Ty → String → List Ty → Ty → Prop
@@ -77,6 +99,46 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       `"a" + 1` really does raise `TypeError` ("no implicit conversion"), which is *in*
       the family — hence `[.cls "String"]`, not `[.any]`. -/
   | strAdd : PrimSig (.cls "String") "+" [.cls "String"] (.cls "String")
+  -- ### Tier 2's second half (rungs 014–028)
+  --
+  -- Five more shapes, each a different *reason* a signature is admissible, which is why
+  -- they are worth reading one at a time rather than as a table:
+  --
+  -- - a **comparison** returns a `Bool` while still constraining its argument (`1 < "a"`
+  -- raises `ArgumentError`, which is in the family — so the `[.int]` is load-bearing,
+  -- exactly as in `strAdd`);
+  -- - a **nullary total query** (`to_s`, `zero?`, `length`) constrains nothing but the
+  -- receiver;
+  -- - **`!`** is an ordinary send in Ruby, not syntax — the desugarer emits
+  -- `send (tru) "!" []` — so negation needs no new `Expr` node, only a row;
+  -- - **`==`** is the first rule polymorphic in its argument (see `EqSafe`).
+  /-- `Integer#< (Integer) → Bool` (rung 014). -/
+  | intLt : PrimSig .int "<" [.int] .bool
+  /-- `Integer#<= (Integer) → Bool` (rung 024). -/
+  | intLe : PrimSig .int "<=" [.int] .bool
+  /-- `Integer#> (Integer) → Bool`. Admitted alongside `<` because the ladder's
+      soundness argument for it is character-for-character the same one. -/
+  | intGt : PrimSig .int ">" [.int] .bool
+  /-- `Integer#>= (Integer) → Bool` (rung 025). -/
+  | intGe : PrimSig .int ">=" [.int] .bool
+  /-- `Integer#to_s () → String` (rung 019). Zero-argument only: `5.to_s(2)` (the base
+      form) is also legal, but its signature is a different row nobody has needed, and
+      admitting `[.int]` here would be a guess. -/
+  | intToS : PrimSig .int "to_s" [] (.cls "String")
+  /-- `Integer#zero? () → Bool` (rung 022). Total on every `Integer`. -/
+  | intZeroP : PrimSig .int "zero?" [] .bool
+  /-- `String#length () → Integer` (rung 028). -/
+  | strLength : PrimSig (.cls "String") "length" [] .int
+  /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
+      `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
+      broad would need `.any` on the receiver, and no rung asks for it yet. -/
+  | notBool : PrimSig .bool "!" [] .bool
+  /-- `recv == (anything) → Bool` (rungs 020, 021, 026). The argument type is
+      unconstrained — this is the rule `AGENTS.md` §Design notes demands as
+      `Object#== : (any) → Bool`: `1 == "a"` is perfectly safe Ruby answering `false`,
+      so requiring both sides to have the same `Ty` would be a conservative *choice*,
+      not a soundness requirement. The receiver still has to be `EqSafe`. -/
+  | objEq {σ τ : Ty} : EqSafe σ → PrimSig σ "==" [τ] .bool
 
 mutual
 
