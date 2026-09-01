@@ -24,9 +24,10 @@ queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument 
 literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
 `class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, and
 tier 8's modules, and tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` — 91 rungs. **Every rung
-at or below tier 8 matches its recorded target; tier 9 is at 10/22 and tier 11 at 1/10.** What
-remains is tier 9's nine blocks-passed-to-*builtins* rungs, tier 10 (metaprogramming), and
-tier 11's cross-products (below).
+at or below tier 8 matches its recorded target; tier 9 is at 10/22 and tier 11 at 1/10 and tier 12 at 0/12.** What
+remains is tier 9's nine blocks-passed-to-*builtins* rungs, tier 10 (metaprogramming), tier
+11's cross-products, and tier 12's **narrowing** — which is now the highest-priority item,
+because it is a prerequisite for checking anything under an assumption about its inputs.
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -592,16 +593,32 @@ ladder is reported: 114/114 (§Architecture).
    method_missing fallback route). The sixth (`metaprog-method-missing-splat`) is one of
    this ladder's two found **ty_language_gaps** — see §Ty language gaps.
 
+11. **Cross-cutting (10 rungs).** No new feature — *combinations* of features that already
+   have rules, added because a corpus-driven ladder is blind to its own cross-products.
+   **1/10 climbed** (clink 11); see §Checker status.
+12. **Narrowing (12 rungs).** No new feature either — the capability that makes `nilable` and
+   `union` *usable*. **0/12** (clink 12), deliberately: this tier is pressure, not progress.
+   Every rung is safe Ruby a human writes without thinking, and every one needs a type refined
+   inside a branch. The tier's finding is that **narrowing cannot be a syntactic rewrite** —
+   `case v when Integer` desugars to a temp plus `Integer === __dt_t1` with the branch bodies
+   still using `v`, so refinement needs an *aliasing* story; `if x && x > 1` puts a whole `seq`
+   in the condition position; `return 0 if x.nil?` narrows by *elimination of a branch that
+   leaves*. It also brings due two things earlier tiers deferred: a wildcard-receiver `nil?`
+   row (clink 1 declined one for `!`), and `subTy`, unused since the port, for
+   `narrow-union-subclass` (`is_a?(Dog)` must narrow an `Animal` away; `is_a?(Animal)` must not
+   narrow a `Dog` away). Grade the work: `narrow-nilable-truthy` first (bare `var` condition,
+   no aliasing, no new row), `narrow-guard-clause`/`narrow-and-guard` last.
+
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-corpus agreement (CRuby vs the Lean semantics): 124/124 agree, 0 disagree
+corpus agreement (CRuby vs the Lean semantics): 136/136 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 10/22  tier 10: 0/6
-tier 11: 1/10
+tier 11: 1/10  tier 12: 0/12
 flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs where validate differs from the recorded target: 21
+rungs where validate differs from the recorded target: 31
 ```
 
 All 91 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
@@ -621,14 +638,17 @@ Three numbers, and they move for different reasons:
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
-## Permanent negatives (12 rungs, and only these 12 by design)
+## Permanent negatives (14 rungs, and only these 14 by design)
 
 Every other rung targets `true`. These don't, each for one of the two reasons
 `Ratchet/Corpus.lean` names (`false_reason`). Tier 11 added three: `xc-block-retypes-capture`
 and `xc-block-retypes-ivar` (both `unsafe_program`), plus the retargeted
 `if-does-not-leak-reassignment` from clink 3. All three are the *same* rule from clink 11 —
 a callee may not retype state its caller can still see — and they exist to stop that fix
-being reverted.
+being reverted. Tier 12 added two more (`narrow-backwards-unsafe`, `narrow-absent-unsafe`),
+which exist to constrain a capability that does not exist yet: the first is certified by any
+narrowing rule that refines the two branches the wrong way round, the second by any rule that
+treats `nilable T` as `T` without a guard.
 
 - **`unsafe_program`** — the program genuinely raises `NoMethodError`/
   `ArgumentError`/`TypeError` when run:
@@ -773,7 +793,18 @@ The full climb, in roughly the order that costs least to unlock the most:
    prediction was right (`Ctx.blockTy`); the lambda-`return` prediction was right that the
    obvious rule is unsound, but the fix turned out cheaper than "change `JudgeSeq`" —
    `bodyResult`, matching the body's whole shape.
-7. **Tier 11's cross-products** (9 rungs left) — the highest-value work, because these are
+7. **Narrowing** (tier 12, 12 rungs) — **the highest-priority item**, and the one that
+   unblocks checking under an assumption about inputs: an input's type is almost always a
+   `nilable` or a union, and today nothing consumes either, so an open-world checker would type
+   nothing. Start with `narrow-nilable-truthy` (bare `var` condition — no aliasing, no new
+   `PrimSig` row, a complete capability on its own), then the `nil?`/else form, then `is_a?` on
+   a union. Leave `narrow-guard-clause` and `narrow-and-guard` for last. Two existing decisions
+   come due with it: a wildcard-receiver row for `nil?` (clink 1 declined one for `!`), and
+   `Judge.if'`'s ivar-spine *agreement* premise becoming a *join* (clink 6) so
+   `narrow-union-in-ivar` can even produce its union. And `subTy` finally gets a job. See
+   clink 12 for why narrowing cannot be a syntactic rewrite — the desugarer's temps mean it
+   needs an aliasing story.
+8. **Tier 11's cross-products** (9 rungs left) — the highest-value work, because these are
    programs a person actually wrote rather than tier headings. Two fixes cover most of them:
    **`callMethod`/`callSMethod` with a block** (thread it into `blockTy`/`paramEnvB` exactly as
    `callDefBlk` does — mechanically small, and `callMethod`'s docstring should stop implying
@@ -782,7 +813,7 @@ The full climb, in roughly the order that costs least to unlock the most:
    than cosmetic: without it a lambda created in one `self` and called in another has its body
    checked against the wrong one. `xc-module-applies-lambda` is the cleanest single demand for
    the second; `xc-ivar-array-map` needs tier 9c as well.
-8. **Tier 9c, blocks passed to builtins** (9 rungs left) — all that remains of tier 9, and
+9. **Tier 9c, blocks passed to builtins** (9 rungs left) — all that remains of tier 9, and
    all one thing: **higher-order `PrimSig`**. `[1,2].map { |x| x.to_s }` needs a claim about
    what `Array#map` *does with* a block, not merely about its argument types, and the result
    depends on a different thing per method — the block's return type (`map`), the receiver
@@ -794,18 +825,18 @@ The full climb, in roughly the order that costs least to unlock the most:
    `lambdaLit`/`callDefBlk` refuse in their patterns today.
    The arrow spine (`arrow0`/`arrowCons`) is *still* unused, and tier 9's finding is that it
    may never be needed: `Ty.clos` does the job without parameter types.
-9. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
+11. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
    *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
-10. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
+12. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
    actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
-11. **Modules**: a declaration table (something like the real project's
+13. **Modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
    node (accumulating across reopenings for free), each method's signature *inferred*
@@ -815,16 +846,16 @@ The full climb, in roughly the order that costs least to unlock the most:
    for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
    10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
    constructor except the one item below.
-12. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
+14. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
-13. **A demand on the *semantics*, not this checker: `super` with an explicit block.**
+15. **A demand on the *semantics*, not this checker: `super` with an explicit block.**
    `class Child < Base; def run; super { |x| x * 3 }; end; end` is ordinary Ruby that CRuby
    runs, but the difftest engine answers `sut_unsupported` — "zsuper with an explicit block" is
    outside `../lean/RubyCore`'s fragment. It is therefore *not* in the corpus: a rung for it
    would attach a type to a program the model cannot execute, which is what
    `scripts/run_agreement.sh` exists to prevent. The first time the semantics rather than the
    checker was the binding constraint on a rung (clink 11).
-14. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
+16. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is

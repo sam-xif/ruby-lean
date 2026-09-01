@@ -1,0 +1,103 @@
+{
+  "id": "narrow-nilable-and-union",
+  "tier": 12,
+  "description": "arr = [1, \"a\"]; v = arr[0]; if v.is_a?(Integer) ... -- both layers at once. elemTy joins the heterogeneous literal to `union(Int, String)`, Array#[] wraps that in `nilable`, so v is `nilable (union Int String)` and narrowing has to see through the nilable to refine the union inside it. The is_a?(Integer) test excludes nil *and* String in one step, which is the case showing refinement is a filter over a set of possibilities rather than a rewrite of a constructor.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "arr",
+        [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "str",
+              "a"
+            ]
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "v",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "arr"
+          ],
+          "[]",
+          [
+            [
+              "int",
+              0
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "if",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "is_a?",
+          [
+            [
+              "const",
+              "Integer"
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "+",
+          [
+            [
+              "str",
+              "!"
+            ]
+          ],
+          null
+        ]
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

@@ -1,0 +1,59 @@
+{
+  "id": "narrow-absent-unsafe",
+  "tier": 12,
+  "description": "An UNSAFE program: a = []; x = a[0]; x + 1 really raises NoMethodError (\"undefined method '+' for nil\"), because the array is empty and x is nil. The control for narrowing being *required* rather than assumed -- an implementation that treated `nilable T` as T wherever convenient would certify it. Note this is narrow-nilable-truthy with the guard deleted, which is the point: the guard is what makes that rung safe, not the indexing. Permanent negative target.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "a",
+        [
+          "array",
+          []
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "a"
+          ],
+          "[]",
+          [
+            [
+              "int",
+              0
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

@@ -1,0 +1,84 @@
+{
+  "id": "narrow-nilable-truthy",
+  "tier": 12,
+  "description": "a = [1,2,3]; x = a[0]; if x then x + 1 else 0 end : Int. The simplest possible narrowing rung and the right first one: the desugared condition is a bare `var local x`, so no aliasing and no new PrimSig row are involved. Array#[] gives `nilable Int` (correctly -- an out-of-range index is nil), and `nilable Int` matches no arithmetic row, so the then-branch must see `x : Int` or nothing types. Note the shape of the obligation: truthiness excludes *both* nil and false, so narrowing `nilable T` on a truthy test is sound for any T that is not Bool -- and for `nilable Bool` it would have to keep `false`.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "a",
+        [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "int",
+              2
+            ],
+            [
+              "int",
+              3
+            ]
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "a"
+          ],
+          "[]",
+          [
+            [
+              "int",
+              0
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "if",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ],
+        [
+          "int",
+          0
+        ]
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

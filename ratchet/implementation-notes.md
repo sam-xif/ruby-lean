@@ -1218,3 +1218,114 @@ State after this clink: **91 rungs climbed** (tiers 1–8 complete, tier 9 at 10
 1/10), 91/91 cross-checked against the real semantics, 43/43 negative controls rejected,
 **corpus agreement 124/124 with 0 disagreements**, all six soundness theorems axiom-clean
 (`propext`, `Quot.sound`).
+
+---
+
+## Clink 12 (2026-09-01) — tier 12: narrowing pressure (corpus only): 136 rungs
+
+No checker change. Twelve new corpus rungs, all of which need a capability the checker does
+not have, added deliberately to create ratchet pressure for it. Tier 12 is 0/12; both
+negatives are correctly rejected; nothing regressed (91/91 derivations, 43/43 controls,
+136/136 agreement).
+
+### Why this tier exists
+
+`Ty.nilable` and `Ty.union` are the two types this checker can **produce** but has no way to
+**consume**. No `PrimSig` row takes either as a receiver and neither is `EqSafe` — which is
+exactly *why* producing one is trivially sound (`Judge.if'`'s docstring makes that argument),
+and also why almost every interesting program that produces one becomes untypeable. Tiers 4
+and 5 recorded that as a cost, in three negative controls that measure it. This tier converts
+the cost into a demand.
+
+The framing that made it urgent: any check worth running quantifies over inputs — `argv`, a
+file's contents — and an input's type is almost always `nilable` or a union. Without narrowing,
+an open-world checker would type nothing. So narrowing is not a precision nicety; it is a
+prerequisite for the capability the project actually wants.
+
+### The finding: narrowing cannot be a syntactic rewrite
+
+This is the part worth keeping, and it came out of reading the *desugared* forms rather than
+the Ruby. Three of the twelve rungs exist specifically because surface syntax and desugared
+syntax disagree about what is being tested:
+
+**`case v when Integer`** becomes
+
+```
+seq (vasgn local __dt_t1 (var local v))
+    (if (send (const Integer) "===" [var local __dt_t1])
+        (send (var local v) "*" [int 2])      -- NB: v, not __dt_t1
+        …)
+```
+
+The scrutinee is copied to a temp, the condition tests **the temp**, and the branch bodies use
+**`v`**. So a rule that refines "the variable named in the condition" refines the wrong one and
+leaves `v` a union. Narrowing needs to know the temp and `v` hold the same value — an
+**aliasing** story, not a rewrite.
+
+**`if x && x > 1`** puts an entire `seq` (temp assignment plus a nested `if`) in the *condition*
+position of the outer `if`, and the then-branch again uses `x` rather than the temp. Two
+consequences: the tested variable cannot be read off the condition's syntax, and a refinement
+established *inside* a condition has to survive being carried out of it. Note also that
+`x > 1` within the condition already needs `x` narrowed — the refinement is consumed in the
+same expression that establishes it.
+
+**`return 0 if x.nil?`** is a `.ret` inside an `if` inside a `seq`, and the refinement it
+licenses applies to *everything after* the guard. That is narrowing by **elimination of a
+branch that leaves**, not by being inside a branch — and it needs `JudgeSeq` to stop taking
+the last statement's type unconditionally, which `bodyResult`'s docstring already explains the
+naive `.ret` rule cannot fix soundly.
+
+### Two demands entailed by narrowing but not themselves narrowing
+
+- **Builtin class constants.** `Integer`/`String` in `is_a?`/`===` are `Expr.const`, and
+  `Judge.constCls` only types constants for classes the *program declared*. Five rungs need
+  `.clsOf` for a builtin.
+- **A `nil?` row.** `nil?` is total on every object, so its honest `PrimSig` row wants `.any`
+  on the receiver — precisely the wildcard receiver clink 1 declined to admit for `!` ("the
+  general rule needs `.any` on the receiver and no rung asks for it"). Now a rung asks.
+
+### One rung is a demand on an existing rule, not a new one
+
+`narrow-union-in-ivar` cannot even *produce* its union today: `Judge.if'` requires the two
+branches to **agree** on the ivar spine (`I₁ = I₂`, added in clink 6 for a good reason). A
+class whose `initialize` assigns `@v` at `Int` on one path and `String` on the other is
+therefore not typeable at all. That premise has to become a *join* once there is something
+that can consume a union — which is the shape of the whole tier: narrowing is what makes
+several deliberately-conservative earlier choices affordable.
+
+### `subTy` finally has a job
+
+`narrow-union-subclass` narrows `union(inst Dog, inst Animal)` by `is_a?`. The asymmetry is
+the content: `is_a?(Dog)` must narrow an `Animal` away, while `is_a?(Animal)` must **not**
+narrow a `Dog` away. That is subtyping, and `subTy` has sat in `Ty.lean` unused since the port
+— clink 7 noted that inheritance did *not* bring it due (dispatch is by `mroGet?` walk, not
+subsumption) and predicted a parameter annotation would. It turns out to be narrowing instead.
+
+### The two negatives, and what each would catch
+
+- `narrow-backwards-unsafe` — the branches use the *wrong* refinement. `pick(false)` returns
+  `"s"`, the else branch runs, `"s" + 1` raises `TypeError`. **Any implementation that refines
+  the two branches the wrong way round certifies this**, which is the single most likely bug in
+  a narrowing rule.
+- `narrow-absent-unsafe` — `a = []; x = a[0]; x + 1` raises `NoMethodError`. This is
+  `narrow-nilable-truthy` with the guard *deleted*, which is the point: the guard is what makes
+  that rung safe, not the indexing. Catches any implementation that treats `nilable T` as `T`
+  where convenient.
+
+### A note on ordering
+
+The twelve are deliberately graded. `narrow-nilable-truthy` is the one to do first — its
+desugared condition is a bare `var local x`, so it needs no aliasing and no new `PrimSig` row,
+and it is a complete capability on its own. `narrow-guard-clause` and `narrow-and-guard` should
+be last; they need machinery (`.ret` in statement position, refinement out of a compound
+condition) that the simpler rungs do not.
+
+Also recorded: every one of the twelve **agrees with CRuby under the Lean semantics**, which
+was not a foregone conclusion — `case/when`, `is_a?`, `nil?`, `&&` and `return … if` are all
+modelled. Unlike clink 11's `super { … }`, the semantics is not the constraint here; the
+checker is.
+
+State after this clink: **91 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 10/22,
+tier 11 at 1/10, tier 12 at 0/12), 91/91 cross-checked against the real semantics, 43/43
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all six
+soundness theorems axiom-clean (`propext`, `Quot.sound`).

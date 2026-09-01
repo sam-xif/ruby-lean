@@ -1,0 +1,106 @@
+{
+  "id": "narrow-union-is-a",
+  "tier": 12,
+  "description": "The flagship union rung. `pick(flag)` joins Int and String, so `v : union(Int, String)` by joinT -- a type this checker produces today and can do nothing with. Then `if v.is_a?(Integer)` must refine it to Int in the then-branch and String in the else, because the branches use different operators (`v + 1` vs `v + \"!\"`) and neither typechecks at the union. Demands: `.clsOf` for the builtin constant Integer, an `is_a?` row, and refinement of a union by class in both directions at once.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "pick",
+        [
+          [
+            "preq",
+            "flag"
+          ]
+        ],
+        [
+          "if",
+          [
+            "var",
+            "local",
+            "flag"
+          ],
+          [
+            "int",
+            1
+          ],
+          [
+            "str",
+            "s"
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "v",
+        [
+          "send",
+          null,
+          "pick",
+          [
+            [
+              "true"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "if",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "is_a?",
+          [
+            [
+              "const",
+              "Integer"
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "v"
+          ],
+          "+",
+          [
+            [
+              "str",
+              "!"
+            ]
+          ],
+          null
+        ]
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

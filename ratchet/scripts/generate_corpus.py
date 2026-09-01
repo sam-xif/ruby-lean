@@ -957,6 +957,177 @@ R("xc-block-retypes-ivar", 11,
   expect_validate=False, false_reason="unsafe_program")
 
 
+# --- Tier 12: narrowing -- making `nilable` and `union` usable ---------------
+#
+# `Ty.nilable` and `Ty.union` are the two types this checker can *produce* but has no way
+# to *consume*: no PrimSig row takes either as a receiver and neither is EqSafe, which is
+# why producing one is trivially sound (Judge.if's docstring) and why almost every
+# interesting program that produces one becomes untypeable. Tiers 4 and 5 recorded that
+# cost in three negative controls; this tier turns the cost into pressure.
+#
+# Every rung here is safe Ruby a human would write without thinking, and every one needs
+# the checker to *refine a type inside a branch*. Read the demands off the DESUGARED form,
+# not the surface syntax -- that is the whole lesson of this tier, and three rungs exist
+# specifically because the two disagree:
+#
+#   * `case v when Integer` becomes a temp `__dt_t1 = v` plus `Integer === __dt_t1`, and
+#     the branch bodies use **v, not the temp**. Narrowing the variable named in the
+#     condition therefore refines the wrong one. Narrowing needs an aliasing story, not a
+#     syntactic rewrite.
+#   * `if x && x > 1` puts a whole `seq` (temp assignment + nested if) in the *condition*
+#     position, and the then-branch again uses `x` rather than the temp. Refinement has to
+#     flow out of a compound condition expression.
+#   * `return 0 if x.nil?` is a `.ret` inside an `if` inside a `seq`, and the narrowing it
+#     licenses applies to *everything after* the guard -- refinement by elimination of a
+#     branch that leaves. That also needs JudgeSeq to stop taking the last statement's type
+#     unconditionally (bodyResult's docstring records why the naive `.ret` rule is unsound).
+#
+# Two further demands entailed by narrowing but not themselves narrowing:
+#   * **Builtin class constants.** `Integer`/`String` as receivers are `Expr.const`, and
+#     Judge.constCls only types constants for classes the program *declared*. Every
+#     is_a?/=== rung needs `.clsOf` for a builtin.
+#   * **A `nil?` row.** `nil?` is total on every object, so its PrimSig row wants `.any` on
+#     the receiver -- the wildcard clink 1 deliberately declined to admit for `!`.
+#
+# The two negative rungs keep the capability honest once it exists: narrow-backwards-unsafe
+# is certified by any implementation that refines the branches the wrong way round, and
+# narrow-absent-unsafe by any implementation that refines without a guard at all.
+
+R("narrow-nilable-truthy", 12,
+  "a = [1,2,3]; x = a[0]; if x then x + 1 else 0 end : Int. The simplest possible narrowing "
+  "rung and the right first one: the desugared condition is a bare `var local x`, so no "
+  "aliasing and no new PrimSig row are involved. Array#[] gives `nilable Int` (correctly -- "
+  "an out-of-range index is nil), and `nilable Int` matches no arithmetic row, so the "
+  "then-branch must see `x : Int` or nothing types. Note the shape of the obligation: "
+  "truthiness excludes *both* nil and false, so narrowing `nilable T` on a truthy test is "
+  "sound for any T that is not Bool -- and for `nilable Bool` it would have to keep `false`.",
+  "a = [1, 2, 3]\nx = a[0]\nif x\n  x + 1\nelse\n  0\nend\n",
+  expect_validate=True)
+
+R("narrow-nilable-nil-check", 12,
+  "if x.nil? then 0 else x + 10 end : Int -- narrowing in the **else** branch, which is a "
+  "different rule from the truthy one and not merely its mirror: the condition is a send "
+  "(`send (var x) \"nil?\" []`), so the checker has to recognise a *method call* as a type "
+  "test. Also forces a PrimSig row for `nil?`, whose honest receiver is `.any` -- the "
+  "wildcard receiver clink 1 explicitly declined to admit for `!`. This rung is where that "
+  "decision has to be revisited.",
+  "a = [1, 2, 3]\nx = a[1]\nif x.nil?\n  0\nelse\n  x + 10\nend\n",
+  expect_validate=True)
+
+R("narrow-union-is-a", 12,
+  "The flagship union rung. `pick(flag)` joins Int and String, so `v : union(Int, String)` "
+  "by joinT -- a type this checker produces today and can do nothing with. Then "
+  "`if v.is_a?(Integer)` must refine it to Int in the then-branch and String in the else, "
+  "because the branches use different operators (`v + 1` vs `v + \"!\"`) and neither "
+  "typechecks at the union. Demands: `.clsOf` for the builtin constant Integer, an `is_a?` "
+  "row, and refinement of a union by class in both directions at once.",
+  'def pick(flag)\n  if flag\n    1\n  else\n    "s"\n  end\nend\n\nv = pick(true)\n'
+  'if v.is_a?(Integer)\n  v + 1\nelse\n  v + "!"\nend\n',
+  expect_validate=True)
+
+R("narrow-union-case-when", 12,
+  "`case v when Integer ... when String ... end` -- the idiomatic Ruby form, and the rung "
+  "that proves narrowing cannot be a syntactic rewrite. The desugarer emits a temp: "
+  "`__dt_t1 = v`, then nested ifs on `Integer === __dt_t1`, and **the branch bodies use v, "
+  "not __dt_t1**. So refining the variable named in the condition refines the wrong one, and "
+  "the checker has to know the temp and v hold the same value. Narrowing needs an aliasing "
+  "story. Also needs a `===` row on a class object, which is is_a? with its arguments "
+  "swapped.",
+  'def pick(flag)\n  if flag\n    1\n  else\n    "s"\n  end\nend\n\nv = pick(false)\n'
+  'case v\nwhen Integer\n  v * 2\nwhen String\n  v + v\nelse\n  0\nend\n',
+  expect_validate=True)
+
+R("narrow-union-in-ivar", 12,
+  "A union living in an **instance variable**, narrowed inside a method: Holder's initialize "
+  "assigns @v at Int or String depending on a parameter, and describe narrows it back apart. "
+  "Two capabilities at once, and the first is a change to an existing rule: Judge.if' "
+  "currently requires the two branches to *agree* on the ivar spine (I1 = I2), so this "
+  "program cannot even produce the union -- that premise has to become a join once narrowing "
+  "exists to consume one. Then the narrowing has to refine an ivar rather than a local, "
+  "which is a different environment.",
+  'class Holder\n  def initialize(flag)\n    if flag\n      @v = 1\n    else\n      @v = "s"\n'
+  '    end\n  end\n\n  def describe\n    if @v.is_a?(Integer)\n      @v + 1\n    else\n'
+  '      @v + "!"\n    end\n  end\nend\n\n\nHolder.new(true).describe\n',
+  expect_validate=True)
+
+R("narrow-union-subclass", 12,
+  "Narrowing a union of *user classes* by is_a?, where the two arms are related by "
+  "inheritance: union(inst Dog, inst Animal) refined to Dog in one branch to reach #fetch, "
+  "and left alone in the other to reach the inherited #speak. Tier 7's mroGet? walk in "
+  "concert with narrowing -- and the rung where subTy finally has something to do, since "
+  "`is_a?(Animal)` must *not* narrow a Dog away while `is_a?(Dog)` must narrow an Animal. "
+  "subTy has sat in Ty.lean unused since the port and this is the first rung that needs it.",
+  'class Animal\n  def speak\n    "..."\n  end\nend\n\nclass Dog < Animal\n  def fetch\n'
+  '    "ball"\n  end\nend\n\ndef make(flag)\n  if flag\n    Dog.new\n  else\n    Animal.new\n'
+  '  end\nend\n\nv = make(true)\nif v.is_a?(Dog)\n  v.fetch\nelse\n  v.speak\nend\n',
+  expect_validate=True)
+
+R("narrow-guard-clause", 12,
+  "def first_or_zero(a); x = a[0]; return 0 if x.nil?; x + 1; end : Int -- the idiomatic "
+  "guard clause, and the hardest narrowing shape here. The refinement is licensed not by "
+  "being inside a branch but by the *other* branch having left: after the guard, x cannot be "
+  "nil because that path returned. So this needs narrowing by elimination, plus a real story "
+  "for `.ret` in statement position -- JudgeSeq takes the last statement's type "
+  "unconditionally today, and bodyResult's docstring records why the naive `.ret` rule is "
+  "unsound. Also the first rung whose narrowing crosses a statement boundary rather than "
+  "living inside one expression.",
+  "def first_or_zero(a)\n  x = a[0]\n  return 0 if x.nil?\n  x + 1\nend\n\n\n"
+  "first_or_zero([5])\n",
+  expect_validate=True)
+
+R("narrow-and-guard", 12,
+  "`if x && x > 1` -- narrowing that has to flow out of a **compound condition**. `&&` "
+  "desugars to a temp plus a nested if, so the outer if's condition position holds an entire "
+  "`seq`, and the then-branch uses `x` rather than the temp. Two things follow: the checker "
+  "cannot read the tested variable off the condition's syntax, and the refinement "
+  "established inside the condition has to survive being carried out of it. Note also that "
+  "`x > 1` inside the condition already needs x narrowed -- the refinement is used in the "
+  "same expression that establishes it.",
+  "a = [3]\nx = a[0]\nif x && x > 1\n  x + 1\nelse\n  0\nend\n",
+  expect_validate=True)
+
+R("narrow-nilable-and-union", 12,
+  "arr = [1, \"a\"]; v = arr[0]; if v.is_a?(Integer) ... -- both layers at once. elemTy joins "
+  "the heterogeneous literal to `union(Int, String)`, Array#[] wraps that in `nilable`, so v "
+  "is `nilable (union Int String)` and narrowing has to see through the nilable to refine the "
+  "union inside it. The is_a?(Integer) test excludes nil *and* String in one step, which is "
+  "the case showing refinement is a filter over a set of possibilities rather than a rewrite "
+  "of a constructor.",
+  'arr = [1, "a"]\nv = arr[0]\nif v.is_a?(Integer)\n  v + 1\nelse\n  v + "!"\nend\n',
+  expect_validate=True)
+
+R("narrow-in-block", 12,
+  "Narrowing inside a block body, in concert with tier 9c's iterators and clink 11's "
+  "capIntact: `t.each do |x| y = [10,20][x]; if y then s = s + y end end`. The nilable comes "
+  "from Array#[] inside the block, the narrowing happens in the block's own environment, and "
+  "the accumulation into the captured `s` is legal only because it preserves s's type -- the "
+  "boundary xc-block-accumulates-capture pins. Deliberately the messiest rung in the tier.",
+  "t = [1, 2]\ns = 0\nt.each do |x|\n  y = [10, 20][x]\n  if y\n    s = s + y\n  end\n"
+  "end\ns\n",
+  expect_validate=True)
+
+R("narrow-backwards-unsafe", 12,
+  "An UNSAFE program, and the control that keeps narrowing honest: the branches use the "
+  "*wrong* refinement (`v + \"!\"` where v was narrowed to Integer, `v + 1` where it was "
+  "narrowed to String). pick(false) returns \"s\", so the else branch runs and `\"s\" + 1` "
+  "really raises TypeError. Any implementation that refines the two branches the wrong way "
+  "round certifies this, which is exactly the bug a narrowing rule is most likely to have. "
+  "Permanent negative target.",
+  'def pick(flag)\n  if flag\n    1\n  else\n    "s"\n  end\nend\n\nv = pick(false)\n'
+  'if v.is_a?(Integer)\n  v + "!"\nelse\n  v + 1\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("narrow-absent-unsafe", 12,
+  "An UNSAFE program: a = []; x = a[0]; x + 1 really raises NoMethodError (\"undefined "
+  "method '+' for nil\"), because the array is empty and x is nil. The control for narrowing "
+  "being *required* rather than assumed -- an implementation that treated `nilable T` as T "
+  "wherever convenient would certify it. Note this is narrow-nilable-truthy with the guard "
+  "deleted, which is the point: the guard is what makes that rung safe, not the indexing. "
+  "Permanent negative target.",
+  "a = []\nx = a[0]\nx + 1\n",
+  expect_validate=False, false_reason="unsafe_program")
+
+
 # ---------------------------------------------------------------------------
 
 def main():
