@@ -1,0 +1,112 @@
+{
+  "id": "proc-bracket-call",
+  "tier": 9,
+  "description": "`p[3]` is proc invocation spelled as `#[]` -- and it desugars to an ordinary `send (var local p) \"[]\" [(int 3)]`, structurally identical to tier 5's array indexing. The elimination rule for an arrow-typed receiver therefore has to fire on `[]` as well as on `call`, and `[]` has to dispatch on the receiver's type (Array vs a callable), not on the selector alone.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "p",
+        [
+          "send",
+          null,
+          "proc",
+          [],
+          [
+            "block",
+            [
+              [
+                "preq",
+                "x"
+              ]
+            ],
+            [],
+            [],
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "x"
+              ],
+              "*",
+              [
+                [
+                  "int",
+                  2
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "p"
+        ],
+        "[]",
+        [
+          [
+            "int",
+            3
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "*",
+            [
+              [
+                "int",
+                2
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

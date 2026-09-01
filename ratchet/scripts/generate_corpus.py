@@ -728,7 +728,272 @@ R("module-passing-multiple-args", 8,
   claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "sum3"}), arrow_of([T_INT, T_INT, T_INT], T_INT))],
   expect_validate=True)
 
-# --- Tier 9: metaprogramming -- LAST on the ladder ---------------------------
+# --- Tier 9: blocks, procs and lambdas ---------------------------------------
+# Ruby's three callable literals, and the one place the desugarer is *most*
+# uniform: `lambda { .. }`, `->(x) { .. }` and `proc { .. }` are all an ordinary
+# `send none "lambda"/"proc" [] (block ..)` -- the block is the send's `blk`
+# child, exactly the same node an iterator call like `[1,2].map { .. }` carries.
+# So there is no separate "lambda expression" in Expr at all: typing this tier
+# means typing (a) the `block` literal itself as an arrow, (b) the `call`/`[]`/
+# `yield` elimination forms that apply one, and (c) the receiver-directed
+# iterator rules (`Array#map`/`each`/`select`/`inject`/`sort_by`) that say what
+# block a builtin passes its element to and what the whole send returns.
+#
+# The claim vocabulary already exists: a block literal's claim is the same
+# arrow spine a `def'` gets (`arrow_of([Int], Int)`), which is why nearly every
+# rung here targets True. Two things this tier finds that the vocabulary
+# *cannot* say:
+#   - proc-vs-lambda arity discipline. A lambda is strict (`->(x){x}.call(1,2)`
+#     raises ArgumentError -- the `lambda-arity-mismatch` rung, a real
+#     unsafe_program); a proc is lenient, padding missing params with nil and
+#     dropping extras. `arrow_of([Int, Int], Int)` describes both, so a checker
+#     reading only the arrow would either reject the legal proc call or accept
+#     the illegal lambda one. FLAGGED as the tier's one cert_language_gap
+#     (`proc-arity-leniency`).
+#   - `&:to_s` / `&blk` block-pass is typed here only through its *result*
+#     claim; there is no Ty for "Symbol coerced to a proc" (Symbol#to_proc).
+#     That is a dispatch-design item, not a gap: the result claim is honest.
+
+R("lambda-zero-arity", 9,
+  "The smallest callable literal: `lambda { 1 }` desugars to `send none "
+  "\"lambda\" [] (block [] [] (int 1))` -- no new Expr head, just a send whose "
+  "`blk` child is a block with no params. The claim goes on the *block* node "
+  "and is an arrow spine with no params, arrow_of([], Int); `f.call` then "
+  "eliminates it. (This is the same program the umbrella project's J31 semantic-"
+  "axiom pilot uses.)",
+  "f = lambda { 1 }\nf.call\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([], T_INT))],
+  expect_validate=True)
+R("lambda-stabby-one-param", 9,
+  "`->(x) { x + 1 }.call(2)`: the stabby-lambda syntax desugars to the *exact "
+  "same* shape as `lambda { .. }` (`send none \"lambda\"`), so a checker needs "
+  "one rule, not two. The block's param `x` is typed by the claim's spine "
+  "(Int), which is what lets the body's `x + 1` reach tier 2's Integer#+ rule.",
+  "->(x) { x + 1 }.call(2)\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("proc-basic", 9,
+  "`proc { |x| x * 2 }` is the same send-with-block shape as lambda, differing "
+  "only in the selector (\"proc\" vs \"lambda\"). Called at the arity it "
+  "declares, a proc behaves exactly like a lambda, so the same arrow claim is "
+  "honest here -- contrast proc-arity-leniency, which is the case where it "
+  "stops being honest.",
+  "p = proc { |x| x * 2 }\np.call(3)\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("proc-bracket-call", 9,
+  "`p[3]` is proc invocation spelled as `#[]` -- and it desugars to an ordinary "
+  "`send (var local p) \"[]\" [(int 3)]`, structurally identical to tier 5's "
+  "array indexing. The elimination rule for an arrow-typed receiver therefore "
+  "has to fire on `[]` as well as on `call`, and `[]` has to dispatch on the "
+  "receiver's type (Array vs a callable), not on the selector alone.",
+  "p = proc { |x| x * 2 }\np[3]\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("block-each-int", 9,
+  "The first *iterator* block: `[1,2,3].each { |x| x + 1 }`. The block is the "
+  "send's `blk` child, and the rule that types it is receiver-directed -- "
+  "Array#each feeds the block one element (Int, from the receiver's "
+  "arrayOf Int) and returns the *receiver*, not the block's result.",
+  "[1, 2, 3].each { |x| x + 1 }\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("block-map-to-s", 9,
+  "`[1,2,3].map { |n| n.to_s }`: unlike each, Array#map's result type is "
+  "arrayOf(the block's *return* type) -- so the whole send is arrayOf(an "
+  "instance of String) even though the receiver is arrayOf Int. The block "
+  "claim is what supplies that return type.",
+  '[1, 2, 3].map { |n| n.to_s }\n',
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_STR))],
+  expect_validate=True)
+R("block-doend-with-block-local", 9,
+  "A multi-statement do/end block that assigns a block-local `y`. The "
+  "desugarer records `y` in the block node's *locals* slot (v5's fourth child), "
+  "separately from its params -- so a block frame binds params and locals "
+  "together, and `y` must not leak to the enclosing scope. Body is a `seq`, "
+  "typed left to right, block's type is its last statement's.",
+  "[1, 2].map do |x|\n  y = x * 2\n  y + 1\nend\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("yield-arith", 9,
+  "`yield` is its own Expr head, and it invokes the *enclosing method's* "
+  "implicitly-passed block -- there is no variable naming it. Typing "
+  "`yield(1) + yield(2)` inside `twice` therefore needs the block's arrow to be "
+  "part of the method's own context, threaded from the call site's block "
+  "literal: a real dependency of the callee's typing on the caller's argument. "
+  "Two claims, one for each side of that link.",
+  "def twice\n  yield(1) + yield(2)\nend\n\ntwice { |x| x * 10 }\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "def", **{"1": "twice"}), arrow_of([], T_INT)),
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("block-param-ampersand", 9,
+  "`def run(&b)` reifies the passed block as an ordinary local `b` (a `pblock` "
+  "param), which is then called with `b.call(5)` -- the same elimination form "
+  "as a lambda's. This is the reified counterpart of yield-arith: the block "
+  "arrives as a *value* with an arrow type, so `Param.block`'s type is exactly "
+  "the block literal's claim at the call site.",
+  "def run(&b)\n  b.call(5)\nend\n\nrun { |x| x + 1 }\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "def", **{"1": "run"}), arrow_of([], T_INT)),
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("block-pass-symbol-to-proc", 9,
+  "`[1,2].map(&:to_s)` has *no* block node at all: the desugarer produces "
+  "`blockpass (sym to_s)`, and Ruby coerces the Symbol to a proc "
+  "(Symbol#to_proc) at call time. There is no Ty for that coercion, so the "
+  "claim is stated on the whole send's *result* (arrayOf String) instead -- "
+  "honest, and enough here, but it means a checker needs a Symbol#to_proc rule "
+  "(sym `s` used as a block over receiver `T` behaves as the arrow of T's `s` "
+  "method) before it can synthesize this without help.",
+  '[1, 2].map(&:to_s)\n',
+  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "map"}), T_ARRAYOF(T_STR))],
+  expect_validate=True)
+R("block-pass-lambda-variable", 9,
+  "The other blockpass shape: `&double` where `double` is a local holding a "
+  "lambda. Here the arrow *is* available -- `blockpass (var local double)` -- "
+  "so the iterator rule can use the variable's own claimed type as the block's "
+  "type, with no coercion rule needed. Contrast block-pass-symbol-to-proc.",
+  "double = ->(x) { x * 2 }\n[1, 2].map(&double)\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
+      claim(p, lambda n: is_head(n, "send", **{"2": "map"}), T_ARRAYOF(T_INT)),
+  ],
+  expect_validate=True)
+R("lambda-closure-capture", 9,
+  "`n = 10; add_n = ->(x) { x + n }` -- the block body mentions a local bound "
+  "in the *enclosing* scope. The block's arrow says nothing about `n`: typing "
+  "the body requires the environment at the point of the literal, not just its "
+  "params, which is the first rung on this ladder where a block cannot be "
+  "typed in isolation.",
+  "n = 10\nadd_n = ->(x) { x + n }\nadd_n.call(5)\n",
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
+  expect_validate=True)
+R("lambda-returns-lambda", 9,
+  "Curried addition: `add = ->(x) { ->(y) { x + y } }`, eliminated by "
+  "`add.call(1).call(2)`. The outer block's claim is a *higher-order* arrow -- "
+  "arrow_of([Int], arrow_of([Int], Int)) -- which the Ty spine can already "
+  "state, since `arrow0`'s return is an arbitrary Ty. The inner block also "
+  "captures the outer's `x` (closure capture again, one level in).",
+  "add = ->(x) { ->(y) { x + y } }\nadd.call(1).call(2)\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "x"]]}),
+            arrow_of([T_INT], arrow_of([T_INT], T_INT))),
+      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "y"]]}),
+            arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("lambda-as-argument", 9,
+  "The other half of higher-order: a *method parameter* whose type is an "
+  "arrow. `def apply(f, v); f.call(v); end` is claimed "
+  "arrow_of([arrow_of([Int], Int), Int], Int) -- an arrow nested in a param "
+  "position rather than a return position -- and the call site passes a lambda "
+  "literal, so the argument check is arrow-against-arrow.",
+  "def apply(f, v)\n  f.call(v)\nend\n\napply(->(x) { x * 2 }, 5)\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "def", **{"1": "apply"}),
+            arrow_of([arrow_of([T_INT], T_INT), T_INT], T_INT)),
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("block-nested-map", 9,
+  "`[[1,2],[3,4]].map { |row| row.map { |x| x + 1 } }` -- a block literal "
+  "inside a block literal, over a nested array. The outer block's param is "
+  "arrayOf Int (the receiver's element type) and its return is arrayOf Int, "
+  "making the whole send arrayOf(arrayOf Int): the iterator rule has to compose "
+  "with itself, and `arrayOf` has to nest.",
+  '[[1, 2], [3, 4]].map { |row| row.map { |x| x + 1 } }\n',
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "row"]]}),
+            arrow_of([T_ARRAYOF(T_INT)], T_ARRAYOF(T_INT))),
+      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "x"]]}),
+            arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("block-two-params-inject", 9,
+  "`[1,2,3].inject(0) { |acc, x| acc + x }`: the first block in the corpus with "
+  "*two* params, and the first whose param types come from two different places "
+  "-- `acc` from the send's seed argument, `x` from the receiver's element "
+  "type -- with the extra obligation that the block's return type must equal "
+  "`acc`'s (that is what makes the fold well-typed at every step, not just the "
+  "first).",
+  '[1, 2, 3].inject(0) { |acc, x| acc + x }\n',
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT, T_INT], T_INT))],
+  expect_validate=True)
+R("block-select-with-if", 9,
+  "A predicate block whose body is a whole `if` expression: "
+  "`[1,2,3,4].select { |x| if x > 2 then true else false end }`. Combines "
+  "tier 4's join-the-branches rule *inside* a block body (both branches Bool, "
+  "so the block is arrow_of([Int], Bool)) with Array#select's rule, which "
+  "unlike map returns arrayOf(the *receiver's* element type) regardless of the "
+  "block's return type.",
+  '[1, 2, 3, 4].select { |x| if x > 2 then true else false end }\n',
+  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_BOOL))],
+  expect_validate=True)
+R("block-sort-by-length", 9,
+  '`["aaa","b"].sort_by { |s| s.length }` -- the block\'s param and return '
+  "types differ (an instance of String in, Int out), the whole send is "
+  "arrayOf String (like select, the receiver's element type), and the body "
+  "needs tier 2's str-length-with-claim escape hatch for `#length`. Three "
+  "claims interlocking on one line.",
+  '["aaa", "b"].sort_by { |s| s.length }\n',
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_STR], T_INT)),
+      claim(p, lambda n: is_head(n, "send", **{"2": "length"}), T_INT),
+      claim(p, lambda n: is_head(n, "send", **{"2": "sort_by"}), T_ARRAYOF(T_STR)),
+  ],
+  expect_validate=True)
+R("lambda-explicit-return", 9,
+  "`doubler = ->(x) { return x * 2 }; doubler.call(3)` is 6, not a "
+  "LocalJumpError: `return` inside "
+  "a *lambda* returns from the lambda, locally. (The same `return` inside a "
+  "proc or a bare block would return from the enclosing method instead -- a "
+  "non-local jump.) So the arrow claim stays exactly arrow_of([Int], Int), but "
+  "a checker must read the `return` against the lambda's own return type, and "
+  "must know which of the three callable flavors it is inside to do so. "
+  "(Wrapped in a method because a bare top-level `return` is a parse error, "
+  "which incidentally pins the lambda inside a method body, exactly where the "
+  "proc/block reading would differ.)",
+  "def apply_twice\n  doubler = ->(x) { return x * 2 }\n  doubler.call(3)\nend\n\napply_twice\n",
+  claims=lambda p: [
+      claim(p, lambda n: is_head(n, "def", **{"1": "apply_twice"}), arrow_of([], T_INT)),
+      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
+  ],
+  expect_validate=True)
+R("block-bad-arith", 9,
+  "`[1,2].each { |x| x + \"a\" }` really raises TypeError (\"String can't be "
+  "coerced into Integer\") on the first element -- tier 2's bad-plus, moved "
+  "inside a block body where the receiver's element type is what makes it "
+  "ill-typed. Nothing about the block wrapper should launder it. Permanent "
+  "negative target.",
+  '[1, 2].each { |x| x + "a" }\n',
+  expect_validate=False, false_reason="unsafe_program")
+R("lambda-arity-mismatch", 9,
+  "`->(x) { x }.call(1, 2)` raises ArgumentError (given 2, expected 1): lambda "
+  "arity is *strict*. The arrow spine says exactly this -- one param -- so this "
+  "is a rung a checker equipped with the arrow elimination rule should reject "
+  "on its own, and no certificate should ever certify. Permanent negative "
+  "target, and the honest half of the proc/lambda arity story.",
+  "->(x) { x }.call(1, 2)\n",
+  expect_validate=False, false_reason="unsafe_program")
+R("proc-arity-leniency", 9,
+  "The dishonest half. `proc { |x, y| x }.call(1)` is *legal* Ruby: a proc "
+  "pads missing params with nil (y = nil) and drops extras, so this returns 1. "
+  "But the only Ty that can be claimed for that block is "
+  "arrow_of([Int, Int], Int), which says the call site is wrong -- and "
+  "weakening it to arrow_of([Int, nilable Int], Int) still cannot express "
+  "\"...and the second argument may simply be absent\", nor that an extra third "
+  "argument is fine too. There is no Ty value describing proc arity discipline "
+  "at all, so the rung cannot be honestly certified today. FLAGGED "
+  "cert_language_gap: Ty needs optional/rest arity (the same missing "
+  "constructor metaprog-method-missing-splat asks for, reached from the other "
+  "direction).",
+  "proc { |x, y| x }.call(1)\n",
+  expect_validate=False, false_reason="cert_language_gap")
+
+# --- Tier 10: metaprogramming -- LAST on the ladder --------------------------
 # method_missing, class reopening, and mixins (include/extend/prepend). Real
 # Ruby desugars all three to *ordinary constructs already in Expr* --
 # include/extend/prepend are plain `send none "include"/... [const Module] none`
@@ -745,7 +1010,7 @@ R("module-passing-multiple-args", 8,
 # the fixed-arity method_missing rung right next to it shows the gap is
 # specifically about rest params, not method_missing dispatch itself.
 
-R("metaprog-class-reopening", 9,
+R("metaprog-class-reopening", 10,
   "Foo is defined via two separate `class' \"Foo\"` nodes, each contributing "
   "different methods -- the declaration table accumulates across both by "
   "name, the same way it would across any two top-level defs.",
@@ -756,7 +1021,7 @@ R("metaprog-class-reopening", 9,
       claim(p, lambda n: is_head(n, "def", **{"1": "b"}), arrow_of([], T_INT)),
   ],
   expect_validate=True)
-R("metaprog-include", 9,
+R("metaprog-include", 10,
   "Person includes Greetable; greet, defined once inside the module, becomes "
   "callable as an instance method of Person. `include` desugars to an ordinary "
   "`send none \"include\" [const Greetable] none` inside Person's class body -- "
@@ -769,7 +1034,7 @@ R("metaprog-include", 9,
   "class Person\n  include Greetable\nend\n\nPerson.new.greet\n",
   claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "greet"}), arrow_of([], T_STR))],
   expect_validate=True)
-R("metaprog-extend", 9,
+R("metaprog-extend", 10,
   "Person extends Loud; shout becomes callable as a *singleton* method of "
   "Person (Person.shout), not an instance method -- `extend` is the same "
   "ordinary `send` shape as `include`, but the mixed-in methods land on the "
@@ -780,7 +1045,7 @@ R("metaprog-extend", 9,
   "class Person\n  extend Loud\nend\n\nPerson.shout\n",
   claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "shout"}), arrow_of([], T_STR))],
   expect_validate=True)
-R("metaprog-prepend", 9,
+R("metaprog-prepend", 10,
   "Person prepends Logger, which defines its own speak calling `super`. "
   "prepend puts Logger *ahead* of Person in the ancestor chain, so "
   "Person.new.speak resolves to Logger#speak first, whose bare `super` (a "
@@ -799,7 +1064,7 @@ R("metaprog-prepend", 9,
                    lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
   ],
   expect_validate=True)
-R("metaprog-method-missing-fixed-arity", 9,
+R("metaprog-method-missing-fixed-arity", 10,
   "Ghost declares method_missing with a single *required* param (no splat); "
   "calling an undeclared method (anything_at_all, with no arguments) dispatches "
   "to it with exactly one argument (the missed method's name, as a Sym) -- an "
@@ -813,7 +1078,7 @@ R("metaprog-method-missing-fixed-arity", 9,
   claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "method_missing"}),
                            arrow_of([T_SYM], T_STR))],
   expect_validate=True)
-R("metaprog-method-missing-splat", 9,
+R("metaprog-method-missing-splat", 10,
   "The idiomatic method_missing shape: `def method_missing(name, *args)`. Its "
   "true signature is 'one Sym, then zero or more of anything' -- and Ty's "
   "arrow spine (arrow0/arrowCons) has no vararg/rest-arity constructor at all. "

@@ -1,0 +1,151 @@
+{
+  "id": "block-param-ampersand",
+  "tier": 9,
+  "description": "`def run(&b)` reifies the passed block as an ordinary local `b` (a `pblock` param), which is then called with `b.call(5)` -- the same elimination form as a lambda's. This is the reified counterpart of yield-arith: the block arrives as a *value* with an arrow type, so `Param.block`'s type is exactly the block literal's claim at the call site.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "run",
+        [
+          [
+            "pblock",
+            "b"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "b"
+          ],
+          "call",
+          [
+            [
+              "int",
+              5
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "run",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "run",
+          [
+            [
+              "pblock",
+              "b"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "b"
+            ],
+            "call",
+            [
+              [
+                "int",
+                5
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

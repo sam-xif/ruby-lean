@@ -1,0 +1,104 @@
+{
+  "id": "block-each-int",
+  "tier": 9,
+  "description": "The first *iterator* block: `[1,2,3].each { |x| x + 1 }`. The block is the send's `blk` child, and the rule that types it is receiver-directed -- Array#each feeds the block one element (Int, from the receiver's arrayOf Int) and returns the *receiver*, not the block's result.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "array",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ],
+          [
+            "int",
+            3
+          ]
+        ]
+      ],
+      "each",
+      [],
+      [
+        "block",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [],
+        [],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

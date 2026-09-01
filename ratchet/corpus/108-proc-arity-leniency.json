@@ -1,0 +1,50 @@
+{
+  "id": "proc-arity-leniency",
+  "tier": 9,
+  "description": "The dishonest half. `proc { |x, y| x }.call(1)` is *legal* Ruby: a proc pads missing params with nil (y = nil) and drops extras, so this returns 1. But the only Ty that can be claimed for that block is arrow_of([Int, Int], Int), which says the call site is wrong -- and weakening it to arrow_of([Int, nilable Int], Int) still cannot express \"...and the second argument may simply be absent\", nor that an extra third argument is fine too. There is no Ty value describing proc arity discipline at all, so the rung cannot be honestly certified today. FLAGGED cert_language_gap: Ty needs optional/rest arity (the same missing constructor metaprog-method-missing-splat asks for, reached from the other direction).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "send",
+        null,
+        "proc",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ],
+            [
+              "preq",
+              "y"
+            ]
+          ],
+          [],
+          [],
+          [
+            "var",
+            "local",
+            "x"
+          ]
+        ]
+      ],
+      "call",
+      [
+        [
+          "int",
+          1
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false,
+  "false_reason": "cert_language_gap"
+}

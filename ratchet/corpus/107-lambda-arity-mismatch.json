@@ -1,0 +1,50 @@
+{
+  "id": "lambda-arity-mismatch",
+  "tier": 9,
+  "description": "`->(x) { x }.call(1, 2)` raises ArgumentError (given 2, expected 1): lambda arity is *strict*. The arrow spine says exactly this -- one param -- so this is a rung a checker equipped with the arrow elimination rule should reject on its own, and no certificate should ever certify. Permanent negative target, and the honest half of the proc/lambda arity story.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "send",
+        null,
+        "lambda",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "var",
+            "local",
+            "x"
+          ]
+        ]
+      ],
+      "call",
+      [
+        [
+          "int",
+          1
+        ],
+        [
+          "int",
+          2
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

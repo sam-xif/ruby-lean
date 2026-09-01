@@ -1,6 +1,6 @@
 {
   "id": "metaprog-extend",
-  "tier": 9,
+  "tier": 10,
   "description": "Person extends Loud; shout becomes callable as a *singleton* method of Person (Person.shout), not an instance method -- `extend` is the same ordinary `send` shape as `include`, but the mixed-in methods land on the class's own singleton ancestry instead of its instance ancestry. A further dispatch-design extension (symmetric with `include`, on the other side), not a language gap.",
   "program": {
     "v": 5,

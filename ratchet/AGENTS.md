@@ -106,6 +106,43 @@ Also added: tier 9, metaprogramming (`method_missing`, class reopening,
 `include`/`extend`/`prepend`), deliberately last on the ladder, and the direct
 motivation for finding the one language gap above.
 
+## 2026-08-31 (later still): tier 9, blocks/procs/lambdas — 22 rungs
+
+The instruction: *add uses of lambdas, `proc { … }` and block literals, in various and
+complex combinations, increasing in complexity.* Added as a **new tier 9**, inserted
+*before* metaprogramming (which moved to **tier 10**) so metaprogramming stays last on
+the ladder as designed — blocks are a core language feature, not a reflective one.
+
+What the pass found, from running every rung under real Ruby 4.0.5 first and through the
+real desugarer second:
+
+- **All three callable literals are one node.** `lambda { … }`, `->(x) { … }` and
+  `proc { … }` desugar to `send none "lambda"/"proc" [] (block …)` — the same `block`
+  node an iterator call carries as its `blk` child. There is no lambda expression in
+  `Expr`. So the claim for a callable literal is just an arrow spine on the `block`
+  node, identical in shape to a `def'`'s, and typing tier 9 is: type `block`, type its
+  eliminators (`call`, `#[]`, `yield`, `&b`), and give the builtin iterators
+  receiver-directed rules.
+- **The iterators differ in what they return**, which the corpus now pins one rung
+  each: `each` → the receiver, `map` → `arrayOf`(block return), `select`/`sort_by` →
+  `arrayOf`(receiver's element type). A single "block rule" would get three of five
+  wrong.
+- **A second cert language gap, found from the opposite direction.**
+  `proc-arity-leniency` (`proc { |x, y| x }.call(1)`, legal Ruby returning 1) needs the
+  same missing optional/rest arity constructor `metaprog-method-missing-splat` asks for.
+  Its lambda twin `lambda-arity-mismatch` really raises ArgumentError on the same call
+  shape — so the gap is sharp: today's arrow spine must either reject the legal proc or
+  accept the illegal lambda. §Cert language gaps.
+- **`->(x) { return x * 2 }.call(3)` cannot be written at top level** — the desugarer
+  exits 3 on `top-level return`. Wrapped in a method, which is the more honest rung
+  anyway: it is inside a method body that lambda-local `return` differs from the proc
+  and bare-block reading.
+
+Two rungs already pass claim-assisted (`block-pass-symbol-to-proc`,
+`block-sort-by-length`) — both because their claim happens to land on the outermost
+send, i.e. the checker is trusting the answer, not computing it. Structural is still
+14, and 79 rungs are not yet climbed.
+
 ## 2026-08-31 (evening): the first 13 rungs, typed by hand
 
 The instruction that produced this pass: *work through how to type the first 13 rungs
@@ -260,9 +297,9 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (9 tiers, 92 rungs, 14 climbed structurally)
+## The ladder (10 tiers, 114 rungs, 14 climbed structurally)
 
-**Every rung's target is `expect_validate = true`, with exactly seven, named
+**Every rung's target is `expect_validate = true`, with exactly ten, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
 this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean`'s
 module docstring for the three reasons a rung is allowed to target `false` at all.
@@ -290,22 +327,37 @@ module docstring for the three reasons a rung is allowed to target `false` at al
    claims — see §Architecture's `Cert.lean` note and §Design notes for the dispatch
    machinery these claims assume exists.
 8. **Modules (10 rungs).** Same claim shape, for `module'`/`defs self'`.
-9. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** `method_missing`,
+9. **Blocks, procs and lambdas (22 rungs).** Ruby's callable literals, in one place
+   and increasing in complexity: `lambda {}`/`->(){}`/`proc {}` (all three desugar to
+   the *same* shape — an ordinary `send none "lambda"/"proc" [] (block …)`, so a block
+   literal is the only callable node there is), the elimination forms (`call`, `#[]`,
+   `yield`, a reified `&b` param), the receiver-directed iterator rules
+   (`each`/`map`/`select`/`inject`/`sort_by`, which differ in *what* they return:
+   receiver, block-return, or element type), block-locals in a do/end body, both
+   `blockpass` shapes (`&:to_s`'s Symbol#to_proc coercion and `&some_lambda`), closure
+   capture, nested blocks, two-param folds, an `if` inside a block body, higher-order
+   arrows in both return position (`->(x){ ->(y){ x + y } }`) and param position
+   (`def apply(f, v)`), and lambda-local `return`. Claims are the same arrow spine
+   `def'` nodes get, so 19 of 22 target `true`; the three that don't are the tier's
+   real findings — `block-bad-arith` and `lambda-arity-mismatch` (genuinely raising
+   programs) and `proc-arity-leniency` (§Cert language gaps).
+10. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** `method_missing`,
    class reopening, and `include`/`extend`/`prepend`. Five of six are ordinary safe
    Ruby with real claims (§Design notes has the dispatch subtleties: self-context
    `vcall` resolution, mixin ancestry, prepend-ordered MRO with `super`, a
    method_missing fallback route). The sixth
-   (`metaprog-method-missing-splat`) is this ladder's one found
-   **cert_language_gap** — see §Cert language gaps.
+   (`metaprog-method-missing-splat`) is one of this ladder's two found
+   **cert_language_gaps** — see §Cert language gaps.
 
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
 tier 1: 8/8 (8 structural)     tier 2: 9/20 (6 structural, 3 claim-assisted)
 tier 3: 1/6 (0, 1)             tier 4: 2/9 (0, 2)          tier 5: 3/8 (0, 3)
-tier 6: 0/9    tier 7: 0/16    tier 8: 0/10                tier 9: 0/6
-flagged cert language gaps: 1 (metaprog-method-missing-splat)
-rungs not yet climbed: 62
+tier 6: 0/9    tier 7: 0/16    tier 8: 0/10
+tier 9: 2/22 (0 structural, 2 claim-assisted)                tier 10: 0/6
+flagged cert language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
+rungs not yet climbed: 79
 ```
 
 Read the **structural** column, not the total: a claim-assisted rung validated because a
@@ -319,16 +371,19 @@ fraction by tier fraction. The "flagged cert language gaps" count is a *differen
 number: it should stay flat unless `Ty.lean`'s grammar itself grows (see §Cert language
 gaps) — it is not something `chk` alone can move.
 
-## Permanent negatives (7 rungs, and only these 7 by design)
+## Permanent negatives (10 rungs, and only these 10 by design)
 
-Every other rung targets `true`. These seven don't, each for one of the three reasons
+Every other rung targets `true`. These ten don't, each for one of the three reasons
 `Ratchet/Corpus.lean` names (`false_reason`):
 
-- **`unsafe_program`** (5 rungs) — the program genuinely raises `NoMethodError`/
+- **`unsafe_program`** (7 rungs) — the program genuinely raises `NoMethodError`/
   `ArgumentError`/`TypeError` when run, no matter what any certificate claims:
   `bad-plus` (`1 + true`), `unknown-method-no-claim` (`5.foo_bar_baz` — a made-up
   method, unlike the real `5.zero?` its sibling `unknown-method-with-claim` uses),
-  `fun-wrong-arity`, `fun-body-mismatch`, `fun-unknown-call`. A sound `chk` must never
+  `fun-wrong-arity`, `fun-body-mismatch`, `fun-unknown-call`, plus tier 9's
+  `block-bad-arith` (`[1,2].each { |x| x + "a" }` — TypeError inside a block body,
+  which the block wrapper must not launder) and `lambda-arity-mismatch`
+  (`->(x){x}.call(1, 2)` — ArgumentError, because lambda arity is strict). A sound `chk` must never
   say `true` for any of these — they are the soundness regression tests.
 - **`dishonest_cert`** (1 rung) — `fun-dishonest-return-claim`: `get5`'s body really
   returns `Int` and running it is completely safe, but *this certificate* claims its
@@ -336,21 +391,31 @@ Every other rung targets `true`. These seven don't, each for one of the three re
   self-inconsistent certificate is independent of the program's actual safety — the
   point is that a checker which let a cert's claims disagree with each other would be
   meaningless, not that this particular Ruby is unsafe.
-- **`cert_language_gap`** (1 rung) — `metaprog-method-missing-splat`, see next section.
+- **`cert_language_gap`** (2 rungs) — `metaprog-method-missing-splat` and tier 9's
+  `proc-arity-leniency`, see next section.
 
 ## Cert language gaps
 
-**One found so far: `Ty`'s arrow spine (`arrow0`/`arrowCons`) has no vararg/rest-arity
-constructor.** `def method_missing(name, *args)` — the idiomatic shape — has a
+**Two found so far, both the same missing thing: `Ty`'s arrow spine
+(`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.** `def method_missing(name, *args)` — the idiomatic shape — has a
 parameter list no `Ty` value can honestly describe: not "no `chk` rule for it yet" but
 "no claim, however clever, states the truth without lying about arity." A claim
 approximating it as `arrow_of([Sym], ...)` would silently accept the zero-extra-args
 call site in the corpus while being unsound the moment a caller passes any extra
-arguments. `metaprog-method-missing-fixed-arity` sits right next to it in tier 9 with
+arguments. `metaprog-method-missing-fixed-arity` sits right next to it in tier 10 with
 the *same* dispatch shape and no splat, and validates fine (aspirationally) — proving
 the gap is specifically the rest parameter, not `method_missing` dispatch generally.
 
-Fixing it needs a `Ty` extension — an `arrowRest (rest ret : Ty)` spine terminator, or
+Tier 9's **`proc-arity-leniency`** reaches the same gap from the other direction:
+`proc { |x, y| x }.call(1)` is legal Ruby (a proc pads missing params with nil and
+drops extras), but the only claimable type for that block, `arrow_of([Int, Int], Int)`,
+says the call site is wrong; weakening the second param to `nilable Int` still cannot
+say "…and may be absent entirely", nor that a third argument would also be fine. Its
+strict sibling `lambda-arity-mismatch` is a permanent `unsafe_program` for the *same*
+call shape — which is the point: the arrow spine cannot distinguish the two arity
+disciplines, so it either rejects the legal proc or accepts the illegal lambda.
+
+Fixing both needs a `Ty` extension — an `arrowRest (rest ret : Ty)` spine terminator, or
 modeling `*args` as `arrayOf Ty` — decided deliberately, not smuggled in as a special
 case of something else. Until then, `Main.lean`'s runner always prints a "flagged:
 cert language gaps" section (independent of pass/fail) so this doesn't quietly
@@ -434,12 +499,16 @@ The full climb, in roughly the order that costs least to unlock the most:
    still needs; the machinery (`SubEnv`/`subEnvB`) already exists, ported-but-not-yet,
    in the real `Types/Ty.lean`.
 2. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
-   `.block`) — the cleared implementation rejected any `def'` using them, and tier 9's
-   `metaprog-method-missing-splat` needs this *and* the `Ty` extension in §Cert
-   language gaps together before it can validate.
+   `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
+   `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
+   *and* the `Ty` extension in §Cert language gaps together before it can validate.
+   `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
+   (`def run(&b)`) is otherwise ordinary safe Ruby.
 3. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
-   actually do) to make good on a claim about a block's body.
+   actually do) to make good on a claim about a block's body. **Tier 9 is now the
+   corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
+   `arrow_of([], Int)`) is reachable long before the last.
 4. **Classes and modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` claim nested in every

@@ -1,0 +1,126 @@
+{
+  "id": "block-select-with-if",
+  "tier": 9,
+  "description": "A predicate block whose body is a whole `if` expression: `[1,2,3,4].select { |x| if x > 2 then true else false end }`. Combines tier 4's join-the-branches rule *inside* a block body (both branches Bool, so the block is arrow_of([Int], Bool)) with Array#select's rule, which unlike map returns arrayOf(the *receiver's* element type) regardless of the block's return type.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "array",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ],
+          [
+            "int",
+            3
+          ],
+          [
+            "int",
+            4
+          ]
+        ]
+      ],
+      "select",
+      [],
+      [
+        "block",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [],
+        [],
+        [
+          "if",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            ">",
+            [
+              [
+                "int",
+                2
+              ]
+            ],
+            null
+          ],
+          [
+            "true"
+          ],
+          [
+            "false"
+          ]
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "if",
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "x"
+              ],
+              ">",
+              [
+                [
+                  "int",
+                  2
+                ]
+              ],
+              null
+            ],
+            [
+              "true"
+            ],
+            [
+              "false"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "bool"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

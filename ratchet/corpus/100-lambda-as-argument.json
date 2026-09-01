@@ -1,0 +1,194 @@
+{
+  "id": "lambda-as-argument",
+  "tier": 9,
+  "description": "The other half of higher-order: a *method parameter* whose type is an arrow. `def apply(f, v); f.call(v); end` is claimed arrow_of([arrow_of([Int], Int), Int], Int) -- an arrow nested in a param position rather than a return position -- and the call site passes a lambda literal, so the argument check is arrow-against-arrow.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "apply",
+        [
+          [
+            "preq",
+            "f"
+          ],
+          [
+            "preq",
+            "v"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "f"
+          ],
+          "call",
+          [
+            [
+              "var",
+              "local",
+              "v"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "apply",
+        [
+          [
+            "send",
+            null,
+            "lambda",
+            [],
+            [
+              "block",
+              [
+                [
+                  "preq",
+                  "x"
+                ]
+              ],
+              [],
+              [],
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ],
+                "*",
+                [
+                  [
+                    "int",
+                    2
+                  ]
+                ],
+                null
+              ]
+            ]
+          ],
+          [
+            "int",
+            5
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "apply",
+          [
+            [
+              "preq",
+              "f"
+            ],
+            [
+              "preq",
+              "v"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "f"
+            ],
+            "call",
+            [
+              [
+                "var",
+                "local",
+                "v"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "*",
+            [
+              [
+                "int",
+                2
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

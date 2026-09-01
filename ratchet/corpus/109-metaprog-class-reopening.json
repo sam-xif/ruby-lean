@@ -1,6 +1,6 @@
 {
   "id": "metaprog-class-reopening",
-  "tier": 9,
+  "tier": 10,
   "description": "Foo is defined via two separate `class' \"Foo\"` nodes, each contributing different methods -- the declaration table accumulates across both by name, the same way it would across any two top-level defs.",
   "program": {
     "v": 5,
