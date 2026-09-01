@@ -13,9 +13,10 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **129 rungs of 232 — the ladder is no longer climbed, by design**
+## Checker status: **141 rungs of 232 — tier 13 is complete**
 
-`Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, and tier 13 whole:
+the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`/`nil?`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
@@ -25,15 +26,43 @@ literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, ti
 modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` **and its builtin iterators**
 (`each`/`map`/`select`/`sort_by`/`inject`, both `&` forms), tier 10's **metaprogramming**
 (class reopening, `include`/`extend`/`prepend`, `method_missing`), tier 11's cross-products,
-and tier 12's **narrowing** — **121 rungs**.
+tier 12's **narrowing**, and all of tier 13's **constants** (`casgn`/`const`/`cpath`/
+`cpath_asgn`, class-body constants, `attr_reader`/`alias`/`private_constant`, nested
+namespaces under qualified names, `Object#class`/`Module#to_s`, `Object#freeze`) — **133
+rungs**, plus the 8 tier-13–17 rungs that were already climbed.
 
 **The ladder was climbed on 2026-09-01, and the corpus grew the same day** — from 136 rungs to
 **232**, by pointing it at a *target* instead of at the feature list (§2026-09-01: the Homebrew
 slice). Tiers 1–12 are unchanged and still at every recorded target: 121 of their 136 rungs
 climbed, and the 15 that are not are permanent by design (12 `unsafe_program`, 3
 `ty_language_gap`). Tiers **13–19** are the new 96, and 8 of them were already climbed the day
-they were written — so the headline is **129 of 232**, with **81 to climb** and 22 permanent
+they were written.
+
+**Tier 13 (constants and scoped names) was then climbed the same day**, in six clinks
+(`implementation-notes.md` clinks 27–32) — all 12 of its rungs that target `true`, plus its
+permanent negative. So the headline is **141 of 232**, with **69 to climb** and 22 permanent
 negatives.
+
+**What a constant cost** (clink 32 has the table). Constants live in **`Ctx.consts`**, keyed
+by absolute path (`"::LIMIT"`, `"::Box::SIZE"`), because the three obvious homes each fail for
+a checkable reason: a syntactic pre-pass table cannot know a type and is order-blind
+(`X + 1; X = 10` raises `NameError`), `Env` is replaced at every call so a method body would
+not see one, and a fourth threaded index on `Judge` would re-index every rule and every
+derivation. `Ctx` is carried into method bodies for free — which is the right semantics, not a
+trick — and grows at `JudgeSeq.cons`, which is why order-sensitivity holds for the same reason
+`foo(); def foo; end` has no derivation. The one signature change is that **`Ctx.afterStmt`
+takes the statement's type**, since that is what a `casgn` binds.
+
+The tier's real surprise is **four new premises on rules already on file**
+(`classStmt`/`moduleStmt`/`constCls`/`constBuiltin` all gained `constGet? κ n = none`), every
+one of them because a `casgn` can rebind a name a class declaration owns: `X = 5; class X; end`
+raises `TypeError` and `class X; end; X = 5; X.new` raises `NoMethodError`. Both are controls,
+both sound rejections. A class-body constant's type is *guessed* syntactically by `constLitTy?`
+and *discharged* by `classStmt`'s `JudgeConsts` premise **at the definition site** — lazily at
+each read is unsound, because `κ.classes` only grows and a reopened class can retype an
+initializer. Nested declarations enter `CTable` under their **qualified** name (`"M::Box"`,
+which is the string CRuby's `Box.name` answers), and the whole cost of a namespaced class is
+naming: dispatch was already a table lookup on a string.
 
 What that means is different above and below the tier-12 line. Above it a rung isolates a
 feature and a `false` names a missing rule. Below it the corpus is Homebrew's own code, and a
@@ -820,16 +849,21 @@ rather than from a feature list. 13-17 are the syntactic forms the slice uses an
 did not, one rung per form and measured rather than guessed; 18 is the eight files; 19 is the
 whole linked program.
 
-13. **Constants and scoped names (13 rungs).** **0/13.** 928 `const` reads, 155 `cpath`s and
-    54 `casgn`s in the slice; the corpus had `const` only as a class name in `C.new`. What is
-    new is that a constant is a *binding*, so `Judge` needs a constant environment beside
-    `Env` — threaded through `class'`/`module'` bodies rather than a whole-program table,
-    because `M::X` and a bare `X` inside `M` are one binding reached two ways. With it come
-    the class-body definition forms the slice writes constantly: `attr_reader`, `alias`,
-    `private_constant`, and `Object#class` (the inverse of `newInst`: `.inst n _` in,
-    `.clsOf n` out, which is what `self.class.encode` needs). `const-frozen-hash` is the
-    ladder's first concrete demand for a **parameterised hash type** — `cvss.rb` reads every
-    one of its six frozen tables with `fetch` and puts the result into Float arithmetic.
+13. **Constants and scoped names (13 rungs). 12/13 — every rung it targets**
+    (`implementation-notes.md` clinks 27–32). 928 `const` reads, 155 `cpath`s and 54 `casgn`s
+    in the slice; the corpus had `const` only as a class name in `C.new`. The prediction that a
+    constant environment must be "threaded through `class'`/`module'` bodies rather than a
+    whole-program table" was right about the *requirement* and wrong about the *mechanism*: it
+    lives in `Ctx` (carried into method bodies for free) and grows at `JudgeSeq.cons`, and a
+    class body's constants are typed at the class statement against a syntactic `constLitTy?`
+    rather than being threaded at all. The class-body forms came with it — `attr_reader`
+    (expanded into the `def`s it stands for), `alias` (resolved by `classMethods?`),
+    `private_constant` (the one item here that is *precision*, not soundness — `NameError` is
+    outside the type-stuck family), and `Object#class`/`Module#to_s`. Nested namespaces cost
+    qualified `Cls.name`s and `JudgeNested`, and nothing else.
+    `const-frozen-hash` **climbs and does not deliver**: it types at `.any`, which nothing
+    consumes, which is the ladder's sharpest statement of §Frontier item A — `cvss.rb` reads
+    every one of its six frozen tables with `fetch` and puts the result into Float arithmetic.
 14. **Parameters and arguments (15 rungs).** **1/15**, and the 1 is the finding
     (`param-block`, §2026-09-01). §Frontier item 11 has recorded optional/rest/keyword
     parameters as owed since tier 6; the slice settles it, with **105 `kwargs` nodes** at call
@@ -895,19 +929,19 @@ corpus agreement (CRuby vs the Lean semantics): 232/232 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 5/6
-tier 11: 8/10  tier 12: 9/12  tier 13: 0/13  tier 14: 1/15  tier 15: 3/19
+tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 1/15  tier 15: 3/19
 tier 16: 4/15  tier 17: 0/23  tier 18: 0/8   tier 19: 0/3
 flagged Ty language gaps: 3 (proc-arity-leniency, metaprog-method-missing-splat,
                              narrow-nilable-and-union)
-hand-authored derivations on file: 129
-rungs where validate differs from the recorded target: 81
+hand-authored derivations on file: 141
+rungs where validate differs from the recorded target: 69
 ```
 
-All 129 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 141 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 129/129 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 92/92
+(also run inline by `run_ratchet.sh`): 141/141 of those cross-checked against the real
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 108/108
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
@@ -1086,10 +1120,13 @@ unblocks**, and by that measure:
   frozen constant table whose result goes straight into Float arithmetic. Tier 5 left
   `Hash` as the bare `.cls "Hash"`, so `fetch` can only be `.any` and `cvss.rb` cannot be
   typed at all. Unblocks tier 13's `const-frozen-hash`, most of tier 17, and `cvss.rb`.
-- **B. A constant environment (tier 13).** Nothing in the slice is written without it: 928
-  `const` reads and 155 `cpath`s. It is a prerequisite for every file, and it is not hard —
-  the design question is only that it must be scope-threaded rather than a whole-program
-  table.
+- ~~**B. A constant environment (tier 13).**~~ — **done** (clinks 27–32). The prediction that
+  the design question is "scope-threaded rather than a whole-program table" was right; what it
+  under-weighted is that the *existing* rules had to change. Four of them grew a
+  `constGet? κ n = none` premise, because a `casgn` can rebind a name a class declaration owns
+  and both orders of that raise. What it also missed: a class body's constants cannot be
+  threaded at all — `Ctx.afterStmt` sees a class statement's type, not its contents — so they
+  are read syntactically (`constLitTy?`) and *discharged* by a premise at the definition site.
 - **C. Keyword parameters and arguments (tier 14).** 105 `kwargs` nodes, and the one place
   where getting it wrong is *unsound* rather than imprecise (a missing required keyword is
   an ArgumentError). `purl.rb`'s constructor is unreachable without it.
@@ -1109,8 +1146,8 @@ unblocks**, and by that measure:
   it three more ways: `arr.first`, `MatchData#[]` after a successful match, and
   `a, b = s.split("-")`.
 
-`semver.rb` is the cheapest whole-file target — it needs B, D and E and nothing else — and
-it is the rung to aim the next pass at.
+`semver.rb` is the cheapest whole-file target — it needed B, D and E, **B is now done**, so it
+needs D and E — and it is the rung to aim the next pass at.
 
 The original list, kept because its per-item reasoning is still the record of why each tier
 cost what it did:
@@ -1232,7 +1269,7 @@ The full climb, in roughly the order that costs least to unlock the most:
 
 ## What is deliberately not built here
 
-**No `chk` above rung 13** — see §Checker status. Extending it is the active work;
+**No `chk` outside the fragment §Checker status describes** — extending it is the active work;
 everything below is about what its eventual design should and shouldn't include.
 
 **No `Env` in `Judge`, and no subsumption rule** — both deliberate, both due at the rung
