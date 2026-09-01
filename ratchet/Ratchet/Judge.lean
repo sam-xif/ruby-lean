@@ -601,13 +601,49 @@ def isADispatchOk (C : CTable) : Ty → Bool
   | .any | .clos _ _ _ | .never => false
   | _ => true
 
+/-- **Adding a class declaration to the table, merging if the name is already there.**
+
+Tier 10's `metaprog-class-reopening`. Ruby lets a `class` statement *reopen* an existing
+class, and the methods accumulate:
+
+```ruby
+class Foo; def a; 1; end; end
+class Foo; def b; 2; end; end
+Foo.new.a + Foo.new.b        # both work
+```
+
+This function used to prepend unconditionally, and `clsGet?` is a `find?`, so the second
+statement **shadowed** the first: `Foo` had `b` and not `a`, and the program was untypeable.
+Merging is the honest model, and note it is not a special case for "metaprogramming" — a
+reopened class is the same thing a class always was, and the old behaviour was simply wrong
+about it rather than conservative.
+
+Three details, each a decision:
+
+- **The later body's methods go first**, because `defGet?` is a `find?`: a redefinition must
+  win over the definition it replaces, which is what Ruby does.
+- **The superclass is the later one if it names one, else the earlier's.** `class Foo` with no
+  `< Bar` does not erase an inherited superclass. (Ruby *rejects* a reopening that names a
+  *different* superclass; this function would silently take the later, which no rung
+  exercises.)
+- **The merged entry is prepended rather than replacing the old one in place.** The stale entry
+  is unreachable — `clsGet?` finds the new one first — and this keeps the function a one-liner
+  instead of needing a list update. It does grow `C`, which only makes `mroGet?`/`ancestors?`'s
+  `C.length` budget more generous. -/
+def mergeCls (C : CTable) (c : Cls) : CTable :=
+  match clsGet? C c.name with
+  | none => c :: C
+  | some old =>
+    ⟨c.name, c.super?.orElse (fun _ => old.super?),
+     c.methods ++ old.methods, c.smethods ++ old.smethods, c.isModule⟩ :: C
+
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
     | some (ms, sms) =>
       match sup with
-      | none => ⟨n, none, ms, sms, false⟩ :: C
-      | some (.const sn) => ⟨n, some sn, ms, sms, false⟩ :: C
+      | none => mergeCls C ⟨n, none, ms, sms, false⟩
+      | some (.const sn) => mergeCls C ⟨n, some sn, ms, sms, false⟩
       -- A superclass expression that is not a bare constant (`class C < foo()`) is not
       -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
@@ -617,7 +653,7 @@ def extendClasses (C : CTable) : Expr → CTable
   -- `callSMethod` with nothing added.
   | .module' n body =>
     match classMethods? body with
-    | some (ms, sms) => ⟨n, none, ms, sms, true⟩ :: C
+    | some (ms, sms) => mergeCls C ⟨n, none, ms, sms, true⟩
     | none => C
   | _ => C
 

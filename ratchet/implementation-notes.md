@@ -2101,3 +2101,46 @@ State after this clink: **114 rungs climbed** of 136 (tiers 1–8 complete, tier
 tier 11 at 8/10 — every targeted rung in both, tier 12 at 7/12), 114/114 cross-checked against
 the real semantics, 73/73 negative controls rejected, corpus agreement **136/136 with 0
 disagreements**, all ten soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 21 (2026-09-01) — tier 10a: class reopening was a bug, not a feature: 114 → 115
+
+`metaprog-class-reopening`. 115 derivations, 75/75 controls, 136/136 agreement, ten theorems
+axiom-clean. Mismatches 8 → 7.
+
+The finding is the whole clink: **this rung was filed under metaprogramming and is not
+metaprogramming at all.** A reopened class is the same thing a class always was; the table was
+simply wrong about it.
+
+`extendClasses` prepended a fresh `Cls` for every `class` statement, and `clsGet?` is a
+`find?`. So
+
+```ruby
+class Foo; def a; 1; end; end
+class Foo; def b; 2; end; end
+Foo.new.a + Foo.new.b
+```
+
+gave `Foo` the methods `[b]` and not `[a, b]` — the second statement *shadowed* the first — and
+the program was untypeable. Not conservative: wrong. `mergeCls` accumulates instead.
+
+Three decisions in `mergeCls`, each with a control or a note:
+
+- **The later body's methods go first**, because `defGet?` is a `find?` and a redefinition must
+  win over what it replaces. Reversed, `class Foo; def a; 1; end; end; class Foo; def a; "s";
+  end; end; Foo.new.a + 1` would validate; it raises `TypeError`. Control (ww).
+- **A missing `< Bar` does not erase an inherited superclass** (`c.super?.orElse old.super?`).
+  Ruby actively *rejects* a reopening that names a different superclass; this function would
+  silently take the later one, which no rung exercises and which is recorded in the docstring
+  rather than guarded.
+- **The merged entry is prepended rather than replacing in place.** The stale entry is
+  unreachable (`clsGet?` finds the new one first), which keeps the function a one-liner, and it
+  only makes `mroGet?`/`ancestors?`'s `C.length` budget more generous.
+
+The reason accumulation is safe to model this way at all is a property tier 6 built for a
+different purpose: the table grows in **`JudgeSeq.cons`**, statement by statement, so a call
+placed *between* the two `class` statements still sees only the first body. Control (xx) is that
+program, and it really raises `NoMethodError`. A whole-program scan would have needed an
+argument; statement threading needs none.
+
+State after this clink: **115 rungs climbed** of 136, 115/115 cross-checked, 75/75 negative
+controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.

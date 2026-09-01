@@ -2050,6 +2050,41 @@ def r119 : Rung :=
               .strAdd)
             (.cons .strLit .nil) .strAdd))))))⟩
 
+/-! ## Tier 10 — metaprogramming
+
+Deliberately last on the ladder. What is interesting about the first of these rungs is that it
+turned out **not** to be metaprogramming at all: a reopened class is the same thing a class
+always was, and the table was simply wrong about it. -/
+
+/-- `class Foo; def a; 1; end; end; class Foo; def b; 2; end; end; Foo.new.a + Foo.new.b`
+    → `Integer`.
+
+    **Class reopening, which was a bug rather than a missing feature.** `extendClasses`
+    prepended a fresh `Cls` per `class` statement and `clsGet?` is a `find?`, so the second
+    statement *shadowed* the first: `Foo` had `b` and not `a`, and this program could not be
+    typed. `mergeCls` accumulates instead, which is what Ruby does.
+
+    Note where the merge happens: `JudgeSeq.cons`, via `Ctx.afterStmt`, so the table grows
+    **statement by statement** and a call placed *between* the two `class` statements still sees
+    only the first body. That is the property tier 6 built `DefTable` threading for, and it is
+    what makes reopening safe to model as accumulation rather than as a whole-program scan.
+
+    The two controls are the two directions the merge can go wrong: a redefinition must win over
+    what it replaces, and a method must not be visible before its `class` statement. -/
+def r109 : Rung :=
+  ⟨"metaprog-class-reopening",
+    .seq [.class' "Foo" none (.def' "a" [] (.int 1)),
+          .class' "Foo" none (.def' "b" [] (.int 2)),
+          .send (some (.send (some (.send (some (.const "Foo")) "new" [] none)) "a" [] none))
+            "+" [.send (some (.send (some (.const "Foo")) "new" [] none)) "b" [] none] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
+      (.last (.prim
+        (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl .intLit)
+        (.cons (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl
+          .intLit) .nil)
+        .intAdd))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2063,6 +2098,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
+   r109,
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r129, r130, r131, r134]
 

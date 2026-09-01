@@ -739,7 +739,25 @@ def controls : List Control :=
       .seq [.class' "C" none (.def' "bump" [] (.yield' [.int 1])),
             .send (some (.send (some (.const "C")) "new" [] none)) "bump" []
               (some (.block [.req "x"] ["y"]
-                (.seq [.vasgn .lvar "y" (.var .lvar "x"), .var .lvar "y"])))]⟩ ]
+                (.seq [.vasgn .lvar "y" (.var .lvar "x"), .var .lvar "y"])))]⟩
+    -- ### Tier 10's reopening controls
+    --
+    -- (ww) **A redefinition must win.** `mergeCls` puts the later body's methods *first*
+    -- because `defGet?` is a `find?`; reversed, `Foo#a` would still look like an `Integer` and
+    -- `"s" + 1` would validate. Really raises TypeError.
+  , ⟨"class Foo; def a; 1; end; end; class Foo; def a; \"s\"; end; end; Foo.new.a + 1",
+      .seq [.class' "Foo" none (.def' "a" [] (.int 1)),
+            .class' "Foo" none (.def' "a" [] (.str "s")),
+            .send (some (.send (some (.send (some (.const "Foo")) "new" [] none)) "a" []
+              none)) "+" [.int 1] none]⟩
+    -- (xx) **…and a method must not be visible before its `class` statement.** The merge
+    -- happens in `JudgeSeq.cons`, statement by statement, so at the middle statement `Foo` has
+    -- only `a`. Really raises NoMethodError -- which is what makes accumulation safe to model
+    -- this way rather than by a whole-program scan.
+  , ⟨"class Foo; def a; 1; end; end; Foo.new.b; class Foo; def b; 2; end; end",
+      .seq [.class' "Foo" none (.def' "a" [] (.int 1)),
+            .send (some (.send (some (.const "Foo")) "new" [] none)) "b" [] none,
+            .class' "Foo" none (.def' "b" [] (.int 2))]⟩ ]
 
 mutual
 
