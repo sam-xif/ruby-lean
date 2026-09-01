@@ -424,20 +424,38 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       subst h; subst h'; subst h''
       exact .selfExpr hself
     · exact absurd h (by simp)
-  · -- `const n`: a declared class, else a builtin class name.
+  · -- `const n`: an assigned constant (tier 13), else a declared class, else a builtin class
+    -- name. Each of the three carries the *other two's* negations as premises, so the three
+    -- rules are disjoint and this nest supplies each hypothesis exactly where it is bound.
     split at h
-    · rename_i hcls
+    · rename_i hcv hconst
       injection h with h
       injection h with h h'; injection h' with h' h''
       subst h; subst h'; subst h''
-      exact .constCls hcls
-    · rename_i hcls
+      exact .constEnv hconst
+    · rename_i hconst
       split at h
-      · injection h with h
+      · rename_i hcls
+        injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact .constBuiltin (builtinCls?_sound (by assumption)) hcls
-      · exact absurd h (by simp)
+        exact .constCls hcls hconst
+      · rename_i hcls
+        split at h
+        · injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .constBuiltin (builtinCls?_sound (by assumption)) hcls hconst
+        · exact absurd h (by simp)
+  · -- `casgn n e` (tier 13): the right-hand side typed, and nothing else happened — the
+    -- binding is `chkSeq`'s, via `Ctx.afterStmt` (see `Judge.casgn`).
+    split at h
+    · rename_i res hrhs
+      injection h with h
+      injection h with h h'; injection h' with h' h''
+      subst h; subst h'; subst h''
+      exact .casgn (chk_sound hrhs)
+    · exact absurd h (by simp)
   · -- `def' n ps body`: unconditional, and the body is not looked at (see `Judge.defStmt`).
     injection h with h
     injection h with h h'; injection h' with h' h''
@@ -451,7 +469,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact .moduleStmt hms hmix
+        -- Tier 13: the guard is a conjunction now, and `simp` splits it into `allModules`
+        -- and the `constGet?`-is-`none` premise `classStmt`/`moduleStmt` grew.
+        simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
+        exact .moduleStmt hms hmix.1 hmix.2
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `class' n sup body`: only a body this checker can read into the class table, and (tier
@@ -463,7 +484,8 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact .classStmt hms hmix
+        simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
+        exact .classStmt hms hmix.1 hmix.2
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args (some (.block ps [] body))`: either a `lambda`/`proc` literal, or a

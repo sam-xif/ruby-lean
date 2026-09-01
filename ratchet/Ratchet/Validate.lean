@@ -246,24 +246,39 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | some σ => some (σ, Γ, I)
     | none => none
   | _ + 1, .const n =>
-    -- A declared class first; only a name the program never declared goes to the builtin
-    -- table. The two routes are disjoint by construction, which is what `Judge`'s
-    -- `constBuiltin` states as a premise.
-    match clsGet? κ.classes n with
-    | some _ => some (.clsOf n, Γ, I)
-    | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
+    -- Tier 13: an assigned constant first, then a declared class, then a builtin class name.
+    -- The three routes are *disjoint*, not merely ordered -- `Judge`'s `constCls` and
+    -- `constBuiltin` each carry `constGet? κ n = none` as a premise, because a `casgn` to a
+    -- class's name really does rebind it. So this `match` could be written in any order and
+    -- answer the same.
+    match constGet? κ n with
+    | some τ => some (τ, Γ, I)
+    | none =>
+      match clsGet? κ.classes n with
+      | some _ => some (.clsOf n, Γ, I)
+      | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
+  | f + 1, .casgn n e =>
+    -- Tier 13. The *binding* is not made here: `chkSeq` makes it, via `Ctx.afterStmt`, so a
+    -- `casgn` that is not a statement of a sequence types and binds nothing (`Judge.casgn`).
+    match chk f κ Γ I e with
+    | some (τ, Γ', I') => some (τ, Γ', I')
+    | none => none
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
-  | _ + 1, .module' _ body =>
+  | _ + 1, .module' n body =>
     match classMethods? body with
     -- Tier 10: every mixed-in name must be a declared `module` (`Judge.moduleStmt`'s second
     -- premise) -- `include` on a non-Module raises TypeError.
     | some (_, _, incs, exts, preps) =>
-      if allModules κ.classes (incs ++ exts ++ preps) then some (.any, Γ, I) else none
+      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone then
+        some (.any, Γ, I)
+      else none
     | none => none
-  | _ + 1, .class' _ _ body =>
+  | _ + 1, .class' n _ body =>
     match classMethods? body with
     | some (_, _, incs, exts, preps) =>
-      if allModules κ.classes (incs ++ exts ++ preps) then some (.any, Γ, I) else none
+      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone then
+        some (.any, Γ, I)
+      else none
     | none => none
   | f + 1, .send none m args (some (.block ps [] body)) =>
     -- An implicit-self send carrying a block literal. Two routes: `lambda`/`proc`, which
@@ -766,7 +781,7 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
     | none => none
   | f + 1, e :: e' :: es =>
     match chk f κ Γ I e with
-    | some (_, Γ₁, I₁) => chkSeq f (κ.afterStmt e) Γ₁ I₁ (e' :: es)
+    | some (σ, Γ₁, I₁) => chkSeq f (κ.afterStmt e σ) Γ₁ I₁ (e' :: es)
     | none => none
 
 end
@@ -776,8 +791,10 @@ emptiness is load-bearing, and for a different reason — the two syntax tables 
 nothing is declared before a program's first statement, the assumption table because a
 derivation carrying one is only a conditional claim (`AsmTable`), and `frame`/`selfTy`
 because a program's top level is inside no method and runs somewhere `self` is not an
-instance of anything this judgment models. -/
-def ctx0 : Ctx := ⟨[], [], [], none, [], none, none⟩
+instance of anything this judgment models. The constant table (tier 13) is empty for the
+first of those reasons: a program's first statement is the first thing that could assign
+one. -/
+def ctx0 : Ctx := ⟨[], [], [], none, [], none, none, []⟩
 
 /-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
 empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,

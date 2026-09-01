@@ -1121,6 +1121,11 @@ structure Ctx where
       `class-self-returning-method` work — `self` there is not merely "a `Point`", it is
       *this* `Point`, ivars and all. -/
   selfTy : Option Ty
+  /-- The **constant** environment (tier 13), keyed by absolute path (`"::LIMIT"`). Grows
+      at statement boundaries (`Ctx.afterStmt`) and is carried unchanged into every method
+      body, which is the whole reason it is here rather than in `Env` — see §Constants
+      below `Ctx.inCtor` for the three facts that force this placement. -/
+  consts : Env
 
 /-- The class name behind a `self` type, for `Frame.recvClass`. `.inst n _` and `.clsOf n`
 are the only two shapes any body-entering rule supplies; anything else cannot arise and gets a
@@ -1144,10 +1149,53 @@ call `super`. -/
 def Ctx.inCtor (κ : Ctx) (rc dc m : String) : Ctx :=
   { κ with frame := some ⟨rc, dc, m⟩ }
 
-/-- `κ` after performing statement `e`: both syntax tables grow, nothing else changes. Used
-only by `JudgeSeq.cons`, which is the only rule that knows about statement order. -/
-def Ctx.afterStmt (κ : Ctx) (e : Expr) : Ctx :=
-  { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e }
+/-! ### Constants (tier 13)
+
+A constant is a **binding**, and the three facts that decide where it lives are:
+
+1. its type is not syntactic — `LIMIT = compute` needs the judgment to know what `compute`
+   answers, so a constant table cannot be built by a syntactic pre-pass the way `CTable`
+   and `DefTable` are;
+2. it is written once and read from *everywhere afterwards*, including from inside method
+   bodies whose local environment is the fresh, parameters-only one `paramEnv` builds — so
+   it cannot live in `Env`, which is exactly the state a call rule replaces;
+3. but it is still **order-sensitive**: `X + 1; X = 10` raises `NameError`, so a
+   whole-program table would certify a program that fails.
+
+`Ctx.consts` satisfies all three at once. It is in `Ctx`, so every body-entering rule
+(`Ctx.inMethod`/`inCtor`, and the call rules' `{κ with …}`) carries it into the callee for
+free — which is right, because a constant assigned before the call really is assigned when
+the body runs. And it grows at `JudgeSeq.cons`, which is the one rule that knows statement
+order, so fact 3 holds for the same reason `foo(); def foo; end` has no derivation.
+
+The price is that `Ctx.afterStmt` now needs the statement's **type**, since that is what a
+`casgn` binds. That is available in `JudgeSeq.cons` (it is the `σ` the first premise
+produces) and in `chkSeq`, and it is the only change to a rule already on file.
+
+Keys are the constant's **absolute path** (`"::LIMIT"`), which is Ruby's own notation for
+one and keeps the namespace visibly disjoint from `Env`'s locals — no local can contain a
+colon. Nesting (`M::X`) is not yet resolved; `constKey` is where it will be. -/
+def constKey (n : String) : String := "::" ++ n
+
+/-- What a constant read resolves to, or `none` if the program has not assigned it — in
+which case there is no rule and the read is rejected, which is what fact 3 above buys. -/
+def constGet? (κ : Ctx) (n : String) : Option Ty := envGet? κ.consts (constKey n)
+
+/-- The constant a statement binds, if it binds one. `envSet` rather than a cons because
+Ruby's re-assignment of a constant is a warning, not an error, and the *later* type is the
+live one. -/
+def extendConsts (S : Env) : Expr → Ty → Env
+  | .casgn n _, τ => envSet S (constKey n) τ
+  | _, _ => S
+
+/-- `κ` after performing statement `e`, which produced a value of type `τ`: both syntax
+tables grow, the constant table grows if `e` was a `casgn`, nothing else changes. Used only
+by `JudgeSeq.cons`, which is the only rule that knows about statement order.
+
+`τ` is used by `extendConsts` alone; every other component of the result is syntactic. -/
+def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
+  { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e,
+           consts := extendConsts κ.consts e τ }
 
 /-- `paramEnv` for a call that **carries a block**. Same walk, plus one case: a
 `&b` parameter (`Param.block`) consumes not an argument but the block itself.
@@ -2024,19 +2072,32 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       a tidiness one: `classMethods?` now accepts `include M`/`extend M` in the body, and
       `include` on anything that is not a `Module` raises `TypeError` — inside the family. So
       every mixed-in name has to be a declared `module` (`allModules`), which also has the
-      effect of refusing a name the table does not know at all. -/
+      effect of refusing a name the table does not know at all.
+
+      **The third premise arrived with tier 13**, and it is soundness, not tidiness:
+      `X = 5; class X; end` raises `TypeError` ("X is not a class"), which is inside the
+      family. A name the constant table already binds is therefore not available to declare
+      a class at, and this is the premise that says so. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
       {body : Expr} {ms sms : List Defn} {incs exts preps : List String} :
       classMethods? body = some (ms, sms, incs, exts, preps) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
+      constGet? κ n = none →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
       `Point` and `Point.new` cannot be confused. Only declared classes get a rule: a
       constant this checker has never seen a `class` statement for is not typed, so
-      `Undeclared.new` fails here rather than at dispatch. -/
+      `Undeclared.new` fails here rather than at dispatch.
+
+      **The second premise arrived with tier 13** and is a soundness requirement: a `casgn`
+      to the same name really does rebind it (`class X; end; X = 5` is a warning, not an
+      error), and after that the constant is *not* the class object. Requiring the constant
+      table not to have the name makes this rule and `constEnv` disjoint, so no program has
+      a derivation reading the same constant two ways. -/
   | constCls {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {c : Cls} :
-      clsGet? κ.classes n = some c → Judge κ Γ I (.const n) (.clsOf n) Γ I
+      clsGet? κ.classes n = some c → constGet? κ n = none →
+      Judge κ Γ I (.const n) (.clsOf n) Γ I
   /-- **A constant naming a *builtin* class** (tier 12). Same conclusion as `constCls` —
       `.clsOf n` — for a class the program did not declare.
 
@@ -2055,7 +2116,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       boolean ones: a name admitted here but absent from `builtinAncestors` would produce a
       `.clsOf` nobody can answer `is_a?` for, which is inert but pointless. -/
   | constBuiltin {κ : Ctx} {Γ : Env} {I : Ty} {n : String} :
-      BuiltinCls n → clsGet? κ.classes n = none →
+      BuiltinCls n → clsGet? κ.classes n = none → constGet? κ n = none →
       Judge κ Γ I (.const n) (.clsOf n) Γ I
   /-- **`C.new(args)` — allocation, and where an instance's type is manufactured.**
 
@@ -2312,11 +2373,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       same double duty (safe to evaluate unchecked, and readable into `CTable`).
 
       Separate from `classStmt` only because `Expr.module'` has no superclass slot; the entry
-      it produces differs by `Cls.isModule`, which exists to stop `M.new`. -/
+      it produces differs by `Cls.isModule`, which exists to stop `M.new`.
+
+      The third premise is `classStmt`'s, for the same reason and with `TypeError`'s message
+      changed to "X is not a module". -/
   | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
       {ms sms : List Defn} {incs exts preps : List String} :
       classMethods? body = some (ms, sms, incs, exts, preps) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
+      constGet? κ n = none →
       Judge κ Γ I (.module' n body) .any Γ I
   /-- A bare name inside a **singleton** method body naming another of the same object's
       singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;
@@ -2750,6 +2815,39 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args [σ] Γ₂ I₂ →
       smroGet? κ.classes cn "===" = none →
       Judge κ Γ I (.send (some recv) "===" args none) .bool Γ₂ I₂
+  -- ### Tier 13 — constants
+  --
+  -- Two rules, and the design is in `Ctx.consts`/§Constants: the binding is created by
+  -- `Ctx.afterStmt` (i.e. by `JudgeSeq.cons`, the only rule that knows statement order), not
+  -- by `casgn` itself, which is why `casgn`'s conclusion threads `Γ'`/`I'` straight through
+  -- from its right-hand side and touches nothing.
+  /-- **`X = e` — a constant assignment.** Its type is `e`'s, because that is the value Ruby
+      gives it (`(X = 10) + 1` is `11`).
+
+      **This rule does not bind anything.** The binding is `Ctx.afterStmt`'s, so a `casgn`
+      buried inside a larger expression types but is invisible to later reads — conservative,
+      and in the direction that costs a rung rather than soundness.
+
+      **There is no premise, and that is a claim worth stating.** A constant assignment
+      cannot raise anything in the type-error family: assigning to an already-initialized
+      constant is a *warning*, and assigning to a name that is a class is the same warning
+      (it is the reverse order — `class X; end` *after* `X = 5` — that raises, and that is
+      `classStmt`'s third premise). The one thing the rule must not do is let a *read* of the
+      rebound name still see the class object, which is why `constCls`/`constBuiltin` grew
+      their `constGet? κ n = none` premises rather than this rule growing a
+      `clsGet? = none`. -/
+  | casgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {n : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ Γ' I' →
+      Judge κ Γ I (.casgn n e) τ Γ' I'
+  /-- **A constant read.** The third `.const` rule, and the only one that reads a binding the
+      program made rather than a class it declared. Disjoint from the other two by their new
+      premise, so the three do not overlap anywhere.
+
+      Reading an *unassigned* constant has no rule, which is the point: `X + 1; X = 10`
+      raises `NameError` and gets no derivation, where a whole-program constant table would
+      have certified it. -/
+  | constEnv {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {τ : Ty} :
+      constGet? κ n = some τ → Judge κ Γ I (.const n) τ Γ I
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
 both states threaded left to right (Ruby's argument evaluation order). -/
@@ -2783,7 +2881,7 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
       Judge κ Γ I e τ Γ' I' → JudgeSeq κ Γ I [e] τ Γ' I'
   | cons {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e e' : Expr}
       {es : List Expr} {σ τ : Ty} :
-      Judge κ Γ I e σ Γ₁ I₁ → JudgeSeq (κ.afterStmt e) Γ₁ I₁ (e' :: es) τ Γ₂ I₂ →
+      Judge κ Γ I e σ Γ₁ I₁ → JudgeSeq (κ.afterStmt e σ) Γ₁ I₁ (e' :: es) τ Γ₂ I₂ →
       JudgeSeq κ Γ I (e :: e' :: es) τ Γ₂ I₂
   /-- **The guard clause: `return e if c`, followed by more statements** (tier 12).
 
@@ -2817,8 +2915,8 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
         the rest returns. This is the one place a value leaves a sequence from somewhere other
         than its last statement.
 
-      `κ` rather than `κ.afterStmt` for the rest, because `extendClasses`/`extendDefs` are
-      visibly the identity on an `.if'`: a guard declares nothing.
+      `κ` rather than `κ.afterStmt` for the rest, because `extendClasses`/`extendDefs`/
+      `extendConsts` are visibly the identity on an `.if'`: a guard declares nothing.
 
       `Ir = Ic` requires the returned expression to leave the ivar spine alone. Not a
       restriction any rung feels (a guard returns a constant or a local), and it is needed

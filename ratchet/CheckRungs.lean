@@ -967,7 +967,34 @@ def controls : List Control :=
                                  .tru])
                           (some (.var .lvar "__dt_t1"))])
               (.send (some (.var .lvar "x")) "+" [.int 1] none)
-              (some (.int 0))]⟩ ]
+              (some (.int 0))]⟩
+    -- ### Tier 13's controls — the constant table's three edges
+    --
+    -- (p13a) **The reason `classStmt`/`moduleStmt` grew a `constGet?` premise.** Assigning a
+    -- constant and *then* declaring a class at the same name raises `TypeError` ("X is not a
+    -- class") — inside the family. Without the premise `chk` would type both statements
+    -- happily, each in isolation being fine.
+  , ⟨"X = 5; class X; end",
+      .seq [.casgn "X" (.int 5), .class' "X" none .nil]⟩
+    -- (p13b) **The reason `constCls` grew one.** Here the class comes first, so the
+    -- declaration is legal (Ruby warns about the reassignment and takes it); what is then
+    -- illegal is `X.new`, because `X` is `5`. The class table still has a `X` row, so the old
+    -- two-rule `const` would have answered `.clsOf "X"` and certified the allocation.
+  , ⟨"class X; end; X = 5; X.new",
+      .seq [.class' "X" none .nil, .casgn "X" (.int 5),
+            .send (some (.const "X")) "new" [] none]⟩
+    -- (p13c) **A constant read is still just a read.** `constEnv` gives `X` the type of what
+    -- was assigned and nothing more, so an unmodeled method on it is a NoMethodError this
+    -- rejects for the ordinary reason.
+  , ⟨"X = 5; X.foo",
+      .seq [.casgn "X" (.int 5), .send (some (.const "X")) "foo" [] none]⟩
+    -- (p13d) **Order-sensitivity, which is why the table is threaded.** Reading a constant
+    -- before its assignment raises `NameError`, and a whole-program constant pre-pass would
+    -- have certified this. `NameError` is *not* in the type-stuck family, so the semantics
+    -- reports this one as safe and the rejection prints as conservative — the honest verdict:
+    -- the rejection is required by Ruby, not by this package's definition of type-stuck.
+  , ⟨"X + 1; X = 10 (safe by this package's definition; really a NameError)",
+      .seq [.send (some (.const "X")) "+" [.int 1] none, .casgn "X" (.int 10)]⟩ ]
 
 mutual
 
@@ -1010,6 +1037,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
     return .send (some r') m args' (some (← toRubyCore blk))
   | .self' => some .self'
   | .const n => some (.const n)
+  -- Tier 13: a constant assignment (the controls' `X = 5`).
+  | .casgn n e => (toRubyCore e).map (fun e' => .casgn n e')
   | .var .ivar x => some (.var .ivar x)
   | .vasgn .ivar x e => (toRubyCore e).map (fun e' => .vasgn .ivar x e')
   | .module' n body => (toRubyCore body).map (fun b => .module' n b)

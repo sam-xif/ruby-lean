@@ -2542,3 +2542,103 @@ agreement 136/136 with 0 disagreements, and all eleven soundness theorems axiom-
 What the ratchet is *for* now changes: the number can no longer go up without new corpus rungs,
 so the next move is more Ruby, not more rules. The three `Ty` gaps are the obvious sources, and
 each one is a grammar extension with a rung already written against it.
+
+## Clink 27 (2026-09-01) — tier 13a: where a constant lives: 129 → 130
+
+`const-assign-read` (`LIMIT = 10; LIMIT + 1`), the smallest thing tier 13 is. Two new rules
+(`Judge.casgn`, `Judge.constEnv`), one new field on `Ctx`, one new argument to
+`Ctx.afterStmt`, and **three new premises on rules already on file** — which is where the
+interest is: the premises, not the rules.
+
+### The placement question, and why the three obvious answers are wrong
+
+A constant is a binding, so it needs somewhere to live. The corpus rung's own description
+predicted the shape of the argument, and got the conclusion half right:
+
+> It cannot be folded into `Env` (locals shadow per-scope and constants do not) and it cannot
+> be a pre-pass table (`chk` would then accept `X + 1; X = 10`, which raises NameError).
+
+Three candidate homes, and each fails for a different, checkable reason:
+
+1. **A syntactic pre-pass table** (what `CTable` and `DefTable` are, built by `extendClasses`/
+   `extendDefs`). Fails twice over. A constant's *type* is not syntactic — `LIMIT = compute`
+   needs the judgment to know what `compute` answers — and a whole-program table is
+   order-blind, so `X + 1; X = 10` would certify. That program raises `NameError`.
+2. **`Env`.** Fails on method bodies. `paramEnv` builds a *fresh* environment containing just
+   the parameters, because that is what a Ruby method body sees; a constant assigned at top
+   level is visible inside every method body regardless. Putting constants in `Env` means
+   either they vanish at every call (so `def size; SIZE; end` is untypeable — the tier's
+   second rung) or every call rule has to re-seed them, which is ten rules and every
+   derivation on file.
+3. **A fourth threaded component** (`Judge κ Γ I Σ e τ Γ' I' Σ'`). Correct, and unaffordable:
+   it re-indexes every one of ~100 rules and all 129 derivation terms.
+
+**`Ctx.consts` is the fourth answer and it gets all three properties without any of the
+costs.** It is in `Ctx`, so `Ctx.inMethod`/`inCtor` and every `{κ with …}` in a call rule
+carry it into the callee for free — and that is not a trick, it is the right semantics: a
+constant assigned before the call really is assigned when the body runs. And it grows at
+`JudgeSeq.cons`, the one rule that knows statement order, which is why `X + 1; X = 10` has no
+derivation for exactly the reason `foo(); def foo; end` has none.
+
+The price is one signature change: `Ctx.afterStmt` takes the statement's **type** now
+(`κ.afterStmt e σ`), because that is what a `casgn` binds. `σ` is already bound in
+`JudgeSeq.cons` (its first premise produces it) and in `chkSeq`, so the change is visible in
+two places and in **zero derivation terms** — the extra argument is determined by unification.
+
+Keys are the constant's absolute path, `"::LIMIT"`, which is Ruby's own notation and makes the
+disjointness from `Env`'s locals syntactic rather than a convention: no local name contains a
+colon. Nothing yet *reads* a nested path — `constKey` is a one-liner waiting for clink 28.
+
+### `casgn` binds nothing, and `constEnv` is the third `const` rule
+
+`Judge.casgn` types `X = e` at `e`'s type (Ruby's own answer: `(X = 10) + 1` is `11`) and
+threads `Γ'`/`I'` straight through. It does **not** create the binding; `Ctx.afterStmt` does.
+The consequence is deliberate: a `casgn` buried inside a larger expression types and is
+invisible to later reads. Conservative, in the direction that costs a rung rather than
+soundness.
+
+`Judge.casgn` also has **no side condition at all**, which is worth stating rather than
+leaving as an absence. A constant assignment cannot raise anything in the type-error family:
+re-assigning an initialized constant is a *warning*, and so is assigning over a class's name.
+
+### The three new premises, all soundness, all found by asking what breaks
+
+The rules already on file assumed something that stops being true the moment `casgn` exists:
+that a `const` naming a declared class *is* that class object. Four programs say otherwise,
+and all four are now controls (p13a–p13d) run under the real semantics:
+
+- `X = 5; class X; end` raises **TypeError** ("X is not a class"). Each statement is fine in
+  isolation, so without a premise `chk` types both. → `classStmt` and `moduleStmt` grew
+  `constGet? κ n = none`. Both print as *sound* rejections, i.e. the semantics agrees the
+  programs really are type-stuck.
+- `class X; end; X = 5; X.new` raises **NoMethodError**. Here the declaration comes first and
+  is legal; what is illegal is the allocation, because `X` is `5` now. The class table still
+  has an `X` row, so the old two-route `const` would have answered `.clsOf "X"`. →
+  `constCls` and `constBuiltin` grew the same premise.
+
+That premise is what makes the three `const` rules **disjoint rather than merely ordered**:
+`chk`'s three-way `match` on `.const n` could be written in any order and answer the same,
+and `chk_sound` supplies each rule's negative hypothesis from the arm that bound it.
+
+Worth noting which direction the fix went. The alternative was a premise on `casgn`
+(`clsGet? κ.classes n = none`), and it does not work: it cannot see a `class X` that comes
+*later*. A whole-program pre-pass collecting every class name (the `collectBlocks` trick)
+would, and was rejected for a sharper reason — for `collectBlocks` an unvisited constructor
+merely fails to register a block, which is conservative, whereas for a name-collector an
+unvisited constructor **hides a declaration**, and completeness over `Expr` would become a
+soundness condition. The premises on the reading rules need no such argument.
+
+`X + 1; X = 10` is control (p13d) and is the one that prints as *conservative*: `NameError`
+is not in the `NoMethodError`/`ArgumentError`/`TypeError` family this package calls
+type-stuck, so the semantics reports the program as safe even though Ruby refuses to run it.
+The rejection is required by Ruby, not by our definition — recorded rather than smoothed over.
+
+### State
+
+**130 rungs of 232**, tier 13 at 1/13. 130/130 cross-checked against the real semantics,
+96/96 controls rejected (four new), corpus agreement 232/232 with 0 disagreements, all
+soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+Next: `const-in-class` and the scoped forms, which need the two things this clink deliberately
+did not build — a lexical nesting path (`Ctx.cref`) and a story for constants assigned in a
+**class body**, which no rule judges today.
