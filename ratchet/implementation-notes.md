@@ -879,3 +879,135 @@ against the real semantics, 36/36 negative controls rejected (all three new ones
 corpus agreement 0 disagreements, all six soundness theorems axiom-clean (`propext`,
 `Quot.sound`). What remains is tier 9 (blocks and procs — 22 rungs, the largest single demand
 left, and the first that needs `Ty`'s arrow spine) and tier 10 (metaprogramming).
+
+---
+
+## Clink 9 (2026-09-01) — tier 9a: callable values: 80 → 87
+
+Rungs added: seven of tier 9's twenty-two — `lambda-zero-arity`, `lambda-stabby-one-param`,
+`proc-basic`, `proc-bracket-call`, `lambda-closure-capture`, `lambda-returns-lambda`,
+`lambda-as-argument`. The ones whose callable is created with `lambda`/`proc` and invoked
+with `#call`/`#[]`, with no block ever *passed to* a method. Two new rules and one new `Ty`
+constructor; **no new threaded state**, which was the design goal.
+
+### 1. Why `arrowOf` could not be used, after sitting in `Ty` unused since the port
+
+An arrow needs its parameter types, and **Ruby writes none.** `f = lambda { |x| x + 1 }`
+says nothing about `x`; only `f.call(2)` does, and that is a different expression, possibly a
+different statement, possibly inside a different method. There is no principal type to infer
+without type variables, and this `Ty` has none. Every alternative considered failed on the
+same point:
+
+- Parameters at `.any` — then `x + 1` has no `PrimSig` row and the lambda is untypeable.
+- An untrusted first pass à la clink 5 — but a hint has to come from *somewhere*, and the
+  only source is a call site the checker has not reached yet.
+- Bidirectional checking — nothing in `f = lambda { … }` supplies an expected type.
+
+### 2. `Ty.clos idx captured` — a type that is a reference to code
+
+So a callable's type says *which block* and *what it closed over*, and a call instantiates
+the body at the call site's argument types: `Judge.callDef`'s move, lifted from a named
+method to a value.
+
+**`idx` indexes `Ctx.closures`, the table of every block literal in the program, collected
+once by `collectBlocks` before checking starts.** That "before" is the whole reason there is
+no fourth piece of threaded state. The obvious alternative — allocate an index when a lambda
+expression is reached — makes the table grow mid-expression, and then a `Ty.clos k` is only
+meaningful relative to a table that is still changing. A whole-program pre-pass makes the
+index mean the same thing everywhere, and `Ctx` stays input-only.
+
+**`captured` is a binding spine, and it is in the *type*, not in the table.** Two
+syntactically identical blocks share a table entry — harmless, since an entry is only
+`(params, body)` — but they need not have closed over the same environment. Reusing the ivar
+spine constructors (`ivar0`/`ivarCons`) for this cost nothing and is why `Ty` gained one
+constructor rather than three.
+
+`closCall` judges the body in `paramEnv c.params argTys ++ spineToEnv cap` — this call's
+argument types for the parameters, then the captured locals, parameters first so they shadow.
+That single environment is the whole of tier 9a:
+
+- `lambda-closure-capture` works because `spineToEnv cap` still holds `n`.
+- `lambda-returns-lambda` — currying, with no arrow type anywhere — works because the inner
+  literal's captured `x` is the *outer's parameter*, which was in `Γ` when the literal was
+  reached. Its type is `.clos 1 {x: Int}`, index 1 because `collectBlocks` descends into a
+  block's body.
+- `lambda-as-argument` works because a `.clos` travels through `paramEnv` like an `Int`.
+
+### 3. `lambda` and `proc` share one rule, and the imprecision is the recorded one
+
+A lambda checks arity strictly; a proc pads missing parameters with `nil` and drops extras.
+`Ty` cannot express the second discipline — that is exactly the gap §Ty language gaps already
+records from `proc-arity-leniency` — so the rule imposes the **strict** reading on both.
+Direction matters: strict-for-a-lambda is exact, strict-for-a-proc rejects legal calls, so
+both errors are conservative. Lenient-for-both would accept `lambda-arity-mismatch`, which
+raises. In the derivations the entire difference between `proc-basic` and a lambda is
+`.inr rfl` instead of `.inl rfl`.
+
+### 4. `κ.selfTy = none` on both rules — a hole closed by restriction
+
+A closure's body sees the `self` of wherever it was *created*, and `Ty.clos` records the
+captured locals but **not** the captured `self`. Restricting creation and invocation to
+top-level `self` makes the omission harmless instead of unsound: a lambda made inside a
+`Point` method and called inside a `Box` method would otherwise have its body checked against
+the wrong `self`. All seven rungs are top-level or inside top-level `def`s (where `callDef`
+leaves `selfTy` alone), so nothing is lost. Lifting it means putting `selfTy` in `Ty.clos`
+beside the captured locals.
+
+### 5. The thing that actually cost the time: `Expr`'s derived `BEq` does not reduce
+
+`closIdx?` matches a block against the table **by syntax**, and every
+`closIdx? … = some idx` premise plus `Rungs.lean`'s per-rung `rfl` needs that to happen *in
+the kernel*. `Expr` is a **nested** inductive (`List Expr`, `List (Expr × Expr)`), so its
+derived `BEq` is compiled by well-founded recursion and `exprEq (.int 1) (.int 1) = true` is
+not provable by `rfl`. This is the same fact that made `Ty`'s arrow and ivar spines *spines*
+rather than list payloads — noted in `Ty.lean` since the port — reappearing on the other side
+of the boundary, on syntax this package does not own.
+
+The fix is a hand-written structural comparator, and two details of it were not obvious:
+
+- **`Option Expr` fields must be matched inline, not through an
+  `exprEqOpt : Option Expr → Option Expr → Bool` companion.** `Option Expr` is not part of
+  the nested-inductive bundle Lean builds structural recursion from, so adding that companion
+  pushes the whole mutual group onto well-founded recursion — at which point it stops
+  reducing and every dependent `rfl` fails. The first attempt had exactly that helper and
+  failed even on `exprEq (.int 1) (.int 1)`; `collectBlocks`, written earlier with inline
+  `match recv with …`, reduced fine, which is what pointed at the cause.
+- **`paramEq` lives outside the group.** `Param.opt` carries a default `Expr`, so a recursive
+  `paramEq` would pull `Expr` back in. An optional parameter therefore compares `false` —
+  conservatively, since a block with one gets no index and is not typed, and no rung has one.
+
+The catch-all is `false`, which is safe in both directions: uncovered syntax makes two
+identical blocks compare unequal (no index, no rule, conservative rejection), and a spurious
+`true` is impossible because every covered case compares every field.
+
+### 6. A control that had to be *removed* from the controls list
+
+`lambda { |x| x + true }` with no call **validates, and should**: it merely evaluates to a
+Proc. A body is an obligation of its *call sites*, so a lambda nobody invokes cannot make a
+program type-stuck — the same fact `Judge.defStmt` established in clink 5. It was briefly
+added as a negative control, correctly failed as "CERTIFIED — table is too generous", and is
+now a comment on the control next to it rather than a control. Worth recording because the
+harness caught a mistake in the *test*, which is the harness working.
+
+### What is left of tier 9 (12 rungs), and what each needs
+
+- **A block passed to a builtin** (`block-each-int`, `block-map-to-s`, `block-nested-map`,
+  `block-two-params-inject`, `block-select-with-if`, `block-sort-by-length`, and the negative
+  `block-bad-arith`): needs `PrimSig` to grow *higher-order* rows — a claim about what
+  `Array#map` does with a block, not just about its argument types. That is a genuinely new
+  kind of row and probably a separate relation.
+- **`blockpass`** (`block-pass-symbol-to-proc`, `block-pass-lambda-variable`): `&:to_s` and
+  `&double`, i.e. a callable *reaching* a builtin, which needs the above first.
+- **`yield`** (`yield-arith`): the block has to be available inside the method body it was
+  passed to — a new component of `Ctx`.
+- **`Param.block`** (`block-param-ampersand`): `def run(&b)`, which `paramEnv` currently
+  refuses.
+- **`return` inside a lambda** (`lambda-explicit-return`): needs care, and the obvious rule is
+  unsound. Typing `.ret e` as `e`'s type makes `def f; return "a"; 2; end` validate at `Int`;
+  typing it `.never` does not help, because `JudgeSeq` still takes the *last* statement's
+  type. The honest fix is probably `JudgeSeq` refusing to continue past a non-returning
+  statement, plus a rule that reads a trailing `return` as the body's result.
+
+State after this clink: **87 rungs climbed** (tiers 1–8 complete, tier 9 at 7/22), 87/87
+cross-checked against the real semantics, 39/39 negative controls rejected, corpus agreement 0
+disagreements, all six soundness theorems axiom-clean (`propext`, `Quot.sound`).

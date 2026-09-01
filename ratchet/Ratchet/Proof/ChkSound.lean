@@ -274,6 +274,23 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       subst h; subst h'; subst h''
       exact .classStmt hms
     · exact absurd h (by simp)
+  · -- `send none m [] (some (.block ps [] body))`: a `lambda`/`proc` literal.
+    split at h
+    · rename_i hname
+      split at h
+      · rename_i hself
+        split at h
+        · rename_i hidx
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .lambdaLit (by
+            rcases (by simpa using hname : _ = "lambda" ∨ _ = "proc") with h | h
+            · exact .inl h
+            · exact .inr h) hself hidx
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- `send none m args`: strictness, then the assumption table, then the def table.
     split at h
     · rename_i hargs
@@ -407,6 +424,35 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                 · exact absurd h (by simp)
+            · -- the receiver is a callable: check its body here (`Judge.closCall`)
+              split at h
+              · rename_i hname
+                split at h
+                · rename_i hself
+                  split at h
+                  · rename_i hclos
+                    split at h
+                    · rename_i hpar
+                      split at h
+                      · rename_i hbody
+                        split at h
+                        · rename_i hI
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact .closCall (by
+                            rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
+                              h | h
+                            · exact .inl h
+                            · exact .inr h) hself (chk_sound hrecv)
+                            (chkAll_sound hargs) hclos hpar
+                            (by subst hI; exact chk_sound hbody)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
             · -- the receiver is an instance: dispatch up the chain from its class
               split at h
               · rename_i hmeth
@@ -518,13 +564,14 @@ end
 
 /-- The form the runner cares about: a `true` verdict means *some* type is derivable for
 the whole program, from the empty environment, with **nothing defined and nothing
-assumed**, and no `self`. The empty assumption table is what makes this an unconditional
-statement rather than one relative to a table of assumptions — see `AsmTable` and
-`ctx0`. -/
+assumed**, no `self`, and the program's own block table. The empty assumption table is what
+makes this an unconditional statement rather than one relative to a table of assumptions — see
+`AsmTable` and `ctx0`; `Ctx.withBlocks` is the one component that starts non-empty, and it is
+derived from the program by `collectBlocks`. -/
 theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
-    ∃ τ Γ' I', Judge ctx0 [] .ivar0 p τ Γ' I' := by
+    ∃ τ Γ' I', Judge (ctx0.withBlocks p) [] .ivar0 p τ Γ' I' := by
   unfold validate at h
-  cases hc : chk fuelDefault ctx0 [] .ivar0 p with
+  cases hc : chk fuelDefault (ctx0.withBlocks p) [] .ivar0 p with
   | none => simp [hc] at h
   | some r => exact ⟨r.1, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
 

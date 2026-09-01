@@ -37,7 +37,10 @@ not an oversight:
 - **No inheritance, no `super`, no singleton methods.** `Cls.super?` is *recorded* by
   `extendClasses` and read by nothing: method lookup is `defGet? c.methods`, one class deep.
   So `class Dog < Animal` declares fine and `Dog.new` finds no `initialize`.
-- **No blocks or metaprogramming.** Tiers 9–10. Modules are typed (tier 8), but only their
+- **Callable values, but not blocks-to-builtins.** Tier 9's `lambda`/`proc` and `#call`
+  are typed; a block *passed to* a method (`[1,2].map { … }`), `yield`, `&`-block parameters
+  and block-locals are not. Tier 10's metaprogramming is untouched. Modules are typed (tier
+  8), but only their
   singleton methods are reachable: `include`, `extend` and `module_function` have no rule, so
   a module's *instance* methods are recorded and unusable.
 - **`self` is typed only inside an instance-method body**, and only as `.inst n Iself`.
@@ -471,6 +474,188 @@ structure Frame where
   defClass : String
   methName : String
 
+/-! ## A structural `Expr` comparator that kernel-reduces
+
+Tier 9 matches a block literal against the whole-program block table **by syntax**
+(`closIdx?`), and `Expr`'s derived `BEq` cannot do that job: `Expr` is a *nested* inductive
+(`List Expr`, `List (Expr × Expr)`), so the derived instance is compiled by well-founded
+recursion and does not reduce in the kernel — which `Ratchet/Rungs.lean`'s per-rung `rfl`
+checks and every `closIdx? … = some idx` premise depend on. This is the same fact that made
+`Ty`'s arrow and ivar spines spines rather than list payloads; here it shows up on the other
+side of the boundary, on syntax this package does not own.
+
+So: hand-written, structurally recursive, with explicit list companions — exactly the shape
+`collectBlocks` uses, which does reduce.
+
+**The catch-all is `false`, and that is safe in both directions.** A constructor pair this
+function does not cover compares unequal, so two syntactically *identical* blocks built from
+uncovered syntax get no shared index — `closIdx?` misses, no rule applies, and the program is
+not typed. Conservative. What is *not* possible is a spurious `true`: every covered case
+compares every field. Coverage below is the constructors that appear in a block's parameters
+or body anywhere in the corpus; the rest are honest omissions rather than a claim. -/
+
+/-- Parameter comparison, **outside** the recursive group on purpose: `Param.opt` carries a
+default `Expr`, and pulling `Expr` into this function's recursion would put it back in the
+bundle. So an optional parameter compares `false` — conservatively, since a block with one
+then has no index and is not typed, and no rung has one. -/
+def paramEq : Param → Param → Bool
+  | .req a, .req b => a == b
+  | .rest a, .rest b => a == b
+  | .kwrest a, .kwrest b => a == b
+  | .block a, .block b => a == b
+  | .fwd, .fwd => true
+  | _, _ => false
+
+def paramEqAll : List Param → List Param → Bool
+  | [], [] => true
+  | a :: as, b :: bs => paramEq a b && paramEqAll as bs
+  | _, _ => false
+
+mutual
+
+def exprEq : Expr → Expr → Bool
+  | .int a, .int b => a == b
+  | .flt a, .flt b => a == b
+  | .str a, .str b => a == b
+  | .sym a, .sym b => a == b
+  | .tru, .tru => true
+  | .fls, .fls => true
+  | .nil, .nil => true
+  | .self', .self' => true
+  | .var k a, .var k' b => k == k' && a == b
+  | .vasgn k a e, .vasgn k' b e' => k == k' && a == b && exprEq e e'
+  | .const a, .const b => a == b
+  | .vcall a, .vcall b => a == b
+  -- The `Option Expr` fields are matched inline rather than through a helper: an
+  -- `Option Expr → Option Expr → Bool` companion is not part of the nested-inductive
+  -- bundle Lean builds structural recursion from, and adding one is what pushes this whole
+  -- group onto well-founded recursion — at which point it stops reducing in the kernel and
+  -- every `rfl` that depends on it fails. Discovered the hard way; see
+  -- `../implementation-notes.md` clink 9.
+  | .send none m as none, .send none m' as' none =>
+    m == m' && exprEqAll as as'
+  | .send (some r) m as none, .send (some r') m' as' none =>
+    exprEq r r' && m == m' && exprEqAll as as'
+  | .send none m as (some b), .send none m' as' (some b') =>
+    m == m' && exprEqAll as as' && exprEq b b'
+  | .send (some r) m as (some b), .send (some r') m' as' (some b') =>
+    exprEq r r' && m == m' && exprEqAll as as' && exprEq b b'
+  | .block ps ls b, .block ps' ls' b' =>
+    paramEqAll ps ps' && ls == ls' && exprEq b b'
+  | .yield' as, .yield' as' => exprEqAll as as'
+  | .blockpass none, .blockpass none => true
+  | .blockpass (some e), .blockpass (some e') => exprEq e e'
+  | .if' c t none, .if' c' t' none => exprEq c c' && exprEq t t'
+  | .if' c t (some e), .if' c' t' (some e') =>
+    exprEq c c' && exprEq t t' && exprEq e e'
+  | .def' n ps b, .def' n' ps' b' => n == n' && paramEqAll ps ps' && exprEq b b'
+  | .defs r n ps b, .defs r' n' ps' b' =>
+    exprEq r r' && n == n' && paramEqAll ps ps' && exprEq b b'
+  | .array es, .array es' => exprEqAll es es'
+  | .hash ps, .hash ps' => exprEqPairs ps ps'
+  | .ret none, .ret none => true
+  | .ret (some e), .ret (some e') => exprEq e e'
+  | .class' n none b, .class' n' none b' => n == n' && exprEq b b'
+  | .class' n (some s) b, .class' n' (some s') b' =>
+    n == n' && exprEq s s' && exprEq b b'
+  | .module' n b, .module' n' b' => n == n' && exprEq b b'
+  | .super' as none, .super' as' none => exprEqAll as as'
+  | .super' as (some b), .super' as' (some b') => exprEqAll as as' && exprEq b b'
+  | .seq es, .seq es' => exprEqAll es es'
+  | _, _ => false
+
+def exprEqAll : List Expr → List Expr → Bool
+  | [], [] => true
+  | a :: as, b :: bs => exprEq a b && exprEqAll as bs
+  | _, _ => false
+
+def exprEqPairs : List (Expr × Expr) → List (Expr × Expr) → Bool
+  | [], [] => true
+  | (k, v) :: ps, (k', v') :: ps' =>
+    exprEq k k' && exprEq v v' && exprEqPairs ps ps'
+  | _, _ => false
+
+end
+
+/-! ## Tier 9's block table
+
+`Ty.clos` says why a callable's type is a *reference* rather than an arrow. This is what it
+refers to. -/
+
+/-- One block literal the program contains. `locals` (a `|x; y|` block-local list) is not
+recorded because no rule admits a block that has any — see `Judge.lambdaLit`. -/
+structure Clos where
+  params : List Param
+  body : Expr
+
+abbrev ClosTable := List Clos
+
+/-- The index of a block literal in the table, matched **by syntax**.
+
+Syntax equality is `exprEq`, not `==`: the derived instance does not kernel-reduce (see
+above). Syntactically identical blocks therefore share an index, and that is fine rather than
+tolerated: an entry is only `(params, body)`, so two blocks that agree on both are
+interchangeable *here*. What distinguishes two instances of the same block literal is the
+environment each captured, and that lives in `Ty.clos`'s second argument, not in this
+table. -/
+def closIdxAux (k : Nat) : ClosTable → List Param → Expr → Option Nat
+  | [], _, _ => none
+  | c :: cs, ps, b =>
+    if paramEqAll c.params ps && exprEq c.body b then some k
+    else closIdxAux (k + 1) cs ps b
+
+def closIdx? (K : ClosTable) (ps : List Param) (b : Expr) : Option Nat :=
+  closIdxAux 0 K ps b
+
+def closGet? (K : ClosTable) (k : Nat) : Option Clos := K[k]?
+
+mutual
+
+/-- Every block literal in the program, collected **before checking starts** so that
+`Ctx.closures` is a constant and `Ty.clos`'s index means the same thing everywhere.
+
+This is why tier 9 needed no fourth piece of threaded state: the alternative — allocating an
+index when a lambda expression is reached — makes the table grow mid-expression, and then a
+`Ty.clos k` would only be meaningful relative to a table that is still changing.
+
+Coverage is the constructors that can contain a block in this corpus. **Anything unlisted
+simply does not get its blocks registered**, so a lambda written there has no index, no rule
+applies, and the program is not typed — conservative, and the failure is a rejection rather
+than a wrong index. -/
+def collectBlocks : Expr → ClosTable
+  | .block ps _ body => ⟨ps, body⟩ :: collectBlocks body
+  | .send recv _ args blk =>
+    (match recv with | some r => collectBlocks r | none => []) ++
+    collectBlocksAll args ++
+    (match blk with | some b => collectBlocks b | none => [])
+  | .seq es => collectBlocksAll es
+  | .vasgn _ _ e => collectBlocks e
+  | .def' _ _ body => collectBlocks body
+  | .defs _ _ _ body => collectBlocks body
+  | .class' _ _ body => collectBlocks body
+  | .module' _ body => collectBlocks body
+  | .array es => collectBlocksAll es
+  | .hash ps => collectBlocksPairs ps
+  | .if' c t e =>
+    collectBlocks c ++ collectBlocks t ++
+    (match e with | some x => collectBlocks x | none => [])
+  | .yield' args => collectBlocksAll args
+  | .blockpass (some e) => collectBlocks e
+  | .super' args blk =>
+    collectBlocksAll args ++ (match blk with | some b => collectBlocks b | none => [])
+  | .ret (some e) => collectBlocks e
+  | _ => []
+
+def collectBlocksAll : List Expr → ClosTable
+  | [] => []
+  | e :: es => collectBlocks e ++ collectBlocksAll es
+
+def collectBlocksPairs : List (Expr × Expr) → ClosTable
+  | [] => []
+  | (k, v) :: ps => collectBlocks k ++ collectBlocks v ++ collectBlocksPairs ps
+
+end
+
 /-- The read-only half of the judgment's state, bundled. `classes`/`defs` grow at statement
 boundaries (`JudgeSeq.cons`), `asms` grows at a call site being discharged
 (`Judge.callDef`), and `frame`/`selfTy` are set once, on entry to a method body, and never
@@ -481,6 +666,9 @@ structure Ctx where
   asms : AsmTable
   /-- The definition site of the running method, or `none` outside any method body. -/
   frame : Option Frame
+  /-- Every block literal in the program, indexed by `Ty.clos`. Constant for a whole run —
+      `validate` fills it in from `collectBlocks` and nothing changes it. -/
+  closures : ClosTable
   /-- The type of `self`, or `none` at top level.
 
       `none` rather than "the type of `main`" because this judgment has no rule that needs
@@ -1016,6 +1204,73 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       paramEnv d.params [] = some Γb →
       Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.vcall m) ρ Γ I
+  -- ### Tier 9 — callable values
+  --
+  -- Two rules, and between them they are `callDef` again with the def table replaced by
+  -- `Ctx.closures` and the name replaced by an index carried in the type. See `Ty.clos` for
+  -- why the type is a reference to code rather than an arrow.
+  /-- **`lambda { |x| … }` / `proc { |x| … }`** — a callable value.
+
+      Both spellings get the same rule and the same type, which is a **known imprecision, not
+      an oversight**: a lambda checks its arity strictly and a proc does not (a proc pads
+      missing parameters with `nil` and drops extras). `Ty` cannot express the second
+      discipline — that is the gap `AGENTS.md` §Ty language gaps records, reached from tier
+      9's `proc-arity-leniency` — so this rule imposes the *strict* reading on both.
+      Direction matters: strict-for-a-lambda is exact, and strict-for-a-proc rejects legal
+      calls, so both errors are conservative. The alternative (lenient for both) would accept
+      `lambda-arity-mismatch`, which raises.
+
+      Three premises worth reading:
+
+      - **`locals = []`** (in the pattern): a `|x; y|` block-local list is not modelled, so a
+        block with one is not typed. Rung `block-doend-with-block-local` needs it and is not
+        in this clink.
+      - **`closIdx?`** finds the block in the whole-program table. A block the collector did
+        not reach has no index and no derivation.
+      - **`κ.selfTy = none`.** A closure's body sees the `self` of wherever it was
+        *created*, and this rule records the captured *locals* but not the captured `self`.
+        Restricting creation to top level (where `selfTy` is `none`) makes the omission
+        harmless instead of unsound: a lambda made inside a `Point` method and called inside
+        a `Box` method would otherwise have its body checked against the wrong `self`.
+        Lifting this means putting `selfTy` in `Ty.clos` beside the captured locals. -/
+  | lambdaLit {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ps : List Param}
+      {body : Expr} {idx : Nat} :
+      (m = "lambda" ∨ m = "proc") → κ.selfTy = none →
+      closIdx? κ.closures ps body = some idx →
+      Judge κ Γ I (.send none m [] (some (.block ps [] body))) (.clos idx (envToSpine Γ)) Γ I
+  /-- **`f.call(args)` / `f[args]`** — invoke a callable, by checking its body here.
+
+      The body is judged in `paramEnv c.params argTys ++ spineToEnv cap`: this call site's
+      argument types for the parameters, then the locals the lambda captured at creation.
+      Parameters come first so they shadow a captured name of the same spelling, which is
+      what Ruby does.
+
+      That single environment is the whole of tier 9a. `lambda-closure-capture` works because
+      `spineToEnv cap` still holds `n`; `lambda-returns-lambda` works because the inner
+      lambda's captured `x` is the *outer's parameter*, which was in `Γ` when the inner
+      literal was reached; `lambda-as-argument` works because a `.clos` travels through
+      `paramEnv` like any other type.
+
+      `[]` is admitted alongside `call` because `p[3]` is Ruby's other spelling of it (rung
+      `proc-bracket-call`) — and note it cannot collide with `PrimSig.arrayIndex`, whose
+      receiver is an `arrayOf`.
+
+      The ivar spine goes in and comes back unchanged, for `callMethod`'s reason: a body that
+      retyped an instance variable would invalidate the caller's view of it. `κ.selfTy = none`
+      again, matching `lambdaLit`.
+
+      **No assumption table**, so a recursive lambda exhausts `chk`'s fuel and is rejected —
+      the same conservatism `callMethod` has, and the same fix would apply. -/
+  | closCall {κ : Ctx} {Γ Γ₁ Γ₂ Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
+      {args : List Expr} {argTys : List Ty} {idx : Nat} {cap : Ty} {c : Clos}
+      {Γb : Env} {ρ : Ty} :
+      (m = "call" ∨ m = "[]") → κ.selfTy = none →
+      Judge κ Γ I recv (.clos idx cap) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      closGet? κ.closures idx = some c →
+      paramEnv c.params argTys = some Γb →
+      Judge κ (Γb ++ spineToEnv cap) I₂ c.body ρ Γb' I₂ →
+      Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
       what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still

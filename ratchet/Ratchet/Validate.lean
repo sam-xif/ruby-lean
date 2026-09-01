@@ -179,6 +179,17 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     match classMethods? body with
     | some (_, _) => some (.any, Γ, I)
     | none => none
+  | _ + 1, .send none m [] (some (.block ps [] body)) =>
+    -- `lambda { … }` / `proc { … }`. Matched before the block-less implicit-self arm because
+    -- it is the only send in this fragment that carries a block at all.
+    if m = "lambda" || m = "proc" then
+      match κ.selfTy with
+      | none =>
+        match closIdx? κ.closures ps body with
+        | some idx => some (.clos idx (envToSpine Γ), Γ, I)
+        | none => none
+      | some _ => none
+    else none
   | f + 1, .send none m args none =>
     -- An implicit-self call. Four routes, in this order, and the order is the design:
     -- strictness first (a call with a non-returning argument never dispatches, defined or
@@ -280,6 +291,23 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   | some _ => if argTys = [] then some (.inst n .ivar0, Γ₂, I₂) else none
                   | none => none
               else none
+          | .clos idx cap =>
+            -- Tier 9: invoke a callable by checking its body at this call site's argument
+            -- types, in an environment of parameters-then-captures.
+            if m = "call" || m = "[]" then
+              match κ.selfTy with
+              | none =>
+                match closGet? κ.closures idx with
+                | some c =>
+                  match paramEnv c.params argTys with
+                  | some Γb =>
+                    match chk f κ (Γb ++ spineToEnv cap) I₂ c.body with
+                    | some (ρ, _, Iout) => if Iout = I₂ then some (ρ, Γ₂, I₂) else none
+                    | none => none
+                  | none => none
+                | none => none
+              | some _ => none
+            else none
           | .inst n Iself =>
             match mroGet? κ.classes n m with
             | some (dc, d) =>
@@ -380,10 +408,17 @@ nothing is declared before a program's first statement, the assumption table bec
 derivation carrying one is only a conditional claim (`AsmTable`), and `frame`/`selfTy`
 because a program's top level is inside no method and runs somewhere `self` is not an
 instance of anything this judgment models. -/
-def ctx0 : Ctx := ⟨[], [], [], none, none⟩
+def ctx0 : Ctx := ⟨[], [], [], none, [], none⟩
+
+/-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
+empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,
+so that `Ty.clos`'s index means the same thing at every point in the derivation (see
+`collectBlocks`). -/
+def Ctx.withBlocks (κ : Ctx) (p : Expr) : Ctx := { κ with closures := collectBlocks p }
 
 /-- The ratchet's verdict for one rung: did `chk` synthesize *any* type for the whole
 program, from the empty local environment and the empty ivar spine, in `ctx0`? -/
-def validate (p : Expr) : Bool := (chk fuelDefault ctx0 [] .ivar0 p).isSome
+def validate (p : Expr) : Bool :=
+  (chk fuelDefault (ctx0.withBlocks p) [] .ivar0 p).isSome
 
 end Ratchet

@@ -99,9 +99,35 @@ inductive Ty where
   | inst (name : String) (ivars : Ty)
   /-- The empty ivar spine — an object with no instance variables set. -/
   | ivar0
-  /-- One instance variable in a spine. The name includes the `@` (the desugarer's own
-      convention: `Expr.var .ivar "@x"`). -/
+  /-- One binding in a spine. For an ivar spine the name includes the `@` (the desugarer's
+      own convention: `Expr.var .ivar "@x"`); tier 9 reuses the same two constructors for a
+      closure's **captured locals**, where it does not. -/
   | ivarCons (name : String) (ty : Ty) (rest : Ty)
+  /-- **A callable value: a reference to a block literal, plus the locals it captured.**
+      Added at tier 9; this package's own constructor.
+
+      Why not `arrowOf`, which has been in this `Ty` since the port and is still unused: an
+      arrow needs its parameter types, and **Ruby writes none**. `f = lambda { |x| x + 1 }`
+      says nothing about `x`; only `f.call(2)` does, and that is a different expression,
+      possibly a different statement, possibly inside a different method. There is no
+      principal type to infer without type variables, and this `Ty` has none.
+
+      So a lambda's type is a *reference to its code*, and a call instantiates the body at
+      the call site's argument types — the same move `Judge.callDef` makes for a named
+      method, lifted to a value. `idx` indexes `Ctx.closures`, the table of every block
+      literal in the program, collected once by `collectBlocks` before checking starts. It
+      does not thread, so nothing here needs a fourth piece of state.
+
+      `captured` is a binding spine (`ivar0`/`ivarCons`) holding the **locals as of the
+      lambda's creation**, and it is in the type rather than in the table for a reason: two
+      syntactically identical blocks share a table entry — harmless, since the entry is only
+      `(params, body)` — but they need not have captured the same environment.
+      `lambda-closure-capture` and `lambda-returns-lambda` are the two rungs that turn on
+      this, the second because the inner lambda's captured `x` is the outer's *parameter*.
+
+      Not `EqSafe`, and no `PrimSig` row has it as a receiver: the only rules that consume one
+      are `Judge.closCall`'s `call`/`[]`. -/
+  | clos (idx : Nat) (captured : Ty)
 deriving DecidableEq, BEq, Repr, Inhabited
 
 /-- `(A, B, …) → R` from its parts. -/
@@ -266,6 +292,21 @@ def ivarSet : Ty → String → Ty → Ty
   | .ivarCons n τ rest, x, ρ =>
     if n == x then .ivarCons x ρ rest else .ivarCons n τ (ivarSet rest x ρ)
   | other, _, _ => other
+
+/-! ## Locals as a spine
+
+Tier 9 needs a local environment inside a `Ty` (a closure's captured bindings — see
+`Ty.clos`), which is the same shape problem the ivars had, so it is the same solution. These
+two convert; `spineToEnv` on a non-spine answers `[]`, which is unreachable from the judgment
+and cheaper than threading an `Option`. -/
+
+def envToSpine : Env → Ty
+  | [] => .ivar0
+  | (x, τ) :: Γ => .ivarCons x τ (envToSpine Γ)
+
+def spineToEnv : Ty → Env
+  | .ivarCons x τ rest => (x, τ) :: spineToEnv rest
+  | _ => []
 
 /-- The names bound in an environment, in order. -/
 def envKeys : Env → List String

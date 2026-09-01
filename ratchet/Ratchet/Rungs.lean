@@ -51,7 +51,7 @@ structure Rung where
       currently free) restriction: a rung whose top-level code assigned an instance variable
       would not fit this structure. None does; `@x = 1` at `main` is legal Ruby that this
       judgment types but that no rung exercises. -/
-  deriv : Judge ctx0 [] .ivar0 program ty outEnv .ivar0
+  deriv : Judge (ctx0.withBlocks program) [] .ivar0 program ty outEnv .ivar0
 
 /-! ## Tier 1 — the eight literals
 
@@ -1128,6 +1128,139 @@ def r086 : Rung :=
         (.prim (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)
           (.cons (.var rfl) .nil) .intAdd))))⟩
 
+/-! ## Tier 9a — callable values
+
+Seven of tier 9's twenty-two: the ones whose callable is created and invoked with `lambda`,
+`proc` and `#call`/`#[]`, with no block ever *passed to* a method. See `Ty.clos` for the
+design and `implementation-notes.md` clink 9 for what is left.
+
+The `ty` fields are the unusual thing here: a callable's type is `.clos idx captured`, an
+index into the whole-program block table plus the locals the lambda closed over. Both halves
+are written out longhand below, so a wrong `collectBlocks` order or a wrong captured
+environment stops the rung compiling. The indices are not arbitrary — they are the order
+`collectBlocks` walks the program — and `lambda-returns-lambda` is the rung where reading them
+off tells you something: the outer literal is 0 and the inner is 1, because the collector
+descends into a block's body. -/
+
+/-- `f = lambda { 1 }; f.call` → `Integer`. The degenerate callable: no parameters, so
+    `paramEnv [] []` is empty and the body is judged in the captured environment alone (also
+    empty). The type `.clos 0 ivar0` is the whole of what the checker knows about `f`. -/
+def r087 : Rung :=
+  ⟨"lambda-zero-arity",
+    .seq [.vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
+          .send (some (.var .lvar "f")) "call" [] none],
+    .int, [("f", .clos 0 .ivar0)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+      (.last (.closCall (.inl rfl) rfl (.var rfl) .nil rfl rfl .intLit)))⟩
+
+/-- `lambda { |x| x + 1 }.call(2)` → `Integer`. **The rung that shows why a callable's type
+    is a reference and not an arrow.** Nothing in `lambda { |x| x + 1 }` says `x` is an
+    `Integer`; the `2` at the call site does, and `closCall` is where the two meet — the body
+    is judged with `x : Int` because that is what this call passed. -/
+def r088 : Rung :=
+  ⟨"lambda-stabby-one-param",
+    .send (some (.send none "lambda" []
+      (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none)))))
+      "call" [.int 2] none,
+    .int, [],
+    .closCall (.inl rfl) rfl (.lambdaLit (idx := 0) (.inl rfl) rfl rfl) (.cons .intLit .nil) rfl rfl
+      (.prim (.var rfl) (.cons .intLit .nil) .intAdd)⟩
+
+/-- `p = proc { |x| x * 2 }; p.call(3)` → `Integer`. `proc` takes the same rule as `lambda`
+    (`.inr rfl` rather than `.inl rfl` is the only difference in the whole derivation), which
+    is the recorded imprecision: this checker imposes a lambda's *strict* arity on both. See
+    `Judge.lambdaLit`, and `proc-arity-leniency` for the rung that pays for it. -/
+def r089 : Rung :=
+  ⟨"proc-basic",
+    .seq [.vasgn .lvar "p" (.send none "proc" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
+          .send (some (.var .lvar "p")) "call" [.int 3] none],
+    .int, [("p", .clos 0 .ivar0)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
+      (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl) (.cons .intLit .nil) .intMul))))⟩
+
+/-- `p = proc { |x| x * 2 }; p[3]` → `Integer`. `p[3]` is Ruby's other spelling of
+    `p.call(3)`, so it is the same rule reached through `.inr rfl` on the *method-name*
+    disjunction. Worth having as its own rung because `[]` is also `PrimSig.arrayIndex`'s
+    method name: the two cannot collide, because that row's receiver is an `arrayOf` and this
+    rule's is a `.clos`. -/
+def r090 : Rung :=
+  ⟨"proc-bracket-call",
+    .seq [.vasgn .lvar "p" (.send none "proc" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
+          .send (some (.var .lvar "p")) "[]" [.int 3] none],
+    .int, [("p", .clos 0 .ivar0)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
+      (.last (.closCall (.inr rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl) (.cons .intLit .nil) .intMul))))⟩
+
+/-- `n = 10; add_n = lambda { |x| x + n }; add_n.call(5)` → `Integer`. **The rung the
+    captured spine exists for.** `n` is not a parameter and is not in scope where the body is
+    checked — unless the type carries it, which is what `.clos 0 (ivarCons "n" Int ivar0)`
+    says. Read `add_n`'s entry in the `outEnv` below and the closure is legible as a type. -/
+def r098 : Rung :=
+  ⟨"lambda-closure-capture",
+    .seq [.vasgn .lvar "n" (.int 10),
+          .vasgn .lvar "add_n" (.send none "lambda" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "+" [.var .lvar "n"] none)))),
+          .send (some (.var .lvar "add_n")) "call" [.int 5] none],
+    .int, [("n", .int), ("add_n", .clos 0 (.ivarCons "n" .int .ivar0))],
+    .seq (.cons (.vasgn .intLit)
+      (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+        (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+          (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)))))⟩
+
+/-- `add = lambda { |x| lambda { |y| x + y } }; add.call(1).call(2)` → `Integer`.
+    **Currying, with no arrow type anywhere.**
+
+    The outer call returns `.clos 1 (ivarCons "x" Int ivar0)` — index 1 because
+    `collectBlocks` descends into a block's body, and the captured `x` because the inner
+    literal was reached while `x` was the outer's parameter. Then the second `.call` judges
+    the inner body in `[("y", Int)] ++ [("x", Int)]`. Nothing in the program is annotated and
+    nothing in the derivation is an arrow; the type of a two-stage function here is just
+    "block 0, having captured nothing", and the intermediate value's type is what does the
+    work. -/
+def r099 : Rung :=
+  ⟨"lambda-returns-lambda",
+    .seq [.vasgn .lvar "add" (.send none "lambda" []
+            (some (.block [.req "x"] []
+              (.send none "lambda" []
+                (some (.block [.req "y"] []
+                  (.send (some (.var .lvar "x")) "+" [.var .lvar "y"] none))))))),
+          .send (some (.send (some (.var .lvar "add")) "call" [.int 1] none))
+            "call" [.int 2] none],
+    .int, [("add", .clos 0 .ivar0)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+      (.last (.closCall (.inl rfl) rfl
+        (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+          (.lambdaLit (idx := 1) (.inl rfl) rfl rfl))
+        (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+
+/-- `def apply(f, v); f.call(v); end; apply(lambda { |x| x * 2 }, 5)` → `Integer`. A callable
+    passed as an ordinary argument: tier 6's `paramEnv` binds `f` to `.clos 0 ivar0` exactly
+    as it would bind an `Int`, and `closCall` inside `apply`'s body reads the index back out.
+    Nothing declares `apply` to take a function. -/
+def r100 : Rung :=
+  ⟨"lambda-as-argument",
+    .seq [.def' "apply" [.req "f", .req "v"]
+            (.send (some (.var .lvar "f")) "call" [.var .lvar "v"] none),
+          .send none "apply"
+            [.send none "lambda" []
+               (some (.block [.req "x"] []
+                 (.send (some (.var .lvar "x")) "*" [.int 2] none))),
+             .int 5] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef
+        (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl rfl) (.cons .intLit .nil)) rfl rfl
+        (.closCall (.inl rfl) rfl (.var rfl) (.cons (.var rfl) .nil) rfl rfl
+          (.prim (.var rfl) (.cons .intLit .nil) .intMul)))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1138,7 +1271,8 @@ def rungs : List Rung :=
    r052, r055, r057, r058, r059, r060,
    r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
    r074, r075, r076,
-   r077, r078, r079, r080, r081, r082, r083, r084, r085, r086]
+   r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
+   r087, r088, r089, r090, r098, r099, r100]
 
 /-! ## `chk` answers exactly what was derived by hand
 
@@ -1148,7 +1282,7 @@ and the hand-authored judgment have not drifted apart anywhere on this fragment.
 
 theorem chk_agrees_with_hand_derivations :
     rungs.all (fun r =>
-      chk fuelDefault ctx0 [] .ivar0 r.program
+      chk fuelDefault (ctx0.withBlocks r.program) [] .ivar0 r.program
         == some (r.ty, r.outEnv, Ty.ivar0)) = true := by rfl
 
 /-- And therefore `validate` — the number the ratchet runner reports — says `true` on all

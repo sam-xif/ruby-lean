@@ -56,6 +56,13 @@ def expectedClasses : Ty → List String
   -- contents. What backs the element type instead is `arrayLit`'s premise: each element
   -- has its own derivation, and each of those would be a row here if it were a rung.
   | .arrayOf _ => ["Array"]
+  -- Tier 9: a callable value is a `Proc` whether it came from `lambda` or `proc` (a lambda
+  -- *is* a Proc, with `lambda? == true`). The block index and captured spine inside the type
+  -- are not cross-checked here, for the same reason an array's element type is not: this
+  -- harness compares the class of the result value. What backs them is that every rung whose
+  -- type depends on them (`lambda-closure-capture`, `lambda-returns-lambda`) *calls* the
+  -- closure, so a wrong index or a wrong capture shows up as a wrong result class there.
+  | .clos _ _ => ["Proc"]
   -- Tier 7: a user-class instance's class is its name. The *ivar spine* is not
   -- cross-checked against the semantics here — this harness compares the class of the
   -- result value and nothing in it reaches inside an object. What backs the spine instead
@@ -350,7 +357,33 @@ def controls : List Control :=
   , ⟨"module M; def self.bad(x); x + true; end; end; M.bad(1)",
       .seq [.module' "M" (.defs .self' "bad" [.req "x"]
               (.send (some (.var .lvar "x")) "+" [.tru] none)),
-            .send (some (.const "M")) "bad" [.int 1] none]⟩ ]
+            .send (some (.const "M")) "bad" [.int 1] none]⟩
+    -- ### Tier 9a's controls
+    --
+    -- (m) A lambda's body is checked at its call site, so a body that is stuck *for these*
+    -- arguments is caught -- the `closCall` twin of `fun-body-mismatch`. The lambda literal
+    -- itself says nothing about `x`.
+    --
+    -- Its counterpart is deliberately *not* in this list, because it is a program the checker
+    -- is right to certify: `lambda { |x| x + true }` with no call validates, and should, since
+    -- it merely evaluates to a Proc. A body is an obligation of its *call sites*, so a method
+    -- or lambda nobody invokes cannot make a program type-stuck. That has been true since
+    -- `Judge.defStmt` (clink 5) and it is the same fact here.
+  , ⟨"lambda { |x| x + true }.call(1)",
+      .send (some (.send none "lambda" []
+        (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.tru] none)))))
+        "call" [.int 1] none⟩
+    -- (n) Arity is checked strictly, via `paramEnv`: too *few* arguments to a lambda raises
+    -- ArgumentError. (Too many is the corpus rung `lambda-arity-mismatch`; the same shape on
+    -- a `proc` is legal Ruby and is the recorded `ty_language_gap`.)
+  , ⟨"lambda { |x, y| x }.call(1)",
+      .send (some (.send none "lambda" []
+        (some (.block [.req "x", .req "y"] [] (.var .lvar "x")))))
+        "call" [.int 1] none⟩
+    -- (o) A `.clos` is inert to everything but `call`/`[]`: no PrimSig row takes one and it
+    -- is not EqSafe. Safe Ruby (a Proc really has `#arity`) that the checker declines.
+  , ⟨"lambda { 1 }.arity (safe; no rule for Proc#arity)",
+      .send (some (.send none "lambda" [] (some (.block [] [] (.int 1))))) "arity" [] none⟩ ]
 
 mutual
 
@@ -376,6 +409,16 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match e with
     | none => return .if' c' t' none
     | some e => return .if' c' t' (some (← toRubyCore e))
+  | .block ps ls body => do
+    let ps' ← ps.mapM toRubyCoreParam
+    return .block ps' ls (← toRubyCore body)
+  | .send none m args (some blk) => do
+    let args' ← args.mapM toRubyCore
+    return .send none m args' (some (← toRubyCore blk))
+  | .send (some r) m args (some blk) => do
+    let r' ← toRubyCore r
+    let args' ← args.mapM toRubyCore
+    return .send (some r') m args' (some (← toRubyCore blk))
   | .self' => some .self'
   | .const n => some (.const n)
   | .var .ivar x => some (.var .ivar x)
