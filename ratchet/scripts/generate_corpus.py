@@ -816,18 +816,10 @@ R("metaprog-method-missing-fixed-arity", 10,
   "Ghost.new.anything_at_all\n",
   expect_validate=True)
 R("metaprog-method-missing-splat", 10,
-  "The idiomatic method_missing shape: `def method_missing(name, *args)`. Its "
-  "true signature is 'one Sym, then zero or more of anything' -- and Ty's "
-  "arrow spine (arrow0/arrowCons) has no vararg/rest-arity constructor at all. "
-  "There is no Ty value that honestly describes this parameter list, not just "
-  "no `chk` rule for it yet: arrow_of([Sym], ...) would be a lie about the real "
-  "arity (it fits this one zero-extra-args call site while being wrong for "
-  "`some_method(1, 2, 3)` elsewhere). FLAGGED ty_language_gap: Ty needs "
-  "something like an `arrowRest (rest ret : Ty)` constructor, or modeling a rest "
-  "param as `arrayOf Ty`, before this signature can be written down at all.",
+  "The idiomatic method_missing shape: `def method_missing(name, *args)`. RETARGETED to true on 2026-09-01 (clink 34/39). The original reading -- FLAGGED ty_language_gap, 'Ty's arrow spine has no vararg/rest-arity constructor, so there is no Ty value that honestly describes this parameter list' -- was about writing down a *signature*, and this checker never writes one: `callDef`/`callMissing` type the body once per call-site argument shape (tier 6). So the rest parameter needs no arity spine at all; `paramBind` binds `*args` to `arrayOf (elemTy <the remaining argument types>)`, which is the second of the two fixes the original description itself proposed ('or modeling a rest param as arrayOf Ty'). Climbed by tier 14b's rest-parameter rows, with nothing added here. Its companion proc-arity-leniency is *not* fixed by the same work and is not a Ty gap either: it needs `Ty.clos` to record whether a callable is a proc or a lambda, since only a proc's arity is lenient.",
   "class Ghost\n  def method_missing(name, *args)\n    \"called\"\n  end\nend\n\n"
   "Ghost.new.anything_at_all\n",
-  expect_validate=False, false_reason="ty_language_gap")
+  expect_validate=True)
 
 
 # --- Tier 11: cross-cutting -- features in concert ---------------------------

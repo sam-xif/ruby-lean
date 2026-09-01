@@ -3569,3 +3569,49 @@ What is left divides into four things, and only one of them is more rows:
    `a, b = s.split("-")` in the slice.
 4. **`ParamEnv` as a relation**, `Struct`, `Comparable`, `=~`/`Regexp.last_match` (global state),
    `gsub` with a block, `break`, `else`/`ensure`, and the eight whole-file rungs of tier 18.
+
+## Clink 40 (2026-09-01) — a flagged `Ty` gap that was not one: 172 → 173, and 3 gaps → 2
+
+`metaprog-method-missing-splat`, **retargeted from `false` to `true`** and climbed with nothing
+added. No new rule, no new row; the finding is the retargeting.
+
+### What the flag said, and why it was wrong
+
+The rung had been a recorded `ty_language_gap` since tier 10, and the recorded reason was:
+
+> Its true signature is "one Sym, then zero or more of anything" — and `Ty`'s arrow spine
+> (`arrow0`/`arrowCons`) has no vararg/rest-arity constructor at all. There is no `Ty` value that
+> honestly describes this parameter list.
+
+Every sentence of that is true, and it is about **signatures** — which this judgment does not
+write. Tier 6's finding was exactly that: `callDef` types a method's body once per *call-site
+argument shape*, in an environment made of just its parameters at just those types, so there is
+no signature to describe and no arity to spine. `paramBind` binds `*args` to
+`arrayOf (elemTy <the remaining argument types>)`, which is the *second* of the two fixes the
+original description itself proposed ("or modeling a rest param as `arrayOf Ty`").
+
+So the rung was climbable the moment tier 14b's rest-parameter rows landed (clink 34, written for
+`param-rest`), and it took two clinks for anyone to notice — the tier summary went to 6/6 with a
+`MISMATCH` in the *other* direction, which is what surfaced it.
+
+### The lesson, and the one gap it does not close
+
+**A gap phrased in terms of signatures should be re-read before it is believed** in a checker
+that has none. The `arrow0`/`arrowCons` constructors are still unused after tier 9 predicted they
+might never be needed, and this is the second piece of evidence for that prediction.
+
+`proc-arity-leniency` (`proc { |x, y| x }.call(1)`) is *not* fixed by the same work, and its own
+flag deserves the same re-reading: it is not a `Ty` gap either. What it needs is for `Ty.clos` to
+record whether a callable is a **proc or a lambda**, because only a proc's arity is lenient
+(`y` gets `nil`); a lambda raises `ArgumentError`. That is a field on an existing constructor, not
+a new one, so the corpus entry is left targeting `false` but its reason is now recorded as
+misfiled too.
+
+**Flagged `Ty` language gaps: 3 → 2**, and the one that is unambiguously real is
+`narrow-nilable-and-union`'s length-indexed array — which §Frontier item G shows the slice asking
+for from four directions.
+
+### State
+
+**173 rungs of 232**, 38 mismatches. Tiers 1–3, 5, 7, 8, 10 and 13 at every recorded target;
+173/173 cross-checked, 138/138 controls, corpus agreement 232/232, axiom-clean.

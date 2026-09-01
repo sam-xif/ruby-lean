@@ -2209,6 +2209,38 @@ def r113 : Rung :=
         (not_objectMethod rfl) rfl rfl
         (.prim .strLit (.cons (.prim (.var rfl rfl) .nil .symToS) .nil) .strAdd))))⟩
 
+/-- `class Ghost; def method_missing(name, *args); "called"; end; end;
+    Ghost.new.anything_at_all` → `String`, and **a flagged `Ty` language gap that turned out
+    not to be one** (retargeted 2026-09-01).
+
+    The recorded reason was: "its true signature is 'one Sym, then zero or more of anything', and
+    `Ty`'s arrow spine has no vararg constructor, so there is no `Ty` value that honestly
+    describes this parameter list". That is a correct statement about *signatures* — and this
+    checker never writes one. `callDef`/`callMissing` type the body once per **call-site argument
+    shape** (tier 6's finding), so a rest parameter needs no arity spine at all: `paramBind`
+    binds `*args` to `arrayOf (elemTy <the remaining argument types>)`, which is the *second* of
+    the two fixes the original description itself proposed.
+
+    So it climbed with nothing added — by tier 14b's rest-parameter rows, written for
+    `param-rest`, and it took two clinks for anyone to notice. The general lesson is the one tier
+    6 already recorded and this rung re-proves at a distance: **"what signature does this method
+    have" is a question this judgment does not ask**, and a gap phrased in terms of signatures
+    should be re-read before it is believed.
+
+    Its companion `proc-arity-leniency` (`proc { |x, y| x }.call(1)`) is *not* fixed by the same
+    work, and it is not a `Ty` gap either: it needs `Ty.clos` to record whether a callable is a
+    proc or a lambda, because only a proc's arity is lenient. -/
+def r114 : Rung :=
+  ⟨"metaprog-method-missing-splat",
+    .seq [.class' "Ghost" none
+            (.def' "method_missing" [.req "name", .rest (some "args")] (.str "called")),
+          .send (some (.send (some (.const "Ghost")) "new" [] none))
+            "anything_at_all" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl rfl rfl .nil .nil)
+      (.last (.callMissing (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl
+        (not_objectMethod rfl) rfl rfl .strLit)))⟩
+
 /-- `def pick(flag) … end; v = pick(false); case v when Integer then v * 2 when String then
     v + v else 0 end` → `union(Int, String)`.
 
@@ -3643,7 +3675,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
-   r109, r110, r111, r112, r113,
+   r109, r110, r111, r112, r113, r114,
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
