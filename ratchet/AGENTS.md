@@ -13,10 +13,10 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **141 rungs of 232 — tier 13 is complete**
+## Checker status: **173 rungs of 232 — tier 13 complete, tiers 14–17 open**
 
-`Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, and tier 13 whole:
-the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
+good half of tiers 14–17: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`/`nil?`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
@@ -26,22 +26,30 @@ literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, ti
 modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` **and its builtin iterators**
 (`each`/`map`/`select`/`sort_by`/`inject`, both `&` forms), tier 10's **metaprogramming**
 (class reopening, `include`/`extend`/`prepend`, `method_missing`), tier 11's cross-products,
-tier 12's **narrowing**, and all of tier 13's **constants** (`casgn`/`const`/`cpath`/
-`cpath_asgn`, class-body constants, `attr_reader`/`alias`/`private_constant`, nested
-namespaces under qualified names, `Object#class`/`Module#to_s`, `Object#freeze`) — **133
-rungs**, plus the 8 tier-13–17 rungs that were already climbed.
+tier 12's **narrowing**, all of tier 13's **constants** (`casgn`/`const`/`cpath`/`cpath_asgn`,
+class-body constants, `attr_reader`/`alias`/`private_constant`, nested namespaces under
+qualified names, `Object#class`/`Module#to_s`, `Object#freeze`), tier 14's **optional, rest and
+keyword parameters** (`Judge.callDefKw` and the split argument list), tier 15's **`String` and
+`Regexp` rows** (a `Regexp` being opaque), tier 16's **`while`, the `next` guard, value-`===`
+and `begin`/`rescue`** (with `raise` typed `.never`), and tier 17's **collection rows and
+iterators** (`<<`, `compact`/`uniq`, `any?`/`all?`/`find`/`filter_map`/`flat_map`/
+`each_with_index`) — **173 rungs**.
 
 **The ladder was climbed on 2026-09-01, and the corpus grew the same day** — from 136 rungs to
 **232**, by pointing it at a *target* instead of at the feature list (§2026-09-01: the Homebrew
-slice). Tiers 1–12 are unchanged and still at every recorded target: 121 of their 136 rungs
-climbed, and the 15 that are not are permanent by design (12 `unsafe_program`, 3
-`ty_language_gap`). Tiers **13–19** are the new 96, and 8 of them were already climbed the day
-they were written.
+slice). Tiers 1–12 are unchanged and still at every recorded target: 122 of their 136 rungs
+climbed (121 then, plus `metaprog-method-missing-splat`, retargeted and climbed on the same day
+by tier 14b's work — see §Ty language gaps), and the 14 that are not are permanent by design
+(12 `unsafe_program`, 2 `ty_language_gap`). Tiers **13–19** are the new 96, and 8 of them were
+already climbed the day they were written.
 
-**Tier 13 (constants and scoped names) was then climbed the same day**, in six clinks
-(`implementation-notes.md` clinks 27–32) — all 12 of its rungs that target `true`, plus its
-permanent negative. So the headline is **141 of 232**, with **69 to climb** and 22 permanent
-negatives.
+**Tiers 13–17 were then worked the same day**, in clinks 27–40 (`implementation-notes.md`):
+tier 13 **complete** (12/13, six clinks), and tiers 14–17 taken from 1/15, 3/19, 4/15 and 0/23 to
+**7/15, 13/19, 10/15 and 9/23**. So the headline is **173 of 232**, with **38 rungs differing
+from their recorded target** (down from 81) and 21 permanent negatives — one fewer than before,
+because a flagged `Ty` gap turned out not to be one (§Ty language gaps, clink 40).
+
+Tiers **1–3, 5, 7, 8, 10 and 13** are now at every recorded target.
 
 **What a constant cost** (clink 32 has the table). Constants live in **`Ctx.consts`**, keyed
 by absolute path (`"::LIMIT"`, `"::Box::SIZE"`), because the three obvious homes each fail for
@@ -885,28 +893,44 @@ whole linked program.
     interpolates four constants into `SEMVER_REGEX`), so a `Regexp` is **opaque** and nothing
     may be read off its source text. `regexp-gsub-block` is a higher-order row of tier 9c's
     kind, on the path of every purl the slice emits.
-16. **Control flow beyond `if` (15 rungs).** **4/15**, all four sugar (§2026-09-01). The
-    corpus's whole repertoire was `if`. What the slice adds that is not sugar is
-    `Expr.begin'` — and it is *load-bearing rather than incidental*: `Vulnerability` defines
-    its own `Uncomparable < StandardError` and uses raise/rescue as the **comparison
-    protocol**, so a checker that cannot follow exceptions cannot type the decision core at
-    all (`ctl-raise-custom`, and `ctl-rescue-in-block` for the shape `range_status` actually
-    writes). `ctl-while`'s design question is not the loop but its environment: the body's
-    outgoing environment feeds its own next iteration, so the rule needs a fixed point, and
-    the cheap sound answer is clink 11's rule applied to the loop.
-    `ctl-rescue-wrong-class-unsafe` is the control against reading any `begin` as discharging
-    the type-error family.
-17. **Collections and Comparable (23 rungs).** **0/23**, and mostly *library* rather than
-    language: the builtin call shapes the slice reaches for constantly and the corpus never.
+16. **Control flow beyond `if` (15 rungs). 10/15** (clinks 37–38). Both design predictions in
+    the original note were right, and one of them was right about the *wrong construct*.
+    `ctl-while`'s question was indeed the environment rather than the loop, and the cheap sound
+    answer was indeed clink 11's rule applied to the loop — condition and body must both leave
+    every type where they found it, which makes the fixed point trivial. `begin`/`rescue` has the
+    same question in a harder form: a handler runs at an **arbitrary point inside the body**, so
+    it cannot be typed in the body's incoming environment, its outgoing one, *or* the join of
+    the two (`v = 1; v = "s"; v = 2` has the same types at both ends and a different one in the
+    middle). The cheap sound answer there is `noLocalAsgn body` — tier 12's whitelist reused —
+    and it costs `ctl-begin-rescue-else-ensure` and `ctl-rescue-in-block`, both of which assign
+    in the body. `Vulnerability`'s raise/rescue-as-comparison-protocol is `ctl-raise-custom`,
+    climbed, and it needed `excName?` to walk `Cls.super?` to `StandardError`. `raise` is
+    `.never`, which is `primNever`'s reading of "does not return" arrived at from the other side.
+    `next` gets **no rule of its own** and both obvious ones are unsound (clink 37), so it joins
+    `.ret` as a statement kind whose rule lives in `JudgeSeq`. `ctl-rescue-wrong-class-unsafe` is
+    the control against reading any `begin` as discharging the type-error family, and it is
+    rejected because `Judge.begin'` never looks at the rescued classes when typing the body.
+    Still owed: `else`/`ensure`, `ctl-break` (a `break` changes the *enclosing send's* result,
+    not the block's) and `ctl-return-early` (the length-indexed array).
+17. **Collections and Comparable (23 rungs). 9/23** (clink 39), and mostly *library* rather
+    than language: the builtin call shapes the slice reaches for constantly and the corpus never.
     `homebrew/README.md` §2 measures the same gap over all of Homebrew (6.4% of 113,610 call
-    sites resolve to nothing we have); these are its slice-sized head. Three items are
-    structural rather than one-more-row: **`lib-array-push`** discharges the obligation tier 5
-    left behind (no rule for `Array#<<`, and `arrayOf`'s invariance becomes load-bearing);
-    **`lib-hash-fetch`** is the slice's single most-used builtin at **62 sites** and cannot be
-    typed at all without a keyed hash; and **`lib-array-zip`/`lib-array-to-h`/
-    `lib-array-partition`** all want a *pair* type, which `arrayOf` cannot express — the
-    element types need not agree. `lib-comparable` is the payoff of tier 10's mixin work,
-    and three of the eight slice files depend on it.
+    sites resolve to nothing we have); these are its slice-sized head. Three findings from the
+    rows that are climbed. The guard on a row moved for the first time from the **receiver** to
+    the **element** (`include?` calls `==` on elements, `uniq` hashes them) — `NilQSafe` for the
+    third time, asking its usual question one level down. Two result types are computed by
+    tier 12's **refinement functions** (`compact` is `arrayOf (nonNilTy τ)`, `filter_map` is
+    `arrayOf (truthyTy ρ)`), their first use outside `narrowEnvs`. And **`Array#<<` discharged
+    tier 5's obligation** with a twist: the row is *invariant*, and that is what keeps clink 34's
+    `arrayOf .never`-means-provably-empty reading honest — pushing onto one would need an
+    argument of type `.never`, and nothing has one. The price is that `lib-array-push` does *not*
+    climb, and it must not (`xs = []` starts at `arrayOf .never`, and a send does not retype its
+    receiver's binding).
+    The remaining 14 divide into the three `Ty` demands — a parameterised `Hash`
+    (`lib-hash-fetch`, 62 sites), a pair type (`lib-array-zip`/`to-h`/`partition`/
+    `lib-multiple-assign`), a length-indexed array (`lib-array-first-last`,
+    `lib-array-sort-by-max-by`) — plus `Struct` and `lib-comparable`, the payoff of tier 10's
+    mixin work, which three of the eight slice files depend on.
 18. **The eight slice files (8 rungs).** **0/8.** One rung per file: the file, its
     require-closure, and a driver that exercises its own API. Ordered by dependency, which is
     also roughly by size — `semver.rb` (219 composed lines, 5 `def`s, no state) is the first
@@ -928,20 +952,19 @@ Run `scripts/run_ratchet.sh` for current numbers:
 corpus agreement (CRuby vs the Lean semantics): 232/232 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
-tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 5/6
-tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 1/15  tier 15: 3/19
-tier 16: 4/15  tier 17: 0/23  tier 18: 0/8   tier 19: 0/3
-flagged Ty language gaps: 3 (proc-arity-leniency, metaprog-method-missing-splat,
-                             narrow-nilable-and-union)
-hand-authored derivations on file: 141
-rungs where validate differs from the recorded target: 69
+tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 6/6
+tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 7/15  tier 15: 13/19
+tier 16: 10/15 tier 17: 9/23  tier 18: 0/8   tier 19: 0/3
+flagged Ty language gaps: 2 (proc-arity-leniency, narrow-nilable-and-union)
+hand-authored derivations on file: 173
+rungs where validate differs from the recorded target: 38
 ```
 
-All 141 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 173 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 141/141 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 108/108
+(also run inline by `run_ratchet.sh`): 173/173 of those cross-checked against the real
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 138/138
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
@@ -955,7 +978,13 @@ Three numbers, and they move for different reasons:
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
-## Permanent negatives (22 rungs, and only these 22 by design)
+## Permanent negatives (21 rungs, and only these 21 by design)
+
+**Was 22 until 2026-09-01**, when `metaprog-method-missing-splat` was retargeted to `true` and
+climbed — its `ty_language_gap` flag had been misfiled (§Ty language gaps, clink 40). That is the
+first time a rung has left this list, and it is worth noting *how*: not by a new `Ty`
+constructor, but by re-reading a reason that turned out to be about a signature this judgment
+never writes.
 
 Every other rung targets `true`. These don't, each for one of the two reasons
 `Ratchet/Corpus.lean` names (`false_reason`). Tier 11 added three: `xc-block-retypes-capture`
@@ -1000,6 +1029,32 @@ There used to be a third reason, `dishonest_cert`, holding exactly one rung; it 
 away with certificates (§Claim-free).
 
 ## Ty language gaps
+
+**Two of the four recorded here have since been re-read and are *not* `Ty` gaps** (clink 40,
+2026-09-01). Both were phrased in terms of a **signature**, and this judgment never writes one:
+`callDef`/`callMissing` type a body once per call-site argument shape (tier 6's finding), so
+there is no arity to spine.
+
+- **`metaprog-method-missing-splat` is climbed and retargeted to `true`.** `paramBind` binds
+  `*args` to `arrayOf (elemTy <the remaining argument types>)`, which is the *second* of the two
+  fixes the entry below itself proposed. It became climbable the moment tier 14b's rest-parameter
+  rows landed, written for an unrelated rung.
+- **`proc-arity-leniency` still targets `false`, but for a different reason than recorded.** What
+  it needs is for **`Ty.clos` to record whether a callable is a proc or a lambda** — only a
+  proc's arity is lenient — which is a field on an existing constructor, not a new one. Its
+  strict sibling `lambda-arity-mismatch` is a permanent `unsafe_program` for the same call shape,
+  and that contrast is exactly the distinction `Ty.clos` cannot currently draw.
+
+So the count printed by `Main.lean` is **2**, and the one that is unambiguously a missing
+constructor is the length-indexed array (the fourth entry below), which §Frontier item G shows
+the slice asking for from four directions. `Ty`'s arrow spine (`arrow0`/`arrowCons`) is *still*
+unused after tier 9 predicted it might never be needed, and the retargeting above is the second
+piece of evidence for that prediction.
+
+The original text of the first two entries is kept below, because the reasoning is the record of
+what was believed and the correction is only legible against it.
+
+---
 
 **Four found so far. The first two are the same missing thing: `Ty`'s arrow spine
 (`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.**
@@ -1127,16 +1182,20 @@ unblocks**, and by that measure:
   and both orders of that raise. What it also missed: a class body's constants cannot be
   threaded at all — `Ctx.afterStmt` sees a class statement's type, not its contents — so they
   are read syntactically (`constLitTy?`) and *discharged* by a premise at the definition site.
-- **C. Keyword parameters and arguments (tier 14).** 105 `kwargs` nodes, and the one place
-  where getting it wrong is *unsound* rather than imprecise (a missing required keyword is
-  an ArgumentError). `purl.rb`'s constructor is unreachable without it.
-- **D. `Regexp` as an opaque `.cls` plus the `String` rows (tier 15).** Cheap — most of the
-  rows are total `String -> String` — and it is `semver.rb`'s and `identify.rb`'s whole
-  diet. `String#match`'s nilable result is the one hard part, and tier 12 already has the
-  narrowing to consume it.
-- **E. `begin`/`rescue` (tier 16).** Not error handling in this target: `Vulnerability`
-  raises and rescues its own `Uncomparable` as the *comparison protocol*, so the decision
-  core is untypeable without it.
+- ~~**C. Keyword parameters and arguments (tier 14).**~~ — **done** (clink 35). The prediction
+  that this is the one place where getting it wrong is *unsound* was right, and there turned out
+  to be **two** obligations rather than one: a missing required keyword *and* an unexpected one.
+  What it under-weighted is that `Expr.kwargs` is not a value, so the *call shape* had to change
+  (`Judge.callDefKw`) rather than a rule gaining a premise.
+- ~~**D. `Regexp` as an opaque `.cls` plus the `String` rows (tier 15).**~~ — **done**
+  (clink 36), and "cheap" was right: nine rows and one rule for ten rungs. `String#match`'s
+  nilable result was *not* the hard part in the predicted sense — tier 12's narrowing cannot help,
+  because separating `regexp-match-captures` from `regexp-no-match-unsafe` needs a regexp engine
+  rather than a refinement. That rung is now a recorded non-climb.
+- ~~**E. `begin`/`rescue` (tier 16).**~~ — **done for the no-`else`/`ensure` shape** (clink 38).
+  The prediction about the target was exactly right. What it did not see is that the hard part is
+  the *environment*: a handler runs at an arbitrary point inside the body, so the answer is
+  `noLocalAsgn body` (tier 12's whitelist), and two of the tier's rungs are its price.
 - **F. A pair/tuple type.** `zip`, `to_h`, `partition`, `rpartition` and every
   `a, b = ...` in the slice want one, and `arrayOf` cannot express it because the element
   types need not agree. This is a **fourth independent demand on the `Ty` grammar**, beside
@@ -1146,8 +1205,17 @@ unblocks**, and by that measure:
   it three more ways: `arr.first`, `MatchData#[]` after a successful match, and
   `a, b = s.split("-")`.
 
-`semver.rb` is the cheapest whole-file target — it needed B, D and E, **B is now done**, so it
-needs D and E — and it is the rung to aim the next pass at.
+`semver.rb` is the cheapest whole-file target, and **B, D and E are all done now** — so the next
+pass should point `validate` at `slice-semver` and read what it still refuses, rather than
+guessing. That is the first time on this ladder that a whole-file rung is worth *attempting*
+rather than deferring, and the honest expectation is that it fails on something unlisted: the
+file is 219 composed lines and the per-form tiers only measured the forms the census found.
+
+The three demands on `Ty` that remain are, in order of how much they unblock: **A** (a
+parameterised `Hash` — 62 `fetch` sites, and `cvss.rb` entirely), **G** (the length-indexed
+array — `arr.first`, `MatchData#[]`, every `a, b = s.split("-")`), **F** (a pair type — `zip`,
+`to_h`, `partition`). All three are `Ty` grammar changes, and all three want the same care
+`Ty.clos` got: a **spine** rather than a list payload, so that `Ty` keeps kernel-reducing.
 
 The original list, kept because its per-item reasoning is still the record of why each tier
 cost what it did:
