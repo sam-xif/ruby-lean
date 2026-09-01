@@ -1087,14 +1087,19 @@ R("narrow-and-guard", 12,
   expect_validate=True)
 
 R("narrow-nilable-and-union", 12,
-  "arr = [1, \"a\"]; v = arr[0]; if v.is_a?(Integer) ... -- both layers at once. elemTy joins "
-  "the heterogeneous literal to `union(Int, String)`, Array#[] wraps that in `nilable`, so v "
-  "is `nilable (union Int String)` and narrowing has to see through the nilable to refine the "
-  "union inside it. The is_a?(Integer) test excludes nil *and* String in one step, which is "
-  "the case showing refinement is a filter over a set of possibilities rather than a rewrite "
-  "of a constructor.",
+  "arr = [1, \"a\"]; v = arr[0]; if v.is_a?(Integer) ... -- both layers at once, and the rung "
+  "that turned out to be a **Ty language gap** rather than a demand on narrowing. elemTy joins "
+  "the heterogeneous literal to `union(Int, String)`, Array#[] wraps that in `nilable`, so v is "
+  "`nilable (union Int String)`. The then-branch is fine -- is_a?(Integer) excludes nil *and* "
+  "String in one step, which is the case showing refinement is a filter over a set of "
+  "possibilities. The **else**-branch is not: notATy leaves `nilable (cls String)`, because "
+  "`nil.is_a?(Integer)` is false too, so `v + \"!\"` would be `nil + \"!\"` and raise "
+  "NoMethodError. This program is safe only because *this* array has an element at index 0, "
+  "and no `Ty` here can say that: `arrayOf` carries an element type and no **length**. A "
+  "sound checker must reject it, so the target is false -- see AGENTS.md section Ty language "
+  "gaps for the missing constructor.",
   'arr = [1, "a"]\nv = arr[0]\nif v.is_a?(Integer)\n  v + 1\nelse\n  v + "!"\nend\n',
-  expect_validate=True)
+  expect_validate=False, false_reason="ty_language_gap")
 
 R("narrow-in-block", 12,
   "Narrowing inside a block body, in concert with tier 9c's iterators and clink 11's "

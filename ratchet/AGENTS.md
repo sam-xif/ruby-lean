@@ -13,35 +13,55 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **95 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **119 rungs of 136, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–8, plus tier 9's callable
-values**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
-queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
+queries (`to_s`/`zero?`/`length`/`nil?`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
 `BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
-literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
-`class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, and
-tier 8's modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b`, and **tier 12's narrowing**
-(the four direct-test rungs) — 95 rungs. **Every rung at or below tier 8 matches its recorded
-target; tier 9 is at 10/22, tier 11 at 1/10 and tier 12 at 4/12.** What remains is tier 9's
-nine blocks-passed-to-*builtins* rungs, tier 10 (metaprogramming), tier 11's cross-products,
-and tier 12's remaining eight narrowing rungs.
+literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, tier 7's
+`class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, tier 8's
+modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` **and its builtin iterators**
+(`each`/`map`/`select`/`sort_by`/`inject`, both `&` forms), tier 10's **metaprogramming**
+(class reopening, `include`/`extend`/`prepend`, `method_missing`), tier 11's cross-products,
+and tier 12's **narrowing** — **119 rungs**.
 
-**Tier 12 (clinks 13 and 14) is where `nilable` and `union` stop being write-only.** Narrowing
-lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc`, a **total**
-function that is the identity on every condition it does not recognize, which is why folding it
-into the existing rule did not disturb a single one of the 91 derivations already on file. Three
-recognized conditions so far (`if x`, `if x.nil?`, `if x.is_a?(C)`), four type-level refinements
-(`truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy`) resting on the single fact that Ruby's only falsy
-values are `nil` and `false` — which is why `falsyTy .int = .never` is *precise*, not reckless —
-plus `isATy`/`notATy`, which project a union member-by-member using complete ancestor lists
-(`builtinAncestors` for builtins, `ancestors?` for declared classes). `nil?` needed a *guard*
-(`NilQSafe`) rather than the wildcard receiver clink 1 declined for `!`; `is_a?` needed a
-`Judge` rule of its own (`isAQuery`), because its guard consults the class table and `PrimSig`
-cannot. Clink 14 also records that **`subTy` is still unused** after two clinks predicted
-narrowing would bring it due: refinement needs class *membership*, not `Ty` subsumption.
+**Tiers 1–8 are complete, and tiers 9, 10 and 11 are at every rung they target**
+(19/22, 5/6, 8/10 — the remainders being permanent negatives and `Ty` language gaps). Tier 12
+is 7/12. **Exactly two rungs in the whole corpus differ from their recorded target**, and both
+are the same deferred design: `narrow-union-case-when` and `narrow-and-guard` need **aliasing**,
+because `case v when Integer` desugars to a test on a *temporary* while the branch bodies use
+`v`. `implementation-notes.md` clink 17 records the three cheap designs for it that are
+**unsound** and the one that is not (a fourth threaded state).
+
+**Tier 12 (clinks 13, 14, 15, 16) is where `nilable` and `union` stop being write-only.**
+Narrowing lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc` and
+`narrowSpine κ.classes c Ic`, both **total** functions that are the identity on every condition
+they do not recognize, which is why folding narrowing into the existing rule did not disturb a
+single derivation already on file. Three recognized conditions (`if x`, `if x.nil?`,
+`if x.is_a?(C)`), which apply to a **local or an instance variable** (`narrowCond?` returns the
+`VarKind`); four type-level refinements (`truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy`) resting on
+the single fact that Ruby's only falsy values are `nil` and `false` — which is why
+`falsyTy .int = .never` is *precise*, not reckless — plus `isATy`/`notATy`, which project a
+union member-by-member using complete ancestor lists. Two rules beyond `if'` carry refinements:
+`JudgeSeq.guard` (the `return 0 if x.nil?` idiom — narrowing by *elimination of a branch that
+leaves*, and therefore a fact about statement order, so it belongs to `JudgeSeq`), and the
+`ifNoElse` twin. Clink 16 also **reversed clink 6's ivar-spine agreement premise** into a
+`joinSpine`, which is what makes an ivar typed differently on two constructor paths describable
+at all. Clink 14 records that **`subTy` is still unused** after two clinks predicted narrowing
+would bring it due: refinement needs class *membership* (the ancestor walk), not `Ty`
+subsumption.
+
+**Tier 10 turned out to be less exotic than its name.** `metaprog-class-reopening` was not
+metaprogramming at all — `extendClasses` shadowed instead of merging, which was simply *wrong*
+about what a `class` statement does (clink 21). `include`/`extend` are two fields on `Cls` and
+one step in the lookup (clink 22). `prepend` is the one that forced a structural change: the MRO
+became a **list** (`mroList?`/`searchMro`/`afterInMro`), because a prepended module's "next" is
+the class that prepended it and no `super?` walk can find it — and `super` is now literally
+"keep going from where I was found" (clink 23). `method_missing` needed a table whose
+*completeness* is the soundness condition rather than the coverage one (`ObjectMethod`, clink
+24) — the one place on this ladder where that inversion holds.
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -511,7 +531,7 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (12 tiers, 136 rungs, 95 climbed)
+## The ladder (12 tiers, 136 rungs, 119 climbed)
 
 **Every rung's target is `expect_validate = true`, with exactly nine, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
@@ -580,7 +600,10 @@ ladder is reported: 114/114 (§Architecture).
    unchanged. Only `moduleStmt` and `selfSCall` were missing. The real work was
    `Cls.isModule`, which stops `M.new` — a guard that no rung exercises and that lives in a
    negative control.
-9. **Blocks, procs and lambdas (22 rungs).** Ruby's callable literals, in one place
+9. **Blocks, procs and lambdas (22 rungs).** **19/22 — every rung it targets**; see clink 18
+   for the iterators (`IterSig`, a table split in two so half a row is read before the block's
+   body and half after).
+   Original note: Ruby's callable literals, in one place
    and increasing in complexity: `lambda {}`/`->(){}`/`proc {}` (all three desugar to
    the *same* shape — an ordinary `send none "lambda"/"proc" [] (block …)`, so a block
    literal is the only callable node there is), the elimination forms (`call`, `#[]`,
@@ -600,7 +623,8 @@ ladder is reported: 114/114 (§Architecture).
    wanting `|x; y|` block-locals. 19 of 22 target `true`; the three that don't are the tier's
    real findings — `block-bad-arith` and `lambda-arity-mismatch` (genuinely raising
    programs) and `proc-arity-leniency` (§Ty language gaps).
-10. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** `method_missing`,
+10. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** **5/6 — every rung it
+   targets** (clinks 21–24). Original note: `method_missing`,
    class reopening, and `include`/`extend`/`prepend`. Five of six are ordinary safe
    Ruby needing only dispatch design (§Design notes has the subtleties: self-context
    `vcall` resolution, mixin ancestry, prepend-ordered MRO with `super`, a
@@ -609,9 +633,18 @@ ladder is reported: 114/114 (§Architecture).
 
 11. **Cross-cutting (10 rungs).** No new feature — *combinations* of features that already
    have rules, added because a corpus-driven ladder is blind to its own cross-products.
-   **1/10 climbed** (clink 11); see §Checker status.
+   **8/10 climbed — every rung it targets** (clinks 11, 19, 20). Two clinks did it: `Ty.clos`
+   gained the **creation site's `self`** (so a closure's body is judged where it was written,
+   not where it is called — which is what `@f.call(v)` inside a method needs), and three
+   block-carrying call rules appeared (`callMethodBlk`/`callSMethodBlk`/`selfCallBlk`), each its
+   block-less twin plus `callDefBlk`'s two moves. `xc-inherit-implicit-block` — an
+   implicit-receiver send carrying a block, inside a method, dispatching to an *inherited*
+   method — needed nothing new at all, which is the outcome a cross-product tier is supposed to
+   have.
 12. **Narrowing (12 rungs).** No new feature either — the capability that makes `nilable` and
-   `union` *usable*. **4/12** (clinks 12, 13, 14). The corpus came first, deliberately as
+   `union` *usable*. **7/12** (clinks 12–17). The five not climbed: two permanent negatives, one
+   `Ty` language gap (`narrow-nilable-and-union`, retargeted — see §Ty language gaps), and the
+   two **aliasing** rungs, deferred by design (clink 17). The corpus came first, deliberately as
    pressure (clink 12); the four climbed are the ones whose condition tests a local *directly* —
    `if x`, `if x.nil?`, `if x.is_a?(Integer)`, `if x.is_a?(Dog)` — so they need no aliasing.
    The tier's original finding stands for the remaining eight: **narrowing cannot be a
@@ -634,16 +667,18 @@ corpus agreement (CRuby vs the Lean semantics): 136/136 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 10/22  tier 10: 0/6
-tier 11: 1/10  tier 12: 4/12
-flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs where validate differs from the recorded target: 27
+tier 11: 8/10  tier 12: 7/12
+flagged Ty language gaps: 3 (proc-arity-leniency, metaprog-method-missing-splat,
+                             narrow-nilable-and-union)
+rungs where validate differs from the recorded target: 2
 ```
 
-All 95 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 119 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 95/95 of those cross-checked against the real
-semantics, 53/53 negative controls rejected.
+(also run inline by `run_ratchet.sh`): 119/119 of those cross-checked against the real
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 86/86
+negative controls rejected.
 
 Three numbers, and they move for different reasons:
 
@@ -656,7 +691,7 @@ Three numbers, and they move for different reasons:
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
-## Permanent negatives (14 rungs, and only these 14 by design)
+## Permanent negatives (15 rungs, and only these 15 by design)
 
 Every other rung targets `true`. These don't, each for one of the two reasons
 `Ratchet/Corpus.lean` names (`false_reason`). Tier 11 added three: `xc-block-retypes-capture`
@@ -677,15 +712,17 @@ treats `nilable T` as `T` without a guard.
   which the block wrapper must not launder) and `lambda-arity-mismatch`
   (`->(x){x}.call(1, 2)` — ArgumentError, because lambda arity is strict). A sound `chk` must never
   say `true` for any of these — they are the soundness regression tests.
-- **`ty_language_gap`** (2 rungs) — `metaprog-method-missing-splat` and tier 9's
-  `proc-arity-leniency`, see next section.
+- **`ty_language_gap`** (3 rungs) — `metaprog-method-missing-splat`, tier 9's
+  `proc-arity-leniency`, and tier 12's `narrow-nilable-and-union` (retargeted at clink 24; it
+  was recorded as a demand on narrowing and is really a demand on `arrayOf` carrying a
+  **length**). See next section.
 
 There used to be a third reason, `dishonest_cert`, holding exactly one rung; it went
 away with certificates (§Claim-free).
 
 ## Ty language gaps
 
-**Three found so far. The first two are the same missing thing: `Ty`'s arrow spine
+**Four found so far. The first two are the same missing thing: `Ty`'s arrow spine
 (`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.**
 `def method_missing(name, *args)` — the idiomatic shape — has a parameter list no `Ty`
 value describes: not "no `chk` rule for it yet" but "no `Ty` states the truth without
@@ -718,6 +755,19 @@ type at all, `{"a"=>1}["a"] + 1`, which is safe Ruby recorded as a conservative 
 control in `CheckRungs.lean`. Recorded here anyway, because it names a specific missing
 constructor (`hashOf (key val : Ty)`) and it is the first gap in this section that a rung
 count does not surface.
+
+**A fourth, found at tier 12 and the first to change a rung's *target*: `arrayOf` carries an
+element type and no length.** `narrow-nilable-and-union`
+(`arr = [1, "a"]; v = arr[0]; if v.is_a?(Integer) then v + 1 else v + "!" end`) was recorded as
+a demand on narrowing, and the narrowing half works: `isATy` sees through the `nilable` and
+excludes both `nil` and `String` in one step, so the then-branch types. The **else**-branch does
+not, and should not — `nil.is_a?(Integer)` is false too, so `notATy` leaves
+`nilable (cls String)` and `v + "!"` would be `nil + "!"`. The program is safe *only* because
+this array has an element at index 0, and no `Ty` here can say that. Missing constructor: a
+length-indexed array (or a tuple type) that would let `PrimSig.arrayIndex` answer `elem` rather
+than `nilable elem` for an index known in range. Retargeted to `false` with
+`false_reason = "ty_language_gap"` rather than left as a permanent mismatch, because a sound
+checker **must** reject it.
 
 **Watch for more of these as the ladder grows** — this section is the place to record
 each one; a `ty_language_gap` `false_reason` should always come with an entry here
