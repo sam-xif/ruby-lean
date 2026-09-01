@@ -3879,3 +3879,85 @@ different shapes (one is about the value at a `.value` outcome, the other about 
 discharged**. New: `Denote/Sem/` (4 Lean files), `Denote/Ladder.lean`, `Denote/Adequacy.lean`,
 two exes (`semladder`, `denotereport`), `scripts/run_denote.sh` reworked into the ratchet's
 runner. Axiom-clean; no `sorry` and no new axioms anywhere.
+
+---
+
+## Clink 44 (2026-09-01) — the first nine rungs of the semantic ratchet. **177 rungs / 9 of 83 rules**
+
+Clink 43 built the second ladder and discharged nothing. This clink climbs it for the first
+time: **9 of 83 `Judge` rules** are now proved sound against the real `stepFn` — the six pure
+literals (`intLit`, `fltLit`, `symLit`, `truLit`, `flsLit`, `nilLit`), both local reads
+(`var`, `varAlias`) and `seq`. Axiom-clean, no `sorry`, `Ratchet/` untouched.
+
+**The shape held.** `Denote/Sem/notes.md` predicted a leaf rung would be "invert the run":
+`match fuel with | 0 | 1 | k+2`, the first two contradicting `.outOfFuel` and the third
+delivering the value to the empty continuation. That is exactly `evals_pure`, and once it
+existed each of the six literals is three lines. What the note did *not* predict is that the
+inversion does not return the machine it started from — `evalFrom` rewrites `ctl` and `kont`,
+and the value step rewrites `ctl` again — so nothing could be discharged until conformance was
+proved blind to the control word. That is the clink's real content.
+
+**Decision 1: prove `ctl`/`kont` invisible to the denotation, rather than restating `StateOk`
+over a projection.** The alternative considered and rejected was to re-express `StateOk` as a
+predicate on the tuple it actually reads (heap, frames, stack, tables) so that the control word
+could not appear in it by construction. Rejected because it changes what every one of the 83
+obligations *says* in order to make nine of them easier, and because it is false to the model:
+two `StateOk` components genuinely quantify over **runs** — `denM`'s arrow arms through
+`Returns`, and `AsmsOk` through `SendReturns` — and a run does depend on the whole machine. The
+reason those two survive is sharper than "conformance is heap-only", and worth having on file
+as a proof rather than as a restriction: `applyIn` and `sendIn` *overwrite* `ctl` and `kont` on
+the way in, so the run a call denotes is literally the same run from both machines
+(`applyIn_reCtl`, by `rfl`). `denM_ctl` is the induction that carries this through
+`denM`/`denApp`/`denSpine` simultaneously; `StateOk_reCtl` is the eleven-component corollary.
+
+**Decision 2: `Judge.seq` is discharged as the identity, and that is the finding, not a
+shortcut.** `SemJudgeSeq κ Γ I es τ Γ' I'` and `SemJudge κ Γ I (.seq es) τ Γ' I'` are the same
+proposition — `JudgeSeq` exists so the *context* can grow between statements
+(`Ctx.afterStmt`), which is a fact about `JudgeSeq`'s own rules and not about what a sequence
+means. So `Sem.Judge.seq := fun h => h`. The alternative — unfolding `SemJudgeSeq` and
+re-proving it — would produce a longer proof of the same thing and hide the fact that the two
+definitions were deliberately made to coincide. Note this rung is genuinely cheap while
+`JudgeSeq`'s own four rules (still 0 of 4) are where the sequencing content lives.
+
+**Decision 3: two local-read rungs, not one.** `Judge.var`'s `isAliasTy τ = false` premise
+exists for a mechanical reason (`Judge.varAlias`'s docstring: a conclusion `stripAlias τ`
+cannot be unified with a concrete type), and the semantic side inherits the split for free:
+`EnvOk` states `denM (stripAlias τ) m (m.getLocal x)`, so `var` needs `stripAlias τ = τ` from
+its premise and `varAlias` needs `stripAlias (.sameAs y τ) = τ` by computation. Both are the
+first rungs to **consume** a `StateOk` component instead of only re-establishing one. Neither
+touches `EnvOk`'s identity conjunct — that is `Ty.sameAs`'s real content and it is
+`Judge.narrowEnvs`' to consume.
+
+**Definitions changed: none.** No `StateOk` component and no `SemJudge*` definition needed
+fixing for these nine, which is a mild vote of confidence in clink 43's guesses. The one edit
+outside `Denote/Rules/` is a single `import Denote.Rules` in `Denote/Ladder.lean`: the ladder
+counts what is in its own environment, so a rung in an unimported file does not exist.
+`Denote/Rules.lean` is the indirection, so adding a rung never touches the counting mechanism.
+
+**`Judge.strLit` stalled, and it is the fourth stall point** — written up at length in
+`Denote/Sem/notes.md` §The fourth stall point. In one paragraph: a string literal *allocates*,
+so it is the first rule whose post-machine differs from its pre-machine in the **heap**, and
+two things are missing. `StateOk` does not say the heap's core classes exist, so
+`denM (.cls "String") m' v` — which resolves the name "String" through the heap's constant
+table — is not derivable from conformance at all; that is a real missing component and every
+rule concluding a builtin class type will want it. And `denM` does not survive a heap
+extension: transporting an arbitrary `τ` across the push hits the arrow arm, which quantifies
+over *runs*, and a run from the extended heap allocates at shifted object ids, so it is not the
+run from the unextended one. `AsmsOk` has the same shape. The tempting fix — quantify the arrow
+over reachable machines, as `Denote/Arrow.lean`'s `ArrowStable` already does — **conflicts with
+`denM_ctl`**, because the machines reachable from `m` are not those reachable from `m` with its
+control word rewritten; any reachability-indexed arrow has to be seeded by something coarser.
+That is a `Denote/Den.lean` change with `DenB`, `Arrow.lean` and the 31 `Examples.lean` guards
+downstream of it, so it is its own clink rather than a detour inside this one. The rung is left
+undischarged and visible on the ladder, which is the behaviour clink 43 designed for: a rung
+that will not close is information about a definition, not a thing to work around.
+
+### State
+
+**177 rungs of 232**, unchanged (`Ratchet/` untouched; `run_ratchet.sh` and
+`run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **9 of 83 `Judge` rules
+discharged**. New: `Denote/Rules/Core.lean` (the two shared lemmas plus their supporting
+`rfl`/induction helpers), `Denote/Rules/Lit.lean` (the nine rungs), `Denote/Rules.lean` (the
+import list). `Denote/Examples.lean`'s 31 `#guard`s green. Axiom-clean throughout — every new
+file ends in its own `#print axioms`, and each reports only `propext`/`Classical.choice`/
+`Quot.sound`.

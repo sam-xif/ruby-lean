@@ -404,7 +404,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **0 of 83 `Judge` rules discharged — scaffolding built**
+## Semantic ratchet status (`Denote/Sem/`): **9 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 232). This measures
@@ -413,9 +413,17 @@ obligation over the semantic denotation, proved from the real `stepFn`. A progra
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
 written to describe, and this is the answer to it.
 
-Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number). Nothing
-is discharged yet; the scaffolding is what exists, and the working procedure for climbing a
-rung is [`Denote/Sem/notes.md`](Denote/Sem/notes.md).
+Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number).
+Discharged so far, all axiom-clean: the six **pure literals** (`intLit`, `fltLit`, `symLit`,
+`truLit`, `flsLit`, `nilLit`), both **local reads** (`var`, `varAlias` — the first rungs that
+consume a `StateOk` component rather than only re-establishing one), and `seq` (a
+delegation that is definitional: `SemJudgeSeq` *is* `SemJudge` at a `.seq`). They rest on two
+lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance and the
+denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
+overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
+inversion). **`strLit` is the first rung to stall**, on allocation: see `Denote/Sem/notes.md`
+§The fourth stall point. The working procedure for climbing a rung is
+[`Denote/Sem/notes.md`](Denote/Sem/notes.md).
 
 **The obligations are derived, not transcribed.** `SemJudge` and its seven companions were
 given *exactly* their syntactic twins' signatures, which makes a rule's obligation its own

@@ -1,4 +1,5 @@
 import Denote.Sem.Obligations
+import Denote.Rules
 
 /-!
 # `Denote/Ladder.lean` — the semantic ratchet's number

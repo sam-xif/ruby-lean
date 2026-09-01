@@ -13,7 +13,8 @@ before attempting a rung.
 | `State.lean` | `Evals`, `StateOk` and its eleven components | yes — a rung that will not close often means a component is wrong |
 | `Judge.lean` | the eight `SemJudge*` definitions | yes, same reason |
 | `Obligations.lean` | the 83 `Obl.*` — **derived** from the inductive | **no** |
-| `../Ladder.lean` | the count, and the `isDefEq` gate | no |
+| `../Ladder.lean` | the count, and the `isDefEq` gate | no — except its one `import Denote.Rules` |
+| `../Rules.lean` | the list of rule files, so the ladder can see them | yes, one line per new file |
 | `../Adequacy.lean` | `AdequacyTarget`, `AdequacyHyps` (derived) | no |
 
 The obligations are derived, not transcribed, and that is the load-bearing decision:
@@ -40,8 +41,11 @@ mind while working:
 2. Read the obligation. `#print Ratchet.Denote.Obl.Judge.intLit` gives it verbatim, premises
    and all.
 3. Write `theorem Sem.Judge.intLit : Obl.Judge.intLit := …` in a file under `Denote/Rules/`
-   (one file per tier or per family; `Denote/Rules/` does not exist until the first rung
-   creates it). The name must be exactly `Ratchet.Denote.Sem.<Family>.<rule>`.
+   (one file per tier or per family). The name must be exactly
+   `Ratchet.Denote.Sem.<Family>.<rule>`, and the file must be listed in `Denote/Rules.lean` —
+   the ladder counts what is in *its own* import graph, so an unimported rung does not exist.
+   `Denote/Rules/Core.lean` holds the lemmas that are about the machine rather than about a
+   rule (`denM_ctl`, `StateOk_reCtl`, `evals_pure`); reach for it before re-deriving one.
 4. `lake exe semladder` again. The number moves or the type was wrong.
 
 ## What the proof of a rung looks like
@@ -86,6 +90,41 @@ definition to suspect.
 3. **Frame balance.** `SemJudge` concludes `m'.stack = m.stack`, which every rule that pushes
    a frame (a call, a block, a class body) must restore. Leaf rungs get it free; the call rungs
    will not, and that conjunct is where a bug in a frame-pushing rule would surface.
+
+## The fourth stall point — observed, not predicted: **allocation**
+
+The three above were written before the first attempt. The first rung actually to stall was
+none of them. `Judge.strLit` — the third literal, and by the count above a two-`stepFn`
+rung like the others — does not close, because `evalExpr` on a `.str` calls
+`Builtins.allocStr`: its post-machine's heap is its pre-machine's heap with one object
+**pushed**. That is the first rung whose `m'` differs from `m` anywhere but `ctl`, and it
+needs two things nothing currently supplies.
+
+1. **`StateOk` says nothing about the boot classes.** The rule concludes `.cls "String"`,
+   whose denotation is `isAName m'.heap v "String"` — which resolves the *name* through the
+   heap's constant table. A machine conformant with `(κ, Γ, I)` is not required to have a
+   class named `String` at all, so the conclusion is not derivable from the hypothesis. This
+   is stall point (1) exactly as described, and the missing component is a real one: the
+   heap's core classes are what they are. Every rule concluding a builtin class type
+   (`strLit`, `arrayLit`, `hashLit`, most of `prim`) will want it.
+
+2. **`denM` does not survive a heap extension**, and cannot be made to cheaply. Re-proving
+   `EnvOk Γ m'` means transporting `denM τ m (m.getLocal x)` across the push for an arbitrary
+   `τ` — including an arrow, whose denotation quantifies over *runs* (`Returns m f args v m'`).
+   A run from the extended heap allocates at shifted object ids, so it is not the run from the
+   unextended one; relating the two is an allocation-equivariance simulation over the whole
+   interpreter, not a lemma. `AsmsOk` has the same shape and the same problem.
+
+The tempting fix for (2) is the one `Denote/Arrow.lean` already sketches for a different
+reason: quantify the arrow arm over machines **reachable** from `m` (`ArrowStable`), making
+it monotone along execution by `Reaches.trans`. Note before trying it that it *conflicts*
+with the lemma the leaf rungs already rest on: `Denote/Rules/Core.lean`'s `denM_ctl` says the
+denotation cannot see `ctl`/`kont`, and machines reachable from `m` are not the machines
+reachable from `m` with its control word rewritten. Any reachability-indexed arrow has to be
+seeded by something coarser than `Reaches m` — "reachable from `m` under some control word"
+is the obvious candidate, and it is a `Denote/Den.lean` change with `DenB`, `Arrow.lean` and
+the `Examples.lean` guards downstream of it. Not attempted here; recorded so the next attempt
+starts from the constraint rather than discovering it.
 
 ## What is not on this ladder
 
