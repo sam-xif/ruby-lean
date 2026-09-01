@@ -370,6 +370,28 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       | none => none
     | some _ => none
   | f + 1, .send none m args none =>
+    -- Tier 14c: a trailing `kwargs` node is not a value, so a call that carries one takes an
+    -- entirely separate route (`Judge.callDefKw`) rather than being folded into the four below.
+    match splitKw? args with
+    | some (pos, entries) =>
+      match chkAll f κ Γ I pos with
+      | some (posTys, Γ₁, I₁) =>
+        match chkKw f κ Γ₁ I₁ entries with
+        | some (kws, Γ', I') =>
+          match defGet? κ.defs m with
+          | some d =>
+            -- `paramEnvK` is where a missing required keyword and an unexpected keyword are
+            -- both rejected, and both really raise ArgumentError.
+            match paramEnvK d.params posTys kws with
+            | some Γb =>
+              match chk f κ Γb .ivar0 d.body with
+              | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ', I') else none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+      | none => none
+    | none =>
     -- An implicit-self call. Four routes, in this order, and the order is the design:
     -- strictness first (a call with a non-returning argument never dispatches, defined or
     -- not), then the *assumption* (a recursive occurrence must not re-instantiate, or the
@@ -792,6 +814,21 @@ def chkConsts (fuel : Nat) (κ : Ctx) : List (String × Expr) → Bool
       | some τ =>
         if chk f κ [] .ivar0 e = some (τ, [], .ivar0) then chkConsts f κ cs else false
       | none => false
+
+/-- **A call site's keyword arguments** (tier 14c): the decidable counterpart of `JudgeKw`,
+which means `KwEntry.pair` only. A `**h` splat or a dynamic key answers `none`, and the
+program is not typed — see `JudgeKw` for which `Ty` gap each of those is. -/
+def chkKw : Nat → Ctx → Env → Ty → List KwEntry → Option (List (String × Ty) × Env × Ty)
+  | 0, _, _, _, _ => none
+  | _ + 1, _, Γ, I, [] => some ([], Γ, I)
+  | f + 1, κ, Γ, I, .pair k v :: es =>
+    match chk f κ Γ I v with
+    | some (τ, Γ₁, I₁) =>
+      match chkKw f κ Γ₁ I₁ es with
+      | some (kws, Γ₂, I₂) => some ((k, τ) :: kws, Γ₂, I₂)
+      | none => none
+    | none => none
+  | _ + 1, _, _, _, _ => none
 
 /-- `chk` on a **class-or-module-object-valued** expression, reporting the name it names.
 

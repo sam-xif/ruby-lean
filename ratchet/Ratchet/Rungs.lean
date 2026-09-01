@@ -2945,6 +2945,125 @@ def r152 : Rung :=
           .nil)
         .intAdd)))⟩
 
+/-! ### Tier 14c — keyword arguments
+
+The call shape changes here, which is why these three needed a new rule rather than a new row.
+`Expr.kwargs` is the last element of an argument list and **is not a value**: it has no `Ty` and
+`JudgeAll` cannot type it. So `Judge.callDefKw` splits the list — positional arguments by
+`JudgeAll`, keyword arguments by `JudgeKw` into name/type pairs — and `paramEnvK` matches
+keywords **by name**. -/
+
+/-- `def build(type:, name:); type + "/" + name; end; build(type: "brew", name: "x")` →
+    `String`.
+
+    The plain case, and what to read off the derivation is where the *soundness* of this tier
+    sits: in `paramEnvK`, which is `paramBind` and answers `none` in two situations that both
+    raise `ArgumentError` — a **missing required** keyword (the tier's permanent negative,
+    `param-missing-keyword-unsafe`) and an **unexpected** keyword (`paramBind`'s `kws.isEmpty`
+    check at the end of the walk, control (e2)). Unlike a positional arity mismatch, which is
+    also an `ArgumentError` but which `paramEnv`'s length matching already refused for free,
+    these two are *name*-directed and had to be built.
+
+    Note what is absent: no assumption is added to `κ.asms`. An `AsmTable` key is a `List Ty`
+    and cannot distinguish a keyword call from a positional one at the same types, so a
+    *believed* assumption under such a key would be unsound — see `Judge.callDefKw`. A
+    keyword-recursive method therefore does not type, which no rung wants and which is
+    conservative. -/
+def r154 : Rung :=
+  ⟨"param-keyword",
+    .seq [.def' "build" [.key "type" none, .key "name" none]
+            (.send (some (.send (some (.var .lvar "type")) "+" [.str "/"] none)) "+"
+              [.var .lvar "name"] none),
+          .send none "build" [.kwargs [.pair "type" (.str "brew"), .pair "name" (.str "x")]]
+            none],
+    .cls "String", [],
+    .seq (.cons .defStmt
+      (.last (.callDefKw rfl .nil (.pair .strLit (.pair .strLit .nil)) rfl rfl
+        (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+          (.cons (.var rfl rfl) .nil) .strAdd))))⟩
+
+/-- `def build(name:, version: nil); version.nil? ? name : name + "@" + version; end;
+    build(name: "x") + build(name: "x", version: "1")` → `String`.
+
+    **The rung where tier 14 and tier 12 meet.** One `def`, two calls, and the *same* `if` is
+    typed twice with opposite branches dead:
+
+    - `build(name: "x")` — `version` takes its default, so it is `.nilT`. `nonNilTy .nilT` is
+      `.never`, the **else**-branch is dead, and `name + "@" + version` types by `primNever`
+      without any claim about `String#+`.
+    - `build(name: "x", version: "1")` — `version` is a `String`. `isNilTy` makes the
+      **then**-branch's `version` `.never`, but the branch returns `name`, so nothing notices;
+      the else-branch is live and `name + "@" + version` is an ordinary `strAdd` chain.
+
+    Both branches join to `String` either way. A keyword default is `constLitTy?`'s answer,
+    exactly as an optional positional default is (clink 33), which is why `nil` as a default
+    gives the precise `.nilT` rather than a nilable — and that precision is the whole reason the
+    first call's else-branch is dead rather than merely unreachable-looking. -/
+def r155 : Rung :=
+  ⟨"param-keyword-default",
+    .seq [.def' "build" [.key "name" none, .key "version" (some .nil)]
+            (.if' (.send (some (.var .lvar "version")) "nil?" [] none)
+              (.var .lvar "name")
+              (some (.send (some (.send (some (.var .lvar "name")) "+" [.str "@"] none)) "+"
+                [.var .lvar "version"] none))),
+          .send (some (.send none "build" [.kwargs [.pair "name" (.str "x")]] none)) "+"
+            [.send none "build"
+               [.kwargs [.pair "name" (.str "x"), .pair "version" (.str "1")]] none] none],
+    .cls "String", [],
+    .seq (.cons .defStmt
+      (.last (.prim (σ := .cls "String") (argTys := [.cls "String"])
+        (.callDefKw (ρ := .cls "String") rfl .nil (.pair .strLit .nil) rfl rfl
+          -- The branch types are pinned because they have to be: the `if`'s type is
+          -- `joinT τ₁ τ₂`, and until both are known the elaborator cannot see that it is the
+          -- `String` the surrounding `+` wants, so it postpones the `rfl`s inside the branches
+          -- and never comes back. Purely an elaboration-order matter -- and the *values*
+          -- pinned are the finding: `.never` on the right is the dead else-branch.
+          (.if' (τ₁ := .cls "String") (τ₂ := .never)
+              (.prim (.var rfl rfl) .nil (.nilQuery .nilT))
+            (.var rfl rfl)
+            (.primNever (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+              (.cons (.var rfl rfl) .nil) (.inr rfl))
+            rfl))
+        (.cons
+          (.callDefKw (ρ := .cls "String") rfl .nil
+              (.pair .strLit (.pair .strLit .nil)) rfl rfl
+            (.if' (τ₁ := .cls "String") (τ₂ := .cls "String")
+                (.prim (.var rfl rfl) .nil (.nilQuery .cls))
+              (.var rfl rfl)
+              (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+                (.cons (.var rfl rfl) .nil) .strAdd)
+              rfl))
+          .nil)
+        .strAdd)))⟩
+
+/-- `def build(type:, name:); type + "/" + name; end; type = "brew"; name = "x";
+    build(type:, name:)` → `String`.
+
+    Ruby 3.1's keyword shorthand, and the finding is that it is **not sugar at the AST level**
+    the way `x ||= 5` is: the desugarer emits `kwargs [pair "type" (var local "type"), …]`, so
+    the *value* of each keyword is an ordinary local read and `JudgeKw` types it with the rule
+    it already had. Nothing was added for this rung.
+
+    What it does exercise is that a keyword's value is typed in the *caller's* environment while
+    its name binds in the *callee's* — the two `type`s in `type: type` are different variables
+    in different scopes, and the derivation's `.var rfl rfl` under `.pair` is the caller's. -/
+def r161 : Rung :=
+  ⟨"param-shorthand-kwarg",
+    .seq [.def' "build" [.key "type" none, .key "name" none]
+            (.send (some (.send (some (.var .lvar "type")) "+" [.str "/"] none)) "+"
+              [.var .lvar "name"] none),
+          .vasgn .lvar "type" (.str "brew"),
+          .vasgn .lvar "name" (.str "x"),
+          .send none "build"
+            [.kwargs [.pair "type" (.var .lvar "type"), .pair "name" (.var .lvar "name")]]
+            none],
+    .cls "String", [("type", .cls "String"), ("name", .cls "String")],
+    .seq (.cons .defStmt (.cons (.vasgn .strLit) (.cons (.vasgn .strLit)
+      (.last (.callDefKw rfl .nil
+        (.pair (.var rfl rfl) (.pair (.var rfl rfl) .nil)) rfl rfl
+        (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+          (.cons (.var rfl rfl) .nil) .strAdd))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2963,7 +3082,7 @@ def rungs : List Rung :=
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
-   r150, r152, r153]
+   r150, r152, r153, r154, r155, r161]
 
 /-! ## `chk` answers exactly what was derived by hand
 

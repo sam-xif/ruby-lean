@@ -3142,3 +3142,107 @@ new, one sound), corpus agreement 232/232, axiom-clean.
 
 Tier 14's remaining eleven are still two things: the `ParamEnv` relation (`n = s.length`,
 `param-all-kinds`) and keyword arguments (six rungs, and the call-shape change).
+
+## Clink 35 (2026-09-01) — tier 14c: keyword arguments, where the arity *is* the soundness: 144 → 147
+
+`param-keyword`, `param-keyword-default`, `param-shorthand-kwarg`. §Frontier item C, and it is
+the first thing on this ladder that changed the **call shape** rather than adding a rule to it.
+
+### Why keywords could not be folded into `JudgeAll`
+
+`Expr.kwargs` is the last element of a call's argument list and **is not a value**. It has no
+`Ty`, so `JudgeAll κ Γ I args argTys` cannot type it, and every rule whose premise is that
+`JudgeAll` is therefore unable to see a keyword call at all. So the argument list has to be
+*split*:
+
+```
+args = pos ++ [.kwargs entries]      -- Judge.callDefKw's first premise
+JudgeAll κ Γ I pos posTys …          -- positional, as before
+JudgeKw   κ … entries kws …          -- keyword, into name/type pairs
+paramEnvK d.params posTys kws = some Γb
+```
+
+`Judge.callDefKw` is `callDef`'s twin rather than a generalization of it, and only `callDef`
+got one — the three rungs are all implicit-self calls to top-level `def`s. The explicit-receiver
+and singleton twins are owed, and each is the same five premises.
+
+The split is stated as `args = pos ++ [.kwargs entries]` in the rule (the readable form) and
+computed by `splitKw?` in `chk`, with `splitKw?_sound` as the bridge. Worth noting the shape:
+`splitKw?`'s first pattern (`[.kwargs es]`) *overlaps* its second (`e :: rest`), which is what
+makes `[.kwargs es, x]` answer `none` — a `kwargs` node anywhere but last is not read.
+
+### Three binders became one
+
+`paramEnv`, `paramEnvB` and the keyword binder are the same left-to-right walk differing only in
+what they can bind *from*, so there is now one `paramBind (blk) (ps) (τs) (kws)` and the older
+names are abbreviations at empty inputs. Every `paramEnv … = some Γb` premise on file still
+discharges by `rfl`. One behaviour improved on the way: `paramEnv` used to refuse a
+`Param.block` outright, and now binds it to `.nilT`, which is what Ruby does when a method with
+`&b` is called without a block.
+
+`.rest`'s side condition also got its *real* form. Tier 14b said "the rest parameter must be
+last"; the condition is actually **`noPositionalParams`** — no parameter after it may consume a
+positional argument. `def f(*a, b)` fails it; `def f(*a, c:, **kw, &blk)` passes. Those were the
+same condition before keywords existed.
+
+### Where the soundness is, and it is not where positional arity is
+
+A positional arity mismatch is an `ArgumentError` too, and `paramEnv`'s length matching refused
+it *for free* — nobody had to think about it. Keywords are matched **by name**, and two
+name-directed failures had to be built, both `ArgumentError`, both inside the family:
+
+- **a missing required keyword** — `paramBind`'s `.key` with no default and no matching entry
+  answers `none` (control e1, and the corpus's `param-missing-keyword-unsafe`);
+- **an unexpected keyword** — `paramBind`'s `kws.isEmpty` check at the *end* of the walk. This
+  is the one that is easy to miss: every parameter is bound, every argument is used, and the
+  call still raises (control e2). Without the check the leftover keyword is silently ignored.
+
+Two more controls, both sound rejections: (e3) a Hash where a keyword is wanted is *not* a
+keyword in Ruby 3, and (e4) a keyword's value type is what the body is checked against.
+
+**No assumption is added to `κ.asms`.** `callDef` registers `⟨m, argTys, ρ⟩` for
+assume-then-verify; an `AsmTable` key is a `List Ty` and cannot distinguish a keyword call from
+a positional one at the same types, and an assumption is *believed* rather than re-derived — so
+a wrong key would be unsound. A keyword-recursive method therefore does not type. Conservative,
+and cheaper than widening the key.
+
+### `param-keyword-default` is where tier 14 and tier 12 meet
+
+One `def`, two calls, and the *same* `if` typed twice with **opposite branches dead**:
+
+- `build(name: "x")` — `version` takes its `nil` default, so it is `.nilT` (a keyword default is
+  `constLitTy?`'s answer, exactly as an optional positional default is). `nonNilTy .nilT` is
+  `.never`, the else-branch is dead, and `name + "@" + version` types by `primNever` with no
+  claim about `String#+` at all.
+- `build(name: "x", version: "1")` — `version` is a `String`, the else-branch is live and
+  ordinary.
+
+The precision of `.nilT` (rather than a nilable) is what makes the first call's else-branch dead
+rather than merely unreachable-looking, and that precision comes from `constLitTy?` reading the
+default literally.
+
+### One elaboration lesson, recorded because it cost a detour
+
+`r155`'s derivation needs `(τ₁ := …) (τ₂ := …)` pinned on both `if'`s. The reason is not the
+proof: `Judge.if'`'s type index is `joinT τ₁ τ₂`, and until *both* branch types are known the
+elaborator cannot see that it is the `String` the surrounding `+` wants — so it postpones the
+`rfl`s inside the branches and never returns to them. The error is an
+`Application type mismatch` printing metavariables for *variable names*, which is the signature
+of exactly this. Pinning the two types fixes it, and the pinned values are worth reading anyway:
+`.never` on the right is the dead branch.
+
+### State
+
+**147 rungs of 232**, tier 14 at 7/15. 147/147 cross-checked, 116/116 controls rejected (four
+new, all four **sound** rejections), corpus agreement 232/232, axiom-clean — with
+`splitKw?_sound` and `chkKw_sound` added.
+
+What tier 14 has left is now three things, and none of them is about keywords-as-such:
+
+- **`ParamEnv` as a relation** — `param-optional-uses-earlier` (`n = s.length`), the only way to
+  type a default that reads an earlier parameter.
+- **A parameterised `Hash`** — `param-kwrest` binds `**kw` at the bare `.cls "Hash"`, so
+  `kw["a"]` is `.any` and `.any.nil?` has no rule. §Frontier item A again, and
+  `param-all-kinds` wants `Hash#length` off the same type.
+- **A hash's keys** — `arg-kwsplat-call` (`build(**kw)`), which `JudgeKw` has no constructor
+  for, because matching `**h` by name needs to know what names are in `h`.

@@ -303,6 +303,32 @@ theorem constLitPairs?_sound : ∀ {ps : List (Expr × Expr)} {κ : Ctx} {Γ : E
 
 end
 
+/-- **`splitKw?` really does split the argument list where it says** (tier 14c).
+
+`Judge.callDefKw` states the split as `args = pos ++ [.kwargs entries]` rather than as a call to
+`splitKw?`, which is the readable form for a specification; this is the bridge. Note the shape
+of the recursion: `splitKw?`'s first pattern (`[.kwargs es]`) *overlaps* its second (`e :: rest`),
+so the `split` has to be taken in that order, and the second case's hypothesis is about the
+tail. -/
+theorem splitKw?_sound : ∀ {args pos : List Expr} {es : List KwEntry},
+    splitKw? args = some (pos, es) → args = pos ++ [.kwargs es] := by
+  intro args pos es h
+  unfold splitKw? at h
+  split at h
+  · rename_i es'
+    injection h with h
+    injection h with h h'
+    subst h; subst h'; rfl
+  · rename_i hd tl hne
+    cases hr : splitKw? tl with
+    | none => simp [hr] at h
+    | some r =>
+      simp [hr] at h
+      obtain ⟨hp, he⟩ := h
+      subst hp; subst he
+      simpa using splitKw?_sound hr
+  · exact absurd h (by simp)
+
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
 theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
     BareNameError m := by
@@ -702,73 +728,100 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
-  · -- `send none m args`: strictness, then the assumption table, then the def table.
+  · -- `send none m args`: tier 14c's keyword route first (a trailing `kwargs` is not a value,
+    -- so it has no other route), then strictness, the assumption table and the def table.
     split at h
-    · rename_i hargs
+    · -- the argument list ends in a `kwargs` node (`Judge.callDefKw`)
+      rename_i pos entries hsplit
       split at h
-      · -- a non-returning argument: the call never dispatches
-        rename_i hnever
-        injection h with h
-        injection h with h h'; injection h' with h' h''
-        subst h; subst h'; subst h''
-        exact .callNever (chkAll_sound hargs) hnever
-      · split at h
-        · -- the instantiation is assumed
-          rename_i _ hasm
+      · rename_i posTys Γ₁ I₁ hpos
+        split at h
+        · rename_i kws Γk Ik hkw
+          split at h
+          · rename_i d hdef
+            split at h
+            · rename_i Γb hpar
+              split at h
+              · rename_i ρ Γb' Iout hbody
+                split at h
+                · rename_i hI
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .callDefKw (splitKw?_sound hsplit) (chkAll_sound hpos)
+                    (chkKw_sound hkw) hdef hpar (by subst hI; exact chk_sound hbody)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · split at h
+      · rename_i hargs
+        split at h
+        · -- a non-returning argument: the call never dispatches
+          rename_i hnever
           injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          exact .callAsm (chkAll_sound hargs) hasm
+          exact .callNever (chkAll_sound hargs) hnever
         · split at h
-          · rename_i _ _ hdef
-            split at h
-            · rename_i hpar
-              -- Pass A's result is bound here but its derivation is never used: the hint
-              -- is untrusted by construction, and this is where that is visible in the
-              -- proof rather than only in prose.
+          · -- the instantiation is assumed
+            rename_i _ hasm
+            injection h with h
+            injection h with h h'; injection h' with h' h''
+            subst h; subst h'; subst h''
+            exact .callAsm (chkAll_sound hargs) hasm
+          · split at h
+            · rename_i _ _ hdef
               split at h
-              · split at h
-                · -- Pass B: the candidate reproduced itself, so its derivation *is* the
-                  -- premise `Judge.callDef` asks for.
-                  rename_i _ _ _ _ hpassB
-                  split at h
-                  · rename_i heq
-                    split at h
-                    · rename_i hI
-                      injection h with h
-                      injection h with h h'; injection h' with h' h''
-                      subst h; subst h'; subst h''
-                      exact .callDef (chkAll_sound hargs) hdef hpar
-                        (by subst heq; subst hI; exact chk_sound hpassB)
-                    · exact absurd h (by simp)
-                  · exact absurd h (by simp)
-                · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · exact absurd h (by simp)
-          · -- the name is not a top-level method: the last route is a bare `new` inside a
-            -- singleton method, where `self` is a class object.
-            split at h
-            · rename_i hself
-              split at h
-              · rename_i hnew
+              · rename_i hpar
+                -- Pass A's result is bound here but its derivation is never used: the hint
+                -- is untrusted by construction, and this is where that is visible in the
+                -- proof rather than only in prose.
                 split at h
-                · rename_i hinit
-                  split at h
-                  · rename_i hpar
+                · split at h
+                  · -- Pass B: the candidate reproduced itself, so its derivation *is* the
+                    -- premise `Judge.callDef` asks for.
+                    rename_i _ _ _ _ hpassB
                     split at h
-                    · rename_i hbody
-                      injection h with h
-                      injection h with h h'; injection h' with h' h''
-                      subst h; subst h'; subst h''
-                      exact hnew ▸ .selfNew hself (chkAll_sound hargs) hinit hpar
-                        (chk_sound hbody)
+                    · rename_i heq
+                      split at h
+                      · rename_i hI
+                        injection h with h
+                        injection h with h h'; injection h' with h' h''
+                        subst h; subst h'; subst h''
+                        exact .callDef (chkAll_sound hargs) hdef hpar
+                          (by subst heq; subst hI; exact chk_sound hpassB)
+                      · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
-            · exact absurd h (by simp)
-            · exact absurd h (by simp)
-    · exact absurd h (by simp)
+            · -- the name is not a top-level method: the last route is a bare `new` inside a
+              -- singleton method, where `self` is a class object.
+              split at h
+              · rename_i hself
+                split at h
+                · rename_i hnew
+                  split at h
+                  · rename_i hinit
+                    split at h
+                    · rename_i hpar
+                      split at h
+                      · rename_i hbody
+                        injection h with h
+                        injection h with h h'; injection h' with h' h''
+                        subst h; subst h'; subst h''
+                        exact hnew ▸ .selfNew hself (chkAll_sound hargs) hinit hpar
+                          (chk_sound hbody)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+              · exact absurd h (by simp)
+      · exact absurd h (by simp)
   · -- tier 9c: `send (some recv) m args (some (block …))` -- a builtin iterator with a block
     -- literal. Receiver must synthesize `arrayOf elem`; the block's body is typed here.
     split at h
@@ -1235,6 +1288,29 @@ theorem chkOwner?_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ₁ : Env} {I I₁ :
       exact chk_sound hchk
     · exact absurd h (by simp)
 
+/-- **`chkKw` never admits keyword arguments `JudgeKw` does not** (tier 14c). Pair for pair,
+with both states threading in the same order. -/
+theorem chkKw_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ' : Env} {I I' : Ty}
+    {es : List KwEntry} {kws : List (String × Ty)},
+    chkKw fuel κ Γ I es = some (kws, Γ', I') → JudgeKw κ Γ I es kws Γ' I' := by
+  intro fuel κ Γ Γ' I I' es kws h
+  unfold chkKw at h
+  split at h
+  · exact absurd h (by simp)
+  · injection h with h; injection h with h h'; injection h' with h' h''
+    subst h; subst h'; subst h''; exact .nil
+  · rename_i k v es'
+    split at h
+    · rename_i τ Γ₁ I₁ hv
+      split at h
+      · rename_i kws' Γ₂ I₂ hes
+        injection h with h; injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .pair (chk_sound hv) (chkKw_sound hes)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
 /-- **`chkNested` never admits a nested declaration `JudgeNested` does not** (tier 13e).
 Premise for premise, and the recursion is the relation's: into the nested body's own nested
 list, and along the rest of the list. -/
@@ -1347,6 +1423,8 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms constLitTys?_sound
 #print axioms constLitPairs?_sound
 #print axioms constLitTy?_nilQSafe
+#print axioms splitKw?_sound
+#print axioms chkKw_sound
 #print axioms chkOwner?_sound
 #print axioms chkNested_sound
 #print axioms chkConsts_sound

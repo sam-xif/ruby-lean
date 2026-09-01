@@ -300,6 +300,34 @@ def controls : List Control :=
               (.send (some (.send (some (.var .lvar "a")) "[]" [.int 1] none)) "+"
                 [.int 1] none),
             .send none "f" [.int 1, .str "a"] none]⟩
+    -- ### Tier 14c's controls -- keyword arguments, where the arity *is* soundness
+    --
+    -- (e1) **A missing required keyword** raises ArgumentError, which is inside the family.
+    -- This is the corpus rung `param-missing-keyword-unsafe` in miniature, kept here too
+    -- because it is the control for `paramBind`'s `.key`-with-no-default answering `none`.
+  , ⟨"def build(type:, name:); type; end; build(type: \"brew\")",
+      .seq [.def' "build" [.key "type" none, .key "name" none] (.var .lvar "type"),
+            .send none "build" [.kwargs [.pair "type" (.str "brew")]] none]⟩
+    -- (e2) **An unexpected keyword** raises ArgumentError too, and this one is easy to miss:
+    -- every parameter is bound and every argument is used, and the call still fails. It is
+    -- `paramBind`'s `kws.isEmpty` check at the end of the walk, and without it the leftover
+    -- keyword would simply be ignored.
+  , ⟨"def build(type:); type; end; build(type: \"brew\", extra: 1)",
+      .seq [.def' "build" [.key "type" none] (.var .lvar "type"),
+            .send none "build"
+              [.kwargs [.pair "type" (.str "brew"), .pair "extra" (.int 1)]] none]⟩
+    -- (e3) **A keyword argument is not a positional one.** Ruby 3 separated them: passing a
+    -- Hash where a keyword is wanted does not splat, so this is a missing-keyword
+    -- ArgumentError as well.
+  , ⟨"def build(type:); type; end; build({ \"type\" => \"brew\" })",
+      .seq [.def' "build" [.key "type" none] (.var .lvar "type"),
+            .send none "build" [.hash [(.str "type", .str "brew")]] none]⟩
+    -- (e4) **A keyword's value is typed, and its type is what the body is checked against.**
+    -- `type` is an Integer here, and `type + "/"` raises TypeError.
+  , ⟨"def build(type:); type + \"/\"; end; build(type: 1)",
+      .seq [.def' "build" [.key "type" none]
+              (.send (some (.var .lvar "type")) "+" [.str "/"] none),
+            .send none "build" [.kwargs [.pair "type" (.int 1)]] none]⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
@@ -1166,6 +1194,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
     return .send (some r') m args' (some (← toRubyCore blk))
   | .self' => some .self'
   | .const n => some (.const n)
+  -- Tier 14c: a call site's keyword arguments.
+  | .kwargs es => (toRubyCoreKw es).map (fun es' => .kwargs es')
   -- Tier 13: a constant assignment (the controls' `X = 5`).
   | .casgn n e => (toRubyCore e).map (fun e' => .casgn n e')
   -- Tier 13c: `M::X` and `M::X = 4`.
@@ -1215,7 +1245,20 @@ def toRubyCoreParam : Param → Option RubyCore.Param
   | .block x => some (.block x)
   -- Tier 14b: a rest parameter, for the controls that probe `paramEnv`'s matching order.
   | .rest x => some (.rest x)
+  -- Tier 14c: keyword parameters, for the controls that probe keyword matching.
+  | .key k d =>
+    match d with
+    | none => some (.key k none)
+    | some e => (toRubyCore e).map (fun e' => .key k (some e'))
   | .opt x d => (toRubyCore d).map (fun d' => .opt x d')
+  | _ => none
+
+/-- The keyword-entry companion (tier 14c). Only `.pair`, which is all `JudgeKw` types. -/
+def toRubyCoreKw : List KwEntry → Option (List RubyCore.KwEntry)
+  | [] => some []
+  | .pair k v :: es => do
+    let v' ← toRubyCore v
+    return .pair k v' :: (← toRubyCoreKw es)
   | _ => none
 
 /-- The pair-list companion, spelled out rather than a `mapM` with a lambda: the lambda

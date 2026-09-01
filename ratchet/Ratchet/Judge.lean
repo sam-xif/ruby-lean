@@ -487,51 +487,127 @@ def constLitPairs? : List (Expr × Expr) → Bool
 
 end
 
-/-- The environment a method body starts in: **only** its parameters, bound to the
-argument types the call site synthesized. `none` unless every parameter is required and
-the counts match.
+/-! ### The environment a method body starts in
 
-Two decisions in one small function:
+**Only its parameters**, bound to what the call site supplied. Two decisions in one small
+function:
 
 - **A fresh environment, not the caller's.** A Ruby method body does not see the caller's
-  locals, so the body is judged in `paramEnv`'s result and the call's *outgoing*
-  environment is the caller's own (after the arguments), never the body's.
-- **Required and optional parameters** (tier 14a added the second). `.rest`/`.key`/
-  `.kwrest`/`.block` still answer `none`, so a method using one of those is not typed at all
-  — the remainder of the arity gap `AGENTS.md` §Frontier item 3 names, now measured rung by
-  rung in tier 14. Length mismatch is also `none`, which is what rejects `fun-wrong-arity`.
+  locals, so the body is judged in `paramBind`'s result and the call's *outgoing* environment
+  is the caller's own (after the arguments), never the body's.
+- **Matching is greedy, left to right**, and the reason that is safe is worth stating: it
+  either agrees with Ruby or fails. Ruby fills post-optional and post-rest *required*
+  parameters first (`def f(a, b = 1, c)` with two arguments binds `a` and `c`), and greedy
+  matching there binds `a` and `b`, then meets a `.req` with no argument left, and answers
+  `none`. There is no argument count at which greedy succeeds with a binding Ruby would not
+  have made. Length mismatch is also `none`, which is what rejects `fun-wrong-arity`.
 
-Optional-parameter matching is **greedy, left to right**, and the reason that is safe is worth
-stating: it either agrees with Ruby or fails. Ruby fills post-optional *required* parameters
-first (`def f(a, b = 1, c)` with two arguments binds `a` and `c`), and greedy matching there
-binds `a` and `b` and then meets a `.req` with no argument left, so it answers `none`. There is
-no argument count at which greedy succeeds with a binding Ruby would not have made. -/
-def paramEnv : List Param → List Ty → Option Env
-  | [], [] => some []
-  | .req x :: ps, τ :: τs => (paramEnv ps τs).map (fun Γ => (x, τ) :: Γ)
+### One walk, three entry points (tier 14c)
+
+`paramEnv`, `paramEnvB` and the keyword-aware binder are the *same* left-to-right walk over a
+parameter list, differing only in what is available to bind from. So there is one function,
+`paramBind`, taking all three inputs — the block (out of band), the positional argument types,
+and the keyword arguments as name/type pairs — and the two older names are abbreviations for it
+at empty inputs. Every derivation on file still discharges its `paramEnv … = some Γb` premise by
+`rfl`, because `paramBind`'s behaviour at `kws = []` on required parameters is unchanged.
+
+One behaviour did change on the way, in the direction of being more right: `paramEnv` used to
+refuse a `Param.block` outright (only `paramEnvB` accepted one), and now binds it to `.nilT`,
+which is what Ruby does when a method with a `&b` parameter is called with no block. -/
+def kwGet? (kws : List (String × Ty)) (k : String) : Option Ty :=
+  (kws.find? (·.1 == k)).map (·.2)
+
+/-- Drop the *matched* keyword, so that whatever is left at the end of the walk is the set of
+keywords the method has no parameter for — which raises `ArgumentError`, inside the family. -/
+def kwErase : List (String × Ty) → String → List (String × Ty)
+  | [], _ => []
+  | (k, τ) :: kws, x => if k == x then kwErase kws x else (k, τ) :: kwErase kws x
+
+/-- **Is every remaining parameter one that cannot consume a positional argument?** The exact
+condition under which a rest parameter may be greedy: `def f(*a, b)` fails it (Ruby binds
+`b` first), while `def f(*a, c:, **kw, &blk)` passes, because keywords, a keyword-rest and a
+block all come from somewhere other than the positional list.
+
+Tier 14b stated this as "the rest parameter must be last", which was the same condition for the
+parameter kinds that existed then. -/
+def noPositionalParams (ps : List Param) : Bool :=
+  ps.all (fun p => match p with
+    | .key _ _ | .kwrest _ | .block _ => true
+    | _ => false)
+
+def paramBind (blk : Option Ty) : List Param → List Ty → List (String × Ty) → Option Env
+  -- Every parameter bound and every argument consumed. **The `kws.isEmpty` check is a
+  -- soundness condition**, not tidiness: a keyword the method has no parameter for raises
+  -- `ArgumentError` (tier 14c).
+  | [], [], kws => if kws.isEmpty then some [] else none
+  | .req x :: ps, τ :: τs, kws => (paramBind blk ps τs kws).map (fun Γ => (x, τ) :: Γ)
   -- Tier 14a: an **optional** parameter. Two cases, and the matching is greedy left to right.
   -- An argument was supplied, so the default is irrelevant:
-  | .opt x _ :: ps, τ :: τs => (paramEnv ps τs).map (fun Γ => (x, τ) :: Γ)
+  | .opt x _ :: ps, τ :: τs, kws => (paramBind blk ps τs kws).map (fun Γ => (x, τ) :: Γ)
   -- Or it was not, and the parameter holds the default's value. Its type comes from
   -- `constLitTy?`, which needs no premise to license it: `constLitTy?_sound` says an
   -- expression this function types really has that type in *any* context, unconditionally.
   -- A non-literal default (`def pad(s, n = s.length)`) is `none` here — see §Frontier.
-  | .opt x d :: ps, [] =>
+  | .opt x d :: ps, [], kws =>
     match constLitTy? d with
-    | some τ => (paramEnv ps []).map (fun Γ => (x, τ) :: Γ)
+    | some τ => (paramBind blk ps [] kws).map (fun Γ => (x, τ) :: Γ)
     | none => none
-  -- Tier 14b: a **rest** parameter, and only as the *last* one. Ruby fills post-rest required
-  -- parameters before the rest (`def f(*a, b)` with three arguments binds `a = [1, 2]`), so a
-  -- rest that swallows everything is only right when there is nothing after it — and with
-  -- anything after it this answers `none`, which is conservative rather than wrong.
-  --
-  -- The element type is `elemTy` of the remaining argument types, exactly as for an array
-  -- literal, which makes the zero-argument case `arrayOf .never`: the array really is empty,
-  -- and `.never` is the most precise thing to say about the elements of an empty array (see
-  -- `elemTy`, and `IterSig.injectEmpty` for what consumes it).
-  | [.rest (some x)], τs => some [(x, .arrayOf (elemTy τs))]
-  | [.rest none], _ => some []
-  | _, _ => none
+  -- Tier 14b: a **rest** parameter. The element type is `elemTy` of the argument types it
+  -- swallows, exactly as for an array literal, which makes the zero-argument case
+  -- `arrayOf .never`: the array really is empty, and `.never` is the most precise thing to say
+  -- about the elements of an empty array (see `elemTy`, and `IterSig.injectEmpty` for what
+  -- consumes it). Greedy only when `noPositionalParams` holds.
+  | .rest (some x) :: ps, τs, kws =>
+    if noPositionalParams ps then
+      (paramBind blk ps [] kws).map (fun Γ => (x, .arrayOf (elemTy τs)) :: Γ)
+    else none
+  | .rest none :: ps, _, kws =>
+    if noPositionalParams ps then paramBind blk ps [] kws else none
+  -- Tier 14c: a **keyword** parameter, matched **by name** and only once the positional list is
+  -- exhausted, because a keyword parameter never consumes a positional argument. Three
+  -- outcomes, and the third is the soundness one: supplied, defaulted, or **missing and
+  -- required**, which raises `ArgumentError`.
+  | .key k dflt :: ps, [], kws =>
+    match kwGet? kws k with
+    | some τ => (paramBind blk ps [] (kwErase kws k)).map (fun Γ => (k, τ) :: Γ)
+    | none =>
+      match dflt with
+      | some d =>
+        match constLitTy? d with
+        | some τ => (paramBind blk ps [] kws).map (fun Γ => (k, τ) :: Γ)
+        | none => none
+      | none => none
+  -- A keyword-rest collects everything left, and its type is the bare `.cls "Hash"` — which is
+  -- all tier 5's hash type can say, and is why `param-kwrest` types the *binding* and still
+  -- cannot read anything out of it (§Frontier item A).
+  | .kwrest (some x) :: ps, [], _ =>
+    (paramBind blk ps [] []).map (fun Γ => (x, .cls "Hash") :: Γ)
+  | .kwrest none :: ps, [], _ => paramBind blk ps [] []
+  | .block (some x) :: ps, τs, kws =>
+    (paramBind blk ps τs kws).map (fun Γ => (x, blk.getD .nilT) :: Γ)
+  | .block none :: ps, τs, kws => paramBind blk ps τs kws
+  | _, _, _ => none
+
+def paramEnv (ps : List Param) (τs : List Ty) : Option Env := paramBind none ps τs []
+
+/-- **Split a call's argument list into positional arguments and a trailing `kwargs`**
+(tier 14c). `Expr.kwargs` only ever occurs as the last element of an argument list (see its
+docstring), and it is *not a value* — so it cannot be typed by `JudgeAll` and every call shape
+that admits keywords needs the split.
+
+`none` when there is no trailing `kwargs`, which is the ordinary call and the arm already on
+file. `splitKw?_sound` (`Proof/ChkSound.lean`) is the bridge to the rule, which states the
+split as `args = pos ++ [.kwargs entries]` rather than as a call to this function. -/
+def splitKw? : List Expr → Option (List Expr × List KwEntry)
+  | [.kwargs es] => some ([], es)
+  | e :: rest => (splitKw? rest).map (fun p => (e :: p.1, p.2))
+  | [] => none
+
+/-- The name a keyword-carrying call binds its parameters through; `paramEnv` is this at no
+keywords, and the two are deliberately the same function so that a rule written for one shape
+cannot disagree with the other about arity. -/
+def paramEnvK (ps : List Param) (τs : List Ty) (kws : List (String × Ty)) : Option Env :=
+  paramBind none ps τs kws
 
 /-! ## Tier 7's class table, and the context bundle
 
@@ -1561,29 +1637,8 @@ def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
 Ruby (`def run(&b); b; end; run` is `nil`), and also exactly why the binding cannot be
 skipped: `b` is in scope either way. A `&b` parameter is required to come **last**, which is
 not enforced here because the parser already guarantees it. -/
-def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
-  | [], [] => some []
-  | .req x :: ps, τ :: τs => (paramEnvB blk ps τs).map (fun Γ => (x, τ) :: Γ)
-  -- Tier 14a, exactly `paramEnv`'s two cases.
-  | .opt x _ :: ps, τ :: τs => (paramEnvB blk ps τs).map (fun Γ => (x, τ) :: Γ)
-  | .opt x d :: ps, [] =>
-    match constLitTy? d with
-    | some τ => (paramEnvB blk ps []).map (fun Γ => (x, τ) :: Γ)
-    | none => none
-  -- Tier 14b, and here "last" means "last before an optional `&b`", which is the one thing
-  -- Ruby allows after a rest parameter that this walk can still be greedy about.
-  | .rest (some x) :: ps, τs =>
-    if ps.all (fun p => match p with | .block _ => true | _ => false) then
-      (paramEnvB blk ps []).map (fun Γ => (x, .arrayOf (elemTy τs)) :: Γ)
-    else none
-  | .rest none :: ps, τs =>
-    if ps.all (fun p => match p with | .block _ => true | _ => false) then
-      paramEnvB blk ps []
-    else none
-  | .block (some x) :: ps, τs =>
-    (paramEnvB blk ps τs).map (fun Γ => (x, blk.getD .nilT) :: Γ)
-  | .block none :: ps, τs => paramEnvB blk ps τs
-  | _, _ => none
+def paramEnvB (blk : Option Ty) (ps : List Param) (τs : List Ty) : Option Env :=
+  paramBind blk ps τs []
 
 /-! ## Tier 9c: the builtin iterators
 
@@ -2399,6 +2454,39 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' → defGet? κ.defs m = some d →
       paramEnv d.params argTys = some Γb →
       Judge { κ with asms := ⟨m, argTys, ρ⟩ :: κ.asms } Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.send none m args none) ρ Γ' I'
+  /-- **A call to a top-level method that passes keyword arguments** (tier 14c) —
+      `build(type: "brew", name: "x")`.
+
+      `callDef`'s twin, and the reason it needs to be a twin rather than a generalization is in
+      the first premise. `Expr.kwargs` is the **last element of the argument list** and it is
+      *not a value*: there is no `Ty` for it and `JudgeAll` cannot type it. So the argument list
+      is split — positional arguments typed by `JudgeAll` as before, keyword arguments typed by
+      `JudgeKw` into name/type pairs — and `paramEnvK` matches the two halves against the
+      parameter list, keywords **by name**.
+
+      **Where the soundness lives.** Two of `paramEnv`/`paramBind`'s answers here are
+      `ArgumentError`, which is inside the type-error family, so unlike a positional arity
+      mismatch these are obligations rather than conveniences: a *missing required* keyword
+      (`build(type: "brew")` for `def build(type:, name:)`) and an *unexpected* keyword (one the
+      method has no parameter for, which is `paramBind`'s `kws.isEmpty` check at the end of the
+      walk).
+
+      **No assumption is added to `κ.asms`.** `callDef` registers `⟨m, argTys, ρ⟩` so that a
+      recursive call can be discharged by assume-then-verify; an `AsmTable` key is a
+      `List Ty`, which cannot distinguish a keyword call from a positional one at the same
+      types, and a *believed* assumption under the wrong key would be unsound. So a
+      keyword-recursive method simply does not type — conservative, and cheaper than widening
+      the key. -/
+  | callDefKw {κ : Ctx} {Γ Γ₁ Γ' Γb Γb' : Env} {I I₁ I' : Ty} {m : String}
+      {args pos : List Expr} {posTys : List Ty} {entries : List KwEntry}
+      {kws : List (String × Ty)} {d : Defn} {ρ : Ty} :
+      args = pos ++ [.kwargs entries] →
+      JudgeAll κ Γ I pos posTys Γ₁ I₁ →
+      JudgeKw κ Γ₁ I₁ entries kws Γ' I' →
+      defGet? κ.defs m = some d →
+      paramEnvK d.params posTys kws = some Γb →
+      Judge κ Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.send none m args none) ρ Γ' I'
   /-- **Strictness for an explicit-receiver send**: if the receiver or any argument has
       type `.never`, the send itself has type `.never`.
@@ -3332,6 +3420,26 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
       Judge κ Γ I e τ Γ' I' →
       Judge κ Γ I (.cpathAsgn (some (.const owner)) n e) τ Γ' I'
+
+/-- **The keyword arguments at a call site, as name/type pairs** (tier 14c).
+
+Only `KwEntry.pair` has a constructor, and the two omissions are the tier's recorded gaps:
+
+- `.splat` (`f(**h)`) needs the **keys** of a hash, which `Ty` cannot state — the same gap as
+  `narrow-nilable-and-union`'s array length, arriving from a third direction (§Frontier item
+  A/G). `arg-kwsplat-call` is the rung.
+- `.dyn` (`f("k" => v)`) is not a keyword argument at all in the sense that matters here: its
+  key is an arbitrary expression, so no static name/type pair exists.
+
+Both states thread left to right, after the positional arguments, which is Ruby's evaluation
+order. -/
+inductive JudgeKw : Ctx → Env → Ty → List KwEntry → List (String × Ty) → Env → Ty → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgeKw κ Γ I [] [] Γ I
+  | pair {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {k : String} {v : Expr} {τ : Ty}
+      {es : List KwEntry} {kws : List (String × Ty)} :
+      Judge κ Γ I v τ Γ₁ I₁ →
+      JudgeKw κ Γ₁ I₁ es kws Γ₂ I₂ →
+      JudgeKw κ Γ I (.pair k v :: es) ((k, τ) :: kws) Γ₂ I₂
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
 both states threaded left to right (Ruby's argument evaluation order). -/
