@@ -259,18 +259,25 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       match clsGet? κ.classes n with
       | some _ => some (.clsOf n, Γ, I)
       | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
-  | f + 1, .cpath (some (.const owner)) n =>
-    -- Tier 13c. The base has to *type* as a class-or-module object, not merely look like one:
-    -- after `M = 5` the only rule for `.const "M"` is `constEnv` (see `Judge.constPath`). The
-    -- condition is written as the whole triple equality so that it *is* the premise
-    -- `chk_sound` needs, with nothing to take apart.
-    if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then
+  | f + 1, .cpath (some base) n =>
+    -- Tier 13c/13e. The base has to *type* as a class-or-module object, not merely look like
+    -- one: after `M = 5` the only rule for `.const "M"` is `constEnv` (see
+    -- `Judge.constPath`). Then two disjoint routes off the owner name -- a constant in the
+    -- table, or a nested class declared under the qualified name.
+    match chkOwner? f κ Γ I base with
+    | some (owner, Γ₁, I₁) =>
       match envGet? κ.consts (constKeyIn owner n) with
       -- Tier 13d: and not hidden by `private_constant` (`Judge.constPath`'s third premise).
-      | some τ => if κ.privConsts.contains (constKeyIn owner n) then none else some (τ, Γ, I)
-      | none => none
-    else none
+      | some τ =>
+        if κ.privConsts.contains (constKeyIn owner n) then none else some (τ, Γ₁, I₁)
+      | none =>
+        match clsGet? κ.classes (owner ++ "::" ++ n) with
+        | some _ => some (.clsOf (owner ++ "::" ++ n), Γ₁, I₁)
+        | none => none
+    | none => none
   | f + 1, .cpathAsgn (some (.const owner)) n e =>
+    -- The *write* side stays at the syntactic base, because `extendConsts` matches on it to
+    -- know which key the binding lands on (`Judge.cpathAsgn`).
     if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then chk f κ Γ I e else none
   | f + 1, .casgn n e =>
     -- Tier 13. The *binding* is not made here: `chkSeq` makes it, via `Ctx.afterStmt`, so a
@@ -285,17 +292,17 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- premise) -- `include` on a non-Module raises TypeError.
     -- Tier 13: and the body's constants are typed, here, at the definition site
     -- (`chkConsts`).
-    | some (_, _, incs, exts, preps, cs) =>
+    | some (_, _, incs, exts, preps, cs, nst) =>
       if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone
-          && chkConsts f κ cs then
+          && chkConsts f κ cs && chkNested f κ n nst then
         some (.any, Γ, I)
       else none
     | none => none
   | f + 1, .class' n _ body =>
     match classMethods? body with
-    | some (_, _, incs, exts, preps, cs) =>
+    | some (_, _, incs, exts, preps, cs, nst) =>
       if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone
-          && chkConsts f κ cs then
+          && chkConsts f κ cs && chkNested f κ n nst then
         some (.any, Γ, I)
       else none
     | none => none
@@ -770,6 +777,44 @@ def chkConsts (fuel : Nat) (κ : Ctx) : List (String × Expr) → Bool
       | some τ =>
         if chk f κ [] .ivar0 e = some (τ, [], .ivar0) then chkConsts f κ cs else false
       | none => false
+
+/-- `chk` on a **class-or-module-object-valued** expression, reporting the name it names.
+
+Extracted as its own function purely so that `chk`'s `cpath` arm matches on a flat
+`Option (String × Env × Ty)` rather than on a `Ty` nested inside a tuple inside an `Option`:
+`ChkSound.lean` proceeds by one `split` per arm, and a three-deep pattern there makes the
+match compiler build a splitter that the proof then has to be written against. This is a
+readability choice with no semantic content -- `chkOwner?_sound` is the whole of it. -/
+def chkOwner? : Nat → Ctx → Env → Ty → Expr → Option (String × Env × Ty)
+  | 0, _, _, _, _ => none
+  | f + 1, κ, Γ, I, base =>
+    match chk f κ Γ I base with
+    | some (.clsOf owner, Γ₁, I₁) => some (owner, Γ₁, I₁)
+    | _ => none
+
+/-- **A class body's nested declarations** (tier 13e): the decidable counterpart of
+`JudgeNested`, premise for premise, recursing into each nested body's own nested list.
+
+Fuel does double duty here — it bounds the nesting depth as well as `chk`'s recursion — and
+the `0` case is `false` rather than `true`, because running out means the obligation was not
+discharged.
+
+The fuel is matched **first**, before the list, and both recursive calls spend a unit: that is
+what keeps this definition structurally recursive on `Nat` rather than well-founded, and a
+well-founded one would not kernel-reduce, which `Rungs.lean`'s per-rung `rfl` needs. The same
+constraint is why `chkOwner?` matches on fuel it does not otherwise need. -/
+def chkNested : Nat → Ctx → String → Nested → Bool
+  | 0, _, _, _ => false
+  | _ + 1, _, _, [] => true
+  | f + 1, κ, pfx, (_, n, body) :: rest =>
+    match classMethods? body with
+    | some (_, _, incs, exts, preps, cs, nst) =>
+      allModules κ.classes (incs ++ exts ++ preps)
+        && (envGet? κ.consts (constKeyIn pfx n)).isNone
+        && chkConsts f κ cs
+        && chkNested f κ (pfx ++ "::" ++ n) nst
+        && chkNested f κ pfx rest
+    | none => false
 
 /-- Key-then-value `chk` over a hash literal's pairs. Returns only the outgoing states:
 the key and value types are discarded (this `Ty` has no parameterised hash type), but they

@@ -2829,3 +2829,99 @@ inside another one** to enter the class table, which `classMethods?` refuses and
 `extendClasses` does not recurse into. That is a change to the *class* namespace — qualified
 `Cls.name`s and lexical resolution of bare class names — not to the constant one.
 (`const-class-of-const` additionally wants `Object#class`.)
+
+## Clink 31 (2026-09-01) — tier 13e: nested namespaces, and the name that matches the runtime: 138 → 140
+
+`const-scoped-nested`, `const-scoped-class-ref`. The clink's one real decision is what a
+nested class is *called*.
+
+### Qualified names, because CRuby has them
+
+`module M; class Box; … end; end` gives a class whose `name` is the string `"M::Box"`. So the
+`CTable` key is `"M::Box"`, `Ty.clsOf "M::Box"`, `Ty.inst "M::Box" spine`. That is a choice —
+the alternative was an unqualified `"Box"` plus a separate namespace structure — and the reason
+to make it is that `CheckRungs.lean` compares a rung's `Ty` against **the class name the
+semantics reports**. With qualified names the two agree because they are the same string; with
+unqualified ones they would agree by a convention that has to be maintained in
+`expectedClasses`.
+
+The rest of tier 7 then needed *nothing*: dispatch was already a table lookup on a string, so
+`newInst`/`callMethod`/`mroGet?` work on `"M::Box"` unchanged. **The whole cost of a namespaced
+class is naming**, which is the finding.
+
+### Two rules where one lookup would not do
+
+A path step can name a value or a namespace, and those live in different tables:
+
+- `constPath` (tier 13c, generalized here) — the constant table, `"::Outer::Inner::Y"`;
+- `constPathCls` (new) — the class table, `"Outer::Inner"`, answering `.clsOf` of the
+  qualified name.
+
+They are kept disjoint by `constPathCls`'s `envGet? κ.consts … = none`, exactly as `constCls`
+is kept disjoint from `constEnv`, and for the same reason: `M::Box = 5` rebinds the path to the
+`5`, and `M::Box.new` then raises `NoMethodError` (control p13m, a sound rejection).
+
+`constPath`'s base was also **generalized from `.const owner` to any expression** and now
+threads its outgoing state, which is what makes `Outer::Inner::Y` type at all: the base of the
+outer step is itself a `cpath`. Only the *write* side (`cpathAsgn`) still requires a syntactic
+base, because `extendConsts` matches on it to know which key the binding lands on.
+
+### `JudgeNested`: where a nested class statement's obligation lives
+
+A nested `class` statement is not a statement of any sequence, and `JudgeSeq` is the only thing
+that would judge one — so nothing would have typed it. `JudgeNested` is that obligation, and it
+says of a nested declaration exactly what `classStmt` says of a top-level one, recursively:
+readable body, mixins are declared modules, the qualified name is not already a constant, its
+constants type, its own nested declarations are well-formed.
+
+Its `String` index is the prefix, and it is there for one premise only — without a qualified
+name there is nothing to check `M::Box = 5; module M; class Box; end; end` against.
+
+`clsMember?` refuses a nested class **with a superclass**, deliberately: the superclass name
+would need resolving against the nesting too, and refusing the member makes the *enclosing*
+class unreadable rather than silently dropping the nested one.
+
+### Two termination traps, both about kernel reduction rather than correctness
+
+Both cost a rebuild-and-stare, and both are worth recording because the failure mode is
+identical and silent:
+
+1. `nestedClasses`/`addNestedConsts`/`chkNested` recurse into bodies that come *out of*
+   `classMethods?`, which Lean cannot see as subterms — so there is no structural measure and
+   the recursion has to be **fuel-bounded**. `nestFuel = 512`, and unlike `chk`'s fuel this one
+   bounds breadth as well as depth (a unit per declaration visited). Completeness knob: a
+   dropped table entry is a rejected use.
+2. And the fuel has to be matched **first**, with *every* recursive call spending a unit. Write
+   `chkNested (fuel) (κ) (pfx) : Nested → Bool` matching the list first and Lean compiles it by
+   **well-founded** recursion — which type-checks, `#eval`s correctly, and then does not
+   kernel-reduce, so `Rungs.lean`'s `rfl`s fail with "not definitionally equal" and no hint as
+   to why. The same trap caught `chkOwner?`, which calls `chk` at the *same* fuel and thereby
+   made the whole `chk` mutual group well-founded — every rung's `rfl` broke at once. Both are
+   fixed by matching on fuel and decrementing.
+
+   Diagnosing it: replace the `rfl` theorems with `#eval` of the same predicate. `#eval` uses
+   the compiler and `rfl` uses the kernel, so `#eval` answering `[]` while `rfl` fails *is* the
+   signature of a well-founded definition.
+
+### One model gap found on the way (`found-issues.md` A3)
+
+Control (p13n) checks that a nested class body is really checked, using
+`class NotAModule; end; module M; class Box; include NotAModule; end; end`. CRuby raises
+`TypeError`. **The model runs it to a value** — it does not enforce `Module#include`'s argument
+check at all — so the control prints as *conservative* rather than *sound*.
+
+Nesting is irrelevant; the flat form diverges too, and it has been printing the same misleading
+label in this harness since tier 10 (`class K; …; class P; include K; end; P.new.m`). So
+`classStmt`'s `allModules` premise is justified against CRuby, verified directly, and
+*unsupported* by the model. No rung is affected (none includes a non-module, which is also why
+`run_agreement.sh` never caught it); what is affected is what a control's label means.
+
+### State
+
+**140 rungs of 232**, tier 13 at 11/13. 140/140 cross-checked, 106/106 controls rejected (two
+new), corpus agreement 232/232, axiom-clean — now with `chkOwner?_sound` and
+`chkNested_sound` in the list.
+
+One rung left in tier 13: `const-class-of-const`, which wants `Object#class` (the inverse of
+`newInst`) and `Module#to_s`. Also recorded as owed: `private_constant` inside a *nested*
+declaration is not read (`privNames` does not recurse), which is precision, not soundness.

@@ -1050,7 +1050,28 @@ def controls : List Control :=
       .seq [.class' "C" none (.seq [.send none "attr_reader" [.sym "z"] none,
               .def' "initialize" [.req "v"] (.vasgn .ivar "@v" (.var .lvar "v"))]),
             .send (some (.send (some (.send (some (.const "C")) "new" [.int 1] none))
-              "z" [] none)) "+" [.int 1] none]⟩ ]
+              "z" [] none)) "+" [.int 1] none]⟩
+    -- (p13m) **`constPathCls`'s disjointness premise** (tier 13e). The nested class is in the
+    -- table under `"M::Box"`, and `M::Box = 5` rebinds the path to the `5` -- after which
+    -- `M::Box.new` raises NoMethodError. The premise `envGet? κ.consts … = none` is what
+    -- stops the class-object route from answering anyway.
+  , ⟨"module M; class Box; end; end; M::Box = 5; M::Box.new",
+      .seq [.module' "M" (.class' "Box" none .nil),
+            .cpathAsgn (some (.const "M")) "Box" (.int 5),
+            .send (some (.cpath (some (.const "M")) "Box")) "new" [] none]⟩
+    -- (p13n) **A nested class body is really checked.** `JudgeNested` says of a nested
+    -- declaration what `classStmt` says of a top-level one, so an `include` of something that
+    -- is not a module is refused inside a nested class exactly as it is outside.
+    --
+    -- CRuby raises `TypeError` here ("wrong argument type Class (expected Module)"), verified
+    -- directly. **The model does not** -- it runs the program to a value, so this control
+    -- prints as conservative rather than sound. That is a model gap, not a checker one, and it
+    -- is `found-issues.md` A3; the flat form of the same program has been printing the same
+    -- misleading label since tier 10.
+  , ⟨"class NotAModule; end; module M; class Box; include NotAModule; end; end",
+      .seq [.class' "NotAModule" none .nil,
+            .module' "M" (.class' "Box" none
+              (.send none "include" [.const "NotAModule"] none))]⟩ ]
 
 mutual
 

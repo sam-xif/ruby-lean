@@ -73,6 +73,36 @@ depends on (`difftest/implementation-notes.md` N38) *even if* A1 were fixed. Obs
 `V.new({ "id" => 5 })` in `homebrew/slice-driver/probes/adversarial-inputs.rb`; the ratchet's
 copy of that probe drops the row for this reason (`ratchet/slice/drivers/slice-adversarial.rb`).
 
+### A3. The model does not enforce `Module#include`'s argument check
+
+**Status:** open. **Severity:** medium — it is the one thing `Judge.classStmt`'s `allModules`
+premise exists to prevent, and the model cannot corroborate it.
+**Found:** 2026-09-01, ratchet clink 31 (tier 13e), while writing a nested-class control.
+
+```ruby
+class NotAModule; end
+module M
+  class Box
+    include NotAModule
+  end
+end
+```
+
+CRuby: `TypeError: wrong argument type Class (expected Module)` at the `include` line —
+squarely inside the type-stuck family. The Lean model runs the program to a value.
+
+Nesting is irrelevant; the flat form diverges too, and it has been visible in the ratchet's own
+output since tier 10 without being read: `checkrungs`' control
+`class K; def m; 1; end; end; class P; include K; end; P.new.m` prints **"conservative: safe,
+no rule yet"**, which is the harness reporting the *model's* verdict, not Ruby's. So the
+`allModules` premise is justified against CRuby (verified directly) and is *unsupported* by the
+model — the same shape as A1, and in the same unhelpful direction for a reachability argument.
+
+What it does **not** affect: the premise itself, or any rung. No corpus rung includes a
+non-module (which is also why `run_agreement.sh` never caught it), and the controls that
+depend on `allModules` still reject. What it affects is what a control's printed label means:
+"conservative: safe" reads as a claim about Ruby and is only ever a claim about the model.
+
 ---
 
 ## B. Model gates — the model refuses the program (exit 3)

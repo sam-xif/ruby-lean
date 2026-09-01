@@ -531,6 +531,11 @@ inductive ClsMember where
   /-- `private_constant :SECRET` (tier 13d). Declares nothing, so `splitMembers` drops it;
       what reads it is `privNames`, from `Ctx.afterStmt`. -/
   | privC (names : List String)
+  /-- A **nested class or module** (tier 13e): `module M; class Box; … end; end`. The flag is
+      `Cls.isModule`'s. Carried as its unread body, because everything about it — its own
+      members, its own constants, its own nested declarations — has to be recomputed under
+      the *qualified* name `M::Box`, and only the enclosing statement knows the prefix. -/
+  | nestedM (isMod : Bool) (name : String) (body : Expr)
 
 /-- A list of send arguments as bare symbol names, or `none` if any argument is anything
 else. `attr_reader`/`private_constant` are declarations, so an argument this cannot read has
@@ -571,32 +576,41 @@ def clsMember? : Expr → Option ClsMember
   | .send none "attr_reader" args none => (symNames? args).map ClsMember.attrR
   | .send none "private_constant" args none => (symNames? args).map ClsMember.privC
   | .alias' newName oldName => some (.aliasM newName oldName)
+  -- Tier 13e. A nested class with a **superclass** is deliberately not read: the superclass
+  -- name would need resolving against the nesting too, and refusing the member here makes the
+  -- *enclosing* class unreadable rather than silently dropping the nested one.
+  | .class' n none body => some (.nestedM false n body)
+  | .module' n body => some (.nestedM true n body)
   | _ => none
+
+abbrev Nested := List (Bool × String × Expr)
 
 def splitMembers :
     List ClsMember →
       List Defn × List Defn × List String × List String × List String ×
-        List (String × Expr) × List (String × String)
-  | [] => ([], [], [], [], [], [], [])
+        List (String × Expr) × List (String × String) × Nested
+  | [] => ([], [], [], [], [], [], [], [])
   | .inst d :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (d :: i, s, c, e, p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (d :: i, s, c, e, p, k, a, z)
   | .sing d :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (i, d :: s, c, e, p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, d :: s, c, e, p, k, a, z)
   | .incl n :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, n :: c, e, p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, s, n :: c, e, p, k, a, z)
   | .ext n :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, n :: e, p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, s, c, n :: e, p, k, a, z)
   | .prep n :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, e, n :: p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, s, c, e, n :: p, k, a, z)
   | .constM n e :: ms =>
-    let (i, s, c, e', p, k, a) := splitMembers ms; (i, s, c, e', p, (n, e) :: k, a)
+    let (i, s, c, e', p, k, a, z) := splitMembers ms; (i, s, c, e', p, (n, e) :: k, a, z)
   -- Tier 13d: expanded here, so no later function knows `attr_reader` exists.
   | .attrR ns :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (attrDefns ns ++ i, s, c, e, p, k, a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (attrDefns ns ++ i, s, c, e, p, k, a, z)
   | .aliasM nw od :: ms =>
-    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, e, p, k, (nw, od) :: a)
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, s, c, e, p, k, (nw, od) :: a, z)
   -- `private_constant` declares nothing; it is read off the body separately (`privNames`).
   | .privC _ :: ms => splitMembers ms
+  | .nestedM im n b :: ms =>
+    let (i, s, c, e, p, k, a, z) := splitMembers ms; (i, s, c, e, p, k, a, (im, n, b) :: z)
 
 /-- `alias new old` copies the method `old` names, so it can only be resolved once the whole
 member list is known — which is why it is `classMethods?`'s job and not `clsMember?`'s.
@@ -619,11 +633,11 @@ def resolveAliases : List Defn → List (String × String) → Option (List Defn
 
 def finishMembers :
     List Defn × List Defn × List String × List String × List String ×
-      List (String × Expr) × List (String × String) →
+      List (String × Expr) × List (String × String) × Nested →
     Option (List Defn × List Defn × List String × List String × List String ×
-      List (String × Expr))
-  | (ms, sms, incs, exts, preps, cs, als) =>
-    (resolveAliases ms als).map (fun ms' => (ms', sms, incs, exts, preps, cs))
+      List (String × Expr) × Nested)
+  | (ms, sms, incs, exts, preps, cs, als, nst) =>
+    (resolveAliases ms als).map (fun ms' => (ms', sms, incs, exts, preps, cs, nst))
 
 /-- A class body's instance and singleton methods, or `none` if the body contains anything
 this checker cannot read.
@@ -641,8 +655,8 @@ than merely record it — which is exactly what its `JudgeConsts` premise does. 
 component of the tuple is those constants, paired with their unjudged initializers. -/
 def classMethods? :
     Expr → Option (List Defn × List Defn × List String × List String × List String ×
-      List (String × Expr))
-  | .nil => some ([], [], [], [], [], [])
+      List (String × Expr) × Nested)
+  | .nil => some ([], [], [], [], [], [], [])
   | .seq es => (es.mapM clsMember?).bind (fun ms => finishMembers (splitMembers ms))
   | e => (clsMember? e).bind (fun m => finishMembers (splitMembers [m]))
 
@@ -711,12 +725,25 @@ def addClassConsts (S : Env) (owner : String) : List (String × Expr) → Env
                     | some τ => envSet S (constKeyIn owner n) τ
                     | none => S) owner cs
 
+/-- The same, for the constants of **nested** declarations (tier 13e), whose owner is the
+qualified name. Fuel-bounded for `nestedClasses`' reason and with the same consequence: a
+dropped constant is a rejected read. -/
+def addNestedConsts (S : Env) : Nat → String → Nested → Env
+  | 0, _, _ => S
+  | _ + 1, _, [] => S
+  | k + 1, pfx, (_, n, body) :: rest =>
+    let q := pfx ++ "::" ++ n
+    let S' := match classMethods? body with
+      | some (_, _, _, _, _, cs, nst) => addNestedConsts (addClassConsts S q cs) k q nst
+      | none => S
+    addNestedConsts S' k pfx rest
+
 /-- The constant members of a class body, or `[]` if the body is not one this checker reads.
 Deliberately re-derived from `classMethods?` rather than passed in: `extendConsts` is called
 from `Ctx.afterStmt`, which sees only the statement. -/
 def bodyConsts (body : Expr) : List (String × Expr) :=
   match classMethods? body with
-  | some (_, _, _, _, _, cs) => cs
+  | some (_, _, _, _, _, cs, _) => cs
   | none => []
 
 /-! ### `private_constant` (tier 13d)
@@ -1068,19 +1095,67 @@ def mergeCls (C : CTable) (c : Cls) : CTable :=
       prepends := old.prepends ++ c.prepends
       extended := old.extended ++ c.extended } :: C
 
+/-! ### Nested namespaces (tier 13e)
+
+`module M; class Box; … end; end` gives a class whose name **is** `"M::Box"` — that is what
+CRuby's `Box.name` answers, and matching it means the `CTable` key, `Ty.clsOf` and `Ty.inst`
+all agree with the runtime rather than with a convention this package invented.
+
+The recursion is **fuel-bounded**, and unlike `chk`'s fuel this one bounds *breadth as well as
+depth*: `nestedClasses` spends a unit per nested declaration visited in either direction. The
+reason is termination — the nested bodies come out of `classMethods?`, which Lean cannot see
+as returning subterms of its argument, so there is no structural measure to recurse on. It is a
+completeness knob like every other fuel here: running out drops a table entry, and a dropped
+entry means a later use of that class finds nothing and is rejected.
+
+`nestFuel` is generous for a source file (the deepest nesting in the target is three, with
+tens of siblings) and finite, which is all the kernel needs. -/
+def nestFuel : Nat := 512
+
+/-- Every class-or-module entry a nested declaration list contributes, with names qualified by
+`pfx`. Flat, so the caller folds `mergeCls` over it — which is what makes a *reopened* nested
+class merge with its earlier definition exactly as a top-level one does. -/
+def nestedClasses : Nat → String → Nested → List Cls
+  | 0, _, _ => []
+  | _ + 1, _, [] => []
+  | k + 1, pfx, (isMod, n, body) :: rest =>
+    let q := pfx ++ "::" ++ n
+    (match classMethods? body with
+     | some (ms, sms, incs, exts, preps, _, nst) =>
+       { name := q, super? := none, methods := ms, smethods := sms, isModule := isMod,
+         includes := incs, prepends := preps, extended := exts }
+         :: nestedClasses k q nst
+     | none => []) ++ nestedClasses k pfx rest
+
+def mergeAll (C : CTable) : List Cls → CTable
+  | [] => C
+  | c :: cs => mergeAll (mergeCls C c) cs
+
+/-- The nested declarations of a class body, or `[]` if the body is not one this checker
+reads — `bodyConsts`'s twin, and re-derived from `classMethods?` for the same reason. -/
+def bodyNested (body : Expr) : Nested :=
+  match classMethods? body with
+  | some (_, _, _, _, _, _, nst) => nst
+  | none => []
+
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts, preps, _) =>
+    | some (ms, sms, incs, exts, preps, _, _) =>
+      -- Tier 13e: `mergeAll … (nestedClasses …)` is the only addition, and it is the same in
+      -- both arms and in `module'` below: whatever this statement declares, its nested
+      -- declarations are declared with it, under its name as prefix.
       match sup with
       | none =>
-        mergeCls C
+        mergeAll (mergeCls C
           { name := n, super? := none, methods := ms, smethods := sms, isModule := false
-            includes := incs, prepends := preps, extended := exts }
+            includes := incs, prepends := preps, extended := exts })
+          (nestedClasses nestFuel n (bodyNested body))
       | some (.const sn) =>
-        mergeCls C
+        mergeAll (mergeCls C
           { name := n, super? := some sn, methods := ms, smethods := sms, isModule := false
-            includes := incs, prepends := preps, extended := exts }
+            includes := incs, prepends := preps, extended := exts })
+          (nestedClasses nestFuel n (bodyNested body))
       -- A superclass expression that is not a bare constant (`class C < foo()`) is not
       -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
@@ -1090,10 +1165,11 @@ def extendClasses (C : CTable) : Expr → CTable
   -- `callSMethod` with nothing added.
   | .module' n body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts, preps, _) =>
-      mergeCls C
+    | some (ms, sms, incs, exts, preps, _, _) =>
+      mergeAll (mergeCls C
         { name := n, super? := none, methods := ms, smethods := sms, isModule := true
-          includes := incs, prepends := preps, extended := exts }
+          includes := incs, prepends := preps, extended := exts })
+        (nestedClasses nestFuel n (bodyNested body))
     | none => C
   | _ => C
 
@@ -1420,8 +1496,11 @@ def extendConsts (S : Env) : Expr → Ty → Env
   -- `Judge.cpathAsgn` is stated at the same syntax: the two have to agree about the key, and
   -- a base this pattern does not read simply binds nothing (conservative).
   | .cpathAsgn (some (.const owner)) n _, τ => envSet S (constKeyIn owner n) τ
-  | .class' n _ body, _ => addClassConsts S n (bodyConsts body)
-  | .module' n body, _ => addClassConsts S n (bodyConsts body)
+  -- Tier 13e: and the constants of anything nested inside it, at their qualified owners.
+  | .class' n _ body, _ =>
+    addNestedConsts (addClassConsts S n (bodyConsts body)) nestFuel n (bodyNested body)
+  | .module' n body, _ =>
+    addNestedConsts (addClassConsts S n (bodyConsts body)) nestFuel n (bodyNested body)
   | _, _ => S
 
 /-- `κ` after performing statement `e`, which produced a value of type `τ`: both syntax
@@ -2324,11 +2403,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       before this tier. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
       {body : Expr} {ms sms : List Defn} {incs exts preps : List String}
-      {cs : List (String × Expr)} :
-      classMethods? body = some (ms, sms, incs, exts, preps, cs) →
+      {cs : List (String × Expr)} {nst : Nested} :
+      classMethods? body = some (ms, sms, incs, exts, preps, cs, nst) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
       constGet? κ n = none →
       JudgeConsts κ cs →
+      JudgeNested κ n nst →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
@@ -2625,11 +2705,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       changed to "X is not a module". -/
   | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
       {ms sms : List Defn} {incs exts preps : List String}
-      {cs : List (String × Expr)} :
-      classMethods? body = some (ms, sms, incs, exts, preps, cs) →
+      {cs : List (String × Expr)} {nst : Nested} :
+      classMethods? body = some (ms, sms, incs, exts, preps, cs, nst) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
       constGet? κ n = none →
       JudgeConsts κ cs →
+      JudgeNested κ n nst →
       Judge κ Γ I (.module' n body) .any Γ I
   /-- A bare name inside a **singleton** method body naming another of the same object's
       singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;
@@ -3112,11 +3193,32 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Note that this reaches a *class's* constants too: `class Box; SIZE = 3; end; Box::SIZE`
       is this rule, and it is how Ruby spells the read that a bare `SIZE` at top level cannot
       do. -/
-  | constPath {κ : Ctx} {Γ : Env} {I : Ty} {owner n : String} {τ : Ty} :
-      Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
+  | constPath {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr} {owner n : String} {τ : Ty} :
+      Judge κ Γ I base (.clsOf owner) Γ₁ I₁ →
       envGet? κ.consts (constKeyIn owner n) = some τ →
       κ.privConsts.contains (constKeyIn owner n) = false →
-      Judge κ Γ I (.cpath (some (.const owner)) n) τ Γ I
+      Judge κ Γ I (.cpath (some base) n) τ Γ₁ I₁
+  /-- **`M::Box` — a scoped *class* name** (tier 13e). `constPath`'s sibling, for the case
+      where what the path names is a class or module rather than a value: nested declarations
+      live in `κ.classes` under their qualified name, not in the constant table.
+
+      So this rule is `constCls` with the name coming from the path instead of from a bare
+      `const`, and `.clsOf` of the **qualified** name — which is also what CRuby's `Box.name`
+      answers, so `Ty.inst "M::Box" _` and the class the semantics reports agree.
+
+      The third premise keeps it disjoint from `constPath`, exactly as `constCls`'s
+      `constGet? = none` keeps it disjoint from `constEnv`, and for the same reason: after
+      `M::Box = 5` the path names the `5`.
+
+      Recursive through the base, which is how `Outer::Inner::Y` types at all — the base
+      `Outer::Inner` is this rule (`.clsOf "Outer::Inner"`), and only the outermost step is
+      `constPath`. -/
+  | constPathCls {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr} {owner n : String}
+      {c : Cls} :
+      Judge κ Γ I base (.clsOf owner) Γ₁ I₁ →
+      clsGet? κ.classes (owner ++ "::" ++ n) = some c →
+      envGet? κ.consts (constKeyIn owner n) = none →
+      Judge κ Γ I (.cpath (some base) n) (.clsOf (owner ++ "::" ++ n)) Γ₁ I₁
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and
       binds nothing, while `Ctx.afterStmt`/`extendConsts` makes the binding at
@@ -3232,6 +3334,32 @@ inductive JudgeConsts : Ctx → List (String × Expr) → Prop
       Judge κ [] .ivar0 e τ [] .ivar0 →
       JudgeConsts κ cs →
       JudgeConsts κ ((n, e) :: cs)
+
+/-- **A class body's nested class and module declarations are themselves well-formed**
+(tier 13e). `classStmt`/`moduleStmt`'s fifth premise, and the recursive one.
+
+It says of each nested declaration exactly what `classStmt` says of a top-level one, at the
+**qualified** name: its body is readable, its mixins are declared modules, the qualified name
+is not already a constant, its own constants type, and its own nested declarations are
+well-formed in turn. There is no separate `Judge` for a nested `class` statement — it is not a
+statement of any sequence, and `JudgeSeq` is the only thing that would judge one — so this
+relation is where that obligation lives.
+
+The `String` index is the **prefix**, and it is only there for the third premise: without a
+qualified name there is nothing to check `M::Box = 5; module M; class Box; end; end` against.
+Everything else about a nested declaration is name-independent. -/
+inductive JudgeNested : Ctx → String → Nested → Prop
+  | nil {κ : Ctx} {pfx : String} : JudgeNested κ pfx []
+  | cons {κ : Ctx} {pfx : String} {isMod : Bool} {n : String} {body : Expr}
+      {ms sms : List Defn} {incs exts preps : List String}
+      {cs : List (String × Expr)} {nst rest : Nested} :
+      classMethods? body = some (ms, sms, incs, exts, preps, cs, nst) →
+      allModules κ.classes (incs ++ exts ++ preps) = true →
+      envGet? κ.consts (constKeyIn pfx n) = none →
+      JudgeConsts κ cs →
+      JudgeNested κ (pfx ++ "::" ++ n) nst →
+      JudgeNested κ pfx rest →
+      JudgeNested κ pfx ((isMod, n, body) :: rest)
 
 end
 

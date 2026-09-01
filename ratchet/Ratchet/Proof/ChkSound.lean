@@ -453,10 +453,11 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           subst h; subst h'; subst h''
           exact .constBuiltin (builtinCls?_sound (by assumption)) hcls hconst
         · exact absurd h (by simp)
-  · -- `cpath (some (const owner)) n` (tier 13c): the base typed as *this* class-or-module
-    -- object, and the absolute key was in the constant table.
+  · -- `cpath (some base) n` (tiers 13c and 13e): the base typed as *some* class-or-module
+    -- object, and then either the absolute key was in the constant table (`constPath`) or a
+    -- nested class was declared under the qualified name (`constPathCls`).
     split at h
-    · rename_i hbase
+    · rename_i owner Γ₁ I₁ hbase
       split at h
       · rename_i τ₀ hlook
         -- Tier 13d: `private_constant` -- one more `split`, and the `false` branch is the one
@@ -467,8 +468,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          exact .constPath (chk_sound hbase) hlook (by simpa using hpriv)
-      · exact absurd h (by simp)
+          exact .constPath (chkOwner?_sound hbase) hlook (by simpa using hpriv)
+      · rename_i hlook
+        split at h
+        · rename_i c hcls
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .constPathCls (chkOwner?_sound hbase) hcls hlook
+        · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `cpathAsgn (some (const owner)) n e` (tier 13c): the same base premise, then the
     -- right-hand side. The binding is `chkSeq`'s, as it is for `casgn`.
@@ -503,7 +511,8 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         -- Tier 13: three conjuncts now -- `allModules`, the `constGet?`-is-`none` premise,
         -- and the class body's constants (`chkConsts`).
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
-        exact .moduleStmt hms hmix.1.1 hmix.1.2 (chkConsts_sound hmix.2)
+        exact .moduleStmt hms hmix.1.1.1 hmix.1.1.2 (chkConsts_sound hmix.1.2)
+          (chkNested_sound hmix.2)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `class' n sup body`: only a body this checker can read into the class table, and (tier
@@ -516,7 +525,8 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
-        exact .classStmt hms hmix.1.1 hmix.1.2 (chkConsts_sound hmix.2)
+        exact .classStmt hms hmix.1.1.1 hmix.1.1.2 (chkConsts_sound hmix.1.2)
+          (chkNested_sound hmix.2)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args (some (.block ps [] body))`: either a `lambda`/`proc` literal, or a
@@ -1084,6 +1094,40 @@ theorem chkAll_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
+/-- `chkOwner?` reports a name only for an expression that really types as *that* class
+object. One `split`, because the arm it is extracted from is the only thing in it. -/
+theorem chkOwner?_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr}
+    {owner : String},
+    chkOwner? fuel κ Γ I base = some (owner, Γ₁, I₁) →
+    Judge κ Γ I base (.clsOf owner) Γ₁ I₁ := by
+  intro fuel κ Γ Γ₁ I I₁ base owner h
+  unfold chkOwner? at h
+  split at h
+  · exact absurd h (by simp)
+  · split at h
+    · rename_i o G J hchk
+      injection h with h; injection h with h h'; injection h' with h' h''
+      subst h; subst h'; subst h''
+      exact chk_sound hchk
+    · exact absurd h (by simp)
+
+/-- **`chkNested` never admits a nested declaration `JudgeNested` does not** (tier 13e).
+Premise for premise, and the recursion is the relation's: into the nested body's own nested
+list, and along the rest of the list. -/
+theorem chkNested_sound : ∀ {fuel : Nat} {κ : Ctx} {pfx : String} {nst : Nested},
+    chkNested fuel κ pfx nst = true → JudgeNested κ pfx nst := by
+  intro fuel κ pfx nst h
+  unfold chkNested at h
+  split at h
+  · exact absurd h (by simp)
+  · exact .nil
+  · split at h
+    · rename_i ms sms incs exts preps cs nst' hms
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at h
+      exact .cons hms h.1.1.1.1 h.1.1.1.2 (chkConsts_sound h.1.1.2)
+        (chkNested_sound h.1.2) (chkNested_sound h.2)
+    · exact absurd h (by simp)
+
 /-- **`chkConsts` never admits a class-body constant `JudgeConsts` does not** (tier 13).
 Premise for premise: `constLitTy?` had to answer, and `chk` had to come back with exactly
 that type and the empty outgoing environment and spine. The `if`'s condition *is* the triple
@@ -1175,6 +1219,8 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
+#print axioms chkOwner?_sound
+#print axioms chkNested_sound
 #print axioms chkConsts_sound
 #print axioms chkPairs_sound
 #print axioms chkSeq_sound
