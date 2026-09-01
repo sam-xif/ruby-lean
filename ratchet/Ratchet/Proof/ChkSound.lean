@@ -118,6 +118,14 @@ theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
   · subst hm; exact .x
   · exact absurd h (by simp [bareNameError?, hm])
 
+-- Raised from the default 200000 when tier 12's guard clause was added. The cost is
+-- elaboration time in `chkSeq_sound`'s new arm and nothing else: `chkSeq`'s guard pattern
+-- (`.if' c (.ret (some r)) none :: _ :: _`) *overlaps* the generic `e :: e' :: es` arm, so
+-- Lean's match compiler builds a splitter that case-analyses `Expr` several levels deep, and
+-- `split at h` has to push `h` through it. Not a soundness knob -- a heartbeat limit can only
+-- turn a proof into an error, never the reverse, and the file still checks in a few seconds.
+set_option maxHeartbeats 1000000
+
 mutual
 
 theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
@@ -706,6 +714,23 @@ theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
   · exact absurd h (by simp)
   · exact absurd h (by simp)
   · exact .last (chk_sound h)
+  · -- tier 12's guard clause, matched before the generic `cons` arm
+    split at h
+    · rename_i hc
+      split at h
+      · rename_i hr
+        split at h
+        · rename_i hI
+          split at h
+          · rename_i hrest
+            injection h with h
+            injection h with h h'; injection h' with h' h''
+            subst h; subst h'; subst h''
+            exact JudgeSeq.guard (chk_sound hc) (chk_sound hr) hI (chkSeq_sound hrest)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · split at h
     · rename_i hhd
       exact .cons (chk_sound hhd) (chkSeq_sound h)

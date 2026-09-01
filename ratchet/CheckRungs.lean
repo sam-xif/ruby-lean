@@ -508,7 +508,40 @@ def controls : List Control :=
     -- would be one line; it is absent because `builtinAncestors` is where the *answer* would
     -- have to come from and no rung asks.
   , ⟨"1.is_a?(Numeric) (safe; Numeric is not a BuiltinCls row)",
-      .send (some (.int 1)) "is_a?" [.const "Numeric"] none⟩ ]
+      .send (some (.int 1)) "is_a?" [.const "Numeric"] none⟩
+    -- ### Tier 12's guard-clause controls
+    --
+    -- (dd) The guard's polarity, and the sharpest one on the ladder because *nothing
+    -- syntactically encloses the narrowed code*: this is `narrow-guard-clause` with the guard
+    -- negated (`unless x.nil?` spelled as `if !x.nil?` would be the idiom; here the same
+    -- effect is had by returning on the *non*-nil path). `a[0]` is `nil`, the guard does not
+    -- fire, and `nil + 1` raises NoMethodError. Certified by any implementation that types the
+    -- rest of the sequence in `(narrowEnvs …).1` instead of `.2`.
+  , ⟨"def f(a); x = a[0]; return 0 if x.is_a?(Integer); x + 1; end; f([])",
+      .seq [.def' "f" [.req "a"]
+              (.seq [.vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+                     .if' (.send (some (.var .lvar "x")) "is_a?" [.const "Integer"] none)
+                       (.ret (some (.int 0))) none,
+                     .send (some (.var .lvar "x")) "+" [.int 1] none]),
+            .send none "f" [.array []] none]⟩
+    -- (ee) **`.ret` still has no rule**, and this is the control that says so. `JudgeSeq.guard`
+    -- matches only `.if' c (.ret (some e)) none` in *non-final* position, so a bare `return`
+    -- as a statement is untypeable -- which is what stops the unsound rule `bodyResult`'s
+    -- docstring warns about: giving `.ret e` the type of `e` would make this validate at `Int`
+    -- when the method really returns a String.
+  , ⟨"def f; return \"a\"; 2; end; f() + 1 (unsound if `.ret` had a rule)",
+      .seq [.def' "f" [] (.seq [.ret (some (.str "a")), .int 2]),
+            .send (some (.send none "f" [] none)) "+" [.int 1] none]⟩
+    -- (ff) The guard's *returned* expression is typed too, in the then-branch's environment.
+    -- Here it is type-stuck (`nil + 1`, on the path where `x` is `nil`), and nothing at the
+    -- call site or after the guard looks wrong -- the `guard` twin of `fun-body-mismatch`.
+  , ⟨"def f(a); x = a[0]; return x + 1 if x.nil?; 0; end; f([])",
+      .seq [.def' "f" [.req "a"]
+              (.seq [.vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+                     .if' (.send (some (.var .lvar "x")) "nil?" [] none)
+                       (.ret (some (.send (some (.var .lvar "x")) "+" [.int 1] none))) none,
+                     .int 0]),
+            .send none "f" [.array []] none]⟩ ]
 
 mutual
 

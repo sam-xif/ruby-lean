@@ -488,6 +488,21 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
   | 0, _ => none
   | _ + 1, [] => none
   | f + 1, [e] => chk f κ Γ I e
+  | f + 1, .if' c (.ret (some r)) none :: e' :: es =>
+    -- Tier 12's guard clause (`Judge.guard`). Matched *before* the generic `cons` arm, and
+    -- only in non-final position — a `return … if …` as the whole body of a sequence still has
+    -- no rule, because `.ret` has none.
+    match chk f κ Γ I c with
+    | some (_, Γc, Ic) =>
+      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic r with
+      | some (ρ, _, Ir) =>
+        if Ir = Ic then
+          match chkSeq f κ (narrowEnvs κ.classes c Γc).2 Ic (e' :: es) with
+          | some (τ, Γ', I') => some (joinT ρ τ, Γ', I')
+          | none => none
+        else none
+      | none => none
+    | none => none
   | f + 1, e :: e' :: es =>
     match chk f κ Γ I e with
     | some (_, Γ₁, I₁) => chkSeq f (κ.afterStmt e) Γ₁ I₁ (e' :: es)

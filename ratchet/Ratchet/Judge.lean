@@ -1884,6 +1884,51 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
       {es : List Expr} {σ τ : Ty} :
       Judge κ Γ I e σ Γ₁ I₁ → JudgeSeq (κ.afterStmt e) Γ₁ I₁ (e' :: es) τ Γ₂ I₂ →
       JudgeSeq κ Γ I (e :: e' :: es) τ Γ₂ I₂
+  /-- **The guard clause: `return e if c`, followed by more statements** (tier 12).
+
+      Ruby's most common narrowing idiom, and the only one that narrows by *elimination of a
+      branch that leaves* rather than by being inside a branch:
+
+      ```ruby
+      x = a[0]
+      return 0 if x.nil?      # <- this statement
+      x + 1                   # <- x is not nil here, and no `if` encloses this line
+      ```
+
+      **Why this is a `JudgeSeq` rule and not a rule for `.ret`.** `.ret` has no rule of its
+      own anywhere in this judgment, deliberately: giving `.ret e` the type of `e` makes
+      `def f; return "a"; 2; end` validate at `Int` (`bodyResult`'s docstring), and giving it
+      `.never` fails the same way, because `JudgeSeq` takes the *last* statement's type either
+      way. Both fixes need the sequence to know that a statement did not fall through — which
+      is information about the sequence, so the rule belongs to the sequence. Stated at this
+      one syntactic shape (`.if' c (.ret (some e)) none` in non-final position) it needs no
+      general return-type accumulator, and everything else about `.ret` stays underivable.
+
+      **What the rule says**, premise by premise:
+
+      - the condition types (evaluating it can itself be type-stuck);
+      - the returned expression types **in the then-branch's narrowed environment**, because
+        that is where the guard fired;
+      - the rest of the sequence types in the **else**-branch's narrowed environment —
+        `(narrowEnvs …).2` — which is the entire point: the code after a guard runs only on
+        the path the guard let through;
+      - and the sequence's type is `joinT ρ τ`, the join of *what the guard returns* with what
+        the rest returns. This is the one place a value leaves a sequence from somewhere other
+        than its last statement.
+
+      `κ` rather than `κ.afterStmt` for the rest, because `extendClasses`/`extendDefs` are
+      visibly the identity on an `.if'`: a guard declares nothing.
+
+      `Ir = Ic` requires the returned expression to leave the ivar spine alone. Not a
+      restriction any rung feels (a guard returns a constant or a local), and it is needed
+      because the spine this rule reports is the *rest*'s: an ivar written on the returning
+      path would be invisible to the caller's `Iout = Iself` check. -/
+  | guard {κ : Ctx} {Γ Γc Γr Γ' : Env} {I Ic Ir I' : Ty} {c e : Expr}
+      {rest : List Expr} {σ ρ τ : Ty} :
+      Judge κ Γ I c σ Γc Ic →
+      Judge κ (narrowEnvs κ.classes c Γc).1 Ic e ρ Γr Ir → Ir = Ic →
+      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 Ic rest τ Γ' I' →
+      JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
 
 end
 

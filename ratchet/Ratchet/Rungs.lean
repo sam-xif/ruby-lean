@@ -1546,6 +1546,42 @@ def r130 : Rung :=
                  (.callMethod (.var rfl) .nil rfl rfl .strLit)
                  (.callMethod (.var rfl) .nil rfl rfl .strLit) rfl))))))⟩
 
+/-- `def first_or_zero(a); x = a[0]; return 0 if x.nil?; x + 1; end; first_or_zero([5])`
+    → `Integer`.
+
+    **The guard clause — the one narrowing idiom with no `if` around the narrowed code.**
+    `x + 1` is a top-level statement of the method body; nothing syntactically encloses it, and
+    yet it may treat `x` as an `Integer`, because the only path that reaches it is the one the
+    guard let through. So the refinement is applied by a **`JudgeSeq`** rule
+    (`JudgeSeq.guard`), not by `Judge.if'`: the fact being used — "that statement did not fall
+    through" — is a fact about the *sequence*.
+
+    Read the derivation's shape against the program's: the body is a three-statement `seq`, and
+    the derivation is `.cons` (the assignment) then `.guard`, which swallows **both** the guard
+    statement and the rest of the sequence. `.guard`'s two `Judge` premises are the condition
+    and the *returned* expression (`0`, typed where the guard fired), and its `JudgeSeq` premise
+    is `x + 1` typed in `(narrowEnvs …).2`, where `x : Int`. The method's type is
+    `joinT Int Int` — a value leaving from somewhere other than the last statement, which is
+    the only place in this judgment that happens.
+
+    Note what still has no rule: `.ret` itself. `def f; return "a"; 2; end` remains underivable,
+    which is the property `bodyResult`'s docstring argues for and which this rule was shaped
+    around rather than against. -/
+def r131 : Rung :=
+  ⟨"narrow-guard-clause",
+    .seq [.def' "first_or_zero" [.req "a"]
+            (.seq [.vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+                   .if' (.send (some (.var .lvar "x")) "nil?" [] none)
+                     (.ret (some (.int 0))) none,
+                   .send (some (.var .lvar "x")) "+" [.int 1] none]),
+          .send none "first_or_zero" [.array [.int 5]] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons (.arrayLit (.cons .intLit .nil)) .nil) rfl rfl
+        (.seq (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
+          (.guard (.prim (.var rfl) .nil (.nilQuery (.nilable .int))) .intLit rfl
+            (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1559,7 +1595,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
    r121,
-   r125, r126, r127, r130]
+   r125, r126, r127, r130, r131]
 
 /-! ## `chk` answers exactly what was derived by hand
 

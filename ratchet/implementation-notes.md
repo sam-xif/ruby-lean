@@ -1575,3 +1575,81 @@ State after this clink: **95 rungs climbed** of 136 (tiers 1–8 complete, tier 
 tier 11 at 1/10, tier 12 at 4/12), 95/95 cross-checked against the real semantics, 53/53
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 15 (2026-09-01) — tier 12c: the guard clause: 95 → 96
+
+`narrow-guard-clause` — `return 0 if x.nil?` — the one narrowing idiom where **nothing
+syntactically encloses the narrowed code**. 96 derivations, 56/56 controls, 136/136 agreement,
+eight theorems axiom-clean.
+
+### Why it is a `JudgeSeq` rule
+
+```ruby
+def first_or_zero(a)
+  x = a[0]
+  return 0 if x.nil?
+  x + 1              # x : Integer here, and no `if` is around this line
+end
+```
+
+Every other refinement on this ladder is applied by `Judge.if'` to a *branch*. This one is
+applied to **the rest of the sequence**, because the fact being used — "the previous statement
+did not fall through" — is a fact about statement order, and `JudgeSeq` is the only relation
+that knows about order. So the rule is `JudgeSeq.guard`, matching the statement shape
+`.if' c (.ret (some e)) none` in **non-final** position, and it swallows both the guard and
+everything after it:
+
+```
+Judge κ Γ I c σ Γc Ic →                                    -- the condition
+Judge κ (narrowEnvs κ.classes c Γc).1 Ic e ρ Γr Ir → Ir = Ic →   -- what the guard returns
+JudgeSeq κ (narrowEnvs κ.classes c Γc).2 Ic rest τ Γ' I' →       -- the rest, narrowed
+JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
+```
+
+Three things in there are decisions:
+
+- **`.1` for the returned expression, `.2` for the rest.** The guard's body runs where the
+  guard *fired*; the rest runs on the path it let through. Swapping them is the obvious bug and
+  is a recorded control (`return 0 if x.is_a?(Integer); x + 1` with `a = []`, NoMethodError).
+- **`joinT ρ τ`.** This is the only place in the judgment where a value leaves a sequence from
+  somewhere other than its last statement, and the type has to cover both exits.
+- **`Ir = Ic`.** The returning path may not touch the ivar spine, because the spine this rule
+  reports is the *rest*'s — an ivar written on the way out would be invisible to the caller's
+  `Iout = Iself` check. No rung feels it; a guard returns a constant or a local.
+
+`κ` rather than `κ.afterStmt` for the rest, because `extendClasses`/`extendDefs` are visibly
+the identity on an `.if'`.
+
+### What was *not* done, and why that is the point
+
+**`.ret` still has no rule.** The temptation is to give `.ret e` the type of `e` and be done;
+that makes `def f; return "a"; 2; end` validate at `Int` (`bodyResult`'s docstring has had this
+warning on file since clink 10), and typing it `.never` fails identically, because `JudgeSeq`
+takes the last statement's type either way. The general fix is a return-type accumulator
+threaded through the whole judgment — a fifth piece of state, and a real design. Restricting
+the rule to *one syntactic shape in non-final position* gets the rung with no new state at all,
+and leaves `seq [ret "a", 2]` underivable. That is control (ee): the same program, rejected,
+and the semantics confirms it really returns a String.
+
+`bodyResult` (a `.ret` as a lambda's *entire* body) and `JudgeSeq.guard` (a guarded `.ret` in
+statement position) are now the two places `.ret` is readable, and they do not overlap. A method
+whose body is exactly `return e` is still not typed — nobody has asked.
+
+### One cost, recorded: a heartbeat bump in `ChkSound.lean`
+
+`chkSeq`'s guard pattern (`.if' c (.ret (some r)) none :: _ :: _`) **overlaps** the generic
+`e :: e' :: es` arm, so Lean's match compiler builds a splitter that case-analyses `Expr`
+several levels deep and `split at h` has to push the hypothesis through it. `chk_sound`'s mutual
+block needed `maxHeartbeats 1000000` (from the default 200000); the file still checks in a few
+seconds. Not a soundness knob — a heartbeat limit can only turn a proof into an error.
+
+### Three new controls
+
+The polarity swap above; the `.ret`-has-no-rule control; and a `guard` twin of
+`fun-body-mismatch` — `return x + 1 if x.nil?`, where the *returned expression* is type-stuck on
+exactly the path the guard selects, and nothing at the call site or after the guard looks wrong.
+
+State after this clink: **96 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 10/22,
+tier 11 at 1/10, tier 12 at 5/12), 96/96 cross-checked against the real semantics, 56/56
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
+soundness theorems axiom-clean (`propext`, `Quot.sound`).
