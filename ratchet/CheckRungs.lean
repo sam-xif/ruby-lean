@@ -1016,7 +1016,18 @@ def controls : List Control :=
   , ⟨"class C; def freeze; 1 + \"a\"; end; end; C.new.freeze",
       .seq [.class' "C" none (.def' "freeze" []
               (.send (some (.int 1)) "+" [.str "a"] none)),
-            .send (some (.send (some (.const "C")) "new" [] none)) "freeze" [] none]⟩ ]
+            .send (some (.send (some (.const "C")) "new" [] none)) "freeze" [] none]⟩
+    -- (p13h) **`constPath`'s base premise, which is the whole reason it has one** (tier 13c).
+    -- `M` is rebound to `5`, so `M::X` raises TypeError ("5 is not a class/module") even
+    -- though the constant table still holds a perfectly good `"::M::X"`. A rule that formed
+    -- the key syntactically and looked it up would certify this.
+  , ⟨"module M; X = 1; end; M = 5; M::X",
+      .seq [.module' "M" (.casgn "X" (.int 1)), .casgn "M" (.int 5),
+            .cpath (some (.const "M")) "X"]⟩
+    -- (p13i) The write side of the same fact: assigning into something that is not a
+    -- namespace.
+  , ⟨"M = 5; M::X = 4",
+      .seq [.casgn "M" (.int 5), .cpathAsgn (some (.const "M")) "X" (.int 4)]⟩ ]
 
 mutual
 
@@ -1061,6 +1072,11 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .const n => some (.const n)
   -- Tier 13: a constant assignment (the controls' `X = 5`).
   | .casgn n e => (toRubyCore e).map (fun e' => .casgn n e')
+  -- Tier 13c: `M::X` and `M::X = 4`.
+  | .cpath (some b) n => (toRubyCore b).map (fun b' => .cpath (some b') n)
+  | .cpathAsgn (some b) n e => do
+    let b' ← toRubyCore b
+    return .cpathAsgn (some b') n (← toRubyCore e)
   | .var .ivar x => some (.var .ivar x)
   | .vasgn .ivar x e => (toRubyCore e).map (fun e' => .vasgn .ivar x e')
   | .module' n body => (toRubyCore body).map (fun b => .module' n b)

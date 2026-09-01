@@ -453,6 +453,24 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           subst h; subst h'; subst h''
           exact .constBuiltin (builtinCls?_sound (by assumption)) hcls hconst
         · exact absurd h (by simp)
+  · -- `cpath (some (const owner)) n` (tier 13c): the base typed as *this* class-or-module
+    -- object, and the absolute key was in the constant table.
+    split at h
+    · rename_i hbase
+      split at h
+      · rename_i τ₀ hlook
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .constPath (chk_sound hbase) hlook
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `cpathAsgn (some (const owner)) n e` (tier 13c): the same base premise, then the
+    -- right-hand side. The binding is `chkSeq`'s, as it is for `casgn`.
+    split at h
+    · rename_i hbase
+      exact .cpathAsgn (chk_sound hbase) (chk_sound h)
+    · exact absurd h (by simp)
   · -- `casgn n e` (tier 13): the right-hand side typed, and nothing else happened — the
     -- binding is `chkSeq`'s, via `Ctx.afterStmt` (see `Judge.casgn`).
     split at h

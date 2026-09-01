@@ -259,6 +259,18 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       match clsGet? κ.classes n with
       | some _ => some (.clsOf n, Γ, I)
       | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
+  | f + 1, .cpath (some (.const owner)) n =>
+    -- Tier 13c. The base has to *type* as a class-or-module object, not merely look like one:
+    -- after `M = 5` the only rule for `.const "M"` is `constEnv` (see `Judge.constPath`). The
+    -- condition is written as the whole triple equality so that it *is* the premise
+    -- `chk_sound` needs, with nothing to take apart.
+    if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then
+      match envGet? κ.consts (constKeyIn owner n) with
+      | some τ => some (τ, Γ, I)
+      | none => none
+    else none
+  | f + 1, .cpathAsgn (some (.const owner)) n e =>
+    if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then chk f κ Γ I e else none
   | f + 1, .casgn n e =>
     -- Tier 13. The *binding* is not made here: `chkSeq` makes it, via `Ctx.afterStmt`, so a
     -- `casgn` that is not a statement of a sequence types and binds nothing (`Judge.casgn`).

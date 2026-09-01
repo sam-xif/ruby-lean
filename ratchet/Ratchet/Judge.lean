@@ -1305,6 +1305,10 @@ their types from `constLitTy?` — see §A class body's constants for why that i
 function and what makes it sound. -/
 def extendConsts (S : Env) : Expr → Ty → Env
   | .casgn n _, τ => envSet S (constKey n) τ
+  -- Tier 13c: `M::X = 4`. The base is matched *syntactically* here, which is why
+  -- `Judge.cpathAsgn` is stated at the same syntax: the two have to agree about the key, and
+  -- a base this pattern does not read simply binds nothing (conservative).
+  | .cpathAsgn (some (.const owner)) n _, τ => envSet S (constKeyIn owner n) τ
   | .class' n _ body, _ => addClassConsts S n (bodyConsts body)
   | .module' n body, _ => addClassConsts S n (bodyConsts body)
   | _, _ => S
@@ -2980,6 +2984,39 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       have certified it. -/
   | constEnv {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {τ : Ty} :
       constGet? κ n = some τ → Judge κ Γ I (.const n) τ Γ I
+  /-- **`M::X` — a scoped constant read** (tier 13c). The key is absolute and the namespace is
+      named by the base, so the lookup is a single `envGet?` with no search: unlike a bare
+      `X`, `M::X` says where to look.
+
+      **The base is required to be a bare constant *and* to judge as a class-or-module
+      object.** Both halves matter. The syntactic restriction keeps this rule in exact
+      correspondence with `extendConsts`, which is a function of syntax and must agree about
+      which key a write lands on. The judgment is the soundness half: `M = 5; M::X` raises
+      `TypeError` ("5 is not a class/module"), and after that `casgn` the only rule that types
+      `.const "M"` is `constEnv`, which does not answer `.clsOf` — so the premise fails and
+      the read is rejected. Without it, a `constGet?` hit on a stale `"::M::X"` would certify
+      it.
+
+      Note that this reaches a *class's* constants too: `class Box; SIZE = 3; end; Box::SIZE`
+      is this rule, and it is how Ruby spells the read that a bare `SIZE` at top level cannot
+      do. -/
+  | constPath {κ : Ctx} {Γ : Env} {I : Ty} {owner n : String} {τ : Ty} :
+      Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
+      envGet? κ.consts (constKeyIn owner n) = some τ →
+      Judge κ Γ I (.cpath (some (.const owner)) n) τ Γ I
+  /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
+      division of labour: this rule types the statement at its right-hand side's type and
+      binds nothing, while `Ctx.afterStmt`/`extendConsts` makes the binding at
+      `constKeyIn owner n`.
+
+      The base carries `casgn`'s missing premise, for the reason `constPath` gives: assigning
+      into a namespace that is not one (`M = 5; M::X = 4`) raises `TypeError`. It is evaluated
+      before the right-hand side, which is why the two `Judge` premises thread in that
+      order. -/
+  | cpathAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {owner n : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
+      Judge κ Γ I e τ Γ' I' →
+      Judge κ Γ I (.cpathAsgn (some (.const owner)) n e) τ Γ' I'
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
 both states threaded left to right (Ruby's argument evaluation order). -/

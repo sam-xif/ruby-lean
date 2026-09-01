@@ -2634,6 +2634,44 @@ def r144 : Rung :=
                           (.freezeId (.cls))))
       (.last (.prim (.constEnv rfl) (.cons .strLit .nil) .hashIndex)))⟩
 
+/-- `module M; X = 5; end; M::X + 1` → `Integer`.
+
+    The scoped read, and the shape of the derivation says what is new: `constPath` has **two**
+    premises where `constEnv` has one. The extra one judges the *base* — `.const "M"` at
+    `.clsOf "M"`, i.e. `constCls` — and it is not decoration. `M = 5; M::X` raises `TypeError`,
+    and after that `casgn` the only rule that types `.const "M"` is `constEnv`, which answers
+    `.int`; the premise fails and the read is rejected. Compare `constEnv`'s lookup, which
+    *searches* a path list because a bare name has to be resolved; here the name says where to
+    look, so it is a single `envGet?`. -/
+def r139 : Rung :=
+  ⟨"const-scoped-read",
+    .seq [.module' "M" (.casgn "X" (.int 5)),
+          .send (some (.cpath (some (.const "M")) "X")) "+" [.int 1] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl rfl rfl (.cons rfl .intLit .nil))
+      (.last (.prim (.constPath (.constCls rfl rfl) rfl) (.cons .intLit .nil) .intAdd)))⟩
+
+/-- `module M; end; M::X = 4; M::X + 1` → `Integer`.
+
+    A constant written into a namespace **from outside its body**, which is `casgn`'s twin in
+    every respect: `cpathAsgn` types the statement at its right-hand side's type and binds
+    nothing, and `Ctx.afterStmt` makes the binding — here at `"::M::X"`, which is the same key
+    the same module's body would have used. So the third statement cannot tell how the
+    constant got there, and that is the right answer: neither can Ruby.
+
+    Note the module body is `nil`, not empty, and `classMethods?` reads it as a class with no
+    members — so `JudgeConsts` is `.nil` and this module contributes nothing to the table
+    itself. -/
+def r142 : Rung :=
+  ⟨"const-scoped-assign",
+    .seq [.module' "M" .nil,
+          .cpathAsgn (some (.const "M")) "X" (.int 4),
+          .send (some (.cpath (some (.const "M")) "X")) "+" [.int 1] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
+      (.cons (.cpathAsgn (.constCls rfl rfl) .intLit)
+        (.last (.prim (.constPath (.constCls rfl rfl) rfl) (.cons .intLit .nil) .intAdd))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2651,7 +2689,7 @@ def rungs : List Rung :=
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
-   r137, r138, r143, r144]
+   r137, r138, r139, r142, r143, r144]
 
 /-! ## `chk` answers exactly what was derived by hand
 
