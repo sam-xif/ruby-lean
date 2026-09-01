@@ -2130,6 +2130,46 @@ def r111 : Rung :=
     .seq (.cons (.moduleStmt rfl rfl) (.cons (.classStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl) .nil rfl rfl .strLit))))⟩
 
+/-- `module Logger; def speak; "logged: " + super; end; end; class Person; prepend Logger;
+    def speak; "hi"; end; end; Person.new.speak` → `String`.
+
+    **`prepend`, which is the rung that turned the MRO into a list.** Up to tier 8 instance
+    dispatch could be a walk over `Cls.super?`, because "the next place to look" was always
+    reachable from where you were. A prepended module breaks that: `Person.ancestors` is
+    `[Logger, Person]`, so `Logger#speak` wins — and the `super` inside it has to run
+    `Person#speak`, which is not `Logger`'s superclass and which nothing about `Logger` names.
+
+    So `mroList?` builds the order once (`prepends ++ [self] ++ includes`, per class, up the
+    chain), `searchMro` dispatches into it, and `super` becomes `afterInMro` — "keep going from
+    where I was found". Tier 7's `c.super?` walk was the special case of that for an MRO with no
+    mixins in it. `Frame` gained `recvClass` because `afterInMro` needs to know *which* MRO.
+
+    The `super` here is a **`zsuper`** (`super` with no argument list), which had no rule until
+    now; `Judge.zsuperCall` covers the parameterless case, which is what "forward my arguments"
+    means when there are none.
+
+    A note on how this rung was nearly climbed for the wrong reason. When `Cls` grew its third
+    `List String` field, a positional `⟨…⟩` in `mergeCls` silently bound `includes := prepends`
+    — so `Logger` landed *after* `Person` in the MRO, dispatch found `Person#speak`, the
+    `zsuper` in the module was never reached, and `validate` said `true`. The rung "passed" with
+    the feature it exists to test entirely bypassed. `mergeCls` now uses **named** fields, and
+    the control below pins the ordering by execution. -/
+def r112 : Rung :=
+  ⟨"metaprog-prepend",
+    .seq [.module' "Logger"
+            (.def' "speak" []
+              (.send (some (.str "logged: ")) "+" [.zsuper none] none)),
+          .class' "Person" none (.seq [
+            .send none "prepend" [.const "Logger"] none,
+            .def' "speak" [] (.str "hi")]),
+          .send (some (.send (some (.const "Person")) "new" [] none)) "speak" [] none],
+    .cls "String", [],
+    .seq (.cons (.moduleStmt rfl rfl) (.cons (.classStmt rfl rfl)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl
+        (.prim .strLit
+          (.cons (.zsuperCall rfl rfl rfl rfl rfl rfl rfl .strLit) .nil)
+          .strAdd)))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2143,7 +2183,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
-   r109, r110, r111,
+   r109, r110, r111, r112,
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r129, r130, r131, r134]
 

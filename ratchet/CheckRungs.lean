@@ -806,7 +806,40 @@ def controls : List Control :=
             .vasgn .lvar "x" (.send (some (.const "P")) "new" [] none),
             .if' (.send (some (.var .lvar "x")) "is_a?" [.const "A"] none)
               (.send (some (.var .lvar "x")) "nope" [] none)
-              (some (.int 0))]⟩ ]
+              (some (.int 0))]⟩
+    -- ### Tier 10's prepend controls
+    --
+    -- (ddd) **The MRO order, pinned by execution.** `prepend` puts the module *ahead* of the
+    -- class, so `M#f` is what runs and this program returns `"m"` -- `"m" + 1` raises
+    -- TypeError. A checker that put the module *after* the class (which is what `include`
+    -- does, and which a positional-field mistake in `mergeCls` really did produce) would find
+    -- `P#f`, see an `Integer`, and certify it.
+  , ⟨"module M; def f; \"m\"; end; end; class P; prepend M; def f; 1; end; end; P.new.f + 1",
+      .seq [.module' "M" (.def' "f" [] (.str "m")),
+            .class' "P" none (.seq [
+              .send none "prepend" [.const "M"] none,
+              .def' "f" [] (.int 1)]),
+            .send (some (.send (some (.send (some (.const "P")) "new" [] none)) "f" [] none))
+              "+" [.int 1] none]⟩
+    -- (eee) …and the `include` twin of the same program, which must go the *other* way: the
+    -- class's own method wins, the result is `1`, and `+ "!"` raises TypeError. The pair is
+    -- what stops `prepends` and `includes` from being collapsed into one list.
+  , ⟨"module M; def f; \"m\"; end; end; class P; include M; def f; 1; end; end;"
+      ++ " P.new.f + \"!\"",
+      .seq [.module' "M" (.def' "f" [] (.str "m")),
+            .class' "P" none (.seq [
+              .send none "include" [.const "M"] none,
+              .def' "f" [] (.int 1)]),
+            .send (some (.send (some (.send (some (.const "P")) "new" [] none)) "f" [] none))
+              "+" [.str "!"] none]⟩
+    -- (fff) **`zsuper`'s arity premise.** The running method takes a parameter, so `zsuper`
+    -- forwards it -- to a parent that takes none, which raises ArgumentError, *inside* the
+    -- family. `Judge.zsuperCall` requires the running method's parameter list to be empty, so
+    -- this is rejected; without that premise it would type as a zero-argument `super`.
+  , ⟨"class B; def f; 1; end; end; class C < B; def f(x); super; end; end; C.new.f(2)",
+      .seq [.class' "B" none (.def' "f" [] (.int 1)),
+            .class' "C" (some (.const "B")) (.def' "f" [.req "x"] (.zsuper none)),
+            .send (some (.send (some (.const "C")) "new" [] none)) "f" [.int 2] none]⟩ ]
 
 mutual
 
@@ -864,6 +897,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
     | some x => (toRubyCore x).map (fun x' => .ret (some x'))
   | .super' args none =>
     (args.mapM toRubyCore).map (fun args' => .super' args' none)
+  -- Tier 10: `super` with no argument list.
+  | .zsuper none => some (.zsuper none)
   | .defs recv n ps body => do
     let recv' ← toRubyCore recv
     let ps' ← ps.mapM toRubyCoreParam

@@ -427,6 +427,13 @@ structure Cls where
       order. `mroGet?` searches them after the class's own methods and before its superclass,
       and it searches them **reversed**, because a later `include` wins in Ruby. -/
   includes : List String
+  /-- Modules mixed in **ahead of the class itself** by `prepend M` (tier 10). The only mixin
+      direction that changes the *order* rather than just adding to it: `class C; prepend M;
+      def f; …; end; end` gives `C.ancestors = [M, C, …]`, so `M#f` wins over `C#f` and a
+      `super` inside `M#f` runs `C#f`. That second half is why prepend forced the MRO to become
+      a **list** (`mroList?`) instead of a `super?` walk — `M`'s "next" is `C`, which is not
+      `M`'s superclass and could not be found from `M` alone. -/
+  prepends : List String
   /-- Modules mixed into **singleton** dispatch by `extend M`. The asymmetry with `includes` is
       the whole content of `extend`: it takes the module's *instance* methods (a plain `def M`)
       and makes them methods of the class **object**, so `smroGet?` looks in `.methods`, not in
@@ -446,6 +453,8 @@ inductive ClsMember where
   | incl (n : String)
   /-- `extend M` (tier 10). -/
   | ext (n : String)
+  /-- `prepend M` (tier 10). -/
+  | prep (n : String)
 
 def clsMember? : Expr → Option ClsMember
   | .def' n ps b => some (.inst ⟨n, ps, b⟩)
@@ -459,14 +468,17 @@ def clsMember? : Expr → Option ClsMember
   -- `TypeError` in Ruby, and the table cannot see `isModule` from here.
   | .send none "include" [.const n] none => some (.incl n)
   | .send none "extend" [.const n] none => some (.ext n)
+  | .send none "prepend" [.const n] none => some (.prep n)
   | _ => none
 
-def splitMembers : List ClsMember → List Defn × List Defn × List String × List String
-  | [] => ([], [], [], [])
-  | .inst d :: ms => let (i, s, c, e) := splitMembers ms; (d :: i, s, c, e)
-  | .sing d :: ms => let (i, s, c, e) := splitMembers ms; (i, d :: s, c, e)
-  | .incl n :: ms => let (i, s, c, e) := splitMembers ms; (i, s, n :: c, e)
-  | .ext n :: ms => let (i, s, c, e) := splitMembers ms; (i, s, c, n :: e)
+def splitMembers :
+    List ClsMember → List Defn × List Defn × List String × List String × List String
+  | [] => ([], [], [], [], [])
+  | .inst d :: ms => let (i, s, c, e, p) := splitMembers ms; (d :: i, s, c, e, p)
+  | .sing d :: ms => let (i, s, c, e, p) := splitMembers ms; (i, d :: s, c, e, p)
+  | .incl n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, n :: c, e, p)
+  | .ext n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, c, n :: e, p)
+  | .prep n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, c, e, n :: p)
 
 /-- A class body's instance and singleton methods, or `none` if the body contains anything
 this checker cannot read.
@@ -477,8 +489,9 @@ its body, and `nil` is `nil`, so a body made only of those cannot be type-stuck 
 what makes the class readable into `CTable`. A body with an ivar assignment at class level, a
 nested class, or anything executable is not typed at all: conservative in the direction that
 costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
-def classMethods? : Expr → Option (List Defn × List Defn × List String × List String)
-  | .nil => some ([], [], [], [])
+def classMethods? :
+    Expr → Option (List Defn × List Defn × List String × List String × List String)
+  | .nil => some ([], [], [], [], [])
   | .seq es => (es.mapM clsMember?).map splitMembers
   | e => (clsMember? e).map (fun m => splitMembers [m])
 
@@ -521,38 +534,92 @@ def mixinGet? (C : CTable) : List String → String → Option (String × Defn)
       | none => mixinGet? C ms m
     | none => mixinGet? C ms m
 
-/-- The bounded walk. `k` is a depth budget, not a natural part of the algorithm: `CTable` is
-data, so nothing stops it describing a cycle (`class A < B` and `class B < A` cannot both be
-declared in Ruby, but the table does not know that). Exhausting the budget answers `none`,
-which — like `chk`'s fuel — can only cost completeness. -/
-def lookupUp (C : CTable) (sing : Bool) : Nat → String → String → Option (String × Defn)
+/-- The bounded walk, **singleton dispatch only** (tier 10). `k` is a depth budget, not a
+natural part of the algorithm: `CTable` is data, so nothing stops it describing a cycle
+(`class A < B` and `class B < A` cannot both be declared in Ruby, but the table does not know
+that). Exhausting the budget answers `none`, which — like `chk`'s fuel — can only cost
+completeness.
+
+Instance dispatch used to go through here too, with a `sing : Bool` switch; `prepend` moved it
+to `mroList?`/`searchMro`, because a prepended module's "next" is the class itself and that
+cannot be found by following `super?`. Singleton dispatch has no prepend form in this model, so
+it kept the simpler walk. -/
+def lookupUpS (C : CTable) : Nat → String → String → Option (String × Defn)
   | 0, _, _ => none
   | k + 1, n, m =>
     match clsGet? C n with
     | none => none
     | some c =>
-      match defGet? (if sing then c.smethods else c.methods) m with
+      match defGet? c.smethods m with
       | some d => some (n, d)
       | none =>
-      -- Tier 10: the class's own table first, then its mixins, then up the chain -- which is
-      -- Ruby's order (`C.ancestors` is `[C, M, super…]` for `class C; include M; end`). The
-      -- list is **reversed**, because a later `include` wins.
-      match mixinGet? C (if sing then c.extended.reverse else c.includes.reverse) m with
+      -- `extend M` puts *M's instance methods* in the class object's table (`Cls.extended`),
+      -- searched reversed so a later `extend` wins.
+      match mixinGet? C c.extended.reverse m with
       | some hit => some hit
       | none =>
         match c.super? with
         | none => none
-        | some sn => lookupUp C sing k sn m
+        | some sn => lookupUpS C k sn m
 
-/-- Instance-method lookup from class `n`. The budget is the table's own length: a chain
-longer than that must have revisited a class. -/
+/-! ### The MRO as a list (tier 10)
+
+`prepend` is what forced this. Up to tier 8 instance dispatch could be a walk over `super?`,
+because "the next place to look" was always reachable from where you were. A prepended module
+breaks that: in `class C; prepend M; end` the entry after `M` is `C`, and `C` is not `M`'s
+superclass — nothing about `M` names it. So the ancestor **order** has to be built once, as a
+list, and both dispatch and `super` become searches over it.
+
+Ruby's order for one class is `prepends ++ [self] ++ includes`, most recent mixin first, then
+the same for its superclass. `mroList?` builds exactly that. -/
+
+/-- The full method-resolution order of `n`, most specific first, or `none` if the walk leaves
+the table (the same refusal `ancestorsUp` makes, and for the same reason). -/
+def mroListUp (C : CTable) : Nat → String → Option (List String)
+  | 0, _ => none
+  | k + 1, n =>
+    match clsGet? C n with
+    | none => none
+    | some c =>
+      let here := c.prepends.reverse ++ (n :: c.includes.reverse)
+      match c.super? with
+      | none => some here
+      | some sn => (mroListUp C k sn).map (fun rest => here ++ rest)
+
+def mroList? (C : CTable) (n : String) : Option (List String) :=
+  mroListUp C C.length n
+
+/-- The first entry of an MRO that defines `m`, and which entry it was. -/
+def searchMro (C : CTable) : List String → String → Option (String × Defn)
+  | [], _ => none
+  | e :: es, m =>
+    match clsGet? C e with
+    | some c =>
+      match defGet? c.methods m with
+      | some d => some (e, d)
+      | none => searchMro C es m
+    | none => searchMro C es m
+
+/-- Everything **after** `x` in a list, or `none` if `x` is not in it.
+
+This is what `super` means, stated as a list operation: not "the superclass of where I was
+declared" (which prepend makes wrong) but "keep going from where I was found". -/
+def afterInMro : List String → String → Option (List String)
+  | [], _ => none
+  | e :: es, x => if e == x then some es else afterInMro es x
+
+/-- Instance-method lookup: the first entry of `n`'s MRO that defines `m`, and where it was
+found — because `super` needs the definition site, not the receiver's class (see
+`Judge.superCall`). -/
 def mroGet? (C : CTable) (n m : String) : Option (String × Defn) :=
-  lookupUp C false C.length n m
+  match mroList? C n with
+  | some l => searchMro C l m
+  | none => none
 
 /-- Singleton-method lookup. Ruby inherits class methods down the chain too, so this is the
-same walk over the other table. -/
+other walk over the other tables. -/
 def smroGet? (C : CTable) (n m : String) : Option (String × Defn) :=
-  lookupUp C true C.length n m
+  lookupUpS C C.length n m
 
 /-- `n` as something **allocatable**: the table entry, unless it is a module. See
 `Cls.isModule` for why the refusal is a soundness requirement rather than tidiness. -/
@@ -621,12 +688,18 @@ def ancestorsUp (C : CTable) : Nat → String → Option (List String)
     | some c =>
       -- Tier 10: a class's ancestors include the modules mixed into it. Omitting them would
       -- make `isAAnswer` answer `is_a?(SomeIncludedModule)` with a *wrong* `some false`.
-      match mixinAncestors? C c.includes with
+      match mixinAncestors? C (c.prepends ++ c.includes) with
       | none => none
-      | some incs =>
+      | some _ =>
+        -- The ancestor *set* is exactly the MRO's entries, and `mroListUp` already builds them
+        -- in order -- so once the mixins are known to be flat, this walk and the MRO agree.
+        -- Kept separate from `mroList?` only because a `none` here means "chain incomplete",
+        -- which is a different claim from "dispatch found nothing".
         match c.super? with
-        | none => some (n :: incs)
-        | some sn => (ancestorsUp C k sn).map (fun rest => (n :: incs) ++ rest)
+        | none => some (c.prepends.reverse ++ (n :: c.includes.reverse))
+        | some sn =>
+          (ancestorsUp C k sn).map (fun rest =>
+            (c.prepends.reverse ++ (n :: c.includes.reverse)) ++ rest)
 
 def ancestors? (C : CTable) (n : String) : Option (List String) :=
   ancestorsUp C C.length n
@@ -719,19 +792,36 @@ def mergeCls (C : CTable) (c : Cls) : CTable :=
   match clsGet? C c.name with
   | none => c :: C
   | some old =>
-    ⟨c.name, c.super?.orElse (fun _ => old.super?),
-     c.methods ++ old.methods, c.smethods ++ old.smethods, c.isModule,
-     -- Mixins accumulate the same way, and with the later body's *later* in the list, because
-     -- `lookupUp` reverses: a module included by a reopening wins over one included earlier.
-     old.includes ++ c.includes, old.extended ++ c.extended⟩ :: C
+    -- **Named fields, not positional.** `Cls` now has eight of them, three of which are
+    -- `List String`, and a positional `⟨…⟩` silently swapped `includes` with `prepends` when
+    -- tier 10 added the third -- which *validated* `metaprog-prepend` for the wrong reason
+    -- (dispatch found `Person#speak` instead of `Logger#speak`, so the `zsuper` in the module
+    -- was never reached). Named fields make that class of mistake a compile error.
+    { name := c.name,
+      super? := c.super?.orElse (fun _ => old.super?)
+      methods := c.methods ++ old.methods
+      smethods := c.smethods ++ old.smethods
+      isModule := c.isModule
+      -- Mixins accumulate the same way, and with the later body's *later* in the list, because
+      -- every mixin list is searched reversed: a module mixed in by a reopening wins over one
+      -- mixed in earlier.
+      includes := old.includes ++ c.includes
+      prepends := old.prepends ++ c.prepends
+      extended := old.extended ++ c.extended } :: C
 
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts) =>
+    | some (ms, sms, incs, exts, preps) =>
       match sup with
-      | none => mergeCls C ⟨n, none, ms, sms, false, incs, exts⟩
-      | some (.const sn) => mergeCls C ⟨n, some sn, ms, sms, false, incs, exts⟩
+      | none =>
+        mergeCls C
+          { name := n, super? := none, methods := ms, smethods := sms, isModule := false
+            includes := incs, prepends := preps, extended := exts }
+      | some (.const sn) =>
+        mergeCls C
+          { name := n, super? := some sn, methods := ms, smethods := sms, isModule := false
+            includes := incs, prepends := preps, extended := exts }
       -- A superclass expression that is not a bare constant (`class C < foo()`) is not
       -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
@@ -741,7 +831,10 @@ def extendClasses (C : CTable) : Expr → CTable
   -- `callSMethod` with nothing added.
   | .module' n body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts) => mergeCls C ⟨n, none, ms, sms, true, incs, exts⟩
+    | some (ms, sms, incs, exts, preps) =>
+      mergeCls C
+        { name := n, super? := none, methods := ms, smethods := sms, isModule := true
+          includes := incs, prepends := preps, extended := exts }
     | none => C
   | _ => C
 
@@ -754,6 +847,15 @@ been inherited from somewhere higher the answer would differ. `selfTy` names the
 class and cannot answer this. The method name is here for the same reason: `super` calls the
 method of the same name. -/
 structure Frame where
+  /-- The class of the object the running method is *running on* (tier 10). `super` needs it
+      because a prepended module's "next" is the class that prepended it, and that is only
+      findable in the **receiver's** MRO — `defClass` alone cannot name it.
+
+      For a singleton method body this is the class object's own name, which is harmless: a
+      `super` there would search instance methods and find nothing. -/
+  recvClass : String
+  /-- Where the running method was **found** — which for a prepended or included module is that
+      module, not the receiver's class. `super` continues from just after it. -/
   defClass : String
   methName : String
 
@@ -970,18 +1072,27 @@ structure Ctx where
       *this* `Point`, ivars and all. -/
   selfTy : Option Ty
 
+/-- The class name behind a `self` type, for `Frame.recvClass`. `.inst n _` and `.clsOf n`
+are the only two shapes any body-entering rule supplies; anything else cannot arise and gets a
+name no class has, which makes `super` fail rather than dispatch somewhere wrong. -/
+def selfClsName : Ty → String
+  | .inst n _ => n
+  | .clsOf n => n
+  | _ => ""
+
 /-- Entering a method body whose `self` has type `σ`. Only `selfTy` changes: the class and
 method tables are the ones in force at the call site, and the assumption table is *kept*,
 because a recursive call made from inside a body must still find the assumption discharging
 it. The body's *locals* are not in `Ctx` at all — they are the threaded `Env`, and a call
 rule supplies `paramEnv`'s fresh one. -/
 def Ctx.inMethod (κ : Ctx) (σ : Ty) (dc m : String) : Ctx :=
-  { κ with selfTy := some σ, frame := some ⟨dc, m⟩ }
+  { κ with selfTy := some σ, frame := some ⟨selfClsName σ, dc, m⟩ }
 
 /-- Entering a body whose `self` this judgment declines to type — `initialize` (see
 `Judge.newInst`) — but whose *definition site* still has to be recorded, because the body may
 call `super`. -/
-def Ctx.inCtor (κ : Ctx) (dc m : String) : Ctx := { κ with frame := some ⟨dc, m⟩ }
+def Ctx.inCtor (κ : Ctx) (rc dc m : String) : Ctx :=
+  { κ with frame := some ⟨rc, dc, m⟩ }
 
 /-- `κ` after performing statement `e`: both syntax tables grow, nothing else changes. Used
 only by `JudgeSeq.cons`, which is the only rule that knows about statement order. -/
@@ -1700,9 +1811,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       every mixed-in name has to be a declared `module` (`allModules`), which also has the
       effect of refusing a name the table does not know at all. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
-      {body : Expr} {ms sms : List Defn} {incs exts : List String} :
-      classMethods? body = some (ms, sms, incs, exts) →
-      allModules κ.classes (incs ++ exts) = true →
+      {body : Expr} {ms sms : List Defn} {incs exts preps : List String} :
+      classMethods? body = some (ms, sms, incs, exts, preps) →
+      allModules κ.classes (incs ++ exts ++ preps) = true →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
@@ -1760,7 +1871,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
+      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) Γ₂ I₂
   /-- `C.new` for a class with **no `initialize`**: the object starts with no instance
       variables, so its spine is `.ivar0`.
@@ -1836,11 +1947,18 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   -- class object rather than an instance.
   /-- **`super(args)`** — delegate to the same method name, one class further up.
 
-      **The class it walks up from is the *definition site*, not the receiver's class**, and
-      that is why `Ctx.frame` exists. In `class Triangle < Shape; def initialize; super(3);
-      end`, the parent to run is the superclass of `Triangle` — the class this running method
-      was declared in. `κ.selfTy` names the receiver's class, which for a deeper hierarchy is
-      a different and wrong answer, and inside `initialize` it is not even set.
+      **`super` is "keep going from where I was found", in the *receiver's* MRO** — and both
+      halves of that are why `Ctx.frame` exists. `defClass` (the definition site) says where to
+      resume from: in `class Triangle < Shape; def initialize; super(3); end`, the parent to run
+      is found after `Triangle`, the class this running method was declared in, which for a
+      deeper hierarchy is a different answer from "after the receiver's class". `recvClass` says
+      *which* MRO to resume in, and that half arrived with tier 10's `prepend`: for a prepended
+      module the next entry is the class that prepended it, which nothing about the module names.
+      `κ.selfTy` cannot supply either — inside `initialize` it is not even set.
+
+      Stated as a list operation the rule is short: build the receiver's MRO, drop everything up
+      to and including `defClass`, and search the rest. Tier 7's `c.super?` walk was the special
+      case of that for an MRO with no mixins in it.
 
       **The ivar spine threads *through* the super call.** The body is judged with `I'` — the
       spine as of the end of the arguments — and its outgoing spine `Iout` becomes the super
@@ -1853,14 +1971,45 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `super` (`zsuper`, which forwards the current method's arguments implicitly) is a
       different `Expr` head and has no rule. -/
   | superCall {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iout : Ty} {args : List Expr}
-      {argTys : List Ty} {fr : Frame} {c : Cls} {sn dc : String} {d : Defn}
+      {argTys : List Ty} {fr : Frame} {mro rest : List String} {dc : String} {d : Defn}
       {ρ : Ty} :
       JudgeAll κ Γ I args argTys Γ' I' →
-      κ.frame = some fr → clsGet? κ.classes fr.defClass = some c →
-      c.super? = some sn → mroGet? κ.classes sn fr.methName = some (dc, d) →
+      κ.frame = some fr →
+      mroList? κ.classes fr.recvClass = some mro →
+      afterInMro mro fr.defClass = some rest →
+      searchMro κ.classes rest fr.methName = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge { κ with frame := some ⟨dc, fr.methName⟩ } Γb I' d.body ρ Γb' Iout →
+      Judge { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I' d.body ρ Γb' Iout →
       Judge κ Γ I (.super' args none) ρ Γ' Iout
+  /-- **`super` with no argument list** (`zsuper`) — forwards the running method's own
+      arguments implicitly.
+
+      Tier 10's `metaprog-prepend` is the first rung to write one, and it writes the easy case:
+      a method with **no parameters**, where "forward my arguments" forwards nothing. That is
+      what the second and third premises pin down — `mroGet?` from the receiver's class finds
+      the running method (necessarily at `fr.defClass`, since that is how dispatch got here) and
+      its parameter list has to be empty. The rest is `superCall` with `argTys = []`.
+
+      **Why the arity premise is a soundness requirement and not tidiness.** `zsuper` forwards
+      the current method's arguments to the parent, so if the two arities disagree Ruby raises
+      `ArgumentError` — inside the family. `paramEnv d.params []` already forces the *target* to
+      take none; `dcur.params = []` is the other half.
+
+      The general rule wants the running method's parameter list, at the types those locals hold
+      **now** (Ruby forwards current values, so a reassigned parameter forwards its new one),
+      which means putting the parameter list in `Frame` beside `methName`. Every body-entering
+      rule has the `Defn` at hand, so that is mechanical rather than deep; no rung asks. -/
+  | zsuperCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iout : Ty} {fr : Frame}
+      {mro rest : List String} {dc : String} {dcur d : Defn} {ρ : Ty} :
+      κ.frame = some fr →
+      mroGet? κ.classes fr.recvClass fr.methName = some (fr.defClass, dcur) →
+      dcur.params = [] →
+      mroList? κ.classes fr.recvClass = some mro →
+      afterInMro mro fr.defClass = some rest →
+      searchMro κ.classes rest fr.methName = some (dc, d) →
+      paramEnv d.params [] = some Γb →
+      Judge { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I d.body ρ Γb' Iout →
+      Judge κ Γ I (.zsuper none) ρ Γ Iout
   /-- **A singleton ("class") method call**: `Point.origin`. The receiver is a class object,
       so lookup goes to the *other* table (`smroGet?`, which walks `super?` as well — Ruby
       inherits class methods), and the body is judged with `self` typed as
@@ -1898,7 +2047,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' →
       ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
+      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
       Judge κ Γ I (.send none "new" args none) (.inst n Iout) Γ' I'
   -- ### Tier 8 — modules
   --
@@ -1912,9 +2061,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Separate from `classStmt` only because `Expr.module'` has no superclass slot; the entry
       it produces differs by `Cls.isModule`, which exists to stop `M.new`. -/
   | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
-      {ms sms : List Defn} {incs exts : List String} :
-      classMethods? body = some (ms, sms, incs, exts) →
-      allModules κ.classes (incs ++ exts) = true →
+      {ms sms : List Defn} {incs exts preps : List String} :
+      classMethods? body = some (ms, sms, incs, exts, preps) →
+      allModules κ.classes (incs ++ exts ++ preps) = true →
       Judge κ Γ I (.module' n body) .any Γ I
   /-- A bare name inside a **singleton** method body naming another of the same object's
       singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;

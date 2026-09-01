@@ -839,6 +839,42 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       · exact absurd h (by simp)
     · exact absurd h (by simp)
     · exact absurd h (by simp)
+  · -- tier 10: `zsuper` -- `super` with no argument list, for a parameterless method.
+    split at h
+    · rename_i hfr
+      split at h
+      · rename_i hcur
+        split at h
+        · rename_i hguard
+          split at h
+          · rename_i hmro
+            split at h
+            · rename_i hrest
+              split at h
+              · rename_i hmeth
+                split at h
+                · rename_i hpar
+                  split at h
+                  · rename_i hbody
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    -- One `&&`: the `Defn` found from the receiver's class is the running
+                    -- method's (so its arity is the one being required empty), and that arity
+                    -- is zero.
+                    have hg := hguard
+                    simp only [Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hg
+                    obtain ⟨hdc, hnp⟩ := hg
+                    exact .zsuperCall hfr (hdc ▸ hcur) hnp hmro hrest hmeth hpar
+                      (chk_sound hbody)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- `super' args none`: the arguments, then the walk from the *definition site*.
     split at h
     · rename_i hargs

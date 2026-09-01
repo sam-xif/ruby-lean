@@ -2213,3 +2213,88 @@ mechanism getting stronger.
 
 State after this clink: **117 rungs climbed** of 136, 117/117 cross-checked, 80/80 negative
 controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.
+
+## Clink 23 (2026-09-01) — tier 10c: `prepend`, and the MRO becomes a list: 117 → 118
+
+`metaprog-prepend`. 118 derivations, 83/83 controls, 136/136 agreement, ten theorems
+axiom-clean. Mismatches 5 → 4, tier 10 at 4/6.
+
+### The structural change `prepend` forces
+
+Up to tier 8, instance dispatch could be a **walk over `Cls.super?`**, because "the next place
+to look" was always reachable from where you were. `prepend` breaks that:
+
+```ruby
+module Logger; def speak; "logged: " + super; end; end
+class Person;  prepend Logger; def speak; "hi"; end; end
+```
+
+`Person.ancestors` is `[Logger, Person]`, so `Logger#speak` wins — and the `super` inside it has
+to run **`Person#speak`**, which is not `Logger`'s superclass and which nothing about `Logger`
+names. There is no walk from `Logger` that finds it.
+
+So the ancestor order is built once as a list:
+
+- **`mroList?`** — `prepends.reverse ++ (self :: includes.reverse)` per class, concatenated up
+  the `super?` chain. `none` if the walk leaves the table, the same refusal `ancestorsUp` makes.
+- **`searchMro`** — the first entry that defines the name, and which entry it was.
+- **`afterInMro`** — everything after a given entry. This *is* `super`, stated as a list
+  operation: not "the superclass of where I was declared" but **"keep going from where I was
+  found"**. Tier 7's `c.super?` walk was the special case of that for an MRO with no mixins.
+
+`Frame` gained **`recvClass`**, because `afterInMro` needs to know *which* MRO to resume in, and
+`defClass` alone cannot say (a prepended module belongs to no hierarchy of its own).
+`Ctx.inMethod` fills it from the `self` type; `Ctx.inCtor` takes it as an argument.
+
+Singleton dispatch kept the old walk (`lookupUpS`) — there is no prepend form for it in this
+model — which is why the two lookups are now visibly different functions rather than one with a
+`sing : Bool` switch.
+
+### `zsuper` needed a rule, and its arity premise is soundness
+
+`super` with no argument list is a different `Expr` head (`Expr.zsuper`), and until now it had
+no rule at all — `Judge.superCall`'s docstring said so. `Judge.zsuperCall` covers the case this
+rung writes: a **parameterless** running method, where "forward my arguments" forwards nothing.
+
+The arity premise is not tidiness. `zsuper` forwards the current method's arguments, so if the
+two arities disagree Ruby raises `ArgumentError` — inside the family. `paramEnv d.params []`
+forces the *target* to take none; `dcur.params = []` (recovered by looking the running method up
+in the receiver's own MRO) is the other half. Control (fff) is
+`class C < B; def f(x); super; end; end; C.new.f(2)`, which really raises.
+
+The general rule wants the running method's parameter list at the types those locals hold *now*
+— Ruby forwards current values, so a reassigned parameter forwards its new one — which means
+putting the parameter list in `Frame` beside `methName`. Mechanical, since every body-entering
+rule has the `Defn` at hand; no rung asks.
+
+### **A near-miss worth recording: the rung nearly passed with its feature bypassed**
+
+When `Cls` grew its third `List String` field, `mergeCls`'s positional `⟨…⟩` silently bound
+`includes := prepends`. Consequence: `Logger` landed *after* `Person` in the MRO, dispatch found
+`Person#speak`, the `zsuper` inside the module was **never reached**, and `validate` answered
+`true`. The rung "passed" with the feature it exists to test entirely bypassed — and it would
+have passed the `checkrungs` cross-check too, because the program's *result class* is `String`
+either way.
+
+Two things caught it, and it is worth being precise about which:
+
+- Not the ratchet number, which went up.
+- The **derivation term**. Writing `r112` by hand meant writing a `zsuperCall` premise, and that
+  did not compile against a table where `zsuper` was never reached. This is the second time
+  (clink 18's prelude bug was the first) that the hand-derivation requirement caught something
+  the `Bool` was happy with, which is the argument for keeping it.
+
+Fixes: `mergeCls` now uses **named** fields, so that class of mistake is a compile error; and
+control (ddd)/(eee) pin the ordering by *execution* — the same program under `prepend` returns
+`"m"` and under `include` returns `1`, and each raises when combined with the other's follow-up.
+
+### `ancestorsUp` and `mroList?` now agree, and are still separate
+
+Both compute the same list of names for a class with flat mixins. They are kept apart because
+their `none`s mean different things: `mroList? = none` is "dispatch cannot proceed", while
+`ancestorsUp = none` is "the ancestor chain is **incomplete**", which is the claim
+`isAAnswer`'s negative direction rests on. Collapsing them would make one function carry two
+obligations.
+
+State after this clink: **118 rungs climbed** of 136, 118/118 cross-checked, 83/83 negative
+controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.

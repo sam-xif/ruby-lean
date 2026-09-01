@@ -238,13 +238,13 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     match classMethods? body with
     -- Tier 10: every mixed-in name must be a declared `module` (`Judge.moduleStmt`'s second
     -- premise) -- `include` on a non-Module raises TypeError.
-    | some (_, _, incs, exts) =>
-      if allModules κ.classes (incs ++ exts) then some (.any, Γ, I) else none
+    | some (_, _, incs, exts, preps) =>
+      if allModules κ.classes (incs ++ exts ++ preps) then some (.any, Γ, I) else none
     | none => none
   | _ + 1, .class' _ _ body =>
     match classMethods? body with
-    | some (_, _, incs, exts) =>
-      if allModules κ.classes (incs ++ exts) then some (.any, Γ, I) else none
+    | some (_, _, incs, exts, preps) =>
+      if allModules κ.classes (incs ++ exts ++ preps) then some (.any, Γ, I) else none
     | none => none
   | f + 1, .send none m args (some (.block ps [] body)) =>
     -- An implicit-self send carrying a block literal. Two routes: `lambda`/`proc`, which
@@ -349,7 +349,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | some (dc, d) =>
                   match paramEnv d.params argTys with
                   | some Γb =>
-                    match chk f (κ.inCtor dc "initialize") Γb .ivar0 d.body with
+                    match chk f (κ.inCtor n dc "initialize") Γb .ivar0 d.body with
                     | some (_, _, Iout) => some (.inst n Iout, Γ', I')
                     | none => none
                   | none => none
@@ -523,7 +523,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | some (dc, d) =>
                   match paramEnv d.params argTys with
                   | some Γb =>
-                    match chk f (κ.inCtor dc "initialize") Γb .ivar0 d.body with
+                    match chk f (κ.inCtor n dc "initialize") Γb .ivar0 d.body with
                     | some (_, _, Iout) => some (.inst n Iout, Γ₂, I₂)
                     | none => none
                   | none => none
@@ -598,20 +598,52 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       | none => none
     | some _ => none
     | none => none
+  | f + 1, .zsuper none =>
+    -- Tier 10: `super` with no argument list, restricted to a running method that takes no
+    -- parameters (`Judge.zsuperCall`). The `dcls = fr.defClass` check is not redundant with
+    -- dispatch -- it is how the *running* method's `Defn` is recovered, so its arity can be
+    -- required empty.
+    match κ.frame with
+    | some fr =>
+      match mroGet? κ.classes fr.recvClass fr.methName with
+      | some (dcls, dcur) =>
+        if dcls = fr.defClass && dcur.params.isEmpty then
+          match mroList? κ.classes fr.recvClass with
+          | some mro =>
+            match afterInMro mro fr.defClass with
+            | some rest =>
+              match searchMro κ.classes rest fr.methName with
+              | some (dc, d) =>
+                match paramEnv d.params [] with
+                | some Γb =>
+                  match chk f
+                      { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I d.body with
+                  | some (ρ, _, Iout) => some (ρ, Γ, Iout)
+                  | none => none
+                | none => none
+              | none => none
+            | none => none
+          | none => none
+        else none
+      | none => none
+    | none => none
   | f + 1, .super' args none =>
     match chkAll f κ Γ I args with
     | some (argTys, Γ', I') =>
       match κ.frame with
       | some fr =>
-        match clsGet? κ.classes fr.defClass with
-        | some c =>
-          match c.super? with
-          | some sn =>
-            match mroGet? κ.classes sn fr.methName with
+        -- Tier 10: `super` is a search in the *receiver's* MRO, starting after the entry the
+        -- running method was found in (`Judge.superCall`).
+        match mroList? κ.classes fr.recvClass with
+        | some mro =>
+          match afterInMro mro fr.defClass with
+          | some rest =>
+            match searchMro κ.classes rest fr.methName with
             | some (dc, d) =>
               match paramEnv d.params argTys with
               | some Γb =>
-                match chk f { κ with frame := some ⟨dc, fr.methName⟩ } Γb I' d.body with
+                match chk f
+                    { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I' d.body with
                 | some (ρ, _, Iout) => some (ρ, Γ', Iout)
                 | none => none
               | none => none
