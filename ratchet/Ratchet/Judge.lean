@@ -320,6 +320,16 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       this ladder is willing to claim reach one of those two definitions rather than a
       user-written override. -/
   | nilQuery {σ : Ty} : NilQSafe σ → PrimSig σ "nil?" [] .bool
+  /-- **`Object#freeze` — the identity** (tier 13). Every frozen constant table in the target
+      is written `= {...}.freeze`, and `freeze` returns the receiver itself, so the row is
+      receiver-polymorphic in exactly the way `objEq` is argument-polymorphic.
+
+      The guard is `NilQSafe` again, and for the same reason it exists there: a user-defined
+      `def freeze` on an instance would be dispatched to instead, so `.inst` is refused
+      outright. Reusing the predicate rather than writing a `FreezeSafe` twin is a deliberate
+      call — the two conditions are the same condition ("this receiver's method table is the
+      builtin one"), and a second copy would be a second thing to keep true. -/
+  | freezeId {σ : Ty} : NilQSafe σ → PrimSig σ "freeze" [] σ
 
 /-- The bare names that resolve to **no method at all** at top-level `self`, so that
 evaluating them raises `NameError`.
@@ -505,6 +515,11 @@ inductive ClsMember where
   | ext (n : String)
   /-- `prepend M` (tier 10). -/
   | prep (n : String)
+  /-- `SIZE = 3` in a class body (tier 13) — a **constant**, carried as its unjudged
+      initializer, because the class table is built by a syntactic function and a type is not
+      syntactic. What closes that gap is `constLitTy?` plus `JudgeConsts`: see
+      `Judge.classStmt`. -/
+  | constM (n : String) (e : Expr)
 
 def clsMember? : Expr → Option ClsMember
   | .def' n ps b => some (.inst ⟨n, ps, b⟩)
@@ -519,16 +534,24 @@ def clsMember? : Expr → Option ClsMember
   | .send none "include" [.const n] none => some (.incl n)
   | .send none "extend" [.const n] none => some (.ext n)
   | .send none "prepend" [.const n] none => some (.prep n)
+  -- Tier 13: a constant. Unlike a `def`, a `casgn` in a class body **executes** when the
+  -- class statement runs, which is why it is the first member kind `classStmt` has to type
+  -- rather than merely record.
+  | .casgn n e => some (.constM n e)
   | _ => none
 
 def splitMembers :
-    List ClsMember → List Defn × List Defn × List String × List String × List String
-  | [] => ([], [], [], [], [])
-  | .inst d :: ms => let (i, s, c, e, p) := splitMembers ms; (d :: i, s, c, e, p)
-  | .sing d :: ms => let (i, s, c, e, p) := splitMembers ms; (i, d :: s, c, e, p)
-  | .incl n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, n :: c, e, p)
-  | .ext n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, c, n :: e, p)
-  | .prep n :: ms => let (i, s, c, e, p) := splitMembers ms; (i, s, c, e, n :: p)
+    List ClsMember →
+      List Defn × List Defn × List String × List String × List String ×
+        List (String × Expr)
+  | [] => ([], [], [], [], [], [])
+  | .inst d :: ms => let (i, s, c, e, p, k) := splitMembers ms; (d :: i, s, c, e, p, k)
+  | .sing d :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, d :: s, c, e, p, k)
+  | .incl n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, n :: c, e, p, k)
+  | .ext n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, c, n :: e, p, k)
+  | .prep n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, c, e, n :: p, k)
+  | .constM n e :: ms =>
+    let (i, s, c, e', p, k) := splitMembers ms; (i, s, c, e', p, (n, e) :: k)
 
 /-- A class body's instance and singleton methods, or `none` if the body contains anything
 this checker cannot read.
@@ -538,12 +561,91 @@ It is what makes the body safe to *evaluate* unchecked — a `def`/`defs` statem
 its body, and `nil` is `nil`, so a body made only of those cannot be type-stuck — and it is
 what makes the class readable into `CTable`. A body with an ivar assignment at class level, a
 nested class, or anything executable is not typed at all: conservative in the direction that
-costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
+costs rungs rather than soundness, and it is the shape every tier-7 rung has.
+
+**Tier 13 punched the one hole in "nothing executable".** A `casgn` in a class body *does*
+run when the class statement runs, so admitting it means `classStmt` has to type it rather
+than merely record it — which is exactly what its `JudgeConsts` premise does. The sixth
+component of the tuple is those constants, paired with their unjudged initializers. -/
 def classMethods? :
-    Expr → Option (List Defn × List Defn × List String × List String × List String)
-  | .nil => some ([], [], [], [], [])
+    Expr → Option (List Defn × List Defn × List String × List String × List String ×
+      List (String × Expr))
+  | .nil => some ([], [], [], [], [], [])
   | .seq es => (es.mapM clsMember?).map splitMembers
   | e => (clsMember? e).map (fun m => splitMembers [m])
+
+/-! ### A class body's constants (tier 13)
+
+`Ctx.consts` maps a constant's absolute path to its type, and it is grown by `extendConsts`,
+which is a **function of syntax alone** — `Ctx.afterStmt` gets the statement's type, and that
+is the type of the `class` statement (`.any`), not of anything inside its body.
+
+So a class-body constant's type has to be readable off its initializer's syntax. That is
+`constLitTy?`, and its restriction to literals is the price of this tier's second rung. The
+restriction is not the soundness argument, though — `constLitTy?` is just a guess until
+`Judge.classStmt`'s `JudgeConsts` premise **judges the initializer at exactly that type**, in
+the context in force at the class statement. Two things follow:
+
+- soundness of `constLitTy?` reduces to soundness of `Judge`, so this function may be widened
+  freely: a wrong row costs a rung (the premise fails) and never a wrong type;
+- and the judgment happens at the **definition site**. That matters more than it looks.
+  Judging the initializer lazily, at each *read*, is unsound: `κ.classes` only grows, a
+  reopened class can redefine a method, and `class Box; V = Helper.new.f; end` re-judged after
+  `class Helper; def f; "s"; end; end` would type `V` as a `String` while it holds the
+  `Integer` the original `f` returned.
+
+Top-level constants need none of this: their type comes from the judgment directly, because
+there `Ctx.afterStmt` is handed the statement's own type. -/
+mutual
+
+def constLitTy? : Expr → Option Ty
+  | .int _ => some .int
+  | .flt _ => some .float
+  | .str _ => some (.cls "String")
+  | .sym _ => some .sym
+  | .tru => some .bool
+  | .fls => some .bool
+  | .nil => some .nilT
+  -- A hash literal's type carries nothing about its pairs (tier 5), so it needs nothing from
+  -- them here either; that they *type* is the `JudgeConsts` premise's business.
+  | .hash _ => some (.cls "Hash")
+  | .array es => (constLitTys? es).map (fun τs => .arrayOf (elemTy τs))
+  -- `.freeze` is the idiom every frozen constant table in the slice is written with, and it is
+  -- the identity on the value (`PrimSig.freezeId`), so it is the identity here.
+  | .send (some r) "freeze" [] none => constLitTy? r
+  | _ => none
+
+def constLitTys? : List Expr → Option (List Ty)
+  | [] => some []
+  | e :: es => match constLitTy? e, constLitTys? es with
+    | some τ, some τs => some (τ :: τs)
+    | _, _ => none
+
+end
+
+/-- The absolute path of a constant defined at top level. -/
+def constKey (n : String) : String := "::" ++ n
+
+/-- The absolute path of a constant defined in the body of class-or-module `owner`. -/
+def constKeyIn (owner n : String) : String := "::" ++ owner ++ "::" ++ n
+
+/-- Every constant a **class or module statement** binds, as path/type pairs. Skips any
+initializer `constLitTy?` cannot read — which costs nothing, because `Judge.classStmt` would
+not have typed the statement at all in that case. -/
+def addClassConsts (S : Env) (owner : String) : List (String × Expr) → Env
+  | [] => S
+  | (n, e) :: cs =>
+    addClassConsts (match constLitTy? e with
+                    | some τ => envSet S (constKeyIn owner n) τ
+                    | none => S) owner cs
+
+/-- The constant members of a class body, or `[]` if the body is not one this checker reads.
+Deliberately re-derived from `classMethods?` rather than passed in: `extendConsts` is called
+from `Ctx.afterStmt`, which sees only the statement. -/
+def bodyConsts (body : Expr) : List (String × Expr) :=
+  match classMethods? body with
+  | some (_, _, _, _, _, cs) => cs
+  | none => []
 
 /-- **Every name mixed in by this class body is a declared `module`.**
 
@@ -862,7 +964,7 @@ def mergeCls (C : CTable) (c : Cls) : CTable :=
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts, preps) =>
+    | some (ms, sms, incs, exts, preps, _) =>
       match sup with
       | none =>
         mergeCls C
@@ -881,7 +983,7 @@ def extendClasses (C : CTable) : Expr → CTable
   -- `callSMethod` with nothing added.
   | .module' n body =>
     match classMethods? body with
-    | some (ms, sms, incs, exts, preps) =>
+    | some (ms, sms, incs, exts, preps, _) =>
       mergeCls C
         { name := n, super? := none, methods := ms, smethods := sms, isModule := true
           includes := incs, prepends := preps, extended := exts }
@@ -1172,20 +1274,39 @@ The price is that `Ctx.afterStmt` now needs the statement's **type**, since that
 `casgn` binds. That is available in `JudgeSeq.cons` (it is the `σ` the first premise
 produces) and in `chkSeq`, and it is the only change to a rule already on file.
 
-Keys are the constant's **absolute path** (`"::LIMIT"`), which is Ruby's own notation for
-one and keeps the namespace visibly disjoint from `Env`'s locals — no local can contain a
-colon. Nesting (`M::X`) is not yet resolved; `constKey` is where it will be. -/
-def constKey (n : String) : String := "::" ++ n
+Keys are the constant's **absolute path** (`"::LIMIT"`, `"::Box::SIZE"`), which is Ruby's own
+notation for one and keeps the namespace visibly disjoint from `Env`'s locals — no local can
+contain a colon. -/
+def constPaths (κ : Ctx) (n : String) : List String :=
+  match κ.frame with
+  | some f => [constKeyIn f.defClass n, constKey n]
+  | none => [constKey n]
 
 /-- What a constant read resolves to, or `none` if the program has not assigned it — in
-which case there is no rule and the read is rejected, which is what fact 3 above buys. -/
-def constGet? (κ : Ctx) (n : String) : Option Ty := envGet? κ.consts (constKey n)
+which case there is no rule and the read is rejected, which is what fact 3 above buys.
 
-/-- The constant a statement binds, if it binds one. `envSet` rather than a cons because
-Ruby's re-assignment of a constant is a warning, not an error, and the *later* type is the
-live one. -/
+**Resolution is lexical, innermost first** (tier 13b): inside a method body, a bare `SIZE`
+means `Box::SIZE` if the running method was *declared* in `Box`, and the top-level `SIZE`
+otherwise. `Frame.defClass` is exactly the right name to ask — it is where the method was
+found, which for a method declared with `def` inside `class Box` is `Box`, and for an
+inherited one is the ancestor whose body the `def` was written in. Both are Ruby's lexical
+cref for that `def`.
+
+Outside any method (`frame = none`) only the top-level path is tried, which is why
+`class Box; SIZE = 3; end; SIZE` is rejected — Ruby raises `NameError` for it. -/
+def constGet? (κ : Ctx) (n : String) : Option Ty :=
+  (constPaths κ n).findSome? (fun k => envGet? κ.consts k)
+
+/-- The constants a statement binds. `envSet` rather than a cons because Ruby's
+re-assignment of a constant is a warning, not an error, and the *later* type is the live one.
+
+A `class`/`module` statement binds the constants in its **body** (tier 13b), and those get
+their types from `constLitTy?` — see §A class body's constants for why that is a syntactic
+function and what makes it sound. -/
 def extendConsts (S : Env) : Expr → Ty → Env
   | .casgn n _, τ => envSet S (constKey n) τ
+  | .class' n _ body, _ => addClassConsts S n (bodyConsts body)
+  | .module' n body, _ => addClassConsts S n (bodyConsts body)
   | _, _ => S
 
 /-- `κ` after performing statement `e`, which produced a value of type `τ`: both syntax
@@ -2077,12 +2198,21 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       **The third premise arrived with tier 13**, and it is soundness, not tidiness:
       `X = 5; class X; end` raises `TypeError` ("X is not a class"), which is inside the
       family. A name the constant table already binds is therefore not available to declare
-      a class at, and this is the premise that says so. -/
+      a class at, and this is the premise that says so.
+
+      **The fourth premise is tier 13b**, and it is the one that breaks the old reading of the
+      first: a class body is no longer entirely un-run, because a `casgn` in one executes. So
+      the body's constants are *typed*, at the definition site, against the same
+      `constLitTy?` that `extendConsts` will use to build the table — see §A class body's
+      constants. `JudgeConsts κ []` for every class that defines none, which is every rung
+      before this tier. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
-      {body : Expr} {ms sms : List Defn} {incs exts preps : List String} :
-      classMethods? body = some (ms, sms, incs, exts, preps) →
+      {body : Expr} {ms sms : List Defn} {incs exts preps : List String}
+      {cs : List (String × Expr)} :
+      classMethods? body = some (ms, sms, incs, exts, preps, cs) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
       constGet? κ n = none →
+      JudgeConsts κ cs →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
@@ -2378,10 +2508,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       The third premise is `classStmt`'s, for the same reason and with `TypeError`'s message
       changed to "X is not a module". -/
   | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
-      {ms sms : List Defn} {incs exts preps : List String} :
-      classMethods? body = some (ms, sms, incs, exts, preps) →
+      {ms sms : List Defn} {incs exts preps : List String}
+      {cs : List (String × Expr)} :
+      classMethods? body = some (ms, sms, incs, exts, preps, cs) →
       allModules κ.classes (incs ++ exts ++ preps) = true →
       constGet? κ n = none →
+      JudgeConsts κ cs →
       Judge κ Γ I (.module' n body) .any Γ I
   /-- A bare name inside a **singleton** method body naming another of the same object's
       singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;
@@ -2929,6 +3061,27 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
       Ir = (narrowSpine κ.classes c Ic).1 →
       JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
+
+/-- **A class body's constants type, at the types `constLitTy?` reads off their syntax**
+(tier 13). `Judge.classStmt`/`moduleStmt`'s last premise.
+
+Two design points, both about which side of the check each half is on:
+
+- The **type is `constLitTy?`'s**, not a synthesized one. That is what makes the syntactic
+  `extendConsts` and the judgment agree by construction: the table cannot record a type no
+  derivation licensed, and a derivation cannot license a type the table will not record.
+- The initializer is judged in the **empty local environment**, coming back to the empty one,
+  with the empty ivar spine. A class body is evaluated in a fresh scope that cannot see the
+  enclosing method's locals (reading one raises `NameError`), and it must not leave any
+  behind either. `κ` itself is the context at the class statement, so the class and constant
+  tables in force are the ones that really are in force when the body runs. -/
+inductive JudgeConsts : Ctx → List (String × Expr) → Prop
+  | nil {κ : Ctx} : JudgeConsts κ []
+  | cons {κ : Ctx} {n : String} {e : Expr} {τ : Ty} {cs : List (String × Expr)} :
+      constLitTy? e = some τ →
+      Judge κ [] .ivar0 e τ [] .ivar0 →
+      JudgeConsts κ cs →
+      JudgeConsts κ ((n, e) :: cs)
 
 end
 

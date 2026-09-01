@@ -71,6 +71,12 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
       subst h
       exact .nilQuery (nilQSafe?_sound (by assumption))
     · exact absurd h (by simp)
+  · -- tier 13's guarded `freeze` row: the same guard, and the same predicate
+    split at h
+    · injection h with h
+      subst h
+      exact .freezeId (nilQSafe?_sound (by assumption))
+    · exact absurd h (by simp)
   all_goals
     first
       | (injection h with h
@@ -471,8 +477,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         subst h; subst h'; subst h''
         -- Tier 13: the guard is a conjunction now, and `simp` splits it into `allModules`
         -- and the `constGet?`-is-`none` premise `classStmt`/`moduleStmt` grew.
+        -- Tier 13: three conjuncts now -- `allModules`, the `constGet?`-is-`none` premise,
+        -- and the class body's constants (`chkConsts`).
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
-        exact .moduleStmt hms hmix.1 hmix.2
+        exact .moduleStmt hms hmix.1.1 hmix.1.2 (chkConsts_sound hmix.2)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `class' n sup body`: only a body this checker can read into the class table, and (tier
@@ -485,7 +493,7 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hmix
-        exact .classStmt hms hmix.1 hmix.2
+        exact .classStmt hms hmix.1.1 hmix.1.2 (chkConsts_sound hmix.2)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args (some (.block ps [] body))`: either a `lambda`/`proc` literal, or a
@@ -1053,6 +1061,27 @@ theorem chkAll_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
+/-- **`chkConsts` never admits a class-body constant `JudgeConsts` does not** (tier 13).
+Premise for premise: `constLitTy?` had to answer, and `chk` had to come back with exactly
+that type and the empty outgoing environment and spine. The `if`'s condition *is* the triple
+equality, so injecting it gives all three at once. -/
+theorem chkConsts_sound : ∀ {fuel : Nat} {κ : Ctx} {cs : List (String × Expr)},
+    chkConsts fuel κ cs = true → JudgeConsts κ cs := by
+  intro fuel κ cs h
+  unfold chkConsts at h
+  split at h
+  · exact .nil
+  · rename_i n e cs'
+    split at h
+    · exact absurd h (by simp)
+    · split at h
+      · rename_i τ hlit
+        split at h
+        · rename_i hchk
+          exact .cons hlit (chk_sound hchk) (chkConsts_sound h)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+
 theorem chkPairs_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
     {ps : List (Expr × Expr)} {Γ' : Env} {I' : Ty},
     chkPairs fuel κ Γ I ps = some (Γ', I') → JudgePairs κ Γ I ps Γ' I' := by
@@ -1123,6 +1152,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
+#print axioms chkConsts_sound
 #print axioms chkPairs_sound
 #print axioms chkSeq_sound
 #print axioms validate_sound_syntactic

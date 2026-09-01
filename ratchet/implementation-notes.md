@@ -2642,3 +2642,115 @@ soundness theorems axiom-clean (`propext`, `Quot.sound`).
 Next: `const-in-class` and the scoped forms, which need the two things this clink deliberately
 did not build — a lexical nesting path (`Ctx.cref`) and a story for constants assigned in a
 **class body**, which no rule judges today.
+
+## Clink 28 (2026-09-01) — tier 13b: a class body's constants, and why they are typed where they are written: 130 → 133
+
+`const-in-class`, `const-frozen-array`, `const-frozen-hash`. Clink 27 put constants in
+`Ctx.consts` and grew the table at `JudgeSeq.cons`, which handles every constant assigned as
+a **top-level statement**. A constant assigned in a *class body* is not one, and the
+difference turns out to be the whole clink.
+
+### The problem: `Ctx.afterStmt` gets the wrong type
+
+`extendConsts` is called from `Ctx.afterStmt e τ`, where `τ` is the type of the statement
+`e`. For `X = 10` that is exactly what is wanted — `τ` *is* the constant's type. For
+`class Box; SIZE = 3; … end` it is `.any`, the type of a class statement, and nothing about
+`SIZE` is anywhere in reach. The class body is not judged as a sequence; `classMethods?`
+reads it *syntactically*, which is also how `extendClasses` builds the `CTable` row.
+
+So the constant's type has to be readable off the initializer's **syntax**. That is
+`constLitTy?`: the scalar literals, an array literal (element types joined by the existing
+`elemTy`), a hash literal, and `.freeze` of any of them.
+
+### `constLitTy?` is a guess; `JudgeConsts` is what makes it sound
+
+The restriction to literals is *not* the soundness argument, and it was important to get that
+the right way round. `constLitTy?` claims "this expression evaluates to a value of this type",
+and the claim is discharged by a new premise on `classStmt`/`moduleStmt`:
+
+```
+JudgeConsts κ cs      -- for each (name, init): constLitTy? init = some τ ∧ Judge κ [] .ivar0 init τ [] .ivar0
+```
+
+Two consequences worth stating:
+
+- **`constLitTy?` may be widened freely.** A wrong row makes the premise fail, which costs a
+  rung and never produces a wrong type. It is a completeness knob, like fuel.
+- **The type is `constLitTy?`'s, not a synthesized one.** That is what pins the syntactic
+  table and the judgment together by construction: the table cannot record a type no
+  derivation licensed, and no derivation can license a type the table will not record.
+
+The initializer is judged in the **empty** local environment, coming back empty, with the
+empty ivar spine — a class body is a fresh scope that cannot see the enclosing method's
+locals and must not leave any behind. `κ` is the context at the class statement, so the
+tables in force are the ones that really are in force when the body runs.
+
+### Why the judgment has to happen at the definition site
+
+The tempting alternative is to skip `constLitTy?` entirely: store the *initializer* in the
+class table and judge it on demand at each **read**. Then any expression works, not just
+literals. It is unsound, and the counterexample is short:
+
+```ruby
+class Helper; def f; 1; end; end
+class Box; V = Helper.new.f; end          # V is an Integer
+class Helper; def f; "s"; end; end        # reopened; the later `f` wins in `mergeCls`
+```
+
+`κ.classes` only ever grows, so a read of `V` after the reopening judges `Helper.new.f` at
+`String` — for a constant holding an `Integer`. Judging under a deliberately *emptied* table
+does not save it either: `constBuiltin`/`caseEqQuery` are each *more* permissive with an
+empty class table (`class Integer; def self.===(o); 1 + "a"; end; end` is the witness), so
+"emptier is more conservative" is simply false here. Definition-site judgment has no such
+question to answer, which is why it is worth the literal restriction.
+
+### Lexical resolution, from `Frame.defClass`
+
+The binding lands at `"::Box::SIZE"`, and the bare `SIZE` inside `Box#size` finds it because
+`constGet?` now tries a **list** of paths, innermost first: `constKeyIn f.defClass n` then
+`constKey n`. `Frame.defClass` is already exactly the right thing to ask — it is where the
+running method was *found*, which for a `def` written inside `class Box` is `Box`, and for an
+inherited method is the ancestor whose body the `def` is in. Both are Ruby's lexical cref for
+that `def`, which is what Ruby resolves a bare constant against.
+
+Outside any method there is no frame, so only the top-level path is tried — and that is why
+`class Box; SIZE = 3; end; SIZE` is rejected. Ruby raises `NameError` for it (control p13f).
+
+`constGet?` is also read by the *negative* premises added in clink 27
+(`classStmt`/`constCls`/`constBuiltin`), and widening it to a path list only makes those
+stricter, so nothing on file moved.
+
+### `PrimSig.freezeId`, and a predicate deliberately not twinned
+
+`= {...}.freeze` is how every frozen table in the target is written, and `Object#freeze`
+returns the receiver, so the row is receiver-polymorphic in the way `objEq` is
+argument-polymorphic: `PrimSig σ "freeze" [] σ`.
+
+Its guard is `NilQSafe`, **reused rather than twinned** as a `FreezeSafe`. The two conditions
+are the same condition — "this receiver's method table is the builtin one" — and a second
+copy would be a second thing to keep true. Control (p13g) is the program that needs the
+guard: `class C; def freeze; 1 + "a"; end; end; C.new.freeze` raises `TypeError`, and it is a
+*sound* rejection, so the guard is load-bearing rather than decorative.
+
+### What `const-frozen-hash` says by climbing
+
+It types, and the type is `.any`, which nothing consumes. So the rung climbs and the
+capability does not arrive — which is the ladder's sharpest statement of §Frontier item A:
+`cvss.rb` reads all seven of its metric tables exactly this way and puts the result into
+Float arithmetic, so a `Hash#[]`/`fetch` answering `.any` types the *read* and rejects the
+file. The rung is where a parameterised hash type would first become visible.
+
+### One knob turned
+
+`Rungs.lean`'s two whole-corpus `rfl`s needed `maxRecDepth 8000` (from 512). They reduce
+`chk` over every rung in a single term, so the depth grows with the corpus; it can only turn
+a proof into an error.
+
+### State
+
+**133 rungs of 232**, tier 13 at 4/13. 133/133 cross-checked against the real semantics,
+99/99 controls rejected (three new), corpus agreement 232/232, axiom-clean.
+
+Next in tier 13 is the scoped forms (`M::X`, `Outer::Inner::Y`, `M::X = 4`), which need
+`cpath` and a **nesting path** rather than a single owner — `constKeyIn` takes one string
+today, and `Frame.defClass` is one string too.

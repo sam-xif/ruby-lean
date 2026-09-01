@@ -39,6 +39,8 @@ def nilQSafe? : Ty → Bool
 def primSig? : Ty → String → List Ty → Option Ty
   | σ, "==", [_] => if eqSafe? σ then some .bool else none
   | σ, "nil?", [] => if nilQSafe? σ then some .bool else none
+  -- Tier 13: `Object#freeze`, the identity, under `NilQSafe`'s guard (`PrimSig.freezeId`).
+  | σ, "freeze", [] => if nilQSafe? σ then some σ else none
   | .int, "+", [.int] => some .int
   | .int, "-", [.int] => some .int
   | .int, "*", [.int] => some .int
@@ -264,19 +266,23 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | some (τ, Γ', I') => some (τ, Γ', I')
     | none => none
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
-  | _ + 1, .module' n body =>
+  | f + 1, .module' n body =>
     match classMethods? body with
     -- Tier 10: every mixed-in name must be a declared `module` (`Judge.moduleStmt`'s second
     -- premise) -- `include` on a non-Module raises TypeError.
-    | some (_, _, incs, exts, preps) =>
-      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone then
+    -- Tier 13: and the body's constants are typed, here, at the definition site
+    -- (`chkConsts`).
+    | some (_, _, incs, exts, preps, cs) =>
+      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone
+          && chkConsts f κ cs then
         some (.any, Γ, I)
       else none
     | none => none
-  | _ + 1, .class' n _ body =>
+  | f + 1, .class' n _ body =>
     match classMethods? body with
-    | some (_, _, incs, exts, preps) =>
-      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone then
+    | some (_, _, incs, exts, preps, cs) =>
+      if allModules κ.classes (incs ++ exts ++ preps) && (constGet? κ n).isNone
+          && chkConsts f κ cs then
         some (.any, Γ, I)
       else none
     | none => none
@@ -733,6 +739,24 @@ def chkAll (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
       | some (τs, Γ₂, I₂) => some (τ :: τs, Γ₂, I₂)
       | none => none
     | none => none
+
+/-- **A class body's constants** (tier 13): each initializer must type at exactly the type
+`constLitTy?` reads off its syntax, in the empty local environment, leaving it empty. The
+decidable counterpart of `JudgeConsts`, premise for premise.
+
+The equality is against the *whole* triple rather than the type alone, because `JudgeConsts`
+requires the empty outgoing environment and spine too — a class body cannot leave a local
+behind for the enclosing scope. -/
+def chkConsts (fuel : Nat) (κ : Ctx) : List (String × Expr) → Bool
+  | [] => true
+  | (_, e) :: cs =>
+    match fuel with
+    | 0 => false
+    | f + 1 =>
+      match constLitTy? e with
+      | some τ =>
+        if chk f κ [] .ivar0 e = some (τ, [], .ivar0) then chkConsts f κ cs else false
+      | none => false
 
 /-- Key-then-value `chk` over a hash literal's pairs. Returns only the outgoing states:
 the key and value types are discarded (this `Ty` has no parameterised hash type), but they

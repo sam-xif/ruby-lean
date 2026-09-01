@@ -994,7 +994,29 @@ def controls : List Control :=
     -- reports this one as safe and the rejection prints as conservative — the honest verdict:
     -- the rejection is required by Ruby, not by this package's definition of type-stuck.
   , ⟨"X + 1; X = 10 (safe by this package's definition; really a NameError)",
-      .seq [.send (some (.const "X")) "+" [.int 1] none, .casgn "X" (.int 10)]⟩ ]
+      .seq [.send (some (.const "X")) "+" [.int 1] none, .casgn "X" (.int 10)]⟩
+    -- (p13e) **A class-body constant's initializer must be a *literal*** (tier 13b). This is
+    -- perfectly safe Ruby and rejected anyway: `constLitTy?` cannot read `1 + 2`, so
+    -- `classStmt`'s `JudgeConsts` premise has no type to judge it at. The conservatism is the
+    -- price of `extendConsts` being a syntactic function -- see §A class body's constants.
+  , ⟨"class Box; SIZE = 1 + 2; end; Box.new (safe; a class constant needs a literal)",
+      .seq [.class' "Box" none (.casgn "SIZE" (.send (some (.int 1)) "+" [.int 2] none)),
+            .send (some (.const "Box")) "new" [] none]⟩
+    -- (p13f) **A class's constant is not in scope at top level.** `constGet?` tries the
+    -- frame-relative path first and the top-level one second, and outside any method there is
+    -- no frame -- so this read misses. Ruby raises `NameError` (it wants `Box::SIZE`), which is
+    -- outside the type-stuck family, so this prints as conservative for the same reason
+    -- (p13d) does.
+  , ⟨"class Box; SIZE = 3; end; SIZE + 1 (really a NameError)",
+      .seq [.class' "Box" none (.casgn "SIZE" (.int 3)),
+            .send (some (.const "SIZE")) "+" [.int 1] none]⟩
+    -- (p13g) **`PrimSig.freezeId`'s guard.** `freeze` is the identity on a builtin value, and
+    -- `NilQSafe` is what keeps the row off an `.inst` -- where a user-written `def freeze` is
+    -- dispatched to instead, and this one raises TypeError.
+  , ⟨"class C; def freeze; 1 + \"a\"; end; end; C.new.freeze",
+      .seq [.class' "C" none (.def' "freeze" []
+              (.send (some (.int 1)) "+" [.str "a"] none)),
+            .send (some (.send (some (.const "C")) "new" [] none)) "freeze" [] none]⟩ ]
 
 mutual
 

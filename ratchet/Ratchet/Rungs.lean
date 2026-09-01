@@ -635,7 +635,7 @@ def r061 : Rung :=
           .send (some (.send (some (.const "Point")) "new" [.int 1, .int 2] none))
             "getX" [] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
@@ -654,7 +654,7 @@ def r062 : Rung :=
           .vasgn .lvar "c" (.send (some (.const "Counter")) "new" [.int 10] none),
           .send (some (.var .lvar "c")) "add" [.int 5] none],
     .int, [("c", .inst "Counter" (.ivarCons "@n" .int .ivar0))],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.cons (.vasgn (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
                 (.ivarAsgn (.var rfl rfl))))
         (.last (.callMethod (.var rfl rfl) (.cons .intLit .nil) rfl rfl
@@ -675,7 +675,7 @@ def r063 : Rung :=
           .send (some (.send (some (.var .lvar "p")) "getX" [] none)) "+"
             [.send (some (.var .lvar "p")) "getY" [] none] none],
     .int, [("p", .inst "Point" (.ivarCons "@x" .int (.ivarCons "@y" .int .ivar0)))],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.cons (.vasgn (.newInst (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil))
                 rfl rfl
                 (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl)))))))
@@ -702,7 +702,7 @@ def r064 : Rung :=
           .send (some (.send (some (.const "Rect")) "new" [.int 3, .int 4] none))
             "describe" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
@@ -728,7 +728,7 @@ def r066 : Rung :=
           .class' "Dog" (some (.const "Animal")) (.def' "speak" [] (.str "Woof")),
           .send (some (.send (some (.const "Dog")) "new" [] none)) "speak" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
         .nil rfl rfl .strLit))))⟩
 
@@ -747,7 +747,7 @@ def r068 : Rung :=
           .send (some (.send (some (.var .lvar "a")) "getX" [] none)) "+"
             [.send (some (.var .lvar "b")) "getX" [] none] none],
     .int, [("a", .inst "Point" pointSpine1), ("b", .inst "Point" pointSpine1)],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.cons (.vasgn (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
                 (.ivarAsgn (.var rfl rfl))))
         (.cons (.vasgn (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
@@ -766,7 +766,7 @@ def r069 : Rung :=
     .seq [.class' "Greeter" none (.def' "hi" [] (.str "hi")),
           .send (some (.send (some (.const "Greeter")) "new" [] none)) "hi" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
         .nil rfl rfl .strLit)))⟩
 
@@ -780,7 +780,7 @@ def r070 : Rung :=
     .seq [.class' "Box" none (.def' "reveal" [] (.var .ivar "@secret")),
           .send (some (.send (some (.const "Box")) "new" [] none)) "reveal" [] none],
     .nilT, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
         .nil rfl rfl .ivarRead)))⟩
 
@@ -796,7 +796,7 @@ def r071 : Rung :=
           .array [.send (some (.const "Point")) "new" [.int 1] none,
                   .send (some (.const "Point")) "new" [.int 2] none]],
     .arrayOf (.inst "Point" pointSpine1), [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.arrayLit
         (τs := [.inst "Point" pointSpine1, .inst "Point" pointSpine1])
         (.cons (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
@@ -813,7 +813,7 @@ def r072 : Rung :=
             (.def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x"))),
           .hash [(.str "origin", .send (some (.const "Point")) "new" [.int 0] none)]],
     .cls "Hash", [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.hashLit (.cons .strLit
         (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
           (.ivarAsgn (.var rfl rfl))) .nil))))⟩
@@ -835,7 +835,7 @@ def r074 : Rung :=
                 (.send (some (.var .ivar "@size")) "+" [.int 1] none))]),
           .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
           (.ivarAsgn (.var rfl rfl)))
@@ -856,7 +856,7 @@ def r075 : Rung :=
           .def' "describe" [.req "p"] (.send (some (.var .lvar "p")) "getX" [] none),
           .send none "describe" [.send (some (.const "Point")) "new" [.int 5] none] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons .defStmt
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons .defStmt
       (.last (.callDef
         (.cons (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
                  (.ivarAsgn (.var rfl rfl))) .nil)
@@ -877,7 +877,7 @@ def r076 : Rung :=
           .send (some (.send (some (.send (some (.const "Point")) "new" [.int 7] none))
             "myself" [] none)) "getX" [] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.callMethod
           (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
@@ -911,7 +911,7 @@ def r065 : Rung :=
           .send (some (.send (some (.const "Dog")) "new" [.str "Rex"] none))
             "speak" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) (.cons .strLit .nil) rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl .ivarRead))))⟩
@@ -940,7 +940,7 @@ def r067 : Rung :=
             (.def' "initialize" [] (.super' [.int 3] none)),
           .send (some (.send (some (.const "Triangle")) "new" [] none)) "sides" [] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) .nil rfl rfl
           (.superCall (.cons .intLit .nil) rfl rfl rfl rfl rfl
@@ -969,7 +969,7 @@ def r073 : Rung :=
               (.send none "new" [.int 0, .int 0] none)]),
           .send (some (.const "Point")) "origin" [] none],
     .inst "Point" (.ivarCons "@x" .int (.ivarCons "@y" .int .ivar0)), [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl
         (.selfNew rfl (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl)))))))))⟩
@@ -1001,7 +1001,7 @@ def r077 : Rung :=
     .seq [.module' "M" (.defs .self' "foo" [] (.int 1)),
           .send (some (.const "M")) "foo" [] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl .intLit)))⟩
 
 /-- `module Greeter; def self.hello(name); "hi " + name; end; end; Greeter.hello("sam")` →
@@ -1014,7 +1014,7 @@ def r078 : Rung :=
             (.send (some (.str "hi ")) "+" [.var .lvar "name"] none)),
           .send (some (.const "Greeter")) "hello" [.str "sam"] none],
     .cls "String", [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) (.cons .strLit .nil) rfl rfl
         (.prim .strLit (.cons (.var rfl rfl) .nil) .strAdd))))⟩
 
@@ -1027,7 +1027,7 @@ def r079 : Rung :=
           .send (some (.send (some (.const "M")) "foo" [] none)) "+"
             [.send (some (.const "M")) "bar" [] none] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.prim
         (.callSMethod (.constCls rfl rfl) .nil rfl rfl .intLit)
         (.cons (.callSMethod (.constCls rfl rfl) .nil rfl rfl .intLit) .nil)
@@ -1045,7 +1045,7 @@ def r080 : Rung :=
               (.send (some (.vcall "value")) "*" [.int 2] none)]),
           .send (some (.const "M")) "describe" [] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl
         (.prim (.selfSCall rfl rfl rfl .intLit) (.cons .intLit .nil) .intMul))))⟩
 
@@ -1056,7 +1056,7 @@ def r081 : Rung :=
             (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none)),
           .send (some (.const "Calc")) "add" [.int 1, .int 2] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
         (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
@@ -1073,7 +1073,7 @@ def r082 : Rung :=
               [.int 1] none)),
           .send (some (.const "M1")) "foo" [] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl) (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil) (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl
         (.prim (.callSMethod (.constCls rfl rfl) .nil rfl rfl .intLit)
           (.cons .intLit .nil) .intAdd)))))⟩
@@ -1085,7 +1085,7 @@ def r083 : Rung :=
     .seq [.module' "M" (.defs .self' "pair" [] (.array [.int 1, .int 2])),
           .send (some (.const "M")) "pair" [] none],
     .arrayOf .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl
         (.arrayLit (.cons .intLit (.cons .intLit .nil))))))⟩
 
@@ -1099,7 +1099,7 @@ def r084 : Rung :=
             (.send (some (.var .lvar "n")) ">" [.int 0] none)),
           .send (some (.const "M")) "positive?" [.int 5] none],
     .bool, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
         (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt))))⟩
 
@@ -1110,7 +1110,7 @@ def r085 : Rung :=
     .seq [.module' "M" (.defs .self' "greeting" [] (.str "hi")),
           .send (some (.send (some (.const "M")) "greeting" [] none)) "length" [] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.prim (.callSMethod (.constCls rfl rfl) .nil rfl rfl .strLit)
         .nil .strLength)))⟩
 
@@ -1122,7 +1122,7 @@ def r086 : Rung :=
               "+" [.var .lvar "c"] none)),
           .send (some (.const "M")) "sum3" [.int 1, .int 2, .int 3] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl)
         (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
         (.prim (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)
@@ -1524,7 +1524,7 @@ def r130 : Rung :=
             (some (.send (some (.var .lvar "v")) "speak" [] none))],
     .cls "String",
     [("v", .union (.inst "Dog" .ivar0) (.inst "Animal" .ivar0))],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl) (.cons .defStmt
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil) (.cons .defStmt
       (.cons (.vasgn (.callDef (.cons .truLit .nil) rfl rfl
                 (.if' (.var rfl rfl)
                   (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
@@ -1625,7 +1625,7 @@ def r129 : Rung :=
     -- while the branches are being elaborated. It is also the most informative thing to state
     -- about this rung: it *is* the widened spine.
     (by
-      refine .seq (.cons (.classStmt rfl rfl rfl)
+      refine .seq (.cons (.classStmt rfl rfl rfl .nil)
         (.last (.callMethod
           (Iself := .ivarCons "@v" (.union .int (.cls "String")) .ivar0) (Γb' := [])
           (.newInst (.constCls rfl rfl) (.cons .truLit .nil) rfl rfl
@@ -1835,7 +1835,7 @@ def r122 : Rung :=
           .send (some (.send (some (.const "Shelf")) "new"
             [.array [.int 1, .int 2]] none)) "names" [] none],
     .arrayOf (.cls "String"), [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (.newInst (.constCls rfl rfl) (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil)
           rfl rfl (.ivarAsgn (.var rfl rfl)))
@@ -1908,7 +1908,7 @@ def r117 : Rung :=
                 (.send (some (.var .lvar "x")) "*" [.int 2] none)))] none))
             "apply" [.int 4] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod
         (Iself := .ivarCons "@f" (.clos 0 .ivar0 .never) .ivar0)
         (.newInst (.constCls rfl rfl)
@@ -1936,7 +1936,7 @@ def r123 : Rung :=
                  (.send (some (.var .lvar "x")) "+" [.int 1] none))),
              .int 5] none],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl)
         (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) (.cons .intLit .nil)) rfl rfl
         (.closCall (.inl rfl) (.var rfl rfl)
@@ -1968,7 +1968,7 @@ def r115 : Rung :=
           .send (some (.send (some (.const "A")) "new" [] none)) "a" []
             (some (.block [.req "v"] [] (.var .lvar "v")))],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethodBlk
         (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl rfl
         (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl (.var rfl rfl) rfl))))⟩
@@ -1990,7 +1990,7 @@ def r116 : Rung :=
             (some (.block [.req "x"] []
               (.send (some (.var .lvar "x")) "+" [.int 1] none)))],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethodBlk
         (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl rfl
@@ -2016,7 +2016,7 @@ def r118 : Rung :=
             (some (.block [.req "x"] []
               (.send (some (.var .lvar "x")) "*" [.int 10] none)))],
     .int, [],
-    .seq (.cons (.moduleStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.last (.callSMethodBlk (.constCls rfl rfl) .nil rfl rfl rfl
         (.prim
           (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
@@ -2044,7 +2044,7 @@ def r119 : Rung :=
             (.def' "show" [] (.send none "wrap" [] (some (.block [] [] (.int 7))))),
           .send (some (.send (some (.const "Child")) "new" [] none)) "show" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl
         (.selfCallBlk rfl .nil rfl rfl rfl
           (.prim
@@ -2081,7 +2081,7 @@ def r109 : Rung :=
           .send (some (.send (some (.send (some (.const "Foo")) "new" [] none)) "a" [] none))
             "+" [.send (some (.send (some (.const "Foo")) "new" [] none)) "b" [] none] none],
     .int, [],
-    .seq (.cons (.classStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.prim
         (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl .intLit)
         (.cons (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl
@@ -2108,7 +2108,7 @@ def r110 : Rung :=
           .class' "Person" none (.send none "include" [.const "Greetable"] none),
           .send (some (.send (some (.const "Person")) "new" [] none)) "greet" [] none],
     .cls "String", [],
-    .seq (.cons (.moduleStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl
         .strLit))))⟩
 
@@ -2130,7 +2130,7 @@ def r111 : Rung :=
           .class' "Person" none (.send none "extend" [.const "Loud"] none),
           .send (some (.const "Person")) "shout" [] none],
     .cls "String", [],
-    .seq (.cons (.moduleStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callSMethod (.constCls rfl rfl) .nil rfl rfl .strLit))))⟩
 
 /-- `module Logger; def speak; "logged: " + super; end; end; class Person; prepend Logger;
@@ -2167,7 +2167,7 @@ def r112 : Rung :=
             .def' "speak" [] (.str "hi")]),
           .send (some (.send (some (.const "Person")) "new" [] none)) "speak" [] none],
     .cls "String", [],
-    .seq (.cons (.moduleStmt rfl rfl rfl) (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil) (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl rfl
         (.prim .strLit
           (.cons (.zsuperCall rfl rfl rfl rfl rfl rfl rfl .strLit) .nil)
@@ -2204,7 +2204,7 @@ def r113 : Rung :=
           .send (some (.send (some (.const "Ghost")) "new" [] none))
             "anything_at_all" [] none],
     .cls "String", [],
-    .seq (.cons (.classStmt rfl rfl rfl)
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
       (.last (.callMissing (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl) .nil rfl
         (not_objectMethod rfl) rfl rfl
         (.prim .strLit (.cons (.prim (.var rfl rfl) .nil .symToS) .nil) .strAdd))))⟩
@@ -2563,6 +2563,77 @@ def r137 : Rung :=
     .seq (.cons (.casgn .intLit)
       (.last (.prim (.constEnv rfl) (.cons .intLit .nil) .intAdd)))⟩
 
+/-- `class Box; SIZE = 3; def size; SIZE; end; end; Box.new.size` → `Integer`.
+
+    Three separate mechanisms, one per line of the Ruby:
+
+    - `SIZE = 3` is a **class-body member** now (`ClsMember.constM`), so `classMethods?` reads
+      it and `classStmt`'s new `JudgeConsts` premise types it — `.cons rfl .intLit .nil`, i.e.
+      "`constLitTy? (int 3)` says `Integer`, and here is the derivation that it *is* one".
+      That premise is the whole soundness story for the syntactic `extendConsts`.
+    - the binding lands at `"::Box::SIZE"`, put there by `Ctx.afterStmt` via `extendConsts`,
+      which reads the body a second time (`bodyConsts`) because `afterStmt` sees a statement
+      and not a judgment.
+    - and the bare `SIZE` inside `size`'s body resolves **lexically**: `constGet?` tries
+      `"::Box::SIZE"` first because `κ.frame`'s `defClass` is `Box`, which is where the `def`
+      was written. At top level the same read would try only `"::SIZE"` and be rejected, which
+      is what Ruby does (`NameError`).
+
+    Note what the derivation does *not* contain: any judgment of `SIZE` at the class
+    statement's own position. The constant is typed once, where it is written, and read from
+    the table thereafter. -/
+def r138 : Rung :=
+  ⟨"const-in-class",
+    .seq [.class' "Box" none (.seq [.casgn "SIZE" (.int 3),
+                                    .def' "size" [] (.const "SIZE")]),
+          .send (some (.send (some (.const "Box")) "new" [] none)) "size" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl rfl rfl (.cons rfl .intLit .nil))
+      (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
+        .nil rfl rfl (.constEnv rfl))))⟩
+
+/-- `NAMES = ["a", "b"].freeze; NAMES[0]` → `T.nilable(String)`.
+
+    The rung is here for `.freeze`, which is how every frozen constant table in the target is
+    written, and the finding is how little it costs: `PrimSig.freezeId` is the **identity** on
+    its receiver, guarded by `NilQSafe` — the same predicate `nil?` uses, reused rather than
+    twinned, because both are asking the one question "is this receiver's method table the
+    builtin one?". A `def freeze` on a user class would be dispatched to instead, so `.inst`
+    is refused and the row cannot be reached for one.
+
+    The type is `nilable String` and not `String`: `Array#[]` is tier 5's row, and
+    `["a","b"][0]` could have been out of range as far as the type language can see. -/
+def r143 : Rung :=
+  ⟨"const-frozen-array",
+    .seq [.casgn "NAMES" (.send (some (.array [.str "a", .str "b"])) "freeze" [] none),
+          .send (some (.const "NAMES")) "[]" [.int 0] none],
+    .nilable (.cls "String"), [],
+    .seq (.cons (.casgn (.prim (.arrayLit (.cons .strLit (.cons .strLit .nil))) .nil
+                          (.freezeId (.arrayOf))))
+      (.last (.prim (.constEnv rfl) (.cons .intLit .nil) .arrayIndex)))⟩
+
+/-- `TABLE = { "a" => 1, "b" => 2 }.freeze; TABLE["a"]` → `T.untyped`.
+
+    `freezeId` again, on a hash this time, and the type is where the tier's real demand shows
+    up. `Hash` is the bare `.cls "Hash"` (tier 5), so `Hash#[]` can only answer `.any` — and
+    `.any` is **inert**: nothing consumes it, so the value this rung produces cannot be used
+    for anything. The rung climbs and the capability does not arrive.
+
+    That is the ladder's sharpest statement of §Frontier item A. `cvss.rb` reads all seven of
+    its metric tables exactly this way and puts the result straight into Float arithmetic, so
+    a `fetch` answering `.any` types the *read* and rejects the file. A parameterised hash type
+    is the fix, and this rung is where it would first be visible. -/
+def r144 : Rung :=
+  ⟨"const-frozen-hash",
+    .seq [.casgn "TABLE" (.send (some (.hash [(.str "a", .int 1), (.str "b", .int 2)]))
+                            "freeze" [] none),
+          .send (some (.const "TABLE")) "[]" [.str "a"] none],
+    .any, [],
+    .seq (.cons (.casgn (.prim (.hashLit (.cons .strLit .intLit
+                                          (.cons .strLit .intLit .nil))) .nil
+                          (.freezeId (.cls))))
+      (.last (.prim (.constEnv rfl) (.cons .strLit .nil) .hashIndex)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2580,7 +2651,7 @@ def rungs : List Rung :=
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
-   r137]
+   r137, r138, r143, r144]
 
 /-! ## `chk` answers exactly what was derived by hand
 
@@ -2588,14 +2659,20 @@ One `rfl` per rung. These are the `Judge ⇒ chk` direction (`chk_sound` is the 
 and the one that matters for trusting a `true`); together they say the executable checker
 and the hand-authored judgment have not drifted apart anywhere on this fragment. -/
 
+-- Raised from the default 512 when tier 13's rungs pushed the list past it. The two `rfl`s
+-- below reduce `chk` over *every* rung in one term, so the recursion depth grows with the
+-- corpus; it is an elaboration limit and not a soundness knob (it can only turn a proof into
+-- an error).
+set_option maxRecDepth 8000 in
 theorem chk_agrees_with_hand_derivations :
     rungs.all (fun r =>
       chk fuelDefault (ctx0.withBlocks r.program) [] .ivar0 r.program
         == some (r.ty, r.outEnv, Ty.ivar0)) = true := by rfl
 
-/-- And therefore `validate` — the number the ratchet runner reports — says `true` on all
-13. Stated separately from the above because it is the weaker fact (it forgets *which*
-type), and it is the one `Main.lean` observes. -/
+set_option maxRecDepth 8000 in
+/-- And therefore `validate` — the number the ratchet runner reports — says `true` on every
+one of them. Stated separately from the above because it is the weaker fact (it forgets
+*which* type), and it is the one `Main.lean` observes. -/
 theorem validate_all_rungs : rungs.all (fun r => validate r.program) = true := by
   rfl
 
