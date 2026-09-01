@@ -38,7 +38,77 @@ def loadEntry (p : System.FilePath) : IO CorpusEntry := do
     | .error e => throw (IO.userError s!"{p}: {e}")
     | .ok entry => pure entry
 
+-- A display-only rendering of `Ty`, for `--stdin`'s output — not part of the trusted
+-- checker (`Ratchet/Ty.lean`/`Validate.lean` are untouched), just a printer over it, in
+-- Sorbet's own vocabulary where one exists (`T.untyped`, `T.nilable`, `T::Array[...]`,
+-- `T.noreturn` for `.never`) since that is the vocabulary `--check`'s `type` field
+-- already prints in. `.inst`/`.clos`'s ivar/capture spines print as `{@x: Integer, ...}`;
+-- an empty spine (`.ivar0`) prints as the empty string, so a bare `.inst "Point" .ivar0`
+-- renders `Point{}` rather than `Point{}}`.
+namespace Ratchet
+partial def Ty.render : Ty → String
+  | .int => "Integer"
+  | .bool => "Boolean"
+  | .nilT => "NilClass"
+  | .sym => "Symbol"
+  | .cls c => c
+  | .any => "T.untyped"
+  | .clsOf n => s!"T.class_of({n})"
+  | .nilable τ => s!"T.nilable({Ty.render τ})"
+  | .float => "Float"
+  | .arrayOf τ => s!"T::Array[{Ty.render τ}]"
+  | .never => "T.noreturn"
+  | .union σ τ => s!"T.any({Ty.render σ}, {Ty.render τ})"
+  | .arrow0 τ => s!"() -> {Ty.render τ}"
+  | .arrowCons p rest => s!"({Ty.render p}) -> {Ty.render rest}"
+  | .inst name ivars => name ++ "{" ++ Ty.render ivars ++ "}"
+  | .ivar0 => ""
+  | .ivarCons n τ .ivar0 => s!"{n}: {Ty.render τ}"
+  | .ivarCons n τ rest => s!"{n}: {Ty.render τ}, {Ty.render rest}"
+  | .clos idx .ivar0 => s!"<closure#{idx}>"
+  | .clos idx captured => s!"<closure#{idx}>" ++ "{" ++ Ty.render captured ++ "}"
+end Ratchet
+
+-- `--stdin`: check one program instead of the corpus — RubyCore JSON (the same
+-- `{"v":.., "ast":..}` shape `export-json`/the corpus's `program` field carry) on
+-- stdin. For an interactive caller (the playground); the corpus run above is what
+-- climbs the ladder.
+--
+-- Reports `chk`'s **whole** result triple, not just `validate`'s `Bool`: the
+-- program's result type, the final local environment (the types of its locals —
+-- "the different terms" a reader of the program would want typed), and the final
+-- self-ivar spine. `validate` itself is `(chk ...).isSome` (`Validate.lean` L474-475),
+-- so this is the same call, read further rather than a second checker.
+def runStdin : IO UInt32 := do
+  let stdin ← IO.getStdin
+  let input ← stdin.readToEnd
+  match Json.parse input with
+  | .error e =>
+    IO.eprintln s!"bad input JSON: {e}"
+    return 1
+  | .ok j =>
+    match Decode.program j with
+    | .error e =>
+      IO.eprintln s!"undecodable RubyCore: {e}"
+      return 1
+    | .ok prog =>
+      match chk fuelDefault (ctx0.withBlocks prog) [] .ivar0 prog with
+      | none =>
+        IO.println (Json.mkObj [("validate", Json.bool false)]).compress
+        return 0
+      | some (τ, Γ, I) =>
+        let localsJson := Json.arr (Γ.map (fun (n, t) =>
+          Json.mkObj [("name", Json.str n), ("type", Json.str t.render)])).toArray
+        IO.println (Json.mkObj [
+          ("validate", Json.bool true),
+          ("type", Json.str τ.render),
+          ("locals", localsJson),
+          ("ivars", Json.str ("{" ++ I.render ++ "}"))]).compress
+        return 0
+
 def main (args : List String) : IO UInt32 := do
+  if args.contains "--stdin" then
+    return ← runStdin
   let corpusDir : System.FilePath := args.headD "corpus"
   let dirEntries ← corpusDir.readDir
   let files := (dirEntries.map (·.path)).toList.filter (fun p => p.toString.endsWith ".json")

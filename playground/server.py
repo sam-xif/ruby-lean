@@ -28,6 +28,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent  # ruby/
 EXPORT_JSON = ROOT / "harness" / "desugar-dt" / "bin" / "export-json"
 RUBYCORE = ROOT / "lean" / ".lake" / "build" / "bin" / "rubycore"
+RATCHET = ROOT / "ratchet" / ".lake" / "build" / "bin" / "ratchet"
 MAX_STEPS = "4000"
 # The desugar budget. It used to be 15s, which is a toy's budget: the linked
 # Homebrew slice is 2,151 lines and the slice explorer feeds it to the same first
@@ -127,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         elif self.path == "/slice/files":
             self._send(200, json.dumps(slice_files()).encode(), "application/json")
+        elif self.path == "/ratchet/corpus":
+            self._send(200, json.dumps(ratchet_corpus()).encode(), "application/json")
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -141,6 +144,12 @@ class Handler(BaseHTTPRequestHandler):
         "/slice/cruby":    lambda q: cruby_run(q.get("source", "")),
         "/slice/derive":   lambda q: derive(q.get("source", "")),
         "/slice/validate": lambda q: validate(q.get("source", ""), q.get("cert", "")),
+        # ── Tab 3: the ratchet checker — model_run/cruby_run reused verbatim,
+        # a fresh route only for the new checker.
+        "/ratchet/model":  lambda q: model_run(q.get("source", "")),
+        "/ratchet/cruby":  lambda q: cruby_run(q.get("source", "")),
+        "/ratchet/check":  lambda q: ratchet_check(q.get("source", "")),
+        "/ratchet/corpus-source": lambda q: ratchet_corpus_source(q.get("file", "")),
     }
 
     def do_POST(self):
@@ -282,6 +291,73 @@ def check_tl(source: str) -> dict:
     if err:
         return err
     return lean_query(core, "--check-tl")
+
+
+CORPUS = ROOT / "ratchet" / "corpus"
+
+
+def corpus_stems() -> list[str]:
+    """Every rung's file stem (`060-fun-recursive-factorial`), sorted the way
+    `ratchet`'s own runner sorts them — filename order, which is tier order."""
+    if not CORPUS.is_dir():
+        return []
+    return sorted(p.stem for p in CORPUS.glob("*.json"))
+
+
+def ratchet_corpus() -> dict:
+    """The corpus ladder's own rungs, metadata only (`id`/`tier`/`description`/
+    `expect_validate` — never `program`, which is desugared JSON already, not Ruby,
+    and is what `/ratchet/corpus-source` below hands the *matching* `.rb` for)."""
+    out = []
+    for stem in corpus_stems():
+        try:
+            entry = json.loads((CORPUS / f"{stem}.json").read_text())
+        except ValueError:
+            continue
+        out.append({"file": stem, "id": entry.get("id"), "tier": entry.get("tier"),
+                    "description": entry.get("description"),
+                    "expect_validate": entry.get("expect_validate")})
+    return {"root": str(CORPUS), "entries": out}
+
+
+def ratchet_corpus_source(stem: str) -> dict:
+    """The rung's actual Ruby (`scripts/generate_corpus.py` commits a `.rb` beside
+    every `.json` — the `.json`'s `program` is that source already desugared, so this
+    reads the sibling file rather than round-tripping the AST back to text)."""
+    if stem not in corpus_stems():
+        return {"error": "input", "message": f"not a corpus rung: {stem}"}
+    p = CORPUS / f"{stem}.rb"
+    if not p.exists():
+        return {"error": "input", "message": f"missing: {p}"}
+    return {"file": stem, "source": p.read_text(errors="replace")}
+
+
+def ratchet_check(source: str) -> dict:
+    """`ratchet --stdin` (`../ratchet/`) — `Ratchet/Validate.lean`'s `chk`, the
+    corpus-ladder checker, read the same desugared JSON every other query reads.
+    On `"validate": false` that's the whole payload; on `true` it's joined by
+    `type` (the program's result type), `locals` (the final environment — every
+    local's type), and `ivars` (the final self-ivar spine), all rendered in
+    Sorbet's own vocabulary. A second, isolated checker project from `rubycore`'s
+    (see `ratchet/AGENTS.md`), so this is its own subprocess rather than a
+    `lean_query` flag."""
+    if not RATCHET.exists():
+        return {"error": "setup",
+                "message": f"ratchet not built at {RATCHET} — run `cd ../ratchet && lake build ratchet`"}
+    core, err = desugar(source)
+    if err:
+        return err
+    try:
+        p = subprocess.run([str(RATCHET), "--stdin"], input=core,
+                           capture_output=True, text=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "message": "ratchet timed out"}
+    if p.returncode != 0:
+        return {"error": "ratchet", "message": p.stderr.strip()[:500] or f"ratchet exit {p.returncode}"}
+    try:
+        return json.loads(p.stdout)
+    except ValueError as e:
+        return {"error": "ratchet", "message": f"unparseable ratchet output: {e}"}
 
 
 def assn(source: str, top: bool = False) -> dict:
@@ -528,6 +604,7 @@ def main():
     print(f"Ruby-in-Lean playground on http://localhost:{port}")
     print(f"  ruby:     {RUBY}")
     print(f"  rubycore: {RUBYCORE}  ({'built' if RUBYCORE.exists() else 'NOT BUILT'})")
+    print(f"  ratchet:  {RATCHET}  ({'built' if RATCHET.exists() else 'NOT BUILT'})")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
