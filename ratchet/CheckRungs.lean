@@ -91,7 +91,14 @@ def checkRung (corpusDir : System.FilePath) (files : List System.FilePath)
   let res := Ratchet.Semantics.run fuel rp
   let actualClass := Ratchet.Semantics.resultClassName res
   let stuck := Ratchet.Semantics.typeStuck res
-  let semOk := match actualClass with
+  -- `.any` is the one type with no extensional content: it names no class, so the only
+  -- thing left to check about a run is that it did not go type-stuck (which is checked
+  -- separately, by `rowOk`). Today exactly one rung derives it —
+  -- `bare-undeclared-var`, which raises `NameError` and so produces no value at all —
+  -- and a rung that claimed `.any` for a program that *does* return a value would be
+  -- passing here vacuously. That is the honest cost of `.any` being in the grammar; it
+  -- is flagged in the report as `claims .any` rather than shown as a class match.
+  let semOk := if r.ty == .any then true else match actualClass with
     | some cn => (expectedClasses r.ty).contains cn
     | none => false
   return { id := r.id, syntaxOk, claimedTy := r.ty
@@ -111,6 +118,22 @@ run under the real semantics to say which kind of rejection it is:
 - **conservative rejection** — the program is safe and `chk` still says no. Honest
   incompleteness, recorded rather than hidden: `1 + 1.5` is fine Ruby, and `PrimSig` has
   no `Integer#+ Float` row because no rung has needed one yet.
+
+`BareNameError` gets the controls that matter most on this ladder, because the rule it
+gates is the one a careless reading would state as a blanket "a bare name raises
+NameError, which is not a type error". `proc` and `lambda` are bare names that resolve
+to real `Kernel` methods and raise **ArgumentError** with no block — squarely in the
+type-stuck family — so they are sound rejections that only the table's narrowness earns.
+`y` is the other side: genuinely unbound and therefore safe, rejected purely because
+nobody has added its row.
+
+Note what the model says about `proc`/`lambda` versus what CRuby does. CRuby raises
+`ArgumentError` ("tried to create Proc object without a block") — verified directly, and
+that is the fact the narrowness of `BareNameError` is justified against. `RubyCore` does
+not model the block-less form at all and answers `unsupported`, which is neither safe
+nor stuck, so these two controls print the "model declined" verdict rather than a
+soundness claim. They still do their job: the blanket rule is refuted by Ruby, and the
+model's silence is not evidence for it.
 
 The tier-2 rows added alongside `objEq` each get a control of the same kind: `1 < "a"`
 and `1.length` and `nil.zero?` probe the receiver/argument constraints of the comparison
@@ -140,7 +163,10 @@ def controls : List Control :=
   , ⟨"!nil (safe; no PrimSig row)", .send (some .nil) "!" [] none⟩
   , ⟨"\"a\" < \"b\" (safe; no PrimSig row)", .send (some (.str "a")) "<" [.str "b"] none⟩
   , ⟨"5.to_s(2) (safe; no PrimSig row for the base form)",
-      .send (some (.int 5)) "to_s" [.int 2] none⟩ ]
+      .send (some (.int 5)) "to_s" [.int 2] none⟩
+  , ⟨"proc (a bare name that is NOT unbound)", .vcall "proc"⟩
+  , ⟨"lambda (likewise)", .vcall "lambda"⟩
+  , ⟨"y (safe; unbound, but not a BareNameError row)", .vcall "y"⟩ ]
 
 /-- `Ratchet.Expr` → `RubyCore.Expr` for the controls only: they are hand-written on this
 package's side of the isolation boundary, so there is no JSON to decode twice the way a
@@ -154,6 +180,7 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .tru => some .tru
   | .fls => some .fls
   | .nil => some .nil
+  | .vcall m => some (.vcall m)
   | .send (some r) m args none => do
     let r' ← toRubyCore r
     let args' ← args.mapM toRubyCore
@@ -180,9 +207,16 @@ def main (args : List String) : IO UInt32 := do
       | throw (IO.userError s!"control '{c.label}': not translatable to RubyCore.Expr")
     let res := Ratchet.Semantics.run fuel rp
     let stuck := Ratchet.Semantics.typeStuck res
+    let label := Ratchet.Semantics.outcomeLabel res
     let verdict :=
       if certified then "CERTIFIED -- table is too generous"
       else if stuck then "rejected (sound: really type-stuck)"
+      else if label.startsWith "unsupported" || label == "outOfFuel" then
+        -- The model declined to run it, so it says nothing either way. Recorded as its
+        -- own verdict rather than being swept into "conservative: safe": calling a
+        -- program safe because the model would not execute it is exactly the kind of
+        -- vacuous pass this file exists to prevent.
+        "rejected (model declined to run it -- see the control's note)"
       else "rejected (conservative: safe, no rule yet)"
     IO.println s!"{if certified then "FAIL" else "ok  "} {c.label}: {verdict}, ran to {Ratchet.Semantics.outcomeLabel res}"
     if certified then controlFails := c.label :: controlFails

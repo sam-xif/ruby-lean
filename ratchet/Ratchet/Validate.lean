@@ -3,17 +3,17 @@ import Ratchet.Judge
 /-!
 The trusted checker: `validate : Expr → Bool`, over the **real** `Expr`.
 
-**Rungs 1–13 only.** `chk` decides exactly the fragment `Ratchet/Judge.lean`'s `Judge`
-specifies (tier 1's eight literals, plus `+`/`-`/`*`/`/` on `Integer` and `+` on
-`String`), and answers `none` on everything else — there is no fallback of any kind. The
+**Tiers 1–3 only.** `chk` decides exactly the fragment `Ratchet/Judge.lean`'s `Judge`
+specifies (the eight literals, tier 2's `send` table, and tier 3's
+`var`/`vasgn`/`seq`/bare-`vcall`), and answers `none` on everything else — there is no fallback of any kind. The
 certificate-claim fallback this checker used to carry is gone (`AGENTS.md`
 §Claim-free): a claim was trusted, so a rung certified through one certified nothing,
-and the `Bool` was worth less than it looked. Now every `true` is synthesized. Every rung above 13 therefore still reports `false`,
-which is the honest state of a ladder climbed 13 rungs.
+and the `Bool` was worth less than it looked. Now every `true` is synthesized. Every rung outside that fragment therefore still
+reports `false`, which is the honest state of a partly climbed ladder.
 
 `chk` is not the specification; `Judge` is. `Ratchet/Proof/ChkSound.lean` proves the
 one direction that matters for trusting a `true` answer:
-`chk e = some τ → Judge e τ`.
+`chk Γ e = some (τ, Γ') → Judge Γ e τ Γ'`.
 -/
 
 namespace Ratchet
@@ -44,39 +44,76 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .bool, "!", [] => some .bool
   | _, _, _ => none
 
+/-- The executable counterpart of `BareNameError`: bare names known to resolve to
+nothing at top-level `self`. One row, matching the judgment's one constructor. -/
+def bareNameError? : String → Bool
+  | "x" => true
+  | _ => false
+
 mutual
 
-/-- Synthesize a type for `e`, or `none`. The catch-all is `none`: a node kind with no
-structural rule is not typed, full stop. -/
-def chk : Expr → Option Ty
-  | .int _ => some .int
-  | .flt _ => some .float
-  | .str _ => some (.cls "String")
-  | .sym _ => some .sym
-  | .tru => some .bool
-  | .fls => some .bool
-  | .nil => some .nilT
+/-- Synthesize a type and an outgoing environment for `e`, or `none`. The catch-all is
+`none`: a node kind with no structural rule is not typed, full stop. -/
+def chk (Γ : Env) : Expr → Option (Ty × Env)
+  | .int _ => some (.int, Γ)
+  | .flt _ => some (.float, Γ)
+  | .str _ => some (.cls "String", Γ)
+  | .sym _ => some (.sym, Γ)
+  | .tru => some (.bool, Γ)
+  | .fls => some (.bool, Γ)
+  | .nil => some (.nilT, Γ)
+  | .var .lvar x =>
+    match envGet? Γ x with
+    | some τ => some (τ, Γ)
+    | none => none
+  | .vasgn .lvar x e =>
+    match chk Γ e with
+    | some (τ, Γ') => some (τ, envSet Γ' x τ)
+    | none => none
+  | .seq es => chkSeq Γ es
+  | .vcall m => if bareNameError? m then some (.any, Γ) else none
   | .send (some recv) m args none =>
     -- Written as explicit nested `match`es rather than `do`/`<|>` on purpose: this is
     -- the trusted checker, and every route to a `some` should be visible on the page
     -- (and should `split` cleanly in `Ratchet/Proof/ChkSound.lean`).
-    match chk recv, chkAll args with
-    | some σ, some argTys => primSig? σ m argTys
-    | _, _ => none
+    match chk Γ recv with
+    | some (σ, Γ₁) =>
+      match chkAll Γ₁ args with
+      | some (argTys, Γ₂) =>
+        match primSig? σ m argTys with
+        | some τ => some (τ, Γ₂)
+        | none => none
+      | none => none
+    | none => none
   | _ => none
 
-/-- Pointwise `chk` over an argument list; `none` if any argument fails. -/
-def chkAll : List Expr → Option (List Ty)
-  | [] => some []
+/-- Pointwise `chk` over an argument list, threading the environment; `none` if any
+argument fails. -/
+def chkAll (Γ : Env) : List Expr → Option (List Ty × Env)
+  | [] => some ([], Γ)
   | e :: es =>
-    match chk e, chkAll es with
-    | some τ, some τs => some (τ :: τs)
-    | _, _ => none
+    match chk Γ e with
+    | some (τ, Γ₁) =>
+      match chkAll Γ₁ es with
+      | some (τs, Γ₂) => some (τ :: τs, Γ₂)
+      | none => none
+    | none => none
+
+/-- A non-empty statement sequence: every statement must type, the result is the last
+one's, and the environment threads. An empty `seq` is `none` (the desugarer never emits
+one, and `JudgeSeq` has no rule for it). -/
+def chkSeq (Γ : Env) : List Expr → Option (Ty × Env)
+  | [] => none
+  | [e] => chk Γ e
+  | e :: e' :: es =>
+    match chk Γ e with
+    | some (_, Γ₁) => chkSeq Γ₁ (e' :: es)
+    | none => none
 
 end
 
 /-- The ratchet's verdict for one rung: did `chk` synthesize *any* type for the whole
-program? -/
-def validate (p : Expr) : Bool := (chk p).isSome
+program, starting from the empty environment? -/
+def validate (p : Expr) : Bool := (chk [] p).isSome
 
 end Ratchet

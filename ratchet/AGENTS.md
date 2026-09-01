@@ -13,12 +13,15 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **24 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **30 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tier 1 and every `send`-shaped
-rung of tier 2**: the eight literals, `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1 and 3, and every
+`send`-shaped rung of tier 2**: the eight literals, `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the
 integer comparisons, the nullary total queries (`to_s`/`zero?`/`length`), `!`, and `==`
-with an unconstrained argument (see `EqSafe`) — 24 rungs. The only tier-2 rungs left are
+with an unconstrained argument (see `EqSafe`), plus tier 3's locals
+(`var`/`vasgn`/`seq`, and a bare `vcall` gated on the `BareNameError` table) — 30 rungs.
+`Judge` now threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md`
+clink 2 for why the output environment is not optional. The only tier-2 rungs left are
 `bool-and`/`bool-or`, which are not sends at all: Ruby's `&&`/`||` desugar to a temporary
 local plus a `seq` and an `if`, so they are tier-3/4 work (see
 `implementation-notes.md` clink 1).
@@ -28,7 +31,7 @@ the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment w
 constructor per rule — and every rung in the covered fragment has a **derivation term**
 on file in `Ratchet/Rungs.lean` that Lean's kernel checks, plus
 `Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk e = some τ → Judge e τ` tying the
-executable checker back to it. And `24` is now the *only* number
+executable checker back to it. And `30` is now the *only* number
 `scripts/run_ratchet.sh` reports, because there is no longer a second, softer way for a
 rung to count: certificates are gone (§Claim-free).
 
@@ -181,6 +184,23 @@ Two rungs already passed claim-assisted (`block-pass-symbol-to-proc`,
 send, i.e. the checker was trusting the answer, not computing it. *Superseded the same
 day*: claims are gone (§Claim-free), so tier 9 is 0/22 and the whole tier is a demand
 list. Structural was and is 14.
+
+## 2026-08-31 (night, second): tier 3 — the environment threads — 24 → 30
+
+`Judge` grew from `Expr → Ty → Prop` to `Env → Expr → Ty → Env → Prop`. The **output**
+environment is the part that is not obvious and is argued for in `implementation-notes.md`
+(clink 2): a Ruby assignment is an expression with a value *and* an effect, so a rule
+shape with only an input context forces `seq` to special-case `vasgn` as a statement
+head — a lie about the grammar. `prim` threads across receiver-then-arguments in Ruby's
+evaluation order, `JudgeSeq` is its own inductive so non-emptiness and "the last
+statement's type" are structural, and `Rung` gained an explicit `outEnv` so a derivation
+cannot get the environment wrong and still compile.
+
+The rung worth reading twice is `bare-undeclared-var`. The blanket rule ("a bare name is
+`.any`, since an unbound one raises `NameError`, which is outside the type-error family")
+is unsound: `proc`/`lambda` are bare names too, and raise `ArgumentError` with no block.
+So the rule is gated on a one-row `BareNameError` table and stays sound only while no
+rule types a `def'` — both recorded in the rule's own docstring as tier-6 obligations.
 
 ## 2026-08-31 (night): tier 2's `send` fragment finished — 14 → 24
 
@@ -375,7 +395,7 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (10 tiers, 114 rungs, 24 climbed)
+## The ladder (10 tiers, 114 rungs, 30 climbed)
 
 **Every rung's target is `expect_validate = true`, with exactly nine, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
@@ -393,9 +413,13 @@ ladder is reported: 114/114 (§Architecture).
    `1 == "a"` is safe Ruby — its receiver instead carries the `EqSafe` side condition.
    The two unclimbed non-negative rungs, `bool-and`/`bool-or`, are `&&`/`||`, which
    desugar to `seq`/`vasgn`/`if` and so belong to tiers 3–4.
-3. `var`/`vasgn`/`seq` (6 rungs) — real Ruby scoping (mutable locals, not the `let` of a
-   from-scratch toy language), including the NameError-is-not-a-type-error subtlety
-   (`bare-undeclared-var`, §Design notes).
+3. `var`/`vasgn`/`seq` (6 rungs) — **all six climbed.** Real Ruby scoping (mutable
+   locals, not the `let` of a from-scratch toy language): the judgment threads an
+   environment (`Judge Γ e τ Γ'`) and `envSet` overwrites, so re-binding a local at a
+   different type is correct rather than an error. `bare-undeclared-var` is climbed via
+   the one-row `BareNameError` table, *not* a blanket "a bare name raises NameError"
+   rule — which would be unsound, since `proc`/`lambda` are bare names that raise
+   `ArgumentError` (`implementation-notes.md` clink 2).
 4. Conditionals (9 rungs) — `if'`/`elsif` chains, including a no-`else` → `nilable`
    case, branch-mismatched `if`s that want a union-producing `joinTy` (currently `joinTy`
    answers `none` there, and `Ty.union` is inert on the checker path), and a real,
@@ -438,17 +462,17 @@ Run `scripts/run_ratchet.sh` for current numbers:
 ```
 corpus agreement (CRuby vs the Lean semantics): 114/114 agree, 0 disagree
 
-tier 1: 8/8    tier 2: 16/20  tier 3: 0/6    tier 4: 0/9    tier 5: 0/8
+tier 1: 8/8    tier 2: 16/20  tier 3: 6/6    tier 4: 0/9    tier 5: 0/8
 tier 6: 0/9    tier 7: 0/16   tier 8: 0/10   tier 9: 0/22   tier 10: 0/6
 flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs not yet climbed: 81
+rungs not yet climbed: 75
 ```
 
-All 24 are synthesized by `chk` itself — tier 1's eight, plus every `send`-shaped rung
-of tier 2. (This used to read "23
+All 30 are synthesized by `chk` itself — tier 1's eight, every `send`-shaped rung of
+tier 2, and all six of tier 3. (This used to read "23
 validating, of which 14 structural"; the other nine were rungs a certificate claim
 answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number (also run inline by
-`run_ratchet.sh`): 24/24 of those cross-checked against the real semantics, 12/12
+`run_ratchet.sh`): 30/30 of those cross-checked against the real semantics, 15/15
 negative controls rejected.
 
 The number to watch as `chk` grows is **"rungs not yet climbed" going down**, tier
@@ -567,11 +591,12 @@ assumes that version didn't have, plus everything tiers 7–10 need beyond it:
 
 The full climb, in roughly the order that costs least to unlock the most:
 
-0. **Continue the tier 3–6 climb** (§Design notes) — tier 2's `send` fragment is done
-   (§2026-08-31 (night)); next is tier 3's `var`/`vasgn`/`seq`, which is where `Judge`
-   grows its `Env` and every rule's shape changes, so it is the one step worth designing
-   before writing. It also unblocks the last two tier-2 rungs: `&&`/`||` desugar to
-   `seq`/`vasgn`/`if`, so `bool-and`/`bool-or` need tier 3 *and* tier 4. Keep the discipline that produced rungs
+0. **Tier 4, `if`** (§Design notes) — tiers 1–3 are done. `if'` needs a `joinTy` that
+   produces a `Ty.union` instead of answering `none`, no `Bool`-only restriction on the
+   condition (Ruby's `if` never raises over its condition's type), `nilable` for a
+   missing `else`, and — the real design question — a **join over `Env`**, since the two
+   branches may bind differently. It also unblocks the last two tier-2 rungs:
+   `&&`/`||` desugar to `seq`/`vasgn`/`if`. Keep the discipline that produced rungs
    1–13: a rule in `Judge.lean` before a case in `chk`, a derivation term per rung in
    `Rungs.lean`'s successor, and a `checkrungs` row cross-checking it against the real
    semantics — plus negative controls for every new `PrimSig` row, since confirming rungs

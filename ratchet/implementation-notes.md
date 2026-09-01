@@ -91,3 +91,95 @@ number stays a pure statement about `validate`; the evidence just prints above i
 State after this clink: **24 rungs climbed**, 24/24 cross-checked against the real
 semantics, 12/12 negative controls rejected, 114/114 corpus agreement with CRuby,
 `chk_sound`/`validate_sound_syntactic` axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 2 (2026-08-31) — tier 3: the environment, threaded — 24 → 30
+
+Rungs added: all six of tier 3 (`simple-assign`, `reassign-same-type`,
+`reassign-different-type`, `bare-undeclared-var`, `seq-multiple-stmts`,
+`assignment-chain`). Tier 3 goes 0/6 → 6/6.
+
+This is the shape change `AGENTS.md` §Frontier item 0 flagged as "worth designing before
+writing", so the design is the whole content of the clink.
+
+**`Judge Γ e τ Γ'` — input *and* output environment.** The obvious move is to add a
+context parameter and stop: `Judge Γ e τ`. That does not work here, because an
+assignment is an **expression**, not a declaration form: `x = 1` has a value (`1`) *and*
+an effect on what the next expression sees. With only an input context, the `seq` rule
+would have to special-case `vasgn` as a statement head, which is both a lie about the
+grammar (`y = (x = 1) + 1` is legal) and a rule that would need rewriting the moment a
+`vasgn` shows up anywhere else. So the judgment threads: `Judge Γ e τ Γ'` reads "in `Γ`,
+`e` synthesizes `τ` and leaves `Γ'`".
+
+The cost is that *every* rule grew two indices, including tier 1's literals (`Judge Γ
+(.int n) .int Γ`). The benefit shows up in two places beyond `vasgn`:
+
+- **`prim` threads `Γ → Γ₁ → Γ₂`** across receiver then arguments, rather than typing
+  all three parts in the same `Γ`. That is not decoration: Ruby evaluates the receiver
+  first, then arguments left to right, and any of them may assign. Getting this wrong
+  would be invisible on today's corpus and wrong on `f(x = 1) + x`.
+- **`JudgeSeq` is a separate inductive**, not a `List` fold, so "a sequence is non-empty
+  and its type is the *last* statement's" is structural. Every earlier statement still
+  has to type — a statement whose value nobody reads can still be type-stuck.
+
+**`Rung` gained an `outEnv` field**, and the corpus derivations state it explicitly
+(`[("x", .int), ("y", .int)]`). It could have been existentially quantified; making it
+explicit means a derivation with a right result type but a wrong environment does not
+compile. `chk_agrees_with_hand_derivations` compares the pair.
+
+**Locals are not single-typed, and no rule pretends otherwise.** `reassign-different-type`
+(`x = 1; x = true; x`) types at `Bool` because `envSet` overwrites. There is deliberately
+no join, no union and no "must be compatible" side condition on `vasgn`: a checker that
+rejected this rung, or that widened `x` to `Int | Bool`, would be describing a different
+language. Recorded because it is the one place where the *absence* of a rule is the
+design.
+
+**`bare-undeclared-var`: the rung that nearly introduced an unsound rule.** `x` alone
+desugars to `vcall "x"`, and the tempting rule is:
+
+> a bare identifier has type `.any`, because if it is unbound it raises `NameError`, and
+> `NameError` is outside the `NoMethodError`/`ArgumentError`/`TypeError` family.
+
+Every clause of that is true and the rule is still **unsound**, because a bare identifier
+need not be unbound. `proc` and `lambda` are private `Kernel` methods; evaluating either
+with no block raises `ArgumentError` — verified directly against CRuby 4.x — which is
+squarely inside the family. `puts`, `rand`, `raise`, `loop` are reachable the same way.
+
+So the rule is gated on a table, `BareNameError : String → Prop`, with exactly one row
+(`x`), in precise analogy to `PrimSig`: a name is admitted when someone has checked that
+it resolves to nothing. Two further properties of the *current* judgment are what make
+even that one row sound, and both are written into the rule's docstring as things to
+revisit:
+
+1. **No rule types a `def'`.** A program that defines `x` and then calls it bare cannot
+   be judged at all, so `bareName` cannot launder a user-defined method with a
+   type-stuck body. Tier 6 must therefore either delete this rule or gate it on the
+   program's declaration table.
+2. **Top-level `self`.** Inside a method or class body a bare name resolves against a
+   different receiver, and the judgment has no `self`.
+
+`.any` as the result type is safe for a separate reason worth stating: no `PrimSig` row
+has `.any` as its receiver and `.any` is not `EqSafe`, so nothing downstream can consume
+the value. The type is inert by construction, not by luck.
+
+**Cross-checking a `.any` claim.** `CheckRungs.lean` compares a derived `Ty` to the class
+the semantics produced; `.any` names no class. Rather than inventing an extensional
+reading, `semOk` is simply `true` for `.any` and the row's content reduces to
+`¬typeStuck` — documented in place, including the cost (a rung claiming `.any` for a
+program that *does* return a value would pass vacuously). Today exactly one rung does
+this, and it returns no value at all.
+
+**Three new controls, and a third verdict.** `proc`, `lambda` (bare names that are *not*
+unbound) and `y` (unbound but not a table row). Running the first two exposed a gap in
+the control harness: `RubyCore` does not model block-less `proc`/`lambda` and answers
+`unsupported`, which the harness was reporting as "conservative: safe, no rule yet" —
+i.e. calling a program safe because the model declined to run it. Added a distinct
+verdict for `unsupported`/`outOfFuel` so that can never happen silently. The controls
+still do their job: CRuby is the ground truth that refutes the blanket rule, and the
+model's silence is not evidence for it.
+
+State after this clink: **30 rungs climbed** (tiers 1–3 complete except `bool-and`/
+`bool-or`, which need tier 4's `if`), 30/30 cross-checked against the real semantics,
+15/15 negative controls rejected, `chk_sound`/`chkAll_sound`/`chkSeq_sound`/
+`validate_sound_syntactic` axiom-clean.

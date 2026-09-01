@@ -6,24 +6,35 @@ import Ratchet.Ty
 
 The **specification** half of the checker. `Ratchet/Validate.lean`'s `chk` is a
 decision procedure; this file says *what it is deciding*. The split matters for the
-ratchet: a rung is only honestly "climbed" when there is a derivation `Judge p τ`
-one can read and check by eye, not merely a `Bool` that came out `true`.
+ratchet: a rung is only honestly "climbed" when there is a derivation
+`Judge Γ p τ Γ'` one can read and check by eye, not merely a `Bool` that came out
+`true`.
 
-## Scope: exactly the first 13 rungs, and no more
+## Scope: tiers 1–3, and no more
 
-Deliberately authored for rungs 1–13 of `corpus/` (tier 1's eight literals, plus
-`add`/`sub`/`mul`/`div`/`str-concat`), and nothing else. Consequences, each a real
-limitation to lift later, not an oversight:
+Deliberately authored for the rungs reached so far (tier 1's eight literals, tier 2's
+`send`-shaped rungs, tier 3's `var`/`vasgn`/`seq`/bare-`vcall`), and nothing else.
+Consequences, each a real limitation to lift later, not an oversight:
 
-- **No environment.** `Judge` relates a *closed* `Expr` to a `Ty`; there is no `Env`
-  parameter because no rung below 14 mentions a variable. Tier 3 (`var`/`vasgn`/`seq`)
-  is where `Judge` grows a `Γ`, and that is a change to every rule's shape, so it is
-  better done when a rung forces it than guessed at now.
+- **The environment threads, and it is flat.** `Judge Γ e τ Γ'` reads: *in local
+  environment `Γ`, `e` synthesizes `τ` and leaves `Γ'` behind*. The output environment
+  is what makes `x = 1; x = true; x` typeable — an assignment is an expression whose
+  effect on the environment the next expression sees. It is deliberately a *flat*
+  `List (String × Ty)` with `envSet` overwriting in place: real Ruby locals are not
+  single-typed, so re-binding a name at a different type is correct behaviour, not a
+  gap (rung `reassign-different-type`).
+- **Locals only.** Rules mention `VarKind.lvar` explicitly; `@ivar`/`@@cvar`/`$gvar`
+  are tiers 7+ and have no rule, so a program touching one is simply not typed.
 - **No `subTy` anywhere.** Every rule below matches types by construction. `subTy`
-  exists in `Ratchet/Ty.lean` and is unused here on purpose: with no parameters and no
-  `any`, there is nothing yet for subsumption to do, and a subsumption rule admitted
-  "for later" is a rule whose soundness nobody has had to justify against a rung.
-- **No `if`/join, no `def`, no dispatch.** Tiers 4–9.
+  exists in `Ratchet/Ty.lean` and is unused here on purpose: with no parameters, there
+  is nothing yet for subsumption to do, and a subsumption rule admitted "for later" is
+  a rule whose soundness nobody has had to justify against a rung.
+- **No `if`/join, no `def`, no dispatch.** Tiers 4–10. That absence is *load-bearing*
+  for `BareNameError` below — see its docstring.
+- **Top-level `self`.** Every judged program runs at the top-level object, because no
+  rule types a `def'`/`class'`/`module'`/block body. Two rules quietly depend on this
+  (`prim`'s "explicit receiver only" restriction, and `bareName`), and both would need
+  a `self` type in the judgment the moment that changes.
 
 ## Every rule is a synthesis rule
 
@@ -140,49 +151,123 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       not a soundness requirement. The receiver still has to be `EqSafe`. -/
   | objEq {σ τ : Ty} : EqSafe σ → PrimSig σ "==" [τ] .bool
 
+/-- The bare names that resolve to **no method at all** at top-level `self`, so that
+evaluating them raises `NameError`.
+
+A table with one row per justified name, exactly like `PrimSig` — and, like `PrimSig`,
+the *narrowness* is the point. It is tempting to write a single rule "a bare identifier
+is `.any`, because an undefined one raises `NameError`, and `NameError` is outside the
+`NoMethodError`/`ArgumentError`/`TypeError` family this ladder calls type-stuck". That
+rule is **unsound**: a bare identifier need not be undefined. `proc` and `lambda` are
+private `Kernel` methods, and evaluating either with no block raises `ArgumentError`,
+which is squarely in the family. `puts`, `rand`, `raise`, `loop`, … are all reachable
+the same way. So the checker cannot assume a bare name is unbound; it has to be told,
+per name, and each row is a claim checkable by running the program
+(`CheckRungs.lean` does exactly that, and `proc`/`lambda` are negative controls).
+
+Two things make even the one row below sound, and both are properties of the *current*
+judgment rather than of Ruby, so both are due for revisiting:
+
+- **No rule types a `def'`.** A program that defines `x` and then calls it bare cannot
+  be judged at all, because the `def'` statement inside the `seq` has no rule — so
+  `bareName` can never launder a user-defined method whose body is type-stuck. The rung
+  that adds `def'` (tier 6) must therefore either delete this rule or gate it on the
+  program's declaration table.
+- **Top-level `self`.** Inside a method or class body a bare name resolves against a
+  different receiver; the judgment has no `self` yet (see the module docstring). -/
+inductive BareNameError : String → Prop
+  /-- `x` (rung `bare-undeclared-var`): not a `Kernel` method, not a local, so `NameError`. -/
+  | x : BareNameError "x"
+
 mutual
 
-/-- `Judge e τ`: the closed expression `e` has type `τ`. No certificate parameter —
-nothing here is trusted; see the module docstring.
+/-- `Judge Γ e τ Γ'`: in local environment `Γ`, the expression `e` synthesizes type `τ`
+and leaves environment `Γ'`. Nothing is trusted — see the module docstring.
 
 Read each literal rule as an assertion about the real semantics: evaluating this literal
-yields a value whose class is the one `τ` names. `Check13.lean` checks precisely that,
-by running the actual `stepFn`. -/
-inductive Judge : Expr → Ty → Prop
+yields a value whose class is the one `τ` names. `CheckRungs.lean` checks precisely that,
+by running the actual `stepFn`.
+
+The environment threads left-to-right through every compound rule, in evaluation order.
+For the rules below tier 3 that is invisible (a literal returns `Γ` unchanged), but it
+is *not* cosmetic even at tier 2: Ruby evaluates a send's receiver before its arguments
+and its arguments left to right, and each of them may contain an assignment, so `prim`
+threads `Γ → Γ₁ → Γ₂` rather than typing all three parts in the same `Γ`. -/
+inductive Judge : Env → Expr → Ty → Env → Prop
   /-- An integer literal — including a negative one: `-5` desugars to `int (-5)`, not to
       a unary send (rung 008), so this single rule covers both. -/
-  | intLit {n : Int} : Judge (.int n) .int
+  | intLit {Γ : Env} {n : Int} : Judge Γ (.int n) .int Γ
   /-- A float literal. `Expr.flt` carries IEEE bits; the type does not depend on them,
       so no side condition. -/
-  | fltLit {bits : UInt64} : Judge (.flt bits) .float
+  | fltLit {Γ : Env} {bits : UInt64} : Judge Γ (.flt bits) .float Γ
   /-- A string literal is *an instance of* `String` — `.cls "String"`, never a
       dedicated `str` type; this type language has none (`Ratchet/Ty.lean`). -/
-  | strLit {s : String} : Judge (.str s) (.cls "String")
-  | symLit {s : String} : Judge (.sym s) .sym
+  | strLit {Γ : Env} {s : String} : Judge Γ (.str s) (.cls "String") Γ
+  | symLit {Γ : Env} {s : String} : Judge Γ (.sym s) .sym Γ
   /-- `true` and `false` share one type. `Ty` has no singleton-`true` type, and Ruby's
       two distinct classes (`TrueClass`/`FalseClass`) are not distinguished here —
       `Ty.bool` covers both, which is why rungs 002 and 003 both target `.bool`. -/
-  | truLit : Judge .tru .bool
-  | flsLit : Judge .fls .bool
+  | truLit {Γ : Env} : Judge Γ .tru .bool Γ
+  | flsLit {Γ : Env} : Judge Γ .fls .bool Γ
   /-- `nil : Nil` — the singleton type, not `nilable` of anything. -/
-  | nilLit : Judge .nil .nilT
+  | nilLit {Γ : Env} : Judge Γ .nil .nilT Γ
+  /-- Reading a local: its type is whatever the environment last recorded for it, and
+      the read binds nothing. A name *not* in `Γ` has no rule — and correctly so, since
+      the desugarer only emits `var lvar x` where Ruby's parser saw an assignment to `x`
+      earlier in the same scope; a bare name it did not is a `vcall` (see `bareName`). -/
+  | var {Γ : Env} {x : String} {τ : Ty} :
+      envGet? Γ x = some τ → Judge Γ (.var .lvar x) τ Γ
+  /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`),
+      and its *effect* is to record that type for `x` in the outgoing environment.
+
+      `envSet` overwrites, so `x = 1; x = true` simply re-types `x`; nothing here demands
+      the new type relate to the old one. That is not a weakness of the checker, it is
+      what a Ruby local *is* (rung `reassign-different-type`). Note the ordering: the
+      right-hand side is typed in `Γ` and may itself assign (`y = (x = 1) + 1`), so the
+      binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`. -/
+  | vasgn {Γ Γ' : Env} {x : String} {e : Expr} {τ : Ty} :
+      Judge Γ e τ Γ' → Judge Γ (.vasgn .lvar x e) τ (envSet Γ' x τ)
+  /-- A statement sequence: the whole thing has the *last* statement's type, and the
+      environment threads through all of them. Delegated to `JudgeSeq` so the
+      non-empty requirement is structural. -/
+  | seq {Γ Γ' : Env} {es : List Expr} {τ : Ty} :
+      JudgeSeq Γ es τ Γ' → Judge Γ (.seq es) τ Γ'
+  /-- A bare identifier that is not a local: `x` desugars to `vcall "x"`, a method-call
+      attempt on implicit `self`. When the name resolves to nothing (`BareNameError`),
+      evaluating it raises `NameError` — which is *outside* the
+      `NoMethodError`/`ArgumentError`/`TypeError` family this ladder defines type-safety
+      over, exactly as `ZeroDivisionError` is (see `PrimSig.intDiv`). So the program is
+      type-safe despite crashing, and the type recorded is `.any`: the expression never
+      produces a value, so nothing downstream can depend on it — and `.any` matches no
+      `PrimSig` row and is not `EqSafe`, so no rule can consume it either. Type safety
+      here is not crash-freedom, and this rung is the sharpest place that shows. -/
+  | bareName {Γ : Env} {m : String} : BareNameError m → Judge Γ (.vcall m) .any Γ
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
       Three restrictions are each doing work: `some recv` (an implicit-self send has
       nobody to dispatch on in this fragment), `blk = none` (a block would need
-      `Expr.block` typing, tier ≥ 6), and `PrimSig` matching the *synthesized* argument
+      `Expr.block` typing, tier ≥ 9), and `PrimSig` matching the *synthesized* argument
       types exactly (no subsumption — see the module docstring). -/
-  | prim {recv : Expr} {m : String} {args : List Expr}
+  | prim {Γ Γ₁ Γ₂ : Env} {recv : Expr} {m : String} {args : List Expr}
       {σ τ : Ty} {argTys : List Ty} :
-      Judge recv σ → JudgeAll args argTys → PrimSig σ m argTys τ →
-      Judge (.send (some recv) m args none) τ
+      Judge Γ recv σ Γ₁ → JudgeAll Γ₁ args argTys Γ₂ → PrimSig σ m argTys τ →
+      Judge Γ (.send (some recv) m args none) τ Γ₂
 
-/-- Pointwise `Judge` over an argument list, with matching length by construction. -/
-inductive JudgeAll : List Expr → List Ty → Prop
-  | nil : JudgeAll [] []
-  | cons {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
-      Judge e τ → JudgeAll es τs → JudgeAll (e :: es) (τ :: τs)
+/-- Pointwise `Judge` over an argument list, with matching length by construction and
+the environment threaded left to right (Ruby's argument evaluation order). -/
+inductive JudgeAll : Env → List Expr → List Ty → Env → Prop
+  | nil {Γ : Env} : JudgeAll Γ [] [] Γ
+  | cons {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
+      Judge Γ e τ Γ₁ → JudgeAll Γ₁ es τs Γ₂ → JudgeAll Γ (e :: es) (τ :: τs) Γ₂
+
+/-- A non-empty statement sequence. The result type is the last statement's; every
+earlier statement must still type (a statement nobody reads can still be type-stuck),
+and each one's outgoing environment is the next one's incoming. -/
+inductive JudgeSeq : Env → List Expr → Ty → Env → Prop
+  | last {Γ Γ' : Env} {e : Expr} {τ : Ty} : Judge Γ e τ Γ' → JudgeSeq Γ [e] τ Γ'
+  | cons {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} {σ τ : Ty} :
+      Judge Γ e σ Γ₁ → JudgeSeq Γ₁ (e' :: es) τ Γ₂ → JudgeSeq Γ (e :: e' :: es) τ Γ₂
 
 end
 
