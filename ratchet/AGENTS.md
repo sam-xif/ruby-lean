@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **119 rungs of 136, hand-authored judgment first, nothing trusted**
+## Checker status: **`RATCHET OK` — 121 rungs of 136, every recorded target met**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
@@ -25,17 +25,24 @@ literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, ti
 modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` **and its builtin iterators**
 (`each`/`map`/`select`/`sort_by`/`inject`, both `&` forms), tier 10's **metaprogramming**
 (class reopening, `include`/`extend`/`prepend`, `method_missing`), tier 11's cross-products,
-and tier 12's **narrowing** — **119 rungs**.
+and tier 12's **narrowing** — **121 rungs**.
 
-**Tiers 1–8 are complete, and tiers 9, 10 and 11 are at every rung they target**
-(19/22, 5/6, 8/10 — the remainders being permanent negatives and `Ty` language gaps). Tier 12
-is 7/12. **Exactly two rungs in the whole corpus differ from their recorded target**, and both
-are the same deferred design: `narrow-union-case-when` and `narrow-and-guard` need **aliasing**,
-because `case v when Integer` desugars to a test on a *temporary* while the branch bodies use
-`v`. `implementation-notes.md` clink 17 records the three cheap designs for it that are
-**unsound** and the one that is not (a fourth threaded state).
+**The ladder is climbed.** `scripts/run_ratchet.sh` reports `RATCHET OK`: every rung in the
+corpus answers what its recorded target says. The 15 rungs that are *not* climbed are not work
+items and cannot become them without a deliberate decision:
 
-**Tier 12 (clinks 13, 14, 15, 16) is where `nilable` and `union` stop being write-only.**
+- **12 permanent negatives** (`unsafe_program`) — programs that really raise
+  `NoMethodError`/`ArgumentError`/`TypeError`, kept as the soundness regression tests. A `true`
+  on any of them is a bug, not progress.
+- **3 `Ty` language gaps**, each naming a specific missing constructor: an optional/rest arity
+  spine (`proc-arity-leniency`, `metaprog-method-missing-splat`) and a length-indexed array
+  (`narrow-nilable-and-union`). See §Ty language gaps.
+
+So the headline number can no longer go up without **new corpus rungs**: the next move is more
+Ruby, not more rules. The three gaps above are the obvious sources, and each already has a rung
+written against it.
+
+**Tier 12 (clinks 13–17, 25, 26) is where `nilable` and `union` stop being write-only.**
 Narrowing lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc` and
 `narrowSpine κ.classes c Ic`, both **total** functions that are the identity on every condition
 they do not recognize, which is why folding narrowing into the existing rule did not disturb a
@@ -495,7 +502,7 @@ makes an actual constraint, not just a coincidence).
   whose number depends on a live sample is not a ratchet"). Regenerate with
   `python3 scripts/generate_corpus.py`; **never hand-edit the `.json` files**.
   `expect_validate` is a **target**, not necessarily what `validate` answers today —
-  `true` for every rung except the nine named in §Permanent negatives, each with a
+  `true` for every rung except the fifteen named in §Permanent negatives, each with a
   `false_reason` (`"unsafe_program"`/`"ty_language_gap"`) explaining why.
 - **`Main.lean`** / **`scripts/run_ratchet.sh`** — the runner. `scripts/run_ratchet.sh`
   does two things in order: the **agreement** gate (next bullet), then the ladder.
@@ -531,9 +538,9 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (12 tiers, 136 rungs, 119 climbed)
+## The ladder (12 tiers, 136 rungs, 121 climbed — every target met)
 
-**Every rung's target is `expect_validate = true`, with exactly nine, named
+**Every rung's target is `expect_validate = true`, with exactly fifteen, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
 this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean`'s
 module docstring for the two reasons a rung is allowed to target `false` at all.
@@ -642,9 +649,19 @@ ladder is reported: 114/114 (§Architecture).
    method — needed nothing new at all, which is the outcome a cross-product tier is supposed to
    have.
 12. **Narrowing (12 rungs).** No new feature either — the capability that makes `nilable` and
-   `union` *usable*. **7/12** (clinks 12–17). The five not climbed: two permanent negatives, one
-   `Ty` language gap (`narrow-nilable-and-union`, retargeted — see §Ty language gaps), and the
-   two **aliasing** rungs, deferred by design (clink 17). The corpus came first, deliberately as
+   `union` *usable*. **9/12 — every rung it targets** (clinks 12–17, 25, 26). The three not
+   climbed: two permanent negatives and one `Ty` language gap (`narrow-nilable-and-union`,
+   retargeted — see §Ty language gaps).
+   **Aliasing** (clink 25) is the piece clink 17 deferred: `Ty.sameAs (name) (τ)` carried in the
+   **environment**, because the environment already threads — which makes every place that could
+   invalidate an alias a place that already *writes* to it. The invalidation argument is four
+   cases, and one of them (a branch that invalidates in one arm only) falls out of the existing
+   `joinT` for free. `Module#===` came with it, guarded differently from `is_a?` because
+   `Module#===` does not go through `obj.is_a?`. Clink 26 added `NarrowSides` — a **one-sided**
+   refinement, which `&&` needs and which is soundness rather than caution (control (nnn) is the
+   sharpest test on the ladder of `Ty.never`'s dead-branch reading) — and closed a gap open since
+   clink 13: `narrowCond?_sound`, which ties the recognizer to `NarrowCond`, decorative until
+   then. The corpus came first, deliberately as
    pressure (clink 12); the four climbed are the ones whose condition tests a local *directly* —
    `if x`, `if x.nil?`, `if x.is_a?(Integer)`, `if x.is_a?(Dog)` — so they need no aliasing.
    The tier's original finding stands for the remaining eight: **narrowing cannot be a
@@ -667,17 +684,17 @@ corpus agreement (CRuby vs the Lean semantics): 136/136 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 10/22  tier 10: 0/6
-tier 11: 8/10  tier 12: 7/12
+tier 11: 8/10  tier 12: 9/12
 flagged Ty language gaps: 3 (proc-arity-leniency, metaprog-method-missing-splat,
                              narrow-nilable-and-union)
-rungs where validate differs from the recorded target: 2
+rungs where validate differs from the recorded target: 0
 ```
 
-All 119 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 121 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 119/119 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 86/86
+(also run inline by `run_ratchet.sh`): 121/121 of those cross-checked against the real
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 92/92
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
