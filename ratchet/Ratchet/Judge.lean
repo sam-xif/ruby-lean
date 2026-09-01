@@ -669,6 +669,15 @@ structure Ctx where
   /-- Every block literal in the program, indexed by `Ty.clos`. Constant for a whole run —
       `validate` fills it in from `collectBlocks` and nothing changes it. -/
   closures : ClosTable
+  /-- The **block** the currently-executing method was called with, as a `Ty.clos`, or `none`
+      if it has none (or if we are not in a method body). This is what `yield` reads: Ruby
+      passes a block implicitly, out of band from the argument list, and `yield` is the only
+      way to reach it unless the method also names it with `&b`.
+
+      Set by `callDefBlk` on entry to the body and by nothing else — in particular *not*
+      inherited into a nested `callDef`, because a block does not propagate to methods the
+      body calls. -/
+  blockTy : Option Ty
   /-- The type of `self`, or `none` at top level.
 
       `none` rather than "the type of `main`" because this judgment has no rule that needs
@@ -695,6 +704,41 @@ def Ctx.inCtor (κ : Ctx) (dc m : String) : Ctx := { κ with frame := some ⟨dc
 only by `JudgeSeq.cons`, which is the only rule that knows about statement order. -/
 def Ctx.afterStmt (κ : Ctx) (e : Expr) : Ctx :=
   { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e }
+
+/-- `paramEnv` for a call that **carries a block**. Same walk, plus one case: a
+`&b` parameter (`Param.block`) consumes not an argument but the block itself.
+
+`blk` is `none` when the call passes no block, and then `&b` binds `.nilT` — which is exactly
+Ruby (`def run(&b); b; end; run` is `nil`), and also exactly why the binding cannot be
+skipped: `b` is in scope either way. A `&b` parameter is required to come **last**, which is
+not enforced here because the parser already guarantees it. -/
+def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
+  | [], [] => some []
+  | .req x :: ps, τ :: τs => (paramEnvB blk ps τs).map (fun Γ => (x, τ) :: Γ)
+  | .block (some x) :: ps, τs =>
+    (paramEnvB blk ps τs).map (fun Γ => (x, blk.getD .nilT) :: Γ)
+  | .block none :: ps, τs => paramEnvB blk ps τs
+  | _, _ => none
+
+/-- The expression whose type is a body's **result**.
+
+For almost every body that is the body itself. The one case that differs is a body which is
+exactly `return e`: calling it evaluates `e` and returns it, so the result type is `e`'s —
+whereas `.ret` has no rule of its own and the body would otherwise be untypeable
+(`lambda-explicit-return`).
+
+**Why this is a function on the body rather than a `Judge` rule for `.ret`.** The obvious rule
+— `.ret e` synthesizes `e`'s type — is *unsound*: it makes `def f; return "a"; 2; end`
+validate at `Int`, because `JudgeSeq` takes the last statement's type and the `return` never
+lets the last statement run. Typing `.ret e` as `.never` does not help for the same reason.
+Matching the body's *whole shape* sidesteps it: a `return` anywhere other than as the entire
+body still has no rule, so `seq [return "a", 2]` remains underivable. The general fix — a
+judgment that accumulates return types across a body — is a real design and no rung needs
+it. Applied only at `closCall`, because only a lambda rung asks; a *method* whose body is
+exactly `return e` is still not typed. -/
+def bodyResult : Expr → Expr
+  | .ret (some e) => e
+  | e => e
 
 mutual
 
@@ -1259,6 +1303,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       retyped an instance variable would invalidate the caller's view of it. `κ.selfTy = none`
       again, matching `lambdaLit`.
 
+      The body judged is `bodyResult c.body`, which differs from `c.body` only for a body
+      that is exactly `return e` — see there for why that is a function on the syntax rather
+      than a rule for `.ret`.
+
       **No assumption table**, so a recursive lambda exhausts `chk`'s fuel and is rejected —
       the same conservatism `callMethod` has, and the same fix would apply. -/
   | closCall {κ : Ctx} {Γ Γ₁ Γ₂ Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
@@ -1269,8 +1317,82 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       closGet? κ.closures idx = some c →
       paramEnv c.params argTys = some Γb →
-      Judge κ (Γb ++ spineToEnv cap) I₂ c.body ρ Γb' I₂ →
+      Judge κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) ρ Γb' I₂ →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+  -- ### Tier 9b — a block reaching a method
+  --
+  -- Four rules. `callDefBlk` is the call site that carries a block; `yieldExpr` is the one
+  -- way to reach it that needs nothing named; `vcallAsm`/`vcallDef` close the bare-name
+  -- conservatism `bareName` has carried since tier 6, which `lambda-explicit-return` is the
+  -- first rung to trip over.
+  /-- **A call to a top-level method that passes a block**: `twice { |x| x * 10 }`,
+      `run { |x| x + 1 }`.
+
+      Two things happen to the block, and Ruby does both: it is put in `Ctx.blockTy` so
+      `yield` can reach it, **and** it is offered to `paramEnvB` so a `&b` parameter can name
+      it. `yield-arith` uses the first, `block-param-ampersand` the second, and a method could
+      use both.
+
+      The block's type is a `Ty.clos` built exactly as `lambdaLit` builds one — same index
+      into the same whole-program table, same captured environment — because a block literal
+      and a lambda literal *are* the same node (`Expr.block`). The only difference is where
+      the node sits.
+
+      **No assumption table here**, unlike `callDef`: a method that recurses while passing a
+      block exhausts `chk`'s fuel and is rejected. Nothing in the corpus does, and the
+      two-pass machinery would have to be keyed by the block type as well as the argument
+      types.
+
+      `κ.selfTy = none`, matching `lambdaLit`: the block's body is checked against the
+      `self` of its creation site, which is only recorded when that is top level. -/
+  | callDefBlk {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' : Ty} {m : String}
+      {args : List Expr} {argTys : List Ty} {ps : List Param} {body : Expr}
+      {idx : Nat} {d : Defn} {ρ : Ty} :
+      κ.selfTy = none →
+      JudgeAll κ Γ I args argTys Γ' I' →
+      closIdx? κ.closures ps body = some idx →
+      defGet? κ.defs m = some d →
+      paramEnvB (some (.clos idx (envToSpine Γ))) d.params argTys = some Γb →
+      Judge { κ with blockTy := some (.clos idx (envToSpine Γ)) } Γb .ivar0 d.body ρ Γb'
+        .ivar0 →
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
+  /-- **`yield args`** — invoke the block the enclosing method was called with.
+
+      `Ctx.blockTy` supplies it, so this rule is only available inside a body entered through
+      `callDefBlk`; a `yield` in a method called without a block raises `LocalJumpError`, and
+      with `blockTy = none` there is simply no derivation. The rest is `closCall`'s body: the
+      block's parameters bound to `yield`'s argument types, then its captured locals.
+
+      Note that a method can `yield` more than once at different argument types
+      (`yield-arith`'s `yield(1) + yield(2)` happens not to), and each `yield` is checked
+      independently — the same per-call-site instantiation as everywhere else. -/
+  | yieldExpr {κ : Ctx} {Γ Γ' Γb' : Env} {I I' : Ty} {args : List Expr}
+      {argTys : List Ty} {idx : Nat} {cap : Ty} {c : Clos} {Γb : Env} {ρ : Ty} :
+      κ.blockTy = some (.clos idx cap) → κ.selfTy = none →
+      JudgeAll κ Γ I args argTys Γ' I' →
+      closGet? κ.closures idx = some c →
+      paramEnvB none c.params argTys = some Γb →
+      Judge κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) ρ Γb' I' →
+      Judge κ Γ I (.yield' args) ρ Γ' I'
+  /-- A **bare name that is a top-level method**, with the instantiation assumed. `vcallAsm`
+      is to `callAsm` what `vcallDef` is to `callDef`; see `AsmTable`. -/
+  | vcallAsm {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ρ : Ty} :
+      κ.selfTy = none → asmGet? κ.asms m [] = some ρ →
+      Judge κ Γ I (.vcall m) ρ Γ I
+  /-- A **bare name that is a top-level method**: `def apply_twice; …; end; apply_twice`.
+
+      `bareName`'s docstring has recorded this gap since tier 6 — "there is no rule for a
+      top-level `vcall` that *does* name a defined method, because the desugarer emits a
+      `vcall` rather than an argument-less `send`" — and `lambda-explicit-return` is the first
+      rung to need it. Mechanically it is `callDef` at zero arguments, assume-then-verify and
+      all, which is why `vcallAsm` comes with it.
+
+      This does not overlap `bareName`, which requires `defGet? κ.defs m = none`, nor
+      `selfCall`/`selfSCall`, which require a `self`. -/
+  | vcallDef {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {d : Defn} {ρ : Ty} :
+      κ.selfTy = none → defGet? κ.defs m = some d → paramEnv d.params [] = some Γb →
+      Judge { κ with asms := ⟨m, [], ρ⟩ :: κ.asms } Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.vcall m) ρ Γ I
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
       what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still

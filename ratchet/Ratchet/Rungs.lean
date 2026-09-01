@@ -1261,6 +1261,87 @@ def r100 : Rung :=
         (.closCall (.inl rfl) rfl (.var rfl) (.cons (.var rfl) .nil) rfl rfl
           (.prim (.var rfl) (.cons .intLit .nil) .intMul)))))⟩
 
+/-! ### Tier 9b — a block reaching a method
+
+Three more, and the shift is in *where the block goes*: in tier 9a a block literal was the
+value; here it is passed to a method, so `callDefBlk` puts it in two places at once — in
+`Ctx.blockTy` for `yield` to find, and in front of `paramEnvB` for a `&b` parameter to name.
+One rung uses each. The third closes a gap the `bareName` docstring has recorded since tier 6.
+
+Note that a block literal and a lambda literal are the *same node* (`Expr.block`), so both
+rungs' block types are `.clos 0 ivar0`, built by the same index into the same
+whole-program table. The only difference between tier 9a and 9b is where the node sits. -/
+
+/-- `def twice; yield(1) + yield(2); end; twice { |x| x * 10 }` → `Integer`. **The rung
+    `Ctx.blockTy` exists for.**
+
+    `yield` names nothing: Ruby passes a block out of band from the argument list, and this is
+    the only way to reach it without a `&b` parameter. So the block's type has to be somewhere
+    in the context, and `callDefBlk` is what puts it there. The two `yield`s are checked
+    independently, each instantiating the block's body at its own argument type — the same
+    per-call-site discipline as every other call in this judgment; here they happen to agree
+    at `Int`. -/
+def r094 : Rung :=
+  ⟨"yield-arith",
+    .seq [.def' "twice" []
+            (.send (some (.yield' [.int 1])) "+" [.yield' [.int 2]] none),
+          .send none "twice" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "*" [.int 10] none)))],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDefBlk rfl .nil rfl rfl rfl
+        (.prim
+          (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul))
+          (.cons (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul)) .nil)
+          .intAdd))))⟩
+
+/-- `def run(&b); b.call(5); end; run { |x| x + 1 }` → `Integer`. The other half of
+    `callDefBlk`: the same block, this time *named* by a `&b` parameter, so the body reaches
+    it as an ordinary local and `closCall` does the rest. `paramEnvB` is what binds it — and
+    the reason it binds `.nilT` when there is no block is that `b` is in scope either way
+    (`def run(&b); b; end; run` is `nil`). -/
+def r095 : Rung :=
+  ⟨"block-param-ampersand",
+    .seq [.def' "run" [.block (some "b")]
+            (.send (some (.var .lvar "b")) "call" [.int 5] none),
+          .send none "run" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "+" [.int 1] none)))],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDefBlk rfl .nil rfl rfl rfl
+        (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+          (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
+
+/-- `def apply_twice; doubler = lambda { |x| return x * 2 }; doubler.call(3); end;
+    apply_twice` → `Integer`. Two gaps closed at once.
+
+    The **`return` inside the lambda** is handled by `bodyResult`, a function on the body's
+    shape rather than a `Judge` rule for `.ret` — read its docstring for why the obvious rule
+    is unsound. A `return` anywhere but as the whole body still has no rule.
+
+    The **bare `apply_twice`** is `vcallDef`, closing the conservatism `bareName`'s docstring
+    has recorded since tier 6: the desugarer emits a `vcall` for a parenthesis-less call, and
+    until now no rule matched one that named a defined method. It is `callDef` at zero
+    arguments, assume-then-verify included, which is why `vcallAsm` came with it. -/
+def r105 : Rung :=
+  ⟨"lambda-explicit-return",
+    .seq [.def' "apply_twice" []
+            (.seq [.vasgn .lvar "doubler" (.send none "lambda" []
+                     (some (.block [.req "x"] []
+                       (.ret (some (.send (some (.var .lvar "x")) "*" [.int 2] none)))))),
+                   .send (some (.var .lvar "doubler")) "call" [.int 3] none]),
+          .vcall "apply_twice"],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.vcallDef rfl rfl rfl
+        (.seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+          (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul))))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1272,7 +1353,7 @@ def rungs : List Rung :=
    r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
    r074, r075, r076,
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
-   r087, r088, r089, r090, r098, r099, r100]
+   r087, r088, r089, r090, r094, r095, r098, r099, r100, r105]
 
 /-! ## `chk` answers exactly what was derived by hand
 

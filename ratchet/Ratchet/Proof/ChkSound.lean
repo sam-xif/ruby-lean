@@ -225,18 +225,44 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
-    · -- `selfTy = none`
+    · -- `selfTy = none`: the assumption table, then a defined method, then the
+      -- `BareNameError` table.
       rename_i hself
       split at h
-      · exact absurd h (by simp)
-      · rename_i hdef
-        split at h
-        · rename_i hbare
-          injection h with h
-          injection h with h h'; injection h' with h' h''
-          subst h; subst h'; subst h''
-          exact .bareName (bareNameError?_sound hbare) hdef hself
-        · exact absurd h (by simp)
+      · rename_i hasm
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .vcallAsm hself hasm
+      · split at h
+        · rename_i _ hdef
+          split at h
+          · rename_i hpar
+            split at h
+            · split at h
+              · rename_i _ _ _ _ hpassB
+                split at h
+                · rename_i heq
+                  split at h
+                  · rename_i hI
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .vcallDef hself hdef hpar
+                      (by subst heq; subst hI; exact chk_sound hpassB)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · rename_i _ hdef
+          split at h
+          · rename_i hbare
+            injection h with h
+            injection h with h h'; injection h' with h' h''
+            subst h; subst h'; subst h''
+            exact .bareName (bareNameError?_sound hbare) hdef hself
+          · exact absurd h (by simp)
   · -- `self'`: only where the context supplies a type.
     split at h
     · rename_i hself
@@ -274,22 +300,51 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       subst h; subst h'; subst h''
       exact .classStmt hms
     · exact absurd h (by simp)
-  · -- `send none m [] (some (.block ps [] body))`: a `lambda`/`proc` literal.
+  · -- `send none m args (some (.block ps [] body))`: either a `lambda`/`proc` literal, or a
+    -- call to a top-level method that passes the block.
     split at h
-    · rename_i hname
+    · rename_i hself
       split at h
-      · rename_i hself
+      · -- `lambda`/`proc`, with no positional arguments
+        rename_i hname
         split at h
         · rename_i hidx
           injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          exact .lambdaLit (by
-            rcases (by simpa using hname : _ = "lambda" ∨ _ = "proc") with h | h
-            · exact .inl h
-            · exact .inr h) hself hidx
+          -- The guard is one `&&`: the name is `lambda`/`proc` *and* there are no
+          -- positional arguments. `lambdaLit`'s conclusion needs the second as `args = []`.
+          have hd := hname
+          simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq,
+            List.isEmpty_iff] at hd
+          obtain ⟨hm, ha⟩ := hd
+          subst ha
+          exact .lambdaLit hm hself hidx
         · exact absurd h (by simp)
-      · exact absurd h (by simp)
+      · -- anything else: the block goes to a method
+        split at h
+        · rename_i hargs
+          split at h
+          · rename_i hidx
+            split at h
+            · rename_i hdef
+              split at h
+              · rename_i hpar
+                split at h
+                · rename_i hbody
+                  split at h
+                  · rename_i hI
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .callDefBlk hself (chkAll_sound hargs) hidx hdef hpar
+                      (by subst hI; exact chk_sound hbody)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args`: strictness, then the assumption table, then the def table.
     split at h
@@ -480,6 +535,34 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
               · exact absurd h (by simp)
       · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `yield' args`: the block the enclosing method was called with.
+    split at h
+    · rename_i hblk
+      split at h
+      · rename_i hself
+        split at h
+        · rename_i hargs
+          split at h
+          · rename_i hclos
+            split at h
+            · rename_i hpar
+              split at h
+              · rename_i hbody
+                split at h
+                · rename_i hI
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .yieldExpr hblk hself (chkAll_sound hargs) hclos hpar
+                    (by subst hI; exact chk_sound hbody)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `super' args none`: the arguments, then the walk from the *definition site*.
     split at h

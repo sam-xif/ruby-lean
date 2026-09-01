@@ -1011,3 +1011,101 @@ harness caught a mistake in the *test*, which is the harness working.
 State after this clink: **87 rungs climbed** (tiers 1–8 complete, tier 9 at 7/22), 87/87
 cross-checked against the real semantics, 39/39 negative controls rejected, corpus agreement 0
 disagreements, all six soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 10 (2026-09-01) — tier 9b: a block reaching a method: 87 → 90
+
+Rungs added: `yield-arith`, `block-param-ampersand`, `lambda-explicit-return`. Four new
+rules, one new `Ctx` field, one new function on syntax. Tier 9 goes 7/22 → 10/22.
+
+The shift from tier 9a is **where the block goes**: there a block literal *was* the value;
+here it is passed to a method. A block literal and a lambda literal are the same node
+(`Expr.block`), so `callDefBlk` builds the block's type exactly as `lambdaLit` does — same
+index into the same whole-program table, same captured environment. The only difference is
+where the node sits, which is why tier 9b needed no new `Ty`.
+
+### 1. `Ctx.blockTy`, and why a block goes to two places at once
+
+Ruby passes a block **out of band** from the argument list, so it cannot ride in `argTys`.
+`callDefBlk` therefore does two things with it, and Ruby does both:
+
+- puts it in `Ctx.blockTy`, which is the only thing `yield` can read (`yield-arith`);
+- offers it to `paramEnvB`, so a `&b` parameter can *name* it (`block-param-ampersand`).
+
+A method may use either or both. `blockTy` is set on entry to the body and by nothing else —
+in particular it is **not** inherited into a nested `callDef`, because a block does not
+propagate to methods the body calls.
+
+`paramEnvB` binds `&b` to `.nilT` when no block is passed, which is exactly Ruby
+(`def run(&b); b; end; run` is `nil`) and is not a formality: `b` is in scope either way, and
+a control checks that `run` with no block is rejected for the *right* reason (`nil.call`
+raises `NoMethodError`) rather than because `b` was unbound.
+
+Each `yield` is checked independently, at its own argument types — the same per-call-site
+instantiation as everywhere else in this judgment. A control exercises that from the failing
+side: `def t; yield("a"); end; t { |x| x + 1 }` raises `TypeError`, and nothing at the call
+site or in the method body looks wrong.
+
+**No assumption table on `callDefBlk`**, unlike `callDef`: a method that recurses while
+passing a block exhausts `chk`'s fuel and is rejected. The two-pass machinery would have to
+be keyed by the block type as well as the argument types, and no rung asks.
+
+### 2. `return` inside a lambda: a function on the body's shape, not a rule for `.ret`
+
+`lambda-explicit-return`'s lambda body is exactly `return x * 2`. The obvious rule — `.ret e`
+synthesizes `e`'s type — is **unsound**, and clink 9's closing note predicted this:
+`def f; return "a"; 2; end` would validate at `Int`, because `JudgeSeq` takes the *last*
+statement's type and the `return` never lets the last statement run. Typing `.ret e` as
+`.never` does not help for the same reason.
+
+The fix is `bodyResult : Expr → Expr`, which matches the body's **whole shape**: a body that
+is exactly `.ret (some e)` has result `e`, anything else is itself. A `return` anywhere other
+than as the entire body still has no rule, so `seq [return "a", 2]` remains underivable — and
+there is a control for precisely that program (`lambda { |x| return "a"; 2 }.call(1) + 1`,
+which really raises `TypeError`), so the restriction is held in place by execution rather
+than by argument.
+
+Applied at `closCall`/`yieldExpr` only, because only a lambda rung asks. A *method* whose
+body is exactly `return e` is still not typed. The general fix — a judgment that accumulates
+return types across a body — is a real design and nothing needs it yet.
+
+### 3. A gap closed that had been recorded since tier 6
+
+`bareName`'s docstring has said since clink 5: *"there is no rule for a top-level `vcall`
+that does name a defined method (`def get5; 5; end; get5`, no parentheses), because the
+desugarer emits a `vcall` rather than an argument-less `send`."*
+`lambda-explicit-return` is the first rung to trip over it — its `apply_twice` is called
+without parentheses.
+
+`vcallDef` closes it, and it is `callDef` at zero arguments, assume-then-verify included,
+which is why `vcallAsm` came with it. It does not overlap `bareName` (which requires
+`defGet?` to *miss*) nor `selfCall`/`selfSCall` (which require a `self`). The docstring now
+records the closure instead of the gap.
+
+### 4. One elaboration note
+
+`chk`'s block-carrying arm matches `.send none m args (some (.block ps [] body))` for both
+routes, with the lambda route guarded by `(m = "lambda" || m = "proc") && args.isEmpty`.
+`Judge.lambdaLit`'s conclusion, however, has `[]` in the argument position, so the proof has
+to turn `args.isEmpty = true` into `args = []` and `subst` it before the constructor applies.
+`simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, List.isEmpty_iff]` does it.
+Recorded because the alternative — splitting the arm in two so `args = []` is syntactic —
+would duplicate the whole `callDefBlk` branch.
+
+### What is left of tier 9 (9 rungs), all one thing
+
+Every remaining rung is a block **passed to a builtin**: `block-each-int`,
+`block-map-to-s`, `block-nested-map`, `block-two-params-inject`, `block-select-with-if`,
+`block-sort-by-length`, `block-doend-with-block-local`, and the two `blockpass` forms
+(`&:to_s`, `&double`). They need `PrimSig` to grow **higher-order** rows — a claim about what
+`Array#map` *does with* a block, not merely about its argument types — which is a new kind of
+row and probably a new relation, since the result depends on the block's return type
+(`map`), the receiver (`each`), or the element type (`select`). `block-doend-with-block-local`
+additionally needs `|x; y|` block-locals, which `lambdaLit`/`callDefBlk` currently refuse in
+the pattern.
+
+State after this clink: **90 rungs climbed** (tiers 1–8 complete, tier 9 at 10/22), 90/90
+cross-checked against the real semantics, 43/43 negative controls rejected — three of the four
+new ones *sound*, one per premise added — corpus agreement 0 disagreements, all six soundness
+theorems axiom-clean (`propext`, `Quot.sound`).

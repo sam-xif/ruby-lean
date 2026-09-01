@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **87 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **90 rungs, hand-authored judgment first, nothing trusted**
 
 `Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–8, plus tier 9's callable
 values**: the eight literals,
@@ -23,9 +23,9 @@ queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument 
 `BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
 literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
 `class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, and
-tier 8's modules, and tier 9's `lambda`/`proc`/`#call` — 87 rungs. **Every rung at or below
-tier 8 matches its recorded target, and tier 9 is at 7/22.** What remains is the rest of tier
-9 (blocks *passed to* methods, `yield`, `&`-block params) and tier 10 (metaprogramming).
+tier 8's modules, and tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` — 90 rungs. **Every rung
+at or below tier 8 matches its recorded target, and tier 9 is at 10/22.** What remains is
+tier 9's nine blocks-passed-to-*builtins* rungs and tier 10 (metaprogramming).
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -103,6 +103,15 @@ is currying with no arrow type anywhere in the derivation. The cost that showed 
 way: `Expr`'s derived `BEq` does **not** kernel-reduce (nested inductive), so this package
 carries its own structural `exprEq` — see clink 9 for the two non-obvious constraints on
 writing one.
+
+**Tier 9b** (clink 10) is the same block literal in a different position: passed to a method
+rather than being the value. `Ctx.blockTy` carries it, because Ruby passes a block **out of
+band** from the argument list — so `callDefBlk` puts it in two places at once, `blockTy` for
+`yield` and `paramEnvB` for a `&b` parameter. Lambda-local `return` is handled by
+`bodyResult`, a function on the body's *whole shape*, because the obvious rule for `.ret` is
+unsound (`def f; return "a"; 2; end` would validate at `Int`); a control holds that in place
+by execution. `vcallDef` closes the top-level-bare-name gap `bareName` had recorded since
+tier 6.
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
@@ -552,12 +561,14 @@ ladder is reported: 114/114 (§Architecture).
    `blockpass` shapes (`&:to_s`'s Symbol#to_proc coercion and `&some_lambda`), closure
    capture, nested blocks, two-param folds, an `if` inside a block body, higher-order
    arrows in both return position (`->(x){ ->(y){ x + y } }`) and param position
-   (`def apply(f, v)`), and lambda-local `return`. **7/22 climbed** (clink 9): the
+   (`def apply(f, v)`), and lambda-local `return`. **10/22 climbed** (clinks 9 and 10): the
    creation/elimination core, with a callable's type being `Ty.clos` — a reference to its
    block plus its captured locals — and *not* the arrow spine, which needs parameter types
-   Ruby never writes. What is left is the iterator rules (a genuinely new, higher-order kind
-   of `PrimSig` claim), `blockpass`, `yield`, `Param.block`, and lambda-local `return` (whose
-   obvious rule is unsound — see clink 9). 19 of 22 target `true`; the three that don't are the tier's
+   Ruby never writes; then `yield` (via `Ctx.blockTy`), `&b` parameters, and lambda-local
+   `return` (via `bodyResult`, on the body's whole shape — the obvious rule is unsound).
+   What is left is exactly one thing: the **iterator rules**, a genuinely new, higher-order
+   kind of `PrimSig` claim, plus the two `blockpass` forms that need it and the one rung
+   wanting `|x; y|` block-locals. 19 of 22 target `true`; the three that don't are the tier's
    real findings — `block-bad-arith` and `lambda-arity-mismatch` (genuinely raising
    programs) and `proc-arity-leniency` (§Ty language gaps).
 10. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** `method_missing`,
@@ -735,16 +746,22 @@ The full climb, in roughly the order that costs least to unlock the most:
    the mechanism, including "a superclass-less class whose instance methods are unreachable".
    The trap it flagged turned out to be a different one: not `module_function` but `M.new`,
    which needed `Cls.isModule` to reject.
-6. **Tier 9b, blocks passed to methods** (12 rungs left) — the next work, and clink 9's
-   closing section breaks it down rung by rung. The largest piece is **higher-order
-   `PrimSig`**: `[1,2].map { |x| x.to_s }` needs a claim about what `Array#map` *does with a
-   block*, not merely about its argument types, which is a new kind of row and probably a new
-   relation. Then `blockpass` (`&:to_s`, `&double`) which needs that first; `yield`, which
-   needs the block available inside the method body it was passed to — a new `Ctx` component;
-   `Param.block` for `def run(&b)`; and lambda-local `return`, whose obvious rule is
-   **unsound** (clink 9 §What is left explains why, and what `JudgeSeq` would have to change
-   to). The arrow spine (`arrow0`/`arrowCons`) is *still* unused and tier 9a's finding is that
-   it may never be: `Ty.clos` does the job without parameter types.
+6. ~~**Tier 9b, `yield` / `&b` / lambda-local `return`**~~ — **done** (clink 10). The `yield`
+   prediction was right (`Ctx.blockTy`); the lambda-`return` prediction was right that the
+   obvious rule is unsound, but the fix turned out cheaper than "change `JudgeSeq`" —
+   `bodyResult`, matching the body's whole shape.
+7. **Tier 9c, blocks passed to builtins** (9 rungs left) — all that remains of tier 9, and
+   all one thing: **higher-order `PrimSig`**. `[1,2].map { |x| x.to_s }` needs a claim about
+   what `Array#map` *does with* a block, not merely about its argument types, and the result
+   depends on a different thing per method — the block's return type (`map`), the receiver
+   (`each`), the element type (`select`/`sort_by`), or a seeded accumulator (`inject`). That
+   is a new kind of row and probably a new relation beside `PrimSig`; the block's type is
+   already a `Ty.clos`, so the machinery to *call* it exists. The two `blockpass` forms
+   (`&:to_s`'s `Symbol#to_proc`, `&some_lambda`) need it first, and
+   `block-doend-with-block-local` additionally needs `|x; y|` block-locals, which
+   `lambdaLit`/`callDefBlk` refuse in their patterns today.
+   The arrow spine (`arrow0`/`arrowCons`) is *still* unused, and tier 9's finding is that it
+   may never be needed: `Ty.clos` does the job without parameter types.
 7. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this

@@ -158,10 +158,25 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       | none => none
     | some _ => none
     | none =>
-      -- Nothing may have defined the name, *and* it must be a known `BareNameError` row.
-      match defGet? κ.defs m with
-      | some _ => none
-      | none => if bareNameError? m then some (.any, Γ, I) else none
+      -- A bare name at top level: a defined method first (tier 9b — assume-then-verify at
+      -- zero arguments, exactly `callDef`), then the `BareNameError` table. The two are
+      -- disjoint by `defGet?`.
+      match asmGet? κ.asms m [] with
+      | some ρ => some (ρ, Γ, I)
+      | none =>
+        match defGet? κ.defs m with
+        | some d =>
+          match paramEnv d.params [] with
+          | some Γb =>
+            match chk f { κ with asms := ⟨m, [], .never⟩ :: κ.asms } Γb .ivar0 d.body with
+            | some (ρ₀, _, _) =>
+              match chk f { κ with asms := ⟨m, [], ρ₀⟩ :: κ.asms } Γb .ivar0 d.body with
+              | some (ρ₁, _, Iout) =>
+                if ρ₁ = ρ₀ then (if Iout = .ivar0 then some (ρ₀, Γ, I) else none) else none
+              | none => none
+            | none => none
+          | none => none
+        | none => if bareNameError? m then some (.any, Γ, I) else none
   | _ + 1, .self' =>
     match κ.selfTy with
     | some σ => some (σ, Γ, I)
@@ -179,17 +194,35 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     match classMethods? body with
     | some (_, _) => some (.any, Γ, I)
     | none => none
-  | _ + 1, .send none m [] (some (.block ps [] body)) =>
-    -- `lambda { … }` / `proc { … }`. Matched before the block-less implicit-self arm because
-    -- it is the only send in this fragment that carries a block at all.
-    if m = "lambda" || m = "proc" then
-      match κ.selfTy with
-      | none =>
+  | f + 1, .send none m args (some (.block ps [] body)) =>
+    -- An implicit-self send carrying a block literal. Two routes: `lambda`/`proc`, which
+    -- *are* the block (tier 9a), and everything else, which passes it to a top-level method
+    -- (tier 9b). Matched before the block-less arm because it is the only send in this
+    -- fragment that carries a block at all.
+    match κ.selfTy with
+    | none =>
+      if (m = "lambda" || m = "proc") && args.isEmpty then
         match closIdx? κ.closures ps body with
         | some idx => some (.clos idx (envToSpine Γ), Γ, I)
         | none => none
-      | some _ => none
-    else none
+      else
+        match chkAll f κ Γ I args with
+        | some (argTys, Γ', I') =>
+          match closIdx? κ.closures ps body with
+          | some idx =>
+            match defGet? κ.defs m with
+            | some d =>
+              match paramEnvB (some (.clos idx (envToSpine Γ))) d.params argTys with
+              | some Γb =>
+                match chk f { κ with blockTy := some (.clos idx (envToSpine Γ)) } Γb .ivar0
+                    d.body with
+                | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ', I') else none
+                | none => none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+    | some _ => none
   | f + 1, .send none m args none =>
     -- An implicit-self call. Four routes, in this order, and the order is the design:
     -- strictness first (a call with a non-returning argument never dispatches, defined or
@@ -301,7 +334,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | some c =>
                   match paramEnv c.params argTys with
                   | some Γb =>
-                    match chk f κ (Γb ++ spineToEnv cap) I₂ c.body with
+                    match chk f κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) with
                     | some (ρ, _, Iout) => if Iout = I₂ then some (ρ, Γ₂, I₂) else none
                     | none => none
                   | none => none
@@ -326,6 +359,26 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             | some τ => some (τ, Γ₂, I₂)
             | none => none
       | none => none
+    | none => none
+  | f + 1, .yield' args =>
+    match κ.blockTy with
+    | some (.clos idx cap) =>
+      match κ.selfTy with
+      | none =>
+        match chkAll f κ Γ I args with
+        | some (argTys, Γ', I') =>
+          match closGet? κ.closures idx with
+          | some c =>
+            match paramEnvB none c.params argTys with
+            | some Γb =>
+              match chk f κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) with
+              | some (ρ, _, Iout) => if Iout = I' then some (ρ, Γ', I') else none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+      | some _ => none
+    | some _ => none
     | none => none
   | f + 1, .super' args none =>
     match chkAll f κ Γ I args with
@@ -408,7 +461,7 @@ nothing is declared before a program's first statement, the assumption table bec
 derivation carrying one is only a conditional claim (`AsmTable`), and `frame`/`selfTy`
 because a program's top level is inside no method and runs somewhere `self` is not an
 instance of anything this judgment models. -/
-def ctx0 : Ctx := ⟨[], [], [], none, [], none⟩
+def ctx0 : Ctx := ⟨[], [], [], none, [], none, none⟩
 
 /-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
 empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,

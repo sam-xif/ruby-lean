@@ -383,7 +383,38 @@ def controls : List Control :=
     -- (o) A `.clos` is inert to everything but `call`/`[]`: no PrimSig row takes one and it
     -- is not EqSafe. Safe Ruby (a Proc really has `#arity`) that the checker declines.
   , ⟨"lambda { 1 }.arity (safe; no rule for Proc#arity)",
-      .send (some (.send none "lambda" [] (some (.block [] [] (.int 1))))) "arity" [] none⟩ ]
+      .send (some (.send none "lambda" [] (some (.block [] [] (.int 1))))) "arity" [] none⟩
+    -- ### Tier 9b's controls
+    --
+    -- (p) `yield` needs `Ctx.blockTy`, which only `callDefBlk` sets. A method that yields but
+    -- was called *without* a block raises LocalJumpError -- and note that is *outside* the
+    -- NoMethodError/ArgumentError/TypeError family, so this is a conservative rejection of a
+    -- program that nevertheless crashes, exactly like `bare-undeclared-var`'s NameError.
+  , ⟨"def t; yield(1); end; t (safe by this ladder; LocalJumpError)",
+      .seq [.def' "t" [] (.yield' [.int 1]), .send none "t" [] none]⟩
+    -- (q) The block's body is checked at each `yield`, at that yield's argument types. This
+    -- one really raises TypeError, and nothing at the call site or in the method looks wrong
+    -- -- the `yieldExpr` twin of `fun-body-mismatch`.
+  , ⟨"def t; yield(\"a\"); end; t { |x| x + 1 }",
+      .seq [.def' "t" [] (.yield' [.str "a"]),
+            .send none "t" []
+              (some (.block [.req "x"] []
+                (.send (some (.var .lvar "x")) "+" [.int 1] none)))]⟩
+    -- (r) `paramEnvB` binds a `&b` parameter to `.nilT` when no block is passed, which is
+    -- what Ruby does -- and then `b.call` raises NoMethodError on nil. So the binding is not
+    -- a formality: without it `b` would be unbound and this would fail for the wrong reason.
+  , ⟨"def run(&b); b.call(5); end; run",
+      .seq [.def' "run" [.block (some "b")]
+              (.send (some (.var .lvar "b")) "call" [.int 5] none),
+            .send none "run" [] none]⟩
+    -- (s) `bodyResult` reads a `return` only as a lambda's *entire* body. A `return` inside a
+    -- sequence has no rule, which is the point: typing `.ret e` as `e`'s type would make this
+    -- validate at Int, and it really returns a String.
+  , ⟨"lambda { |x| return \"a\"; 2 }.call(1) + 1 (unsound if `.ret` had a rule)",
+      .send (some (.send (some (.send none "lambda" []
+        (some (.block [.req "x"] []
+          (.seq [.ret (some (.str "a")), .int 2])))))
+        "call" [.int 1] none)) "+" [.int 1] none⟩ ]
 
 mutual
 
@@ -429,6 +460,11 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match sup with
     | none => return .class' n none body'
     | some sup => return .class' n (some (← toRubyCore sup)) body'
+  | .yield' args => (args.mapM toRubyCore).map (fun args' => .yield' args')
+  | .ret e =>
+    match e with
+    | none => some (.ret none)
+    | some x => (toRubyCore x).map (fun x' => .ret (some x'))
   | .super' args none =>
     (args.mapM toRubyCore).map (fun args' => .super' args' none)
   | .defs recv n ps body => do
@@ -451,6 +487,7 @@ def toRubyCore : Expr → Option RubyCore.Expr
 /-- Parameters, for the controls' `def`s. Only the two kinds the controls use. -/
 def toRubyCoreParam : Param → Option RubyCore.Param
   | .req x => some (.req x)
+  | .block x => some (.block x)
   | .opt x d => (toRubyCore d).map (fun d' => .opt x d')
   | _ => none
 
