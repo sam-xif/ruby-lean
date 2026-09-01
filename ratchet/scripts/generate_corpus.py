@@ -213,17 +213,20 @@ R("nested-if", 4, "if true then (if false then 1 else 2) else 3 end : Int.",
   "if true\n  if false\n    1\n  else\n    2\n  end\nelse\n  3\nend\n",
   expect_validate=True)
 R("if-does-not-leak-reassignment", 4,
-  'x = 1; if true; x = "hello"; end; x + 1 -- KNOWN SIMPLIFICATION, not a bug: '
-  "this checker's `if` does not propagate a branch's reassignments into the "
-  "following code (the environment after an if is the environment from *before* "
-  "it, documented in Ratchet/Validate.lean's design notes). So `x` is still seen "
-  "as Int after the if, and `x + 1` validates -- even though the *only* branch "
-  "this if has is the one that reassigns x to a String. Real Ruby's x really "
-  "would be a String here; this checker cannot see that yet. Still a legitimate "
-  "target of `true`: the *program* itself never actually reaches a type error "
-  "(the reassignment happens, x + 1 never runs against a String) -- fixing the "
-  "simplification is about precision, not soundness, for this specific rung.",
-  'x = 1\nif true\n  x = "hello"\nend\nx + 1\n', expect_validate=True)
+  'x = 1; if true; x = "hello"; end; x + 1 -- an UNSAFE program, and the rung that '
+  "makes environment-joining at an `if` a soundness requirement rather than a "
+  "precision nicety. The lone branch rebinds x to a String, so `x + 1` really does "
+  "raise TypeError (verified under CRuby and under the model; that is why this "
+  "corpus entry agrees). An `if` rule that discarded the branches' environments -- "
+  "carrying the environment from *before* the if forward, which is what an earlier "
+  "version of this checker did and what this rung's description used to claim was a "
+  "harmless simplification -- would see x as Int and certify a program that raises. "
+  "The correct rule joins the branch environments, giving x : union(Int, String) "
+  "afterwards, which matches no PrimSig row, so `x + 1` is soundly rejected. The "
+  "rung's name is kept for continuity with the ladder's history; what it now pins "
+  "is that the leak MUST be modelled.",
+  'x = 1\nif true\n  x = "hello"\nend\nx + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
 R("elsif-chain", 4,
   "if/elsif/else desugars to nested if' nodes; a three-way chain with every "
   "branch Int types fine via nested joinTy calls.",

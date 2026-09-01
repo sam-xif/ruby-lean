@@ -13,25 +13,31 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **30 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **40 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1 and 3, and every
-`send`-shaped rung of tier 2**: the eight literals, `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the
-integer comparisons, the nullary total queries (`to_s`/`zero?`/`length`), `!`, and `==`
-with an unconstrained argument (see `EqSafe`), plus tier 3's locals
-(`var`/`vasgn`/`seq`, and a bare `vcall` gated on the `BareNameError` table) — 30 rungs.
-`Judge` now threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md`
-clink 2 for why the output environment is not optional. The only tier-2 rungs left are
-`bool-and`/`bool-or`, which are not sends at all: Ruby's `&&`/`||` desugar to a temporary
-local plus a `seq` and an `if`, so they are tier-3/4 work (see
-`implementation-notes.md` clink 1).
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–4**: the eight literals,
+`+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
+queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
+`EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
+`BareNameError` table), plus tier 4's conditionals (`if'`/`ifNoElse`) — 40 rungs. Every
+rung at or below tier 4 now matches its recorded target.
+
+`Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
+for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
+on types and `joinEnv` on environments — which is where `Ty.union` stops being inert;
+clink 3 has the argument that producing a union is sound *because nothing consumes one*,
+and why `joinEnv` is a soundness requirement rather than a precision nicety (it is what
+stops the checker certifying `corpus/042-if-does-not-leak-reassignment`, whose recorded
+target was wrong and is now `false`). Tier 2's last two rungs, `bool-and`/`bool-or`, came
+in with tier 4 for free: Ruby's `&&`/`||` desugar to a temporary local plus a `seq` and
+an `if`, so they were never sends at all (clink 1 predicted this; clink 3 cashes it out).
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
 constructor per rule — and every rung in the covered fragment has a **derivation term**
 on file in `Ratchet/Rungs.lean` that Lean's kernel checks, plus
 `Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk e = some τ → Judge e τ` tying the
-executable checker back to it. And `30` is now the *only* number
+executable checker back to it. And `40` is now the *only* number
 `scripts/run_ratchet.sh` reports, because there is no longer a second, softer way for a
 rung to count: certificates are gone (§Claim-free).
 
@@ -406,13 +412,13 @@ module docstring for the two reasons a rung is allowed to target `false` at all.
 ladder is reported: 114/114 (§Architecture).
 
 1. Literals (8 rungs) — all eight climbed.
-2. Arithmetic/string/bool `send`s (20 rungs) — **16 climbed**, via a hardcoded builtin
+2. Arithmetic/string/bool `send`s (20 rungs) — **all 18 non-negative rungs climbed**, via a hardcoded builtin
    dispatch table (`PrimSig`) now fourteen rows deep: arithmetic, the integer
    comparisons, the nullary total queries (`5.zero?`, `"abc".length`, `5.to_s`), `!` (an
    ordinary send, not syntax), and `Object#==`, whose argument is unconstrained because
    `1 == "a"` is safe Ruby — its receiver instead carries the `EqSafe` side condition.
-   The two unclimbed non-negative rungs, `bool-and`/`bool-or`, are `&&`/`||`, which
-   desugar to `seq`/`vasgn`/`if` and so belong to tiers 3–4.
+   The tier's last two rungs, `bool-and`/`bool-or`, are `&&`/`||`, which desugar to
+   `seq`/`vasgn`/`if` and so were climbed with tier 4, not here.
 3. `var`/`vasgn`/`seq` (6 rungs) — **all six climbed.** Real Ruby scoping (mutable
    locals, not the `let` of a from-scratch toy language): the judgment threads an
    environment (`Judge Γ e τ Γ'`) and `envSet` overwrites, so re-binding a local at a
@@ -420,10 +426,14 @@ ladder is reported: 114/114 (§Architecture).
    the one-row `BareNameError` table, *not* a blanket "a bare name raises NameError"
    rule — which would be unsound, since `proc`/`lambda` are bare names that raise
    `ArgumentError` (`implementation-notes.md` clink 2).
-4. Conditionals (9 rungs) — `if'`/`elsif` chains, including a no-`else` → `nilable`
-   case, branch-mismatched `if`s that want a union-producing `joinTy` (currently `joinTy`
-   answers `none` there, and `Ty.union` is inert on the checker path), and a real,
-   deliberately-recorded corner case (see §Design notes).
+4. Conditionals (9 rungs) — **all nine at target** (`implementation-notes.md` clink 3).
+   Two rules (`if'`, `ifNoElse`) rather than one over `Option Expr`; the condition's type
+   is discarded because Ruby's `if` never raises over it; a total `joinT` that produces a
+   **normalized** `Ty.union` where the ported `joinTy` answers `none` — which is where
+   `Ty.union` stops being inert, and is sound because *nothing consumes a union*; and a
+   pointwise `joinEnv`, which is a soundness requirement, not precision:
+   `if-does-not-leak-reassignment` is an unsafe program whose recorded target used to be
+   `true`, and is now `false` with a matching negative control.
 5. Arrays/hashes (8 rungs) — including that indexing (`#[]`) is just a `send`, same as
    everything else in Ruby; the real `Expr` has no dedicated index constructor.
 6. Top-level functions (9 rungs) — a `def'` declares nothing, so a signature has to be
@@ -591,20 +601,17 @@ assumes that version didn't have, plus everything tiers 7–10 need beyond it:
 
 The full climb, in roughly the order that costs least to unlock the most:
 
-0. **Tier 4, `if`** (§Design notes) — tiers 1–3 are done. `if'` needs a `joinTy` that
-   produces a `Ty.union` instead of answering `none`, no `Bool`-only restriction on the
-   condition (Ruby's `if` never raises over its condition's type), `nilable` for a
-   missing `else`, and — the real design question — a **join over `Env`**, since the two
-   branches may bind differently. It also unblocks the last two tier-2 rungs:
-   `&&`/`||` desugar to `seq`/`vasgn`/`if`. Keep the discipline that produced rungs
-   1–13: a rule in `Judge.lean` before a case in `chk`, a derivation term per rung in
-   `Rungs.lean`'s successor, and a `checkrungs` row cross-checking it against the real
-   semantics — plus negative controls for every new `PrimSig` row, since confirming rungs
-   pass never shows a signature is too generous.
-1. **Environment merging across `if` branches** (`SubEnv`/a real join over `Env`, not
-   just over `Ty`) — the one remaining simplification `if-does-not-leak-reassignment`
-   still needs; the machinery (`SubEnv`/`subEnvB`) already exists, ported-but-not-yet,
-   in the real `Types/Ty.lean`.
+0. ~~**Tier 4, `if`**~~ — **done** (clink 3). Both predictions in this entry held: the
+   join over `Env` was the real design question, and it unblocked `&&`/`||`. What the
+   entry got wrong is that it filed environment-joining as *precision*; it is soundness,
+   and `if-does-not-leak-reassignment`'s target was wrong, not merely imprecise.
+1. **Tier 5, arrays and hashes** — the next rung group, and the first that needs a `Ty`
+   with a *parameter*. The corpus demands both a homogeneous case (`array-int`) and a
+   heterogeneous one (`array-heterogeneous`), so the element type is a `joinT` over the
+   members and tier 4's union machinery carries straight over; `array-empty` is the
+   question of what an unconstrained element type is. Indexing (`array-index`,
+   `hash-index`) is the interesting half: `Array#[]` returns `nil` out of range, so its
+   `PrimSig` result is `nilable` of the element type, not the element type.
 2. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this

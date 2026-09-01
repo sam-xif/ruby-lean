@@ -42,6 +42,14 @@ def expectedClasses : Ty → List String
   | .nilT => ["NilClass"]
   | .bool => ["TrueClass", "FalseClass"]
   | .cls n => [n]
+  -- Tier 4's joins produce types that admit more than one class, and the reading is
+  -- exactly the obvious one: a `nilable` also admits `nil`, a `union` admits either
+  -- side's classes. This is the point at which a `Ty` stops naming *the* class of the
+  -- value and starts naming a *set* it belongs to (see `Ty.joinT`'s docstring), so the
+  -- cross-check gets correspondingly weaker for these rungs -- deliberately, and
+  -- visibly: the rung still fails if the class produced is outside the set.
+  | .nilable τ => "NilClass" :: expectedClasses τ
+  | .union σ τ => expectedClasses σ ++ expectedClasses τ
   | _ => []
 
 /-- Fuel: these are small literal/arithmetic programs; a few hundred steps is already
@@ -166,7 +174,15 @@ def controls : List Control :=
       .send (some (.int 5)) "to_s" [.int 2] none⟩
   , ⟨"proc (a bare name that is NOT unbound)", .vcall "proc"⟩
   , ⟨"lambda (likewise)", .vcall "lambda"⟩
-  , ⟨"y (safe; unbound, but not a BareNameError row)", .vcall "y"⟩ ]
+  , ⟨"y (safe; unbound, but not a BareNameError row)", .vcall "y"⟩
+    -- The environment-join control: the same shape as
+    -- `corpus/042-if-does-not-leak-reassignment`, kept here as well because this is
+    -- where a rejection is labelled *sound* by actually running the program. An `if`
+    -- rule that carried the pre-`if` environment forward would certify this.
+  , ⟨"x = 1; if true then x = \"hello\" end; x + 1",
+      .seq [.vasgn .lvar "x" (.int 1),
+            .if' .tru (.vasgn .lvar "x" (.str "hello")) none,
+            .send (some (.var .lvar "x")) "+" [.int 1] none]⟩ ]
 
 /-- `Ratchet.Expr` → `RubyCore.Expr` for the controls only: they are hand-written on this
 package's side of the isolation boundary, so there is no JSON to decode twice the way a
@@ -181,6 +197,15 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .fls => some .fls
   | .nil => some .nil
   | .vcall m => some (.vcall m)
+  | .var .lvar x => some (.var .lvar x)
+  | .vasgn .lvar x e => (toRubyCore e).map (fun e' => .vasgn .lvar x e')
+  | .seq es => (es.mapM toRubyCore).map (fun es' => .seq es')
+  | .if' c t e => do
+    let c' ← toRubyCore c
+    let t' ← toRubyCore t
+    match e with
+    | none => return .if' c' t' none
+    | some e => return .if' c' t' (some (← toRubyCore e))
   | .send (some r) m args none => do
     let r' ← toRubyCore r
     let args' ← args.mapM toRubyCore

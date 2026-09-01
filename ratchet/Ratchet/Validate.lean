@@ -5,7 +5,8 @@ The trusted checker: `validate : Expr → Bool`, over the **real** `Expr`.
 
 **Tiers 1–3 only.** `chk` decides exactly the fragment `Ratchet/Judge.lean`'s `Judge`
 specifies (the eight literals, tier 2's `send` table, and tier 3's
-`var`/`vasgn`/`seq`/bare-`vcall`), and answers `none` on everything else — there is no fallback of any kind. The
+`var`/`vasgn`/`seq`/bare-`vcall`, and tier 4's `if'`), and answers `none` on everything
+else — there is no fallback of any kind. The
 certificate-claim fallback this checker used to carry is gone (`AGENTS.md`
 §Claim-free): a claim was trusted, so a rung certified through one certified nothing,
 and the `Bool` was worth less than it looked. Now every `true` is synthesized. Every rung outside that fragment therefore still
@@ -71,6 +72,23 @@ def chk (Γ : Env) : Expr → Option (Ty × Env)
     | some (τ, Γ') => some (τ, envSet Γ' x τ)
     | none => none
   | .seq es => chkSeq Γ es
+  | .if' c t (some e) =>
+    match chk Γ c with
+    | some (_, Γc) =>
+      match chk Γc t with
+      | some (τ₁, Γ₁) =>
+        match chk Γc e with
+        | some (τ₂, Γ₂) => some (joinT τ₁ τ₂, joinEnv Γ₁ Γ₂)
+        | none => none
+      | none => none
+    | none => none
+  | .if' c t none =>
+    match chk Γ c with
+    | some (_, Γc) =>
+      match chk Γc t with
+      | some (τ, Γ₁) => some (joinT τ .nilT, joinEnv Γ₁ Γc)
+      | none => none
+    | none => none
   | .vcall m => if bareNameError? m then some (.any, Γ) else none
   | .send (some recv) m args none =>
     -- Written as explicit nested `match`es rather than `do`/`<|>` on purpose: this is

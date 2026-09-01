@@ -183,3 +183,88 @@ State after this clink: **30 rungs climbed** (tiers 1–3 complete except `bool-
 `bool-or`, which need tier 4's `if`), 30/30 cross-checked against the real semantics,
 15/15 negative controls rejected, `chk_sound`/`chkAll_sound`/`chkSeq_sound`/
 `validate_sound_syntactic` axiom-clean.
+
+---
+
+## Clink 3 (2026-09-01) — tier 4's `if`, and the two rungs it unblocks: 30 → 40
+
+Rungs added: `if-true-branch`, `if-no-else`, `if-condition-not-bool`,
+`if-branch-mismatch`, `elsif-chain-mismatch`, `if-nil-condition`, `nested-if`,
+`elsif-chain` — the whole of tier 4 except `if-does-not-leak-reassignment`, which turns
+out to be a rung whose *target* was wrong (below) — plus `bool-and`/`bool-or`, tier 2's
+two stragglers, which fall out for free because `&&`/`||` desugar to `seq`+`if`.
+Tiers 1–4 are now at target with no mismatches.
+
+**Two rules, not one.** `Judge.if'` takes an `else`; `Judge.ifNoElse` does not. A single
+rule over `Option Expr` would have to case-split inside the premise, which is exactly the
+shape `JudgeSeq` was factored out to avoid in clink 2. `ifNoElse`'s content is that
+Ruby's missing branch evaluates to `nil`: the else-type is fixed at `.nilT` and the
+else-environment at `Γc` (the environment as of the end of the condition), so
+`joinT τ .nilT = mkNilable τ` and nothing is bound that the condition did not bind.
+
+**The condition's type is unconstrained, deliberately.** `σ` appears nowhere in `if'`'s
+conclusion. Ruby's `if` accepts every value and never raises over its condition — only
+`nil` and `false` are falsy — so a `Bool` premise would reject `if 5 … end` and
+`if nil … end`, both perfectly safe, and both now rungs (`if-condition-not-bool`,
+`if-nil-condition`) that exist to pin this. The condition is still *typed*, because
+evaluating it can itself be type-stuck; what is discarded is only its result type.
+
+**`joinT` is total, and that is why `Ty.union` finally does something.** The ported
+`Ty.joinTy` answers `none` for two unrelated branch types. An `if` rule that failed there
+could not type `if c then 1 else "a"` at all — a program with no type error in it — so
+this package grows its own `joinT` (a documented fork of the ported file; see
+`AGENTS.md` §Isolation): `joinTy`'s structural cases first, so the familiar shapes keep
+their familiar answers, and otherwise a **union of both sides' members**.
+
+*Why the union is normalized (flattened + deduped).* `elsif` is nested `if'`, so
+`elsif-chain-mismatch`'s outer join sees `Int` against `union(Int, String)`. Without
+flatten-and-dedup the answer is `union(Int, union(Int, String))` — the same *values*, a
+different `Ty`, and `Ty` is compared by decidable equality everywhere in this package, so
+the rung's hand-written type would not match the computed one. The rung exists to hold
+that normalization in place.
+
+*Why producing a union is always sound.* Tier 4 is where the type language changes
+register: a `Ty` stops naming *the* class of a value and starts naming an upper bound on
+the set it belongs to. That is safe here for a structural reason, not a proved one —
+**nothing consumes a union.** No `PrimSig` row has a union receiver and a union is not
+`EqSafe`, so any rule that wants to *use* such a value simply fails to apply. The join
+buys precision on the way out and costs everything on the way in, which for now is the
+right trade: a checker that rejects `(if c then 1 else "a") + 1` is being conservative,
+not wrong.
+
+**`joinEnv`, and the rung whose target was wrong.** The environments are joined too, and
+unlike `joinT` this is a **soundness** requirement. `corpus/042-if-does-not-leak-`
+`reassignment` is `x = 1; if true; x = "hello"; end; x + 1`. Its recorded target was
+`true`, with a long description calling the "environment after an `if` is the environment
+from before it" simplification harmless precision loss. It is not: the lone branch
+rebinds `x` to a `String`, `x + 1` really raises `TypeError` (confirmed under CRuby and
+under the model — that is why this corpus entry agrees), and a checker carrying the
+pre-`if` environment forward would certify a program that raises. So the rung's target is
+now `false` / `unsafe_program`, its description says what it actually pins, and the same
+shape is added as a **negative control** in `CheckRungs.lean` so the rejection is
+labelled *sound* by running the program rather than merely *conservative*.
+
+The corrected rule joins pointwise over the union of both branches' names. A name bound
+in only one branch joins against `.nilT`, which is again just Ruby: the parser declares a
+local at the assignment's *syntactic* position, so `if false then y = 1 end; y` is `nil`
+rather than a `NameError`. After the join `x : union(Int, String)`, which matches no
+`PrimSig` row, so `x + 1` is soundly rejected — the union's inertness doing exactly the
+job the paragraph above describes.
+
+**`&&`/`||` for free.** `true && false` desugars to
+`seq (vasgn __dt_t1 true) (if (var __dt_t1) false (var __dt_t1))`. No new rule; the
+`outEnv` on these two rungs records the desugarer's temporary, and the checker has no
+idea it is a temporary and does not need one. This is the clink-1 note's prediction
+cashed out: `&&` was tier-3/4 work in a tier-2 costume.
+
+**Widening `expectedClasses`.** `CheckRungs.lean` cross-checks a derived `Ty` against the
+class the semantics produced. A `nilable`/`union` admits more than one class, so the
+check becomes a set membership rather than an equality — a deliberately weaker row for
+these rungs, noted in place. The rung still fails if the class produced is outside the
+set.
+
+State after this clink: **40 rungs climbed** (tiers 1–4 complete, and every rung at or
+below tier 4 now matches its recorded target), 40/40 cross-checked against the real
+semantics, 16/16 negative controls rejected, corpus agreement 0 disagreements,
+`chk_sound`/`chkAll_sound`/`chkSeq_sound`/`validate_sound_syntactic` axiom-clean
+(`propext`, `Quot.sound`).

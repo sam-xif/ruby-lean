@@ -29,7 +29,7 @@ else
 fi
 
 echo "=== the evidence behind the climbed rungs (hand derivations vs corpus + semantics) ==="
-lake build
+lake build ratchet checkrungs
 .lake/build/bin/checkrungs corpus
 echo
 

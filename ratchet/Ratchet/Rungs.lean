@@ -258,11 +258,106 @@ def r034 : Rung :=
         (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .intAdd))
           (.last (.var rfl)))))⟩
 
+/-! ## Tier 4 — conditionals, and tier 2's `&&`/`||`
+
+`if'` derivations read as: condition, then-branch, else-branch, and *two* joins — one
+over the result types, one over the environments. The `ty` and `outEnv` fields below are
+the **computed** joins written out longhand, so a wrong `joinT`/`joinEnv` would stop
+these from compiling. -/
+
+/-- `if true then 1 else 2` → `Integer`. Both branches agree, so `joinT` is the identity
+    on them and no union appears. -/
+def r035 : Rung :=
+  ⟨"if-true-branch", .if' .tru (.int 1) (some (.int 2)), .int, [],
+    .if' .truLit .intLit .intLit⟩
+
+/-- `if true then 1 end` (no `else`) → `nilable Int`. The absent branch contributes
+    `nil`, and `joinT .int .nilT` is `mkNilable .int`. -/
+def r036 : Rung :=
+  ⟨"if-no-else", .if' .tru (.int 1) none, .nilable .int, [],
+    .ifNoElse .truLit .intLit⟩
+
+/-- `if 5 then 1 else 2` → `Integer`. The rung that pins the condition being
+    unconstrained: `5` is a perfectly good Ruby condition (only `nil`/`false` are falsy)
+    and `Judge.if'` never looks at `σ`. -/
+def r037 : Rung :=
+  ⟨"if-condition-not-bool", .if' (.int 5) (.int 1) (some (.int 2)), .int, [],
+    .if' .intLit .intLit .intLit⟩
+
+/-- `if true then 1 else "a"` → `union(Int, String)`. The first type in this package that
+    is not the type of any single value: `Ty.union` was in the grammar and inert, and
+    this is the rung that makes `joinT` produce one instead of giving up. -/
+def r038 : Rung :=
+  ⟨"if-branch-mismatch", .if' .tru (.int 1) (some (.str "a")),
+    .union .int (.cls "String"), [],
+    .if' .truLit .intLit .strLit⟩
+
+/-- `if true then 1 elsif false then 2 else "a"` → `union(Int, String)`, **not**
+    `union(Int, union(Int, String))`. `elsif` is nested `if'`, so the outer join sees
+    `Int` against the inner union; the answer is only the smaller type because `joinT`
+    flattens and dedups. This rung is why it does. -/
+def r039 : Rung :=
+  ⟨"elsif-chain-mismatch",
+    .if' .tru (.int 1) (some (.if' .fls (.int 2) (some (.str "a")))),
+    .union .int (.cls "String"), [],
+    .if' .truLit .intLit (.if' .flsLit .intLit .strLit)⟩
+
+/-- `if nil then 1 else 2` → `Integer`. `nil` is falsy, never a type error. -/
+def r040 : Rung :=
+  ⟨"if-nil-condition", .if' .nil (.int 1) (some (.int 2)), .int, [],
+    .if' .nilLit .intLit .intLit⟩
+
+/-- A nested `if` in the then-branch → `Integer`. -/
+def r041 : Rung :=
+  ⟨"nested-if",
+    .if' .tru (.if' .fls (.int 1) (some (.int 2))) (some (.int 3)), .int, [],
+    .if' .truLit (.if' .flsLit .intLit .intLit) .intLit⟩
+
+/-- `if true then 1 elsif false then 2 else 3` → `Integer`: the uniform three-way
+    chain, joining twice. -/
+def r043 : Rung :=
+  ⟨"elsif-chain",
+    .if' .tru (.int 1) (some (.if' .fls (.int 2) (some (.int 3)))), .int, [],
+    .if' .truLit .intLit (.if' .flsLit .intLit .intLit)⟩
+
+/-! ### Tier 2's stragglers: `&&` and `||`
+
+Not sends at all. `true && false` desugars to a temporary local, a `seq` and an `if`:
+
+```
+seq (vasgn local __dt_t1 true) (if (var local __dt_t1) false (var local __dt_t1))
+```
+
+which is why these two rungs sat unclimbed through tiers 2 and 3 and fall out for free
+here. The `outEnv` records the desugarer's temporary — the checker has no idea it is a
+temporary, and does not need to. -/
+
+/-- `true && false` → `Bool`. -/
+def r016 : Rung :=
+  ⟨"bool-and",
+    .seq [.vasgn .lvar "__dt_t1" .tru,
+          .if' (.var .lvar "__dt_t1") .fls (some (.var .lvar "__dt_t1"))],
+    .bool, [("__dt_t1", .bool)],
+    .seq (.cons (.vasgn .truLit)
+      (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) .flsLit (.var rfl))))⟩
+
+/-- `false || true` → `Bool`. Same shape, branches swapped. -/
+def r017 : Rung :=
+  ⟨"bool-or",
+    .seq [.vasgn .lvar "__dt_t1" .fls,
+          .if' (.var .lvar "__dt_t1") (.var .lvar "__dt_t1") (some .tru)],
+    .bool, [("__dt_t1", .bool)],
+    .seq (.cons (.vasgn .flsLit)
+      (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) (.var rfl) .truLit)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
-   r014, r015, r019, r020, r021, r022, r024, r025, r026, r027, r028,
-   r029, r030, r031, r032, r033, r034]
+   r014, r015, r016, r017, r019, r020, r021, r022, r024, r025, r026, r027, r028,
+   r029, r030, r031, r032, r033, r034,
+   r035, r036, r037, r038, r039, r040, r041, r043]
 
 /-! ## `chk` answers exactly what was derived by hand
 

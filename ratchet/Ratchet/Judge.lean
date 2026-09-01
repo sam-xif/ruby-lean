@@ -242,6 +242,34 @@ inductive Judge : Env → Expr → Ty → Env → Prop
       `PrimSig` row and is not `EqSafe`, so no rule can consume it either. Type safety
       here is not crash-freedom, and this rung is the sharpest place that shows. -/
   | bareName {Γ : Env} {m : String} : BareNameError m → Judge Γ (.vcall m) .any Γ
+  /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
+
+      **The condition's type is unconstrained.** `σ` appears nowhere in the conclusion.
+      Ruby's `if` accepts *any* value and never raises over its condition's type — only
+      `nil` and `false` are falsy — so a `Bool`-only premise would reject
+      `if 5 … end` and `if nil … end`, both of which are perfectly safe (rungs
+      `if-condition-not-bool`, `if-nil-condition`). The condition is still *typed*,
+      because evaluating it can itself be type-stuck.
+
+      **The result type is a total join.** `joinT` never fails: unrelated branches
+      produce a `Ty.union` rather than a rejection (rung `if-branch-mismatch`).
+
+      **The environments are joined too, and that is a soundness requirement.** A branch
+      may rebind a local at a different type, and the code after the `if` sees whichever
+      branch ran. Carrying `Γ` (the pre-`if` environment) forward instead would certify
+      `corpus/042-if-does-not-leak-reassignment`, which really raises `TypeError`. So the
+      outgoing environment is `joinEnv Γ₁ Γ₂`, and a name the two branches disagree about
+      ends up at a union that no rule can consume. -/
+  | if' {Γ Γc Γ₁ Γ₂ : Env} {c t e : Expr} {σ τ₁ τ₂ : Ty} :
+      Judge Γ c σ Γc → Judge Γc t τ₁ Γ₁ → Judge Γc e τ₂ Γ₂ →
+      Judge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂)
+  /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
+      this is the same rule with the else-branch's type fixed at `.nilT` and its
+      environment fixed at `Γc` — the environment as of the end of the condition.
+      `joinT τ .nilT` is `mkNilable τ` (rung `if-no-else`). -/
+  | ifNoElse {Γ Γc Γ₁ : Env} {c t : Expr} {σ τ : Ty} :
+      Judge Γ c σ Γc → Judge Γc t τ Γ₁ →
+      Judge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ Γc)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 

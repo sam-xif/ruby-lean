@@ -110,6 +110,32 @@ theorem chk_sound : ∀ {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env},
       exact .vasgn (chk_sound hrhs)
     · exact absurd h (by simp)
   · exact .seq (chkSeq_sound h)
+  · -- `if' c t (some e)`: condition, then-branch and else-branch all typed, and the
+    -- result/environment are the joins the rule names.
+    split at h
+    · rename_i hc
+      split at h
+      · rename_i ht
+        split at h
+        · rename_i he
+          injection h with h
+          injection h with h h'
+          subst h; subst h'
+          exact .if' (chk_sound hc) (chk_sound ht) (chk_sound he)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `if' c t none`: the missing branch contributes `nil` and leaves `Γc`.
+    split at h
+    · rename_i hc
+      split at h
+      · rename_i ht
+        injection h with h
+        injection h with h h'
+        subst h; subst h'
+        exact .ifNoElse (chk_sound hc) (chk_sound ht)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- `vcall m`: only when the name is a known `BareNameError` row.
     split at h
     · rename_i hbare

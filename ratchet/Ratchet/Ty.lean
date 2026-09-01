@@ -134,4 +134,81 @@ partial def Ty.ofJson? (j : Json) : Except String Ty := do
     return .arrowCons param rest
   | other => throw s!"Ty.ofJson?: unknown tag '{other}'"
 
+/-! ## Ratchet-local additions (a deliberate fork of the ported file)
+
+Everything above is `RubyCore/Types/Ty.lean` verbatim. Everything below is **new here**,
+added when tier 4 (`if`) forced it, and is therefore a place this package's copy and the
+real model's have deliberately diverged — see `AGENTS.md` §Isolation on what to do about
+that. The reason it could not be a use of the ported `joinTy`: that function answers
+`none` for two unrelated branch types, and an `if` rule that fails there is not merely
+imprecise, it cannot type `if c then 1 else "a"` at all. `Ty.union` was already in the
+grammar and inert; these functions are what put it to work. -/
+
+/-- The members of a (possibly nested) union, flattened left to right. A non-union is a
+one-member union of itself. -/
+def unionMems : Ty → List Ty
+  | .union σ τ => unionMems σ ++ unionMems τ
+  | τ => [τ]
+
+/-- Rebuild a right-nested union from a member list. `[]` cannot arise from `unionMems`
+(it always yields at least one member), and is mapped to `.nilT` rather than making this
+function partial. -/
+def unionOf : List Ty → Ty
+  | [] => .nilT
+  | [τ] => τ
+  | τ :: τs => .union τ (unionOf τs)
+
+/-- Order-preserving duplicate removal. Accumulator-passing so the recursion is
+structural on the input list. -/
+def dedupTysAux (seen : List Ty) : List Ty → List Ty
+  | [] => seen.reverse
+  | τ :: τs => if seen.contains τ then dedupTysAux seen τs else dedupTysAux (τ :: seen) τs
+
+def dedupTys (τs : List Ty) : List Ty := dedupTysAux [] τs
+
+/-- **The total join.** Tries the ported `joinTy`'s structural cases first (equal types,
+one side `nil`, one side the other's `nilable`) so the common shapes keep their familiar
+answers, and otherwise builds a **normalized union** of both sides' members.
+
+Normalization is not cosmetic: `elsif-chain-mismatch` desugars to nested `if'`s, so the
+outer join sees `Int` against `union(Int, String)`. Flatten-and-dedup gives
+`union(Int, String)`; without it the answer would be `union(Int, union(Int, String))`,
+which denotes the same values but is a different `Ty`, and `Ty` is compared by equality
+everywhere in this package.
+
+What a union *means* here — worth being explicit, because tier 4 is where the type
+language shifts register: a `Ty` is an **upper bound** on the values an expression can
+produce, not an exact description. Nothing consumes a union (no `PrimSig` row has one as
+a receiver, and it is not `EqSafe`), so producing one is always safe: it says "this
+checker knows the value is one of these", and any rule that wants to *use* the value
+will simply fail to apply. -/
+def joinT (σ τ : Ty) : Ty :=
+  match joinTy σ τ with
+  | some ρ => ρ
+  | none => unionOf (dedupTys (unionMems σ ++ unionMems τ))
+
+/-- The names bound in an environment, in order. -/
+def envKeys : Env → List String
+  | [] => []
+  | (k, _) :: Γ => k :: envKeys Γ
+
+/-- Pointwise environment join at a given list of names. -/
+def joinEnvAt (Γ₁ Γ₂ : Env) : List String → Env
+  | [] => []
+  | k :: ks =>
+    (k, joinT ((envGet? Γ₁ k).getD .nilT) ((envGet? Γ₂ k).getD .nilT))
+      :: joinEnvAt Γ₁ Γ₂ ks
+
+/-- The join of two branch **environments**, pointwise over the union of their names.
+
+A name bound in only one branch joins against `.nilT`, because that is what Ruby does:
+the parser declares a local at the assignment's *syntactic* position, so
+`if false then y = 1 end; y` evaluates to `nil` rather than raising.
+
+Unlike `joinT`, this exists for a **soundness** reason, not a precision one — see
+`corpus/042-if-does-not-leak-reassignment`, a program that really raises `TypeError` and
+that a checker carrying the pre-`if` environment forward would certify. -/
+def joinEnv (Γ₁ Γ₂ : Env) : Env :=
+  joinEnvAt Γ₁ Γ₂ (envKeys Γ₁ ++ (envKeys Γ₂).filter (fun k => !(envKeys Γ₁).contains k))
+
 end Ratchet
