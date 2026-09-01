@@ -2351,6 +2351,193 @@ def r132 : Rung :=
           (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)
           .intLit rfl))))⟩
 
+
+/-! ## Tiers 13-17 — the rungs the slice's syntax brought in that were already covered
+
+Eight of the 85 rungs added with the Homebrew slice (`AGENTS.md` §The syntactic gap)
+answered `true` the day they were written, with no rule added. That is the outcome a
+target-driven tier is *supposed* to have some of, and each one is a small finding:
+
+- `param-block` says `Frontier` item 11's "the cleared implementation rejects any `def'`
+  using `Param.block`" is stale — tier 9b's `callDefBlk`/`paramEnvB` already bind a `&b`
+  parameter, and `block-param-ampersand` was that rung. The slice's
+  `version/parser.rb#initialize(regex, &block)` needs nothing new.
+- The four control-flow rungs (`ctl-unless`, `ctl-ternary`, `ctl-or-assign`,
+  `ctl-safe-nav`) confirm the prediction each of their corpus descriptions makes: all four
+  are **sugar**, and the desugarer has already turned them into `if`/`seq`/`vasgn`. The
+  interesting two are the last: `x ||= 5` is typed `Integer` rather than
+  `T.nilable(Integer)` only because tier 12's `falsyTy` reads the then-branch as dead, and
+  `x&.length` is narrowing over a **desugarer-generated temporary**, i.e. clink 17's
+  aliasing machinery driven by syntax nobody wrote by hand.
+- `str-interpolation` is the one worth reading twice, and its derivation is below. -/
+
+/-- `def run(&b); b.call(2); end; run { |x| x * 3 }` → `Integer`.
+
+    Identical in shape to `block-param-ampersand` (r095) and included because the slice
+    writes it: `version/parser.rb`'s `RegexParser#initialize(regex, &block)` stores the
+    block and calls it later. Nothing new — which is the point of the rung. -/
+def r157 : Rung :=
+  ⟨"param-block",
+    .seq [.def' "run" [.block (some "b")]
+            (.send (some (.var .lvar "b")) "call" [.int 2] none),
+          .send none "run" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "*" [.int 3] none)))],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDefBlk rfl .nil rfl rfl rfl
+        (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
+
+/-- `name = "world"; "hello #{name}"` → `String`.
+
+    **String interpolation is narrowing.** The desugarer does not emit a concatenation of
+    `to_s` calls; it emits, per interpolated subterm, a temporary plus a `String === t`
+    test:
+
+    ```
+    send (str "hello ") "+"
+      [seq (vasgn local __dt_t1 (var local name))
+           (if (send (const String) "===" [var local __dt_t1])
+               (var local __dt_t1)
+               (send (var local __dt_t1) "__as_string" []))]
+    ```
+
+    — the fast path for a value that is already a String, and `__as_string` otherwise. So
+    this rung climbed with **no `__as_string` row at all**: `caseEqQuery` refines
+    `__dt_t1` to `.cls "String"` in the then-branch and to `notATy "String" (.cls
+    "String") = .never` in the else-branch, `primNever` types the send on a `.never`
+    receiver as `.never`, and `joinT (.cls "String") .never` is `.cls "String"`. The
+    else-branch is *dead*, and the checker can see it.
+
+    That is `Ty.never`'s dead-branch reading paying for itself a third time (clink 26's
+    control (nnn) was the second), and it is why `str-interpolation-nonstring` — the same
+    program with an `Integer` inside the braces — is **not** climbed: there the
+    else-branch is live and `__as_string` is a row the table does not have. The two rungs
+    are next to each other in the corpus for exactly that contrast. -/
+def r165 : Rung :=
+  ⟨"str-interpolation",
+    .seq [.vasgn .lvar "name" (.str "world"),
+          .send (some (.str "hello ")) "+"
+            [.seq [.vasgn .lvar "__dt_t1" (.var .lvar "name"),
+                   .if' (.send (some (.const "String")) "===" [.var .lvar "__dt_t1"] none)
+                     (.var .lvar "__dt_t1")
+                     (some (.send (some (.var .lvar "__dt_t1")) "__as_string" [] none))]]
+            none],
+    .cls "String",
+    [("name", .cls "String"),
+     ("__dt_t1", .union (.sameAs "name" (.cls "String")) (.sameAs "name" .never))],
+    .seq (.cons (.vasgn .strLit)
+      (.last (.prim .strLit
+        (.cons (.seq (.cons (.vasgnAlias rfl rfl rfl)
+          (.last (.if'
+            (.caseEqQuery (.constBuiltin .string rfl) (.cons (.varAlias rfl) .nil) rfl)
+            (.varAlias rfl)
+            (.primNever (.varAlias rfl) .nil (.inl rfl))
+            rfl)))) .nil)
+        .strAdd)))⟩
+
+/-- `s = :affected; s.to_s.length` → `Integer`. `Ty.sym` has been in the language since the
+    port and `symToS` since tier 10's `method_missing` rung; the slice's 299 symbols make
+    them worth a rung of their own rather than a step inside someone else's. -/
+def r168 : Rung :=
+  ⟨"sym-literal",
+    .seq [.vasgn .lvar "s" (.sym "affected"),
+          .send (some (.send (some (.var .lvar "s")) "to_s" [] none)) "length" [] none],
+    .int, [("s", .sym)],
+    .seq (.cons (.vasgn .symLit)
+      (.last (.prim (.prim (.var rfl rfl) .nil .symToS) .nil .strLength)))⟩
+
+/-- `s = :high; s == :high` → `Boolean`. Tier 2's `objEq` covers it, with `EqSafe .sym`
+    discharging the receiver side. The rung is the *negative* finding: a checker growing a
+    `Symbol#==` row would be adding one it does not need, and the slice compares symbols
+    everywhere. -/
+def r169 : Rung :=
+  ⟨"sym-compare",
+    .seq [.vasgn .lvar "s" (.sym "high"),
+          .send (some (.var .lvar "s")) "==" [.sym "high"] none],
+    .bool, [("s", .sym)],
+    .seq (.cons (.vasgn .symLit)
+      (.last (.prim (.var rfl rfl) (.cons .symLit .nil) (.objEq .sym))))⟩
+
+/-- `x = 1; unless x.nil? then x + 1 else 0 end` → `Integer`.
+
+    `unless` is `if` with a `!` on the condition — the desugarer does **not** swap the
+    branches, which is the fact the rung exists to pin: tier 12's refinements are keyed to
+    which branch is which, so a desugarer that swapped them and a checker that did not
+    would each be wrong in the opposite direction and the pair would look right. -/
+def r188 : Rung :=
+  ⟨"ctl-unless",
+    .seq [.vasgn .lvar "x" (.int 1),
+          .if' (.send (some (.send (some (.var .lvar "x")) "nil?" [] none)) "!" [] none)
+            (.send (some (.var .lvar "x")) "+" [.int 1] none)
+            (some (.int 0))],
+    .int, [("x", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.last (.if' (.prim (.prim (.var rfl rfl) .nil (.nilQuery .int)) .nil .notBool)
+               (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)
+               .intLit rfl)))⟩
+
+/-- `x = 1; x.zero? ? "zero" : "nonzero"` → `String`. An `if` in expression position, which
+    `Judge.if'` never distinguished from one in statement position — there is no statement
+    grammar here (clink 2). -/
+def r189 : Rung :=
+  ⟨"ctl-ternary",
+    .seq [.vasgn .lvar "x" (.int 1),
+          .if' (.send (some (.var .lvar "x")) "zero?" [] none)
+            (.str "zero") (some (.str "nonzero"))],
+    .cls "String", [("x", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.last (.if' (.prim (.var rfl rfl) .nil .intZeroP) .strLit .strLit rfl)))⟩
+
+/-- `x = nil; x ||= 5; x + 1` → `Integer`.
+
+    `x ||= 5` desugars to `if x then x else x = 5 end`, so it is tier 4's rule and tier
+    12's refinement together — and the **type is the finding**. Without narrowing, the
+    then-branch reads `x` at `NilClass` and the join with the else-branch's `Integer` is
+    `T.any(NilClass, Integer)`, on which `+ 1` does not type. With it, `truthyTy .nilT` is
+    `.never` (Ruby's only falsy values are `nil` and `false`, so a `nil` that tested truthy
+    is unreachable), the then-branch is dead, and `joinT .never .int = .int`. So `x + 1`
+    types — and it types for a reason about Ruby's truthiness, not about `||=`. -/
+def r190 : Rung :=
+  ⟨"ctl-or-assign",
+    .seq [.vasgn .lvar "x" .nil,
+          .if' (.var .lvar "x") (.var .lvar "x") (some (.vasgn .lvar "x" (.int 5))),
+          .send (some (.var .lvar "x")) "+" [.int 1] none],
+    .int, [("x", .int)],
+    .seq (.cons (.vasgn .nilLit)
+      (.cons (.if' (.var rfl rfl) (.var rfl rfl) (.vasgn .intLit) rfl)
+        (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))))⟩
+
+/-- `x = nil; x&.length` → `NilClass`.
+
+    Safe navigation desugars to a temporary plus a `nil?` test — the same shape `case/when`
+    produces (r128) and for the same reason, so it is typed by the same three rules:
+    `vasgnAlias` records `__dt_t1 = x`, `nilQuery` narrows off the temporary, and the
+    refinement lands on **`x`** through the alias.
+
+    Here `x` is statically `nil`, so it is the *else*-branch that is dead: `nonNilTy .nilT`
+    is `.never` and `primNever` types `__dt_t1.length` at `.never` without needing to know
+    anything about `String#length`'s receiver. The whole expression is `NilClass`, which is
+    what CRuby computes. The slice writes `&.` on genuinely nilable receivers
+    (`severity&.to_s&.upcase`), where the else-branch is live — that is the rung this one is
+    the degenerate, already-climbed corner of. -/
+def r191 : Rung :=
+  ⟨"ctl-safe-nav",
+    .seq [.vasgn .lvar "x" .nil,
+          .seq [.vasgn .lvar "__dt_t1" (.var .lvar "x"),
+                .if' (.send (some (.var .lvar "__dt_t1")) "nil?" [] none)
+                  .nil
+                  (some (.send (some (.var .lvar "__dt_t1")) "length" [] none))]],
+    .nilT,
+    [("x", .nilT), ("__dt_t1", .union (.sameAs "x" .nilT) (.sameAs "x" .never))],
+    .seq (.cons (.vasgn .nilLit)
+      (.last (.seq (.cons (.vasgnAlias rfl rfl rfl)
+        (.last (.if' (.prim (.varAlias rfl) .nil (.nilQuery .nilT))
+                 .nilLit
+                 (.primNever (.varAlias rfl) .nil (.inl rfl))
+                 rfl))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2366,7 +2553,8 @@ def rungs : List Rung :=
    r101, r102, r103, r104, r105,
    r109, r110, r111, r112, r113,
    r115, r116, r117, r118, r119, r121, r122, r123,
-   r125, r126, r127, r128, r129, r130, r131, r132, r134]
+   r125, r126, r127, r128, r129, r130, r131, r132, r134,
+   r157, r165, r168, r169, r188, r189, r190, r191]
 
 /-! ## `chk` answers exactly what was derived by hand
 

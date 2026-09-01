@@ -1,0 +1,36 @@
+{
+  "id": "const-assign-read",
+  "tier": 13,
+  "description": "LIMIT = 10; LIMIT + 1 : Int -- the smallest thing a constant is, and the one that says what the tier costs: `casgn` writes a binding the rest of the program reads, so `Judge` needs a constant environment. It cannot be folded into `Env` (locals shadow per-scope and constants do not) and it cannot be a pre-pass table (`chk` would then accept `X + 1; X = 10`, which raises NameError).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "casgn",
+        "LIMIT",
+        [
+          "int",
+          10
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "LIMIT"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

@@ -1,0 +1,59 @@
+{
+  "id": "ctl-or-assign",
+  "tier": 16,
+  "description": "x ||= 5 -- desugars to `x || (x = 5)`, so like `&&`/`||` in tier 2 it is a `seq` and an `if` rather than a send. The interesting part is the type: `x` is `Nil` going in and `Int` coming out, which only works because `joinEnv` is applied to the two branches and the `nil` branch's contribution is the *narrowed* one. Tier 12's `falsyTy` is what makes the answer `Int` rather than `nilable Int`.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "nil"
+        ]
+      ],
+      [
+        "if",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        [
+          "vasgn",
+          "local",
+          "x",
+          [
+            "int",
+            5
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

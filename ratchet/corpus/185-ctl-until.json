@@ -1,0 +1,73 @@
+{
+  "id": "ctl-until",
+  "tier": 16,
+  "description": "`until` -- sugar for `while !cond`, and the rung is here to pin that the desugarer does that rather than emitting a second head.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "i",
+        [
+          "int",
+          0
+        ]
+      ],
+      [
+        "while",
+        [
+          "send",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "i"
+            ],
+            ">=",
+            [
+              [
+                "int",
+                3
+              ]
+            ],
+            null
+          ],
+          "!",
+          [],
+          null
+        ],
+        [
+          "vasgn",
+          "local",
+          "i",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "i"
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "i"
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

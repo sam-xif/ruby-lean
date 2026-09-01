@@ -1,0 +1,1 @@
+"abc".match(/\d+/).nil?

@@ -1,0 +1,48 @@
+{
+  "id": "regexp-last-match",
+  "tier": 15,
+  "description": "if \"v1.2\" =~ /v(\\d+)/ then Regexp.last_match(1) -- the `=~` operator and the **global** match state behind it, 12 sites in `identify.rb`. `Regexp.last_match` is a read of state that a `send` two lines earlier wrote, so it is the one place in the slice where a value's type depends on a side effect rather than on a subterm -- and the honest answer is `nilable String`, narrowed by the `if`.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "send",
+        [
+          "str",
+          "v1.2"
+        ],
+        "=~",
+        [
+          [
+            "regexp_lit",
+            "v(\\d+)",
+            0
+          ]
+        ],
+        null
+      ],
+      [
+        "send",
+        [
+          "const",
+          "Regexp"
+        ],
+        "last_match",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ],
+      [
+        "str",
+        ""
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

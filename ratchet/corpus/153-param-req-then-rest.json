@@ -1,0 +1,70 @@
+{
+  "id": "param-req-then-rest",
+  "tier": 14,
+  "description": "def tag(first, *rest) -- required-then-rest, the split `identify.rb`'s `self.repo_url(*urls)` uses. The rule has to bind the prefix positionally and collect the suffix, so the parameter list stops being a zip and becomes a small match.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "tag",
+        [
+          [
+            "preq",
+            "first"
+          ],
+          [
+            "prest",
+            "rest"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "first"
+          ],
+          "+",
+          [
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "rest"
+              ],
+              "length",
+              [],
+              null
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "tag",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ],
+          [
+            "int",
+            3
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

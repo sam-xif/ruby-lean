@@ -1,0 +1,65 @@
+{
+  "id": "lib-array-push",
+  "tier": 17,
+  "description": "`xs << 1` -- the mutating append, and the rung tier 5 named as an inherited obligation: \"`arrayOf`'s invariance is not yet load-bearing -- there is no rule for `Array#<<`, and the tier that adds one inherits the obligation\". Here it is. The sound rule has to either require the element to match or widen the array's element type *in the environment*, and the second is only possible because the environment threads (clink 2).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "xs",
+        [
+          "array",
+          []
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "xs"
+        ],
+        "<<",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "xs"
+        ],
+        "<<",
+        [
+          [
+            "int",
+            2
+          ]
+        ],
+        null
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "xs"
+        ],
+        "length",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

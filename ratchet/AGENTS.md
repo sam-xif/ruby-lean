@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **`RATCHET OK` — 121 rungs of 136, every recorded target met**
+## Checker status: **129 rungs of 232 — the ladder is no longer climbed, by design**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
@@ -27,20 +27,31 @@ modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` **and its builtin iterato
 (class reopening, `include`/`extend`/`prepend`, `method_missing`), tier 11's cross-products,
 and tier 12's **narrowing** — **121 rungs**.
 
-**The ladder is climbed.** `scripts/run_ratchet.sh` reports `RATCHET OK`: every rung in the
-corpus answers what its recorded target says. The 15 rungs that are *not* climbed are not work
-items and cannot become them without a deliberate decision:
+**The ladder was climbed on 2026-09-01, and the corpus grew the same day** — from 136 rungs to
+**232**, by pointing it at a *target* instead of at the feature list (§2026-09-01: the Homebrew
+slice). Tiers 1–12 are unchanged and still at every recorded target: 121 of their 136 rungs
+climbed, and the 15 that are not are permanent by design (12 `unsafe_program`, 3
+`ty_language_gap`). Tiers **13–19** are the new 96, and 8 of them were already climbed the day
+they were written — so the headline is **129 of 232**, with **81 to climb** and 22 permanent
+negatives.
 
-- **12 permanent negatives** (`unsafe_program`) — programs that really raise
+What that means is different above and below the tier-12 line. Above it a rung isolates a
+feature and a `false` names a missing rule. Below it the corpus is Homebrew's own code, and a
+whole-file `false` says only that *something* in a 1,700-line program is out of the fragment —
+the same shape of answer `homebrew/slice-verdict.md` reaches from the other side (`reject` with
+basis `uncertified`). Tiers 13–17 exist to make that answer decomposable: they are the syntactic
+forms the slice uses and the corpus did not, one rung each, **measured rather than guessed**.
+
+- **19 permanent negatives** (`unsafe_program`) — programs that really raise
   `NoMethodError`/`ArgumentError`/`TypeError`, kept as the soundness regression tests. A `true`
-  on any of them is a bug, not progress.
+  on any of them is a bug, not progress. Seven are new, one per new tier, plus
+  `slice-adversarial` (§Tier 19).
 - **3 `Ty` language gaps**, each naming a specific missing constructor: an optional/rest arity
   spine (`proc-arity-leniency`, `metaprog-method-missing-splat`) and a length-indexed array
-  (`narrow-nilable-and-union`). See §Ty language gaps.
-
-So the headline number can no longer go up without **new corpus rungs**: the next move is more
-Ruby, not more rules. The three gaps above are the obvious sources, and each already has a rung
-written against it.
+  (`narrow-nilable-and-union`). See §Ty language gaps. **The slice asks for all three again**,
+  which is the strongest evidence the ladder has produced that they are real: the length-indexed
+  array is `String#match`'s captures, `arr.first`, and every `a, b = s.split("-")` in
+  `identify.rb`.
 
 **Tier 12 (clinks 13–17, 25, 26) is where `nilable` and `union` stop being write-only.**
 Narrowing lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc` and
@@ -177,6 +188,122 @@ on file in `Ratchet/Rungs.lean` that Lean's kernel checks, plus
 executable checker back to it. And `40` is now the *only* number
 `scripts/run_ratchet.sh` reports, because there is no longer a second, softer way for a
 rung to count: certificates are gone (§Claim-free).
+
+## 2026-09-01: the Homebrew slice — 136 → 232 rungs, tiers 13–19
+
+The instruction: *the ratchet is climbed but it is not good enough. Expand it with the
+syntactic forms in the Homebrew slice files we have not yet covered, then each slice file
+(with realistic main scripts that exercise their contents), and finally the entire linked
+slice.* Three stages, added as **seven new tiers**.
+
+The change of method is the point. Tiers 1–12 were written from a feature list, and
+§Frontier's honest complaint about tier 11 — "a corpus-driven ladder is blind to its own
+cross-products" — generalises: it is also blind to whatever the *target* happens to be
+made of. So tiers 13–19 are written from `homebrew/PLAN.md` §2's slice: `version.rb`,
+`version/parser.rb`, `pkg_version.rb` and `vulns/{semver,cvss,purl,identify,vulnerability}.rb`.
+
+### The syntactic gap, measured
+
+A node-head census of the **linked slice's** desugared AST against every corpus rung's,
+before this pass. Twelve heads (and three parameter kinds) appear in the slice and appeared
+in the corpus **zero times**:
+
+| slice count | head | tier that now covers it |
+|---|---|---|
+| 155 | `cpath` (`A::B`) | 13 |
+| 105 | `kwargs` (call-site keywords) | 14 |
+| 58 | `regexp_lit` | 15 |
+| 54 | `casgn` | 13 |
+| 11 | `next` | 16 |
+| 8 | `pkey` | 14 |
+| 4 | `begin` (rescue/else/ensure) | 16 |
+| 3 | `alias` | 13 |
+| 3 | `splat` | 14 |
+| 2 | `popt` | 14 |
+| 1 | `pkwrest` | 14 |
+| 1 | `while` | 16 |
+
+Plus three that the corpus had but at a rate that hid them: `sym` (299 vs 2), `return`
+(98 vs 2), `flt` (32 vs 1) — and **85 `__as_string` calls**, i.e. string interpolation,
+which is not a head at all and which the corpus contained none of. Tiers 13–17 are one
+rung per form, 85 rungs, ordered so that no rung depends on a form introduced later.
+
+Reproduce the census against the current corpus with the linked program
+(`ratchet/slice/slice-whole.rb`) — the rung *is* the measurement's input.
+
+### What the measurement bought immediately
+
+**Eight of the 85 were already climbed**, with no rule written, and each is a finding
+rather than a freebie (derivations and reasoning: `Ratchet/Rungs.lean`, the tier-13–17
+section):
+
+- `param-block` — `def run(&b)` types today. §Frontier item 11's "the cleared
+  implementation rejects any `def'` using `Param.block`" is **stale**: tier 9b's
+  `callDefBlk`/`paramEnvB` already bind it.
+- `ctl-unless`, `ctl-ternary`, `ctl-or-assign`, `ctl-safe-nav` — all four are sugar, and
+  the desugarer has already turned them into `if`/`seq`/`vasgn`. The last two are the
+  interesting ones: `x ||= 5` types `Integer` rather than `T.nilable(Integer)` *only*
+  because tier 12's `falsyTy .nilT = .never` reads the then-branch as dead, and `x&.length`
+  is clink 17's **aliasing** machinery driven by a temporary nobody wrote by hand.
+- `str-interpolation` — the best of them. `"hello #{name}"` does not desugar to a `to_s`
+  chain; it desugars to a temporary plus `if String === __dt_t1 then __dt_t1 else
+  __dt_t1.__as_string end`. So the rung climbed with **no `__as_string` row at all**:
+  `caseEqQuery` refines the else-branch to `.never`, `primNever` types the send there, and
+  the join is `String`. Its twin `str-interpolation-nonstring` (an `Integer` in the braces)
+  is *not* climbed, because there the else-branch is live — the two sit next to each other
+  in the corpus for that contrast.
+- `sym-literal`, `sym-compare` — the second is a negative finding: `Object#==`'s
+  unconstrained-argument row (tier 2) already covers symbol comparison, so a checker
+  growing a `Symbol#==` row would be adding one it does not need.
+
+### Tiers 18 and 19: the slice files, and the whole slice
+
+Eight per-file rungs and three whole-program ones. Their Ruby is **not** written in
+`scripts/generate_corpus.py`: it is composed by `scripts/build_slice_rungs.py` out of
+Homebrew's own source — boot stubs, then `linker` over the file's require-closure, then a
+driver from `slice/drivers/` — and committed under `slice/*.rb`, so regenerating the corpus
+needs no vendored checkout. Each driver makes **real calls only**; no value is printed that
+the file would not compute.
+
+They are ordered by dependency, which is also roughly by size: `semver.rb` (219 lines
+composed) through `vulnerability.rb` (1,734) to the whole linked slice (2,176). Every one
+of the eleven **runs in the model and agrees with CRuby**, which is the precondition for a
+rung existing at all (§Architecture) and is not free at this size.
+
+Tier 19's three rungs are the same linked program under three drivers, and the pair that
+matters is `slice-whole` (target `true`) and `slice-adversarial` (target **`false`,
+`unsafe_program`**). The second is `homebrew/slice-driver/probes/adversarial-inputs.rb`:
+the same entry points, with only the advisory Hash and the version String varying over
+shapes a caller can actually supply, reaching five type-family raises — four
+`ArgumentError` from `Version.new("")` and two `TypeError` from `Integer#[]` — two of them
+from a *schema-conformant* advisory. So the whole-slice program is type-safe **only under a
+precondition on its inputs**, and having both rungs on the ladder is the sharpest statement
+it makes about what a `validate` verdict does and does not claim.
+
+### One bug found on the way, in the harness rather than the checker
+
+`version/parser.rb` guards with `return if match.blank?` and `return @block.call(version)
+if @block.present?`. The shared boot stub (`rspec_harvest.BLANK_STUB`) is upstream's
+`Object#blank?` alone — `respond_to?(:empty?) ? !!empty? : false` — which is right for
+Array/Hash/String/Symbol and **wrong for `nil`**, which upstream declares blank and the
+stub reports as *present*. With only that row, a non-matching regex reaches `nil.captures`
+and an absent block reaches `nil.call`: `RegexParser#parse` is unusable. It went unnoticed
+because the harvested corpus difftests *agreement*, and both executors were wrong together.
+Fixed for the ratchet's rungs by `build_slice_rungs.py`'s `BLANK_NIL_STUB` (the
+`nil_class`/`false_class` rows, verbatim from upstream), added there rather than in the
+shared harness so the harvested corpus's programs do not change underneath it. That the two
+stub sets now differ is recorded here on purpose.
+
+### Everything this pass found outside the checker is in [`found-issues.md`](found-issues.md)
+
+Six model gates, one silent divergence, two boot-stub bugs and a performance cliff, each
+with a minimal reproducer that was actually run. The headlines: **the model does not
+enforce `sig`s**, so a sorbet-runtime `TypeError` CRuby raises is simply absent (A1) — the
+wrong direction for a reachability argument, on a target that is `# typed: strict`
+everywhere; **`<=>` dispatch from a builtin collection operation** is unmodeled, so
+`Version`s cannot be `sort`ed (B2/B3); and the `blank?` stub bug above is C1. Rungs were
+routed around all of them rather than smoothed over, per §Frontier item 15 — a rung must
+not attach a type to a program the model cannot execute.
 
 ## Semantics status: **imported, and wired up for the covered fragment**
 
@@ -502,8 +629,18 @@ makes an actual constraint, not just a coincidence).
   whose number depends on a live sample is not a ratchet"). Regenerate with
   `python3 scripts/generate_corpus.py`; **never hand-edit the `.json` files**.
   `expect_validate` is a **target**, not necessarily what `validate` answers today —
-  `true` for every rung except the fifteen named in §Permanent negatives, each with a
+  `true` for every rung except the twenty-two named in §Permanent negatives, each with a
   `false_reason` (`"unsafe_program"`/`"ty_language_gap"`) explaining why.
+- **`slice/*.rb`** + **`slice/drivers/*.rb`** + **`scripts/build_slice_rungs.py`** — tiers
+  18 and 19. These eleven rungs' Ruby is **Homebrew's own source**, so it is not written
+  inline in `generate_corpus.py`: `build_slice_rungs.py` composes each one out of boot stubs
+  (imported from `difftest/tiers/tier0/rspec_harvest.py`, plus `BLANK_NIL_STUB` —
+  §2026-09-01), `linker` over the file's require-closure, and a driver from
+  `slice/drivers/`, and writes it to `slice/<name>.rb`. Those composed programs are
+  **committed**, so regenerating the corpus needs nothing; only *re-composing* needs the
+  gitignored `homebrew/vendor/brew` checkout. Run it as
+  `cd ../difftest && PYTHONPATH=.. uv run python ../ratchet/scripts/build_slice_rungs.py`
+  (the difftest venv is where the linker's dependencies live).
 - **`Main.lean`** / **`scripts/run_ratchet.sh`** — the runner. `scripts/run_ratchet.sh`
   does two things in order: the **agreement** gate (next bullet), then the ladder.
   `Main.lean` is the ladder half — it loads every corpus entry, runs `validate`, and
@@ -520,10 +657,10 @@ makes an actual constraint, not just a coincidence).
   exception's (class, message). This is what makes a rung's *type* mean something — a
   program the model executes differently from Ruby is a program whose type is a
   statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
-  disagreement. Currently **114/114 agree**. Needs `uv` and a CRuby; skip with
+  disagreement. Currently **232/232 agree**. Needs `uv` and a CRuby; skip with
   `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `checkrungs`: this compares
   *the model against Ruby* over the whole corpus, `checkrungs` compares *a hand-derived type
-  against the model* over the 13 covered rungs.
+  against the model* over the 129 covered rungs.
 - **`CheckRungs.lean`** / **`scripts/run_check_rungs.sh`** (the `checkrungs` exe) — the evidence
   behind the covered rungs, and the **one file allowed to see both sides**: it imports
   `Ratchet/` *and* `Semantics/`, decodes each rung's JSON twice (once into
@@ -538,15 +675,16 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (12 tiers, 136 rungs, 121 climbed — every target met)
+## The ladder (19 tiers, 232 rungs, 129 climbed)
 
-**Every rung's target is `expect_validate = true`, with exactly fifteen, named
+**Every rung's target is `expect_validate = true`, with exactly twenty-two, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
 this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean`'s
 module docstring for the two reasons a rung is allowed to target `false` at all.
 
 **Every rung also agrees with CRuby**, checked by `scripts/run_agreement.sh` before the
-ladder is reported: 114/114 (§Architecture).
+ladder is reported: 232/232 (§Architecture) — including the eight slice files and the
+2,176-line linked slice.
 
 1. Literals (8 rungs) — all eight climbed.
 2. Arithmetic/string/bool `send`s (20 rungs) — **all 18 non-negative rungs climbed**, via a hardcoded builtin
@@ -677,23 +815,98 @@ ladder is reported: 114/114 (§Architecture).
    provably not certifiable, because `arr[0]`'s `nilable` survives into the else-branch — see
    clink 14's last section.
 
+**Tiers 13-19 are the Homebrew slice** (§2026-09-01), and they are written from the target
+rather than from a feature list. 13-17 are the syntactic forms the slice uses and the corpus
+did not, one rung per form and measured rather than guessed; 18 is the eight files; 19 is the
+whole linked program.
+
+13. **Constants and scoped names (13 rungs).** **0/13.** 928 `const` reads, 155 `cpath`s and
+    54 `casgn`s in the slice; the corpus had `const` only as a class name in `C.new`. What is
+    new is that a constant is a *binding*, so `Judge` needs a constant environment beside
+    `Env` — threaded through `class'`/`module'` bodies rather than a whole-program table,
+    because `M::X` and a bare `X` inside `M` are one binding reached two ways. With it come
+    the class-body definition forms the slice writes constantly: `attr_reader`, `alias`,
+    `private_constant`, and `Object#class` (the inverse of `newInst`: `.inst n _` in,
+    `.clsOf n` out, which is what `self.class.encode` needs). `const-frozen-hash` is the
+    ladder's first concrete demand for a **parameterised hash type** — `cvss.rb` reads every
+    one of its six frozen tables with `fetch` and puts the result into Float arithmetic.
+14. **Parameters and arguments (15 rungs).** **1/15**, and the 1 is the finding
+    (`param-block`, §2026-09-01). §Frontier item 11 has recorded optional/rest/keyword
+    parameters as owed since tier 6; the slice settles it, with **105 `kwargs` nodes** at call
+    sites. Two things are new in kind. First, keyword arguments are matched **by name**, and a
+    missing one raises ArgumentError, which is *in* the type-error family — so unlike a
+    positional arity mismatch this is a soundness obligation (`param-missing-keyword-unsafe`
+    is the control). Second, `arg-splat-call` and `arg-kwsplat-call` are blocked on facts
+    `Ty` cannot state — an array's **length** and a hash's **keys** — which is
+    `narrow-nilable-and-union`'s gap arriving from a third direction. `param-rest`'s finding
+    is the opposite: a `def` is called by name, so the rest *parameter* needs no arity spine
+    at all, and the `ty_language_gap` is only about a callable in a variable.
+15. **Strings, symbols and regexps (19 rungs).** **3/19.** The slice's actual diet: 85
+    interpolations, 58 regexp literals, 299 symbols. `regexp-match-captures` is the hard rung
+    and the one to read — `String#match` answers `MatchData` **or nil** and `MatchData#[]`
+    answers `String` **or nil**, so the program is safe only because the match succeeded, and
+    its permanent-negative twin `regexp-no-match-unsafe` is the same call that fails. The two
+    together force narrowing rather than a blanket answer either way. `regexp-interpolated`
+    settles a design question cheaply: a pattern can be built at runtime (`semver.rb`
+    interpolates four constants into `SEMVER_REGEX`), so a `Regexp` is **opaque** and nothing
+    may be read off its source text. `regexp-gsub-block` is a higher-order row of tier 9c's
+    kind, on the path of every purl the slice emits.
+16. **Control flow beyond `if` (15 rungs).** **4/15**, all four sugar (§2026-09-01). The
+    corpus's whole repertoire was `if`. What the slice adds that is not sugar is
+    `Expr.begin'` — and it is *load-bearing rather than incidental*: `Vulnerability` defines
+    its own `Uncomparable < StandardError` and uses raise/rescue as the **comparison
+    protocol**, so a checker that cannot follow exceptions cannot type the decision core at
+    all (`ctl-raise-custom`, and `ctl-rescue-in-block` for the shape `range_status` actually
+    writes). `ctl-while`'s design question is not the loop but its environment: the body's
+    outgoing environment feeds its own next iteration, so the rule needs a fixed point, and
+    the cheap sound answer is clink 11's rule applied to the loop.
+    `ctl-rescue-wrong-class-unsafe` is the control against reading any `begin` as discharging
+    the type-error family.
+17. **Collections and Comparable (23 rungs).** **0/23**, and mostly *library* rather than
+    language: the builtin call shapes the slice reaches for constantly and the corpus never.
+    `homebrew/README.md` §2 measures the same gap over all of Homebrew (6.4% of 113,610 call
+    sites resolve to nothing we have); these are its slice-sized head. Three items are
+    structural rather than one-more-row: **`lib-array-push`** discharges the obligation tier 5
+    left behind (no rule for `Array#<<`, and `arrayOf`'s invariance becomes load-bearing);
+    **`lib-hash-fetch`** is the slice's single most-used builtin at **62 sites** and cannot be
+    typed at all without a keyed hash; and **`lib-array-zip`/`lib-array-to-h`/
+    `lib-array-partition`** all want a *pair* type, which `arrayOf` cannot express — the
+    element types need not agree. `lib-comparable` is the payoff of tier 10's mixin work,
+    and three of the eight slice files depend on it.
+18. **The eight slice files (8 rungs).** **0/8.** One rung per file: the file, its
+    require-closure, and a driver that exercises its own API. Ordered by dependency, which is
+    also roughly by size — `semver.rb` (219 composed lines, 5 `def`s, no state) is the first
+    plausible whole-file accept and needs only tiers 13, 15, 16 and 17; `version.rb` (1,033
+    lines, nine classes, 63 `def`s, a 30-entry parser table) is the largest.
+    `slice-vulnerability` is the decision core and the last rung before the whole thing.
+19. **The whole linked slice (3 rungs).** **0/3**, and one of the three is a permanent
+    negative. All eight files linked from three entry points (8 spliced, 0 thunked, 0 external
+    requires, 0 cycles) under three drivers: the decision-core demonstration, a 16-input sweep
+    that shows the verdict is genuinely a *function of its inputs*, and
+    `slice-adversarial` — the same program under inputs a caller can supply, which reaches
+    five type-family raises and therefore **must never validate**. `slice-whole` and
+    `slice-adversarial` are the same code; the difference is a precondition on the inputs, and
+    that pair is the ladder's sharpest statement of what a `validate` verdict claims.
+
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-corpus agreement (CRuby vs the Lean semantics): 136/136 agree, 0 disagree
+corpus agreement (CRuby vs the Lean semantics): 232/232 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
-tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 10/22  tier 10: 0/6
-tier 11: 8/10  tier 12: 9/12
+tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 5/6
+tier 11: 8/10  tier 12: 9/12  tier 13: 0/13  tier 14: 1/15  tier 15: 3/19
+tier 16: 4/15  tier 17: 0/23  tier 18: 0/8   tier 19: 0/3
 flagged Ty language gaps: 3 (proc-arity-leniency, metaprog-method-missing-splat,
                              narrow-nilable-and-union)
-rungs where validate differs from the recorded target: 0
+hand-authored derivations on file: 129
+rungs where validate differs from the recorded target: 81
 ```
 
-All 121 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 129 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 121/121 of those cross-checked against the real
+(also run inline by `run_ratchet.sh`): 129/129 of those cross-checked against the real
 semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 92/92
 negative controls rejected.
 
@@ -704,11 +917,11 @@ Three numbers, and they move for different reasons:
   work to do, and a rung targeting `false` that answers `true` is a soundness bug.
 - **"flagged Ty language gaps"** should stay flat unless `Ty.lean`'s grammar itself grows
   (§Ty language gaps) — not something `chk` alone can move.
-- **"124/124 agree" should never move.** A disagreement there is a bug in the model or the
+- **"232/232 agree" should never move.** A disagreement there is a bug in the model or the
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
-## Permanent negatives (15 rungs, and only these 15 by design)
+## Permanent negatives (22 rungs, and only these 22 by design)
 
 Every other rung targets `true`. These don't, each for one of the two reasons
 `Ratchet/Corpus.lean` names (`false_reason`). Tier 11 added three: `xc-block-retypes-capture`
@@ -720,15 +933,30 @@ which exist to constrain a capability that does not exist yet: the first is cert
 narrowing rule that refines the two branches the wrong way round, the second by any rule that
 treats `nilable T` as `T` without a guard.
 
-- **`unsafe_program`** — the program genuinely raises `NoMethodError`/
+**Tiers 13-19 added seven**, one per new tier plus the whole-slice probe, and each is the
+control for the *specific* wrong generalisation its tier invites:
+`const-string-arith-unsafe` (a checker that gave every constant `.any` rather than its
+initialiser's type — tempting, because the slice's constants are tables);
+`param-arity-unsafe` and `param-missing-keyword-unsafe` (counting arguments instead of
+matching them by name — ArgumentError is *in* the family, so this is soundness);
+`regexp-no-match-unsafe` (`String#match` typed `MatchData` rather than nilable, whose safe
+twin `regexp-match-captures` the checker must also accept);
+`ctl-rescue-wrong-class-unsafe` (reading any `begin` as discharging the family);
+`lib-array-first-nil-unsafe` (`Array#first` typed non-nilable, the named-accessor twin of
+tier 12's `narrow-absent-unsafe`); and **`slice-adversarial`**, the whole linked slice
+under adversarial inputs, which is the only one of the 19 that is a real program rather
+than a written-to-fail one.
+
+- **`unsafe_program`** (19 rungs) — the program genuinely raises `NoMethodError`/
   `ArgumentError`/`TypeError` when run:
   `bad-plus` (`1 + true`), `unknown-method` (`5.foo_bar_baz` — a made-up method, unlike
   the real `5.zero?` its sibling `unmodeled-builtin-zero-p` uses),
   `fun-wrong-arity`, `fun-body-mismatch`, `fun-unknown-call`, plus tier 9's
   `block-bad-arith` (`[1,2].each { |x| x + "a" }` — TypeError inside a block body,
   which the block wrapper must not launder) and `lambda-arity-mismatch`
-  (`->(x){x}.call(1, 2)` — ArgumentError, because lambda arity is strict). A sound `chk` must never
-  say `true` for any of these — they are the soundness regression tests.
+  (`->(x){x}.call(1, 2)` — ArgumentError, because lambda arity is strict), and the seven
+  above. A sound `chk` must never say `true` for any of these — they are the soundness
+  regression tests.
 - **`ty_language_gap`** (3 rungs) — `metaprog-method-missing-splat`, tier 9's
   `proc-arity-leniency`, and tier 12's `narrow-nilable-and-union` (retargeted at clink 24; it
   was recorded as a demand on narrowing and is really a demand on `arrayOf` carrying a
@@ -847,6 +1075,45 @@ assumes that version didn't have, plus everything tiers 7–10 need beyond it:
   idiomatic splat-arity version doesn't validate yet regardless.
 
 ## Frontier
+
+**The order changed on 2026-09-01.** Items 0-16 below were written when the corpus was a
+feature list; the corpus is now a *target* (§2026-09-01), and the target ranks the work
+differently. The ranking that matters is **how many of tier 18's eight files a capability
+unblocks**, and by that measure:
+
+- **A. A parameterised `Hash` type.** `Hash#fetch` is **62 sites** in the slice — its most
+  used builtin — and every one of `cvss.rb`'s seven metric lookups is a `fetch` into a
+  frozen constant table whose result goes straight into Float arithmetic. Tier 5 left
+  `Hash` as the bare `.cls "Hash"`, so `fetch` can only be `.any` and `cvss.rb` cannot be
+  typed at all. Unblocks tier 13's `const-frozen-hash`, most of tier 17, and `cvss.rb`.
+- **B. A constant environment (tier 13).** Nothing in the slice is written without it: 928
+  `const` reads and 155 `cpath`s. It is a prerequisite for every file, and it is not hard —
+  the design question is only that it must be scope-threaded rather than a whole-program
+  table.
+- **C. Keyword parameters and arguments (tier 14).** 105 `kwargs` nodes, and the one place
+  where getting it wrong is *unsound* rather than imprecise (a missing required keyword is
+  an ArgumentError). `purl.rb`'s constructor is unreachable without it.
+- **D. `Regexp` as an opaque `.cls` plus the `String` rows (tier 15).** Cheap — most of the
+  rows are total `String -> String` — and it is `semver.rb`'s and `identify.rb`'s whole
+  diet. `String#match`'s nilable result is the one hard part, and tier 12 already has the
+  narrowing to consume it.
+- **E. `begin`/`rescue` (tier 16).** Not error handling in this target: `Vulnerability`
+  raises and rescues its own `Uncomparable` as the *comparison protocol*, so the decision
+  core is untypeable without it.
+- **F. A pair/tuple type.** `zip`, `to_h`, `partition`, `rpartition` and every
+  `a, b = ...` in the slice want one, and `arrayOf` cannot express it because the element
+  types need not agree. This is a **fourth independent demand on the `Ty` grammar**, beside
+  the three already flagged in §Ty language gaps, and it is the first one the ladder found
+  by pointing at a target rather than by writing a rung.
+- **G. The length-indexed array** (§Ty language gaps, already flagged). The slice asks for
+  it three more ways: `arr.first`, `MatchData#[]` after a successful match, and
+  `a, b = s.split("-")`.
+
+`semver.rb` is the cheapest whole-file target — it needs B, D and E and nothing else — and
+it is the rung to aim the next pass at.
+
+The original list, kept because its per-item reasoning is still the record of why each tier
+cost what it did:
 
 The full climb, in roughly the order that costs least to unlock the most:
 

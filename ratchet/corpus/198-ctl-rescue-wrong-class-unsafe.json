@@ -1,0 +1,45 @@
+{
+  "id": "ctl-rescue-wrong-class-unsafe",
+  "tier": 16,
+  "description": "An UNSAFE program: the body raises TypeError and the handler only catches ArgumentError, so the TypeError escapes. The control that keeps `rescue` from being read as \"and therefore nothing raises\" -- a checker that treated any `begin` as discharging the type-error family would certify it, and that is the natural wrong generalisation of the `ctl-rescue` rule. Permanent negative target.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "begin",
+      [
+        "send",
+        [
+          "int",
+          1
+        ],
+        "+",
+        [
+          [
+            "str",
+            "a"
+          ]
+        ],
+        null
+      ],
+      [
+        [
+          [
+            [
+              "const",
+              "ArgumentError"
+            ]
+          ],
+          null,
+          [
+            "int",
+            0
+          ]
+        ]
+      ],
+      null,
+      null
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

@@ -1,0 +1,113 @@
+{
+  "id": "ctl-break",
+  "tier": 16,
+  "description": "`break if x == 3` -- `Expr.brk`, which ends the *call* rather than the iteration, so unlike `next` it contributes to the type of the `each` send itself. Two heads, two rules, and the difference between them is the rung.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "int",
+          0
+        ]
+      ],
+      [
+        "send",
+        [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "int",
+              2
+            ],
+            [
+              "int",
+              3
+            ],
+            [
+              "int",
+              4
+            ]
+          ]
+        ],
+        "each",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "seq",
+            [
+              "if",
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ],
+                "==",
+                [
+                  [
+                    "int",
+                    3
+                  ]
+                ],
+                null
+              ],
+              [
+                "break",
+                null
+              ],
+              null
+            ],
+            [
+              "vasgn",
+              "local",
+              "s",
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "s"
+                ],
+                "+",
+                [
+                  [
+                    "var",
+                    "local",
+                    "x"
+                  ]
+                ],
+                null
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "s"
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

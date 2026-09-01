@@ -1,0 +1,110 @@
+{
+  "id": "param-shorthand-kwarg",
+  "tier": 14,
+  "description": "build(type:, name:) at the *call site* -- Ruby 3.1's shorthand for `type: type`. Pure sugar, and the desugarer expands it (this is `implicit_node`, the single gate that stood between the front end and 61% vs 97% of Homebrew -- `homebrew/README.md` \u00a71). The rung exists to pin that it really is expanded, so no checker rule is owed.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "build",
+        [
+          [
+            "pkey",
+            "type",
+            null
+          ],
+          [
+            "pkey",
+            "name",
+            null
+          ]
+        ],
+        [
+          "send",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "type"
+            ],
+            "+",
+            [
+              [
+                "str",
+                "/"
+              ]
+            ],
+            null
+          ],
+          "+",
+          [
+            [
+              "var",
+              "local",
+              "name"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "type",
+        [
+          "str",
+          "brew"
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "name",
+        [
+          "str",
+          "x"
+        ]
+      ],
+      [
+        "send",
+        null,
+        "build",
+        [
+          [
+            "kwargs",
+            [
+              [
+                [
+                  "sym",
+                  "type"
+                ],
+                [
+                  "var",
+                  "local",
+                  "type"
+                ]
+              ],
+              [
+                [
+                  "sym",
+                  "name"
+                ],
+                [
+                  "var",
+                  "local",
+                  "name"
+                ]
+              ]
+            ]
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

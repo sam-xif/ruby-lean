@@ -1,0 +1,72 @@
+{
+  "id": "param-block",
+  "tier": 14,
+  "description": "def run(&b) -- the block parameter as a *declared* parameter rather than an out-of-band one. Tier 9b already types `&b` (`callDefBlk` puts the block in `paramEnvB`); what this rung adds is that `Param.block` is a parameter kind the `def'` rule must accept rather than refuse, which `Frontier` item 11 records it refusing. `version/parser.rb`'s `initialize(regex, &block)` is the slice's use.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "run",
+        [
+          [
+            "pblock",
+            "b"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "b"
+          ],
+          "call",
+          [
+            [
+              "int",
+              2
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "run",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "*",
+            [
+              [
+                "int",
+                3
+              ]
+            ],
+            null
+          ]
+        ]
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

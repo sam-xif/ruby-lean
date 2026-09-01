@@ -1,0 +1,113 @@
+{
+  "id": "ctl-next",
+  "tier": 16,
+  "description": "`next if x == 2` inside an `each` block -- 11 sites in the slice, and the idiom `identify.rb`'s two `each` loops are built out of. `Expr.nxt` ends the block's *iteration*, so the block's result type is the join of its normal exit and every `next`, which is `bodyResult`'s problem from tier 9b in a new position.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "int",
+          0
+        ]
+      ],
+      [
+        "send",
+        [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "int",
+              2
+            ],
+            [
+              "int",
+              3
+            ],
+            [
+              "int",
+              4
+            ]
+          ]
+        ],
+        "each",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [],
+          [],
+          [
+            "seq",
+            [
+              "if",
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ],
+                "==",
+                [
+                  [
+                    "int",
+                    2
+                  ]
+                ],
+                null
+              ],
+              [
+                "next",
+                null
+              ],
+              null
+            ],
+            [
+              "vasgn",
+              "local",
+              "s",
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "s"
+                ],
+                "+",
+                [
+                  [
+                    "var",
+                    "local",
+                    "x"
+                  ]
+                ],
+                null
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "s"
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

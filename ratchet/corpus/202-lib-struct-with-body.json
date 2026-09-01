@@ -1,0 +1,103 @@
+{
+  "id": "lib-struct-with-body",
+  "tier": 17,
+  "description": "The same with a **block** defining extra methods -- `RangeStatus`'s `affected?`/ `fixed?` exactly. The block body is a class body, so the checker has to judge it in a `self` typed as the class it is in the middle of manufacturing.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "casgn",
+        "Status",
+        [
+          "send",
+          [
+            "const",
+            "Struct"
+          ],
+          "new",
+          [
+            [
+              "sym",
+              "state"
+            ],
+            [
+              "kwargs",
+              [
+                [
+                  [
+                    "sym",
+                    "keyword_init"
+                  ],
+                  [
+                    "true"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          [
+            "block",
+            [],
+            [],
+            [],
+            [
+              "def",
+              "affected?",
+              [],
+              [
+                "send",
+                [
+                  "vcall",
+                  "state"
+                ],
+                "==",
+                [
+                  [
+                    "sym",
+                    "affected"
+                  ]
+                ],
+                null
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Status"
+          ],
+          "new",
+          [
+            [
+              "kwargs",
+              [
+                [
+                  [
+                    "sym",
+                    "state"
+                  ],
+                  [
+                    "sym",
+                    "affected"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          null
+        ],
+        "affected?",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

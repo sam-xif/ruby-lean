@@ -1133,6 +1133,880 @@ R("narrow-absent-unsafe", 12,
   expect_validate=False, false_reason="unsafe_program")
 
 
+# ===========================================================================
+# Tiers 13-19: the Homebrew slice
+#
+# Everything above this line is Ruby written *for* the ladder, one feature per
+# rung. Everything below it is driven by a **target**: the eight files of
+# `homebrew/PLAN.md` §2 -- Homebrew's version + vulnerability stack, the slice
+# that already runs in the model at 351/355 harvested spec examples and as one
+# linked 2,159-line program (`homebrew/slice-driver/`).
+#
+# The ordering is the same one the ladder has used throughout, applied to a
+# corpus nobody here chose: **tiers 13-17 are the syntactic forms the slice uses
+# and the corpus did not**, one rung per form, measured rather than guessed (a
+# node-head census of the linked slice's desugared AST against every corpus
+# rung's -- see `../AGENTS.md` §The syntactic gap); **tier 18 is the eight files
+# themselves**, each with a driver that exercises its own API; **tier 19 is the
+# whole linked slice**. So the ladder now ends where the target does, and the
+# gap between "we type this feature" and "we type this program" is a tier
+# boundary rather than a research question.
+# ===========================================================================
+
+# --- Tier 13: constants and scoped names -----------------------------------
+#
+# 928 `const` reads, 155 `cpath`s and 54 `casgn`s in the linked slice; the
+# corpus had `const` (as a class name in `C.new`) and neither of the others.
+# What is new is that a constant is a *binding* -- `casgn` writes one, `cpath`
+# reads one out of a namespace -- so the checker needs a constant environment
+# beside `Env`, and it has to be threaded through `class'`/`module'` bodies
+# rather than being a whole-program table, because `M::X` and a bare `X` inside
+# `M` are the same binding reached two ways.
+
+R("const-assign-read", 13,
+  "LIMIT = 10; LIMIT + 1 : Int -- the smallest thing a constant is, and the one that "
+  "says what the tier costs: `casgn` writes a binding the rest of the program reads, so "
+  "`Judge` needs a constant environment. It cannot be folded into `Env` (locals shadow "
+  "per-scope and constants do not) and it cannot be a pre-pass table (`chk` would then "
+  "accept `X + 1; X = 10`, which raises NameError).",
+  "LIMIT = 10\nLIMIT + 1\n", expect_validate=True)
+
+R("const-in-class", 13,
+  "A constant declared in a class body and read from an instance method -- the shape "
+  "`vulns/cvss.rb` uses for all six of its metric tables. The read is a bare `const` "
+  "node with no path, so resolving it needs the *enclosing* declaration, which is what "
+  "makes the constant environment scope-threaded rather than flat.",
+  "class Box\n  SIZE = 3\n\n  def size\n    SIZE\n  end\nend\n\nBox.new.size\n",
+  expect_validate=True)
+
+R("const-scoped-read", 13,
+  "M::X -- the `cpath` node, 155 of them in the slice. Ruby has no member-access "
+  "syntax for constants: `cpath` is its own head with an optional base expression, so "
+  "this is not a `send` and no `PrimSig` row can reach it.",
+  'module M\n  X = 5\nend\n\nM::X + 1\n', expect_validate=True)
+
+R("const-scoped-nested", 13,
+  "Outer::Inner::Y -- a `cpath` whose base is another `cpath`, which is how every name "
+  "in the slice is spelled (`Homebrew::Vulns::Semver`). The rule has to be recursive in "
+  "its base, and the base's type is a namespace rather than a value: `Ty.clsOf` covers "
+  "a class object, and a module used purely as a namespace is the same thing (tier 8).",
+  'module Outer\n  module Inner\n    Y = "deep"\n  end\nend\n\nOuter::Inner::Y\n',
+  expect_validate=True)
+
+R("const-scoped-class-ref", 13,
+  "M::Box.new(7).get -- a `cpath` in *receiver* position, resolving to a class object "
+  "that is then allocated. This is the join between tier 13 and tier 7: `newInst` reads "
+  "the class off the receiver's `Ty.clsOf`, so it needs `cpath` to produce one, and "
+  "every `Purl.new`/`Version.new` in the slice is this shape.",
+  'module M\n  class Box\n    def initialize(v)\n      @v = v\n    end\n\n    def get\n'
+  '      @v\n    end\n  end\nend\n\nM::Box.new(7).get\n', expect_validate=True)
+
+R("const-scoped-assign", 13,
+  "M::X = 4 -- `cpath_asgn`, the write half. Rare in the slice (a constant is normally "
+  "written from inside its own namespace) but the constructor exists in `Expr` and the "
+  "read rule is unsound without it: a checker that treats the constant environment as "
+  "fixed after the declaration bodies run is wrong about this program.",
+  'module M\nend\n\nM::X = 4\nM::X + 1\n', expect_validate=True)
+
+R("const-frozen-array", 13,
+  'NAMES = ["a", "b"].freeze; NAMES[0] -- the shape of every table in the slice '
+  "(`BASE_METRICS`, `TAG_PATTERNS`, `LOWERCASE_PATH_HOSTS`). Two demands: `Object#freeze` "
+  "returns the receiver at the receiver's own type, and the constant's type is the "
+  "*initialiser's* type, which is where constant inference differs from a local -- there "
+  "is one assignment, so there is a principal type and no join.",
+  'NAMES = ["a", "b"].freeze\nNAMES[0]\n', expect_validate=True)
+
+R("const-frozen-hash", 13,
+  "The same for a hash. Notable because tier 5 left `Hash` unparameterised (`.cls "
+  '"Hash"`), so `TABLE["a"]` is `.any` -- and the slice reads its frozen tables with '
+  "`fetch`, whose result then flows into arithmetic (`cvss.rb`'s `AV.fetch(...)` is a "
+  "Float). A `Hash` with no key/value parameters cannot type that chain, which is the "
+  "first concrete demand for a parameterised hash type in the whole ladder.",
+  'TABLE = { "a" => 1, "b" => 2 }.freeze\nTABLE["a"]\n', expect_validate=True)
+
+R("const-private-constant", 13,
+  "`private_constant :SECRET` -- 30 sites in the slice, on essentially every constant "
+  "it declares. It is an ordinary implicit-self `send` in a class body whose *effect* is "
+  "on the constant environment, so the checker either models it (and rejects an "
+  "out-of-scope read) or ignores it (and is merely imprecise). Ignoring it is sound; the "
+  "rung is here to make that a decision rather than an oversight.",
+  'class Box\n  SECRET = 1\n  private_constant :SECRET\n\n  def get\n    SECRET\n  end\n'
+  'end\n\nBox.new.get\n', expect_validate=True)
+
+R("const-attr-reader", 13,
+  "`attr_reader :x, :y` -- the slice's other definition form (14 sites), and one the "
+  "ladder has never had: a method that exists because a *call in a class body* created "
+  "it. Tier 10 taught the checker that `define_method` does this; `attr_reader` is the "
+  "same move with a fixed body (return the ivar of the same name), so the rule is a row "
+  "in the class-body interpretation rather than anything new in `Judge`.",
+  'class Point\n  attr_reader :x, :y\n\n  def initialize(x, y)\n    @x = x\n    @y = y\n'
+  '  end\nend\n\nPoint.new(1, 2).x + Point.new(1, 2).y\n', expect_validate=True)
+
+R("const-alias", 13,
+  "`alias length size` -- three sites in the slice (`Purl#eql?`, `PkgVersion#eql?`, "
+  "`Version#eql?`, all aliasing `==`). A second name for one method table entry; the "
+  "MRO list from clink 23 already has the shape this needs, so the rung is small on "
+  "purpose -- it is here because `alias'` is a head the corpus never emitted.",
+  'class Box\n  def size\n    3\n  end\n  alias length size\nend\n\nBox.new.length\n',
+  expect_validate=True)
+
+R("const-class-of-const", 13,
+  "M::Box.new.class.to_s -- `Object#class`, 11 sites in the slice, and the one place "
+  "`Ty.clsOf` is produced by an *expression* rather than by naming a class. It is the "
+  "inverse of `newInst`: `.inst n _` in, `.clsOf n` out. `purl.rb` needs it "
+  "(`self.class.encode`) to reach a singleton method from an instance method.",
+  'module M\n  class Box\n  end\nend\n\nM::Box.new.class.to_s\n', expect_validate=True)
+
+R("const-string-arith-unsafe", 13,
+  'An UNSAFE program: SIZE = "3"; SIZE + 1 really raises TypeError. The control for '
+  "constant *inference* -- a checker that gave every constant `.any` rather than its "
+  "initialiser's type would certify it, and `.any` is the tempting shortcut here "
+  "precisely because the slice's constants are tables. Permanent negative target.",
+  'SIZE = "3"\nSIZE + 1\n', expect_validate=False, false_reason="unsafe_program")
+
+# --- Tier 14: parameters and arguments -------------------------------------
+#
+# The ladder has only ever had required positional parameters (`preq`), and
+# `Frontier` item 11 has recorded the rest as owed since tier 6. The slice
+# settles it: 8 `pkey`, 2 `popt`, 3 `prest`, 1 `pkwrest`, and **105 `kwargs`
+# nodes at call sites**. Keyword arguments are not a corner of this target, they
+# are how it is written.
+
+R("param-optional", 14,
+  "def greet(name, greeting = \"hi\") -- the optional parameter. `Judge.callDef` types a "
+  "body once per call-site argument shape, so an optional parameter is not one signature "
+  "with a hole: it is *two* shapes, and the default's own type is judged in the "
+  "environment of the parameters to its left. Both call shapes appear here so the rung "
+  "cannot be climbed by handling only one.",
+  'def greet(name, greeting = "hi")\n  greeting + " " + name\nend\n\n'
+  'greet("a") + greet("a", "yo")\n', expect_validate=True)
+
+R("param-optional-uses-earlier", 14,
+  "def pad(s, n = s.length) -- the default *reads an earlier parameter*, which is what "
+  "makes \"judge the default in the environment of the parameters to its left\" a real "
+  "premise rather than a formality. Ruby evaluates defaults left to right at call time, "
+  "so `paramEnv` has to be built incrementally.",
+  'def pad(s, n = s.length)\n  n\nend\n\npad("abc")\n', expect_validate=True)
+
+R("param-rest", 14,
+  "def total(*ns) -- the rest parameter, bound to an `Array` of the remaining arguments. "
+  "This is half of the `ty_language_gap` that `proc-arity-leniency` and "
+  "`metaprog-method-missing-splat` have flagged since tier 9: the *value* side is easy "
+  "(`arrayOf` of the join of the extra arguments' types), and the gap is in describing "
+  "the arity, which only matters for a callable in a variable. A `def` is called by name, "
+  "so this rung needs no arity spine at all -- which is the finding.",
+  'def total(*ns)\n  ns.inject(0) { |a, b| a + b }\nend\n\ntotal(1, 2, 3) + total()\n',
+  expect_validate=True)
+
+R("param-req-then-rest", 14,
+  "def tag(first, *rest) -- required-then-rest, the split `identify.rb`'s "
+  "`self.repo_url(*urls)` uses. The rule has to bind the prefix positionally and collect "
+  "the suffix, so the parameter list stops being a zip and becomes a small match.",
+  'def tag(first, *rest)\n  first + rest.length\nend\n\ntag(1, 2, 3)\n',
+  expect_validate=True)
+
+R("param-keyword", 14,
+  "def build(type:, name:) -- the required keyword parameter, and the corresponding "
+  "`kwargs` node at the call site. This is `purl.rb`'s constructor exactly. Arguments "
+  "stop being positional: the call's `kwargs` entries have to be matched to parameters "
+  "**by name**, and a missing one is an ArgumentError, which is in the type-error family "
+  "-- so unlike a positional arity mismatch this is a soundness obligation the checker "
+  "must discharge, not a convenience.",
+  'def build(type:, name:)\n  type + "/" + name\nend\n\nbuild(type: "brew", name: "x")\n',
+  expect_validate=True)
+
+R("param-keyword-default", 14,
+  "def build(name:, version: nil) -- an optional keyword, whose default is `nil`, whose "
+  "body then *narrows* it. The rung where tier 12 and tier 14 meet: the parameter's type "
+  "at a call site that omits it is `Nil`, at one that supplies it is `String`, and only "
+  "per-call-site instantiation makes both precise. A checker with one signature per "
+  "method would have to type it `nilable String` in both.",
+  'def build(name:, version: nil)\n  version.nil? ? name : name + "@" + version\nend\n\n'
+  'build(name: "x") + build(name: "x", version: "1")\n', expect_validate=True)
+
+R("param-kwrest", 14,
+  "def opts(**kw) -- the keyword-rest parameter, bound to a `Hash`. Same shape as "
+  "`param-rest` and the same finding, with tier 5's unparameterised `Hash` now the "
+  "binding constraint: `kw[\"a\"]` can only be `.any` until a hash type carries its "
+  "keys. `version.rb`'s `self.detect(url, **specs)` is this.",
+  'def opts(**kw)\n  kw["a"].nil? ? 0 : 1\nend\n\nopts(a: 1)\n', expect_validate=True)
+
+R("param-block", 14,
+  "def run(&b) -- the block parameter as a *declared* parameter rather than an "
+  "out-of-band one. Tier 9b already types `&b` (`callDefBlk` puts the block in "
+  "`paramEnvB`); what this rung adds is that `Param.block` is a parameter kind the "
+  "`def'` rule must accept rather than refuse, which `Frontier` item 11 records it "
+  "refusing. `version/parser.rb`'s `initialize(regex, &block)` is the slice's use.",
+  'def run(&b)\n  b.call(2)\nend\n\nrun { |x| x * 3 }\n', expect_validate=True)
+
+R("arg-splat-call", 14,
+  "add(*xs) -- a `splat` in *argument* position. The dual of `param-rest`, and the "
+  "harder direction: the callee's arity is known and the caller's argument *count* is "
+  "not, because it is the length of an array. `arrayOf` carries an element type and no "
+  "length (the same fact `narrow-nilable-and-union` is a `ty_language_gap` for), so a "
+  "sound rule must either reject this or find the length another way.",
+  'def add(a, b)\n  a + b\nend\n\nxs = [1, 2]\nadd(*xs)\n', expect_validate=True)
+
+R("arg-splat-array-literal", 14,
+  "[1, *xs, 4] -- a splat inside an array literal, which `elemTy` has to join *through*: "
+  "the spliced elements contribute `xs`'s element type, not `xs`'s type. Unlike the call "
+  "form this needs no length, which is why it is a separate rung from `arg-splat-call`.",
+  'xs = [2, 3]\nys = [1, *xs, 4]\nys.length\n', expect_validate=True)
+
+R("arg-kwsplat-call", 14,
+  "build(**kw) -- the `kwsplat` entry kind in a `kwargs` node. Same problem as the "
+  "positional splat and worse: the hash's *keys* decide which parameters are bound, and "
+  "tier 5's `Hash` type does not carry them, so a sound checker cannot tell whether the "
+  "required keywords are all present.",
+  'def build(type:, name:)\n  type + "/" + name\nend\n\nkw = { type: "brew", name: "x" }\n'
+  'build(**kw)\n', expect_validate=True)
+
+R("param-shorthand-kwarg", 14,
+  "build(type:, name:) at the *call site* -- Ruby 3.1's shorthand for `type: type`. "
+  "Pure sugar, and the desugarer expands it (this is `implicit_node`, the single gate "
+  "that stood between the front end and 61% vs 97% of Homebrew -- `homebrew/README.md` "
+  "§1). The rung exists to pin that it really is expanded, so no checker rule is owed.",
+  'def build(type:, name:)\n  type + "/" + name\nend\n\ntype = "brew"\nname = "x"\n'
+  'build(type:, name:)\n', expect_validate=True)
+
+R("param-all-kinds", 14,
+  "def f(a, b = 2, *rest, c:, d: 4, **kw, &blk) -- every parameter kind in one "
+  "signature, called with only the two arguments that are required. The cross-product "
+  "rung for this tier: each kind above has a rule, and the ordering constraints between "
+  "them (positional prefix, then rest, then keywords in any order, then the block) are "
+  "only visible when they are all present at once.",
+  'def f(a, b = 2, *rest, c:, d: 4, **kw, &blk)\n'
+  '  [a, b, rest.length, c, d, kw.length, blk.nil?].length\nend\n\nf(1, c: 3)\n',
+  expect_validate=True)
+
+R("param-arity-unsafe", 14,
+  "An UNSAFE program: `def f(a); end; f(1, 2)` really raises ArgumentError, which is in "
+  "the type-error family. The control that keeps positional arity a *checked* premise -- "
+  "the ladder has never had a rung where a `def` call could get the count wrong, because "
+  "before this tier every parameter was required and every call site literal.",
+  'def f(a)\n  a\nend\n\nf(1, 2)\n', expect_validate=False, false_reason="unsafe_program")
+
+R("param-missing-keyword-unsafe", 14,
+  "An UNSAFE program: `build(type: \"brew\")` against `def build(type:, name:)` raises "
+  "ArgumentError (\"missing keyword: :name\"). The control for keyword matching being "
+  "by name: a checker that only counted arguments certifies it, and counting is exactly "
+  "what the positional rule does. Permanent negative target.",
+  'def build(type:, name:)\n  type + name\nend\n\nbuild(type: "brew")\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+# --- Tier 15: strings, symbols and regexps ---------------------------------
+#
+# 85 `__as_string` calls (string interpolation), 58 `regexp_lit`s and 299 `sym`s
+# in the linked slice, against 0, 0 and 2 in the corpus. This tier is the
+# slice's actual *diet*: `identify.rb` is a table of regexes, `semver.rb` builds
+# its grammar by interpolating four constants into one, and every `to_s` in the
+# whole stack ends in an interpolation.
+
+R("str-interpolation", 15,
+  '"hello #{name}" -- the desugarer expands interpolation into `__as_string` calls and a '
+  "concatenation, so this is *not* a new `Expr` node; what is new is the `__as_string` "
+  "row itself, which is total (every object answers `to_s`) and returns `String`. Total "
+  "and unconstrained, so it is the cleanest new `PrimSig` row on the ladder.",
+  'name = "world"\n"hello #{name}"\n', expect_validate=True)
+
+R("str-interpolation-nonstring", 15,
+  '"n = #{n + 1}" over an Integer -- the point of the previous rung, made unavoidable: '
+  "the interpolated subterm has a non-String type and the result is a String anyway. A "
+  "checker that typed interpolation as `String#+` would reject it.",
+  'n = 3\n"n = #{n + 1}"\n', expect_validate=True)
+
+R("str-interpolation-in-method", 15,
+  '"#{Box.new(2)}" where Box defines its own `to_s` -- interpolation *dispatches*. This '
+  "is `pkg_version.rb`'s `\"#{version}_#{revision}\"` exactly, and it is why "
+  "`__as_string` cannot be a plain builtin row: on a user instance it has to reach the "
+  "class's own `to_s` through the MRO, and fall back to the default only if there is none.",
+  'class Box\n  def initialize(v)\n    @v = v\n  end\n\n  def to_s\n    "Box(#{@v})"\n'
+  '  end\nend\n\n"#{Box.new(2)}"\n', expect_validate=True)
+
+R("sym-literal", 15,
+  "s = :affected; s.to_s.length -- `Ty.sym` has existed since the port and two rungs "
+  "have used it. The slice uses 299, as the vocabulary of its state machine "
+  "(`:affected`/`:fixed`/`:not_applicable`, `:critical`/`:high`/`:medium`/`:low`), so "
+  "the tier starts by pinning `Symbol#to_s`.",
+  "s = :affected\ns.to_s.length\n", expect_validate=True)
+
+R("sym-compare", 15,
+  "s == :high -- comparing symbols, which is how every one of the slice's state tests is "
+  "written. Already covered by `Object#==`'s unconstrained-argument row (tier 2), and "
+  "the rung is here to say so: a checker that grew a `Symbol#==` row would be adding one "
+  "it does not need.",
+  "s = :high\ns == :high\n", expect_validate=True)
+
+R("str-percent-w", 15,
+  "%w[a b c] -- a word array, five sites in the slice (`BASE_METRICS`, "
+  "`SUPPORTED_PREFIXES`). Sugar for an array of string literals, so like "
+  "`param-shorthand-kwarg` the rung's content is that the desugarer has already dealt "
+  "with it.",
+  '%w[a b c].length\n', expect_validate=True)
+
+R("regexp-match-p", 15,
+  '"1.2.3".match?(/\\A\\d+(\\.\\d+)*\\z/) -- `regexp_lit`, the head, and the cheapest '
+  "eliminator: `String#match?` is total and returns `Bool`. That makes it the right "
+  "first rung of the regexp story, because it needs a type for a `Regexp` value and "
+  "nothing else -- `Ty` has no `Regexp`, so this rung's whole demand is one `.cls` row.",
+  '"1.2.3".match?(/\\A\\d+(\\.\\d+)*\\z/)\n', expect_validate=True)
+
+R("regexp-match-captures", 15,
+  'm = "1.2.3".match(/(\\d+)\\.(\\d+)/); m[1] + m[2] -- `String#match` answers a '
+  "`MatchData` **or nil**, and `MatchData#[]` answers a `String` or nil. So the honest "
+  "type is `nilable`, twice over, and this program is safe only because the match "
+  "succeeds -- which no `Ty` here can say. Expect this to be the tier's hard rung: it is "
+  "`narrow-nilable-and-union`'s problem in the slice's own idiom, and `semver.rb`, "
+  "`identify.rb` and `pkg_version.rb` all write it.",
+  'm = "1.2.3".match(/(\\d+)\\.(\\d+)/)\nm[1] + "-" + m[2]\n', expect_validate=True)
+
+R("regexp-match-nil", 15,
+  '"abc".match(/\\d+/).nil? -- the safe half of the previous rung: the `nilable` is '
+  "consumed by `nil?` rather than by an index. Tier 12's narrowing already handles the "
+  "shape; what is new is that the nilable comes out of a builtin's *return* type rather "
+  "than out of `Array#[]`.",
+  '"abc".match(/\\d+/).nil?\n', expect_validate=True)
+
+R("regexp-sub", 15,
+  '"v1.2.3".sub(/\\Av/, "") -- `String#sub`, seven sites in the slice and the exact call '
+  "`vulnerability.rb`'s `normalize_version` makes on every version string that enters "
+  "the decision core. Total, `String` in and `String` out, whether or not it matched.",
+  '"v1.2.3".sub(/\\Av/, "")\n', expect_validate=True)
+
+R("regexp-gsub", 15,
+  '"a_b_c".gsub(/_/, "-") -- `String#gsub`, eight sites. Same row shape as `sub`; the '
+  "pair is two rungs rather than one because the slice uses both and a table with one of "
+  "them is a table that was written from a rung rather than from the target.",
+  '"a_b_c".gsub(/_/, "-")\n', expect_validate=True)
+
+R("regexp-gsub-block", 15,
+  '"abc".gsub(/[abc]/) { |c| c.upcase } -- `gsub` with a **block**, which is a '
+  "higher-order `PrimSig` row of exactly the kind tier 9c introduced for the iterators: "
+  "the block is called with a `String` and its result must be one. `purl.rb`'s `encode` "
+  "and `identify.rb`'s `decode` are both this, and both are on the path of every purl the "
+  "slice emits.",
+  '"abc".gsub(/[abc]/) { |c| c.upcase }\n', expect_validate=True)
+
+R("regexp-split", 15,
+  '"a/b/c".split("/") -- six sites in the slice. Returns `arrayOf String`, which is the '
+  "first builtin on the ladder whose return type is a *parameterised* array rather than "
+  "the receiver or an element of it.",
+  '"a/b/c".split("/").length\n', expect_validate=True)
+
+R("regexp-interpolated", 15,
+  "re = /\\A#{seg}\\z/ -- a regexp literal built by **interpolation**, which is how "
+  "`semver.rb` writes `SEMVER_REGEX` (four interpolated constants) and `identify.rb` "
+  "writes its per-forge patterns (`Regexp.escape(host)` spliced into a pattern). The "
+  "consequence for the checker is that a `regexp_lit`'s source is not always static, so "
+  "nothing can be read off the pattern text -- a `Regexp` is opaque, which is the "
+  "conservative answer and, this rung argues, the right one.",
+  'seg = "\\\\d+"\nre = /\\A#{seg}\\z/\n"12".match?(re)\n', expect_validate=True)
+
+R("regexp-extended-flag", 15,
+  "A `/x`-flagged multi-line regexp -- `regexp_lit`'s second field is its option bits, "
+  "and `semver.rb`, `identify.rb` and `version.rb` all use `/x` (and `/i`, and `/n`) to "
+  "keep their patterns readable. The rung pins that the options survive the desugarer, "
+  "because a `/x` pattern read without them matches nothing.",
+  're = /\n  \\A\n  \\d+\n  \\z\n/x\n"12".match?(re)\n', expect_validate=True)
+
+R("regexp-last-match", 15,
+  'if "v1.2" =~ /v(\\d+)/ then Regexp.last_match(1) -- the `=~` operator and the '
+  "**global** match state behind it, 12 sites in `identify.rb`. `Regexp.last_match` is a "
+  "read of state that a `send` two lines earlier wrote, so it is the one place in the "
+  "slice where a value's type depends on a side effect rather than on a subterm -- and "
+  "the honest answer is `nilable String`, narrowed by the `if`.",
+  'if "v1.2" =~ /v(\\d+)/\n  Regexp.last_match(1)\nelse\n  ""\nend\n',
+  expect_validate=True)
+
+R("str-methods", 15,
+  "s.strip.downcase.tr(\"_\", \"-\").delete_prefix(\"f\") -- the String chain, four rows "
+  "at once, all total and all `String -> String`. Written as one rung rather than four "
+  "because that is how the slice writes them (`semver.rb`'s `parse` opens with "
+  "`version.strip.delete_prefix(\"v\").delete_prefix(\"V\").match(...)`), and because a "
+  "chain is where a wrong return type shows up immediately.",
+  's = "  Foo_Bar  "\ns.strip.downcase.tr("_", "-").delete_prefix("f")\n',
+  expect_validate=True)
+
+R("str-start-with", 15,
+  '"CVE-2026-1".start_with?("CVE-") -- the predicate `vulnerability.rb#cve_ids` filters '
+  "on. A nullary-total-query row with an argument, so it extends tier 2's shape rather "
+  "than adding one.",
+  '"CVE-2026-1".start_with?("CVE-")\n', expect_validate=True)
+
+R("regexp-no-match-unsafe", 15,
+  'An UNSAFE program: `"abc".match(/(\\d+)/)[1]` really raises NoMethodError, because '
+  "`match` answers nil when it does not match. The control for `String#match`'s return "
+  "being `nilable` rather than `MatchData` -- and the sharpest one on this tier, because "
+  "the *safe* twin (`regexp-match-captures`) is a program the checker must also accept, "
+  "so the two together force the narrowing rather than a blanket answer either way. "
+  "Permanent negative target.",
+  'm = "abc".match(/(\\d+)/)\nm[1]\n', expect_validate=False, false_reason="unsafe_program")
+
+# --- Tier 16: control flow beyond `if` -------------------------------------
+#
+# The corpus's whole control repertoire was `if`. The slice adds 11 `next`s, a
+# `while`, 4 `begin` (rescue/else/ensure) blocks and 98 `return`s -- and the
+# `begin`s are load-bearing rather than incidental: `Vulnerability` defines its
+# own `Uncomparable < StandardError` and uses raise/rescue as the *control flow*
+# of the comparison itself.
+
+R("ctl-while", 16,
+  "A `while` loop accumulating into a local -- `Expr.while'`, a head the corpus never "
+  "emitted. The design question is not the loop but its **environment**: the body's "
+  "outgoing environment feeds its own next iteration, so the rule needs a fixed point, "
+  "and the cheap sound answer (require the body to preserve every local's type, i.e. "
+  "clink 11's rule applied to the loop) is what this rung is here to force a decision on.",
+  "i = 0\nn = 0\nwhile i < 3\n  n = n + i\n  i = i + 1\nend\nn\n", expect_validate=True)
+
+R("ctl-until", 16,
+  "`until` -- sugar for `while !cond`, and the rung is here to pin that the desugarer "
+  "does that rather than emitting a second head.",
+  "i = 0\nuntil i >= 3\n  i = i + 1\nend\ni\n", expect_validate=True)
+
+R("ctl-next", 16,
+  "`next if x == 2` inside an `each` block -- 11 sites in the slice, and the idiom "
+  "`identify.rb`'s two `each` loops are built out of. `Expr.nxt` ends the block's "
+  "*iteration*, so the block's result type is the join of its normal exit and every "
+  "`next`, which is `bodyResult`'s problem from tier 9b in a new position.",
+  "s = 0\n[1, 2, 3, 4].each do |x|\n  next if x == 2\n  s = s + x\nend\ns\n",
+  expect_validate=True)
+
+R("ctl-break", 16,
+  "`break if x == 3` -- `Expr.brk`, which ends the *call* rather than the iteration, so "
+  "unlike `next` it contributes to the type of the `each` send itself. Two heads, two "
+  "rules, and the difference between them is the rung.",
+  "s = 0\n[1, 2, 3, 4].each do |x|\n  break if x == 3\n  s = s + x\nend\ns\n",
+  expect_validate=True)
+
+R("ctl-unless", 16,
+  "`unless x.nil? ... else ... end` -- sugar for `if` with the branches swapped, and the "
+  "rung matters because of **narrowing**: tier 12's refinements are keyed to which "
+  "branch is which, so a desugarer that swaps them and a checker that does not both "
+  "produce a wrong answer, in opposite directions.",
+  "x = 1\nunless x.nil?\n  x + 1\nelse\n  0\nend\n", expect_validate=True)
+
+R("ctl-ternary", 16,
+  'x.zero? ? "zero" : "nonzero" -- an `if` in expression position, and the shape the '
+  "slice writes its short branches in. Nothing new for `Judge`; the rung is the control "
+  "that says so.",
+  'x = 1\nx.zero? ? "zero" : "nonzero"\n', expect_validate=True)
+
+R("ctl-or-assign", 16,
+  "x ||= 5 -- desugars to `x || (x = 5)`, so like `&&`/`||` in tier 2 it is a `seq` and "
+  "an `if` rather than a send. The interesting part is the type: `x` is `Nil` going in "
+  "and `Int` coming out, which only works because `joinEnv` is applied to the two "
+  "branches and the `nil` branch's contribution is the *narrowed* one. Tier 12's "
+  "`falsyTy` is what makes the answer `Int` rather than `nilable Int`.",
+  "x = nil\nx ||= 5\nx + 1\n", expect_validate=True)
+
+R("ctl-safe-nav", 16,
+  "x&.length -- the safe-navigation operator, which the slice uses on every nilable it "
+  "does not want to narrow by hand (`severity&.to_s&.upcase`, `namespace&.downcase`). It "
+  "desugars to a temp plus an `if`, so it is narrowing again -- and this time the "
+  "narrowing is *generated by the desugarer*, which is the cleanest possible test of "
+  "clink 12's finding that refinement needs an aliasing story rather than a syntactic one.",
+  'x = nil\nx&.length\n', expect_validate=True)
+
+R("ctl-rescue", 16,
+  "A method body with a `rescue` clause and a typed exception binding -- `Expr.begin'`, "
+  "a head the corpus never emitted, and the def-body form (no explicit `begin`) that the "
+  "slice uses. Three demands: the body's type joins with the handler's, the bound "
+  "variable `e` enters the handler's environment at the rescued class's type, and a "
+  "`raise` is `Ty.never` so it contributes nothing to the join.",
+  'def parse(s)\n  raise ArgumentError, "bad" if s.empty?\n  s.length\n'
+  'rescue ArgumentError => e\n  e.message.length\nend\n\nparse("") + parse("ab")\n',
+  expect_validate=True)
+
+R("ctl-begin-rescue-else-ensure", 16,
+  "All four clauses of `begin` at once. `else` runs only when the body did not raise and "
+  "`ensure` runs on every path and contributes *nothing* to the value -- two facts a "
+  "checker gets wrong in opposite directions if it treats the four clauses uniformly.",
+  'log = []\nbegin\n  v = 1\nrescue StandardError\n  log << "rescue"\nelse\n'
+  '  log << "else"\nensure\n  log << "ensure"\nend\nlog.length\n', expect_validate=True)
+
+R("ctl-raise-custom", 16,
+  "A user-defined `Uncomparable < StandardError`, raised and rescued -- "
+  "`vulnerability.rb`'s own control flow, verbatim in miniature: `semver_compare!` "
+  "raises it when two versions are incomparable and three callers rescue it to mean "
+  "\"skip this range\". So exceptions here are not error handling, they are the "
+  "*comparison protocol*, and a checker that cannot follow them cannot type the decision "
+  "core at all.",
+  'class Uncomparable < StandardError\nend\n\ndef cmp(a)\n  raise Uncomparable if a.nil?\n'
+  '  1\nrescue Uncomparable\n  0\nend\n\ncmp(nil) + cmp(1)\n', expect_validate=True)
+
+R("ctl-rescue-in-block", 16,
+  "A `rescue` clause **inside a block body**, with `next` as the handler -- the shape "
+  "`range_status` uses in its innermost loop (`rescue Uncomparable; next`). It is the "
+  "cross-product of this tier with tier 9's blocks, and it is where the block's result "
+  "type has three contributors rather than two.",
+  "s = 0\n[1, 0, 2].each do |d|\n  s = s + (10 / d)\nrescue ZeroDivisionError\n  next\n"
+  "end\ns\n", expect_validate=True)
+
+R("ctl-return-early", 16,
+  "`return d if a.empty?` -- the guard clause, in a method with a *value* after it. "
+  "Already the subject of `narrow-guard-clause` (tier 12); this rung is the plain "
+  "control-flow half of it, without the narrowing, so the two can be climbed "
+  "independently and the `.ret`-in-statement-position rule can be justified once.",
+  'def first_or(a, d)\n  return d if a.empty?\n  a[0]\nend\n\nfirst_or([], 9) + first_or([1], 9)\n',
+  expect_validate=True)
+
+R("ctl-case-when-string", 16,
+  "`case t when \"pypi\" ... else ... end` -- the dispatch `purl.rb#normalize` and "
+  "`identify.rb#registry_package` are both written as. `case/when` desugars to a temp "
+  "plus a chain of `===` sends against that temp, which is clink 12's finding "
+  "(narrowing cannot be a syntactic rewrite) arriving from the target rather than from "
+  "a hand-written rung -- and with `String#===` rather than `Module#===`, so it needs no "
+  "refinement at all, only a join.",
+  'def kind(t)\n  case t\n  when "pypi" then "python"\n  when "gem" then "ruby"\n'
+  '  else "other"\n  end\nend\n\nkind("gem") + kind("x")\n', expect_validate=True)
+
+R("ctl-rescue-wrong-class-unsafe", 16,
+  "An UNSAFE program: the body raises TypeError and the handler only catches "
+  "ArgumentError, so the TypeError escapes. The control that keeps `rescue` from being "
+  "read as \"and therefore nothing raises\" -- a checker that treated any `begin` as "
+  "discharging the type-error family would certify it, and that is the natural wrong "
+  "generalisation of the `ctl-rescue` rule. Permanent negative target.",
+  'begin\n  1 + "a"\nrescue ArgumentError\n  0\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+# --- Tier 17: the collection and Comparable idioms -------------------------
+#
+# The last syntactic tier, and the one that is mostly *library*: the builtin
+# call shapes the slice reaches for constantly and the corpus reached for
+# never. `homebrew/README.md` §2 measures the same gap over all of Homebrew
+# (6.4% of 113,610 call sites resolve to nothing we have, 1,020 distinct names);
+# these are that gap's slice-sized head.
+
+R("lib-comparable", 17,
+  "`include Comparable` plus a `<=>`, and the five operators it manufactures. Three of "
+  "the eight slice files do exactly this (`Version`, `PkgVersion`, `Version::Token`), and "
+  "it is the payoff of tier 10's mixin work: `Comparable` is a module in the MRO whose "
+  "methods are *defined in terms of a method the including class supplies*, so typing "
+  "`r < s` means dispatching to `Comparable#<`, whose body calls the receiver's own "
+  "`<=>`. Nothing new in `Judge`; everything in the prelude the checker reads.",
+  'class Rev\n  include Comparable\n\n  def initialize(n)\n    @n = n\n  end\n\n'
+  '  def n\n    @n\n  end\n\n  def <=>(other)\n    n <=> other.n\n  end\nend\n\n'
+  'r = Rev.new(1)\ns = Rev.new(2)\n[r < s, r > s, r.between?(r, s), r.clamp(r, s).n].length\n',
+  expect_validate=True)
+
+R("lib-spaceship-int", 17,
+  "`1 <=> 2` -- the builtin row underneath the previous rung. Returns `Integer`, and on "
+  "mismatched types returns **nil**, which is why `pkg_version.rb`'s `<=>` is declared "
+  "`T.nilable(Integer)` and why every caller in the slice checks. One row; two rungs, "
+  "because the mixin and the primitive fail independently.",
+  "(1 <=> 2) + (2 <=> 1)\n", expect_validate=True)
+
+R("lib-struct-kwinit", 17,
+  "`Struct.new(:state, :fixed_in, keyword_init: true)` -- a class **manufactured by a "
+  "call**, assigned to a constant, with readers and a keyword constructor. This is "
+  "`Vulnerability::RangeStatus` and `Identify::RegistryPackage`, i.e. the type the whole "
+  "decision core *returns*. Tier 10's `define_method` is the precedent; what is new is "
+  "that the class itself, not just a method, comes from a runtime call, so the class "
+  "table has an entry no `class'` node produced.",
+  'Status = Struct.new(:state, :fixed_in, keyword_init: true)\n'
+  's = Status.new(state: :affected, fixed_in: "1.0")\ns.state == :affected\n',
+  expect_validate=True)
+
+R("lib-struct-with-body", 17,
+  "The same with a **block** defining extra methods -- `RangeStatus`'s `affected?`/ "
+  "`fixed?` exactly. The block body is a class body, so the checker has to judge it in "
+  "a `self` typed as the class it is in the middle of manufacturing.",
+  'Status = Struct.new(:state, keyword_init: true) do\n  def affected?\n'
+  '    state == :affected\n  end\nend\n\nStatus.new(state: :affected).affected?\n',
+  expect_validate=True)
+
+R("lib-hash-fetch", 17,
+  "`h.fetch(\"a\")` and `h.fetch(\"b\", 0)` -- **62 sites** in the slice, the single most "
+  "used builtin in it. Two rows, and the difference is the point: one-argument `fetch` "
+  "raises KeyError on a miss (outside the type-error family, so it is safe by this "
+  "ladder's reading) and two-argument `fetch` is total. Both return the value type, "
+  "which tier 5's unparameterised `Hash` cannot name -- so this rung is the strongest "
+  "demand in the corpus for a keyed hash type.",
+  'h = { "a" => 1 }\nh.fetch("a") + h.fetch("b", 0)\n', expect_validate=True)
+
+R("lib-hash-dig", 17,
+  'h.dig("pkg", "name") -- eight sites. `dig` walks and answers nil at any miss, so its '
+  "result is `nilable`; `vulnerability.rb#affected_entry_relevant?` then narrows it in "
+  "the same expression (`if (ecosystem = aff.dig(...)) && ...`).",
+  'h = { "pkg" => { "name" => "x" } }\nh.dig("pkg", "name")\n', expect_validate=True)
+
+R("lib-hash-key-p", 17,
+  'h.key?("a") -- the guard `cvss.rb#valid_values?` is eight copies of. Total, `Bool`.',
+  'h = { "a" => 1 }\nh.key?("a")\n', expect_validate=True)
+
+R("lib-array-push", 17,
+  "`xs << 1` -- the mutating append, and the rung tier 5 named as an inherited "
+  "obligation: \"`arrayOf`'s invariance is not yet load-bearing -- there is no rule for "
+  "`Array#<<`, and the tier that adds one inherits the obligation\". Here it is. The "
+  "sound rule has to either require the element to match or widen the array's element "
+  "type *in the environment*, and the second is only possible because the environment "
+  "threads (clink 2).",
+  "xs = []\nxs << 1\nxs << 2\nxs.length\n", expect_validate=True)
+
+R("lib-array-queries", 17,
+  "`any?`/`all?` with a block, `include?`, `empty?` -- the four predicates, in one rung "
+  "because they share a row shape (higher-order for the first two, total for the last "
+  "two) and all four appear in `cvss.rb#parse` alone.",
+  "xs = [1, 2, 3]\n[xs.any? { |x| x > 2 }, xs.all? { |x| x > 0 }, xs.include?(2), xs.empty?].length\n",
+  expect_validate=True)
+
+R("lib-array-first-last", 17,
+  "`xs.first` / `xs.last` -- `nilable elem`, for the same reason `Array#[]` is (tier 5), "
+  "and worth its own rung because the slice calls them on arrays it has just checked are "
+  "non-empty, which is the narrowing-by-length case `Ty` has no vocabulary for.",
+  "xs = [1, 2, 3]\nxs.first + xs.last\n", expect_validate=True)
+
+R("lib-array-uniq-compact", 17,
+  "`compact.uniq` -- and `compact` is the interesting half: it takes `arrayOf (nilable "
+  "T)` to `arrayOf T`, so it is the one builtin in the slice that *removes* a nilable "
+  "rather than introducing or consuming one.",
+  "[1, 1, nil, 2].compact.uniq.length\n", expect_validate=True)
+
+R("lib-array-flat-map", 17,
+  "`flat_map` -- `fixed_versions` is two nested ones. A higher-order row whose result "
+  "type is the block's *element* type, which is a third answer beside tier 9c's three "
+  "(`map`'s block return, `each`'s receiver, `select`'s element).",
+  "[[1, 2], [3]].flat_map { |a| a }.length\n", expect_validate=True)
+
+R("lib-array-filter-map", 17,
+  "`filter_map` -- `arrayOf` of the **non-nil part** of the block's return type, which "
+  "makes it the eliminator twin of `compact` and a fourth distinct higher-order answer. "
+  "`fix_urls` and `fixed_versions` both use it.",
+  "[1, 2, 3].filter_map { |x| x > 1 ? x : nil }.length\n", expect_validate=True)
+
+R("lib-array-find", 17,
+  "`find` -- `nilable elem`, because there may be no match. `advisory_url` is "
+  "`references.find { ... }&.dig(\"url\")`, i.e. this rung composed with safe navigation "
+  "and `dig`, so all three have to answer nilable for that one line to type.",
+  '[1, 2, 3].find { |x| x > 1 }\n', expect_validate=True)
+
+R("lib-array-partition", 17,
+  "`a, b = xs.partition { ... }` -- a block-taking builtin returning a **pair**, "
+  "destructured by a multiple assignment. Two new things at once: a tuple-shaped result "
+  "(which `arrayOf` cannot describe, since the two halves are the same type here but "
+  "need not be) and `masgn`.",
+  "a, b = [1, 2, 3, 4].partition { |x| x.even? }\na.length + b.length\n",
+  expect_validate=True)
+
+R("lib-array-zip", 17,
+  '[1, 2].zip(["a", "b"]) -- `arrayOf (arrayOf (union Int String))` under the current '
+  "type language, which is *sound and useless*: the real answer is an array of pairs. "
+  "`semver.rb#compare_prerelease` uses `zip` with a block and relies on the pairing, so "
+  "this is where the ladder's array type stops being expressive enough for the target.",
+  '[1, 2].zip(["a", "b"]).length\n', expect_validate=True)
+
+R("lib-array-join", 17,
+  '["a", "b"].join("/") -- total, `String`. `purl.rb#to_s` builds every namespace with '
+  "it.",
+  '["a", "b"].join("/")\n', expect_validate=True)
+
+R("lib-array-each-with-index", 17,
+  "`each_with_index` with a two-parameter block -- the block's parameters have "
+  "*different* types (element, `Integer`), which tier 9's iterator rows never needed: "
+  "`inject` has two parameters but both come from the same place.",
+  "s = 0\n[10, 20].each_with_index do |v, i|\n  s = s + v + i\nend\ns\n",
+  expect_validate=True)
+
+R("lib-array-to-h", 17,
+  '[["a", 1]].to_h -- an array of pairs to a Hash, which `cvss.rb#parse` uses with a '
+  "block to build its metric table. The inverse of the `zip` problem and blocked on the "
+  "same missing pair type.",
+  '[["a", 1]].to_h["a"]\n', expect_validate=True)
+
+R("lib-array-sort-by-max-by", 17,
+  "`sort_by` and `max_by` -- tier 9 has `sort_by`; `max_by` is its `nilable`-returning "
+  "sibling (nil on an empty receiver), and `range_status` ends with "
+  "`past_fixes.max_by { |v| Version.new(v) }` feeding a field that is declared nilable "
+  "for exactly that reason.",
+  'xs = ["bbb", "a", "cc"]\nxs.sort_by { |s| s.length }.first + xs.max_by { |s| s.length }\n',
+  expect_validate=True)
+
+R("lib-array-wrap", 17,
+  "`Array(x)` -- **20 sites**, and `Vulnerability#initialize` is nine of them in nine "
+  "consecutive lines. It is a *conversion*: nil becomes `[]`, an array passes through, "
+  "anything else is wrapped. So its result type is a three-way case on the argument's "
+  "type, which is the first builtin row on the ladder that has to inspect its argument's "
+  "type rather than constrain it.",
+  "Array(nil).length + Array([1, 2]).length + Array(3).length\n", expect_validate=True)
+
+R("lib-multiple-assign", 17,
+  'a, b = "x-1".split("-") -- `masgn` over an array of unknown length, which is how '
+  "`identify.rb` reads every `rpartition`/`partition` result. Each target gets `nilable "
+  "elem` on the honest reading, and the program is safe only because the split yields "
+  "two -- the length problem again, now in assignment position.",
+  'a, b = "x-1".split("-")\na + b\n', expect_validate=True)
+
+R("lib-array-first-nil-unsafe", 17,
+  "An UNSAFE program: `[].first + 1` really raises NoMethodError. The control for "
+  "`Array#first` being `nilable` -- the same shape as tier 12's `narrow-absent-unsafe` "
+  "but on the named accessor rather than on `#[]`, because a checker can plausibly get "
+  "one right and the other wrong. Permanent negative target.",
+  "xs = []\nxs.first + 1\n", expect_validate=False, false_reason="unsafe_program")
+
+
+# --- Tiers 18 and 19: the slice files themselves ----------------------------
+#
+# These rungs' Ruby is not written here: it is `slice/<name>.rb`, composed by
+# `scripts/build_slice_rungs.py` out of Homebrew's own source (boot stubs +
+# `linker` over the file's require-closure + a driver from `slice/drivers/`).
+# The composition needs the vendored `homebrew/vendor/brew` checkout, which is
+# gitignored; the *composed* programs are committed, so regenerating the corpus
+# does not. See that script's docstring.
+
+SLICE_DIR = os.path.join(RATCHET_DIR, "slice")
+
+
+def RS(id_, tier, description, slice_name, *, expect_validate, false_reason=None):
+    """A rung whose Ruby is `slice/<slice_name>.rb`."""
+    path = os.path.join(SLICE_DIR, f"{slice_name}.rb")
+    if not os.path.isfile(path):
+        raise SystemExit(
+            f"{id_}: missing {path} -- run scripts/build_slice_rungs.py first")
+    R(id_, tier, description, open(path).read(),
+      expect_validate=expect_validate, false_reason=false_reason)
+
+
+# --- Tier 18: the eight slice files, one rung each --------------------------
+#
+# Each rung is one slice file plus its require-closure plus a **driver** that
+# exercises that file's own API with real calls -- no value is printed that the
+# file would not compute. They are ordered by dependency, which is also roughly
+# by size (219 lines to 1,734), so the tier is itself a ladder: `semver.rb` is a
+# module of four pure class methods and `version.rb` is nine classes and a
+# 30-entry parser table.
+#
+# What a rung means here is different from every tier above it. Above, a rung
+# isolates a feature and `validate` answering `false` names a missing rule.
+# Here `validate` answers `false` because *some* subterm somewhere is out of the
+# fragment, and the useful question stops being yes/no -- which is the ratchet's
+# own version of the finding `homebrew/slice-verdict.md` reaches from the other
+# side (`reject` with basis `uncertified`, and the metric that replaces it is
+# per-method-body). Expect these to stay `false` for a long time; they are the
+# demand list the tiers above are ordered to serve.
+
+RS("slice-semver", 18,
+   "`vulns/semver.rb` + a driver over SemVer 2.0 §11: 18 ordered pairs, seven spec "
+   "violations that must answer nil, and a sort. The smallest slice file (5 `def`s, one "
+   "module, no state) and therefore the first whole-file target: it needs tier 13's "
+   "constants and `private_constant`, tier 15's interpolated `/x` regexp and "
+   "`match`/`match?`/`strip`/`delete_prefix`, tier 16's guard `return`s, and tier 17's "
+   "`fetch`/`zip`/`empty?` -- and nothing else. If any file on this ladder is accepted "
+   "first, it is this one.",
+   "semver", expect_validate=True)
+
+RS("slice-cvss", 18,
+   "`vulns/cvss.rb` + a driver over the FIRST specification's own worked examples, every "
+   "severity-band boundary, and eight malformed vectors that must answer nil rather than "
+   "raise. Seven `def`s, six frozen `Hash` constants, and the slice's only **Float** "
+   "arithmetic -- `**`, `round`, and the Appendix A Roundup. The binding constraint is "
+   "tier 17's `Hash#fetch`: every one of the seven metric lookups is a `fetch` into a "
+   "constant table, and `Ty`'s unparameterised `Hash` cannot say the result is a Float.",
+   "cvss", expect_validate=True)
+
+RS("slice-purl", 18,
+   "`vulns/purl.rb` + a driver over construction, per-type normalisation, "
+   "percent-encoding and structural equality. The slice's smallest *class*: an "
+   "`initialize` with four keyword parameters (two optional), `attr_reader`, an `alias`, "
+   "a `case/when` on a String, `self.class` dispatch from an instance method, and a "
+   "`gsub` with a block. So it is tiers 13, 14, 15 and 16 in one 90-line file, which is "
+   "what makes it the right second target.",
+   "purl", expect_validate=True)
+
+RS("slice-version-parser", 18,
+   "`version/parser.rb` + a driver over the parser hierarchy. The slice's one piece of "
+   "classical OO -- an `abstract!` base, `RegexParser` holding a regexp and an optional "
+   "block, and two subclasses that differ only in `process_spec`. Tier 7's `super`, tier "
+   "10's mixin ancestry and tier 14's `&block` parameter, over a receiver whose method "
+   "is found three classes up. Also the file that exposed the boot-stub gap the ratchet "
+   "had to close: with only `Object#blank?` stubbed, `nil.blank?` is *false* and "
+   "`RegexParser#parse` is unusable -- see `scripts/build_slice_rungs.py`'s "
+   "`BLANK_NIL_STUB`.",
+   "version-parser", expect_validate=True)
+
+RS("slice-version", 18,
+   "`version.rb` + a driver over the token hierarchy, the ordering it induces, and "
+   "`Version.detect` across ten source-URL shapes. The largest file in the slice: nine "
+   "classes, 63 `def`s, a 30-entry `VERSION_PARSERS` table built by interpolating six "
+   "regexp fragments into each other, and the `<=>` that the whole vulnerability "
+   "decision rests on whenever an advisory range is `ECOSYSTEM`-typed. Everything below "
+   "this rung in the tier is a proper part of what it needs.",
+   "version", expect_validate=True)
+
+RS("slice-pkg-version", 18,
+   "`pkg_version.rb` + a driver over parsing, the composite ordering, the `Comparable` "
+   "operators and the `Forwardable` delegation. Only 8 `def`s, but it is the tier's "
+   "**mixin** rung: `include Comparable` and `extend Forwardable` in one class, plus a "
+   "`delegate` DSL call that manufactures five methods -- tier 17's `lib-comparable` and "
+   "tier 13's `attr_reader` are the two isolated capabilities it composes, over the "
+   "whole of `version.rb` underneath.",
+   "pkg-version", expect_validate=True)
+
+RS("slice-identify", 18,
+   "`vulns/identify.rb` + a driver over 40 real source URLs: ten forge shapes, eight tag "
+   "patterns, fourteen package registries, and the near-misses that must *not* match. "
+   "The most regexp-dense file in the slice (14 patterns, several interpolated, one "
+   "`/x`), plus `Struct.new(keyword_init: true)`, `Regexp.last_match`, and a `case/when` "
+   "with fourteen arms over a String. Tier 15 and tier 17 together, at the density the "
+   "target actually writes them.",
+   "identify", expect_validate=True)
+
+RS("slice-vulnerability", 18,
+   "`vulns/vulnerability.rb` (with `version.rb`) + a driver over a structurally faithful "
+   "OSV advisory: every field reader, `range_status` at eleven boundary versions, the "
+   "`ECOSYSTEM` path, `affects_version?`, `fix_available?`, and the end-to-end verdict a "
+   "user would be told. The slice's decision core and the last rung before the whole "
+   "thing: 28 `def`s, a `T::Struct`, a `Struct.new` with a body, a user-defined "
+   "`StandardError` used as *control flow*, and two lambdas selected by the advisory's "
+   "own `type` field -- which is the finding the slice exists to make legible, since the "
+   "two lambdas implement two different version orderings.",
+   "vulnerability", expect_validate=True)
+
+# --- Tier 19: the whole linked slice ----------------------------------------
+#
+# All eight files, linked into one program by `linker` from the three entry
+# points that reach them, with a driver on top. This is where the ladder ends:
+# there is no larger rung to write against this target, and `validate`'s verdict
+# on `slice-whole` is the number the whole exercise is for.
+
+RS("slice-whole", 19,
+   "**The whole slice, as one program.** All eight files linked from `pkg_version.rb`, "
+   "`vulns/vulnerability.rb` and `vulns/identify.rb` (8 spliced, 0 thunked, 0 external "
+   "requires, 0 cycles), driven by `homebrew/slice-driver/driver.rb`: an OSV advisory "
+   "with a `SEMVER` range and an `ECOSYSTEM` range over the same package, ten installed "
+   "versions through `range_status`, the two orderings compared on the pairs where they "
+   "differ, CVSS scoring, purl construction and six source URLs identified. ~2,180 lines. "
+   "The driver is referenced rather than copied -- it is the demonstration "
+   "`homebrew/slice-driver/` already runs, now also a rung.",
+   "slice-whole", expect_validate=True)
+
+RS("slice-input-sweep", 19,
+   "The same linked program, driven by a **sweep of generated inputs**: 16 versions "
+   "through one advisory carrying both a `SEMVER` and an `ECOSYSTEM` range, reported as "
+   "a histogram (`{affected: 8, fixed: 4, not_applicable: 4, none: 0, raised: 0}`). One "
+   "output line, and it is the one that says the verdict is genuinely "
+   "**input-dependent** rather than constant -- which is what makes typing this program "
+   "a statement about a function rather than about a constant folding. Narrowed from "
+   "`probes/input-sweep.rb`'s 64 inputs to fit the agreement gate's 10-second budget; "
+   "the cost per input is the probe's own finding and stays recorded there.",
+   "slice-input-sweep", expect_validate=True)
+
+RS("slice-adversarial", 19,
+   "**An UNSAFE program, and the ladder's last word.** The same linked slice, driven by "
+   "`probes/adversarial-inputs.rb`: the real `range_status`/`affects_version?` entry "
+   "points, with only the advisory Hash and the version String varying over shapes a "
+   "caller can actually supply. It reaches five type-family raises -- four "
+   "`ArgumentError` from `Version.new("")` and two `TypeError` from `Integer#[]` -- and "
+   "two of them come from a *schema-conformant* advisory. So the whole-slice program is "
+   "type-safe only under a precondition on its inputs, and this rung is the permanent "
+   "negative that says so: certifying it would be unsound, and the sibling `slice-whole` "
+   "rung is the same code under inputs that satisfy the precondition. That pair is the "
+   "sharpest statement on the ladder of what a `validate` verdict does and does not "
+   "claim. (One row of the upstream probe is dropped -- a sorbet-runtime `T.let` failure "
+   "whose message carries the caller's file path, so the two executors cannot agree on "
+   "it by construction.)",
+   "slice-adversarial", expect_validate=False, false_reason="unsafe_program")
+
+
 # ---------------------------------------------------------------------------
 
 def main():

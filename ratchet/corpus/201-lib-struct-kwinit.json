@@ -1,0 +1,113 @@
+{
+  "id": "lib-struct-kwinit",
+  "tier": 17,
+  "description": "`Struct.new(:state, :fixed_in, keyword_init: true)` -- a class **manufactured by a call**, assigned to a constant, with readers and a keyword constructor. This is `Vulnerability::RangeStatus` and `Identify::RegistryPackage`, i.e. the type the whole decision core *returns*. Tier 10's `define_method` is the precedent; what is new is that the class itself, not just a method, comes from a runtime call, so the class table has an entry no `class'` node produced.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "casgn",
+        "Status",
+        [
+          "send",
+          [
+            "const",
+            "Struct"
+          ],
+          "new",
+          [
+            [
+              "sym",
+              "state"
+            ],
+            [
+              "sym",
+              "fixed_in"
+            ],
+            [
+              "kwargs",
+              [
+                [
+                  [
+                    "sym",
+                    "keyword_init"
+                  ],
+                  [
+                    "true"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "send",
+          [
+            "const",
+            "Status"
+          ],
+          "new",
+          [
+            [
+              "kwargs",
+              [
+                [
+                  [
+                    "sym",
+                    "state"
+                  ],
+                  [
+                    "sym",
+                    "affected"
+                  ]
+                ],
+                [
+                  [
+                    "sym",
+                    "fixed_in"
+                  ],
+                  [
+                    "str",
+                    "1.0"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "s"
+          ],
+          "state",
+          [],
+          null
+        ],
+        "==",
+        [
+          [
+            "sym",
+            "affected"
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

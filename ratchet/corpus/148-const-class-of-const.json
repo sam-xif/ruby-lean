@@ -1,0 +1,51 @@
+{
+  "id": "const-class-of-const",
+  "tier": 13,
+  "description": "M::Box.new.class.to_s -- `Object#class`, 11 sites in the slice, and the one place `Ty.clsOf` is produced by an *expression* rather than by naming a class. It is the inverse of `newInst`: `.inst n _` in, `.clsOf n` out. `purl.rb` needs it (`self.class.encode`) to reach a singleton method from an instance method.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "M",
+        [
+          "class",
+          "Box",
+          null,
+          [
+            "nil"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "send",
+            [
+              "cpath",
+              [
+                "const",
+                "M"
+              ],
+              "Box"
+            ],
+            "new",
+            [],
+            null
+          ],
+          "class",
+          [],
+          null
+        ],
+        "to_s",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

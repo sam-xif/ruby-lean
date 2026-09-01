@@ -1,0 +1,94 @@
+{
+  "id": "param-optional",
+  "tier": 14,
+  "description": "def greet(name, greeting = \"hi\") -- the optional parameter. `Judge.callDef` types a body once per call-site argument shape, so an optional parameter is not one signature with a hole: it is *two* shapes, and the default's own type is judged in the environment of the parameters to its left. Both call shapes appear here so the rung cannot be climbed by handling only one.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "greet",
+        [
+          [
+            "preq",
+            "name"
+          ],
+          [
+            "popt",
+            "greeting",
+            [
+              "str",
+              "hi"
+            ]
+          ]
+        ],
+        [
+          "send",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "greeting"
+            ],
+            "+",
+            [
+              [
+                "str",
+                " "
+              ]
+            ],
+            null
+          ],
+          "+",
+          [
+            [
+              "var",
+              "local",
+              "name"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          null,
+          "greet",
+          [
+            [
+              "str",
+              "a"
+            ]
+          ],
+          null
+        ],
+        "+",
+        [
+          [
+            "send",
+            null,
+            "greet",
+            [
+              [
+                "str",
+                "a"
+              ],
+              [
+                "str",
+                "yo"
+              ]
+            ],
+            null
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

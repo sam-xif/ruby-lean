@@ -1,0 +1,39 @@
+{
+  "id": "sym-literal",
+  "tier": 15,
+  "description": "s = :affected; s.to_s.length -- `Ty.sym` has existed since the port and two rungs have used it. The slice uses 299, as the vocabulary of its state machine (`:affected`/`:fixed`/`:not_applicable`, `:critical`/`:high`/`:medium`/`:low`), so the tier starts by pinning `Symbol#to_s`.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "sym",
+          "affected"
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "s"
+          ],
+          "to_s",
+          [],
+          null
+        ],
+        "length",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

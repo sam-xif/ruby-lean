@@ -1,0 +1,44 @@
+{
+  "id": "lib-array-first-nil-unsafe",
+  "tier": 17,
+  "description": "An UNSAFE program: `[].first + 1` really raises NoMethodError. The control for `Array#first` being `nilable` -- the same shape as tier 12's `narrow-absent-unsafe` but on the named accessor rather than on `#[]`, because a checker can plausibly get one right and the other wrong. Permanent negative target.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "xs",
+        [
+          "array",
+          []
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "xs"
+          ],
+          "first",
+          [],
+          null
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

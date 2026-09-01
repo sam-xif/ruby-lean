@@ -1,0 +1,113 @@
+{
+  "id": "ctl-rescue-in-block",
+  "tier": 16,
+  "description": "A `rescue` clause **inside a block body**, with `next` as the handler -- the shape `range_status` uses in its innermost loop (`rescue Uncomparable; next`). It is the cross-product of this tier with tier 9's blocks, and it is where the block's result type has three contributors rather than two.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "int",
+          0
+        ]
+      ],
+      [
+        "send",
+        [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "int",
+              0
+            ],
+            [
+              "int",
+              2
+            ]
+          ]
+        ],
+        "each",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "d"
+            ]
+          ],
+          [],
+          [],
+          [
+            "begin",
+            [
+              "vasgn",
+              "local",
+              "s",
+              [
+                "send",
+                [
+                  "var",
+                  "local",
+                  "s"
+                ],
+                "+",
+                [
+                  [
+                    "send",
+                    [
+                      "int",
+                      10
+                    ],
+                    "/",
+                    [
+                      [
+                        "var",
+                        "local",
+                        "d"
+                      ]
+                    ],
+                    null
+                  ]
+                ],
+                null
+              ]
+            ],
+            [
+              [
+                [
+                  [
+                    "const",
+                    "ZeroDivisionError"
+                  ]
+                ],
+                null,
+                [
+                  "next",
+                  null
+                ]
+              ]
+            ],
+            null,
+            null
+          ]
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "s"
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}
