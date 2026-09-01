@@ -1,0 +1,70 @@
+{
+  "id": "hash-index-with-claim",
+  "tier": 5,
+  "description": "Hash indexing is also just `#[]`. An explicit claim supplies its type.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "hash",
+        [
+          [
+            [
+              "str",
+              "a"
+            ],
+            [
+              "int",
+              1
+            ]
+          ]
+        ]
+      ],
+      "[]",
+      [
+        [
+          "str",
+          "a"
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "send",
+          [
+            "hash",
+            [
+              [
+                [
+                  "str",
+                  "a"
+                ],
+                [
+                  "int",
+                  1
+                ]
+              ]
+            ]
+          ],
+          "[]",
+          [
+            [
+              "str",
+              "a"
+            ]
+          ],
+          null
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true
+}

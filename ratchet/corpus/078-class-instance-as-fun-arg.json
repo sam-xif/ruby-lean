@@ -1,0 +1,97 @@
+{
+  "id": "class-instance-as-fun-arg",
+  "tier": 7,
+  "description": "A top-level function taking an instance as a parameter and calling a method on it -- mixing tier 6's function dispatch with a class instance.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@x",
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "getX",
+            [],
+            [
+              "var",
+              "ivar",
+              "@x"
+            ]
+          ]
+        ]
+      ],
+      [
+        "def",
+        "describe",
+        [
+          [
+            "preq",
+            "p"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "p"
+          ],
+          "getX",
+          [],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "describe",
+        [
+          [
+            "send",
+            [
+              "const",
+              "Point"
+            ],
+            "new",
+            [
+              [
+                "int",
+                5
+              ]
+            ],
+            null
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

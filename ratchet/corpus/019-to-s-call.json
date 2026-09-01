@@ -1,0 +1,22 @@
+{
+  "id": "to-s-call",
+  "tier": 2,
+  "description": "5.to_s, an instance of String, via the universal Object#to_s rule.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        5
+      ],
+      "to_s",
+      [],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

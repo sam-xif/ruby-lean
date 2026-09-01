@@ -1,0 +1,156 @@
+{
+  "id": "fun-three-params",
+  "tier": 6,
+  "description": "def sum3(a, b, c) = a + b + c; sum3(1, 2, 3) : Int -- three required params, each a separate nested send.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "sum3",
+        [
+          [
+            "preq",
+            "a"
+          ],
+          [
+            "preq",
+            "b"
+          ],
+          [
+            "preq",
+            "c"
+          ]
+        ],
+        [
+          "send",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "a"
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "b"
+              ]
+            ],
+            null
+          ],
+          "+",
+          [
+            [
+              "var",
+              "local",
+              "c"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "sum3",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ],
+          [
+            "int",
+            3
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "sum3",
+          [
+            [
+              "preq",
+              "a"
+            ],
+            [
+              "preq",
+              "b"
+            ],
+            [
+              "preq",
+              "c"
+            ]
+          ],
+          [
+            "send",
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "a"
+              ],
+              "+",
+              [
+                [
+                  "var",
+                  "local",
+                  "b"
+                ]
+              ],
+              null
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "c"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrowCons",
+              "param": {
+                "tag": "int"
+              },
+              "rest": {
+                "tag": "arrow0",
+                "ret": {
+                  "tag": "int"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true
+}

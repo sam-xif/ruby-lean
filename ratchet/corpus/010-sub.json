@@ -1,0 +1,27 @@
+{
+  "id": "sub",
+  "tier": 2,
+  "description": "5 - 3 : Int.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        5
+      ],
+      "-",
+      [
+        [
+          "int",
+          3
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

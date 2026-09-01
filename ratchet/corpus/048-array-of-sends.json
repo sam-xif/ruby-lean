@@ -1,0 +1,47 @@
+{
+  "id": "array-of-sends",
+  "tier": 5,
+  "description": "[1 + 1, 2 + 2] : an Array of Int -- elements are checked recursively.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "array",
+      [
+        [
+          "send",
+          [
+            "int",
+            1
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "int",
+            2
+          ],
+          "+",
+          [
+            [
+              "int",
+              2
+            ]
+          ],
+          null
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

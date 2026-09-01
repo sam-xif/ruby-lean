@@ -1,0 +1,21 @@
+{
+  "id": "not-expr",
+  "tier": 2,
+  "description": "!true desugars to a send of `!` with no args; Bool.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "true"
+      ],
+      "!",
+      [],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

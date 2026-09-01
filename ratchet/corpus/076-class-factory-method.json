@@ -1,0 +1,94 @@
+{
+  "id": "class-factory-method",
+  "tier": 7,
+  "description": "Point.origin is a singleton (self.) method on the class itself that constructs and returns an ordinary instance -- `defs` nested inside a `class'`, the same shape a module's `self.` methods use.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ],
+              [
+                "preq",
+                "y"
+              ]
+            ],
+            [
+              "seq",
+              [
+                "vasgn",
+                "ivar",
+                "@x",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ]
+              ],
+              [
+                "vasgn",
+                "ivar",
+                "@y",
+                [
+                  "var",
+                  "local",
+                  "y"
+                ]
+              ]
+            ]
+          ],
+          [
+            "defs",
+            [
+              "self"
+            ],
+            "origin",
+            [],
+            [
+              "send",
+              null,
+              "new",
+              [
+                [
+                  "int",
+                  0
+                ],
+                [
+                  "int",
+                  0
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "Point"
+        ],
+        "origin",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

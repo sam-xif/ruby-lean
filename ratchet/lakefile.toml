@@ -1,0 +1,17 @@
+name = "ratchet"
+version = "0.1.0"
+defaultTargets = ["ratchet"]
+
+# A standalone Lean package, deliberately not part of the `../lean/` `rubycore`
+# build: no `require`, no import of anything under `../lean/RubyCore/`. See
+# `AGENTS.md` for why (the point of this harness is to be small enough to
+# rebuild trust in from scratch, one rung at a time).
+
+[[lean_lib]]
+name = "Ratchet"
+srcDir = "."
+globs = ["Ratchet.+"]
+
+[[lean_exe]]
+name = "ratchet"
+root = "Main"

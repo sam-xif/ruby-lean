@@ -1,0 +1,16 @@
+{
+  "id": "sym-lit",
+  "tier": 1,
+  "description": ":ok : Sym.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "sym",
+      "ok"
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

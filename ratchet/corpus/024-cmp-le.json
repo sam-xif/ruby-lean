@@ -1,0 +1,27 @@
+{
+  "id": "cmp-le",
+  "tier": 2,
+  "description": "1 <= 2 : Bool.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        1
+      ],
+      "<=",
+      [
+        [
+          "int",
+          2
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

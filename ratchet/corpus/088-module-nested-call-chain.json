@@ -1,0 +1,47 @@
+{
+  "id": "module-nested-call-chain",
+  "tier": 8,
+  "description": "M.greeting.length chains a module call into a builtin method call on its result.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "M",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "greeting",
+          [],
+          [
+            "str",
+            "hi"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "M"
+          ],
+          "greeting",
+          [],
+          null
+        ],
+        "length",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

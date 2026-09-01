@@ -1,0 +1,16 @@
+{
+  "id": "flt-lit",
+  "tier": 1,
+  "description": "1.5 : Float.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "flt",
+      1.5
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

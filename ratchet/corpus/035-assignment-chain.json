@@ -1,0 +1,71 @@
+{
+  "id": "assignment-chain",
+  "tier": 3,
+  "description": "x = 1; y = x + 1; z = y + 1; z : Int -- a four-statement chain.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "y",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "z",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "y"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "z"
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

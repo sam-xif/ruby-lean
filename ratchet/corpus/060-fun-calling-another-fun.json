@@ -1,0 +1,170 @@
+{
+  "id": "fun-calling-another-fun",
+  "tier": 6,
+  "description": "def inc(x) = x + 1; def twice(x) = inc(inc(x)); twice(3) : Int -- both top-level defs are collected into the function-signature table *before* any body is checked, so twice's body can call inc regardless of source order.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "inc",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "def",
+        "twice",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [
+          "send",
+          null,
+          "inc",
+          [
+            [
+              "send",
+              null,
+              "inc",
+              [
+                [
+                  "var",
+                  "local",
+                  "x"
+                ]
+              ],
+              null
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "twice",
+        [
+          [
+            "int",
+            3
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "inc",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "twice",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "send",
+            null,
+            "inc",
+            [
+              [
+                "send",
+                null,
+                "inc",
+                [
+                  [
+                    "var",
+                    "local",
+                    "x"
+                  ]
+                ],
+                null
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true
+}

@@ -1,0 +1,27 @@
+{
+  "id": "div",
+  "tier": 2,
+  "description": "10 / 2 : Int.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        10
+      ],
+      "/",
+      [
+        [
+          "int",
+          2
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

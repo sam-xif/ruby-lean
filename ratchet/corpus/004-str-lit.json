@@ -1,0 +1,16 @@
+{
+  "id": "str-lit",
+  "tier": 1,
+  "description": "\"hello\" : an instance of String.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "str",
+      "hello"
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

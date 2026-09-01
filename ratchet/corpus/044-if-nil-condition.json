@@ -1,0 +1,26 @@
+{
+  "id": "if-nil-condition",
+  "tier": 4,
+  "description": "if nil then 1 else 2 end: the condition is Nil, not Bool -- rejected, just like if-condition-not-bool.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "nil"
+      ],
+      [
+        "int",
+        1
+      ],
+      [
+        "int",
+        2
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

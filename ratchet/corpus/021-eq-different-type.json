@@ -1,0 +1,27 @@
+{
+  "id": "eq-different-type",
+  "tier": 2,
+  "description": "1 == \"a\" is runtime-safe real Ruby (== never raises; it just answers false for unrelated types) -- but this package's `==` rule requires both sides the same Ty, so validate is conservative here and rejects it. A real gap, kept honest rather than special-cased away (see AGENTS.md).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        1
+      ],
+      "==",
+      [
+        [
+          "str",
+          "a"
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

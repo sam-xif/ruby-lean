@@ -1,0 +1,36 @@
+{
+  "id": "elsif-chain-mismatch",
+  "tier": 4,
+  "description": "Same elsif chain shape, but the final else branch is a String: the innermost nested if' fails to join (Int, an instance of String), which fails the whole chain even though the first two branches agree.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "true"
+      ],
+      [
+        "int",
+        1
+      ],
+      [
+        "if",
+        [
+          "false"
+        ],
+        [
+          "int",
+          2
+        ],
+        [
+          "str",
+          "a"
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

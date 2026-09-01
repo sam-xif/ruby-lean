@@ -1,0 +1,22 @@
+{
+  "id": "unknown-method-no-claim",
+  "tier": 2,
+  "description": "5.foo_bar_baz is the same shape as unknown-method-with-claim but with no claim at all: validate gates it honestly instead of guessing.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "int",
+        5
+      ],
+      "foo_bar_baz",
+      [],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

@@ -1,0 +1,28 @@
+{
+  "id": "array-heterogeneous",
+  "tier": 5,
+  "description": "[1, \"a\", true] is runtime-safe real Ruby (Ruby arrays are heterogeneous), but this checker's `array` rule requires a uniform element type -- Ty.arrayOf has no representation for a mixed-element array yet, so it's rejected rather than mis-certified.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "array",
+      [
+        [
+          "int",
+          1
+        ],
+        [
+          "str",
+          "a"
+        ],
+        [
+          "true"
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

@@ -1,0 +1,15 @@
+{
+  "id": "bool-true",
+  "tier": 1,
+  "description": "true : Bool.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "true"
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

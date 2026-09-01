@@ -1,0 +1,113 @@
+{
+  "id": "fun-returning-array",
+  "tier": 6,
+  "description": "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- a function's claimed return type can be any Ty this checker can synthesize, including arrayOf.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "make_pair",
+        [
+          [
+            "preq",
+            "x"
+          ],
+          [
+            "preq",
+            "y"
+          ]
+        ],
+        [
+          "array",
+          [
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            [
+              "var",
+              "local",
+              "y"
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        null,
+        "make_pair",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "make_pair",
+          [
+            [
+              "preq",
+              "x"
+            ],
+            [
+              "preq",
+              "y"
+            ]
+          ],
+          [
+            "array",
+            [
+              [
+                "var",
+                "local",
+                "x"
+              ],
+              [
+                "var",
+                "local",
+                "y"
+              ]
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "arrayOf",
+                "elem": {
+                  "tag": "int"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true
+}

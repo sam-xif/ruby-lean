@@ -1,0 +1,92 @@
+{
+  "id": "fun-body-mismatch",
+  "tier": 6,
+  "description": "def bad(x) = x + true is claimed to have signature (Int) -> Int, but its body does not even type-check (Int + Bool has no builtin rule) -- defsOk rejects it before the call site is ever reached.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "bad",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "true"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "bad",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "bad",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "true"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": false
+}

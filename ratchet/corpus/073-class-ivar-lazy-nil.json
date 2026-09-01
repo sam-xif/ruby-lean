@@ -1,0 +1,46 @@
+{
+  "id": "class-ivar-lazy-nil",
+  "tier": 7,
+  "description": "reveal reads @secret, which no method ever assigns -- real Ruby answers nil for an unset ivar rather than raising, a real nuance any future class-typing rule will have to account for.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Box",
+        null,
+        [
+          "def",
+          "reveal",
+          [],
+          [
+            "var",
+            "ivar",
+            "@secret"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Box"
+          ],
+          "new",
+          [],
+          null
+        ],
+        "reveal",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

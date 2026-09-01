@@ -322,6 +322,29 @@ confirmed against CRuby and the plain `rubycore` observation path. See [`concoli
 run it and [`concolic/implementation-notes.md`](concolic/implementation-notes.md)
 for revertable decisions (K1–K8).
 
+### `ratchet/` — a certificate-checking ladder, restarted small (runnable, isolated)
+A **restart** of the type-checking work (2026-08-31), deliberately isolated from `lean/`,
+`certify/`, and the judgment layer (own `lakefile.toml`/`lean-toolchain`, no import of
+`RubyCore`). **`Expr`/`Ty` are ported verbatim** from the real model
+(`lean/RubyCore/Syntax.lean`/`Types/Ty.lean`) rather than invented, and every corpus program
+is **real Ruby run through the real desugarer** (`harness/desugar-dt/bin/export-json`), not a
+hand-authored AST — the certificate is a flat list of claims keyed on real `Expr` subterms by
+structural `==` (exactly why `Expr` derives `BEq` in the real model), not a parallel
+type-annotated shadow tree. Same `validate : Cert -> Expr -> Bool` shape as `certify/`'s
+`Cert`/`Validate.lean`. **89-rung corpus**, 8 tiers: literals → arithmetic/string/bool `send`s
+(a small hardcoded builtin table plus a claims-based escape hatch, incl. indexing, which is
+just `#[]`) → `var`/`vasgn`/`seq` (real mutable-local scoping) → conditionals/`elsif` →
+arrays/hashes → top-level functions (declared via a claim on their own `def` node, incl. a
+self-recursive one) → **classes** and **modules** (26 rungs, real construction/ivars/
+inheritance/`super`/singleton-methods, all deliberately `expect_validate: false` — `chk` has
+no rule for `class'`/`module'`/`defs`/`super'` yet, tracked honestly rather than faked).
+Deliberately not yet ported: the semantics (no `stepFn`/interpreter, so no dynamic execution
+check) — see `ratchet/AGENTS.md` §Frontier for what's next (environment merging across `if`
+branches, non-required params, blocks, then classes/modules, then finally the semantics).
+Every commit that extends `chk` for one more construct is meant to move a tier's fraction
+visibly, instead of growing by tackling another whole slice at once.
+See [`ratchet/AGENTS.md`](ratchet/AGENTS.md); run with `ratchet/scripts/run_ratchet.sh`.
+
 ### `playground/` — visual step-through of the Lean stepper (runnable)
 A browser playground to write Ruby and step through its execution **in the Lean
 model** one `stepFn` transition at a time (control state, frame stack + live

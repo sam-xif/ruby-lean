@@ -1,0 +1,22 @@
+{
+  "id": "str-length-no-claim",
+  "tier": 2,
+  "description": "Same shape as str-length-with-claim but with no claim: rejected.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "str",
+        "abc"
+      ],
+      "length",
+      [],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

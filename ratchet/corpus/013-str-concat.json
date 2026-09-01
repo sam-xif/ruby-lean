@@ -1,0 +1,27 @@
+{
+  "id": "str-concat",
+  "tier": 2,
+  "description": "\"a\" + \"b\", an instance of String.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "str",
+        "a"
+      ],
+      "+",
+      [
+        [
+          "str",
+          "b"
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

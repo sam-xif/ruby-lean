@@ -1,0 +1,122 @@
+{
+  "id": "class-multiple-instances",
+  "tier": 7,
+  "description": "Two independent Point instances, their getX results combined.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@x",
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "getX",
+            [],
+            [
+              "var",
+              "ivar",
+              "@x"
+            ]
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "a",
+        [
+          "send",
+          [
+            "const",
+            "Point"
+          ],
+          "new",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "b",
+        [
+          "send",
+          [
+            "const",
+            "Point"
+          ],
+          "new",
+          [
+            [
+              "int",
+              2
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "a"
+          ],
+          "getX",
+          [],
+          null
+        ],
+        "+",
+        [
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "b"
+            ],
+            "getX",
+            [],
+            null
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

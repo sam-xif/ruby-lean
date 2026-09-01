@@ -1,0 +1,49 @@
+{
+  "id": "reassign-same-type",
+  "tier": 3,
+  "description": "x = 1; x = 2; x + 3 : Int.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          2
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        "+",
+        [
+          [
+            "int",
+            3
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

@@ -1,0 +1,45 @@
+{
+  "id": "class-no-initialize",
+  "tier": 7,
+  "description": "A class with no initialize at all -- real Ruby's default #new takes no arguments.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Greeter",
+        null,
+        [
+          "def",
+          "hi",
+          [],
+          [
+            "str",
+            "hi"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Greeter"
+          ],
+          "new",
+          [],
+          null
+        ],
+        "hi",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

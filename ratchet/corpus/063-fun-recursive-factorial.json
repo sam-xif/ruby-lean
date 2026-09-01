@@ -1,0 +1,180 @@
+{
+  "id": "fun-recursive-factorial",
+  "tier": 6,
+  "description": "def fact(n) = if n <= 1 then 1 else n * fact(n - 1); fact(4) : Int -- fact calls itself by name, resolved through the same function-signature table its own claim populated (self-reference works because buildFunSigs collects every top-level def's claim before any body is checked).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "fact",
+        [
+          [
+            "preq",
+            "n"
+          ]
+        ],
+        [
+          "if",
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "n"
+            ],
+            "<=",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ],
+          [
+            "int",
+            1
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "n"
+            ],
+            "*",
+            [
+              [
+                "send",
+                null,
+                "fact",
+                [
+                  [
+                    "send",
+                    [
+                      "var",
+                      "local",
+                      "n"
+                    ],
+                    "-",
+                    [
+                      [
+                        "int",
+                        1
+                      ]
+                    ],
+                    null
+                  ]
+                ],
+                null
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "send",
+        null,
+        "fact",
+        [
+          [
+            "int",
+            4
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "fact",
+          [
+            [
+              "preq",
+              "n"
+            ]
+          ],
+          [
+            "if",
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "n"
+              ],
+              "<=",
+              [
+                [
+                  "int",
+                  1
+                ]
+              ],
+              null
+            ],
+            [
+              "int",
+              1
+            ],
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "n"
+              ],
+              "*",
+              [
+                [
+                  "send",
+                  null,
+                  "fact",
+                  [
+                    [
+                      "send",
+                      [
+                        "var",
+                        "local",
+                        "n"
+                      ],
+                      "-",
+                      [
+                        [
+                          "int",
+                          1
+                        ]
+                      ],
+                      null
+                    ]
+                  ],
+                  null
+                ]
+              ],
+              null
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true
+}

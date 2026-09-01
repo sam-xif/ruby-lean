@@ -1,0 +1,74 @@
+{
+  "id": "module-calling-another-module",
+  "tier": 8,
+  "description": "M1.foo calls M2.bar -- two separate modules, one calling into the other.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "M2",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "bar",
+          [],
+          [
+            "int",
+            10
+          ]
+        ]
+      ],
+      [
+        "module",
+        "M1",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "foo",
+          [],
+          [
+            "send",
+            [
+              "send",
+              [
+                "const",
+                "M2"
+              ],
+              "bar",
+              [],
+              null
+            ],
+            "+",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "M1"
+        ],
+        "foo",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false
+}

@@ -1,0 +1,29 @@
+{
+  "id": "array-int",
+  "tier": 5,
+  "description": "[1, 2, 3] : an Array of Int.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "array",
+      [
+        [
+          "int",
+          1
+        ],
+        [
+          "int",
+          2
+        ],
+        [
+          "int",
+          3
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

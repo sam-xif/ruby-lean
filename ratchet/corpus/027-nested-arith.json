@@ -1,0 +1,38 @@
+{
+  "id": "nested-arith",
+  "tier": 2,
+  "description": "(1 + 2) * 3 : Int -- the outer send's receiver is itself a send.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "send",
+        [
+          "int",
+          1
+        ],
+        "+",
+        [
+          [
+            "int",
+            2
+          ]
+        ],
+        null
+      ],
+      "*",
+      [
+        [
+          "int",
+          3
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

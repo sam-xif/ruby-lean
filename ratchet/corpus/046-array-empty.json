@@ -1,0 +1,16 @@
+{
+  "id": "array-empty",
+  "tier": 5,
+  "description": "[] : an Array of Ty.any (nothing to unify an element type from).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "array",
+      []
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

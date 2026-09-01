@@ -1,0 +1,15 @@
+{
+  "id": "nil-lit",
+  "tier": 1,
+  "description": "nil : Nil.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "nil"
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

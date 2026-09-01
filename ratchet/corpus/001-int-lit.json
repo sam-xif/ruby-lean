@@ -1,0 +1,16 @@
+{
+  "id": "int-lit",
+  "tier": 1,
+  "description": "1 : Int.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "int",
+      1
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}

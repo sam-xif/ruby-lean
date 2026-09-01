@@ -1,0 +1,25 @@
+{
+  "id": "nil-eq-nil",
+  "tier": 2,
+  "description": "nil == nil : Bool (both sides Nil).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "nil"
+      ],
+      "==",
+      [
+        [
+          "nil"
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true
+}
