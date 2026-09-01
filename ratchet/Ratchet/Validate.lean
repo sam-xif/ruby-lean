@@ -26,11 +26,19 @@ def eqSafe? : Ty → Bool
   | .int | .float | .bool | .nilT | .sym | .cls _ => true
   | _ => false
 
+/-- The decidable counterpart of `Judge.lean`'s `NilQSafe`: the receivers for which `nil?`
+is the builtin one. Recursive at `nilable`, exactly as the relation is. -/
+def nilQSafe? : Ty → Bool
+  | .int | .float | .bool | .nilT | .sym | .cls _ | .arrayOf _ => true
+  | .nilable τ => nilQSafe? τ
+  | _ => false
+
 /-- The executable primitive table — the decidable counterpart of `Judge.lean`'s
 `PrimSig`, kept in exact one-to-one correspondence with it (`primSig?_sound`). A miss is
 `none`, never a guess. -/
 def primSig? : Ty → String → List Ty → Option Ty
   | σ, "==", [_] => if eqSafe? σ then some .bool else none
+  | σ, "nil?", [] => if nilQSafe? σ then some .bool else none
   | .int, "+", [.int] => some .int
   | .int, "-", [.int] => some .int
   | .int, "*", [.int] => some .int
@@ -104,9 +112,12 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | f + 1, .if' c t (some e) =>
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ Γc Ic t with
+      -- Tier 12: each branch is typed in the environment `narrowEnvs` refines for it. The
+      -- function is total and the identity on an unrecognized condition, so this arm reads
+      -- the same as it did before narrowing existed for every condition below tier 12.
+      match chk f κ (narrowEnvs c Γc).1 Ic t with
       | some (τ₁, Γ₁, I₁) =>
-        match chk f κ Γc Ic e with
+        match chk f κ (narrowEnvs c Γc).2 Ic e with
         | some (τ₂, Γ₂, I₂) =>
           -- The two branches must agree on the ivar spine; locals are joined instead.
           if I₁ = I₂ then some (joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, I₁) else none
@@ -116,9 +127,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | f + 1, .if' c t none =>
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ Γc Ic t with
+      match chk f κ (narrowEnvs c Γc).1 Ic t with
       | some (τ, Γ₁, I₁) =>
-        if I₁ = Ic then some (joinT τ .nilT, joinEnv Γ₁ Γc, Ic) else none
+        if I₁ = Ic then some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs c Γc).2, Ic) else none
       | none => none
     | none => none
   | f + 1, .array es =>

@@ -414,7 +414,63 @@ def controls : List Control :=
       .send (some (.send (some (.send none "lambda" []
         (some (.block [.req "x"] []
           (.seq [.ret (some (.str "a")), .int 2])))))
-        "call" [.int 1] none)) "+" [.int 1] none⟩ ]
+        "call" [.int 1] none)) "+" [.int 1] none⟩
+    -- ### Tier 12's controls
+    --
+    -- Narrowing is the first capability on this ladder whose *most likely bug is a swap*, so
+    -- three of these five are the same program with a polarity reversed. Each of the three is
+    -- certified by an implementation that gets one refinement backwards, and each really
+    -- raises. Note `a = []` throughout: the empty array is what makes the `nil` branch the one
+    -- that actually runs, so the semantics labels these `stuck` rather than merely "rejected".
+    --
+    -- (t) `truthy`/`falsy` swapped. `x` is `nil`, the condition is falsy, the else-branch runs
+    -- and `nil + 1` raises NoMethodError. Sound only because `falsyTy` puts `nilT` — not
+    -- `truthyTy`'s `Int` — into the else-branch's environment.
+  , ⟨"a = []; x = a[0]; if x then 0 else x + 1 end",
+      .seq [.vasgn .lvar "a" (.array []),
+            .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+            .if' (.var .lvar "x") (.int 0)
+              (some (.send (some (.var .lvar "x")) "+" [.int 1] none))]⟩
+    -- (u) `isNil`/`nonNil` swapped — the `nil?` twin of (t), and the more tempting mistake,
+    -- because "the guard is true, so we are in the good case" is the reading every
+    -- `if x.nil?`-free codebase trains. `nil?` answering true means `x` **is** nil.
+  , ⟨"a = []; x = a[0]; if x.nil? then x + 1 else 0 end",
+      .seq [.vasgn .lvar "a" (.array []),
+            .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+            .if' (.send (some (.var .lvar "x")) "nil?" [] none)
+              (.send (some (.var .lvar "x")) "+" [.int 1] none)
+              (some (.int 0))]⟩
+    -- (v) No guard at all — `corpus/136-narrow-absent-unsafe`, kept here too because this is
+    -- where a rejection gets labelled by *running* the program. Catches any rule that lets a
+    -- `nilable T` receiver reach a `T` row.
+  , ⟨"a = []; x = a[0]; x + 1",
+      .seq [.vasgn .lvar "a" (.array []),
+            .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+            .send (some (.var .lvar "x")) "+" [.int 1] none]⟩
+    -- (w) **The control that makes `NilQSafe` load-bearing.** `nil?` is total on every object
+    -- in the standard library, so the honest `PrimSig` row wants a wildcard receiver — and a
+    -- wildcard receiver in this type language also covers instances of classes the *program*
+    -- declared, which may override `nil?` with anything at all. Here `Dog#nil?` raises
+    -- TypeError, and `nilable (inst Dog)` is a type this checker really produces (index an
+    -- array of Dogs). `NilQSafe.nilable` requires its payload to be safe, and `.inst` is not
+    -- admitted, so the condition is untypeable and the program is rejected.
+  , ⟨"class Dog; def nil?; 1 + \"a\"; end; end; x = [Dog.new][0]; if x.nil? then 0 else 1 end",
+      .seq [.class' "Dog" none (.def' "nil?" [] (.send (some (.int 1)) "+" [.str "a"] none)),
+            .vasgn .lvar "x"
+              (.send (some (.array [.send (some (.const "Dog")) "new" [] none])) "[]"
+                [.int 0] none),
+            .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0) (some (.int 1))]⟩
+    -- (x) What that guard costs, as a recorded number: the same shape with an *ordinary* Dog.
+    -- Perfectly safe Ruby, conservatively declined, because nothing in this judgment looks at
+    -- whether the declared class actually overrides `nil?`. The precise version is a
+    -- `NilQSafe` premise that consults `κ.classes`; no rung needs it.
+  , ⟨"class Dog; def bark; 1; end; end; x = [Dog.new][0]; if x.nil? then 0 else 1 end"
+      ++ " (safe; NilQSafe excludes a declared class)",
+      .seq [.class' "Dog" none (.def' "bark" [] (.int 1)),
+            .vasgn .lvar "x"
+              (.send (some (.array [.send (some (.const "Dog")) "new" [] none])) "[]"
+                [.int 0] none),
+            .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0) (some (.int 1))]⟩ ]
 
 mutual
 

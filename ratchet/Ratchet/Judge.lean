@@ -90,6 +90,38 @@ inductive EqSafe : Ty → Prop
   /-- Any named class: `Object#==` is inherited by every one of them. -/
   | cls {n : String} : EqSafe (.cls n)
 
+/-- The receivers for which `nil?` is **the builtin `nil?`** — `Object#nil?` (always
+`false`) or `NilClass#nil?` (always `true`). Tier 12's counterpart to `EqSafe`, and it
+exists for the same reason: `nil?` is total on every object in the standard library, so
+the honest row is a wildcard receiver — but a *wildcard* is exactly what this ladder has
+twice declined to admit (clink 1 for `!`), because a wildcard receiver in this type
+language also covers `.inst n ivars`, an instance of a class the **program** declared. A
+program is free to write `def nil?; 1 + "a"; end`, and then a wildcard `nil?` row launders
+a `TypeError`.
+
+So the row is guarded, and the guard is "no user code can be reached through this type":
+every constructor below denotes a builtin object whose `nil?` this ladder has checked
+against the semantics. `.nilable τ` is admitted *only when `τ` is*, which is what makes
+`nilable (inst Dog)` — a real type this checker produces, from indexing an
+`arrayOf (inst Dog)` — stay out.
+
+Deliberately absent, like `EqSafe`'s: `.any` (unfalsifiable), `.union` (no rung; the
+recursive row would be easy and is not justified by anything yet), `.inst`/`.clsOf` (the
+whole point of the guard), and `.clos` (a `Proc` does respond to `nil?`, but no rung asks
+and every unnecessary row is one more claim to check). -/
+inductive NilQSafe : Ty → Prop
+  | int : NilQSafe .int
+  | float : NilQSafe .float
+  | bool : NilQSafe .bool
+  /-- `nil.nil?` is `true`; the one receiver where the answer is not `false`. -/
+  | nilT : NilQSafe .nilT
+  | sym : NilQSafe .sym
+  | cls {n : String} : NilQSafe (.cls n)
+  | arrayOf {τ : Ty} : NilQSafe (.arrayOf τ)
+  /-- `nilable τ` inherits the guard from `τ`: the value is either `nil` (safe by
+      `nilT`) or a `τ`, so the row is justified exactly when `τ`'s is. -/
+  | nilable {τ : Ty} : NilQSafe τ → NilQSafe (.nilable τ)
+
 /-- The primitive-method signature table, as a **relation** with one constructor per
 justified builtin. A relation rather than a function because this is the specification:
 each constructor is a claim about what the real `stepFn` does, to be read and checked
@@ -205,6 +237,15 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       know. This row is the sharpest statement of the `Ty` gap the `hash-lit` rung
       records: `{"a"=>1}["a"] + 1` is safe Ruby that no rule can type. -/
   | hashIndex {τ : Ty} : PrimSig (.cls "Hash") "[]" [τ] .any
+  -- ### Tier 12's row
+  /-- `recv.nil? () → Bool` for a `NilQSafe` receiver (rung `narrow-nilable-nil-check`).
+
+      Total and never coercing: `Object#nil?` returns `false` for every object,
+      `NilClass#nil?` returns `true`, and neither takes an argument or can raise. The
+      entire content of this row is therefore in `NilQSafe`, which says which receivers
+      this ladder is willing to claim reach one of those two definitions rather than a
+      user-written override. -/
+  | nilQuery {σ : Ty} : NilQSafe σ → PrimSig σ "nil?" [] .bool
 
 /-- The bare names that resolve to **no method at all** at top-level `self`, so that
 evaluating them raises `NameError`.
@@ -779,6 +820,101 @@ def bodyResult : Expr → Expr
   | .ret (some e) => e
   | e => e
 
+/-! ## Tier 12's narrowing
+
+The capability that makes `nilable` and `union` usable: inside a branch of an `if`, a local
+that the *condition tested* has a smaller type than it did outside.
+
+Three pieces, deliberately separated:
+
+1. **`NarrowKind`** — *which* runtime test the condition performs. One constructor per
+   test, not one per condition shape, because several syntactic forms can perform the same
+   test.
+2. **`NarrowCond`** — the syntactic recognizer, as a relation: `NarrowCond c x k` says the
+   condition `c` tests local `x` by test `k`. This is the part that is *not* obvious and is
+   the reason narrowing is a judgment premise rather than an environment rewrite; see the
+   `Judge.if'` docstring.
+3. **`narrowEnvs`** — the two branch environments, as a **total function**. Total, and the
+   identity on every condition `narrowCond?` does not recognize, which is why folding
+   narrowing into `Judge.if'` itself did not change a single earlier rung: no rung below
+   tier 12 has a condition of a recognized shape.
+
+What is deliberately *not* here (each is a later rung of tier 12, and each needs machinery
+this does not have): `is_a?`/`===` narrowing (needs `subTy`, and `Integer` as a `.clsOf`
+for a class the program did not declare), aliasing (`case v when Integer` tests a
+*temporary* and the branch bodies use `v`), narrowing an ivar rather than a local, and
+narrowing by a branch that `return`s. -/
+
+/-- The runtime test a narrowing condition performs. -/
+inductive NarrowKind where
+  /-- Truthiness: the bare condition of an `if`. Then-branch gets `truthyTy`, else-branch
+      `falsyTy`. -/
+  | truthy
+  /-- `x.nil?`. Then-branch gets `isNilTy`, else-branch `nonNilTy`. Note the polarity: the
+      *then*-branch is the one where `x` **is** `nil`, which is the single most likely place
+      to write a narrowing rule backwards — and `corpus/135-narrow-backwards-unsafe` exists
+      to catch exactly that. -/
+  | isNil
+deriving DecidableEq, Repr
+
+/-- The refinement the **then**-branch applies. -/
+def refineThen : NarrowKind → Ty → Ty
+  | .truthy, τ => truthyTy τ
+  | .isNil, τ => isNilTy τ
+
+/-- The refinement the **else**-branch applies. -/
+def refineElse : NarrowKind → Ty → Ty
+  | .truthy, τ => falsyTy τ
+  | .isNil, τ => nonNilTy τ
+
+/-- `NarrowCond c x k`: evaluating condition `c` performs test `k` on the local `x`, *and
+evaluating it has no other effect that could invalidate the refinement*.
+
+That second clause is why both constructors are so restrictive. A refinement is a claim
+about the value of `x` **at the point the branch begins**, so the condition must be an
+expression whose evaluation cannot rebind `x` in between. Both forms below are: reading a
+local, and sending a total zero-argument builtin to a local. A condition like
+`(x = f()) .nil?` would test the new `x` and be fine, but `foo(x.nil?)` would not, and the
+general side condition ("the condition assigns to no local the refinement mentions") is a
+premise this ladder has not needed to state because no recognized form can assign at
+all. -/
+inductive NarrowCond : Expr → String → NarrowKind → Prop
+  /-- `if x` — the condition is exactly a local read. Ruby tests the value's truthiness
+      and nothing else, so the then-branch has `x` non-`nil`/non-`false` and the
+      else-branch has it one of those two. -/
+  | bareVar {x : String} : NarrowCond (.var .lvar x) x .truthy
+  /-- `if x.nil?` — `nil?` is total (`PrimSig.nilQuery`) and answers exactly "is this
+      value `nil`". The receiver being a bare local read is what ties the answer to `x`. -/
+  | nilQuery {x : String} :
+      NarrowCond (.send (some (.var .lvar x)) "nil?" [] none) x .isNil
+
+/-- The executable recognizer. `none` means "this condition tells the checker nothing",
+which is the answer for every condition in tiers 1–11. -/
+def narrowCond? : Expr → Option (String × NarrowKind)
+  | .var .lvar x => some (x, .truthy)
+  | .send (some (.var .lvar x)) "nil?" [] none => some (x, .isNil)
+  | _ => none
+
+/-- **The two branch environments of an `if`, given the state at the end of its condition.**
+
+Total by construction, and the identity in three separate circumstances, each for its own
+reason: the condition is not a recognized test; the tested name is not a local the
+environment knows (so there is nothing to refine — a `vcall`-shaped bare name reaches
+`narrowCond?` as a `.var .lvar` only when the desugarer saw an assignment, but the
+environment lookup can still miss inside a method body whose `paramEnv` did not bind it);
+or, implicitly, the refinement happens to be the type it already had.
+
+Being total is what lets `Judge.if'` carry narrowing in its *own* premises rather than in
+a second, parallel `ifNarrow` rule — and that in turn is what keeps there from being two
+rules for one syntactic form, only one of which anybody reads. -/
+def narrowEnvs (c : Expr) (Γ : Env) : Env × Env :=
+  match narrowCond? c with
+  | some (x, k) =>
+    match envGet? Γ x with
+    | some τ => (envSet Γ x (refineThen k τ), envSet Γ x (refineElse k τ))
+    | none => (Γ, Γ)
+  | none => (Γ, Γ)
+
 mutual
 
 /-- `Judge κ Γ I e τ Γ' I'`: in context `κ` (classes, methods, assumptions, the type of
@@ -896,20 +1032,47 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       just state, it is part of the *type* of `self` (see `Ty.inst`), and there is no
       pointwise widening of it that keeps that type honest. A branch that assigns an
       instance variable at a new type is therefore rejected rather than widened. No rung
-      needs the precision, and the conservatism is in the safe direction. -/
+      needs the precision, and the conservatism is in the safe direction.
+
+      **Each branch is typed in a *narrowed* environment** (tier 12). This is the one part
+      of the rule that is a claim about Ruby's *dynamic* behaviour rather than about the
+      shape of the judgment: if control reached the then-branch, the condition evaluated
+      truthy, and for a condition of a recognized shape that is information about a local's
+      type. `narrowEnvs` is where that information is computed, and it is a total function
+      that is the **identity** on every condition it does not recognize — so this premise
+      reads exactly as it did before tier 12 for every earlier rung, and every derivation
+      written before tier 12 still type-checks unchanged.
+
+      Why it lives here rather than in a separate `ifNarrow` rule: two rules for one
+      syntactic form would mean the honest reading of "what does this checker believe about
+      `if`" requires reading both and knowing which one `chk` reaches. One rule with a
+      possibly-trivial refinement has a single reading.
+
+      Why it is not a *rewrite* of the program: the refinement's justification is the
+      branch it is applied in, and the branch bodies do not mention the condition. There is
+      no substitution that could express it — see `implementation-notes.md` clink 12, and
+      `NarrowCond` for what evaluating the condition is required not to do. -/
   | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ : Ty} {c t e : Expr}
       {σ τ₁ τ₂ : Ty} :
-      Judge κ Γ I c σ Γc Ic → Judge κ Γc Ic t τ₁ Γ₁ I₁ → Judge κ Γc Ic e τ₂ Γ₂ I₂ →
+      Judge κ Γ I c σ Γc Ic →
+      Judge κ (narrowEnvs c Γc).1 Ic t τ₁ Γ₁ I₁ →
+      Judge κ (narrowEnvs c Γc).2 Ic e τ₂ Γ₂ I₂ →
       I₁ = I₂ →
       Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₁
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
       this is the same rule with the else-branch's type fixed at `.nilT` and its
       environment fixed at `Γc` — the state as of the end of the condition.
       `joinT τ .nilT` is `mkNilable τ` (rung `if-no-else`). The absent branch cannot touch
-      the ivar spine, so the same agreement premise reads `I₁ = Ic`. -/
+      the ivar spine, so the same agreement premise reads `I₁ = Ic`.
+
+      Tier 12's narrowing applies to both halves for the same reasons as in `if'`, and the
+      *else* half is worth a second look: the missing branch still **runs**, in the sense
+      that control flows past the `if` having taken it, so what the code after the `if`
+      sees on that path is `(narrowEnvs c Γc).2`, not `Γc`. Using `Γc` would be sound but
+      strictly less precise; using `.1` would be a bug. -/
   | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ : Ty} {c t : Expr} {σ τ : Ty} :
-      Judge κ Γ I c σ Γc Ic → Judge κ Γc Ic t τ Γ₁ I₁ → I₁ = Ic →
-      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ Γc) Ic
+      Judge κ Γ I c σ Γc Ic → Judge κ (narrowEnvs c Γc).1 Ic t τ Γ₁ I₁ → I₁ = Ic →
+      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ (narrowEnvs c Γc).2) Ic
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
       threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of

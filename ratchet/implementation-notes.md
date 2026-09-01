@@ -1329,3 +1329,122 @@ State after this clink: **91 rungs climbed** of 136 (tiers 1–8 complete, tier 
 tier 11 at 1/10, tier 12 at 0/12), 91/91 cross-checked against the real semantics, 43/43
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all six
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 13 (2026-09-01) — tier 12a: narrowing, the two direct tests: 91 → 93
+
+The first two rungs of tier 12, and the first time this checker can **consume** a `nilable`.
+`narrow-nilable-truthy` (`if x` on a `nilable Int`) and `narrow-nilable-nil-check`
+(`if x.nil?`) — deliberately the two whose desugared conditions name the local directly, so
+neither needs aliasing, `subTy`, or a builtin class constant. 93 derivations, 48/48 controls,
+136/136 agreement, six theorems axiom-clean.
+
+### Narrowing lives inside `Judge.if'`, not in a second rule
+
+The obvious design is a new constructor, `ifNarrow`, sitting beside `if'` and applying only
+when the condition has a recognized shape. It was rejected for a reason that is about the
+judgment being a *specification*: two rules for one syntactic form means the honest answer to
+"what does this checker believe about `if`" requires reading both rules **and** knowing which
+one `chk` reaches, and the second half of that is not in `Judge.lean` at all.
+
+So `if'` itself types each branch in a narrowed environment:
+
+```
+Judge κ Γ I c σ Γc Ic →
+Judge κ (narrowEnvs c Γc).1 Ic t τ₁ Γ₁ I₁ →
+Judge κ (narrowEnvs c Γc).2 Ic e τ₂ Γ₂ I₂ → …
+```
+
+What makes this affordable is that **`narrowEnvs` is total and is the identity on every
+condition it does not recognize**. Which turned out to be every condition in tiers 1–11: the
+corpus's `if`s test literals (`if true`, `if nil`, `if 5`) or comparisons (`n <= 1`, `x > 2`),
+and none is a bare local read or a `nil?` send. Concretely, all **91** previously committed
+derivation terms in `Rungs.lean` compiled **unchanged** — `narrowEnvs .tru Γc` reduces to
+`(Γc, Γc)` in the kernel, so the premise is definitionally the old one. That was the empirical
+bet this design rested on, and it paid; had a single earlier rung had a bare-var condition, the
+separate-rule design would have been the right call after all.
+
+`ifNoElse` got the same treatment, and its *else* half is the part worth a second look: the
+absent branch still contributes to what the code after the `if` sees, so the outgoing
+environment is `joinEnv Γ₁ (narrowEnvs c Γc).2` — using `Γc` would be sound but less precise,
+and using `.1` would be a bug.
+
+### Three pieces, kept apart on purpose
+
+- **`NarrowKind`** (`truthy` | `isNil`) — *which runtime test* the condition performs. One
+  constructor per test rather than per syntax, because several forms perform the same test
+  (`if x`, `unless !x`, `if x != nil`, …), and later rungs will add forms without adding kinds.
+- **`NarrowCond c x k`** — the recognizer, as a *relation* in `Judge.lean`, with
+  `narrowCond?` as its executable twin. Two constructors: `bareVar` and `nilQuery`.
+- **`narrowEnvs c Γ : Env × Env`** — the total function above.
+
+The restrictiveness of `NarrowCond` is itself content. A refinement is a claim about the value
+of `x` **at the point the branch begins**, so the condition must be an expression whose
+evaluation cannot rebind `x` in between. Both admitted forms are (a local read; a total
+zero-argument builtin send to a local). The general side condition — "the condition assigns to
+no local the refinement mentions" — is a premise this ladder has not had to *state* only
+because no recognized form can assign at all. Whichever rung admits a compound condition
+(`narrow-and-guard`) inherits the obligation to state it.
+
+### The four refinements, and the one claim they all rest on
+
+`truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy`, in `Ty.lean`. Each is a projection *out of* a type
+the grammar already had — narrowing never manufactures a new type — and all four rest on one
+fact about Ruby: **the only falsy values are `nil` and `false`.** Not `0`, not `""`, not `[]`.
+
+That is why `falsyTy` answers `.never` on `.int`, `.cls _`, `.arrayOf _`, `.inst …` and the
+rest: if `x : Int`, the else-branch of `if x` **cannot run**, so typing it with `x : never` is
+not reckless, it is the precise answer, and `Ty.never`'s existing role as the join's unit makes
+the dead branch contribute nothing to the result type. Three deliberate imprecisions:
+
+- `.bool` refines to `.bool` in **both** directions, because `Ty` has no singleton `true`/
+  `false`. Harmless — `.bool`'s only `PrimSig` row is `!`.
+- `.any` refines to `.any` throughout: the checker knows nothing about the value, so it learns
+  nothing from the test.
+- `isNilTy` is *not* `falsyTy`. `false.nil?` is `false`, so `nil?` does not see `false` as nil,
+  and keeping the two functions separate is cheaper than arguing about where they coincide.
+
+### `nil?` needed a guard, not a wildcard
+
+`nil?` is total on every object in the standard library, so the honest `PrimSig` row is a
+wildcard receiver — which is exactly what clink 1 declined to admit for `!` and clink 12
+predicted would come due. It came due, and a wildcard is still wrong, for a reason specific to
+this type language: a wildcard receiver also covers `.inst n ivars`, an instance of a class the
+**program** declared, and a program may write `def nil?; 1 + "a"; end`.
+
+So the row is `PrimSig.nilQuery : NilQSafe σ → PrimSig σ "nil?" [] .bool`, with `NilQSafe` a
+new relation in exactly `EqSafe`'s shape. The guard reads "no user code can be reached through
+this type": the builtin scalars, `.cls n`, `.arrayOf _`, and — the one recursive row —
+`.nilable τ` **only when `τ` is safe**. That last row is what keeps `nilable (inst Dog)` out,
+and `nilable (inst Dog)` is a type this checker really produces (index an `arrayOf (inst Dog)`).
+
+Two controls pin it, and they are a pair: a `Dog` that overrides `nil?` with `1 + "a"`, reached
+through `[Dog.new][0]`, which really raises `TypeError` and which a wildcard row would certify;
+and the same program with an ordinary `Dog`, which is safe Ruby this judgment declines. The
+precise version of the guard consults `κ.classes` for an actual override; no rung needs it.
+
+### The five controls, three of which are polarity swaps
+
+Narrowing is the first capability on this ladder whose **most likely bug is a swap**, so three
+of the five new controls are the same program with one refinement reversed, each certified by an
+implementation that gets that refinement backwards, and each genuinely raising:
+`a = []; x = a[0]; if x then 0 else x + 1 end` (truthy/falsy swapped),
+`… if x.nil? then x + 1 else 0 end` (isNil/nonNil swapped — the more tempting one, since "the
+guard is true, so we are in the good case" is what `if x` trains), and `… x + 1` with no guard
+at all. `a = []` throughout, so the `nil` branch is the one that actually runs and the semantics
+labels the rejection *sound* rather than merely conservative. All three report
+"sound: really type-stuck".
+
+### What tier 12's remaining ten still want
+
+Unchanged from clink 12's list, minus nothing: aliasing (`case v when Integer` tests a
+desugarer temporary while the branch bodies use `v`), `is_a?`/`===` with `subTy` and `.clsOf`
+for a class the program did not declare, narrowing an **ivar** rather than a local (which also
+needs `if'`'s `I₁ = I₂` premise to become a join), a refinement established *inside* a compound
+condition, and narrowing by a branch that `return`s. None of the ten is unblocked by this
+clink; what is unblocked is the *shape* — the refinement site now exists, and later rungs add
+`NarrowCond` constructors and refinement functions rather than restructuring `if'`.
+
+State after this clink: **93 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 10/22,
+tier 11 at 1/10, tier 12 at 2/12), 93/93 cross-checked against the real semantics, 48/48
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all seven
+soundness theorems axiom-clean (`propext`, `Quot.sound`).

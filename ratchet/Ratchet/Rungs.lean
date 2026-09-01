@@ -1380,6 +1380,74 @@ def r121 : Rung :=
                    (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))
           (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
 
+/-! ## Tier 12 — narrowing
+
+The two rungs whose conditions test a local *directly*, which is what makes them the first
+two: no aliasing (the condition names `x`, not a desugarer temporary), no `subTy`, and no
+class constant. Read the pair together — they are the same program with the polarity of the
+test flipped, and the derivations differ only in which of `refineThen`/`refineElse` lands on
+which branch. That is the property `corpus/135-narrow-backwards-unsafe` is a permanent
+negative for. -/
+
+/-- `a = [1,2,3]; x = a[0]; if x then x + 1 else 0 end` → `Integer`.
+
+    **The rung tier 5 made impossible and tier 12 makes routine.** `Array#[]` answers
+    `nilable Int` (`PrimSig.arrayIndex` — an out-of-range index is `nil`), and `nilable Int`
+    matches no arithmetic row, so `a[0] + 1` was a recorded negative control from tier 5
+    onwards: safe Ruby the checker could not type. The guard is what fixes it, and the fix is
+    entirely in the environment the then-branch is typed in — `truthyTy (nilable Int) = Int`,
+    so the `.var rfl` below finds `x : Int` and `.intAdd` applies unchanged.
+
+    Read the two branch environments off the outgoing one: `x` leaves as
+    `joinT Int nilT = nilable Int`, i.e. the checker forgets the refinement at the merge
+    point, which is correct — after the `if`, either branch may have run.
+
+    `corpus/136-narrow-absent-unsafe` is this program with the `if` deleted (`a = []`), and it
+    really raises `NoMethodError`. It stays a permanent negative, which is the precise
+    statement that the *guard* is what makes this rung safe, not the indexing. -/
+def r125 : Rung :=
+  ⟨"narrow-nilable-truthy",
+    .seq [.vasgn .lvar "a" (.array [.int 1, .int 2, .int 3]),
+          .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+          .if' (.var .lvar "x")
+            (.send (some (.var .lvar "x")) "+" [.int 1] none)
+            (some (.int 0))],
+    .int, [("a", .arrayOf .int), ("x", .nilable .int)],
+    .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))))
+      (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
+        (.last (.if' (.var rfl)
+                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd)
+                 .intLit rfl))))⟩
+
+/-- `a = [1,2,3]; x = a[1]; if x.nil? then 0 else x + 10 end` → `Integer`.
+
+    The same shape with the branches the other way round, and the rung that brings in the
+    `nil?` row. Two things are worth reading:
+
+    **The condition has to type, and typing it is where `NilQSafe` is discharged.** The
+    `.nilQuery (.nilable .int)` leaf below is the whole guard: `nilable Int` is admitted
+    because `Int` is, and `nilable (inst Dog)` would not be, because a program-declared class
+    may override `nil?`.
+
+    **The polarity.** `nil?` answering `true` means `x` **is** `nil`, so the *then*-branch is
+    the one that learns nothing useful (`isNilTy (nilable Int) = nilT`, and it does not touch
+    `x` at all) and the *else*-branch is where `nonNilTy` produces the `Int` that `+ 10`
+    needs. A rule that used `truthyTy`/`falsyTy` here — the obvious "reuse the truthiness
+    refinement" move — would refine both branches backwards. -/
+def r126 : Rung :=
+  ⟨"narrow-nilable-nil-check",
+    .seq [.vasgn .lvar "a" (.array [.int 1, .int 2, .int 3]),
+          .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 1] none),
+          .if' (.send (some (.var .lvar "x")) "nil?" [] none)
+            (.int 0)
+            (some (.send (some (.var .lvar "x")) "+" [.int 10] none))],
+    .int, [("a", .arrayOf .int), ("x", .nilable .int)],
+    .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))))
+      (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
+        (.last (.if' (.prim (.var rfl) .nil (.nilQuery (.nilable .int)))
+                 .intLit
+                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1392,7 +1460,8 @@ def rungs : List Rung :=
    r074, r075, r076,
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
-   r121]
+   r121,
+   r125, r126]
 
 /-! ## `chk` answers exactly what was derived by hand
 

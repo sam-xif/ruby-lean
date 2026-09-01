@@ -34,6 +34,23 @@ theorem eqSafe?_sound {σ : Ty} (h : eqSafe? σ = true) : EqSafe σ := by
       | exact .cls
       | exact absurd h (by simp [eqSafe?])
 
+/-- `nilQSafe?` never admits a receiver `NilQSafe` does not. Recursive at `nilable`,
+mirroring the relation's one recursive constructor. -/
+theorem nilQSafe?_sound : ∀ {σ : Ty}, nilQSafe? σ = true → NilQSafe σ := by
+  intro σ h
+  induction σ with
+  | nilable τ ih => exact .nilable (ih (by simpa [nilQSafe?] using h))
+  | _ =>
+    first
+      | exact .int
+      | exact .float
+      | exact .bool
+      | exact .nilT
+      | exact .sym
+      | exact .cls
+      | exact .arrayOf
+      | exact absurd h (by simp [nilQSafe?])
+
 /-- `primSig?` and `PrimSig` agree in the direction that matters: the executable table
 never invents a signature the specification lacks. Proved by case exhaustion over the
 table rows, in the order they are written in `Validate.lean`: the guarded `==` row
@@ -47,6 +64,12 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
     · injection h with h
       subst h
       exact .objEq (eqSafe?_sound (by assumption))
+    · exact absurd h (by simp)
+  · -- the guarded `nil?` row: the receiver had to pass `nilQSafe?`
+    split at h
+    · injection h with h
+      subst h
+      exact .nilQuery (nilQSafe?_sound (by assumption))
     · exact absurd h (by simp)
   all_goals
     first
@@ -664,6 +687,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
   | none => simp [hc] at h
   | some r => exact ⟨r.1, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
 
+#print axioms nilQSafe?_sound
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound

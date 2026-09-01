@@ -332,6 +332,73 @@ that a checker carrying the pre-`if` environment forward would certify. -/
 def joinEnv (Γ₁ Γ₂ : Env) : Env :=
   joinEnvAt Γ₁ Γ₂ (envKeys Γ₁ ++ (envKeys Γ₂).filter (fun k => !(envKeys Γ₁).contains k))
 
+/-! ## Narrowing: the four refinements
+
+Tier 12. `nilable` and `union` are the two types this package can *produce* but has no way
+to *consume* — no `PrimSig` row takes either as a receiver, and neither is `EqSafe`. These
+four functions are what makes consuming one possible: given that a runtime test on a value
+of type `τ` went one way, they say what is left.
+
+Each is a claim about **Ruby's truth values**, and the one that carries all the weight is
+this: *in Ruby, the only falsy values are `nil` and `false`.* Not `0`, not `""`, not `[]`.
+So for every type in this language except `nilT`, `bool`, `nilable _`, `union _ _` and
+`any`, every value of that type is truthy — which is why `falsyTy` answers `.never` (the
+branch does not run) on all of them, and why that answer is *precise* rather than reckless.
+
+`.any` refines to `.any` throughout: the checker does not know what the value is, so it
+learns nothing from the test. `.bool` refines to `.bool` in both directions, because `Ty`
+has no singleton `true`/`false` types — a place the refinement is deliberately imprecise,
+and harmlessly so (`.bool`'s only `PrimSig` row is `!`).
+
+Note what is *not* here: these functions never look at the ivar spine of an `.inst`, and
+never manufacture a type the grammar did not already have. Narrowing is a projection out
+of a union, not a computation of a new type. -/
+
+/-- The values of `τ` that are **truthy** — everything except `nil` and `false`. Used for
+the then-branch of `if x` and the else-branch of `if x.nil?`. -/
+def truthyTy : Ty → Ty
+  | .nilT => .never
+  | .bool => .bool
+  | .any => .any
+  | .nilable ρ => truthyTy ρ
+  | .union σ τ => joinT (truthyTy σ) (truthyTy τ)
+  | τ => τ
+
+/-- The values of `τ` that are **falsy** — `nil` and `false`, and nothing else. Used for
+the else-branch of `if x`.
+
+The `_ => .never` case is the whole point: `if x` where `x : Int` has an else-branch that
+cannot run, so the branch is typed with `x : never` and anything it computes is vacuous.
+That is only sound because Ruby's falsiness is exactly `{nil, false}`. -/
+def falsyTy : Ty → Ty
+  | .nilT => .nilT
+  | .bool => .bool
+  | .any => .any
+  | .nilable ρ => joinT .nilT (falsyTy ρ)
+  | .union σ τ => joinT (falsyTy σ) (falsyTy τ)
+  | _ => .never
+
+/-- The values of `τ` that are `nil`. Used for the then-branch of `if x.nil?`. Unlike
+`falsyTy`, `false` is *not* included: `false.nil?` is `false`. -/
+def isNilTy : Ty → Ty
+  | .nilT => .nilT
+  | .any => .any
+  | .nilable _ => .nilT
+  | .union σ τ => joinT (isNilTy σ) (isNilTy τ)
+  | _ => .never
+
+/-- The values of `τ` that are not `nil`. Used for the else-branch of `if x.nil?`. Differs
+from `truthyTy` at `.bool` only in intent — both answer `.bool` — and at
+`nilable bool`, where this one keeps the `bool` that `truthyTy` also keeps. The two are
+genuinely different functions at `union(nilT, bool)`-shaped types, and separating them is
+cheaper than arguing they coincide. -/
+def nonNilTy : Ty → Ty
+  | .nilT => .never
+  | .any => .any
+  | .nilable ρ => nonNilTy ρ
+  | .union σ τ => joinT (nonNilTy σ) (nonNilTy τ)
+  | τ => τ
+
 /-- The element type of an array literal, from its elements' types: the `joinT` of all
 of them.
 
