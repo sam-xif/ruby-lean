@@ -805,3 +805,77 @@ State after this clink: **70 rungs climbed, and tiers 1–7 are complete** — e
 below tier 7 matches its recorded target. 70/70 cross-checked against the real semantics,
 33/33 negative controls rejected (all four new ones *sound*), corpus agreement 0
 disagreements, and all six soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 8 (2026-09-01) — tier 8: modules: 70 → 80, tiers 1–8 complete
+
+Rungs added: all ten of tier 8. Two new rules, one new `Cls` field.
+
+**The cheapest tier on the ladder, and the cheapness is the finding rather than luck.** Every
+one of the ten rungs is `module M; def self.foo; …; end; M.foo(args)`, and `M.foo` is
+`callSMethod` — tier 7's singleton-method rule — with *nothing added*. A module already was,
+in this judgment, exactly what tier 7 made a class object be: a thing with a singleton method
+table, reachable through `Ty.clsOf`. Worth recording because the corpus's own tier ordering
+implies modules are a step up from classes, and in this design they are a step *sideways*.
+
+The two rules that were genuinely missing:
+
+- **`moduleStmt`.** `Expr.module'` is a different head from `class'` with no superclass slot,
+  so it needs its own statement rule. Same `.any` type for the same reason (a module body's
+  value is its last statement's, and nothing reads it) and the same `classMethods?` premise
+  doing the same double duty (safe to evaluate unchecked, and readable into `CTable`).
+- **`selfSCall`.** `module M; def self.describe; value * 2; end; def self.value; 21; end` —
+  the `value` inside `describe` is a `vcall`, and `self` there is a `.clsOf`, not an
+  `.inst`, so `selfCall` does not apply. The twin, differing only in which table the lookup
+  goes to. That difference is not a detail: an instance method and a singleton method of the
+  same name are different methods, and `M.value` resolving to a plain `def value` would be
+  wrong — control on file.
+
+### The guard that tier 8 actually needed: `Cls.isModule`
+
+**A module cannot be allocated.** `M.new` raises `NoMethodError`. Without a flag, `M.new`
+would find no `initialize`, fall through to `newInstNoInit`'s zero-argument allocator, and
+certify a program that raises.
+
+So `Cls` gained `isModule`, and the three allocator rules go through two new module-aware
+lookups rather than testing the flag themselves:
+
+- `instClsGet?` — the table entry, unless it is a module.
+- `ctorGet?` — `initialize` by the ordinary walk, but only for something allocatable.
+
+Bundling it that way was deliberate: routing `newInst` through `ctorGet?` instead of
+`mroGet? … "initialize"` kept its **premise count unchanged**, so none of tier 7's thirteen
+existing derivations had to be touched. (Clink 7's `mroGet?` merge cost exactly that churn, so
+the shape of the fix was chosen with it in mind.)
+
+`newInstNoInit`'s two lookups are not redundant, and the docstring now says so:
+`instClsGet?` says the receiver is allocatable at all, `ctorGet? = none` says it has no
+constructor up its chain.
+
+**No rung writes `new` on a module**, so the flag is invisible in all ten derivations and
+visible only in `CheckRungs.lean`'s control. That is precisely the shape of guard that rots
+undetected without one, which is why it went in with the tier rather than after it.
+
+### One thing that is correct by accident, said out loud
+
+A module's *instance* methods (a plain `def` in its body) are recorded in `Cls.methods` and
+are unreachable: there is no `new` to get an instance, and `include`/`extend`/
+`module_function` have no rule, so no program that reaches them types at all. `M.foo` for an
+instance-method `foo` looks in `smethods`, misses, and is rejected — which is also what Ruby
+does. Recorded in `Cls.isModule`'s docstring because "unreachable because three other
+features are unimplemented" is a fact that stops being true the moment one of them lands.
+
+### A row that finally has a rung
+
+`PrimSig.intGt` was admitted in clink 1 with no rung asking for it — the one place a
+signature was not rung-driven, and noted then as a choice rather than a drift.
+`module-boolean-method` (`def self.positive?(n); n > 0; end`) is the rung that asks. Also
+worth noting from that rung: a method name ending in `?` is an ordinary name, and nothing in
+the judgment or the lookups treats it specially.
+
+State after this clink: **80 rungs climbed, and tiers 1–8 are complete.** 80/80 cross-checked
+against the real semantics, 36/36 negative controls rejected (all three new ones *sound*),
+corpus agreement 0 disagreements, all six soundness theorems axiom-clean (`propext`,
+`Quot.sound`). What remains is tier 9 (blocks and procs — 22 rungs, the largest single demand
+left, and the first that needs `Ty`'s arrow spine) and tier 10 (metaprogramming).

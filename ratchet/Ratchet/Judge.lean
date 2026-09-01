@@ -37,7 +37,9 @@ not an oversight:
 - **No inheritance, no `super`, no singleton methods.** `Cls.super?` is *recorded* by
   `extendClasses` and read by nothing: method lookup is `defGet? c.methods`, one class deep.
   So `class Dog < Animal` declares fine and `Dog.new` finds no `initialize`.
-- **No blocks, modules or metaprogramming.** Tiers 8–10.
+- **No blocks or metaprogramming.** Tiers 9–10. Modules are typed (tier 8), but only their
+  singleton methods are reachable: `include`, `extend` and `module_function` have no rule, so
+  a module's *instance* methods are recorded and unusable.
 - **`self` is typed only inside an instance-method body**, and only as `.inst n Iself`.
   At top level `κ.selfTy` is `none`, which two rules depend on: `bareName` (which requires
   it) and `prim`'s "explicit receiver only" restriction (an implicit-self send at top level
@@ -336,6 +338,22 @@ structure Cls where
   super? : Option String
   methods : List Defn
   smethods : List Defn
+  /-- `true` for a `module`. One `Cls` serves both because everything tier 8 asks for —
+      `M.foo` resolving to a `def self.foo` — is `callSMethod` unchanged, and duplicating the
+      structure to express that would duplicate the lookups too.
+
+      What the flag is *for* is the one place the two really differ: **a module cannot be
+      allocated.** `M.new` raises `NoMethodError`, so `ctorGet?`/`instClsGet?` refuse a module
+      and `newInst`/`newInstNoInit`/`selfNew` go through them. Without the flag, `M.new`
+      would find no `initialize`, take the zero-argument allocator route, and certify a
+      program that raises.
+
+      A module's *instance* methods (a plain `def` in its body) are recorded in `methods` and
+      are unreachable, which is correct-by-accident and worth saying out loud: they become
+      callable through `include`/`extend`/`module_function`, none of which has a rule, so no
+      program that uses one types at all. `M.foo` for an instance-method `foo` looks in
+      `smethods`, misses, and is rejected — which is what Ruby does too. -/
+  isModule : Bool
 
 abbrev CTable := List Cls
 
@@ -406,16 +424,38 @@ same walk over the other table. -/
 def smroGet? (C : CTable) (n m : String) : Option (String × Defn) :=
   lookupUp C true C.length n m
 
+/-- `n` as something **allocatable**: the table entry, unless it is a module. See
+`Cls.isModule` for why the refusal is a soundness requirement rather than tidiness. -/
+def instClsGet? (C : CTable) (n : String) : Option Cls :=
+  match clsGet? C n with
+  | some c => if c.isModule then none else some c
+  | none => none
+
+/-- `n`'s constructor: `initialize`, found by the ordinary walk, but only for something that
+can be allocated at all. Bundled into one lookup so the `newInst` rule's premise count did
+not change when tier 8 added the module check. -/
+def ctorGet? (C : CTable) (n : String) : Option (String × Defn) :=
+  match instClsGet? C n with
+  | some _ => mroGet? C n "initialize"
+  | none => none
+
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
     | some (ms, sms) =>
       match sup with
-      | none => ⟨n, none, ms, sms⟩ :: C
-      | some (.const sn) => ⟨n, some sn, ms, sms⟩ :: C
+      | none => ⟨n, none, ms, sms, false⟩ :: C
+      | some (.const sn) => ⟨n, some sn, ms, sms, false⟩ :: C
       -- A superclass expression that is not a bare constant (`class C < foo()`) is not
       -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
+    | none => C
+  -- Tier 8. A module is a `Cls` with no superclass and the module flag set; the body is read
+  -- by the same `classMethods?`, so `def self.foo` lands in `smethods` and `M.foo` is
+  -- `callSMethod` with nothing added.
+  | .module' n body =>
+    match classMethods? body with
+    | some (ms, sms) => ⟨n, none, ms, sms, true⟩ :: C
     | none => C
   | _ => C
 
@@ -803,7 +843,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {ρ : Ty} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
-      mroGet? κ.classes n "initialize" = some (dc, d) →
+      ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
       Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) Γ₂ I₂
@@ -818,7 +858,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {n : String} {args : List Expr} {c : Cls} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
-      clsGet? κ.classes n = some c → mroGet? κ.classes n "initialize" = none →
+      instClsGet? κ.classes n = some c → ctorGet? κ.classes n = none →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) Γ₂ I₂
   /-- **An instance method call.** The receiver's type carries both halves of what dispatch
       needs: `.inst n Iself` says which class to look the method up in *and* what the
@@ -941,10 +981,41 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {argTys : List Ty} {n dc : String} {d : Defn} {ρ : Ty} :
       κ.selfTy = some (.clsOf n) →
       JudgeAll κ Γ I args argTys Γ' I' →
-      mroGet? κ.classes n "initialize" = some (dc, d) →
+      ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
       Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
       Judge κ Γ I (.send none "new" args none) (.inst n Iout) Γ' I'
+  -- ### Tier 8 — modules
+  --
+  -- Two rules, and the smallness is the finding: `M.foo` for a `def self.foo` is
+  -- `callSMethod` with nothing added, because a module *is* an object with a singleton method
+  -- table. All that was genuinely missing was a statement rule and the bare-name form.
+  /-- A `module` declaration statement. `.any` for the same reason `classStmt` is — a module
+      body's value is its last statement's — and the same `classMethods?` premise, doing the
+      same double duty (safe to evaluate unchecked, and readable into `CTable`).
+
+      Separate from `classStmt` only because `Expr.module'` has no superclass slot; the entry
+      it produces differs by `Cls.isModule`, which exists to stop `M.new`. -/
+  | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
+      {ms sms : List Defn} :
+      classMethods? body = some (ms, sms) →
+      Judge κ Γ I (.module' n body) .any Γ I
+  /-- A bare name inside a **singleton** method body naming another of the same object's
+      singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;
+      end; end`.
+
+      `selfCall`'s twin, for the case where `self` is a class-or-module object rather than an
+      instance — the difference is which table the lookup goes to, and it is not a detail: an
+      instance method and a singleton method of the same name are different methods, and
+      `M.value` resolving to a plain `def value` would be wrong. Zero arguments, because a
+      `vcall` is the zero-argument bare-name form. -/
+  | selfSCall {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {n dc : String}
+      {d : Defn} {ρ : Ty} :
+      κ.selfTy = some (.clsOf n) →
+      smroGet? κ.classes n m = some (dc, d) →
+      paramEnv d.params [] = some Γb →
+      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.vcall m) ρ Γ I
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
       what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still

@@ -206,6 +206,24 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       · exact absurd h (by simp)
+    · -- `selfTy = some (.clsOf n)`: the bare name goes to the singleton table.
+      rename_i hself
+      split at h
+      · rename_i hsm
+        split at h
+        · rename_i hpar
+          split at h
+          · rename_i hbody
+            split at h
+            · rename_i hI
+              injection h with h
+              injection h with h h'; injection h' with h' h''
+              subst h; subst h'; subst h''
+              exact .selfSCall hself hsm hpar (by subst hI; exact chk_sound hbody)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
     · -- `selfTy = none`
       rename_i hself
@@ -239,6 +257,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     injection h with h
     injection h with h h'; injection h' with h' h''
     subst h; subst h'; subst h''; exact .defStmt
+  · -- `module' n body`: as `class'`, and the entry it produces differs only by the module
+    -- flag that stops `M.new` (see `Cls.isModule`).
+    split at h
+    · rename_i hms
+      injection h with h
+      injection h with h h'; injection h' with h' h''
+      subst h; subst h'; subst h''
+      exact .moduleStmt hms
+    · exact absurd h (by simp)
   · -- `class' n sup body`: only a body this checker can read into the class table.
     split at h
     · rename_i hms

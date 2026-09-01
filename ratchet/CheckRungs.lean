@@ -329,7 +329,28 @@ def controls : List Control :=
     -- separate: calling one on an instance raises NoMethodError.
   , ⟨"class P; def self.origin; 1; end; end; P.new.origin",
       .seq [.class' "P" none (.defs .self' "origin" [] (.int 1)),
-            .send (some (.send (some (.const "P")) "new" [] none)) "origin" [] none]⟩ ]
+            .send (some (.send (some (.const "P")) "new" [] none)) "origin" [] none]⟩
+    -- ### Tier 8's controls
+    --
+    -- (j) **`Cls.isModule`, the reason it exists.** A module cannot be allocated: `M.new`
+    -- raises NoMethodError. Without the flag `M.new` would find no `initialize`, fall
+    -- through to the zero-argument allocator, and certify this. No rung writes `new` on a
+    -- module, so this control is the only thing holding the guard in place.
+  , ⟨"module M; def self.foo; 1; end; end; M.new",
+      .seq [.module' "M" (.defs .self' "foo" [] (.int 1)),
+            .send (some (.const "M")) "new" [] none]⟩
+    -- (k) A module's *instance* methods are recorded and unreachable: `M.foo` for a plain
+    -- `def foo` raises NoMethodError, because the two method tables are separate. Reaching
+    -- them needs `include`/`extend`/`module_function`, none of which has a rule.
+  , ⟨"module M; def foo; 1; end; end; M.foo",
+      .seq [.module' "M" (.def' "foo" [] (.int 1)),
+            .send (some (.const "M")) "foo" [] none]⟩
+    -- (l) And the body of a module method is checked at its call site like any other:
+    -- nothing at the call site looks wrong here, and the program raises TypeError.
+  , ⟨"module M; def self.bad(x); x + true; end; end; M.bad(1)",
+      .seq [.module' "M" (.defs .self' "bad" [.req "x"]
+              (.send (some (.var .lvar "x")) "+" [.tru] none)),
+            .send (some (.const "M")) "bad" [.int 1] none]⟩ ]
 
 mutual
 
@@ -359,6 +380,7 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .const n => some (.const n)
   | .var .ivar x => some (.var .ivar x)
   | .vasgn .ivar x e => (toRubyCore e).map (fun e' => .vasgn .ivar x e')
+  | .module' n body => (toRubyCore body).map (fun b => .module' n b)
   | .class' n sup body => do
     let body' ← toRubyCore body
     match sup with

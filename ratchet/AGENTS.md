@@ -13,18 +13,18 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **70 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **80 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–7**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–8**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
 `BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
 literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
-`class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods — 70
-rungs. **Every rung at or below tier 7 matches its recorded target.** What remains is tier 8
-(modules), tier 9 (blocks and procs — 22 rungs, the largest single demand left) and tier 10
-(metaprogramming).
+`class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, and
+tier 8's modules — 80 rungs. **Every rung at or below tier 8 matches its recorded target.**
+What remains is tier 9 (blocks and procs — 22 rungs, the largest single demand left, and the
+first that needs `Ty`'s arrow spine) and tier 10 (metaprogramming).
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -80,6 +80,15 @@ table (`Cls.smethods`) whose bodies are judged with `self` typed `.clsOf n`, whi
 makes a bare `new` inside `def self.origin` mean "allocate one of me". `subTy` is *still*
 unused — inheritance turned out not to need it, because dispatch is by walk rather than by
 subsumption.
+
+**Tier 8 (modules) cost two rules**, and the cheapness is the finding: `M.foo` for a
+`def self.foo` is `callSMethod` unchanged, because a module already *was* what tier 7 made a
+class object be — a thing with a singleton method table behind `Ty.clsOf`. Only `moduleStmt`
+(a statement type) and `selfSCall` (the bare-name form, where `self` is a `.clsOf` rather than
+an `.inst`) were missing. What tier 8 genuinely needed was a *guard*: `Cls.isModule`, because
+a module cannot be allocated — `M.new` raises `NoMethodError`, and without the flag it would
+fall through to the zero-argument allocator. No rung writes `new` on a module, so that guard
+lives entirely in a negative control.
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
@@ -514,7 +523,11 @@ ladder is reported: 114/114 (§Architecture).
    Wants a declaration table over class bodies, ancestor-chain dispatch, and ivar types
    inferred from `initialize`'s writes — with `class-ivar-lazy-nil` pinning the corner
    (an ivar read with no write is `nil`, not an error). See §Design notes.
-8. **Modules (10 rungs).** Same machinery, for `module'`/`defs self'`.
+8. **Modules (10 rungs).** **All ten climbed** (`implementation-notes.md` clink 8), and the
+   cheapest tier on the ladder: `M.foo` for a `def self.foo` is tier 7's `callSMethod`
+   unchanged. Only `moduleStmt` and `selfSCall` were missing. The real work was
+   `Cls.isModule`, which stops `M.new` — a guard that no rung exercises and that lives in a
+   negative control.
 9. **Blocks, procs and lambdas (22 rungs).** Ruby's callable literals, in one place
    and increasing in complexity: `lambda {}`/`->(){}`/`proc {}` (all three desugar to
    the *same* shape — an ordinary `send none "lambda"/"proc" [] (block …)`, so a block
@@ -700,24 +713,32 @@ The full climb, in roughly the order that costs least to unlock the most:
    prediction was right and was the real design question. The `subTy` prediction was wrong:
    dispatch by walk needs no subsumption, and `subTy` would only come due at a *parameter
    annotation*, which this checker has none of.
-5. **Tier 8, modules** (10 rungs) — every rung is `Module.method(args)` on a module with
-   `def self.`-style methods, so on the face of it this is `callSMethod` with `Cls.super? =
-   none` and a `.clsOf`-shaped receiver. Worth checking whether `Expr.module'` even needs a
-   separate table entry or whether `extendClasses` can take it as a superclass-less class
-   whose *instance* methods are unreachable. The trap to look for: `module_function`,
-   `include`, and a module's methods being callable both ways.
-6. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
+5. ~~**Tier 8, modules**~~ — **done** (clink 8). The guess in this entry was right down to
+   the mechanism, including "a superclass-less class whose instance methods are unreachable".
+   The trap it flagged turned out to be a different one: not `module_function` but `M.new`,
+   which needed `Cls.isModule` to reject.
+6. **Tier 9, blocks and procs** (22 rungs) — the largest single demand left, and the first
+   that needs `Ty`'s **arrow spine** (`arrow0`/`arrowCons`), which has sat unused since the
+   port. Ordered so the first rung (`lambda { 1 }` → `arrow_of([], Int)`) is reachable long
+   before the last. Two genuinely new things beyond a callable value: a **block passed to a
+   builtin** (`[1,2].map { |x| x.to_s }`) needs the checker to know what `map` does with the
+   block, which is a `PrimSig`-shaped claim about a *higher-order* signature; and `yield`,
+   which needs the block's type available inside the method body it was passed to — a third
+   thing in `Ctx`. Two rungs are permanent negatives (`block-bad-arith`,
+   `lambda-arity-mismatch`) and one is a recorded `ty_language_gap`
+   (`proc-arity-leniency`, §Ty language gaps).
+7. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
    *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
-7. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
+8. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
    actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
-8. **Modules**: a declaration table (something like the real project's
+9. **Modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
    node (accumulating across reopenings for free), each method's signature *inferred*
@@ -727,9 +748,9 @@ The full climb, in roughly the order that costs least to unlock the most:
    for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
    10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
    constructor except the one item below.
-9. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
+10. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
-10. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
+11. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is

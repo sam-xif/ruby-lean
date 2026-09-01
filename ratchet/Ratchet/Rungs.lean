@@ -974,6 +974,160 @@ def r073 : Rung :=
         (.selfNew rfl (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))))⟩
 
+/-! ## Tier 8 — modules
+
+**The cheapest tier on the ladder, and that is the finding rather than luck.** Every one of
+these ten rungs is `module M; def self.foo; …; end; M.foo(args)`, and `M.foo` is
+`callSMethod` — tier 7's singleton-method rule — with *nothing added*. A module already was,
+in this judgment, an object with a singleton method table; the only rules tier 8 needed were
+`moduleStmt` (a statement type, because `Expr.module'` is a different head from `class'`) and
+`selfSCall` (the bare-name form, because `self` inside a module method is a `.clsOf`, not an
+instance).
+
+What tier 8 *did* need was a soundness guard in the other direction: `Cls.isModule`, because
+**a module cannot be allocated**. Without it `M.new` would find no `initialize`, fall through
+to the zero-argument allocator, and certify a program that raises `NoMethodError`. The rungs
+below never write `new`, so the flag is invisible in them and visible only in
+`CheckRungs.lean`'s control — which is exactly the shape of guard that would have rotted
+undetected without one.
+
+Read the derivations as a pair of `rfl`s each: `smroGet?` (the module declares that singleton
+method) and `paramEnv` (the arity matched). The receiver is always `constCls`, which now
+denotes a module object as happily as a class object. -/
+
+/-- `module M; def self.foo; 1; end; end; M.foo` → `Integer`. -/
+def r077 : Rung :=
+  ⟨"module-basic",
+    .seq [.module' "M" (.defs .self' "foo" [] (.int 1)),
+          .send (some (.const "M")) "foo" [] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) .nil rfl rfl .intLit)))⟩
+
+/-- `module Greeter; def self.hello(name); "hi " + name; end; end; Greeter.hello("sam")` →
+    `String`. A parameter, so `paramEnv` binds it at the call site's `String` and the body's
+    `strAdd` is only admissible because of that — the same per-call-site instantiation tier 6
+    introduced, now on a module. -/
+def r078 : Rung :=
+  ⟨"module-method-with-arg",
+    .seq [.module' "Greeter" (.defs .self' "hello" [.req "name"]
+            (.send (some (.str "hi ")) "+" [.var .lvar "name"] none)),
+          .send (some (.const "Greeter")) "hello" [.str "sam"] none],
+    .cls "String", [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) (.cons .strLit .nil) rfl rfl
+        (.prim .strLit (.cons (.var rfl) .nil) .strAdd))))⟩
+
+/-- `M.foo + M.bar` where both are module methods → `Integer`. Two singleton lookups in one
+    expression, so the rung that would catch an `smroGet?` keyed on anything but the name. -/
+def r079 : Rung :=
+  ⟨"module-multiple-methods",
+    .seq [.module' "M" (.seq [.defs .self' "foo" [] (.int 1),
+                              .defs .self' "bar" [] (.int 2)]),
+          .send (some (.send (some (.const "M")) "foo" [] none)) "+"
+            [.send (some (.const "M")) "bar" [] none] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.prim
+        (.callSMethod (.constCls rfl) .nil rfl rfl .intLit)
+        (.cons (.callSMethod (.constCls rfl) .nil rfl rfl .intLit) .nil)
+        .intAdd)))⟩
+
+/-- `module M; def self.value; 21; end; def self.describe; value * 2; end; end; M.describe`
+    → `Integer`. **The rung `selfSCall` exists for.** The `value` inside `describe` is a
+    `vcall`, and resolving it needs `self` to be typed `.clsOf "M"` *and* the lookup to go to
+    the singleton table — a plain `def value` of the same name would be a different method
+    and would correctly not be found. -/
+def r080 : Rung :=
+  ⟨"module-method-calls-method",
+    .seq [.module' "M" (.seq [.defs .self' "value" [] (.int 21),
+            .defs .self' "describe" []
+              (.send (some (.vcall "value")) "*" [.int 2] none)]),
+          .send (some (.const "M")) "describe" [] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) .nil rfl rfl
+        (.prim (.selfSCall rfl rfl rfl .intLit) (.cons .intLit .nil) .intMul))))⟩
+
+/-- `module Calc; def self.add(a, b); a + b; end; end; Calc.add(1, 2)` → `Integer`. -/
+def r081 : Rung :=
+  ⟨"module-with-arithmetic",
+    .seq [.module' "Calc" (.defs .self' "add" [.req "a", .req "b"]
+            (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none)),
+          .send (some (.const "Calc")) "add" [.int 1, .int 2] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
+        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+
+/-- `M1.foo` where `M1`'s body calls `M2.bar` → `Integer`. A module method reaching another
+    *module*, so the derivation nests a whole `callSMethod` inside one — and it works
+    regardless of declaration order, for the same reason `fun-calling-another-fun` does: the
+    body is checked against the table in force at `M1.foo`'s call site, by which time both
+    `module` statements have run. -/
+def r082 : Rung :=
+  ⟨"module-calling-another-module",
+    .seq [.module' "M2" (.defs .self' "bar" [] (.int 10)),
+          .module' "M1" (.defs .self' "foo" []
+            (.send (some (.send (some (.const "M2")) "bar" [] none)) "+"
+              [.int 1] none)),
+          .send (some (.const "M1")) "foo" [] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl) (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) .nil rfl rfl
+        (.prim (.callSMethod (.constCls rfl) .nil rfl rfl .intLit)
+          (.cons .intLit .nil) .intAdd)))))⟩
+
+/-- `module M; def self.pair; [1, 2]; end; end; M.pair` → `arrayOf Int`. A structured return
+    type out of a module method, i.e. tier 5's `elemTy` reached through tier 8's dispatch. -/
+def r083 : Rung :=
+  ⟨"module-returns-array",
+    .seq [.module' "M" (.defs .self' "pair" [] (.array [.int 1, .int 2])),
+          .send (some (.const "M")) "pair" [] none],
+    .arrayOf .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) .nil rfl rfl
+        (.arrayLit (.cons .intLit (.cons .intLit .nil))))))⟩
+
+/-- `module M; def self.positive?(n); n > 0; end; end; M.positive?(5)` → `Bool`. A method
+    name ending in `?` is an ordinary name — nothing in the judgment or the lookup treats it
+    specially — and the `>` row is the one admitted in clink 1 with no rung asking; this is
+    the rung that finally asks. -/
+def r084 : Rung :=
+  ⟨"module-boolean-method",
+    .seq [.module' "M" (.defs .self' "positive?" [.req "n"]
+            (.send (some (.var .lvar "n")) ">" [.int 0] none)),
+          .send (some (.const "M")) "positive?" [.int 5] none],
+    .bool, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl) (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl) (.cons .intLit .nil) .intGt))))⟩
+
+/-- `M.greeting.length` → `Integer`. A `PrimSig` row consuming a module method's result, so
+    the rung that pins the result type being a real `Ty` and not something inert. -/
+def r085 : Rung :=
+  ⟨"module-nested-call-chain",
+    .seq [.module' "M" (.defs .self' "greeting" [] (.str "hi")),
+          .send (some (.send (some (.const "M")) "greeting" [] none)) "length" [] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.prim (.callSMethod (.constCls rfl) .nil rfl rfl .strLit)
+        .nil .strLength)))⟩
+
+/-- `M.sum3(1, 2, 3)` → `Integer`. Three parameters, so `paramEnv`'s length match again. -/
+def r086 : Rung :=
+  ⟨"module-passing-multiple-args",
+    .seq [.module' "M" (.defs .self' "sum3" [.req "a", .req "b", .req "c"]
+            (.send (some (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none))
+              "+" [.var .lvar "c"] none)),
+          .send (some (.const "M")) "sum3" [.int 1, .int 2, .int 3] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl)
+        (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
+        (.prim (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)
+          (.cons (.var rfl) .nil) .intAdd))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -983,7 +1137,8 @@ def rungs : List Rung :=
    r044, r045, r046, r047, r048, r049, r050, r051,
    r052, r055, r057, r058, r059, r060,
    r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
-   r074, r075, r076]
+   r074, r075, r076,
+   r077, r078, r079, r080, r081, r082, r083, r084, r085, r086]
 
 /-! ## `chk` answers exactly what was derived by hand
 

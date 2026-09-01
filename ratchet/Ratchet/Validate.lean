@@ -144,6 +144,18 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           | none => none
         | none => none
       | none => none
+    | some (.clsOf n) =>
+      -- Tier 8: `self` is a class-or-module object, so the bare name goes to the *singleton*
+      -- table (`Judge.selfSCall`).
+      match smroGet? κ.classes n m with
+      | some (dc, d) =>
+        match paramEnv d.params [] with
+        | some Γb =>
+          match chk f (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body with
+          | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ, I) else none
+          | none => none
+        | none => none
+      | none => none
     | some _ => none
     | none =>
       -- Nothing may have defined the name, *and* it must be a known `BareNameError` row.
@@ -159,6 +171,10 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | some _ => some (.clsOf n, Γ, I)
     | none => none
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
+  | _ + 1, .module' _ body =>
+    match classMethods? body with
+    | some (_, _) => some (.any, Γ, I)
+    | none => none
   | _ + 1, .class' _ _ body =>
     match classMethods? body with
     | some (_, _) => some (.any, Γ, I)
@@ -207,7 +223,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             match κ.selfTy with
             | some (.clsOf n) =>
               if m = "new" then
-                match mroGet? κ.classes n "initialize" with
+                match ctorGet? κ.classes n with
                 | some (dc, d) =>
                   match paramEnv d.params argTys with
                   | some Γb =>
@@ -249,7 +265,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               | none => none
             | none =>
               if m = "new" then
-                match mroGet? κ.classes n "initialize" with
+                match ctorGet? κ.classes n with
                 | some (dc, d) =>
                   match paramEnv d.params argTys with
                   | some Γb =>
@@ -260,7 +276,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | none =>
                   -- No `initialize` anywhere up the chain: `Object#new` takes zero
                   -- arguments.
-                  match clsGet? κ.classes n with
+                  match instClsGet? κ.classes n with
                   | some _ => if argTys = [] then some (.inst n .ivar0, Γ₂, I₂) else none
                   | none => none
               else none
