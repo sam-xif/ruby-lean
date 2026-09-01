@@ -2754,3 +2754,78 @@ a proof into an error.
 Next in tier 13 is the scoped forms (`M::X`, `Outer::Inner::Y`, `M::X = 4`), which need
 `cpath` and a **nesting path** rather than a single owner — `constKeyIn` takes one string
 today, and `Frame.defClass` is one string too.
+
+## Clink 30 (2026-09-01) — tier 13d: three class-body declarations: 135 → 138
+
+`const-private-constant`, `const-attr-reader`, `const-alias`. Three new `ClsMember` kinds,
+and the shape of the clink is that **two of the three vanish before any rule sees them**.
+
+### `attr_reader` is an expansion, and that is the whole story
+
+`splitMembers` turns `.attrR ["x", "y"]` into the two `Defn`s it stands for —
+`⟨"x", [], .var .ivar "@x"⟩` — so `mroGet?` finds ordinary methods, `callMethod` judges an
+ordinary body, and `r146`'s derivation does not contain the string `attr_reader` anywhere. The
+ivar's name is the reader's with an `@`, which is the only fact there is about `attr_reader`,
+and it is stated once, in `attrDefns`.
+
+Control (p13l) is what makes the expansion honest rather than a shortcut:
+`class C; attr_reader :z; def initialize(v); @v = v; end; end; C.new(1).z + 1` raises
+`NoMethodError`, because `@z` was never assigned and `ivarRead` correctly answers `nil`. A
+checker that gave a reader the type of the constructor parameter with a matching *name* would
+certify it. Sound rejection.
+
+### `alias` cannot be a `clsMember?` case
+
+An alias copies a method, and a member kind on its own cannot see the method it copies. So
+`splitMembers` collects aliases into a seventh component and `classMethods?` resolves them
+(`resolveAliases`) before handing back the same six-tuple everything downstream reads — which
+is why `extendClasses` needed no change at all.
+
+Two decisions there, both recorded because both are visible in Ruby:
+
+- **An unresolvable alias makes the whole class unreadable** (`none`), not skipped. Skipping
+  would be "sound" by this package's definition (`alias b a` with no `a` raises `NameError`,
+  outside the family) and would put a class in the table missing a method, failing a later
+  dispatch for the wrong reason. Control (p13k).
+- **Ruby's ordering requirement is not enforced.** `splitMembers` keeps each kind's source
+  order but loses the interleaving between kinds, so `class C; alias b a; def a; 1; end; end`
+  types here and raises `NameError` in Ruby. Fixing it means keeping the members in one
+  ordered list instead of five, which is a change to tier 7's data structure for a rung nobody
+  has written.
+
+### `private_constant` is the one that is precision rather than soundness
+
+It declares nothing, so `splitMembers` drops the member and `r145`'s derivation is
+`const-in-class`'s. What it *does* is hide the constant from a scoped read: `Box::SECRET`
+raises `NameError` while a bare `SECRET` inside `Box#get` still reads it.
+
+`NameError` is outside the type-stuck family, so a checker that treated the member as a pure
+no-op would still be **sound** — and would certify `Box::SECRET`, a program Ruby refuses to
+run. The choice to implement it anyway is the reason `Ctx.privConsts` exists: control (p13j)
+would otherwise be a control that *passes* validation, which is a failure in this harness even
+though no soundness theorem would notice. Where the fact lives is fixed by what it is about:
+one premise on `Judge.constPath` and nowhere else.
+
+It is a second syntactic pass over the class body (`privNames`) rather than a tuple
+component, because `splitMembers` has already dropped the member by the time anything wants
+the answer, and `Ctx.afterStmt` is where it is needed.
+
+### The general shape, now visible three times
+
+Tier 10 read `include`/`extend`/`prepend` declaratively off the class body's syntax; tier 13d
+does the same for three more statements. The shared caveat: all six are matched at the exact
+syntax the desugarer emits, with the arguments required to be bare constants or bare symbols.
+`attr_reader(*names)` is not read, so the class does not enter the table and nothing using it
+types — conservative, and the same trade `include some_expr` already made.
+
+### State
+
+**138 rungs of 232**, tier 13 at 9/13. 138/138 cross-checked, 104/104 controls rejected (three
+new, two of them sound rejections), corpus agreement 232/232, axiom-clean.
+
+The four left in tier 13 are three rungs and one thing: `const-scoped-nested`,
+`const-scoped-class-ref` and `const-class-of-const` all need a class or module **declared
+inside another one** to enter the class table, which `classMethods?` refuses and
+`extendClasses` does not recurse into. That is a change to the *class* namespace — qualified
+`Cls.name`s and lexical resolution of bare class names — not to the constant one.
+(`const-class-of-const` additionally wants `Object#class`.)

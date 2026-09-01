@@ -1027,7 +1027,30 @@ def controls : List Control :=
     -- (p13i) The write side of the same fact: assigning into something that is not a
     -- namespace.
   , ⟨"M = 5; M::X = 4",
-      .seq [.casgn "M" (.int 5), .cpathAsgn (some (.const "M")) "X" (.int 4)]⟩ ]
+      .seq [.casgn "M" (.int 5), .cpathAsgn (some (.const "M")) "X" (.int 4)]⟩
+    -- (p13j) **`private_constant`, the only thing it does** (tier 13d). Reading the constant
+    -- from outside raises `NameError`. Outside the type-stuck family, so this prints as
+    -- conservative -- but a checker that dropped the member as a no-op would *certify* it,
+    -- which is why `Ctx.privConsts` exists at all.
+  , ⟨"class Box; SECRET = 1; private_constant :SECRET; end; Box::SECRET (really a NameError)",
+      .seq [.class' "Box" none (.seq [.casgn "SECRET" (.int 1),
+                                      .send none "private_constant" [.sym "SECRET"] none]),
+            .cpath (some (.const "Box")) "SECRET"]⟩
+    -- (p13k) **An unresolvable `alias` makes the class unreadable.** `resolveAliases` answers
+    -- `none`, so `classMethods?` does, so the class never enters the table -- and the program
+    -- really does raise (`NameError` at the `alias` line).
+  , ⟨"class Box; alias length size; end; Box.new (really a NameError at the alias)",
+      .seq [.class' "Box" none (.alias' "length" "size"),
+            .send (some (.const "Box")) "new" [] none]⟩
+    -- (p13l) **`attr_reader` is expanded, not trusted.** The reader really does read `@z`,
+    -- which this object never assigns -- so it is `nil`, and `nil + 1` raises NoMethodError.
+    -- A checker that gave a reader the type of the constructor's matching parameter by name
+    -- would certify this.
+  , ⟨"class C; attr_reader :z; def initialize(v); @v = v; end; end; C.new(1).z + 1",
+      .seq [.class' "C" none (.seq [.send none "attr_reader" [.sym "z"] none,
+              .def' "initialize" [.req "v"] (.vasgn .ivar "@v" (.var .lvar "v"))]),
+            .send (some (.send (some (.send (some (.const "C")) "new" [.int 1] none))
+              "z" [] none)) "+" [.int 1] none]⟩ ]
 
 mutual
 
@@ -1074,6 +1097,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .casgn n e => (toRubyCore e).map (fun e' => .casgn n e')
   -- Tier 13c: `M::X` and `M::X = 4`.
   | .cpath (some b) n => (toRubyCore b).map (fun b' => .cpath (some b') n)
+  -- Tier 13d: `alias new old` in a class body.
+  | .alias' nw od => some (.alias' nw od)
   | .cpathAsgn (some b) n e => do
     let b' ← toRubyCore b
     return .cpathAsgn (some b') n (← toRubyCore e)

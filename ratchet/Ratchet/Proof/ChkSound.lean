@@ -459,10 +459,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     · rename_i hbase
       split at h
       · rename_i τ₀ hlook
-        injection h with h
-        injection h with h h'; injection h' with h' h''
-        subst h; subst h'; subst h''
-        exact .constPath (chk_sound hbase) hlook
+        -- Tier 13d: `private_constant` -- one more `split`, and the `false` branch is the one
+        -- that can succeed.
+        split at h
+        · exact absurd h (by simp)
+        · rename_i hpriv
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .constPath (chk_sound hbase) hlook (by simpa using hpriv)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `cpathAsgn (some (const owner)) n e` (tier 13c): the same base premise, then the

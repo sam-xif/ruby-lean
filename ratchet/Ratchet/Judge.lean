@@ -520,6 +520,32 @@ inductive ClsMember where
       syntactic. What closes that gap is `constLitTy?` plus `JudgeConsts`: see
       `Judge.classStmt`. -/
   | constM (n : String) (e : Expr)
+  /-- `attr_reader :x, :y` (tier 13d) — *n* method declarations in one statement.
+      `splitMembers` expands each name into the `def x; @x; end` it stands for, so nothing
+      downstream knows this member kind existed. -/
+  | attrR (names : List String)
+  /-- `alias length size` (tier 13d). Resolved by `classMethods?`, not here: an alias copies a
+      method that has to be found first, and only the whole member list knows what is
+      there. -/
+  | aliasM (newName oldName : String)
+  /-- `private_constant :SECRET` (tier 13d). Declares nothing, so `splitMembers` drops it;
+      what reads it is `privNames`, from `Ctx.afterStmt`. -/
+  | privC (names : List String)
+
+/-- A list of send arguments as bare symbol names, or `none` if any argument is anything
+else. `attr_reader`/`private_constant` are declarations, so an argument this cannot read has
+to make the whole member unreadable rather than be skipped. -/
+def symNames? : List Expr → Option (List String)
+  | [] => some []
+  | .sym n :: es => (symNames? es).map (fun ns => n :: ns)
+  | _ => none
+
+/-- The methods `attr_reader :x` stands for: `def x; @x; end`, one per name. The ivar's name
+is the reader's with an `@`, which is Ruby's rule and the only thing there is to know about
+`attr_reader`. -/
+def attrDefns : List String → List Defn
+  | [] => []
+  | n :: ns => ⟨n, [], .var .ivar ("@" ++ n)⟩ :: attrDefns ns
 
 def clsMember? : Expr → Option ClsMember
   | .def' n ps b => some (.inst ⟨n, ps, b⟩)
@@ -538,20 +564,66 @@ def clsMember? : Expr → Option ClsMember
   -- class statement runs, which is why it is the first member kind `classStmt` has to type
   -- rather than merely record.
   | .casgn n e => some (.constM n e)
+  -- Tier 13d. All three are the same kind of thing as `include`: an ordinary class-body
+  -- statement that this checker reads *declaratively*, matched at the exact syntax the
+  -- desugarer emits. The arguments must be bare symbol literals; `attr_reader(*names)` is not
+  -- read, so the class does not enter the table and nothing using it types.
+  | .send none "attr_reader" args none => (symNames? args).map ClsMember.attrR
+  | .send none "private_constant" args none => (symNames? args).map ClsMember.privC
+  | .alias' newName oldName => some (.aliasM newName oldName)
   | _ => none
 
 def splitMembers :
     List ClsMember →
       List Defn × List Defn × List String × List String × List String ×
-        List (String × Expr)
-  | [] => ([], [], [], [], [], [])
-  | .inst d :: ms => let (i, s, c, e, p, k) := splitMembers ms; (d :: i, s, c, e, p, k)
-  | .sing d :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, d :: s, c, e, p, k)
-  | .incl n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, n :: c, e, p, k)
-  | .ext n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, c, n :: e, p, k)
-  | .prep n :: ms => let (i, s, c, e, p, k) := splitMembers ms; (i, s, c, e, n :: p, k)
+        List (String × Expr) × List (String × String)
+  | [] => ([], [], [], [], [], [], [])
+  | .inst d :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (d :: i, s, c, e, p, k, a)
+  | .sing d :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (i, d :: s, c, e, p, k, a)
+  | .incl n :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, n :: c, e, p, k, a)
+  | .ext n :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, n :: e, p, k, a)
+  | .prep n :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, e, n :: p, k, a)
   | .constM n e :: ms =>
-    let (i, s, c, e', p, k) := splitMembers ms; (i, s, c, e', p, (n, e) :: k)
+    let (i, s, c, e', p, k, a) := splitMembers ms; (i, s, c, e', p, (n, e) :: k, a)
+  -- Tier 13d: expanded here, so no later function knows `attr_reader` exists.
+  | .attrR ns :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (attrDefns ns ++ i, s, c, e, p, k, a)
+  | .aliasM nw od :: ms =>
+    let (i, s, c, e, p, k, a) := splitMembers ms; (i, s, c, e, p, k, (nw, od) :: a)
+  -- `private_constant` declares nothing; it is read off the body separately (`privNames`).
+  | .privC _ :: ms => splitMembers ms
+
+/-- `alias new old` copies the method `old` names, so it can only be resolved once the whole
+member list is known — which is why it is `classMethods?`'s job and not `clsMember?`'s.
+
+**An unresolvable alias makes the whole class unreadable** (`none`), rather than being
+skipped. Ruby raises `NameError` for `alias b a` with no `a`, and `NameError` is outside this
+package's type-stuck family, so skipping would have been "sound" and useless: the class would
+enter the table missing a method, and a later dispatch would fail for the wrong reason.
+
+What this does *not* enforce is Ruby's ordering requirement — the aliased method must be
+defined *before* the `alias` line. `splitMembers` keeps each kind's source order but loses the
+interleaving between kinds, so `class C; alias b a; def a; 1; end; end` is accepted here and
+raises `NameError` in Ruby. Outside the family, and recorded rather than fixed. -/
+def resolveAliases : List Defn → List (String × String) → Option (List Defn)
+  | ms, [] => some ms
+  | ms, (nw, od) :: as =>
+    match defGet? ms od with
+    | some d => resolveAliases (⟨nw, d.params, d.body⟩ :: ms) as
+    | none => none
+
+def finishMembers :
+    List Defn × List Defn × List String × List String × List String ×
+      List (String × Expr) × List (String × String) →
+    Option (List Defn × List Defn × List String × List String × List String ×
+      List (String × Expr))
+  | (ms, sms, incs, exts, preps, cs, als) =>
+    (resolveAliases ms als).map (fun ms' => (ms', sms, incs, exts, preps, cs))
 
 /-- A class body's instance and singleton methods, or `none` if the body contains anything
 this checker cannot read.
@@ -571,8 +643,8 @@ def classMethods? :
     Expr → Option (List Defn × List Defn × List String × List String × List String ×
       List (String × Expr))
   | .nil => some ([], [], [], [], [], [])
-  | .seq es => (es.mapM clsMember?).map splitMembers
-  | e => (clsMember? e).map (fun m => splitMembers [m])
+  | .seq es => (es.mapM clsMember?).bind (fun ms => finishMembers (splitMembers ms))
+  | e => (clsMember? e).bind (fun m => finishMembers (splitMembers [m]))
 
 /-! ### A class body's constants (tier 13)
 
@@ -646,6 +718,41 @@ def bodyConsts (body : Expr) : List (String × Expr) :=
   match classMethods? body with
   | some (_, _, _, _, _, cs) => cs
   | none => []
+
+/-! ### `private_constant` (tier 13d)
+
+`private_constant :SECRET` does not change what the constant *is*; it changes who may name
+it. `Box::SECRET` from outside raises `NameError`, while a bare `SECRET` inside a method of
+`Box` still reads it. So the fact belongs on the *scoped read* rule and nowhere else, and it
+is **precision rather than soundness** — `NameError` is outside this package's type-stuck
+family, so a checker that ignored `private_constant` would still be sound and would certify
+`Box::SECRET`, a program Ruby refuses to run. That is the whole reason this field exists.
+
+It is a second syntactic pass over the class body rather than a component of
+`classMethods?`'s tuple, because `splitMembers` drops the member (it declares nothing) and
+`Ctx.afterStmt` is where the answer is needed. -/
+mutual
+
+def privNames : Expr → List String
+  | .send none "private_constant" args none => (symNames? args).getD []
+  | .seq es => privNamesAll es
+  | _ => []
+
+def privNamesAll : List Expr → List String
+  | [] => []
+  | e :: es => privNames e ++ privNamesAll es
+
+end
+
+/-- The absolute keys a class-or-module statement makes private. -/
+def addPrivNames (P : List String) (owner : String) : List String → List String
+  | [] => P
+  | n :: ns => addPrivNames (constKeyIn owner n :: P) owner ns
+
+def extendPrivConsts (P : List String) : Expr → List String
+  | .class' n _ body => addPrivNames P n (privNames body)
+  | .module' n body => addPrivNames P n (privNames body)
+  | _ => P
 
 /-- **Every name mixed in by this class body is a declared `module`.**
 
@@ -1228,6 +1335,10 @@ structure Ctx where
       body, which is the whole reason it is here rather than in `Env` — see §Constants
       below `Ctx.inCtor` for the three facts that force this placement. -/
   consts : Env
+  /-- The absolute keys `private_constant` has hidden (tier 13d). Read by `Judge.constPath`
+      and by nothing else — see §`private_constant` for why it is a separate field and why it
+      is precision rather than soundness. -/
+  privConsts : List String
 
 /-- The class name behind a `self` type, for `Frame.recvClass`. `.inst n _` and `.clsOf n`
 are the only two shapes any body-entering rule supplies; anything else cannot arise and gets a
@@ -1320,7 +1431,8 @@ by `JudgeSeq.cons`, which is the only rule that knows about statement order.
 `τ` is used by `extendConsts` alone; every other component of the result is syntactic. -/
 def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
   { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e,
-           consts := extendConsts κ.consts e τ }
+           consts := extendConsts κ.consts e τ,
+           privConsts := extendPrivConsts κ.privConsts e }
 
 /-- `paramEnv` for a call that **carries a block**. Same walk, plus one case: a
 `&b` parameter (`Param.block`) consumes not an argument but the block itself.
@@ -3003,6 +3115,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | constPath {κ : Ctx} {Γ : Env} {I : Ty} {owner n : String} {τ : Ty} :
       Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
       envGet? κ.consts (constKeyIn owner n) = some τ →
+      κ.privConsts.contains (constKeyIn owner n) = false →
       Judge κ Γ I (.cpath (some (.const owner)) n) τ Γ I
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and

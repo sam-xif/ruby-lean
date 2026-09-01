@@ -2649,7 +2649,7 @@ def r139 : Rung :=
           .send (some (.cpath (some (.const "M")) "X")) "+" [.int 1] none],
     .int, [],
     .seq (.cons (.moduleStmt rfl rfl rfl (.cons rfl .intLit .nil))
-      (.last (.prim (.constPath (.constCls rfl rfl) rfl) (.cons .intLit .nil) .intAdd)))⟩
+      (.last (.prim (.constPath (.constCls rfl rfl) rfl rfl) (.cons .intLit .nil) .intAdd)))⟩
 
 /-- `module M; end; M::X = 4; M::X + 1` → `Integer`.
 
@@ -2670,7 +2670,91 @@ def r142 : Rung :=
     .int, [],
     .seq (.cons (.moduleStmt rfl rfl rfl .nil)
       (.cons (.cpathAsgn (.constCls rfl rfl) .intLit)
-        (.last (.prim (.constPath (.constCls rfl rfl) rfl) (.cons .intLit .nil) .intAdd))))⟩
+        (.last (.prim (.constPath (.constCls rfl rfl) rfl rfl) (.cons .intLit .nil) .intAdd))))⟩
+
+/-- `class Box; SECRET = 1; private_constant :SECRET; def get; SECRET; end; end;
+    Box.new.get` → `Integer`.
+
+    `private_constant` declares nothing, so `splitMembers` drops the member and the
+    derivation looks exactly like `const-in-class`'s. What it *does* is hide the constant from
+    a scoped read — `Box::SECRET` raises `NameError` — and that fact lives on
+    `Judge.constPath`'s third premise, off `Ctx.privConsts`.
+
+    Worth being clear that this is **precision, not soundness**: `NameError` is outside the
+    type-stuck family, so ignoring `private_constant` entirely would have been "sound" and
+    would have certified a program Ruby refuses to run. Control (p13j) is that program. -/
+def r145 : Rung :=
+  ⟨"const-private-constant",
+    .seq [.class' "Box" none (.seq [.casgn "SECRET" (.int 1),
+                                    .send none "private_constant" [.sym "SECRET"] none,
+                                    .def' "get" [] (.const "SECRET")]),
+          .send (some (.send (some (.const "Box")) "new" [] none)) "get" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl rfl rfl (.cons rfl .intLit .nil))
+      (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
+        .nil rfl rfl (.constEnv rfl))))⟩
+
+/-- `class Point; attr_reader :x, :y; def initialize(x, y); @x = x; @y = y; end; end;
+    Point.new(1, 2).x + Point.new(1, 2).y` → `Integer`.
+
+    **Nothing in the derivation mentions `attr_reader`.** `splitMembers` expands the member
+    into the two `def x; @x; end`/`def y; @y; end` it stands for, so both reads are the
+    ordinary `callMethod` + `ivarRead` of tier 7 — and the ivar types come, as always, from
+    the constructor's argument shape rather than from the reader.
+
+    That expansion is where the whole content of `attr_reader` is: the ivar's name is the
+    reader's with an `@`. The reason it can be done syntactically at all is the same reason
+    `include` can (tier 10): a class body's declarations are read declaratively, matched at
+    the exact syntax the desugarer emits, with `attr_reader(*names)` deliberately unread. -/
+def r146 : Rung :=
+  ⟨"const-attr-reader",
+    .seq [.class' "Point" none (.seq [
+            .send none "attr_reader" [.sym "x", .sym "y"] none,
+            .def' "initialize" [.req "x", .req "y"]
+              (.seq [.vasgn .ivar "@x" (.var .lvar "x"),
+                     .vasgn .ivar "@y" (.var .lvar "y")])]),
+          .send (some (.send (some (.send (some (.const "Point")) "new"
+                                     [.int 1, .int 2] none)) "x" [] none)) "+"
+            [.send (some (.send (some (.const "Point")) "new" [.int 1, .int 2] none))
+               "y" [] none] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
+      (.last (.prim
+        (.callMethod
+          (.newInst (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
+            (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
+          .nil rfl rfl .ivarRead)
+        (.cons
+          (.callMethod
+            (.newInst (.constCls rfl rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
+              (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
+            .nil rfl rfl .ivarRead)
+          .nil)
+        .intAdd)))⟩
+
+/-- `class Box; def size; 3; end; alias length size; end; Box.new.length` → `Integer`.
+
+    An alias is a *copy* of the method under a second name, and it is resolved by
+    `classMethods?` rather than by `clsMember?` — a member kind on its own cannot see the
+    method it aliases. So `mroGet? "length"` finds an ordinary `Defn` whose body is `3`, and
+    again nothing downstream knows the alias existed.
+
+    Two decisions recorded in `resolveAliases`. An **unresolvable** alias makes the whole class
+    unreadable rather than being skipped, because skipping would put a class in the table
+    missing a method and fail a later dispatch for the wrong reason. And Ruby's *ordering*
+    requirement (the method must be defined before the `alias` line) is **not** enforced:
+    `splitMembers` keeps each kind's source order but loses the interleaving, so
+    `class C; alias b a; def a; 1; end; end` types here and raises `NameError` in Ruby —
+    outside the family, and recorded rather than fixed. -/
+def r147 : Rung :=
+  ⟨"const-alias",
+    .seq [.class' "Box" none (.seq [.def' "size" [] (.int 3),
+                                    .alias' "length" "size"]),
+          .send (some (.send (some (.const "Box")) "new" [] none)) "length" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl rfl rfl .nil)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl rfl) .nil rfl rfl)
+        .nil rfl rfl .intLit)))⟩
 
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
@@ -2689,7 +2773,7 @@ def rungs : List Rung :=
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
-   r137, r138, r139, r142, r143, r144]
+   r137, r138, r139, r142, r143, r144, r145, r146, r147]
 
 /-! ## `chk` answers exactly what was derived by hand
 

@@ -266,7 +266,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- `chk_sound` needs, with nothing to take apart.
     if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then
       match envGet? κ.consts (constKeyIn owner n) with
-      | some τ => some (τ, Γ, I)
+      -- Tier 13d: and not hidden by `private_constant` (`Judge.constPath`'s third premise).
+      | some τ => if κ.privConsts.contains (constKeyIn owner n) then none else some (τ, Γ, I)
       | none => none
     else none
   | f + 1, .cpathAsgn (some (.const owner)) n e =>
@@ -830,7 +831,7 @@ because a program's top level is inside no method and runs somewhere `self` is n
 instance of anything this judgment models. The constant table (tier 13) is empty for the
 first of those reasons: a program's first statement is the first thing that could assign
 one. -/
-def ctx0 : Ctx := ⟨[], [], [], none, [], none, none, []⟩
+def ctx0 : Ctx := ⟨[], [], [], none, [], none, none, [], []⟩
 
 /-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
 empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,
