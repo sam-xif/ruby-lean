@@ -2170,6 +2170,42 @@ def r112 : Rung :=
           (.cons (.zsuperCall rfl rfl rfl rfl rfl rfl rfl .strLit) .nil)
           .strAdd)))))⟩
 
+/-- `class Ghost; def method_missing(name); "called " + name.to_s; end; end;
+    Ghost.new.anything_at_all` → `String`.
+
+    **`method_missing`, and the interesting premise is the one about when it does *not* fire.**
+    Mechanically this is `callMethod` with the name looked up changed to `"method_missing"` and
+    a `.sym` pushed onto the front of the argument list — Ruby passes the missing name as a
+    Symbol. (Which is also why tier 10 needed a `Symbol#to_s` row: the idiomatic body calls
+    `to_s` on it immediately.)
+
+    The premise worth reading is `not_objectMethod rfl`. This judgment's class table holds only
+    what the *program* declared, so `mroGet?` misses for `to_s`, `inspect`, `hash`, `==`,
+    `class` — every method `Object` provides — and Ruby runs **those**, not `method_missing`.
+    Without the guard, `Ghost.new.to_s` would be typed by this rule, and the failure mode is not
+    a rejection but a **wrong answer**: with `def method_missing(name); 5; end` the checker would
+    say `Integer` where the real value is a `String`. That is control (ggg), and it is why
+    `ObjectMethod`'s list is the one table on this ladder whose *completeness* is the soundness
+    condition rather than the coverage one.
+
+    Its splat sibling `metaprog-method-missing-splat` — the idiomatic
+    `def method_missing(name, *args)` — is a permanent `ty_language_gap` and stays one: `*args`
+    has no `Ty`. This rung exists next to it precisely to show the gap is the rest parameter and
+    not `method_missing` dispatch. -/
+def r113 : Rung :=
+  ⟨"metaprog-method-missing-fixed-arity",
+    .seq [.class' "Ghost" none
+            (.def' "method_missing" [.req "name"]
+              (.send (some (.str "called ")) "+"
+                [.send (some (.var .lvar "name")) "to_s" [] none] none)),
+          .send (some (.send (some (.const "Ghost")) "new" [] none))
+            "anything_at_all" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl rfl)
+      (.last (.callMissing (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl
+        (not_objectMethod rfl) rfl rfl
+        (.prim .strLit (.cons (.prim (.var rfl) .nil .symToS) .nil) .strAdd))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2183,7 +2219,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
-   r109, r110, r111, r112,
+   r109, r110, r111, r112, r113,
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r129, r130, r131, r134]
 

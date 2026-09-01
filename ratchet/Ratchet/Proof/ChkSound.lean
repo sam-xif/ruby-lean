@@ -86,6 +86,7 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .intGt
            | exact .intGe
            | exact .intToS
+           | exact .symToS
            | exact .intZeroP
            | exact .strLength
            | exact .notBool
@@ -800,7 +801,31 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
-                · exact absurd h (by simp)
+                · -- tier 10: dispatch missed, so `method_missing` (`Judge.callMissing`)
+                  rename_i hmiss
+                  split at h
+                  · exact absurd h (by simp)
+                  · rename_i hobj
+                    split at h
+                    · rename_i hmm
+                      split at h
+                      · rename_i hpar
+                        split at h
+                        · rename_i hbody
+                          split at h
+                          · rename_i hI
+                            injection h with h
+                            injection h with h h'; injection h' with h' h''
+                            subst h; subst h'; subst h''
+                            exact .callMissing (chk_sound hrecv) (chkAll_sound hargs) hmiss
+                              (fun hc => by
+                                cases hc with
+                                | mk hin => exact absurd hin (by simpa [objectMethod?] using hobj))
+                              hmm hpar (by subst hI; exact chk_sound hbody)
+                          · exact absurd h (by simp)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
               · -- anything else: the primitive table
                 split at h
                 · rename_i hsig

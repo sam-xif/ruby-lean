@@ -2298,3 +2298,76 @@ obligations.
 
 State after this clink: **118 rungs climbed** of 136, 118/118 cross-checked, 83/83 negative
 controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.
+
+## Clink 24 (2026-09-01) — tier 10d: `method_missing`, and a table that must be complete: 118 → 119
+
+`metaprog-method-missing-fixed-arity`. **Tier 10 is now at 5/6 — every rung it targets**, the
+sixth being the permanent `ty_language_gap`. 119 derivations, 86/86 controls, 136/136 agreement,
+ten theorems axiom-clean. Mismatches 4 → **3, all in tier 12.**
+
+### The mechanics are `callMethod` with two edits
+
+`Judge.callMissing` looks up `"method_missing"` instead of `m`, and pushes a **`.sym`** onto the
+front of the argument list, because Ruby passes the missing name as a Symbol. That second edit
+is also why tier 10 needed a `PrimSig` row for `Symbol#to_s` — the idiomatic body calls `to_s`
+on the name immediately, and there was no row for it.
+
+`paramEnv`'s length check then does the rest of the work for free, which is why
+`metaprog-method-missing-fixed-arity` validates and its splat sibling stays a permanent
+`ty_language_gap`: `def method_missing(name, *args)` has a parameter list no `Ty` describes. The
+pair is the point — the gap is the *rest parameter*, not `method_missing` dispatch.
+
+### The premise that matters is about when the rule does *not* fire
+
+`mroGet? κ.classes n m = none` is the obvious guard (a fallback that can fire while an ordinary
+method exists gives the wrong type for every call — control (hhh)).
+
+`¬ ObjectMethod m` is the one that is easy to miss, and it is the interesting content of this
+clink. This judgment's class table holds only what the **program** declared, so `mroGet?` misses
+for `to_s`, `inspect`, `hash`, `==`, `class` — every method `Object` provides — and Ruby runs
+*those*, not `method_missing`.
+
+The failure mode without it is not a permissive rejection, it is a **wrong answer**. Control
+(ggg):
+
+```ruby
+class G; def method_missing(n); 5; end; end
+G.new.to_s + 1
+```
+
+`Object#to_s` returns a String, so this raises `TypeError`. Route it to `method_missing` and the
+checker says `Integer`, accepts `+ 1`, and has mis-typed a value's class. Every other unsoundness
+on this ladder has been "accepts a program that raises"; this one is "reports the wrong type",
+which is worse in the sense that it would propagate.
+
+### `ObjectMethod` is the one table here whose *completeness* is the soundness condition
+
+Worth stating as a general point, because it inverts the convention every other table on this
+ladder follows. `PrimSig`, `IterSig`, `BuiltinCls`, `NilQSafe`, `Comparable` are all lists of
+things the checker is **willing to claim** — a missing row costs a rung, and the direction of
+error is conservative. `ObjectMethod` is a list of names the checker must **refuse** to claim, so
+a missing row is an unsoundness and the direction of error is *not* conservative.
+
+Handled by generation rather than by judgement: the 51 names in `Object.new.methods` under CRuby
+4.0.5, plus six (`initialize`, `initialize_copy`, `initialize_clone`, `initialize_dup`,
+`method_missing`, `respond_to_missing?`) that are private or protected — so absent from that list
+— but still defined on `Object` and still reached first. The docstring carries the regeneration
+command and says explicitly which direction of drift is dangerous: a name a future Ruby *adds*
+to `Object` and that is not added here.
+
+Stated as data (`objectMethodNames : List String`) with a one-constructor relation over it, so a
+derivation discharges the premise with `not_objectMethod rfl` and the `rfl` is the kernel
+checking the name against the list — rather than fifty-seven constructors and a case split.
+
+### What is left: three rungs, and none of them is tier 10 or tier 11
+
+- `narrow-union-case-when` and `narrow-and-guard` — the aliasing design clink 17 deferred to a
+  fourth threaded state.
+- `narrow-nilable-and-union` — whose recorded target is wrong, per clink 14.
+
+Tiers 1–8 are complete; tiers 9, 10 and 11 are at *every rung they target*.
+
+State after this clink: **119 rungs climbed** of 136 (tier 9 at 19/22, tier 10 at 5/6, tier 11 at
+8/10, tier 12 at 7/12 — the fractions below 1 being the eleven permanent negatives and the two
+`Ty` language gaps, plus tier 12's three), 119/119 cross-checked, 86/86 negative controls
+rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.

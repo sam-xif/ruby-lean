@@ -839,7 +839,36 @@ def controls : List Control :=
   , ⟨"class B; def f; 1; end; end; class C < B; def f(x); super; end; end; C.new.f(2)",
       .seq [.class' "B" none (.def' "f" [] (.int 1)),
             .class' "C" (some (.const "B")) (.def' "f" [.req "x"] (.zsuper none)),
-            .send (some (.send (some (.const "C")) "new" [] none)) "f" [.int 2] none]⟩ ]
+            .send (some (.send (some (.const "C")) "new" [] none)) "f" [.int 2] none]⟩
+    -- ### Tier 10's `method_missing` controls
+    --
+    -- (ggg) **The control that makes `ObjectMethod`'s list a soundness condition.** `to_s` is
+    -- not in the program's class table, so `mroGet?` misses -- but Ruby runs `Object#to_s`, not
+    -- `method_missing`. Here `method_missing` returns an `Integer` while `Object#to_s` returns
+    -- a String, so without the guard the checker would type `Ghost.new.to_s` as `Integer`,
+    -- accept `+ 1`, and be **wrong about the value's class** rather than merely permissive.
+    -- Really raises TypeError.
+  , ⟨"class G; def method_missing(n); 5; end; end; G.new.to_s + 1",
+      .seq [.class' "G" none (.def' "method_missing" [.req "n"] (.int 5)),
+            .send (some (.send (some (.send (some (.const "G")) "new" [] none)) "to_s" []
+              none)) "+" [.int 1] none]⟩
+    -- (hhh) **`method_missing` is a fallback, not an override.** `a` exists, so it runs and
+    -- returns a String; `"s" + 1` raises TypeError. A rule that could fire while an ordinary
+    -- method exists would give the wrong type for every call on a class that defines
+    -- `method_missing` at all.
+  , ⟨"class G; def a; \"s\"; end; def method_missing(n); 1; end; end; G.new.a + 1",
+      .seq [.class' "G" none (.seq [
+              .def' "a" [] (.str "s"),
+              .def' "method_missing" [.req "n"] (.int 1)]),
+            .send (some (.send (some (.send (some (.const "G")) "new" [] none)) "a" [] none))
+              "+" [.int 1] none]⟩
+    -- (iii) **The missing name is passed *in addition to* the original arguments**, so
+    -- `def method_missing(name)` cannot absorb a call that had any. `paramEnv`'s length check
+    -- rejects it, and Ruby raises ArgumentError -- inside the family, so this is a sound
+    -- rejection rather than a conservative one.
+  , ⟨"class G; def method_missing(n); 1; end; end; G.new.whatever(7)",
+      .seq [.class' "G" none (.def' "method_missing" [.req "n"] (.int 1)),
+            .send (some (.send (some (.const "G")) "new" [] none)) "whatever" [.int 7] none]⟩ ]
 
 mutual
 

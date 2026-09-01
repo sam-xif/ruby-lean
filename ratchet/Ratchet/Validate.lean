@@ -49,6 +49,7 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .int, ">", [.int] => some .bool
   | .int, ">=", [.int] => some .bool
   | .int, "to_s", [] => some (.cls "String")
+  | .sym, "to_s", [] => some (.cls "String")
   | .int, "zero?", [] => some .bool
   | .cls "String", "length", [] => some .int
   | .bool, "!", [] => some .bool
@@ -81,6 +82,11 @@ def iterResult? : String → Ty → List Ty → Ty → Option Ty
   | "sort_by", τ, [], ρ => if comparable? ρ then some (.arrayOf τ) else none
   | "inject", _, [α], ρ => if ρ = α then some α else none
   | _, _, _, _ => none
+
+/-- The decidable counterpart of `Judge.lean`'s `ObjectMethod`. A `List.contains`, so the
+proof is `decide` and the *list* is the thing to audit -- see `ObjectMethod` for why that list
+being complete is a soundness condition rather than a coverage one. -/
+def objectMethod? (m : String) : Bool := objectMethodNames.contains m
 
 /-- The decidable counterpart of `Judge.lean`'s `BuiltinCls`, row for row. -/
 def builtinCls? : String → Bool
@@ -569,7 +575,22 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
                 | none => none
               | none => none
-            | none => none
+            | none =>
+              -- Tier 10: dispatch found nothing, so `method_missing` gets asked
+              -- (`Judge.callMissing`). The `objectMethod?` guard is what stops `to_s`,
+              -- `inspect`, `==` and the rest of `Object`'s methods taking this route.
+              if objectMethod? m then none
+              else
+                match mroGet? κ.classes n "method_missing" with
+                | some (dc, d) =>
+                  match paramEnv d.params (.sym :: argTys) with
+                  | some Γb =>
+                    match chk f (κ.inMethod (.inst n Iself) dc "method_missing") Γb Iself
+                        d.body with
+                    | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
+                    | none => none
+                  | none => none
+                | none => none
           | _ =>
             match primSig? σ m argTys with
             | some τ => some (τ, Γ₂, I₂)

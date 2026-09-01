@@ -122,6 +122,52 @@ inductive NilQSafe : Ty → Prop
       `nilT`) or a `τ`, so the row is justified exactly when `τ`'s is. -/
   | nilable {τ : Ty} : NilQSafe τ → NilQSafe (.nilable τ)
 
+/-- **Every method `Object` gives every object**, as a relation (tier 10).
+
+`method_missing` fires only when dispatch finds *nothing*, and "nothing" includes everything
+inherited from `Object`: `Ghost.new.to_s` runs `Object#to_s`, not `method_missing`. This
+judgment's class table holds only what the program declared, so without this list
+`Judge.callMissing` would route `to_s`, `inspect`, `==`, `hash`, `class` — every one of them —
+to `method_missing` and give it the *wrong type*.
+
+**This is the one table on the ladder that has to be *complete* to be sound**, and the
+direction is worth being explicit about: every other table here is a list of things the checker
+is willing to claim, so a missing row costs a rung. This one is a list of things the checker must
+**refuse** to claim, so a missing row is an unsoundness. It is generated from
+`Object.new.methods` under CRuby 4.0.5 (51 public names), plus `initialize`/`initialize_copy`/
+`initialize_clone`/`initialize_dup`/`method_missing`/`respond_to_missing?`, which are private or
+protected and so not in that list but are still defined on `Object` and still reached before
+`method_missing`.
+
+Regenerate with `ruby -e 'puts Object.new.methods.map(&:to_s).sort.inspect'` if the Ruby version
+this project targets changes. A name added to `Object` by a future Ruby and *not* added here is
+the failure mode; a name here that Ruby drops merely costs a rung. -/
+def objectMethodNames : List String :=
+  ["!", "!=", "!~", "<=>", "==", "===", "__id__", "__send__", "class", "clone",
+   "define_singleton_method", "display", "dup", "enum_for", "eql?", "equal?",
+   "extend", "freeze", "frozen?", "hash", "initialize", "initialize_clone",
+   "initialize_copy", "initialize_dup", "inspect", "instance_eval", "instance_exec",
+   "instance_of?", "instance_variable_defined?", "instance_variable_get",
+   "instance_variable_set", "instance_variables", "is_a?", "itself", "kind_of?",
+   "method", "method_missing", "methods", "nil?", "object_id", "private_methods",
+   "protected_methods", "public_method", "public_methods", "public_send",
+   "remove_instance_variable", "respond_to?", "respond_to_missing?", "send",
+   "singleton_class", "singleton_method", "singleton_methods", "tap", "then",
+   "to_enum", "to_s", "yield_self"]
+
+/-- The relation, one constructor over the list above, so that a `Judge` premise reads as a
+proposition and `objectMethod?` discharges it by `decide`. -/
+inductive ObjectMethod : String → Prop
+  | mk {m : String} : objectMethodNames.contains m = true → ObjectMethod m
+
+/-- The form `Judge.callMissing`'s fourth premise is discharged in: a derivation writes
+`not_objectMethod rfl`, and the `rfl` is the kernel checking the name against the list. -/
+theorem not_objectMethod {m : String} (h : objectMethodNames.contains m = false) :
+    ¬ ObjectMethod m := by
+  intro hc
+  cases hc with
+  | mk hin => exact absurd (h ▸ hin) (by simp)
+
 /-- **The builtin class names this judgment will type as a constant** (tier 12).
 
 One row per name, and each row is a claim of exactly one thing: evaluating this bare
@@ -205,6 +251,10 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       form) is also legal, but its signature is a different row nobody has needed, and
       admitting `[.int]` here would be a guess. -/
   | intToS : PrimSig .int "to_s" [] (.cls "String")
+  /-- `Symbol#to_s () → String` (tier 10's `metaprog-method-missing-fixed-arity`). Total, and
+      needed because `method_missing` receives the missing name as a **Symbol**, so the
+      idiomatic body immediately calls `to_s` on it. -/
+  | symToS : PrimSig .sym "to_s" [] (.cls "String")
   /-- `Integer#zero? () → Bool` (rung 022). Total on every `Integer`. -/
   | intZeroP : PrimSig .int "zero?" [] .bool
   /-- `String#length () → Integer` (rung 028). -/
@@ -1917,6 +1967,44 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       mroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params argTys = some Γb →
       Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ Γb' Iself →
+      Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+  /-- **`method_missing` — dispatch found nothing, so the object gets asked** (tier 10).
+
+      `Ghost.new.anything_at_all` with `def method_missing(name); "called " + name.to_s; end`.
+      Mechanically this is `callMethod` with two changes: the name looked up is
+      `"method_missing"` rather than `m`, and the argument list gains a **`.sym` in front** —
+      Ruby passes the missing name as a Symbol, then the original arguments. `paramEnv`'s
+      arity check then does the rest, which is why `metaprog-method-missing-fixed-arity`
+      validates and its splat sibling does not (see §Ty language gaps: `*args` has no `Ty`).
+
+      **Two premises decide whether this rule is sound, and they are about *when it fires*, not
+      about what it does.**
+
+      `mroGet? κ.classes n m = none` is the obvious one: `method_missing` is a fallback, and a
+      fallback that can fire while an ordinary method exists would give the wrong type for every
+      call.
+
+      `¬ ObjectMethod m` is the one that is easy to miss. This judgment's class table holds only
+      what the *program* declared, so `mroGet?` misses for `to_s`, `inspect`, `hash`, `==`,
+      `class` — every method `Object` provides — and Ruby runs those, not `method_missing`.
+      Without the premise, `Ghost.new.to_s` would be typed as `"called to_s"` while really
+      producing `#<Ghost…>`: not a rejection, a **wrong answer**. `ObjectMethod`'s docstring
+      says why that table is the one place on this ladder where completeness is the soundness
+      condition.
+
+      Restricted to an explicit receiver. A *bare* missing name inside a method body is a
+      `vcall`, and `selfCall`'s miss would want the same fallback with `κ.selfTy`'s class; no
+      rung writes one, and it would be this rule copied. -/
+  | callMissing {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      mroGet? κ.classes n m = none →
+      ¬ ObjectMethod m →
+      mroGet? κ.classes n "method_missing" = some (dc, d) →
+      paramEnv d.params (.sym :: argTys) = some Γb →
+      Judge (κ.inMethod (.inst n Iself) dc "method_missing") Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
   /-- **Implicit-self dispatch inside a method body**: a bare name that names one of the
       object's own methods. `class Rect; def describe; "area=" + area.to_s; end; …` — the
