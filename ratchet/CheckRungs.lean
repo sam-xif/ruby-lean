@@ -1071,7 +1071,22 @@ def controls : List Control :=
   , ⟨"class NotAModule; end; module M; class Box; include NotAModule; end; end",
       .seq [.class' "NotAModule" none .nil,
             .module' "M" (.class' "Box" none
-              (.send none "include" [.const "NotAModule"] none))]⟩ ]
+              (.send none "include" [.const "NotAModule"] none))]⟩
+    -- (p13o) **`clsToS`'s guard** (tier 13f). `Module#to_s` never raises -- unless the class
+    -- object defines its own, which is what `smroGet? … = none` excludes. Here it does, and
+    -- the override raises TypeError.
+  , ⟨"class C; def self.to_s; 1 + \"a\"; end; end; C.to_s",
+      .seq [.class' "C" none (.defs .self' "to_s" []
+              (.send (some (.int 1)) "+" [.str "a"] none)),
+            .send (some (.const "C")) "to_s" [] none]⟩
+    -- (p13p) **`Object#class` forgets the ivar spine, and that is right.** The class object it
+    -- answers is a `.clsOf`, so nothing about *this* object survives it -- in particular the
+    -- reader below is looked up on the class, misses, and the program raises NoMethodError.
+  , ⟨"class C; def initialize; @v = 1; end; def v; @v; end; end; C.new.class.v",
+      .seq [.class' "C" none (.seq [.def' "initialize" [] (.vasgn .ivar "@v" (.int 1)),
+                                    .def' "v" [] (.var .ivar "@v")]),
+            .send (some (.send (some (.send (some (.const "C")) "new" [] none))
+              "class" [] none)) "v" [] none]⟩ ]
 
 mutual
 

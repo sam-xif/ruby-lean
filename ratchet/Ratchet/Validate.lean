@@ -592,7 +592,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | none => none
               | none => none
             | none =>
-              if m = "new" then
+              -- Tier 13f: `Module#to_s` (the class's name). Reached only when `smroGet?`
+              -- missed, which *is* `Judge.clsToS`'s guard: a `def self.to_s` would have been
+              -- found above and dispatched to instead.
+              if m = "to_s" && argTys = [] then some (.cls "String", Γ₂, I₂)
+              else if m = "new" then
                 match ctorGet? κ.classes n with
                 | some (dc, d) =>
                   match paramEnv d.params argTys with
@@ -633,6 +637,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               | none => none
             else none
           | .inst n Iself =>
+            -- Tier 13f: `Object#class`, matched before dispatch. `mroGet?` cannot find a
+            -- user-written `class` (Ruby has no way to write one -- `class` is a keyword), so
+            -- unlike `is_a?` this needs no guard beyond the arity (`Judge.classOf`).
+            if m = "class" && argTys = [] then some (.clsOf n, Γ₂, I₂)
+            else
             match mroGet? κ.classes n m with
             | some (dc, d) =>
               match paramEnv d.params argTys with

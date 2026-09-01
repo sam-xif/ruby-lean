@@ -3219,6 +3219,35 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       clsGet? κ.classes (owner ++ "::" ++ n) = some c →
       envGet? κ.consts (constKeyIn owner n) = none →
       Judge κ Γ I (.cpath (some base) n) (.clsOf (owner ++ "::" ++ n)) Γ₁ I₁
+  /-- **`obj.class` — the inverse of `newInst`** (tier 13f). `.inst n _` in, `.clsOf n` out:
+      the type already carries the class name, so this rule reads it off and forgets the ivar
+      spine, which is exactly what the value does.
+
+      **No guard beyond the arity** (which is `JudgeAll … args []`, the shape
+      `newInstNoInit` already uses for "this call passes no arguments"), and that is a fact
+      about Ruby's grammar rather than an omission: `class` is a keyword, so there is no way to write `def class` and override it.
+      Compare `is_a?`, which *can* be overridden and therefore carries `isADispatchOk`.
+
+      Restricted to `.inst` receivers. `5.class` is ordinary Ruby and would need a row per
+      builtin type; nothing asks, and the slice's use is `self.class.encode`. -/
+  | classOf {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {args : List Expr}
+      {n : String} {ivars : Ty} :
+      Judge κ Γ I recv (.inst n ivars) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
+      Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) Γ₂ I₂
+  /-- **`C.to_s` — `Module#to_s`, the class's name** (tier 13f). Total and never raises, so the
+      only way it can be type-stuck is a `def self.to_s` on the class object, which the second
+      premise excludes — the same shape of guard `caseEqQuery` uses for `Module#===`, and for
+      the same reason (`smroGet?` is where an override would be).
+
+      Not a `PrimSig` row, because `PrimSig` cannot see the class table and the guard needs
+      it. -/
+  | clsToS {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {args : List Expr}
+      {n : String} :
+      Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
+      smroGet? κ.classes n "to_s" = none →
+      Judge κ Γ I (.send (some recv) "to_s" args none) (.cls "String") Γ₂ I₂
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and
       binds nothing, while `Ctx.afterStmt`/`extendConsts` makes the binding at

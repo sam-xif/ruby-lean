@@ -2925,3 +2925,69 @@ new), corpus agreement 232/232, axiom-clean — now with `chkOwner?_sound` and
 One rung left in tier 13: `const-class-of-const`, which wants `Object#class` (the inverse of
 `newInst`) and `Module#to_s`. Also recorded as owed: `private_constant` inside a *nested*
 declaration is not read (`privNames` does not recurse), which is precision, not soundness.
+
+## Clink 32 (2026-09-01) — tier 13f: `Object#class`, `Module#to_s`, and tier 13 is at target: 140 → 141
+
+`const-class-of-const` (`M::Box.new.class.to_s`). Two rules, each the inverse of something
+already on file, and **tier 13 is now at every rung it targets** — 12 climbed, the 13th the
+tier's permanent negative.
+
+### Two inverses
+
+`Judge.classOf` is `newInst`'s inverse: `.inst n _` in, `.clsOf n` out, forgetting the ivar
+spine exactly as the value does. Control (p13p) is what says the forgetting is right —
+`C.new.class.v` looks the reader up on the *class* object, misses, and raises `NoMethodError`.
+
+`Judge.clsToS` is `constCls`'s: a class object in, its name out.
+
+### One rule needs no guard, and that is a fact about the grammar
+
+`classOf` has no override guard at all, where every comparable rule has one (`is_a?` carries
+`isADispatchOk`, `Module#===` and `to_s` carry `smroGet? … = none`, `nil?`/`freeze` carry
+`NilQSafe`). The reason is that `class` is a **keyword**: `def class` cannot be written, so
+there is no user method to dispatch to instead. Worth writing down because "this rule has no
+guard" otherwise reads as an omission, and here the absence is the argument.
+
+`clsToS` does need one, and gets it for free from where it sits in `chk`: the arm is reached
+only after `smroGet?` missed, so the miss *is* the premise.
+
+`Module#to_s` is a `Judge` rule rather than a `PrimSig` row for the reason that has now come up
+three times: the guard needs the class table, and `PrimSig` relates types to types and cannot
+see it.
+
+### The arity shape
+
+Both rules take `JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂` rather than requiring `args = []` in the
+syntax. That is `newInstNoInit`'s shape, and the reason is not style: `chk`'s guard tests
+`argTys = []`, the *types*, and nothing in scope there says the expression list is empty. The
+`JudgeAll` premise is exactly what the guard establishes. Getting this wrong is a
+`Type mismatch` at the derivation, not a soundness hole — but it is the second time in this
+tier that the proof was the thing that noticed a rule had been stated one notch too specific.
+
+### State: tier 13 complete
+
+**141 rungs of 232**, tier 13 **12/13 — every rung it targets**. 141/141 cross-checked against
+the real semantics, 108/108 controls rejected (two new, both sound rejections), corpus
+agreement 232/232 with 0 disagreements, all soundness theorems axiom-clean (`propext`,
+`Quot.sound`).
+
+Six clinks for the tier, and the summary of what a constant cost:
+
+| clink | rungs | the idea |
+|---|---|---|
+| 27 | 1 | `Ctx.consts`, grown at `JudgeSeq.cons`; three disjointness premises on rules already on file |
+| 28 | 3 | class-body constants: `constLitTy?` guessed, `JudgeConsts` discharged, at the *definition* site |
+| 29 | 2 | `M::X`: the base is judged, because `M = 5; M::X` raises |
+| 30 | 3 | `attr_reader` expanded, `alias` resolved, `private_constant` recorded |
+| 31 | 2 | qualified names for nested declarations, `JudgeNested`, two kernel-reduction traps |
+| 32 | 1 | `Object#class`/`Module#to_s` |
+
+What tier 13 did *not* need, having been predicted to: a whole-program constant table, a
+fourth threaded index on `Judge`, any change to `Env`, or any change to tier 7's dispatch.
+What it did need that was not predicted: **four new premises on rules already on file**, every
+one of them because `casgn` can rebind a name a class declaration owns.
+
+§Frontier item B is discharged. The next-cheapest whole-file target (`semver.rb`) needs D
+(`Regexp` plus the `String` rows, tier 15) and E (`begin`/`rescue`, tier 16); item A (a
+parameterised `Hash`) is still the widest unblocker, and `const-frozen-hash` is now the rung
+that shows why.

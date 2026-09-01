@@ -2805,6 +2805,35 @@ def r141 : Rung :=
           (.cons .intLit .nil) rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl .ivarRead)))⟩
 
+/-- `module M; class Box; end; end; M::Box.new.class.to_s` → `String`, and the string is
+    `"M::Box"`.
+
+    The rung that closes tier 13, and two rules that are each the inverse of something already
+    here. `Object#class` is `newInst`'s inverse — `.inst n _` in, `.clsOf n` out, forgetting the
+    ivar spine exactly as the value does — and it needs **no override guard**, which is a fact
+    about Ruby's grammar rather than a gap: `class` is a keyword, so `def class` cannot be
+    written. Compare `is_a?`, which can be overridden and therefore carries `isADispatchOk`.
+
+    `Module#to_s` is total and never raises, so its only route to a raise is a `def self.to_s`
+    on the class object — `smroGet? … = none` is that guard, the same shape `caseEqQuery` uses
+    for `Module#===`. It is a `Judge` rule rather than a `PrimSig` row precisely because the
+    guard needs the class table, which `PrimSig` cannot see.
+
+    Both take their arity as `JudgeAll … args []` rather than requiring `args = []`
+    syntactically, which is `newInstNoInit`'s shape and is what `chk`'s `argTys = []` guard
+    actually establishes. -/
+def r148 : Rung :=
+  ⟨"const-class-of-const",
+    .seq [.module' "M" (.class' "Box" none .nil),
+          .send (some (.send (some (.send (some (.cpath (some (.const "M")) "Box"))
+                                     "new" [] none)) "class" [] none)) "to_s" [] none],
+    .cls "String", [],
+    .seq (.cons (.moduleStmt rfl rfl rfl .nil (.cons rfl rfl rfl .nil .nil .nil))
+      (.last (.clsToS
+        (.classOf (.newInstNoInit (.constPathCls (.constCls rfl rfl) rfl rfl) .nil rfl rfl)
+          .nil)
+        .nil rfl)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2822,7 +2851,7 @@ def rungs : List Rung :=
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
-   r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147]
+   r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148]
 
 /-! ## `chk` answers exactly what was derived by hand
 
