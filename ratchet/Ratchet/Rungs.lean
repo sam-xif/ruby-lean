@@ -3474,6 +3474,162 @@ def r194 : Rung :=
           .nil)
         .intAdd))))⟩
 
+/-! ## Tier 17 — collections
+
+Tier 17a: the `Array` rows and iterators. `homebrew/README.md` §2 measures the gap these close
+over all of Homebrew (6.4% of 113,610 call sites resolve to nothing we have); this is its
+slice-sized head, and it is almost entirely *rows* — the only new idea is that three guards move
+from the receiver's type to the **element's**. -/
+
+/-- `(1 <=> 2) + (2 <=> 1)` → `Integer`. `Integer#<=>` on two Integers always answers an
+    Integer; it is `nil` only for incomparable operands, which this row's argument type
+    excludes. -/
+def r200 : Rung :=
+  ⟨"lib-spaceship-int",
+    .send (some (.send (some (.int 1)) "<=>" [.int 2] none)) "+"
+      [.send (some (.int 2)) "<=>" [.int 1] none] none,
+    .int, [],
+    .prim (.prim .intLit (.cons .intLit .nil) .intSpaceship)
+      (.cons (.prim .intLit (.cons .intLit .nil) .intSpaceship) .nil) .intAdd⟩
+
+/-- `h = { "a" => 1 }; h.key?("a")` → `Bool`.
+
+    The guard is on the **argument**, because that is what `Hash#key?` hashes — the first row
+    where `NilQSafe` is asked about something other than the receiver. And note what the rung
+    does *not* get: `Bool`, with nothing about the value behind the key, because the bare
+    `.cls "Hash"` cannot describe it (§Frontier item A). -/
+def r205 : Rung :=
+  ⟨"lib-hash-key-p",
+    .seq [.vasgn .lvar "h" (.hash [(.str "a", .int 1)]),
+          .send (some (.var .lvar "h")) "key?" [.str "a"] none],
+    .bool, [("h", .cls "Hash")],
+    .seq (.cons (.vasgn (.hashLit (.cons .strLit .intLit .nil)))
+      (.last (.prim (.var rfl rfl) (.cons .strLit .nil) (.hashKeyP .cls))))⟩
+
+/-- `xs = [1, 2, 3]; [xs.any? { |x| x > 2 }, xs.all? { |x| x > 0 }, xs.include?(2),
+    xs.empty?].length` → `Integer`.
+
+    Four query forms in one array literal, and the array literal is what makes the rung a rung:
+    all four have to answer `Bool` for `elemTy` to be `bool` rather than a union nothing
+    consumes.
+
+    `any?`/`all?` leave the block's return type unconstrained, for `select`'s reason — the
+    result is only tested for truthiness, which never raises. `include?` carries a
+    `NilQSafe` guard on the **element** type, because it calls `==` on the elements and a
+    user-written `==` can raise. -/
+def r207 : Rung :=
+  ⟨"lib-array-queries",
+    .seq [.vasgn .lvar "xs" (.array [.int 1, .int 2, .int 3]),
+          .send (some (.array [
+            .send (some (.var .lvar "xs")) "any?" []
+              (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) ">" [.int 2] none))),
+            .send (some (.var .lvar "xs")) "all?" []
+              (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) ">" [.int 0] none))),
+            .send (some (.var .lvar "xs")) "include?" [.int 2] none,
+            .send (some (.var .lvar "xs")) "empty?" [] none])) "length" [] none],
+    .int, [("xs", .arrayOf .int)],
+    .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))))
+      (.last (.prim
+        (.arrayLit (.cons (.iterBlock (.var rfl rfl) .nil .anyP rfl
+                            (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt) rfl)
+          (.cons (.iterBlock (.var rfl rfl) .nil .allP rfl
+                   (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt) rfl)
+            (.cons (.prim (.var rfl rfl) (.cons .intLit .nil) (.arrayInclude .int))
+              (.cons (.prim (.var rfl rfl) .nil .arrayEmptyP) .nil)))))
+        .nil .arrayLength)))⟩
+
+/-- `[1, 1, nil, 2].compact.uniq.length` → `Integer`.
+
+    **`compact`'s result type is computed by a tier-12 refinement.** The literal is
+    `arrayOf (nilable Int)` (`elemTy` joins `Int` with `nil`), and removing the `nil`s is exactly
+    `nonNilTy` — the first time one of narrowing's type functions is used on a *result* rather
+    than in a branch. `uniq` then keeps the element type and carries the `NilQSafe` guard, for
+    `include?`'s reason one method over (it hashes the elements). -/
+def r209 : Rung :=
+  ⟨"lib-array-uniq-compact",
+    .send (some (.send (some (.send (some (.array [.int 1, .int 1, .nil, .int 2]))
+      "compact" [] none)) "uniq" [] none)) "length" [] none,
+    .int, [],
+    .prim (.prim (.prim (.arrayLit (.cons .intLit (.cons .intLit (.cons .nilLit
+      (.cons .intLit .nil))))) .nil .arrayCompact) .nil (.arrayUniq .int)) .nil .arrayLength⟩
+
+/-- `[[1, 2], [3]].flat_map { |a| a }.length` → `Integer`.
+
+    The one iterator row whose applicability is decided by the **block's return type**: the
+    block must return an array, and the result's element type is that array's. Ruby also accepts
+    a non-array return (it is included as-is), and that shape has no row — the result would be a
+    union of two element types and nothing consumes one. -/
+def r210 : Rung :=
+  ⟨"lib-array-flat-map",
+    .send (some (.send (some (.array [.array [.int 1, .int 2], .array [.int 3]]))
+      "flat_map" [] (some (.block [.req "a"] [] (.var .lvar "a"))))) "length" [] none,
+    .int, [],
+    .prim (.iterBlock (.arrayLit (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil)))
+      (.cons (.arrayLit (.cons .intLit .nil)) .nil))) .nil .flatMap rfl (.var rfl rfl) rfl)
+      .nil .arrayLength⟩
+
+/-- `[1, 2, 3].filter_map { |x| x > 1 ? x : nil }.length` → `Integer`.
+
+    `filter_map` keeps the block's **truthy** results, so the element type is `truthyTy ρ` — the
+    second result type computed by a narrowing function, and `truthyTy` rather than `nonNilTy`
+    because `false` is dropped too. Here `ρ` is `joinT Int nilT = T.nilable(Integer)` and
+    `truthyTy` of that is `Integer`. -/
+def r211 : Rung :=
+  ⟨"lib-array-filter-map",
+    .send (some (.send (some (.array [.int 1, .int 2, .int 3])) "filter_map" []
+      (some (.block [.req "x"] []
+        (.if' (.send (some (.var .lvar "x")) ">" [.int 1] none) (.var .lvar "x")
+          (some .nil)))))) "length" [] none,
+    .int, [],
+    .prim (.iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))
+      .nil .filterMap rfl
+      (.if' (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt) (.var rfl rfl) .nilLit rfl)
+      rfl)
+      .nil .arrayLength⟩
+
+/-- `[1, 2, 3].find { |x| x > 1 }` → `T.nilable(Integer)`.
+
+    `find` answers an element **or nil**, because nothing may match — and the rung's recorded
+    type is the nilable, which is the honest one. It is also the shape §Frontier item G is about:
+    the slice writes `find` where it knows something matches, and `Ty` cannot say so. -/
+def r212 : Rung :=
+  ⟨"lib-array-find",
+    .send (some (.array [.int 1, .int 2, .int 3])) "find" []
+      (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) ">" [.int 1] none))),
+    .nilable .int, [],
+    .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))) .nil
+      .findFirst rfl (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt) rfl⟩
+
+/-- `["a", "b"].join("/")` → `String`. Restricted to `String` elements, because `join` calls
+    `to_s` on every element and a user-written `to_s` can do anything. -/
+def r215 : Rung :=
+  ⟨"lib-array-join",
+    .send (some (.array [.str "a", .str "b"])) "join" [.str "/"] none,
+    .cls "String", [],
+    .prim (.arrayLit (.cons .strLit (.cons .strLit .nil))) (.cons .strLit .nil) .arrayJoin⟩
+
+/-- `s = 0; [10, 20].each_with_index do |v, i| s = s + v + i end; s` → `Integer`.
+
+    The **first two-parameter iterator whose second parameter is not an accumulator**: `inject`
+    binds `[α, τ]`, this binds `[τ, .int]`, and that `.int` is the only type in the iterator
+    table that comes from neither the receiver nor the call's arguments. `capIntact` is again
+    what makes `s = s + v + i` legal — `s` is captured, reassigned, not retyped. -/
+def r216 : Rung :=
+  ⟨"lib-array-each-with-index",
+    .seq [.vasgn .lvar "s" (.int 0),
+          .send (some (.array [.int 10, .int 20])) "each_with_index" []
+            (some (.block [.req "v", .req "i"] []
+              (.vasgn .lvar "s" (.send (some (.send (some (.var .lvar "s")) "+"
+                [.var .lvar "v"] none)) "+" [.var .lvar "i"] none)))),
+          .var .lvar "s"],
+    .int, [("s", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.cons (.iterBlock (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil
+                .eachWithIndex rfl
+                (.vasgn (.prim (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)
+                  (.cons (.var rfl rfl) .nil) .intAdd)) rfl)
+        (.last (.var rfl rfl))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -3494,7 +3650,8 @@ def rungs : List Rung :=
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
    r150, r152, r153, r154, r155, r161,
    r166, r170, r171, r173, r174, r175, r177, r179, r181, r182,
-   r184, r185, r186, r192, r194, r196]
+   r184, r185, r186, r192, r194, r196,
+   r200, r205, r207, r209, r210, r211, r212, r215, r216]
 
 /-! ## `chk` answers exactly what was derived by hand
 

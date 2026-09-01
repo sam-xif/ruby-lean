@@ -365,6 +365,50 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       a `String`. Without the guard the row would fire for `.cls "String"`, where `message` is a
       `NoMethodError`. -/
   | excMessage {n : String} : ExcCls n → PrimSig (.cls n) "message" [] (.cls "String")
+  -- ### Tier 17 — the collection rows
+  --
+  -- `homebrew/README.md` §2 measures the gap these close over all of Homebrew (6.4% of 113,610
+  -- call sites resolve to nothing we have); this is its slice-sized head. Three of the rows
+  -- carry a guard on the **element** type rather than the receiver's, which is new: `include?`
+  -- and `uniq` call `==`/`hash`/`eql?` on the elements, so an element whose class overrides one
+  -- of those could raise. `NilQSafe` is that guard for the third time, and it is the same
+  -- question it has always asked — "is this value's method table the builtin one?" — asked one
+  -- level down.
+  /-- **`xs << x`** (tier 17), and this row is where `arrayOf`'s **invariance** finally becomes
+      load-bearing — the obligation tier 5 recorded when it wrote `arrayOf` with one element
+      type and no way to add an element.
+      
+      The argument's type must be *exactly* the receiver's element type. That looks needlessly
+      strict and it is what keeps `IterSig.injectEmpty` honest: `arrayOf .never` is read as
+      "provably empty" (nothing inhabits `.never`), and this row cannot break that reading,
+      because pushing onto an `arrayOf .never` would need an argument of type `.never` and no
+      expression has one. So the invariant survives, and it survives *by* the invariance.
+      
+      The price is `lib-array-push`: `xs = []; xs << 1` starts at `arrayOf .never` and cannot
+      grow, because a send does not retype its receiver's binding. Widening it would mean a rule
+      that writes to `Env` off a *receiver* expression, which nothing here does. -/
+  | arrayPush {τ : Ty} : PrimSig (.arrayOf τ) "<<" [τ] (.arrayOf τ)
+  | arrayEmptyP {τ : Ty} : PrimSig (.arrayOf τ) "empty?" [] .bool
+  | arrayInclude {τ σ : Ty} : NilQSafe τ → PrimSig (.arrayOf τ) "include?" [σ] .bool
+  /-- `["a", "b"].join("/")`. Restricted to `String` elements: `join` calls `to_s` on every
+      element, and a user-written `to_s` can do anything. -/
+  | arrayJoin :
+      PrimSig (.arrayOf (.cls "String")) "join" [.cls "String"] (.cls "String")
+  /-- `[1, nil, 2].compact` — the one row whose *result* type is computed by a tier-12
+      refinement: `nonNilTy` is exactly what removing the `nil`s does to the element type. -/
+  | arrayCompact {τ : Ty} : PrimSig (.arrayOf τ) "compact" [] (.arrayOf (nonNilTy τ))
+  | arrayUniq {τ : Ty} : NilQSafe τ → PrimSig (.arrayOf τ) "uniq" [] (.arrayOf τ)
+  /-- `xs.first` / `xs.last` — `nilable`, because the array may be empty, and that is the whole
+      of §Frontier item G: the slice writes `arr.first` where it *knows* the array is non-empty,
+      and `Ty` cannot say so. `lib-array-first-last` is the rung this row does not climb and
+      `lib-array-first-nil-unsafe` is the program it correctly rejects. -/
+  | arrayFirst {τ : Ty} : PrimSig (.arrayOf τ) "first" [] (mkNilable τ)
+  | arrayLast {τ : Ty} : PrimSig (.arrayOf τ) "last" [] (mkNilable τ)
+  | intSpaceship : PrimSig .int "<=>" [.int] .int
+  /-- `h.key?("a")` — total, and the `NilQSafe` guard is on the *argument* here, because that is
+      what `Hash#key?` hashes. Answers `Bool` and nothing about the value behind the key, which
+      the bare `.cls "Hash"` could not describe anyway (§Frontier item A). -/
+  | hashKeyP {σ : Ty} : NilQSafe σ → PrimSig (.cls "Hash") "key?" [σ] .bool
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -1868,6 +1912,29 @@ inductive IterSig : String → Ty → List Ty → List Ty → Ty → Ty → Prop
       is judged with `b : .never`, `a + b` is `.never` by strictness, and the general `inject`
       row's `ρ = α` fails on a call that cannot go wrong. -/
   | injectEmpty {α ρ : Ty} : IterSig "inject" .never [α] [α, .never] ρ α
+  -- ### Tier 17's iterators
+  /-- `xs.any? { … }` / `xs.all? { … }` → `Bool`. The block's result is only tested for
+      truthiness, which never raises, so `ρ` is unconstrained — `select`'s reason. -/
+  | anyP {τ ρ : Ty} : IterSig "any?" τ [] [τ] ρ .bool
+  | allP {τ ρ : Ty} : IterSig "all?" τ [] [τ] ρ .bool
+  /-- `xs.each_with_index { |v, i| … }` → self. The **first two-parameter iterator whose second
+      parameter is not an accumulator**: `inject` binds `[α, τ]`, this binds `[τ, .int]`, and the
+      `.int` is the only thing in the table that comes from neither the receiver nor the
+      arguments. -/
+  | eachWithIndex {τ ρ : Ty} : IterSig "each_with_index" τ [] [τ, .int] ρ (.arrayOf τ)
+  /-- `xs.flat_map { … }` → the concatenation, so the block must return an **array** and the
+      result's element type is that array's. Ruby also accepts a non-array return (it is
+      included as-is); that shape has no row, because the result would be a union of two element
+      types and nothing consumes one. -/
+  | flatMap {τ σ : Ty} : IterSig "flat_map" τ [] [τ] (.arrayOf σ) (.arrayOf σ)
+  /-- `xs.filter_map { … }` → the block's **truthy** results, so the element type is
+      `truthyTy ρ` — tier 12's refinement used on a result rather than in a branch, and the
+      second row (with `compact`) whose result type is computed by one. Note it removes `false`
+      as well as `nil`, which is why `truthyTy` rather than `nonNilTy`. -/
+  | filterMap {τ ρ : Ty} : IterSig "filter_map" τ [] [τ] ρ (.arrayOf (truthyTy ρ))
+  /-- `xs.find { … }` → an element **or nil**, because nothing may match. `ρ` unconstrained for
+      `select`'s reason. -/
+  | findFirst {τ ρ : Ty} : IterSig "find" τ [] [τ] ρ (mkNilable τ)
 
 /-! ### A closure's creation context (tier 11)
 

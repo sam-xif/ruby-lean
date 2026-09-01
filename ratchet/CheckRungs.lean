@@ -445,6 +445,52 @@ def controls : List Control :=
     -- `message` is a NoMethodError.
   , ⟨"\"abc\".message",
       .send (some (.str "abc")) "message" [] none⟩
+    -- ### Tier 17's controls
+    --
+    -- (i1) **`arrayOf`'s invariance, which `<<` finally makes load-bearing.** `xs` is an
+    -- `arrayOf Int`, so pushing a String is refused -- and if it were not, `xs[0] + 1` after it
+    -- would be typed `Integer` for a value that may be a String. The program below is the
+    -- direct one: push a String, read it back, add.
+  , ⟨"xs = [1]; xs << \"a\"; xs[1] + 1",
+      .seq [.vasgn .lvar "xs" (.array [.int 1]),
+            .send (some (.var .lvar "xs")) "<<" [.str "a"] none,
+            .send (some (.send (some (.var .lvar "xs")) "[]" [.int 1] none)) "+"
+              [.int 1] none]⟩
+    -- (i2) **And the price of that strictness**, which is `lib-array-push`: an empty literal is
+    -- `arrayOf .never`, nothing can be pushed onto it (no expression has type `.never`), and a
+    -- send does not retype its receiver's binding. Safe Ruby, declined -- and the *reason* it
+    -- must be declined rather than smoothed over is `IterSig.injectEmpty`, which reads
+    -- `arrayOf .never` as "provably empty".
+  , ⟨"xs = []; xs << 1; xs.length (safe; an empty literal's element type cannot grow)",
+      .seq [.vasgn .lvar "xs" (.array []),
+            .send (some (.var .lvar "xs")) "<<" [.int 1] none,
+            .send (some (.var .lvar "xs")) "length" [] none]⟩
+    -- (i3) **`include?`'s element guard.** A user-written `==` is dispatched to, and CRuby's
+    -- would raise TypeError here -- so the row must not fire for an `.inst` element type.
+    -- (`.inst` is not `NilQSafe`, which is what refuses it.) The model declines the program
+    -- explicitly (`Array#include? with a user-defined ==`), so this prints as "model declined"
+    -- rather than as a sound rejection: the guard is justified against Ruby and the model has
+    -- nothing to say about it, the same shape as `found-issues.md` A3/A4.
+  , ⟨"class C; def ==(o); 1 + \"a\"; end; end; [C.new].include?(1)",
+      .seq [.class' "C" none (.def' "==" [.req "o"]
+              (.send (some (.int 1)) "+" [.str "a"] none)),
+            .send (some (.array [.send (some (.const "C")) "new" [] none])) "include?"
+              [.int 1] none]⟩
+    -- (i4) **`find`'s `nilable` is not decoration**, and this is `lib-array-first-nil-unsafe`'s
+    -- sibling: nothing matches, `find` answers `nil`, and `nil + 1` raises NoMethodError.
+  , ⟨"[1, 2].find { |x| x > 5 } + 1",
+      .send (some (.send (some (.array [.int 1, .int 2])) "find" []
+        (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) ">" [.int 5] none)))))
+        "+" [.int 1] none⟩
+    -- (i5) **`join` is restricted to `String` elements**, because it calls `to_s` on each one.
+    -- Safe Ruby, declined: `[1, 2].join("/")` is fine and has no row.
+  , ⟨"[1, 2].join(\"/\") (safe; join is restricted to String elements)",
+      .send (some (.array [.int 1, .int 2])) "join" [.str "/"] none⟩
+    -- (i6) **`flat_map`'s block must return an array.** Safe Ruby, declined: a non-array return
+    -- is included as-is, and the result's element type would be a union nothing consumes.
+  , ⟨"[1, 2].flat_map { |x| x }.length (safe; flat_map's block must return an array)",
+      .send (some (.send (some (.array [.int 1, .int 2])) "flat_map" []
+        (some (.block [.req "x"] [] (.var .lvar "x"))))) "length" [] none⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most

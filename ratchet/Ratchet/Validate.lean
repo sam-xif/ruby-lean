@@ -78,6 +78,13 @@ def primSig? : Ty → String → List Ty → Option Ty
   | σ, "freeze", [] => if nilQSafe? σ then some σ else none
   -- Tier 16b: `Exception#message`, guarded by the receiver's *name* (`PrimSig.excMessage`).
   | .cls n, "message", [] => if excCls? n then some (.cls "String") else none
+  -- Tier 17: the four rows whose guard is on the *element* or *argument* type rather than the
+  -- receiver's, kept with the other guarded rows so that `primSig?_sound` can take them in one
+  -- run of bullets (see `PrimSig.arrayInclude`).
+  | .arrayOf τ, "<<", [σ] => if τ = σ then some (.arrayOf τ) else none
+  | .arrayOf τ, "include?", [_] => if nilQSafe? τ then some .bool else none
+  | .arrayOf τ, "uniq", [] => if nilQSafe? τ then some (.arrayOf τ) else none
+  | .cls "Hash", "key?", [σ] => if nilQSafe? σ then some .bool else none
   -- Tiers 2/15/16b: everything else on a `String` receiver.
   | .cls "String", m, as => primSigStr? m as
   | .int, "+", [.int] => some .int
@@ -96,6 +103,14 @@ def primSig? : Ty → String → List Ty → Option Ty
   -- Tier 14b: `Array#length`, total whatever the element type.
   | .arrayOf _, "length", [] => some .int
   | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
+  -- Tier 17: the collection rows. Three carry a guard on the *element* (or argument) type
+  -- rather than the receiver's -- see `PrimSig.arrayInclude`.
+  | .arrayOf _, "empty?", [] => some .bool
+  | .arrayOf (.cls "String"), "join", [.cls "String"] => some (.cls "String")
+  | .arrayOf τ, "compact", [] => some (.arrayOf (nonNilTy τ))
+  | .arrayOf τ, "first", [] => some (mkNilable τ)
+  | .arrayOf τ, "last", [] => some (mkNilable τ)
+  | .int, "<=>", [.int] => some .int
   | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
 
@@ -112,6 +127,13 @@ def iterParams? : String → Ty → List Ty → Option (List Ty)
   | "select", τ, [] => some [τ]
   | "sort_by", τ, [] => some [τ]
   | "inject", τ, [α] => some [α, τ]
+  -- Tier 17's iterators.
+  | "any?", τ, [] => some [τ]
+  | "all?", τ, [] => some [τ]
+  | "find", τ, [] => some [τ]
+  | "filter_map", τ, [] => some [τ]
+  | "flat_map", τ, [] => some [τ]
+  | "each_with_index", τ, [] => some [τ, .int]
   | _, _, _ => none
 
 /-- `IterSig`'s **second half**: the call's result, from the same inputs plus the type the
@@ -127,6 +149,13 @@ def iterResult? : String → Ty → List Ty → Ty → Option Ty
   -- row, which is why that row's `ρ = α` never has to consider it.
   | "inject", .never, [α], _ => some α
   | "inject", _, [α], ρ => if ρ = α then some α else none
+  | "any?", _, [], _ => some .bool
+  | "all?", _, [], _ => some .bool
+  | "find", τ, [], _ => some (mkNilable τ)
+  | "filter_map", _, [], ρ => some (.arrayOf (truthyTy ρ))
+  -- `flat_map`'s block must return an array; the result's element type is that array's.
+  | "flat_map", _, [], .arrayOf σ => some (.arrayOf σ)
+  | "each_with_index", τ, [], _ => some (.arrayOf τ)
   | _, _, _, _ => none
 
 /-- The decidable counterpart of `Judge.lean`'s `ObjectMethod`. A `List.contains`, so the

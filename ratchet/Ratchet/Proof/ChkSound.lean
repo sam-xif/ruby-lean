@@ -145,6 +145,31 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
       subst h
       exact .excMessage (excCls?_sound hexc)
     · exact absurd h (by simp)
+  · -- tier 17: `<<`, whose guard is the *equality* that makes `arrayOf` invariant
+    split at h
+    · rename_i heq
+      subst heq
+      injection h with h; subst h
+      exact .arrayPush
+    · exact absurd h (by simp)
+  · -- tier 17: `include?`, guarded on the **element** type
+    split at h
+    · rename_i hel
+      injection h with h; subst h
+      exact .arrayInclude (nilQSafe?_sound hel)
+    · exact absurd h (by simp)
+  · -- tier 17: `uniq`, same guard
+    split at h
+    · rename_i hel
+      injection h with h; subst h
+      exact .arrayUniq (nilQSafe?_sound hel)
+    · exact absurd h (by simp)
+  · -- tier 17: `Hash#key?`, guarded on the **argument** type
+    split at h
+    · rename_i hel
+      injection h with h; subst h
+      exact .hashKeyP (nilQSafe?_sound hel)
+    · exact absurd h (by simp)
   · -- tier 16b: everything else on a `String` receiver, delegated
     exact primSigStr?_sound h
   all_goals
@@ -167,6 +192,12 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .notBool
            | exact .arrayLength
            | exact .arrayIndex
+           | exact .arrayEmptyP
+           | exact .arrayJoin
+           | exact .arrayCompact
+           | exact .arrayFirst
+           | exact .arrayLast
+           | exact .intSpaceship
            | exact .hashIndex)
       | simp at h
 
@@ -233,6 +264,23 @@ theorem iterSig?_sound {m : String} {τ : Ty} {as βs : List Ty} {ρ res : Ty}
       obtain ⟨hfix, hres⟩ := hr
       subst hfix; subst hres
       exact .inject
+  -- ### Tier 17's iterators, in `iterParams?`'s order
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .anyP
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .allP
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .findFirst
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .filterMap
+  · -- `flat_map`: the block's return type has to *be* an array, which makes this the one row
+    -- whose applicability is decided by `ρ` rather than by the receiver or the arguments.
+    injection hp with hp; subst hp
+    cases ρ with
+    | arrayOf σ => simp [iterResult?] at hr; subst hr; exact .flatMap
+    | _ => simp [iterResult?] at hr
+  · injection hp with hp; subst hp
+    simp [iterResult?] at hr; subst hr; exact .eachWithIndex
   · exact absurd hp (by simp)
 
 /-- **`narrowCond?` only ever recognizes a condition `NarrowCond` does.**

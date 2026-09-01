@@ -3494,3 +3494,78 @@ proof over a table stops working, split the table, not the budget.**
 **163 rungs of 232**, tier 16 at 10/15. 163/163 cross-checked, 132/132 controls rejected (six
 new, four sound), corpus agreement 232/232, axiom-clean — with `excCls?_sound`,
 `chkRescues_sound` and `primSigStr?_sound` added.
+
+## Clink 39 (2026-09-01) — tier 17a: the collection rows, and `arrayOf`'s invariance comes due: 163 → 172
+
+`lib-spaceship-int`, `lib-hash-key-p`, `lib-array-queries`, `lib-array-uniq-compact`,
+`lib-array-flat-map`, `lib-array-filter-map`, `lib-array-find`, `lib-array-join`,
+`lib-array-each-with-index`. Nine rungs, ten `PrimSig` rows and six `IterSig` rows — and three
+findings that are not "one more row".
+
+### The guard moves from the receiver to the element
+
+`include?` calls `==` on the elements; `uniq` hashes them; `Hash#key?` hashes its *argument*. So
+for the first time a row's guard is about something other than its receiver, and the predicate is
+`NilQSafe` for the third time — asking the same question it always has ("is this value's method
+table the builtin one?") one level down. Control (i3) is the justification: a user-written `==`
+is dispatched to, and `.inst` is not `NilQSafe`, which is what refuses it.
+
+### Two result types computed by narrowing functions
+
+`compact`'s result is `arrayOf (nonNilTy τ)` and `filter_map`'s is `arrayOf (truthyTy ρ)` —
+tier 12's refinement functions used on a **result** rather than in a branch, which is the first
+time either has appeared outside `narrowEnvs`. `truthyTy` rather than `nonNilTy` for
+`filter_map`, because Ruby drops `false` as well as `nil`.
+
+That is a small piece of evidence for tier 12's design: the refinements were written as total
+functions on `Ty` rather than as part of the `if` rule, and it is exactly that which lets them be
+reused here.
+
+### `Array#<<` discharges the obligation tier 5 wrote down
+
+Tier 5 ended with "`arrayOf`'s invariance is not yet load-bearing — there is no rule for
+`Array#<<` — and the tier that adds one inherits the obligation". Here it is, and the row is
+**invariant**: the argument's type must be *exactly* the element type.
+
+That looks needlessly strict, and it is what keeps clink 34's `IterSig.injectEmpty` honest.
+`arrayOf .never` is read as "provably empty" (nothing inhabits `.never`), and that reading has to
+survive the existence of a row that adds elements. It does, and it survives **by** the
+invariance: pushing onto an `arrayOf .never` would need an argument of type `.never`, and no
+expression has one. So the two rows are consistent, and neither is safe without the other's
+shape.
+
+The price is `lib-array-push` (`xs = []; xs << 1; xs.length`), which does not climb: the empty
+literal is `arrayOf .never`, nothing can be pushed onto it, and a send does not retype its
+receiver's *binding*. Widening it means a rule that writes to `Env` off a receiver expression,
+which nothing in this judgment does. Control (i2) records it, and the control's note is the
+important half — it must be declined rather than smoothed over, because smoothing it would break
+`injectEmpty`.
+
+### `flat_map` is the first iterator dispatched on the block's return type
+
+`iterResult? "flat_map" _ [] ρ` matches on `ρ` being `.arrayOf σ`. Every other row decides
+applicability from the receiver's element type or the call's arguments; this one needs the block
+to have returned an array. Ruby also accepts a non-array return (included as-is), which has no
+row because the result's element type would be a union nothing consumes — control (i6).
+
+### State
+
+**172 rungs of 232**, tier 17 at 9/23. 172/172 cross-checked, 138/138 controls rejected (six new,
+two sound, one "model declined"), corpus agreement 232/232, axiom-clean.
+
+**Session total: 129 → 172 rungs**, and mismatches 81 → 39. Tier 13 complete; tiers 14–17 open.
+
+What is left divides into four things, and only one of them is more rows:
+
+1. **A parameterised `Hash`** (§Frontier item A, still the widest unblocker): `lib-hash-fetch`
+   (62 sites in the slice), `lib-hash-dig`, `param-kwrest`, `param-all-kinds`, and
+   `const-frozen-hash`'s *usefulness*. `Ty` needs a keyed hash, and it has to be a **spine**
+   rather than a list payload, for the reason `ivar0`/`ivarCons` are (`Expr`'s derived `BEq` and
+   `Ty`'s kernel reduction).
+2. **A pair type** (§Frontier item F): `lib-array-zip`, `lib-array-to-h`, `lib-array-partition`,
+   `lib-multiple-assign`.
+3. **The length-indexed array** (§Frontier item G, flagged since tier 12): `lib-array-first-last`,
+   `lib-array-sort-by-max-by`, `ctl-return-early`, `regexp-match-captures`, and every
+   `a, b = s.split("-")` in the slice.
+4. **`ParamEnv` as a relation**, `Struct`, `Comparable`, `=~`/`Regexp.last_match` (global state),
+   `gsub` with a block, `break`, `else`/`ensure`, and the eight whole-file rungs of tier 18.
