@@ -3080,3 +3080,65 @@ element of the argument list and is not a value, so `JudgeAll` cannot type it an
 dispatch rule has to learn to split positional from keyword arguments. That is the expensive
 one, and §Frontier item C is right that it is also the one where getting it wrong is unsound
 (a missing required keyword raises `ArgumentError`).
+
+## Clink 34 (2026-09-01) — tier 14b: rest parameters, and an array that is provably empty: 142 → 144
+
+`param-req-then-rest`, `param-rest`. Two `paramEnv` rows, one `PrimSig` row, and one `IterSig`
+row — and the `IterSig` row is the interesting one.
+
+### A rest parameter is an array literal that nobody wrote
+
+`paramEnv [.rest (some x)] τs = some [(x, .arrayOf (elemTy τs))]` — the *same* `elemTy` an
+array literal uses, because the value is an array built from exactly those arguments. So
+`tag(1, 2, 3)` gives `rest : arrayOf Int`, and `f(1, "a")` gives `arrayOf (union Int String)`,
+which control (d5) shows is not a nicety: a checker taking the *first* argument's type would
+certify `a[1] + 1` and the program raises `TypeError`.
+
+**Only as the last parameter**, and the argument is clink 33's: Ruby fills post-rest required
+parameters before the rest (`def f(*a, b)` with three arguments binds `a = [1, 2]`, `b = 3`), so
+swallowing everything is right exactly when nothing follows. With something following,
+`paramEnv` answers `none`. Control (d4) is that program, declined — and it is worth a control
+precisely because the failure mode here is a *wrong binding* rather than a rejection.
+
+`paramEnvB` allows one thing after the rest: a `&b`, which is the only parameter kind Ruby lets
+follow a rest that this greedy walk can still be right about.
+
+### `arrayOf .never` is a real statement, and this is where it gets used
+
+`total()` binds `ns` to `arrayOf (elemTy []) = arrayOf .never`. Tier 6's `elemTy` docstring
+already argued that `.never` is the *most precise* element type for an empty array; nothing had
+ever consumed it. Here it has to be consumed:
+
+- the block is judged with `b : .never`;
+- `a + b` is `.never` by strictness (`primNever`);
+- and `IterSig.inject`, which requires the block to return the accumulator's type, **fails on a
+  call that cannot possibly go wrong**.
+
+`IterSig.injectEmpty` is the new row, and the placement of its side condition is the whole
+content of it. It is keyed on the **receiver's element type** being `.never`, not on `ρ` being
+`.never`:
+
+> `arrayOf .never` says every element of this array does not return a value; `.never` is
+> uninhabited; so the array has no elements, the block never runs, and the result is the seed
+> whatever the block would have returned.
+
+Keyed on `ρ` instead it would be a much weaker and shakier claim — a block that never returns
+for a *non-empty* array is a different situation, and one where the program may well be
+type-stuck. Keyed on the receiver the argument is one line and does not mention the block at
+all.
+
+`r152`'s derivation shows the payoff directly: two calls to the same `inject` in one program,
+taking **different `IterSig` rows** — `.inject` for `total(1, 2, 3)` and `.injectEmpty` for
+`total()`.
+
+The proof of `iterSig?_sound` needed a `cases τ` for the first time, because which `inject` row
+applies is now decided by the receiver's element type rather than by anything `iterParams?`
+returns.
+
+### State
+
+**144 rungs of 232**, tier 14 at 4/15. 144/144 cross-checked, 112/112 controls rejected (two
+new, one sound), corpus agreement 232/232, axiom-clean.
+
+Tier 14's remaining eleven are still two things: the `ParamEnv` relation (`n = s.length`,
+`param-all-kinds`) and keyword arguments (six rungs, and the call-shape change).

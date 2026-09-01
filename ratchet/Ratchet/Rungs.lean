@@ -2880,6 +2880,71 @@ def r150 : Rung :=
           .nil)
         .strAdd)))⟩
 
+/-! ### Tier 14b — rest parameters -/
+
+/-- `def tag(first, *rest); first + rest.length; end; tag(1, 2, 3)` → `Integer`.
+
+    A rest parameter is `arrayOf (elemTy τs)` over the argument types it swallows — the same
+    `elemTy` an array literal uses, which is right because the value *is* an array built from
+    those arguments.
+
+    `paramEnv` accepts a rest parameter **only as the last one**, and the reason is Ruby's
+    matching order: `def f(*a, b)` with three arguments binds `a = [1, 2]` and `b = 3`, so a
+    rest that swallows everything is correct exactly when nothing follows it. With something
+    following, `paramEnv` answers `none` — conservative rather than wrong, and the same shape of
+    argument as clink 33's greedy optionals.
+
+    The one new row is `PrimSig.arrayLength`. Unlike `Array#[]` it needs no care about the
+    element type, because the element type does not appear in the result. -/
+def r153 : Rung :=
+  ⟨"param-req-then-rest",
+    .seq [.def' "tag" [.req "first", .rest (some "rest")]
+            (.send (some (.var .lvar "first")) "+"
+              [.send (some (.var .lvar "rest")) "length" [] none] none),
+          .send none "tag" [.int 1, .int 2, .int 3] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
+        (.prim (.var rfl rfl)
+          (.cons (.prim (.var rfl rfl) .nil .arrayLength) .nil) .intAdd))))⟩
+
+/-- `def total(*ns); ns.inject(0) { |a, b| a + b }; end; total(1, 2, 3) + total()` → `Integer`.
+
+    **The rung is the second call.** `total()` binds `ns` to `arrayOf (elemTy []) = arrayOf
+    .never`, and that type is a real statement rather than a shrug: `.never` is uninhabited, so
+    an array whose elements all have type `.never` **has no elements**. The block is therefore
+    judged with `b : .never`, `a + b` is `.never` by strictness (`primNever`), and the general
+    `IterSig.inject` row — which requires the block to return the accumulator's type — fails on
+    a call that cannot possibly go wrong.
+
+    `IterSig.injectEmpty` is that row, and note where its side condition sits: on the
+    **receiver's element type**, not on `ρ`. Keyed on `ρ = .never` it would be a much weaker
+    claim (a block that never returns for a *non-empty* array is a different situation
+    entirely); keyed on the receiver it is the argument above, in one line.
+
+    So the two calls in this program take *different* `IterSig` rows for the same `inject`, and
+    the derivation shows it: `.inject` on the left, `.injectEmpty` on the right. -/
+def r152 : Rung :=
+  ⟨"param-rest",
+    .seq [.def' "total" [.rest (some "ns")]
+            (.send (some (.var .lvar "ns")) "inject" [.int 0]
+              (some (.block [.req "a", .req "b"] []
+                (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none)))),
+          .send (some (.send none "total" [.int 1, .int 2, .int 3] none)) "+"
+            [.send none "total" [] none] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.prim
+        (.callDef (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
+          (.iterBlock (.var rfl rfl) (.cons .intLit .nil) .inject rfl
+            (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd) rfl))
+        (.cons
+          (.callDef .nil rfl rfl
+            (.iterBlock (.var rfl rfl) (.cons .intLit .nil) .injectEmpty rfl
+              (.primNever (.var rfl rfl) (.cons (.var rfl rfl) .nil) (.inr rfl)) rfl))
+          .nil)
+        .intAdd)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2898,7 +2963,7 @@ def rungs : List Rung :=
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
-   r150]
+   r150, r152, r153]
 
 /-! ## `chk` answers exactly what was derived by hand
 

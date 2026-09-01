@@ -97,6 +97,7 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .strLength
            | exact .notBool
            | exact .arrayIndex
+           | exact .arrayLength
            | exact .hashIndex)
       | simp at h
 
@@ -151,12 +152,18 @@ theorem iterSig?_sound {m : String} {τ : Ty} {as βs : List Ty} {ρ res : Ty}
     obtain ⟨hcmp, hres⟩ := hr
     subst hres
     exact .sortBy (comparable?_sound hcmp)
-  · -- `inject`: likewise, and the first conjunct *is* the accumulator fixed point
+  · -- `inject`: **two rows** since tier 14b, and which one applies is decided by the
+    -- receiver's element type rather than by anything in `iterParams?` -- hence the `cases`.
+    -- `.never` is the provably-empty receiver (`IterSig.injectEmpty`), where `ρ` is
+    -- unconstrained; everywhere else the first conjunct *is* the accumulator fixed point.
     injection hp with hp; subst hp
-    simp [iterResult?] at hr
-    obtain ⟨hfix, hres⟩ := hr
-    subst hfix; subst hres
-    exact .inject
+    cases τ with
+    | never => simp [iterResult?] at hr; subst hr; exact .injectEmpty
+    | _ =>
+      simp [iterResult?] at hr
+      obtain ⟨hfix, hres⟩ := hr
+      subst hfix; subst hres
+      exact .inject
   · exact absurd hp (by simp)
 
 /-- **`narrowCond?` only ever recognizes a condition `NarrowCond` does.**

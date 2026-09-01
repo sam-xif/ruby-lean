@@ -282,6 +282,24 @@ def controls : List Control :=
               (.send (some (.array [.var .lvar "a", .var .lvar "b", .var .lvar "c"]))
                 "length" [] none),
             .send none "f" [.int 1, .int 2] none]⟩
+    -- (d4) **A rest parameter that is not last** (tier 14b). Ruby binds `a = [1, 2]`, `b = 3`;
+    -- `paramEnv` refuses the shape rather than swallowing everything into `a`. Safe Ruby,
+    -- declined -- and the control exists because the alternative is a *wrong binding*, not a
+    -- rejection.
+  , ⟨"def f(*a, b); a.length + b; end; f(1, 2, 3) (safe; rest must be last)",
+      .seq [.def' "f" [.rest (some "a"), .req "b"]
+              (.send (some (.send (some (.var .lvar "a")) "length" [] none)) "+"
+                [.var .lvar "b"] none),
+            .send none "f" [.int 1, .int 2, .int 3] none]⟩
+    -- (d5) **A rest parameter's element type is a join, and it is checked.** `f(1, "a")` makes
+    -- `a : arrayOf (union Int String)`, and `a[0] + 1` on that has no `PrimSig` row -- while a
+    -- checker that took the *first* argument's type would call it an Integer and certify a
+    -- program that raises TypeError half the time. Here `a[0]` is `"a"` and it really raises.
+  , ⟨"def f(*a); a[1] + 1; end; f(1, \"a\")",
+      .seq [.def' "f" [.rest (some "a")]
+              (.send (some (.send (some (.var .lvar "a")) "[]" [.int 1] none)) "+"
+                [.int 1] none),
+            .send none "f" [.int 1, .str "a"] none]⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
@@ -1195,6 +1213,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
 def toRubyCoreParam : Param → Option RubyCore.Param
   | .req x => some (.req x)
   | .block x => some (.block x)
+  -- Tier 14b: a rest parameter, for the controls that probe `paramEnv`'s matching order.
+  | .rest x => some (.rest x)
   | .opt x d => (toRubyCore d).map (fun d' => .opt x d')
   | _ => none
 

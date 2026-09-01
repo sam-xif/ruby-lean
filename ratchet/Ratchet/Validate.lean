@@ -54,6 +54,8 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .sym, "to_s", [] => some (.cls "String")
   | .int, "zero?", [] => some .bool
   | .cls "String", "length", [] => some .int
+  -- Tier 14b: `Array#length`, total whatever the element type.
+  | .arrayOf _, "length", [] => some .int
   | .bool, "!", [] => some .bool
   | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
   | .cls "Hash", "[]", [_] => some .any
@@ -82,6 +84,10 @@ def iterResult? : String → Ty → List Ty → Ty → Option Ty
   | "map", _, [], ρ => some (.arrayOf ρ)
   | "select", τ, [], _ => some (.arrayOf τ)
   | "sort_by", τ, [], ρ => if comparable? ρ then some (.arrayOf τ) else none
+  -- Tier 14b: an `arrayOf .never` receiver is provably empty, so the block never runs and the
+  -- block's return type is unconstrained (`IterSig.injectEmpty`). Matched *before* the general
+  -- row, which is why that row's `ρ = α` never has to consider it.
+  | "inject", .never, [α], _ => some α
   | "inject", _, [α], ρ => if ρ = α then some α else none
   | _, _, _, _ => none
 

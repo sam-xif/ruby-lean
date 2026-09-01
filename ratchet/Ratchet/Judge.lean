@@ -259,6 +259,11 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
   | intZeroP : PrimSig .int "zero?" [] .bool
   /-- `String#length () → Integer` (rung 028). -/
   | strLength : PrimSig (.cls "String") "length" [] .int
+  /-- **`Array#length`** (tier 14b). Total on every array whatever its element type, and the
+      element type does not appear in the result — so unlike `Array#[]` there is nothing to be
+      careful about. Its receiver is `.arrayOf`, which no user class can be, so it needs no
+      override guard for the same reason the arithmetic rows do not. -/
+  | arrayLength {τ : Ty} : PrimSig (.arrayOf τ) "length" [] .int
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -515,6 +520,17 @@ def paramEnv : List Param → List Ty → Option Env
     match constLitTy? d with
     | some τ => (paramEnv ps []).map (fun Γ => (x, τ) :: Γ)
     | none => none
+  -- Tier 14b: a **rest** parameter, and only as the *last* one. Ruby fills post-rest required
+  -- parameters before the rest (`def f(*a, b)` with three arguments binds `a = [1, 2]`), so a
+  -- rest that swallows everything is only right when there is nothing after it — and with
+  -- anything after it this answers `none`, which is conservative rather than wrong.
+  --
+  -- The element type is `elemTy` of the remaining argument types, exactly as for an array
+  -- literal, which makes the zero-argument case `arrayOf .never`: the array really is empty,
+  -- and `.never` is the most precise thing to say about the elements of an empty array (see
+  -- `elemTy`, and `IterSig.injectEmpty` for what consumes it).
+  | [.rest (some x)], τs => some [(x, .arrayOf (elemTy τs))]
+  | [.rest none], _ => some []
   | _, _ => none
 
 /-! ## Tier 7's class table, and the context bundle
@@ -1554,6 +1570,16 @@ def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
     match constLitTy? d with
     | some τ => (paramEnvB blk ps []).map (fun Γ => (x, τ) :: Γ)
     | none => none
+  -- Tier 14b, and here "last" means "last before an optional `&b`", which is the one thing
+  -- Ruby allows after a rest parameter that this walk can still be greedy about.
+  | .rest (some x) :: ps, τs =>
+    if ps.all (fun p => match p with | .block _ => true | _ => false) then
+      (paramEnvB blk ps []).map (fun Γ => (x, .arrayOf (elemTy τs)) :: Γ)
+    else none
+  | .rest none :: ps, τs =>
+    if ps.all (fun p => match p with | .block _ => true | _ => false) then
+      paramEnvB blk ps []
+    else none
   | .block (some x) :: ps, τs =>
     (paramEnvB blk ps τs).map (fun Γ => (x, blk.getD .nilT) :: Γ)
   | .block none :: ps, τs => paramEnvB blk ps τs
@@ -1632,6 +1658,20 @@ inductive IterSig : String → Ty → List Ty → List Ty → Ty → Ty → Prop
       required to *return* `α`. An empty receiver returns `init`, which is why the result is
       `α` rather than the block's return type — they are the same type by the premise. -/
   | inject {τ α : Ty} : IterSig "inject" τ [α] [α, τ] α α
+  /-- **`inject` over a provably empty receiver** (tier 14b), where the block's return type is
+      unconstrained.
+
+      `arrayOf .never` says "every element of this array does not return a value", and `.never`
+      is uninhabited — so an array of that type **has no elements**, the block never runs, and
+      the result is the seed whatever the block would have returned. That is the whole argument,
+      and it is about the *receiver's element type*, not about `ρ`: keying it on `ρ = .never`
+      would be a different and much weaker claim.
+
+      What needs it: `def total(*ns); ns.inject(0) { |a, b| a + b }; end; total()`. A rest
+      parameter with no arguments left is `arrayOf (elemTy []) = arrayOf .never`, so the block
+      is judged with `b : .never`, `a + b` is `.never` by strictness, and the general `inject`
+      row's `ρ = α` fails on a call that cannot go wrong. -/
+  | injectEmpty {α ρ : Ty} : IterSig "inject" .never [α] [α, .never] ρ α
 
 /-! ### A closure's creation context (tier 11)
 
