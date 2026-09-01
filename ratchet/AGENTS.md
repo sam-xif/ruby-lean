@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **173 rungs of 232 — tier 13 complete, tiers 14–17 open**
+## Checker status: **177 rungs of 232 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
 good half of tiers 14–17: the eight literals,
@@ -43,11 +43,16 @@ by tier 14b's work — see §Ty language gaps), and the 14 that are not are perm
 (12 `unsafe_program`, 2 `ty_language_gap`). Tiers **13–19** are the new 96, and 8 of them were
 already climbed the day they were written.
 
-**Tiers 13–17 were then worked the same day**, in clinks 27–40 (`implementation-notes.md`):
+**Tiers 13–17 were then worked the same day**, in clinks 27–41 (`implementation-notes.md`):
 tier 13 **complete** (12/13, six clinks), and tiers 14–17 taken from 1/15, 3/19, 4/15 and 0/23 to
-**7/15, 13/19, 10/15 and 9/23**. So the headline is **173 of 232**, with **38 rungs differing
+**9/15, 13/19, 10/15 and 11/23**. So the headline is **177 of 232**, with **34 rungs differing
 from their recorded target** (down from 81) and 21 permanent negatives — one fewer than before,
 because a flagged `Ty` gap turned out not to be one (§Ty language gaps, clink 40).
+
+**`Ty` grew one constructor**: `hashOf (key val)` (clink 41), the first grammar change since
+tier 9's `clos`, discharging §Frontier item A. Uniform rather than keyed, because the target reads
+its tables with a variable key; invariant, because clink 39's `Array#<<` had just shown that
+invariance is what keeps `arrayOf .never`-means-provably-empty honest.
 
 Tiers **1–3, 5, 7, 8, 10 and 13** are now at every recorded target.
 
@@ -953,18 +958,18 @@ corpus agreement (CRuby vs the Lean semantics): 232/232 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 6/6
-tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 7/15  tier 15: 13/19
-tier 16: 10/15 tier 17: 9/23  tier 18: 0/8   tier 19: 0/3
+tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 9/15  tier 15: 13/19
+tier 16: 10/15 tier 17: 11/23 tier 18: 0/8   tier 19: 0/3
 flagged Ty language gaps: 2 (proc-arity-leniency, narrow-nilable-and-union)
-hand-authored derivations on file: 173
-rungs where validate differs from the recorded target: 38
+hand-authored derivations on file: 177
+rungs where validate differs from the recorded target: 34
 ```
 
-All 173 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 177 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 173/173 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 138/138
+(also run inline by `run_ratchet.sh`): 177/177 of those cross-checked against the real
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 140/140
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
@@ -1170,11 +1175,13 @@ feature list; the corpus is now a *target* (§2026-09-01), and the target ranks 
 differently. The ranking that matters is **how many of tier 18's eight files a capability
 unblocks**, and by that measure:
 
-- **A. A parameterised `Hash` type.** `Hash#fetch` is **62 sites** in the slice — its most
-  used builtin — and every one of `cvss.rb`'s seven metric lookups is a `fetch` into a
-  frozen constant table whose result goes straight into Float arithmetic. Tier 5 left
-  `Hash` as the bare `.cls "Hash"`, so `fetch` can only be `.any` and `cvss.rb` cannot be
-  typed at all. Unblocks tier 13's `const-frozen-hash`, most of tier 17, and `cvss.rb`.
+- ~~**A. A parameterised `Hash` type.**~~ — **done** (clink 41), and it was the right thing to
+  rank first: four rungs climbed, four retyped, and `Hash#fetch`'s 62 call sites made typeable.
+  What the entry did not say is *which* parameterisation: uniform, not keyed, because the target
+  reads its tables with a **variable** key (`TABLE.fetch(metric)`), where a per-key map answers
+  nothing. And the useful row turned out to be `fetch` rather than `[]`, for a reason about
+  `KeyError` being outside the type-stuck family — with only `[]`, every hash read is a nilable
+  nothing consumes.
 - ~~**B. A constant environment (tier 13).**~~ — **done** (clinks 27–32). The prediction that
   the design question is "scope-threaded rather than a whole-program table" was right; what it
   under-weighted is that the *existing* rules had to change. Four of them grew a
@@ -1211,11 +1218,12 @@ guessing. That is the first time on this ladder that a whole-file rung is worth 
 rather than deferring, and the honest expectation is that it fails on something unlisted: the
 file is 219 composed lines and the per-form tiers only measured the forms the census found.
 
-The three demands on `Ty` that remain are, in order of how much they unblock: **A** (a
-parameterised `Hash` — 62 `fetch` sites, and `cvss.rb` entirely), **G** (the length-indexed
-array — `arr.first`, `MatchData#[]`, every `a, b = s.split("-")`), **F** (a pair type — `zip`,
-`to_h`, `partition`). All three are `Ty` grammar changes, and all three want the same care
-`Ty.clos` got: a **spine** rather than a list payload, so that `Ty` keeps kernel-reducing.
+The demands on `Ty` that remain are **G** (the length-indexed array — `arr.first`,
+`MatchData#[]`, every `a, b = s.split("-")`) and **F** (a pair type — `zip`, `to_h`,
+`partition`). Both are grammar changes, and both want the care `Ty.clos` and `Ty.hashOf` got: a
+**spine** rather than a list payload, so that `Ty` keeps kernel-reducing. Clink 41 is the worked
+example — one constructor, four rungs climbed, four retyped, and *no derivation term changed*,
+because `JudgePairs` grew two indices without changing its constructors' arity.
 
 The original list, kept because its per-item reasoning is still the record of why each tier
 cost what it did:
