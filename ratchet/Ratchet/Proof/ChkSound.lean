@@ -153,6 +153,48 @@ theorem iterSig?_sound {m : String} {τ : Ty} {as βs : List Ty} {ρ res : Ty}
     exact .inject
   · exact absurd hp (by simp)
 
+/-- **`narrowCond?` only ever recognizes a condition `NarrowCond` does.**
+
+Added at clink 26, and it closes a gap that had been open since clink 13: `NarrowCond` was
+written as the *specification* of the recognizer — "evaluating this condition performs this test
+on this variable, and evaluating it cannot invalidate the answer" — and nothing tied
+`narrowCond?` to it. So the relation was decorative, and the one human-checkable statement of
+why each refinement is licensed was not actually load-bearing. It is now.
+
+Note what this theorem does **not** say: that the refinement *functions*
+(`truthyTy`/`isATy`/…) are right about Ruby. That is a claim about the semantics, checked the
+way every other such claim on this ladder is — by `CheckRungs.lean`'s controls, executed. What
+it does say is that the checker never applies a refinement to a condition whose shape the
+judgment has not licensed. -/
+theorem narrowCond?_sound {c : Expr} {k : VarKind} {x : String} {nk : NarrowKind}
+    {sides : NarrowSides} (h : narrowCond? c = some (k, x, nk, sides)) :
+    NarrowCond c k x nk sides := by
+  unfold narrowCond? at h
+  split at h
+  · -- the `&&` shape: the guard is a chain of `&&`s equating the four `VarKind`s and the three
+    -- occurrences of the temporary, plus `noLocalAsgn` on the right conjunct.
+    split at h
+    · rename_i hg
+      simp only [Bool.and_eq_true, beq_iff_eq] at hg
+      obtain ⟨⟨⟨⟨⟨e1, e2⟩, e3⟩, e4⟩, e5⟩, hno⟩ := hg
+      subst e1; subst e2; subst e3; subst e4; subst e5
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨hk, hx, hnk, hs⟩ := h
+      subst hk; subst hx; subst hnk; subst hs
+      exact .andGuard hno
+    · exact absurd h (by simp)
+  all_goals
+    first
+      | (simp only [Option.some.injEq, Prod.mk.injEq] at h
+         obtain ⟨hk, hx, hnk, hs⟩ := h
+         subst hk; subst hx; subst hnk; subst hs
+         first
+           | exact .bareVar
+           | exact .nilQuery
+           | exact .isAQuery
+           | exact .caseEqQuery)
+      | simp at h
+
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
 theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
     BareNameError m := by
@@ -1051,6 +1093,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
   | none => simp [hc] at h
   | some r => exact ⟨r.1, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
 
+#print axioms narrowCond?_sound
 #print axioms nilQSafe?_sound
 #print axioms builtinCls?_sound
 #print axioms comparable?_sound

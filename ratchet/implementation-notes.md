@@ -2466,3 +2466,79 @@ a *conjunction* of refinements and recognizing the `&&`/`||` desugaring.
 State after this clink: **120 rungs climbed** of 136, 120/120 cross-checked, 90/90 negative
 controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean
 (`propext`, `Quot.sound`).
+
+## Clink 26 (2026-09-01) — tier 12: `if x && x > 1`, and the ladder is climbed: 120 → 121
+
+`narrow-and-guard`, the last rung. **`RATCHET OK`: every rung in the corpus matches its
+recorded target.** 121 derivations, 92/92 controls, 136/136 agreement, eleven theorems
+axiom-clean (`propext`, `Quot.sound`).
+
+### Three separate things had to line up
+
+```
+if (seq (vasgn local __dt_t1 (var local x))
+        (if (var local __dt_t1) (send (var local x) ">" [int 1]) (var local __dt_t1)))
+   (send (var local x) "+" [int 1])
+   (int 0)
+```
+
+**1. The refinement is consumed in the same expression that establishes it.** `x > 1` inside the
+condition needs `x : Integer`, and it gets that from the **inner** `if`, whose condition is the
+temporary — i.e. from clink 25's alias. Without aliasing this rung is not typeable at all, which
+is why clink 12 filed both `&&` and `case/when` under the same finding.
+
+**2. The outer refinement is one-sided.** A truthy `&&` means the *first* conjunct was truthy;
+a falsy one could have been either conjunct, so the else-branch learns **nothing**. `NarrowSides`
+(`both` | `thenOnly`) is that distinction — the first asymmetric refinement on the ladder.
+
+And it is a **soundness** requirement, not caution, which was worth checking rather than
+assuming. Control (nnn):
+
+```ruby
+x = 3
+if x && x > 5 then 0 else x + "!" end
+```
+
+`3 > 5` is false, so the else-branch runs with `x` an ordinary `Integer` and `3 + "!"` raises
+`TypeError`. Refine the else-branch and `x` gets `falsyTy Int = .never` — which makes the whole
+branch **vacuous**: `x + "!"` becomes `.never` by strictness, `joinT Int never = Int`, and the
+program validates. That is the sharpest control on the ladder for `Ty.never`'s dead-branch
+reading (clink 13), because it is the one place that reading can be reached by a branch which is
+*not* dead.
+
+**3. The right conjunct must not assign to a local.** The refinement lands on the environment at
+the **end** of the condition, and the condition's value is the *right* conjunct's — so
+`x && (x = b[0]; true)` is truthy while leaving `x` `nil`. `noLocalAsgn` is a **whitelist**, and
+that direction matters: a walk looking for `vasgn` would report a constructor it does not cover
+as clean, whereas a whitelist reports anything it has not been taught about as unsafe. Control
+(ooo) is that program, which really raises `NoMethodError`.
+
+### A gap closed on the way: `NarrowCond` was decorative
+
+`NarrowCond` has been in `Judge.lean` since clink 13 as the *specification* of the recognizer —
+"evaluating this condition performs this test on this variable, **and** evaluating it cannot
+invalidate the answer". Nothing tied `narrowCond?` to it. So the one human-checkable statement of
+why each refinement is licensed was not load-bearing: `chk` could have recognized a shape the
+judgment never licensed, and no proof would have noticed.
+
+`narrowCond?_sound` closes it. Worth noting what it does *not* say: that the refinement
+*functions* are right about Ruby. That is a claim about the semantics, and it is checked the way
+every such claim on this ladder is — by executing the controls.
+
+### State: the ladder is climbed
+
+**121 rungs of 136**, and the 15 that are not climbed are not work items:
+
+- **12 permanent negatives** (`unsafe_program`) — programs that really raise, kept as the
+  soundness regression tests. A `true` on any of them is a bug.
+- **3 `Ty` language gaps**, each naming a specific missing constructor: an optional/rest arity
+  spine (`proc-arity-leniency`, `metaprog-method-missing-splat`) and a length-indexed array
+  (`narrow-nilable-and-union`).
+
+Tiers 1–8 complete; tiers 9, 10, 11 and 12 at every rung they target. 121/121 cross-checked
+against the real semantics on the prelude-booted heap, 92/92 negative controls rejected, corpus
+agreement 136/136 with 0 disagreements, and all eleven soundness theorems axiom-clean.
+
+What the ratchet is *for* now changes: the number can no longer go up without new corpus rungs,
+so the next move is more Ruby, not more rules. The three `Ty` gaps are the obvious sources, and
+each one is a grammar extension with a rung already written against it.

@@ -1436,6 +1436,52 @@ def refineElse (C : CTable) : NarrowKind → Ty → Ty
   | .isNil, τ => nonNilTy τ
   | .isA cn, τ => notATy C cn τ
 
+/-- Which branches a recognized condition licenses a refinement in (tier 12's
+`narrow-and-guard`).
+
+`both` is every test up to now: the outcome of `x.nil?` says something definite in each branch.
+`thenOnly` is what a **conjunction** licenses. `if x && x > 1` is truthy only if `x` was truthy,
+so the then-branch learns that — but the else-branch could have been taken because the *other*
+conjunct was false, and then nothing at all is known about `x`. Refining the else-branch there
+would be the exact mistake `corpus/135-narrow-backwards-unsafe` exists to catch, one level up. -/
+inductive NarrowSides where
+  | both
+  | thenOnly
+deriving DecidableEq, Repr
+
+mutual
+
+/-- **This expression cannot assign to a local**, decided by whitelist.
+
+Needed by the `&&` recognizer, and the reason is a real hole rather than caution. `if x && rhs`
+refines `x` in the then-branch because a truthy condition means `x` was truthy — but the
+condition's *value* is `rhs`'s, so `x && (x = false; 1)` is truthy while leaving `x` false. The
+refinement is applied to the environment as of the **end** of the condition, so an `rhs` that
+reassigns `x` would have it refined at its new type on the strength of a test on its old value.
+
+A **whitelist**, so that anything this function has not been taught about answers `false`. The
+alternative — walking the syntax looking for `vasgn` — is wrong in the dangerous direction: a
+constructor the walk does not cover would be reported clean. Method calls are admitted because a
+method body cannot see its caller's locals; block-carrying sends are not, because a block body
+can. -/
+def noLocalAsgn : Expr → Bool
+  | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil => true
+  | .var _ _ => true
+  | .const _ | .self' => true
+  | .send recv _ args none =>
+    (match recv with | some r => noLocalAsgn r | none => true) && noLocalAsgnAll args
+  | .array es => noLocalAsgnAll es
+  | .if' c t e =>
+    noLocalAsgn c && noLocalAsgn t && (match e with | some x => noLocalAsgn x | none => true)
+  | .seq es => noLocalAsgnAll es
+  | _ => false
+
+def noLocalAsgnAll : List Expr → Bool
+  | [] => true
+  | e :: es => noLocalAsgn e && noLocalAsgnAll es
+
+end
+
 /-- `NarrowCond c x k`: evaluating condition `c` performs test `k` on the local `x`, *and
 evaluating it has no other effect that could invalidate the refinement*.
 
@@ -1447,15 +1493,15 @@ local, and sending a total zero-argument builtin to a local. A condition like
 general side condition ("the condition assigns to no local the refinement mentions") is a
 premise this ladder has not needed to state because no recognized form can assign at
 all. -/
-inductive NarrowCond : Expr → VarKind → String → NarrowKind → Prop
+inductive NarrowCond : Expr → VarKind → String → NarrowKind → NarrowSides → Prop
   /-- `if x` / `if @x` — the condition is exactly a variable read. Ruby tests the value's
       truthiness and nothing else, so the then-branch has it non-`nil`/non-`false` and the
       else-branch has it one of those two. -/
-  | bareVar {k : VarKind} {x : String} : NarrowCond (.var k x) k x .truthy
+  | bareVar {k : VarKind} {x : String} : NarrowCond (.var k x) k x .truthy .both
   /-- `if x.nil?` — `nil?` is total (`PrimSig.nilQuery`) and answers exactly "is this
       value `nil`". The receiver being a bare variable read is what ties the answer to `x`. -/
   | nilQuery {k : VarKind} {x : String} :
-      NarrowCond (.send (some (.var k x)) "nil?" [] none) k x .isNil
+      NarrowCond (.send (some (.var k x)) "nil?" [] none) k x .isNil .both
   /-- `if x.is_a?(C)`, with the class written as a **bare constant**. The class name is read
       off the *syntax* rather than off the argument's type, and the two agree because the
       only rules that type a `.const n` (`constCls`, `constBuiltin`) both answer
@@ -1463,12 +1509,36 @@ inductive NarrowCond : Expr → VarKind → String → NarrowKind → Prop
       recognized: the rule `Judge.isAQuery` would still type the send, but there would be no
       class *name* to refine by. -/
   | isAQuery {k : VarKind} {x cn : String} :
-      NarrowCond (.send (some (.var k x)) "is_a?" [.const cn] none) k x (.isA cn)
+      NarrowCond (.send (some (.var k x)) "is_a?" [.const cn] none) k x (.isA cn) .both
   /-- `case x when C` — the desugarer emits `C === x`, the *receiver* being the class. Same
       refinement as `is_a?`, reached from the other side, because `Module#===` is the ancestor
       test with its arguments swapped. -/
   | caseEqQuery {k : VarKind} {x cn : String} :
-      NarrowCond (.send (some (.const cn)) "===" [.var k x] none) k x (.isA cn)
+      NarrowCond (.send (some (.const cn)) "===" [.var k x] none) k x (.isA cn) .both
+  /-- **`x && rhs`** — Ruby's `&&` desugars to a temporary plus a nested `if`, so an entire
+      `seq` sits in the outer condition's position:
+
+      ```
+      seq (vasgn local __dt_t1 (var local x))
+          (if (var local __dt_t1) rhs (var local __dt_t1))
+      ```
+
+      Its value is `rhs`'s when `x` is truthy and `x`'s (falsy) otherwise, so **truthy implies
+      `x` was truthy** — and that is all it implies, which is why the sides are `thenOnly`.
+
+      `noLocalAsgn rhs` is the premise that makes even the then-branch sound: the refinement is
+      applied to the environment at the *end* of the condition, and `x && (x = false; 1)` is
+      truthy while leaving `x` false.
+
+      Note the alias in the desugared form is doing work *inside* the condition too:
+      `x > 1` needs `x` narrowed, and it gets that from the **inner** `if`, whose condition is
+      the temporary (`Ty.sameAs`, clink 25). The refinement is consumed in the same expression
+      that establishes it. -/
+  | andGuard {k : VarKind} {t x : String} {rhs : Expr} :
+      noLocalAsgn rhs = true →
+      NarrowCond
+        (.seq [.vasgn k t (.var k x), .if' (.var k t) rhs (some (.var k t))])
+        k x .truthy .thenOnly
 
 /-- The executable recognizer. `none` means "this condition tells the checker nothing",
 which is the answer for every condition in tiers 1–11.
@@ -1478,14 +1548,19 @@ piece of state depending on it: a `.lvar` narrows the environment (`narrowEnvs`)
 narrows the spine (`narrowSpine`), and `.cvar`/`.gvar` narrow nothing, because no rule in this
 judgment types either — so both consumers below are the identity on them, which is the right
 answer rather than an omission. -/
-def narrowCond? : Expr → Option (VarKind × String × NarrowKind)
-  | .var k x => some (k, x, .truthy)
-  | .send (some (.var k x)) "nil?" [] none => some (k, x, .isNil)
-  | .send (some (.var k x)) "is_a?" [.const cn] none => some (k, x, .isA cn)
+def narrowCond? : Expr → Option (VarKind × String × NarrowKind × NarrowSides)
+  -- Tier 12's `&&`, matched first because its shape is a `seq` and nothing else here is.
+  | .seq [.vasgn k t (.var k' x), .if' (.var k'' t') rhs (some (.var k''' t''))] =>
+    if k == k' && k == k'' && k == k''' && t == t' && t == t'' && noLocalAsgn rhs then
+      some (k, x, .truthy, .thenOnly)
+    else none
+  | .var k x => some (k, x, .truthy, .both)
+  | .send (some (.var k x)) "nil?" [] none => some (k, x, .isNil, .both)
+  | .send (some (.var k x)) "is_a?" [.const cn] none => some (k, x, .isA cn, .both)
   -- Tier 12: `C === x`, which is what `case x when C` desugars to (with `x` a temporary --
   -- see `Ty.sameAs`). `Module#===` is the ancestor test with the sides swapped, so it narrows
   -- exactly as `is_a?` does.
-  | .send (some (.const cn)) "===" [.var k x] none => some (k, x, .isA cn)
+  | .send (some (.const cn)) "===" [.var k x] none => some (k, x, .isA cn, .both)
   | _ => none
 
 /-- Refine one name, **and the name it aliases** (tier 12).
@@ -1537,7 +1612,11 @@ a second, parallel `ifNarrow` rule — and that in turn is what keeps there from
 rules for one syntactic form, only one of which anybody reads. -/
 def narrowEnvs (C : CTable) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
-  | some (.lvar, x, k) => (refineOne C k true Γ x, refineOne C k false Γ x)
+  | some (.lvar, x, k, sides) =>
+    (refineOne C k true Γ x,
+     match sides with
+     | .both => refineOne C k false Γ x
+     | .thenOnly => Γ)
   | _ => (Γ, Γ)
 
 /-- **The two branch ivar spines**, the same construction one piece of state over
@@ -1555,9 +1634,12 @@ Two differences from `narrowEnvs`, both consequences of what a spine is:
   outgoing spine is `joinSpine I₁ I₂`, which puts it back. -/
 def narrowSpine (C : CTable) (c : Expr) (I : Ty) : Ty × Ty :=
   match narrowCond? c with
-  | some (.ivar, x, k) =>
+  | some (.ivar, x, k, sides) =>
     let τ := (ivarGet? I x).getD .nilT
-    (ivarSet I x (refineThen C k τ), ivarSet I x (refineElse C k τ))
+    (ivarSet I x (refineThen C k τ),
+     match sides with
+     | .both => ivarSet I x (refineElse C k τ)
+     | .thenOnly => I)
   | _ => (I, I)
 
 mutual

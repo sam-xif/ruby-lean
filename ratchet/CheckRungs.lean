@@ -931,7 +931,43 @@ def controls : List Control :=
       .seq [.class' "C" none
               (.defs .self' "===" [.req "o"]
                 (.send (some (.int 1)) "+" [.str "a"] none)),
-            .if' (.send (some (.const "C")) "===" [.int 5] none) (.int 1) (some (.int 2))]⟩ ]
+            .if' (.send (some (.const "C")) "===" [.int 5] none) (.int 1) (some (.int 2))]⟩
+    -- ### Tier 12's `&&` controls
+    --
+    -- (nnn) **`NarrowSides.thenOnly`, and it is a soundness requirement rather than caution.**
+    -- `x` is `3`, so the condition's first conjunct is truthy and the second (`3 > 5`) is false
+    -- -- the **else**-branch runs, with `x` an ordinary `Integer`, and `3 + "!"` raises
+    -- TypeError. Refining the else-branch (`sides = .both`) would give `x` type
+    -- `falsyTy Int = .never`, which makes the whole branch *vacuous*: `x + "!"` becomes
+    -- `.never` by strictness, `joinT Int never = Int`, and the program validates. This is the
+    -- sharpest control on the ladder for `Ty.never`'s dead-branch reading, because it is the
+    -- one place that reading can be reached by a branch that is *not* dead.
+  , ⟨"x = 3; if x && x > 5 then 0 else x + \"!\" end",
+      .seq [.vasgn .lvar "x" (.int 3),
+            .if' (.seq [.vasgn .lvar "__dt_t1" (.var .lvar "x"),
+                        .if' (.var .lvar "__dt_t1")
+                          (.send (some (.var .lvar "x")) ">" [.int 5] none)
+                          (some (.var .lvar "__dt_t1"))])
+              (.int 0)
+              (some (.send (some (.var .lvar "x")) "+" [.str "!"] none))]⟩
+    -- (ooo) **`noLocalAsgn` on the right conjunct.** The refinement is applied to the
+    -- environment at the *end* of the condition, and here the right conjunct **reassigns `x`**
+    -- (to `b[0]`, which is `nil`) and then answers `true`. So the condition is truthy, the
+    -- then-branch runs, and `nil + 1` raises NoMethodError -- while a checker that refined `x`
+    -- by `truthyTy` on the strength of a test on its *old* value would call it an `Integer`.
+    -- The `.vasgn` inside a `seq` is exactly what the whitelist refuses.
+  , ⟨"a = [3]; b = []; x = a[0]; if x && (x = b[0]; true) then x + 1 else 0 end",
+      .seq [.vasgn .lvar "a" (.array [.int 3]),
+            .vasgn .lvar "b" (.array []),
+            .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+            .if' (.seq [.vasgn .lvar "__dt_t1" (.var .lvar "x"),
+                        .if' (.var .lvar "__dt_t1")
+                          (.seq [.vasgn .lvar "x"
+                                   (.send (some (.var .lvar "b")) "[]" [.int 0] none),
+                                 .tru])
+                          (some (.var .lvar "__dt_t1"))])
+              (.send (some (.var .lvar "x")) "+" [.int 1] none)
+              (some (.int 0))]⟩ ]
 
 mutual
 

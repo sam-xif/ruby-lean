@@ -2274,6 +2274,83 @@ def r128 : Rung :=
               .intLit rfl)
             rfl)))))))⟩
 
+/-- `a = [3]; x = a[0]; if x && x > 1 then x + 1 else 0 end` → `Integer`.
+
+    **The last rung on the ladder, and the one that needed narrowing to survive a *compound*
+    condition.** `&&` desugars to a temporary plus a nested `if`, so the outer `if`'s condition
+    position holds an entire `seq`:
+
+    ```
+    if (seq (vasgn local __dt_t1 (var local x))
+            (if (var local __dt_t1) (send (var local x) ">" [int 1]) (var local __dt_t1)))
+       (send (var local x) "+" [int 1])
+       (int 0)
+    ```
+
+    Three things have to line up, and each was a separate piece of the tier:
+
+    - **`x > 1` inside the condition already needs `x` narrowed** — the refinement is consumed
+      in the same expression that establishes it. That comes from the **inner** `if`, whose
+      condition is the temporary, via the alias (`Ty.sameAs`, clink 25). Without aliasing this
+      rung is not typeable at all, which is why clink 17 put them in the same bucket.
+    - **The outer refinement is `thenOnly`.** A truthy `&&` means `x` was truthy; a falsy one
+      could have been either conjunct, so the else-branch learns *nothing* and must not be
+      refined. `NarrowSides` is that distinction, and it is the first asymmetric refinement on
+      the ladder.
+    - **`noLocalAsgn rhs`.** The refinement lands on the environment at the *end* of the
+      condition, and `x && (x = false; 1)` is truthy while leaving `x` false. A whitelist, so
+      that a shape the function has not been taught about answers `false` rather than "clean".
+
+    Read `__dt_t1`'s outgoing entry — `union(Integer (= x), NilClass (= x))` — and the inner
+    `if`'s join has already retired the alias, exactly as in `narrow-union-case-when`. -/
+def r132 : Rung :=
+  ⟨"narrow-and-guard",
+    .seq [.vasgn .lvar "a" (.array [.int 3]),
+          .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+          .if' (.seq [.vasgn .lvar "__dt_t1" (.var .lvar "x"),
+                      .if' (.var .lvar "__dt_t1")
+                        (.send (some (.var .lvar "x")) ">" [.int 1] none)
+                        (some (.var .lvar "__dt_t1"))])
+            (.send (some (.var .lvar "x")) "+" [.int 1] none)
+            (some (.int 0))],
+    .int,
+    [("a", .arrayOf .int), ("x", .nilable .int),
+     ("__dt_t1", .union (.sameAs "x" .int) (.sameAs "x" .nilT))],
+    .seq (.cons (.vasgn (.arrayLit (.cons .intLit .nil)))
+      (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .arrayIndex))
+        -- The outer `if'`'s indices are written out because its condition is a whole `seq`:
+        -- `narrowEnvs` cannot reduce until the condition's syntax *and* `Γc` are known, and
+        -- neither is available while the premises are being elaborated. Read them as the
+        -- statement of what this rung does -- `Γ₁` has `x : Integer`, `Γ₂` is `Γc` untouched,
+        -- which is `NarrowSides.thenOnly`.
+        (.last (.if'
+          (Γc := [("a", .arrayOf .int), ("x", .nilable .int),
+                  ("__dt_t1", .union (.sameAs "x" .int) (.sameAs "x" .nilT))])
+          (Γ₁ := [("a", .arrayOf .int), ("x", .int),
+                  ("__dt_t1", .union (.sameAs "x" .int) (.sameAs "x" .nilT))])
+          (Γ₂ := [("a", .arrayOf .int), ("x", .nilable .int),
+                  ("__dt_t1", .union (.sameAs "x" .int) (.sameAs "x" .nilT))])
+          (σ := .nilable .bool) (τ₁ := .int) (τ₂ := .int)
+          -- …and the inner `if'`'s for the same reason one level down. These are the
+          -- interesting ones: `Γ₁` is where the **alias** does its work, refining `x` to
+          -- `Integer` off a test on `__dt_t1`, which is what makes `x > 1` type inside the
+          -- condition that establishes it.
+          (.seq (.cons (.vasgnAlias rfl rfl rfl)
+            (.last (.if'
+              (Γc := [("a", .arrayOf .int), ("x", .nilable .int),
+                      ("__dt_t1", .sameAs "x" (.nilable .int))])
+              (Γ₁ := [("a", .arrayOf .int), ("x", .int),
+                      ("__dt_t1", .sameAs "x" .int)])
+              (Γ₂ := [("a", .arrayOf .int), ("x", .nilT),
+                      ("__dt_t1", .sameAs "x" .nilT)])
+              (Ic := .ivar0) (I₁ := .ivar0) (I₂ := .ivar0)
+              (σ := .nilable .int) (τ₁ := .bool) (τ₂ := .nilT)
+              (.varAlias rfl)
+              (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt)
+              (.varAlias rfl) rfl))))
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)
+          .intLit rfl))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2289,7 +2366,7 @@ def rungs : List Rung :=
    r101, r102, r103, r104, r105,
    r109, r110, r111, r112, r113,
    r115, r116, r117, r118, r119, r121, r122, r123,
-   r125, r126, r127, r128, r129, r130, r131, r134]
+   r125, r126, r127, r128, r129, r130, r131, r132, r134]
 
 /-! ## `chk` answers exactly what was derived by hand
 
