@@ -492,16 +492,19 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                       · rename_i hbody
                         split at h
                         · rename_i hI
-                          injection h with h
-                          injection h with h h'; injection h' with h' h''
-                          subst h; subst h'; subst h''
-                          exact .closCall (by
-                            rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
-                              h | h
-                            · exact .inl h
-                            · exact .inr h) hself (chk_sound hrecv)
-                            (chkAll_sound hargs) hclos hpar
-                            (by subst hI; exact chk_sound hbody)
+                          split at h
+                          · rename_i hcap
+                            injection h with h
+                            injection h with h h'; injection h' with h' h''
+                            subst h; subst h'; subst h''
+                            exact .closCall (by
+                              rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
+                                h | h
+                              · exact .inl h
+                              · exact .inr h) hself (chk_sound hrecv)
+                              (chkAll_sound hargs) hclos hpar
+                              (by subst hI; exact chk_sound hbody) hcap
+                          · exact absurd h (by simp)
                         · exact absurd h (by simp)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
@@ -551,11 +554,14 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               · rename_i hbody
                 split at h
                 · rename_i hI
-                  injection h with h
-                  injection h with h h'; injection h' with h' h''
-                  subst h; subst h'; subst h''
-                  exact .yieldExpr hblk hself (chkAll_sound hargs) hclos hpar
-                    (by subst hI; exact chk_sound hbody)
+                  split at h
+                  · rename_i hcap
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .yieldExpr hblk hself (chkAll_sound hargs) hclos hpar
+                      (by subst hI; exact chk_sound hbody) hcap
+                  · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
             · exact absurd h (by simp)

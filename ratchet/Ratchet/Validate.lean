@@ -335,7 +335,14 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   match paramEnv c.params argTys with
                   | some Γb =>
                     match chk f κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) with
-                    | some (ρ, _, Iout) => if Iout = I₂ then some (ρ, Γ₂, I₂) else none
+                    -- Neither the ivar spine nor any captured local may be retyped by the
+                    -- callee (see `capIntact` -- the second one is a real soundness bug if
+                    -- omitted, not caution).
+                    | some (ρ, Γb', Iout) =>
+                      if Iout = I₂ then
+                        (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ₂, I₂)
+                         else none)
+                      else none
                     | none => none
                   | none => none
                 | none => none
@@ -372,7 +379,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             match paramEnvB none c.params argTys with
             | some Γb =>
               match chk f κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) with
-              | some (ρ, _, Iout) => if Iout = I' then some (ρ, Γ', I') else none
+              | some (ρ, Γb', Iout) =>
+                if Iout = I' then
+                  (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ', I')
+                   else none)
+                else none
               | none => none
             | none => none
           | none => none

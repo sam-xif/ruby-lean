@@ -1151,7 +1151,7 @@ def r087 : Rung :=
           .send (some (.var .lvar "f")) "call" [] none],
     .int, [("f", .clos 0 .ivar0)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
-      (.last (.closCall (.inl rfl) rfl (.var rfl) .nil rfl rfl .intLit)))⟩
+      (.last (.closCall (.inl rfl) rfl (.var rfl) .nil rfl rfl .intLit rfl)))⟩
 
 /-- `lambda { |x| x + 1 }.call(2)` → `Integer`. **The rung that shows why a callable's type
     is a reference and not an arrow.** Nothing in `lambda { |x| x + 1 }` says `x` is an
@@ -1163,8 +1163,9 @@ def r088 : Rung :=
       (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none)))))
       "call" [.int 2] none,
     .int, [],
-    .closCall (.inl rfl) rfl (.lambdaLit (idx := 0) (.inl rfl) rfl rfl) (.cons .intLit .nil) rfl rfl
-      (.prim (.var rfl) (.cons .intLit .nil) .intAdd)⟩
+    .closCall (.inl rfl) rfl (.lambdaLit (idx := 0) (.inl rfl) rfl rfl)
+      (.cons .intLit .nil) rfl rfl
+      (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl⟩
 
 /-- `p = proc { |x| x * 2 }; p.call(3)` → `Integer`. `proc` takes the same rule as `lambda`
     (`.inr rfl` rather than `.inl rfl` is the only difference in the whole derivation), which
@@ -1179,7 +1180,7 @@ def r089 : Rung :=
     .int, [("p", .clos 0 .ivar0)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
       (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intMul))))⟩
+        (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `p = proc { |x| x * 2 }; p[3]` → `Integer`. `p[3]` is Ruby's other spelling of
     `p.call(3)`, so it is the same rule reached through `.inr rfl` on the *method-name*
@@ -1195,7 +1196,7 @@ def r090 : Rung :=
     .int, [("p", .clos 0 .ivar0)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
       (.last (.closCall (.inr rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intMul))))⟩
+        (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `n = 10; add_n = lambda { |x| x + n }; add_n.call(5)` → `Integer`. **The rung the
     captured spine exists for.** `n` is not a parameter and is not in scope where the body is
@@ -1212,7 +1213,7 @@ def r098 : Rung :=
     .seq (.cons (.vasgn .intLit)
       (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
         (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)))))⟩
+          (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl))))⟩
 
 /-- `add = lambda { |x| lambda { |y| x + y } }; add.call(1).call(2)` → `Integer`.
     **Currying, with no arrow type anywhere.**
@@ -1237,9 +1238,9 @@ def r099 : Rung :=
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
       (.last (.closCall (.inl rfl) rfl
         (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.lambdaLit (idx := 1) (.inl rfl) rfl rfl))
+          (.lambdaLit (idx := 1) (.inl rfl) rfl rfl) rfl)
         (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl)))⟩
 
 /-- `def apply(f, v); f.call(v); end; apply(lambda { |x| x * 2 }, 5)` → `Integer`. A callable
     passed as an ordinary argument: tier 6's `paramEnv` binds `f` to `.clos 0 ivar0` exactly
@@ -1259,7 +1260,7 @@ def r100 : Rung :=
       (.last (.callDef
         (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl rfl) (.cons .intLit .nil)) rfl rfl
         (.closCall (.inl rfl) rfl (.var rfl) (.cons (.var rfl) .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intMul)))))⟩
+          (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
 
 /-! ### Tier 9b — a block reaching a method
 
@@ -1293,9 +1294,9 @@ def r094 : Rung :=
       (.last (.callDefBlk rfl .nil rfl rfl rfl
         (.prim
           (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul))
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)
           (.cons (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul)) .nil)
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
           .intAdd))))⟩
 
 /-- `def run(&b); b.call(5); end; run { |x| x + 1 }` → `Integer`. The other half of
@@ -1314,7 +1315,7 @@ def r095 : Rung :=
     .seq (.cons .defStmt
       (.last (.callDefBlk rfl .nil rfl rfl rfl
         (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
+          (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-- `def apply_twice; doubler = lambda { |x| return x * 2 }; doubler.call(3); end;
     apply_twice` → `Integer`. Two gaps closed at once.
@@ -1340,7 +1341,44 @@ def r105 : Rung :=
       (.last (.vcallDef rfl rfl rfl
         (.seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
           (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul))))))))⟩
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))))))⟩
+
+/-! ## Tier 11 — features in concert
+
+The tier that adds no feature. Every rung is a *combination* of things that already have
+rules, and it exists because a corpus-driven ladder is blind to exactly that: tier 7 gave
+instance dispatch, tier 9 gave blocks-passed-to-methods, and nothing in either passes a block
+to an instance method — so `A.new.a { |v| v }` had no rule and nobody noticed until a human
+wrote ordinary Ruby. Nine of the ten are demands; this is the one that is climbed. -/
+
+/-- `def t; yield(1); end; a = 1; t { |x| a = a + x }; a + 1` → `Integer`. **The boundary case
+    for `capIntact`, and the rung that says why it compares types rather than forbidding
+    assignment.**
+
+    The block really does mutate a captured local — Ruby blocks capture by reference — and
+    that is admissible only because it leaves the *type* alone: `Integer + Integer` is an
+    `Integer`. Exactly the boundary `class-setter-method` sits on for instance variables, and
+    the final `rfl` below is the `capIntact` check discharging on `a`.
+
+    Its neighbour `xc-block-retypes-capture` is the same program with `a = "s"` instead, and
+    it really raises `TypeError`. That one is a permanent negative target, and the pair is
+    what stops clink 11's soundness fix from being quietly reverted. -/
+def r121 : Rung :=
+  ⟨"xc-block-accumulates-capture",
+    .seq [.def' "t" [] (.yield' [.int 1]),
+          .vasgn .lvar "a" (.int 1),
+          .send none "t" []
+            (some (.block [.req "x"] []
+              (.vasgn .lvar "a"
+                (.send (some (.var .lvar "a")) "+" [.var .lvar "x"] none)))),
+          .send (some (.var .lvar "a")) "+" [.int 1] none],
+    .int, [("a", .int)],
+    .seq (.cons .defStmt
+      (.cons (.vasgn .intLit)
+        (.cons (.callDefBlk rfl .nil rfl rfl rfl
+                 (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+                   (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))
+          (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
 
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
@@ -1353,7 +1391,8 @@ def rungs : List Rung :=
    r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
    r074, r075, r076,
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
-   r087, r088, r089, r090, r094, r095, r098, r099, r100, r105]
+   r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
+   r121]
 
 /-! ## `chk` answers exactly what was derived by hand
 

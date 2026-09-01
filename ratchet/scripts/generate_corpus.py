@@ -830,6 +830,133 @@ R("metaprog-method-missing-splat", 10,
   expect_validate=False, false_reason="ty_language_gap")
 
 
+# --- Tier 11: cross-cutting -- features in concert ---------------------------
+#
+# Every tier above this one adds a *feature*. This one adds no feature at all: each rung
+# is a combination of features that already have rules, and it exists because the ladder
+# is corpus-driven and therefore blind to exactly that. Tier 7 gave instance dispatch and
+# tier 9 gave blocks-passed-to-methods; nothing in either tier passes a block to an
+# instance method, so `A.new.a { |v| v }` had no rule and nobody noticed. The first rung
+# below is that program, reported by a human writing ordinary Ruby.
+#
+# One rung here already earned its keep before it was written: sketching `xc-block-
+# retypes-capture` found a real unsoundness in the committed tier-9 rules (a block
+# captures locals by reference, and the call rules were discarding the body's outgoing
+# environment). See ../implementation-notes.md clink 11.
+#
+# Deliberately NOT here: `super { |x| ... }`. It is ordinary Ruby that CRuby runs fine,
+# but it is outside the *Lean semantics* fragment ("zsuper with an explicit block"), so a
+# rung for it would be a type attached to a program the model cannot execute -- which is
+# the one thing scripts/run_agreement.sh exists to prevent. It is a demand on ../lean/,
+# not on this checker, and is recorded in AGENTS.md §Frontier instead.
+
+R("xc-class-block-param", 11,
+  "class A; def a(&blk); blk.call(3); end; end; A.new.a { |v| v } -- REPORTED BY A HUMAN, "
+  "and the reason this tier exists. Two independent blockers, both of them restrictions "
+  "introduced deliberately in earlier tiers, neither of them an unmodeled feature. (1) No "
+  "rule covers an explicit-receiver send that carries a block: callMethod (tier 7) requires "
+  "blk = none and callDefBlk (tier 9b) requires an implicit receiver, so this program "
+  "matches nothing -- and removing the block, or moving the def to top level, makes each "
+  "half validate on its own. (2) Behind it, closCall requires selfTy = none, so `blk.call` "
+  "*inside an instance method body* would still be rejected even with (1) fixed; that one is "
+  "documented (clink 9) and its fix is to put selfTy into Ty.clos beside the captured "
+  "locals. Safe Ruby returning 3, so this is conservative, not unsound.",
+  "class A\n  def a(&blk)\n    blk.call(3)\n  end\nend\n\n\nA.new.a { |v| v }\n",
+  expect_validate=True)
+
+R("xc-class-yield-ivar", 11,
+  "An instance method that yields, with the block reading an instance variable through the "
+  "receiver's ivar spine: Counter.new(5).bump { |x| x + 1 } : Int. Needs tier 7's ivar spine "
+  "and tier 9b's Ctx.blockTy at the same time -- and needs blockTy to be set by a *dispatch* "
+  "rule rather than only by callDefBlk, which is the tier-7-x-tier-9b gap again from the "
+  "yield side rather than the &blk side.",
+  "class Counter\n  def initialize(n)\n    @n = n\n  end\n\n  def bump\n    yield(@n)\n"
+  "  end\nend\n\n\nCounter.new(5).bump { |x| x + 1 }\n",
+  expect_validate=True)
+
+R("xc-lambda-in-ivar", 11,
+  "A callable stored in an instance variable and invoked through a method: "
+  "Box.new(lambda { |x| x * 2 }).apply(4) : Int. The interesting part is that the ivar "
+  "spine has to hold a Ty.clos -- tier 7's Ty.inst carrying tier 9's callable -- so the "
+  "closure's index and captured environment survive inside an object's type. Also needs "
+  "closCall to work with selfTy set, since @f.call happens inside a method body.",
+  "class Box\n  def initialize(f)\n    @f = f\n  end\n\n  def apply(v)\n    @f.call(v)\n"
+  "  end\nend\n\n\nBox.new(lambda { |x| x * 2 }).apply(4)\n",
+  expect_validate=True)
+
+R("xc-module-yield", 11,
+  "A module singleton method that yields: Runner.twice { |x| x * 10 } : Int. Tier 8's "
+  "callSMethod does not set Ctx.blockTy, and there is no rule for an explicit-receiver send "
+  "with a block, so this fails for the same reason xc-class-block-param does -- one tier "
+  "over. Worth having separately because the fix for a `.clsOf` receiver is not literally "
+  "the fix for an `.inst` one.",
+  "module Runner\n  def self.twice\n    yield(1) + yield(2)\n  end\nend\n\n\n"
+  "Runner.twice { |x| x * 10 }\n",
+  expect_validate=True)
+
+R("xc-inherit-implicit-block", 11,
+  'Child#show calls an *inherited* method with a block, by bare name: wrap { 7 }, where '
+  'Base#wrap is "[" + yield.to_s + "]". Three tiers in concert -- tier 7\'s mroGet? walk to '
+  "find wrap on Base, tier 9b's blockTy for the yield inside it, and tier 8-style "
+  "implicit-self dispatch (selfCall) which today handles only a zero-argument vcall with no "
+  "block. String result, so it also exercises strAdd over a yielded value.",
+  'class Base\n  def wrap\n    "[" + yield.to_s + "]"\n  end\nend\n\nclass Child < Base\n'
+  "  def show\n    wrap { 7 }\n  end\nend\n\n\nChild.new.show\n",
+  expect_validate=True)
+
+R("xc-block-retypes-capture", 11,
+  "def t; yield(1); end; a = 1; t { |x| a = \"s\" }; a + 1 -- an UNSAFE program, and the one "
+  "that found a real soundness bug in the committed tier-9 rules. A Ruby block captures "
+  "locals **by reference**, so the assignment inside it is visible afterwards and `a + 1` "
+  "really raises TypeError. Ty.clos captures by *value* into a spine and the call rules "
+  "discarded the body's outgoing environment, so the checker still believed a : Int and "
+  "certified this. Fixed by the capIntact premise on closCall/yieldExpr -- the exact analogue "
+  "of callMethod's no-retyping premise for instance variables, and the same general rule: a "
+  "callee may not retype state its caller can still see. Permanent negative target; it is "
+  "what stops that fix from being quietly reverted.",
+  'def t\n  yield(1)\nend\n\na = 1\nt { |x| a = "s" }\na + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("xc-block-accumulates-capture", 11,
+  "def t; yield(1); end; a = 1; t { |x| a = a + x }; a + 1 : Int -- the boundary case for "
+  "capIntact, and the reason it compares *types* rather than forbidding assignment. The "
+  "block really does mutate a captured local, and that is fine because it leaves the type "
+  "alone: same shape as class-setter-method for ivars. Sits next to "
+  "xc-block-retypes-capture on purpose -- the two differ only in the assigned type.",
+  "def t\n  yield(1)\nend\n\na = 1\nt { |x| a = a + x }\na + 1\n",
+  expect_validate=True)
+
+R("xc-ivar-array-map", 11,
+  "Shelf.new([1, 2]).names, where names is @items.map { |i| i.to_s } : an Array of String. "
+  "Four tiers at once: tier 5's array literal and elemTy, tier 7's ivar spine holding an "
+  "arrayOf, tier 9c's still-unwritten higher-order rule for Array#map, and the tier-7-x-9 "
+  "gap for a block reaching an instance method. The deepest rung in the corpus by feature "
+  "count.",
+  "class Shelf\n  def initialize(items)\n    @items = items\n  end\n\n  def names\n"
+  "    @items.map { |i| i.to_s }\n  end\nend\n\n\nShelf.new([1, 2]).names\n",
+  expect_validate=True)
+
+R("xc-module-applies-lambda", 11,
+  "Twice.apply(lambda { |x| x + 1 }, 5) : Int, where the module method calls its argument "
+  "twice: f.call(f.call(v)). The blocker is precisely closCall's selfTy = none premise -- "
+  "inside a singleton method body selfTy is some (.clsOf \"Twice\"), so the callable cannot "
+  "be invoked even though it was created at top level and captured nothing. The cleanest "
+  "single demand in this tier for putting selfTy into Ty.clos.",
+  "module Twice\n  def self.apply(f, v)\n    f.call(f.call(v))\n  end\nend\n\n\n"
+  "Twice.apply(lambda { |x| x + 1 }, 5)\n",
+  expect_validate=True)
+
+R("xc-block-retypes-ivar", 11,
+  "An UNSAFE program: a block retypes an *instance variable* rather than a local. "
+  "`run { @x = \"s\" }` then `@x + 1` really raises TypeError. The ivar twin of "
+  "xc-block-retypes-capture, and it checks a different premise: the block body is judged "
+  "with the enclosing ivar spine, and closCall/yieldExpr require that spine to come back "
+  "unchanged. Permanent negative target.",
+  'class C\n  def initialize(x)\n    @x = x\n  end\n\n  def run\n    yield\n  end\n\n'
+  '  def go\n    run { @x = "s" }\n    @x + 1\n  end\nend\n\n\nC.new(1).go\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+
 # ---------------------------------------------------------------------------
 
 def main():

@@ -1109,3 +1109,112 @@ State after this clink: **90 rungs climbed** (tiers 1–8 complete, tier 9 at 10
 cross-checked against the real semantics, 43/43 negative controls rejected — three of the four
 new ones *sound*, one per premise added — corpus agreement 0 disagreements, all six soundness
 theorems axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 11 (2026-09-01) — a soundness fix, and tier 11: features in concert: 90 → 91
+
+Two things, and the second found the first.
+
+### 1. The bug: a block may not retype a captured local
+
+`Ty.clos` captures locals **by value**, into a spine, and `closCall`/`yieldExpr` discarded the
+body's outgoing environment. But a Ruby block captures **by reference**, so:
+
+```ruby
+def t; yield(1); end
+a = 1
+t { |x| a = "s" }
+a + 1                  # TypeError: no implicit conversion of Integer into String
+```
+
+`validate` answered **`true`** on this. The caller still believed `a : Int` after the block
+ran. Genuinely unsound, in code committed two clinks earlier.
+
+The fix is `capIntact`, a premise on `closCall` and `yieldExpr`: every name in the captured
+spine must have, in the body's *outgoing* environment, the type it had on entry. It is the
+exact analogue of `callMethod`'s no-retyping premise for instance variables (clink 6), and the
+general rule is worth naming because it has now been rediscovered three times:
+
+> **A callee may not retype state its caller can still see.**
+
+Ivars for methods (clink 6), captured locals for blocks (here), and — the same fact one level
+up — branch environments at an `if` (clink 3, `corpus/042`). I had written the ivar version
+myself and still did not apply it to closures. Recording the general form so the next
+state-carrying construct inherits it rather than rediscovering it.
+
+What it costs: a block that accumulates into an outer local at a *different* type is rejected.
+At the *same* type it is fine — the value changes, the type does not — which is the common
+case, and `xc-block-accumulates-capture` is the rung that pins it. Two known conservatisms,
+both recorded in `capIntact`'s docstring: a captured name **shadowed by a block parameter** is
+compared at the parameter's slot, so `a = 1; lambda { |a| a = 2 }.call(3)` is rejected
+(harmless, no rung shadows); and the precise alternative — thread the body's outgoing
+environment back out and *join* it with the caller's, since a block may run zero times, with a
+fixpoint for `each` — is not built.
+
+Cost to existing work: every `closCall`/`yieldExpr` derivation grew one `rfl`. Nothing else
+changed, and all 90 previous rungs re-derive.
+
+### 2. Tier 11: the tier that adds no feature
+
+Ten new rungs, from a program a human reported: `class A; def a(&blk); blk.call(3); end; end;
+A.new.a { |v| v }` did not validate. It is not an unmodeled tier — it is a **cross-product**
+of tier 7 and tier 9b, with two independent blockers, both restrictions I had introduced:
+
+1. **No rule covers an explicit-receiver send that carries a block.** `callMethod` requires
+   `blk = none`; `callDefBlk` requires an implicit receiver. Isolated by removing the block
+   (validates) and by moving the `def` to top level (validates) — each half works alone.
+2. **Behind it, `closCall` requires `κ.selfTy = none`**, so `blk.call` *inside* an instance
+   method body would be rejected even with (1) fixed. Isolated by passing the lambda as an
+   ordinary argument, no block anywhere: the instance-method version fails, the top-level
+   version validates. This one *was* documented (clink 9) along with its fix — put `selfTy`
+   into `Ty.clos` beside the captured locals.
+
+Blocker 1 I had not documented at all: `callMethod`'s docstring never mentions that it
+excludes blocks. That is the miss.
+
+**Why the ladder was blind to it.** No corpus rung combines a class with a block — tier 9's
+`block-param-ampersand` is the *top-level* `def run(&b)`, and tier 7's sixteen rungs never
+pass one. A corpus-driven ladder measures what the corpus asks for, so an uncovered
+cross-product is precisely the shape of thing that goes unnoticed. Hence a tier whose entire
+content is combinations: no new feature, deliberately.
+
+The ten, and what each demands:
+
+| rung | in concert | target |
+|---|---|---|
+| `xc-class-block-param` | t7 dispatch × t9b block | `true` |
+| `xc-class-yield-ivar` | ivar spine × `blockTy`, from the `yield` side | `true` |
+| `xc-lambda-in-ivar` | `Ty.inst` spine *holding* a `Ty.clos` | `true` |
+| `xc-module-yield` | t8 `callSMethod` × block | `true` |
+| `xc-inherit-implicit-block` | `mroGet?` walk × `blockTy` × `selfCall` | `true` |
+| `xc-block-retypes-capture` | **the bug above** | `false`, unsafe |
+| `xc-block-accumulates-capture` | `capIntact`'s boundary — **climbed** | `true` |
+| `xc-ivar-array-map` | t5 array × t7 ivar × t9c `map` × the t7×t9 gap | `true` |
+| `xc-module-applies-lambda` | cleanest single demand for `selfTy` in `Ty.clos` | `true` |
+| `xc-block-retypes-ivar` | the ivar twin of the bug | `false`, unsafe |
+
+One rung earned its keep before it existed: sketching `xc-block-retypes-capture` is what found
+§1. That is the argument for this tier in one sentence.
+
+**One program deliberately left out.** `super { |x| x * 3 }` is ordinary Ruby that CRuby runs
+fine, but the difftest engine reports `sut_unsupported` — "zsuper with an explicit block" is
+outside the **Lean semantics** fragment. A rung for it would attach a type to a program the
+model cannot execute, which is the one thing `scripts/run_agreement.sh` exists to prevent. It
+is a demand on `../lean/`, not on this checker, and is recorded in `AGENTS.md` §Frontier
+instead. Worth noting that this is the first time the *semantics* rather than the checker was
+the binding constraint on a rung.
+
+**A near-miss in the generator, worth recording.** `xc-module-applies-lambda` was first written
+as `expect_validate=False, false_reason="unsafe_program"` — but the program returns `7`; it is
+safe, and its honest target is `true`. `R()`'s assertion cannot catch that (it only checks that
+`expect_validate=False` comes *with* a reason, not that the reason is true), so the target was
+wrong for a few minutes with nothing complaining. The agreement gate would not have caught it
+either: the program agrees with CRuby whatever the target says. The only defence is reading
+each `false_reason` against the program, which is now noted at `R()`'s docstring's demand that
+every `unsafe_program` really raise.
+
+State after this clink: **91 rungs climbed** (tiers 1–8 complete, tier 9 at 10/22, tier 11 at
+1/10), 91/91 cross-checked against the real semantics, 43/43 negative controls rejected,
+**corpus agreement 124/124 with 0 disagreements**, all six soundness theorems axiom-clean
+(`propext`, `Quot.sound`).

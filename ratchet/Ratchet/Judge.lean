@@ -720,6 +720,45 @@ def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
   | .block none :: ps, τs => paramEnvB blk ps τs
   | _, _ => none
 
+/-- **Every name a closure captured still has the type it had on entry to its body.**
+
+The premise that stops a block from retyping a captured local out from under its caller —
+`callMethod`'s no-retyping premise, for locals instead of instance variables. The two are the
+same rule stated twice, and the general form is worth naming: *a callee may not retype state
+its caller can still see.*
+
+Why it is needed, concretely (this was a real bug, found by fuzzing a class-plus-block program
+and fixed in clink 11):
+
+```ruby
+def t; yield(1); end
+a = 1
+t { |x| a = "s" }
+a + 1                 # TypeError
+```
+
+A Ruby block captures locals **by reference**, but `Ty.clos` captures by *value* into a spine
+and the call rules discard the body's outgoing environment. So without this premise the caller
+still believes `a : Int` after the block ran, and `a + 1` certifies a program that raises.
+
+`Γin` is the body's incoming environment (`paramEnv … ++ spineToEnv cap`), not the spine
+itself, so a captured name **shadowed by a block parameter** is compared at the parameter's
+slot. That is stricter than necessary — assigning to a shadowing parameter cannot affect the
+outer variable — and rejects `a = 1; lambda { |a| a = 2 }.call(3)`. Conservative, no rung
+shadows, and recorded here rather than fixed because the precise version needs the premise to
+know which names `paramEnv` bound.
+
+What it costs in general: a block that accumulates into an outer local at a *different* type
+is rejected. A block that accumulates at the *same* type (`a = a + x`) is fine — the value
+changes, the type does not — which is the common case and the same boundary
+`class-setter-method` sits on for ivars. The precise alternative is to thread the body's
+outgoing environment back out and join it with the caller's (a block may run zero times, so a
+join is required, and for `each` it would need a fixpoint). Not built; no rung needs it. -/
+def capIntact : Ty → Env → Env → Bool
+  | .ivarCons x _ rest, Γin, Γout =>
+    (envGet? Γout x == envGet? Γin x) && capIntact rest Γin Γout
+  | _, _, _ => true
+
 /-- The expression whose type is a body's **result**.
 
 For almost every body that is the body itself. The one case that differs is a body which is
@@ -1299,9 +1338,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `proc-bracket-call`) — and note it cannot collide with `PrimSig.arrayIndex`, whose
       receiver is an `arrayOf`.
 
-      The ivar spine goes in and comes back unchanged, for `callMethod`'s reason: a body that
-      retyped an instance variable would invalidate the caller's view of it. `κ.selfTy = none`
-      again, matching `lambdaLit`.
+      Two things go in and come back unchanged, for the same reason and by the same argument
+      `callMethod` makes about instance variables: the **ivar spine**, and — via `capIntact` —
+      every **captured local**. A body that retyped either would invalidate the caller's view
+      of it, and for captured locals that is not hypothetical: see `capIntact`.
+      `κ.selfTy = none` again, matching `lambdaLit`.
 
       The body judged is `bodyResult c.body`, which differs from `c.body` only for a body
       that is exactly `return e` — see there for why that is a function on the syntax rather
@@ -1318,6 +1359,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       closGet? κ.closures idx = some c →
       paramEnv c.params argTys = some Γb →
       Judge κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) ρ Γb' I₂ →
+      capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
   -- ### Tier 9b — a block reaching a method
   --
@@ -1373,6 +1415,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       closGet? κ.closures idx = some c →
       paramEnvB none c.params argTys = some Γb →
       Judge κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) ρ Γb' I' →
+      capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.yield' args) ρ Γ' I'
   /-- A **bare name that is a top-level method**, with the instantiation assumed. `vcallAsm`
       is to `callAsm` what `vcallDef` is to `callDef`; see `AsmTable`. -/

@@ -1,0 +1,116 @@
+{
+  "id": "xc-block-retypes-ivar",
+  "tier": 11,
+  "description": "An UNSAFE program: a block retypes an *instance variable* rather than a local. `run { @x = \"s\" }` then `@x + 1` really raises TypeError. The ivar twin of xc-block-retypes-capture, and it checks a different premise: the block body is judged with the enclosing ivar spine, and closCall/yieldExpr require that spine to come back unchanged. Permanent negative target.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "C",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@x",
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "run",
+            [],
+            [
+              "yield",
+              []
+            ]
+          ],
+          [
+            "def",
+            "go",
+            [],
+            [
+              "seq",
+              [
+                "send",
+                null,
+                "run",
+                [],
+                [
+                  "block",
+                  [],
+                  [],
+                  [],
+                  [
+                    "vasgn",
+                    "ivar",
+                    "@x",
+                    [
+                      "str",
+                      "s"
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "send",
+                [
+                  "var",
+                  "ivar",
+                  "@x"
+                ],
+                "+",
+                [
+                  [
+                    "int",
+                    1
+                  ]
+                ],
+                null
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "C"
+          ],
+          "new",
+          [
+            [
+              "int",
+              1
+            ]
+          ],
+          null
+        ],
+        "go",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}
