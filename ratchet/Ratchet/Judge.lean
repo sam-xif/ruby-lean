@@ -303,6 +303,20 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       interpolation, not a method anyone writes (see the `str-interpolation` rungs). Total on
       `Integer` and returns a `String`, which is the only thing interpolation needs. -/
   | intAsString : PrimSig .int "__as_string" [] (.cls "String")
+  /-- **`===` on a value receiver** (tier 16) — `case t when "pypi"` desugars to
+      `"pypi" === t`, so `case/when` over *values* rather than classes is a send whose receiver
+      is the `when` clause's literal.
+
+      Guarded by `EqSafe`, exactly as `objEq` is, and for the same reason: `Object#===` is
+      `==` unless someone overrode it, and `EqSafe` is precisely the receivers whose method
+      table is the builtin one. The three `EqSafe` types where `===` is *not* `==` are all
+      still total — `Regexp#===` is a match test and `Range#===` a containment test — so the
+      row's `.bool` holds for them too.
+
+      Disjoint from `Judge.caseEqQuery` (`Module#===`) because `.clsOf` is not `EqSafe`; that
+      is the case where the receiver is a class object and the answer is an ancestor test, and
+      it needs the class table, which `PrimSig` cannot see. -/
+  | caseEqPrim {σ τ : Ty} : EqSafe σ → PrimSig σ "===" [τ] .bool
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -3388,6 +3402,33 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `regexp-extended-flag` is the rung that checks that ignoring them is enough. -/
   | regexpLit {κ : Ctx} {Γ : Env} {I : Ty} {src : String} {opts : Nat} :
       Judge κ Γ I (.regexpLit src opts) (.cls "Regexp") Γ I
+  /-- **`while c; body; end`** (tier 16). Its type is `.nilT`, which is what Ruby's `while`
+      evaluates to.
+
+      **Both `Judge` premises come back to the state they started in**, and that is the whole
+      rule. It is stated as four premises rather than two — a derivation and an equation each —
+      because writing the conclusion's `Γ` directly in the premise makes the elaborator unify
+      the *body's* outgoing environment structurally with the incoming one, which is the wrong
+      direction and fails on any body that assigns. Same shape as `callMethod`'s
+      `Iout = Iself`.
+      A loop body's outgoing environment feeds its own *next* iteration, so a rule that let the
+      body change the environment would need a fixed point over `Env`; requiring the condition
+      and the body to leave every type where they found it makes the fixed point trivial —
+      every iteration is typed by the same two derivations, by induction on the number of
+      iterations, and the loop's exit state is the entry state.
+
+      This is the third appearance of "a callee may not retype state its caller can still see"
+      (clink 11's rule), with the loop as the callee — and here it is not even a restriction on
+      *assignment*: `n = n + i` and `i = i + 1` keep their types, which is all the premises ask.
+      What it refuses is a loop that changes a local's type, e.g. `x = 1; while c; x = "s"; end`
+      — and a checker that allowed it would be reasoning about the first iteration only.
+
+      A non-terminating loop produces no value, so `.nilT` is vacuously safe there. `until` is
+      not a separate rule: the desugarer emits `while (cond).!`. -/
+  | while' {κ : Ctx} {Γ Γc Γb : Env} {I Ic Ib : Ty} {c body : Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ Γc Ic → Γc = Γ → Ic = I →
+      Judge κ Γ I body τ Γb Ib → Γb = Γ → Ib = I →
+      Judge κ Γ I (.while' c body) .nilT Γ I
   /-- **`M::X` — a scoped constant read** (tier 13c). The key is absolute and the namespace is
       named by the base, so the lookup is a single `envGet?` with no search: unlike a bare
       `X`, `M::X` says where to look.
@@ -3573,6 +3614,30 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
       Ir = (narrowSpine κ.classes c Ic).1 →
       JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
+  /-- **`next if c`, followed by more statements** (tier 16) — `guard`'s twin, one statement
+      kind over.
+
+      `next` with no value ends *this iteration* of the enclosing block and gives the block's
+      caller `nil`. So the sequence's value is `joinT .nilT τ`: `nil` on the path the `next`
+      took, and the rest's type on the path it did not. That is `guard`'s shape with `ρ` fixed
+      at `.nilT`, and the same narrowing — the statements after a `next if c` run only when `c`
+      was falsy, so they are typed in the else-branch's refined environment.
+
+      **Why `.nxt none` has no rule of its own**, and must not get one. `next` typed `.never`
+      would be unsound: for `map { next }` the element really is `nil`, and
+      `arrayOf .never` claims the array is *empty* (see `IterSig.injectEmpty`). Typed `.nilT`
+      it would be unsound the other way, because `JudgeSeq` takes the last statement's type and
+      would then miss that the statements after the `next` do not run on that path. Both
+      failures are about the *sequence*, which is why — exactly as for `.ret` — the rule belongs
+      to the sequence and `.nxt` stays underivable on its own.
+
+      `next e` (with a value) is not covered: it would need `ρ` from the expression, which is
+      `guard` with a different keyword and is owed rather than forbidden. -/
+  | nextGuard {κ : Ctx} {Γ Γc Γ' : Env} {I Ic I' : Ty} {c : Expr}
+      {rest : List Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ Γc Ic →
+      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
+      JudgeSeq κ Γ I (.if' c (.nxt none) none :: rest) (joinT .nilT τ) Γ' I'
 
 /-- **A class body's constants type, at the types `constLitTy?` reads off their syntax**
 (tier 13). `Judge.classStmt`/`moduleStmt`'s last premise.

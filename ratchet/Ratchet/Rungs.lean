@@ -3212,6 +3212,142 @@ def r182 : Rung :=
     .bool, [],
     .prim .strLit (.cons .strLit .nil) .strStartsWith⟩
 
+/-! ## Tier 16 — control flow beyond `if`
+
+Tier 16a: the loop, the `next` guard, and `case/when` over values. `begin`/`rescue` is a
+separate clink. -/
+
+/-- `i = 0; n = 0; while i < 3; n = n + i; i = i + 1; end; n` → `Integer`.
+
+    **Both of `while'`'s premises come back to the environment they started in**, and that is
+    the whole rule. A loop body's outgoing environment feeds its own *next* iteration, so
+    letting it change the environment would need a fixed point over `Env`; requiring the
+    condition and the body to leave every type where they found it makes the fixed point
+    trivial — every iteration is typed by the same two derivations.
+
+    It is not a restriction on *assignment*: `n = n + i` and `i = i + 1` both assign, and both
+    keep their types, which is all the premises ask. What it refuses is a loop that changes a
+    local's *type*, and a checker that allowed that would be reasoning about the first iteration
+    only.
+
+    Third appearance of clink 11's rule — a callee may not retype state its caller can still
+    see — with the loop as the callee. -/
+def r184 : Rung :=
+  ⟨"ctl-while",
+    .seq [.vasgn .lvar "i" (.int 0),
+          .vasgn .lvar "n" (.int 0),
+          .while' (.send (some (.var .lvar "i")) "<" [.int 3] none)
+            (.seq [.vasgn .lvar "n" (.send (some (.var .lvar "n")) "+"
+                     [.var .lvar "i"] none),
+                   .vasgn .lvar "i" (.send (some (.var .lvar "i")) "+" [.int 1] none)]),
+          .var .lvar "n"],
+    .int, [("i", .int), ("n", .int)],
+    .seq (.cons (.vasgn .intLit) (.cons (.vasgn .intLit)
+      (.cons (.while' (.prim (.var rfl rfl) (.cons .intLit .nil) .intLt) rfl rfl
+               (.seq (.cons (.vasgn (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd))
+                 (.last (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)))))
+               rfl rfl)
+        (.last (.var rfl rfl)))))⟩
+
+/-- `i = 0; until i >= 3; i = i + 1; end; i` → `Integer`.
+
+    **`until` is not a rule.** The desugarer emits `while (cond).!`, so this is `r184` with one
+    more `PrimSig.notBool` in the condition — which is why tier 2's decision to make `!` an
+    ordinary send rather than syntax (clink 1) keeps paying off. -/
+def r185 : Rung :=
+  ⟨"ctl-until",
+    .seq [.vasgn .lvar "i" (.int 0),
+          .while' (.send (some (.send (some (.var .lvar "i")) ">=" [.int 3] none)) "!" []
+                     none)
+            (.vasgn .lvar "i" (.send (some (.var .lvar "i")) "+" [.int 1] none)),
+          .var .lvar "i"],
+    .int, [("i", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.cons (.while' (.prim (.prim (.var rfl rfl) (.cons .intLit .nil) .intGe) .nil .notBool)
+               rfl rfl
+               (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)) rfl rfl)
+        (.last (.var rfl rfl))))⟩
+
+/-- `s = 0; [1, 2, 3, 4].each do |x| next if x == 2; s = s + x end; s` → `Integer`.
+
+    `next` gets no rule of its own, and both obvious rules are unsound. Typed `.never` it breaks
+    `map { next }`, where the element really is `nil` and `arrayOf .never` claims the array is
+    *empty*. Typed `.nilT` it breaks the sequence, because `JudgeSeq` takes the last statement's
+    type and would miss that the statements after the `next` do not run on that path.
+
+    Both failures are about the **sequence**, so — exactly as for `.ret` in tier 12 — the rule
+    belongs to the sequence: `JudgeSeq.nextGuard`, `guard`'s twin with `ρ` fixed at `.nilT`. The
+    block body's type is `joinT .nilT Int = T.nilable(Integer)`, which `each` discards
+    (`IterSig.each` leaves the block's return type unconstrained), and the same narrowing
+    applies — the statements after `next if c` are typed in the else-branch's environment.
+
+    `capIntact` is what makes the `s = s + x` inside the block legal: `s` is captured, and it is
+    reassigned but not retyped. -/
+def r186 : Rung :=
+  ⟨"ctl-next",
+    .seq [.vasgn .lvar "s" (.int 0),
+          .send (some (.array [.int 1, .int 2, .int 3, .int 4])) "each" []
+            (some (.block [.req "x"] []
+              (.seq [.if' (.send (some (.var .lvar "x")) "==" [.int 2] none) (.nxt none) none,
+                     .vasgn .lvar "s" (.send (some (.var .lvar "s")) "+"
+                       [.var .lvar "x"] none)]))),
+          .var .lvar "s"],
+    .int, [("s", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.cons (.iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit
+                 (.cons .intLit .nil))))) .nil .each rfl
+               (.seq (.nextGuard (.prim (.var rfl rfl) (.cons .intLit .nil) (.objEq .int))
+                 (.last (.vasgn (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)))))
+               rfl)
+        (.last (.var rfl rfl))))⟩
+
+/-- `def kind(t); case t; when "pypi" then "python"; when "gem" then "ruby"; else "other"; end;
+    end; kind("gem") + kind("x")` → `String`.
+
+    `case/when` over **values** rather than classes, and the desugaring is the finding: it emits
+    `"pypi" === __dt_t1`, i.e. a send whose *receiver* is the `when` clause's literal. So this is
+    not tier 12's `caseEqQuery` (which wants a class object and consults the class table) but a
+    `PrimSig` row, guarded by `EqSafe` exactly as `==` is — `Object#===` is `==` unless someone
+    overrode it, and `EqSafe` is precisely the receivers whose method table is the builtin one.
+
+    The two rules are disjoint because `.clsOf` is not `EqSafe`, so no program has a derivation
+    reading one `===` two ways.
+
+    Nothing narrows here, and nothing needs to: the branches are all `String` literals, and
+    knowing *which* string `t` is would tell the checker nothing it uses. Two calls at the same
+    argument shape, so `callDef` types the body twice identically. -/
+def r196 : Rung :=
+  ⟨"ctl-case-when-string",
+    .seq [.def' "kind" [.req "t"]
+            (.seq [.vasgn .lvar "__dt_t1" (.var .lvar "t"),
+                   .if' (.send (some (.str "pypi")) "===" [.var .lvar "__dt_t1"] none)
+                     (.str "python")
+                     (some (.if' (.send (some (.str "gem")) "===" [.var .lvar "__dt_t1"] none)
+                       (.str "ruby")
+                       (some (.str "other"))))]),
+          .send (some (.send none "kind" [.str "gem"] none)) "+"
+            [.send none "kind" [.str "x"] none] none],
+    .cls "String", [],
+    .seq (.cons .defStmt
+      (.last (.prim
+        (.callDef (.cons .strLit .nil) rfl rfl
+          (.seq (.cons (.vasgnAlias rfl rfl rfl)
+            (.last (.if' (.prim .strLit (.cons (.varAlias rfl) .nil) (.caseEqPrim .cls))
+              .strLit
+              (.if' (.prim .strLit (.cons (.varAlias rfl) .nil) (.caseEqPrim .cls))
+                .strLit .strLit rfl)
+              rfl)))))
+        (.cons
+          (.callDef (.cons .strLit .nil) rfl rfl
+            (.seq (.cons (.vasgnAlias rfl rfl rfl)
+              (.last (.if' (.prim .strLit (.cons (.varAlias rfl) .nil) (.caseEqPrim .cls))
+                .strLit
+                (.if' (.prim .strLit (.cons (.varAlias rfl) .nil) (.caseEqPrim .cls))
+                  .strLit .strLit rfl)
+                rfl)))))
+          .nil)
+        .strAdd)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -3231,7 +3367,8 @@ def rungs : List Rung :=
    r157, r165, r168, r169, r188, r189, r190, r191,
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
    r150, r152, r153, r154, r155, r161,
-   r166, r170, r171, r173, r174, r175, r177, r179, r181, r182]
+   r166, r170, r171, r173, r174, r175, r177, r179, r181, r182,
+   r184, r185, r186, r196]
 
 /-! ## `chk` answers exactly what was derived by hand
 

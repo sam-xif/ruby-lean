@@ -3323,3 +3323,81 @@ plus the obligation that it returns a `String`), `regexp-gsub-block` (a higher-o
 row of tier 9c's kind), `regexp-interpolated` (needs `::Regexp` as an absolute constant path and
 `Regexp.new`), and `regexp-last-match` (`=~` plus `Regexp.last_match`, which is *global state*
 and the first thing on this ladder that is).
+
+## Clink 37 (2026-09-01) — tier 16a: the loop, the `next` guard, and `case/when` over values: 157 → 161
+
+`ctl-while`, `ctl-until`, `ctl-next`, `ctl-case-when-string`. Three rules and one `PrimSig`
+row; `begin`/`rescue` is deliberately a separate clink.
+
+### `while`: the fixed point, made trivial
+
+A loop body's outgoing environment feeds its own *next* iteration, so a rule that let the body
+change the environment would need a fixed point over `Env`. `Judge.while'` instead requires the
+condition **and** the body to leave every type where they found it, and then the fixed point is
+trivial: every iteration is typed by the same two derivations, by induction on the number of
+iterations, and the loop's exit state is its entry state. Its type is `.nilT`, which is what
+Ruby's `while` evaluates to, and a non-terminating loop produces no value so that is vacuously
+safe.
+
+This is the **third appearance** of clink 11's rule — a callee may not retype state its caller
+can still see — with the loop as the callee. And it is not a restriction on assignment:
+`n = n + i` and `i = i + 1` both assign and both keep their types, which is all the premises
+ask. Control (g1) is the program that needs it: a loop that changes `x` from Integer to String
+raises on the *second* iteration, which a checker typing the body once against the entry
+environment would never see.
+
+**`until` is not a rule.** The desugarer emits `while (cond).!`, so `ctl-until` is `ctl-while`
+plus one `PrimSig.notBool` — tier 2's decision to make `!` an ordinary send rather than syntax
+(clink 1) paying off again.
+
+One thing had to be stated carefully: the rule is **four premises, not two** — a derivation and
+an equation each (`Γc = Γ`, `Γb = Γ`). Writing the conclusion's `Γ` directly in the premise makes
+the elaborator unify the body's *outgoing* environment structurally with the incoming one, which
+resolves it in the wrong direction (`?Γ' := []`) and fails on any body that assigns. Same shape
+as `callMethod`'s `Iout = Iself`, and the same reason.
+
+### `next` has no rule, and both obvious rules are unsound
+
+- Typed **`.never`** it breaks `map { next }`: the element really is `nil`, and
+  `arrayOf .never` claims the array is *provably empty* (`IterSig.injectEmpty` reads it that
+  way, and clink 34 relies on that reading). Control (g3).
+- Typed **`.nilT`** it breaks the sequence: `JudgeSeq` takes the last statement's type and would
+  miss that the statements after the `next` do not run on that path.
+
+Both failures are about the **sequence**, so — exactly as for `.ret` in clink 15 — the rule
+belongs to the sequence. `JudgeSeq.nextGuard` is `guard`'s twin with `ρ` fixed at `.nilT`,
+carrying the same narrowing: the statements after `next if c` run only when `c` was falsy, so
+they are typed in the else-branch's refined environment. `.nxt` remains underivable on its own,
+and `next e` (with a value) is owed rather than forbidden.
+
+That is now **two** statement kinds whose rule lives in `JudgeSeq` because the fact is about
+statement order, and the pattern is worth naming: a construct that *leaves* a sequence early
+cannot be typed by a rule that only sees the construct.
+
+### `case/when` over values is a `PrimSig` row, not `caseEqQuery`
+
+`case t when "pypi"` desugars to `"pypi" === t` — a send whose **receiver is the `when` clause's
+literal**. So it is not tier 12's `caseEqQuery` (which wants a class object and consults the
+class table for a `def self.===`); it is `PrimSig.caseEqPrim`, guarded by `EqSafe` exactly as
+`==` is, because `Object#===` is `==` unless someone overrode it and `EqSafe` is precisely the
+receivers whose method table is the builtin one.
+
+The two are **disjoint** because `.clsOf` is not `EqSafe`, so no program has a derivation reading
+one `===` two ways. Control (g4) is the guard's justification: a user-written `def ===` is
+dispatched to instead, and `.inst` is not `EqSafe`, which is what refuses it. Sound rejection.
+
+`chk`'s `===` branch had to learn to fall through: it had committed to `m = "==="` before
+looking at the receiver, so a value receiver reached `none` instead of `primSig?`.
+
+### State
+
+**161 rungs of 232**, tier 16 at 8/15. 161/161 cross-checked, 126/126 controls rejected (four
+new, three sound), corpus agreement 232/232, axiom-clean.
+
+Tier 16's remaining seven are two things: **`begin`/`rescue`** (`ctl-rescue`,
+`ctl-begin-rescue-else-ensure`, `ctl-raise-custom`, `ctl-rescue-in-block`, and the permanent
+negative `ctl-rescue-wrong-class-unsafe`), which is §Frontier item E and the decision core of
+`vulnerability.rb`; and two rungs blocked elsewhere — `ctl-break` (a `break` changes the
+*enclosing send's* result, not the block's, so it cannot be typed from inside the block without a
+`mayBreak` scan whose completeness would be a soundness condition) and `ctl-return-early` (needs
+to know a non-empty array's `[0]` is non-nil, which is the length-indexed-array gap).

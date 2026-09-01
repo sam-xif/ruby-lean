@@ -39,6 +39,8 @@ def nilQSafe? : Ty → Bool
 def primSig? : Ty → String → List Ty → Option Ty
   | σ, "==", [_] => if eqSafe? σ then some .bool else none
   | σ, "nil?", [] => if nilQSafe? σ then some .bool else none
+  -- Tier 16: `===` on a value receiver (`case t when "pypi"`), guarded exactly as `==` is.
+  | σ, "===", [_] => if eqSafe? σ then some .bool else none
   -- Tier 13: `Object#freeze`, the identity, under `NilQSafe`'s guard (`PrimSig.freezeId`).
   | σ, "freeze", [] => if nilQSafe? σ then some σ else none
   | .int, "+", [.int] => some .int
@@ -207,6 +209,17 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2,
               joinSpine I₁ (narrowSpine κ.classes c Ic).2)
       | none => none
+    | none => none
+  | f + 1, .while' c body =>
+    -- Tier 16. Both the condition and the body must leave every type where they found it, which
+    -- is what makes the loop's fixed point trivial (`Judge.while'`).
+    match chk f κ Γ I c with
+    | some (_, Γc, Ic) =>
+      if Γc = Γ && Ic = I then
+        match chk f κ Γ I body with
+        | some (_, Γb, Ib) => if Γb = Γ && Ib = I then some (.nilT, Γ, I) else none
+        | none => none
+      else none
     | none => none
   | f + 1, .array es =>
     match chkAll f κ Γ I es with
@@ -609,7 +622,13 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             match smroGet? κ.classes cn "===" with
             | none => some (.bool, Γ₂, I₂)
             | some _ => none
-          | _, _ => none
+          -- Tier 16: any other receiver is a *value*, and `===` there is the `PrimSig` row
+          -- (`case t when "pypi"` desugars to `"pypi" === t`). Written out rather than falling
+          -- through to the dispatch below because this `if` has already committed to `m`.
+          | _, _ =>
+            match primSig? σ m argTys with
+            | some τ => some (τ, Γ₂, I₂)
+            | none => none
         else if m = "is_a?" then
           -- Tier 12. Placed *before* the receiver dispatch, and note the consequence: a
           -- receiver whose class overrides `is_a?` fails `isADispatchOk` and this arm answers
@@ -912,6 +931,16 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
   | 0, _ => none
   | _ + 1, [] => none
   | f + 1, [e] => chk f κ Γ I e
+  | f + 1, .if' c (.nxt none) none :: e' :: es =>
+    -- Tier 16's `next if …` guard (`JudgeSeq.nextGuard`), matched before the generic arm for
+    -- the same reason the `return` guard is: the rest of the sequence runs only on the path the
+    -- `next` did not take, and the sequence's value is `nil` on the path it did.
+    match chk f κ Γ I c with
+    | some (_, Γc, Ic) =>
+      match chkSeq f κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 (e' :: es) with
+      | some (τ, Γ', I') => some (joinT .nilT τ, Γ', I')
+      | none => none
+    | none => none
   | f + 1, .if' c (.ret (some r)) none :: e' :: es =>
     -- Tier 12's guard clause (`Judge.guard`). Matched *before* the generic `cons` arm, and
     -- only in non-final position — a `return … if …` as the whole body of a sequence still has

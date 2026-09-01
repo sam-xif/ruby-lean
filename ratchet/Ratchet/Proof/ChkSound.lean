@@ -71,6 +71,13 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
       subst h
       exact .nilQuery (nilQSafe?_sound (by assumption))
     · exact absurd h (by simp)
+  · -- tier 16's guarded `===` row: `EqSafe`, exactly as `==`
+    split at h
+    · rename_i heq
+      injection h with h
+      subst h
+      exact .caseEqPrim (eqSafe?_sound heq)
+    · exact absurd h (by simp)
   · -- tier 13's guarded `freeze` row: the same guard, and the same predicate
     split at h
     · injection h with h
@@ -468,6 +475,28 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
         exact .ifNoElse (chk_sound hc) (chk_sound ht) rfl
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `while' c body` (tier 16): both the condition and the body left every type where they
+    -- found it, which is `Judge.while'`'s two premises and the whole rule.
+    split at h
+    · rename_i σc Γc Ic hc
+      split at h
+      · rename_i hfix
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hfix
+        obtain ⟨hΓc, hIc⟩ := hfix
+        split at h
+        · rename_i σb Γb Ib hb
+          split at h
+          · rename_i hfixb
+            simp only [Bool.and_eq_true, decide_eq_true_eq] at hfixb
+            obtain ⟨hΓb, hIb⟩ := hfixb
+            injection h with h
+            injection h with h h'; injection h' with h' h''
+            subst h; subst h'; subst h''
+            exact .while' (chk_sound hc) hΓc hIc (chk_sound hb) hΓb hIb
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `array es`: every element typed, and the literal's type is `arrayOf` of the join
@@ -1008,7 +1037,14 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                   subst h; subst h'; subst h''
                   exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hok
                 · exact absurd h (by simp)
-              · exact absurd h (by simp)
+              · -- tier 16: the receiver is a *value*, so `===` is the `PrimSig` row
+                split at h
+                · rename_i τ' hprim
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hprim)
+                · exact absurd h (by simp)
             · split at h
               · -- tier 12: `is_a?`, checked before the receiver dispatch
                 rename_i hm
@@ -1389,6 +1425,18 @@ theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
   · exact absurd h (by simp)
   · exact absurd h (by simp)
   · exact .last (chk_sound h)
+  · -- tier 16's `next if …` guard (`JudgeSeq.nextGuard`), matched before both the return guard
+    -- and the generic `cons` arm.
+    split at h
+    · rename_i hc
+      split at h
+      · rename_i hrest
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact JudgeSeq.nextGuard (chk_sound hc) (chkSeq_sound hrest)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- tier 12's guard clause, matched before the generic `cons` arm
     split at h
     · rename_i hc

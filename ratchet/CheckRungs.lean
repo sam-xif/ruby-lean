@@ -367,6 +367,42 @@ def controls : List Control :=
   , ⟨"\"abc\".gsub(/[abc]/) { |c| c.upcase } (safe; no block-carrying gsub row)",
       .send (some (.str "abc")) "gsub" [.regexpLit "[abc]" 0]
         (some (.block [.req "c"] [] (.send (some (.var .lvar "c")) "upcase" [] none)))⟩
+    -- ### Tier 16's controls
+    --
+    -- (g1) **`while`'s no-retyping premise, and the reason it is a premise.** The loop changes
+    -- `x` from an Integer to a String, so on the *second* iteration `x + 1` raises TypeError --
+    -- and a checker that typed the body once against the entry environment would see only the
+    -- first. The premise `Γb = Γ` is what refuses it.
+  , ⟨"x = 1; i = 0; while i < 2; x + 1; x = \"s\"; i = i + 1; end",
+      .seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "i" (.int 0),
+            .while' (.send (some (.var .lvar "i")) "<" [.int 2] none)
+              (.seq [.send (some (.var .lvar "x")) "+" [.int 1] none,
+                     .vasgn .lvar "x" (.str "s"),
+                     .vasgn .lvar "i" (.send (some (.var .lvar "i")) "+" [.int 1] none)])]⟩
+    -- (g2) **A loop body is checked, like any other body.** Nothing about the loop is wrong
+    -- here; the body raises on the first iteration.
+  , ⟨"i = 0; while i < 2; 1 + \"a\"; i = i + 1; end",
+      .seq [.vasgn .lvar "i" (.int 0),
+            .while' (.send (some (.var .lvar "i")) "<" [.int 2] none)
+              (.seq [.send (some (.int 1)) "+" [.str "a"] none,
+                     .vasgn .lvar "i" (.send (some (.var .lvar "i")) "+" [.int 1] none)])]⟩
+    -- (g3) **`next` is not `.never`.** `map { next }` really does produce an array of `nil`s,
+    -- so typing a bare `next` as "no value" -- which would make the receiver `arrayOf .never`,
+    -- i.e. *provably empty* (see `IterSig.injectEmpty`) -- is the unsound reading. This program
+    -- is safe and declined, because `.nxt` has no rule of its own at all and `nextGuard` only
+    -- covers `next if c` in non-final position.
+  , ⟨"[1, 2].map { |x| next }.length (safe; `next` alone has no rule)",
+      .send (some (.send (some (.array [.int 1, .int 2])) "map" []
+        (some (.block [.req "x"] [] (.nxt none))))) "length" [] none⟩
+    -- (g4) **`===` on a value receiver is `EqSafe`-guarded, and the guard is not free.** A
+    -- user-written `def ===` is dispatched to instead, and this one raises TypeError -- so the
+    -- row must not fire for an `.inst` receiver. (`.inst` is not `EqSafe`, which is what
+    -- refuses it.)
+  , ⟨"class C; def ===(o); 1 + \"a\"; end; end; if C.new === 5 then 1 else 2 end",
+      .seq [.class' "C" none (.def' "===" [.req "o"]
+              (.send (some (.int 1)) "+" [.str "a"] none)),
+            .if' (.send (some (.send (some (.const "C")) "new" [] none)) "===" [.int 5] none)
+              (.int 1) (some (.int 2))]⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
@@ -1235,6 +1271,14 @@ def toRubyCore : Expr → Option RubyCore.Expr
   | .const n => some (.const n)
   -- Tier 15: a regexp literal.
   | .regexpLit src opts => some (.regexpLit src opts)
+  -- Tier 16: `while` and a bare `next`.
+  | .while' c body => do
+    let c' ← toRubyCore c
+    return .while' c' (← toRubyCore body)
+  | .nxt e =>
+    match e with
+    | none => some (.nxt none)
+    | some x => (toRubyCore x).map (fun x' => .nxt (some x'))
   -- Tier 14c: a call site's keyword arguments.
   | .kwargs es => (toRubyCoreKw es).map (fun es' => .kwargs es')
   -- Tier 13: a constant assignment (the controls' `X = 5`).
