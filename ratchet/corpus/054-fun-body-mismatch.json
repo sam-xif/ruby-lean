@@ -1,0 +1,93 @@
+{
+  "id": "fun-body-mismatch",
+  "tier": 6,
+  "description": "def bad(x) = x + true; bad(1) -- the body really does raise NoMethodError when called (Int has no matching + for Bool). Permanent negative target, independent of what the claim on `def bad` says.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "bad",
+        [
+          [
+            "preq",
+            "x"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "true"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "bad",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "bad",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "true"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

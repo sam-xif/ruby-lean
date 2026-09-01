@@ -1,0 +1,182 @@
+{
+  "id": "class-basic",
+  "tier": 7,
+  "description": "class Point; def initialize(x, y); @x = x; @y = y; end; def getX; @x; end; end; Point.new(1, 2).getX -- construction, an ivar write in initialize, an ivar read in another method.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ],
+              [
+                "preq",
+                "y"
+              ]
+            ],
+            [
+              "seq",
+              [
+                "vasgn",
+                "ivar",
+                "@x",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ]
+              ],
+              [
+                "vasgn",
+                "ivar",
+                "@y",
+                [
+                  "var",
+                  "local",
+                  "y"
+                ]
+              ]
+            ]
+          ],
+          [
+            "def",
+            "getX",
+            [],
+            [
+              "var",
+              "ivar",
+              "@x"
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Point"
+          ],
+          "new",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "int",
+              2
+            ]
+          ],
+          null
+        ],
+        "getX",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "x"
+            ],
+            [
+              "preq",
+              "y"
+            ]
+          ],
+          [
+            "seq",
+            [
+              "vasgn",
+              "ivar",
+              "@x",
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@y",
+              [
+                "var",
+                "local",
+                "y"
+              ]
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "getX",
+          [],
+          [
+            "var",
+            "ivar",
+            "@x"
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@x"
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

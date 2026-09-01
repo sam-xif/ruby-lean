@@ -1,0 +1,110 @@
+{
+  "id": "module-method-with-arg",
+  "tier": 8,
+  "description": "module Greeter; def self.hello(name); \"hi \" + name; end; end; Greeter.hello(\"sam\").",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "Greeter",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "hello",
+          [
+            [
+              "preq",
+              "name"
+            ]
+          ],
+          [
+            "send",
+            [
+              "str",
+              "hi "
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "name"
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "Greeter"
+        ],
+        "hello",
+        [
+          [
+            "str",
+            "sam"
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "defs",
+          [
+            "self"
+          ],
+          "hello",
+          [
+            [
+              "preq",
+              "name"
+            ]
+          ],
+          [
+            "send",
+            [
+              "str",
+              "hi "
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "name"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "cls",
+            "name": "String"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "cls",
+              "name": "String"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

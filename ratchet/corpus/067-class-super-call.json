@@ -1,0 +1,179 @@
+{
+  "id": "class-super-call",
+  "tier": 7,
+  "description": "Triangle's initialize calls super(3) to delegate to Shape's initialize -- the `super'` head, typed here on the assumption that a rebuilt `super'` rule resolves to whatever the parent's matching method returns (Int, matching Shape#initialize's own claim) rather than needing a separate claim of its own.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Shape",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "sides"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@sides",
+              [
+                "var",
+                "local",
+                "sides"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "sides",
+            [],
+            [
+              "var",
+              "ivar",
+              "@sides"
+            ]
+          ]
+        ]
+      ],
+      [
+        "class",
+        "Triangle",
+        [
+          "const",
+          "Shape"
+        ],
+        [
+          "def",
+          "initialize",
+          [],
+          [
+            "super",
+            [
+              [
+                "int",
+                3
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Triangle"
+          ],
+          "new",
+          [],
+          null
+        ],
+        "sides",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "sides"
+            ]
+          ],
+          [
+            "vasgn",
+            "ivar",
+            "@sides",
+            [
+              "var",
+              "local",
+              "sides"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "sides",
+          [],
+          [
+            "var",
+            "ivar",
+            "@sides"
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [],
+          [
+            "super",
+            [
+              [
+                "int",
+                3
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@sides"
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

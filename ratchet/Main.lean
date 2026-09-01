@@ -15,12 +15,14 @@ structure EntryReport where
   tier : Nat
   validateActual : Bool
   validateOk : Bool
+  falseReason : Option String
 
 def runEntry (e : CorpusEntry) : EntryReport :=
   let validateActual := validate e.cert e.program
   { id := e.id, tier := e.tier
     validateActual := validateActual
-    validateOk := validateActual == e.expectValidate }
+    validateOk := validateActual == e.expectValidate
+    falseReason := e.falseReason }
 
 def loadEntry (p : System.FilePath) : IO CorpusEntry := do
   let contents ← IO.FS.readFile p
@@ -44,7 +46,10 @@ def main (args : List String) : IO UInt32 := do
 
   for r in reports do
     let mark := if r.validateOk then "ok" else "MISMATCH"
-    IO.println s!"tier {r.tier} {r.id}: validate={r.validateActual} ({mark})"
+    let tag := match r.falseReason with
+      | some reason => s!" [{reason}]"
+      | none => ""
+    IO.println s!"tier {r.tier} {r.id}{tag}: validate={r.validateActual} ({mark})"
 
   IO.println "\n--- tier summary (certified well-typed / total) ---"
   let tiers := (reports.map (·.tier)).eraseDups |>.toArray |>.qsort (· < ·) |>.toList
@@ -53,14 +58,24 @@ def main (args : List String) : IO UInt32 := do
     let certified := tReports.filter (·.validateActual)
     IO.println s!"tier {t}: {certified.length}/{tReports.length} certified well-typed"
 
+  -- Always shown, independent of pass/fail: the standing list of rungs whose target is
+  -- permanently `false` because the *cert language* (not just `chk`'s implementation)
+  -- cannot state a sufficient claim. This is the thing worth watching for growth —
+  -- each entry names a concrete `Ty` extension, not a rule to implement.
+  let gaps := reports.filter (fun r => r.falseReason == some "cert_language_gap")
+  IO.println s!"\n--- flagged: cert language gaps ({gaps.length}) ---"
+  for g in gaps do
+    IO.println s!"  {g.id} (tier {g.tier})"
+
   let mismatches := reports.filter (fun r => !r.validateOk)
-  IO.println s!"\nexpectation mismatches (bugs in this harness, not in the ladder design): {mismatches.length}"
+  IO.println s!"\nrungs where validate's current answer differs from the recorded target (expect_validate): {mismatches.length}"
+  IO.println "(with validate stubbed to always answer false, this is the whole climb still ahead -- not a bug; see AGENTS.md)"
   for m in mismatches do
-    IO.eprintln s!"  MISMATCH: {m.id} (tier {m.tier})"
+    IO.eprintln s!"  not yet climbed: {m.id} (tier {m.tier})"
 
   if mismatches.isEmpty then
     IO.println "RATCHET OK"
     return 0
   else
-    IO.println "RATCHET FAILED"
+    IO.println "RATCHET: climb remaining"
     return 1

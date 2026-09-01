@@ -1,0 +1,153 @@
+{
+  "id": "class-inheritance-field",
+  "tier": 7,
+  "description": "class Animal; def initialize(name); @name = name; end; def speak; @name; end; end; class Dog < Animal; end; Dog.new(\"Rex\").speak -- Dog inherits both the field and the method from Animal; a rebuilt dispatch rule needs to walk the parent chain to find speak declared on Animal.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Animal",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "name"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@name",
+              [
+                "var",
+                "local",
+                "name"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "speak",
+            [],
+            [
+              "var",
+              "ivar",
+              "@name"
+            ]
+          ]
+        ]
+      ],
+      [
+        "class",
+        "Dog",
+        [
+          "const",
+          "Animal"
+        ],
+        [
+          "nil"
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Dog"
+          ],
+          "new",
+          [
+            [
+              "str",
+              "Rex"
+            ]
+          ],
+          null
+        ],
+        "speak",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "name"
+            ]
+          ],
+          [
+            "vasgn",
+            "ivar",
+            "@name",
+            [
+              "var",
+              "local",
+              "name"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "cls",
+            "name": "String"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "cls",
+              "name": "String"
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "speak",
+          [],
+          [
+            "var",
+            "ivar",
+            "@name"
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@name"
+        ],
+        "ty": {
+          "tag": "cls",
+          "name": "String"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

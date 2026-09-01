@@ -1,0 +1,111 @@
+{
+  "id": "class-array-of-instances",
+  "tier": 7,
+  "description": "An array literal containing two constructed instances -- element type arrayOf(an instance of Point), synthesized structurally once `.new` dispatch exists (no claim needed on the array itself).",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "vasgn",
+            "ivar",
+            "@x",
+            [
+              "var",
+              "local",
+              "x"
+            ]
+          ]
+        ]
+      ],
+      [
+        "array",
+        [
+          [
+            "send",
+            [
+              "const",
+              "Point"
+            ],
+            "new",
+            [
+              [
+                "int",
+                1
+              ]
+            ],
+            null
+          ],
+          [
+            "send",
+            [
+              "const",
+              "Point"
+            ],
+            "new",
+            [
+              [
+                "int",
+                2
+              ]
+            ],
+            null
+          ]
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "x"
+            ]
+          ],
+          [
+            "vasgn",
+            "ivar",
+            "@x",
+            [
+              "var",
+              "local",
+              "x"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

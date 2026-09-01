@@ -1,0 +1,37 @@
+{
+  "id": "elsif-chain",
+  "tier": 4,
+  "description": "if/elsif/else desugars to nested if' nodes; a three-way chain with every branch Int types fine via nested joinTy calls.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "true"
+      ],
+      [
+        "int",
+        1
+      ],
+      [
+        "if",
+        [
+          "false"
+        ],
+        [
+          "int",
+          2
+        ],
+        [
+          "int",
+          3
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

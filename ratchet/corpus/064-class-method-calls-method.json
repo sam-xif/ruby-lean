@@ -1,0 +1,277 @@
+{
+  "id": "class-method-calls-method",
+  "tier": 7,
+  "description": "A method (describe) calling another method (area) on the same object via an implicit-self `vcall` -- resolving that requires a rebuilt `vcall` rule to consult the current `self` type, not just a top-level function table.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Rect",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "w"
+              ],
+              [
+                "preq",
+                "h"
+              ]
+            ],
+            [
+              "seq",
+              [
+                "vasgn",
+                "ivar",
+                "@w",
+                [
+                  "var",
+                  "local",
+                  "w"
+                ]
+              ],
+              [
+                "vasgn",
+                "ivar",
+                "@h",
+                [
+                  "var",
+                  "local",
+                  "h"
+                ]
+              ]
+            ]
+          ],
+          [
+            "def",
+            "area",
+            [],
+            [
+              "send",
+              [
+                "var",
+                "ivar",
+                "@w"
+              ],
+              "*",
+              [
+                [
+                  "var",
+                  "ivar",
+                  "@h"
+                ]
+              ],
+              null
+            ]
+          ],
+          [
+            "def",
+            "describe",
+            [],
+            [
+              "send",
+              [
+                "str",
+                "area="
+              ],
+              "+",
+              [
+                [
+                  "send",
+                  [
+                    "vcall",
+                    "area"
+                  ],
+                  "to_s",
+                  [],
+                  null
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "Rect"
+          ],
+          "new",
+          [
+            [
+              "int",
+              3
+            ],
+            [
+              "int",
+              4
+            ]
+          ],
+          null
+        ],
+        "describe",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "w"
+            ],
+            [
+              "preq",
+              "h"
+            ]
+          ],
+          [
+            "seq",
+            [
+              "vasgn",
+              "ivar",
+              "@w",
+              [
+                "var",
+                "local",
+                "w"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@h",
+              [
+                "var",
+                "local",
+                "h"
+              ]
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "area",
+          [],
+          [
+            "send",
+            [
+              "var",
+              "ivar",
+              "@w"
+            ],
+            "*",
+            [
+              [
+                "var",
+                "ivar",
+                "@h"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "describe",
+          [],
+          [
+            "send",
+            [
+              "str",
+              "area="
+            ],
+            "+",
+            [
+              [
+                "send",
+                [
+                  "vcall",
+                  "area"
+                ],
+                "to_s",
+                [],
+                null
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@w"
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@h"
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

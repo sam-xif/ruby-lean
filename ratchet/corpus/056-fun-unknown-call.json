@@ -1,0 +1,25 @@
+{
+  "id": "fun-unknown-call",
+  "tier": 6,
+  "description": "A call to undefined_fn, declared nowhere: this really does raise NoMethodError when run, exactly like unknown-method-no-claim. Permanent negative target.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      null,
+      "undefined_fn",
+      [
+        [
+          "int",
+          1
+        ]
+      ],
+      null
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

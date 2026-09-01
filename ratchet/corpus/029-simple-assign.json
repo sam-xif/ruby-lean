@@ -1,0 +1,41 @@
+{
+  "id": "simple-assign",
+  "tier": 3,
+  "description": "x = 5; x + 1 : Int -- vasgn's type flows into the following var read.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          5
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

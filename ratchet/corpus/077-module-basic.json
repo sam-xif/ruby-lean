@@ -1,0 +1,63 @@
+{
+  "id": "module-basic",
+  "tier": 8,
+  "description": "module M; def self.foo; 1; end; end; M.foo : Int at runtime.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "M",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "foo",
+          [],
+          [
+            "int",
+            1
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "M"
+        ],
+        "foo",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "defs",
+          [
+            "self"
+          ],
+          "foo",
+          [],
+          [
+            "int",
+            1
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

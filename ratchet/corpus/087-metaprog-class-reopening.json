@@ -1,0 +1,118 @@
+{
+  "id": "metaprog-class-reopening",
+  "tier": 9,
+  "description": "Foo is defined via two separate `class' \"Foo\"` nodes, each contributing different methods -- the declaration table accumulates across both by name, the same way it would across any two top-level defs.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Foo",
+        null,
+        [
+          "def",
+          "a",
+          [],
+          [
+            "int",
+            1
+          ]
+        ]
+      ],
+      [
+        "class",
+        "Foo",
+        null,
+        [
+          "def",
+          "b",
+          [],
+          [
+            "int",
+            2
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "send",
+            [
+              "const",
+              "Foo"
+            ],
+            "new",
+            [],
+            null
+          ],
+          "a",
+          [],
+          null
+        ],
+        "+",
+        [
+          [
+            "send",
+            [
+              "send",
+              [
+                "const",
+                "Foo"
+              ],
+              "new",
+              [],
+              null
+            ],
+            "b",
+            [],
+            null
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "a",
+          [],
+          [
+            "int",
+            1
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "b",
+          [],
+          [
+            "int",
+            2
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "int"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

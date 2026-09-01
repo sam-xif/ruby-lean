@@ -1,0 +1,128 @@
+{
+  "id": "module-with-arithmetic",
+  "tier": 8,
+  "description": "A module method doing ordinary arithmetic on its arguments.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "Calc",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "add",
+          [
+            [
+              "preq",
+              "a"
+            ],
+            [
+              "preq",
+              "b"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "a"
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "b"
+              ]
+            ],
+            null
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "Calc"
+        ],
+        "add",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "defs",
+          [
+            "self"
+          ],
+          "add",
+          [
+            [
+              "preq",
+              "a"
+            ],
+            [
+              "preq",
+              "b"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "a"
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "b"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

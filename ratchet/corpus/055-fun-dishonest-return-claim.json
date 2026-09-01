@@ -1,0 +1,51 @@
+{
+  "id": "fun-dishonest-return-claim",
+  "tier": 6,
+  "description": "def get5 = 5 really returns an Int and running get5() is completely safe -- the *program* is fine. What must never validate is *this certificate*: it claims get5's return type is an instance of String, which its own body (claimed as arrow_of([], Int) would be, if honest) contradicts. A cert whose own claims are mutually inconsistent must be rejected regardless of whether a different, honest cert for the same program would validate -- otherwise the certificate mechanism itself is meaningless. Permanent negative target for this specific cert.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "get5",
+        [],
+        [
+          "int",
+          5
+        ]
+      ],
+      [
+        "send",
+        null,
+        "get5",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "get5",
+          [],
+          [
+            "int",
+            5
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "dishonest_cert"
+}

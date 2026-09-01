@@ -1,7 +1,7 @@
 {
   "id": "unknown-method-no-claim",
   "tier": 2,
-  "description": "5.foo_bar_baz is the same shape as unknown-method-with-claim but with no claim at all: validate gates it honestly instead of guessing.",
+  "description": "5.foo_bar_baz is a made-up method name -- Integer has no such method, so this really does raise NoMethodError when run, with or without a claim (a claim cannot make a nonexistent method exist). Permanent negative target, distinct from unknown-method-with-claim's 5.zero?, which is a real method.",
   "program": {
     "v": 5,
     "ast": [
@@ -18,5 +18,6 @@
   "cert": {
     "claims": []
   },
-  "expect_validate": false
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
 }

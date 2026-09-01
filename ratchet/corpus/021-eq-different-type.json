@@ -1,7 +1,7 @@
 {
   "id": "eq-different-type",
   "tier": 2,
-  "description": "1 == \"a\" is runtime-safe real Ruby (== never raises; it just answers false for unrelated types) -- but this package's `==` rule requires both sides the same Ty, so validate is conservative here and rejects it. A real gap, kept honest rather than special-cased away (see AGENTS.md).",
+  "description": "1 == \"a\" is completely safe real Ruby -- `==` never raises, it just answers false for unrelated types. A hardcoded `==` rule that requires both sides the same Ty would be *conservative*, not necessary; the claims escape hatch on this exact send node is enough to certify it without changing that rule at all.",
   "program": {
     "v": 5,
     "ast": [
@@ -21,7 +21,29 @@
     ]
   },
   "cert": {
-    "claims": []
+    "claims": [
+      {
+        "expr": [
+          "send",
+          [
+            "int",
+            1
+          ],
+          "==",
+          [
+            [
+              "str",
+              "a"
+            ]
+          ],
+          null
+        ],
+        "ty": {
+          "tag": "bool"
+        }
+      }
+    ]
   },
-  "expect_validate": false
+  "expect_validate": true,
+  "false_reason": null
 }

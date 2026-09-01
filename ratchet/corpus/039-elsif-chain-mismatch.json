@@ -1,0 +1,100 @@
+{
+  "id": "elsif-chain-mismatch",
+  "tier": 4,
+  "description": "if/elsif/else desugars to nested if' nodes; when the final else's type disagrees with the earlier branches, *both* the inner and outer if' nodes need their own union claim (joinTy doesn't propagate through an already-claimed union), but both claims are the same Ty.union(Int, an instance of String) -- still no language gap, just two claim sites instead of one.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "true"
+      ],
+      [
+        "int",
+        1
+      ],
+      [
+        "if",
+        [
+          "false"
+        ],
+        [
+          "int",
+          2
+        ],
+        [
+          "str",
+          "a"
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "if",
+          [
+            "false"
+          ],
+          [
+            "int",
+            2
+          ],
+          [
+            "str",
+            "a"
+          ]
+        ],
+        "ty": {
+          "tag": "union",
+          "l": {
+            "tag": "int"
+          },
+          "r": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      },
+      {
+        "expr": [
+          "if",
+          [
+            "true"
+          ],
+          [
+            "int",
+            1
+          ],
+          [
+            "if",
+            [
+              "false"
+            ],
+            [
+              "int",
+              2
+            ],
+            [
+              "str",
+              "a"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "union",
+          "l": {
+            "tag": "int"
+          },
+          "r": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

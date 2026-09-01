@@ -331,18 +331,38 @@ is **real Ruby run through the real desugarer** (`harness/desugar-dt/bin/export-
 hand-authored AST — the certificate is a flat list of claims keyed on real `Expr` subterms by
 structural `==` (exactly why `Expr` derives `BEq` in the real model), not a parallel
 type-annotated shadow tree. Same `validate : Cert -> Expr -> Bool` shape as `certify/`'s
-`Cert`/`Validate.lean`. **89-rung corpus**, 8 tiers: literals → arithmetic/string/bool `send`s
-(a small hardcoded builtin table plus a claims-based escape hatch, incl. indexing, which is
-just `#[]`) → `var`/`vasgn`/`seq` (real mutable-local scoping) → conditionals/`elsif` →
-arrays/hashes → top-level functions (declared via a claim on their own `def` node, incl. a
-self-recursive one) → **classes** and **modules** (26 rungs, real construction/ivars/
-inheritance/`super`/singleton-methods, all deliberately `expect_validate: false` — `chk` has
-no rule for `class'`/`module'`/`defs`/`super'` yet, tracked honestly rather than faked).
-Deliberately not yet ported: the semantics (no `stepFn`/interpreter, so no dynamic execution
-check) — see `ratchet/AGENTS.md` §Frontier for what's next (environment merging across `if`
-branches, non-required params, blocks, then classes/modules, then finally the semantics).
-Every commit that extends `chk` for one more construct is meant to move a tier's fraction
-visibly, instead of growing by tackling another whole slice at once.
+`Cert`/`Validate.lean`, **but `validate` itself is currently a stub** (`fun _ _ => false`,
+2026-08-31) — the checking logic that used to live in `Ratchet/Validate.lean` was
+deliberately cleared out (recoverable from git history) so the corpus is a target to
+rebuild `chk` against, not a description of current behavior. **92-rung corpus**, 9
+tiers, and — as of a later 2026-08-31 pass — **every rung targets `expect_validate:
+true` except exactly 7, each tagged with a `false_reason`** (`unsafe_program`,
+`dishonest_cert`, or `cert_language_gap`): literals → arithmetic/string/bool `send`s
+(wants a small hardcoded builtin table plus a claims-based escape hatch, incl. indexing,
+which is just `#[]`) → `var`/`vasgn`/`seq` → conditionals/`elsif` (branch-mismatched
+`if`s now certified via `Ty.union` claims) → arrays/hashes → top-level functions (a
+`def` node's own claim as its signature, incl. a self-recursive one) → **classes** and
+**modules** (26 rungs, now with real arrow-spine + by-name-ivar claims, all still
+waiting on a declaration table + `.const`-as-`Ty.clsOf` to actually check) → **tier 9,
+metaprogramming, last on the ladder as intended**: `method_missing`, class reopening,
+`include`/`extend`/`prepend`. That reclassification pass turned up this ladder's one
+**cert language gap** so far: `Ty`'s arrow spine has no vararg/rest-arity constructor,
+so `def method_missing(name, *args)` (the idiomatic shape) has no honest claim at all —
+flagged explicitly (`ratchet/AGENTS.md` §Cert language gaps; `Main.lean` always prints
+it) rather than silently left `false` forever. **The semantics is imported, not
+copied** (`ratchet/Semantics/Interp.lean`, 2026-08-31): a local Lake `require` on
+`../lean` pulls in the real `stepFn` and its whole dependency closure
+(`Heap`/`Machine`/`Builtins`/`CRubyNames`/the booted prelude, ~24k lines) rather than
+hand-porting it the way `Expr`/`Ty` were — kept in its own folder so `Ratchet/` (the
+checker) stays importing nothing from `lean/` while `Semantics/` deliberately does.
+Smoke-tested working end to end (`1 + "a"` really raises `TypeError`; `1/0` raises
+`ZeroDivisionError`, correctly *not* counted by `typeStuck`) but not yet wired into the
+corpus runner (no `expect_stuck` field yet). See `ratchet/AGENTS.md` §Frontier for the
+full climb order (rebuild tiers 1-6 first, then environment merging across `if`
+branches, non-required params, blocks, then classes/modules/mixins, then the `Ty`
+extension, then wiring the semantics into the corpus). Every commit that extends `chk`
+for one more construct is meant to move a tier's fraction visibly, instead of growing
+by tackling another whole slice at once.
 See [`ratchet/AGENTS.md`](ratchet/AGENTS.md); run with `ratchet/scripts/run_ratchet.sh`.
 
 ### `playground/` — visual step-through of the Lean stepper (runnable)

@@ -1,7 +1,7 @@
 {
   "id": "bad-plus",
   "tier": 2,
-  "description": "1 + true is real, genuinely ill-typed Ruby (TypeError at runtime): the hardcoded Integer#+ rule has no (Int, Bool) case, so validate rejects it -- no dishonest certificate needed, unlike the previous corpus design, because chk synthesizes arithmetic truth structurally rather than checking a claim.",
+  "description": "1 + true is real, genuinely ill-typed Ruby: it raises TypeError when run, unconditionally. No certificate should ever certify it -- a checker that did would be unsound. Permanent negative target.",
   "program": {
     "v": 5,
     "ast": [
@@ -22,5 +22,6 @@
   "cert": {
     "claims": []
   },
-  "expect_validate": false
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
 }

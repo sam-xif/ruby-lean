@@ -1,0 +1,57 @@
+{
+  "id": "if-does-not-leak-reassignment",
+  "tier": 4,
+  "description": "x = 1; if true; x = \"hello\"; end; x + 1 -- KNOWN SIMPLIFICATION, not a bug: this checker's `if` does not propagate a branch's reassignments into the following code (the environment after an if is the environment from *before* it, documented in Ratchet/Validate.lean's design notes). So `x` is still seen as Int after the if, and `x + 1` validates -- even though the *only* branch this if has is the one that reassigns x to a String. Real Ruby's x really would be a String here; this checker cannot see that yet. Still a legitimate target of `true`: the *program* itself never actually reaches a type error (the reassignment happens, x + 1 never runs against a String) -- fixing the simplification is about precision, not soundness, for this specific rung.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "if",
+        [
+          "true"
+        ],
+        [
+          "vasgn",
+          "local",
+          "x",
+          [
+            "str",
+            "hello"
+          ]
+        ],
+        null
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "x"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

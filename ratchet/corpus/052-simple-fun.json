@@ -1,0 +1,115 @@
+{
+  "id": "simple-fun",
+  "tier": 6,
+  "description": "def add(x, y) = x + y; add(1, 2) : Int -- add's signature is a claim on its own `def` node (an arrow spine), the only mechanism this package has for a declared function type; there is no separate FunCert format.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "add",
+        [
+          [
+            "preq",
+            "x"
+          ],
+          [
+            "preq",
+            "y"
+          ]
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "var",
+              "local",
+              "y"
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        null,
+        "add",
+        [
+          [
+            "int",
+            1
+          ],
+          [
+            "int",
+            2
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "add",
+          [
+            [
+              "preq",
+              "x"
+            ],
+            [
+              "preq",
+              "y"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "local",
+              "x"
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "y"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

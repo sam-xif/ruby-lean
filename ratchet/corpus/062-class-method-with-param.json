@@ -1,0 +1,193 @@
+{
+  "id": "class-method-with-param",
+  "tier": 7,
+  "description": "class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; end; c = Counter.new(10); c.add(5) -- an instance stored in a local, then a method call taking its own argument.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Counter",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "n"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@n",
+              [
+                "var",
+                "local",
+                "n"
+              ]
+            ]
+          ],
+          [
+            "def",
+            "add",
+            [
+              [
+                "preq",
+                "k"
+              ]
+            ],
+            [
+              "send",
+              [
+                "var",
+                "ivar",
+                "@n"
+              ],
+              "+",
+              [
+                [
+                  "var",
+                  "local",
+                  "k"
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "c",
+        [
+          "send",
+          [
+            "const",
+            "Counter"
+          ],
+          "new",
+          [
+            [
+              "int",
+              10
+            ]
+          ],
+          null
+        ]
+      ],
+      [
+        "send",
+        [
+          "var",
+          "local",
+          "c"
+        ],
+        "add",
+        [
+          [
+            "int",
+            5
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "n"
+            ]
+          ],
+          [
+            "vasgn",
+            "ivar",
+            "@n",
+            [
+              "var",
+              "local",
+              "n"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "def",
+          "add",
+          [
+            [
+              "preq",
+              "k"
+            ]
+          ],
+          [
+            "send",
+            [
+              "var",
+              "ivar",
+              "@n"
+            ],
+            "+",
+            [
+              [
+                "var",
+                "local",
+                "k"
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrow0",
+            "ret": {
+              "tag": "int"
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "var",
+          "ivar",
+          "@n"
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

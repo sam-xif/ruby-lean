@@ -1,0 +1,38 @@
+{
+  "id": "reassign-different-type",
+  "tier": 3,
+  "description": "x = 1; x = true; x : Bool -- real Ruby locals are not statically single-typed, and neither is this checker's flat environment: the second vasgn simply overwrites x's recorded type. This is not a gap, it's the correct behavior for a dynamically-typed language's locals.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "true"
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "x"
+      ]
+    ]
+  },
+  "cert": {
+    "claims": []
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

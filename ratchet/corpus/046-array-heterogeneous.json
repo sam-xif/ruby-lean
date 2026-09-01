@@ -1,0 +1,54 @@
+{
+  "id": "array-heterogeneous",
+  "tier": 5,
+  "description": "[1, \"a\", true] is runtime-safe real Ruby (Ruby arrays are heterogeneous). Ty.arrayOf requires one element type structurally, but Ty.any already exists for exactly this -- a claim of arrayOf(Ty.any) on the array node is expressible today. No language gap; a rebuilt `array` rule should accept an element type via subTy (which admits `any`), not raw equality, or fall back to a claim.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "array",
+      [
+        [
+          "int",
+          1
+        ],
+        [
+          "str",
+          "a"
+        ],
+        [
+          "true"
+        ]
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "array",
+          [
+            [
+              "int",
+              1
+            ],
+            [
+              "str",
+              "a"
+            ],
+            [
+              "true"
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrayOf",
+          "elem": {
+            "tag": "any"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

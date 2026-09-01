@@ -1,0 +1,186 @@
+{
+  "id": "class-factory-method",
+  "tier": 7,
+  "description": "Point.origin is a singleton (self.) method on the class itself that constructs and returns an ordinary instance -- `defs` nested inside a `class'`, the same shape a module's `self.` methods use. Its body's bare `new(0, 0)` is a vcall/send dispatched with self bound to Ty.clsOf \"Point\", resolving to Point's own initialize.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "Point",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [
+              [
+                "preq",
+                "x"
+              ],
+              [
+                "preq",
+                "y"
+              ]
+            ],
+            [
+              "seq",
+              [
+                "vasgn",
+                "ivar",
+                "@x",
+                [
+                  "var",
+                  "local",
+                  "x"
+                ]
+              ],
+              [
+                "vasgn",
+                "ivar",
+                "@y",
+                [
+                  "var",
+                  "local",
+                  "y"
+                ]
+              ]
+            ]
+          ],
+          [
+            "defs",
+            [
+              "self"
+            ],
+            "origin",
+            [],
+            [
+              "send",
+              null,
+              "new",
+              [
+                [
+                  "int",
+                  0
+                ],
+                [
+                  "int",
+                  0
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "Point"
+        ],
+        "origin",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "def",
+          "initialize",
+          [
+            [
+              "preq",
+              "x"
+            ],
+            [
+              "preq",
+              "y"
+            ]
+          ],
+          [
+            "seq",
+            [
+              "vasgn",
+              "ivar",
+              "@x",
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ],
+            [
+              "vasgn",
+              "ivar",
+              "@y",
+              [
+                "var",
+                "local",
+                "y"
+              ]
+            ]
+          ]
+        ],
+        "ty": {
+          "tag": "arrowCons",
+          "param": {
+            "tag": "int"
+          },
+          "rest": {
+            "tag": "arrowCons",
+            "param": {
+              "tag": "int"
+            },
+            "rest": {
+              "tag": "arrow0",
+              "ret": {
+                "tag": "int"
+              }
+            }
+          }
+        }
+      },
+      {
+        "expr": [
+          "defs",
+          [
+            "self"
+          ],
+          "origin",
+          [],
+          [
+            "send",
+            null,
+            "new",
+            [
+              [
+                "int",
+                0
+              ],
+              [
+                "int",
+                0
+              ]
+            ],
+            null
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "cls",
+            "name": "Point"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

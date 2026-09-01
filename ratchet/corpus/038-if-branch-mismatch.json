@@ -1,0 +1,54 @@
+{
+  "id": "if-branch-mismatch",
+  "tier": 4,
+  "description": "if true then 1 else \"a\" end: Ty.joinTy has no *structural* case for (Int, an instance of String), but this is exactly the situation Ty.union exists for -- an explicit claim of union(Int, an instance of String) on the if' node is already expressible in the current grammar (see Ty.union's own docstring, \"inert on the checker path\" -- meant to be *claimed*, not inferred). No language gap; a rebuilt `if'` just needs a claim-fallback the same way `send`/`vcall` already have one.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "if",
+      [
+        "true"
+      ],
+      [
+        "int",
+        1
+      ],
+      [
+        "str",
+        "a"
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "if",
+          [
+            "true"
+          ],
+          [
+            "int",
+            1
+          ],
+          [
+            "str",
+            "a"
+          ]
+        ],
+        "ty": {
+          "tag": "union",
+          "l": {
+            "tag": "int"
+          },
+          "r": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

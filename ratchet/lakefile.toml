@@ -1,17 +1,34 @@
 name = "ratchet"
 version = "0.1.0"
-defaultTargets = ["ratchet"]
+defaultTargets = ["ratchet", "Semantics"]
 
-# A standalone Lean package, deliberately not part of the `../lean/` `rubycore`
-# build: no `require`, no import of anything under `../lean/RubyCore/`. See
-# `AGENTS.md` for why (the point of this harness is to be small enough to
-# rebuild trust in from scratch, one rung at a time).
+# `Ratchet/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
+# `Validate`) is deliberately isolated from `../lean/`'s `rubycore` package: no
+# import of anything under `../lean/RubyCore/`. See `AGENTS.md` for why.
+#
+# `Semantics/` is the one deliberate exception: the real semantics (`stepFn` and
+# its ~24k-line dependency closure) is *imported*, not hand-copied, via the local
+# path `require` below — see `Semantics/Interp.lean`'s module docstring for why
+# that boundary is drawn where it is. `lake build`/`lake update` resolve this
+# against `../lean`'s own package, reusing its already-built `.olean`s where
+# possible; the transitive `plausible`/`iris` requires `../lean/lakefile.toml`
+# declares are fetched into the manifest but never built, since nothing under
+# `Semantics/` imports anything that needs them.
 
 [[lean_lib]]
 name = "Ratchet"
 srcDir = "."
 globs = ["Ratchet.+"]
 
+[[lean_lib]]
+name = "Semantics"
+srcDir = "."
+globs = ["Semantics.+"]
+
 [[lean_exe]]
 name = "ratchet"
 root = "Main"
+
+[[require]]
+name = "rubycore"
+path = "../lean"

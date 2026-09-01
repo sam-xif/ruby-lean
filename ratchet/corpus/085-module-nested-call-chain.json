@@ -1,0 +1,91 @@
+{
+  "id": "module-nested-call-chain",
+  "tier": 8,
+  "description": "M.greeting.length chains a module call into a builtin method call on its result -- the `.length` needs its own claim, same escape hatch as tier 2's str-length-with-claim.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "module",
+        "M",
+        [
+          "defs",
+          [
+            "self"
+          ],
+          "greeting",
+          [],
+          [
+            "str",
+            "hi"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "M"
+          ],
+          "greeting",
+          [],
+          null
+        ],
+        "length",
+        [],
+        null
+      ]
+    ]
+  },
+  "cert": {
+    "claims": [
+      {
+        "expr": [
+          "defs",
+          [
+            "self"
+          ],
+          "greeting",
+          [],
+          [
+            "str",
+            "hi"
+          ]
+        ],
+        "ty": {
+          "tag": "arrow0",
+          "ret": {
+            "tag": "cls",
+            "name": "String"
+          }
+        }
+      },
+      {
+        "expr": [
+          "send",
+          [
+            "send",
+            [
+              "const",
+              "M"
+            ],
+            "greeting",
+            [],
+            null
+          ],
+          "length",
+          [],
+          null
+        ],
+        "ty": {
+          "tag": "int"
+        }
+      }
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}
