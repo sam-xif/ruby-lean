@@ -1,7 +1,7 @@
 {
   "id": "module-nested-call-chain",
   "tier": 8,
-  "description": "M.greeting.length chains a module call into a builtin method call on its result -- the `.length` needs its own claim, same escape hatch as tier 2's str-length-with-claim.",
+  "description": "M.greeting.length chains a module call into a builtin method call on its result, so the `.length` rule (tier 2's str-length) has to fire on a receiver type that came out of user-defined dispatch rather than a literal.",
   "program": {
     "v": 5,
     "ast": [
@@ -38,52 +38,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "greeting",
-          [],
-          [
-            "str",
-            "hi"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      },
-      {
-        "expr": [
-          "send",
-          [
-            "send",
-            [
-              "const",
-              "M"
-            ],
-            "greeting",
-            [],
-            null
-          ],
-          "length",
-          [],
-          null
-        ],
-        "ty": {
-          "tag": "int"
-        }
-      }
     ]
   },
   "expect_validate": true,

@@ -56,55 +56,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "hello",
-          [
-            [
-              "preq",
-              "name"
-            ]
-          ],
-          [
-            "send",
-            [
-              "str",
-              "hi "
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "name"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "cls",
-            "name": "String"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "cls",
-              "name": "String"
-            }
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

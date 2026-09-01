@@ -143,11 +143,13 @@ end
 
 deriving instance Repr for Expr, Param, KwEntry
 deriving instance Inhabited for Expr, Param
-/-! Structural equality on syntax, for certificate claim lookup (`Ratchet/Cert.lean`'s
-`Claim.expr`, matched against program subterms by `==`). `BEq`, not `DecidableEq`: `flt`
-carries a `Float`, which has no `DecidableEq` — comparing two `NaN`-bit-pattern literals
-with `==` answers `false`, the safe direction for a lookup that should refuse on a miss
-rather than claim a spurious match. -/
+/-! Structural equality on syntax. Originally added for certificate-claim lookup (a
+claim was keyed on the subterm it was about); claims are gone (`AGENTS.md` §Claim-free),
+but `==` is still what `Check13.lean` uses to pin each hand-written `Expr` to the
+committed corpus JSON. `BEq`, not `DecidableEq`: `flt` carries a `Float`, which has no
+`DecidableEq` — comparing two `NaN`-bit-pattern literals with `==` answers `false`, the
+safe direction for a comparison that should refuse on a miss rather than assert a
+spurious match. -/
 deriving instance BEq for Expr, Param, KwEntry
 
 namespace Decode

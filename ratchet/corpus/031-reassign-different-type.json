@@ -30,9 +30,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": []
-  },
   "expect_validate": true,
   "false_reason": null
 }

@@ -55,46 +55,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "speak",
-          [],
-          [
-            "str",
-            "..."
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      },
-      {
-        "expr": [
-          "def",
-          "speak",
-          [],
-          [
-            "str",
-            "Woof"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

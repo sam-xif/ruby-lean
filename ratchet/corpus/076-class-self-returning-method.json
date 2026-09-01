@@ -1,7 +1,7 @@
 {
   "id": "class-self-returning-method",
   "tier": 7,
-  "description": "myself returns bare `self`; the result is then chained into another method call -- typed as whatever self is bound to for an instance method (Ty.cls \"Point\"), no claim needed on the `self'` node itself.",
+  "description": "myself returns bare `self`; the result is then chained into another method call -- typed as whatever self is bound to for an instance method (Ty.cls \"Point\"), so the `self'` node needs the enclosing method's receiver type in scope.",
   "program": {
     "v": 5,
     "ast": [
@@ -79,89 +79,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "initialize",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [
-            "vasgn",
-            "ivar",
-            "@x",
-            [
-              "var",
-              "local",
-              "x"
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      },
-      {
-        "expr": [
-          "def",
-          "getX",
-          [],
-          [
-            "var",
-            "ivar",
-            "@x"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      },
-      {
-        "expr": [
-          "def",
-          "myself",
-          [],
-          [
-            "self"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "Point"
-          }
-        }
-      },
-      {
-        "expr": [
-          "var",
-          "ivar",
-          "@x"
-        ],
-        "ty": {
-          "tag": "int"
-        }
-      }
     ]
   },
   "expect_validate": true,

@@ -1,7 +1,7 @@
 {
   "id": "metaprog-method-missing-fixed-arity",
   "tier": 10,
-  "description": "Ghost declares method_missing with a single *required* param (no splat); calling an undeclared method (anything_at_all, with no arguments) dispatches to it with exactly one argument (the missed method's name, as a Sym) -- an arity a claim can honestly state: arrow_of([Sym], an instance of String). Needs a method_missing-fallback dispatch rule (try every declared method first, then method_missing if the class declares one) -- a dispatch-design extension, not a language gap, precisely because there is no rest param here. Contrast metaprog-method-missing-splat.",
+  "description": "Ghost declares method_missing with a single *required* param (no splat); calling an undeclared method (anything_at_all, with no arguments) dispatches to it with exactly one argument (the missed method's name, as a Sym) -- an arity Ty can honestly state: arrow_of([Sym], an instance of String). Needs a method_missing-fallback dispatch rule (try every declared method first, then method_missing if the class declares one) -- a dispatch-design extension, not a language gap, precisely because there is no rest param here. Contrast metaprog-method-missing-splat.",
   "program": {
     "v": 5,
     "ast": [
@@ -59,57 +59,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "method_missing",
-          [
-            [
-              "preq",
-              "name"
-            ]
-          ],
-          [
-            "send",
-            [
-              "str",
-              "called "
-            ],
-            "+",
-            [
-              [
-                "send",
-                [
-                  "var",
-                  "local",
-                  "name"
-                ],
-                "to_s",
-                [],
-                null
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "sym"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "cls",
-              "name": "String"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

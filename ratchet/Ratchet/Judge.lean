@@ -1,11 +1,12 @@
-import Ratchet.Cert
+import Ratchet.Expr
+import Ratchet.Ty
 
 /-!
 # `Judge` — the hand-authored typing judgment
 
 The **specification** half of the checker. `Ratchet/Validate.lean`'s `chk` is a
 decision procedure; this file says *what it is deciding*. The split matters for the
-ratchet: a rung is only honestly "climbed" when there is a derivation `Judge c p τ`
+ratchet: a rung is only honestly "climbed" when there is a derivation `Judge p τ`
 one can read and check by eye, not merely a `Bool` that came out `true`.
 
 ## Scope: exactly the first 13 rungs, and no more
@@ -24,22 +25,21 @@ limitation to lift later, not an oversight:
   "for later" is a rule whose soundness nobody has had to justify against a rung.
 - **No `if`/join, no `def`, no dispatch.** Tiers 4–9.
 
-## The two kinds of rule
+## Every rule is a synthesis rule
 
-Every rule below is one of:
+There is exactly one kind of rule here: a **synthesis rule justified by the real
+semantics** — a literal's type, or a primitive's signature (`PrimSig`). §Justification
+in `AGENTS.md`'s tier-1/2 notes plus `Check13.lean`'s semantic cross-check are what back
+them.
 
-1. A **synthesis rule** justified by the real semantics: a literal's type, or a
-   primitive's signature (`PrimSig`). These are the rules that carry content, and
-   §Justification in `AGENTS.md`'s tier-1/2 notes plus `Check13.lean`'s semantic
-   cross-check are what back them.
-2. The **`claim` leaf**: whatever a certificate asserts about a subterm is admitted.
-   This is the certificate architecture's trusted edge and it is *unsound in general* —
-   a cert may claim anything. It is included because `chk` needs it from tier 2 onward
-   (`5.zero?`, function signatures), but note: **all 13 rungs in scope here have an
-   empty `cert`**, so none of their derivations uses this rule. `Ratchet/Rungs13.lean`
-   states that as a theorem (`rung_derivs_claim_free`) rather than leaving it as a
-   remark, so the fragment's soundness argument does not quietly rest on the one leaf
-   that has no argument behind it.
+There used to be a second kind: a `claim` leaf admitting whatever a certificate asserted
+about a subterm. It was the certificate architecture's trusted edge, and it was *unsound
+in general* — a cert could claim anything, so a `Judge` derivation using it asserted
+nothing. **It is gone** (2026-08-31), along with `Cert` itself: `Judge` now relates an
+`Expr` to a `Ty` with nothing trusted in between, so *every* derivation in this package
+is built only from rules that say something checkable about the real semantics, and a
+rung is climbed only when the checker really can synthesize it. See `AGENTS.md`
+§Claim-free.
 -/
 
 namespace Ratchet
@@ -80,29 +80,30 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
 
 mutual
 
-/-- `Judge c e τ`: under certificate `c`, the closed expression `e` has type `τ`.
+/-- `Judge e τ`: the closed expression `e` has type `τ`. No certificate parameter —
+nothing here is trusted; see the module docstring.
 
 Read each literal rule as an assertion about the real semantics: evaluating this literal
 yields a value whose class is the one `τ` names. `Check13.lean` checks precisely that,
 by running the actual `stepFn`. -/
-inductive Judge : Cert → Expr → Ty → Prop
+inductive Judge : Expr → Ty → Prop
   /-- An integer literal — including a negative one: `-5` desugars to `int (-5)`, not to
       a unary send (rung 008), so this single rule covers both. -/
-  | intLit {c : Cert} {n : Int} : Judge c (.int n) .int
+  | intLit {n : Int} : Judge (.int n) .int
   /-- A float literal. `Expr.flt` carries IEEE bits; the type does not depend on them,
       so no side condition. -/
-  | fltLit {c : Cert} {bits : UInt64} : Judge c (.flt bits) .float
+  | fltLit {bits : UInt64} : Judge (.flt bits) .float
   /-- A string literal is *an instance of* `String` — `.cls "String"`, never a
       dedicated `str` type; this type language has none (`Ratchet/Ty.lean`). -/
-  | strLit {c : Cert} {s : String} : Judge c (.str s) (.cls "String")
-  | symLit {c : Cert} {s : String} : Judge c (.sym s) .sym
+  | strLit {s : String} : Judge (.str s) (.cls "String")
+  | symLit {s : String} : Judge (.sym s) .sym
   /-- `true` and `false` share one type. `Ty` has no singleton-`true` type, and Ruby's
       two distinct classes (`TrueClass`/`FalseClass`) are not distinguished here —
       `Ty.bool` covers both, which is why rungs 002 and 003 both target `.bool`. -/
-  | truLit {c : Cert} : Judge c .tru .bool
-  | flsLit {c : Cert} : Judge c .fls .bool
+  | truLit : Judge .tru .bool
+  | flsLit : Judge .fls .bool
   /-- `nil : Nil` — the singleton type, not `nilable` of anything. -/
-  | nilLit {c : Cert} : Judge c .nil .nilT
+  | nilLit : Judge .nil .nilT
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
@@ -110,20 +111,16 @@ inductive Judge : Cert → Expr → Ty → Prop
       nobody to dispatch on in this fragment), `blk = none` (a block would need
       `Expr.block` typing, tier ≥ 6), and `PrimSig` matching the *synthesized* argument
       types exactly (no subsumption — see the module docstring). -/
-  | prim {c : Cert} {recv : Expr} {m : String} {args : List Expr}
+  | prim {recv : Expr} {m : String} {args : List Expr}
       {σ τ : Ty} {argTys : List Ty} :
-      Judge c recv σ → JudgeAll c args argTys → PrimSig σ m argTys τ →
-      Judge c (.send (some recv) m args none) τ
-  /-- **The trusted leaf.** The certificate claims it; we believe it. Unsound in
-      general, unused by rungs 1–13 (all of whose certs are empty) — see the module
-      docstring. -/
-  | claim {c : Cert} {e : Expr} {τ : Ty} : c.lookup e = some τ → Judge c e τ
+      Judge recv σ → JudgeAll args argTys → PrimSig σ m argTys τ →
+      Judge (.send (some recv) m args none) τ
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction. -/
-inductive JudgeAll : Cert → List Expr → List Ty → Prop
-  | nil {c : Cert} : JudgeAll c [] []
-  | cons {c : Cert} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
-      Judge c e τ → JudgeAll c es τs → JudgeAll c (e :: es) (τ :: τs)
+inductive JudgeAll : List Expr → List Ty → Prop
+  | nil : JudgeAll [] []
+  | cons {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
+      Judge e τ → JudgeAll es τs → JudgeAll (e :: es) (τ :: τs)
 
 end
 

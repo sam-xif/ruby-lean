@@ -1,7 +1,7 @@
 {
   "id": "class-no-initialize",
   "tier": 7,
-  "description": "A class with no initialize at all -- real Ruby's default #new takes no arguments and returns the new instance; a rebuilt `.new` dispatch rule needs this as a fallback default when no `initialize` claim/declaration exists for the class, not an error.",
+  "description": "A class with no initialize at all -- real Ruby's default #new takes no arguments and returns the new instance; a rebuilt `.new` dispatch rule needs this as a fallback default when the class declares no `initialize`, not an error.",
   "program": {
     "v": 5,
     "ast": [
@@ -36,28 +36,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "hi",
-          [],
-          [
-            "str",
-            "hi"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

@@ -1,7 +1,7 @@
 {
   "id": "block-pass-symbol-to-proc",
   "tier": 9,
-  "description": "`[1,2].map(&:to_s)` has *no* block node at all: the desugarer produces `blockpass (sym to_s)`, and Ruby coerces the Symbol to a proc (Symbol#to_proc) at call time. There is no Ty for that coercion, so the claim is stated on the whole send's *result* (arrayOf String) instead -- honest, and enough here, but it means a checker needs a Symbol#to_proc rule (sym `s` used as a block over receiver `T` behaves as the arrow of T's `s` method) before it can synthesize this without help.",
+  "description": "`[1,2].map(&:to_s)` has *no* block node at all: the desugarer produces `blockpass (sym to_s)`, and Ruby coerces the Symbol to a proc (Symbol#to_proc) at call time. So there is no block node to type and no arrow anywhere in the syntax: a checker needs a Symbol#to_proc rule (sym `s` used as a block over receiver `T` behaves as the arrow of T's `s` method) to manufacture one before the Array#map rule can fire at all.",
   "program": {
     "v": 5,
     "ast": [
@@ -28,44 +28,6 @@
           "to_s"
         ]
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "send",
-          [
-            "array",
-            [
-              [
-                "int",
-                1
-              ],
-              [
-                "int",
-                2
-              ]
-            ]
-          ],
-          "map",
-          [],
-          [
-            "blockpass",
-            [
-              "sym",
-              "to_s"
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrayOf",
-          "elem": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

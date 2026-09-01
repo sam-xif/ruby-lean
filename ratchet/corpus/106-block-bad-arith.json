@@ -50,9 +50,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": []
-  },
   "expect_validate": false,
   "false_reason": "unsafe_program"
 }

@@ -64,62 +64,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "acc"
-            ],
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "acc"
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "x"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrowCons",
-            "param": {
-              "tag": "int"
-            },
-            "rest": {
-              "tag": "arrow0",
-              "ret": {
-                "tag": "int"
-              }
-            }
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

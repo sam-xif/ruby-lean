@@ -1,7 +1,7 @@
 {
   "id": "fun-body-mismatch",
   "tier": 6,
-  "description": "def bad(x) = x + true; bad(1) -- the body really does raise NoMethodError when called (Int has no matching + for Bool). Permanent negative target, independent of what the claim on `def bad` says.",
+  "description": "def bad(x) = x + true; bad(1) -- the body really does raise NoMethodError when called (Int has no matching + for Bool). The call site looks fine; the error is inside a body that is only reached by dispatch, so a checker has to look through the def to see it. Permanent negative target.",
   "program": {
     "v": 5,
     "ast": [
@@ -43,49 +43,6 @@
         ],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "bad",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "+",
-            [
-              [
-                "true"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": false,

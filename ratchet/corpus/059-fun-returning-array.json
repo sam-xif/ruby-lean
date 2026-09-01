@@ -1,7 +1,7 @@
 {
   "id": "fun-returning-array",
   "tier": 6,
-  "description": "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- a function's claimed return type can be any Ty this checker can synthesize, including arrayOf.",
+  "description": "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- the return type is inferred from the body and is a structured Ty (arrayOf), not a scalar; the parameters are constrained only by the call site here, not by the body.",
   "program": {
     "v": 5,
     "ast": [
@@ -51,62 +51,6 @@
         ],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "make_pair",
-          [
-            [
-              "preq",
-              "x"
-            ],
-            [
-              "preq",
-              "y"
-            ]
-          ],
-          [
-            "array",
-            [
-              [
-                "var",
-                "local",
-                "x"
-              ],
-              [
-                "var",
-                "local",
-                "y"
-              ]
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrowCons",
-            "param": {
-              "tag": "int"
-            },
-            "rest": {
-              "tag": "arrow0",
-              "ret": {
-                "tag": "arrayOf",
-                "elem": {
-                  "tag": "int"
-                }
-              }
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

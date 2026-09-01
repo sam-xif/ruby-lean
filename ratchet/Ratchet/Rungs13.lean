@@ -4,7 +4,7 @@ import Ratchet.Proof.ChkSound
 # The first 13 rungs, typed by hand
 
 One entry per rung of `corpus/001-*` … `corpus/013-*`, each carrying a **derivation term**
-`Judge ⟨[]⟩ program ty` written out by hand. The point is that the ladder's claim
+`Judge program ty` written out by hand. The point is that the ladder's claim
 "13 rungs climbed" is backed by 13 readable derivations, not only by a `Bool`:
 
 - The `deriv` field is a real proof term, so Lean's kernel checks each derivation
@@ -19,24 +19,16 @@ One entry per rung of `corpus/001-*` … `corpus/013-*`, each carrying a **deriv
   rung's Ruby (decoded from `corpus/*.json` and compared with `==`), and that running the
   **real semantics** on it yields a value of the class `ty` names.
 
-## Why the certificate is empty for all 13
+## Nothing here is trusted
 
-Every rung's `cert` in `corpus/` is `{"claims": []}`, so `Judge`'s trusted `claim` leaf
-(`Ratchet/Judge.lean`) is *unusable* here — `empty_cert_lookup` below states exactly
-that. Every derivation in this file is therefore built only from rules that assert
-something checkable about the real semantics. That is what makes "high confidence" mean
-something for this fragment: there is no trusted assertion inside it.
+These derivations used to be qualified by "…and none of them uses the trusted `claim`
+leaf", a fact this file stated as a theorem over an empty certificate. Certificates are
+gone (`AGENTS.md` §Claim-free), so the qualification is now structural: `Judge` has no
+trusted leaf to use. Every derivation below is built only from rules that assert
+something checkable about the real semantics.
 -/
 
 namespace Ratchet
-
-/-- The certificate every one of the 13 rungs carries: no claims at all. -/
-def emptyCert : Cert := ⟨[]⟩
-
-/-- With no claims, the trusted `Judge.claim` leaf can never fire: its premise
-`c.lookup e = some τ` is unsatisfiable. Hence every derivation below is claim-free by
-construction, not by inspection. -/
-theorem empty_cert_lookup (e : Expr) : emptyCert.lookup e = none := rfl
 
 /-- One rung: the program, the type it was hand-derived at, and the derivation. The
 `deriv` field is what distinguishes this from a test table — it cannot be filled in
@@ -45,7 +37,7 @@ structure Rung where
   id : String
   program : Expr
   ty : Ty
-  deriv : Judge emptyCert program ty
+  deriv : Judge program ty
 
 /-! ## Tier 1 — the eight literals
 
@@ -120,12 +112,12 @@ and the one that matters for trusting a `true`); together they say the executabl
 and the hand-authored judgment have not drifted apart anywhere on this fragment. -/
 
 theorem chk_agrees_with_hand_derivations :
-    rungs13.all (fun r => chk emptyCert r.program == some r.ty) = true := by rfl
+    rungs13.all (fun r => chk r.program == some r.ty) = true := by rfl
 
 /-- And therefore `validate` — the number the ratchet runner reports — says `true` on all
 13. Stated separately from the above because it is the weaker fact (it forgets *which*
 type), and it is the one `Main.lean` observes. -/
-theorem validate_all_13 : rungs13.all (fun r => validate emptyCert r.program) = true := by
+theorem validate_all_13 : rungs13.all (fun r => validate r.program) = true := by
   rfl
 
 end Ratchet

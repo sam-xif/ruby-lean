@@ -9,19 +9,6 @@
       "x"
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "vcall",
-          "x"
-        ],
-        "ty": {
-          "tag": "any"
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

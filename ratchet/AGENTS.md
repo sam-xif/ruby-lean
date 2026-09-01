@@ -1,4 +1,4 @@
-# AGENTS.md — `ratchet/`: a certificate-checking ladder, restarted small
+# AGENTS.md — `ratchet/`: a type-checking ladder, restarted small
 
 This is a **restart** of the type-checking work, deliberately isolated from `../lean/`
 (`RubyCore`) and from `../certify/`/the judgment layer (own `lakefile.toml`/
@@ -7,12 +7,13 @@ replaced — see `../type-safety-by-reachability.md` and
 `../docs/semantics/certificate-language.md`/`judgment-layer.md` for that work. This
 folder exists because that machinery grew by tackling ambitious whole-slice goals
 (Homebrew's `version.rb`, Sorbet fragments, `define_method`) before the checker itself
-had a graduated coverage ladder to climb. **The idea here: preserve the
-certificate-checking architecture, but drive it from a corpus that ratchets up in
-complexity one rung at a time, so "how far does `validate` reach today" is always a
-single number, not a research question.**
+had a graduated coverage ladder to climb. **The idea here: drive the checker from a corpus that ratchets up in complexity one
+rung at a time, so "how far does `validate` reach today" is always a single number, not
+a research question.** It started as a certificate-checking ladder and kept the
+architecture minus the certificates (§Claim-free): a rung is now a program and a target,
+and `validate` either synthesizes the type or does not.
 
-## Checker status: **14 rungs, hand-authored judgment first**
+## Checker status: **14 rungs, hand-authored judgment first, nothing trusted**
 
 `Ratchet/Validate.lean`'s `validate` is real again, but only over a deliberately tiny
 fragment: **tier 1's eight literals plus `+`/`-`/`*`/`/` on `Integer` and `+` on
@@ -24,11 +25,10 @@ What is different from the pre-restart version this replaced: the checker is no 
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
 constructor per rule — and every rung in the covered fragment has a **derivation term**
 on file in `Ratchet/Rungs13.lean` that Lean's kernel checks, plus
-`Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk c e = some τ → Judge c e τ` tying the
-executable checker back to it. Two numbers now come out of `scripts/run_ratchet.sh`
-rather than one — **structural** vs **claim-assisted** — because a rung that validates
-only because a certificate claimed its type has not really been climbed by the checker
-(see §The claim leaf).
+`Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk e = some τ → Judge e τ` tying the
+executable checker back to it. And `14` is now the *only* number
+`scripts/run_ratchet.sh` reports, because there is no longer a second, softer way for a
+rung to count: certificates are gone (§Claim-free).
 
 ## Semantics status: **imported, and wired up for the covered fragment**
 
@@ -98,13 +98,49 @@ rungs whose *program* was safe but whose *certificate* was deliberately dishones
 became a new category (`dishonest_cert`) distinct from unsafe programs, since
 rejecting them is a cert-consistency invariant, not a program-safety one. Exactly one
 rung turned up a case the existing `Ty` grammar genuinely cannot state a claim for at
-all (`cert_language_gap`, §Cert language gaps) — the one case this reclassification
+all (`cert_language_gap`, since renamed `ty_language_gap` — §Ty language gaps) — the one case this reclassification
 was designed to surface rather than paper over, per the instruction that prompted it:
 if something can't be expressed in the cert, flag it, don't just mark it `false`.
 
 Also added: tier 9, metaprogramming (`method_missing`, class reopening,
 `include`/`extend`/`prepend`), deliberately last on the ladder, and the direct
 motivation for finding the one language gap above.
+
+## 2026-08-31 (later still, second pass): claims deleted, agreement gated
+
+Two instructions, one theme — stop letting the ladder count things nobody checked.
+
+**1. Every rung is now difftested against CRuby.** `scripts/run_agreement.sh` runs the
+real difftest engine (`../difftest`, `replay --sut lean`) over `corpus/`: each `.rb`
+under CRuby and under the Lean semantics, comparing stdout, the final value's `inspect`,
+and the escaping exception. `scripts/run_ratchet.sh` runs it *before* the ladder and
+aborts on any disagreement. **114/114 agree, 0 disagree** — including all 22 of the new
+tier 9. This was the missing leg: the corpus already guaranteed its JSON was real
+desugarer output, but nothing said the model this package types actually runs these
+programs the way Ruby does, and a type over a program the model gets wrong is a
+statement about a fiction. It also keeps the seven `unsafe_program` targets honest —
+they have to really raise, on both sides.
+
+**2. Certificates are gone.** `Cert.lean`, `Judge.claim`, `chk`'s claim-fallback, and
+every `cert` field in the corpus JSON: deleted. The rationale and the fallout are in
+§Claim-free; the short version is that a claim was trusted, so a "claim-assisted" rung
+was a rung nobody had checked, and the honest headline is **14**, not 23. `Judge` is now
+`Expr → Ty → Prop` with no trusted leaf at all, `validate : Expr → Bool`, and
+`Rungs13.lean` no longer needs `empty_cert_lookup` to argue its derivations are
+claim-free — there is nothing to be free of. Proofs still go through unchanged in
+substance (`chk_sound`, `validate_sound_syntactic`, axiom-clean), and `check13` still
+reports 13/13 + 7/7.
+
+The corpus rewrite that fell out of (2) is the useful part: ~34 rung descriptions said
+"an explicit claim supplies its type" where they now say what rule the checker actually
+needs — `Object#== : (any) → Bool`, `Integer#zero?`, `String#length`, a
+union-producing `joinTy`, element-type inference for arrays, signature *inference* for
+`def` (including the recursive case, where the signature is needed to check the body it
+comes from), ivar types from `initialize`'s writes with read-with-no-write = `Nil`. Four
+rungs lost their `-with-claim` suffix, and `fun-dishonest-return-claim` — safe program,
+lying certificate — became the ordinary `fun-zero-arg`, since there is no cert left to
+lie. The `cert_language_gap` reason became `ty_language_gap`: that gap was always in
+`Ty`, and both flagged rungs still stand.
 
 ## 2026-08-31 (later still): tier 9, blocks/procs/lambdas — 22 rungs
 
@@ -132,16 +168,17 @@ real desugarer second:
   same missing optional/rest arity constructor `metaprog-method-missing-splat` asks for.
   Its lambda twin `lambda-arity-mismatch` really raises ArgumentError on the same call
   shape — so the gap is sharp: today's arrow spine must either reject the legal proc or
-  accept the illegal lambda. §Cert language gaps.
+  accept the illegal lambda. §Ty language gaps.
 - **`->(x) { return x * 2 }.call(3)` cannot be written at top level** — the desugarer
   exits 3 on `top-level return`. Wrapped in a method, which is the more honest rung
   anyway: it is inside a method body that lambda-local `return` differs from the proc
   and bare-block reading.
 
-Two rungs already pass claim-assisted (`block-pass-symbol-to-proc`,
-`block-sort-by-length`) — both because their claim happens to land on the outermost
-send, i.e. the checker is trusting the answer, not computing it. Structural is still
-14, and 79 rungs are not yet climbed.
+Two rungs already passed claim-assisted (`block-pass-symbol-to-proc`,
+`block-sort-by-length`) — both because their claim happened to land on the outermost
+send, i.e. the checker was trusting the answer, not computing it. *Superseded the same
+day*: claims are gone (§Claim-free), so tier 9 is 0/22 and the whole tier is a demand
+list. Structural was and is 14.
 
 ## 2026-08-31 (evening): the first 13 rungs, typed by hand
 
@@ -201,23 +238,38 @@ over:
   cross-check has to be *loosened* to pass, and a loosened cross-check should be
   deliberate.
 
-## The claim leaf
+## Claim-free (2026-08-31)
 
-`Judge.claim` admits whatever a certificate asserts about a subterm. It is the
-certificate architecture's trusted edge and it is **unsound in general** — a cert may
-claim anything, including a type for the program's root node, at which point `validate`
-answers `true` having checked nothing. That is the intended mechanism (it is exactly how
-`unknown-method-with-claim`'s `5.zero?` is meant to certify, and that rung *is* its whole
-program), so the fix is not to forbid it but to stop counting it as the same thing:
+This package used to carry a **certificate**: a rung's JSON held a list of claims —
+(subterm, `Ty`) pairs — and both `Judge` and `chk` had a leaf that admitted whatever a
+claim asserted. It is **gone**: `Cert.lean` is deleted, `Judge.claim` is deleted, `chk`'s
+fallback is deleted, and every `cert` field is out of the corpus JSON.
 
-- `Main.lean` splits each tier into **structural** (re-running `validate` with the
-  certificate emptied still succeeds — the checker did the work) and **claim-assisted**
-  (it did not). Today: 14 structural, 9 claim-assisted, 23 validating in total.
-- All 13 rungs in the hand-authored fragment have an **empty** `cert`, so their
-  derivations cannot use the leaf at all. `Rungs13.lean`'s `empty_cert_lookup` states
-  that as a theorem, and `Check13.lean` re-checks `cert_empty` against the corpus file,
-  so the fragment's confidence does not quietly rest on the one rule with no argument
-  behind it.
+Why. The leaf was unsound in general, and not subtly: a claim on the program's root node
+made `validate` answer `true` having checked nothing. The report tried to contain that by
+splitting each tier into "structural" and "claim-assisted", but a claim-assisted rung is
+a rung nobody checked, and a ladder whose rungs can be climbed by asserting the answer is
+measuring the wrong thing. Nothing above tier 2 needs the escape hatch *yet* — the rungs
+it was covering (`5.zero?`, `"abc".length`, function signatures, method signatures) all
+want real rules, and the corpus is now written as demands for those rules instead of as
+answers to them.
+
+What it cost, honestly: the headline dropped from "23 validating" to **14**, which is
+what it always was. Three rungs changed meaning and are recorded where they live:
+`unknown-method-with-claim`/`str-length-with-claim`/`array-index-with-claim`/
+`hash-index-with-claim` lost the suffix and became demands for real builtin rules
+(`unmodeled-builtin-zero-p`, `str-length`, `array-index`, `hash-index`);
+`fun-dishonest-return-claim` — a safe program whose *certificate* lied, targeting `false`
+so that a self-inconsistent cert could never validate — has no cert to lie any more and
+became `fun-zero-arg`, an ordinary `true` target; and the `cert_language_gap` reason
+became **`ty_language_gap`** (§Ty language gaps), since the gap was always in `Ty`, not in
+the cert format.
+
+What might bring claims back: a *declaration* is not a claim. A user-written signature
+(a Sorbet `sig`, an RBS file, an inline annotation) is part of the program's own text and
+can be checked against the body, which is a different thing from a certificate asserting
+a type nobody verifies. If declarations arrive, they arrive as syntax with a conformance
+check, not as a trusted lookup table.
 
 ## Isolation
 
@@ -238,8 +290,7 @@ makes an actual constraint, not just a coincidence).
 - **`Ratchet/Expr.lean`** — `Expr`/`Param`/`KwEntry`/`VarKind`/`TargetKind`, ported
   verbatim from `RubyCore/Syntax.lean`, plus its `Decode` namespace: the real
   `Export::VERSION` 4/5 JSON wire-format decoder. This is the *only* decoder in this
-  package for program syntax — a certificate claim's `expr` field is decoded with the
-  exact same `Decode.expr`, since it's literally a fragment of the same wire format.
+  package for program syntax.
 - **`Ratchet/Ty.lean`** — the `Ty` inductive ported verbatim from `RubyCore/Types/Ty.lean`
   (`int`/`bool`/`nilT`/`sym`/`cls`/`any`/`clsOf`/`nilable`/`float`/`arrayOf`/`union`/
   `arrow0`/`arrowCons`), plus the pure helpers (`arrowOf`/`arrowParts?`/`subTy`/`subTys`/
@@ -247,42 +298,49 @@ makes an actual constraint, not just a coincidence).
   them (`subTy_trans`, `SubEnv`/`subEnvB` and their proofs, lambda-capture pinning,
   `FrameCtx`) — no soundness theorem needs them yet (see the file's own docstring for
   the rationale, and §What is deliberately not built here below).
-- **`Ratchet/Cert.lean`** — `Claim := { expr : Expr, ty : Ty }`, `Cert := List Claim`,
-  and `Cert.lookup : Cert → Expr → Option Ty` (find by `==`). See the 2026-08-31 note
-  above for why this replaced a shadow-AST design.
-- **`Ratchet/Judge.lean`** — `Judge : Cert → Expr → Ty → Prop` (mutual with `JudgeAll`
+- **`Ratchet/Judge.lean`** — `Judge : Expr → Ty → Prop` (mutual with `JudgeAll`
   over an argument list) and `PrimSig`, the primitive-signature table as a relation. The
   **specification**: what `validate` is deciding, one human-checkable constructor at a
   time. Covers rungs 1–13 and nothing else, on purpose — see §2026-08-31 (evening).
 - **`Ratchet/Validate.lean`** — `primSig?`, `chk`/`chkAll`, and
-  `validate : Cert → Expr → Bool` (`= (chk c p).isSome`). The decision procedure for
-  `Judge`'s fragment, with `Cert.lookup` as a uniform fallback at every node kind. This
-  is the `Cert -> Expr -> Bool` shape the restart asked for.
+  `validate : Expr → Bool` (`= (chk p).isSome`). The decision procedure for `Judge`'s
+  fragment; every node kind with no rule answers `none`, with no fallback of any kind
+  (§Claim-free).
 - **`Ratchet/Proof/ChkSound.lean`** — `primSig?_sound`, `chk_sound`/`chkAll_sound`,
   `validate_sound_syntactic`. Axiom-clean; the file ends with its own `#print axioms`.
 - **`Ratchet/Rungs13.lean`** — the 13 rungs as `Rung` records carrying hand-written
-  `Judge` derivation terms, plus `chk_agrees_with_hand_derivations` (one `rfl` per rung)
-  and `empty_cert_lookup`.
+  `Judge` derivation terms, plus `chk_agrees_with_hand_derivations` (one `rfl` per
+  rung).
 - **`corpus/NNN-id.rb` + `corpus/NNN-id.json`** — each rung is real Ruby source (the
   `.rb`, for human reading) plus a generated `.json` (`{id, tier, description, program,
-  cert, expect_validate, false_reason}`) where `program` is a **committed snapshot** of
+  expect_validate, false_reason}`) where `program` is a **committed snapshot** of
   `export-json`'s actual output for that `.rb` file, not re-derived live at test time —
   deliberately, per the same norm `certify/`'s own LLM-arm cache follows ("a ratchet
   whose number depends on a live sample is not a ratchet"). Regenerate with
-  `python3 scripts/generate_corpus.py`; **never hand-edit the `.json` files** — a claim's
-  `expr` field is extracted programmatically from the real desugarer's output
-  (`generate_corpus.py`'s `find_node`/`find_within`), never hand-transcribed, so it
-  cannot silently drift from what the program actually contains. `expect_validate` is a
-  **target**, not necessarily what `validate` answers today — `true` for every rung
-  except the seven named in §Permanent negatives, each with a `false_reason`
-  (`"unsafe_program"`/`"dishonest_cert"`/`"cert_language_gap"`) explaining why.
-- **`Main.lean`** / **`scripts/run_ratchet.sh`** — the runner: loads every corpus entry,
-  runs `validate`, and reports per-rung and per-tier results against the recorded
-  `expect_validate` — each tier split **structural / claim-assisted** (§The claim leaf) —
-  a dedicated always-shown list of `cert_language_gap` rungs (§Cert language gaps), plus
-  a count of rungs where today's answer differs from the target (still large, by design —
-  see §Checker status). `Main.lean` imports `Ratchet.Rungs13` but not `Semantics/`: the
-  ratchet's headline number stays a pure statement about `validate`.
+  `python3 scripts/generate_corpus.py`; **never hand-edit the `.json` files**.
+  `expect_validate` is a **target**, not necessarily what `validate` answers today —
+  `true` for every rung except the nine named in §Permanent negatives, each with a
+  `false_reason` (`"unsafe_program"`/`"ty_language_gap"`) explaining why.
+- **`Main.lean`** / **`scripts/run_ratchet.sh`** — the runner. `scripts/run_ratchet.sh`
+  does two things in order: the **agreement** gate (next bullet), then the ladder.
+  `Main.lean` is the ladder half — it loads every corpus entry, runs `validate`, and
+  reports per-rung and per-tier results against the recorded `expect_validate` (one
+  number per tier now, §Claim-free), a dedicated always-shown list of `ty_language_gap`
+  rungs (§Ty language gaps), plus a count of rungs where today's answer differs from the
+  target (still large, by design — see §Checker status). `Main.lean` imports
+  `Ratchet.Rungs13` but not `Semantics/`: the ratchet's headline number stays a pure
+  statement about `validate`.
+- **`scripts/run_agreement.sh`** — **every rung, under CRuby and under the Lean
+  semantics, compared.** Delegates to the real difftest engine
+  (`../difftest`, `replay --sut lean`), which runs each `.rb` both ways and compares the
+  full observation: stdout, the `inspect` of the final value, and the escaping
+  exception's (class, message). This is what makes a rung's *type* mean something — a
+  program the model executes differently from Ruby is a program whose type is a
+  statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
+  disagreement. Currently **114/114 agree**. Needs `uv` and a CRuby; skip with
+  `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `check13`: this compares
+  *the model against Ruby* over the whole corpus, `check13` compares *a hand-derived type
+  against the model* over the 13 covered rungs.
 - **`Check13.lean`** / **`scripts/run_check13.sh`** (the `check13` exe) — the evidence
   behind the covered rungs, and the **one file allowed to see both sides**: it imports
   `Ratchet/` *and* `Semantics/`, decodes each rung's JSON twice (once into
@@ -297,36 +355,41 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (10 tiers, 114 rungs, 14 climbed structurally)
+## The ladder (10 tiers, 114 rungs, 14 climbed)
 
-**Every rung's target is `expect_validate = true`, with exactly ten, named
+**Every rung's target is `expect_validate = true`, with exactly nine, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
 this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean`'s
-module docstring for the three reasons a rung is allowed to target `false` at all.
+module docstring for the two reasons a rung is allowed to target `false` at all.
 
-1. Literals (8 rungs) — every one of these should be synthesizable with no claims at
-   all once `chk` exists.
-2. Arithmetic/string/bool `send`s (20 rungs) — wants a small hardcoded builtin dispatch
-   table, plus the claims escape hatch demonstrated on unmodeled builtins (`5.zero?`,
-   `"abc".length`) and on a builtin the hardcoded table is deliberately *not* widened
-   for (`1 == "a"` — see §Design notes).
+**Every rung also agrees with CRuby**, checked by `scripts/run_agreement.sh` before the
+ladder is reported: 114/114 (§Architecture).
+
+1. Literals (8 rungs) — all eight climbed.
+2. Arithmetic/string/bool `send`s (20 rungs) — a small hardcoded builtin dispatch table
+   (`PrimSig`), five rows of which exist. The rest of the tier names the rows still
+   wanted: real-but-unmodeled totals (`5.zero?`, `"abc".length`), comparison operators,
+   and `Object#==`, which must accept unrelated types (`1 == "a"` is safe Ruby — see
+   §Design notes).
 3. `var`/`vasgn`/`seq` (6 rungs) — real Ruby scoping (mutable locals, not the `let` of a
    from-scratch toy language), including the NameError-is-not-a-type-error subtlety
    (`bare-undeclared-var`, §Design notes).
 4. Conditionals (9 rungs) — `if'`/`elsif` chains, including a no-`else` → `nilable`
-   case, branch-mismatched `if`s certified via `Ty.union` claims, and a real,
+   case, branch-mismatched `if`s that want a union-producing `joinTy` (currently `joinTy`
+   answers `none` there, and `Ty.union` is inert on the checker path), and a real,
    deliberately-recorded corner case (see §Design notes).
 5. Arrays/hashes (8 rungs) — including that indexing (`#[]`) is just a `send`, same as
    everything else in Ruby; the real `Expr` has no dedicated index constructor.
-6. Top-level functions (9 rungs) — wants a `def'`'s signature declared as a claim on the
-   `def'` node itself (an arrow spine); no separate `FunCert` format needed. Includes a
-   self-recursive function (`fact`).
+6. Top-level functions (9 rungs) — a `def'` declares nothing, so a signature has to be
+   *inferred* from the body and the params and then checked against each call site.
+   Includes a self-recursive function (`fact`), where the signature is needed to check
+   the body it is inferred from.
 7. **Classes (16 rungs).** Real, varied class-based Ruby (construction, ivars,
-   inheritance, `super`, singleton "factory" methods, instances in arrays/hashes),
-   each with real arrow-spine claims on every `def'`/`defs` node plus by-name ivar-read
-   claims — see §Architecture's `Cert.lean` note and §Design notes for the dispatch
-   machinery these claims assume exists.
-8. **Modules (10 rungs).** Same claim shape, for `module'`/`defs self'`.
+   inheritance, `super`, singleton "factory" methods, instances in arrays/hashes).
+   Wants a declaration table over class bodies, ancestor-chain dispatch, and ivar types
+   inferred from `initialize`'s writes — with `class-ivar-lazy-nil` pinning the corner
+   (an ivar read with no write is `nil`, not an error). See §Design notes.
+8. **Modules (10 rungs).** Same machinery, for `module'`/`defs self'`.
 9. **Blocks, procs and lambdas (22 rungs).** Ruby's callable literals, in one place
    and increasing in complexity: `lambda {}`/`->(){}`/`proc {}` (all three desugar to
    the *same* shape — an ordinary `send none "lambda"/"proc" [] (block …)`, so a block
@@ -337,78 +400,75 @@ module docstring for the three reasons a rung is allowed to target `false` at al
    `blockpass` shapes (`&:to_s`'s Symbol#to_proc coercion and `&some_lambda`), closure
    capture, nested blocks, two-param folds, an `if` inside a block body, higher-order
    arrows in both return position (`->(x){ ->(y){ x + y } }`) and param position
-   (`def apply(f, v)`), and lambda-local `return`. Claims are the same arrow spine
-   `def'` nodes get, so 19 of 22 target `true`; the three that don't are the tier's
+   (`def apply(f, v)`), and lambda-local `return`. A callable's type is the same arrow
+   spine a `def'` has, so 19 of 22 target `true`; the three that don't are the tier's
    real findings — `block-bad-arith` and `lambda-arity-mismatch` (genuinely raising
-   programs) and `proc-arity-leniency` (§Cert language gaps).
+   programs) and `proc-arity-leniency` (§Ty language gaps).
 10. **Metaprogramming (6 rungs) — LAST on the ladder, as intended.** `method_missing`,
    class reopening, and `include`/`extend`/`prepend`. Five of six are ordinary safe
-   Ruby with real claims (§Design notes has the dispatch subtleties: self-context
+   Ruby needing only dispatch design (§Design notes has the subtleties: self-context
    `vcall` resolution, mixin ancestry, prepend-ordered MRO with `super`, a
-   method_missing fallback route). The sixth
-   (`metaprog-method-missing-splat`) is one of this ladder's two found
-   **cert_language_gaps** — see §Cert language gaps.
+   method_missing fallback route). The sixth (`metaprog-method-missing-splat`) is one of
+   this ladder's two found **ty_language_gaps** — see §Ty language gaps.
 
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-tier 1: 8/8 (8 structural)     tier 2: 9/20 (6 structural, 3 claim-assisted)
-tier 3: 1/6 (0, 1)             tier 4: 2/9 (0, 2)          tier 5: 3/8 (0, 3)
-tier 6: 0/9    tier 7: 0/16    tier 8: 0/10
-tier 9: 2/22 (0 structural, 2 claim-assisted)                tier 10: 0/6
-flagged cert language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs not yet climbed: 79
+corpus agreement (CRuby vs the Lean semantics): 114/114 agree, 0 disagree
+
+tier 1: 8/8    tier 2: 6/20   tier 3: 0/6    tier 4: 0/9    tier 5: 0/8
+tier 6: 0/9    tier 7: 0/16   tier 8: 0/10   tier 9: 0/22   tier 10: 0/6
+flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
+rungs not yet climbed: 91
 ```
 
-Read the **structural** column, not the total: a claim-assisted rung validated because a
-certificate asserted a type, and a claim is trusted (§The claim leaf). Structural is 14 —
-tier 1's eight, plus `add`/`sub`/`mul`/`div`/`str-concat` and `nested-arith`.
-`scripts/run_check13.sh` is the companion number: 13/13 of those cross-checked against
-the real semantics, 7/7 negative controls rejected.
+All 14 are synthesized by `chk` itself — tier 1's eight, plus
+`add`/`sub`/`mul`/`div`/`str-concat` and `nested-arith`. (This used to read "23
+validating, of which 14 structural"; the other nine were rungs a certificate claim
+answered for. See §Claim-free.) `scripts/run_check13.sh` is the companion number: 13/13
+of those cross-checked against the real semantics, 7/7 negative controls rejected.
 
 The number to watch as `chk` grows is **"rungs not yet climbed" going down**, tier
-fraction by tier fraction. The "flagged cert language gaps" count is a *different*
-number: it should stay flat unless `Ty.lean`'s grammar itself grows (see §Cert language
-gaps) — it is not something `chk` alone can move.
+fraction by tier fraction. The "flagged Ty language gaps" count is a *different* number:
+it should stay flat unless `Ty.lean`'s grammar itself grows (see §Ty language gaps) — it
+is not something `chk` alone can move. And "114/114 agree" should never move at all:
+a disagreement there is a bug in the model or the desugarer, not a climb.
 
-## Permanent negatives (10 rungs, and only these 10 by design)
+## Permanent negatives (9 rungs, and only these 9 by design)
 
-Every other rung targets `true`. These ten don't, each for one of the three reasons
+Every other rung targets `true`. These nine don't, each for one of the two reasons
 `Ratchet/Corpus.lean` names (`false_reason`):
 
 - **`unsafe_program`** (7 rungs) — the program genuinely raises `NoMethodError`/
-  `ArgumentError`/`TypeError` when run, no matter what any certificate claims:
-  `bad-plus` (`1 + true`), `unknown-method-no-claim` (`5.foo_bar_baz` — a made-up
-  method, unlike the real `5.zero?` its sibling `unknown-method-with-claim` uses),
+  `ArgumentError`/`TypeError` when run:
+  `bad-plus` (`1 + true`), `unknown-method` (`5.foo_bar_baz` — a made-up method, unlike
+  the real `5.zero?` its sibling `unmodeled-builtin-zero-p` uses),
   `fun-wrong-arity`, `fun-body-mismatch`, `fun-unknown-call`, plus tier 9's
   `block-bad-arith` (`[1,2].each { |x| x + "a" }` — TypeError inside a block body,
   which the block wrapper must not launder) and `lambda-arity-mismatch`
   (`->(x){x}.call(1, 2)` — ArgumentError, because lambda arity is strict). A sound `chk` must never
   say `true` for any of these — they are the soundness regression tests.
-- **`dishonest_cert`** (1 rung) — `fun-dishonest-return-claim`: `get5`'s body really
-  returns `Int` and running it is completely safe, but *this certificate* claims its
-  return type is `an instance of String`, which contradicts its own body. Rejecting a
-  self-inconsistent certificate is independent of the program's actual safety — the
-  point is that a checker which let a cert's claims disagree with each other would be
-  meaningless, not that this particular Ruby is unsafe.
-- **`cert_language_gap`** (2 rungs) — `metaprog-method-missing-splat` and tier 9's
+- **`ty_language_gap`** (2 rungs) — `metaprog-method-missing-splat` and tier 9's
   `proc-arity-leniency`, see next section.
 
-## Cert language gaps
+There used to be a third reason, `dishonest_cert`, holding exactly one rung; it went
+away with certificates (§Claim-free).
+
+## Ty language gaps
 
 **Two found so far, both the same missing thing: `Ty`'s arrow spine
-(`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.** `def method_missing(name, *args)` — the idiomatic shape — has a
-parameter list no `Ty` value can honestly describe: not "no `chk` rule for it yet" but
-"no claim, however clever, states the truth without lying about arity." A claim
-approximating it as `arrow_of([Sym], ...)` would silently accept the zero-extra-args
-call site in the corpus while being unsound the moment a caller passes any extra
+(`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.**
+`def method_missing(name, *args)` — the idiomatic shape — has a parameter list no `Ty`
+value describes: not "no `chk` rule for it yet" but "no `Ty` states the truth without
+lying about arity." Approximating it as `arrow_of([Sym], ...)` fits the zero-extra-args
+call site in the corpus while being wrong the moment a caller passes any extra
 arguments. `metaprog-method-missing-fixed-arity` sits right next to it in tier 10 with
 the *same* dispatch shape and no splat, and validates fine (aspirationally) — proving
 the gap is specifically the rest parameter, not `method_missing` dispatch generally.
 
 Tier 9's **`proc-arity-leniency`** reaches the same gap from the other direction:
 `proc { |x, y| x }.call(1)` is legal Ruby (a proc pads missing params with nil and
-drops extras), but the only claimable type for that block, `arrow_of([Int, Int], Int)`,
+drops extras), but the only `Ty` for that block, `arrow_of([Int, Int], Int)`,
 says the call site is wrong; weakening the second param to `nilable Int` still cannot
 say "…and may be absent entirely", nor that a third argument would also be fine. Its
 strict sibling `lambda-arity-mismatch` is a permanent `unsafe_program` for the *same*
@@ -417,11 +477,11 @@ disciplines, so it either rejects the legal proc or accepts the illegal lambda.
 
 Fixing both needs a `Ty` extension — an `arrowRest (rest ret : Ty)` spine terminator, or
 modeling `*args` as `arrayOf Ty` — decided deliberately, not smuggled in as a special
-case of something else. Until then, `Main.lean`'s runner always prints a "flagged:
-cert language gaps" section (independent of pass/fail) so this doesn't quietly
-disappear into a wall of `false`s the way it would have under the old philosophy.
+case of something else. Until then, `Main.lean`'s runner always prints a "flagged: Ty
+language gaps" section (independent of pass/fail) so this doesn't quietly disappear into
+a wall of `false`s the way it would have under the old philosophy.
 **Watch for more of these as the ladder grows** — this section is the place to record
-each one; a "cert_language_gap" `false_reason` should always come with an entry here
+each one; a `ty_language_gap` `false_reason` should always come with an entry here
 naming the specific missing `Ty` constructor, not just "not supported yet."
 
 ## Design notes (read before rebuilding `chk`)
@@ -434,15 +494,14 @@ literals; `var`/`vasgn`/`vcall` (flat environment, no `VarKind` distinction); `s
 (homogeneous elements only); `hash` (typed as the bare `.cls "Hash"`, no key/value
 parameterisation); top-level `def'` + calls dispatched by name, signature supplied by a
 claim on the `def'` node, `Param.req` only. Two design principles the corpus now
-assumes that version didn't have, plus everything tiers 7–9 need beyond it:
+assumes that version didn't have, plus everything tiers 7–10 need beyond it:
 
-- **Every node kind should have a claim-fallback, not just `send`/`vcall`.** The
-  cleared version only fell back to `Cert.lookup` for sends; `if'`/`array` had no
-  escape hatch at all. `if-branch-mismatch`/`elsif-chain-mismatch`/
-  `array-heterogeneous` all now target `true` *via a claim* on the mismatched node
-  (a `Ty.union`, or `arrayOf(Ty.any)`) — meaning a rebuilt `chk` should try structural
-  typing first at *every* node kind, and fall back to `Cert.lookup` uniformly on
-  failure, not case by case.
+- **Where a structural rule is missing, there is nothing to fall back on** (§Claim-free).
+  So the mismatched-branch rungs (`if-branch-mismatch`/`elsif-chain-mismatch`) and
+  `array-heterogeneous` are demands on the *join*, not on an escape hatch: `joinTy` has
+  to produce a `Ty.union` instead of answering `none`, and the array rule has to join its
+  element types (falling back to `any`) rather than requiring them equal. Both stay
+  inside the existing grammar — `union` and `any` are already there, currently inert.
 - **"Type-safe" means "never `NoMethodError`/`ArgumentError`/`TypeError`", not
   "never raises" and not "the condition/branches are syntactically uniform".** Three
   rungs only make sense under this precise reading: `bare-undeclared-var` (raises
@@ -452,12 +511,12 @@ assumes that version didn't have, plus everything tiers 7–9 need beyond it:
   `(thenTy, elseTy)` unconditionally, with no `Bool`-only restriction at all, which
   wasn't just incomplete before, it was actively wrong); `eq-different-type` (`==`
   never raises for unrelated types, so requiring both sides the same `Ty` was a
-  conservative *choice* in the builtin table, not a necessity — the claims escape
-  hatch is enough to certify it without loosening the hardcoded rule itself).
-- **Ivar types are claimed by name, globally, not scoped per class** — a documented
-  simplification, not a `Ty` gap: `.var .ivar "@x"` claims apply wherever `@x` is read
-  in *any* class. Fine for this corpus (no two classes reuse an ivar name with
-  different types), a real limitation to fix before this scales.
+  conservative *choice* in the builtin table, not a necessity — the rule wanted is
+  `Object#== : (any) → Bool`).
+- **Ivar types come from `initialize`'s writes, per class** — and the read-with-no-write
+  case answers `Nil`, not an error (`class-ivar-lazy-nil`). The old cert design keyed ivar
+  types by name *globally*, across every class at once; that simplification went away with
+  the claims that carried it, and should not come back.
 - **A class with no `initialize`** (`class-no-initialize`, `metaprog-class-reopening`)
   needs `.new` dispatch to default to a zero-arg constructor returning the instance,
   not to fail for lack of an `initialize` claim — mirroring real Ruby's inherited
@@ -478,7 +537,7 @@ assumes that version didn't have, plus everything tiers 7–9 need beyond it:
   `metaprog-prepend`'s whole point).
 - **A `method_missing` fallback route**: dispatch should try every declared method
   first, then — only if none match — a class's own `method_missing` if it declares
-  one (`metaprog-method-missing-fixed-arity`). See §Cert language gaps for why the
+  one (`metaprog-method-missing-fixed-arity`). See §Ty language gaps for why the
   idiomatic splat-arity version doesn't validate yet regardless.
 
 ## Frontier
@@ -501,29 +560,31 @@ The full climb, in roughly the order that costs least to unlock the most:
 2. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
-   *and* the `Ty` extension in §Cert language gaps together before it can validate.
+   *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
 3. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
-   actually do) to make good on a claim about a block's body. **Tier 9 is now the
+   actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
 4. **Classes and modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
-   keyed by owner name, built from every `def'`/`defs` claim nested in every
-   `class'`/`module'` node (accumulating across reopenings for free); `.const name`
-   typed `Ty.clsOf name`; `.new` dispatch (default constructor or the claimed
-   `initialize`); instance/singleton `vcall`/`send` dispatch through `self`'s type
-   (§Design notes); a parent-chain *and* mixin-aware ancestor walk for inheritance,
-   `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7–9 (32 rungs total) are
-   real Ruby, claimed and waiting, ready to certify the moment this lands — none of it
-   needs a new `Ty` constructor except the one item below.
-5. **Extend `Ty` with a rest/vararg arrow constructor** (§Cert language gaps) — the one
+   keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
+   node (accumulating across reopenings for free), each method's signature *inferred*
+   from its body; `.const name` typed `Ty.clsOf name`; `.new` dispatch (default
+   constructor or the class's `initialize`); instance/singleton `vcall`/`send` dispatch
+   through `self`'s type (§Design notes); a parent-chain *and* mixin-aware ancestor walk
+   for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
+   10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
+   constructor except the one item below.
+5. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
 6. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `Check13.lean`) and it grows a row at a time as `chk`
-   does; what is still open is (a) the real theorem — `validate c p = true → ∀ r,
+   does; the *corpus-wide* half is now covered from the other side by
+   `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is
+   still open is (a) the real theorem — `validate p = true → ∀ r,
    Reachable p r → ¬ typeStuck r`, which needs the semantics *in the statement*, not just
    in a test harness, and would be the point at which `Judge`'s constructors stop being
    assertions and start being lemmas — and (b) whether a recorded `expect_stuck` field

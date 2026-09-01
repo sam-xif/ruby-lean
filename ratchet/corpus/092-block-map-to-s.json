@@ -1,7 +1,7 @@
 {
   "id": "block-map-to-s",
   "tier": 9,
-  "description": "`[1,2,3].map { |n| n.to_s }`: unlike each, Array#map's result type is arrayOf(the block's *return* type) -- so the whole send is arrayOf(an instance of String) even though the receiver is arrayOf Int. The block claim is what supplies that return type.",
+  "description": "`[1,2,3].map { |n| n.to_s }`: unlike each, Array#map's result type is arrayOf(the block's *return* type) -- so the whole send is arrayOf(an instance of String) even though the receiver is arrayOf Int, and the iterator rule has to read the block's return type back out of the block.",
   "program": {
     "v": 5,
     "ast": [
@@ -47,47 +47,6 @@
           null
         ]
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "n"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "n"
-            ],
-            "to_s",
-            [],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "cls",
-              "name": "String"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

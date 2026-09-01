@@ -62,51 +62,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "*",
-            [
-              [
-                "int",
-                2
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

@@ -60,61 +60,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "value",
-          [],
-          [
-            "int",
-            21
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      },
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "describe",
-          [],
-          [
-            "send",
-            [
-              "vcall",
-              "value"
-            ],
-            "*",
-            [
-              [
-                "int",
-                2
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

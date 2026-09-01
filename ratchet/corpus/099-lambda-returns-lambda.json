@@ -1,7 +1,7 @@
 {
   "id": "lambda-returns-lambda",
   "tier": 9,
-  "description": "Curried addition: `add = ->(x) { ->(y) { x + y } }`, eliminated by `add.call(1).call(2)`. The outer block's claim is a *higher-order* arrow -- arrow_of([Int], arrow_of([Int], Int)) -- which the Ty spine can already state, since `arrow0`'s return is an arbitrary Ty. The inner block also captures the outer's `x` (closure capture again, one level in).",
+  "description": "Curried addition: `add = ->(x) { ->(y) { x + y } }`, eliminated by `add.call(1).call(2)`. The outer block's type is a *higher-order* arrow -- arrow_of([Int], arrow_of([Int], Int)) -- which the Ty spine can already state, since `arrow0`'s return is an arbitrary Ty. The inner block also captures the outer's `x` (closure capture again, one level in).",
   "program": {
     "v": 5,
     "ast": [
@@ -89,120 +89,6 @@
         ],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            null,
-            "lambda",
-            [],
-            [
-              "block",
-              [
-                [
-                  "preq",
-                  "y"
-                ]
-              ],
-              [],
-              [],
-              [
-                "send",
-                [
-                  "var",
-                  "local",
-                  "x"
-                ],
-                "+",
-                [
-                  [
-                    "var",
-                    "local",
-                    "y"
-                  ]
-                ],
-                null
-              ]
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "arrowCons",
-              "param": {
-                "tag": "int"
-              },
-              "rest": {
-                "tag": "arrow0",
-                "ret": {
-                  "tag": "int"
-                }
-              }
-            }
-          }
-        }
-      },
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "y"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "y"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

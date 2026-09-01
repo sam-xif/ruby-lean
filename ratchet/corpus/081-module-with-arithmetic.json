@@ -65,64 +65,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "add",
-          [
-            [
-              "preq",
-              "a"
-            ],
-            [
-              "preq",
-              "b"
-            ]
-          ],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "a"
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "b"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrowCons",
-            "param": {
-              "tag": "int"
-            },
-            "rest": {
-              "tag": "arrow0",
-              "ret": {
-                "tag": "int"
-              }
-            }
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

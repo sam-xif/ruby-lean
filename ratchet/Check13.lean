@@ -12,9 +12,7 @@ hand-authored judgment can be confidently wrong:
 1. **The syntax could be a fiction.** A derivation about `send (int 1) "+" [int 2] nil`
    says nothing about the rung if the desugarer actually emits something else for
    `1 + 2`. So: decode each rung's committed `corpus/*.json` with the real
-   `Ratchet.Decode.program` and compare it to the hand-written `Expr` with `==`. Also
-   check the rung's `cert` really is empty, since `Rungs13.lean`'s claim-freedom argument
-   is stated about `emptyCert`.
+   `Ratchet.Decode.program` and compare it to the hand-written `Expr` with `==`.
 2. **The types could be a fiction.** `Judge` says `1 + 2 : Int` and `"a" + "b" :
    String`; that is an assertion about what the semantics *does*. So: decode the same
    JSON a second time with the real `RubyCore.Decode.program`, run it under the real
@@ -53,14 +51,13 @@ def fuel : Nat := 20000
 structure Row where
   id : String
   syntaxOk : Bool
-  certEmpty : Bool
   claimedTy : Ty
   outcome : String
   actualClass : Option String
   typeStuck : Bool
   semOk : Bool
 
-def rowOk (r : Row) : Bool := r.syntaxOk && r.certEmpty && r.semOk && !r.typeStuck
+def rowOk (r : Row) : Bool := r.syntaxOk && r.semOk && !r.typeStuck
 
 def loadJson (p : System.FilePath) : IO Json := do
   match Json.parse (← IO.FS.readFile p) with
@@ -84,7 +81,6 @@ def checkRung (corpusDir : System.FilePath) (files : List System.FilePath)
     | .error e => throw (IO.userError s!"{r.id}: {e}")
     | .ok e => pure e
   let syntaxOk := entry.program == r.program
-  let certEmpty := entry.cert.claims.isEmpty
 
   -- (2) semantics: decode the same JSON into the real `RubyCore.Expr` and run it.
   let rp ← match RubyCore.Decode.program (← match j.getObjVal? "program" with
@@ -98,7 +94,7 @@ def checkRung (corpusDir : System.FilePath) (files : List System.FilePath)
   let semOk := match actualClass with
     | some cn => (expectedClasses r.ty).contains cn
     | none => false
-  return { id := r.id, syntaxOk, certEmpty, claimedTy := r.ty
+  return { id := r.id, syntaxOk, claimedTy := r.ty
            outcome := Ratchet.Semantics.outcomeLabel res
            actualClass, typeStuck := stuck, semOk }
 
@@ -158,12 +154,12 @@ def main (args : List String) : IO UInt32 := do
   for r in rows do
     let cls := r.actualClass.getD "-"
     let mark := if rowOk r then "ok  " else "FAIL"
-    IO.println s!"{mark} {r.id}: claimed {repr r.claimedTy}, ran to {r.outcome} of class {cls}, type_stuck={r.typeStuck}, syntax_matches_corpus={r.syntaxOk}, cert_empty={r.certEmpty}"
+    IO.println s!"{mark} {r.id}: claimed {repr r.claimedTy}, ran to {r.outcome} of class {cls}, type_stuck={r.typeStuck}, syntax_matches_corpus={r.syntaxOk}"
 
   IO.println "\n--- negative controls: neighbours `PrimSig` must not certify ---"
   let mut controlFails : List String := []
   for c in controls do
-    let certified := validate emptyCert c.program
+    let certified := validate c.program
     let some rp := toRubyCore c.program
       | throw (IO.userError s!"control '{c.label}': not translatable to RubyCore.Expr")
     let res := Ratchet.Semantics.run fuel rp
@@ -176,7 +172,7 @@ def main (args : List String) : IO UInt32 := do
     if certified then controlFails := c.label :: controlFails
 
   let bad := rows.filter (fun r => !rowOk r)
-  IO.println s!"\n{rows.length - bad.length}/{rows.length} rungs confirmed: the hand derivation's type agrees with the class the real semantics produced, on the real desugarer's syntax, with no certificate claim trusted anywhere."
+  IO.println s!"\n{rows.length - bad.length}/{rows.length} rungs confirmed: the hand derivation's type agrees with the class the real semantics produced, on the real desugarer's syntax, with nothing trusted anywhere."
   IO.println s!"{controls.length - controlFails.length}/{controls.length} negative controls rejected as required."
   if bad.isEmpty && controlFails.isEmpty then
     IO.println "CHECK13 OK"

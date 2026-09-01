@@ -1,0 +1,20 @@
+{
+  "id": "str-length",
+  "tier": 2,
+  "description": "\"abc\".length is another unmodeled-but-total builtin, on a different receiver type: String -> Int. Same climb as unmodeled-builtin-zero-p, and worth having both, since a PrimSig row is receiver-directed and the two exercise different rows.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "send",
+      [
+        "str",
+        "abc"
+      ],
+      "length",
+      [],
+      null
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

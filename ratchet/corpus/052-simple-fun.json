@@ -1,7 +1,7 @@
 {
   "id": "simple-fun",
   "tier": 6,
-  "description": "def add(x, y) = x + y; add(1, 2) : Int -- add's signature is a claim on its own `def` node (an arrow spine), the only mechanism this package has for a declared function type; there is no separate FunCert format.",
+  "description": "def add(x, y) = x + y; add(1, 2) : Int. The signature (Int, Int) -> Int is not written anywhere in the program: it has to come from the body (x + y is only typeable when both are Int, given PrimSig) and be checked against the call site's arguments.",
   "program": {
     "v": 5,
     "ast": [
@@ -53,61 +53,6 @@
         ],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "add",
-          [
-            [
-              "preq",
-              "x"
-            ],
-            [
-              "preq",
-              "y"
-            ]
-          ],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "y"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrowCons",
-            "param": {
-              "tag": "int"
-            },
-            "rest": {
-              "tag": "arrow0",
-              "ret": {
-                "tag": "int"
-              }
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

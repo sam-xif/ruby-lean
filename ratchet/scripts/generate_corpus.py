@@ -3,27 +3,25 @@
 run through the real desugarer (`harness/desugar-dt/bin/export-json`) -- not a
 hand-authored AST. See `../AGENTS.md`.
 
-Each rung is (id, tier, description, rb source, claims, expect_validate, false_reason).
-`claims` are built by `claim(program, predicate, ty)` (or `claim_at(program, expr,
-ty)`), which run the real desugarer on `rb` once and extract the claimed subterm out of
-that *exact* parsed AST via `find_node` -- so a claim's `expr` field can never
-accidentally drift from what the program actually contains (no hand-transcribed
-wire-format JSON anywhere in this file).
+Each rung is (id, tier, description, rb source, expect_validate, false_reason).
+A rung carries **no certificate**: there is nothing for the checker to trust, so
+`validate` either synthesizes the program's type itself or answers `false`. (Rungs used
+to carry `claims` -- (subterm, Ty) pairs the checker was allowed to believe. That was a
+soundness hole with a nice interface: a rung "climbed" by a claim was a rung nobody had
+checked. Removed 2026-08-31; see `../AGENTS.md` §Claim-free.)
 
 **Every rung's target is `expect_validate = True` unless `false_reason` is given.**
 `false_reason` is one of:
-  - "unsafe_program"    -- the program really does raise NoMethodError/ArgumentError/
-                           TypeError when run. No cert should ever certify it.
-  - "dishonest_cert"    -- the program is safe, but this specific cert's own claims are
-                           mutually inconsistent (e.g. a claimed return type that
-                           doesn't match what the body actually computes).
-  - "cert_language_gap" -- the program is safe, but the current `Ty` grammar has no
-                           constructor that can *state* a sufficient claim at all (see
-                           `Ratchet/Ty.lean`). Flagged, not silently left `False`.
+  - "unsafe_program"   -- the program really does raise NoMethodError/ArgumentError/
+                          TypeError when run. A checker that certified it is unsound.
+  - "ty_language_gap"  -- the program is safe, but the current `Ty` grammar has no value
+                          that describes the type in question at all (see
+                          `Ratchet/Ty.lean`). Flagged, not silently left `False`.
 `R()` asserts this pairing is never violated.
 
 Regenerate with: `python3 scripts/generate_corpus.py` from `ratchet/`.
-Then check the ladder with `scripts/run_ratchet.sh`.
+Then check the ladder with `scripts/run_ratchet.sh` (which also difftests every rung
+against CRuby through the Lean semantics before reporting).
 """
 import json
 import os
@@ -48,100 +46,15 @@ def export(rb_source: str) -> dict:
     return json.loads(proc.stdout)
 
 
-def find_node(node, pred):
-    """Depth-first search of a parsed wire-format AST (nested lists) for a node
-    satisfying `pred`. Returns the first match, or None."""
-    if pred(node):
-        return node
-    if isinstance(node, list):
-        for child in node:
-            found = find_node(child, pred)
-            if found is not None:
-                return found
-    return None
-
-
-def is_head(node, head, **fields):
-    """Does `node` look like `[head, ...]`, optionally matching specific positional
-    fields by index (e.g. `is_head(n, "def", **{"1": "add"})` checks n[1] == "add")?"""
-    if not (isinstance(node, list) and len(node) >= 1 and node[0] == head):
-        return False
-    return all(node[int(i)] == v for i, v in fields.items())
-
-
-def claim(program: dict, pred, ty: dict) -> dict:
-    node = find_node(program["ast"], pred)
-    assert node is not None, f"claim(): no node matched in {program['ast']!r}"
-    return {"expr": node, "ty": ty}
-
-
-def claim_within(program: dict, outer_pred, inner_pred, ty: dict) -> dict:
-    """Like `claim`, but the subterm must be found *inside* the first node matching
-    `outer_pred` -- for disambiguating two structurally-similar nodes (e.g. two
-    same-named methods on different classes), by scoping the search to one of them
-    first."""
-    outer = find_node(program["ast"], outer_pred)
-    assert outer is not None, f"claim_within(): outer predicate matched nothing"
-    inner = find_node(outer, inner_pred)
-    assert inner is not None, f"claim_within(): inner predicate matched nothing inside outer"
-    return {"expr": inner, "ty": ty}
-
-
-# ---------------------------------------------------------------------------
-# Ty JSON (must match Ratchet/Ty.lean's `Ty.ofJson?` tags exactly)
-# ---------------------------------------------------------------------------
-
-T_INT = {"tag": "int"}
-T_BOOL = {"tag": "bool"}
-T_NIL = {"tag": "nilT"}
-T_SYM = {"tag": "sym"}
-T_FLOAT = {"tag": "float"}
-T_ANY = {"tag": "any"}
-
-
-def T_CLS(name):
-    return {"tag": "cls", "name": name}
-
-
-def T_ARRAYOF(elem):
-    return {"tag": "arrayOf", "elem": elem}
-
-
-def T_ARROW0(ret):
-    return {"tag": "arrow0", "ret": ret}
-
-
-def T_ARROWCONS(param, rest):
-    return {"tag": "arrowCons", "param": param, "rest": rest}
-
-
-def T_CLSOF(name):
-    return {"tag": "clsOf", "name": name}
-
-
-def T_UNION(l, r):
-    return {"tag": "union", "l": l, "r": r}
-
-
-def arrow_of(params, ret):
-    t = T_ARROW0(ret)
-    for p in reversed(params):
-        t = T_ARROWCONS(p, t)
-    return t
-
-
-T_STR = T_CLS("String")
-
-
 # ---------------------------------------------------------------------------
 # The rungs
 # ---------------------------------------------------------------------------
 
 RUNGS = []
-FALSE_REASONS = {"unsafe_program", "dishonest_cert", "cert_language_gap"}
+FALSE_REASONS = {"unsafe_program", "ty_language_gap"}
 
 
-def R(id_, tier, description, rb, claims=None, *, expect_validate, false_reason=None):
+def R(id_, tier, description, rb, *, expect_validate, false_reason=None):
     if expect_validate:
         assert false_reason is None, f"{id_}: false_reason set but expect_validate=True"
     else:
@@ -153,14 +66,13 @@ def R(id_, tier, description, rb, claims=None, *, expect_validate, false_reason=
         "tier": tier,
         "description": description,
         "program": program,
-        "cert": {"claims": claims(program) if claims else []},
         "expect_validate": expect_validate,
         "false_reason": false_reason,
         "_rb": rb,
     })
 
 
-# --- Tier 1: literals (chk synthesizes all of these; no claims needed) ------
+# --- Tier 1: literals (chk synthesizes all of these today) ------------------
 
 R("int-lit", 1, "1 : Int.", "1\n", expect_validate=True)
 R("bool-true", 1, "true : Bool.", "true\n", expect_validate=True)
@@ -200,36 +112,35 @@ R("to-s-call", 2, "5.to_s, an instance of String, via the universal Object#to_s 
 R("eq-same-type", 2, "1 == 1 : Bool (both sides Int).", "1 == 1\n", expect_validate=True)
 R("eq-different-type", 2,
   '1 == "a" is completely safe real Ruby -- `==` never raises, it just answers '
-  "false for unrelated types. A hardcoded `==` rule that requires both sides the "
-  "same Ty would be *conservative*, not necessary; the claims escape hatch on this "
-  "exact send node is enough to certify it without changing that rule at all.",
+  "false for unrelated types. So the `==` rule chk needs is Object#== : (any) -> "
+  "Bool, on *any* two receivers; a rule requiring both sides the same Ty would be "
+  "conservative (it would reject this safe program) rather than sound-and-tight.",
   '1 == "a"\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "=="}), T_BOOL)],
   expect_validate=True)
-R("unknown-method-with-claim", 2,
-  "5.zero? is not in the hardcoded builtin table (unlike to_s), but an explicit "
-  "claim on this exact send node supplies its type -- the escape hatch a "
-  "certificate exists for.",
+R("unmodeled-builtin-zero-p", 2,
+  "5.zero? is a real, total Integer method that is not in the hardcoded builtin "
+  "table (unlike to_s): safe to run, and Int -> Bool every time. Climbing it means "
+  "adding that row to PrimSig, justified against the semantics the way the five "
+  "existing rows were -- there is no shortcut, and that is the point.",
   "5.zero?\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "zero?"}), T_BOOL)],
   expect_validate=True)
-R("unknown-method-no-claim", 2,
+R("unknown-method", 2,
   "5.foo_bar_baz is a made-up method name -- Integer has no such method, so this "
-  "really does raise NoMethodError when run, with or without a claim (a claim "
-  "cannot make a nonexistent method exist). Permanent negative target, distinct "
-  "from unknown-method-with-claim's 5.zero?, which is a real method.",
+  "really does raise NoMethodError when run. Permanent negative target, and the "
+  "pair to unmodeled-builtin-zero-p: same shape, one real method and one not, so "
+  "a checker cannot pass both by being generous about unknown selectors.",
   "5.foo_bar_baz\n", expect_validate=False, false_reason="unsafe_program")
 R("cmp-le", 2, "1 <= 2 : Bool.", "1 <= 2\n", expect_validate=True)
 R("cmp-ge", 2, "1 >= 2 : Bool.", "1 >= 2\n", expect_validate=True)
 R("nil-eq-nil", 2, "nil == nil : Bool (both sides Nil).", "nil == nil\n", expect_validate=True)
 R("nested-arith", 2, "(1 + 2) * 3 : Int -- the outer send's receiver is itself a send.",
   "(1 + 2) * 3\n", expect_validate=True)
-R("str-length-with-claim", 2,
-  '"abc".length is not in the hardcoded builtin table; an explicit claim on this '
-  "exact send node supplies its type (Int), the same escape hatch as "
-  "unknown-method-with-claim but on a different receiver type.",
+R("str-length", 2,
+  '"abc".length is another unmodeled-but-total builtin, on a different receiver '
+  "type: String -> Int. Same climb as unmodeled-builtin-zero-p, and worth having "
+  "both, since a PrimSig row is receiver-directed and the two exercise different "
+  "rows.",
   '"abc".length\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "length"}), T_INT)],
   expect_validate=True)
 
 # --- Tier 3: var / vasgn / seq ----------------------------------------------
@@ -254,7 +165,6 @@ R("bare-undeclared-var", 3,
   "safety here is not the same as crash-freedom. Claimed `Ty.any` on the vcall "
   "node, since it never actually produces a value for anything to depend on.",
   "x\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "vcall", **{"1": "x"}), T_ANY)],
   expect_validate=True)
 R("seq-multiple-stmts", 3, "x = 1; y = 2; x + y : Int.",
   "x = 1\ny = 2\nx + y\n", expect_validate=True)
@@ -279,27 +189,20 @@ R("if-condition-not-bool", 4,
 R("if-branch-mismatch", 4,
   'if true then 1 else "a" end: Ty.joinTy has no *structural* case for (Int, an '
   "instance of String), but this is exactly the situation Ty.union exists for -- "
-  "an explicit claim of union(Int, an instance of String) on the if' node is "
-  "already expressible in the current grammar (see Ty.union's own docstring, "
-  '"inert on the checker path" -- meant to be *claimed*, not inferred). No '
-  "language gap; a rebuilt `if'` just needs a claim-fallback the same way "
-  "`send`/`vcall` already have one.",
+  "union(Int, an instance of String) is already expressible in the current "
+  "grammar (see Ty.union's own docstring: currently inert on the checker path). "
+  "No language gap -- what is missing is a joinTy that produces a union instead of "
+  "answering none, so the if' rule can infer this type rather than reject it.",
   'if true\n  1\nelse\n  "a"\nend\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "if"), T_UNION(T_INT, T_STR))],
   expect_validate=True)
 R("elsif-chain-mismatch", 4,
-  "if/elsif/else desugars to nested if' nodes; when the final else's type "
-  "disagrees with the earlier branches, *both* the inner and outer if' nodes need "
-  "their own union claim (joinTy doesn't propagate through an already-claimed "
-  "union), but both claims are the same Ty.union(Int, an instance of String) -- "
-  "still no language gap, just two claim sites instead of one.",
+  "if/elsif/else desugars to nested if' nodes, so a union-producing joinTy has to "
+  "compose with itself: the inner if' joins Int with an instance of String, and "
+  "the outer joins Int with *that*. Getting union(Int, String) rather than "
+  "union(Int, union(Int, String)) needs joinTy to absorb a repeat member -- the "
+  "first place the ladder asks for a normal form on unions, and still no language "
+  "gap.",
   'if true\n  1\nelsif false\n  2\nelse\n  "a"\nend\n',
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "if") and n[3] != None and isinstance(n[3], list)
-            and n[3][0] == "str", T_UNION(T_INT, T_STR)),
-      claim(p, lambda n: is_head(n, "if") and isinstance(n[3], list) and n[3]
-            and n[3][0] == "if", T_UNION(T_INT, T_STR)),
-  ],
   expect_validate=True)
 R("if-nil-condition", 4,
   "if nil then 1 else 2 end: nil is falsy (always takes the else branch), and -- "
@@ -334,11 +237,10 @@ R("array-empty", 5, "[] : an Array of Ty.any (nothing to unify an element type f
 R("array-heterogeneous", 5,
   '[1, "a", true] is runtime-safe real Ruby (Ruby arrays are heterogeneous). '
   "Ty.arrayOf requires one element type structurally, but Ty.any already exists "
-  "for exactly this -- a claim of arrayOf(Ty.any) on the array node is expressible "
-  "today. No language gap; a rebuilt `array` rule should accept an element type "
-  "via subTy (which admits `any`), not raw equality, or fall back to a claim.",
+  "for exactly this: arrayOf(Ty.any) is expressible today. No language gap -- the "
+  "array rule needs to join its element types (falling back to `any`) rather than "
+  "requiring them equal.",
   '[1, "a", true]\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "array"), T_ARRAYOF(T_ANY))],
   expect_validate=True)
 R("array-of-sends", 5, "[1 + 1, 2 + 2] : an Array of Int -- elements are checked recursively.",
   "[1 + 1, 2 + 2]\n", expect_validate=True)
@@ -347,66 +249,68 @@ R("hash-lit", 5,
   "language has no parameterised Hash type the way it has arrayOf for Array "
   "(see Ty.lean's module docstring); every hash literal gets the same generic "
   "class type regardless of its key/value shapes. This does not block "
-  "*validating* the literal itself (no claim needed), only precise reasoning "
-  "about what a later index on it returns (see hash-index-with-claim).",
+  "*validating* the literal itself, only precise reasoning about what a later "
+  "index on it returns (see hash-index).",
   '{"a" => 1, "b" => 2}\n', expect_validate=True)
 R("nested-array", 5, "[[1, 2], [3, 4]] : an Array of (an Array of Int).",
   "[[1, 2], [3, 4]]\n", expect_validate=True)
-R("array-index-with-claim", 5,
+R("array-index", 5,
   "Indexing is just `#[]`, a send -- the real Expr has no dedicated index "
-  "constructor. Not in the builtin table, but an explicit claim on this send "
-  "node supplies its type.",
+  "constructor. Typing it structurally means a receiver-directed rule reading the "
+  "element type back off arrayOf Int (and, to be honest about out-of-range "
+  "indices, returning nilable Int unless the index is a literal in range).",
   "[1, 2, 3][0]\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "[]"}), T_INT)],
   expect_validate=True)
-R("hash-index-with-claim", 5,
-  'Hash indexing is also just `#[]`. An explicit claim supplies its type -- the '
-  'only way to do this precisely at all, since Ty has no parameterised Hash type '
-  '(see hash-lit) to derive it from the receiver structurally.',
+R("hash-index", 5,
+  'Hash indexing is also just `#[]`, but there is nothing to read the value type '
+  'off: Ty has no parameterised Hash type (see hash-lit), so the receiver\'s '
+  '.cls "Hash" says nothing about what comes out. Typing this precisely needs a '
+  'hashOf-style constructor; the honest intermediate answer is Ty.any.',
   '{"a" => 1}["a"]\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "[]"}), T_INT)],
   expect_validate=True)
 
-# --- Tier 6: top-level functions, declared via a claim on the `def` node ----
+# --- Tier 6: top-level functions -------------------------------------------
+# A `def'` node declares nothing to the checker on its own: typing a call means
+# inferring the function's signature from its body and its params, then checking
+# the call site against it. With no claims to lean on, the params are the hard
+# part -- nothing in the syntax says `add`'s x and y are Ints, so either the body
+# constrains them (x + y needs Integer#+, which PrimSig has) or the rule needs a
+# real inference story. That is the tier's design question, and it is now asked
+# honestly rather than answered by a declaration nobody checked.
 
-_add_claim = lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "add"}),
-                               arrow_of([T_INT, T_INT], T_INT))]
 R("simple-fun", 6,
-  "def add(x, y) = x + y; add(1, 2) : Int -- add's signature is a claim on its "
-  "own `def` node (an arrow spine), the only mechanism this package has for a "
-  "declared function type; there is no separate FunCert format.",
-  "def add(x, y)\n  x + y\nend\nadd(1, 2)\n", claims=_add_claim, expect_validate=True)
+  "def add(x, y) = x + y; add(1, 2) : Int. The signature (Int, Int) -> Int is not "
+  "written anywhere in the program: it has to come from the body (x + y is only "
+  "typeable when both are Int, given PrimSig) and be checked against the call "
+  "site's arguments.",
+  "def add(x, y)\n  x + y\nend\nadd(1, 2)\n", expect_validate=True)
 R("fun-wrong-arity", 6,
-  "The same add/claim as simple-fun, but called with one argument instead of "
-  "two: this really does raise ArgumentError when run, regardless of any claim "
-  "(a claim cannot change how many arguments a call site actually passes). "
+  "The same add as simple-fun, called with one argument instead of two: this "
+  "really does raise ArgumentError when run. Arity is visible in the syntax on "
+  "both sides, so this is the cheapest soundness regression test in tier 6. "
   "Permanent negative target.",
-  "def add(x, y)\n  x + y\nend\nadd(1)\n", claims=_add_claim,
+  "def add(x, y)\n  x + y\nend\nadd(1)\n",
   expect_validate=False, false_reason="unsafe_program")
 R("fun-body-mismatch", 6,
   "def bad(x) = x + true; bad(1) -- the body really does raise NoMethodError "
-  "when called (Int has no matching + for Bool). Permanent negative target, "
-  "independent of what the claim on `def bad` says.",
+  "when called (Int has no matching + for Bool). The call site looks fine; the "
+  "error is inside a body that is only reached by dispatch, so a checker has to "
+  "look through the def to see it. Permanent negative target.",
   "def bad(x)\n  x + true\nend\nbad(1)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "bad"}),
-                           arrow_of([T_INT], T_INT))],
   expect_validate=False, false_reason="unsafe_program")
-R("fun-dishonest-return-claim", 6,
-  "def get5 = 5 really returns an Int and running get5() is completely safe -- "
-  "the *program* is fine. What must never validate is *this certificate*: it "
-  "claims get5's return type is an instance of String, which its own body "
-  "(claimed as arrow_of([], Int) would be, if honest) contradicts. A cert whose "
-  "own claims are mutually inconsistent must be rejected regardless of whether a "
-  "different, honest cert for the same program would validate -- otherwise the "
-  "certificate mechanism itself is meaningless. Permanent negative target for "
-  "this specific cert.",
+R("fun-zero-arg", 6,
+  "def get5 = 5; get5() : Int -- a zero-parameter function, so its signature is "
+  "fixed by its body alone with no parameter inference needed at all. (This rung "
+  "was `fun-dishonest-return-claim` while certificates existed: a safe program "
+  "carrying a cert that claimed String for a body returning Int, targeting false "
+  "so that a self-inconsistent certificate could never validate. With claims "
+  "gone there is no cert to be dishonest, and what is left is the simplest "
+  "function in the tier.)",
   "def get5\n  5\nend\nget5()\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "get5"}),
-                           arrow_of([], T_STR))],
-  expect_validate=False, false_reason="dishonest_cert")
+  expect_validate=True)
 R("fun-unknown-call", 6,
   "A call to undefined_fn, declared nowhere: this really does raise "
-  "NoMethodError when run, exactly like unknown-method-no-claim. Permanent "
+  "NoMethodError when run, exactly like tier 2's unknown-method. Permanent "
   "negative target.",
   "undefined_fn(1)\n", expect_validate=False, false_reason="unsafe_program")
 R("fun-calling-another-fun", 6,
@@ -414,46 +318,37 @@ R("fun-calling-another-fun", 6,
   "top-level defs are collected into the function-signature table *before* any "
   "body is checked, so twice's body can call inc regardless of source order.",
   "def inc(x)\n  x + 1\nend\ndef twice(x)\n  inc(inc(x))\nend\ntwice(3)\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "inc"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "twice"}), arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("fun-three-params", 6,
   "def sum3(a, b, c) = a + b + c; sum3(1, 2, 3) : Int -- three required params, "
   "each a separate nested send.",
   "def sum3(a, b, c)\n  a + b + c\nend\nsum3(1, 2, 3)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "sum3"}),
-                           arrow_of([T_INT, T_INT, T_INT], T_INT))],
   expect_validate=True)
 R("fun-returning-array", 6,
-  "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- a "
-  "function's claimed return type can be any Ty this checker can synthesize, "
-  "including arrayOf.",
+  "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- the return "
+  "type is inferred from the body and is a structured Ty (arrayOf), not a scalar; "
+  "the parameters are constrained only by the call site here, not by the body.",
   "def make_pair(x, y)\n  [x, y]\nend\nmake_pair(1, 2)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "make_pair"}),
-                           arrow_of([T_INT, T_INT], T_ARRAYOF(T_INT)))],
   expect_validate=True)
 R("fun-recursive-factorial", 6,
   "def fact(n) = if n <= 1 then 1 else n * fact(n - 1); fact(4) : Int -- fact "
-  "calls itself by name, resolved through the same function-signature table "
-  "its own claim populated (self-reference works because buildFunSigs collects "
-  "every top-level def's claim before any body is checked).",
+  "calls itself by name, so its signature is needed to check the very body it is "
+  "inferred from. Whatever replaces the old declaration table has to break that "
+  "cycle (assume-then-verify, or a fixpoint), which is the real content of this "
+  "rung.",
   "def fact(n)\n  if n <= 1\n    1\n  else\n    n * fact(n - 1)\n  end\nend\nfact(4)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "fact"}),
-                           arrow_of([T_INT], T_INT))],
   expect_validate=True)
 
 # --- Tier 7: classes ----------------------------------------------------------
-# All safe, real Ruby -- expect_validate=True throughout. Claims follow one
-# consistent pattern: every def'/defs node inside a class' body gets an arrow-spine
-# claim (exactly like a top-level function's), and every ivar *read* (`.var .ivar
-# name`) gets its own claim, keyed by name -- a documented simplification (an ivar's
-# claimed type is global by name, not scoped per class; see AGENTS.md). None of
-# this needs any Ty constructor beyond what's already there (`cls`/`clsOf` cover
-# instances vs. class objects fine) -- what's missing is entirely on the `chk`
-# implementation side (a declaration table, ancestor-chain dispatch, `.const` typed
-# as `Ty.clsOf`), not the cert language. See AGENTS.md §Frontier.
+# All safe, real Ruby -- expect_validate=True throughout. Every rung here needs the
+# same three things from `chk`, none of them new Ty vocabulary (`cls`/`clsOf` cover
+# instances vs. class objects fine): a declaration table over class bodies,
+# ancestor-chain dispatch for sends against an instance type, and ivar types
+# inferred from the writes in `initialize` and read back in other methods. What the
+# tier used to do instead was carry an arrow-spine claim on every def'/defs node and
+# a by-name claim on every ivar read -- i.e. hand the checker its answers, including
+# the deliberately unsound simplification that an ivar's type is global by name
+# rather than per class. See AGENTS.md §Frontier.
 
 R("class-basic", 7,
   "class Point; def initialize(x, y); @x = x; @y = y; end; def getX; @x; end; "
@@ -461,11 +356,6 @@ R("class-basic", 7,
   "ivar read in another method.",
   "class Point\n  def initialize(x, y)\n    @x = x\n    @y = y\n  end\n\n"
   "  def getX\n    @x\n  end\nend\n\nPoint.new(1, 2).getX\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT, T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getX"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@x"}), T_INT),
-  ],
   expect_validate=True)
 R("class-method-with-param", 7,
   "class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; "
@@ -473,11 +363,6 @@ R("class-method-with-param", 7,
   "method call taking its own argument.",
   "class Counter\n  def initialize(n)\n    @n = n\n  end\n\n"
   "  def add(k)\n    @n + k\n  end\nend\n\nc = Counter.new(10)\nc.add(5)\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "add"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@n"}), T_INT),
-  ],
   expect_validate=True)
 R("class-two-getters", 7,
   "A class exposing two separate ivars through two separate getter methods, "
@@ -485,13 +370,6 @@ R("class-two-getters", 7,
   "class Point\n  def initialize(x, y)\n    @x = x\n    @y = y\n  end\n\n"
   "  def getX\n    @x\n  end\n\n  def getY\n    @y\n  end\nend\n\n"
   "p = Point.new(3, 4)\np.getX + p.getY\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT, T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getX"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getY"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@x"}), T_INT),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@y"}), T_INT),
-  ],
   expect_validate=True)
 R("class-method-calls-method", 7,
   "A method (describe) calling another method (area) on the same object via "
@@ -500,13 +378,6 @@ R("class-method-calls-method", 7,
   "class Rect\n  def initialize(w, h)\n    @w = w\n    @h = h\n  end\n\n"
   "  def area\n    @w * @h\n  end\n\n  def describe\n    \"area=\" + area.to_s\n  end\n"
   "end\n\nRect.new(3, 4).describe\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT, T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "area"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "describe"}), arrow_of([], T_STR)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@w"}), T_INT),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@h"}), T_INT),
-  ],
   expect_validate=True)
 R("class-inheritance-field", 7,
   "class Animal; def initialize(name); @name = name; end; def speak; @name; "
@@ -516,11 +387,6 @@ R("class-inheritance-field", 7,
   "class Animal\n  def initialize(name)\n    @name = name\n  end\n\n"
   "  def speak\n    @name\n  end\nend\n\nclass Dog < Animal\nend\n\n"
   'Dog.new("Rex").speak\n',
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_STR], T_STR)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@name"}), T_STR),
-  ],
   expect_validate=True)
 R("class-inheritance-override", 7,
   "Dog overrides the speak method Animal also defines -- the two `def speak` "
@@ -529,73 +395,47 @@ R("class-inheritance-override", 7,
   'class Animal\n  def speak\n    "..."\n  end\nend\n\n'
   'class Dog < Animal\n  def speak\n    "Woof"\n  end\nend\n\n'
   "Dog.new.speak\n",
-  claims=lambda p: [
-      claim_within(p, lambda n: is_head(n, "class", **{"1": "Animal"}),
-                   lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
-      claim_within(p, lambda n: is_head(n, "class", **{"1": "Dog"}),
-                   lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
-  ],
   expect_validate=True)
 R("class-super-call", 7,
   "Triangle's initialize calls super(3) to delegate to Shape's initialize -- "
-  "the `super'` head, typed here on the assumption that a rebuilt `super'` rule "
-  "resolves to whatever the parent's matching method returns (Int, matching "
-  "Shape#initialize's own claim) rather than needing a separate claim of its own.",
+  "the `super'` head, which a rebuilt rule types as whatever the parent's matching "
+  "method returns -- so the ancestor walk has to run at typing time, not just at "
+  "dispatch time.",
   "class Shape\n  def initialize(sides)\n    @sides = sides\n  end\n\n"
   "  def sides\n    @sides\n  end\nend\n\n"
   "class Triangle < Shape\n  def initialize\n    super(3)\n  end\nend\n\n"
   "Triangle.new.sides\n",
-  claims=lambda p: [
-      claim_within(p, lambda n: is_head(n, "class", **{"1": "Shape"}),
-                   lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "sides"}), arrow_of([], T_INT)),
-      claim_within(p, lambda n: is_head(n, "class", **{"1": "Triangle"}),
-                   lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@sides"}), T_INT),
-  ],
   expect_validate=True)
 R("class-multiple-instances", 7,
   "Two independent Point instances, their getX results combined.",
   "class Point\n  def initialize(x)\n    @x = x\n  end\n\n  def getX\n    @x\n  end\nend\n\n"
   "a = Point.new(1)\nb = Point.new(2)\na.getX + b.getX\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getX"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@x"}), T_INT),
-  ],
   expect_validate=True)
 R("class-no-initialize", 7,
   "A class with no initialize at all -- real Ruby's default #new takes no "
   "arguments and returns the new instance; a rebuilt `.new` dispatch rule needs "
-  "this as a fallback default when no `initialize` claim/declaration exists for "
-  "the class, not an error.",
+  "this as a fallback default when the class declares no `initialize`, not an "
+  "error.",
   'class Greeter\n  def hi\n    "hi"\n  end\nend\n\nGreeter.new.hi\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "hi"}), arrow_of([], T_STR))],
   expect_validate=True)
 R("class-ivar-lazy-nil", 7,
   "reveal reads @secret, which no method ever assigns -- real Ruby answers nil "
-  "for an unset ivar rather than raising. Claimed Nil by name, same mechanism "
-  "as every other ivar claim, no special case needed.",
+  "for an unset ivar rather than raising. So ivar inference cannot simply collect "
+  "the writes: a read with no matching write is Nil, not an error.",
   "class Box\n  def reveal\n    @secret\n  end\nend\n\nBox.new.reveal\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "reveal"}), arrow_of([], T_NIL)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@secret"}), T_NIL),
-  ],
   expect_validate=True)
 R("class-array-of-instances", 7,
   "An array literal containing two constructed instances -- element type "
-  "arrayOf(an instance of Point), synthesized structurally once `.new` "
-  "dispatch exists (no claim needed on the array itself).",
+  "arrayOf(an instance of Point), which follows structurally once `.new` dispatch "
+  "types a construction.",
   "class Point\n  def initialize(x)\n    @x = x\n  end\nend\n\n"
   "[Point.new(1), Point.new(2)]\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("class-instance-in-hash", 7,
   "A hash literal whose value is a constructed instance -- typed as the bare "
   '.cls "Hash" regardless, same as any other hash literal.',
   'class Point\n  def initialize(x)\n    @x = x\n  end\nend\n\n'
   '{"origin" => Point.new(0)}\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("class-factory-method", 7,
   "Point.origin is a singleton (self.) method on the class itself that "
@@ -605,21 +445,12 @@ R("class-factory-method", 7,
   "resolving to Point's own initialize.",
   "class Point\n  def initialize(x, y)\n    @x = x\n    @y = y\n  end\n\n"
   "  def self.origin\n    new(0, 0)\n  end\nend\n\nPoint.origin\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT, T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "defs", **{"2": "origin"}), arrow_of([], T_CLS("Point"))),
-  ],
   expect_validate=True)
 R("class-setter-method", 7,
   "grow reassigns @size to a new value derived from the old one -- an ivar "
   "vasgn whose right-hand side reads the same ivar.",
   "class Box\n  def initialize(size)\n    @size = size\n  end\n\n"
   "  def grow\n    @size = @size + 1\n  end\nend\n\nBox.new(1).grow\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "grow"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@size"}), T_INT),
-  ],
   expect_validate=True)
 R("class-instance-as-fun-arg", 7,
   "A top-level function taking an instance as a parameter (typed Ty.cls "
@@ -628,52 +459,35 @@ R("class-instance-as-fun-arg", 7,
   "dispatch with a class instance.",
   "class Point\n  def initialize(x)\n    @x = x\n  end\n\n  def getX\n    @x\n  end\nend\n\n"
   "def describe(p)\n  p.getX\nend\n\ndescribe(Point.new(5))\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getX"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "describe"}), arrow_of([T_CLS("Point")], T_INT)),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@x"}), T_INT),
-  ],
   expect_validate=True)
 R("class-self-returning-method", 7,
   "myself returns bare `self`; the result is then chained into another method "
   "call -- typed as whatever self is bound to for an instance method "
-  '(Ty.cls "Point"), no claim needed on the `self\'` node itself.',
+  '(Ty.cls "Point"), so the `self\'` node needs the enclosing method\'s receiver '
+  'type in scope.',
   "class Point\n  def initialize(x)\n    @x = x\n  end\n\n  def getX\n    @x\n  end\n\n"
   "  def myself\n    self\n  end\nend\n\nPoint.new(7).myself.getX\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "initialize"}), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "getX"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "myself"}), arrow_of([], T_CLS("Point"))),
-      claim(p, lambda n: is_head(n, "var", **{"1": "ivar", "2": "@x"}), T_INT),
-  ],
   expect_validate=True)
 
 # --- Tier 8: modules -----------------------------------------------------------
-# Same treatment as tier 7: every claim uses Ty constructors that already exist.
+# Same treatment as tier 7, and no new Ty vocabulary either.
 # `self.`-methods are `defs (self') name params body`, dispatched (once chk exists)
 # as `Owner.method(...)` with self bound to Ty.clsOf owner -- symmetric with
 # instance methods binding self to Ty.cls owner.
 
 R("module-basic", 8, "module M; def self.foo; 1; end; end; M.foo : Int at runtime.",
   "module M\n  def self.foo\n    1\n  end\nend\n\nM.foo\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "foo"}), arrow_of([], T_INT))],
   expect_validate=True)
 R("module-method-with-arg", 8,
   'module Greeter; def self.hello(name); "hi " + name; end; end; '
   'Greeter.hello("sam").',
   'module Greeter\n  def self.hello(name)\n    "hi " + name\n  end\nend\n\n'
   'Greeter.hello("sam")\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "hello"}), arrow_of([T_STR], T_STR))],
   expect_validate=True)
 R("module-multiple-methods", 8,
   "A module with two independent singleton methods.",
   "module M\n  def self.foo\n    1\n  end\n\n  def self.bar\n    2\n  end\nend\n\n"
   "M.foo + M.bar\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "defs", **{"2": "foo"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "defs", **{"2": "bar"}), arrow_of([], T_INT)),
-  ],
   expect_validate=True)
 R("module-method-calls-method", 8,
   "self.describe calls self.value, another singleton method on the same "
@@ -682,50 +496,34 @@ R("module-method-calls-method", 8,
   "was.",
   "module M\n  def self.value\n    21\n  end\n\n  def self.describe\n    value * 2\n  end\nend\n\n"
   "M.describe\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "defs", **{"2": "value"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "defs", **{"2": "describe"}), arrow_of([], T_INT)),
-  ],
   expect_validate=True)
 R("module-with-arithmetic", 8,
   "A module method doing ordinary arithmetic on its arguments.",
   "module Calc\n  def self.add(a, b)\n    a + b\n  end\nend\n\nCalc.add(1, 2)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "add"}), arrow_of([T_INT, T_INT], T_INT))],
   expect_validate=True)
 R("module-calling-another-module", 8,
   "M1.foo calls M2.bar -- two separate modules, one calling into the other "
   "via `.const \"M2\"` typed Ty.clsOf \"M2\".",
   "module M2\n  def self.bar\n    10\n  end\nend\n\n"
   "module M1\n  def self.foo\n    M2.bar + 1\n  end\nend\n\nM1.foo\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "defs", **{"2": "bar"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "defs", **{"2": "foo"}), arrow_of([], T_INT)),
-  ],
   expect_validate=True)
 R("module-returns-array", 8,
   "A module method returning an array literal.",
   "module M\n  def self.pair\n    [1, 2]\n  end\nend\n\nM.pair\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "pair"}), arrow_of([], T_ARRAYOF(T_INT)))],
   expect_validate=True)
 R("module-boolean-method", 8,
   "A module method returning the result of a comparison.",
   "module M\n  def self.positive?(n)\n    n > 0\n  end\nend\n\nM.positive?(5)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "positive?"}), arrow_of([T_INT], T_BOOL))],
   expect_validate=True)
 R("module-nested-call-chain", 8,
   "M.greeting.length chains a module call into a builtin method call on its "
-  "result -- the `.length` needs its own claim, same escape hatch as tier 2's "
-  "str-length-with-claim.",
+  "result, so the `.length` rule (tier 2's str-length) has to fire on a receiver "
+  "type that came out of user-defined dispatch rather than a literal.",
   'module M\n  def self.greeting\n    "hi"\n  end\nend\n\nM.greeting.length\n',
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "defs", **{"2": "greeting"}), arrow_of([], T_STR)),
-      claim(p, lambda n: is_head(n, "send", **{"2": "length"}), T_INT),
-  ],
   expect_validate=True)
 R("module-passing-multiple-args", 8,
   "A module method taking three arguments.",
   "module M\n  def self.sum3(a, b, c)\n    a + b + c\n  end\nend\n\nM.sum3(1, 2, 3)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "defs", **{"2": "sum3"}), arrow_of([T_INT, T_INT, T_INT], T_INT))],
   expect_validate=True)
 
 # --- Tier 9: blocks, procs and lambdas ---------------------------------------
@@ -739,47 +537,44 @@ R("module-passing-multiple-args", 8,
 # iterator rules (`Array#map`/`each`/`select`/`inject`/`sort_by`) that say what
 # block a builtin passes its element to and what the whole send returns.
 #
-# The claim vocabulary already exists: a block literal's claim is the same
-# arrow spine a `def'` gets (`arrow_of([Int], Int)`), which is why nearly every
-# rung here targets True. Two things this tier finds that the vocabulary
-# *cannot* say:
+# The Ty vocabulary is already there: a callable's type is the same arrow spine a
+# `def'` gets (`arrow_of([Int], Int)`), which is why nearly every rung here targets
+# True. One thing this tier finds that the vocabulary *cannot* say:
 #   - proc-vs-lambda arity discipline. A lambda is strict (`->(x){x}.call(1,2)`
 #     raises ArgumentError -- the `lambda-arity-mismatch` rung, a real
 #     unsafe_program); a proc is lenient, padding missing params with nil and
 #     dropping extras. `arrow_of([Int, Int], Int)` describes both, so a checker
 #     reading only the arrow would either reject the legal proc call or accept
-#     the illegal lambda one. FLAGGED as the tier's one cert_language_gap
+#     the illegal lambda one. FLAGGED as the tier's one ty_language_gap
 #     (`proc-arity-leniency`).
-#   - `&:to_s` / `&blk` block-pass is typed here only through its *result*
-#     claim; there is no Ty for "Symbol coerced to a proc" (Symbol#to_proc).
-#     That is a dispatch-design item, not a gap: the result claim is honest.
+# And one that is a dispatch-design item rather than a gap: `&:to_s` needs a
+# Symbol#to_proc rule (sym `s` over receiver `T` behaves as the arrow of T's `s`
+# method) before an iterator rule has any arrow to work with.
 
 R("lambda-zero-arity", 9,
   "The smallest callable literal: `lambda { 1 }` desugars to `send none "
   "\"lambda\" [] (block [] [] (int 1))` -- no new Expr head, just a send whose "
-  "`blk` child is a block with no params. The claim goes on the *block* node "
+  "`blk` child is a block with no params. The type belongs to the *block* node "
   "and is an arrow spine with no params, arrow_of([], Int); `f.call` then "
   "eliminates it. (This is the same program the umbrella project's J31 semantic-"
   "axiom pilot uses.)",
   "f = lambda { 1 }\nf.call\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([], T_INT))],
   expect_validate=True)
 R("lambda-stabby-one-param", 9,
   "`->(x) { x + 1 }.call(2)`: the stabby-lambda syntax desugars to the *exact "
   "same* shape as `lambda { .. }` (`send none \"lambda\"`), so a checker needs "
-  "one rule, not two. The block's param `x` is typed by the claim's spine "
-  "(Int), which is what lets the body's `x + 1` reach tier 2's Integer#+ rule.",
+  "one rule, not two. Nothing declares `x`'s type: it has to come from the body "
+  "(`x + 1` is typeable only at Int, given PrimSig) or from the call site's "
+  "argument -- the same parameter-inference question tier 6 asks about `def`.",
   "->(x) { x + 1 }.call(2)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("proc-basic", 9,
   "`proc { |x| x * 2 }` is the same send-with-block shape as lambda, differing "
   "only in the selector (\"proc\" vs \"lambda\"). Called at the arity it "
-  "declares, a proc behaves exactly like a lambda, so the same arrow claim is "
+  "declares, a proc behaves exactly like a lambda, so the same arrow type is "
   "honest here -- contrast proc-arity-leniency, which is the case where it "
   "stops being honest.",
   "p = proc { |x| x * 2 }\np.call(3)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("proc-bracket-call", 9,
   "`p[3]` is proc invocation spelled as `#[]` -- and it desugars to an ordinary "
@@ -788,7 +583,6 @@ R("proc-bracket-call", 9,
   "has to fire on `[]` as well as on `call`, and `[]` has to dispatch on the "
   "receiver's type (Array vs a callable), not on the selector alone.",
   "p = proc { |x| x * 2 }\np[3]\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("block-each-int", 9,
   "The first *iterator* block: `[1,2,3].each { |x| x + 1 }`. The block is the "
@@ -796,15 +590,13 @@ R("block-each-int", 9,
   "Array#each feeds the block one element (Int, from the receiver's "
   "arrayOf Int) and returns the *receiver*, not the block's result.",
   "[1, 2, 3].each { |x| x + 1 }\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("block-map-to-s", 9,
   "`[1,2,3].map { |n| n.to_s }`: unlike each, Array#map's result type is "
   "arrayOf(the block's *return* type) -- so the whole send is arrayOf(an "
-  "instance of String) even though the receiver is arrayOf Int. The block "
-  "claim is what supplies that return type.",
+  "instance of String) even though the receiver is arrayOf Int, and the "
+  "iterator rule has to read the block's return type back out of the block.",
   '[1, 2, 3].map { |n| n.to_s }\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_STR))],
   expect_validate=True)
 R("block-doend-with-block-local", 9,
   "A multi-statement do/end block that assigns a block-local `y`. The "
@@ -813,54 +605,39 @@ R("block-doend-with-block-local", 9,
   "together, and `y` must not leak to the enclosing scope. Body is a `seq`, "
   "typed left to right, block's type is its last statement's.",
   "[1, 2].map do |x|\n  y = x * 2\n  y + 1\nend\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("yield-arith", 9,
   "`yield` is its own Expr head, and it invokes the *enclosing method's* "
   "implicitly-passed block -- there is no variable naming it. Typing "
   "`yield(1) + yield(2)` inside `twice` therefore needs the block's arrow to be "
   "part of the method's own context, threaded from the call site's block "
-  "literal: a real dependency of the callee's typing on the caller's argument. "
-  "Two claims, one for each side of that link.",
+  "literal: a real dependency of the callee's typing on the caller's argument, "
+  "and the first rung where a method cannot be typed without its call site.",
   "def twice\n  yield(1) + yield(2)\nend\n\ntwice { |x| x * 10 }\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "twice"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("block-param-ampersand", 9,
   "`def run(&b)` reifies the passed block as an ordinary local `b` (a `pblock` "
   "param), which is then called with `b.call(5)` -- the same elimination form "
   "as a lambda's. This is the reified counterpart of yield-arith: the block "
   "arrives as a *value* with an arrow type, so `Param.block`'s type is exactly "
-  "the block literal's claim at the call site.",
+  "the type of the block literal at the call site.",
   "def run(&b)\n  b.call(5)\nend\n\nrun { |x| x + 1 }\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "run"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("block-pass-symbol-to-proc", 9,
   "`[1,2].map(&:to_s)` has *no* block node at all: the desugarer produces "
   "`blockpass (sym to_s)`, and Ruby coerces the Symbol to a proc "
-  "(Symbol#to_proc) at call time. There is no Ty for that coercion, so the "
-  "claim is stated on the whole send's *result* (arrayOf String) instead -- "
-  "honest, and enough here, but it means a checker needs a Symbol#to_proc rule "
-  "(sym `s` used as a block over receiver `T` behaves as the arrow of T's `s` "
-  "method) before it can synthesize this without help.",
+  "(Symbol#to_proc) at call time. So there is no block node to type and no arrow "
+  "anywhere in the syntax: a checker needs a Symbol#to_proc rule (sym `s` used as "
+  "a block over receiver `T` behaves as the arrow of T's `s` method) to "
+  "manufacture one before the Array#map rule can fire at all.",
   '[1, 2].map(&:to_s)\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "send", **{"2": "map"}), T_ARRAYOF(T_STR))],
   expect_validate=True)
 R("block-pass-lambda-variable", 9,
   "The other blockpass shape: `&double` where `double` is a local holding a "
   "lambda. Here the arrow *is* available -- `blockpass (var local double)` -- "
-  "so the iterator rule can use the variable's own claimed type as the block's "
-  "type, with no coercion rule needed. Contrast block-pass-symbol-to-proc.",
+  "so the iterator rule can use the variable's own type as the block's type, with "
+  "no coercion rule needed. Contrast block-pass-symbol-to-proc.",
   "double = ->(x) { x * 2 }\n[1, 2].map(&double)\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "send", **{"2": "map"}), T_ARRAYOF(T_INT)),
-  ],
   expect_validate=True)
 R("lambda-closure-capture", 9,
   "`n = 10; add_n = ->(x) { x + n }` -- the block body mentions a local bound "
@@ -869,34 +646,22 @@ R("lambda-closure-capture", 9,
   "params, which is the first rung on this ladder where a block cannot be "
   "typed in isolation.",
   "n = 10\nadd_n = ->(x) { x + n }\nadd_n.call(5)\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT))],
   expect_validate=True)
 R("lambda-returns-lambda", 9,
   "Curried addition: `add = ->(x) { ->(y) { x + y } }`, eliminated by "
-  "`add.call(1).call(2)`. The outer block's claim is a *higher-order* arrow -- "
+  "`add.call(1).call(2)`. The outer block's type is a *higher-order* arrow -- "
   "arrow_of([Int], arrow_of([Int], Int)) -- which the Ty spine can already "
   "state, since `arrow0`'s return is an arbitrary Ty. The inner block also "
   "captures the outer's `x` (closure capture again, one level in).",
   "add = ->(x) { ->(y) { x + y } }\nadd.call(1).call(2)\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "x"]]}),
-            arrow_of([T_INT], arrow_of([T_INT], T_INT))),
-      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "y"]]}),
-            arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("lambda-as-argument", 9,
   "The other half of higher-order: a *method parameter* whose type is an "
-  "arrow. `def apply(f, v); f.call(v); end` is claimed "
+  "arrow. `def apply(f, v); f.call(v); end` has signature "
   "arrow_of([arrow_of([Int], Int), Int], Int) -- an arrow nested in a param "
   "position rather than a return position -- and the call site passes a lambda "
   "literal, so the argument check is arrow-against-arrow.",
   "def apply(f, v)\n  f.call(v)\nend\n\napply(->(x) { x * 2 }, 5)\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "apply"}),
-            arrow_of([arrow_of([T_INT], T_INT), T_INT], T_INT)),
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("block-nested-map", 9,
   "`[[1,2],[3,4]].map { |row| row.map { |x| x + 1 } }` -- a block literal "
@@ -905,12 +670,6 @@ R("block-nested-map", 9,
   "making the whole send arrayOf(arrayOf Int): the iterator rule has to compose "
   "with itself, and `arrayOf` has to nest.",
   '[[1, 2], [3, 4]].map { |row| row.map { |x| x + 1 } }\n',
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "row"]]}),
-            arrow_of([T_ARRAYOF(T_INT)], T_ARRAYOF(T_INT))),
-      claim(p, lambda n: is_head(n, "block", **{"1": [["preq", "x"]]}),
-            arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("block-two-params-inject", 9,
   "`[1,2,3].inject(0) { |acc, x| acc + x }`: the first block in the corpus with "
@@ -920,7 +679,6 @@ R("block-two-params-inject", 9,
   "`acc`'s (that is what makes the fold well-typed at every step, not just the "
   "first).",
   '[1, 2, 3].inject(0) { |acc, x| acc + x }\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT, T_INT], T_INT))],
   expect_validate=True)
 R("block-select-with-if", 9,
   "A predicate block whose body is a whole `if` expression: "
@@ -930,37 +688,27 @@ R("block-select-with-if", 9,
   "unlike map returns arrayOf(the *receiver's* element type) regardless of the "
   "block's return type.",
   '[1, 2, 3, 4].select { |x| if x > 2 then true else false end }\n',
-  claims=lambda p: [claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_BOOL))],
   expect_validate=True)
 R("block-sort-by-length", 9,
   '`["aaa","b"].sort_by { |s| s.length }` -- the block\'s param and return '
   "types differ (an instance of String in, Int out), the whole send is "
   "arrayOf String (like select, the receiver's element type), and the body "
-  "needs tier 2's str-length-with-claim escape hatch for `#length`. Three "
-  "claims interlocking on one line.",
+  "needs tier 2's str-length rule for `#length`. Three separate rules "
+  "interlocking on one line.",
   '["aaa", "b"].sort_by { |s| s.length }\n',
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_STR], T_INT)),
-      claim(p, lambda n: is_head(n, "send", **{"2": "length"}), T_INT),
-      claim(p, lambda n: is_head(n, "send", **{"2": "sort_by"}), T_ARRAYOF(T_STR)),
-  ],
   expect_validate=True)
 R("lambda-explicit-return", 9,
   "`doubler = ->(x) { return x * 2 }; doubler.call(3)` is 6, not a "
   "LocalJumpError: `return` inside "
   "a *lambda* returns from the lambda, locally. (The same `return` inside a "
   "proc or a bare block would return from the enclosing method instead -- a "
-  "non-local jump.) So the arrow claim stays exactly arrow_of([Int], Int), but "
+  "non-local jump.) So the arrow stays exactly arrow_of([Int], Int), but "
   "a checker must read the `return` against the lambda's own return type, and "
   "must know which of the three callable flavors it is inside to do so. "
   "(Wrapped in a method because a bare top-level `return` is a parse error, "
   "which incidentally pins the lambda inside a method body, exactly where the "
   "proc/block reading would differ.)",
   "def apply_twice\n  doubler = ->(x) { return x * 2 }\n  doubler.call(3)\nend\n\napply_twice\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "apply_twice"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "block"), arrow_of([T_INT], T_INT)),
-  ],
   expect_validate=True)
 R("block-bad-arith", 9,
   "`[1,2].each { |x| x + \"a\" }` really raises TypeError (\"String can't be "
@@ -981,17 +729,17 @@ R("lambda-arity-mismatch", 9,
 R("proc-arity-leniency", 9,
   "The dishonest half. `proc { |x, y| x }.call(1)` is *legal* Ruby: a proc "
   "pads missing params with nil (y = nil) and drops extras, so this returns 1. "
-  "But the only Ty that can be claimed for that block is "
+  "But the only Ty that describes that block is "
   "arrow_of([Int, Int], Int), which says the call site is wrong -- and "
   "weakening it to arrow_of([Int, nilable Int], Int) still cannot express "
   "\"...and the second argument may simply be absent\", nor that an extra third "
   "argument is fine too. There is no Ty value describing proc arity discipline "
   "at all, so the rung cannot be honestly certified today. FLAGGED "
-  "cert_language_gap: Ty needs optional/rest arity (the same missing "
+  "ty_language_gap: Ty needs optional/rest arity (the same missing "
   "constructor metaprog-method-missing-splat asks for, reached from the other "
   "direction).",
   "proc { |x, y| x }.call(1)\n",
-  expect_validate=False, false_reason="cert_language_gap")
+  expect_validate=False, false_reason="ty_language_gap")
 
 # --- Tier 10: metaprogramming -- LAST on the ladder --------------------------
 # method_missing, class reopening, and mixins (include/extend/prepend). Real
@@ -1001,12 +749,12 @@ R("proc-arity-leniency", 9,
 # even for metaprogramming), and class reopening is just two `class'` nodes
 # sharing a name. None of that needs new Ty vocabulary -- what it needs is a
 # declaration table whose ancestor walk also follows mixins and reopenings, which
-# is a `chk`-design extension (Frontier), not a cert language gap.
+# is a `chk`-design extension (Frontier), not a type language gap.
 #
 # method_missing is different: its second parameter is a *rest* param (`*args`),
 # and Ty's arrow spine (`arrow0`/`arrowCons`) has no vararg/rest-arity
-# constructor -- there is no way to *state* an honest claim for a variadic
-# signature at all. That is the one genuine cert_language_gap this tier finds;
+# constructor -- there is no Ty value that describes a variadic signature at
+# all. That is the one genuine ty_language_gap this tier finds;
 # the fixed-arity method_missing rung right next to it shows the gap is
 # specifically about rest params, not method_missing dispatch itself.
 
@@ -1016,10 +764,6 @@ R("metaprog-class-reopening", 10,
   "name, the same way it would across any two top-level defs.",
   "class Foo\n  def a\n    1\n  end\nend\n\nclass Foo\n  def b\n    2\n  end\nend\n\n"
   "Foo.new.a + Foo.new.b\n",
-  claims=lambda p: [
-      claim(p, lambda n: is_head(n, "def", **{"1": "a"}), arrow_of([], T_INT)),
-      claim(p, lambda n: is_head(n, "def", **{"1": "b"}), arrow_of([], T_INT)),
-  ],
   expect_validate=True)
 R("metaprog-include", 10,
   "Person includes Greetable; greet, defined once inside the module, becomes "
@@ -1028,11 +772,10 @@ R("metaprog-include", 10,
   "no special Expr head at all. A rebuilt ancestor walk needs to treat "
   "Greetable as an *additional* instance-method source for Person (distinct "
   "from superclass lookup), which is a dispatch-design extension, not a "
-  "language gap: the claim on greet's def' node is the same arrow-spine shape "
-  "as any other method.",
+  "language gap: greet's signature is the same arrow-spine shape as any other "
+  "method's.",
   "module Greetable\n  def greet\n    \"hi\"\n  end\nend\n\n"
   "class Person\n  include Greetable\nend\n\nPerson.new.greet\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "greet"}), arrow_of([], T_STR))],
   expect_validate=True)
 R("metaprog-extend", 10,
   "Person extends Loud; shout becomes callable as a *singleton* method of "
@@ -1043,7 +786,6 @@ R("metaprog-extend", 10,
   "not a language gap.",
   "module Loud\n  def shout\n    \"LOUD\"\n  end\nend\n\n"
   "class Person\n  extend Loud\nend\n\nPerson.shout\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "shout"}), arrow_of([], T_STR))],
   expect_validate=True)
 R("metaprog-prepend", 10,
   "Person prepends Logger, which defines its own speak calling `super`. "
@@ -1052,46 +794,37 @@ R("metaprog-prepend", 10,
   "`zsuper` node) forwards to the *next* speak in the chain -- Person's own. "
   "Typing this needs an MRO-aware `super'`/`zsuper` rule on top of the "
   "prepend-ordered ancestry -- a genuinely nontrivial dispatch-design item, but "
-  "still no new Ty vocabulary: both speak methods are claimed the same "
+  "still no new Ty vocabulary: both speak methods have the same "
   "arrow_of([], an instance of String) shape as anywhere else.",
   "module Logger\n  def speak\n    \"logged: \" + super\n  end\nend\n\n"
   "class Person\n  prepend Logger\n  def speak\n    \"hi\"\n  end\nend\n\n"
   "Person.new.speak\n",
-  claims=lambda p: [
-      claim_within(p, lambda n: is_head(n, "module", **{"1": "Logger"}),
-                   lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
-      claim_within(p, lambda n: is_head(n, "class", **{"1": "Person"}),
-                   lambda n: is_head(n, "def", **{"1": "speak"}), arrow_of([], T_STR)),
-  ],
   expect_validate=True)
 R("metaprog-method-missing-fixed-arity", 10,
   "Ghost declares method_missing with a single *required* param (no splat); "
   "calling an undeclared method (anything_at_all, with no arguments) dispatches "
   "to it with exactly one argument (the missed method's name, as a Sym) -- an "
-  "arity a claim can honestly state: arrow_of([Sym], an instance of String). "
+  "arity Ty can honestly state: arrow_of([Sym], an instance of String). "
   "Needs a method_missing-fallback dispatch rule (try every declared method "
   "first, then method_missing if the class declares one) -- a dispatch-design "
   "extension, not a language gap, precisely because there is no rest param "
   "here. Contrast metaprog-method-missing-splat.",
   "class Ghost\n  def method_missing(name)\n    \"called \" + name.to_s\n  end\nend\n\n"
   "Ghost.new.anything_at_all\n",
-  claims=lambda p: [claim(p, lambda n: is_head(n, "def", **{"1": "method_missing"}),
-                           arrow_of([T_SYM], T_STR))],
   expect_validate=True)
 R("metaprog-method-missing-splat", 10,
   "The idiomatic method_missing shape: `def method_missing(name, *args)`. Its "
   "true signature is 'one Sym, then zero or more of anything' -- and Ty's "
   "arrow spine (arrow0/arrowCons) has no vararg/rest-arity constructor at all. "
   "There is no Ty value that honestly describes this parameter list, not just "
-  "no `chk` rule for it yet: a claim of arrow_of([Sym], ...) would be a lie "
-  "about the real arity (it would silently accept this one zero-extra-args call "
-  "site while being unsound for `some_method(1, 2, 3)` elsewhere). FLAGGED "
-  "cert_language_gap: Ty needs something like an `arrowRest (rest ret : Ty)` "
-  "constructor, or modeling a rest param as `arrayOf Ty`, before this can be "
-  "honestly claimed at all.",
+  "no `chk` rule for it yet: arrow_of([Sym], ...) would be a lie about the real "
+  "arity (it fits this one zero-extra-args call site while being wrong for "
+  "`some_method(1, 2, 3)` elsewhere). FLAGGED ty_language_gap: Ty needs "
+  "something like an `arrowRest (rest ret : Ty)` constructor, or modeling a rest "
+  "param as `arrayOf Ty`, before this signature can be written down at all.",
   "class Ghost\n  def method_missing(name, *args)\n    \"called\"\n  end\nend\n\n"
   "Ghost.new.anything_at_all\n",
-  expect_validate=False, false_reason="cert_language_gap")
+  expect_validate=False, false_reason="ty_language_gap")
 
 
 # ---------------------------------------------------------------------------

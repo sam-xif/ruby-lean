@@ -1,7 +1,7 @@
 {
   "id": "eq-different-type",
   "tier": 2,
-  "description": "1 == \"a\" is completely safe real Ruby -- `==` never raises, it just answers false for unrelated types. A hardcoded `==` rule that requires both sides the same Ty would be *conservative*, not necessary; the claims escape hatch on this exact send node is enough to certify it without changing that rule at all.",
+  "description": "1 == \"a\" is completely safe real Ruby -- `==` never raises, it just answers false for unrelated types. So the `==` rule chk needs is Object#== : (any) -> Bool, on *any* two receivers; a rule requiring both sides the same Ty would be conservative (it would reject this safe program) rather than sound-and-tight.",
   "program": {
     "v": 5,
     "ast": [
@@ -18,30 +18,6 @@
         ]
       ],
       null
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "send",
-          [
-            "int",
-            1
-          ],
-          "==",
-          [
-            [
-              "str",
-              "a"
-            ]
-          ],
-          null
-        ],
-        "ty": {
-          "tag": "bool"
-        }
-      }
     ]
   },
   "expect_validate": true,

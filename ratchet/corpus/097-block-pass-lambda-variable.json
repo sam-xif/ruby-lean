@@ -1,7 +1,7 @@
 {
   "id": "block-pass-lambda-variable",
   "tier": 9,
-  "description": "The other blockpass shape: `&double` where `double` is a local holding a lambda. Here the arrow *is* available -- `blockpass (var local double)` -- so the iterator rule can use the variable's own claimed type as the block's type, with no coercion rule needed. Contrast block-pass-symbol-to-proc.",
+  "description": "The other blockpass shape: `&double` where `double` is a local holding a lambda. Here the arrow *is* available -- `blockpass (var local double)` -- so the iterator rule can use the variable's own type as the block's type, with no coercion rule needed. Contrast block-pass-symbol-to-proc.",
   "program": {
     "v": 5,
     "ast": [
@@ -70,85 +70,6 @@
           ]
         ]
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "*",
-            [
-              [
-                "int",
-                2
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      },
-      {
-        "expr": [
-          "send",
-          [
-            "array",
-            [
-              [
-                "int",
-                1
-              ],
-              [
-                "int",
-                2
-              ]
-            ]
-          ],
-          "map",
-          [],
-          [
-            "blockpass",
-            [
-              "var",
-              "local",
-              "double"
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrayOf",
-          "elem": {
-            "tag": "int"
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

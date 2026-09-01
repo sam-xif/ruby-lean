@@ -75,44 +75,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "a",
-          [],
-          [
-            "int",
-            1
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      },
-      {
-        "expr": [
-          "def",
-          "b",
-          [],
-          [
-            "int",
-            2
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

@@ -1,7 +1,7 @@
 {
   "id": "metaprog-method-missing-splat",
   "tier": 10,
-  "description": "The idiomatic method_missing shape: `def method_missing(name, *args)`. Its true signature is 'one Sym, then zero or more of anything' -- and Ty's arrow spine (arrow0/arrowCons) has no vararg/rest-arity constructor at all. There is no Ty value that honestly describes this parameter list, not just no `chk` rule for it yet: a claim of arrow_of([Sym], ...) would be a lie about the real arity (it would silently accept this one zero-extra-args call site while being unsound for `some_method(1, 2, 3)` elsewhere). FLAGGED cert_language_gap: Ty needs something like an `arrowRest (rest ret : Ty)` constructor, or modeling a rest param as `arrayOf Ty`, before this can be honestly claimed at all.",
+  "description": "The idiomatic method_missing shape: `def method_missing(name, *args)`. Its true signature is 'one Sym, then zero or more of anything' -- and Ty's arrow spine (arrow0/arrowCons) has no vararg/rest-arity constructor at all. There is no Ty value that honestly describes this parameter list, not just no `chk` rule for it yet: arrow_of([Sym], ...) would be a lie about the real arity (it fits this one zero-extra-args call site while being wrong for `some_method(1, 2, 3)` elsewhere). FLAGGED ty_language_gap: Ty needs something like an `arrowRest (rest ret : Ty)` constructor, or modeling a rest param as `arrayOf Ty`, before this signature can be written down at all.",
   "program": {
     "v": 5,
     "ast": [
@@ -47,9 +47,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": []
-  },
   "expect_validate": false,
-  "false_reason": "cert_language_gap"
+  "false_reason": "ty_language_gap"
 }

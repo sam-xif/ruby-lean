@@ -1,7 +1,7 @@
 {
   "id": "fun-wrong-arity",
   "tier": 6,
-  "description": "The same add/claim as simple-fun, but called with one argument instead of two: this really does raise ArgumentError when run, regardless of any claim (a claim cannot change how many arguments a call site actually passes). Permanent negative target.",
+  "description": "The same add as simple-fun, called with one argument instead of two: this really does raise ArgumentError when run. Arity is visible in the syntax on both sides, so this is the cheapest soundness regression test in tier 6. Permanent negative target.",
   "program": {
     "v": 5,
     "ast": [
@@ -49,61 +49,6 @@
         ],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "add",
-          [
-            [
-              "preq",
-              "x"
-            ],
-            [
-              "preq",
-              "y"
-            ]
-          ],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "+",
-            [
-              [
-                "var",
-                "local",
-                "y"
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrowCons",
-            "param": {
-              "tag": "int"
-            },
-            "rest": {
-              "tag": "arrow0",
-              "ret": {
-                "tag": "int"
-              }
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": false,

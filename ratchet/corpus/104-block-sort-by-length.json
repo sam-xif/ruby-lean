@@ -1,7 +1,7 @@
 {
   "id": "block-sort-by-length",
   "tier": 9,
-  "description": "`[\"aaa\",\"b\"].sort_by { |s| s.length }` -- the block's param and return types differ (an instance of String in, Int out), the whole send is arrayOf String (like select, the receiver's element type), and the body needs tier 2's str-length-with-claim escape hatch for `#length`. Three claims interlocking on one line.",
+  "description": "`[\"aaa\",\"b\"].sort_by { |s| s.length }` -- the block's param and return types differ (an instance of String in, Int out), the whole send is arrayOf String (like select, the receiver's element type), and the body needs tier 2's str-length rule for `#length`. Three separate rules interlocking on one line.",
   "program": {
     "v": 5,
     "ast": [
@@ -43,112 +43,6 @@
           null
         ]
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "s"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "s"
-            ],
-            "length",
-            [],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "cls",
-            "name": "String"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      },
-      {
-        "expr": [
-          "send",
-          [
-            "var",
-            "local",
-            "s"
-          ],
-          "length",
-          [],
-          null
-        ],
-        "ty": {
-          "tag": "int"
-        }
-      },
-      {
-        "expr": [
-          "send",
-          [
-            "array",
-            [
-              [
-                "str",
-                "aaa"
-              ],
-              [
-                "str",
-                "b"
-              ]
-            ]
-          ],
-          "sort_by",
-          [],
-          [
-            "block",
-            [
-              [
-                "preq",
-                "s"
-              ]
-            ],
-            [],
-            [],
-            [
-              "send",
-              [
-                "var",
-                "local",
-                "s"
-              ],
-              "length",
-              [],
-              null
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrayOf",
-          "elem": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

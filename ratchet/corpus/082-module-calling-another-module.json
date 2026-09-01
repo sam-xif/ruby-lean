@@ -67,67 +67,6 @@
       ]
     ]
   },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "bar",
-          [],
-          [
-            "int",
-            10
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      },
-      {
-        "expr": [
-          "defs",
-          [
-            "self"
-          ],
-          "foo",
-          [],
-          [
-            "send",
-            [
-              "send",
-              [
-                "const",
-                "M2"
-              ],
-              "bar",
-              [],
-              null
-            ],
-            "+",
-            [
-              [
-                "int",
-                1
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      }
-    ]
-  },
   "expect_validate": true,
   "false_reason": null
 }

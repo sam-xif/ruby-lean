@@ -1,7 +1,7 @@
 {
   "id": "lambda-explicit-return",
   "tier": 9,
-  "description": "`doubler = ->(x) { return x * 2 }; doubler.call(3)` is 6, not a LocalJumpError: `return` inside a *lambda* returns from the lambda, locally. (The same `return` inside a proc or a bare block would return from the enclosing method instead -- a non-local jump.) So the arrow claim stays exactly arrow_of([Int], Int), but a checker must read the `return` against the lambda's own return type, and must know which of the three callable flavors it is inside to do so. (Wrapped in a method because a bare top-level `return` is a parse error, which incidentally pins the lambda inside a method body, exactly where the proc/block reading would differ.)",
+  "description": "`doubler = ->(x) { return x * 2 }; doubler.call(3)` is 6, not a LocalJumpError: `return` inside a *lambda* returns from the lambda, locally. (The same `return` inside a proc or a bare block would return from the enclosing method instead -- a non-local jump.) So the arrow stays exactly arrow_of([Int], Int), but a checker must read the `return` against the lambda's own return type, and must know which of the three callable flavors it is inside to do so. (Wrapped in a method because a bare top-level `return` is a parse error, which incidentally pins the lambda inside a method body, exactly where the proc/block reading would differ.)",
   "program": {
     "v": 5,
     "ast": [
@@ -75,127 +75,6 @@
         "vcall",
         "apply_twice"
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "apply_twice",
-          [],
-          [
-            "seq",
-            [
-              "vasgn",
-              "local",
-              "doubler",
-              [
-                "send",
-                null,
-                "lambda",
-                [],
-                [
-                  "block",
-                  [
-                    [
-                      "preq",
-                      "x"
-                    ]
-                  ],
-                  [],
-                  [],
-                  [
-                    "return",
-                    [
-                      "send",
-                      [
-                        "var",
-                        "local",
-                        "x"
-                      ],
-                      "*",
-                      [
-                        [
-                          "int",
-                          2
-                        ]
-                      ],
-                      null
-                    ]
-                  ]
-                ]
-              ]
-            ],
-            [
-              "send",
-              [
-                "var",
-                "local",
-                "doubler"
-              ],
-              "call",
-              [
-                [
-                  "int",
-                  3
-                ]
-              ],
-              null
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "int"
-          }
-        }
-      },
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "return",
-            [
-              "send",
-              [
-                "var",
-                "local",
-                "x"
-              ],
-              "*",
-              [
-                [
-                  "int",
-                  2
-                ]
-              ],
-              null
-            ]
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

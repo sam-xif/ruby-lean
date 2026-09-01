@@ -1,7 +1,7 @@
 {
   "id": "class-ivar-lazy-nil",
   "tier": 7,
-  "description": "reveal reads @secret, which no method ever assigns -- real Ruby answers nil for an unset ivar rather than raising. Claimed Nil by name, same mechanism as every other ivar claim, no special case needed.",
+  "description": "reveal reads @secret, which no method ever assigns -- real Ruby answers nil for an unset ivar rather than raising. So ivar inference cannot simply collect the writes: a read with no matching write is Nil, not an error.",
   "program": {
     "v": 5,
     "ast": [
@@ -37,38 +37,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "reveal",
-          [],
-          [
-            "var",
-            "ivar",
-            "@secret"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "nilT"
-          }
-        }
-      },
-      {
-        "expr": [
-          "var",
-          "ivar",
-          "@secret"
-        ],
-        "ty": {
-          "tag": "nilT"
-        }
-      }
     ]
   },
   "expect_validate": true,

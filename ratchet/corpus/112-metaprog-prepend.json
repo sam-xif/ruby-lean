@@ -1,7 +1,7 @@
 {
   "id": "metaprog-prepend",
   "tier": 10,
-  "description": "Person prepends Logger, which defines its own speak calling `super`. prepend puts Logger *ahead* of Person in the ancestor chain, so Person.new.speak resolves to Logger#speak first, whose bare `super` (a `zsuper` node) forwards to the *next* speak in the chain -- Person's own. Typing this needs an MRO-aware `super'`/`zsuper` rule on top of the prepend-ordered ancestry -- a genuinely nontrivial dispatch-design item, but still no new Ty vocabulary: both speak methods are claimed the same arrow_of([], an instance of String) shape as anywhere else.",
+  "description": "Person prepends Logger, which defines its own speak calling `super`. prepend puts Logger *ahead* of Person in the ancestor chain, so Person.new.speak resolves to Logger#speak first, whose bare `super` (a `zsuper` node) forwards to the *next* speak in the chain -- Person's own. Typing this needs an MRO-aware `super'`/`zsuper` rule on top of the prepend-ordered ancestry -- a genuinely nontrivial dispatch-design item, but still no new Ty vocabulary: both speak methods have the same arrow_of([], an instance of String) shape as anywhere else.",
   "program": {
     "v": 5,
     "ast": [
@@ -75,57 +75,6 @@
         [],
         null
       ]
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "def",
-          "speak",
-          [],
-          [
-            "send",
-            [
-              "str",
-              "logged: "
-            ],
-            "+",
-            [
-              [
-                "zsuper",
-                null
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      },
-      {
-        "expr": [
-          "def",
-          "speak",
-          [],
-          [
-            "str",
-            "hi"
-          ]
-        ],
-        "ty": {
-          "tag": "arrow0",
-          "ret": {
-            "tag": "cls",
-            "name": "String"
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,

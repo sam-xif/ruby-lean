@@ -1,7 +1,7 @@
 {
   "id": "lambda-stabby-one-param",
   "tier": 9,
-  "description": "`->(x) { x + 1 }.call(2)`: the stabby-lambda syntax desugars to the *exact same* shape as `lambda { .. }` (`send none \"lambda\"`), so a checker needs one rule, not two. The block's param `x` is typed by the claim's spine (Int), which is what lets the body's `x + 1` reach tier 2's Integer#+ rule.",
+  "description": "`->(x) { x + 1 }.call(2)`: the stabby-lambda syntax desugars to the *exact same* shape as `lambda { .. }` (`send none \"lambda\"`), so a checker needs one rule, not two. Nothing declares `x`'s type: it has to come from the body (`x + 1` is typeable only at Int, given PrimSig) or from the call site's argument -- the same parameter-inference question tier 6 asks about `def`.",
   "program": {
     "v": 5,
     "ast": [
@@ -47,51 +47,6 @@
         ]
       ],
       null
-    ]
-  },
-  "cert": {
-    "claims": [
-      {
-        "expr": [
-          "block",
-          [
-            [
-              "preq",
-              "x"
-            ]
-          ],
-          [],
-          [],
-          [
-            "send",
-            [
-              "var",
-              "local",
-              "x"
-            ],
-            "+",
-            [
-              [
-                "int",
-                1
-              ]
-            ],
-            null
-          ]
-        ],
-        "ty": {
-          "tag": "arrowCons",
-          "param": {
-            "tag": "int"
-          },
-          "rest": {
-            "tag": "arrow0",
-            "ret": {
-              "tag": "int"
-            }
-          }
-        }
-      }
     ]
   },
   "expect_validate": true,
