@@ -77,7 +77,7 @@ def main (args : List String) : IO UInt32 := do
 
   let mismatches := reports.filter (fun r => !r.validateOk)
   IO.println s!"\nrungs where validate's current answer differs from the recorded target (expect_validate): {mismatches.length}"
-  IO.println "(chk covers tiers 1-2's send fragment today, and nothing is \
+  IO.println "(chk covers tiers 1-5 today, and nothing is \
 trusted; everything above that is the climb still ahead -- not a bug; see AGENTS.md)"
   for m in mismatches do
     IO.eprintln s!"  not yet climbed: {m.id} (tier {m.tier})"

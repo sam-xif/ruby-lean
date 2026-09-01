@@ -3,10 +3,10 @@ import Ratchet.Judge
 /-!
 The trusted checker: `validate : Expr → Bool`, over the **real** `Expr`.
 
-**Tiers 1–3 only.** `chk` decides exactly the fragment `Ratchet/Judge.lean`'s `Judge`
-specifies (the eight literals, tier 2's `send` table, and tier 3's
-`var`/`vasgn`/`seq`/bare-`vcall`, and tier 4's `if'`), and answers `none` on everything
-else — there is no fallback of any kind. The
+**Tiers 1–5 only.** `chk` decides exactly the fragment `Ratchet/Judge.lean`'s `Judge`
+specifies (the eight literals, tier 2's `send` table, tier 3's
+`var`/`vasgn`/`seq`/bare-`vcall`, tier 4's `if'`, and tier 5's array/hash literals),
+and answers `none` on everything else — there is no fallback of any kind. The
 certificate-claim fallback this checker used to carry is gone (`AGENTS.md`
 §Claim-free): a claim was trusted, so a rung certified through one certified nothing,
 and the `Bool` was worth less than it looked. Now every `true` is synthesized. Every rung outside that fragment therefore still
@@ -43,6 +43,8 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .int, "zero?", [] => some .bool
   | .cls "String", "length", [] => some .int
   | .bool, "!", [] => some .bool
+  | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
+  | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
 
 /-- The executable counterpart of `BareNameError`: bare names known to resolve to
@@ -89,6 +91,14 @@ def chk (Γ : Env) : Expr → Option (Ty × Env)
       | some (τ, Γ₁) => some (joinT τ .nilT, joinEnv Γ₁ Γc)
       | none => none
     | none => none
+  | .array es =>
+    match chkAll Γ es with
+    | some (τs, Γ') => some (.arrayOf (elemTy τs), Γ')
+    | none => none
+  | .hash pairs =>
+    match chkPairs Γ pairs with
+    | some Γ' => some (.cls "Hash", Γ')
+    | none => none
   | .vcall m => if bareNameError? m then some (.any, Γ) else none
   | .send (some recv) m args none =>
     -- Written as explicit nested `match`es rather than `do`/`<|>` on purpose: this is
@@ -114,6 +124,19 @@ def chkAll (Γ : Env) : List Expr → Option (List Ty × Env)
     | some (τ, Γ₁) =>
       match chkAll Γ₁ es with
       | some (τs, Γ₂) => some (τ :: τs, Γ₂)
+      | none => none
+    | none => none
+
+/-- Key-then-value `chk` over a hash literal's pairs. Returns only the outgoing
+environment: the key and value types are discarded (this `Ty` has no parameterised hash
+type), but they still have to *exist*, which is the whole content of this function. -/
+def chkPairs (Γ : Env) : List (Expr × Expr) → Option Env
+  | [] => some Γ
+  | (k, v) :: ps =>
+    match chk Γ k with
+    | some (_, Γ₁) =>
+      match chk Γ₁ v with
+      | some (_, Γ₂) => chkPairs Γ₂ ps
       | none => none
     | none => none
 

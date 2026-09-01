@@ -13,14 +13,15 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **40 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **48 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–4**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–5**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
-`BareNameError` table), plus tier 4's conditionals (`if'`/`ifNoElse`) — 40 rungs. Every
-rung at or below tier 4 now matches its recorded target.
+`BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), and tier 5's array and
+hash literals with their `#[]` — 48 rungs. Every rung at or below tier 5 now matches its
+recorded target.
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -31,6 +32,16 @@ stops the checker certifying `corpus/042-if-does-not-leak-reassignment`, whose r
 target was wrong and is now `false`). Tier 2's last two rungs, `bool-and`/`bool-or`, came
 in with tier 4 for free: Ruby's `&&`/`||` desugar to a temporary local plus a `seq` and
 an `if`, so they were never sends at all (clink 1 predicted this; clink 3 cashes it out).
+
+Tier 5 reuses tier 4's join twice over and adds nothing structural: `a[0]` is
+`send a "[]" [0]` — Ruby has no index syntax — so indexing is two `PrimSig` rows, and an
+array literal's elements are typed by the *same* `JudgeAll` that types a send's arguments.
+What is new is the type language pulling its weight: `elemTy` joins the element types
+(`[1,"a",true] : arrayOf (union Int (union String Bool))`), `Array#[]` returns
+`nilable elem` because an out-of-range index is `nil`, and a hash literal is the bare
+`.cls "Hash"` with a premise (`JudgePairs`) that carries no type at all — the first place
+"these subterms must be well-typed" and "and here is the type" come apart. Clink 4 has the
+three prices this charges, each a recorded negative control.
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
@@ -434,8 +445,15 @@ ladder is reported: 114/114 (§Architecture).
    pointwise `joinEnv`, which is a soundness requirement, not precision:
    `if-does-not-leak-reassignment` is an unsafe program whose recorded target used to be
    `true`, and is now `false` with a matching negative control.
-5. Arrays/hashes (8 rungs) — including that indexing (`#[]`) is just a `send`, same as
-   everything else in Ruby; the real `Expr` has no dedicated index constructor.
+5. Arrays/hashes (8 rungs) — **all eight at target** (`implementation-notes.md` clink 4).
+   Indexing (`#[]`) is just a `send` — the real `Expr` has no index constructor — so the
+   tier costs two `PrimSig` rows and two `Judge` rules. `arrayOf`'s single element type
+   comes from `joinT` over the elements (`array-heterogeneous`); the empty literal is
+   `arrayOf .any` by vacuity, not by a join unit (`Ty` has no bottom type);
+   `Array#[]` is `nilable elem` because `[1,2,3][99]` is `nil`; and a hash is the
+   unparameterised `.cls "Hash"`, so `Hash#[]` can only be `.any`. `arrayOf`'s invariance
+   is not yet load-bearing — there is no rule for `Array#<<` or `#[]=` — and the tier that
+   adds one inherits the obligation.
 6. Top-level functions (9 rungs) — a `def'` declares nothing, so a signature has to be
    *inferred* from the body and the params and then checked against each call site.
    Includes a self-recursive function (`fact`), where the signature is needed to check
@@ -513,7 +531,7 @@ away with certificates (§Claim-free).
 
 ## Ty language gaps
 
-**Two found so far, both the same missing thing: `Ty`'s arrow spine
+**Three found so far. The first two are the same missing thing: `Ty`'s arrow spine
 (`arrow0`/`arrowCons`) has no optional-or-rest arity constructor.**
 `def method_missing(name, *args)` — the idiomatic shape — has a parameter list no `Ty`
 value describes: not "no `chk` rule for it yet" but "no `Ty` states the truth without
@@ -537,6 +555,16 @@ modeling `*args` as `arrayOf Ty` — decided deliberately, not smuggled in as a 
 case of something else. Until then, `Main.lean`'s runner always prints a "flagged: Ty
 language gaps" section (independent of pass/fail) so this doesn't quietly disappear into
 a wall of `false`s the way it would have under the old philosophy.
+**A third gap, found at tier 5, that costs precision rather than a rung: no `hashOf`.**
+`Ty` has `arrayOf` and nothing beside it, so a hash literal can only be the bare
+`.cls "Hash"` and `PrimSig.hashIndex` can only answer `.any`. Both tier-5 hash rungs still
+*validate* — `.any` is a sound answer, just an inert one — so neither carries a
+`ty_language_gap` `false_reason`; the gap shows up instead as a program the checker cannot
+type at all, `{"a"=>1}["a"] + 1`, which is safe Ruby recorded as a conservative negative
+control in `CheckRungs.lean`. Recorded here anyway, because it names a specific missing
+constructor (`hashOf (key val : Ty)`) and it is the first gap in this section that a rung
+count does not surface.
+
 **Watch for more of these as the ladder grows** — this section is the place to record
 each one; a `ty_language_gap` `false_reason` should always come with an entry here
 naming the specific missing `Ty` constructor, not just "not supported yet."
@@ -605,25 +633,30 @@ The full climb, in roughly the order that costs least to unlock the most:
    join over `Env` was the real design question, and it unblocked `&&`/`||`. What the
    entry got wrong is that it filed environment-joining as *precision*; it is soundness,
    and `if-does-not-leak-reassignment`'s target was wrong, not merely imprecise.
-1. **Tier 5, arrays and hashes** — the next rung group, and the first that needs a `Ty`
-   with a *parameter*. The corpus demands both a homogeneous case (`array-int`) and a
-   heterogeneous one (`array-heterogeneous`), so the element type is a `joinT` over the
-   members and tier 4's union machinery carries straight over; `array-empty` is the
-   question of what an unconstrained element type is. Indexing (`array-index`,
-   `hash-index`) is the interesting half: `Array#[]` returns `nil` out of range, so its
-   `PrimSig` result is `nilable` of the element type, not the element type.
-2. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
+1. ~~**Tier 5, arrays and hashes**~~ — **done** (clink 4). Every prediction in this entry
+   held, including the `nilable` result for `Array#[]`.
+2. **Tier 6, top-level `def`** — the next rung group, and the first genuine shape change
+   since tier 3. A `def'` declares nothing in this `Ty`: a signature has to be *inferred*
+   from the params and body and then checked at each call site, which means the judgment
+   needs a **declaration table** alongside `Env` (and `fun-recursive-factorial` needs the
+   inferred signature available while checking the very body it is inferred from). Two
+   existing rules have written-down obligations that come due here: `bareName` must be
+   deleted or gated on the declaration table (a `def x; …; end; x` would otherwise
+   launder a stuck body through the `BareNameError` row), and `prim`'s "explicit receiver
+   only" restriction plus the whole judgment's top-level-`self` assumption stop being
+   free once a method body is judged.
+3. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
    *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
-3. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
+4. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
    actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
-4. **Classes and modules**: a declaration table (something like the real project's
+5. **Classes and modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
    node (accumulating across reopenings for free), each method's signature *inferred*
@@ -633,9 +666,9 @@ The full climb, in roughly the order that costs least to unlock the most:
    for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
    10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
    constructor except the one item below.
-5. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
+6. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
-6. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
+7. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is

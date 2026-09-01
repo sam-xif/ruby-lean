@@ -352,12 +352,94 @@ def r017 : Rung :=
       (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
                 (τ₁ := .bool) (τ₂ := .bool) (.var rfl) (.var rfl) .truLit)))⟩
 
+/-! ## Tier 5 — array and hash literals, and `#[]`
+
+Two new rules (`arrayLit`, `hashLit`) and two new `PrimSig` rows, and the interesting
+content is all in the **types**, not the derivation shapes: an array literal reuses
+`JudgeAll` (the same relation that types a send's arguments), and a hash literal's
+`JudgePairs` produces no type at all. The `ty` field below is the *computed* `elemTy`
+join written out longhand, so a wrong element type would not compile. -/
+
+/-- `[1, 2, 3]` → `arrayOf Int`. All three elements join to `Int`, so no union appears —
+    `elemTy`'s singleton base case plus `joinT`'s equal-types case. -/
+def r044 : Rung :=
+  ⟨"array-int", .array [.int 1, .int 2, .int 3], .arrayOf .int, [],
+    .arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))⟩
+
+/-- `[]` → `arrayOf any`. The one place `.any` is *synthesized* rather than only ever
+    declared: with no elements, "every element is `.any`" is vacuously true, which is why
+    this is sound without a bottom type (see `elemTy`). -/
+def r045 : Rung :=
+  ⟨"array-empty", .array [], .arrayOf .any, [], .arrayLit .nil⟩
+
+/-- `[1, "a", true]` → `arrayOf (union Int (union String Bool))`. Heterogeneous arrays are
+    ordinary Ruby, and tier 4's join is what makes them typeable rather than rejected.
+    Note the right-nesting: `elemTy` folds from the right, so the members come out in
+    source order. -/
+def r046 : Rung :=
+  ⟨"array-heterogeneous", .array [.int 1, .str "a", .tru],
+    .arrayOf (.union .int (.union (.cls "String") .bool)), [],
+    .arrayLit (.cons .intLit (.cons .strLit (.cons .truLit .nil)))⟩
+
+/-- `[1 + 1, 2 + 2]` → `arrayOf Int`. The elements are `send`s, so this rung is what pins
+    that `arrayLit` really recurses: each element gets a full derivation, and one that
+    failed to type would sink the literal. -/
+def r047 : Rung :=
+  ⟨"array-of-sends",
+    .array [.send (some (.int 1)) "+" [.int 1] none,
+            .send (some (.int 2)) "+" [.int 2] none],
+    .arrayOf .int, [],
+    .arrayLit (.cons (.prim .intLit (.cons .intLit .nil) .intAdd)
+      (.cons (.prim .intLit (.cons .intLit .nil) .intAdd) .nil))⟩
+
+/-- `{"a" => 1, "b" => 2}` → `.cls "Hash"`, the unparameterised class type. The keys' and
+    values' types (`String`, `Int`) are derived and then discarded: `JudgePairs` carries
+    no type in its conclusion, because `Ty` has nowhere to put one. -/
+def r048 : Rung :=
+  ⟨"hash-lit", .hash [(.str "a", .int 1), (.str "b", .int 2)], .cls "Hash", [],
+    .hashLit (.cons .strLit .intLit (.cons .strLit .intLit .nil))⟩
+
+/-- `[[1, 2], [3, 4]]` → `arrayOf (arrayOf Int)`. `elemTy`'s join at the outer level sees
+    two *equal* `arrayOf Int`s, so `joinTy`'s equality case answers and no union appears —
+    which is exactly where `arrayOf`'s invariance shows up as a *feature*: had the inner
+    arrays differed (`[[1], ["a"]]`), the outer element type would be a union rather than
+    a silently-widened `arrayOf (union …)`. -/
+def r049 : Rung :=
+  ⟨"nested-array",
+    .array [.array [.int 1, .int 2], .array [.int 3, .int 4]],
+    .arrayOf (.arrayOf .int), [],
+    .arrayLit (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil)))
+      (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil))⟩
+
+/-- `[1, 2, 3][0]` → `nilable Int`. Indexing is a plain `send`, so the derivation is
+    `prim` with the new `arrayIndex` row; the `nilable` is the honest answer to an index
+    the checker cannot bound (`[1,2,3][99]` is `nil`). The semantics produces an
+    `Integer` here, which `nilable Int` admits — `CheckRungs.lean`'s set-membership
+    check, deliberately weaker than an equality for these types. -/
+def r050 : Rung :=
+  ⟨"array-index",
+    .send (some (.array [.int 1, .int 2, .int 3])) "[]" [.int 0] none,
+    .nilable .int, [],
+    .prim (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))
+      (.cons .intLit .nil) .arrayIndex⟩
+
+/-- `{"a" => 1}["a"]` → `.any`. The `Ty` gap the corpus records, in its sharpest form:
+    `.cls "Hash"` says nothing about what the hash maps to, so the only sound result type
+    is the one nothing can consume. The rung validates; a rung that then *used* the
+    result (`{"a"=>1}["a"] + 1`) would not, and is a negative control. -/
+def r051 : Rung :=
+  ⟨"hash-index",
+    .send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none,
+    .any, [],
+    .prim (.hashLit (.cons .strLit .intLit .nil)) (.cons .strLit .nil) .hashIndex⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
    r014, r015, r016, r017, r019, r020, r021, r022, r024, r025, r026, r027, r028,
    r029, r030, r031, r032, r033, r034,
-   r035, r036, r037, r038, r039, r040, r041, r043]
+   r035, r036, r037, r038, r039, r040, r041, r043,
+   r044, r045, r046, r047, r048, r049, r050, r051]
 
 /-! ## `chk` answers exactly what was derived by hand
 

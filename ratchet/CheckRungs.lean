@@ -50,6 +50,12 @@ def expectedClasses : Ty → List String
   -- visibly: the rung still fails if the class produced is outside the set.
   | .nilable τ => "NilClass" :: expectedClasses τ
   | .union σ τ => expectedClasses σ ++ expectedClasses τ
+  -- Tier 5: an array literal's value is an `Array` whatever its element type is. The
+  -- element type itself is *not* cross-checked against the semantics here — this harness
+  -- compares the class of the whole result value, and nothing in it inspects an array's
+  -- contents. What backs the element type instead is `arrayLit`'s premise: each element
+  -- has its own derivation, and each of those would be a row here if it were a rung.
+  | .arrayOf _ => ["Array"]
   | _ => []
 
 /-- Fuel: these are small literal/arithmetic programs; a few hundred steps is already
@@ -182,7 +188,34 @@ def controls : List Control :=
   , ⟨"x = 1; if true then x = \"hello\" end; x + 1",
       .seq [.vasgn .lvar "x" (.int 1),
             .if' .tru (.vasgn .lvar "x" (.str "hello")) none,
-            .send (some (.var .lvar "x")) "+" [.int 1] none]⟩ ]
+            .send (some (.var .lvar "x")) "+" [.int 1] none]⟩
+    -- ### Tier 5's controls
+    --
+    -- One per new `PrimSig` row, plus the two places tier 5's honest imprecision shows.
+    -- The first is the only *unsound*-if-admitted one; the rest are safe programs this
+    -- checker declines, and they are here so the cost is a recorded number rather than a
+    -- surprise.
+    -- `arrayIndex`'s `[.int]` argument is load-bearing: a String subscript raises
+    -- TypeError, inside the family.
+  , ⟨"[1,2,3][\"a\"]",
+      .send (some (.array [.int 1, .int 2, .int 3])) "[]" [.str "a"] none⟩
+    -- `nilable` is the price of not tracking lengths: this is safe Ruby (`2`) that the
+    -- checker cannot type, because `nilable Int` matches no arithmetic row.
+  , ⟨"[1,2,3][0] + 1 (safe; nilable result matches no PrimSig row)",
+      .send (some (.send (some (.array [.int 1, .int 2, .int 3])) "[]" [.int 0] none))
+        "+" [.int 1] none⟩
+    -- The `Ty` gap in `hash-lit`/`hashIndex`, cashed out: safe Ruby (`2`), untypeable
+    -- because `.any` is inert by design.
+  , ⟨"{\"a\"=>1}[\"a\"] + 1 (safe; .any result is inert)",
+      .send (some (.send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none))
+        "+" [.int 1] none⟩
+    -- And the element-union's price: safe Ruby (`2`), rejected because the array's
+    -- element type is a union.
+  , ⟨"[1,\"a\"][0] + 1 (safe; element type is a union)",
+      .send (some (.send (some (.array [.int 1, .str "a"])) "[]" [.int 0] none))
+        "+" [.int 1] none⟩ ]
+
+mutual
 
 /-- `Ratchet.Expr` → `RubyCore.Expr` for the controls only: they are hand-written on this
 package's side of the isolation boundary, so there is no JSON to decode twice the way a
@@ -206,11 +239,24 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match e with
     | none => return .if' c' t' none
     | some e => return .if' c' t' (some (← toRubyCore e))
+  | .array es => (es.mapM toRubyCore).map (fun es' => .array es')
+  | .hash ps => (toRubyCorePairs ps).map (fun ps' => .hash ps')
   | .send (some r) m args none => do
     let r' ← toRubyCore r
     let args' ← args.mapM toRubyCore
     return .send (some r') m args' none
   | _ => none
+
+/-- The pair-list companion, spelled out rather than a `mapM` with a lambda: the lambda
+hides the structural decrease from the termination checker. -/
+def toRubyCorePairs : List (Expr × Expr) → Option (List (RubyCore.Expr × RubyCore.Expr))
+  | [] => some []
+  | (k, v) :: ps => do
+    let k' ← toRubyCore k
+    let v' ← toRubyCore v
+    return (k', v') :: (← toRubyCorePairs ps)
+
+end
 
 def main (args : List String) : IO UInt32 := do
   let corpusDir : System.FilePath := args.headD "corpus"

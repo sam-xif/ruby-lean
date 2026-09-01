@@ -10,10 +10,11 @@ ratchet: a rung is only honestly "climbed" when there is a derivation
 `Judge Γ p τ Γ'` one can read and check by eye, not merely a `Bool` that came out
 `true`.
 
-## Scope: tiers 1–3, and no more
+## Scope: tiers 1–5, and no more
 
 Deliberately authored for the rungs reached so far (tier 1's eight literals, tier 2's
-`send`-shaped rungs, tier 3's `var`/`vasgn`/`seq`/bare-`vcall`), and nothing else.
+`send`-shaped rungs, tier 3's `var`/`vasgn`/`seq`/bare-`vcall`, tier 4's conditionals,
+tier 5's array and hash literals and their `#[]`), and nothing else.
 Consequences, each a real limitation to lift later, not an oversight:
 
 - **The environment threads, and it is flat.** `Judge Γ e τ Γ'` reads: *in local
@@ -29,8 +30,8 @@ Consequences, each a real limitation to lift later, not an oversight:
   exists in `Ratchet/Ty.lean` and is unused here on purpose: with no parameters, there
   is nothing yet for subsumption to do, and a subsumption rule admitted "for later" is
   a rule whose soundness nobody has had to justify against a rung.
-- **No `if`/join, no `def`, no dispatch.** Tiers 4–10. That absence is *load-bearing*
-  for `BareNameError` below — see its docstring.
+- **No `def`, no dispatch, no user classes.** Tiers 6–10. The absence of a `def'` rule
+  is *load-bearing* for `BareNameError` below — see its docstring.
 - **Top-level `self`.** Every judged program runs at the top-level object, because no
   rule types a `def'`/`class'`/`module'`/block body. Two rules quietly depend on this
   (`prim`'s "explicit receiver only" restriction, and `bareName`), and both would need
@@ -150,6 +151,48 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       so requiring both sides to have the same `Ty` would be a conservative *choice*,
       not a soundness requirement. The receiver still has to be `EqSafe`. -/
   | objEq {σ τ : Ty} : EqSafe σ → PrimSig σ "==" [τ] .bool
+  -- ### Tier 5's two indexing rows
+  --
+  -- Ruby has no index *syntax*: `a[0]` is `send a "[]" [0]`, an ordinary method call, so
+  -- indexing needs no new `Expr` node and no new rule shape — only these two rows. What
+  -- makes them worth reading one at a time is that each one's *result* is where the
+  -- interesting claim lives, not its argument list.
+  /-- `Array#[] (Integer) → nilable elem` (rung `array-index`).
+
+      **Why `nilable` and not `elem`.** An in-range index gives an element; an
+      out-of-range one gives `nil` (`[1,2,3][99]` is `nil`, not an error). The checker
+      cannot tell which without arithmetic on the index and a length it does not track,
+      so the honest result type is the one that covers both. The cost is real and visible:
+      `[1,2,3][0] + 1` is safe Ruby that this rule makes untypeable, because
+      `nilable Int` matches no arithmetic row. It is kept as a negative control
+      (`CheckRungs.lean`) so the imprecision is recorded rather than forgotten.
+
+      **Why `[.int]` is load-bearing.** `[1,2,3]["a"]` raises `TypeError` ("no implicit
+      conversion of String into Integer") — inside the family — so an `.any` argument
+      here would be unsound, exactly as in `strAdd`. Also a negative control.
+
+      **What it does not claim.** `[1,2,3][2**70]` raises `RangeError` ("bignum too big
+      to convert into `long`"). Like `intDiv`'s `ZeroDivisionError`, that is *outside* the
+      `NoMethodError`/`ArgumentError`/`TypeError` family this ladder defines type-safety
+      over, so the row stands; it claims "never type-stuck, and returns `elem` or `nil`",
+      not "never raises". -/
+  | arrayIndex {τ : Ty} : PrimSig (.arrayOf τ) "[]" [.int] (mkNilable τ)
+  /-- `Hash#[] (anything) → any` (rung `hash-index`).
+
+      **The argument is unconstrained** for the same reason `objEq`'s is: `Hash#[]` looks
+      the key up by `hash`/`eql?`, both of which every class in this `Ty` has totally
+      inherited from `Object`, and a missing key answers `nil` rather than raising
+      (`{"a"=>1}["z"]` is `nil`; `{"a"=>1}[[1,2]]` is `nil`). So there is no key type
+      this rule needs to exclude.
+      
+      **The result is `.any` because `Ty` cannot say better.** There is no `hashOf`
+      constructor to read a value type back off — `hashLit` types every hash as the bare
+      `.cls "Hash"` — so the value's type is genuinely unknown here, and `.any` is the
+      only sound answer. It is also inert (no `PrimSig` row has an `.any` receiver, and
+      `.any` is not `EqSafe`), so nothing downstream can consume what the checker does not
+      know. This row is the sharpest statement of the `Ty` gap the `hash-lit` rung
+      records: `{"a"=>1}["a"] + 1` is safe Ruby that no rule can type. -/
+  | hashIndex {τ : Ty} : PrimSig (.cls "Hash") "[]" [τ] .any
 
 /-- The bare names that resolve to **no method at all** at top-level `self`, so that
 evaluating them raises `NameError`.
@@ -270,6 +313,36 @@ inductive Judge : Env → Expr → Ty → Env → Prop
   | ifNoElse {Γ Γc Γ₁ : Env} {c t : Expr} {σ τ : Ty} :
       Judge Γ c σ Γc → Judge Γc t τ Γ₁ →
       Judge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ Γc)
+  /-- An array literal. The elements are typed left to right — `JudgeAll` already
+      threads the environment in exactly Ruby's element-evaluation order, so this rule
+      needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
+      their join.
+
+      **Every element must type, including ones whose type is then thrown away.** The
+      join can widen `[1, "a"]` to `arrayOf (union Int String)`, but it cannot excuse an
+      element that is itself type-stuck: `[1, 1 + "a"]` has no derivation, because
+      `JudgeAll` demands a type for each element (rung `array-of-sends` is the positive
+      form of the same point — `[1 + 1, 2 + 2]` types only because its elements do).
+
+      **`arrayOf` is invariant** (`Ratchet/Ty.lean`), and this rule is where that matters
+      eventually rather than now: covariance is unsound under mutation-through-aliasing,
+      and there is as yet no rule for `Array#<<` or `Array#[]=`. Whichever tier adds one
+      inherits the obligation. -/
+  | arrayLit {Γ Γ' : Env} {es : List Expr} {τs : List Ty} :
+      JudgeAll Γ es τs Γ' → Judge Γ (.array es) (.arrayOf (elemTy τs)) Γ'
+  /-- A hash literal, typed as the bare `.cls "Hash"`.
+
+      **The key and value types are discarded, and the premise is still not vacuous.**
+      `Ty` has no parameterised hash constructor (no `hashOf` beside `arrayOf`), so there
+      is nowhere to record what a hash maps to — but every key and every value expression
+      must still be *typeable*, because evaluating one can be type-stuck all on its own
+      (`{"a" => 1 + "b"}` must not type). `JudgePairs` is what carries that requirement,
+      and it also threads the environment in Ruby's order: key then value, pair by pair.
+
+      This is the rung the corpus records as a `Ty` language gap rather than a missing
+      rule, and `PrimSig.hashIndex` is where the gap becomes visible. -/
+  | hashLit {Γ Γ' : Env} {pairs : List (Expr × Expr)} :
+      JudgePairs Γ pairs Γ' → Judge Γ (.hash pairs) (.cls "Hash") Γ'
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
@@ -288,6 +361,15 @@ inductive JudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : JudgeAll Γ [] [] Γ
   | cons {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
       Judge Γ e τ Γ₁ → JudgeAll Γ₁ es τs Γ₂ → JudgeAll Γ (e :: es) (τ :: τs) Γ₂
+
+/-- Key-then-value `Judge` over a hash literal's pairs, threading the environment in
+Ruby's evaluation order. No types appear in the conclusion: this relation exists purely
+to require that each key and each value *has* one (see `Judge.hashLit`). -/
+inductive JudgePairs : Env → List (Expr × Expr) → Env → Prop
+  | nil {Γ : Env} : JudgePairs Γ [] Γ
+  | cons {Γ Γ₁ Γ₂ Γ₃ : Env} {k v : Expr} {ps : List (Expr × Expr)} {κ ν : Ty} :
+      Judge Γ k κ Γ₁ → Judge Γ₁ v ν Γ₂ → JudgePairs Γ₂ ps Γ₃ →
+      JudgePairs Γ ((k, v) :: ps) Γ₃
 
 /-- A non-empty statement sequence. The result type is the last statement's; every
 earlier statement must still type (a statement nobody reads can still be type-stuck),

@@ -268,3 +268,102 @@ below tier 4 now matches its recorded target), 40/40 cross-checked against the r
 semantics, 16/16 negative controls rejected, corpus agreement 0 disagreements,
 `chk_sound`/`chkAll_sound`/`chkSeq_sound`/`validate_sound_syntactic` axiom-clean
 (`propext`, `Quot.sound`).
+
+---
+
+## Clink 4 (2026-09-01) — tier 5: arrays, hashes, and `#[]`: 40 → 48
+
+Rungs added: all eight of tier 5 (`array-int`, `array-empty`, `array-heterogeneous`,
+`array-of-sends`, `hash-lit`, `nested-array`, `array-index`, `hash-index`). Two new
+`Judge` rules, one new auxiliary relation, two new `PrimSig` rows. Tier 5 is 8/8.
+
+**Ruby has no index syntax, and that is the whole reason this tier is cheap.** `a[0]` is
+`send a "[]" [0]` — an ordinary method call — so indexing needs no `Expr` node and no new
+rule *shape*, only two `PrimSig` rows. This is the same observation clink 1 made about
+`!`, and it keeps paying: the constructs that look like syntax in most languages are
+sends in this one, so they land in the table rather than in the judgment.
+
+**`elemTy`: the element type is a `joinT`, and the empty case is not a join unit.**
+`Ty.arrayOf` takes one element type; Ruby arrays are heterogeneous. Tier 4's join carries
+straight over, so `[1, "a", true] : arrayOf (union Int (union String Bool))` — a real
+upper bound on every element, which is exactly what `arrayOf τ` claims. The empty literal
+is the interesting case: there is no bottom type in this `Ty`, so nothing to fold from.
+`elemTy [] = .any`, and the justification is *vacuity*, not algebra — for an array with no
+elements, "every element has type `.any`" is trivially true. It is deliberately **not**
+the base case of the fold (the singleton case returns `τ` itself), so a non-empty literal
+never gets silently widened to `.any` by passing through a unit. `array-empty` and
+`array-int` together pin that.
+
+This is also the first place `.any` is *synthesized* from a value-producing expression.
+Until now `.any` came only from `bareName`, whose expression never returns. `arrayOf .any`
+does return a value — but the `.any` is inside an `arrayOf`, and `arrayIndex` turns it
+into `nilable .any`, which nothing consumes. The inertness argument is unchanged; it just
+now has to be made about a type in a position rather than a whole result.
+
+**`arrayLit` reuses `JudgeAll`.** The relation that types a send's argument list is
+exactly the relation that types an array literal's elements — same left-to-right
+environment threading, same "one derivation per element" requirement. So no new
+inductive, and the requirement that every element type (a stuck element sinks the
+literal: `[1, 1 + "a"]` has no derivation) comes for free from the relation's shape.
+`array-of-sends` is the positive form of the same point.
+
+**`arrayOf` invariance is an obligation deferred, not discharged.** `Ty.arrayOf` is
+documented as invariant because covariance is unsound under mutation-through-aliasing.
+Nothing here relies on that yet, because there is no rule for `Array#<<` or `Array#[]=` —
+no way to write to an array at all. The tier that adds one inherits the obligation, and
+the rule's docstring says so. `nested-array` is where the choice is visible as a feature:
+`[[1,2],[3,4]]` joins two *equal* `arrayOf Int`s so no union appears, and had the inner
+arrays differed the outer element type would be a union rather than a silently widened
+`arrayOf (union …)`.
+
+**`hashLit`: a rule whose premise carries no type.** `Ty` has no `hashOf` beside
+`arrayOf`, so a hash literal can only be the bare `.cls "Hash"`. The keys and values
+still have to *type* — evaluating one can be stuck all on its own, and `{"a" => 1 + "b"}`
+must not validate — so `JudgePairs Γ pairs Γ'` exists purely to demand that, and threads
+the environment in Ruby's order (key, then value, pair by pair). It is the first relation
+in this package with no `Ty` in its conclusion, and the shape is worth noticing: *"these
+subterms must be well-typed"* is a separate obligation from *"and here is the type"*, and
+a type language with a gap in it is where they come apart.
+
+**Two rows, two different honest imprecisions.**
+
+- `arrayIndex : arrayOf τ #[] (Int) → nilable τ`. The `nilable` is not caution, it is
+  correct: `[1,2,3][99]` is `nil`. Bounding the index would need arithmetic on it and a
+  length this checker does not track. The cost is that `[1,2,3][0] + 1` — safe Ruby
+  returning `2` — cannot be typed, since `nilable Int` matches no arithmetic row. Kept as
+  a negative control so the number is recorded rather than rediscovered.
+  The `[.int]` argument *is* load-bearing (`[1,2,3]["a"]` raises `TypeError`, inside the
+  family) — also a control, and the only one of tier 5's new controls whose admission
+  would be unsound rather than merely imprecise. And, like `intDiv`, the row claims
+  "never type-stuck", not "never raises": `[1,2,3][2**70]` raises `RangeError`, which is
+  outside the family this ladder defines type-safety over.
+- `hashIndex : .cls "Hash" #[] (anything) → any`. The argument is unconstrained for
+  `objEq`'s reason — lookup goes through `hash`/`eql?`, total on every class in this `Ty`,
+  and a missing key answers `nil` (`{"a"=>1}[[1,2]]` is `nil`) — and the result is `.any`
+  because there is genuinely nothing to read a value type off. This is the sharpest
+  statement of the `Ty` gap the `hash-lit` rung records: the rung validates, but
+  `{"a"=>1}["a"] + 1` cannot, and that too is a control.
+
+**Four new controls, three of them "conservative".** Tier 5 is the first clink where most
+new controls are *safe programs the checker declines* rather than unsafe ones it must
+reject: the `nilable` price, the `.any` price, and the element-union price
+(`[1,"a"][0] + 1`). They are in `CheckRungs.lean` because a cost that is not measured
+drifts, and because the harness distinguishes "rejected (sound: really type-stuck)" from
+"rejected (conservative: safe, no rule yet)" — so the ladder shows which kind each is.
+
+**`expectedClasses (.arrayOf _) = ["Array"]`, and what that does not check.** The harness
+compares the class of the whole result value, and nothing in it inspects an array's
+contents, so the *element* type is not cross-checked against the semantics here. What
+backs the element type instead is `arrayLit`'s premise: each element has its own
+derivation, and each of those would be a harness row if it were a rung. Noted in place.
+
+**`toRubyCore` needed a mutual companion.** The controls' `.hash` case could not be a
+`mapM` with a lambda over the pair list — the lambda hides the structural decrease from
+the termination checker. Spelled out as `toRubyCorePairs` in a `mutual` block. Purely
+mechanical, recorded so the next person does not retry the lambda.
+
+State after this clink: **48 rungs climbed** (tiers 1–5 complete, every rung at or below
+tier 5 matching its recorded target), 48/48 cross-checked against the real semantics,
+20/20 negative controls rejected, corpus agreement 0 disagreements, and
+`chk_sound`/`chkAll_sound`/`chkPairs_sound`/`chkSeq_sound`/`validate_sound_syntactic`
+axiom-clean (`propext`, `Quot.sound`).

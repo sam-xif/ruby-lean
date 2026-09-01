@@ -65,7 +65,9 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .intToS
            | exact .intZeroP
            | exact .strLength
-           | exact .notBool)
+           | exact .notBool
+           | exact .arrayIndex
+           | exact .hashIndex)
       | simp at h
 
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
@@ -82,8 +84,8 @@ theorem chk_sound : ∀ {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env},
   intro Γ e τ Γ' h
   unfold chk at h
   -- One `split` per arm of `chk`'s match, in the order they are written there: the
-  -- seven literals, `var`, `vasgn`, `seq`, `vcall`, the primitive `send`, then the
-  -- `none` catch-all.
+  -- seven literals, `var`, `vasgn`, `seq`, the two `if'`s, `array`, `hash`, `vcall`,
+  -- the primitive `send`, then the `none` catch-all.
   split at h
   · injection h with h; injection h with h h'; subst h; subst h'; exact .intLit
   · injection h with h; injection h with h h'; subst h; subst h'; exact .fltLit
@@ -136,6 +138,23 @@ theorem chk_sound : ∀ {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env},
         exact .ifNoElse (chk_sound hc) (chk_sound ht)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  · -- `array es`: every element typed, and the literal's type is `arrayOf` of the join
+    -- of what they synthesized.
+    split at h
+    · rename_i hes
+      injection h with h
+      injection h with h h'
+      subst h; subst h'
+      exact .arrayLit (chkAll_sound hes)
+    · exact absurd h (by simp)
+  · -- `hash pairs`: every key and value typed; their types do not appear in the result.
+    split at h
+    · rename_i hps
+      injection h with h
+      injection h with h h'
+      subst h; subst h'
+      exact .hashLit (chkPairs_sound hps)
+    · exact absurd h (by simp)
   · -- `vcall m`: only when the name is a known `BareNameError` row.
     split at h
     · rename_i hbare
@@ -179,6 +198,20 @@ theorem chkAll_sound : ∀ {Γ : Env} {es : List Expr} {τs : List Ty} {Γ' : En
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
+theorem chkPairs_sound : ∀ {Γ : Env} {ps : List (Expr × Expr)} {Γ' : Env},
+    chkPairs Γ ps = some Γ' → JudgePairs Γ ps Γ' := by
+  intro Γ ps Γ' h
+  unfold chkPairs at h
+  split at h
+  · injection h with h; subst h; exact .nil
+  · split at h
+    · rename_i hk
+      split at h
+      · rename_i hv
+        exact .cons (chk_sound hk) (chk_sound hv) (chkPairs_sound h)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+
 theorem chkSeq_sound : ∀ {Γ : Env} {es : List Expr} {τ : Ty} {Γ' : Env},
     chkSeq Γ es = some (τ, Γ') → JudgeSeq Γ es τ Γ' := by
   intro Γ es τ Γ' h
@@ -205,6 +238,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
+#print axioms chkPairs_sound
 #print axioms chkSeq_sound
 #print axioms validate_sound_syntactic
 

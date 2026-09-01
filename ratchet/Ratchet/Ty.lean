@@ -211,4 +211,24 @@ that a checker carrying the pre-`if` environment forward would certify. -/
 def joinEnv (Γ₁ Γ₂ : Env) : Env :=
   joinEnvAt Γ₁ Γ₂ (envKeys Γ₁ ++ (envKeys Γ₂).filter (fun k => !(envKeys Γ₁).contains k))
 
+/-- The element type of an array literal, from its elements' types: the `joinT` of all
+of them.
+
+`Ty.arrayOf` takes **one** element type and Ruby arrays are heterogeneous, so this is
+where tier 4's join earns its keep a second time: `[1, "a", true]` is ordinary safe Ruby,
+and its type is `arrayOf (union Int (union String Bool))` — a genuine upper bound on every
+element, which is exactly what `arrayOf τ` claims.
+
+**The empty case is `.any`, and it is not a join unit.** There is no bottom type in this
+`Ty`, so there is nothing to fold an empty list from. `.any` is used instead because for
+an array with no elements the claim "every element has type `.any`" is *vacuously* true —
+the weakest thing sayable, and sound for that reason rather than by algebra. It is
+deliberately not the base case of the fold: the singleton case returns `τ` itself, so a
+non-empty literal never gets widened to `.any` by passing through the unit (rung
+`array-empty` vs `array-int`). -/
+def elemTy : List Ty → Ty
+  | [] => .any
+  | [τ] => τ
+  | τ :: τs => joinT τ (elemTy τs)
+
 end Ratchet
