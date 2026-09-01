@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **91 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **95 rungs, hand-authored judgment first, nothing trusted**
 
 `Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–8, plus tier 9's callable
 values**: the eight literals,
@@ -23,11 +23,25 @@ queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument 
 `BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
 literals with their `#[]`, tier 6's top-level `def` plus implicit-self calls, and tier 7's
 `class`/`new`/`@ivar`/instance dispatch/`self`/inheritance/`super`/singleton methods, and
-tier 8's modules, and tier 9's `lambda`/`proc`/`#call`/`yield`/`&b` — 91 rungs. **Every rung
-at or below tier 8 matches its recorded target; tier 9 is at 10/22 and tier 11 at 1/10 and tier 12 at 0/12.** What
-remains is tier 9's nine blocks-passed-to-*builtins* rungs, tier 10 (metaprogramming), tier
-11's cross-products, and tier 12's **narrowing** — which is now the highest-priority item,
-because it is a prerequisite for checking anything under an assumption about its inputs.
+tier 8's modules, tier 9's `lambda`/`proc`/`#call`/`yield`/`&b`, and **tier 12's narrowing**
+(the four direct-test rungs) — 95 rungs. **Every rung at or below tier 8 matches its recorded
+target; tier 9 is at 10/22, tier 11 at 1/10 and tier 12 at 4/12.** What remains is tier 9's
+nine blocks-passed-to-*builtins* rungs, tier 10 (metaprogramming), tier 11's cross-products,
+and tier 12's remaining eight narrowing rungs.
+
+**Tier 12 (clinks 13 and 14) is where `nilable` and `union` stop being write-only.** Narrowing
+lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc`, a **total**
+function that is the identity on every condition it does not recognize, which is why folding it
+into the existing rule did not disturb a single one of the 91 derivations already on file. Three
+recognized conditions so far (`if x`, `if x.nil?`, `if x.is_a?(C)`), four type-level refinements
+(`truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy`) resting on the single fact that Ruby's only falsy
+values are `nil` and `false` — which is why `falsyTy .int = .never` is *precise*, not reckless —
+plus `isATy`/`notATy`, which project a union member-by-member using complete ancestor lists
+(`builtinAncestors` for builtins, `ancestors?` for declared classes). `nil?` needed a *guard*
+(`NilQSafe`) rather than the wildcard receiver clink 1 declined for `!`; `is_a?` needed a
+`Judge` rule of its own (`isAQuery`), because its guard consults the class table and `PrimSig`
+cannot. Clink 14 also records that **`subTy` is still unused** after two clinks predicted
+narrowing would bring it due: refinement needs class *membership*, not `Ty` subsumption.
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -497,7 +511,7 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (10 tiers, 114 rungs, 30 climbed)
+## The ladder (12 tiers, 136 rungs, 95 climbed)
 
 **Every rung's target is `expect_validate = true`, with exactly nine, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
@@ -597,17 +611,21 @@ ladder is reported: 114/114 (§Architecture).
    have rules, added because a corpus-driven ladder is blind to its own cross-products.
    **1/10 climbed** (clink 11); see §Checker status.
 12. **Narrowing (12 rungs).** No new feature either — the capability that makes `nilable` and
-   `union` *usable*. **0/12** (clink 12), deliberately: this tier is pressure, not progress.
-   Every rung is safe Ruby a human writes without thinking, and every one needs a type refined
-   inside a branch. The tier's finding is that **narrowing cannot be a syntactic rewrite** —
-   `case v when Integer` desugars to a temp plus `Integer === __dt_t1` with the branch bodies
-   still using `v`, so refinement needs an *aliasing* story; `if x && x > 1` puts a whole `seq`
-   in the condition position; `return 0 if x.nil?` narrows by *elimination of a branch that
-   leaves*. It also brings due two things earlier tiers deferred: a wildcard-receiver `nil?`
-   row (clink 1 declined one for `!`), and `subTy`, unused since the port, for
-   `narrow-union-subclass` (`is_a?(Dog)` must narrow an `Animal` away; `is_a?(Animal)` must not
-   narrow a `Dog` away). Grade the work: `narrow-nilable-truthy` first (bare `var` condition,
-   no aliasing, no new row), `narrow-guard-clause`/`narrow-and-guard` last.
+   `union` *usable*. **4/12** (clinks 12, 13, 14). The corpus came first, deliberately as
+   pressure (clink 12); the four climbed are the ones whose condition tests a local *directly* —
+   `if x`, `if x.nil?`, `if x.is_a?(Integer)`, `if x.is_a?(Dog)` — so they need no aliasing.
+   The tier's original finding stands for the remaining eight: **narrowing cannot be a
+   syntactic rewrite** — `case v when Integer` desugars to a temp plus `Integer === __dt_t1`
+   with the branch bodies still using `v`, so refinement needs an *aliasing* story;
+   `if x && x > 1` puts a whole `seq` in the condition position; `return 0 if x.nil?` narrows by
+   *elimination of a branch that leaves*. Also still owed: narrowing an **ivar** (which needs
+   `if'`'s `I₁ = I₂` premise to become a join) and narrowing inside a block body. Of the two
+   things clink 12 said this tier brought due, one arrived as a *guarded* row rather than the
+   wildcard `nil?` it predicted (`NilQSafe`), and the other — `subTy` — **did not arrive at
+   all**: `narrow-union-subclass` needs the ancestor walk, not subsumption (clink 14).
+   One recorded target now looks wrong: `narrow-nilable-and-union` targets `true` but is
+   provably not certifiable, because `arr[0]`'s `nilable` survives into the else-branch — see
+   clink 14's last section.
 
 Run `scripts/run_ratchet.sh` for current numbers:
 
@@ -616,16 +634,16 @@ corpus agreement (CRuby vs the Lean semantics): 136/136 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 10/22  tier 10: 0/6
-tier 11: 1/10  tier 12: 0/12
+tier 11: 1/10  tier 12: 4/12
 flagged Ty language gaps: 2 (proc-arity-leniency, metaprog-method-missing-splat)
-rungs where validate differs from the recorded target: 31
+rungs where validate differs from the recorded target: 27
 ```
 
-All 91 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
+All 95 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
-(also run inline by `run_ratchet.sh`): 91/91 of those cross-checked against the real
-semantics, 43/43 negative controls rejected.
+(also run inline by `run_ratchet.sh`): 95/95 of those cross-checked against the real
+semantics, 53/53 negative controls rejected.
 
 Three numbers, and they move for different reasons:
 
