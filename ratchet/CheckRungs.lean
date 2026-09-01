@@ -258,11 +258,30 @@ def controls : List Control :=
   , ⟨"def f(x) = x + 1; f(\"a\")",
       .seq [.def' "f" [.req "x"] (.send (some (.var .lvar "x")) "+" [.int 1] none),
             .send none "f" [.str "a"] none]⟩
-    -- (d) `paramEnv`'s required-parameters-only restriction, measured: safe Ruby the
-    -- checker declines because `Param.opt` answers `none` (AGENTS.md §Frontier item 3).
-  , ⟨"def f(x = 1); x; end; f() (safe; optional param unsupported)",
-      .seq [.def' "f" [.opt "x" (.int 1)] (.var .lvar "x"),
-            .send none "f" [] none]⟩
+    -- (d) `paramEnv`'s arity restriction, measured -- and **narrowed by tier 14a**: the old
+    -- control here was `def f(x = 1); x; end; f()`, which is now certified, so it was
+    -- retired rather than left to fail. What remains is the part `constLitTy?` cannot read: a
+    -- default that is not a literal. Safe Ruby, declined.
+  , ⟨"def pad(s, n = s.length); n; end; pad(\"abc\") (safe; non-literal default)",
+      .seq [.def' "pad" [.req "s", .opt "n" (.send (some (.var .lvar "s")) "length" [] none)]
+              (.var .lvar "n"),
+            .send none "pad" [.str "abc"] none]⟩
+    -- (d2) **The default's type is load-bearing.** `g` with no argument holds a `String`, and
+    -- `x + 1` on it raises TypeError -- so the type `constLitTy?` reads off the default is
+    -- checked by execution here rather than only asserted.
+  , ⟨"def g(x = \"s\"); x + 1; end; g",
+      .seq [.def' "g" [.opt "x" (.str "s")]
+              (.send (some (.var .lvar "x")) "+" [.int 1] none),
+            .vcall "g"]⟩
+    -- (d3) **Greedy matching either agrees with Ruby or fails.** Ruby fills the post-optional
+    -- *required* parameter first here (`a = 1`, `c = 2`, `b` defaulted); greedy binds `a` and
+    -- `b` and then meets `c` with no argument left, and answers `none`. Safe Ruby, declined --
+    -- and the point of the control is that it is declined rather than mis-bound.
+  , ⟨"def f(a, b = 1, c); [a, b, c].length; end; f(1, 2) (safe; greedy matching declines)",
+      .seq [.def' "f" [.req "a", .opt "b" (.int 1), .req "c"]
+              (.send (some (.array [.var .lvar "a", .var .lvar "b", .var .lvar "c"]))
+                "length" [] none),
+            .send none "f" [.int 1, .int 2] none]⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most

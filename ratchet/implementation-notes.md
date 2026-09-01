@@ -2991,3 +2991,92 @@ one of them because `casgn` can rebind a name a class declaration owns.
 (`Regexp` plus the `String` rows, tier 15) and E (`begin`/`rescue`, tier 16); item A (a
 parameterised `Hash`) is still the widest unblocker, and `const-frozen-hash` is now the rung
 that shows why.
+
+## Clink 33 (2026-09-01) — tier 14a: an optional parameter, and a table that stopped being trusted: 141 → 142
+
+`param-optional` (`def greet(name, greeting = "hi")`). One rung, and the reason it is its own
+clink is that it turned a *function used in a premise* into something a theorem covers.
+
+### The problem an optional parameter poses
+
+`paramEnv : List Param → List Ty → Option Env` is a **function**, and it appears in the
+premises of a dozen call rules (`paramEnv d.params argTys = some Γb`), discharged by `rfl` in
+every derivation on file. An omitted optional parameter holds the value of its *default
+expression*, so its type comes from an expression that has to be **judged** — and a function
+cannot judge.
+
+The three ways out, and why the third one won:
+
+1. **Make `paramEnv` a relation** (`ParamEnv κ ps τs Γ`, with a `Judge` premise for each
+   defaulted parameter). Correct and general — it is what `def pad(s, n = s.length)` needs,
+   since the default reads an earlier parameter and must be judged in the environment built so
+   far. It also re-indexes every call rule and replaces ~50 `rfl`s with hand-built terms.
+2. **Add a premise to each call rule** discharging the defaults. Same blast radius, less
+   generality.
+3. **Restrict defaults to expressions whose type is a theorem** — and prove the theorem.
+
+### `constLitTy?_sound`, and what it says
+
+`constLitTy?` already existed, from tier 13b, reading a type off a literal's syntax. Clink 28
+paired it with `Judge.classStmt`'s `JudgeConsts` premise, which discharged it *at the class
+statement*. There is no equivalent place for a parameter default, so instead:
+
+```
+constLitTy? e = some τ → Judge κ Γ I e τ Γ I
+```
+
+Read the quantifiers: `κ`, `Γ` and `I` are arbitrary and **unchanged across the conclusion**.
+The expression types at that type in *any* context and leaves no state behind. That is a strong
+claim, and it is exactly why the function is restricted to literals — nothing it accepts reads a
+variable, dispatches a method the program could redefine, or writes anything.
+
+Two consequences worth stating:
+
+- **`paramEnv` stays a function** and needs no new premise anywhere. The `.opt` rows are
+  licensed by a theorem rather than trusted like a `PrimSig` row.
+- **`JudgeConsts` is now redundant as an obligation** (it is always satisfiable) while
+  remaining useful as a statement of intent. Clink 28 could have been done this way; it is
+  better that it was not, because the premise is where the specification says out loud that a
+  class body's constants are typed at the definition site.
+
+One row had to be tightened to get the proof: `constLitTy? (.hash pairs)` used to answer
+`.cls "Hash"` unconditionally — correct about the *type*, since tier 5's hash type carries
+nothing about its pairs — and now requires the pairs to be literals too (`constLitPairs?`).
+Without that the theorem is false, because `hashLit`'s premise is `JudgePairs`.
+
+### Greedy matching is safe, and the argument is short
+
+Optional parameters match **greedily, left to right**. Ruby does not: `def f(a, b = 1, c)`
+called with two arguments binds `a` and `c` and defaults `b`. Greedy binds `a` and `b`, then
+meets a `.req` with no argument left, and answers `none`.
+
+So greedy either agrees with Ruby or fails, and there is no argument count at which it succeeds
+with a binding Ruby would not have made. Control (d3) is that program, declined.
+
+### One control retired, three added
+
+The control `def f(x = 1); x; end; f()` was in the file *to measure this gap*
+("safe; optional param unsupported"). It is now certified, so it was retired rather than left
+failing — the honest bookkeeping for a control whose whole content was an absence. What
+replaced it:
+
+- (d) `def pad(s, n = s.length)` — the part of the gap that remains, and the rung this clink
+  does not climb.
+- (d2) `def g(x = "s"); x + 1; end; g` — **sound rejection**: the default's type really is
+  what the body is checked against, and here that makes the program raise `TypeError`. So
+  `constLitTy?`'s answer is checked by execution, not only by the theorem.
+- (d3) the greedy-matching program above.
+
+### State
+
+**142 rungs of 232**, tier 14 at 2/15. 142/142 cross-checked, 110/110 controls rejected,
+corpus agreement 232/232, axiom-clean — four new theorems (`constLitTy?_sound`,
+`constLitTys?_sound`, `constLitPairs?_sound`, `constLitTy?_nilQSafe`).
+
+What tier 14 has left is two things, not thirteen: **`ParamEnv` as a relation** (the
+non-literal default, and it is the same shape `.rest` and `.key` defaults will want), and
+**keyword arguments**, which are a change to the *call* shape — a `kwargs` node is the last
+element of the argument list and is not a value, so `JudgeAll` cannot type it and every
+dispatch rule has to learn to split positional from keyword arguments. That is the expensive
+one, and §Frontier item C is right that it is also the one where getting it wrong is unsound
+(a missing required keyword raises `ArgumentError`).

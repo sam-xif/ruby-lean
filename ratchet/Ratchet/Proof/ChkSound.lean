@@ -201,6 +201,101 @@ theorem narrowCond?_sound {c : Expr} {k : VarKind} {x : String} {nk : NarrowKind
            | exact .caseEqQuery)
       | simp at h
 
+/-! ## `constLitTy?` is not a trusted table (tiers 13b and 14a)
+
+`constLitTy?` reads a type off an expression's syntax, and it is used in two places where
+nothing in the derivation discharges it: `Ctx.afterStmt` (a class body's constants) and
+`paramEnv` (an optional parameter's default). The theorem below is what makes that legitimate
+rather than a trusted row — it says an expression `constLitTy?` types **really has that type,
+in any context whatsoever**, with no premise to supply:
+
+  `constLitTy? e = some τ → Judge κ Γ I e τ Γ I`
+
+Note the shape: `κ`, `Γ` and `I` are universally quantified and unchanged across the
+conclusion. That is a strong statement and it is exactly why the function is restricted to
+literals — nothing it accepts reads a variable, dispatches a method the program could
+redefine, or leaves any state behind. It is also why `Judge.classStmt`'s `JudgeConsts` premise
+is now redundant *as an obligation* (it is always satisfiable) while remaining useful as a
+statement of intent: the premise says in the specification what this theorem proves.
+
+The `NilQSafe` companion is needed for the `.freeze` row, whose `PrimSig.freezeId` carries
+that guard. -/
+theorem constLitTy?_nilQSafe : ∀ {e : Expr} {τ : Ty}, constLitTy? e = some τ → NilQSafe τ := by
+  intro e τ h
+  unfold constLitTy? at h
+  split at h <;>
+    first
+      | (injection h with h; subst h
+         first
+           | exact .int | exact .float | exact .sym | exact .bool | exact .nilT
+           | exact .cls | exact .arrayOf)
+      | (split at h
+         · injection h with h; subst h; exact .cls
+         · exact absurd h (by simp))
+      | (rename_i es; cases hes : constLitTys? es with
+         | none => simp [hes] at h
+         | some τs => simp [hes] at h; subst h; exact .arrayOf)
+      | exact constLitTy?_nilQSafe h
+      | exact absurd h (by simp)
+
+mutual
+
+theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : Ty},
+    constLitTy? e = some τ → Judge κ Γ I e τ Γ I := by
+  intro e τ κ Γ I h
+  unfold constLitTy? at h
+  split at h
+  · injection h with h; subst h; exact .intLit
+  · injection h with h; subst h; exact .fltLit
+  · injection h with h; subst h; exact .strLit
+  · injection h with h; subst h; exact .symLit
+  · injection h with h; subst h; exact .truLit
+  · injection h with h; subst h; exact .flsLit
+  · injection h with h; subst h; exact .nilLit
+  · -- a hash literal: the pairs had to type too, which is what `constLitPairs?` says
+    rename_i pairs
+    split at h
+    · injection h with h; subst h
+      exact .hashLit (constLitPairs?_sound (by assumption))
+    · exact absurd h (by simp)
+  · -- an array literal: every element types, so `JudgeAll` does
+    rename_i es
+    cases hes : constLitTys? es with
+    | none => simp [hes] at h
+    | some τs =>
+      simp [hes] at h; subst h
+      exact .arrayLit (constLitTys?_sound hes)
+  · -- `.freeze`: the identity, and its `NilQSafe` guard comes from the companion theorem
+    rename_i r
+    exact .prim (constLitTy?_sound h) .nil (.freezeId (constLitTy?_nilQSafe h))
+  · exact absurd h (by simp)
+
+theorem constLitTys?_sound : ∀ {es : List Expr} {τs : List Ty} {κ : Ctx} {Γ : Env} {I : Ty},
+    constLitTys? es = some τs → JudgeAll κ Γ I es τs Γ I := by
+  intro es τs κ Γ I h
+  unfold constLitTys? at h
+  split at h
+  · injection h with h; subst h; exact .nil
+  · rename_i e es'
+    split at h
+    · rename_i τ ρs he hes
+      injection h with h; subst h
+      exact .cons (constLitTy?_sound he) (constLitTys?_sound hes)
+    · exact absurd h (by simp)
+
+theorem constLitPairs?_sound : ∀ {ps : List (Expr × Expr)} {κ : Ctx} {Γ : Env} {I : Ty},
+    constLitPairs? ps = true → JudgePairs κ Γ I ps Γ I := by
+  intro ps κ Γ I h
+  unfold constLitPairs? at h
+  split at h
+  · exact .nil
+  · rename_i k v ps'
+    simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
+    obtain ⟨⟨⟨σ, hk⟩, ⟨ρ, hv⟩⟩, hrest⟩ := h
+    exact .cons (constLitTy?_sound hk) (constLitTy?_sound hv) (constLitPairs?_sound hrest)
+
+end
+
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
 theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
     BareNameError m := by
@@ -1241,6 +1336,10 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
+#print axioms constLitTy?_sound
+#print axioms constLitTys?_sound
+#print axioms constLitPairs?_sound
+#print axioms constLitTy?_nilQSafe
 #print axioms chkOwner?_sound
 #print axioms chkNested_sound
 #print axioms chkConsts_sound

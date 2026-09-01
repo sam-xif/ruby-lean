@@ -424,6 +424,64 @@ abbrev AsmTable := List Asm
 def asmGet? (Δ : AsmTable) (m : String) (τs : List Ty) : Option Ty :=
   (Δ.find? (fun a => a.name == m && a.argTys == τs)).map (·.ret)
 
+/-! ### A class body's constants (tier 13)
+
+`Ctx.consts` maps a constant's absolute path to its type, and it is grown by `extendConsts`,
+which is a **function of syntax alone** — `Ctx.afterStmt` gets the statement's type, and that
+is the type of the `class` statement (`.any`), not of anything inside its body.
+
+So a class-body constant's type has to be readable off its initializer's syntax. That is
+`constLitTy?`, and its restriction to literals is the price of this tier's second rung. The
+restriction is not the soundness argument, though — `constLitTy?` is just a guess until
+`Judge.classStmt`'s `JudgeConsts` premise **judges the initializer at exactly that type**, in
+the context in force at the class statement. Two things follow:
+
+- soundness of `constLitTy?` reduces to soundness of `Judge`, so this function may be widened
+  freely: a wrong row costs a rung (the premise fails) and never a wrong type;
+- and the judgment happens at the **definition site**. That matters more than it looks.
+  Judging the initializer lazily, at each *read*, is unsound: `κ.classes` only grows, a
+  reopened class can redefine a method, and `class Box; V = Helper.new.f; end` re-judged after
+  `class Helper; def f; "s"; end; end` would type `V` as a `String` while it holds the
+  `Integer` the original `f` returned.
+
+Top-level constants need none of this: their type comes from the judgment directly, because
+there `Ctx.afterStmt` is handed the statement's own type. -/
+mutual
+
+def constLitTy? : Expr → Option Ty
+  | .int _ => some .int
+  | .flt _ => some .float
+  | .str _ => some (.cls "String")
+  | .sym _ => some .sym
+  | .tru => some .bool
+  | .fls => some .bool
+  | .nil => some .nilT
+  -- A hash literal's type carries nothing about its pairs (tier 5), so this row could read
+  -- `.hash _ => some (.cls "Hash")` and be right about the type. It checks the pairs anyway,
+  -- because `constLitTy?_sound` — "an expression this function types really does have that
+  -- type, in any context, unconditionally" — is what lets the same function be used for an
+  -- **optional parameter's default** (tier 14a) with no premise anywhere to discharge, and
+  -- that theorem needs the pairs to type.
+  | .hash pairs => if constLitPairs? pairs then some (.cls "Hash") else none
+  | .array es => (constLitTys? es).map (fun τs => .arrayOf (elemTy τs))
+  -- `.freeze` is the idiom every frozen constant table in the slice is written with, and it is
+  -- the identity on the value (`PrimSig.freezeId`), so it is the identity here.
+  | .send (some r) "freeze" [] none => constLitTy? r
+  | _ => none
+
+def constLitTys? : List Expr → Option (List Ty)
+  | [] => some []
+  | e :: es => match constLitTy? e, constLitTys? es with
+    | some τ, some τs => some (τ :: τs)
+    | _, _ => none
+
+def constLitPairs? : List (Expr × Expr) → Bool
+  | [] => true
+  | (k, v) :: ps =>
+    (constLitTy? k).isSome && (constLitTy? v).isSome && constLitPairs? ps
+
+end
+
 /-- The environment a method body starts in: **only** its parameters, bound to the
 argument types the call site synthesized. `none` unless every parameter is required and
 the counts match.
@@ -433,14 +491,30 @@ Two decisions in one small function:
 - **A fresh environment, not the caller's.** A Ruby method body does not see the caller's
   locals, so the body is judged in `paramEnv`'s result and the call's *outgoing*
   environment is the caller's own (after the arguments), never the body's.
-- **Required parameters only.** `Param.opt`/`.rest`/`.key`/`.kwrest`/`.block` all answer
-  `none`, so a method using one is not typed at all. That is the arity gap `AGENTS.md`
-  §Frontier item 3 names; a conservative `none` here is the honest placeholder, and
-  `CheckRungs.lean` carries `def f(x = 1); x; end; f()` as a control so the cost is
-  measured. Length mismatch is also `none`, which is what rejects `fun-wrong-arity`. -/
+- **Required and optional parameters** (tier 14a added the second). `.rest`/`.key`/
+  `.kwrest`/`.block` still answer `none`, so a method using one of those is not typed at all
+  — the remainder of the arity gap `AGENTS.md` §Frontier item 3 names, now measured rung by
+  rung in tier 14. Length mismatch is also `none`, which is what rejects `fun-wrong-arity`.
+
+Optional-parameter matching is **greedy, left to right**, and the reason that is safe is worth
+stating: it either agrees with Ruby or fails. Ruby fills post-optional *required* parameters
+first (`def f(a, b = 1, c)` with two arguments binds `a` and `c`), and greedy matching there
+binds `a` and `b` and then meets a `.req` with no argument left, so it answers `none`. There is
+no argument count at which greedy succeeds with a binding Ruby would not have made. -/
 def paramEnv : List Param → List Ty → Option Env
   | [], [] => some []
   | .req x :: ps, τ :: τs => (paramEnv ps τs).map (fun Γ => (x, τ) :: Γ)
+  -- Tier 14a: an **optional** parameter. Two cases, and the matching is greedy left to right.
+  -- An argument was supplied, so the default is irrelevant:
+  | .opt x _ :: ps, τ :: τs => (paramEnv ps τs).map (fun Γ => (x, τ) :: Γ)
+  -- Or it was not, and the parameter holds the default's value. Its type comes from
+  -- `constLitTy?`, which needs no premise to license it: `constLitTy?_sound` says an
+  -- expression this function types really has that type in *any* context, unconditionally.
+  -- A non-literal default (`def pad(s, n = s.length)`) is `none` here — see §Frontier.
+  | .opt x d :: ps, [] =>
+    match constLitTy? d with
+    | some τ => (paramEnv ps []).map (fun Γ => (x, τ) :: Γ)
+    | none => none
   | _, _ => none
 
 /-! ## Tier 7's class table, and the context bundle
@@ -659,55 +733,6 @@ def classMethods? :
   | .nil => some ([], [], [], [], [], [], [])
   | .seq es => (es.mapM clsMember?).bind (fun ms => finishMembers (splitMembers ms))
   | e => (clsMember? e).bind (fun m => finishMembers (splitMembers [m]))
-
-/-! ### A class body's constants (tier 13)
-
-`Ctx.consts` maps a constant's absolute path to its type, and it is grown by `extendConsts`,
-which is a **function of syntax alone** — `Ctx.afterStmt` gets the statement's type, and that
-is the type of the `class` statement (`.any`), not of anything inside its body.
-
-So a class-body constant's type has to be readable off its initializer's syntax. That is
-`constLitTy?`, and its restriction to literals is the price of this tier's second rung. The
-restriction is not the soundness argument, though — `constLitTy?` is just a guess until
-`Judge.classStmt`'s `JudgeConsts` premise **judges the initializer at exactly that type**, in
-the context in force at the class statement. Two things follow:
-
-- soundness of `constLitTy?` reduces to soundness of `Judge`, so this function may be widened
-  freely: a wrong row costs a rung (the premise fails) and never a wrong type;
-- and the judgment happens at the **definition site**. That matters more than it looks.
-  Judging the initializer lazily, at each *read*, is unsound: `κ.classes` only grows, a
-  reopened class can redefine a method, and `class Box; V = Helper.new.f; end` re-judged after
-  `class Helper; def f; "s"; end; end` would type `V` as a `String` while it holds the
-  `Integer` the original `f` returned.
-
-Top-level constants need none of this: their type comes from the judgment directly, because
-there `Ctx.afterStmt` is handed the statement's own type. -/
-mutual
-
-def constLitTy? : Expr → Option Ty
-  | .int _ => some .int
-  | .flt _ => some .float
-  | .str _ => some (.cls "String")
-  | .sym _ => some .sym
-  | .tru => some .bool
-  | .fls => some .bool
-  | .nil => some .nilT
-  -- A hash literal's type carries nothing about its pairs (tier 5), so it needs nothing from
-  -- them here either; that they *type* is the `JudgeConsts` premise's business.
-  | .hash _ => some (.cls "Hash")
-  | .array es => (constLitTys? es).map (fun τs => .arrayOf (elemTy τs))
-  -- `.freeze` is the idiom every frozen constant table in the slice is written with, and it is
-  -- the identity on the value (`PrimSig.freezeId`), so it is the identity here.
-  | .send (some r) "freeze" [] none => constLitTy? r
-  | _ => none
-
-def constLitTys? : List Expr → Option (List Ty)
-  | [] => some []
-  | e :: es => match constLitTy? e, constLitTys? es with
-    | some τ, some τs => some (τ :: τs)
-    | _, _ => none
-
-end
 
 /-- The absolute path of a constant defined at top level. -/
 def constKey (n : String) : String := "::" ++ n
@@ -1523,6 +1548,12 @@ not enforced here because the parser already guarantees it. -/
 def paramEnvB (blk : Option Ty) : List Param → List Ty → Option Env
   | [], [] => some []
   | .req x :: ps, τ :: τs => (paramEnvB blk ps τs).map (fun Γ => (x, τ) :: Γ)
+  -- Tier 14a, exactly `paramEnv`'s two cases.
+  | .opt x _ :: ps, τ :: τs => (paramEnvB blk ps τs).map (fun Γ => (x, τ) :: Γ)
+  | .opt x d :: ps, [] =>
+    match constLitTy? d with
+    | some τ => (paramEnvB blk ps []).map (fun Γ => (x, τ) :: Γ)
+    | none => none
   | .block (some x) :: ps, τs =>
     (paramEnvB blk ps τs).map (fun Γ => (x, blk.getD .nilT) :: Γ)
   | .block none :: ps, τs => paramEnvB blk ps τs

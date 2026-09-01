@@ -2834,6 +2834,52 @@ def r148 : Rung :=
           .nil)
         .nil rfl)))⟩
 
+/-! ## Tier 14 — parameters and arguments
+
+Tier 14a: an **optional** parameter with a literal default. -/
+
+/-- `def greet(name, greeting = "hi"); greeting + " " + name; end;
+    greet("a") + greet("a", "yo")` → `String`.
+
+    Two `callDef`s over the same `def`, at *different argument counts*, and that is the whole
+    rung: tier 6's design — a method body is typed once per call-site argument shape, with no
+    signature anywhere — already had room for this. `paramEnv` grew two cases, and the
+    interesting call is the *first*: with one argument, `greeting` is bound to the type
+    `constLitTy?` reads off `"hi"`.
+
+    **Nothing in this derivation discharges that.** There is no premise saying `"hi"` is a
+    `String`; the fact is inside `paramEnv`, which is a function. What makes that legitimate is
+    `constLitTy?_sound` (`Proof/ChkSound.lean`) — "an expression `constLitTy?` types really has
+    that type, in any context, unconditionally" — which is a theorem about `Judge`, not a
+    trusted table row. It is the same function tier 13b uses for a class-body constant, and
+    proving it there would have been optional; here it is what lets `paramEnv` stay a function
+    rather than becoming a relation that every call rule and every derivation on file would
+    have had to thread.
+
+    What that costs is the rung *next* to this one: `def pad(s, n = s.length)` reads an earlier
+    parameter, `constLitTy?` cannot type it, and no unconditional theorem could — the default
+    has to be judged in the environment built so far. That is `ParamEnv`-as-a-relation, and
+    it is deferred. -/
+def r150 : Rung :=
+  ⟨"param-optional",
+    .seq [.def' "greet" [.req "name", .opt "greeting" (.str "hi")]
+            (.send (some (.send (some (.var .lvar "greeting")) "+" [.str " "] none)) "+"
+              [.var .lvar "name"] none),
+          .send (some (.send none "greet" [.str "a"] none)) "+"
+            [.send none "greet" [.str "a", .str "yo"] none] none],
+    .cls "String", [],
+    .seq (.cons .defStmt
+      (.last (.prim
+        (.callDef (.cons .strLit .nil) rfl rfl
+          (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+            (.cons (.var rfl rfl) .nil) .strAdd))
+        (.cons
+          (.callDef (.cons .strLit (.cons .strLit .nil)) rfl rfl
+            (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
+              (.cons (.var rfl rfl) .nil) .strAdd))
+          .nil)
+        .strAdd)))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -2851,7 +2897,8 @@ def rungs : List Rung :=
    r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
-   r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148]
+   r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
+   r150]
 
 /-! ## `chk` answers exactly what was derived by hand
 
