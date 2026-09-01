@@ -3615,3 +3615,86 @@ for from four directions.
 
 **173 rungs of 232**, 38 mismatches. Tiers 1–3, 5, 7, 8, 10 and 13 at every recorded target;
 173/173 cross-checked, 138/138 controls, corpus agreement 232/232, axiom-clean.
+
+## Clink 41 (2026-09-01) — tier 17b: `Ty.hashOf`, the widest gap on the list: 173 → 177
+
+`lib-hash-fetch`, `lib-hash-dig`, `param-kwrest`, `param-all-kinds`, plus **four rungs retyped**
+(`hash-lit`, `hash-index`, `class-instance-in-hash`, `const-frozen-hash`). §Frontier item A, and
+the first `Ty` grammar change this ladder has made since tier 9's `clos`.
+
+### Uniform, not keyed, and `cvss.rb` is why
+
+`Ty.hashOf (key val : Ty)` — `arrayOf` with two parameters. A per-key map would be more precise
+for a *literal*, and it is not what the target needs: `cvss.rb` reads its seven frozen metric
+tables as `TABLE.fetch(metric)` with `metric` a **variable**, so no statically-known key is
+available and the useful fact is "every value in this table is a Float". A keyed type would
+answer nothing there while costing a third use of the binding spine.
+
+Invariant, for `arrayOf`'s reason, and now with `arrayOf`'s *precedent*: clink 39's `Array#<<`
+showed that invariance is what keeps `arrayOf .never`'s "provably empty" reading honest, and
+`hashOf .never .never` (the type of `{}`) inherits both the reading and the argument.
+
+### `fetch` is total; `[]` is not; and the difference is `KeyError`
+
+This is the row that makes 62 call sites typeable, and its justification is one sentence:
+
+> `h.fetch(k)` answers the **value type, not a nilable one**, because a missing key raises
+> `KeyError` — which is *outside* the type-stuck family — so if the key is absent, execution ends
+> there and no claim about the result can be falsified.
+
+That is the same argument `NameError` gets in tier 13, reused a second time, and it is worth
+noticing that the argument is what makes the row *useful* rather than merely sound: `Hash#[]`
+answers `nilable val` and nothing consumes a nilable, so a checker with only `[]` types the read
+and rejects everything downstream. `{"a"=>1}.fetch("zz")` really does raise, and this checker
+certifies it — correctly, and deliberately, which is why that program is a *note* in the controls
+file rather than a control (a control must be rejected).
+
+The key **argument** is not required to match the key **parameter**, because a missing key is
+`nil` in Ruby rather than an error — and requiring a match would reject safe programs:
+`param-kwrest` reads a symbol-keyed hash with a `String` key on purpose. What the argument does
+carry is `NilQSafe`, on every row, because every one of them hashes it.
+
+### The premise shape did not change, and that is the nicest part
+
+`JudgePairs` now reports two joined types, folded exactly as `elemTy` folds an array literal's
+elements — and its *constructor arity is unchanged*, so **every hash derivation on file is
+character-for-character the one that was there**. Only the four rungs' recorded `ty` fields moved.
+
+`hash-lit`'s old note is worth quoting, because it was the first statement of this gap on the
+ladder (clink 4): "the keys' and values' types are derived and then discarded — `JudgePairs`
+carries no type in its conclusion, because `Ty` has nowhere to put one… the first place *these
+subterms must be well-typed* and *and here is the type* came apart". They are back together.
+
+### `param-all-kinds` is the checklist rung
+
+`def f(a, b = 2, *rest, c:, d: 4, **kw, &blk)` types now, and reading its derivation is reading
+four clinks at once: `paramBind` is one walk with three entry points (35), the two defaults come
+from `constLitTy?` licensed by `constLitTy?_sound` (33), the rest parameter's
+`noPositionalParams` side condition holds because only keyword/kwrest/block parameters follow it
+(35 correcting 34's "must be last"), and `**kw` gets a `hashOf` (this clink). `blk.nil?` was
+always free.
+
+### And a third table split, for the same mechanical reason
+
+`primSig?` outgrew its splitter *again* (this time the failure was `timeout at «LCNF compiler»`
+rather than `at whnf` — same cause, different phase, and again `set_option maxHeartbeats` does
+not reach it). Same fix: `primSigArr?` and `primSigHash?` join `primSigStr?`, and `primSig?` is
+now five guarded rows, three delegations and the scalar rows. That is three splits for one
+lesson, so it is worth stating as a rule: **a `PrimSig` table should be split by receiver
+shape from the start**, one function per receiver family, delegated from a small `primSig?`.
+
+Two rows had to be *added* to keep what `.cls "Hash"` used to have: `EqSafe (.hashOf k v)` and
+`NilQSafe (.hashOf k v)`. Without them `h == other` and `h.freeze` would have silently stopped
+typing — and `const-frozen-hash` is exactly the rung that caught it, since its whole program is
+`{...}.freeze`.
+
+### State
+
+**177 rungs of 232**, 34 mismatches. tier 14 9/15, tier 17 11/23. 177/177 cross-checked,
+140/140 controls rejected (two new, one sound; one control retitled and one retired), corpus
+agreement 232/232, axiom-clean.
+
+**Session total: 129 → 177 rungs**, mismatches 81 → 34, flagged `Ty` gaps 3 → 2.
+§Frontier's items B, C, D, E and A are all discharged; F (a pair type) and G (the
+length-indexed array) remain, and they are what the last two `lib-*` clusters and every
+`a, b = s.split("-")` in the slice are waiting for.

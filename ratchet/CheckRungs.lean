@@ -42,6 +42,8 @@ def expectedClasses : Ty → List String
   | .nilT => ["NilClass"]
   | .bool => ["TrueClass", "FalseClass"]
   | .cls n => [n]
+  -- Tier 17b: a parameterised `Hash` is still a `Hash`, whatever it maps.
+  | .hashOf _ _ => ["Hash"]
   -- Tier 4's joins produce types that admit more than one class, and the reading is
   -- exactly the obvious one: a `nilable` also admits `nil`, a `union` admits either
   -- side's classes. This is the point at which a `Ty` stops naming *the* class of the
@@ -220,9 +222,15 @@ def controls : List Control :=
   , ⟨"[1,2,3][0] + 1 (safe; nilable result matches no PrimSig row)",
       .send (some (.send (some (.array [.int 1, .int 2, .int 3])) "[]" [.int 0] none))
         "+" [.int 1] none⟩
-    -- The `Ty` gap in `hash-lit`/`hashIndex`, cashed out: safe Ruby (`2`), untypeable
-    -- because `.any` is inert by design.
-  , ⟨"{\"a\"=>1}[\"a\"] + 1 (safe; .any result is inert)",
+    -- **Retitled at tier 17b.** This used to read "the `Ty` gap in `hash-lit`/`hashIndex`,
+    -- cashed out: safe Ruby (`2`), untypeable because `.any` is inert by design". `Ty.hashOf`
+    -- closed that gap and the program is *still* declined -- now because `Hash#[]` answers
+    -- `nilable Integer` (the key may be absent) rather than because the checker knows nothing
+    -- about the value. A fact about hashes instead of a fact about this `Ty`, and `fetch` is
+    -- the form that types (see `PrimSig.hashFetch`, whose totality is an argument about
+    -- `KeyError` being outside the type-stuck family -- `{"a"=>1}.fetch("zz")` really raises,
+    -- and this checker certifies it, correctly).
+  , ⟨"{\"a\"=>1}[\"a\"] + 1 (safe; `[]` is nilable -- `fetch` is the form that types)",
       .send (some (.send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none))
         "+" [.int 1] none⟩
     -- And the element-union's price: safe Ruby (`2`), rejected because the array's
@@ -491,6 +499,21 @@ def controls : List Control :=
   , ⟨"[1, 2].flat_map { |x| x }.length (safe; flat_map's block must return an array)",
       .send (some (.send (some (.array [.int 1, .int 2])) "flat_map" []
         (some (.block [.req "x"] [] (.var .lvar "x"))))) "length" [] none⟩
+    -- ### Tier 17b's controls -- the parameterised `Hash`
+    --
+    -- (j1) **A hash's value type is real, and it is checked.** The literal maps to Integers, so
+    -- `fetch` answers `Integer` and `+ "!"` raises TypeError. Note what this control could not
+    -- have said before tier 17b: the old `.any` row made *every* use of a hash value
+    -- unreachable, so there was nothing to get wrong.
+  , ⟨"{\"a\" => 1}.fetch(\"a\") + \"!\"",
+      .send (some (.send (some (.hash [(.str "a", .int 1)])) "fetch" [.str "a"] none)) "+"
+        [.str "!"] none⟩
+    -- (j2) **A heterogeneous hash's value type is a union, and nothing consumes one.** Safe
+    -- Ruby, declined -- the honest cost of a *uniform* hash type, and the same shape
+    -- `array-heterogeneous` records for `arrayOf`.
+  , ⟨"{\"a\" => 1, \"b\" => \"x\"}.fetch(\"a\") + 1 (safe; a union value type)",
+      .send (some (.send (some (.hash [(.str "a", .int 1), (.str "b", .str "x")])) "fetch"
+        [.str "a"] none)) "+" [.int 1] none⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most

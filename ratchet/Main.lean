@@ -57,6 +57,7 @@ partial def Ty.render : Ty → String
   | .nilable τ => s!"T.nilable({Ty.render τ})"
   | .float => "Float"
   | .arrayOf τ => s!"T::Array[{Ty.render τ}]"
+  | .hashOf k v => s!"T::Hash[{Ty.render k}, {Ty.render v}]"
   | .never => "T.noreturn"
   | .union σ τ => s!"T.any({Ty.render σ}, {Ty.render τ})"
   | .arrow0 τ => s!"() -> {Ty.render τ}"

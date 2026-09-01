@@ -44,6 +44,22 @@ inductive Ty where
   /-- An `Array` whose elements are all `elem`. Invariant by design (compared by
       equality): covariance would be unsound under mutation-through-aliasing. -/
   | arrayOf (elem : Ty)
+  /-- **A `Hash` whose keys are all `key` and whose values are all `val`** — `arrayOf` with two
+      parameters, and added at tier 17b (clink 41) after being the widest-reaching gap this
+      ladder had recorded (§Frontier item A: `Hash#fetch` is the slice's most-used builtin at 62
+      sites, and `cvss.rb` cannot be typed at all without it).
+
+      **Uniform, not keyed**, and that is the design decision. A per-key map would be more
+      precise for a literal, and it is not what the target needs: `cvss.rb` reads its frozen
+      tables as `TABLE.fetch(metric)` where `metric` is a *variable*, so no statically-known key
+      is available and the useful fact is that every value in the table is a `Float`. A keyed
+      type would answer nothing there while costing a third use of the binding spine.
+
+      Invariant, for `arrayOf`'s reason and now with `arrayOf`'s precedent: tier 17a's
+      `Array#<<` showed that invariance is what keeps `arrayOf .never`'s "provably empty"
+      reading honest, and `hashOf .never .never` (the type of `{}`) inherits both the reading
+      and the argument. -/
+  | hashOf (key val : Ty)
   /-- **The bottom type: an expression that does not produce a value.** Added at tier 6
       (`../implementation-notes.md` clink 5), where the recursion in `fun-recursive-factorial`
       forced it, and it is *this* package's constructor — the ported

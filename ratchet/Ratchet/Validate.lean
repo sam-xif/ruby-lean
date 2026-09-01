@@ -29,13 +29,13 @@ set_option maxHeartbeats 1000000
 /-- The decidable counterpart of `Judge.lean`'s `EqSafe`: the receivers for which `==`
 is total. -/
 def eqSafe? : Ty → Bool
-  | .int | .float | .bool | .nilT | .sym | .cls _ => true
+  | .int | .float | .bool | .nilT | .sym | .cls _ | .hashOf _ _ => true
   | _ => false
 
 /-- The decidable counterpart of `Judge.lean`'s `NilQSafe`: the receivers for which `nil?`
 is the builtin one. Recursive at `nilable`, exactly as the relation is. -/
 def nilQSafe? : Ty → Bool
-  | .int | .float | .bool | .nilT | .sym | .cls _ | .arrayOf _ => true
+  | .int | .float | .bool | .nilT | .sym | .cls _ | .arrayOf _ | .hashOf _ _ => true
   | .nilable τ => nilQSafe? τ
   | _ => false
 
@@ -64,6 +64,41 @@ def primSigStr? : String → List Ty → Option Ty
   | "match", [.cls "Regexp"] => some (.nilable (.cls "MatchData"))
   | _, _ => none
 
+/-- The `Array` half of the table (tiers 5, 14b and 17a), split out for `primSigStr?`'s
+reason. Three of its rows carry a guard on the **element** type rather than the receiver's,
+because they call `==`/`hash` on the elements -- see `PrimSig.arrayInclude` -- and one carries
+the equality that makes `arrayOf` invariant (`PrimSig.arrayPush`). -/
+def primSigArr? : String → List Ty → Ty → Option Ty
+  | "length", [], _ => some .int
+  | "[]", [.int], τ => some (mkNilable τ)
+  | "empty?", [], _ => some .bool
+  | "first", [], τ => some (mkNilable τ)
+  | "last", [], τ => some (mkNilable τ)
+  | "compact", [], τ => some (.arrayOf (nonNilTy τ))
+  | "join", [.cls "String"], .cls "String" => some (.cls "String")
+  | "<<", [σ], τ => if τ = σ then some (.arrayOf τ) else none
+  | "include?", [_], τ => if nilQSafe? τ then some .bool else none
+  | "uniq", [], τ => if nilQSafe? τ then some (.arrayOf τ) else none
+  | _, _, _ => none
+
+/-- The `Hash` half of the table (tier 17b), split out for `primSigStr?`'s reason — a big
+match's splitter, not its rows, is what `split at h` costs.
+
+Every row's key argument carries `NilQSafe`, because every one of them **hashes** it; the key
+*parameter* `k` is not required to match, because a missing key is `nil` in Ruby rather than an
+error (see `PrimSig.hashIndex`). `k` is therefore unused except by `dig`'s two-level row, and is
+taken as a parameter so that the delegation in `primSig?` can pass the whole type apart. -/
+def primSigHash? : String → List Ty → Ty → Ty → Option Ty
+  | "key?", [σ], _, _ => if nilQSafe? σ then some .bool else none
+  | "fetch", [σ], _, v => if nilQSafe? σ then some v else none
+  | "fetch", [σ, ρ], _, v => if nilQSafe? σ then some (joinT v ρ) else none
+  | "[]", [σ], _, v => if nilQSafe? σ then some (mkNilable v) else none
+  | "dig", [σ], _, v => if nilQSafe? σ then some (mkNilable v) else none
+  | "dig", [σ, σ2], _, .hashOf _ v =>
+    if nilQSafe? σ && nilQSafe? σ2 then some (mkNilable v) else none
+  | "length", [], _, _ => some .int
+  | _, _, _, _ => none
+
 /-- The executable primitive table — the decidable counterpart of `Judge.lean`'s
 `PrimSig`, kept in exact one-to-one correspondence with it (`primSig?_sound`). A miss is
 `none`, never a guess. -/
@@ -78,15 +113,12 @@ def primSig? : Ty → String → List Ty → Option Ty
   | σ, "freeze", [] => if nilQSafe? σ then some σ else none
   -- Tier 16b: `Exception#message`, guarded by the receiver's *name* (`PrimSig.excMessage`).
   | .cls n, "message", [] => if excCls? n then some (.cls "String") else none
-  -- Tier 17: the four rows whose guard is on the *element* or *argument* type rather than the
-  -- receiver's, kept with the other guarded rows so that `primSig?_sound` can take them in one
-  -- run of bullets (see `PrimSig.arrayInclude`).
-  | .arrayOf τ, "<<", [σ] => if τ = σ then some (.arrayOf τ) else none
-  | .arrayOf τ, "include?", [_] => if nilQSafe? τ then some .bool else none
-  | .arrayOf τ, "uniq", [] => if nilQSafe? τ then some (.arrayOf τ) else none
-  | .cls "Hash", "key?", [σ] => if nilQSafe? σ then some .bool else none
   -- Tiers 2/15/16b: everything else on a `String` receiver.
   | .cls "String", m, as => primSigStr? m as
+  -- Tiers 5/17b: everything on a `Hash` receiver, delegated for the same reason.
+  | .hashOf k v, m, as => primSigHash? m as k v
+  -- Tiers 5/14b/17a: everything on an `Array` receiver, likewise.
+  | .arrayOf τ, m, as => primSigArr? m as τ
   | .int, "+", [.int] => some .int
   | .int, "-", [.int] => some .int
   | .int, "*", [.int] => some .int
@@ -100,18 +132,7 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .int, "__as_string", [] => some (.cls "String")
   | .sym, "to_s", [] => some (.cls "String")
   | .bool, "!", [] => some .bool
-  -- Tier 14b: `Array#length`, total whatever the element type.
-  | .arrayOf _, "length", [] => some .int
-  | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
-  -- Tier 17: the collection rows. Three carry a guard on the *element* (or argument) type
-  -- rather than the receiver's -- see `PrimSig.arrayInclude`.
-  | .arrayOf _, "empty?", [] => some .bool
-  | .arrayOf (.cls "String"), "join", [.cls "String"] => some (.cls "String")
-  | .arrayOf τ, "compact", [] => some (.arrayOf (nonNilTy τ))
-  | .arrayOf τ, "first", [] => some (mkNilable τ)
-  | .arrayOf τ, "last", [] => some (mkNilable τ)
   | .int, "<=>", [.int] => some .int
-  | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
 
 /-- The decidable counterpart of `Judge.lean`'s `Comparable`. -/
@@ -291,7 +312,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none => none
   | f + 1, .hash pairs =>
     match chkPairs f κ Γ I pairs with
-    | some (Γ', I') => some (.cls "Hash", Γ', I')
+    | some (kτ, vτ, Γ', I') => some (.hashOf kτ vτ, Γ', I')
     | none => none
   | f + 1, .vcall m =>
     -- Two routes, and the order matters: implicit-self dispatch to one of `self`'s own
@@ -1003,18 +1024,21 @@ def chkNested : Nat → Ctx → String → Nested → Bool
     | none => false
 
 /-- Key-then-value `chk` over a hash literal's pairs. Returns only the outgoing states:
-the key and value types are discarded (this `Ty` has no parameterised hash type), but they
-still have to *exist*, which is the whole content of this function. -/
+and (tier 17b) the joined key and value types, folded as `JudgePairs` folds them. Until then
+the types were discarded, because there was no `hashOf` to put them in. -/
 def chkPairs (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty)
-    (ps : List (Expr × Expr)) : Option (Env × Ty) :=
+    (ps : List (Expr × Expr)) : Option (Ty × Ty × Env × Ty) :=
   match fuel, ps with
   | 0, _ => none
-  | _ + 1, [] => some (Γ, I)
+  | _ + 1, [] => some (.never, .never, Γ, I)
   | f + 1, (k, v) :: ps =>
     match chk f κ Γ I k with
-    | some (_, Γ₁, I₁) =>
+    | some (σ, Γ₁, I₁) =>
       match chk f κ Γ₁ I₁ v with
-      | some (_, Γ₂, I₂) => chkPairs f κ Γ₂ I₂ ps
+      | some (ν, Γ₂, I₂) =>
+        match chkPairs f κ Γ₂ I₂ ps with
+        | some (kr, vr, Γ₃, I₃) => some (joinT σ kr, joinT ν vr, Γ₃, I₃)
+        | none => none
       | none => none
     | none => none
 

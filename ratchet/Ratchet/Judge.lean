@@ -89,6 +89,10 @@ inductive EqSafe : Ty → Prop
   | sym : EqSafe .sym
   /-- Any named class: `Object#==` is inherited by every one of them. -/
   | cls {n : String} : EqSafe (.cls n)
+  /-- Tier 17b. `Hash#==` compares contents with `==`, and it is total: unequal shapes are
+      simply not equal. Added when `.cls "Hash"` stopped being how a hash is typed — without
+      it, `h == other` would have *lost* a row it used to have. -/
+  | hashOf {k v : Ty} : EqSafe (.hashOf k v)
 
 /-- The receivers for which `nil?` is **the builtin `nil?`** — `Object#nil?` (always
 `false`) or `NilClass#nil?` (always `true`). Tier 12's counterpart to `EqSafe`, and it
@@ -118,6 +122,7 @@ inductive NilQSafe : Ty → Prop
   | sym : NilQSafe .sym
   | cls {n : String} : NilQSafe (.cls n)
   | arrayOf {τ : Ty} : NilQSafe (.arrayOf τ)
+  | hashOf {k v : Ty} : NilQSafe (.hashOf k v)
   /-- `nilable τ` inherits the guard from `τ`: the value is either `nil` (safe by
       `nilT`) or a `τ`, so the row is justified exactly when `τ`'s is. -/
   | nilable {τ : Ty} : NilQSafe τ → NilQSafe (.nilable τ)
@@ -408,7 +413,33 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
   /-- `h.key?("a")` — total, and the `NilQSafe` guard is on the *argument* here, because that is
       what `Hash#key?` hashes. Answers `Bool` and nothing about the value behind the key, which
       the bare `.cls "Hash"` could not describe anyway (§Frontier item A). -/
-  | hashKeyP {σ : Ty} : NilQSafe σ → PrimSig (.cls "Hash") "key?" [σ] .bool
+  | hashKeyP {k v σ : Ty} : NilQSafe σ → PrimSig (.hashOf k v) "key?" [σ] .bool
+  -- ### Tier 17b — the parameterised `Hash`
+  --
+  -- Every row's key argument carries a `NilQSafe` guard, because every one of them **hashes**
+  -- it, and a user-written `hash`/`eql?` can raise. The *key* parameter of the type is
+  -- deliberately not required to match: `h[wrong_type]` is not an error in Ruby, it is `nil`,
+  -- and pretending otherwise would reject safe programs (`param-kwrest` reads a symbol-keyed
+  -- hash with a String key on purpose).
+  /-- `h.fetch(k)` → the value type, **not** a nilable one. A missing key raises `KeyError`,
+      which is *outside* the type-stuck family — so if the key is absent execution ends there
+      and no claim about the result can be falsified. This is the same argument `NameError`
+      gets in tier 13, and it is the reason `fetch` is more useful than `[]` to a checker: the
+      one-argument form is total *on the values it returns*. -/
+  | hashFetch {k v σ : Ty} : NilQSafe σ → PrimSig (.hashOf k v) "fetch" [σ] v
+  /-- `h.fetch(k, d)` → the value type joined with the default's, because either can come
+      back. -/
+  | hashFetchD {k v σ ρ : Ty} :
+      NilQSafe σ → PrimSig (.hashOf k v) "fetch" [σ, ρ] (joinT v ρ)
+  | hashLength {k v : Ty} : PrimSig (.hashOf k v) "length" [] .int
+  /-- `h.dig(k)` — `[]` under another name for one level, and `nilable` for the same reason. -/
+  | hashDig {k v σ : Ty} : NilQSafe σ → PrimSig (.hashOf k v) "dig" [σ] (mkNilable v)
+  /-- `h.dig(k1, k2)` on a hash **of hashes** → the inner value or nil. Two levels only: the
+      row has to name the nesting depth in the type, so each depth is a row, and the slice
+      writes at most two. -/
+  | hashDig2 {k v k2 σ σ2 : Ty} :
+      NilQSafe σ → NilQSafe σ2 →
+      PrimSig (.hashOf k (.hashOf k2 v)) "dig" [σ, σ2] (mkNilable v)
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -445,22 +476,24 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       over, so the row stands; it claims "never type-stuck, and returns `elem` or `nil`",
       not "never raises". -/
   | arrayIndex {τ : Ty} : PrimSig (.arrayOf τ) "[]" [.int] (mkNilable τ)
-  /-- `Hash#[] (anything) → any` (rung `hash-index`).
+  /-- `Hash#[] (anything) → nilable val` (rung `hash-index`), and **the row this whole ladder
+      spent longest unable to write usefully**.
 
-      **The argument is unconstrained** for the same reason `objEq`'s is: `Hash#[]` looks
-      the key up by `hash`/`eql?`, both of which every class in this `Ty` has totally
-      inherited from `Object`, and a missing key answers `nil` rather than raising
-      (`{"a"=>1}["z"]` is `nil`; `{"a"=>1}[[1,2]]` is `nil`). So there is no key type
-      this rule needs to exclude.
-      
-      **The result is `.any` because `Ty` cannot say better.** There is no `hashOf`
-      constructor to read a value type back off — `hashLit` types every hash as the bare
-      `.cls "Hash"` — so the value's type is genuinely unknown here, and `.any` is the
-      only sound answer. It is also inert (no `PrimSig` row has an `.any` receiver, and
-      `.any` is not `EqSafe`), so nothing downstream can consume what the checker does not
-      know. This row is the sharpest statement of the `Ty` gap the `hash-lit` rung
-      records: `{"a"=>1}["a"] + 1` is safe Ruby that no rule can type. -/
-  | hashIndex {τ : Ty} : PrimSig (.cls "Hash") "[]" [τ] .any
+      Until tier 17b it read `PrimSig (.cls "Hash") "[]" [τ] .any` — sound and inert, since
+      there was no `hashOf` constructor to read a value type back off, so `{"a"=>1}["a"] + 1`
+      was safe Ruby no rule could type. `Ty.hashOf` fixes that and the row's shape barely
+      changes.
+
+      **The key argument is not required to match the key parameter.** A missing key answers
+      `nil` rather than raising (`{"a"=>1}["z"]`, `{"a"=>1}[[1,2]]`), so there is no key type
+      to exclude — and requiring a match would reject safe programs (`param-kwrest` reads a
+      symbol-keyed hash with a `String` key, deliberately). What the argument *does* carry is
+      `NilQSafe`, because `[]` hashes it.
+
+      **`nilable`, for `Array#[]`'s reason**: the checker cannot know the key is present. Its
+      total sibling is `fetch`, which is more useful precisely because a missing key there
+      raises `KeyError` — outside the type-stuck family. -/
+  | hashIndex {k v σ : Ty} : NilQSafe σ → PrimSig (.hashOf k v) "[]" [σ] (mkNilable v)
   -- ### Tier 12's row
   /-- `recv.nil? () → Bool` for a `NilQSafe` receiver (rung `narrow-nilable-nil-check`).
 
@@ -612,7 +645,10 @@ def constLitTy? : Expr → Option Ty
   -- type, in any context, unconditionally" — is what lets the same function be used for an
   -- **optional parameter's default** (tier 14a) with no premise anywhere to discharge, and
   -- that theorem needs the pairs to type.
-  | .hash pairs => if constLitPairs? pairs then some (.cls "Hash") else none
+  | .hash pairs =>
+    match constLitPairTys? pairs with
+    | some (kτ, vτ) => some (.hashOf kτ vτ)
+    | none => none
   | .array es => (constLitTys? es).map (fun τs => .arrayOf (elemTy τs))
   -- `.freeze` is the idiom every frozen constant table in the slice is written with, and it is
   -- the identity on the value (`PrimSig.freezeId`), so it is the identity here.
@@ -625,10 +661,15 @@ def constLitTys? : List Expr → Option (List Ty)
     | some τ, some τs => some (τ :: τs)
     | _, _ => none
 
-def constLitPairs? : List (Expr × Expr) → Bool
-  | [] => true
+/-- The joined key and value types of a **literal** hash, folded exactly as `JudgePairs`
+folds them (tier 17b). Replaced `constLitPairs?`, which only asked whether the pairs typed --
+now the types are the answer. -/
+def constLitPairTys? : List (Expr × Expr) → Option (Ty × Ty)
+  | [] => some (.never, .never)
   | (k, v) :: ps =>
-    (constLitTy? k).isSome && (constLitTy? v).isSome && constLitPairs? ps
+    match constLitTy? k, constLitTy? v, constLitPairTys? ps with
+    | some kτ, some vτ, some (kr, vr) => some (joinT kτ kr, joinT vτ vr)
+    | _, _, _ => none
 
 end
 
@@ -722,11 +763,12 @@ def paramBind (blk : Option Ty) : List Param → List Ty → List (String × Ty)
         | some τ => (paramBind blk ps [] kws).map (fun Γ => (k, τ) :: Γ)
         | none => none
       | none => none
-  -- A keyword-rest collects everything left, and its type is the bare `.cls "Hash"` — which is
-  -- all tier 5's hash type can say, and is why `param-kwrest` types the *binding* and still
-  -- cannot read anything out of it (§Frontier item A).
-  | .kwrest (some x) :: ps, [], _ =>
-    (paramBind blk ps [] []).map (fun Γ => (x, .cls "Hash") :: Γ)
+  -- A keyword-rest collects everything left, and tier 17b gives it a *useful* type: the keys
+  -- are symbols (the call site wrote `k: v`) and the value type is the join of what was
+  -- passed, folded exactly as a hash literal's is.
+  | .kwrest (some x) :: ps, [], kws =>
+    (paramBind blk ps [] []).map
+      (fun Γ => (x, .hashOf .sym (elemTy (kws.map (·.2)))) :: Γ)
   | .kwrest none :: ps, [], _ => paramBind blk ps [] []
   | .block (some x) :: ps, τs, kws =>
     (paramBind blk ps τs kws).map (fun Γ => (x, blk.getD .nilT) :: Γ)
@@ -1310,6 +1352,7 @@ def builtinAncestors : Ty → Option (List String)
   | .sym => some (["Symbol", "Comparable"] ++ rootAncestors)
   | .cls "String" => some (["String", "Comparable"] ++ rootAncestors)
   | .cls "Hash" => some (["Hash", "Enumerable"] ++ rootAncestors)
+  | .hashOf _ _ => some (["Hash", "Enumerable"] ++ rootAncestors)
   | .arrayOf _ => some (["Array", "Enumerable"] ++ rootAncestors)
   | _ => none
 
@@ -2568,19 +2611,21 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       inherits the obligation. -/
   | arrayLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τs : List Ty} :
       JudgeAll κ Γ I es τs Γ' I' → Judge κ Γ I (.array es) (.arrayOf (elemTy τs)) Γ' I'
-  /-- A hash literal, typed as the bare `.cls "Hash"`.
+  /-- A hash literal, typed `hashOf` the join of its keys' types and the join of its values'
+      (tier 17b).
 
-      **The key and value types are discarded, and the premise is still not vacuous.**
-      `Ty` has no parameterised hash constructor (no `hashOf` beside `arrayOf`), so there
-      is nowhere to record what a hash maps to — but every key and every value expression
-      must still be *typeable*, because evaluating one can be type-stuck all on its own
-      (`{"a" => 1 + "b"}` must not type). `JudgePairs` is what carries that requirement,
-      and it also threads in Ruby's order: key then value, pair by pair.
+      Until then this rule was the sharpest thing on the ladder about §Frontier item A: the
+      premise carried no types at all — the first place "these subterms must be well-typed" and
+      "and here is the type" came apart (clink 4) — because there was nothing to carry them
+      into. Now `JudgePairs` reports two joined types, folded exactly as `elemTy` folds an array
+      literal's elements, and the empty literal is `hashOf .never .never` for the same reason
+      `[]` is `arrayOf .never`.
 
-      This is the rung the corpus records as a `Ty` language gap rather than a missing
-      rule, and `PrimSig.hashIndex` is where the gap becomes visible. -/
-  | hashLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {pairs : List (Expr × Expr)} :
-      JudgePairs κ Γ I pairs Γ' I' → Judge κ Γ I (.hash pairs) (.cls "Hash") Γ' I'
+      The premise's shape is unchanged, so **no derivation on file moved**: `JudgePairs.cons`
+      still takes a key derivation, a value derivation and the rest. -/
+  | hashLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {pairs : List (Expr × Expr)} {kτ vτ : Ty} :
+      JudgePairs κ Γ I pairs kτ vτ Γ' I' →
+      Judge κ Γ I (.hash pairs) (.hashOf kτ vτ) Γ' I'
   /-- A top-level `def` **statement**. Its type is `.sym`: `def foo; end` evaluates to
       `:foo` in Ruby, which is easy to forget because nobody uses the value.
 
@@ -3784,12 +3829,13 @@ inductive JudgeAll : Ctx → Env → Ty → List Expr → List Ty → Env → Ty
 /-- Key-then-value `Judge` over a hash literal's pairs, threading both states in
 Ruby's evaluation order. No types appear in the conclusion: this relation exists purely
 to require that each key and each value *has* one (see `Judge.hashLit`). -/
-inductive JudgePairs : Ctx → Env → Ty → List (Expr × Expr) → Env → Ty → Prop
-  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgePairs κ Γ I [] Γ I
+inductive JudgePairs : Ctx → Env → Ty → List (Expr × Expr) → Ty → Ty → Env → Ty → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgePairs κ Γ I [] .never .never Γ I
   | cons {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ : Env} {I I₁ I₂ I₃ : Ty} {k v : Expr}
-      {ps : List (Expr × Expr)} {σ ν : Ty} :
-      Judge κ Γ I k σ Γ₁ I₁ → Judge κ Γ₁ I₁ v ν Γ₂ I₂ → JudgePairs κ Γ₂ I₂ ps Γ₃ I₃ →
-      JudgePairs κ Γ I ((k, v) :: ps) Γ₃ I₃
+      {ps : List (Expr × Expr)} {σ ν kr vr : Ty} :
+      Judge κ Γ I k σ Γ₁ I₁ → Judge κ Γ₁ I₁ v ν Γ₂ I₂ →
+      JudgePairs κ Γ₂ I₂ ps kr vr Γ₃ I₃ →
+      JudgePairs κ Γ I ((k, v) :: ps) (joinT σ kr) (joinT ν vr) Γ₃ I₃
 
 /-- A non-empty statement sequence. The result type is the last statement's; every
 earlier statement must still type (a statement nobody reads can still be type-stuck),

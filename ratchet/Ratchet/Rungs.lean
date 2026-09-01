@@ -410,11 +410,18 @@ def r047 : Rung :=
     .arrayLit (.cons (.prim .intLit (.cons .intLit .nil) .intAdd)
       (.cons (.prim .intLit (.cons .intLit .nil) .intAdd) .nil))⟩
 
-/-- `{"a" => 1, "b" => 2}` → `.cls "Hash"`, the unparameterised class type. The keys' and
-    values' types (`String`, `Int`) are derived and then discarded: `JudgePairs` carries
-    no type in its conclusion, because `Ty` has nowhere to put one. -/
+/-- `{"a" => 1, "b" => 2}` → `T::Hash[String, Integer]`.
+
+    **Retyped at tier 17b** (clink 41). The original note read: "the keys' and values' types
+    (`String`, `Int`) are derived and then discarded — `JudgePairs` carries no type in its
+    conclusion, because `Ty` has nowhere to put one", and it was the first place on the ladder
+    where "these subterms must be well-typed" and "and here is the type" came apart (clink 4).
+    `Ty.hashOf` closed it, and the premise's *shape* did not change: `JudgePairs` now reports
+    two joined types, folded exactly as `elemTy` folds an array literal's elements, so this
+    derivation term is character-for-character the one that was on file. -/
 def r048 : Rung :=
-  ⟨"hash-lit", .hash [(.str "a", .int 1), (.str "b", .int 2)], .cls "Hash", [],
+  ⟨"hash-lit", .hash [(.str "a", .int 1), (.str "b", .int 2)],
+    .hashOf (.cls "String") .int, [],
     .hashLit (.cons .strLit .intLit (.cons .strLit .intLit .nil))⟩
 
 /-- `[[1, 2], [3, 4]]` → `arrayOf (arrayOf Int)`. `elemTy`'s join at the outer level sees
@@ -441,15 +448,21 @@ def r050 : Rung :=
     .prim (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))
       (.cons .intLit .nil) .arrayIndex⟩
 
-/-- `{"a" => 1}["a"]` → `.any`. The `Ty` gap the corpus records, in its sharpest form:
-    `.cls "Hash"` says nothing about what the hash maps to, so the only sound result type
-    is the one nothing can consume. The rung validates; a rung that then *used* the
-    result (`{"a"=>1}["a"] + 1`) would not, and is a negative control. -/
+/-- `{"a" => 1}["a"]` → `T.nilable(Integer)`.
+
+    **The rung this ladder spent longest unable to type usefully**, and the retyping is the
+    whole story of tier 17b. It used to answer `.any` — "the only sound result type is the one
+    nothing can consume" — because `.cls "Hash"` said nothing about what the hash mapped to. It
+    now answers `nilable Integer`, and the negative control the old note pointed at
+    (`{"a"=>1}["a"] + 1`, safe Ruby no rule could type) is *still* declined, but for a
+    different and much better reason: the value may be absent, so the type is `nilable`, and
+    that is a fact about hashes rather than about this `Ty`. Its total sibling `fetch` is what
+    the target actually writes, 62 times. -/
 def r051 : Rung :=
   ⟨"hash-index",
     .send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none,
-    .any, [],
-    .prim (.hashLit (.cons .strLit .intLit .nil)) (.cons .strLit .nil) .hashIndex⟩
+    .nilable .int, [],
+    .prim (.hashLit (.cons .strLit .intLit .nil)) (.cons .strLit .nil) (.hashIndex .cls)⟩
 
 /-! ## Tier 6 — top-level methods
 
@@ -804,15 +817,19 @@ def r071 : Rung :=
           (.cons (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
                    (.ivarAsgn (.var rfl rfl))) .nil)))))⟩
 
-/-- `{"origin" => Point.new(0)}` → `.cls "Hash"`. The instance's type is derived and then
-    discarded, because `Ty` has no `hashOf` (§Ty language gaps) — the same gap tier 5's
-    `hash-lit` records, now throwing away something the checker worked harder for. -/
+/-- `{"origin" => Point.new(0)}` → `T::Hash[String, Point{@x: Integer}]`.
+
+    **Retyped at tier 17b.** The original note read "the instance's type is derived and then
+    discarded, because `Ty` has no `hashOf` — the same gap tier 5's `hash-lit` records, now
+    throwing away something the checker worked harder for". It is no longer thrown away, and
+    the value type is the full `.inst` **with its ivar spine** — so a hash of objects now
+    carries as much information as the objects do. -/
 def r072 : Rung :=
   ⟨"class-instance-in-hash",
     .seq [.class' "Point" none
             (.def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x"))),
           .hash [(.str "origin", .send (some (.const "Point")) "new" [.int 0] none)]],
-    .cls "Hash", [],
+    .hashOf (.cls "String") (.inst "Point" (.ivarCons "@x" .int .ivar0)), [],
     .seq (.cons (.classStmt rfl rfl rfl .nil .nil)
       (.last (.hashLit (.cons .strLit
         (.newInst (.constCls rfl rfl) (.cons .intLit .nil) rfl rfl
@@ -2660,11 +2677,11 @@ def r144 : Rung :=
     .seq [.casgn "TABLE" (.send (some (.hash [(.str "a", .int 1), (.str "b", .int 2)]))
                             "freeze" [] none),
           .send (some (.const "TABLE")) "[]" [.str "a"] none],
-    .any, [],
+    .nilable .int, [],
     .seq (.cons (.casgn (.prim (.hashLit (.cons .strLit .intLit
                                           (.cons .strLit .intLit .nil))) .nil
-                          (.freezeId (.cls))))
-      (.last (.prim (.constEnv rfl) (.cons .strLit .nil) .hashIndex)))⟩
+                          (.freezeId (.hashOf))))
+      (.last (.prim (.constEnv rfl) (.cons .strLit .nil) (.hashIndex .cls))))⟩
 
 /-- `module M; X = 5; end; M::X + 1` → `Integer`.
 
@@ -3534,7 +3551,7 @@ def r205 : Rung :=
   ⟨"lib-hash-key-p",
     .seq [.vasgn .lvar "h" (.hash [(.str "a", .int 1)]),
           .send (some (.var .lvar "h")) "key?" [.str "a"] none],
-    .bool, [("h", .cls "Hash")],
+    .bool, [("h", .hashOf (.cls "String") .int)],
     .seq (.cons (.vasgn (.hashLit (.cons .strLit .intLit .nil)))
       (.last (.prim (.var rfl rfl) (.cons .strLit .nil) (.hashKeyP .cls))))⟩
 
@@ -3662,6 +3679,123 @@ def r216 : Rung :=
                   (.cons (.var rfl rfl) .nil) .intAdd)) rfl)
         (.last (.var rfl rfl))))⟩
 
+/-! ### Tier 17b — the parameterised `Hash`
+
+§Frontier item A, the widest gap this ladder had recorded: `Hash#fetch` is the slice's most-used
+builtin at **62 sites**, and `cvss.rb` reads all seven of its frozen metric tables that way. One
+new `Ty` constructor (`hashOf key val`), and it retyped four rungs that had been climbing with
+`.any` since tier 5. -/
+
+/-- `h = { "a" => 1 }; h.fetch("a") + h.fetch("b", 0)` → `Integer`.
+
+    **The rung the whole gap was about**, and the interesting half is why `fetch` is more useful
+    to a checker than `[]`. `h["a"]` answers `nilable Integer`, because the key may be absent and
+    the checker cannot tell. `h.fetch("a")` answers `Integer` — *not* nilable — because a missing
+    key raises `KeyError`, which is **outside** the type-stuck family: if the key is absent,
+    execution ends there and no claim about the result can be falsified. That is the same
+    argument `NameError` gets in tier 13, reused, and it is what makes 62 call sites typeable.
+
+    The two-argument form joins the value type with the default's, because either can come back.
+
+    The type is uniform (`hashOf key val`), not keyed, and `cvss.rb` is the reason: it reads its
+    tables as `TABLE.fetch(metric)` with `metric` a *variable*, so a per-key map would answer
+    nothing there. What the target needs is "every value in this table is a Float". -/
+def r203 : Rung :=
+  ⟨"lib-hash-fetch",
+    .seq [.vasgn .lvar "h" (.hash [(.str "a", .int 1)]),
+          .send (some (.send (some (.var .lvar "h")) "fetch" [.str "a"] none)) "+"
+            [.send (some (.var .lvar "h")) "fetch" [.str "b", .int 0] none] none],
+    .int, [("h", .hashOf (.cls "String") .int)],
+    .seq (.cons (.vasgn (.hashLit (.cons .strLit .intLit .nil)))
+      (.last (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) (.hashFetch .cls))
+        (.cons (.prim (.var rfl rfl) (.cons .strLit (.cons .intLit .nil))
+          (.hashFetchD .cls)) .nil)
+        .intAdd)))⟩
+
+/-- `h = { "pkg" => { "name" => "x" } }; h.dig("pkg", "name")` → `T.nilable(String)`.
+
+    A hash **of hashes**, which the new constructor nests for free — `hashOf (cls String)
+    (hashOf (cls String) (cls String))` — and `dig`'s two-level row reads the inner value type
+    off it. The row has to name the nesting depth in its *type*, so each depth is a separate row;
+    the slice writes at most two, so there are two.
+
+    `nilable`, for `[]`'s reason at both levels: either key may be absent. -/
+def r204 : Rung :=
+  ⟨"lib-hash-dig",
+    .seq [.vasgn .lvar "h" (.hash [(.str "pkg", .hash [(.str "name", .str "x")])]),
+          .send (some (.var .lvar "h")) "dig" [.str "pkg", .str "name"] none],
+    .nilable (.cls "String"),
+    [("h", .hashOf (.cls "String") (.hashOf (.cls "String") (.cls "String")))],
+    .seq (.cons (.vasgn (.hashLit (.cons .strLit
+                                    (.hashLit (.cons .strLit .strLit .nil)) .nil)))
+      (.last (.prim (.var rfl rfl) (.cons .strLit (.cons .strLit .nil))
+        (.hashDig2 .cls .cls))))⟩
+
+/-- `def opts(**kw); kw["a"].nil? ? 0 : 1; end; opts(a: 1)` → `Integer`.
+
+    A keyword-rest, and tier 17b is what makes the *binding* worth having: `**kw` is
+    `hashOf Symbol Integer` — symbol keys because the call site wrote `a: 1`, and the value type
+    folded from what was passed, exactly as a hash literal's is. Until then it was the bare
+    `.cls "Hash"` and `kw["a"]` could only be `.any`, which `nil?` has no row for.
+
+    The rung reads it with a **String** key on purpose, and it is worth saying why that types:
+    `Hash#[]`'s key argument is deliberately *not* required to match the key parameter, because a
+    missing key is `nil` in Ruby rather than an error. So `kw["a"]` is `nilable Integer`, `nil?`
+    answers `Bool`, and the ternary joins two `Integer`s. At runtime the answer is `0`, which is
+    the branch the type says is possible. -/
+def r156 : Rung :=
+  ⟨"param-kwrest",
+    .seq [.def' "opts" [.kwrest (some "kw")]
+            (.if' (.send (some (.send (some (.var .lvar "kw")) "[]" [.str "a"] none)) "nil?"
+                    [] none)
+              (.int 0) (some (.int 1))),
+          .send none "opts" [.kwargs [.pair "a" (.int 1)]] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDefKw rfl .nil (.pair .intLit .nil) rfl rfl
+        (.if' (.prim (σ := .nilable .int) (.prim (.var rfl rfl) (.cons .strLit .nil)
+                       (.hashIndex .cls)) .nil (.nilQuery (.nilable .int)))
+          .intLit .intLit rfl))))⟩
+
+/-- `def f(a, b = 2, *rest, c:, d: 4, **kw, &blk); [a, b, rest.length, c, d, kw.length,
+    blk.nil?].length; end; f(1, c: 3)` → `Integer`.
+
+    **Every parameter kind at once**, which is why it is the tier's last rung: one required, one
+    optional taking its default, a rest taking nothing (`arrayOf .never`), one required keyword
+    supplied, one defaulted, a keyword-rest taking nothing (`hashOf Symbol .never`), and a block
+    parameter with no block (`.nilT`).
+
+    Read the derivation as a checklist of the four clinks it took: `paramBind` is one walk with
+    three entry points (clink 35), the two defaults come from `constLitTy?` licensed by
+    `constLitTy?_sound` (clink 33), the rest parameter's `noPositionalParams` side condition is
+    satisfied because only keyword/kwrest/block parameters follow it (clink 35 corrected clink
+    34's "must be last"), and `**kw` gets a `hashOf` (this clink). `blk.nil?` is the one thing
+    that was always free: a `&b` parameter binds `.nilT` when no block is passed, which is
+    exactly Ruby.
+
+    The array literal's element type is a union of six `Integer`s and a `Boolean`, which nothing
+    consumes — and nothing needs to, because only `length` is taken. -/
+def r162 : Rung :=
+  ⟨"param-all-kinds",
+    .seq [.def' "f" [.req "a", .opt "b" (.int 2), .rest (some "rest"), .key "c" none,
+                     .key "d" (some (.int 4)), .kwrest (some "kw"), .block (some "blk")]
+            (.send (some (.array [
+               .var .lvar "a", .var .lvar "b",
+               .send (some (.var .lvar "rest")) "length" [] none,
+               .var .lvar "c", .var .lvar "d",
+               .send (some (.var .lvar "kw")) "length" [] none,
+               .send (some (.var .lvar "blk")) "nil?" [] none])) "length" [] none),
+          .send none "f" [.int 1, .kwargs [.pair "c" (.int 3)]] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDefKw rfl (.cons .intLit .nil) (.pair .intLit .nil) rfl rfl
+        (.prim (.arrayLit (.cons (.var rfl rfl) (.cons (.var rfl rfl)
+          (.cons (.prim (.var rfl rfl) .nil .arrayLength)
+            (.cons (.var rfl rfl) (.cons (.var rfl rfl)
+              (.cons (.prim (.var rfl rfl) .nil .hashLength)
+                (.cons (.prim (.var rfl rfl) .nil (.nilQuery .nilT)) .nil))))))))
+          .nil .arrayLength))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -3680,10 +3814,10 @@ def rungs : List Rung :=
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
-   r150, r152, r153, r154, r155, r161,
+   r150, r152, r153, r154, r155, r156, r161, r162,
    r166, r170, r171, r173, r174, r175, r177, r179, r181, r182,
    r184, r185, r186, r192, r194, r196,
-   r200, r205, r207, r209, r210, r211, r212, r215, r216]
+   r200, r203, r204, r205, r207, r209, r210, r211, r212, r215, r216]
 
 /-! ## `chk` answers exactly what was derived by hand
 

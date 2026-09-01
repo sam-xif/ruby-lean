@@ -38,6 +38,7 @@ theorem eqSafe?_sound {σ : Ty} (h : eqSafe? σ = true) : EqSafe σ := by
       | exact .nilT
       | exact .sym
       | exact .cls
+      | exact .hashOf
       | exact absurd h (by simp [eqSafe?])
 
 /-- `nilQSafe?` never admits a receiver `NilQSafe` does not. Recursive at `nilable`,
@@ -55,6 +56,7 @@ theorem nilQSafe?_sound : ∀ {σ : Ty}, nilQSafe? σ = true → NilQSafe σ := 
       | exact .sym
       | exact .cls
       | exact .arrayOf
+      | exact .hashOf
       | exact absurd h (by simp [nilQSafe?])
 
 /-- `excCls?` never admits a name `ExcCls` does not (tier 16b). Row for row, exactly like
@@ -105,6 +107,66 @@ theorem primSigStr?_sound {m : String} {argTys : List Ty} {τ : Ty}
            | exact .strMatch)
       | simp at h
 
+/-- The `Array` half of the table agrees with `PrimSig` row for row. Unguarded rows by
+`all_goals`, the three element-guarded ones and `<<` by explicit bullets in `primSigArr?`'s
+order. -/
+theorem primSigArr?_sound {m : String} {argTys : List Ty} {τ ρ : Ty}
+    (h : primSigArr? m argTys τ = some ρ) : PrimSig (.arrayOf τ) m argTys ρ := by
+  unfold primSigArr? at h
+  split at h
+  · injection h with h; subst h; exact .arrayLength
+  · injection h with h; subst h; exact .arrayIndex
+  · injection h with h; subst h; exact .arrayEmptyP
+  · injection h with h; subst h; exact .arrayFirst
+  · injection h with h; subst h; exact .arrayLast
+  · injection h with h; subst h; exact .arrayCompact
+  · injection h with h; subst h; exact .arrayJoin
+  · -- `<<`, whose guard is the *equality* that makes `arrayOf` invariant
+    split at h
+    · rename_i heq; subst heq; injection h with h; subst h; exact .arrayPush
+    · exact absurd h (by simp)
+  · -- `include?`, guarded on the **element** type
+    split at h
+    · rename_i hel; injection h with h; subst h
+      exact .arrayInclude (nilQSafe?_sound hel)
+    · exact absurd h (by simp)
+  · -- `uniq`, same guard
+    split at h
+    · rename_i hel; injection h with h; subst h
+      exact .arrayUniq (nilQSafe?_sound hel)
+    · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- The `Hash` half of the table agrees with `PrimSig` row for row (tier 17b). Each row is
+guarded, so this is a run of two-way splits rather than an `all_goals`. -/
+theorem primSigHash?_sound {m : String} {argTys : List Ty} {k v τ : Ty}
+    (h : primSigHash? m argTys k v = some τ) : PrimSig (.hashOf k v) m argTys τ := by
+  unfold primSigHash? at h
+  split at h
+  · split at h
+    · rename_i hg; injection h with h; subst h; exact .hashKeyP (nilQSafe?_sound hg)
+    · exact absurd h (by simp)
+  · split at h
+    · rename_i hg; injection h with h; subst h; exact .hashFetch (nilQSafe?_sound hg)
+    · exact absurd h (by simp)
+  · split at h
+    · rename_i hg; injection h with h; subst h; exact .hashFetchD (nilQSafe?_sound hg)
+    · exact absurd h (by simp)
+  · split at h
+    · rename_i hg; injection h with h; subst h; exact .hashIndex (nilQSafe?_sound hg)
+    · exact absurd h (by simp)
+  · split at h
+    · rename_i hg; injection h with h; subst h; exact .hashDig (nilQSafe?_sound hg)
+    · exact absurd h (by simp)
+  · split at h
+    · rename_i hg
+      injection h with h; subst h
+      simp only [Bool.and_eq_true] at hg
+      exact .hashDig2 (nilQSafe?_sound hg.1) (nilQSafe?_sound hg.2)
+    · exact absurd h (by simp)
+  · injection h with h; subst h; exact .hashLength
+  · exact absurd h (by simp)
+
 /-- `primSig?` and `PrimSig` agree in the direction that matters: the executable table
 never invents a signature the specification lacks. Proved by case exhaustion over the
 table rows, in the order they are written in `Validate.lean`: the guarded `==` row
@@ -145,33 +207,13 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
       subst h
       exact .excMessage (excCls?_sound hexc)
     · exact absurd h (by simp)
-  · -- tier 17: `<<`, whose guard is the *equality* that makes `arrayOf` invariant
-    split at h
-    · rename_i heq
-      subst heq
-      injection h with h; subst h
-      exact .arrayPush
-    · exact absurd h (by simp)
-  · -- tier 17: `include?`, guarded on the **element** type
-    split at h
-    · rename_i hel
-      injection h with h; subst h
-      exact .arrayInclude (nilQSafe?_sound hel)
-    · exact absurd h (by simp)
-  · -- tier 17: `uniq`, same guard
-    split at h
-    · rename_i hel
-      injection h with h; subst h
-      exact .arrayUniq (nilQSafe?_sound hel)
-    · exact absurd h (by simp)
-  · -- tier 17: `Hash#key?`, guarded on the **argument** type
-    split at h
-    · rename_i hel
-      injection h with h; subst h
-      exact .hashKeyP (nilQSafe?_sound hel)
-    · exact absurd h (by simp)
+
   · -- tier 16b: everything else on a `String` receiver, delegated
     exact primSigStr?_sound h
+  · -- tier 17b: everything on a `Hash` receiver, delegated
+    exact primSigHash?_sound h
+  · -- tiers 5/14b/17a: everything on an `Array` receiver, delegated
+    exact primSigArr?_sound h
   all_goals
     first
       | (injection h with h
@@ -190,15 +232,7 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .intAsString
            | exact .symToS
            | exact .notBool
-           | exact .arrayLength
-           | exact .arrayIndex
-           | exact .arrayEmptyP
-           | exact .arrayJoin
-           | exact .arrayCompact
-           | exact .arrayFirst
-           | exact .arrayLast
-           | exact .intSpaceship
-           | exact .hashIndex)
+           | exact .intSpaceship)
       | simp at h
 
 /-- `builtinCls?` never admits a name `BuiltinCls` does not. Row for row; `decide` on the
@@ -352,9 +386,9 @@ theorem constLitTy?_nilQSafe : ∀ {e : Expr} {τ : Ty}, constLitTy? e = some τ
       | (injection h with h; subst h
          first
            | exact .int | exact .float | exact .sym | exact .bool | exact .nilT
-           | exact .cls | exact .arrayOf)
+           | exact .cls | exact .arrayOf | exact .hashOf)
       | (split at h
-         · injection h with h; subst h; exact .cls
+         · injection h with h; subst h; first | exact .hashOf | exact .cls
          · exact absurd h (by simp))
       | (rename_i es; cases hes : constLitTys? es with
          | none => simp [hes] at h
@@ -376,11 +410,13 @@ theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : 
   · injection h with h; subst h; exact .truLit
   · injection h with h; subst h; exact .flsLit
   · injection h with h; subst h; exact .nilLit
-  · -- a hash literal: the pairs had to type too, which is what `constLitPairs?` says
+  · -- a hash literal: the pairs' *types* are the answer now (tier 17b), not just whether they
+    -- exist -- `constLitPairTys?` folds them exactly as `JudgePairs` does.
     rename_i pairs
     split at h
-    · injection h with h; subst h
-      exact .hashLit (constLitPairs?_sound (by assumption))
+    · rename_i kτ vτ hp
+      injection h with h; subst h
+      exact .hashLit (constLitPairTys?_sound hp)
     · exact absurd h (by simp)
   · -- an array literal: every element types, so `JudgeAll` does
     rename_i es
@@ -407,16 +443,24 @@ theorem constLitTys?_sound : ∀ {es : List Expr} {τs : List Ty} {κ : Ctx} {Γ
       exact .cons (constLitTy?_sound he) (constLitTys?_sound hes)
     · exact absurd h (by simp)
 
-theorem constLitPairs?_sound : ∀ {ps : List (Expr × Expr)} {κ : Ctx} {Γ : Env} {I : Ty},
-    constLitPairs? ps = true → JudgePairs κ Γ I ps Γ I := by
-  intro ps κ Γ I h
-  unfold constLitPairs? at h
+theorem constLitPairTys?_sound : ∀ {ps : List (Expr × Expr)} {kτ vτ : Ty} {κ : Ctx}
+    {Γ : Env} {I : Ty},
+    constLitPairTys? ps = some (kτ, vτ) → JudgePairs κ Γ I ps kτ vτ Γ I := by
+  intro ps kτ vτ κ Γ I h
+  unfold constLitPairTys? at h
   split at h
-  · exact .nil
+  · injection h with h
+    injection h with h h'
+    subst h; subst h'; exact .nil
   · rename_i k v ps'
-    simp only [Bool.and_eq_true, Option.isSome_iff_exists] at h
-    obtain ⟨⟨⟨σ, hk⟩, ⟨ρ, hv⟩⟩, hrest⟩ := h
-    exact .cons (constLitTy?_sound hk) (constLitTy?_sound hv) (constLitPairs?_sound hrest)
+    split at h
+    · rename_i kt vt kr vr hk hv hrest
+      injection h with h
+      injection h with h h'
+      subst h; subst h'
+      exact .cons (constLitTy?_sound hk) (constLitTy?_sound hv)
+        (constLitPairTys?_sound hrest)
+    · exact absurd h (by simp)
 
 end
 
@@ -1579,19 +1623,27 @@ theorem chkConsts_sound : ∀ {fuel : Nat} {κ : Ctx} {cs : List (String × Expr
         · exact absurd h (by simp)
       · exact absurd h (by simp)
 
-theorem chkPairs_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
-    {ps : List (Expr × Expr)} {Γ' : Env} {I' : Ty},
-    chkPairs fuel κ Γ I ps = some (Γ', I') → JudgePairs κ Γ I ps Γ' I' := by
-  intro fuel κ Γ I ps Γ' I' h
+theorem chkPairs_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ' : Env} {I I' : Ty}
+    {ps : List (Expr × Expr)} {kτ vτ : Ty},
+    chkPairs fuel κ Γ I ps = some (kτ, vτ, Γ', I') → JudgePairs κ Γ I ps kτ vτ Γ' I' := by
+  intro fuel κ Γ Γ' I I' ps kτ vτ h
   unfold chkPairs at h
   split at h
   · exact absurd h (by simp)
-  · injection h with h; injection h with h h'; subst h; subst h'; exact .nil
+  · injection h with h; injection h with h h'; injection h' with h' h''
+    injection h'' with h'' h'''
+    subst h; subst h'; subst h''; subst h'''; exact .nil
   · split at h
-    · rename_i hk
+    · rename_i σ Γ₁ I₁ hk
       split at h
-      · rename_i hv
-        exact .cons (chk_sound hk) (chk_sound hv) (chkPairs_sound h)
+      · rename_i ν Γ₂ I₂ hv
+        split at h
+        · rename_i kr vr Γ₃ I₃ hrest
+          injection h with h; injection h with h h'; injection h' with h' h''
+          injection h'' with h'' h'''
+          subst h; subst h'; subst h''; subst h'''
+          exact .cons (chk_sound hk) (chk_sound hv) (chkPairs_sound hrest)
+        · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
@@ -1659,12 +1711,14 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms comparable?_sound
 #print axioms iterSig?_sound
 #print axioms primSigStr?_sound
+#print axioms primSigArr?_sound
+#print axioms primSigHash?_sound
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
 #print axioms constLitTy?_sound
 #print axioms constLitTys?_sound
-#print axioms constLitPairs?_sound
+#print axioms constLitPairTys?_sound
 #print axioms constLitTy?_nilQSafe
 #print axioms excCls?_sound
 #print axioms splitKw?_sound
