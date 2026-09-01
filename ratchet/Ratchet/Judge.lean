@@ -122,6 +122,30 @@ inductive NilQSafe : Ty → Prop
       `nilT`) or a `τ`, so the row is justified exactly when `τ`'s is. -/
   | nilable {τ : Ty} : NilQSafe τ → NilQSafe (.nilable τ)
 
+/-- **The builtin class names this judgment will type as a constant** (tier 12).
+
+One row per name, and each row is a claim of exactly one thing: evaluating this bare
+constant at top level yields the class object of that name, without raising. That is true
+for these because they are defined in every Ruby and this judgment has no rule for constant
+*assignment*, so nothing in a typed program can rebind them.
+
+Kept to the names `builtinAncestors` can answer `is_a?` for, plus `TrueClass`/`FalseClass`
+(where the answer is `none` — `Ty.bool` covers both — so `is_a?(TrueClass)` types and
+narrows nothing, which is the honest behaviour rather than a missing rule). Not here:
+`Numeric`, `Comparable`, `Enumerable`, `Object` — all perfectly real, all appearing *inside*
+`builtinAncestors`, and none needed as a `Ty` yet; adding one is a one-line row when a rung
+writes it. -/
+inductive BuiltinCls : String → Prop
+  | integer : BuiltinCls "Integer"
+  | float : BuiltinCls "Float"
+  | string : BuiltinCls "String"
+  | symbol : BuiltinCls "Symbol"
+  | nilClass : BuiltinCls "NilClass"
+  | trueClass : BuiltinCls "TrueClass"
+  | falseClass : BuiltinCls "FalseClass"
+  | array : BuiltinCls "Array"
+  | hash : BuiltinCls "Hash"
+
 /-- The primitive-method signature table, as a **relation** with one constructor per
 justified builtin. A relation rather than a function because this is the specification:
 each constructor is a claim about what the real `stepFn` does, to be read and checked
@@ -482,6 +506,100 @@ def ctorGet? (C : CTable) (n : String) : Option (String × Defn) :=
   match instClsGet? C n with
   | some _ => mroGet? C n "initialize"
   | none => none
+
+/-! ### The ancestor chain (tier 12)
+
+`mroGet?` answers "which class would dispatch run this method from". `is_a?` asks a
+different question — "is this class *among* those" — and needs the chain itself.
+
+**Why the chain a declared class produces is complete**, which is the whole soundness
+argument for answering `is_a?` **negatively**: a class enters `CTable` only via
+`extendClasses`, which uses `classMethods?`, which is `mapM clsMember?` over the body — and
+`clsMember?` reads only `def` and `def self.`. So a class body containing `include M`,
+`extend M` or `prepend M` makes `classMethods?` answer `none`, the class never enters the
+table, and `chk`'s `.class'` arm answers `none` for the whole program. Therefore *every*
+class in this table has no mixins, and its real ancestors are exactly its declared chain
+plus `Object`/`Kernel`/`BasicObject`.
+
+That argument is load-bearing and fragile in a specific way: whichever tier gives
+`include` a rule (tier 10) must revisit `isAAnswer`, because at that moment a class in the
+table can have an ancestor the chain does not name. -/
+
+/-- Names every object's chain ends with, and the reason `isANo` has to exclude them: `n`'s
+declared chain stops at a class with no `super?`, whose real superclass is `Object`. -/
+def rootAncestors : List String := ["Object", "Kernel", "BasicObject"]
+
+/-- The declared ancestor chain of `n`, most specific first, or `none` if the walk leaves the
+table — an undeclared superclass means the chain is *unknown*, not empty, and answering
+`is_a?` off a truncated chain would be unsound (`class Dog < StandardError` really is a
+`StandardError`). Budgeted like `lookupUp`, for the same reason. -/
+def ancestorsUp (C : CTable) : Nat → String → Option (List String)
+  | 0, _ => none
+  | k + 1, n =>
+    match clsGet? C n with
+    | none => none
+    | some c =>
+      match c.super? with
+      | none => some [n]
+      | some sn => (ancestorsUp C k sn).map (fun rest => n :: rest)
+
+def ancestors? (C : CTable) (n : String) : Option (List String) :=
+  ancestorsUp C C.length n
+
+/-- **The complete ancestor list of the class a builtin `Ty`'s values belong to**, most
+specific first, modules included — checked against CRuby's `.ancestors`. Complete is the
+operative word: this table is what lets `is_a?` be answered *negatively* for a builtin
+receiver, so a missing entry would be an unsoundness rather than an imprecision.
+
+`none` for every `Ty` whose values are not exactly one builtin class's instances:
+`.bool` (`true` and `false` are instances of *two* classes, so `is_a?(TrueClass)` has no
+single answer), `.union`/`.nilable` (handled compositionally by `isATy`/`notATy`), `.any`,
+`.never`, `.inst` (a declared class — `ancestors?`'s job), `.clsOf`/`.clos` (`Class` and
+`Proc`; total, but no rung asks and each row is a claim to check), and `.cls n` for any `n`
+other than the two builtin classes this `Ty` actually produces. -/
+def builtinAncestors : Ty → Option (List String)
+  | .int => some (["Integer", "Numeric", "Comparable"] ++ rootAncestors)
+  | .float => some (["Float", "Numeric", "Comparable"] ++ rootAncestors)
+  | .nilT => some ("NilClass" :: rootAncestors)
+  | .sym => some (["Symbol", "Comparable"] ++ rootAncestors)
+  | .cls "String" => some (["String", "Comparable"] ++ rootAncestors)
+  | .cls "Hash" => some (["Hash", "Enumerable"] ++ rootAncestors)
+  | .arrayOf _ => some (["Array", "Enumerable"] ++ rootAncestors)
+  | _ => none
+
+/-- `is_a?(cn)` on a value of type `τ`: `some true` when **every** value of `τ` answers
+`true`, `some false` when every value answers `false`, and `none` when this judgment cannot
+tell — which is the answer for `.any`, `.bool`, a `.cls` outside `builtinAncestors`, and a
+declared class whose chain leaves the table.
+
+Not defined on `.union`/`.nilable`: those are not a single class, and treating them here
+would hide the fact that a union's answer is per-member. `isATy`/`notATy` decompose them. -/
+def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
+  | .inst n _ => (ancestors? C n).map (fun ch => (ch ++ rootAncestors).contains cn)
+  | τ => (builtinAncestors τ).map (fun ch => ch.contains cn)
+
+/-- **`recv.is_a?(C)` really reaches `Object#is_a?`.**
+
+`is_a?` is total on every object and never raises for a `Module` argument, so the only way
+`x.is_a?(C)` can be type-stuck is a **user-written override** — and unlike `nil?` (see
+`NilQSafe`, which sidesteps the problem by refusing `.inst` outright) `is_a?` *must* admit
+`.inst`, because narrowing a union of program-declared classes is the whole point of
+`narrow-union-subclass`.
+
+So the guard is precise instead of structural: for every `.inst n` component of the receiver
+type, `n`'s MRO must not define `is_a?`. That is a lookup this judgment already has, and it
+is why this rule takes the class table where `PrimSig` rows cannot — which is also why
+`is_a?` is a `Judge` rule rather than a `PrimSig` row.
+
+`.any` is refused for `EqSafe`'s reason (a rule no rung can falsify), `.clos` because `Proc`
+does respond to `is_a?` but no rung asks, and `.never` because the strictness rules
+(`primNever`) get there first. -/
+def isADispatchOk (C : CTable) : Ty → Bool
+  | .inst n _ => (mroGet? C n "is_a?").isNone
+  | .union σ τ => isADispatchOk C σ && isADispatchOk C τ
+  | .nilable ρ => isADispatchOk C ρ
+  | .any | .clos _ _ | .never => false
+  | _ => true
 
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
@@ -855,17 +973,58 @@ inductive NarrowKind where
       to write a narrowing rule backwards — and `corpus/135-narrow-backwards-unsafe` exists
       to catch exactly that. -/
   | isNil
+  /-- `x.is_a?(C)`, carrying the class name. The first kind whose refinement needs the class
+      table, which is why the two `refine*` functions take one. -/
+  | isA (name : String)
 deriving DecidableEq, Repr
 
+/-! ### The `is_a?` refinements
+
+`truthyTy` and friends project out of a type by *shape*. These two project out by **class
+membership**, which is a question about the program's class table, and they are the first
+refinements that answer it.
+
+Both work member-by-member over a union, and the `nilable` case is the same decomposition
+with `nilT` as the implicit second member. A member the checker cannot decide
+(`isAAnswer = none`) is **kept in both branches**, which is the conservative direction: the
+refinement narrows nothing and the branch is typed at the same type it had. -/
+
+/-- What a `nil` member contributes to the then-branch: `nil.is_a?(cn)` is decided by
+`NilClass`'s chain, which `builtinAncestors .nilT` gives. -/
+def isANilPart (cn : String) : Ty :=
+  if ("NilClass" :: rootAncestors).contains cn then .nilT else .never
+
+/-- …and to the else-branch, which is its complement. -/
+def notANilPart (cn : String) : Ty :=
+  if ("NilClass" :: rootAncestors).contains cn then .never else .nilT
+
+/-- The values of `τ` that **are** a `cn`. -/
+def isATy (C : CTable) (cn : String) : Ty → Ty
+  | .union σ τ => joinT (isATy C cn σ) (isATy C cn τ)
+  | .nilable ρ => joinT (isANilPart cn) (isATy C cn ρ)
+  | τ => match isAAnswer C cn τ with
+    | some false => .never
+    | _ => τ
+
+/-- The values of `τ` that are **not** a `cn`. -/
+def notATy (C : CTable) (cn : String) : Ty → Ty
+  | .union σ τ => joinT (notATy C cn σ) (notATy C cn τ)
+  | .nilable ρ => joinT (notANilPart cn) (notATy C cn ρ)
+  | τ => match isAAnswer C cn τ with
+    | some true => .never
+    | _ => τ
+
 /-- The refinement the **then**-branch applies. -/
-def refineThen : NarrowKind → Ty → Ty
+def refineThen (C : CTable) : NarrowKind → Ty → Ty
   | .truthy, τ => truthyTy τ
   | .isNil, τ => isNilTy τ
+  | .isA cn, τ => isATy C cn τ
 
 /-- The refinement the **else**-branch applies. -/
-def refineElse : NarrowKind → Ty → Ty
+def refineElse (C : CTable) : NarrowKind → Ty → Ty
   | .truthy, τ => falsyTy τ
   | .isNil, τ => nonNilTy τ
+  | .isA cn, τ => notATy C cn τ
 
 /-- `NarrowCond c x k`: evaluating condition `c` performs test `k` on the local `x`, *and
 evaluating it has no other effect that could invalidate the refinement*.
@@ -887,12 +1046,21 @@ inductive NarrowCond : Expr → String → NarrowKind → Prop
       value `nil`". The receiver being a bare local read is what ties the answer to `x`. -/
   | nilQuery {x : String} :
       NarrowCond (.send (some (.var .lvar x)) "nil?" [] none) x .isNil
+  /-- `if x.is_a?(C)`, with the class written as a **bare constant**. The class name is read
+      off the *syntax* rather than off the argument's type, and the two agree because the
+      only rules that type a `.const n` (`constCls`, `constBuiltin`) both answer
+      `.clsOf n` for the very same `n`. A non-constant argument (`x.is_a?(k)`) is not
+      recognized: the rule `Judge.isAQuery` would still type the send, but there would be no
+      class *name* to refine by. -/
+  | isAQuery {x cn : String} :
+      NarrowCond (.send (some (.var .lvar x)) "is_a?" [.const cn] none) x (.isA cn)
 
 /-- The executable recognizer. `none` means "this condition tells the checker nothing",
 which is the answer for every condition in tiers 1–11. -/
 def narrowCond? : Expr → Option (String × NarrowKind)
   | .var .lvar x => some (x, .truthy)
   | .send (some (.var .lvar x)) "nil?" [] none => some (x, .isNil)
+  | .send (some (.var .lvar x)) "is_a?" [.const cn] none => some (x, .isA cn)
   | _ => none
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**
@@ -907,11 +1075,11 @@ or, implicitly, the refinement happens to be the type it already had.
 Being total is what lets `Judge.if'` carry narrowing in its *own* premises rather than in
 a second, parallel `ifNarrow` rule — and that in turn is what keeps there from being two
 rules for one syntactic form, only one of which anybody reads. -/
-def narrowEnvs (c : Expr) (Γ : Env) : Env × Env :=
+def narrowEnvs (C : CTable) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
   | some (x, k) =>
     match envGet? Γ x with
-    | some τ => (envSet Γ x (refineThen k τ), envSet Γ x (refineElse k τ))
+    | some τ => (envSet Γ x (refineThen C k τ), envSet Γ x (refineElse C k τ))
     | none => (Γ, Γ)
   | none => (Γ, Γ)
 
@@ -1055,8 +1223,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ : Ty} {c t e : Expr}
       {σ τ₁ τ₂ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs c Γc).1 Ic t τ₁ Γ₁ I₁ →
-      Judge κ (narrowEnvs c Γc).2 Ic e τ₂ Γ₂ I₂ →
+      Judge κ (narrowEnvs κ.classes c Γc).1 Ic t τ₁ Γ₁ I₁ →
+      Judge κ (narrowEnvs κ.classes c Γc).2 Ic e τ₂ Γ₂ I₂ →
       I₁ = I₂ →
       Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₁
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
@@ -1068,11 +1236,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Tier 12's narrowing applies to both halves for the same reasons as in `if'`, and the
       *else* half is worth a second look: the missing branch still **runs**, in the sense
       that control flows past the `if` having taken it, so what the code after the `if`
-      sees on that path is `(narrowEnvs c Γc).2`, not `Γc`. Using `Γc` would be sound but
+      sees on that path is `(narrowEnvs κ.classes c Γc).2`, not `Γc`. Using `Γc` would be sound but
       strictly less precise; using `.1` would be a bug. -/
   | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ : Ty} {c t : Expr} {σ τ : Ty} :
-      Judge κ Γ I c σ Γc Ic → Judge κ (narrowEnvs c Γc).1 Ic t τ Γ₁ I₁ → I₁ = Ic →
-      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ (narrowEnvs c Γc).2) Ic
+      Judge κ Γ I c σ Γc Ic → Judge κ (narrowEnvs κ.classes c Γc).1 Ic t τ Γ₁ I₁ → I₁ = Ic →
+      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2) Ic
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
       threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
@@ -1250,6 +1418,26 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `Undeclared.new` fails here rather than at dispatch. -/
   | constCls {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {c : Cls} :
       clsGet? κ.classes n = some c → Judge κ Γ I (.const n) (.clsOf n) Γ I
+  /-- **A constant naming a *builtin* class** (tier 12). Same conclusion as `constCls` —
+      `.clsOf n` — for a class the program did not declare.
+
+      Why this needs its own rule rather than seeding `CTable` with builtin entries: a
+      `CTable` row carries method tables, and `mroGet?`/`ctorGet?` would then happily
+      dispatch and *allocate* against them. `Integer.new` would find the zero-argument
+      allocator and validate, and it raises `NoMethodError`. Keeping builtins out of the
+      table means the only thing this rule licenses is the class object's *identity*, which
+      is all `is_a?` needs.
+
+      The `clsGet? = none` premise makes the two `const` rules disjoint, so a program that
+      reopens `class Integer` (which would put `Integer` in the table) goes through
+      `constCls` and this rule stays out of the way.
+
+      `BuiltinCls` is deliberately just the classes `builtinAncestors` covers plus the two
+      boolean ones: a name admitted here but absent from `builtinAncestors` would produce a
+      `.clsOf` nobody can answer `is_a?` for, which is inert but pointless. -/
+  | constBuiltin {κ : Ctx} {Γ : Env} {I : Ty} {n : String} :
+      BuiltinCls n → clsGet? κ.classes n = none →
+      Judge κ Γ I (.const n) (.clsOf n) Γ I
   /-- **`C.new(args)` — allocation, and where an instance's type is manufactured.**
 
       The receiver must be a class object (`.clsOf n`), so this rule is reached through
@@ -1635,6 +1823,32 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       PrimSig σ m argTys τ →
       Judge κ Γ I (.send (some recv) m args none) τ Γ₂ I₂
+  /-- **`recv.is_a?(C)` → `Bool`** (tier 12).
+
+      Not a `PrimSig` row, and the reason is the interesting part: `PrimSig` is a relation on
+      `(receiver type, name, argument types, result)` with no access to the class table, and
+      the *safety* of `is_a?` depends on the table — a program-declared class may override
+      it. `isADispatchOk` is that check, and it needs `κ.classes`, so the rule has to live
+      here. (`nil?` stayed a `PrimSig` row only because `NilQSafe` sidesteps the table by
+      refusing `.inst` altogether, which `is_a?` cannot afford to do.)
+
+      **The result is always `.bool`, whatever the answer.** This rule does not compute
+      whether the receiver *is* a `C`; `isAAnswer` does that, and it is consulted by
+      `narrowEnvs`, in the branch that learns from it. Keeping the two apart is what lets
+      `x.is_a?(C)` be an ordinary expression — usable as a value, storable in a local — while
+      only an `if` gets to draw a conclusion from it.
+
+      **The argument is required to have a class-object type, not to be a constant.** So
+      `x.is_a?(Integer)` and `x.is_a?(Dog)` both type (via `constBuiltin`/`constCls`), and so
+      would `k = Dog; x.is_a?(k)` if a rule ever typed that — it just would not *narrow*, for
+      lack of a class name in the syntax (see `NarrowCond.isAQuery`). The `.clsOf` requirement
+      is what keeps `x.is_a?(5)` out: `is_a?` raises `TypeError` on a non-Module argument,
+      which is inside the family. -/
+  | isAQuery {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {args : List Expr} {σ : Ty} {cn : String} :
+      Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
+      isADispatchOk κ.classes σ = true →
+      Judge κ Γ I (.send (some recv) "is_a?" args none) .bool Γ₂ I₂
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
 both states threaded left to right (Ruby's argument evaluation order). -/

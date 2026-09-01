@@ -1448,3 +1448,130 @@ State after this clink: **93 rungs climbed** of 136 (tiers 1–8 complete, tier 
 tier 11 at 1/10, tier 12 at 2/12), 93/93 cross-checked against the real semantics, 48/48
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all seven
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 14 (2026-09-01) — tier 12b: `is_a?`, and class membership: 93 → 95
+
+`narrow-union-is-a` and `narrow-union-subclass`. The first is the rung that makes `Ty.union`
+*usable*: before this clink nothing in this package could consume one. The second is the one
+whose refinement is asymmetric, which is where the interesting soundness argument is. 95
+derivations, 53/53 controls, 136/136 agreement, eight theorems axiom-clean.
+
+### `is_a?` is a `Judge` rule, not a `PrimSig` row
+
+`nil?` fit in `PrimSig` because its guard (`NilQSafe`) could be structural: refuse `.inst`
+receivers outright and no user-written `nil?` is reachable. `is_a?` cannot afford that — the
+whole point of `narrow-union-subclass` is narrowing a union of *program-declared* classes — so
+its guard has to be the precise one: **for every `.inst n` component of the receiver type,
+`n`'s MRO must not define `is_a?`** (`isADispatchOk`). That is a class-table lookup, and
+`PrimSig` is a relation on `(receiver, name, argTys, result)` with no table in it. So `is_a?`
+became `Judge.isAQuery`.
+
+Worth stating the division that fell out, because it is the reusable part: **`isAQuery` types
+the send at `.bool` and computes nothing about the answer.** Whether the receiver *is* a `C` is
+`isAAnswer`'s job, and `isAAnswer` is consulted only by `narrowEnvs`, in the branch entitled to
+learn from it. That is what keeps `x.is_a?(C)` an ordinary expression — storable in a local,
+passable as an argument — while only an `if` draws a conclusion.
+
+The argument is required to have type `.clsOf cn`, not to *be* a constant. `1.is_a?(5)` raises
+`TypeError` ("class or module required"), inside the family, so that index is a soundness
+requirement; it is a recorded control. Reading the class *name* for narrowing is separate and
+does come off the syntax (`NarrowCond.isAQuery` matches `[.const cn]`) — consistent because the
+only two rules that type a `.const n` both answer `.clsOf n` for the same `n`, and this
+judgment has no rule for constant assignment.
+
+### Builtin class constants, and why they are not `CTable` rows
+
+`Integer`/`String` in `is_a?` are `Expr.const`, and `Judge.constCls` only types constants for
+classes the program *declared*. The obvious fix — seed `CTable` with rows for the builtins — is
+wrong, and sharply so: a `CTable` row carries method tables, and `ctorGet?`/`instClsGet?` would
+then find the zero-argument allocator, so **`Integer.new` would validate**, and it raises
+`NoMethodError`. Hence a separate rule, `Judge.constBuiltin`, licensing the class object's
+*identity* and nothing else, with `clsGet? κ.classes n = none` as a premise so the two `const`
+rules stay disjoint (a program that reopens `class Integer` goes through `constCls`).
+`Integer.new` is a control.
+
+### Answering `is_a?` **negatively** needs an argument, and here it is
+
+`isATy`/`notATy` project a union member-by-member using `isAAnswer`, which returns
+`some true`/`some false`/`none` (undecidable → the member is kept in *both* branches, the
+conservative direction). The `some false` answers are the load-bearing ones —
+`narrow-union-subclass` works only because an `Animal` is decisively *not* a `Dog` — and each
+comes from a **complete** ancestor list:
+
+- **For a builtin receiver:** `builtinAncestors`, a hand-written table of full `.ancestors`
+  lists (`Integer, Numeric, Comparable, Object, Kernel, BasicObject`, …), checked against
+  CRuby. Complete is the operative word: a missing entry is an unsoundness, not an
+  imprecision. `.bool` is deliberately absent — `true` and `false` are instances of *two*
+  classes, so `is_a?(TrueClass)` has no single answer for `Ty.bool`.
+- **For a declared class:** `ancestors?`, walking `Cls.super?`, and answering `none` if the
+  walk leaves the table (`class Dog < StandardError` really *is* a `StandardError`; a truncated
+  chain must not license a negative answer).
+
+The completeness of a declared chain rests on a fact about earlier tiers that had nothing to do
+with `is_a?`: a class enters `CTable` only through `extendClasses` → `classMethods?` →
+`mapM clsMember?`, and `clsMember?` reads only `def` and `def self.`. So a class body containing
+`include M` makes `classMethods?` answer `none`, the class never enters the table, and the whole
+program is untypeable. **Every class in this table therefore has no mixins**, and its real
+ancestors are its declared chain plus `Object`/`Kernel`/`BasicObject`. This is recorded in
+`ancestorsUp`'s docstring as an explicit obligation on whichever tier gives `include` a rule
+(tier 10): at that moment a table class can have an ancestor the chain does not name, and
+`isAAnswer`'s negative direction breaks.
+
+### `subTy` still has no job
+
+Clink 7 predicted a parameter annotation would bring `subTy` due; clink 12 predicted
+`narrow-union-subclass` would. **Neither did.** Narrowing needs *class membership*, which is
+the ancestor walk `mroGet?` was already built on, not `Ty`-level subsumption — the refinement
+keeps or drops whole union members, and never has to ask whether one `Ty` is below another.
+`subTy` has now been unused across nine tiers, which is starting to look like a finding about
+this design rather than a gap in it.
+
+### A `Rungs.lean` cost worth recording: `if'`'s conclusion is not injective
+
+`narrow-union-subclass`'s derivation term has four written-out implicits (`Γc`, `Γ₁`, `Γ₂`,
+`τ₁`, `τ₂`), where every earlier `if'` derivation on the ladder needed none. Two compounding
+reasons, both structural rather than accidental:
+
+1. **`narrowEnvs κ.classes c Γc` is in `if'`'s conclusion**, so it reduces only when both `κ`
+   and `Γc` are known — and `Γc` comes from a *premise*. Every tier-4..11 rung got away with
+   this because its condition visibly leaves the environment alone (a literal, or a `prim`
+   whose `JudgeAll` is `.nil`), so `Γc` unified with `Γ`. `narrow-nilable-truthy` and
+   `narrow-nilable-nil-check` are still in that class; `is_a?` (three constructors deep) is not.
+2. **`joinT` and `joinEnv` are not injective**, so Lean cannot recover the branch types or
+   branch environments from the *result* — and in this rung the premises cannot supply them
+   either, because each branch's `.callMethod` reads its receiver's type *out of* the branch
+   environment.
+
+Writing them out turned out to be the right outcome rather than a wart: the four annotations
+*are* a statement of what narrowing did (`Γ₁` has `v : Dog`, `Γ₂` has `v : Animal`, and the
+join puts the union back), which is precisely what a reader of that rung wants to see.
+
+### Five new controls
+
+The `is_a?` polarity swap (`corpus/135` run as a control, so its rejection is labelled by
+execution — `"s" + 1`, TypeError); a class that overrides `is_a?` with `1 + "a"`, which is what
+makes `isADispatchOk` load-bearing; `1.is_a?(5)`; `Integer.new`; and one honest-cost control,
+`1.is_a?(Numeric)` — safe Ruby declined because `Numeric` is not a `BuiltinCls` row.
+
+### One rung's recorded target now looks wrong
+
+`narrow-nilable-and-union` (`arr = [1, "a"]; v = arr[0]; if v.is_a?(Integer) then v + 1 else
+v + "!" end`) targets `true`, and with this clink's rules it is **provably not certifiable, and
+should not be**: `arr[0]` is `nilable (union Int String)`, so the else-branch's type is
+`nilable (cls String)` and `v + "!"` would be `nil + "!"` if the array were empty —
+`NoMethodError`. The program is safe only because *this* array has an element at index 0, which
+needs index-and-length reasoning `Array#[]` deliberately does not do (`PrimSig.arrayIndex`).
+Flagged rather than retargeted: the honest fix is either a second guard in the rung's Ruby or a
+`false_reason`, and that is a corpus decision, not a checker one.
+
+### What tier 12's remaining eight want
+
+`case/when` (aliasing — the condition tests a desugarer temporary while the branch bodies use
+the original name), narrowing an **ivar** (which also needs `if'`'s `I₁ = I₂` premise to become
+a join), a refinement established inside a compound condition (`if x && x > 1`), narrowing by a
+branch that `return`s, narrowing inside a block body, and the `nilable`+union rung above.
+
+State after this clink: **95 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 10/22,
+tier 11 at 1/10, tier 12 at 4/12), 95/95 cross-checked against the real semantics, 53/53
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
+soundness theorems axiom-clean (`propext`, `Quot.sound`).

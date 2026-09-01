@@ -56,6 +56,12 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
 
+/-- The decidable counterpart of `Judge.lean`'s `BuiltinCls`, row for row. -/
+def builtinCls? : String → Bool
+  | "Integer" | "Float" | "String" | "Symbol" | "NilClass"
+  | "TrueClass" | "FalseClass" | "Array" | "Hash" => true
+  | _ => false
+
 /-- The executable counterpart of `BareNameError`: bare names known to resolve to
 nothing at top-level `self`. One row, matching the judgment's one constructor. -/
 def bareNameError? : String → Bool
@@ -115,9 +121,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- Tier 12: each branch is typed in the environment `narrowEnvs` refines for it. The
       -- function is total and the identity on an unrecognized condition, so this arm reads
       -- the same as it did before narrowing existed for every condition below tier 12.
-      match chk f κ (narrowEnvs c Γc).1 Ic t with
+      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic t with
       | some (τ₁, Γ₁, I₁) =>
-        match chk f κ (narrowEnvs c Γc).2 Ic e with
+        match chk f κ (narrowEnvs κ.classes c Γc).2 Ic e with
         | some (τ₂, Γ₂, I₂) =>
           -- The two branches must agree on the ivar spine; locals are joined instead.
           if I₁ = I₂ then some (joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, I₁) else none
@@ -127,9 +133,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | f + 1, .if' c t none =>
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ (narrowEnvs c Γc).1 Ic t with
+      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic t with
       | some (τ, Γ₁, I₁) =>
-        if I₁ = Ic then some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs c Γc).2, Ic) else none
+        if I₁ = Ic then some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2, Ic) else none
       | none => none
     | none => none
   | f + 1, .array es =>
@@ -193,9 +199,12 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | some σ => some (σ, Γ, I)
     | none => none
   | _ + 1, .const n =>
+    -- A declared class first; only a name the program never declared goes to the builtin
+    -- table. The two routes are disjoint by construction, which is what `Judge`'s
+    -- `constBuiltin` states as a premise.
     match clsGet? κ.classes n with
     | some _ => some (.clsOf n, Γ, I)
-    | none => none
+    | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
   | _ + 1, .module' _ body =>
     match classMethods? body with
@@ -303,6 +312,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         -- `Judge.primNever`'s premise.
         if σ = .never then some (.never, Γ₂, I₂)
         else if argTys.contains .never then some (.never, Γ₂, I₂)
+        else if m = "is_a?" then
+          -- Tier 12. Placed *before* the receiver dispatch, and note the consequence: a
+          -- receiver whose class overrides `is_a?` fails `isADispatchOk` and this arm answers
+          -- `none` rather than falling through to `callMethod`. Conservative, not unsound —
+          -- and recorded as a negative control.
+          match argTys with
+          | [.clsOf _] =>
+            if isADispatchOk κ.classes σ then some (.bool, Γ₂, I₂) else none
+          | _ => none
         else
           -- Tier 7's dispatch, keyed on what the receiver's type *is*: a class object
           -- allocates, an instance dispatches, anything else goes to the primitive table.

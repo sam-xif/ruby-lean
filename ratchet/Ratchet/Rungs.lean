@@ -1448,6 +1448,104 @@ def r126 : Rung :=
                  .intLit
                  (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
+/-- `def pick(flag); if flag then 1 else "s" end; end; v = pick(true);
+    if v.is_a?(Integer) then v + 1 else v + "!" end` → `union(Int, String)`.
+
+    **The rung that makes a `union` usable.** The `def` produces one — `if flag` narrows
+    nothing (`truthyTy .bool = falsyTy .bool = .bool`, since `Ty` has no singleton `true`),
+    so `pick`'s body joins `Int` and `String` — and then `is_a?` takes it apart again:
+    `isATy "Integer"` keeps the `.int` member (`builtinAncestors .int` names `Integer`) and
+    kills the `.cls "String"` member (its chain does not), and `notATy` does the reverse. So
+    `v + 1` and `v + "!"` are typed at the two *different* types the same local has in the
+    two branches. Before this clink, no expression in this package could consume a `Ty.union`
+    at all.
+
+    Two leaves worth naming. `.constBuiltin .integer rfl` is the first constant this judgment
+    types for a class the program did not declare — its second premise is `clsGet? = none`,
+    which is what keeps it disjoint from `constCls`. And `.isAQuery`'s third premise is
+    `isADispatchOk`, which is `true` here because neither member of the union is an `.inst`,
+    so no user-written `is_a?` can be in the way.
+
+    The result type is the union again, which is right: the two branches genuinely return
+    different classes, and the join forgets which branch ran. -/
+def r127 : Rung :=
+  ⟨"narrow-union-is-a",
+    .seq [.def' "pick" [.req "flag"]
+            (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+          .vasgn .lvar "v" (.send none "pick" [.tru] none),
+          .if' (.send (some (.var .lvar "v")) "is_a?" [.const "Integer"] none)
+            (.send (some (.var .lvar "v")) "+" [.int 1] none)
+            (some (.send (some (.var .lvar "v")) "+" [.str "!"] none))],
+    .union .int (.cls "String"), [("v", .union .int (.cls "String"))],
+    .seq (.cons .defStmt
+      (.cons (.vasgn (.callDef (.cons .truLit .nil) rfl rfl
+                (.if' (.var rfl) .intLit .strLit rfl)))
+        -- `Γc` is written out because `narrowEnvs` appears in `if'`'s *conclusion*: until
+        -- the condition's derivation is elaborated Lean cannot reduce it, and the condition
+        -- here is three constructors deep. The two tier-12 rungs above need no annotation
+        -- because their conditions leave the environment visibly untouched.
+        (.last (.if' (Γc := [("v", .union .int (.cls "String"))])
+                 (.isAQuery (.var rfl) (.cons (.constBuiltin .integer rfl) .nil) rfl)
+                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd)
+                 (.prim (.var rfl) (.cons .strLit .nil) .strAdd) rfl))))⟩
+
+/-- `class Animal; def speak; "..."; end; end; class Dog < Animal; def fetch; "ball"; end;
+    end; def make(flag) … end; v = make(true); if v.is_a?(Dog) then v.fetch else v.speak end`
+    → `String`.
+
+    **The rung whose refinement is asymmetric, which is the whole content of it.**
+    `is_a?(Dog)` must narrow the `Animal` member *away* — an `Animal` is not a `Dog` — while
+    leaving the `Dog` member; and in the else-branch it must narrow the `Dog` member away
+    while leaving `Animal`, because a `Dog` **is** an `Animal` and so cannot survive
+    `is_a?(Dog)` being false. Get that backwards and `v.fetch` is called on an `Animal`, which
+    raises `NoMethodError`.
+
+    That asymmetry is `isAAnswer`, and `isAAnswer` is where the *negative* answer needs an
+    argument: `ancestors? C "Animal" = some ["Animal"]`, and `"Dog"` is not in it, so no
+    `Animal` is a `Dog` — **provided the chain is complete**. It is, because a class enters
+    `CTable` only if `classMethods?` could read its whole body, and `classMethods?` reads
+    only `def`s; a body with `include M` never gets in. See `ancestorsUp`'s docstring, which
+    also records the obligation this puts on whichever tier gives `include` a rule.
+
+    Note what did *not* happen: clink 7 predicted `subTy` would come due here, and it did not.
+    Narrowing needs *class membership*, which is the ancestor walk `mroGet?` was already
+    built on, not `Ty`-level subsumption. `subTy` is still unused. -/
+def r130 : Rung :=
+  ⟨"narrow-union-subclass",
+    .seq [.class' "Animal" none (.def' "speak" [] (.str "...")),
+          .class' "Dog" (some (.const "Animal")) (.def' "fetch" [] (.str "ball")),
+          .def' "make" [.req "flag"]
+            (.if' (.var .lvar "flag")
+              (.send (some (.const "Dog")) "new" [] none)
+              (some (.send (some (.const "Animal")) "new" [] none))),
+          .vasgn .lvar "v" (.send none "make" [.tru] none),
+          .if' (.send (some (.var .lvar "v")) "is_a?" [.const "Dog"] none)
+            (.send (some (.var .lvar "v")) "fetch" [] none)
+            (some (.send (some (.var .lvar "v")) "speak" [] none))],
+    .cls "String",
+    [("v", .union (.inst "Dog" .ivar0) (.inst "Animal" .ivar0))],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl) (.cons .defStmt
+      (.cons (.vasgn (.callDef (.cons .truLit .nil) rfl rfl
+                (.if' (.var rfl)
+                  (.newInstNoInit (.constCls rfl) .nil rfl rfl)
+                  (.newInstNoInit (.constCls rfl) .nil rfl rfl) rfl)))
+        -- **The four written-out implicits are the readable part of this rung, not noise.**
+        -- `if'`'s conclusion is `joinT τ₁ τ₂` over `joinEnv Γ₁ Γ₂`, and neither `joinT` nor
+        -- `joinEnv` is injective, so Lean cannot recover the branch types or the branch
+        -- environments from the *result* — it needs them from the premises, and here the
+        -- premises are `.callMethod`s whose receiver type is itself read out of the branch
+        -- environment. So they are stated, and stating them is exactly stating what narrowing
+        -- did: `Γ₁` has `v : Dog`, `Γ₂` has `v : Animal`, and the join puts the union back.
+        -- `Γc` is written for the same reason: `narrowEnvs` appears in the conclusion.
+        (.last (.if'
+                 (Γc := [("v", .union (.inst "Dog" .ivar0) (.inst "Animal" .ivar0))])
+                 (Γ₁ := [("v", .inst "Dog" .ivar0)])
+                 (Γ₂ := [("v", .inst "Animal" .ivar0)])
+                 (τ₁ := .cls "String") (τ₂ := .cls "String")
+                 (.isAQuery (.var rfl) (.cons (.constCls rfl) .nil) rfl)
+                 (.callMethod (.var rfl) .nil rfl rfl .strLit)
+                 (.callMethod (.var rfl) .nil rfl rfl .strLit) rfl))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1461,7 +1559,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
    r121,
-   r125, r126]
+   r125, r126, r127, r130]
 
 /-! ## `chk` answers exactly what was derived by hand
 

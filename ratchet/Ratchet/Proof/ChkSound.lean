@@ -93,6 +93,24 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .hashIndex)
       | simp at h
 
+/-- `builtinCls?` never admits a name `BuiltinCls` does not. Row for row; `decide` on the
+string equalities the match compiles to. -/
+theorem builtinCls?_sound {n : String} (h : builtinCls? n = true) : BuiltinCls n := by
+  unfold builtinCls? at h
+  -- `split` gives one goal per name in the pattern alternation, with the name substituted
+  -- into the goal, plus the catch-all (which contradicts `h`).
+  split at h
+  · exact .integer
+  · exact .float
+  · exact .string
+  · exact .symbol
+  · exact .nilClass
+  · exact .trueClass
+  · exact .falseClass
+  · exact .array
+  · exact .hash
+  · exact absurd h (by simp)
+
 /-- `bareNameError?` never admits a name `BareNameError` does not. -/
 theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
     BareNameError m := by
@@ -294,14 +312,20 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       subst h; subst h'; subst h''
       exact .selfExpr hself
     · exact absurd h (by simp)
-  · -- `const n`: only a declared class.
+  · -- `const n`: a declared class, else a builtin class name.
     split at h
     · rename_i hcls
       injection h with h
       injection h with h h'; injection h' with h' h''
       subst h; subst h'; subst h''
       exact .constCls hcls
-    · exact absurd h (by simp)
+    · rename_i hcls
+      split at h
+      · injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .constBuiltin (builtinCls?_sound (by assumption)) hcls
+      · exact absurd h (by simp)
   · -- `def' n ps body`: unconditional, and the body is not looked at (see `Judge.defStmt`).
     injection h with h
     injection h with h h'; injection h' with h' h''
@@ -457,109 +481,124 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             subst h; subst h'; subst h''
             exact .primNever (chk_sound hrecv) (chkAll_sound hargs) (.inr hnever)
           · split at h
-            · -- the receiver is a class object: a singleton method first, then `new`
+            · -- tier 12: `is_a?`, checked before the receiver dispatch
+              rename_i hm
+              subst hm
               split at h
-              · rename_i hsm
+              · -- `split` substituted `argTys := [.clsOf _]`, so no equation is needed:
+                -- `hargs` already has the shape `JudgeAll`'s index wants.
                 split at h
-                · rename_i hpar
+                · rename_i hok
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .isAQuery (chk_sound hrecv) (chkAll_sound hargs) hok
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · split at h
+              · -- the receiver is a class object: a singleton method first, then `new`
+                split at h
+                · rename_i hsm
                   split at h
-                  · rename_i hbody
+                  · rename_i hpar
                     split at h
-                    · rename_i hI
-                      injection h with h
-                      injection h with h h'; injection h' with h' h''
-                      subst h; subst h'; subst h''
-                      exact .callSMethod (chk_sound hrecv) (chkAll_sound hargs) hsm hpar
-                        (by subst hI; exact chk_sound hbody)
+                    · rename_i hbody
+                      split at h
+                      · rename_i hI
+                        injection h with h
+                        injection h with h h'; injection h' with h' h''
+                        subst h; subst h'; subst h''
+                        exact .callSMethod (chk_sound hrecv) (chkAll_sound hargs) hsm hpar
+                          (by subst hI; exact chk_sound hbody)
+                      · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
-                · exact absurd h (by simp)
-              · split at h
-                · rename_i hnew
-                  split at h
-                  · rename_i hinit
+                · split at h
+                  · rename_i hnew
                     split at h
-                    · rename_i hpar
+                    · rename_i hinit
                       split at h
-                      · rename_i hbody
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs)
-                          hinit hpar (chk_sound hbody)
-                      · exact absurd h (by simp)
-                    · exact absurd h (by simp)
-                  · rename_i hinit
-                    split at h
-                    · rename_i hcls
-                      split at h
-                      · rename_i hzero
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact hnew ▸ .newInstNoInit (chk_sound hrecv)
-                          (hzero ▸ chkAll_sound hargs) hcls hinit
-                      · exact absurd h (by simp)
-                    · exact absurd h (by simp)
-                · exact absurd h (by simp)
-            · -- the receiver is a callable: check its body here (`Judge.closCall`)
-              split at h
-              · rename_i hname
-                split at h
-                · rename_i hself
-                  split at h
-                  · rename_i hclos
-                    split at h
-                    · rename_i hpar
-                      split at h
-                      · rename_i hbody
+                      · rename_i hpar
                         split at h
-                        · rename_i hI
+                        · rename_i hbody
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs)
+                            hinit hpar (chk_sound hbody)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · rename_i hinit
+                      split at h
+                      · rename_i hcls
+                        split at h
+                        · rename_i hzero
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact hnew ▸ .newInstNoInit (chk_sound hrecv)
+                            (hzero ▸ chkAll_sound hargs) hcls hinit
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+              · -- the receiver is a callable: check its body here (`Judge.closCall`)
+                split at h
+                · rename_i hname
+                  split at h
+                  · rename_i hself
+                    split at h
+                    · rename_i hclos
+                      split at h
+                      · rename_i hpar
+                        split at h
+                        · rename_i hbody
                           split at h
-                          · rename_i hcap
-                            injection h with h
-                            injection h with h h'; injection h' with h' h''
-                            subst h; subst h'; subst h''
-                            exact .closCall (by
-                              rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
-                                h | h
-                              · exact .inl h
-                              · exact .inr h) hself (chk_sound hrecv)
-                              (chkAll_sound hargs) hclos hpar
-                              (by subst hI; exact chk_sound hbody) hcap
+                          · rename_i hI
+                            split at h
+                            · rename_i hcap
+                              injection h with h
+                              injection h with h h'; injection h' with h' h''
+                              subst h; subst h'; subst h''
+                              exact .closCall (by
+                                rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
+                                  h | h
+                                · exact .inl h
+                                · exact .inr h) hself (chk_sound hrecv)
+                                (chkAll_sound hargs) hclos hpar
+                                (by subst hI; exact chk_sound hbody) hcap
+                            · exact absurd h (by simp)
                           · exact absurd h (by simp)
                         · exact absurd h (by simp)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · -- the receiver is an instance: dispatch up the chain from its class
-              split at h
-              · rename_i hmeth
+              · -- the receiver is an instance: dispatch up the chain from its class
                 split at h
-                · rename_i hpar
+                · rename_i hmeth
                   split at h
-                  · rename_i hbody
+                  · rename_i hpar
                     split at h
-                    · rename_i hI
-                      injection h with h
-                      injection h with h h'; injection h' with h' h''
-                      subst h; subst h'; subst h''
-                      exact .callMethod (chk_sound hrecv) (chkAll_sound hargs)
-                        hmeth hpar (by subst hI; exact chk_sound hbody)
+                    · rename_i hbody
+                      split at h
+                      · rename_i hI
+                        injection h with h
+                        injection h with h h'; injection h' with h' h''
+                        subst h; subst h'; subst h''
+                        exact .callMethod (chk_sound hrecv) (chkAll_sound hargs)
+                          hmeth hpar (by subst hI; exact chk_sound hbody)
+                      · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · -- anything else: the primitive table
-              split at h
-              · rename_i hsig
-                injection h with h
-                injection h with h h'; injection h' with h' h''
-                subst h; subst h'; subst h''
-                exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
-              · exact absurd h (by simp)
+              · -- anything else: the primitive table
+                split at h
+                · rename_i hsig
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
+                · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `yield' args`: the block the enclosing method was called with.
@@ -688,6 +727,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
   | some r => exact ⟨r.1, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
 
 #print axioms nilQSafe?_sound
+#print axioms builtinCls?_sound
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound

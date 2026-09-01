@@ -470,7 +470,45 @@ def controls : List Control :=
             .vasgn .lvar "x"
               (.send (some (.array [.send (some (.const "Dog")) "new" [] none])) "[]"
                 [.int 0] none),
-            .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0) (some (.int 1))]⟩ ]
+            .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0) (some (.int 1))]⟩
+    -- ### Tier 12's `is_a?` controls
+    --
+    -- (y) The `is_a?` polarity swap — `corpus/135-narrow-backwards-unsafe` as a control, so
+    -- the rejection is labelled by running it. `pick(false)` returns `"s"`, `is_a?(Integer)`
+    -- is false, the else-branch runs and `"s" + 1` raises TypeError. Certified by any
+    -- implementation that hands `isATy` to the else-branch.
+  , ⟨"def pick(f); f ? 1 : \"s\"; end; v = pick(false); if v.is_a?(Integer) then v + \"!\""
+      ++ " else v + 1 end",
+      .seq [.def' "pick" [.req "flag"]
+              (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+            .vasgn .lvar "v" (.send none "pick" [.fls] none),
+            .if' (.send (some (.var .lvar "v")) "is_a?" [.const "Integer"] none)
+              (.send (some (.var .lvar "v")) "+" [.str "!"] none)
+              (some (.send (some (.var .lvar "v")) "+" [.int 1] none))]⟩
+    -- (z) **The control that makes `isADispatchOk` load-bearing.** `is_a?` is total on every
+    -- object in the standard library, but a program-declared class may override it -- and
+    -- `is_a?` cannot refuse `.inst` receivers the way `NilQSafe` does, because narrowing a
+    -- union of declared classes is the whole point of `narrow-union-subclass`. So the guard
+    -- is the precise one: no `.inst` component's MRO may define `is_a?`. Here `D`'s does, and
+    -- it raises TypeError.
+  , ⟨"class D; def is_a?(k); 1 + \"a\"; end; end; D.new.is_a?(D)",
+      .seq [.class' "D" none
+              (.def' "is_a?" [.req "k"] (.send (some (.int 1)) "+" [.str "a"] none)),
+            .send (some (.send (some (.const "D")) "new" [] none)) "is_a?" [.const "D"] none]⟩
+    -- (aa) The argument must be a class object. `1.is_a?(5)` raises TypeError ("class or
+    -- module required"), which is inside the family, so `Judge.isAQuery`'s `[.clsOf cn]`
+    -- index is a soundness requirement rather than a convenience.
+  , ⟨"1.is_a?(5)", .send (some (.int 1)) "is_a?" [.int 5] none⟩
+    -- (bb) `constBuiltin` licenses a builtin class's *identity* and nothing else. If builtin
+    -- classes were seeded into `CTable` instead, `new` would find the zero-argument allocator
+    -- (`Judge.newInstNoInit`) and certify this, and it raises NoMethodError.
+  , ⟨"Integer.new", .send (some (.const "Integer")) "new" [] none⟩
+    -- (cc) What `BuiltinCls`'s deliberate shortness costs: `Numeric` is a real class and
+    -- `1.is_a?(Numeric)` is safe, but it is not a row, so the constant is untypeable. A row
+    -- would be one line; it is absent because `builtinAncestors` is where the *answer* would
+    -- have to come from and no rung asks.
+  , ⟨"1.is_a?(Numeric) (safe; Numeric is not a BuiltinCls row)",
+      .send (some (.int 1)) "is_a?" [.const "Numeric"] none⟩ ]
 
 mutual
 
