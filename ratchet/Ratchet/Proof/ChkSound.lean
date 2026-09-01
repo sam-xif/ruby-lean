@@ -199,16 +199,42 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     subst h; subst h'; subst h''; exact .nilLit
   · -- `var lvar x`: the environment had a type for `x`.
     split at h
-    · rename_i hget
+    · rename_i tb hget
       injection h with h
       injection h with h h'; injection h' with h' h''
       subst h; subst h'; subst h''
-      exact .var hget
+      -- Tier 12: `chk` answers `stripAlias tb`, which is `varAlias`'s payload when the binding
+      -- is an alias and `tb` itself otherwise. Case on the binding to pick the rule.
+      cases tb with
+      | sameAs y ρ => exact .varAlias hget
+      | _ => exact .var hget rfl
     · exact absurd h (by simp)
   · -- `var ivar x`: unconditional, defaulting to `nil` (see `Judge.ivarRead`).
     injection h with h
     injection h with h h'; injection h' with h' h''
     subst h; subst h'; subst h''; exact .ivarRead
+  · -- tier 12: `vasgn lvar t (var lvar x)` -- the alias route, when `t` is a desugarer
+    -- temporary, and otherwise the ordinary binding written out (this arm shadows the general
+    -- `vasgn` arm for that one syntactic shape, so it has to answer for both).
+    split at h
+    · rename_i tb hget
+      split at h
+      · rename_i hpre
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .vasgnAlias hpre hget rfl
+      · -- not a temporary: `Judge.vasgn` over `Judge.var`, whose `stripAlias` is exactly what
+        -- this arm computes
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        -- Not a temporary, so this is the ordinary binding -- and its value is a *read* of
+        -- `x`, which is `var`/`varAlias` exactly as in the `var` arm above.
+        cases tb with
+        | sameAs y ρ => exact .vasgn (.varAlias hget)
+        | _ => exact .vasgn (.var hget rfl)
+    · exact absurd h (by simp)
   · -- `vasgn lvar x e`: the right-hand side typed, and the binding lands in the
     -- environment the right-hand side left behind.
     split at h
@@ -695,145 +721,159 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             subst h; subst h'; subst h''
             exact .primNever (chk_sound hrecv) (chkAll_sound hargs) (.inr hnever)
           · split at h
-            · -- tier 12: `is_a?`, checked before the receiver dispatch
+            · -- tier 12: `Module#===`, checked before `is_a?` and before the dispatch
               rename_i hm
               subst hm
               split at h
-              · -- `split` substituted `argTys := [.clsOf _]`, so no equation is needed:
-                -- `hargs` already has the shape `JudgeAll`'s index wants.
+              · -- `split` substituted `σ := .clsOf cn` and `argTys := [_]`
                 split at h
                 · rename_i hok
                   injection h with h
                   injection h with h h'; injection h' with h' h''
                   subst h; subst h'; subst h''
-                  exact .isAQuery (chk_sound hrecv) (chkAll_sound hargs) hok
+                  exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hok
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
             · split at h
-              · -- the receiver is a class object: a singleton method first, then `new`
+              · -- tier 12: `is_a?`, checked before the receiver dispatch
+                rename_i hm
+                subst hm
                 split at h
-                · rename_i hsm
+                · -- `split` substituted `argTys := [.clsOf _]`, so no equation is needed:
+                  -- `hargs` already has the shape `JudgeAll`'s index wants.
                   split at h
-                  · rename_i hpar
-                    split at h
-                    · rename_i hbody
-                      split at h
-                      · rename_i hI
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact .callSMethod (chk_sound hrecv) (chkAll_sound hargs) hsm hpar
-                          (by subst hI; exact chk_sound hbody)
-                      · exact absurd h (by simp)
-                    · exact absurd h (by simp)
+                  · rename_i hok
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .isAQuery (chk_sound hrecv) (chkAll_sound hargs) hok
                   · exact absurd h (by simp)
-                · split at h
-                  · rename_i hnew
-                    split at h
-                    · rename_i hinit
-                      split at h
-                      · rename_i hpar
-                        split at h
-                        · rename_i hbody
-                          injection h with h
-                          injection h with h h'; injection h' with h' h''
-                          subst h; subst h'; subst h''
-                          exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs)
-                            hinit hpar (chk_sound hbody)
-                        · exact absurd h (by simp)
-                      · exact absurd h (by simp)
-                    · rename_i hinit
-                      split at h
-                      · rename_i hcls
-                        split at h
-                        · rename_i hzero
-                          injection h with h
-                          injection h with h h'; injection h' with h' h''
-                          subst h; subst h'; subst h''
-                          exact hnew ▸ .newInstNoInit (chk_sound hrecv)
-                            (hzero ▸ chkAll_sound hargs) hcls hinit
-                        · exact absurd h (by simp)
-                      · exact absurd h (by simp)
-                  · exact absurd h (by simp)
-              · -- the receiver is a callable: check its body here (`Judge.closCall`)
-                split at h
-                · rename_i hname
+                · exact absurd h (by simp)
+              · split at h
+                · -- the receiver is a class object: a singleton method first, then `new`
                   split at h
-                  · rename_i hclos
+                  · rename_i hsm
                     split at h
                     · rename_i hpar
                       split at h
                       · rename_i hbody
                         split at h
                         · rename_i hI
-                          split at h
-                          · rename_i hcap
-                            injection h with h
-                            injection h with h h'; injection h' with h' h''
-                            subst h; subst h'; subst h''
-                            exact .closCall (by
-                              rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
-                                h | h
-                              · exact .inl h
-                              · exact .inr h) (chk_sound hrecv)
-                              (chkAll_sound hargs) hclos hpar
-                              (by subst hI; exact chk_sound hbody) hcap
-                          · exact absurd h (by simp)
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact .callSMethod (chk_sound hrecv) (chkAll_sound hargs) hsm hpar
+                            (by subst hI; exact chk_sound hbody)
                         · exact absurd h (by simp)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
-                  · exact absurd h (by simp)
-                · exact absurd h (by simp)
-              · -- the receiver is an instance: dispatch up the chain from its class
-                split at h
-                · rename_i hmeth
-                  split at h
-                  · rename_i hpar
-                    split at h
-                    · rename_i hbody
+                  · split at h
+                    · rename_i hnew
                       split at h
-                      · rename_i hI
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact .callMethod (chk_sound hrecv) (chkAll_sound hargs)
-                          hmeth hpar (by subst hI; exact chk_sound hbody)
-                      · exact absurd h (by simp)
+                      · rename_i hinit
+                        split at h
+                        · rename_i hpar
+                          split at h
+                          · rename_i hbody
+                            injection h with h
+                            injection h with h h'; injection h' with h' h''
+                            subst h; subst h'; subst h''
+                            exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs)
+                              hinit hpar (chk_sound hbody)
+                          · exact absurd h (by simp)
+                        · exact absurd h (by simp)
+                      · rename_i hinit
+                        split at h
+                        · rename_i hcls
+                          split at h
+                          · rename_i hzero
+                            injection h with h
+                            injection h with h h'; injection h' with h' h''
+                            subst h; subst h'; subst h''
+                            exact hnew ▸ .newInstNoInit (chk_sound hrecv)
+                              (hzero ▸ chkAll_sound hargs) hcls hinit
+                          · exact absurd h (by simp)
+                        · exact absurd h (by simp)
                     · exact absurd h (by simp)
-                  · exact absurd h (by simp)
-                · -- tier 10: dispatch missed, so `method_missing` (`Judge.callMissing`)
-                  rename_i hmiss
+                · -- the receiver is a callable: check its body here (`Judge.closCall`)
                   split at h
-                  · exact absurd h (by simp)
-                  · rename_i hobj
+                  · rename_i hname
                     split at h
-                    · rename_i hmm
+                    · rename_i hclos
                       split at h
                       · rename_i hpar
                         split at h
                         · rename_i hbody
                           split at h
                           · rename_i hI
-                            injection h with h
-                            injection h with h h'; injection h' with h' h''
-                            subst h; subst h'; subst h''
-                            exact .callMissing (chk_sound hrecv) (chkAll_sound hargs) hmiss
-                              (fun hc => by
-                                cases hc with
-                                | mk hin => exact absurd hin (by simpa [objectMethod?] using hobj))
-                              hmm hpar (by subst hI; exact chk_sound hbody)
+                            split at h
+                            · rename_i hcap
+                              injection h with h
+                              injection h with h h'; injection h' with h' h''
+                              subst h; subst h'; subst h''
+                              exact .closCall (by
+                                rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
+                                  h | h
+                                · exact .inl h
+                                · exact .inr h) (chk_sound hrecv)
+                                (chkAll_sound hargs) hclos hpar
+                                (by subst hI; exact chk_sound hbody) hcap
+                            · exact absurd h (by simp)
                           · exact absurd h (by simp)
                         · exact absurd h (by simp)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
-              · -- anything else: the primitive table
-                split at h
-                · rename_i hsig
-                  injection h with h
-                  injection h with h h'; injection h' with h' h''
-                  subst h; subst h'; subst h''
-                  exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
-                · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · -- the receiver is an instance: dispatch up the chain from its class
+                  split at h
+                  · rename_i hmeth
+                    split at h
+                    · rename_i hpar
+                      split at h
+                      · rename_i hbody
+                        split at h
+                        · rename_i hI
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact .callMethod (chk_sound hrecv) (chkAll_sound hargs)
+                            hmeth hpar (by subst hI; exact chk_sound hbody)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                  · -- tier 10: dispatch missed, so `method_missing` (`Judge.callMissing`)
+                    rename_i hmiss
+                    split at h
+                    · exact absurd h (by simp)
+                    · rename_i hobj
+                      split at h
+                      · rename_i hmm
+                        split at h
+                        · rename_i hpar
+                          split at h
+                          · rename_i hbody
+                            split at h
+                            · rename_i hI
+                              injection h with h
+                              injection h with h h'; injection h' with h' h''
+                              subst h; subst h'; subst h''
+                              exact .callMissing (chk_sound hrecv) (chkAll_sound hargs) hmiss
+                                (fun hc => by
+                                  cases hc with
+                                  | mk hin => exact absurd hin (by simpa [objectMethod?] using hobj))
+                                hmm hpar (by subst hI; exact chk_sound hbody)
+                            · exact absurd h (by simp)
+                          · exact absurd h (by simp)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                · -- anything else: the primitive table
+                  split at h
+                  · rename_i hsig
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
+                  · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `yield' args`: the block the enclosing method was called with.

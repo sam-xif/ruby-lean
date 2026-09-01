@@ -65,6 +65,9 @@ partial def Ty.render : Ty → String
   | .ivar0 => ""
   | .ivarCons n τ .ivar0 => s!"{n}: {Ty.render τ}"
   | .ivarCons n τ rest => s!"{n}: {Ty.render τ}, {Ty.render rest}"
+  -- Tier 12: an alias binding. Rendered with the name it aliases, because that is the whole
+  -- content of it (see `Ty.sameAs`); nothing but `narrowEnvs` reads it.
+  | .sameAs n τ => s!"{Ty.render τ} (= {n})"
   | .clos idx .ivar0 .never => s!"<closure#{idx}>"
   | .clos idx captured .never => s!"<closure#{idx}>" ++ "{" ++ Ty.render captured ++ "}"
   -- Tier 11: a closure created where `self` was typed also renders its creation `self`,

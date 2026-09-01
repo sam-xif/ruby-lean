@@ -135,12 +135,25 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | _ + 1, .nil => some (.nilT, Γ, I)
   | _ + 1, .var .lvar x =>
     match envGet? Γ x with
-    | some τ => some (τ, Γ, I)
+    -- Tier 12: `stripAlias`, so no expression ever has type `sameAs` (see `Ty.sameAs`).
+    | some τ => some (stripAlias τ, Γ, I)
     | none => none
   | _ + 1, .var .ivar x => some ((ivarGet? I x).getD .nilT, Γ, I)
+  | _ + 1, .vasgn .lvar t (.var .lvar x) =>
+    -- Tier 12: a desugarer temporary assigned from a local records an **alias**
+    -- (`Judge.vasgnAlias`). Matched before the general `vasgn` arm, and only for one of the
+    -- desugarer's own temporary names -- see `Judge.vasgnAlias` on why the restriction is blast
+    -- radius rather than soundness, and `desugarTemps` on why it is a list and not a prefix.
+    match envGet? Γ x with
+    | some τ =>
+      if desugarTemps.contains t then
+        some (stripAlias τ, envSet (killAliasesTo Γ t) t (.sameAs x (stripAlias τ)), I)
+      else some (stripAlias τ, envSet (killAliasesTo Γ t) t (stripAlias τ), I)
+    | none => none
   | f + 1, .vasgn .lvar x e =>
     match chk f κ Γ I e with
-    | some (τ, Γ', I') => some (τ, envSet Γ' x τ, I')
+    -- `killAliasesTo`: once `x` holds a new object, nothing else holds the same one.
+    | some (τ, Γ', I') => some (τ, envSet (killAliasesTo Γ' x) x τ, I')
     | none => none
   | f + 1, .vasgn .ivar x e =>
     match chk f κ Γ I e with
@@ -277,7 +290,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                     { κ with
                       blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
                     Γb .ivar0 d.body with
-                | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ', I') else none
+                | some (ρ, _, Iout) =>
+                  if Iout = .ivar0 then some (ρ, killAliases Γ', I') else none
                 | none => none
               | none => none
             | none => none
@@ -300,7 +314,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   { (κ.inMethod (.inst n Iself) dc m) with
                     blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
                   Γb Iself d.body with
-              | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ', I') else none
+              | some (ρ, _, Iout) =>
+                if Iout = Iself then some (ρ, killAliases Γ', I') else none
               | none => none
             | none => none
           | none => none
@@ -376,12 +391,13 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         | some βs =>
           match paramEnv ps βs with
           | some Γb =>
-            match chk f κ (Γb ++ blockLocals locs ++ Γ₂) I₂ (bodyResult body) with
+            match chk f κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ (bodyResult body) with
             | some (ρ, Γb', Iout) =>
               if Iout = I₂ then
-                if capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ Γ₂) Γb' then
+                if capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb'
+                then
                   match iterResult? m elem argTys ρ with
-                  | some res => some (res, Γ₂, I₂)
+                  | some res => some (res, killAliases Γ₂, I₂)
                   | none => none
                 else none
               else none
@@ -411,7 +427,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                     { (κ.inMethod (.inst n Iself) dc m) with
                       blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
                     Γb Iself d.body with
-                | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
+                | some (ρ, _, Iout) =>
+                  if Iout = Iself then some (ρ, killAliases Γ₂, I₂) else none
                 | none => none
               | none => none
             | none => none
@@ -436,7 +453,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                     { (κ.inMethod (.clsOf n) dc m) with
                       blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
                     Γb .ivar0 d.body with
-                | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ₂, I₂) else none
+                | some (ρ, _, Iout) =>
+                  if Iout = .ivar0 then some (ρ, killAliases Γ₂, I₂) else none
                 | none => none
               | none => none
             | none => none
@@ -476,7 +494,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                     if Iout = closSpine cself then
                       if capIntact cap (Γb ++ spineToEnv cap) Γb' then
                         match iterResult? m elem argTys ρ with
-                        | some res => some (res, Γ₃, I₃)
+                        | some res => some (res, killAliases Γ₃, I₃)
                         | none => none
                       else none
                     else none
@@ -499,6 +517,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         -- `Judge.primNever`'s premise.
         if σ = .never then some (.never, Γ₂, I₂)
         else if argTys.contains .never then some (.never, Γ₂, I₂)
+        else if m = "===" then
+          -- Tier 12: `Module#===`, the form `case v when C` desugars to. Receiver must be a
+          -- class object, and the class object must not override `===` (`Judge.caseEqQuery`).
+          match σ, argTys with
+          | .clsOf cn, [_] =>
+            match smroGet? κ.classes cn "===" with
+            | none => some (.bool, Γ₂, I₂)
+            | some _ => none
+          | _, _ => none
         else if m = "is_a?" then
           -- Tier 12. Placed *before* the receiver dispatch, and note the consequence: a
           -- receiver whose class overrides `is_a?` fails `isADispatchOk` and this arm answers
@@ -556,7 +583,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   -- omitted, not caution).
                   | some (ρ, Γb', Iout) =>
                     if Iout = closSpine cself then
-                      (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ₂, I₂)
+                      (if capIntact cap (Γb ++ spineToEnv cap) Γb' then
+                         some (ρ, killAliases Γ₂, I₂)
                        else none)
                     else none
                   | none => none
@@ -610,7 +638,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 (bodyResult c.body) with
             | some (ρ, Γb', Iout) =>
               if Iout = closSpine cself then
-                (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ', I')
+                (if capIntact cap (Γb ++ spineToEnv cap) Γb' then
+                   some (ρ, killAliases Γ', I')
                  else none)
               else none
             | none => none

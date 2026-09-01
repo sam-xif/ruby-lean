@@ -806,7 +806,7 @@ def isADispatchOk (C : CTable) : Ty → Bool
   | .inst n _ => (mroGet? C n "is_a?").isNone
   | .union σ τ => isADispatchOk C σ && isADispatchOk C τ
   | .nilable ρ => isADispatchOk C ρ
-  | .any | .clos _ _ _ | .never => false
+  | .any | .clos _ _ _ | .never | .sameAs _ _ => false
   | _ => true
 
 /-- **Adding a class declaration to the table, merging if the name is already there.**
@@ -1464,6 +1464,11 @@ inductive NarrowCond : Expr → VarKind → String → NarrowKind → Prop
       class *name* to refine by. -/
   | isAQuery {k : VarKind} {x cn : String} :
       NarrowCond (.send (some (.var k x)) "is_a?" [.const cn] none) k x (.isA cn)
+  /-- `case x when C` — the desugarer emits `C === x`, the *receiver* being the class. Same
+      refinement as `is_a?`, reached from the other side, because `Module#===` is the ancestor
+      test with its arguments swapped. -/
+  | caseEqQuery {k : VarKind} {x cn : String} :
+      NarrowCond (.send (some (.const cn)) "===" [.var k x] none) k x (.isA cn)
 
 /-- The executable recognizer. `none` means "this condition tells the checker nothing",
 which is the answer for every condition in tiers 1–11.
@@ -1477,7 +1482,46 @@ def narrowCond? : Expr → Option (VarKind × String × NarrowKind)
   | .var k x => some (k, x, .truthy)
   | .send (some (.var k x)) "nil?" [] none => some (k, x, .isNil)
   | .send (some (.var k x)) "is_a?" [.const cn] none => some (k, x, .isA cn)
+  -- Tier 12: `C === x`, which is what `case x when C` desugars to (with `x` a temporary --
+  -- see `Ty.sameAs`). `Module#===` is the ancestor test with the sides swapped, so it narrows
+  -- exactly as `is_a?` does.
+  | .send (some (.const cn)) "===" [.var k x] none => some (k, x, .isA cn)
   | _ => none
+
+/-- Refine one name, **and the name it aliases** (tier 12).
+
+The second half is the whole point of `Ty.sameAs`: `case v when Integer` tests a temporary and
+its branch bodies use `v`, so refining only the tested name refines the wrong one. The alias's
+target is refined from **its own current binding**, not from the alias's payload — the two are
+equal by construction, and reading the binding makes it obviously so rather than an invariant to
+maintain. The alias itself is kept, with a refined payload, so a *second* test on the same
+temporary (the `when String` arm, which sits in the first arm's else-branch) narrows again. -/
+def refineOne (C : CTable) (k : NarrowKind) (thenSide : Bool) (Γ : Env) (x : String) : Env :=
+  let refine := fun τ => if thenSide then refineThen C k τ else refineElse C k τ
+  match envGet? Γ x with
+  | none => Γ
+  | some (.sameAs y τ) =>
+    let Γ₁ := envSet Γ x (.sameAs y (refine τ))
+    match envGet? Γ₁ y with
+    | some ρ => envSet Γ₁ y (refine (stripAlias ρ))
+    | none => Γ₁
+  | some τ => envSet Γ x (refine τ)
+
+/-- The names the desugarer introduces for its own temporaries, which is where `Judge.vasgnAlias`
+admits an alias.
+
+A **list of whole names, not a prefix test**, for a reason that is not about design: Lean's
+`String.isPrefixOf` is compiled by well-founded recursion and its termination proof pulls in
+`Classical.choice`, which would have shown up in `chk_sound`'s axiom list. Every other table in
+this package is `List.contains`-shaped and choice-free, and this one is too.
+
+The direction of error if the desugarer ever emits a name past the end of this list is
+**conservative**: no alias is recorded, the rung that needed one is not typed, and the ratchet
+reports it. Only `__dt_t1` appears in the current corpus; the list runs to nine so that a `case`
+with several scrutinees does not silently stop working. -/
+def desugarTemps : List String :=
+  ["__dt_t1", "__dt_t2", "__dt_t3", "__dt_t4", "__dt_t5",
+   "__dt_t6", "__dt_t7", "__dt_t8", "__dt_t9"]
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**
 
@@ -1493,10 +1537,7 @@ a second, parallel `ifNarrow` rule — and that in turn is what keeps there from
 rules for one syntactic form, only one of which anybody reads. -/
 def narrowEnvs (C : CTable) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
-  | some (.lvar, x, k) =>
-    match envGet? Γ x with
-    | some τ => (envSet Γ x (refineThen C k τ), envSet Γ x (refineElse C k τ))
-    | none => (Γ, Γ)
+  | some (.lvar, x, k) => (refineOne C k true Γ x, refineOne C k false Γ x)
   | _ => (Γ, Γ)
 
 /-- **The two branch ivar spines**, the same construction one piece of state over
@@ -1563,7 +1604,17 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       the desugarer only emits `var lvar x` where Ruby's parser saw an assignment to `x`
       earlier in the same scope; a bare name it did not is a `vcall` (see `bareName`). -/
   | var {κ : Ctx} {Γ : Env} {I : Ty} {x : String} {τ : Ty} :
-      envGet? Γ x = some τ → Judge κ Γ I (.var .lvar x) τ Γ I
+      envGet? Γ x = some τ → isAliasTy τ = false → Judge κ Γ I (.var .lvar x) τ Γ I
+  /-- Reading a local that currently **aliases** another (tier 12): its type is the alias's
+      payload, so no expression ever has type `Ty.sameAs`. Split from `var` rather than folded
+      into it (as `stripAlias` in the conclusion) for a purely mechanical reason worth recording,
+      because it recurs: a conclusion of the form `f τ` for a non-injective `f` cannot be
+      unified with a concrete type, so every one of the 137 `Judge.var` uses in `Rungs.lean`
+      would have needed its type written out. A `Bool` premise on `τ` instead leaves the
+      conclusion's `τ` a bare variable, and the premise discharges by `rfl` once it is
+      solved. -/
+  | varAlias {κ : Ctx} {Γ : Env} {I : Ty} {x y : String} {τ : Ty} :
+      envGet? Γ x = some (.sameAs y τ) → Judge κ Γ I (.var .lvar x) τ Γ I
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`),
       and its *effect* is to record that type for `x` in the outgoing environment.
 
@@ -1573,7 +1624,39 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       right-hand side is typed in `Γ` and may itself assign (`y = (x = 1) + 1`), so the
       binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`. -/
   | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
-      Judge κ Γ I e τ Γ' I' → Judge κ Γ I (.vasgn .lvar x e) τ (envSet Γ' x τ) I'
+      Judge κ Γ I e τ Γ' I' →
+      Judge κ Γ I (.vasgn .lvar x e) τ (envSet (killAliasesTo Γ' x) x τ) I'
+  /-- **`__dt_t1 = v` — an assignment that records an alias** (tier 12).
+
+      Same value and same effect as `vasgn`; the only difference is what lands in the
+      environment, `.sameAs x τ` instead of `τ`. See `Ty.sameAs` for why the alias is needed at
+      all (the desugarer's `case`/`&&` temporaries) and why it lives in the environment.
+
+      **Restricted to one of the desugarer's own temporary names** (`desugarTemps`). That
+      restriction is not a soundness requirement — the rule would be sound for any name — it is
+      a *blast-radius* one, and it buys two things worth having. Every existing rung's recorded
+      outgoing environment is unchanged, because no user-written program in the corpus assigns
+      to such a name. And the alias mechanism is confined to the construct that needs it, where
+      its lifetime is a couple of statements inside one `seq` and the invalidation story is easy
+      to check by reading.
+
+      The three invalidations. **Assignment to the holder** overwrites the binding, so nothing
+      is needed. **Assignment to the target** is `vasgn`'s `killAliasesTo` above: once `v` holds
+      a new object, `__dt_t1` no longer holds the same one. **A block reassigning a captured
+      local** is the one that is not visible as an assignment at all — the rules that carry a
+      caller's environment out across a block call justify doing so with `capIntact`, which
+      compares *types*, and a value can change at a fixed type; so those rules apply
+      `killAliases` to what they carry out. That list is `closCall`, `yieldExpr`, `iterBlock`,
+      `iterClosPass`, `callDefBlk`, `callMethodBlk`, `callSMethodBlk`, `selfCallBlk` — every
+      rule in the judgment through which a block body can run.
+
+      A fourth case needs no rule: a branch that invalidates in one arm and not the other loses
+      the alias at the join, because `joinT (sameAs y τ) τ` is a `union`, and a `union` is not a
+      `sameAs`. -/
+  | vasgnAlias {κ : Ctx} {Γ : Env} {I : Ty} {t x : String} {σ τ : Ty} :
+      desugarTemps.contains t = true → envGet? Γ x = some σ → stripAlias σ = τ →
+      Judge κ Γ I (.vasgn .lvar t (.var .lvar x)) τ
+        (envSet (killAliasesTo Γ t) t (.sameAs x τ)) I
   /-- A statement sequence: the whole thing has the *last* statement's type, and both
       threaded states flow through all of them. Delegated to `JudgeSeq` so the non-empty
       requirement is structural, and because `JudgeSeq` is also where the *syntax tables*
@@ -2251,7 +2334,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
-      Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args none) ρ (killAliases Γ₂) I₂
   -- ### Tier 9c — the builtin iterators
   --
   -- Three rules, one per *way a block reaches an iterator*: written out at the call site, or
@@ -2295,9 +2378,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       IterSig m elem argTys βs ρ res →
       paramEnv ps βs = some Γb →
-      Judge κ (Γb ++ blockLocals locs ++ Γ₂) I₂ (bodyResult body) ρ Γb' I₂ →
-      capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ Γ₂) Γb' = true →
-      Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res Γ₂ I₂
+      Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ (bodyResult body) ρ Γb' I₂ →
+      capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb' = true →
+      Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res
+        (killAliases Γ₂) I₂
   /-- **`arr.map(&:to_s)` — a Symbol coerced to a block.**
 
       `Symbol#to_proc` builds a one-parameter callable that *sends that name to its argument*,
@@ -2316,6 +2400,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       IterSig m elem argTys [β] ρ res →
       PrimSig β s [] ρ →
       Judge κ Γ I (.send (some recv) m args (some (.blockpass (some (.sym s))))) res Γ₂ I₂
+
   /-- **`arr.map(&some_lambda)` — a callable value passed as the block.**
 
       The `&` expression is typed (it is an ordinary expression — a local read, in
@@ -2339,7 +2424,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
-      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some pe)))) res Γ₃ I₃
+      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some pe)))) res
+        (killAliases Γ₃) I₃
   -- ### Tier 9b — a block reaching a method
   --
   -- Four rules. `callDefBlk` is the call site that carries a block; `yieldExpr` is the one
@@ -2388,7 +2474,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
         = some Γb →
       Judge { κ with blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
         Γb .ivar0 d.body ρ Γb' .ivar0 →
-      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (killAliases Γ') I'
   -- ### Tier 11 — a block reaching a *method of an object*
   --
   -- Three rules, and no new idea in any of them: each is its block-less twin
@@ -2415,7 +2501,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge { (κ.inMethod (.inst n Iself) dc m) with
               blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
         Γb Iself d.body ρ Γb' Iself →
-      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
+        (killAliases Γ₂) I₂
   /-- **`C.m(args) { |x| … }`** — a singleton method (or a module function) called with a
       block. `callSMethod` plus the block; the spine is `.ivar0` on both sides, because a
       class object has no instance variables this checker models. -/
@@ -2431,7 +2518,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge { (κ.inMethod (.clsOf n) dc m) with
               blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
         Γb .ivar0 d.body ρ Γb' .ivar0 →
-      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
+        (killAliases Γ₂) I₂
   /-- **`m(args) { |x| … }` inside a method body** — implicit-self dispatch carrying a block.
       `selfCall` plus the block, plus arguments (which `selfCall` itself does not have, because
       a *bare* name is the zero-argument form and a `vcall` has nowhere to put a block).
@@ -2453,7 +2541,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge { (κ.inMethod (.inst n Iself) dc m) with
               blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
         Γb Iself d.body ρ Γb' Iself →
-      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (killAliases Γ') I'
   /-- **`yield args`** — invoke the block the enclosing method was called with.
 
       `Ctx.blockTy` supplies it, so this rule is only available inside a body entered through
@@ -2479,7 +2567,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
-      Judge κ Γ I (.yield' args) ρ Γ' I'
+      Judge κ Γ I (.yield' args) ρ (killAliases Γ') I'
   /-- A **bare name that is a top-level method**, with the instantiation assumed. `vcallAsm`
       is to `callAsm` what `vcallDef` is to `callDef`; see `AsmTable`. -/
   | vcallAsm {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ρ : Ty} :
@@ -2561,6 +2649,25 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
       isADispatchOk κ.classes σ = true →
       Judge κ Γ I (.send (some recv) "is_a?" args none) .bool Γ₂ I₂
+  /-- **`C === v` → `Bool`** (tier 12) — `Module#===`, which is what `case v when C` desugars
+      to.
+
+      Not `isAQuery` with the arguments swapped, even though the *answer* is the same: this is a
+      different method on a different receiver, and it has a different guard. `Module#===` is
+      implemented directly as the ancestor test — it does **not** go through `obj.is_a?` — so a
+      user-written `is_a?` cannot affect it, and `isADispatchOk` is not needed. What *can*
+      affect it is a `def self.===` on the class object, which is what `smroGet? … = none`
+      excludes.
+
+      The argument's type is unconstrained: `Module#===` is total on every object and never
+      raises. As with `isAQuery`, the rule computes nothing about the *answer*; `isAAnswer` does
+      that, and only `narrowEnvs` consults it. -/
+  | caseEqQuery {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {args : List Expr} {cn : String} {σ : Ty} :
+      Judge κ Γ I recv (.clsOf cn) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args [σ] Γ₂ I₂ →
+      smroGet? κ.classes cn "===" = none →
+      Judge κ Γ I (.send (some recv) "===" args none) .bool Γ₂ I₂
 
 /-- Pointwise `Judge` over an argument list, with matching length by construction and
 both states threaded left to right (Ruby's argument evaluation order). -/

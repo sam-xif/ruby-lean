@@ -2371,3 +2371,98 @@ State after this clink: **119 rungs climbed** of 136 (tier 9 at 19/22, tier 10 a
 8/10, tier 12 at 7/12 — the fractions below 1 being the eleven permanent negatives and the two
 `Ty` language gaps, plus tier 12's three), 119/119 cross-checked, 86/86 negative controls
 rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.
+
+## Clink 25 (2026-09-01) — tier 12: aliasing, and `case`/`when`: 119 → 120
+
+`narrow-union-case-when`. 120 derivations, 90/90 controls, 136/136 agreement, ten theorems
+axiom-clean. **Mismatches 3 → 1**, and the one left is `narrow-and-guard`.
+
+### Clink 17 deferred this and named the design; the design turned out to be design (3), fixed
+
+Clink 17 listed four ways to make `case v when Integer` narrow `v` when the condition tests a
+*temporary*, rejected three, and deferred to the fourth (a fourth threaded state). The one it
+rejected as "nearly works" was `Ty.sameAs (name) (τ)` carried in `Env`, and the reason for
+rejecting it was **block capture**:
+
+> It breaks on block capture: `t = v; blk { v = "s" }; if t.is_a?(Integer) then v + 1 …` keeps
+> the alias alive across a call that changed `v`'s *value*, and `capIntact` only requires the
+> *type* to be intact.
+
+That is exactly right, and it is fixable in one line per rule rather than by threading a fifth
+index: **the rules that carry a caller's environment out across a block call apply
+`killAliases` to what they carry out.** There are eight of them — `closCall`, `yieldExpr`,
+`iterBlock`, `iterClosPass`, `callDefBlk`, `callMethodBlk`, `callSMethodBlk`, `selfCallBlk` —
+which is *every* rule in the judgment through which a block body can run, and the list is
+closed because a method body cannot see the caller's locals at all.
+
+What made design (3) worth revisiting rather than paying for the fourth index: clink 17's own
+lesson was *state a rule needs must thread, or its soundness becomes a list of places somebody
+has to remember*. The environment **already threads**. Putting the alias in the environment's
+value type gets the threading for free, and — the part clink 17 missed — makes every place that
+could invalidate an alias a place that **already writes to the environment**. That is what turns
+"a list of places to remember" into a finite, readable enumeration.
+
+### The invalidation argument, in full, because it is the whole soundness story
+
+An alias `t ~ v` can go stale in exactly four ways:
+
+1. **`t` is reassigned.** The binding is overwritten; nothing needed.
+2. **`v` is reassigned.** `Judge.vasgn`'s conclusion is
+   `envSet (killAliasesTo Γ' x) x τ` — once `v` holds a new object, nothing else holds the same
+   one. Control (jjj), which raises `TypeError`.
+3. **A block reassigns `v`.** The eight rules above. Control (kkk) — and note the shape: the
+   block reassigns `v` at the *same* union type, so `capIntact` passes and the type survives.
+   Only the alias must not.
+4. **One branch of an `if` does (2) and the other does not.** Nothing needed: the branch that
+   invalidated has `v : τ` where the other has `t : sameAs v τ`, and
+   `joinT (sameAs v τ) τ` is a **union** — which is not a `sameAs`, so the alias is simply gone
+   at the join. `narrow-union-case-when`'s own outgoing environment shows this: `__dt_t1` leaves
+   as a *union of aliases*, one per `when` arm, and therefore as no alias at all.
+
+Case 4 falling out of the existing join is the strongest evidence that this is the right place
+for the fact.
+
+### `Ty.sameAs` is inert everywhere except `narrowEnvs`
+
+`Judge.varAlias` reads an aliased name at the alias's **payload**, so no *expression* ever has
+type `sameAs`: it is a fact about a binding, not about a value. Beyond that: no `PrimSig` row,
+not `EqSafe`, not `NilQSafe`, not `Comparable`, `isADispatchOk` refuses it, `envToSpine` strips
+it (so it never enters a closure's captured spine, where the target name could mean something
+else), and `expectedClasses` answers `[]` so a rung that somehow claimed one would fail loudly.
+
+### `Module#===`, and why it is not `is_a?` with the arguments swapped
+
+`case v when C` desugars to `C === v`. The *answer* is the same ancestor test, so `narrowCond?`
+produces the same `.isA` kind — but the **guard** is different, and getting that right is the
+content of `Judge.caseEqQuery`. `Module#===` is implemented directly as the ancestor test; it
+does **not** call `obj.is_a?`. So a user-written `is_a?` cannot affect it (`isADispatchOk` is
+the wrong question here), while a `def self.===` on the class object can — which is what
+`smroGet? cn "===" = none` excludes. Control (mmm).
+
+### Two mechanical findings worth keeping
+
+**A conclusion of the form `f τ` for a non-injective `f` cannot be unified with a concrete
+type.** The first draft folded the alias strip into `Judge.var`'s conclusion (`stripAlias τ`),
+and every one of the **137** `Judge.var` uses in `Rungs.lean` stopped elaborating. Splitting it
+into `var` (with an `isAliasTy τ = false` premise, leaving the conclusion's `τ` a bare variable)
+and `varAlias` cost one mechanical `rfl` per use site and nothing else. This is the same shape as
+clink 16's `joinSpine I₁ I₂ = I₃` and clink 23's arity premise: **put the function in a premise,
+not in the conclusion.**
+
+**`String.isPrefixOf` is not axiom-clean.** The alias rule was first restricted to names
+beginning `__dt_`, and `chk_sound`'s axiom list grew `Classical.choice` — Lean's
+`String.isPrefixOf` is compiled by well-founded recursion and its termination proof needs it.
+Replaced by `desugarTemps.contains`, a `List String` of whole names, which is choice-free like
+every other table in the package. The direction of error if the desugarer ever emits a name past
+the end of that list is conservative: no alias, the rung is not typed, and the ratchet says so.
+
+### What is left: one rung
+
+`narrow-and-guard` (`if x && x > 1`). The alias machinery handles the temporary, but the
+condition is an entire `seq` in condition position, so `narrowCond?` cannot see it — the outer
+`if`'s refinement has to come from a **compound** condition, which means `narrowCond?` returning
+a *conjunction* of refinements and recognizing the `&&`/`||` desugaring.
+
+State after this clink: **120 rungs climbed** of 136, 120/120 cross-checked, 90/90 negative
+controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean
+(`propext`, `Quot.sound`).

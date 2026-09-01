@@ -70,6 +70,8 @@ def expectedClasses : Ty → List String
   -- `class-ivar-lazy-nil`'s `NilClass`) reads an ivar out through a method call, so a wrong
   -- spine shows up as a wrong result class on that rung.
   | .inst n _ => [n]
+  -- Tier 12: `Ty.sameAs` is a fact about a *binding*, not about a value, and `Judge.var`
+  -- strips it -- so no rung's type can be one. `[]` fails loudly if that ever changes.
   | _ => []
 
 /-- Fuel: these are small literal/arithmetic programs; a few hundred steps is already
@@ -868,7 +870,68 @@ def controls : List Control :=
     -- rejection rather than a conservative one.
   , ⟨"class G; def method_missing(n); 1; end; end; G.new.whatever(7)",
       .seq [.class' "G" none (.def' "method_missing" [.req "n"] (.int 1)),
-            .send (some (.send (some (.const "G")) "new" [] none)) "whatever" [.int 7] none]⟩ ]
+            .send (some (.send (some (.const "G")) "new" [] none)) "whatever" [.int 7] none]⟩
+    -- ### Tier 12's aliasing controls
+    --
+    -- `Ty.sameAs`'s soundness is entirely a question of **invalidation**, so these controls are
+    -- one per way an alias can go stale. Each uses the desugarer's own temporary name, because
+    -- that is what `Judge.vasgnAlias` admits; a hand-written control can spell it.
+    --
+    -- (jjj) **Reassigning the alias's target.** `v` gets a new object, so `__dt_t1` no longer
+    -- holds the same one -- and `Integer === __dt_t1` is still *true* (it holds the old `1`), so
+    -- the then-branch runs and `"s" + 1` raises TypeError. Without `killAliasesTo` in
+    -- `Judge.vasgn`, the refinement would reach `v` and certify it.
+  , ⟨"def pick(f) …; v = pick(true); __dt_t1 = v; v = \"s\";"
+      ++ " if Integer === __dt_t1 then v + 1 else 0 end",
+      .seq [.def' "pick" [.req "flag"]
+              (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+            .vasgn .lvar "v" (.send none "pick" [.tru] none),
+            .vasgn .lvar "__dt_t1" (.var .lvar "v"),
+            .vasgn .lvar "v" (.str "s"),
+            .if' (.send (some (.const "Integer")) "===" [.var .lvar "__dt_t1"] none)
+              (.send (some (.var .lvar "v")) "+" [.int 1] none)
+              (some (.int 0))]⟩
+    -- (kkk) **A block reassigning the target**, which is the case that made clink 17 reject the
+    -- `Ty.sameAs` design outright. It is not visible as an assignment: the iterator rule carries
+    -- the caller's environment out unchanged, justified by `capIntact` -- which compares *types*
+    -- -- and here the block reassigns `v` at the *same* union type. So the type survives and the
+    -- alias must not, which is what `killAliases` on those rules' outgoing environments does.
+    -- Really raises TypeError.
+  , ⟨"def pick(f) …; v = pick(true); __dt_t1 = v; [1].each { |z| v = pick(false) };"
+      ++ " if Integer === __dt_t1 then v + 1 else 0 end",
+      .seq [.def' "pick" [.req "flag"]
+              (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+            .vasgn .lvar "v" (.send none "pick" [.tru] none),
+            .vasgn .lvar "__dt_t1" (.var .lvar "v"),
+            .send (some (.array [.int 1])) "each" []
+              (some (.block [.req "z"] []
+                (.vasgn .lvar "v" (.send none "pick" [.fls] none)))),
+            .if' (.send (some (.const "Integer")) "===" [.var .lvar "__dt_t1"] none)
+              (.send (some (.var .lvar "v")) "+" [.int 1] none)
+              (some (.int 0))]⟩
+    -- (lll) What the `desugarTemps` restriction costs: the same program with a *user-written*
+    -- name records no alias, so `v` is not refined and this safe Ruby is declined. The
+    -- restriction is blast radius rather than soundness (`Judge.vasgnAlias`), and this is the
+    -- price, recorded as a number.
+  , ⟨"def pick(f) …; v = pick(true); t = v; if Integer === t then v + 1 else 0 end (safe;"
+      ++ " aliases are recorded only for desugarer temporaries)",
+      .seq [.def' "pick" [.req "flag"]
+              (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+            .vasgn .lvar "v" (.send none "pick" [.tru] none),
+            .vasgn .lvar "t" (.var .lvar "v"),
+            .if' (.send (some (.const "Integer")) "===" [.var .lvar "t"] none)
+              (.send (some (.var .lvar "v")) "+" [.int 1] none)
+              (some (.int 0))]⟩
+    -- (mmm) **`Module#===` can be overridden on the class object**, which is what
+    -- `Judge.caseEqQuery`'s `smroGet? … = none` premise excludes. Here `C.===` raises TypeError.
+    -- Note this is a *different* guard from `is_a?`'s: `Module#===` is implemented directly as
+    -- the ancestor test and does not go through `obj.is_a?`, so a user `is_a?` cannot affect it
+    -- and `isADispatchOk` is not the right question.
+  , ⟨"class C; def self.===(o); 1 + \"a\"; end; end; if C === 5 then 1 else 2 end",
+      .seq [.class' "C" none
+              (.defs .self' "===" [.req "o"]
+                (.send (some (.int 1)) "+" [.str "a"] none)),
+            .if' (.send (some (.const "C")) "===" [.int 5] none) (.int 1) (some (.int 2))]⟩ ]
 
 mutual
 

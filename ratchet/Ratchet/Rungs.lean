@@ -201,7 +201,7 @@ def r029 : Rung :=
           .send (some (.var .lvar "x")) "+" [.int 1] none],
     .int, [("x", .int)],
     .seq (.cons (.vasgn .intLit)
-      (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))⟩
+      (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)))⟩
 
 /-- `x = 1; x = 2; x + 3` → `Integer`. Rebinding at the *same* type; the interesting
     sibling is the next rung. -/
@@ -212,7 +212,7 @@ def r030 : Rung :=
     .int, [("x", .int)],
     .seq (.cons (.vasgn .intLit)
       (.cons (.vasgn .intLit)
-        (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))⟩
+        (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))))⟩
 
 /-- `x = 1; x = true; x` → `Bool`, leaving `x : Bool`. The rung that pins down what a
     Ruby local is: `envSet` overwrites, and **no rule anywhere requires the new type to
@@ -222,7 +222,7 @@ def r031 : Rung :=
   ⟨"reassign-different-type",
     .seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "x" .tru, .var .lvar "x"],
     .bool, [("x", .bool)],
-    .seq (.cons (.vasgn .intLit) (.cons (.vasgn .truLit) (.last (.var rfl))))⟩
+    .seq (.cons (.vasgn .intLit) (.cons (.vasgn .truLit) (.last (.var rfl rfl))))⟩
 
 /-- A bare `x`, never assigned → `.any`, environment untouched.
 
@@ -256,7 +256,7 @@ def r033 : Rung :=
     .int, [("x", .int), ("y", .int)],
     .seq (.cons (.vasgn .intLit)
       (.cons (.vasgn .intLit)
-        (.last (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.last (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
 /-- `x = 1; y = x + 1; z = y + 1; z` → `Integer`. A four-statement chain where each
     assignment's right-hand side reads the previous one's binding: the environment has
@@ -270,9 +270,9 @@ def r034 : Rung :=
           .var .lvar "z"],
     .int, [("x", .int), ("y", .int), ("z", .int)],
     .seq (.cons (.vasgn .intLit)
-      (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .intAdd))
-        (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .intAdd))
-          (.last (.var rfl)))))⟩
+      (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))
+        (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))
+          (.last (.var rfl rfl)))))⟩
 
 /-! ## Tier 4 — conditionals, and tier 2's `&&`/`||`
 
@@ -356,7 +356,7 @@ def r016 : Rung :=
     .bool, [("__dt_t1", .bool)],
     .seq (.cons (.vasgn .truLit)
       (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
-                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) .flsLit (.var rfl) rfl)))⟩
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl rfl) .flsLit (.var rfl rfl) rfl)))⟩
 
 /-- `false || true` → `Bool`. Same shape, branches swapped. -/
 def r017 : Rung :=
@@ -366,7 +366,7 @@ def r017 : Rung :=
     .bool, [("__dt_t1", .bool)],
     .seq (.cons (.vasgn .flsLit)
       (.last (.if' (Γ₁ := [("__dt_t1", .bool)]) (Γ₂ := [("__dt_t1", .bool)])
-                (τ₁ := .bool) (τ₂ := .bool) (.var rfl) (.var rfl) .truLit rfl)))⟩
+                (τ₁ := .bool) (τ₂ := .bool) (.var rfl rfl) (.var rfl rfl) .truLit rfl)))⟩
 
 /-! ## Tier 5 — array and hash literals, and `#[]`
 
@@ -483,7 +483,7 @@ def r052 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDef (.cons .intLit (.cons .intLit .nil)) rfl rfl
-        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
 /-- `def get5 = 5; get5()` → `Integer`. The degenerate case, and worth having: with no
     parameters there is nothing for the call site to contribute, so `paramEnv [] [] = []`
@@ -510,10 +510,10 @@ def r057 : Rung :=
     .seq (.cons .defStmt (.cons .defStmt
       (.last (.callDef (.cons .intLit .nil) rfl rfl
         (.callDef
-          (.cons (.callDef (.cons (.var rfl) .nil) rfl rfl
-                   (.prim (.var rfl) (.cons .intLit .nil) .intAdd)) .nil)
+          (.cons (.callDef (.cons (.var rfl rfl) .nil) rfl rfl
+                   (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)) .nil)
           rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))))⟩
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))))))⟩
 
 /-- `def sum3(a, b, c) = a + b + c; sum3(1, 2, 3)` → `Integer`. Three required parameters,
     so the interesting part is `paramEnv`'s three-way length match. -/
@@ -526,8 +526,8 @@ def r058 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDef (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
-        (.prim (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)
-          (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.prim (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)
+          (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
 /-- `def make_pair(x, y) = [x, y]; make_pair(1, 2)` → `arrayOf Int`. The return type is
     *structured* and comes entirely from the body, while the parameters are constrained
@@ -541,11 +541,11 @@ def r059 : Rung :=
     .arrayOf .int, [],
     .seq (.cons .defStmt
       (.last (.callDef (.cons .intLit (.cons .intLit .nil)) rfl rfl
-        -- `(τs := …)` written out because the element types come from `.var rfl` reads of
+        -- `(τs := …)` written out because the element types come from `.var rfl rfl` reads of
         -- the parameter environment, and `elemTy ?τs = arrayOf Int` is not something
         -- unification can invert.
         (.arrayLit (τs := [.int, .int])
-          (.cons (.var rfl) (.cons (.var rfl) .nil))))))⟩
+          (.cons (.var rfl rfl) (.cons (.var rfl rfl) .nil))))))⟩
 
 /-- `def fact(n) = if n <= 1 then 1 else n * fact(n - 1); fact(4)` → `Integer`. **The rung
     tier 6 exists for.**
@@ -573,11 +573,11 @@ def r060 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDef (.cons .intLit .nil) rfl rfl
-        (.if' (.prim (.var rfl) (.cons .intLit .nil) .intLe)
+        (.if' (.prim (.var rfl rfl) (.cons .intLit .nil) .intLe)
           .intLit
-          (.prim (.var rfl)
+          (.prim (.var rfl rfl)
             (.cons (.callAsm
-              (.cons (.prim (.var rfl) (.cons .intLit .nil) .intSub) .nil) rfl) .nil)
+              (.cons (.prim (.var rfl rfl) (.cons .intLit .nil) .intSub) .nil) rfl) .nil)
             .intMul)
           rfl))))⟩
 
@@ -638,7 +638,7 @@ def r061 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethod
         (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
-          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
+          (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
         .nil rfl rfl .ivarRead)))⟩
 
 /-- `class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; end;
@@ -656,9 +656,9 @@ def r062 : Rung :=
     .int, [("c", .inst "Counter" (.ivarCons "@n" .int .ivar0))],
     .seq (.cons (.classStmt rfl rfl)
       (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                (.ivarAsgn (.var rfl))))
-        (.last (.callMethod (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.prim .ivarRead (.cons (.var rfl) .nil) .intAdd)))))⟩
+                (.ivarAsgn (.var rfl rfl))))
+        (.last (.callMethod (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+          (.prim .ivarRead (.cons (.var rfl rfl) .nil) .intAdd)))))⟩
 
 /-- `p.getX + p.getY` on a two-ivar `Point` → `Integer`. Two dispatches on the *same*
     receiver type, each reading a different ivar out of the same spine — so this is the rung
@@ -678,10 +678,10 @@ def r063 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil))
                 rfl rfl
-                (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))
+                (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl)))))))
         (.last (.prim
-          (.callMethod (.var rfl) .nil rfl rfl .ivarRead)
-          (.cons (.callMethod (.var rfl) .nil rfl rfl .ivarRead) .nil)
+          (.callMethod (.var rfl rfl) .nil rfl rfl .ivarRead)
+          (.cons (.callMethod (.var rfl rfl) .nil rfl rfl .ivarRead) .nil)
           .intAdd))))⟩
 
 /-- `class Rect; …; def area; @w * @h; end; def describe; "area=" + area.to_s; end; end;
@@ -705,7 +705,7 @@ def r064 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethod
         (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
-          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
+          (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl))))))
         .nil rfl rfl
         (.prim .strLit
           (.cons (.prim (.selfCall rfl rfl rfl
@@ -749,12 +749,12 @@ def r068 : Rung :=
     .int, [("a", .inst "Point" pointSpine1), ("b", .inst "Point" pointSpine1)],
     .seq (.cons (.classStmt rfl rfl)
       (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                (.ivarAsgn (.var rfl))))
+                (.ivarAsgn (.var rfl rfl))))
         (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                  (.ivarAsgn (.var rfl))))
+                  (.ivarAsgn (.var rfl rfl))))
           (.last (.prim
-            (.callMethod (.var rfl) .nil rfl rfl .ivarRead)
-            (.cons (.callMethod (.var rfl) .nil rfl rfl .ivarRead) .nil)
+            (.callMethod (.var rfl rfl) .nil rfl rfl .ivarRead)
+            (.cons (.callMethod (.var rfl rfl) .nil rfl rfl .ivarRead) .nil)
             .intAdd)))))⟩
 
 /-- `class Greeter; def hi; "hi"; end; end; Greeter.new.hi` → `String`. The rung that pins
@@ -800,9 +800,9 @@ def r071 : Rung :=
       (.last (.arrayLit
         (τs := [.inst "Point" pointSpine1, .inst "Point" pointSpine1])
         (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                 (.ivarAsgn (.var rfl)))
+                 (.ivarAsgn (.var rfl rfl)))
           (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                   (.ivarAsgn (.var rfl))) .nil)))))⟩
+                   (.ivarAsgn (.var rfl rfl))) .nil)))))⟩
 
 /-- `{"origin" => Point.new(0)}` → `.cls "Hash"`. The instance's type is derived and then
     discarded, because `Ty` has no `hashOf` (§Ty language gaps) — the same gap tier 5's
@@ -816,7 +816,7 @@ def r072 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.hashLit (.cons .strLit
         (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-          (.ivarAsgn (.var rfl))) .nil))))⟩
+          (.ivarAsgn (.var rfl rfl))) .nil))))⟩
 
 /-- `class Box; def initialize(size); @size = size; end; def grow; @size = @size + 1; end;
     end; Box.new(1).grow` → `Integer`.
@@ -838,7 +838,7 @@ def r074 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethod
         (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-          (.ivarAsgn (.var rfl)))
+          (.ivarAsgn (.var rfl rfl)))
         (Iself := boxSpine) .nil rfl rfl
         (.ivarAsgn (I' := boxSpine)
           (.prim .ivarRead (.cons .intLit .nil) .intAdd)))))⟩
@@ -859,9 +859,9 @@ def r075 : Rung :=
     .seq (.cons (.classStmt rfl rfl) (.cons .defStmt
       (.last (.callDef
         (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-                 (.ivarAsgn (.var rfl))) .nil)
+                 (.ivarAsgn (.var rfl rfl))) .nil)
         rfl rfl
-        (.callMethod (.var rfl) .nil rfl rfl .ivarRead)))))⟩
+        (.callMethod (.var rfl rfl) .nil rfl rfl .ivarRead)))))⟩
 
 /-- `Point.new(7).myself.getX` where `def myself; self; end` → `Integer`. The rung
     `selfExpr` exists for, and the reason its type is `κ.selfTy` rather than "a `Point`":
@@ -881,7 +881,7 @@ def r076 : Rung :=
       (.last (.callMethod
         (.callMethod
           (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
-            (.ivarAsgn (.var rfl)))
+            (.ivarAsgn (.var rfl rfl)))
           .nil rfl rfl (.selfExpr rfl))
         .nil rfl rfl .ivarRead)))⟩
 
@@ -913,7 +913,7 @@ def r065 : Rung :=
     .cls "String", [],
     .seq (.cons (.classStmt rfl rfl) (.cons (.classStmt rfl rfl)
       (.last (.callMethod
-        (.newInst (.constCls rfl) (.cons .strLit .nil) rfl rfl (.ivarAsgn (.var rfl)))
+        (.newInst (.constCls rfl) (.cons .strLit .nil) rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl .ivarRead))))⟩
 
 /-- `class Shape; def initialize(sides); @sides = sides; end; def sides; @sides; end; end;
@@ -944,7 +944,7 @@ def r067 : Rung :=
       (.last (.callMethod
         (.newInst (.constCls rfl) .nil rfl rfl
           (.superCall (.cons .intLit .nil) rfl rfl rfl rfl rfl
-            (.ivarAsgn (.var rfl))))
+            (.ivarAsgn (.var rfl rfl))))
         .nil rfl rfl .ivarRead))))⟩
 
 /-- `class Point; def initialize(x, y); @x = x; @y = y; end; def self.origin; new(0, 0);
@@ -972,7 +972,7 @@ def r073 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl) .nil rfl rfl
         (.selfNew rfl (.cons .intLit (.cons .intLit .nil)) rfl rfl
-          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))))⟩
+          (.seq (.cons (.ivarAsgn (.var rfl rfl)) (.last (.ivarAsgn (.var rfl rfl)))))))))⟩
 
 /-! ## Tier 8 — modules
 
@@ -1016,7 +1016,7 @@ def r078 : Rung :=
     .cls "String", [],
     .seq (.cons (.moduleStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl) (.cons .strLit .nil) rfl rfl
-        (.prim .strLit (.cons (.var rfl) .nil) .strAdd))))⟩
+        (.prim .strLit (.cons (.var rfl rfl) .nil) .strAdd))))⟩
 
 /-- `M.foo + M.bar` where both are module methods → `Integer`. Two singleton lookups in one
     expression, so the rung that would catch an `smroGet?` keyed on anything but the name. -/
@@ -1058,7 +1058,7 @@ def r081 : Rung :=
     .int, [],
     .seq (.cons (.moduleStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
-        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
 /-- `M1.foo` where `M1`'s body calls `M2.bar` → `Integer`. A module method reaching another
     *module*, so the derivation nests a whole `callSMethod` inside one — and it works
@@ -1101,7 +1101,7 @@ def r084 : Rung :=
     .bool, [],
     .seq (.cons (.moduleStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl) (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intGt))))⟩
+        (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt))))⟩
 
 /-- `M.greeting.length` → `Integer`. A `PrimSig` row consuming a module method's result, so
     the rung that pins the result type being a real `Ty` and not something inert. -/
@@ -1125,8 +1125,8 @@ def r086 : Rung :=
     .seq (.cons (.moduleStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl)
         (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
-        (.prim (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)
-          (.cons (.var rfl) .nil) .intAdd))))⟩
+        (.prim (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)
+          (.cons (.var rfl rfl) .nil) .intAdd))))⟩
 
 /-! ## Tier 9a — callable values
 
@@ -1151,7 +1151,7 @@ def r087 : Rung :=
           .send (some (.var .lvar "f")) "call" [] none],
     .int, [("f", .clos 0 .ivar0 .never)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
-      (.last (.closCall (.inl rfl) (.var rfl) .nil rfl rfl .intLit rfl)))⟩
+      (.last (.closCall (.inl rfl) (.var rfl rfl) .nil rfl rfl .intLit rfl)))⟩
 
 /-- `lambda { |x| x + 1 }.call(2)` → `Integer`. **The rung that shows why a callable's type
     is a reference and not an arrow.** Nothing in `lambda { |x| x + 1 }` says `x` is an
@@ -1165,7 +1165,7 @@ def r088 : Rung :=
     .int, [],
     .closCall (.inl rfl) (.lambdaLit (idx := 0) (.inl rfl) rfl)
       (.cons .intLit .nil) rfl rfl
-      (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl⟩
+      (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl⟩
 
 /-- `p = proc { |x| x * 2 }; p.call(3)` → `Integer`. `proc` takes the same rule as `lambda`
     (`.inr rfl` rather than `.inl rfl` is the only difference in the whole derivation), which
@@ -1179,8 +1179,8 @@ def r089 : Rung :=
           .send (some (.var .lvar "p")) "call" [.int 3] none],
     .int, [("p", .clos 0 .ivar0 .never)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl))
-      (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
+      (.last (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `p = proc { |x| x * 2 }; p[3]` → `Integer`. `p[3]` is Ruby's other spelling of
     `p.call(3)`, so it is the same rule reached through `.inr rfl` on the *method-name*
@@ -1195,8 +1195,8 @@ def r090 : Rung :=
           .send (some (.var .lvar "p")) "[]" [.int 3] none],
     .int, [("p", .clos 0 .ivar0 .never)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl))
-      (.last (.closCall (.inr rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
+      (.last (.closCall (.inr rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+        (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `n = 10; add_n = lambda { |x| x + n }; add_n.call(5)` → `Integer`. **The rung the
     captured spine exists for.** `n` is not a parameter and is not in scope where the body is
@@ -1212,8 +1212,8 @@ def r098 : Rung :=
     .int, [("n", .int), ("add_n", .clos 0 (.ivarCons "n" .int .ivar0) .never)],
     .seq (.cons (.vasgn .intLit)
       (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
-        (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl))))⟩
+        (.last (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+          (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd) rfl))))⟩
 
 /-- `add = lambda { |x| lambda { |y| x + y } }; add.call(1).call(2)` → `Integer`.
     **Currying, with no arrow type anywhere.**
@@ -1237,10 +1237,10 @@ def r099 : Rung :=
     .int, [("add", .clos 0 .ivar0 .never)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
       (.last (.closCall (.inl rfl)
-        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
+        (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
           (.lambdaLit (idx := 1) (.inl rfl) rfl) rfl)
         (.cons .intLit .nil) rfl rfl
-        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl)))⟩
+        (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd) rfl)))⟩
 
 /-- `def apply(f, v); f.call(v); end; apply(lambda { |x| x * 2 }, 5)` → `Integer`. A callable
     passed as an ordinary argument: tier 6's `paramEnv` binds `f` to `.clos 0 ivar0` exactly
@@ -1259,8 +1259,8 @@ def r100 : Rung :=
     .seq (.cons .defStmt
       (.last (.callDef
         (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) (.cons .intLit .nil)) rfl rfl
-        (.closCall (.inl rfl) (.var rfl) (.cons (.var rfl) .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
+        (.closCall (.inl rfl) (.var rfl rfl) (.cons (.var rfl rfl) .nil) rfl rfl
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
 
 /-! ### Tier 9b — a block reaching a method
 
@@ -1294,9 +1294,9 @@ def r094 : Rung :=
       (.last (.callDefBlk rfl .nil rfl rfl rfl
         (.prim
           (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)
           (.cons (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
           .intAdd))))⟩
 
 /-- `def run(&b); b.call(5); end; run { |x| x + 1 }` → `Integer`. The other half of
@@ -1314,8 +1314,8 @@ def r095 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDefBlk rfl .nil rfl rfl rfl
-        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+        (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-- `def apply_twice; doubler = lambda { |x| return x * 2 }; doubler.call(3); end;
     apply_twice` → `Integer`. Two gaps closed at once.
@@ -1340,8 +1340,8 @@ def r105 : Rung :=
     .seq (.cons .defStmt
       (.last (.vcallDef rfl rfl rfl
         (.seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
-          (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))))))⟩
+          (.last (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)))))))⟩
 
 /-! ## Tier 11 — features in concert
 
@@ -1377,8 +1377,8 @@ def r121 : Rung :=
       (.cons (.vasgn .intLit)
         (.cons (.callDefBlk rfl .nil rfl rfl rfl
                  (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
-                   (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))
-          (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
+                   (.vasgn (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)) rfl))
+          (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)))))⟩
 
 /-! ## Tier 12 — narrowing
 
@@ -1396,7 +1396,7 @@ negative for. -/
     matches no arithmetic row, so `a[0] + 1` was a recorded negative control from tier 5
     onwards: safe Ruby the checker could not type. The guard is what fixes it, and the fix is
     entirely in the environment the then-branch is typed in — `truthyTy (nilable Int) = Int`,
-    so the `.var rfl` below finds `x : Int` and `.intAdd` applies unchanged.
+    so the `.var rfl rfl` below finds `x : Int` and `.intAdd` applies unchanged.
 
     Read the two branch environments off the outgoing one: `x` leaves as
     `joinT Int nilT = nilable Int`, i.e. the checker forgets the refinement at the merge
@@ -1414,9 +1414,9 @@ def r125 : Rung :=
             (some (.int 0))],
     .int, [("a", .arrayOf .int), ("x", .nilable .int)],
     .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))))
-      (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
-        (.last (.if' (.var rfl)
-                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd)
+      (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .arrayIndex))
+        (.last (.if' (.var rfl rfl)
+                 (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)
                  .intLit rfl))))⟩
 
 /-- `a = [1,2,3]; x = a[1]; if x.nil? then 0 else x + 10 end` → `Integer`.
@@ -1443,10 +1443,10 @@ def r126 : Rung :=
             (some (.send (some (.var .lvar "x")) "+" [.int 10] none))],
     .int, [("a", .arrayOf .int), ("x", .nilable .int)],
     .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))))
-      (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
-        (.last (.if' (.prim (.var rfl) .nil (.nilQuery (.nilable .int)))
+      (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .arrayIndex))
+        (.last (.if' (.prim (.var rfl rfl) .nil (.nilQuery (.nilable .int)))
                  .intLit
-                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+                 (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-- `def pick(flag); if flag then 1 else "s" end; end; v = pick(true);
     if v.is_a?(Integer) then v + 1 else v + "!" end` → `union(Int, String)`.
@@ -1479,15 +1479,15 @@ def r127 : Rung :=
     .union .int (.cls "String"), [("v", .union .int (.cls "String"))],
     .seq (.cons .defStmt
       (.cons (.vasgn (.callDef (.cons .truLit .nil) rfl rfl
-                (.if' (.var rfl) .intLit .strLit rfl)))
+                (.if' (.var rfl rfl) .intLit .strLit rfl)))
         -- `Γc` is written out because `narrowEnvs` appears in `if'`'s *conclusion*: until
         -- the condition's derivation is elaborated Lean cannot reduce it, and the condition
         -- here is three constructors deep. The two tier-12 rungs above need no annotation
         -- because their conditions leave the environment visibly untouched.
         (.last (.if' (Γc := [("v", .union .int (.cls "String"))])
-                 (.isAQuery (.var rfl) (.cons (.constBuiltin .integer rfl) .nil) rfl)
-                 (.prim (.var rfl) (.cons .intLit .nil) .intAdd)
-                 (.prim (.var rfl) (.cons .strLit .nil) .strAdd) rfl))))⟩
+                 (.isAQuery (.var rfl rfl) (.cons (.constBuiltin .integer rfl) .nil) rfl)
+                 (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)
+                 (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd) rfl))))⟩
 
 /-- `class Animal; def speak; "..."; end; end; class Dog < Animal; def fetch; "ball"; end;
     end; def make(flag) … end; v = make(true); if v.is_a?(Dog) then v.fetch else v.speak end`
@@ -1526,7 +1526,7 @@ def r130 : Rung :=
     [("v", .union (.inst "Dog" .ivar0) (.inst "Animal" .ivar0))],
     .seq (.cons (.classStmt rfl rfl) (.cons (.classStmt rfl rfl) (.cons .defStmt
       (.cons (.vasgn (.callDef (.cons .truLit .nil) rfl rfl
-                (.if' (.var rfl)
+                (.if' (.var rfl rfl)
                   (.newInstNoInit (.constCls rfl) .nil rfl rfl)
                   (.newInstNoInit (.constCls rfl) .nil rfl rfl) rfl)))
         -- **The four written-out implicits are the readable part of this rung, not noise.**
@@ -1542,9 +1542,9 @@ def r130 : Rung :=
                  (Γ₁ := [("v", .inst "Dog" .ivar0)])
                  (Γ₂ := [("v", .inst "Animal" .ivar0)])
                  (τ₁ := .cls "String") (τ₂ := .cls "String")
-                 (.isAQuery (.var rfl) (.cons (.constCls rfl) .nil) rfl)
-                 (.callMethod (.var rfl) .nil rfl rfl .strLit)
-                 (.callMethod (.var rfl) .nil rfl rfl .strLit) rfl))))))⟩
+                 (.isAQuery (.var rfl rfl) (.cons (.constCls rfl) .nil) rfl)
+                 (.callMethod (.var rfl rfl) .nil rfl rfl .strLit)
+                 (.callMethod (.var rfl rfl) .nil rfl rfl .strLit) rfl))))))⟩
 
 /-- `def first_or_zero(a); x = a[0]; return 0 if x.nil?; x + 1; end; first_or_zero([5])`
     → `Integer`.
@@ -1578,9 +1578,9 @@ def r131 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDef (.cons (.arrayLit (.cons .intLit .nil)) .nil) rfl rfl
-        (.seq (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .arrayIndex))
-          (.guard (.prim (.var rfl) .nil (.nilQuery (.nilable .int))) .intLit rfl
-            (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))))))⟩
+        (.seq (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .arrayIndex))
+          (.guard (.prim (.var rfl rfl) .nil (.nilQuery (.nilable .int))) .intLit rfl
+            (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))))))))⟩
 
 /-- `class Holder; def initialize(flag); if flag then @v = 1 else @v = "s" end; end;
     def describe; if @v.is_a?(Integer) then @v + 1 else @v + "!" end; end; end;
@@ -1629,7 +1629,7 @@ def r129 : Rung :=
         (.last (.callMethod
           (Iself := .ivarCons "@v" (.union .int (.cls "String")) .ivar0) (Γb' := [])
           (.newInst (.constCls rfl) (.cons .truLit .nil) rfl rfl
-            (.if' (.var rfl) (.ivarAsgn .intLit) (.ivarAsgn .strLit) rfl))
+            (.if' (.var rfl rfl) (.ivarAsgn .intLit) (.ivarAsgn .strLit) rfl))
           .nil rfl rfl ?_)))
       -- `describe`'s body, deferred to a hole so it is elaborated *after* `callMethod`'s
       -- `mroGet?` premise has produced the `Defn` it is the `.body` of. Without that, the
@@ -1676,7 +1676,7 @@ def r091 : Rung :=
       (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none))),
     .arrayOf .int, [],
     .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))) .nil
-      .each rfl (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl⟩
+      .each rfl (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl⟩
 
 /-- `[1, 2, 3].map { |n| n.to_s }` → `arrayOf String`. The `each` rung with one word changed,
     and a different result type: `map`'s row is the one that reads the block's return type. -/
@@ -1686,7 +1686,7 @@ def r092 : Rung :=
       (some (.block [.req "n"] [] (.send (some (.var .lvar "n")) "to_s" [] none))),
     .arrayOf (.cls "String"), [],
     .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))) .nil
-      .map rfl (.prim (.var rfl) .nil .intToS) rfl⟩
+      .map rfl (.prim (.var rfl rfl) .nil .intToS) rfl⟩
 
 /-- `[1, 2].map do |x| y = x * 2; y + 1 end` → `arrayOf Int`.
 
@@ -1704,8 +1704,8 @@ def r093 : Rung :=
                .send (some (.var .lvar "y")) "+" [.int 1] none]))),
     .arrayOf .int, [],
     .iterBlock (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil .map rfl
-      (.seq (.cons (.vasgn (.prim (.var rfl) (.cons .intLit .nil) .intMul))
-        (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))) rfl⟩
+      (.seq (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul))
+        (.last (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd)))) rfl⟩
 
 /-- `[1, 2].map(&:to_s)` → `arrayOf String`.
 
@@ -1734,7 +1734,7 @@ def r097 : Rung :=
     .arrayOf .int, [("double", .clos 0 .ivar0 .never)],
     .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
       (.last (.iterClosPass (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil
-        (.var rfl) .map rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
+        (.var rfl rfl) .map rfl rfl (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `[[1, 2], [3, 4]].map { |row| row.map { |x| x + 1 } }` → `arrayOf (arrayOf Int)`.
 
@@ -1754,8 +1754,8 @@ def r101 : Rung :=
     .iterBlock
       (.arrayLit (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil)))
         (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil))) .nil .map rfl
-      (.iterBlock (.var rfl) .nil .map rfl
-        (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl) rfl⟩
+      (.iterBlock (.var rfl rfl) .nil .map rfl
+        (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl) rfl⟩
 
 /-- `[1, 2, 3].inject(0) { |acc, x| acc + x }` → `Integer`.
 
@@ -1777,7 +1777,7 @@ def r102 : Rung :=
     .int, [],
     .iterBlock (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))
       (.cons .intLit .nil) .inject rfl
-      (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl⟩
+      (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd) rfl⟩
 
 /-- `[1, 2, 3, 4].select { |x| if x > 2 then true else false end }` → `arrayOf Int`.
 
@@ -1794,7 +1794,7 @@ def r103 : Rung :=
     .arrayOf .int, [],
     .iterBlock
       (.arrayLit (.cons .intLit (.cons .intLit (.cons .intLit (.cons .intLit .nil))))) .nil
-      .select rfl (.if' (.prim (.var rfl) (.cons .intLit .nil) .intGt) .truLit .flsLit rfl)
+      .select rfl (.if' (.prim (.var rfl rfl) (.cons .intLit .nil) .intGt) .truLit .flsLit rfl)
       rfl⟩
 
 /-- `["aaa", "b"].sort_by { |s| s.length }` → `arrayOf String`.
@@ -1812,7 +1812,7 @@ def r104 : Rung :=
       (some (.block [.req "s"] [] (.send (some (.var .lvar "s")) "length" [] none))),
     .arrayOf (.cls "String"), [],
     .iterBlock (.arrayLit (.cons .strLit (.cons .strLit .nil))) .nil (.sortBy .int) rfl
-      (.prim (.var rfl) .nil .strLength) rfl⟩
+      (.prim (.var rfl rfl) .nil .strLength) rfl⟩
 
 /-- `class Shelf; def initialize(items); @items = items; end; def names; @items.map { |i|
     i.to_s }; end; end; Shelf.new([1, 2]).names` → `arrayOf String` (tier 11).
@@ -1838,9 +1838,9 @@ def r122 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethod
         (.newInst (.constCls rfl) (.cons (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil)
-          rfl rfl (.ivarAsgn (.var rfl)))
+          rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl
-        (.iterBlock .ivarRead .nil .map rfl (.prim (.var rfl) .nil .intToS) rfl))))⟩
+        (.iterBlock .ivarRead .nil .map rfl (.prim (.var rfl rfl) .nil .intToS) rfl))))⟩
 
 /-- `t = [1, 2]; s = 0; t.each do |x| y = [10, 20][x]; if y then s = s + y end end; s`
     → `Integer` (tier 12).
@@ -1873,13 +1873,13 @@ def r134 : Rung :=
     .int, [("t", .arrayOf .int), ("s", .int)],
     .seq (.cons (.vasgn (.arrayLit (.cons .intLit (.cons .intLit .nil))))
       (.cons (.vasgn .intLit)
-        (.cons (.iterBlock (.var rfl) .nil .each rfl
+        (.cons (.iterBlock (.var rfl rfl) .nil .each rfl
                  (.seq (.cons (.vasgn (.prim (.arrayLit (.cons .intLit (.cons .intLit .nil)))
-                                        (.cons (.var rfl) .nil) .arrayIndex))
-                   (.last (.ifNoElse (.var rfl)
-                     (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))))
+                                        (.cons (.var rfl rfl) .nil) .arrayIndex))
+                   (.last (.ifNoElse (.var rfl rfl)
+                     (.vasgn (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .intAdd)) rfl))))
                  rfl)
-          (.last (.var rfl)))))⟩
+          (.last (.var rfl rfl)))))⟩
 
 /-- `class Box; def initialize(f); @f = f; end; def apply(v); @f.call(v); end; end;
     Box.new(lambda { |x| x * 2 }).apply(4)` → `Integer` (tier 11).
@@ -1913,10 +1913,10 @@ def r117 : Rung :=
         (Iself := .ivarCons "@f" (.clos 0 .ivar0 .never) .ivar0)
         (.newInst (.constCls rfl)
           (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) .nil) rfl rfl
-          (.ivarAsgn (.var rfl)))
+          (.ivarAsgn (.var rfl rfl)))
         (.cons .intLit .nil) rfl rfl
-        (.closCall (.inl rfl) .ivarRead (.cons (.var rfl) .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
+        (.closCall (.inl rfl) .ivarRead (.cons (.var rfl rfl) .nil) rfl rfl
+          (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
 
 /-- `module Twice; def self.apply(f, v); f.call(f.call(v)); end; end;
     Twice.apply(lambda { |x| x + 1 }, 5)` → `Integer` (tier 11).
@@ -1939,10 +1939,10 @@ def r123 : Rung :=
     .seq (.cons (.moduleStmt rfl rfl)
       (.last (.callSMethod (.constCls rfl)
         (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) (.cons .intLit .nil)) rfl rfl
-        (.closCall (.inl rfl) (.var rfl)
-          (.cons (.closCall (.inl rfl) (.var rfl) (.cons (.var rfl) .nil) rfl rfl
-                    (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl) .nil)
-          rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+        (.closCall (.inl rfl) (.var rfl rfl)
+          (.cons (.closCall (.inl rfl) (.var rfl rfl) (.cons (.var rfl rfl) .nil) rfl rfl
+                    (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl) .nil)
+          rfl rfl (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-! ## Tier 11 — a block reaching a method of an object
 
@@ -1971,7 +1971,7 @@ def r115 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethodBlk
         (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl rfl
-        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl (.var rfl) rfl))))⟩
+        (.closCall (.inl rfl) (.var rfl rfl) (.cons .intLit .nil) rfl rfl (.var rfl rfl) rfl))))⟩
 
 /-- `class Counter; def initialize(n); @n = n; end; def bump; yield(@n); end; end;
     Counter.new(5).bump { |x| x + 1 }` → `Integer`.
@@ -1992,10 +1992,13 @@ def r116 : Rung :=
     .int, [],
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMethodBlk
-        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl (.ivarAsgn (.var rfl)))
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl (.ivarAsgn (.var rfl rfl)))
         .nil rfl rfl rfl
+        -- `τ := .int` written out because the block parameter's type comes from
+        -- `(ivarGet? Iself "@n").getD .nilT`, which does not reduce until `Iself` is solved --
+        -- and `Judge.var`'s `isAliasTy τ = false` premise needs it before then.
         (.yieldExpr rfl (.cons .ivarRead .nil) rfl rfl
-          (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+          (.prim (.var (τ := .int) rfl rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-- `module Runner; def self.twice; yield(1) + yield(2); end; end;
     Runner.twice { |x| x * 10 }` → `Integer`.
@@ -2017,9 +2020,9 @@ def r118 : Rung :=
       (.last (.callSMethodBlk (.constCls rfl) .nil rfl rfl rfl
         (.prim
           (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl)
           (.cons (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
-            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
           .intAdd))))⟩
 
 /-- `class Base; def wrap; "[" + yield.to_s + "]"; end; end;
@@ -2204,7 +2207,72 @@ def r113 : Rung :=
     .seq (.cons (.classStmt rfl rfl)
       (.last (.callMissing (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl
         (not_objectMethod rfl) rfl rfl
-        (.prim .strLit (.cons (.prim (.var rfl) .nil .symToS) .nil) .strAdd))))⟩
+        (.prim .strLit (.cons (.prim (.var rfl rfl) .nil .symToS) .nil) .strAdd))))⟩
+
+/-- `def pick(flag) … end; v = pick(false); case v when Integer then v * 2 when String then
+    v + v else 0 end` → `union(Int, String)`.
+
+    **The aliasing rung.** `case` desugars to a temporary assigned from the scrutinee, tests on
+    the **temporary**, and branch bodies that use **`v`**:
+
+    ```
+    seq (vasgn local __dt_t1 (var local v))
+        (if (send (const Integer) "===" [var local __dt_t1])
+            (send (var local v) "*" [int 2])              -- v, not __dt_t1
+            (if (send (const String) "===" [var local __dt_t1]) … ))
+    ```
+
+    so refinement has to reach a name the condition does not mention. `Ty.sameAs` is how: the
+    assignment records "`__dt_t1` holds the same object as `v`" *in the environment*, which is
+    already threaded, so every place that could invalidate the alias is a place that already
+    writes to the environment. `implementation-notes.md` clink 17 has the three cheaper designs
+    that are **unsound** and why.
+
+    Read the derivation against the shape and three things line up:
+
+    - `vasgnAlias` is the only new statement rule, and it differs from `vasgn` only in what
+      lands in the environment.
+    - `caseEqQuery` types `Integer === __dt_t1`. `Module#===` is the ancestor test with its
+      sides swapped, so `narrowCond?` gets the same `.isA` kind out of it that `is_a?` gives.
+    - the argument of each `===` is a `varAlias` — reading an aliased name yields the payload,
+      so no expression ever has type `Ty.sameAs`.
+
+    And the *nesting* is what made the environment the right place for the alias rather than a
+    `JudgeSeq` rule over the (assignment, `if`) pair: the second `when` is an `if` inside the
+    first's **else**-branch, where only `Judge.if'` is looking, and it needs the alias to still
+    be there — refined, in fact, since `v` is already known not to be an `Integer`.
+
+    `__dt_t1`'s entry in the outgoing environment below is worth a look: it is a *union of
+    aliases*, one per arm, and a union is not a `sameAs` — so the alias is gone by the time
+    anything after the `case` could read it. That is the join doing the invalidation for free. -/
+def r128 : Rung :=
+  ⟨"narrow-union-case-when",
+    .seq [.def' "pick" [.req "flag"]
+            (.if' (.var .lvar "flag") (.int 1) (some (.str "s"))),
+          .vasgn .lvar "v" (.send none "pick" [.fls] none),
+          .seq [.vasgn .lvar "__dt_t1" (.var .lvar "v"),
+                .if' (.send (some (.const "Integer")) "===" [.var .lvar "__dt_t1"] none)
+                  (.send (some (.var .lvar "v")) "*" [.int 2] none)
+                  (some (.if'
+                    (.send (some (.const "String")) "===" [.var .lvar "__dt_t1"] none)
+                    (.send (some (.var .lvar "v")) "+" [.var .lvar "v"] none)
+                    (some (.int 0))))]],
+    .union .int (.cls "String"),
+    [("v", .union .int (.cls "String")),
+     ("__dt_t1", .union (.sameAs "v" .int)
+       (.union (.sameAs "v" (.cls "String")) (.sameAs "v" .never)))],
+    .seq (.cons .defStmt
+      (.cons (.vasgn (.callDef (.cons .flsLit .nil) rfl rfl
+                (.if' (.var rfl rfl) .intLit .strLit rfl)))
+        (.last (.seq (.cons (.vasgnAlias rfl rfl rfl)
+          (.last (.if'
+            (.caseEqQuery (.constBuiltin .integer rfl) (.cons (.varAlias rfl) .nil) rfl)
+            (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul)
+            (.if'
+              (.caseEqQuery (.constBuiltin .string rfl) (.cons (.varAlias rfl) .nil) rfl)
+              (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .strAdd)
+              .intLit rfl)
+            rfl)))))))⟩
 
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
@@ -2221,7 +2289,7 @@ def rungs : List Rung :=
    r101, r102, r103, r104, r105,
    r109, r110, r111, r112, r113,
    r115, r116, r117, r118, r119, r121, r122, r123,
-   r125, r126, r127, r129, r130, r131, r134]
+   r125, r126, r127, r128, r129, r130, r131, r134]
 
 /-! ## `chk` answers exactly what was derived by hand
 

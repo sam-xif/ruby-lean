@@ -142,6 +142,39 @@ inductive Ty where
       Not `EqSafe`, and no `PrimSig` row has it as a receiver: the only rules that consume one
       are `Judge.closCall`'s `call`/`[]`. -/
   | clos (idx : Nat) (captured : Ty) (selfTy : Ty)
+  /-- **"this local currently holds the same object as local `name`, and that object has type
+      `τ`"** — an *alias*, added at tier 12 for `narrow-union-case-when`.
+
+      Why a `Ty` and not a fourth threaded state. `case v when Integer` desugars to a
+      temporary assigned from `v`, a test on the **temporary**, and branch bodies that use
+      **`v`**:
+
+      ```
+      seq (vasgn local __dt_t1 (var local v))
+          (if (send (const Integer) "===" [var local __dt_t1])
+              (send (var local v) "*" [int 2])          -- v, not __dt_t1
+              …)
+      ```
+
+      so narrowing has to reach a name the condition does not mention. Aliasing *is* state —
+      created and destroyed by execution — and `implementation-notes.md` clink 17 argued that
+      state a rule needs must **thread**, or its soundness becomes a list of places somebody
+      has to remember. The environment already threads. Putting the alias in the environment's
+      value type therefore gets the threading for free, and every place that could invalidate
+      it is a place that already writes to the environment.
+
+      **Nothing consumes a `sameAs` except `narrowEnvs`.** `Judge.var` *strips* it
+      (`stripAlias`), so no expression ever has this type: it is a fact about a binding, not
+      about a value, and it is inert in the same way `.any` is — no `PrimSig` row, not
+      `EqSafe`, not `NilQSafe`, `isADispatchOk` refuses it.
+
+      Three invalidations, and together they are exhaustive (see `Judge.vasgnAlias`):
+      assignment to the alias's *holder* (which overwrites the binding), assignment to its
+      *target* (`killAliasesTo`, in `Judge.vasgn`), and any call that could let a **block**
+      reassign a captured local (`killAliases`, on those rules' outgoing environments). A
+      branch that invalidates in one arm and not the other loses the alias at the join, because
+      `joinT (sameAs y τ) τ` is a `union` and a `union` is not a `sameAs`. -/
+  | sameAs (name : String) (τ : Ty)
 deriving DecidableEq, BEq, Repr, Inhabited
 
 /-- `(A, B, …) → R` from its parts. -/
@@ -194,6 +227,43 @@ abbrev Env := List (String × Ty)
 
 def envGet? (Γ : Env) (x : String) : Option Ty :=
   (Γ.find? (·.1 == x)).map (·.2)
+
+/-! ### Aliases (tier 12)
+
+`Ty.sameAs`'s docstring has the design; these are its four operations. Every one of them is
+the **identity** on an alias-free environment, which is what let the alias be threaded through
+the existing rules without editing a single derivation term already on file. -/
+
+/-- Is this binding an alias? `Judge.var`'s guard -- see `Judge.varAlias` for why the split is
+a rule and not a `stripAlias` in the conclusion. -/
+def isAliasTy : Ty → Bool
+  | .sameAs _ _ => true
+  | _ => false
+
+/-- The type behind an alias — what a *read* of the name produces. `Judge.var` applies this, so
+no expression ever has type `sameAs`. -/
+def stripAlias : Ty → Ty
+  | .sameAs _ τ => τ
+  | τ => τ
+
+/-- Drop every alias in an environment, keeping the underlying types.
+
+Applied where a **block** could have reassigned a captured local without the checker seeing the
+assignment: those rules carry the caller's environment out unchanged (justified by `capIntact`,
+which compares *types*), and a value can change at a fixed type. So the type survives and the
+alias must not. -/
+def killAliases : Env → Env
+  | [] => []
+  | (x, τ) :: Γ => (x, stripAlias τ) :: killAliases Γ
+
+/-- Drop only the aliases *pointing at* `x`. `Judge.vasgn` applies this before binding `x`: once
+`x` holds a new object, nothing else holds the same one. -/
+def killAliasesTo : Env → String → Env
+  | [], _ => []
+  | (y, τ) :: Γ, x =>
+    (y, match τ with
+        | .sameAs n ρ => if n == x then ρ else .sameAs n ρ
+        | _ => τ) :: killAliasesTo Γ x
 
 def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
@@ -350,9 +420,14 @@ Tier 9 needs a local environment inside a `Ty` (a closure's captured bindings �
 two convert; `spineToEnv` on a non-spine answers `[]`, which is unreachable from the judgment
 and cheaper than threading an `Option`. -/
 
+/-- A closure's captured environment, as a spine. **Aliases are stripped** (tier 12): a
+`sameAs` is a fact about one environment, and a captured spine is copied into a `Ty` that
+travels — so carrying it would let a block body's `narrowEnvs` refine a name that means
+something else there (a parameter shadowing the target, say). Stripping is also what keeps
+`capIntact`'s two sides comparable. -/
 def envToSpine : Env → Ty
   | [] => .ivar0
-  | (x, τ) :: Γ => .ivarCons x τ (envToSpine Γ)
+  | (x, τ) :: Γ => .ivarCons x (stripAlias τ) (envToSpine Γ)
 
 def spineToEnv : Ty → Env
   | .ivarCons x τ rest => (x, τ) :: spineToEnv rest
