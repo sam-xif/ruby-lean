@@ -3246,3 +3246,80 @@ What tier 14 has left is now three things, and none of them is about keywords-as
   `param-all-kinds` wants `Hash#length` off the same type.
 - **A hash's keys** — `arg-kwsplat-call` (`build(**kw)`), which `JudgeKw` has no constructor
   for, because matching `**h` by name needs to know what names are in `h`.
+
+## Clink 36 (2026-09-01) — tier 15a: the `String`/`Regexp` rows, and one free rung: 147 → 157
+
+`str-interpolation-nonstring`, `str-percent-w`, `regexp-match-p`, `regexp-match-nil`,
+`regexp-sub`, `regexp-gsub`, `regexp-split`, `regexp-extended-flag`, `str-methods`,
+`str-start-with`. Ten rungs, nine `PrimSig` rows and one `Judge` rule — the cheapest clink per
+rung on the ladder, and §Frontier item D predicted exactly that ("cheap — most of the rows are
+total `String -> String`").
+
+### A `Regexp` is opaque, and that is forced rather than chosen
+
+`Judge.regexpLit` answers `.cls "Regexp"` and **nothing anywhere reads the pattern or the
+flags**. `regexp-extended-flag` is the rung that checks ignoring the flags is enough, and it is:
+what a flag changes is *which strings match*, an answer this type language never computes.
+
+The reason it is forced is `regexp-interpolated`: `semver.rb` interpolates four constants into
+`SEMVER_REGEX`, so a pattern can be built at runtime. Any reasoning about pattern text would
+work on literals and fail on precisely the patterns the target writes, so answering
+`.cls "Regexp"` for every regexp — literal or computed — keeps the two cases indistinguishable,
+which is what the `String` rows need and all they need.
+
+### One row that is not boring
+
+`PrimSig.strMatch` answers `T.nilable(MatchData)`, and that makes `regexp-match-captures`
+(target `true`) and `regexp-no-match-unsafe` (permanent negative) **two readings of one
+signature**: whether `m[1]` is safe depends on whether the match succeeded, which is a fact
+about the pattern and the subject, not about their types. So the row cannot separate them and
+does not try. `regexp-match-nil` is the half that *is* typeable — asking a nilable whether it is
+nil, which `NilQSafe`'s recursive `nilable` case has covered since tier 2.
+
+What follows for `regexp-match-captures` is worth stating plainly: **it is not climbable by
+typing.** Both the pattern and the subject are literals, so a checker *could* decide it by
+evaluating the match — but that is execution, not typing, and doing it would make the checker's
+answer depend on a regexp engine. This is the same shape as `narrow-nilable-and-union`'s
+recorded-target problem (clink 14): a rung whose target says `true` and which no sound rule can
+reach. Left as a mismatch rather than retargeted, and recorded here.
+
+### `str-percent-w` climbed with nothing written, twice over
+
+`%w[a b c]` is not a syntactic form by the time this checker sees it (the desugarer emits an
+array of string literals), and `Array#length` had arrived in clink 34 with **rest parameters**,
+for a completely unrelated reason. A free rung, and the second time a tier has collected one
+(§2026-09-01 counted eight at the corpus's expansion).
+
+### `str-interpolation-nonstring` completes a pair
+
+r165 (`"hello #{name}"`, a String) climbed with **no `__as_string` row at all**: `caseEqQuery`
+refined the else-branch to `.never` and the join was `String`. Here the interpolated expression
+is an `Integer`, so the *then*-branch is the dead one and the row is needed
+(`PrimSig.intAsString`). The two derivations are the same term with the branches' roles swapped,
+which is the clearest thing on the ladder about what `Ty.never`'s dead-branch reading buys.
+
+### Six controls, and two of them are about the model rather than the checker
+
+(f1) is `regexp-no-match-unsafe` in miniature — a **sound** rejection, and the direct evidence
+that `strMatch`'s `nilable` is load-bearing. (f5) `"abc" + /b/` is kept because `.cls "Regexp"`
+is the first thing since tier 5 that `.cls` names and that is *not* a String, so "any `.cls`
+will do" has become a mistake someone could make. (f6) records `regexp-gsub-block` as declined
+for want of a block-carrying row rather than for want of `gsub`.
+
+(f3) and (f4) — `"abc".delete_prefix(1)` and `"abc".sub(1, "-")` — are why
+`strDeletePrefix`/`strSub` name their argument types instead of leaving them unconstrained.
+CRuby raises `TypeError` for both, verified directly; **the model declines both** rather than
+raising. So those two rows are justified against Ruby and uncorroborated by the model:
+`found-issues.md` A4, the same shape as A3 and much narrower.
+
+### State
+
+**157 rungs of 232**, tier 15 at 13/19. 157/157 cross-checked, 122/122 controls rejected (six
+new, three sound), corpus agreement 232/232, axiom-clean.
+
+Tier 15's remaining six: `regexp-match-captures` (not climbable — above),
+`str-interpolation-in-method` (`__as_string` on an instance, i.e. dispatch to a user `to_s`
+plus the obligation that it returns a `String`), `regexp-gsub-block` (a higher-order `String`
+row of tier 9c's kind), `regexp-interpolated` (needs `::Regexp` as an absolute constant path and
+`Regexp.new`), and `regexp-last-match` (`=~` plus `Regexp.last_match`, which is *global state*
+and the first thing on this ladder that is).

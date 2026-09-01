@@ -328,6 +328,45 @@ def controls : List Control :=
       .seq [.def' "build" [.key "type" none]
               (.send (some (.var .lvar "type")) "+" [.str "/"] none),
             .send none "build" [.kwargs [.pair "type" (.int 1)]] none]⟩
+    -- ### Tier 15's controls -- the `String`/`Regexp` rows
+    --
+    -- (f1) **`String#match`'s `nilable` is not decoration.** This is the corpus's
+    -- `regexp-no-match-unsafe` in miniature: the pattern does not match, `match` answers `nil`,
+    -- and `m[1]` raises NoMethodError. Its safe twin `regexp-match-captures` is the *same*
+    -- signature with a pattern that happens to match -- which is why the row answers `nilable`
+    -- and neither rung is separated by anything a type can see.
+  , ⟨"\"abc\".match(/(\\d+)/)[1]",
+      .send (some (.send (some (.str "abc")) "match" [.regexpLit "(\\d+)" 0] none)) "[]"
+        [.int 1] none⟩
+    -- (f2) **`tr`'s argument is not unconstrained.** `String#tr` raises TypeError on a
+    -- non-String, so the row names `.cls "String"` rather than a wildcard -- and this is the
+    -- program that would otherwise certify.
+  , ⟨"\"abc\".tr(1, \"-\")",
+      .send (some (.str "abc")) "tr" [.int 1, .str "-"] none⟩
+    -- (f3) Same for `delete_prefix`. CRuby: "no implicit conversion of Integer into String
+    -- (TypeError)", verified directly. **The model declines the program** rather than raising
+    -- (it reports `unsupported(start_with?)`, which is what it implements `delete_prefix` in
+    -- terms of), so this control prints "model declined" -- the row is justified against Ruby
+    -- and uncorroborated by the model, the same shape as `found-issues.md` A3.
+  , ⟨"\"abc\".delete_prefix(1)",
+      .send (some (.str "abc")) "delete_prefix" [.int 1] none⟩
+    -- (f4) **`sub`'s first argument is a pattern, not a target.** CRuby: "wrong argument type
+    -- Integer (expected Regexp) (TypeError)", verified directly; the model declines here too,
+    -- and explicitly (`String#sub/gsub with a non-String, non-Regexp pattern`).
+  , ⟨"\"abc\".sub(1, \"-\")",
+      .send (some (.str "abc")) "sub" [.int 1, .str "-"] none⟩
+    -- (f5) **A `Regexp` is opaque, and that includes not being a `String`.** `"a" + /b/`
+    -- raises TypeError, which the `strAdd` row already refused -- kept because the new
+    -- `.cls "Regexp"` type is the first thing since tier 5 that `.cls` names and that is *not*
+    -- a String, so "any `.cls` will do" is now a mistake someone could make.
+  , ⟨"\"abc\" + /b/",
+      .send (some (.str "abc")) "+" [.regexpLit "b" 0] none⟩
+    -- (f6) **`gsub` with a block is a different signature** (the corpus rung
+    -- `regexp-gsub-block`, not yet climbed). Safe Ruby, declined -- the two-argument row does
+    -- not apply and no block-carrying row exists.
+  , ⟨"\"abc\".gsub(/[abc]/) { |c| c.upcase } (safe; no block-carrying gsub row)",
+      .send (some (.str "abc")) "gsub" [.regexpLit "[abc]" 0]
+        (some (.block [.req "c"] [] (.send (some (.var .lvar "c")) "upcase" [] none)))⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
@@ -1194,6 +1233,8 @@ def toRubyCore : Expr → Option RubyCore.Expr
     return .send (some r') m args' (some (← toRubyCore blk))
   | .self' => some .self'
   | .const n => some (.const n)
+  -- Tier 15: a regexp literal.
+  | .regexpLit src opts => some (.regexpLit src opts)
   -- Tier 14c: a call site's keyword arguments.
   | .kwargs es => (toRubyCoreKw es).map (fun es' => .kwargs es')
   -- Tier 13: a constant assignment (the controls' `X = 5`).

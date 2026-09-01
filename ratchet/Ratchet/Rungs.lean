@@ -3064,6 +3064,154 @@ def r161 : Rung :=
         (.prim (.prim (.var rfl rfl) (.cons .strLit .nil) .strAdd)
           (.cons (.var rfl rfl) .nil) .strAdd))))))⟩
 
+/-! ## Tier 15 — strings, symbols and regexps
+
+Tier 15a: the rows. Nine `PrimSig` rows plus one `Judge` rule (`regexpLit`), and the finding is
+how ordinary the target's string diet turns out to be — total `String -> String` and
+`String -> Bool` methods, with exactly one row (`String#match`) that answers something the
+caller has to be careful with. -/
+
+/-- `n = 3; "n = #{n + 1}"` → `String`.
+
+    `str-interpolation`'s twin (r165) and the pair is the point: there, the interpolated
+    expression was already a `String`, so `caseEqQuery` refined the else-branch to `.never` and
+    the rung climbed with **no `__as_string` row at all**. Here it is an `Integer`, the
+    then-branch is the dead one, and the row is needed. `PrimSig.intAsString` is it —
+    `__as_string` is the desugarer's marker for interpolation's `to_s`, not a method anyone
+    writes.
+
+    So the derivation is r165's with the two branches' roles swapped: `primNever` on the *then*
+    side (`String === 4` is false, so `isATy` makes `__dt_t1` `.never` there) and a real send on
+    the else side. `joinT .never (cls String)` is `String`. -/
+def r166 : Rung :=
+  ⟨"str-interpolation-nonstring",
+    .seq [.vasgn .lvar "n" (.int 3),
+          .send (some (.str "n = ")) "+"
+            [.seq [.vasgn .lvar "__dt_t1" (.send (some (.var .lvar "n")) "+" [.int 1] none),
+                   .if' (.send (some (.const "String")) "===" [.var .lvar "__dt_t1"] none)
+                     (.var .lvar "__dt_t1")
+                     (some (.send (some (.var .lvar "__dt_t1")) "__as_string" [] none))]]
+            none],
+    .cls "String", [("n", .int), ("__dt_t1", .int)],
+    .seq (.cons (.vasgn .intLit)
+      (.last (.prim .strLit
+        (.cons (.seq (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))
+          (.last (.if' (τ₁ := .never) (τ₂ := .cls "String")
+            (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.var rfl rfl) .nil) rfl)
+            (.var rfl rfl)
+            (.prim (.var rfl rfl) .nil .intAsString)
+            rfl)))) .nil)
+        .strAdd)))⟩
+
+/-- `%w[a b c].length` → `Integer`, and it climbed with **no rule written at all** — twice over.
+    `%w[…]` is not a syntactic form by the time this checker sees it (the desugarer emits an
+    ordinary array of string literals), and `Array#length` arrived with tier 14b's rest
+    parameters, for a completely unrelated reason. A free rung, recorded as one. -/
+def r170 : Rung :=
+  ⟨"str-percent-w",
+    .send (some (.array [.str "a", .str "b", .str "c"])) "length" [] none,
+    .int, [],
+    .prim (.arrayLit (.cons .strLit (.cons .strLit (.cons .strLit .nil)))) .nil .arrayLength⟩
+
+/-- `"1.2.3".match?(/\A\d+(\.\d+)*\z/)` → `Bool`.
+
+    The first regexp rung, and it settles the design question cheaply: a `Regexp` is
+    `.cls "Regexp"` and **opaque**. Nothing reads the pattern text, which is forced rather than
+    chosen — `regexp-interpolated` shows a pattern can be built at runtime, so any reasoning
+    about pattern text would work on literals and fail on exactly the patterns the target
+    writes. `match?` answers `Bool` and computes nothing about *which* bool. -/
+def r171 : Rung :=
+  ⟨"regexp-match-p",
+    .send (some (.str "1.2.3")) "match?" [.regexpLit "\\A\\d+(\\.\\d+)*\\z" 0] none,
+    .bool, [],
+    .prim .strLit (.cons .regexpLit .nil) .strMatchP⟩
+
+/-- `"abc".match(/\d+/).nil?` → `Bool`.
+
+    `String#match` answers `T.nilable(MatchData)`, and this rung is the *safe* half of what that
+    buys: asking a nilable whether it is nil is always fine, because `NilQSafe` is recursive at
+    `nilable` (it has been since tier 2, for `nil?` on an `Array#[]` result). The unsafe half is
+    `regexp-match-captures` / `regexp-no-match-unsafe`, which this row deliberately does not
+    separate — see `PrimSig.strMatch`. -/
+def r173 : Rung :=
+  ⟨"regexp-match-nil",
+    .send (some (.send (some (.str "abc")) "match" [.regexpLit "\\d+" 0] none)) "nil?" []
+      none,
+    .bool, [],
+    .prim (.prim .strLit (.cons .regexpLit .nil) .strMatch) .nil
+      (.nilQuery (.nilable .cls))⟩
+
+/-- `"v1.2.3".sub(/\Av/, "")` → `String`. -/
+def r174 : Rung :=
+  ⟨"regexp-sub",
+    .send (some (.str "v1.2.3")) "sub" [.regexpLit "\\Av" 0, .str ""] none,
+    .cls "String", [],
+    .prim .strLit (.cons .regexpLit (.cons .strLit .nil)) .strSub⟩
+
+/-- `"a_b_c".gsub(/_/, "-")` → `String`. `sub`'s twin, and a separate row rather than one row
+    for both because they are different methods — the shared signature is a coincidence of this
+    call shape, and `gsub`'s block and Hash forms (rung `regexp-gsub-block`) are not `sub`'s. -/
+def r175 : Rung :=
+  ⟨"regexp-gsub",
+    .send (some (.str "a_b_c")) "gsub" [.regexpLit "_" 0, .str "-"] none,
+    .cls "String", [],
+    .prim .strLit (.cons .regexpLit (.cons .strLit .nil)) .strGsub⟩
+
+/-- `"a/b/c".split("/").length` → `Integer`.
+
+    `String#split` is the one row in this batch whose *result* says something a caller can use:
+    `arrayOf (cls String)`. What it cannot say is how many — which is `narrow-nilable-and-union`'s
+    length-indexed array arriving from the direction the slice asks for it most
+    (`a, b = s.split("-")` in `identify.rb`). Here only `length` is taken, so the gap does not
+    bite. -/
+def r177 : Rung :=
+  ⟨"regexp-split",
+    .send (some (.send (some (.str "a/b/c")) "split" [.str "/"] none)) "length" [] none,
+    .int, [],
+    .prim (.prim .strLit (.cons .strLit .nil) .strSplit) .nil .arrayLength⟩
+
+/-- `re = /…/x; "12".match?(re)` → `Bool`, with the `/x` (extended) flag.
+
+    The rung exists to check that **ignoring the flags is enough**, and it is: the flags are
+    carried in the syntax (`Expr.regexpLit`'s `opts`, `2` here) and `Judge.regexpLit` does not
+    look at them, because what they change is which strings match — an answer this type language
+    never computes. The regexp also goes through a local on the way, which is the shape
+    `semver.rb` writes. -/
+def r179 : Rung :=
+  ⟨"regexp-extended-flag",
+    .seq [.vasgn .lvar "re" (.regexpLit "\n  \\A\n  \\d+\n  \\z\n" 2),
+          .send (some (.str "12")) "match?" [.var .lvar "re"] none],
+    .bool, [("re", .cls "Regexp")],
+    .seq (.cons (.vasgn .regexpLit)
+      (.last (.prim .strLit (.cons (.var rfl rfl) .nil) .strMatchP)))⟩
+
+/-- `s = "  Foo_Bar  "; s.strip.downcase.tr("_", "-").delete_prefix("f")` → `String`.
+
+    Four rows in one chain, and all four are the same row twice over: total, `String` in,
+    `String` out. The arguments are *not* unconstrained — `tr` and `delete_prefix` raise
+    `TypeError` on a non-String — which is the only thing to be careful about in the batch and
+    the reason the rows name `.cls "String"` rather than a wildcard. -/
+def r181 : Rung :=
+  ⟨"str-methods",
+    .seq [.vasgn .lvar "s" (.str "  Foo_Bar  "),
+          .send (some (.send (some (.send (some (.send (some (.var .lvar "s")) "strip" []
+            none)) "downcase" [] none)) "tr" [.str "_", .str "-"] none)) "delete_prefix"
+            [.str "f"] none],
+    .cls "String", [("s", .cls "String")],
+    .seq (.cons (.vasgn .strLit)
+      (.last (.prim
+        (.prim
+          (.prim (.prim (.var rfl rfl) .nil .strStrip) .nil .strDowncase)
+          (.cons .strLit (.cons .strLit .nil)) .strTr)
+        (.cons .strLit .nil) .strDeletePrefix)))⟩
+
+/-- `"CVE-2026-1".start_with?("CVE-")` → `Bool`. -/
+def r182 : Rung :=
+  ⟨"str-start-with",
+    .send (some (.str "CVE-2026-1")) "start_with?" [.str "CVE-"] none,
+    .bool, [],
+    .prim .strLit (.cons .strLit .nil) .strStartsWith⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -3082,7 +3230,8 @@ def rungs : List Rung :=
    r125, r126, r127, r128, r129, r130, r131, r132, r134,
    r157, r165, r168, r169, r188, r189, r190, r191,
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
-   r150, r152, r153, r154, r155, r161]
+   r150, r152, r153, r154, r155, r161,
+   r166, r170, r171, r173, r174, r175, r177, r179, r181, r182]
 
 /-! ## `chk` answers exactly what was derived by hand
 

@@ -103,6 +103,23 @@ non-module (which is also why `run_agreement.sh` never caught it), and the contr
 depend on `allModules` still reject. What it affects is what a control's printed label means:
 "conservative: safe" reads as a claim about Ruby and is only ever a claim about the model.
 
+### A4. Two `String` type errors the model gates instead of raising
+
+**Status:** open. **Severity:** low — it weakens two controls, no rung. **Found:** 2026-09-01,
+ratchet clink 36 (tier 15a).
+
+| program | CRuby | the model |
+|---|---|---|
+| `"abc".delete_prefix(1)` | `TypeError: no implicit conversion of Integer into String` | `unsupported(start_with?)` |
+| `"abc".sub(1, "-")` | `TypeError: wrong argument type Integer (expected Regexp)` | `unsupported(String#sub/gsub with a non-String, non-Regexp pattern)` |
+
+Both CRuby messages verified directly. These are the controls for
+`PrimSig.strDeletePrefix`/`strSub` requiring their argument types rather than leaving them
+unconstrained, so the rows are justified against Ruby and *uncorroborated* by the model — the
+same shape as A3, and much narrower. The second gate is explicit and arguably the right
+behaviour for an unmodelled signature; the first is incidental (`delete_prefix` is implemented
+in terms of `start_with?`, so the gate fires one method down).
+
 ---
 
 ## B. Model gates — the model refuses the program (exit 3)

@@ -264,6 +264,45 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       careful about. Its receiver is `.arrayOf`, which no user class can be, so it needs no
       override guard for the same reason the arithmetic rows do not. -/
   | arrayLength {τ : Ty} : PrimSig (.arrayOf τ) "length" [] .int
+  -- ### Tier 15 — the `String`/`Regexp` rows
+  --
+  -- Nine rows, and the finding is how *boring* they are: the target's whole string diet is
+  -- total `String -> String` and `String -> Bool` methods. Each is total for the argument types
+  -- named (`delete_prefix` and `tr` raise `TypeError` on a non-String, which is why the
+  -- arguments are not unconstrained), and each has a `.cls "String"` receiver, which is a
+  -- builtin — so they are trusted exactly as far as `strAdd` and `strLength` already were.
+  /-- `"  x ".strip` — and `downcase`/`upcase`, whose rows are the same shape. -/
+  | strStrip : PrimSig (.cls "String") "strip" [] (.cls "String")
+  | strDowncase : PrimSig (.cls "String") "downcase" [] (.cls "String")
+  | strUpcase : PrimSig (.cls "String") "upcase" [] (.cls "String")
+  | strTr : PrimSig (.cls "String") "tr" [.cls "String", .cls "String"] (.cls "String")
+  | strDeletePrefix :
+      PrimSig (.cls "String") "delete_prefix" [.cls "String"] (.cls "String")
+  | strStartsWith : PrimSig (.cls "String") "start_with?" [.cls "String"] .bool
+  /-- `"a/b/c".split("/")` — an `Array` of `String`s whatever the separator matches, which is
+      the one row here whose *result* type says something the caller can use. -/
+  | strSplit : PrimSig (.cls "String") "split" [.cls "String"] (.arrayOf (.cls "String"))
+  /-- `s.sub(/re/, "x")` and `gsub`. The two-argument, non-block forms only: `gsub` also takes
+      a Hash or a block, and those are different signatures with different results. -/
+  | strSub :
+      PrimSig (.cls "String") "sub" [.cls "Regexp", .cls "String"] (.cls "String")
+  | strGsub :
+      PrimSig (.cls "String") "gsub" [.cls "Regexp", .cls "String"] (.cls "String")
+  /-- `s.match?(/re/)` → `Bool`. Total, and the *answer* is not computed anywhere: a `Regexp`
+      is opaque in this type language (see `Judge.regexpLit`). -/
+  | strMatchP : PrimSig (.cls "String") "match?" [.cls "Regexp"] .bool
+  /-- **`s.match(/re/)` → `MatchData` or `nil`**, and the `nilable` is the whole point. This is
+      the row that makes `regexp-match-captures` and its permanent-negative twin
+      `regexp-no-match-unsafe` two readings of one signature: whether `m[1]` is safe depends on
+      whether the match succeeded, which is a fact about the pattern and the subject and not
+      about their types. So the row answers `nilable` and the two rungs are separated by
+      *narrowing*, or not at all. -/
+  | strMatch :
+      PrimSig (.cls "String") "match" [.cls "Regexp"] (.nilable (.cls "MatchData"))
+  /-- **`Integer#__as_string`** — the desugarer's marker for the `to_s` inside a string
+      interpolation, not a method anyone writes (see the `str-interpolation` rungs). Total on
+      `Integer` and returns a `String`, which is the only thing interpolation needs. -/
+  | intAsString : PrimSig .int "__as_string" [] (.cls "String")
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -3336,6 +3375,19 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       have certified it. -/
   | constEnv {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {τ : Ty} :
       constGet? κ n = some τ → Judge κ Γ I (.const n) τ Γ I
+  /-- **A regexp literal** (tier 15) — `.cls "Regexp"`, and **opaque**: nothing anywhere reads
+      the pattern or the flags.
+
+      That is a decision rather than laziness, and `regexp-interpolated` is the rung that makes
+      it: `semver.rb` interpolates four constants into `SEMVER_REGEX`, so a pattern can be built
+      at runtime and no checker that wanted to reason about pattern text could do it in general.
+      Answering `.cls "Regexp"` for every regexp — literal or computed — keeps the two cases
+      indistinguishable, which is exactly what the `String` rows need and all they need.
+
+      The flags are carried in the syntax (`opts`) and ignored here for the same reason;
+      `regexp-extended-flag` is the rung that checks that ignoring them is enough. -/
+  | regexpLit {κ : Ctx} {Γ : Env} {I : Ty} {src : String} {opts : Nat} :
+      Judge κ Γ I (.regexpLit src opts) (.cls "Regexp") Γ I
   /-- **`M::X` — a scoped constant read** (tier 13c). The key is absolute and the namespace is
       named by the base, so the lookup is a single `envGet?` with no search: unlike a bare
       `X`, `M::X` says where to look.

@@ -98,6 +98,18 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .notBool
            | exact .arrayIndex
            | exact .arrayLength
+           | exact .strStrip
+           | exact .strDowncase
+           | exact .strUpcase
+           | exact .strTr
+           | exact .strDeletePrefix
+           | exact .strStartsWith
+           | exact .strSplit
+           | exact .strSub
+           | exact .strGsub
+           | exact .strMatchP
+           | exact .strMatch
+           | exact .intAsString
            | exact .hashIndex)
       | simp at h
 
@@ -363,6 +375,9 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     subst h; subst h'; subst h''; exact .intLit
   · injection h with h; injection h with h h'; injection h' with h' h''
     subst h; subst h'; subst h''; exact .fltLit
+  · -- tier 15: a regexp literal, opaque (`Judge.regexpLit`)
+    injection h with h; injection h with h h'; injection h' with h' h''
+    subst h; subst h'; subst h''; exact .regexpLit
   · injection h with h; injection h with h h'; injection h' with h' h''
     subst h; subst h'; subst h''; exact .strLit
   · injection h with h; injection h with h h'; injection h' with h' h''

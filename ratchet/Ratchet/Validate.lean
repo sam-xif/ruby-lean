@@ -56,6 +56,19 @@ def primSig? : Ty → String → List Ty → Option Ty
   | .cls "String", "length", [] => some .int
   -- Tier 14b: `Array#length`, total whatever the element type.
   | .arrayOf _, "length", [] => some .int
+  -- Tier 15: the `String`/`Regexp` rows, in `PrimSig`'s order.
+  | .cls "String", "strip", [] => some (.cls "String")
+  | .cls "String", "downcase", [] => some (.cls "String")
+  | .cls "String", "upcase", [] => some (.cls "String")
+  | .cls "String", "tr", [.cls "String", .cls "String"] => some (.cls "String")
+  | .cls "String", "delete_prefix", [.cls "String"] => some (.cls "String")
+  | .cls "String", "start_with?", [.cls "String"] => some .bool
+  | .cls "String", "split", [.cls "String"] => some (.arrayOf (.cls "String"))
+  | .cls "String", "sub", [.cls "Regexp", .cls "String"] => some (.cls "String")
+  | .cls "String", "gsub", [.cls "Regexp", .cls "String"] => some (.cls "String")
+  | .cls "String", "match?", [.cls "Regexp"] => some .bool
+  | .cls "String", "match", [.cls "Regexp"] => some (.nilable (.cls "MatchData"))
+  | .int, "__as_string", [] => some (.cls "String")
   | .bool, "!", [] => some .bool
   | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
   | .cls "Hash", "[]", [_] => some .any
@@ -136,6 +149,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | 0, _ => none
   | _ + 1, .int _ => some (.int, Γ, I)
   | _ + 1, .flt _ => some (.float, Γ, I)
+  -- Tier 15: a regexp literal is opaque (`Judge.regexpLit`).
+  | _ + 1, .regexpLit _ _ => some (.cls "Regexp", Γ, I)
   | _ + 1, .str _ => some (.cls "String", Γ, I)
   | _ + 1, .sym _ => some (.sym, Γ, I)
   | _ + 1, .tru => some (.bool, Γ, I)
