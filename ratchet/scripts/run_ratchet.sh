@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Build the isolated `ratchet` package and run it against the corpus,
-# printing per-rung results plus the tier summary. Exit code is nonzero iff
-# some rung's actual behavior (validate or execution) disagrees with what
-# the corpus recorded as expected -- i.e. iff there is a bug in this harness
-# itself, not merely an unimplemented tier (those are `[frontier]` and
-# always expect `validate=false`, so they never fail this check by design).
+# printing per-rung results plus the tier summary (each tier split into
+# "structural" vs "claim-assisted" -- see Main.lean's docstring for why those
+# are two numbers). Exit code is nonzero while any rung's actual verdict
+# differs from the corpus's recorded target, which today is most rungs above
+# tier 2 -- the climb, not a bug.
+#
+# `scripts/run_check13.sh` is the companion: the evidence behind the rungs the
+# hand-authored judgment (`Ratchet/Judge.lean`) actually covers.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

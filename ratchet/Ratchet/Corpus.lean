@@ -5,9 +5,10 @@ One rung of the ladder: real desugared Ruby (`program`, decoded straight from a
 committed snapshot of `harness/desugar-dt/bin/export-json`'s output — see
 `scripts/generate_corpus.py`; not re-derived live, so a rung's expected result cannot
 silently change underneath it if the desugarer changes), a `Cert` claiming to type it,
-and what `validate` is expected to say. There is no `expect_stuck` pairing yet: with the
-semantics not wired into the corpus yet (`AGENTS.md`), there is nothing to run a rung
-against besides `validate` itself.
+and what `validate` is expected to say. There is deliberately no `expect_stuck` field:
+the semantics *is* now run against the rungs the judgment covers, but by `Check13.lean`,
+which derives the outcome by executing the program rather than reading a recorded
+expectation from here (`AGENTS.md` §Semantics status).
 
 **Every rung's target is `expect_validate = true` unless `falseReason` says otherwise.**
 `falseReason` is `none` for the (overwhelming majority) case; when present, it is one

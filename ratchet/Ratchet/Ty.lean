@@ -12,10 +12,10 @@ then, from the same source file.
 
 Note what this type language does **not** have: no dedicated `str`/hash type. Strings
 are `.cls "String"` — an instance of the class, same as every other object — and hashes
-have no parameterised counterpart to `arrayOf` at all (`Ratchet/Validate.lean` types a
-hash literal as the bare `.cls "Hash"`, unparameterised). Both are honest reflections of
-where the real project's own type language currently stops, not gaps this port
-introduced.
+have no parameterised counterpart to `arrayOf` at all — the bare `.cls "Hash"` is all a
+hash literal could be given, if `Ratchet/Validate.lean` had a rule for one yet (it does
+not; see that file's scope note). Both are honest reflections of where the real project's
+own type language currently stops, not gaps this port introduced.
 -/
 
 namespace Ratchet

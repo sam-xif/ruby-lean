@@ -51,4 +51,24 @@ rung runs against the *actual* prelude/class hierarchy, not a reimplementation o
 def run (fuel : Nat) (p : Expr) : Interp.RunResult :=
   Interp.run fuel (Machine.init p)
 
+/-- Which outcome a run landed on, for a report line. -/
+def outcomeLabel : Interp.RunResult → String
+  | .value .. => "value"
+  | .uncaught .. => "uncaught"
+  | .unsupported r _ => s!"unsupported({r})"
+  | .outOfFuel _ => "outOfFuel"
+  | .stuck msg _ => s!"stuck({msg})"
+
+/-- The Ruby class name of the value a run produced, or `none` if it did not produce
+one. `realClassOf`, not `classOf`: this is what `Object#class` reports (it skips the
+eigenclass), which is the thing a type is a claim about.
+
+Deliberately returns a `String`, not a `Ratchet.Ty`: `Semantics/` stays free of any
+dependency on `Ratchet/`'s copied type language (`AGENTS.md` §Isolation — the arrow only
+ever points `Semantics/ → ../lean/RubyCore`). Mapping a class name back to a `Ty` is the
+cross-checker's job, at the one place that is allowed to see both (`Check13.lean`). -/
+def resultClassName : Interp.RunResult → Option String
+  | .value v m => some (className m.heap (realClassOf m.heap v))
+  | _ => none
+
 end Ratchet.Semantics

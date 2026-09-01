@@ -1,0 +1,187 @@
+import Ratchet.Corpus
+import Ratchet.Rungs13
+import Semantics.Interp
+
+/-!
+# `check13` — pinning the 13 hand-authored derivations to reality
+
+`Ratchet/Rungs13.lean` proves that 13 hand-written `Judge` derivations typecheck and that
+`chk` agrees with each. Neither of those facts, on its own, rules out the two ways a
+hand-authored judgment can be confidently wrong:
+
+1. **The syntax could be a fiction.** A derivation about `send (int 1) "+" [int 2] nil`
+   says nothing about the rung if the desugarer actually emits something else for
+   `1 + 2`. So: decode each rung's committed `corpus/*.json` with the real
+   `Ratchet.Decode.program` and compare it to the hand-written `Expr` with `==`. Also
+   check the rung's `cert` really is empty, since `Rungs13.lean`'s claim-freedom argument
+   is stated about `emptyCert`.
+2. **The types could be a fiction.** `Judge` says `1 + 2 : Int` and `"a" + "b" :
+   String`; that is an assertion about what the semantics *does*. So: decode the same
+   JSON a second time with the real `RubyCore.Decode.program`, run it under the real
+   `stepFn` from the real booted heap, and check the value's actual class is one the
+   claimed `Ty` names — and that the run is not type-stuck.
+
+This is the one file in the package allowed to see both sides (`Ratchet/`'s copied type
+language and `../lean/RubyCore`'s semantics); see `Semantics/Interp.lean`'s docstring for
+why the boundary is drawn that way. It is a separate executable from `ratchet` on
+purpose: the ratchet's headline number stays a pure statement about `validate`, and this
+is the evidence behind the 13 rungs it now counts.
+-/
+
+open Ratchet
+open Lean (Json)
+
+/-- The runtime class names a `Ty` admits — the bridge between the two languages, and
+the only place a `Ty` is given an extensional reading in this package.
+
+`.bool` maps to *both* boolean classes because `Ty` does not distinguish them
+(`Judge.truLit`). Only the constructors the 13 rungs use are listed; anything else
+returns `[]`, which fails loudly rather than passing vacuously. -/
+def expectedClasses : Ty → List String
+  | .int => ["Integer"]
+  | .float => ["Float"]
+  | .sym => ["Symbol"]
+  | .nilT => ["NilClass"]
+  | .bool => ["TrueClass", "FalseClass"]
+  | .cls n => [n]
+  | _ => []
+
+/-- Fuel: these are 13 literal/arithmetic programs; a few hundred steps is already
+generous, and `outOfFuel` is reported as a failure rather than silently passing. -/
+def fuel : Nat := 20000
+
+structure Row where
+  id : String
+  syntaxOk : Bool
+  certEmpty : Bool
+  claimedTy : Ty
+  outcome : String
+  actualClass : Option String
+  typeStuck : Bool
+  semOk : Bool
+
+def rowOk (r : Row) : Bool := r.syntaxOk && r.certEmpty && r.semOk && !r.typeStuck
+
+def loadJson (p : System.FilePath) : IO Json := do
+  match Json.parse (← IO.FS.readFile p) with
+  | .error e => throw (IO.userError s!"{p}: JSON parse error: {e}")
+  | .ok j => pure j
+
+def checkRung (corpusDir : System.FilePath) (files : List System.FilePath)
+    (r : Rung) : IO Row := do
+  -- Find this rung's file by its recorded `id`, not by filename arithmetic.
+  let mut found : Option Json := none
+  for f in files do
+    let j ← loadJson f
+    match j.getObjValAs? String "id" with
+    | .ok id => if id == r.id then found := some j
+    | .error _ => pure ()
+  let some j := found
+    | throw (IO.userError s!"no corpus entry with id '{r.id}' under {corpusDir}")
+
+  -- (1) syntax: does the real desugarer output decode to the hand-written `Expr`?
+  let entry ← match CorpusEntry.ofJson? j with
+    | .error e => throw (IO.userError s!"{r.id}: {e}")
+    | .ok e => pure e
+  let syntaxOk := entry.program == r.program
+  let certEmpty := entry.cert.claims.isEmpty
+
+  -- (2) semantics: decode the same JSON into the real `RubyCore.Expr` and run it.
+  let rp ← match RubyCore.Decode.program (← match j.getObjVal? "program" with
+      | .error e => throw (IO.userError s!"{r.id}: missing program: {e}")
+      | .ok p => pure p) with
+    | .error e => throw (IO.userError s!"{r.id}: RubyCore decode: {e}")
+    | .ok p => pure p
+  let res := Ratchet.Semantics.run fuel rp
+  let actualClass := Ratchet.Semantics.resultClassName res
+  let stuck := Ratchet.Semantics.typeStuck res
+  let semOk := match actualClass with
+    | some cn => (expectedClasses r.ty).contains cn
+    | none => false
+  return { id := r.id, syntaxOk, certEmpty, claimedTy := r.ty
+           outcome := Ratchet.Semantics.outcomeLabel res
+           actualClass, typeStuck := stuck, semOk }
+
+/-! ## Negative controls for `PrimSig`
+
+Confirming the 13 rungs pass says nothing about whether `PrimSig`'s five rows are too
+*generous* — a table with `PrimSig.intAdd : PrimSig .int "+" [.any] .int` would also pass
+all 13. These controls are the other side: neighbours of the rungs, one syntactic step
+away, that `chk` must **not** certify. Each is hand-written syntax (not a corpus rung) —
+that is the point, since what is being probed is the table's argument types, and it is
+run under the real semantics to say which kind of rejection it is:
+
+- **sound rejection** — the program really is type-stuck, so rejecting it is required.
+- **conservative rejection** — the program is safe and `chk` still says no. Honest
+  incompleteness, recorded rather than hidden: `1 + 1.5` is fine Ruby, and `PrimSig` has
+  no `Integer#+ Float` row because no rung has needed one yet.
+
+The check fails only on a `validate = true` here; a conservative rejection is expected. -/
+structure Control where
+  label : String
+  program : Expr
+
+def controls : List Control :=
+  [ ⟨"1 + true", .send (some (.int 1)) "+" [.tru] none⟩
+  , ⟨"1 + \"a\"", .send (some (.int 1)) "+" [.str "a"] none⟩
+  , ⟨"\"a\" + 1", .send (some (.str "a")) "+" [.int 1] none⟩
+  , ⟨"1 + nil", .send (some (.int 1)) "+" [.nil] none⟩
+  , ⟨"1 + 1.5 (safe; no PrimSig row)", .send (some (.int 1)) "+" [.flt (Float.toBits 1.5)] none⟩
+  , ⟨"1.5 + 1 (safe; no PrimSig row)", .send (some (.flt (Float.toBits 1.5))) "+" [.int 1] none⟩
+  , ⟨"1.zero? (safe; unmodeled builtin)", .send (some (.int 1)) "zero?" [] none⟩ ]
+
+/-- `Ratchet.Expr` → `RubyCore.Expr` for the controls only: they are hand-written on this
+package's side of the isolation boundary, so there is no JSON to decode twice the way a
+corpus rung has. Covers exactly the constructors `controls` uses; anything else is a
+`none` that fails loudly. -/
+def toRubyCore : Expr → Option RubyCore.Expr
+  | .int n => some (.int n)
+  | .flt b => some (.flt b)
+  | .str s => some (.str s)
+  | .sym s => some (.sym s)
+  | .tru => some .tru
+  | .fls => some .fls
+  | .nil => some .nil
+  | .send (some r) m args none => do
+    let r' ← toRubyCore r
+    let args' ← args.mapM toRubyCore
+    return .send (some r') m args' none
+  | _ => none
+
+def main (args : List String) : IO UInt32 := do
+  let corpusDir : System.FilePath := args.headD "corpus"
+  let dirEntries ← corpusDir.readDir
+  let files := (dirEntries.map (·.path)).toList.filter (fun p => p.toString.endsWith ".json")
+  let rows ← rungs13.mapM (checkRung corpusDir files)
+
+  IO.println "--- rungs 1-13: hand-authored derivations, pinned to corpus + semantics ---"
+  for r in rows do
+    let cls := r.actualClass.getD "-"
+    let mark := if rowOk r then "ok  " else "FAIL"
+    IO.println s!"{mark} {r.id}: claimed {repr r.claimedTy}, ran to {r.outcome} of class {cls}, type_stuck={r.typeStuck}, syntax_matches_corpus={r.syntaxOk}, cert_empty={r.certEmpty}"
+
+  IO.println "\n--- negative controls: neighbours `PrimSig` must not certify ---"
+  let mut controlFails : List String := []
+  for c in controls do
+    let certified := validate emptyCert c.program
+    let some rp := toRubyCore c.program
+      | throw (IO.userError s!"control '{c.label}': not translatable to RubyCore.Expr")
+    let res := Ratchet.Semantics.run fuel rp
+    let stuck := Ratchet.Semantics.typeStuck res
+    let verdict :=
+      if certified then "CERTIFIED -- table is too generous"
+      else if stuck then "rejected (sound: really type-stuck)"
+      else "rejected (conservative: safe, no rule yet)"
+    IO.println s!"{if certified then "FAIL" else "ok  "} {c.label}: {verdict}, ran to {Ratchet.Semantics.outcomeLabel res}"
+    if certified then controlFails := c.label :: controlFails
+
+  let bad := rows.filter (fun r => !rowOk r)
+  IO.println s!"\n{rows.length - bad.length}/{rows.length} rungs confirmed: the hand derivation's type agrees with the class the real semantics produced, on the real desugarer's syntax, with no certificate claim trusted anywhere."
+  IO.println s!"{controls.length - controlFails.length}/{controls.length} negative controls rejected as required."
+  if bad.isEmpty && controlFails.isEmpty then
+    IO.println "CHECK13 OK"
+    return 0
+  else
+    for r in bad do IO.eprintln s!"  FAIL: {r.id}"
+    for l in controlFails do IO.eprintln s!"  FAIL (control certified): {l}"
+    return 1

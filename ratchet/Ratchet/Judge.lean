@@ -1,0 +1,130 @@
+import Ratchet.Cert
+
+/-!
+# `Judge` — the hand-authored typing judgment
+
+The **specification** half of the checker. `Ratchet/Validate.lean`'s `chk` is a
+decision procedure; this file says *what it is deciding*. The split matters for the
+ratchet: a rung is only honestly "climbed" when there is a derivation `Judge c p τ`
+one can read and check by eye, not merely a `Bool` that came out `true`.
+
+## Scope: exactly the first 13 rungs, and no more
+
+Deliberately authored for rungs 1–13 of `corpus/` (tier 1's eight literals, plus
+`add`/`sub`/`mul`/`div`/`str-concat`), and nothing else. Consequences, each a real
+limitation to lift later, not an oversight:
+
+- **No environment.** `Judge` relates a *closed* `Expr` to a `Ty`; there is no `Env`
+  parameter because no rung below 14 mentions a variable. Tier 3 (`var`/`vasgn`/`seq`)
+  is where `Judge` grows a `Γ`, and that is a change to every rule's shape, so it is
+  better done when a rung forces it than guessed at now.
+- **No `subTy` anywhere.** Every rule below matches types by construction. `subTy`
+  exists in `Ratchet/Ty.lean` and is unused here on purpose: with no parameters and no
+  `any`, there is nothing yet for subsumption to do, and a subsumption rule admitted
+  "for later" is a rule whose soundness nobody has had to justify against a rung.
+- **No `if`/join, no `def`, no dispatch.** Tiers 4–9.
+
+## The two kinds of rule
+
+Every rule below is one of:
+
+1. A **synthesis rule** justified by the real semantics: a literal's type, or a
+   primitive's signature (`PrimSig`). These are the rules that carry content, and
+   §Justification in `AGENTS.md`'s tier-1/2 notes plus `Check13.lean`'s semantic
+   cross-check are what back them.
+2. The **`claim` leaf**: whatever a certificate asserts about a subterm is admitted.
+   This is the certificate architecture's trusted edge and it is *unsound in general* —
+   a cert may claim anything. It is included because `chk` needs it from tier 2 onward
+   (`5.zero?`, function signatures), but note: **all 13 rungs in scope here have an
+   empty `cert`**, so none of their derivations uses this rule. `Ratchet/Rungs13.lean`
+   states that as a theorem (`rung_derivs_claim_free`) rather than leaving it as a
+   remark, so the fragment's soundness argument does not quietly rest on the one leaf
+   that has no argument behind it.
+-/
+
+namespace Ratchet
+
+/-- The primitive-method signature table, as a **relation** with one constructor per
+justified builtin. A relation rather than a function because this is the specification:
+each constructor is a claim about what the real `stepFn` does, to be read and checked
+one at a time. `Ratchet/Validate.lean`'s `primSig?` is the executable version, proved
+to only ever produce a `PrimSig` (`primSig?_sound`).
+
+Every constructor here is a signature for a **total** method on the given argument
+types: for these receiver/argument combinations, CRuby (and `RubyCore`'s `Builtins`)
+neither raises nor coerces, and the result class is fixed. Deliberately *narrow*: no
+`Integer#+ Float`, no `String#*`, no comparison operators — a signature is added when a
+rung needs it and its result has been checked against the semantics, not because it
+looks obviously true. -/
+inductive PrimSig : Ty → String → List Ty → Ty → Prop
+  /-- `Integer#+ (Integer) → Integer` (rung 009). -/
+  | intAdd : PrimSig .int "+" [.int] .int
+  /-- `Integer#- (Integer) → Integer` (rung 010). -/
+  | intSub : PrimSig .int "-" [.int] .int
+  /-- `Integer#* (Integer) → Integer` (rung 011). -/
+  | intMul : PrimSig .int "*" [.int] .int
+  /-- `Integer#/ (Integer) → Integer` (rung 012).
+
+      **Note what this does and does not claim.** `10 / 0` raises `ZeroDivisionError`,
+      so this signature is *not* "never raises" — it is the weaker, and correct,
+      "never reaches the `NoMethodError`/`ArgumentError`/`TypeError` family, and when it
+      returns, returns an `Integer`". That is exactly the reading of type-safety this
+      whole ladder uses (`AGENTS.md` §Design notes), and division is the cleanest place
+      in the corpus where the two readings come apart. A checker built on the stronger
+      reading would have to reject `10 / 2`, which would be wrong. -/
+  | intDiv : PrimSig .int "/" [.int] .int
+  /-- `String#+ (String) → String` (rung 013). Argument type is load-bearing:
+      `"a" + 1` really does raise `TypeError` ("no implicit conversion"), which is *in*
+      the family — hence `[.cls "String"]`, not `[.any]`. -/
+  | strAdd : PrimSig (.cls "String") "+" [.cls "String"] (.cls "String")
+
+mutual
+
+/-- `Judge c e τ`: under certificate `c`, the closed expression `e` has type `τ`.
+
+Read each literal rule as an assertion about the real semantics: evaluating this literal
+yields a value whose class is the one `τ` names. `Check13.lean` checks precisely that,
+by running the actual `stepFn`. -/
+inductive Judge : Cert → Expr → Ty → Prop
+  /-- An integer literal — including a negative one: `-5` desugars to `int (-5)`, not to
+      a unary send (rung 008), so this single rule covers both. -/
+  | intLit {c : Cert} {n : Int} : Judge c (.int n) .int
+  /-- A float literal. `Expr.flt` carries IEEE bits; the type does not depend on them,
+      so no side condition. -/
+  | fltLit {c : Cert} {bits : UInt64} : Judge c (.flt bits) .float
+  /-- A string literal is *an instance of* `String` — `.cls "String"`, never a
+      dedicated `str` type; this type language has none (`Ratchet/Ty.lean`). -/
+  | strLit {c : Cert} {s : String} : Judge c (.str s) (.cls "String")
+  | symLit {c : Cert} {s : String} : Judge c (.sym s) .sym
+  /-- `true` and `false` share one type. `Ty` has no singleton-`true` type, and Ruby's
+      two distinct classes (`TrueClass`/`FalseClass`) are not distinguished here —
+      `Ty.bool` covers both, which is why rungs 002 and 003 both target `.bool`. -/
+  | truLit {c : Cert} : Judge c .tru .bool
+  | flsLit {c : Cert} : Judge c .fls .bool
+  /-- `nil : Nil` — the singleton type, not `nilable` of anything. -/
+  | nilLit {c : Cert} : Judge c .nil .nilT
+  /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
+      whose resulting shape has a justified `PrimSig`.
+
+      Three restrictions are each doing work: `some recv` (an implicit-self send has
+      nobody to dispatch on in this fragment), `blk = none` (a block would need
+      `Expr.block` typing, tier ≥ 6), and `PrimSig` matching the *synthesized* argument
+      types exactly (no subsumption — see the module docstring). -/
+  | prim {c : Cert} {recv : Expr} {m : String} {args : List Expr}
+      {σ τ : Ty} {argTys : List Ty} :
+      Judge c recv σ → JudgeAll c args argTys → PrimSig σ m argTys τ →
+      Judge c (.send (some recv) m args none) τ
+  /-- **The trusted leaf.** The certificate claims it; we believe it. Unsound in
+      general, unused by rungs 1–13 (all of whose certs are empty) — see the module
+      docstring. -/
+  | claim {c : Cert} {e : Expr} {τ : Ty} : c.lookup e = some τ → Judge c e τ
+
+/-- Pointwise `Judge` over an argument list, with matching length by construction. -/
+inductive JudgeAll : Cert → List Expr → List Ty → Prop
+  | nil {c : Cert} : JudgeAll c [] []
+  | cons {c : Cert} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
+      Judge c e τ → JudgeAll c es τs → JudgeAll c (e :: es) (τ :: τs)
+
+end
+
+end Ratchet

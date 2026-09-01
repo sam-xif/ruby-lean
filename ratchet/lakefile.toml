@@ -32,3 +32,11 @@ root = "Main"
 [[require]]
 name = "rubycore"
 path = "../lean"
+
+# The evidence behind tier 1 + the first five tier-2 rungs: pins each hand-authored
+# `Judge` derivation (`Ratchet/Rungs13.lean`) to the corpus syntax and to what the real
+# semantics actually computes. Separate exe from `ratchet` so the ratchet's headline
+# number stays a pure statement about `validate` -- see `Check13.lean`'s docstring.
+[[lean_exe]]
+name = "check13"
+root = "Check13"
