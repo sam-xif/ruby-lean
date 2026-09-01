@@ -260,11 +260,12 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           | some idx =>
             match defGet? κ.defs m with
             | some d =>
-              match paramEnvB (some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)))
+              match paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)))
                   d.params argTys with
               | some Γb =>
                 match chk f
-                    { κ with blockTy := some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) }
+                    { κ with
+                      blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
                     Γb .ivar0 d.body with
                 | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ', I') else none
                 | none => none
@@ -272,6 +273,29 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             | none => none
           | none => none
         | none => none
+    | some (.inst n Iself) =>
+      -- Tier 11: implicit-self dispatch carrying a block (`Judge.selfCallBlk`). Disjoint from
+      -- the `none` branch above by construction, which is the job `callDefBlk`'s
+      -- `κ.selfTy = none` premise now does.
+      match chkAll f κ Γ I args with
+      | some (argTys, Γ', I') =>
+        match closIdx? κ.closures ps body with
+        | some idx =>
+          match mroGet? κ.classes n m with
+          | some (dc, d) =>
+            match paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)))
+                d.params argTys with
+            | some Γb =>
+              match chk f
+                  { (κ.inMethod (.inst n Iself) dc m) with
+                    blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+                  Γb Iself d.body with
+              | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ', I') else none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+      | none => none
     | some _ => none
   | f + 1, .send none m args none =>
     -- An implicit-self call. Four routes, in this order, and the order is the design:
@@ -355,6 +379,60 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           | none => none
         | none => none
       | none => none
+    | some (.inst n Iself, Γ₁, I₁) =>
+      -- Tier 11: an instance method called with a block (`Judge.callMethodBlk`). A block with
+      -- `|x; y|` locals is refused here (`locs = []`), because the block becomes a `Ty.clos`
+      -- and `Clos` does not record them -- unlike the iterator route above, which types the
+      -- block where it stands.
+      -- Matched rather than guarded by `isEmpty` so the empty case *substitutes* `locs`, which
+      -- is what makes `Judge.callMethodBlk`'s `.block ps [] body` conclusion available.
+      match locs with
+      | [] =>
+        match chkAll f κ Γ₁ I₁ args with
+        | some (argTys, Γ₂, I₂) =>
+          match closIdx? κ.closures ps body with
+          | some idx =>
+            match mroGet? κ.classes n m with
+            | some (dc, d) =>
+              match paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)))
+                  d.params argTys with
+              | some Γb =>
+                match chk f
+                    { (κ.inMethod (.inst n Iself) dc m) with
+                      blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+                    Γb Iself d.body with
+                | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
+                | none => none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+      | _ => none
+    | some (.clsOf n, Γ₁, I₁) =>
+      -- Tier 11: a singleton method or module function called with a block
+      -- (`Judge.callSMethodBlk`).
+      match locs with
+      | [] =>
+        match chkAll f κ Γ₁ I₁ args with
+        | some (argTys, Γ₂, I₂) =>
+          match closIdx? κ.closures ps body with
+          | some idx =>
+            match smroGet? κ.classes n m with
+            | some (dc, d) =>
+              match paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)))
+                  d.params argTys with
+              | some Γb =>
+                match chk f
+                    { (κ.inMethod (.clsOf n) dc m) with
+                      blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+                    Γb .ivar0 d.body with
+                | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ₂, I₂) else none
+                | none => none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
+      | _ => none
     | _ => none
   | f + 1, .send (some recv) m args (some (.blockpass (some pe))) =>
     -- Tier 9c: the two `&` forms. Both need a one-parameter iterator; which one applies is

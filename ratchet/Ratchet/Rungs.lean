@@ -1944,6 +1944,112 @@ def r123 : Rung :=
                     (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl) .nil)
           rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
+/-! ## Tier 11 — a block reaching a method of an object
+
+The four rungs that had no rule for a reason worth remembering: tier 9 wrote the
+block-carrying call rule only for the **top-level `defs` table**, so `A.new.a { … }` — a
+class and a block, both of which had rules — was underivable, and the corpus did not notice
+because nothing in it combined them (clink 11). Each derivation below is its block-less twin
+plus `callDefBlk`'s two moves: build the block's `Ty.clos`, and put it in *both* `blockTy` and
+`paramEnvB`. -/
+
+/-- `class A; def a(&blk); blk.call(3); end; end; A.new.a { |v| v }` → `Integer`.
+
+    The `&blk` route: the block arrives out of band, `paramEnvB` names it, and `blk.call(3)` is
+    an ordinary `closCall` — on a `Ty.clos` whose creation `self` is `.never`, because the block
+    literal sits at top level even though the *call* is a method call. Both halves of clink
+    19's fix are in play at once here: the block reaches an instance method, and its body is
+    still judged against the `self` where it was written. -/
+def r115 : Rung :=
+  ⟨"xc-class-block-param",
+    .seq [.class' "A" none
+            (.def' "a" [.block (some "blk")]
+              (.send (some (.var .lvar "blk")) "call" [.int 3] none)),
+          .send (some (.send (some (.const "A")) "new" [] none)) "a" []
+            (some (.block [.req "v"] [] (.var .lvar "v")))],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethodBlk
+        (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl rfl
+        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl (.var rfl) rfl))))⟩
+
+/-- `class Counter; def initialize(n); @n = n; end; def bump; yield(@n); end; end;
+    Counter.new(5).bump { |x| x + 1 }` → `Integer`.
+
+    The `yield` route, and the rung that needed clink 19's other half: `yieldExpr` used to carry
+    `κ.selfTy = none`, which is false inside `Counter#bump`. What crosses the boundary is worth
+    tracing — `@n` is read from the **object's** spine (`ivarRead`, inside `bump`), passed as an
+    argument to a block whose body is judged against the block's own creation `self` (top level,
+    `.never`). Two different `self`s in one derivation, each used where it belongs. -/
+def r116 : Rung :=
+  ⟨"xc-class-yield-ivar",
+    .seq [.class' "Counter" none (.seq [
+            .def' "initialize" [.req "n"] (.vasgn .ivar "@n" (.var .lvar "n")),
+            .def' "bump" [] (.yield' [.var .ivar "@n"])]),
+          .send (some (.send (some (.const "Counter")) "new" [.int 5] none)) "bump" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "+" [.int 1] none)))],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethodBlk
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl (.ivarAsgn (.var rfl)))
+        .nil rfl rfl rfl
+        (.yieldExpr rfl (.cons .ivarRead .nil) rfl rfl
+          (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+
+/-- `module Runner; def self.twice; yield(1) + yield(2); end; end;
+    Runner.twice { |x| x * 10 }` → `Integer`.
+
+    A module function with a block, and the rung that shows a method may `yield` **more than
+    once**: each `yield` is a separate `yieldExpr`, checked independently at its own argument
+    types. Here both are `Int`, so both come back `Int`; a method yielding at two different
+    types would get two different answers, which is the same per-call-site instantiation the
+    whole ladder uses. -/
+def r118 : Rung :=
+  ⟨"xc-module-yield",
+    .seq [.module' "Runner" (.defs .self' "twice" []
+            (.send (some (.yield' [.int 1])) "+" [.yield' [.int 2]] none)),
+          .send (some (.const "Runner")) "twice" []
+            (some (.block [.req "x"] []
+              (.send (some (.var .lvar "x")) "*" [.int 10] none)))],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethodBlk (.constCls rfl) .nil rfl rfl rfl
+        (.prim
+          (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)
+          (.cons (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
+            (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
+          .intAdd))))⟩
+
+/-- `class Base; def wrap; "[" + yield.to_s + "]"; end; end;
+    class Child < Base; def show; wrap { 7 }; end; end; Child.new.show` → `String`.
+
+    **The densest cross-product in the corpus**, and the point is that nothing new was needed
+    for it. `wrap { 7 }` is an implicit-receiver send carrying a block, *inside* a method, whose
+    target is *inherited*: `selfCallBlk` finds `Base#wrap` by tier 7's ordinary `mroGet?` walk,
+    and the block — written inside `Child#show`, so with creation `self` `.inst "Child" ivar0`
+    — travels down to a `yield` in the parent's body. Tier 7's hierarchy, tier 9's blocks and
+    clink 19's creation-`self` field, meeting with nothing added to any of them. -/
+def r119 : Rung :=
+  ⟨"xc-inherit-implicit-block",
+    .seq [.class' "Base" none
+            (.def' "wrap" []
+              (.send (some (.send (some (.str "[")) "+"
+                [.send (some (.yield' [])) "to_s" [] none] none)) "+" [.str "]"] none)),
+          .class' "Child" (some (.const "Base"))
+            (.def' "show" [] (.send none "wrap" [] (some (.block [] [] (.int 7))))),
+          .send (some (.send (some (.const "Child")) "new" [] none)) "show" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
+      (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl) .nil rfl rfl
+        (.selfCallBlk rfl .nil rfl rfl rfl
+          (.prim
+            (.prim .strLit
+              (.cons (.prim (.yieldExpr rfl .nil rfl rfl .intLit rfl) .nil .intToS) .nil)
+              .strAdd)
+            (.cons .strLit .nil) .strAdd))))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1957,7 +2063,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
-   r117, r121, r122, r123,
+   r115, r116, r117, r118, r119, r121, r122, r123,
    r125, r126, r127, r129, r130, r131, r134]
 
 /-! ## `chk` answers exactly what was derived by hand

@@ -2018,3 +2018,86 @@ State after this clink: **110 rungs climbed** of 136 (tiers 1–8 complete, tier
 tier 11 at 4/10, tier 12 at 7/12), 110/110 cross-checked against the real semantics, 69/69
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all ten
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 20 (2026-09-01) — tier 11: a block reaching a method of an object: 110 → 114
+
+`xc-class-block-param`, `xc-class-yield-ivar`, `xc-module-yield`,
+`xc-inherit-implicit-block`. **Tier 11 is now at 8/10 — every rung it targets.** 114
+derivations, 73/73 controls, 136/136 agreement, ten theorems axiom-clean. Mismatches 12 → **8**.
+
+### Three rules, no new idea in any of them
+
+Each is its block-less twin plus `callDefBlk`'s two moves — build the block's `Ty.clos`, and
+put it in **both** `blockTy` (so `yield` can reach it) and `paramEnvB` (so a `&b` parameter can
+name it):
+
+| new rule | twin | receiver |
+|---|---|---|
+| `callMethodBlk` | `callMethod` | `.inst n Iself` |
+| `callSMethodBlk` | `callSMethod` | `.clsOf n` |
+| `selfCallBlk` | `selfCall` | implicit, inside a method body |
+
+The reason they were missing is the reason tier 11 exists: tier 9 wrote the block-carrying call
+rule for the **top-level `defs` table only**, so `A.new.a { … }` — a class and a block, both of
+which had rules for years — was underivable, and a corpus-driven ladder could not see it
+because nothing in the corpus combined them. Clink 11 found this by hand; this clink closes it.
+
+`selfCallBlk` also gains something `selfCall` does not have: **arguments**. `selfCall` has none
+because a *bare* name is the zero-argument form and a `vcall` node has nowhere to put a block —
+so the moment a block is involved the node is a `send none m args (some block)`, and there is no
+reason to restrict `args`.
+
+### `xc-inherit-implicit-block` is the densest rung in the corpus, and needed nothing new
+
+`wrap { 7 }` inside `Child#show`: an implicit-receiver send, carrying a block, inside a method,
+dispatching to an **inherited** method. `selfCallBlk` finds `Base#wrap` by tier 7's ordinary
+`mroGet?` walk; the block — written inside `Child#show`, so with creation `self`
+`.inst "Child" ivar0` — travels down to a `yield` in the parent's body, where clink 19's
+creation-`self` field is what judges its body correctly. Three tiers' mechanisms meeting with
+nothing added to any of them, which is the outcome a cross-product tier is *supposed* to have.
+
+Worth tracing `xc-class-yield-ivar` for the same reason: `@n` is read from the **object's**
+spine inside `bump`, passed as an argument to a block whose body is judged against the
+**block's** creation `self`. Two different `self`s in one derivation, each used where it
+belongs — which is only expressible at all because of clink 19.
+
+### A latent soundness bug, fixed in passing
+
+`callDefBlk` captured `envToSpine Γ` — the environment *before* the arguments — into the
+block's `Ty.clos`. A block captures locals by reference and the arguments are evaluated before
+the block ever runs, so an argument with an effect must be visible inside the block:
+
+```ruby
+x = 1
+t(x = "s") { x + 1 }      # the block sees x : String
+```
+
+would capture `x : Int` and certify a program that raises. Fixed to `Γ'` (post-arguments), and
+the three new rules copy the corrected version. No rung has an argument with an effect, so this
+was a latent bug rather than a wrong number — recorded because it is the third time on this
+ladder that "which environment does this rule mean" has been the whole question (clink 3's
+branch join, clink 11's `capIntact`, this).
+
+### One conservatism, deliberate and asymmetric
+
+The method routes refuse a block with `|x; y|` **block-locals** (`locs = []` in the
+conclusion), because the block becomes a `Ty.clos` and `Clos` records only `(params, body)`.
+The *iterator* route (clink 18) admits them, because it types the block where it stands and
+never builds a `Ty.clos` at all. That asymmetry is real and is recorded as control (vv) — safe
+Ruby, declined; lifting it means recording the locals in `Clos`.
+
+A small `chk` note that mattered for the proof: the guard is written `match locs with | [] =>`
+rather than `if locs.isEmpty then`, because the match **substitutes** `locs := []` and so makes
+the rules' `.block ps [] body` conclusion available to `split at h` without a separate
+`isEmpty`-to-equation step.
+
+### What is left, and it is now a short list
+
+Eight mismatches: **tier 10's five metaprogramming rungs** (`include`/`extend`/`prepend`, class
+reopening, `method_missing`) and **tier 12's three** — two needing the aliasing design clink 17
+deferred, and `narrow-nilable-and-union`, whose recorded target is wrong (clink 14).
+
+State after this clink: **114 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 19/22 and
+tier 11 at 8/10 — every targeted rung in both, tier 12 at 7/12), 114/114 cross-checked against
+the real semantics, 73/73 negative controls rejected, corpus agreement **136/136 with 0
+disagreements**, all ten soundness theorems axiom-clean (`propext`, `Quot.sound`).

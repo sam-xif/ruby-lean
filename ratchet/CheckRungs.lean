@@ -697,7 +697,49 @@ def controls : List Control :=
               (.seq [.vasgn .lvar "f" (.send none "lambda" []
                        (some (.block [] [] (.yield' [])))),
                      .send (some (.var .lvar "f")) "call" [] none]),
-            .send none "t" [] (some (.block [] [] (.int 3)))]⟩ ]
+            .send none "t" [] (some (.block [] [] (.int 3)))]⟩
+    -- ### Tier 11's block-carrying-call controls
+    --
+    -- (ss) The block wrapper must not launder a type error, the same requirement
+    -- `block-bad-arith` puts on `each` but through a *method*: `bump` yields the object's `@n`
+    -- (a String) into a block that adds `1` to it. Really raises TypeError, and nothing at the
+    -- call site or in the method looks wrong -- the `callMethodBlk` twin of
+    -- `fun-body-mismatch`.
+  , ⟨"class C; @n=\"s\"; def bump; yield(@n); end; end; C.new.bump { |x| x + 1 }",
+      .seq [.class' "C" none (.seq [
+              .def' "initialize" [] (.vasgn .ivar "@n" (.str "s")),
+              .def' "bump" [] (.yield' [.var .ivar "@n"])]),
+            .send (some (.send (some (.const "C")) "new" [] none)) "bump" []
+              (some (.block [.req "x"] []
+                (.send (some (.var .lvar "x")) "+" [.int 1] none)))]⟩
+    -- (tt) **`yield` without a block is still not derivable**, even now that the yielding
+    -- method may be an instance method. `blockTy` is set only by the three block-carrying call
+    -- rules, so `C.new.bump` with no block has no `yieldExpr` premise to discharge. Raises
+    -- LocalJumpError, which is *outside* the family -- so this is a conservative rejection of a
+    -- program that nevertheless crashes, exactly like `bare-undeclared-var`'s NameError.
+  , ⟨"class C; def bump; yield(1); end; end; C.new.bump (safe by this ladder; LocalJumpError)",
+      .seq [.class' "C" none (.def' "bump" [] (.yield' [.int 1])),
+            .send (some (.send (some (.const "C")) "new" [] none)) "bump" [] none]⟩
+    -- (uu) `paramEnvB` binds a `&b` parameter to `.nilT` when no block is passed -- which is
+    -- Ruby -- so `blk.call` on the block-less path raises NoMethodError on `nil`. The instance
+    -- method twin of the tier-9b control, and it says the binding is not a formality: without
+    -- it `blk` would be unbound and this would fail for the wrong reason.
+  , ⟨"class C; def a(&blk); blk.call(3); end; end; C.new.a",
+      .seq [.class' "C" none
+              (.def' "a" [.block (some "blk")]
+                (.send (some (.var .lvar "blk")) "call" [.int 3] none)),
+            .send (some (.send (some (.const "C")) "new" [] none)) "a" [] none]⟩
+    -- (vv) A block with `|x; y|` block-locals is refused on the *method* routes, because the
+    -- block becomes a `Ty.clos` and `Clos` records only `(params, body)`. Safe Ruby, declined
+    -- -- and note the asymmetry with the iterator route, which types the block where it stands
+    -- and so admits locals (`block-doend-with-block-local`). Lifting this means recording the
+    -- locals in `Clos`.
+  , ⟨"class C; def bump; yield(1); end; end; C.new.bump do |x; y| y = x; y end (safe; Clos"
+      ++ " records no block-locals)",
+      .seq [.class' "C" none (.def' "bump" [] (.yield' [.int 1])),
+            .send (some (.send (some (.const "C")) "new" [] none)) "bump" []
+              (some (.block [.req "x"] ["y"]
+                (.seq [.vasgn .lvar "y" (.var .lvar "x"), .var .lvar "y"])))]⟩ ]
 
 mutual
 

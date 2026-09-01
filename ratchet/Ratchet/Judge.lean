@@ -1995,6 +1995,14 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       two-pass machinery would have to be keyed by the block type as well as the argument
       types.
 
+      **The captured environment is `Γ'`, the environment the *arguments* left behind** — not
+      `Γ`, which is what this rule said until tier 11. A block captures locals by reference and
+      the arguments are evaluated before the block ever runs, so an argument that rebinds a
+      local at a new type must be visible inside the block: `x = 1; t(x = "s") { x + 1 }` would
+      otherwise capture `x : Int` and certify a program that raises. No rung has an argument
+      with an effect, so this was a latent bug rather than a wrong number — recorded because
+      the corrected version is what the three tier-11 block-carrying rules below copy.
+
       `κ.selfTy = none` is kept, and after tier 11 it is doing a *different* job from the one
       `lambdaLit` used it for: not protecting the block (`Ty.clos` now records its creation
       `self`, and this rule records it too) but keeping this rule **disjoint from
@@ -2007,10 +2015,75 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' →
       closIdx? κ.closures ps body = some idx →
       defGet? κ.defs m = some d →
-      paramEnvB (some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never))) d.params argTys
+      paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
-      Judge { κ with blockTy := some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) }
+      Judge { κ with blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
         Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
+  -- ### Tier 11 — a block reaching a *method of an object*
+  --
+  -- Three rules, and no new idea in any of them: each is its block-less twin
+  -- (`callMethod`/`callSMethod`/`selfCall`) with `callDefBlk`'s two extra moves — build the
+  -- block's `Ty.clos` and put it in **both** `blockTy` (for `yield`) and `paramEnvB` (for a
+  -- `&b` parameter). They exist because tier 9 wrote the block-carrying rule only for the
+  -- top-level `defs` table, so `A.new.a { … }` had no rule and nothing in the corpus noticed
+  -- until a human wrote ordinary Ruby (`implementation-notes.md` clink 11).
+  --
+  -- The block's creation `self` is `κ.selfTy` — the **call site's**, which is what
+  -- `Ty.clos`'s third field is for and what makes `xc-inherit-implicit-block` (a block
+  -- written inside `Child#show`) work.
+  /-- **`obj.m(args) { |x| … }`** — an instance method called with a block.
+      `callMethod` plus the block. -/
+  | callMethodBlk {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      closIdx? κ.closures ps body = some idx →
+      mroGet? κ.classes n m = some (dc, d) →
+      paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
+        = some Γb →
+      Judge { (κ.inMethod (.inst n Iself) dc m) with
+              blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+        Γb Iself d.body ρ Γb' Iself →
+      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ Γ₂ I₂
+  /-- **`C.m(args) { |x| … }`** — a singleton method (or a module function) called with a
+      block. `callSMethod` plus the block; the spine is `.ivar0` on both sides, because a
+      class object has no instance variables this checker models. -/
+  | callSMethodBlk {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      closIdx? κ.closures ps body = some idx →
+      smroGet? κ.classes n m = some (dc, d) →
+      paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
+        = some Γb →
+      Judge { (κ.inMethod (.clsOf n) dc m) with
+              blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+        Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ Γ₂ I₂
+  /-- **`m(args) { |x| … }` inside a method body** — implicit-self dispatch carrying a block.
+      `selfCall` plus the block, plus arguments (which `selfCall` itself does not have, because
+      a *bare* name is the zero-argument form and a `vcall` has nowhere to put a block).
+
+      This is `xc-inherit-implicit-block`'s rule, and the dispatch is the interesting part
+      rather than the block: `wrap { 7 }` inside `Child#show` finds `Base#wrap` by the ordinary
+      `mroGet?` walk, and the block — written inside `Child#show`, so with creation `self`
+      `.inst "Child" …` — travels down to a `yield` in the parent's body. Two tiers'
+      mechanisms meeting with nothing added to either. -/
+  | selfCallBlk {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iself : Ty} {m : String}
+      {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
+      κ.selfTy = some (.inst n Iself) →
+      JudgeAll κ Γ I args argTys Γ' I' →
+      closIdx? κ.closures ps body = some idx →
+      mroGet? κ.classes n m = some (dc, d) →
+      paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
+        = some Γb →
+      Judge { (κ.inMethod (.inst n Iself) dc m) with
+              blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+        Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
   /-- **`yield args`** — invoke the block the enclosing method was called with.
 

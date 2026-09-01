@@ -435,6 +435,31 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
+    · -- tier 11: implicit-self dispatch carrying a block (`Judge.selfCallBlk`)
+      rename_i hself
+      split at h
+      · rename_i hargs
+        split at h
+        · rename_i hidx
+          split at h
+          · rename_i hmeth
+            split at h
+            · rename_i hpar
+              split at h
+              · rename_i hbody
+                split at h
+                · rename_i hI
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .selfCallBlk hself (chkAll_sound hargs) hidx hmeth hpar
+                    (by subst hI; exact chk_sound hbody)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args`: strictness, then the assumption table, then the def table.
     split at h
@@ -527,6 +552,61 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                     exact .iterBlock (chk_sound hrecv) (chkAll_sound hargs)
                       (iterSig?_sound hpar hres) hpe
                       (by subst hI; exact chk_sound hbody) hcap
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · -- tier 11: an instance method called with a block (`Judge.callMethodBlk`)
+      rename_i hrecv
+      split at h
+      · split at h
+        · rename_i hargs
+          split at h
+          · rename_i hidx
+            split at h
+            · rename_i hmeth
+              split at h
+              · rename_i hpar
+                split at h
+                · rename_i hbody
+                  split at h
+                  · rename_i hI
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .callMethodBlk (chk_sound hrecv) (chkAll_sound hargs) hidx hmeth
+                      hpar (by subst hI; exact chk_sound hbody)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · -- tier 11: a singleton method / module function called with a block
+      -- (`Judge.callSMethodBlk`)
+      rename_i hrecv
+      split at h
+      · split at h
+        · rename_i hargs
+          split at h
+          · rename_i hidx
+            split at h
+            · rename_i hmeth
+              split at h
+              · rename_i hpar
+                split at h
+                · rename_i hbody
+                  split at h
+                  · rename_i hI
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .callSMethodBlk (chk_sound hrecv) (chkAll_sound hargs) hidx hmeth
+                      hpar (by subst hI; exact chk_sound hbody)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
