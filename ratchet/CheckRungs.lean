@@ -541,7 +541,40 @@ def controls : List Control :=
                      .if' (.send (some (.var .lvar "x")) "nil?" [] none)
                        (.ret (some (.send (some (.var .lvar "x")) "+" [.int 1] none))) none,
                      .int 0]),
-            .send none "f" [.array []] none]⟩ ]
+            .send none "f" [.array []] none]⟩
+    -- ### Tier 12's ivar controls
+    --
+    -- (gg) The polarity swap, one piece of state over: `@v` is a String, `is_a?(Integer)` is
+    -- false, the else-branch runs and `"s" + 1` raises TypeError. Certified by any
+    -- implementation that hands `isATy` to the else-branch of an *ivar* test -- which is a
+    -- separate code path from the local one, hence a separate control.
+  , ⟨"class H; @v = \"s\"; def d; if @v.is_a?(Integer) then @v + \"!\" else @v + 1 end; end;"
+      ++ " H.new.d",
+      .seq [.class' "H" none (.seq [
+              .def' "initialize" [] (.vasgn .ivar "@v" (.str "s")),
+              .def' "d" []
+                (.if' (.send (some (.var .ivar "@v")) "is_a?" [.const "Integer"] none)
+                  (.send (some (.var .ivar "@v")) "+" [.str "!"] none)
+                  (some (.send (some (.var .ivar "@v")) "+" [.int 1] none)))]),
+            .send (some (.send (some (.const "H")) "new" [] none)) "d" [] none]⟩
+    -- (hh) **The control that says the spine *join* did not weaken clink 6's invariant.**
+    -- `Judge.if'` now widens a disagreeing spine instead of rejecting it, and the question that
+    -- raises is whether a *method* can now retype an instance variable out from under its
+    -- caller. It cannot: `callMethod`'s premise is still that the body's outgoing spine equals
+    -- its incoming one, and `joinSpine` of two branches that both say `@x : String` is
+    -- `@x : String`, not `@x : Int`. This program really raises TypeError.
+  , ⟨"class C; @x = 1; def m(f); if f then @x = \"s\" else @x = \"s\" end; end; def get; @x;"
+      ++ " end; end; c = C.new; c.m(true); c.get + 1",
+      .seq [.class' "C" none (.seq [
+              .def' "initialize" [] (.vasgn .ivar "@x" (.int 1)),
+              .def' "m" [.req "f"]
+                (.if' (.var .lvar "f")
+                  (.vasgn .ivar "@x" (.str "s"))
+                  (some (.vasgn .ivar "@x" (.str "s")))),
+              .def' "get" [] (.var .ivar "@x")]),
+            .vasgn .lvar "c" (.send (some (.const "C")) "new" [] none),
+            .send (some (.var .lvar "c")) "m" [.tru] none,
+            .send (some (.send (some (.var .lvar "c")) "get" [] none)) "+" [.int 1] none]⟩ ]
 
 mutual
 

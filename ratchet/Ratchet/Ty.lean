@@ -293,6 +293,42 @@ def ivarSet : Ty → String → Ty → Ty
     if n == x then .ivarCons x ρ rest else .ivarCons n τ (ivarSet rest x ρ)
   | other, _, _ => other
 
+/-! ## Joining spines (tier 12)
+
+`joinEnv` for the ivar spine. Added when `narrow-union-in-ivar` forced it: `Judge.if'` used to
+*require* the two branches to agree on the spine (`I₁ = I₂`, clink 6), which made
+`if flag then @v = 1 else @v = "s" end` untypeable — and so made an object whose ivar type
+depends on a constructor argument not describable at all.
+
+Clink 6's argument for requiring agreement was that a spine is part of the *type* of `self`
+(see `Ty.inst`) and there is no widening of it that keeps that type honest. Narrowing is what
+makes the widening honest: `@v : union Int String` is now a type something can *consume*, so
+the union is a real upper bound rather than a dead end.
+
+Same defaulting as `joinEnv`, for the same reason one level down: a name bound in only one
+branch joins against `.nilT`, because reading an instance variable that was never assigned
+yields `nil` (`ivarGet?`'s docstring, and `class-ivar-lazy-nil`). -/
+
+/-- The names bound in a spine, in order. -/
+def spineKeys : Ty → List String
+  | .ivarCons x _ rest => x :: spineKeys rest
+  | _ => []
+
+def joinSpineAt (I₁ I₂ : Ty) : List String → Ty
+  | [] => .ivar0
+  | x :: xs =>
+    .ivarCons x (joinT ((ivarGet? I₁ x).getD .nilT) ((ivarGet? I₂ x).getD .nilT))
+      (joinSpineAt I₁ I₂ xs)
+
+/-- The join of two branch **spines**, pointwise over the union of their names.
+
+Note `joinSpine I I = I` for any spine `I`, and *definitionally* so — `joinT τ τ` reduces to
+`τ` and the key order is `I`'s own. That is not a nicety: it is what let `Judge.if'`'s spine
+premise be generalized from `I₁ = I₂` to `joinSpine I₁ I₂ = I₃` **without editing a single one
+of the derivation terms already on file**, each of which discharges it with the same `rfl`. -/
+def joinSpine (I₁ I₂ : Ty) : Ty :=
+  joinSpineAt I₁ I₂ (spineKeys I₁ ++ (spineKeys I₂).filter (fun k => !(spineKeys I₁).contains k))
+
 /-! ## Locals as a spine
 
 Tier 9 needs a local environment inside a `Ty` (a closure's captured bindings — see

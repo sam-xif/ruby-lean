@@ -1653,3 +1653,94 @@ State after this clink: **96 rungs climbed** of 136 (tiers 1–8 complete, tier 
 tier 11 at 1/10, tier 12 at 5/12), 96/96 cross-checked against the real semantics, 56/56
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 16 (2026-09-01) — tier 12d: narrowing an ivar, and joining the spine: 96 → 97
+
+`narrow-union-in-ivar`. 97 derivations, 58/58 controls, 136/136 agreement, eight theorems
+axiom-clean.
+
+### This clink reverses clink 6's most deliberate restriction
+
+`Judge.if'` has required the two branches to **agree** on the ivar spine (`I₁ = I₂`) since
+tier 7. Clink 6's argument for that was explicit and good: a spine is not merely state, it is
+part of the *type* of `self` (`Ty.inst`), and there is no pointwise widening of it that keeps
+that type honest. The consequence was that
+
+```ruby
+class Holder
+  def initialize(flag)
+    if flag then @v = 1 else @v = "s" end
+  end
+  ...
+end
+```
+
+was not typeable **at all** — not imprecisely typed, untypeable, because no spine described the
+result. Clink 12 flagged this as the one tier-12 rung that is a demand on an *existing* rule.
+
+The premise is now `joinSpine I₁ I₂ = I₃`, with `I₃` the outgoing spine. Clink 6's argument was
+not wrong, it was *early*: widening `@v` to `union Int String` is honest exactly when a union is
+something code can consume, and tiers 12a–12c are what made that true. The rung is the matched
+pair — the widening in `initialize`, the narrowing in `describe` — and neither half is any use
+alone.
+
+**`joinSpine I I = I` definitionally**, which is why generalizing the premise cost **zero edits
+to the 96 derivation terms already on file**: each of them discharges the new premise with the
+same `rfl` it used for the old one. That property (`joinT τ τ` reduces to `τ`, key order taken
+from the left spine) is worth keeping in mind if `joinSpine` is ever changed.
+
+### The refinement had to learn which state it lands in
+
+`narrowCond?` now returns the **`VarKind`** along with the name, and there are two consumers:
+`narrowEnvs` (acts only on `.lvar`) and `narrowSpine` (acts only on `.ivar`). `.cvar`/`.gvar`
+fall through both, which is the right answer rather than an omission — no rule in this judgment
+types either.
+
+`narrowSpine` differs from `narrowEnvs` in two ways, both forced by what a spine is:
+
+- **There is no "not found" case.** An instance variable that was never assigned reads `nil`
+  (`ivarGet?`'s `.getD .nilT`, `class-ivar-lazy-nil`), so a miss refines `.nilT` — and that is
+  *informative*, not a shrug: `if @v.is_a?(Integer)` on a never-assigned `@v` types the
+  then-branch with `@v : never`, i.e. as unreachable, which is exactly right. (Consequence
+  worth knowing: `class H; def d; if @v.is_a?(Integer) then @v + 1 else 0 end; end; end` now
+  *validates*, at `Int`, with the then-branch vacuous.)
+- **`ivarSet` appends**, so refining a name the spine does not carry lengthens it. Harmless —
+  the added binding is what `ivarRead` would have defaulted to, and the outgoing spine is
+  `joinSpine I₁ I₂`, which puts it back.
+
+`JudgeSeq.guard` got the same treatment for symmetry (a guard may test an ivar); its `Ir = Ic`
+premise became `Ir = (narrowSpine …).1`, which `narrow-guard-clause`'s existing `rfl` still
+discharges because its condition tests a local.
+
+### The two controls, and the question the join raises
+
+Widening a disagreeing spine instead of rejecting it invites one obvious worry: can a *method*
+now retype an instance variable out from under its caller? No — `callMethod`'s premise is still
+that the body's outgoing spine equals its incoming one, and `joinSpine` of two branches that
+both say `@x : String` is `@x : String`, not `@x : Int`. Control (hh) is that program, and it
+really raises `TypeError`. Control (gg) is the ivar polarity swap, which is a *separate* code
+path from the local one and so needs its own control.
+
+### A third `Rungs.lean` elaboration cost, and the pattern in all three
+
+`narrow-union-in-ivar`'s derivation needs tactic mode plus nine written-out indices. The
+reasons compound, and they are worth naming as one pattern, because they will recur at every
+later rung that narrows inside a method body:
+
+1. `joinT`/`joinEnv`/`joinSpine` are **not injective**, so the branch types, environments and
+   spines cannot be recovered from `if'`'s conclusion (first seen at `narrow-union-subclass`).
+2. `narrowEnvs`/`narrowSpine` need the condition's **syntax**, which only the conclusion
+   supplies — so they cannot reduce while the premises are being elaborated.
+3. `callMethod`'s body premise reads the method's syntax out of a `Defn` that a *later*
+   premise's `rfl` produces (`mroGet? … = some (dc, d)`, then `d.body`), so the body's `Expr`
+   is a metavariable when (2) needs it.
+
+The fix is mechanical once seen: `refine` the conclusion (which solves the syntax), state the
+non-recoverable indices, and leave each premise a hole. And the annotations read as a statement
+of what the rung does — `@v` enters as a union, the branches see `Int` and `String`, and
+`joinSpine` returns it to the union — so this is a legibility cost, not a soundness one.
+
+State after this clink: **97 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 10/22,
+tier 11 at 1/10, tier 12 at 6/12), 97/97 cross-checked against the real semantics, 58/58
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
+soundness theorems axiom-clean (`propext`, `Quot.sound`).

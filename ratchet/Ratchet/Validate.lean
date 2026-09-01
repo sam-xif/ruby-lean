@@ -121,21 +121,23 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- Tier 12: each branch is typed in the environment `narrowEnvs` refines for it. The
       -- function is total and the identity on an unrecognized condition, so this arm reads
       -- the same as it did before narrowing existed for every condition below tier 12.
-      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic t with
+      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t with
       | some (τ₁, Γ₁, I₁) =>
-        match chk f κ (narrowEnvs κ.classes c Γc).2 Ic e with
+        match chk f κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 e with
         | some (τ₂, Γ₂, I₂) =>
-          -- The two branches must agree on the ivar spine; locals are joined instead.
-          if I₁ = I₂ then some (joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, I₁) else none
+          -- Both threaded states are joined: locals by `joinEnv`, the ivar spine by
+          -- `joinSpine` (tier 12c -- this used to demand `I₁ = I₂`).
+          some (joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, joinSpine I₁ I₂)
         | none => none
       | none => none
     | none => none
   | f + 1, .if' c t none =>
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic t with
+      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t with
       | some (τ, Γ₁, I₁) =>
-        if I₁ = Ic then some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2, Ic) else none
+        some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2,
+              joinSpine I₁ (narrowSpine κ.classes c Ic).2)
       | none => none
     | none => none
   | f + 1, .array es =>
@@ -494,10 +496,11 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
     -- no rule, because `.ret` has none.
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ (narrowEnvs κ.classes c Γc).1 Ic r with
+      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 r with
       | some (ρ, _, Ir) =>
-        if Ir = Ic then
-          match chkSeq f κ (narrowEnvs κ.classes c Γc).2 Ic (e' :: es) with
+        if Ir = (narrowSpine κ.classes c Ic).1 then
+          match chkSeq f κ (narrowEnvs κ.classes c Γc).2
+              (narrowSpine κ.classes c Ic).2 (e' :: es) with
           | some (τ, Γ', I') => some (joinT ρ τ, Γ', I')
           | none => none
         else none

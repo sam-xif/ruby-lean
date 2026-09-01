@@ -1582,6 +1582,76 @@ def r131 : Rung :=
           (.guard (.prim (.var rfl) .nil (.nilQuery (.nilable .int))) .intLit rfl
             (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))))))⟩
 
+/-- `class Holder; def initialize(flag); if flag then @v = 1 else @v = "s" end; end;
+    def describe; if @v.is_a?(Integer) then @v + 1 else @v + "!" end; end; end;
+    Holder.new(true).describe` → `union(Int, String)`.
+
+    **The rung that reverses clink 6's most deliberate restriction.** `Judge.if'` used to
+    *require* the two branches to agree on the ivar spine, so this class was not typeable at
+    all: its `initialize` assigns `@v` at `Int` on one path and `String` on the other, and there
+    was no spine that described the result. The premise is now `joinSpine I₁ I₂ = I₃`, and the
+    instance's type is `inst Holder (@v : union Int String)`.
+
+    Clink 6's argument for the restriction was not wrong, it was *early*: a spine is part of the
+    type of `self`, and widening it to a union is only honest if a union is something code can
+    consume. Tier 12 is what made that true, and this rung is the pair — the widening in
+    `initialize`, the narrowing in `describe`, and neither is any use without the other.
+
+    Two mechanical points worth reading off the derivation:
+
+    - the condition is `.ivarRead`, and the refinement lands in the **spine** rather than the
+      environment (`narrowSpine`, selected by the `VarKind` `narrowCond?` now returns);
+    - `callMethod`'s premise that a method may not retype an instance variable
+      (`… d.body ρ Γb' Iself`, clink 6's soundness invariant) still holds, and holds *because*
+      of the join: the two branches leave `@v` at `Int` and at `String`, and `joinSpine` puts it
+      back at exactly the `union` it came in as. Had the join produced anything else, this rung
+      would not compile. -/
+def r129 : Rung :=
+  ⟨"narrow-union-in-ivar",
+    .seq [.class' "Holder" none (.seq [
+            .def' "initialize" [.req "flag"]
+              (.if' (.var .lvar "flag")
+                (.vasgn .ivar "@v" (.int 1))
+                (some (.vasgn .ivar "@v" (.str "s")))),
+            .def' "describe" []
+              (.if' (.send (some (.var .ivar "@v")) "is_a?" [.const "Integer"] none)
+                (.send (some (.var .ivar "@v")) "+" [.int 1] none)
+                (some (.send (some (.var .ivar "@v")) "+" [.str "!"] none)))]),
+          .send (some (.send (some (.const "Holder")) "new" [.tru] none)) "describe" [] none],
+    .union .int (.cls "String"), [],
+    -- `Iself` is written out because `callMethod`'s body premise reads the method's syntax out
+    -- of a `Defn` that a *later* premise's `rfl` produces, and the body here is an `if'` whose
+    -- own premises mention `narrowSpine … Ic` — so without it the refinement cannot reduce
+    -- while the branches are being elaborated. It is also the most informative thing to state
+    -- about this rung: it *is* the widened spine.
+    (by
+      refine .seq (.cons (.classStmt rfl)
+        (.last (.callMethod
+          (Iself := .ivarCons "@v" (.union .int (.cls "String")) .ivar0) (Γb' := [])
+          (.newInst (.constCls rfl) (.cons .truLit .nil) rfl rfl
+            (.if' (.var rfl) (.ivarAsgn .intLit) (.ivarAsgn .strLit) rfl))
+          .nil rfl rfl ?_)))
+      -- `describe`'s body, deferred to a hole so it is elaborated *after* `callMethod`'s
+      -- `mroGet?` premise has produced the `Defn` it is the `.body` of. Without that, the
+      -- condition's syntax is still a metavariable when `narrowSpine` has to reduce, and the
+      -- refined `@v` cannot be computed.
+      -- Every index of the `if'` is written out, and then each premise is a separate hole.
+      -- The reason is the same one `narrow-union-subclass` records — `joinT`/`joinEnv`/
+      -- `joinSpine` are not injective, so the branch types, environments and spines cannot be
+      -- recovered from the conclusion — with one addition specific to an *ivar* refinement:
+      -- `narrowSpine` also needs the condition's **syntax**, which only the conclusion
+      -- supplies. `refine` unifies the conclusion first; the holes are then concrete.
+      -- Read the six as the statement of what this rung does: `@v` enters as a union, the
+      -- branches see `Int` and `String`, and `joinSpine` returns it to the union.
+      refine Judge.if' (Γc := []) (Γ₁ := []) (Γ₂ := [])
+        (Ic := .ivarCons "@v" (.union .int (.cls "String")) .ivar0)
+        (I₁ := .ivarCons "@v" .int .ivar0)
+        (I₂ := .ivarCons "@v" (.cls "String") .ivar0)
+        (τ₁ := .int) (τ₂ := .cls "String") (σ := .bool) ?_ ?_ ?_ rfl
+      · exact .isAQuery .ivarRead (.cons (.constBuiltin .integer rfl) .nil) rfl
+      · exact .prim .ivarRead (.cons .intLit .nil) .intAdd
+      · exact .prim .ivarRead (.cons .strLit .nil) .strAdd)⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1595,7 +1665,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r094, r095, r098, r099, r100, r105,
    r121,
-   r125, r126, r127, r130, r131]
+   r125, r126, r127, r129, r130, r131]
 
 /-! ## `chk` answers exactly what was derived by hand
 

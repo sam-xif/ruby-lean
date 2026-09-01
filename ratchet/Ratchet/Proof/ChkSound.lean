@@ -193,13 +193,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
       · rename_i ht
         split at h
         · rename_i he
-          split at h
-          · rename_i hI
-            injection h with h
-            injection h with h h'; injection h' with h' h''
-            subst h; subst h'; subst h''
-            exact .if' (chk_sound hc) (chk_sound ht) (chk_sound he) hI
-          · exact absurd h (by simp)
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .if' (chk_sound hc) (chk_sound ht) (chk_sound he) rfl
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
@@ -208,13 +205,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     · rename_i hc
       split at h
       · rename_i ht
-        split at h
-        · rename_i hI
-          injection h with h
-          injection h with h h'; injection h' with h' h''
-          subst h; subst h'; subst h''
-          exact .ifNoElse (chk_sound hc) (chk_sound ht) hI
-        · exact absurd h (by simp)
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .ifNoElse (chk_sound hc) (chk_sound ht) rfl
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `array es`: every element typed, and the literal's type is `arrayOf` of the join

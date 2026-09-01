@@ -1037,30 +1037,36 @@ local, and sending a total zero-argument builtin to a local. A condition like
 general side condition ("the condition assigns to no local the refinement mentions") is a
 premise this ladder has not needed to state because no recognized form can assign at
 all. -/
-inductive NarrowCond : Expr → String → NarrowKind → Prop
-  /-- `if x` — the condition is exactly a local read. Ruby tests the value's truthiness
-      and nothing else, so the then-branch has `x` non-`nil`/non-`false` and the
+inductive NarrowCond : Expr → VarKind → String → NarrowKind → Prop
+  /-- `if x` / `if @x` — the condition is exactly a variable read. Ruby tests the value's
+      truthiness and nothing else, so the then-branch has it non-`nil`/non-`false` and the
       else-branch has it one of those two. -/
-  | bareVar {x : String} : NarrowCond (.var .lvar x) x .truthy
+  | bareVar {k : VarKind} {x : String} : NarrowCond (.var k x) k x .truthy
   /-- `if x.nil?` — `nil?` is total (`PrimSig.nilQuery`) and answers exactly "is this
-      value `nil`". The receiver being a bare local read is what ties the answer to `x`. -/
-  | nilQuery {x : String} :
-      NarrowCond (.send (some (.var .lvar x)) "nil?" [] none) x .isNil
+      value `nil`". The receiver being a bare variable read is what ties the answer to `x`. -/
+  | nilQuery {k : VarKind} {x : String} :
+      NarrowCond (.send (some (.var k x)) "nil?" [] none) k x .isNil
   /-- `if x.is_a?(C)`, with the class written as a **bare constant**. The class name is read
       off the *syntax* rather than off the argument's type, and the two agree because the
       only rules that type a `.const n` (`constCls`, `constBuiltin`) both answer
       `.clsOf n` for the very same `n`. A non-constant argument (`x.is_a?(k)`) is not
       recognized: the rule `Judge.isAQuery` would still type the send, but there would be no
       class *name* to refine by. -/
-  | isAQuery {x cn : String} :
-      NarrowCond (.send (some (.var .lvar x)) "is_a?" [.const cn] none) x (.isA cn)
+  | isAQuery {k : VarKind} {x cn : String} :
+      NarrowCond (.send (some (.var k x)) "is_a?" [.const cn] none) k x (.isA cn)
 
 /-- The executable recognizer. `none` means "this condition tells the checker nothing",
-which is the answer for every condition in tiers 1–11. -/
-def narrowCond? : Expr → Option (String × NarrowKind)
-  | .var .lvar x => some (x, .truthy)
-  | .send (some (.var .lvar x)) "nil?" [] none => some (x, .isNil)
-  | .send (some (.var .lvar x)) "is_a?" [.const cn] none => some (x, .isA cn)
+which is the answer for every condition in tiers 1–11.
+
+**The `VarKind` is part of the answer** (tier 12c), because a refinement lands in a different
+piece of state depending on it: a `.lvar` narrows the environment (`narrowEnvs`), an `.ivar`
+narrows the spine (`narrowSpine`), and `.cvar`/`.gvar` narrow nothing, because no rule in this
+judgment types either — so both consumers below are the identity on them, which is the right
+answer rather than an omission. -/
+def narrowCond? : Expr → Option (VarKind × String × NarrowKind)
+  | .var k x => some (k, x, .truthy)
+  | .send (some (.var k x)) "nil?" [] none => some (k, x, .isNil)
+  | .send (some (.var k x)) "is_a?" [.const cn] none => some (k, x, .isA cn)
   | _ => none
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**
@@ -1077,11 +1083,31 @@ a second, parallel `ifNarrow` rule — and that in turn is what keeps there from
 rules for one syntactic form, only one of which anybody reads. -/
 def narrowEnvs (C : CTable) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
-  | some (x, k) =>
+  | some (.lvar, x, k) =>
     match envGet? Γ x with
     | some τ => (envSet Γ x (refineThen C k τ), envSet Γ x (refineElse C k τ))
     | none => (Γ, Γ)
-  | none => (Γ, Γ)
+  | _ => (Γ, Γ)
+
+/-- **The two branch ivar spines**, the same construction one piece of state over
+(tier 12c, `narrow-union-in-ivar`).
+
+Two differences from `narrowEnvs`, both consequences of what a spine is:
+
+- **There is no "not found" case.** Reading an instance variable that was never assigned
+  yields `nil` in Ruby, so a miss refines `.nilT` rather than declining to refine — which is
+  the same `.getD .nilT` `Judge.ivarRead` uses, and it is *informative*: `if @v.is_a?(Integer)`
+  on a never-assigned `@v` types the then-branch with `@v : never`, i.e. as unreachable, which
+  is exactly right.
+- **`ivarSet` appends**, so refining a name the spine does not carry lengthens it. Harmless:
+  the added binding is what `ivarRead` would have defaulted to anyway, and `Judge.if'`'s
+  outgoing spine is `joinSpine I₁ I₂`, which puts it back. -/
+def narrowSpine (C : CTable) (c : Expr) (I : Ty) : Ty × Ty :=
+  match narrowCond? c with
+  | some (.ivar, x, k) =>
+    let τ := (ivarGet? I x).getD .nilT
+    (ivarSet I x (refineThen C k τ), ivarSet I x (refineElse C k τ))
+  | _ => (I, I)
 
 mutual
 
@@ -1195,12 +1221,18 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       outgoing environment is `joinEnv Γ₁ Γ₂`, and a name the two branches disagree about
       ends up at a union that no rule can consume.
 
-      **The ivar spine is *not* joined; the two branches must agree on it.** `I₁ = I₂` is a
-      premise, not a join, and the difference from the locals is deliberate: a spine is not
-      just state, it is part of the *type* of `self` (see `Ty.inst`), and there is no
-      pointwise widening of it that keeps that type honest. A branch that assigns an
-      instance variable at a new type is therefore rejected rather than widened. No rung
-      needs the precision, and the conservatism is in the safe direction.
+      **The ivar spine is joined too, and that changed at tier 12.** Clink 6 made `I₁ = I₂` a
+      *premise* rather than a join, arguing that a spine is part of the **type** of `self`
+      (see `Ty.inst`) and that no pointwise widening of it keeps that type honest. Narrowing is
+      what makes the widening honest — `@v : union Int String` is now something a branch can
+      consume — so the premise is now `joinSpine I₁ I₂ = I₃`, with `I₃` the outgoing spine.
+      That is strictly more permissive, and it is what makes `narrow-union-in-ivar` typeable:
+      `if flag then @v = 1 else @v = "s" end` used to have no derivation at all.
+
+      Why it is still written as a premise-plus-index rather than putting `joinSpine I₁ I₂`
+      straight in the conclusion: `joinSpine I I = I` holds *definitionally*, so every
+      derivation term written against the old `I₁ = I₂` premise discharges the new one with the
+      same `rfl`, and none of the 96 on file had to be edited.
 
       **Each branch is typed in a *narrowed* environment** (tier 12). This is the one part
       of the rule that is a claim about Ruby's *dynamic* behaviour rather than about the
@@ -1220,13 +1252,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       branch it is applied in, and the branch bodies do not mention the condition. There is
       no substitution that could express it — see `implementation-notes.md` clink 12, and
       `NarrowCond` for what evaluating the condition is required not to do. -/
-  | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ : Ty} {c t e : Expr}
+  | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ I₃ : Ty} {c t e : Expr}
       {σ τ₁ τ₂ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs κ.classes c Γc).1 Ic t τ₁ Γ₁ I₁ →
-      Judge κ (narrowEnvs κ.classes c Γc).2 Ic e τ₂ Γ₂ I₂ →
-      I₁ = I₂ →
-      Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₁
+      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t τ₁ Γ₁ I₁ →
+      Judge κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 e τ₂ Γ₂ I₂ →
+      joinSpine I₁ I₂ = I₃ →
+      Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₃
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
       this is the same rule with the else-branch's type fixed at `.nilT` and its
       environment fixed at `Γc` — the state as of the end of the condition.
@@ -1236,11 +1268,16 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Tier 12's narrowing applies to both halves for the same reasons as in `if'`, and the
       *else* half is worth a second look: the missing branch still **runs**, in the sense
       that control flows past the `if` having taken it, so what the code after the `if`
-      sees on that path is `(narrowEnvs κ.classes c Γc).2`, not `Γc`. Using `Γc` would be sound but
-      strictly less precise; using `.1` would be a bug. -/
-  | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ : Ty} {c t : Expr} {σ τ : Ty} :
-      Judge κ Γ I c σ Γc Ic → Judge κ (narrowEnvs κ.classes c Γc).1 Ic t τ Γ₁ I₁ → I₁ = Ic →
-      Judge κ Γ I (.if' c t none) (joinT τ .nilT) (joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2) Ic
+      sees on that path is `(narrowEnvs κ.classes c Γc).2`, not `Γc`. Using `Γc` would be sound
+      but strictly less precise; using `.1` would be a bug. The spine is treated the same way,
+      and its premise is the `joinSpine` of `if'`, with the absent branch's refined spine in
+      place of a second branch's. -/
+  | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ I₂ : Ty} {c t : Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ Γc Ic →
+      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t τ Γ₁ I₁ →
+      joinSpine I₁ (narrowSpine κ.classes c Ic).2 = I₂ →
+      Judge κ Γ I (.if' c t none) (joinT τ .nilT)
+        (joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2) I₂
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
       threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
@@ -1926,8 +1963,9 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
   | guard {κ : Ctx} {Γ Γc Γr Γ' : Env} {I Ic Ir I' : Ty} {c e : Expr}
       {rest : List Expr} {σ ρ τ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs κ.classes c Γc).1 Ic e ρ Γr Ir → Ir = Ic →
-      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 Ic rest τ Γ' I' →
+      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 e ρ Γr Ir →
+      Ir = (narrowSpine κ.classes c Ic).1 →
+      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
 
 end
