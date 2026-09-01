@@ -403,6 +403,48 @@ def controls : List Control :=
               (.send (some (.int 1)) "+" [.str "a"] none)),
             .if' (.send (some (.send (some (.const "C")) "new" [] none)) "===" [.int 5] none)
               (.int 1) (some (.int 2))]⟩
+    -- ### Tier 16b's controls -- `begin`/`rescue`
+    --
+    -- (h1) **The corpus's `ctl-rescue-wrong-class-unsafe`, and the point of the whole tier.**
+    -- `1 + "a"` raises TypeError; the handler catches ArgumentError; so the program raises. A
+    -- checker that read any `begin` as discharging the type-error family would certify it --
+    -- and `Judge.begin'` does not look at the rescued classes when typing the body at all, for
+    -- exactly this reason. The body's `1 + "a"` simply has no derivation.
+  , ⟨"begin; 1 + \"a\"; rescue ArgumentError; 0; end",
+      .begin' (.send (some (.int 1)) "+" [.str "a"] none)
+        [([.const "ArgumentError"], none, .int 0)] none none⟩
+    -- (h2) **`raise`'s `excName?` premise.** `raise 5` raises TypeError ("exception
+    -- class/object expected"), which is inside the family -- so the first argument really has
+    -- to name an exception class, and an ordinary class does not count either.
+  , ⟨"raise 5",
+      .send none "raise" [.int 5] none⟩
+    -- (h3) A declared class that is *not* an exception: `excName?` walks `Cls.super?` and finds
+    -- no builtin exception name, so this is refused. CRuby: "class or module required for
+    -- rescue clause"/"exception class/object expected" (TypeError).
+  , ⟨"class Plain; end; raise Plain",
+      .seq [.class' "Plain" none .nil, .send none "raise" [.const "Plain"] none]⟩
+    -- (h4) **A handler is typed whether or not it can be reached.** The body cannot raise, so
+    -- this program is safe and runs to a value -- and it is still declined, because
+    -- `JudgeRescues` types every clause. That conservatism is the right shape: a handler that
+    -- *would* raise if reached is refused rather than excused by an argument about
+    -- reachability, which this judgment does not make.
+  , ⟨"begin; 1; rescue StandardError; 1 + \"a\"; end",
+      .begin' (.int 1)
+        [([.const "StandardError"], none, .send (some (.int 1)) "+" [.str "a"] none)]
+        none none⟩
+    -- (h5) **`noLocalAsgn body`, the environment premise, measured.** Perfectly safe Ruby,
+    -- declined: the body assigns, so a handler could run with `v` at a type neither the entry
+    -- nor the exit environment records. This is the cheap sound answer and this control is its
+    -- price -- it also costs the corpus rungs `ctl-begin-rescue-else-ensure` and
+    -- `ctl-rescue-in-block`.
+  , ⟨"begin; v = 1; v; rescue StandardError; 0; end (safe; body assigns)",
+      .begin' (.seq [.vasgn .lvar "v" (.int 1), .var .lvar "v"])
+        [([.const "StandardError"], none, .int 0)] none none⟩
+    -- (h6) **`e.message`'s receiver guard.** `PrimSig.excMessage` is keyed on the receiver's
+    -- *name* being an exception class; without that it would fire for `.cls "String"`, where
+    -- `message` is a NoMethodError.
+  , ⟨"\"abc\".message",
+      .send (some (.str "abc")) "message" [] none⟩
     -- ### Tier 7's controls
     --
     -- (a) **The control for `Judge.callMethod`'s no-retyping premise**, and the most
@@ -1272,6 +1314,10 @@ def toRubyCore : Expr → Option RubyCore.Expr
   -- Tier 15: a regexp literal.
   | .regexpLit src opts => some (.regexpLit src opts)
   -- Tier 16: `while` and a bare `next`.
+  -- Tier 16b: `begin`/`rescue` (no `else`/`ensure`, which is all `Judge.begin'` covers).
+  | .begin' body rescues none none => do
+    let body' ← toRubyCore body
+    return .begin' body' (← toRubyCoreRescues rescues) none none
   | .while' c body => do
     let c' ← toRubyCore c
     return .while' c' (← toRubyCore body)
@@ -1337,6 +1383,24 @@ def toRubyCoreParam : Param → Option RubyCore.Param
     | some e => (toRubyCore e).map (fun e' => .key k (some e'))
   | .opt x d => (toRubyCore d).map (fun d' => .opt x d')
   | _ => none
+
+/-- The rescue-clause companion (tier 16b). -/
+def toRubyCoreRescues :
+    List (List Expr × Option (TargetKind × String) × Expr) →
+    Option (List (List RubyCore.Expr × Option (RubyCore.TargetKind × String) × RubyCore.Expr))
+  | [] => some []
+  | (cls, binding, handler) :: rest => do
+    let cls' ← cls.mapM toRubyCore
+    let handler' ← toRubyCore handler
+    let binding' : Option (RubyCore.TargetKind × String) :=
+      match binding with
+      | none => none
+      | some (.lvar, x) => some (.lvar, x)
+      | some (.ivar, x) => some (.ivar, x)
+      | some (.cvar, x) => some (.cvar, x)
+      | some (.gvar, x) => some (.gvar, x)
+      | some (.const, x) => some (.const, x)
+    return (cls', binding', handler') :: (← toRubyCoreRescues rest)
 
 /-- The keyword-entry companion (tier 14c). Only `.pair`, which is all `JudgeKw` types. -/
 def toRubyCoreKw : List KwEntry → Option (List RubyCore.KwEntry)

@@ -21,6 +21,12 @@ Axiom-clean: the `#print axioms` at the bottom is part of the file.
 
 namespace Ratchet
 
+-- File-level, and raised twice. Originally for `chkSeq_sound`'s guard-clause arm (see the note
+-- at `chk_sound`); raised again when tiers 15 and 16 took `primSig?` from 18 rows to 33, since
+-- `primSig?_sound` is one `split` over the whole table and its cost grows with it. Not a
+-- soundness knob: a heartbeat limit can only turn a proof into an error.
+set_option maxHeartbeats 4000000
+
 /-- `eqSafe?` never admits a receiver `EqSafe` does not. -/
 theorem eqSafe?_sound {σ : Ty} (h : eqSafe? σ = true) : EqSafe σ := by
   cases σ
@@ -50,6 +56,54 @@ theorem nilQSafe?_sound : ∀ {σ : Ty}, nilQSafe? σ = true → NilQSafe σ := 
       | exact .cls
       | exact .arrayOf
       | exact absurd h (by simp [nilQSafe?])
+
+/-- `excCls?` never admits a name `ExcCls` does not (tier 16b). Row for row, exactly like
+`builtinCls?_sound` -- and the list's *completeness* is a coverage condition rather than a
+soundness one: a missing name makes a `raise` untypeable, never mistyped. -/
+theorem excCls?_sound {n : String} (h : excCls? n = true) : ExcCls n := by
+  unfold excCls? at h
+  split at h
+  · exact .standardError
+  · exact .runtimeError
+  · exact .argumentError
+  · exact .typeError
+  · exact .nameError
+  · exact .noMethodError
+  · exact .zeroDivisionError
+  · exact .indexError
+  · exact .keyError
+  · exact .rangeError
+  · exact .ioError
+  · exact .frozenError
+  · exact .notImplementedError
+  · exact absurd h (by simp)
+
+/-- The `String` half of the table agrees with `PrimSig` row for row (tier 16b). Same shape as
+`primSig?_sound`'s tail, on the half that was split out of it. -/
+theorem primSigStr?_sound {m : String} {argTys : List Ty} {τ : Ty}
+    (h : primSigStr? m argTys = some τ) : PrimSig (.cls "String") m argTys τ := by
+  unfold primSigStr? at h
+  split at h
+  all_goals
+    first
+      | (injection h with h
+         subst h
+         first
+           | exact .strAdd
+           | exact .strLength
+           | exact .strEmptyP
+           | exact .strStrip
+           | exact .strDowncase
+           | exact .strUpcase
+           | exact .strTr
+           | exact .strDeletePrefix
+           | exact .strStartsWith
+           | exact .strSplit
+           | exact .strSub
+           | exact .strGsub
+           | exact .strMatchP
+           | exact .strMatch)
+      | simp at h
 
 /-- `primSig?` and `PrimSig` agree in the direction that matters: the executable table
 never invents a signature the specification lacks. Proved by case exhaustion over the
@@ -84,6 +138,15 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
       subst h
       exact .freezeId (nilQSafe?_sound (by assumption))
     · exact absurd h (by simp)
+  · -- tier 16b's guarded `message` row: the receiver's *name* has to be an exception class
+    split at h
+    · rename_i hexc
+      injection h with h
+      subst h
+      exact .excMessage (excCls?_sound hexc)
+    · exact absurd h (by simp)
+  · -- tier 16b: everything else on a `String` receiver, delegated
+    exact primSigStr?_sound h
   all_goals
     first
       | (injection h with h
@@ -93,30 +156,17 @@ theorem primSig?_sound {σ : Ty} {m : String} {argTys : List Ty} {τ : Ty}
            | exact .intSub
            | exact .intMul
            | exact .intDiv
-           | exact .strAdd
            | exact .intLt
            | exact .intLe
            | exact .intGt
            | exact .intGe
            | exact .intToS
-           | exact .symToS
            | exact .intZeroP
-           | exact .strLength
-           | exact .notBool
-           | exact .arrayIndex
-           | exact .arrayLength
-           | exact .strStrip
-           | exact .strDowncase
-           | exact .strUpcase
-           | exact .strTr
-           | exact .strDeletePrefix
-           | exact .strStartsWith
-           | exact .strSplit
-           | exact .strSub
-           | exact .strGsub
-           | exact .strMatchP
-           | exact .strMatch
            | exact .intAsString
+           | exact .symToS
+           | exact .notBool
+           | exact .arrayLength
+           | exact .arrayIndex
            | exact .hashIndex)
       | simp at h
 
@@ -477,6 +527,24 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         exact .ifNoElse (chk_sound hc) (chk_sound ht) rfl
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  · -- `begin' body rescues none none` (tier 16b): the body left every type where it found it,
+    -- it contains no local assignment (so there is no intermediate state a handler could see at
+    -- the wrong type), and every rescue clause typed.
+    split at h
+    · rename_i τb Γb Ib hbody
+      split at h
+      · rename_i hg
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hg
+        obtain ⟨⟨hΓ, hI⟩, hna⟩ := hg
+        split at h
+        · rename_i τr hres
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .begin' (chk_sound hbody) hΓ hI hna (chkRescues_sound hres)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
   · -- `while' c body` (tier 16): both the condition and the body left every type where they
     -- found it, which is `Judge.while'`'s two premises and the whole rule.
     split at h
@@ -620,10 +688,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         exact .constCls hcls hconst
       · rename_i hcls
         split at h
-        · injection h with h
+        · -- Tier 16b: the guard is a disjunction now -- a builtin class name, or a builtin
+          -- *exception* class name, which `BuiltinCls` deliberately does not list.
+          rename_i hb
+          injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          exact .constBuiltin (builtinCls?_sound (by assumption)) hcls hconst
+          rcases (by simpa using hb : builtinCls? _ = true ∨ excCls? _ = true) with hb' | hb'
+          · exact .constBuiltin (builtinCls?_sound hb') hcls hconst
+          · exact .constExc (excCls?_sound hb') hcls hconst
         · exact absurd h (by simp)
   · -- `cpath (some base) n` (tiers 13c and 13e): the base typed as *some* class-or-module
     -- object, and then either the absolute key was in the constant table (`constPath`) or a
@@ -810,61 +883,83 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           subst h; subst h'; subst h''
           exact .callNever (chkAll_sound hargs) hnever
         · split at h
-          · -- the instantiation is assumed
-            rename_i _ hasm
-            injection h with h
-            injection h with h h'; injection h' with h' h''
-            subst h; subst h'; subst h''
-            exact .callAsm (chkAll_sound hargs) hasm
+          · -- tier 16b: `raise C` / `raise C, "msg"`, which does not return (`Judge.raiseCls`)
+            rename_i hm
+            subst hm
+            split at h
+            · rename_i n'
+              split at h
+              · rename_i hexc
+                injection h with h
+                injection h with h h'; injection h' with h' h''
+                subst h; subst h'; subst h''
+                exact .raiseCls (chkAll_sound hargs) (.inl rfl) hexc
+              · exact absurd h (by simp)
+            · rename_i n'
+              split at h
+              · rename_i hexc
+                injection h with h
+                injection h with h h'; injection h' with h' h''
+                subst h; subst h'; subst h''
+                exact .raiseCls (chkAll_sound hargs) (.inr rfl) hexc
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
           · split at h
-            · rename_i _ _ hdef
-              split at h
-              · rename_i hpar
-                -- Pass A's result is bound here but its derivation is never used: the hint
-                -- is untrusted by construction, and this is where that is visible in the
-                -- proof rather than only in prose.
+            · -- the instantiation is assumed
+              rename_i _ hasm
+              injection h with h
+              injection h with h h'; injection h' with h' h''
+              subst h; subst h'; subst h''
+              exact .callAsm (chkAll_sound hargs) hasm
+            · split at h
+              · rename_i _ _ hdef
                 split at h
-                · split at h
-                  · -- Pass B: the candidate reproduced itself, so its derivation *is* the
-                    -- premise `Judge.callDef` asks for.
-                    rename_i _ _ _ _ hpassB
-                    split at h
-                    · rename_i heq
-                      split at h
-                      · rename_i hI
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact .callDef (chkAll_sound hargs) hdef hpar
-                          (by subst heq; subst hI; exact chk_sound hpassB)
-                      · exact absurd h (by simp)
-                    · exact absurd h (by simp)
-                  · exact absurd h (by simp)
-                · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · -- the name is not a top-level method: the last route is a bare `new` inside a
-              -- singleton method, where `self` is a class object.
-              split at h
-              · rename_i hself
-                split at h
-                · rename_i hnew
+                · rename_i hpar
+                  -- Pass A's result is bound here but its derivation is never used: the hint
+                  -- is untrusted by construction, and this is where that is visible in the
+                  -- proof rather than only in prose.
                   split at h
-                  · rename_i hinit
-                    split at h
-                    · rename_i hpar
+                  · split at h
+                    · -- Pass B: the candidate reproduced itself, so its derivation *is* the
+                      -- premise `Judge.callDef` asks for.
+                      rename_i _ _ _ _ hpassB
                       split at h
-                      · rename_i hbody
-                        injection h with h
-                        injection h with h h'; injection h' with h' h''
-                        subst h; subst h'; subst h''
-                        exact hnew ▸ .selfNew hself (chkAll_sound hargs) hinit hpar
-                          (chk_sound hbody)
+                      · rename_i heq
+                        split at h
+                        · rename_i hI
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact .callDef (chkAll_sound hargs) hdef hpar
+                            (by subst heq; subst hI; exact chk_sound hpassB)
+                        · exact absurd h (by simp)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
-              · exact absurd h (by simp)
-              · exact absurd h (by simp)
+              · -- the name is not a top-level method: the last route is a bare `new` inside a
+                -- singleton method, where `self` is a class object.
+                split at h
+                · rename_i hself
+                  split at h
+                  · rename_i hnew
+                    split at h
+                    · rename_i hinit
+                      split at h
+                      · rename_i hpar
+                        split at h
+                        · rename_i hbody
+                          injection h with h
+                          injection h with h h'; injection h' with h' h''
+                          subst h; subst h'; subst h''
+                          exact hnew ▸ .selfNew hself (chkAll_sound hargs) hinit hpar
+                            (chk_sound hbody)
+                        · exact absurd h (by simp)
+                      · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+                · exact absurd h (by simp)
       · exact absurd h (by simp)
   · -- tier 9c: `send (some recv) m args (some (block …))` -- a builtin iterator with a block
     -- literal. Receiver must synthesize `arrayOf elem`; the block's body is typed here.
@@ -1339,6 +1434,42 @@ theorem chkOwner?_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ₁ : Env} {I I₁ :
       exact chk_sound hchk
     · exact absurd h (by simp)
 
+/-- **`chkRescues` never admits a rescue clause `JudgeRescues` does not** (tier 16b). Premise
+for premise, and the two equations (`Γ' = Γh ++ Γ`, `I' = I`) come out of the guard rather than
+being substituted, for `while'`'s reason. -/
+theorem chkRescues_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
+    {rescues : List (List Expr × Option (TargetKind × String) × Expr)} {τ : Ty},
+    chkRescues fuel κ Γ I rescues = some τ → JudgeRescues κ Γ I rescues τ := by
+  intro fuel κ Γ I rescues τ h
+  unfold chkRescues at h
+  split at h
+  · exact absurd h (by simp)
+  · injection h with h; subst h; exact .nil
+  · rename_i cls binding handler rest
+    split at h
+    · rename_i names hnames
+      split at h
+      · rename_i hall
+        split at h
+        · rename_i Γh hbind
+          split at h
+          · rename_i ρ Γ' I' hhandler
+            split at h
+            · rename_i hfix
+              simp only [Bool.and_eq_true, decide_eq_true_eq] at hfix
+              obtain ⟨hΓ', hI'⟩ := hfix
+              split at h
+              · rename_i τr hrest
+                injection h with h; subst h
+                exact .cons hnames hall hbind (chk_sound hhandler) hΓ' hI'
+                  (chkRescues_sound hrest)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+
 /-- **`chkKw` never admits keyword arguments `JudgeKw` does not** (tier 14c). Pair for pair,
 with both states threading in the same order. -/
 theorem chkKw_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ' : Env} {I I' : Ty}
@@ -1479,6 +1610,7 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms builtinCls?_sound
 #print axioms comparable?_sound
 #print axioms iterSig?_sound
+#print axioms primSigStr?_sound
 #print axioms primSig?_sound
 #print axioms chk_sound
 #print axioms chkAll_sound
@@ -1486,8 +1618,10 @@ theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
 #print axioms constLitTys?_sound
 #print axioms constLitPairs?_sound
 #print axioms constLitTy?_nilQSafe
+#print axioms excCls?_sound
 #print axioms splitKw?_sound
 #print axioms chkKw_sound
+#print axioms chkRescues_sound
 #print axioms chkOwner?_sound
 #print axioms chkNested_sound
 #print axioms chkConsts_sound

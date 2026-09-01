@@ -20,6 +20,12 @@ one direction that matters for trusting a `true` answer:
 
 namespace Ratchet
 
+-- `primSig?` is a 33-row match over `(Ty, String, List Ty)`, and the *splitter* Lean builds for
+-- it (which `Ratchet/Proof/ChkSound.lean`'s `primSig?_sound` needs, and which is generated on
+-- demand in this module's context rather than in the proof's) exceeds the default budget. Not a
+-- soundness knob: a heartbeat limit can only turn a proof into an error.
+set_option maxHeartbeats 1000000
+
 /-- The decidable counterpart of `Judge.lean`'s `EqSafe`: the receivers for which `==`
 is total. -/
 def eqSafe? : Ty → Bool
@@ -33,45 +39,62 @@ def nilQSafe? : Ty → Bool
   | .nilable τ => nilQSafe? τ
   | _ => false
 
+/-- The `.cls "String"` half of the table, split out (tier 16b) — and the reason is
+mechanical rather than conceptual: `primSig?` had grown to 33 rows over
+`(Ty, String, List Ty)`, and the *splitter* Lean builds for `split at h` in
+`primSig?_sound` outgrew its budget. Two smaller matches cost one extra lemma
+(`primSigStr?_sound`) and nothing else.
+
+Note what is *not* here: `==`, `nil?`, `===`, `freeze` and `message` all apply to a `String`
+receiver too, and they are guarded rows in `primSig?` matched *before* it delegates here. -/
+def primSigStr? : String → List Ty → Option Ty
+  | "+", [.cls "String"] => some (.cls "String")
+  | "length", [] => some .int
+  | "empty?", [] => some .bool
+  | "strip", [] => some (.cls "String")
+  | "downcase", [] => some (.cls "String")
+  | "upcase", [] => some (.cls "String")
+  | "tr", [.cls "String", .cls "String"] => some (.cls "String")
+  | "delete_prefix", [.cls "String"] => some (.cls "String")
+  | "start_with?", [.cls "String"] => some .bool
+  | "split", [.cls "String"] => some (.arrayOf (.cls "String"))
+  | "sub", [.cls "Regexp", .cls "String"] => some (.cls "String")
+  | "gsub", [.cls "Regexp", .cls "String"] => some (.cls "String")
+  | "match?", [.cls "Regexp"] => some .bool
+  | "match", [.cls "Regexp"] => some (.nilable (.cls "MatchData"))
+  | _, _ => none
+
 /-- The executable primitive table — the decidable counterpart of `Judge.lean`'s
 `PrimSig`, kept in exact one-to-one correspondence with it (`primSig?_sound`). A miss is
 `none`, never a guess. -/
 def primSig? : Ty → String → List Ty → Option Ty
+  -- The five **guarded** rows first, because each applies to more than one receiver shape --
+  -- including `.cls "String"`, which is why they come before the delegation below.
   | σ, "==", [_] => if eqSafe? σ then some .bool else none
   | σ, "nil?", [] => if nilQSafe? σ then some .bool else none
   -- Tier 16: `===` on a value receiver (`case t when "pypi"`), guarded exactly as `==` is.
   | σ, "===", [_] => if eqSafe? σ then some .bool else none
   -- Tier 13: `Object#freeze`, the identity, under `NilQSafe`'s guard (`PrimSig.freezeId`).
   | σ, "freeze", [] => if nilQSafe? σ then some σ else none
+  -- Tier 16b: `Exception#message`, guarded by the receiver's *name* (`PrimSig.excMessage`).
+  | .cls n, "message", [] => if excCls? n then some (.cls "String") else none
+  -- Tiers 2/15/16b: everything else on a `String` receiver.
+  | .cls "String", m, as => primSigStr? m as
   | .int, "+", [.int] => some .int
   | .int, "-", [.int] => some .int
   | .int, "*", [.int] => some .int
   | .int, "/", [.int] => some .int
-  | .cls "String", "+", [.cls "String"] => some (.cls "String")
   | .int, "<", [.int] => some .bool
   | .int, "<=", [.int] => some .bool
   | .int, ">", [.int] => some .bool
   | .int, ">=", [.int] => some .bool
   | .int, "to_s", [] => some (.cls "String")
-  | .sym, "to_s", [] => some (.cls "String")
   | .int, "zero?", [] => some .bool
-  | .cls "String", "length", [] => some .int
+  | .int, "__as_string", [] => some (.cls "String")
+  | .sym, "to_s", [] => some (.cls "String")
+  | .bool, "!", [] => some .bool
   -- Tier 14b: `Array#length`, total whatever the element type.
   | .arrayOf _, "length", [] => some .int
-  -- Tier 15: the `String`/`Regexp` rows, in `PrimSig`'s order.
-  | .cls "String", "strip", [] => some (.cls "String")
-  | .cls "String", "downcase", [] => some (.cls "String")
-  | .cls "String", "upcase", [] => some (.cls "String")
-  | .cls "String", "tr", [.cls "String", .cls "String"] => some (.cls "String")
-  | .cls "String", "delete_prefix", [.cls "String"] => some (.cls "String")
-  | .cls "String", "start_with?", [.cls "String"] => some .bool
-  | .cls "String", "split", [.cls "String"] => some (.arrayOf (.cls "String"))
-  | .cls "String", "sub", [.cls "Regexp", .cls "String"] => some (.cls "String")
-  | .cls "String", "gsub", [.cls "Regexp", .cls "String"] => some (.cls "String")
-  | .cls "String", "match?", [.cls "Regexp"] => some .bool
-  | .cls "String", "match", [.cls "Regexp"] => some (.nilable (.cls "MatchData"))
-  | .int, "__as_string", [] => some (.cls "String")
-  | .bool, "!", [] => some .bool
   | .arrayOf τ, "[]", [.int] => some (mkNilable τ)
   | .cls "Hash", "[]", [_] => some .any
   | _, _, _ => none
@@ -210,6 +233,18 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               joinSpine I₁ (narrowSpine κ.classes c Ic).2)
       | none => none
     | none => none
+  | f + 1, .begin' body rescues none none =>
+    -- Tier 16b. `noLocalAsgn body` is what makes typing the handlers in the *entry* environment
+    -- sound: a handler runs at an arbitrary point inside the body, and a body with no local
+    -- assignment has no intermediate state to get wrong (`Judge.begin'`).
+    match chk f κ Γ I body with
+    | some (τb, Γb, Ib) =>
+      if Γb = Γ && Ib = I && noLocalAsgn body then
+        match chkRescues f κ Γ I rescues with
+        | some τr => some (joinT τb τr, Γ, I)
+        | none => none
+      else none
+    | none => none
   | f + 1, .while' c body =>
     -- Tier 16. Both the condition and the body must leave every type where they found it, which
     -- is what makes the loop's fixed point trivial (`Judge.while'`).
@@ -292,7 +327,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none =>
       match clsGet? κ.classes n with
       | some _ => some (.clsOf n, Γ, I)
-      | none => if builtinCls? n then some (.clsOf n, Γ, I) else none
+      -- Tier 16b: and a builtin *exception* class name, which `builtinCls?` deliberately does
+      -- not list (`Judge.constExc`).
+      | none => if builtinCls? n || excCls? n then some (.clsOf n, Γ, I) else none
   | f + 1, .cpath (some base) n =>
     -- Tier 13c/13e. The base has to *type* as a class-or-module object, not merely look like
     -- one: after `M = 5` the only rule for `.const "M"` is `constEnv` (see
@@ -427,6 +464,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     match chkAll f κ Γ I args with
     | some (argTys, Γ', I') =>
       if argTys.contains .never then some (.never, Γ', I')
+      -- Tier 16b: `raise C` / `raise C, "msg"` does not return, so its type is `.never`
+      -- (`Judge.raiseCls`). Matched before the def table, which a method actually named `raise`
+      -- would otherwise reach -- no rung has one.
+      else if m = "raise" then
+        match argTys with
+        | [.clsOf n] => if excName? κ.classes n then some (.never, Γ', I') else none
+        | [.clsOf n, .cls "String"] =>
+          if excName? κ.classes n then some (.never, Γ', I') else none
+        | _ => none
       else
         match asmGet? κ.asms m argTys with
         | some ρ => some (ρ, Γ', I')
@@ -848,6 +894,31 @@ def chkConsts (fuel : Nat) (κ : Ctx) : List (String × Expr) → Bool
       | some τ =>
         if chk f κ [] .ivar0 e = some (τ, [], .ivar0) then chkConsts f κ cs else false
       | none => false
+
+/-- **A `begin`'s rescue clauses** (tier 16b): the decidable counterpart of `JudgeRescues`,
+premise for premise. Returns only a type, because `Judge.begin'` reports the entry environment
+whatever happens. -/
+def chkRescues : Nat → Ctx → Env → Ty →
+    List (List Expr × Option (TargetKind × String) × Expr) → Option Ty
+  | 0, _, _, _, _ => none
+  | _ + 1, _, _, _, [] => some .never
+  | f + 1, κ, Γ, I, (cls, binding, handler) :: rest =>
+    match rescueClasses? cls with
+    | some names =>
+      if names.all (fun n => excName? κ.classes n) then
+        match rescueBind? names binding with
+        | some Γh =>
+          match chk f κ (Γh ++ Γ) I handler with
+          | some (τ, Γ', I') =>
+            if Γ' = Γh ++ Γ && I' = I then
+              match chkRescues f κ Γ I rest with
+              | some τr => some (joinT τ τr)
+              | none => none
+            else none
+          | none => none
+        | none => none
+      else none
+    | none => none
 
 /-- **A call site's keyword arguments** (tier 14c): the decidable counterpart of `JudgeKw`,
 which means `KwEntry.pair` only. A `**h` splat or a dynamic key answers `none`, and the

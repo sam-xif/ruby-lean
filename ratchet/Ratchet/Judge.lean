@@ -192,6 +192,45 @@ inductive BuiltinCls : String → Prop
   | array : BuiltinCls "Array"
   | hash : BuiltinCls "Hash"
 
+/-! ## Exception classes (tier 16b)
+
+`raise` and `rescue` both name a class, and both **raise `TypeError` when the name is not an
+exception class** — `raise 5` is "exception class/object expected". So the judgment needs to know
+which names those are, and it needs it for two reasons that pull in different directions:
+
+- the builtin ones (`ArgumentError`, `ZeroDivisionError`, …) are not in `CTable` at all, for
+  `constBuiltin`'s reason (a `CTable` row carries method tables, and `ctorGet?` would happily
+  allocate against them). So they are a **list**, and the list's *completeness* is a
+  coverage condition, not a soundness one: a name missing from it makes a `raise` untypeable.
+- a user exception (`class Uncomparable < StandardError`) *is* in `CTable`, and what makes it an
+  exception is that its superclass chain reaches one of the builtin names. That is a walk, and
+  it is fuel-bounded for `nestedClasses`' reason.
+
+`ExcCls` is deliberately **not** folded into `BuiltinCls`: that relation is kept to the classes
+`builtinAncestors` can answer `is_a?` for, and an exception name admitted there would produce a
+`.clsOf` nobody can answer `is_a?` for. Here that does not matter, because nothing asks. -/
+inductive ExcCls : String → Prop
+  | standardError : ExcCls "StandardError"
+  | runtimeError : ExcCls "RuntimeError"
+  | argumentError : ExcCls "ArgumentError"
+  | typeError : ExcCls "TypeError"
+  | nameError : ExcCls "NameError"
+  | noMethodError : ExcCls "NoMethodError"
+  | zeroDivisionError : ExcCls "ZeroDivisionError"
+  | indexError : ExcCls "IndexError"
+  | keyError : ExcCls "KeyError"
+  | rangeError : ExcCls "RangeError"
+  | ioError : ExcCls "IOError"
+  | frozenError : ExcCls "FrozenError"
+  | notImplementedError : ExcCls "NotImplementedError"
+
+/-- The decidable side of `ExcCls`, row for row (`excCls?_sound`). -/
+def excCls? : String → Bool
+  | "StandardError" | "RuntimeError" | "ArgumentError" | "TypeError" | "NameError"
+  | "NoMethodError" | "ZeroDivisionError" | "IndexError" | "KeyError" | "RangeError"
+  | "IOError" | "FrozenError" | "NotImplementedError" => true
+  | _ => false
+
 /-- The primitive-method signature table, as a **relation** with one constructor per
 justified builtin. A relation rather than a function because this is the specification:
 each constructor is a claim about what the real `stepFn` does, to be read and checked
@@ -317,6 +356,15 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       is the case where the receiver is a class object and the answer is an ancestor test, and
       it needs the class table, which `PrimSig` cannot see. -/
   | caseEqPrim {σ τ : Ty} : EqSafe σ → PrimSig σ "===" [τ] .bool
+  /-- `"".empty?` (tier 16b) — total, and the rung that wants it is `ctl-rescue`'s
+      `raise ArgumentError if s.empty?`. -/
+  | strEmptyP : PrimSig (.cls "String") "empty?" [] .bool
+  /-- **`e.message`** (tier 16b) — the one row whose *receiver* is guarded by a name predicate
+      rather than by a type shape. `.cls n` for an `ExcCls` name is what a `rescue … => e`
+      binding produces (see `rescueBind?`), and `Exception#message` is total on one and returns
+      a `String`. Without the guard the row would fire for `.cls "String"`, where `message` is a
+      `NoMethodError`. -/
+  | excMessage {n : String} : ExcCls n → PrimSig (.cls n) "message" [] (.cls "String")
   /-- `!recv → Bool` for a boolean receiver (rung 015). Narrow on purpose: `!nil` and
       `!5` are equally safe in Ruby (`!` is total on *every* object), but a rule that
       broad would need `.any` on the receiver, and no rung asks for it yet. -/
@@ -1083,6 +1131,46 @@ def instClsGet? (C : CTable) (n : String) : Option Cls :=
   match clsGet? C n with
   | some c => if c.isModule then none else some c
   | none => none
+
+/-! ### Is this name an exception class? (tier 16b)
+
+A builtin exception name, or a declared class whose superclass chain reaches one. Fuel-bounded
+for `nestedClasses`' reason — a `Cls.super?` walk has no structural measure — and running out
+answers `false`, which is a rejected `raise` rather than a wrong one. -/
+def excNameUp (C : CTable) : Nat → String → Bool
+  | 0, _ => false
+  | k + 1, n =>
+    if excCls? n then true
+    else
+      match clsGet? C n with
+      | some c => match c.super? with
+                  | some sn => excNameUp C k sn
+                  | none => false
+      | none => false
+
+def excName? (C : CTable) (n : String) : Bool := excNameUp C 32 n
+
+/-- The class names a `rescue` clause lists, or `none` if any of them is not a bare constant.
+`rescue foo()` is not read, so the whole `begin` is not typed. -/
+def rescueClasses? : List Expr → Option (List String)
+  | [] => some []
+  | .const n :: es => (rescueClasses? es).map (fun ns => n :: ns)
+  | _ => none
+
+/-- The environment a `rescue … => e` binding contributes, prepended to the handler's.
+
+**Only a single builtin exception class may be bound**, and that is a restriction rather than a
+principle: `.cls n` for an `ExcCls` name is a type this judgment can say something about
+(`PrimSig.excMessage`), whereas a user exception would want `.inst n .ivar0` and a rescue over
+*several* classes would want their union. Neither is hard; no rung asks. A clause with no
+binding is always fine. -/
+def rescueBind? (names : List String) : Option (TargetKind × String) → Option Env
+  | none => some []
+  | some (.lvar, x) =>
+    match names with
+    | [n] => if excCls? n then some [(x, .cls n)] else none
+    | _ => none
+  | some _ => none
 
 /-- `n`'s constructor: `initialize`, found by the ordinary walk, but only for something that
 can be allocated at all. Bundled into one lookup so the `newInst` rule's premise count did
@@ -3402,6 +3490,67 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `regexp-extended-flag` is the rung that checks that ignoring them is enough. -/
   | regexpLit {κ : Ctx} {Γ : Env} {I : Ty} {src : String} {opts : Nat} :
       Judge κ Γ I (.regexpLit src opts) (.cls "Regexp") Γ I
+  /-- **A builtin exception class named as a constant** (tier 16b) — `.clsOf n`, the third
+      `const` rule of its kind and the same shape as `constBuiltin`, for names that relation
+      deliberately does not admit (see `ExcCls`).
+
+      Same two disjointness premises: a name the program declared goes through `constCls`, and
+      a name it assigned goes through `constEnv`. -/
+  | constExc {κ : Ctx} {Γ : Env} {I : Ty} {n : String} :
+      ExcCls n → clsGet? κ.classes n = none → constGet? κ n = none →
+      Judge κ Γ I (.const n) (.clsOf n) Γ I
+  /-- **`raise C` / `raise C, "msg"` → `.never`** (tier 16b), and `.never` is the whole point:
+      `raise` does not return, so *no* claim about its value can be falsified. This is the same
+      reading `primNever` gives a send with a non-returning argument, arrived at from the other
+      direction — here the expression itself is the one that does not return.
+
+      **The premise is `excName?`, and it is soundness.** `raise 5` raises `TypeError`
+      ("exception class/object expected"), which is inside the family, so the first argument
+      must really name an exception class: a builtin one, or a declared class whose superclass
+      chain reaches a builtin one (`class Uncomparable < StandardError`, which is
+      `ctl-raise-custom` and the protocol `vulnerability.rb` compares with).
+
+      Two argument shapes, because those are the two the target writes. `raise "msg"` (an
+      implicit `RuntimeError`) and `raise some_exception_instance` are not covered. -/
+  | raiseCls {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {args : List Expr}
+      {argTys : List Ty} {n : String} :
+      JudgeAll κ Γ I args argTys Γ' I' →
+      (argTys = [.clsOf n] ∨ argTys = [.clsOf n, .cls "String"]) →
+      excName? κ.classes n = true →
+      Judge κ Γ I (.send none "raise" args none) .never Γ' I'
+  /-- **`begin … rescue … end`** (tier 16b), and in this target it is not error handling:
+      `Vulnerability` raises and rescues its own `Uncomparable` as the **comparison protocol**,
+      so a checker that cannot follow exceptions cannot type the decision core at all
+      (§Frontier item E).
+
+      The type is `joinT τb τr` — the body's type joined with every handler's — which is the
+      obvious part. **The environment is the hard part, and the premises are where it is
+      handled.** A handler runs at an *arbitrary point inside the body*: whatever the body had
+      done so far has happened, and whatever it had not has not. So a handler cannot simply be
+      typed in the body's incoming environment, nor in its outgoing one, nor in the join of the
+      two — `v = 1; v = "s"; v = 2` has the same types at both ends and a different one in the
+      middle, and a handler reading `v` there would be typed at the wrong type.
+
+      `noLocalAsgn body` is the answer, and it is tier 12's whitelist reused unchanged: a body
+      with **no local assignment anywhere** has no intermediate state to get wrong. That is
+      strong — it costs `ctl-begin-rescue-else-ensure` and `ctl-rescue-in-block`, both of which
+      assign in the body — and it is the cheap sound answer. The precise one is a judgment that
+      collects the body's intermediate environments, which nothing else here needs.
+
+      `Γb = Γ` and `Ib = I` are the same equations `while'` carries, for the same reason and
+      stated the same way (as equations, so the elaborator resolves them from the sub-derivation
+      rather than unifying structurally in the wrong direction).
+
+      **`else` and `ensure` are not covered**: `els = none`, `ens = none` in the conclusion.
+      Both are ordinary Ruby and neither is hard — `ensure` runs on every path, so its type is
+      discarded and its assignments would have to join everywhere — and `ctl-begin-rescue-else-
+      ensure` is the rung, blocked on the body assignment anyway. -/
+  | begin' {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {body : Expr}
+      {rescues : List (List Expr × Option (TargetKind × String) × Expr)} {τb τr : Ty} :
+      Judge κ Γ I body τb Γb Ib → Γb = Γ → Ib = I →
+      noLocalAsgn body = true →
+      JudgeRescues κ Γ I rescues τr →
+      Judge κ Γ I (.begin' body rescues none none) (joinT τb τr) Γ I
   /-- **`while c; body; end`** (tier 16). Its type is `.nilT`, which is what Ruby's `while`
       evaluates to.
 
@@ -3513,6 +3662,28 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
       Judge κ Γ I e τ Γ' I' →
       Judge κ Γ I (.cpathAsgn (some (.const owner)) n e) τ Γ' I'
+
+/-- **A `begin`'s rescue clauses** (tier 16b), each typed in the *entry* environment plus
+whatever its `=> e` binds, and each required to leave the environment as it found it.
+
+The relation carries only a type, not a state: `Judge.begin'` reports the entry environment
+whatever happens, so there is nothing for a handler to thread out.
+
+`.nil`'s type is `.never`, which is the join's unit — a `begin` with no handlers has its body's
+type, and that is the right answer for one whose only clause is an `ensure`. -/
+inductive JudgeRescues :
+    Ctx → Env → Ty → List (List Expr × Option (TargetKind × String) × Expr) → Ty → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgeRescues κ Γ I [] .never
+  | cons {κ : Ctx} {Γ Γh Γ' : Env} {I I' : Ty} {cls : List Expr}
+      {binding : Option (TargetKind × String)} {handler : Expr} {names : List String}
+      {τ τr : Ty}
+      {rest : List (List Expr × Option (TargetKind × String) × Expr)} :
+      rescueClasses? cls = some names →
+      names.all (fun n => excName? κ.classes n) = true →
+      rescueBind? names binding = some Γh →
+      Judge κ (Γh ++ Γ) I handler τ Γ' I' → Γ' = Γh ++ Γ → I' = I →
+      JudgeRescues κ Γ I rest τr →
+      JudgeRescues κ Γ I ((cls, binding, handler) :: rest) (joinT τ τr)
 
 /-- **The keyword arguments at a call site, as name/type pairs** (tier 14c).
 

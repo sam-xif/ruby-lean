@@ -3401,3 +3401,96 @@ negative `ctl-rescue-wrong-class-unsafe`), which is §Frontier item E and the de
 *enclosing send's* result, not the block's, so it cannot be typed from inside the block without a
 `mayBreak` scan whose completeness would be a soundness condition) and `ctl-return-early` (needs
 to know a non-empty array's `[0]` is non-nil, which is the length-indexed-array gap).
+
+## Clink 38 (2026-09-01) — tier 16b: `begin`/`rescue`, and the environment problem it poses: 161 → 163
+
+`ctl-rescue`, `ctl-raise-custom`. §Frontier item E, and in this target it is **not error
+handling**: `Vulnerability` defines its own `Uncomparable < StandardError` and uses raise/rescue
+as the *comparison protocol*, so a checker that cannot follow exceptions cannot type the
+decision core at all.
+
+### The environment is the whole difficulty
+
+A handler runs at an **arbitrary point inside the body**: whatever the body had done so far has
+happened, and whatever it had not has not. So the handler cannot be typed in the body's incoming
+environment, nor in its outgoing one, nor in the join of the two — `v = 1; v = "s"; v = 2` has
+the same types at both ends and a *different* one in the middle, and a handler reading `v` there
+would be typed at a type the value does not have.
+
+The precise answer is a judgment that collects the body's intermediate environments. The cheap
+sound answer is **`noLocalAsgn body`** — tier 12's whitelist, reused unchanged: a body with no
+local assignment anywhere has no intermediate state to get wrong. That is what `Judge.begin'`
+carries, alongside `while'`'s two equations (`Γb = Γ`, `Ib = I`) for ivars.
+
+The price is recorded rather than hidden: control (h5) is safe Ruby declined for this reason,
+and it is also why `ctl-begin-rescue-else-ensure` and `ctl-rescue-in-block` are not climbed —
+both assign in the body.
+
+`else` and `ensure` are out of scope in the rule's conclusion (`els = none, ens = none`).
+Neither is hard; `ensure` runs on every path, so its type is discarded and its assignments would
+have to join everywhere.
+
+### `raise` is `.never`, and that is the same reading twice
+
+`raise` does not return, so **no claim about its value can be falsified** — which is exactly what
+`primNever` says about a send with a non-returning argument, arrived at from the other side:
+there the *subexpression* does not return, here the expression itself does not.
+
+Its premise is soundness rather than shape: `raise 5` raises `TypeError` ("exception
+class/object expected"), inside the family. So the first argument must really name an exception
+class, and `excName?` decides that two ways — a builtin name from `ExcCls`'s list, or a declared
+class whose `Cls.super?` chain *reaches* one. `ctl-raise-custom` needs the walk
+(`Uncomparable < StandardError`), and the walk is fuel-bounded for `nestedClasses`' reason,
+answering `false` when it runs out. Controls (h2) and (h3) are `raise 5` and `raise Plain` for a
+declared non-exception class, both sound rejections.
+
+**`ExcCls` is deliberately not folded into `BuiltinCls`.** That relation is kept to the classes
+`builtinAncestors` can answer `is_a?` for, and an exception name admitted there would produce a
+`.clsOf` nobody can answer `is_a?` for. So there is a third `const` rule (`Judge.constExc`) with
+`constBuiltin`'s two disjointness premises.
+
+### The control that is the point of the tier
+
+(h1) is the corpus's `ctl-rescue-wrong-class-unsafe` in the controls file too:
+`begin; 1 + "a"; rescue ArgumentError; 0; end` raises, because the handler catches the wrong
+class. A checker that read *any* `begin` as discharging the type-error family would certify it.
+`Judge.begin'` does not look at the rescued classes when typing the body at all — the body's
+`1 + "a"` simply has no derivation — and that is the whole answer.
+
+(h4) is the other side, and its shape is worth stating: a handler is typed **whether or not it
+can be reached**. The program is safe (the body cannot raise) and is declined anyway, because a
+handler that would raise if reached is refused rather than excused by a reachability argument
+this judgment does not make.
+
+### `PrimSig.excMessage`: the first row guarded by a *name*
+
+`rescue … => e` binds `e` at `.cls "ArgumentError"`, and `Exception#message` is total on one.
+Every other guarded row keys on a type *shape* (`EqSafe`, `NilQSafe`); this one keys on the
+receiver's name being in `ExcCls`, because `.cls n` is one constructor for `String`, `Hash`,
+`Regexp`, `MatchData` and every exception class. Without the guard the row fires for
+`.cls "String"`, where `message` is a `NoMethodError` (control h6, sound).
+
+`rescueBind?` only offers a binding for a **single builtin** exception class. A user exception
+would want `.inst n .ivar0` and a multi-class rescue their union; neither is hard and no rung
+asks, so `ctl-raise-custom`'s handler has no `=> e`.
+
+### One mechanical finding worth recording: `primSig?` outgrew its splitter
+
+`split at h` in `primSig?_sound` began failing with `timeout at whnf, maximum number of
+heartbeats (200000)` — and **`set_option maxHeartbeats` did not help**, at file level or on the
+declaration. The budget being exceeded is not the proof's; it is the one Lean uses when building
+the *matcher splitter* for a 33-row match over `(Ty, String, List Ty)`, generated in a nested
+context that does not inherit the option. (Verified the option was applied at all by setting it
+to `1` and watching every other error change.)
+
+The fix is structural and small: `primSigStr?` splits the fourteen `.cls "String"` rows into
+their own match, and `primSig?` delegates after its five guarded rows (which apply to a `String`
+receiver too, so they must come first). Two smaller matches, one extra lemma
+(`primSigStr?_sound`), no heartbeat option at all. **The lesson generalizes: when a `split`-based
+proof over a table stops working, split the table, not the budget.**
+
+### State
+
+**163 rungs of 232**, tier 16 at 10/15. 163/163 cross-checked, 132/132 controls rejected (six
+new, four sound), corpus agreement 232/232, axiom-clean — with `excCls?_sound`,
+`chkRescues_sound` and `primSigStr?_sound` added.

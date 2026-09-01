@@ -1812,7 +1812,7 @@ def r104 : Rung :=
       (some (.block [.req "s"] [] (.send (some (.var .lvar "s")) "length" [] none))),
     .arrayOf (.cls "String"), [],
     .iterBlock (.arrayLit (.cons .strLit (.cons .strLit .nil))) .nil (.sortBy .int) rfl
-      (.prim (.var rfl rfl) .nil .strLength) rfl⟩
+      (.prim (σ := .cls "String") (.var rfl rfl) .nil .strLength) rfl⟩
 
 /-- `class Shelf; def initialize(items); @items = items; end; def names; @items.map { |i|
     i.to_s }; end; end; Shelf.new([1, 2]).names` → `arrayOf String` (tier 11).
@@ -3348,6 +3348,132 @@ def r196 : Rung :=
           .nil)
         .strAdd)))⟩
 
+/-! ### Tier 16b — `begin`/`rescue`, which in this target is not error handling
+
+§Frontier item E: `Vulnerability` defines its own `Uncomparable < StandardError` and uses
+raise/rescue as the **comparison protocol**, so a checker that cannot follow exceptions cannot
+type the decision core at all. -/
+
+/-- `def parse(s); raise ArgumentError, "bad" if s.empty?; s.length; rescue ArgumentError => e;
+    e.message.length; end; parse("") + parse("ab")` → `Integer`.
+
+    Four new pieces, and each is a different kind of thing:
+
+    - **`raise` is `.never`.** It does not return, so no claim about its value can be falsified —
+      the same reading `primNever` gives a send with a non-returning argument, arrived at from
+      the other side. Its premise (`excName?`) is soundness: `raise 5` raises `TypeError`.
+    - **`ArgumentError` needed a third `const` rule.** `ExcCls` is deliberately not folded into
+      `BuiltinCls`, which is kept to the classes `builtinAncestors` can answer `is_a?` for.
+    - **`rescue … => e` binds `e` at `.cls "ArgumentError"`**, and `PrimSig.excMessage` is the
+      one row on this ladder whose *receiver* is guarded by a name predicate rather than a type
+      shape — without the guard it would fire for `.cls "String"`, where `message` is a
+      `NoMethodError`.
+    - **`noLocalAsgn body` is the environment story**, and it is the interesting one. A handler
+      runs at an *arbitrary point inside the body*, so it cannot be typed in the body's incoming
+      environment, nor its outgoing one, nor the join of the two: `v = 1; v = "s"; v = 2` has the
+      same types at both ends and a different one in the middle. A body with no local assignment
+      has no intermediate state to get wrong, and tier 12's whitelist is reused unchanged.
+
+    Both branches join to `Integer`, and the derivation shows the join twice over: the body's
+    `s.length` and the handler's `e.message.length`. -/
+def r192 : Rung :=
+  ⟨"ctl-rescue",
+    .seq [.def' "parse" [.req "s"]
+            (.begin'
+              (.seq [.if' (.send (some (.var .lvar "s")) "empty?" [] none)
+                       (.send none "raise" [.const "ArgumentError", .str "bad"] none) none,
+                     .send (some (.var .lvar "s")) "length" [] none])
+              [([.const "ArgumentError"], some (.lvar, "e"),
+                 .send (some (.send (some (.var .lvar "e")) "message" [] none)) "length" []
+                   none)]
+              none none),
+          .send (some (.send none "parse" [.str ""] none)) "+"
+            [.send none "parse" [.str "ab"] none] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.prim
+        (.callDef (.cons .strLit .nil) rfl rfl
+          (.begin' (τb := .int)
+            (.seq (.cons (.ifNoElse (τ := .never)
+                     (.prim (.var rfl rfl) .nil .strEmptyP)
+                     (.raiseCls (.cons (.constExc .argumentError rfl rfl)
+                       (.cons .strLit .nil)) (.inr rfl) rfl)
+                     rfl)
+              (.last (.prim (σ := .cls "String") (.var rfl rfl) .nil .strLength))))
+            rfl rfl rfl
+            (.cons rfl rfl rfl
+              (.prim (.prim (.var rfl rfl) .nil (.excMessage .argumentError)) .nil
+                .strLength)
+              rfl rfl .nil)))
+        (.cons
+          (.callDef (.cons .strLit .nil) rfl rfl
+            (.begin' (τb := .int)
+              (.seq (.cons (.ifNoElse (τ := .never)
+                       (.prim (.var rfl rfl) .nil .strEmptyP)
+                       (.raiseCls (.cons (.constExc .argumentError rfl rfl)
+                         (.cons .strLit .nil)) (.inr rfl) rfl)
+                       rfl)
+                (.last (.prim (σ := .cls "String") (.var rfl rfl) .nil .strLength))))
+              rfl rfl rfl
+              (.cons rfl rfl rfl
+                (.prim (.prim (.var rfl rfl) .nil (.excMessage .argumentError)) .nil
+                  .strLength)
+                rfl rfl .nil)))
+          .nil)
+        .intAdd)))⟩
+
+/-- `class Uncomparable < StandardError; end; def cmp(a); raise Uncomparable if a.nil?; 1;
+    rescue Uncomparable; 0; end; cmp(nil) + cmp(1)` → `Integer`.
+
+    **The rung the target actually needs.** `Vulnerability` raises and rescues its own
+    `Uncomparable` as the comparison protocol, and this is that shape in miniature.
+
+    What is new over `ctl-rescue` is that `Uncomparable` is a **user** class, so `excName?` has
+    to *walk*: not a builtin exception name, so look it up in `CTable`, follow `Cls.super?` to
+    `StandardError`, and that is a builtin one. The walk is fuel-bounded for `nestedClasses`'
+    reason (a `super?` chain has no structural measure) and answers `false` when it runs out,
+    which is a rejected `raise` rather than a wrong one.
+
+    The handler has no `=> e`, so `rescueBind?` contributes the empty environment — which is
+    what lets a *user* exception be rescued at all today, since `.cls n` is only offered for the
+    builtin names. Binding one would want `.inst n .ivar0`, and no rung asks. -/
+def r194 : Rung :=
+  ⟨"ctl-raise-custom",
+    .seq [.class' "Uncomparable" (some (.const "StandardError")) .nil,
+          .def' "cmp" [.req "a"]
+            (.begin'
+              (.seq [.if' (.send (some (.var .lvar "a")) "nil?" [] none)
+                       (.send none "raise" [.const "Uncomparable"] none) none,
+                     .int 1])
+              [([.const "Uncomparable"], none, .int 0)]
+              none none),
+          .send (some (.send none "cmp" [.nil] none)) "+"
+            [.send none "cmp" [.int 1] none] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl rfl rfl .nil .nil) (.cons .defStmt
+      (.last (.prim
+        (.callDef (.cons .nilLit .nil) rfl rfl
+          (.begin' (τb := .int)
+            (.seq (.cons (.ifNoElse (τ := .never)
+                     (.prim (.var rfl rfl) .nil (.nilQuery .nilT))
+                     (.raiseCls (.cons (.constCls rfl rfl) .nil) (.inl rfl) rfl)
+                     rfl)
+              (.last .intLit)))
+            rfl rfl rfl
+            (.cons rfl rfl rfl .intLit rfl rfl .nil)))
+        (.cons
+          (.callDef (.cons .intLit .nil) rfl rfl
+            (.begin' (τb := .int)
+              (.seq (.cons (.ifNoElse (τ := .never)
+                       (.prim (.var rfl rfl) .nil (.nilQuery .int))
+                       (.raiseCls (.cons (.constCls rfl rfl) .nil) (.inl rfl) rfl)
+                       rfl)
+                (.last .intLit)))
+              rfl rfl rfl
+              (.cons rfl rfl rfl .intLit rfl rfl .nil)))
+          .nil)
+        .intAdd))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -3368,7 +3494,7 @@ def rungs : List Rung :=
    r137, r138, r139, r140, r141, r142, r143, r144, r145, r146, r147, r148,
    r150, r152, r153, r154, r155, r161,
    r166, r170, r171, r173, r174, r175, r177, r179, r181, r182,
-   r184, r185, r186, r196]
+   r184, r185, r186, r192, r194, r196]
 
 /-! ## `chk` answers exactly what was derived by hand
 
