@@ -420,8 +420,19 @@ structure Cls where
       are unreachable, which is correct-by-accident and worth saying out loud: they become
       callable through `include`/`extend`/`module_function`, none of which has a rule, so no
       program that uses one types at all. `M.foo` for an instance-method `foo` looks in
-      `smethods`, misses, and is rejected — which is what Ruby does too. -/
+      `smethods`, misses, and is rejected — which is what Ruby does too. Tier 10's
+      `include`/`extend` are what make them reachable, via the two fields below. -/
   isModule : Bool
+  /-- Modules mixed into **instance** dispatch by `include M` in this class's body, in source
+      order. `mroGet?` searches them after the class's own methods and before its superclass,
+      and it searches them **reversed**, because a later `include` wins in Ruby. -/
+  includes : List String
+  /-- Modules mixed into **singleton** dispatch by `extend M`. The asymmetry with `includes` is
+      the whole content of `extend`: it takes the module's *instance* methods (a plain `def M`)
+      and makes them methods of the class **object**, so `smroGet?` looks in `.methods`, not in
+      `.smethods`. `metaprog-extend`'s `module Loud; def shout; …; end; class Person; extend
+      Loud; end; Person.shout` is exactly that one-line fact. -/
+  extended : List String
 
 abbrev CTable := List Cls
 
@@ -431,18 +442,31 @@ def clsGet? (C : CTable) (n : String) : Option Cls := C.find? (·.name == n)
 inductive ClsMember where
   | inst (d : Defn)
   | sing (d : Defn)
+  /-- `include M` (tier 10). -/
+  | incl (n : String)
+  /-- `extend M` (tier 10). -/
+  | ext (n : String)
 
 def clsMember? : Expr → Option ClsMember
   | .def' n ps b => some (.inst ⟨n, ps, b⟩)
   -- `def self.m` is the only `defs` receiver read: `def obj.m` for some other object is a
   -- singleton method on *that* object, which this checker has no way to record.
   | .defs .self' n ps b => some (.sing ⟨n, ps, b⟩)
+  -- Tier 10. Both are ordinary implicit-self sends in the desugared syntax, and the argument
+  -- is required to be a **bare constant**: `include some_expr` is not read, so the class does
+  -- not enter the table and nothing using it is typed. That the named module is really a
+  -- *module* is checked separately, by `Judge.classStmt` -- `include SomeClass` raises
+  -- `TypeError` in Ruby, and the table cannot see `isModule` from here.
+  | .send none "include" [.const n] none => some (.incl n)
+  | .send none "extend" [.const n] none => some (.ext n)
   | _ => none
 
-def splitMembers : List ClsMember → List Defn × List Defn
-  | [] => ([], [])
-  | .inst d :: ms => let (i, s) := splitMembers ms; (d :: i, s)
-  | .sing d :: ms => let (i, s) := splitMembers ms; (i, d :: s)
+def splitMembers : List ClsMember → List Defn × List Defn × List String × List String
+  | [] => ([], [], [], [])
+  | .inst d :: ms => let (i, s, c, e) := splitMembers ms; (d :: i, s, c, e)
+  | .sing d :: ms => let (i, s, c, e) := splitMembers ms; (i, d :: s, c, e)
+  | .incl n :: ms => let (i, s, c, e) := splitMembers ms; (i, s, n :: c, e)
+  | .ext n :: ms => let (i, s, c, e) := splitMembers ms; (i, s, c, n :: e)
 
 /-- A class body's instance and singleton methods, or `none` if the body contains anything
 this checker cannot read.
@@ -453,10 +477,26 @@ its body, and `nil` is `nil`, so a body made only of those cannot be type-stuck 
 what makes the class readable into `CTable`. A body with an ivar assignment at class level, a
 nested class, or anything executable is not typed at all: conservative in the direction that
 costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
-def classMethods? : Expr → Option (List Defn × List Defn)
-  | .nil => some ([], [])
+def classMethods? : Expr → Option (List Defn × List Defn × List String × List String)
+  | .nil => some ([], [], [], [])
   | .seq es => (es.mapM clsMember?).map splitMembers
   | e => (clsMember? e).map (fun m => splitMembers [m])
+
+/-- **Every name mixed in by this class body is a declared `module`.**
+
+`Judge.classStmt`'s guard, and a soundness requirement rather than tidiness: `include` and
+`extend` raise `TypeError` on anything that is not a `Module` (`include String` →
+"wrong argument type Class (expected Module)"), and `TypeError` is inside the family. Without
+this premise, `class P; include SomeClass; end; P.new.a_method_of_SomeClass` would dispatch
+happily and certify a program that raises before it ever gets there.
+
+A name the table does not know at all is also refused. That is stricter than Ruby, which is
+happy to `include` a module declared in another file — but this judgment has no notion of
+another file, and a name it cannot resolve is a name whose `isModule` it cannot check. -/
+def allModules (C : CTable) (ns : List String) : Bool :=
+  ns.all (fun n => match clsGet? C n with
+    | some c => c.isModule
+    | none => false)
 
 /-! ### Method lookup, up the chain
 
@@ -464,6 +504,22 @@ def classMethods? : Expr → Option (List Defn × List Defn)
 actually run, walking `super?`, and returns **which class it was found in** as well as the
 method — because `super` needs the definition site, not the receiver's class (see
 `Judge.superCall`). -/
+
+/-- Look `m` up in each of these modules' **instance** methods, in order, and report which
+module it was found in.
+
+One function for both mixin directions, because both consult `.methods`: `include` makes a
+module's instance methods instance methods of the class, and `extend` makes them methods of
+the class *object*. Only the table consulted at the call site differs. -/
+def mixinGet? (C : CTable) : List String → String → Option (String × Defn)
+  | [], _ => none
+  | mn :: ms, m =>
+    match clsGet? C mn with
+    | some c =>
+      match defGet? c.methods m with
+      | some d => some (mn, d)
+      | none => mixinGet? C ms m
+    | none => mixinGet? C ms m
 
 /-- The bounded walk. `k` is a depth budget, not a natural part of the algorithm: `CTable` is
 data, so nothing stops it describing a cycle (`class A < B` and `class B < A` cannot both be
@@ -477,6 +533,12 @@ def lookupUp (C : CTable) (sing : Bool) : Nat → String → String → Option (
     | some c =>
       match defGet? (if sing then c.smethods else c.methods) m with
       | some d => some (n, d)
+      | none =>
+      -- Tier 10: the class's own table first, then its mixins, then up the chain -- which is
+      -- Ruby's order (`C.ancestors` is `[C, M, super…]` for `class C; include M; end`). The
+      -- list is **reversed**, because a later `include` wins.
+      match mixinGet? C (if sing then c.extended.reverse else c.includes.reverse) m with
+      | some hit => some hit
       | none =>
         match c.super? with
         | none => none
@@ -529,6 +591,24 @@ table can have an ancestor the chain does not name. -/
 declared chain stops at a class with no `super?`, whose real superclass is `Object`. -/
 def rootAncestors : List String := ["Object", "Kernel", "BasicObject"]
 
+/-- The ancestors contributed by a list of included modules — **one level only**, and `none`
+if any of them mixes something in or has a superclass of its own.
+
+That refusal is the soundness point (tier 10). `isAAnswer` answers `is_a?` *negatively* off
+this chain, so an ancestor the chain fails to name is an unsoundness, not an imprecision. A
+module that itself includes another module has an ancestor this function would omit, so instead
+of omitting it the whole chain becomes unknown. Every rung includes only flat modules; making
+this recursive is a fuelled walk nobody has needed. -/
+def mixinAncestors? (C : CTable) : List String → Option (List String)
+  | [] => some []
+  | mn :: ms =>
+    match clsGet? C mn with
+    | none => none
+    | some c =>
+      if c.includes.isEmpty && c.super?.isNone then
+        (mixinAncestors? C ms).map (fun rest => mn :: rest)
+      else none
+
 /-- The declared ancestor chain of `n`, most specific first, or `none` if the walk leaves the
 table — an undeclared superclass means the chain is *unknown*, not empty, and answering
 `is_a?` off a truncated chain would be unsound (`class Dog < StandardError` really is a
@@ -539,9 +619,14 @@ def ancestorsUp (C : CTable) : Nat → String → Option (List String)
     match clsGet? C n with
     | none => none
     | some c =>
-      match c.super? with
-      | none => some [n]
-      | some sn => (ancestorsUp C k sn).map (fun rest => n :: rest)
+      -- Tier 10: a class's ancestors include the modules mixed into it. Omitting them would
+      -- make `isAAnswer` answer `is_a?(SomeIncludedModule)` with a *wrong* `some false`.
+      match mixinAncestors? C c.includes with
+      | none => none
+      | some incs =>
+        match c.super? with
+        | none => some (n :: incs)
+        | some sn => (ancestorsUp C k sn).map (fun rest => (n :: incs) ++ rest)
 
 def ancestors? (C : CTable) (n : String) : Option (List String) :=
   ancestorsUp C C.length n
@@ -635,15 +720,18 @@ def mergeCls (C : CTable) (c : Cls) : CTable :=
   | none => c :: C
   | some old =>
     ⟨c.name, c.super?.orElse (fun _ => old.super?),
-     c.methods ++ old.methods, c.smethods ++ old.smethods, c.isModule⟩ :: C
+     c.methods ++ old.methods, c.smethods ++ old.smethods, c.isModule,
+     -- Mixins accumulate the same way, and with the later body's *later* in the list, because
+     -- `lookupUp` reverses: a module included by a reopening wins over one included earlier.
+     old.includes ++ c.includes, old.extended ++ c.extended⟩ :: C
 
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
-    | some (ms, sms) =>
+    | some (ms, sms, incs, exts) =>
       match sup with
-      | none => mergeCls C ⟨n, none, ms, sms, false⟩
-      | some (.const sn) => mergeCls C ⟨n, some sn, ms, sms, false⟩
+      | none => mergeCls C ⟨n, none, ms, sms, false, incs, exts⟩
+      | some (.const sn) => mergeCls C ⟨n, some sn, ms, sms, false, incs, exts⟩
       -- A superclass expression that is not a bare constant (`class C < foo()`) is not
       -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
@@ -653,7 +741,7 @@ def extendClasses (C : CTable) : Expr → CTable
   -- `callSMethod` with nothing added.
   | .module' n body =>
     match classMethods? body with
-    | some (ms, sms) => mergeCls C ⟨n, none, ms, sms, true⟩
+    | some (ms, sms, incs, exts) => mergeCls C ⟨n, none, ms, sms, true, incs, exts⟩
     | none => C
   | _ => C
 
@@ -1604,10 +1692,17 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       the direction that costs rungs rather than soundness.
 
       As with `defStmt`, this rule does nothing to any table; `JudgeSeq.cons` extends
-      `κ.classes` separately, because only `JudgeSeq` knows statement order. -/
+      `κ.classes` separately, because only `JudgeSeq` knows statement order.
+
+      **The second premise arrived with tier 10's mixins** and is a soundness requirement, not
+      a tidiness one: `classMethods?` now accepts `include M`/`extend M` in the body, and
+      `include` on anything that is not a `Module` raises `TypeError` — inside the family. So
+      every mixed-in name has to be a declared `module` (`allModules`), which also has the
+      effect of refusing a name the table does not know at all. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
-      {body : Expr} {ms sms : List Defn} :
-      classMethods? body = some (ms, sms) →
+      {body : Expr} {ms sms : List Defn} {incs exts : List String} :
+      classMethods? body = some (ms, sms, incs, exts) →
+      allModules κ.classes (incs ++ exts) = true →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
@@ -1817,8 +1912,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Separate from `classStmt` only because `Expr.module'` has no superclass slot; the entry
       it produces differs by `Cls.isModule`, which exists to stop `M.new`. -/
   | moduleStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {body : Expr}
-      {ms sms : List Defn} :
-      classMethods? body = some (ms, sms) →
+      {ms sms : List Defn} {incs exts : List String} :
+      classMethods? body = some (ms, sms, incs, exts) →
+      allModules κ.classes (incs ++ exts) = true →
       Judge κ Γ I (.module' n body) .any Γ I
   /-- A bare name inside a **singleton** method body naming another of the same object's
       singleton methods: `module M; def self.describe; value * 2; end; def self.value; 21;

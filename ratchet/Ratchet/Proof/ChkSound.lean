@@ -377,18 +377,25 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     -- flag that stops `M.new` (see `Cls.isModule`).
     split at h
     · rename_i hms
-      injection h with h
-      injection h with h h'; injection h' with h' h''
-      subst h; subst h'; subst h''
-      exact .moduleStmt hms
+      split at h
+      · rename_i hmix
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .moduleStmt hms hmix
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
-  · -- `class' n sup body`: only a body this checker can read into the class table.
+  · -- `class' n sup body`: only a body this checker can read into the class table, and (tier
+    -- 10) only if everything it mixes in is a declared `module`.
     split at h
     · rename_i hms
-      injection h with h
-      injection h with h h'; injection h' with h' h''
-      subst h; subst h'; subst h''
-      exact .classStmt hms
+      split at h
+      · rename_i hmix
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .classStmt hms hmix
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send none m args (some (.block ps [] body))`: either a `lambda`/`proc` literal, or a
     -- call to a top-level method that passes the block.

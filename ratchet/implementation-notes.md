@@ -2144,3 +2144,72 @@ argument; statement threading needs none.
 
 State after this clink: **115 rungs climbed** of 136, 115/115 cross-checked, 75/75 negative
 controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.
+
+## Clink 22 (2026-09-01) — tier 10b: `include` and `extend`: 115 → 117
+
+`metaprog-include`, `metaprog-extend`. 117 derivations, 80/80 controls, 136/136 agreement,
+ten theorems axiom-clean. Mismatches 7 → 5, tier 10 at 3/6.
+
+### The dispatch change is small; the soundness obligations are the work
+
+Both derivations are their tier-7/tier-8 twins **unchanged** (`callMethod`, `callSMethod`). All
+the reach is in the lookup: `Cls` gained two fields, `lookupUp` gained one step, and
+`clsMember?` two rows. What the clink actually cost was three separate soundness arguments.
+
+**1. `Cls.includes` vs `Cls.extended` — one asymmetry, and it *is* `extend`.** `include` puts a
+module's **instance** methods into instance dispatch; `extend` puts the *same* instance methods
+into **singleton** dispatch. So `mixinGet?` serves both directions — both read `.methods` — and
+only the table consulted at the call site differs (`mroGet?` reads `includes`, `smroGet?` reads
+`extended`). The two controls are the two mistakes: an instance must not get an extended method
+(`P.new.shout`), and the class object must not get an included one (`P.greet`). Both really
+raise `NoMethodError`. Order: the list is searched **reversed**, because a later `include` wins
+in Ruby.
+
+**2. `include` on a non-Module raises `TypeError`**, which is *inside* the family. So
+`Judge.classStmt`/`moduleStmt` gained an `allModules κ.classes (incs ++ exts) = true` premise.
+Without it, `class P; include SomeClass; end; P.new.a_method_of_SomeClass` dispatches happily
+and certifies a program that raises before it ever gets there — control (yy). The premise also
+refuses a name the table does not know, which is stricter than Ruby (a module from another
+file); this judgment has no notion of another file, and a name it cannot resolve is a name whose
+`isModule` it cannot check.
+
+**3. The obligation clink 14 wrote down came due, and it was real.** `isAAnswer` answers
+`is_a?` **negatively** off `ancestorsUp`'s chain, and clink 14's argument for that being sound
+was: *a class enters `CTable` only if `classMethods?` could read its whole body, and
+`classMethods?` reads only `def`s — so no class in the table has mixins.* This clink makes
+`classMethods?` accept `include`, so that argument evaporates.
+
+Control (bbb) is what it looks like when it does:
+
+```ruby
+module M; end
+class P; include M; end
+x = P.new
+if x.is_a?(M) then x.nope else 0 end
+```
+
+`x` really *is* an `M`, so the then-branch runs and `x.nope` raises `NoMethodError`. Under a
+module-blind chain, `isAAnswer` answers `some false`, `isATy` refines `x` to `.never`, the whole
+then-branch goes vacuous (`joinT never Int = Int`), and the program **validates**. Fixed by
+`ancestorsUp` naming `c.includes`.
+
+And the fix needed its own guard, one level down: a module that *itself* includes another module
+has an ancestor a one-level walk would omit. `mixinAncestors?` **refuses** such a module —
+answering `none`, i.e. "chain unknown" — rather than under-reporting it. Control (ccc) is that
+program, rejected. Making the walk properly recursive is a fuelled traversal nobody has needed.
+
+The pattern here is worth naming, because it is the second time on this ladder: **a soundness
+argument that rests on another rule's restriction has to be re-checked when that restriction is
+lifted.** Clink 14 wrote the obligation down in `ancestorsUp`'s docstring; that is the only
+reason it was not missed. `mixinAncestors?`'s docstring now carries the next one.
+
+### One thing that did *not* need changing
+
+`isADispatchOk` — the guard that `is_a?` reaches `Object#is_a?` rather than a user override — is
+unchanged, and correctly so: it asks `mroGet?`, which now searches mixins, so a **module** that
+defines `is_a?` is caught by the same lookup that finds any other method. A guard written in
+terms of the dispatch mechanism rather than in terms of a syntactic restriction survives the
+mechanism getting stronger.
+
+State after this clink: **117 rungs climbed** of 136, 117/117 cross-checked, 80/80 negative
+controls rejected, corpus agreement **136/136**, all ten soundness theorems axiom-clean.

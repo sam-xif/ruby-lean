@@ -236,11 +236,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
   | _ + 1, .module' _ body =>
     match classMethods? body with
-    | some (_, _) => some (.any, Γ, I)
+    -- Tier 10: every mixed-in name must be a declared `module` (`Judge.moduleStmt`'s second
+    -- premise) -- `include` on a non-Module raises TypeError.
+    | some (_, _, incs, exts) =>
+      if allModules κ.classes (incs ++ exts) then some (.any, Γ, I) else none
     | none => none
   | _ + 1, .class' _ _ body =>
     match classMethods? body with
-    | some (_, _) => some (.any, Γ, I)
+    | some (_, _, incs, exts) =>
+      if allModules κ.classes (incs ++ exts) then some (.any, Γ, I) else none
     | none => none
   | f + 1, .send none m args (some (.block ps [] body)) =>
     -- An implicit-self send carrying a block literal. Two routes: `lambda`/`proc`, which

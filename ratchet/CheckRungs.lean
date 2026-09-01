@@ -757,7 +757,56 @@ def controls : List Control :=
   , ⟨"class Foo; def a; 1; end; end; Foo.new.b; class Foo; def b; 2; end; end",
       .seq [.class' "Foo" none (.def' "a" [] (.int 1)),
             .send (some (.send (some (.const "Foo")) "new" [] none)) "b" [] none,
-            .class' "Foo" none (.def' "b" [] (.int 2))]⟩ ]
+            .class' "Foo" none (.def' "b" [] (.int 2))]⟩
+    -- ### Tier 10's mixin controls
+    --
+    -- (yy) **`include` on a non-Module raises TypeError**, which is inside the family -- so
+    -- `Judge.classStmt`'s `allModules` premise is a soundness requirement. Without it, `P`
+    -- would get `K`'s methods and `P.new.m` would validate a program that raises before it
+    -- ever dispatches.
+  , ⟨"class K; def m; 1; end; end; class P; include K; end; P.new.m",
+      .seq [.class' "K" none (.def' "m" [] (.int 1)),
+            .class' "P" none (.send none "include" [.const "K"] none),
+            .send (some (.send (some (.const "P")) "new" [] none)) "m" [] none]⟩
+    -- (zz) **`extend` does not give *instances* the method.** `Cls.extended` is consulted only
+    -- by `smroGet?`, so `P.new.shout` finds nothing. Really raises NoMethodError.
+  , ⟨"module L; def shout; \"L\"; end; end; class P; extend L; end; P.new.shout",
+      .seq [.module' "L" (.def' "shout" [] (.str "L")),
+            .class' "P" none (.send none "extend" [.const "L"] none),
+            .send (some (.send (some (.const "P")) "new" [] none)) "shout" [] none]⟩
+    -- (aaa) …and the mirror: **`include` does not give the class *object* the method.** Really
+    -- raises NoMethodError. The two controls together are what pin `include` and `extend` to
+    -- different tables rather than to one "mixins" list.
+  , ⟨"module G; def greet; \"hi\"; end; end; class P; include G; end; P.greet",
+      .seq [.module' "G" (.def' "greet" [] (.str "hi")),
+            .class' "P" none (.send none "include" [.const "G"] none),
+            .send (some (.const "P")) "greet" [] none]⟩
+    -- (bbb) **The control that makes `ancestorsUp` name included modules.** `x` really *is* an
+    -- `M`, so the then-branch runs and `x.nope` raises NoMethodError. Under a module-blind
+    -- ancestor chain `isAAnswer` would answer `some false`, `isATy` would refine `x` to
+    -- `.never`, and the whole then-branch would become vacuous -- `joinT never Int = Int`, and
+    -- the program validates. This is the obligation clink 14 wrote down against tier 10, as an
+    -- executable check.
+  , ⟨"module M; end; class P; include M; end; x = P.new; if x.is_a?(M) then x.nope else 0 end",
+      .seq [.module' "M" .nil,
+            .class' "P" none (.send none "include" [.const "M"] none),
+            .vasgn .lvar "x" (.send (some (.const "P")) "new" [] none),
+            .if' (.send (some (.var .lvar "x")) "is_a?" [.const "M"] none)
+              (.send (some (.var .lvar "x")) "nope" [] none)
+              (some (.int 0))]⟩
+    -- (ccc) …and the same shape one level deeper, which `mixinAncestors?` refuses outright: a
+    -- module that itself includes another has an ancestor the one-level walk would omit, so the
+    -- chain becomes *unknown* rather than under-reported. Rejected -- and soundly, since this
+    -- also raises NoMethodError.
+  , ⟨"module A; end; module B; include A; end; class P; include B; end; x = P.new;"
+      ++ " if x.is_a?(A) then x.nope else 0 end",
+      .seq [.module' "A" .nil,
+            .module' "B" (.send none "include" [.const "A"] none),
+            .class' "P" none (.send none "include" [.const "B"] none),
+            .vasgn .lvar "x" (.send (some (.const "P")) "new" [] none),
+            .if' (.send (some (.var .lvar "x")) "is_a?" [.const "A"] none)
+              (.send (some (.var .lvar "x")) "nope" [] none)
+              (some (.int 0))]⟩ ]
 
 mutual
 
