@@ -394,16 +394,84 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
   lazy-nil ivar, a lambda's captured `x = 7` read out of `Machine.frames`, and both halves of
   the arrow (`(Integer) → Integer` survives; `(Integer) → String` is refuted).
 
-Run it with **`scripts/run_denote.sh`** — a third leg alongside `run_ratchet.sh` and
-`run_check_rungs.sh`, kept separate for the same reason `checkrungs` is a separate exe.
 Axiom-clean throughout (`propext`/`Classical.choice`/`Quot.sound` only); every proof file
 ends with its own `#print axioms`, as `Ratchet/Proof/ChkSound.lean` does.
 
-**Not built, on purpose** (see `Denote/notes.md` §What is deliberately not built): no
-`Judge` soundness theorem (it needs an evaluation relation for `Ratchet.Expr`, and the only
-executable one is over `RubyCore.Expr` — the two are separately-copied inductives), no
-`subTy` soundness, no narrowing soundness. Each is now *statable*, which is the point of
-having built this first.
+**Not built, on purpose** (see `Denote/notes.md` §What is deliberately not built): no `subTy`
+soundness, no narrowing soundness — each now *statable*, which is the point of having built
+this first. The one item on that list that has since been **taken up** is `Judge` soundness:
+`Denote/notes.md` parked it because it needs an evaluation relation for `Ratchet.Expr` while
+the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
+translation and §Semantic ratchet status is the ladder that climbs it.
+
+## Semantic ratchet status (`Denote/Sem/`): **0 of 83 `Judge` rules discharged — scaffolding built**
+
+**A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
+measures *reach*: how many corpus programs `validate` types (177 of 232). This measures
+*justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
+obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
+the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
+written to describe, and this is the answer to it.
+
+Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number). Nothing
+is discharged yet; the scaffolding is what exists, and the working procedure for climbing a
+rung is [`Denote/Sem/notes.md`](Denote/Sem/notes.md).
+
+**The obligations are derived, not transcribed.** `SemJudge` and its seven companions were
+given *exactly* their syntactic twins' signatures, which makes a rule's obligation its own
+constructor type with one constant swapped:
+
+```
+Judge.intLit      :  ∀ {κ Γ I n},  Judge κ Γ I (.int n) .int Γ I
+Obl.Judge.intLit  :=  ∀ {κ Γ I n},  SemJudge κ Γ I (.int n) .int Γ I
+```
+
+Three consequences, and they are the reason it is done this way:
+
+- **The denominator is live** — read out of `Judge`'s constructor list on every build. Add a
+  rule to the checker and 83 becomes 84, listed as undischarged, the same day. The opposite of
+  the corpus norm (§Architecture: "a ratchet whose number depends on a live sample is not a
+  ratchet") for the opposite reason: the rule set is not a sample of the specification, it *is*
+  the specification.
+- **An obligation cannot be weakened**, because there is nothing to edit. A rung that will not
+  close means fixing a `StateOk` component, a `SemJudge` definition, or the *rule* — those are
+  the options.
+- **A rung cannot be claimed by naming something easier.** The ladder counts a rule only when
+  a declaration `Sem.<Family>.<rule>` exists **and** its type is defeq to the derived
+  obligation. Verified against a decoy.
+
+- **`Denote/Sem/Trans.lean`** — `toRuby : Ratchet.Expr → RubyCore.Expr`, 48 arms, no default
+  case. This is what makes any of it possible: `Denote/notes.md` recorded "no `Judge` soundness
+  theorem, because it needs an evaluation relation for `Ratchet.Expr` and the only executable
+  one is over `RubyCore.Expr`". The copy stays (§Isolation is why); it gets a function across
+  instead. Also closes `Denote/Den.lean`'s stated `Ty.clos` `idx` gap — `closTblOk` can now
+  compare a live Proc's body against the table entry.
+- **`Denote/Sem/State.lean`** — `Evals` (evaluate one expression with an empty continuation,
+  so its value is the run's result) and **`StateOk`**: eleven conformance components, one per
+  `Ctx` field plus the threaded `Γ` and `I`. Two are `True` with docstrings saying why rather
+  than by omission. `EnvOk` gives `Ty.sameAs` its first meaning outside the checker's
+  bookkeeping (two locals hold the same object, by the model's own `equal?`); `AsmsOk` makes
+  the conditionality of a non-empty `κ.asms` visible in every obligation's statement.
+- **`Denote/Sem/Judge.lean`** — the eight `SemJudge*` definitions. `SemJudge κ Γ I e τ Γ' I'`
+  = for every conformant `m`, if evaluating `e` returns `v` in `m'` then the frame stack is
+  where it started, `v` is in `τ`'s denotation **at `m'`**, and `m'` conforms to `(κ, Γ', I')`.
+- **`Denote/Sem/Obligations.lean`** — the deriving command, and the 83 `Obl.*`.
+- **`Denote/Ladder.lean`** — the count and the `isDefEq` gate; `semantic_ladder_status` logs it
+  live.
+- **`Denote/Adequacy.lean`** — `AdequacyTarget` (the eight adequacy statements, written out)
+  and `AdequacyHyps` (the conjunction of all 83, generated from the same list). Adequacy is one
+  mutual induction, so it has **no partial credit** — 80 of 83 cases proves nothing — while
+  each rung is independent and stays climbed. That asymmetry is why the ladder counts rungs and
+  states the theorem, rather than the reverse; `Denote/Adequacy.lean` argues it.
+
+**A rung is one rule, not one unit of work**, and the report says so. `Obl.Judge.intLit` is two
+`stepFn` unfoldings; `Obl.Judge.prim` quantifies over the whole `PrimSig` relation, so it owes
+~90 separate facts about CRuby's builtins. Both count as one.
+
+**Not on this ladder: stuck-freedom.** `SemJudge` is partial correctness about the *value*.
+Whether a well-typed program can reach a `NoMethodError`/`ArgumentError`/`TypeError` — the
+`../type-safety-by-reachability.md` property — is a second axis, stated (`StuckFree`,
+`StuckFreeTarget`) and deliberately uncounted: one number should mean one thing.
 
 ## Semantics status: **imported, and wired up for the covered fragment**
 
@@ -693,8 +761,10 @@ directly, because hand-copying `stepFn`'s ~24k-line dependency closure the way
 unmaintainable one. `Ratchet/` does not import `Semantics/` (or vice versa) — see
 §Architecture for exactly where the line is drawn. **`Denote/` is the one library that
 imports both** (`Ratchet/Ty.lean` + `Semantics/Interp.lean`), because a denotation is by
-definition a statement relating the two languages; it imports no `Judge` and no
-`Ratchet/Expr.lean`, and nothing imports it (§Semantic denotation status). Own `lakefile.toml`, own
+definition a statement relating the two languages; `Denote/` proper imports no `Judge` and no
+`Ratchet/Expr.lean`; `Denote/Sem/` does import both, because the semantic judgment is a claim
+*about* `Judge`'s rules and its obligations are derived from that inductive
+(§Semantic ratchet status). Nothing outside `Denote/` imports any of it. Own `lakefile.toml`, own
 `lean-toolchain` (pinned to the same `v4.32.2` as `../lean/`, which the `require` now
 makes an actual constraint, not just a coincidence).
 
@@ -753,6 +823,10 @@ makes an actual constraint, not just a coincidence).
   target (still large, by design — see §Checker status). `Main.lean` imports
   `Ratchet.Rungs` but not `Semantics/`: the ratchet's headline number stays a pure
   statement about `validate`.
+- **`scripts/run_denote.sh`** — the **semantic ratchet** (§Semantic ratchet status): the
+  denotation's `#guard` gate, then `semladder`'s discharged/total over `Judge`'s rules.
+  Parallel to `run_ratchet.sh`, measuring justification rather than reach; exits nonzero while
+  rules remain, same convention.
 - **`scripts/run_agreement.sh`** — **every rung, under CRuby and under the Lean
   semantics, compared.** Delegates to the real difftest engine
   (`../difftest`, `replay --sut lean`), which runs each `.rb` both ways and compares the

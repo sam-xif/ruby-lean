@@ -3778,3 +3778,104 @@ captured `x = 7` read out of `Machine.frames`, and both halves of the arrow:
 **177 rungs of 232**, unchanged — this clink adds no rung and no `PrimSig` row, and
 `Ratchet/` is untouched. New: `Denote/` (6 Lean files, a new `lean_lib` on the default
 target), 31 semantic `#guard`s, 12 theorems, axiom-clean.
+
+---
+
+## Clink 43 (2026-09-01) — the semantic ratchet's scaffolding. **177 rungs / 0 of 83 rules**
+
+A second ladder, and the reason for it is a sentence from clink 42's own notes: every
+soundness result in this package is *syntactic* — `validate_sound_syntactic` says `chk`
+agrees with `Judge`, and `Judge` is taken as the specification. Clink 42 gave a `Ty` a
+meaning; this clink builds the ladder that uses it to justify `Judge`'s **rules**, one at a
+time. **Nothing is discharged.** What exists is the framework, the 83 obligations, the
+count, and the endpoint. The per-rung procedure is [`Denote/Sem/notes.md`](Denote/Sem/notes.md).
+
+**Two ladders, measuring different things.** `run_ratchet.sh` says 177 of 232: *reach*, how
+many corpus programs `validate` types. `run_denote.sh` now says 0 of 83: *justification*, how
+many `Judge` rules have been proved sound against the semantics. The two are independent —
+every rung of the first can be climbed with none of the second — and conflating them would
+hide exactly the gap worth watching.
+
+**Decision 1: the obligations are derived from the inductive, not written down.** This is the
+clink's real content. `SemJudge` and its seven companions were given **exactly** their
+syntactic twins' signatures, which makes a rule's proof obligation its own constructor type
+with one constant substituted:
+
+```
+Judge.intLit      :  ∀ {κ Γ I n},  Judge κ Γ I (.int n) .int Γ I
+Obl.Judge.intLit  :=  ∀ {κ Γ I n},  SemJudge κ Γ I (.int n) .int Γ I
+```
+
+`derive_semantic_obligations` does that for all 83 constructors of the eight-member family.
+The alternative — transcribing 83 obligations by hand, premises like
+`PrimSig (.arrayOf τ) "include?" [σ] .bool` and all — was rejected for three reasons, each of
+which is a property the derivation *has*:
+
+1. **The denominator is live.** It is read out of `Judge`'s constructor list on every build.
+   Add a rule to the checker and 83 becomes 84, reported as undischarged, the same day. Note
+   this is the *opposite* of the corpus norm ("a ratchet whose number depends on a live sample
+   is not a ratchet") and for the opposite reason: the corpus is a sample, the rule set is the
+   specification, and a committed copy of a specification is how drift starts.
+2. **An obligation cannot be weakened**, because there is nothing to edit. A rung that will
+   not close leaves exactly three moves: prove it, fix a `StateOk`/`SemJudge` definition, or
+   fix the rule in `Ratchet/Judge.lean`.
+3. **The premises stay.** Nothing substitutes `PrimSig`/`EqSafe`/`NarrowCond` — they are the
+   rule's hypotheses. So `Obl.Judge.prim` quantifies over the whole `PrimSig` relation, and
+   discharging it means justifying ~90 rows of builtin behaviour from the semantics. That is
+   what `Judge.prim` claims; seeing the cost stated is a feature of deriving the obligation
+   rather than writing a friendlier one. The ladder's report says "a rung is one rule, not one
+   unit of work" for this reason.
+
+And the gate that makes the number mean something: the ladder counts a rule only when a
+declaration `Sem.<Family>.<rule>` exists **and `isDefEq` says its type is the derived
+obligation**. Checked against a decoy — a `Sem.Judge.intLit : True` is not counted; a
+`Sem.Judge.fltLit : Obl.Judge.fltLit` is.
+
+**Decision 2: the copied `Expr` stays; it gets a function across instead.** Clink 42 parked
+`Judge` soundness because "it needs an evaluation relation for `Ratchet.Expr` and the only
+executable one is over `RubyCore.Expr`". The obvious fix is to delete one copy, and it is the
+wrong trade: `Ratchet/` importing nothing from `../lean/RubyCore/` is what makes a divergence
+a **deliberate fork to notice** instead of a build error to paper over, and that isolation is
+why this restart exists at all. So `Denote/Sem/Trans.lean` is `toRuby`, 48 arms, **no default
+case** — a constructor added on either side breaks the build. Side effect worth naming: it
+closes clink 42's stated `Ty.clos` `idx` gap, because a live Proc's `RubyCore.Closure.body`
+and a table entry's `Ratchet.Expr` body are now comparable (`closTblOk`).
+
+**Decision 3: adequacy is stated, not laddered.** `AdequacyTarget` — the eight
+`Judge … → SemJudge …` statements — is one **mutual induction**, so 80 of 83 cases proves
+nothing: there is no partial credit in a `Judge.rec` application. Each individual rung, by
+contrast, is independent and stays climbed. Writing the induction first would mean writing 83
+`sorry`s and this package has none, so the file states the target and generates `AdequacyHyps`
+(the conjunction of all 83, folded over the same constructor list), which becomes provable
+exactly when the ladder reads 83/83. The terminal clink is then one anonymous-constructor term
+plus the induction.
+
+**What `StateOk` had to decide, and the three places a rung is expected to stall.** A rule's
+obligation is only as strong as what a machine "conforming to `(κ, Γ, I)`" is required to
+satisfy, so `StateOk` is eleven components — one per `Ctx` field plus the two threaded pieces —
+and the two that are `True` (`ClosuresOk`, `PrivConstsOk`) say so with docstrings rather than
+by omission, because a component quietly skipped is where an unsound rule would hide. Two
+earned their reasoning: `EnvOk` gives `Ty.sameAs` its first meaning outside the checker's own
+bookkeeping (the two locals hold the *same object*, by the model's `equal?` — which is what
+`Judge.narrowEnvs`' soundness will have to consume), and `AsmsOk` is a claim about *running*
+calls, which puts the conditionality `Judge`'s own docstring describes ("read a derivation with
+a non-empty `κ.asms` as a conditional claim") into every obligation's statement rather than
+into a comment. The three predicted stall points are recorded **in advance** in
+`Denote/Sem/notes.md` — `StateOk`'s components, `SemJudgeNested`'s one-level reading, and the
+`m'.stack = m.stack` frame-balance conjunct on the frame-pushing rules — because a rung that
+will not close is information about a definition, and it is worth knowing which one to suspect
+before the first attempt.
+
+**Also parked, deliberately: stuck-freedom.** `SemJudge` is partial correctness about the
+*value*. Whether a well-typed program can reach a `NoMethodError`/`ArgumentError`/`TypeError`
+is `../type-safety-by-reachability.md`'s property, is stated here (`StuckFree`,
+`StuckFreeTarget`), and is **not counted**: a rung owing both a value-typing proof and a
+stuck-freedom proof would be two rungs wearing one number, and the two have genuinely
+different shapes (one is about the value at a `.value` outcome, the other about every outcome).
+
+### State
+
+**177 rungs of 232** (untouched; `Ratchet/` is not modified) and **0 of 83 `Judge` rules
+discharged**. New: `Denote/Sem/` (4 Lean files), `Denote/Ladder.lean`, `Denote/Adequacy.lean`,
+two exes (`semladder`, `denotereport`), `scripts/run_denote.sh` reworked into the ratchet's
+runner. Axiom-clean; no `sorry` and no new axioms anywhere.

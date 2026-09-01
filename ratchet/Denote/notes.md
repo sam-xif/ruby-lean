@@ -171,11 +171,16 @@ precisely a `Heap`-and-frames-indexed predicate, i.e. what `sem` was left open f
 
 ## What is deliberately not built
 
-* **No `Judge` soundness theorem.** `Denote/` imports no `Judge` and states no
-  `Judge e τ → ∀ …, den τ …` — deliberately, because that theorem needs an evaluation
-  relation for `Ratchet.Expr` and the only executable one in reach is over `RubyCore.Expr`
-  (§The two-language boundary). `ClosArrow` (`Denote/Arrow.lean`) states the *shape* of the
-  bridge a `Judge.closCall` soundness proof would need, so the target is on file.
+* ~~**No `Judge` soundness theorem.**~~ **Taken up — see `Denote/Sem/notes.md`.** This entry
+  used to read: "`Denote/` imports no `Judge` and states no `Judge e τ → ∀ …, den τ …`,
+  because that theorem needs an evaluation relation for `Ratchet.Expr` and the only executable
+  one in reach is over `RubyCore.Expr` (§The two-language boundary)." The missing piece was
+  the translation, and `Denote/Sem/Trans.lean` is it — 48 arms, no default case, and it closes
+  the `Ty.clos` `idx` gap in §The two-language boundary as a side effect. `Denote/Sem/` is the
+  parallel judgment built on top: `SemJudge` with `Judge`'s exact signature, 83 obligations
+  *derived* from the inductive rather than transcribed, and a ladder that counts them. Nothing
+  discharged yet. `ClosArrow` (`Denote/Arrow.lean`) is still the shape of the bridge a
+  `Judge.closCall` rung will need.
 * **No `subTy` soundness.** `subTy σ τ → den σ ⊆ den τ` is the obvious next theorem and is
   not proved here; the denotation exists first so that it *can* be.
 * **No narrowing soundness.** `truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy` (`Ratchet/Ty.lean`,

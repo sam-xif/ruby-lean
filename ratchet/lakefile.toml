@@ -35,6 +35,20 @@ name = "Denote"
 srcDir = "."
 globs = ["Denote.+"]
 
+# The semantic ratchet's report. Reads the `Judge` inductive's constructor list and the
+# `Sem.*` discharges out of the environment at elaboration time (`Denote/Ladder.lean`), so the
+# exe itself is a `println`. Separate from `ratchet` so each ladder's headline number stays a
+# statement about exactly one thing -- reach vs. justification.
+# `Denote/Examples.lean`'s report, printed. The `#guard`s there are the real gate (they fail
+# the build); this is so the log shows *what* was checked.
+[[lean_exe]]
+name = "denotereport"
+root = "DenoteReport"
+
+[[lean_exe]]
+name = "semladder"
+root = "SemLadder"
+
 [[lean_exe]]
 name = "ratchet"
 root = "Main"
