@@ -65,8 +65,13 @@ partial def Ty.render : Ty → String
   | .ivar0 => ""
   | .ivarCons n τ .ivar0 => s!"{n}: {Ty.render τ}"
   | .ivarCons n τ rest => s!"{n}: {Ty.render τ}, {Ty.render rest}"
-  | .clos idx .ivar0 => s!"<closure#{idx}>"
-  | .clos idx captured => s!"<closure#{idx}>" ++ "{" ++ Ty.render captured ++ "}"
+  | .clos idx .ivar0 .never => s!"<closure#{idx}>"
+  | .clos idx captured .never => s!"<closure#{idx}>" ++ "{" ++ Ty.render captured ++ "}"
+  -- Tier 11: a closure created where `self` was typed also renders its creation `self`,
+  -- because that is what its body will be checked against (see `Ty.clos`).
+  | .clos idx .ivar0 cself => s!"<closure#{idx} self={Ty.render cself}>"
+  | .clos idx captured cself =>
+    s!"<closure#{idx} self={Ty.render cself}>" ++ "{" ++ Ty.render captured ++ "}"
 end Ratchet
 
 -- `--stdin`: check one program instead of the corpus — RubyCore JSON (the same

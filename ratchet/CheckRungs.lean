@@ -62,7 +62,7 @@ def expectedClasses : Ty → List String
   -- harness compares the class of the result value. What backs them is that every rung whose
   -- type depends on them (`lambda-closure-capture`, `lambda-returns-lambda`) *calls* the
   -- closure, so a wrong index or a wrong capture shows up as a wrong result class there.
-  | .clos _ _ => ["Proc"]
+  | .clos _ _ _ => ["Proc"]
   -- Tier 7: a user-class instance's class is its name. The *ivar spine* is not
   -- cross-checked against the semantics here — this harness compares the class of the
   -- result value and nothing in it reaches inside an object. What backs the spine instead
@@ -657,7 +657,47 @@ def controls : List Control :=
     -- read an element type out of (the third recorded `Ty` language gap).
   , ⟨"{\"a\" => 1}.map { |p| p } (safe; iterators need an arrayOf receiver)",
       .send (some (.hash [(.str "a", .int 1)])) "map" []
-        (some (.block [.req "p"] [] (.var .lvar "p")))⟩ ]
+        (some (.block [.req "p"] [] (.var .lvar "p")))⟩
+    -- ### Tier 11's closure-`self` control
+    --
+    -- (qq) **The control that makes `Ty.clos`'s third field load-bearing.** The lambda is
+    -- created inside `A#mk`, where `@v` is a String, and invoked inside `B#run`, where `@v` is
+    -- an `Integer`. Its body is `@v + 1`, so at runtime it computes `"s" + 1` and raises
+    -- TypeError. A `closCall` that judged the body against the **caller's** `self` and ivar
+    -- spine -- which is what this rule did before the field existed, behind a
+    -- `κ.selfTy = none` premise that hid the question rather than answering it -- would see
+    -- `@v : Integer` and certify it.
+    --
+    -- The positive twin is the same program with the two classes' ivars swapped: creation self
+    -- `@v : Integer`, so `@v + 1` types, and it really returns `2`. That one is not a control
+    -- because it *validates* -- which is the whole point of putting the creation `self` in the
+    -- type rather than forbidding the program.
+  , ⟨"class A; @v=\"s\"; def mk; lambda { @v + 1 }; end; end; class B; @v=1; def run(f);"
+      ++ " f.call; end; end; B.new.run(A.new.mk)",
+      .seq [.class' "A" none (.seq [
+              .def' "initialize" [] (.vasgn .ivar "@v" (.str "s")),
+              .def' "mk" []
+                (.send none "lambda" []
+                  (some (.block [] []
+                    (.send (some (.var .ivar "@v")) "+" [.int 1] none))))]),
+            .class' "B" none (.seq [
+              .def' "initialize" [] (.vasgn .ivar "@v" (.int 1)),
+              .def' "run" [.req "f"]
+                (.send (some (.var .lvar "f")) "call" [] none)]),
+            .send (some (.send (some (.const "B")) "new" [] none)) "run"
+              [.send (some (.send (some (.const "A")) "new" [] none)) "mk" [] none] none]⟩
+    -- (rr) What `Ctx.inClosure`'s two erasures cost, recorded rather than argued away: a
+    -- closure body's `frame` and `blockTy` are cleared, so a `super` or a `yield` inside a
+    -- block body has no rule even where Ruby resolves it to the enclosing method's. This is
+    -- safe Ruby (`3`) that the judgment declines. Making it precise means recording those two
+    -- in `Ty.clos` as well, exactly as `selfTy` now is.
+  , ⟨"def t; f = lambda { yield }; f.call; end; t { 3 } (safe; blockTy is cleared in a"
+      ++ " closure body)",
+      .seq [.def' "t" []
+              (.seq [.vasgn .lvar "f" (.send none "lambda" []
+                       (some (.block [] [] (.yield' [])))),
+                     .send (some (.var .lvar "f")) "call" [] none]),
+            .send none "t" [] (some (.block [] [] (.int 3)))]⟩ ]
 
 mutual
 

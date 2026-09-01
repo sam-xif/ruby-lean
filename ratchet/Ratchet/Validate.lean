@@ -251,7 +251,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none =>
       if (m = "lambda" || m = "proc") && args.isEmpty then
         match closIdx? κ.closures ps body with
-        | some idx => some (.clos idx (envToSpine Γ), Γ, I)
+        | some idx => some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never), Γ, I)
         | none => none
       else
         match chkAll f κ Γ I args with
@@ -260,10 +260,12 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           | some idx =>
             match defGet? κ.defs m with
             | some d =>
-              match paramEnvB (some (.clos idx (envToSpine Γ))) d.params argTys with
+              match paramEnvB (some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)))
+                  d.params argTys with
               | some Γb =>
-                match chk f { κ with blockTy := some (.clos idx (envToSpine Γ)) } Γb .ivar0
-                    d.body with
+                match chk f
+                    { κ with blockTy := some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) }
+                    Γb .ivar0 d.body with
                 | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ', I') else none
                 | none => none
               | none => none
@@ -375,14 +377,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             | none => none
           | _ =>
             match chk f κ Γ₂ I₂ pe with
-            | some (.clos idx cap, Γ₃, I₃) =>
+            | some (.clos idx cap cself, Γ₃, I₃) =>
               match closGet? κ.closures idx with
               | some c =>
                 match paramEnv c.params [β] with
                 | some Γb =>
-                  match chk f κ (Γb ++ spineToEnv cap) I₃ (bodyResult c.body) with
+                  match chk f (κ.inClosure cself) (Γb ++ spineToEnv cap) (closSpine cself)
+                      (bodyResult c.body) with
                   | some (ρ, Γb', Iout) =>
-                    if Iout = I₃ then
+                    if Iout = closSpine cself then
                       if capIntact cap (Γb ++ spineToEnv cap) Γb' then
                         match iterResult? m elem argTys ρ with
                         | some res => some (res, Γ₃, I₃)
@@ -449,29 +452,28 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   | some _ => if argTys = [] then some (.inst n .ivar0, Γ₂, I₂) else none
                   | none => none
               else none
-          | .clos idx cap =>
+          | .clos idx cap cself =>
             -- Tier 9: invoke a callable by checking its body at this call site's argument
-            -- types, in an environment of parameters-then-captures.
+            -- types, in an environment of parameters-then-captures -- and (tier 11) in the
+            -- *creation* site's `self` and ivar spine, both read out of the type.
             if m = "call" || m = "[]" then
-              match κ.selfTy with
-              | none =>
-                match closGet? κ.closures idx with
-                | some c =>
-                  match paramEnv c.params argTys with
-                  | some Γb =>
-                    match chk f κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) with
-                    -- Neither the ivar spine nor any captured local may be retyped by the
-                    -- callee (see `capIntact` -- the second one is a real soundness bug if
-                    -- omitted, not caution).
-                    | some (ρ, Γb', Iout) =>
-                      if Iout = I₂ then
-                        (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ₂, I₂)
-                         else none)
-                      else none
-                    | none => none
+              match closGet? κ.closures idx with
+              | some c =>
+                match paramEnv c.params argTys with
+                | some Γb =>
+                  match chk f (κ.inClosure cself) (Γb ++ spineToEnv cap) (closSpine cself)
+                      (bodyResult c.body) with
+                  -- Neither the ivar spine nor any captured local may be retyped by the
+                  -- callee (see `capIntact` -- the second one is a real soundness bug if
+                  -- omitted, not caution).
+                  | some (ρ, Γb', Iout) =>
+                    if Iout = closSpine cself then
+                      (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ₂, I₂)
+                       else none)
+                    else none
                   | none => none
                 | none => none
-              | some _ => none
+              | none => none
             else none
           | .inst n Iself =>
             match mroGet? κ.classes n m with
@@ -494,26 +496,24 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none => none
   | f + 1, .yield' args =>
     match κ.blockTy with
-    | some (.clos idx cap) =>
-      match κ.selfTy with
-      | none =>
-        match chkAll f κ Γ I args with
-        | some (argTys, Γ', I') =>
-          match closGet? κ.closures idx with
-          | some c =>
-            match paramEnvB none c.params argTys with
-            | some Γb =>
-              match chk f κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) with
-              | some (ρ, Γb', Iout) =>
-                if Iout = I' then
-                  (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ', I')
-                   else none)
-                else none
-              | none => none
+    | some (.clos idx cap cself) =>
+      match chkAll f κ Γ I args with
+      | some (argTys, Γ', I') =>
+        match closGet? κ.closures idx with
+        | some c =>
+          match paramEnvB none c.params argTys with
+          | some Γb =>
+            match chk f (κ.inClosure cself) (Γb ++ spineToEnv cap) (closSpine cself)
+                (bodyResult c.body) with
+            | some (ρ, Γb', Iout) =>
+              if Iout = closSpine cself then
+                (if capIntact cap (Γb ++ spineToEnv cap) Γb' then some (ρ, Γ', I')
+                 else none)
+              else none
             | none => none
           | none => none
         | none => none
-      | some _ => none
+      | none => none
     | some _ => none
     | none => none
   | f + 1, .super' args none =>

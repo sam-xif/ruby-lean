@@ -1149,9 +1149,9 @@ def r087 : Rung :=
   ⟨"lambda-zero-arity",
     .seq [.vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
           .send (some (.var .lvar "f")) "call" [] none],
-    .int, [("f", .clos 0 .ivar0)],
-    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
-      (.last (.closCall (.inl rfl) rfl (.var rfl) .nil rfl rfl .intLit rfl)))⟩
+    .int, [("f", .clos 0 .ivar0 .never)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
+      (.last (.closCall (.inl rfl) (.var rfl) .nil rfl rfl .intLit rfl)))⟩
 
 /-- `lambda { |x| x + 1 }.call(2)` → `Integer`. **The rung that shows why a callable's type
     is a reference and not an arrow.** Nothing in `lambda { |x| x + 1 }` says `x` is an
@@ -1163,7 +1163,7 @@ def r088 : Rung :=
       (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none)))))
       "call" [.int 2] none,
     .int, [],
-    .closCall (.inl rfl) rfl (.lambdaLit (idx := 0) (.inl rfl) rfl rfl)
+    .closCall (.inl rfl) (.lambdaLit (idx := 0) (.inl rfl) rfl)
       (.cons .intLit .nil) rfl rfl
       (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl⟩
 
@@ -1177,9 +1177,9 @@ def r089 : Rung :=
             (some (.block [.req "x"] []
               (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
           .send (some (.var .lvar "p")) "call" [.int 3] none],
-    .int, [("p", .clos 0 .ivar0)],
-    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
-      (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+    .int, [("p", .clos 0 .ivar0 .never)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl))
+      (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
         (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `p = proc { |x| x * 2 }; p[3]` → `Integer`. `p[3]` is Ruby's other spelling of
@@ -1193,9 +1193,9 @@ def r090 : Rung :=
             (some (.block [.req "x"] []
               (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
           .send (some (.var .lvar "p")) "[]" [.int 3] none],
-    .int, [("p", .clos 0 .ivar0)],
-    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl rfl))
-      (.last (.closCall (.inr rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+    .int, [("p", .clos 0 .ivar0 .never)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inr rfl) rfl))
+      (.last (.closCall (.inr rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
         (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
 /-- `n = 10; add_n = lambda { |x| x + n }; add_n.call(5)` → `Integer`. **The rung the
@@ -1209,10 +1209,10 @@ def r098 : Rung :=
             (some (.block [.req "x"] []
               (.send (some (.var .lvar "x")) "+" [.var .lvar "n"] none)))),
           .send (some (.var .lvar "add_n")) "call" [.int 5] none],
-    .int, [("n", .int), ("add_n", .clos 0 (.ivarCons "n" .int .ivar0))],
+    .int, [("n", .int), ("add_n", .clos 0 (.ivarCons "n" .int .ivar0) .never)],
     .seq (.cons (.vasgn .intLit)
-      (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
-        (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+      (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
+        (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
           (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl))))⟩
 
 /-- `add = lambda { |x| lambda { |y| x + y } }; add.call(1).call(2)` → `Integer`.
@@ -1234,11 +1234,11 @@ def r099 : Rung :=
                   (.send (some (.var .lvar "x")) "+" [.var .lvar "y"] none))))))),
           .send (some (.send (some (.var .lvar "add")) "call" [.int 1] none))
             "call" [.int 2] none],
-    .int, [("add", .clos 0 .ivar0)],
-    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
-      (.last (.closCall (.inl rfl) rfl
-        (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
-          (.lambdaLit (idx := 1) (.inl rfl) rfl rfl) rfl)
+    .int, [("add", .clos 0 .ivar0 .never)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
+      (.last (.closCall (.inl rfl)
+        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
+          (.lambdaLit (idx := 1) (.inl rfl) rfl) rfl)
         (.cons .intLit .nil) rfl rfl
         (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd) rfl)))⟩
 
@@ -1258,8 +1258,8 @@ def r100 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDef
-        (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl rfl) (.cons .intLit .nil)) rfl rfl
-        (.closCall (.inl rfl) rfl (.var rfl) (.cons (.var rfl) .nil) rfl rfl
+        (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) (.cons .intLit .nil)) rfl rfl
+        (.closCall (.inl rfl) (.var rfl) (.cons (.var rfl) .nil) rfl rfl
           (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
 
 /-! ### Tier 9b — a block reaching a method
@@ -1293,9 +1293,9 @@ def r094 : Rung :=
     .seq (.cons .defStmt
       (.last (.callDefBlk rfl .nil rfl rfl rfl
         (.prim
-          (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+          (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
             (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)
-          (.cons (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+          (.cons (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
             (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl) .nil)
           .intAdd))))⟩
 
@@ -1314,7 +1314,7 @@ def r095 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.callDefBlk rfl .nil rfl rfl rfl
-        (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+        (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
           (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
 
 /-- `def apply_twice; doubler = lambda { |x| return x * 2 }; doubler.call(3); end;
@@ -1339,8 +1339,8 @@ def r105 : Rung :=
     .int, [],
     .seq (.cons .defStmt
       (.last (.vcallDef rfl rfl rfl
-        (.seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
-          (.last (.closCall (.inl rfl) rfl (.var rfl) (.cons .intLit .nil) rfl rfl
+        (.seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
+          (.last (.closCall (.inl rfl) (.var rfl) (.cons .intLit .nil) rfl rfl
             (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))))))⟩
 
 /-! ## Tier 11 — features in concert
@@ -1376,7 +1376,7 @@ def r121 : Rung :=
     .seq (.cons .defStmt
       (.cons (.vasgn .intLit)
         (.cons (.callDefBlk rfl .nil rfl rfl rfl
-                 (.yieldExpr rfl rfl (.cons .intLit .nil) rfl rfl
+                 (.yieldExpr rfl (.cons .intLit .nil) rfl rfl
                    (.vasgn (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)) rfl))
           (.last (.prim (.var rfl) (.cons .intLit .nil) .intAdd)))))⟩
 
@@ -1731,8 +1731,8 @@ def r097 : Rung :=
             (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "*" [.int 2] none)))),
           .send (some (.array [.int 1, .int 2])) "map" []
             (some (.blockpass (some (.var .lvar "double"))))],
-    .arrayOf .int, [("double", .clos 0 .ivar0)],
-    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl rfl))
+    .arrayOf .int, [("double", .clos 0 .ivar0 .never)],
+    .seq (.cons (.vasgn (.lambdaLit (idx := 0) (.inl rfl) rfl))
       (.last (.iterClosPass (.arrayLit (.cons .intLit (.cons .intLit .nil))) .nil
         (.var rfl) .map rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl)))⟩
 
@@ -1881,6 +1881,69 @@ def r134 : Rung :=
                  rfl)
           (.last (.var rfl)))))⟩
 
+/-- `class Box; def initialize(f); @f = f; end; def apply(v); @f.call(v); end; end;
+    Box.new(lambda { |x| x * 2 }).apply(4)` → `Integer` (tier 11).
+
+    **A callable stored in an instance variable**, and the rung that made `Ty.clos`'s third
+    field necessary. Reading `@f` inside `Box#apply` gives a `.clos`, and calling it means
+    typing a body that was written somewhere else entirely — at top level, where `self` was not
+    typed and no instance variable existed. `closCall` used to insist that the *call* site have
+    `κ.selfTy = none`, which is not a property of the closure at all, and that is exactly the
+    premise this program cannot satisfy: `apply`'s `self` is a `Box`.
+
+    Read the `Iself` annotation below and the fix is legible: `Box`'s spine holds
+    `@f : <closure#0>`, and `closCall` judges block 0's body against **`.never`** — the `self`
+    recorded *in that type* — not against the `Box`. Judging it against the `Box` would be
+    unsound in general: an `@y` in the body would read `Box`'s `@y` out of a body belonging to
+    `main`. -/
+def r117 : Rung :=
+  ⟨"xc-lambda-in-ivar",
+    .seq [.class' "Box" none (.seq [
+            .def' "initialize" [.req "f"] (.vasgn .ivar "@f" (.var .lvar "f")),
+            .def' "apply" [.req "v"]
+              (.send (some (.var .ivar "@f")) "call" [.var .lvar "v"] none)]),
+          .send (some (.send (some (.const "Box")) "new"
+            [.send none "lambda" []
+              (some (.block [.req "x"] []
+                (.send (some (.var .lvar "x")) "*" [.int 2] none)))] none))
+            "apply" [.int 4] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (Iself := .ivarCons "@f" (.clos 0 .ivar0 .never) .ivar0)
+        (.newInst (.constCls rfl)
+          (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) .nil) rfl rfl
+          (.ivarAsgn (.var rfl)))
+        (.cons .intLit .nil) rfl rfl
+        (.closCall (.inl rfl) .ivarRead (.cons (.var rfl) .nil) rfl rfl
+          (.prim (.var rfl) (.cons .intLit .nil) .intMul) rfl))))⟩
+
+/-- `module Twice; def self.apply(f, v); f.call(f.call(v)); end; end;
+    Twice.apply(lambda { |x| x + 1 }, 5)` → `Integer` (tier 11).
+
+    The same lifting, one `self`-shape over: inside `Twice.apply` the `self` is a **class
+    object** (`.clsOf "Twice"`), so `closCall`'s old premise failed here too. And the rung
+    exercises the composition the tier is named for — `f.call(f.call(v))`, one closure
+    instantiated twice at the same argument type, nested. -/
+def r123 : Rung :=
+  ⟨"xc-module-applies-lambda",
+    .seq [.module' "Twice" (.defs .self' "apply" [.req "f", .req "v"]
+            (.send (some (.var .lvar "f")) "call"
+              [.send (some (.var .lvar "f")) "call" [.var .lvar "v"] none] none)),
+          .send (some (.const "Twice")) "apply"
+            [.send none "lambda" []
+               (some (.block [.req "x"] []
+                 (.send (some (.var .lvar "x")) "+" [.int 1] none))),
+             .int 5] none],
+    .int, [],
+    .seq (.cons (.moduleStmt rfl)
+      (.last (.callSMethod (.constCls rfl)
+        (.cons (.lambdaLit (idx := 0) (.inl rfl) rfl) (.cons .intLit .nil)) rfl rfl
+        (.closCall (.inl rfl) (.var rfl)
+          (.cons (.closCall (.inl rfl) (.var rfl) (.cons (.var rfl) .nil) rfl rfl
+                    (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl) .nil)
+          rfl rfl (.prim (.var rfl) (.cons .intLit .nil) .intAdd) rfl))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
@@ -1894,7 +1957,7 @@ def rungs : List Rung :=
    r077, r078, r079, r080, r081, r082, r083, r084, r085, r086,
    r087, r088, r089, r090, r091, r092, r093, r094, r095, r096, r097, r098, r099, r100,
    r101, r102, r103, r104, r105,
-   r121, r122,
+   r117, r121, r122, r123,
    r125, r126, r127, r129, r130, r131, r134]
 
 /-! ## `chk` answers exactly what was derived by hand

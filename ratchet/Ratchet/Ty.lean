@@ -125,9 +125,23 @@ inductive Ty where
       `lambda-closure-capture` and `lambda-returns-lambda` are the two rungs that turn on
       this, the second because the inner lambda's captured `x` is the outer's *parameter*.
 
+      **`selfTy` is the third field, added at tier 11.** A closure's body sees the `self` of
+      wherever it was *created*, not of wherever it is called — so a lambda made inside a
+      `Point` method and invoked inside a `Box` method must have its body checked against the
+      `Point`. Tier 9 sidestepped that by *forbidding* creation anywhere but top level
+      (`Judge.lambdaLit` carried a `κ.selfTy = none` premise, whose docstring named this field
+      as the fix), and tier 11's cross-products are what brought it due: `xc-lambda-in-ivar`
+      and `xc-module-applies-lambda` call a top-level lambda from inside a method, which the
+      old restriction refused because it constrained the *call* site as well.
+
+      Encoded as a `Ty` rather than an `Option Ty` because a `Ty` field must be one:
+      **`.never` means "created where `self` was not typed"** (top level). `closSelf?` and
+      `closSpine` decode it — the second because an `.inst n ivars` carries the creation
+      object's instance variables, which is the spine the body must be judged against.
+
       Not `EqSafe`, and no `PrimSig` row has it as a receiver: the only rules that consume one
       are `Judge.closCall`'s `call`/`[]`. -/
-  | clos (idx : Nat) (captured : Ty)
+  | clos (idx : Nat) (captured : Ty) (selfTy : Ty)
 deriving DecidableEq, BEq, Repr, Inhabited
 
 /-- `(A, B, …) → R` from its parts. -/

@@ -1945,3 +1945,76 @@ every targeted rung, tier 11 at 2/10, tier 12 at 7/12), 108/108 cross-checked ag
 semantics **on the prelude-booted heap**, 67/67 negative controls rejected, corpus agreement
 **136/136 with 0 disagreements**, all ten soundness theorems axiom-clean (`propext`,
 `Quot.sound`).
+
+## Clink 19 (2026-09-01) — tier 11: a closure remembers its `self`: 108 → 110
+
+`xc-lambda-in-ivar` and `xc-module-applies-lambda`. 110 derivations, 69/69 controls, 136/136
+agreement, ten theorems axiom-clean. Mismatches 14 → 12, tier 11 at 4/10.
+
+### The premise that was constraining the wrong thing
+
+`Judge.closCall` carried `κ.selfTy = none`, and `lambdaLit`/`callDefBlk`/`yieldExpr` carried it
+too. `lambdaLit`'s docstring said honestly what it was for and named the fix:
+
+> A closure's body sees the `self` of wherever it was *created*, and this rule records the
+> captured *locals* but not the captured `self`. … Lifting this means putting `selfTy` in
+> `Ty.clos` beside the captured locals.
+
+The trouble is that `closCall`'s copy of the premise constrains the **call** site, which is not
+a property of the closure at all. `@f.call(v)` inside `Box#apply` is a call from a place where
+`self` is a `Box`, and the lambda in `@f` was made at top level — perfectly fine, and
+underivable. Two of tier 11's rungs are exactly that.
+
+So `Ty.clos` gained a third field: the creation site's `self`, encoded as a `Ty` (a `Ty` field
+must be one) with **`.never` meaning "created where `self` was not typed"**. `closSelf?` and
+`closSpine` decode it, and `Ctx.inClosure` builds the context a body is judged in.
+
+### Both halves of the fix are needed, and the second is the easy one to miss
+
+`closCall` now judges the body in `κ.inClosure σ` **at `closSpine σ`** — the creation object's
+instance variables, not the caller's. Getting only the `self` right and leaving the spine as the
+caller's would be unsound, and the control says so concretely: a lambda created in an `A` whose
+`@v` is a String, invoked in a `B` whose `@v` is an `Integer`, with body `@v + 1`. It computes
+`"s" + 1` and raises `TypeError`; a rule reading the caller's spine sees `@v : Integer` and
+certifies it.
+
+The invariant that makes one field enough: **where `κ.selfTy = some (.inst n I)`, the threaded
+spine *is* `I`** — every body-entering rule (`callMethod`, `selfCall`, `callSMethod`) maintains
+it. So `closSpine` can recover the spine from the `self` type.
+
+### What crosses the boundary and what does not
+
+Stated once, because it is the rule of thumb for anything closure-shaped: **a closure body's
+`self` and instance variables come from where the closure was *made*; its class and method
+tables come from where it is *called*.** The second half is not laziness — Ruby resolves a
+method call inside a block at call time, so a body that calls a method defined after the block
+literal but before the invocation works, and carrying the call site's tables models that.
+
+Two things are cleared rather than carried, both conservatively, and both recorded as controls
+rather than argued away: `frame` (so a `super` inside a closure body has no rule) and `blockTy`
+(so a `yield` inside a closure body has no rule, even though Ruby resolves it to the enclosing
+method's block). Control (rr) is that program — safe Ruby returning `3`, declined. Making
+either precise means recording it in `Ty.clos` too, exactly as `selfTy` now is.
+
+### `callDefBlk` keeps its premise, doing a different job
+
+`κ.selfTy = none` stays on `callDefBlk`, and after this clink it means something else: not
+protecting the block (the block's creation `self` is now in its type) but keeping the rule
+**disjoint from implicit-self dispatch**. Inside a method body a bare `foo { … }` resolves
+against the object, not the top-level `defs` table — which is what tier 11's remaining four
+rungs need, and is the next clink.
+
+### Cost: an arity change across the package, and why it was cheap anyway
+
+`Ty.clos` going from two fields to three touched `Ty.lean`, five `Judge` rules, four `chk`
+arms, three `chk_sound` arms, `Main.lean`'s renderer, `CheckRungs.lean`'s `expectedClasses`,
+and eleven `Rungs.lean` derivations — but every one of those edits was mechanical (`.clos i c`
+→ `.clos i c .never`, and dropping one `rfl` from three rules' premise lists), and the type
+checker found all of them. Worth contrasting with clink 17's rejected designs: the reason *that*
+change was refused and this one was not is that this one puts the fact **in the data** where the
+kernel can see every use site, rather than in a list of places somebody has to remember.
+
+State after this clink: **110 rungs climbed** of 136 (tiers 1–8 complete, tier 9 at 19/22,
+tier 11 at 4/10, tier 12 at 7/12), 110/110 cross-checked against the real semantics, 69/69
+negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all ten
+soundness theorems axiom-clean (`propext`, `Quot.sound`).

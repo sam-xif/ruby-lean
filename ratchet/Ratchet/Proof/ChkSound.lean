@@ -409,7 +409,7 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             List.isEmpty_iff] at hd
           obtain ⟨hm, ha⟩ := hd
           subst ha
-          exact .lambdaLit hm hself hidx
+          exact .lambdaLit hm hidx
         · exact absurd h (by simp)
       · -- anything else: the block goes to a method
         split at h
@@ -671,28 +671,25 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 split at h
                 · rename_i hname
                   split at h
-                  · rename_i hself
+                  · rename_i hclos
                     split at h
-                    · rename_i hclos
+                    · rename_i hpar
                       split at h
-                      · rename_i hpar
+                      · rename_i hbody
                         split at h
-                        · rename_i hbody
+                        · rename_i hI
                           split at h
-                          · rename_i hI
-                            split at h
-                            · rename_i hcap
-                              injection h with h
-                              injection h with h h'; injection h' with h' h''
-                              subst h; subst h'; subst h''
-                              exact .closCall (by
-                                rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
-                                  h | h
-                                · exact .inl h
-                                · exact .inr h) hself (chk_sound hrecv)
-                                (chkAll_sound hargs) hclos hpar
-                                (by subst hI; exact chk_sound hbody) hcap
-                            · exact absurd h (by simp)
+                          · rename_i hcap
+                            injection h with h
+                            injection h with h h'; injection h' with h' h''
+                            subst h; subst h'; subst h''
+                            exact .closCall (by
+                              rcases (by simpa using hname : _ = "call" ∨ _ = "[]") with
+                                h | h
+                              · exact .inl h
+                              · exact .inr h) (chk_sound hrecv)
+                              (chkAll_sound hargs) hclos hpar
+                              (by subst hI; exact chk_sound hbody) hcap
                           · exact absurd h (by simp)
                         · exact absurd h (by simp)
                       · exact absurd h (by simp)
@@ -731,25 +728,22 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     split at h
     · rename_i hblk
       split at h
-      · rename_i hself
+      · rename_i hargs
         split at h
-        · rename_i hargs
+        · rename_i hclos
           split at h
-          · rename_i hclos
+          · rename_i hpar
             split at h
-            · rename_i hpar
+            · rename_i hbody
               split at h
-              · rename_i hbody
+              · rename_i hI
                 split at h
-                · rename_i hI
-                  split at h
-                  · rename_i hcap
-                    injection h with h
-                    injection h with h h'; injection h' with h' h''
-                    subst h; subst h'; subst h''
-                    exact .yieldExpr hblk hself (chkAll_sound hargs) hclos hpar
-                      (by subst hI; exact chk_sound hbody) hcap
-                  · exact absurd h (by simp)
+                · rename_i hcap
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .yieldExpr hblk (chkAll_sound hargs) hclos hpar
+                    (by subst hI; exact chk_sound hbody) hcap
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
             · exact absurd h (by simp)

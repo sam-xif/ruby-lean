@@ -598,7 +598,7 @@ def isADispatchOk (C : CTable) : Ty → Bool
   | .inst n _ => (mroGet? C n "is_a?").isNone
   | .union σ τ => isADispatchOk C σ && isADispatchOk C τ
   | .nilable ρ => isADispatchOk C ρ
-  | .any | .clos _ _ | .never => false
+  | .any | .clos _ _ _ | .never => false
   | _ => true
 
 def extendClasses (C : CTable) : Expr → CTable
@@ -952,6 +952,46 @@ inductive IterSig : String → Ty → List Ty → List Ty → Ty → Ty → Prop
       required to *return* `α`. An empty receiver returns `init`, which is why the result is
       `α` rather than the block's return type — they are the same type by the premise. -/
   | inject {τ α : Ty} : IterSig "inject" τ [α] [α, τ] α α
+
+/-! ### A closure's creation context (tier 11)
+
+`Ty.clos`'s third field records the `self` of the closure's *creation* site. These two
+functions decode it, and `Ctx.inClosure` is the context a body is judged in.
+
+The point of the whole arrangement, stated once: **a closure body's `self` and instance
+variables come from where the closure was made; its class/method tables come from where it is
+called.** The first half is what these functions are for. The second half is deliberate and
+correct: Ruby resolves a method call inside a block at *call* time, so a body that calls a
+method defined after the block literal but before the invocation works, and carrying the call
+site's tables is what models that. -/
+
+/-- The `self` type a closure was created under, or `none` for one created where `self` was
+not typed (top level), which `Ty.clos` encodes as `.never`. -/
+def closSelf? (σ : Ty) : Option Ty := if σ == .never then none else some σ
+
+/-- The ivar spine a closure's body must be judged against: the instance variables of the
+object that was `self` when it was created.
+
+`.ivar0` for anything that is not an `.inst`, which covers both the top-level case (`.never`)
+and a closure created inside a singleton method (`.clsOf n`, whose `self` is a class object
+with no ivars this checker models). Relies on an invariant every body-entering rule maintains:
+where `κ.selfTy = some (.inst n I)`, the threaded spine *is* `I` (`Judge.callMethod`,
+`Judge.selfCall`). -/
+def closSpine (σ : Ty) : Ty :=
+  match σ with
+  | .inst _ ivars => ivars
+  | _ => .ivar0
+
+/-- The context a closure's body is judged in: the recorded `self`, and **no frame and no
+block**.
+
+Both erasures are conservative rather than principled, and each is recorded as such: a
+`super` inside a closure body has no rule (`frame = none`), and a `yield` inside a closure
+body has no rule (`blockTy = none`) even though Ruby resolves it to the enclosing method's
+block. Making either precise means recording it in `Ty.clos` too, exactly as `selfTy` now is;
+no rung asks. -/
+def Ctx.inClosure (κ : Ctx) (σ : Ty) : Ctx :=
+  { κ with selfTy := closSelf? σ, frame := none, blockTy := none }
 
 /-- The block-local list of a `|x; y|` block (the desugarer's third `block` field), bound at
 `.nilT`.
@@ -1783,17 +1823,18 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
         in this clink.
       - **`closIdx?`** finds the block in the whole-program table. A block the collector did
         not reach has no index and no derivation.
-      - **`κ.selfTy = none`.** A closure's body sees the `self` of wherever it was
-        *created*, and this rule records the captured *locals* but not the captured `self`.
-        Restricting creation to top level (where `selfTy` is `none`) makes the omission
-        harmless instead of unsound: a lambda made inside a `Point` method and called inside
-        a `Box` method would otherwise have its body checked against the wrong `self`.
-        Lifting this means putting `selfTy` in `Ty.clos` beside the captured locals. -/
+      - **The creation site's `self` goes in the type** (tier 11). Until then this rule had a
+        `κ.selfTy = none` premise instead, restricting creation to top level, because a
+        closure's body sees the `self` of wherever it was *created* and `Ty.clos` recorded only
+        the captured locals. `Ty.clos`'s third field is that omission fixed — see its
+        docstring — so a lambda may now be created anywhere, and `closCall` judges its body
+        against the recorded `self` rather than the caller's. -/
   | lambdaLit {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ps : List Param}
       {body : Expr} {idx : Nat} :
-      (m = "lambda" ∨ m = "proc") → κ.selfTy = none →
+      (m = "lambda" ∨ m = "proc") →
       closIdx? κ.closures ps body = some idx →
-      Judge κ Γ I (.send none m [] (some (.block ps [] body))) (.clos idx (envToSpine Γ)) Γ I
+      Judge κ Γ I (.send none m [] (some (.block ps [] body)))
+        (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) Γ I
   /-- **`f.call(args)` / `f[args]`** — invoke a callable, by checking its body here.
 
       The body is judged in `paramEnv c.params argTys ++ spineToEnv cap`: this call site's
@@ -1815,7 +1856,14 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `callMethod` makes about instance variables: the **ivar spine**, and — via `capIntact` —
       every **captured local**. A body that retyped either would invalidate the caller's view
       of it, and for captured locals that is not hypothetical: see `capIntact`.
-      `κ.selfTy = none` again, matching `lambdaLit`.
+      **The body is judged in `κ.inClosure σ`, at the creation site's spine** (tier 11) —
+      *not* in the caller's context, which is what this rule used to do behind a
+      `κ.selfTy = none` premise that constrained the caller rather than the closure. The old
+      shape made `xc-lambda-in-ivar` (`@f.call(v)` inside a method) underivable even though
+      the lambda in question was made at top level. Note both halves of the fix are needed:
+      `selfTy` from the type, and the **ivar spine** from it too (`closSpine σ`), because
+      judging the body against the *caller's* spine would read the caller's instance variables
+      out of a body that belongs to a different object.
 
       The body judged is `bodyResult c.body`, which differs from `c.body` only for a body
       that is exactly `return e` — see there for why that is a function on the syntax rather
@@ -1824,14 +1872,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       **No assumption table**, so a recursive lambda exhausts `chk`'s fuel and is rejected —
       the same conservatism `callMethod` has, and the same fix would apply. -/
   | closCall {κ : Ctx} {Γ Γ₁ Γ₂ Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
-      {args : List Expr} {argTys : List Ty} {idx : Nat} {cap : Ty} {c : Clos}
+      {args : List Expr} {argTys : List Ty} {idx : Nat} {cap σ : Ty} {c : Clos}
       {Γb : Env} {ρ : Ty} :
-      (m = "call" ∨ m = "[]") → κ.selfTy = none →
-      Judge κ Γ I recv (.clos idx cap) Γ₁ I₁ →
+      (m = "call" ∨ m = "[]") →
+      Judge κ Γ I recv (.clos idx cap σ) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       closGet? κ.closures idx = some c →
       paramEnv c.params argTys = some Γb →
-      Judge κ (Γb ++ spineToEnv cap) I₂ (bodyResult c.body) ρ Γb' I₂ →
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
+        (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
   -- ### Tier 9c — the builtin iterators
@@ -1910,15 +1959,16 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Note the `&` expression is typed **after** the receiver and the arguments, which is
       Ruby's order, and its outgoing states thread into the body. -/
   | iterClosPass {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ Γb Γb' : Env} {I I₁ I₂ I₃ : Ty} {recv pe : Expr}
-      {m : String} {args : List Expr} {argTys : List Ty} {idx : Nat} {cap : Ty}
+      {m : String} {args : List Expr} {argTys : List Ty} {idx : Nat} {cap σ : Ty}
       {c : Clos} {elem β ρ res : Ty} :
       Judge κ Γ I recv (.arrayOf elem) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
-      Judge κ Γ₂ I₂ pe (.clos idx cap) Γ₃ I₃ →
+      Judge κ Γ₂ I₂ pe (.clos idx cap σ) Γ₃ I₃ →
       IterSig m elem argTys [β] ρ res →
       closGet? κ.closures idx = some c →
       paramEnv c.params [β] = some Γb →
-      Judge κ (Γb ++ spineToEnv cap) I₃ (bodyResult c.body) ρ Γb' I₃ →
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
+        (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.send (some recv) m args (some (.blockpass (some pe)))) res Γ₃ I₃
   -- ### Tier 9b — a block reaching a method
@@ -1945,8 +1995,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       two-pass machinery would have to be keyed by the block type as well as the argument
       types.
 
-      `κ.selfTy = none`, matching `lambdaLit`: the block's body is checked against the
-      `self` of its creation site, which is only recorded when that is top level. -/
+      `κ.selfTy = none` is kept, and after tier 11 it is doing a *different* job from the one
+      `lambdaLit` used it for: not protecting the block (`Ty.clos` now records its creation
+      `self`, and this rule records it too) but keeping this rule **disjoint from
+      implicit-self dispatch**. Inside a method body a bare `foo { … }` resolves against the
+      object, not the top-level `defs` table, which is `selfCallBlk`'s job. -/
   | callDefBlk {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {ps : List Param} {body : Expr}
       {idx : Nat} {d : Defn} {ρ : Ty} :
@@ -1954,9 +2007,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' →
       closIdx? κ.closures ps body = some idx →
       defGet? κ.defs m = some d →
-      paramEnvB (some (.clos idx (envToSpine Γ))) d.params argTys = some Γb →
-      Judge { κ with blockTy := some (.clos idx (envToSpine Γ)) } Γb .ivar0 d.body ρ Γb'
-        .ivar0 →
+      paramEnvB (some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never))) d.params argTys
+        = some Γb →
+      Judge { κ with blockTy := some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) }
+        Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ Γ' I'
   /-- **`yield args`** — invoke the block the enclosing method was called with.
 
@@ -1967,14 +2021,21 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
 
       Note that a method can `yield` more than once at different argument types
       (`yield-arith`'s `yield(1) + yield(2)` happens not to), and each `yield` is checked
-      independently — the same per-call-site instantiation as everywhere else. -/
+      independently — the same per-call-site instantiation as everywhere else.
+
+      The body is judged in `κ.inClosure σ` at `closSpine σ` (tier 11), for exactly
+      `closCall`'s reasons: the block belongs to whoever *wrote* it, not to the method that
+      yields to it. `κ.selfTy = none` is gone with the same change — the yielding method may
+      now be an instance method, which is what `xc-class-yield-ivar`/`xc-module-yield`/
+      `xc-inherit-implicit-block` need. -/
   | yieldExpr {κ : Ctx} {Γ Γ' Γb' : Env} {I I' : Ty} {args : List Expr}
-      {argTys : List Ty} {idx : Nat} {cap : Ty} {c : Clos} {Γb : Env} {ρ : Ty} :
-      κ.blockTy = some (.clos idx cap) → κ.selfTy = none →
+      {argTys : List Ty} {idx : Nat} {cap σ : Ty} {c : Clos} {Γb : Env} {ρ : Ty} :
+      κ.blockTy = some (.clos idx cap σ) →
       JudgeAll κ Γ I args argTys Γ' I' →
       closGet? κ.closures idx = some c →
       paramEnvB none c.params argTys = some Γb →
-      Judge κ (Γb ++ spineToEnv cap) I' (bodyResult c.body) ρ Γb' I' →
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
+        (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.yield' args) ρ Γ' I'
   /-- A **bare name that is a top-level method**, with the instantiation assumed. `vcallAsm`
