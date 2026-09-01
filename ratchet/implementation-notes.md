@@ -1744,3 +1744,69 @@ State after this clink: **97 rungs climbed** of 136 (tiers 1–8 complete, tier 
 tier 11 at 1/10, tier 12 at 6/12), 97/97 cross-checked against the real semantics, 58/58
 negative controls rejected, corpus agreement **136/136 with 0 disagreements**, all eight
 soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+## Clink 17 (2026-09-01) — why tier 12's last four are not next (no code change)
+
+Tier 12 stands at 6/12. This note records what the remaining six are blocked on, because two of
+them are blocked on a **design** rather than on effort, and the cheap ways out are unsound in
+ways worth writing down before someone tries them.
+
+### Two are not narrowing work at all
+
+- **`narrow-in-block`** needs `Array#each` **with a block**, which is tier 9's remaining demand
+  (the receiver-directed iterator rules). Its narrowing (`if y` on a `nilable Int`) has worked
+  since clink 13. Nothing about tier 12 blocks it.
+- **`narrow-nilable-and-union`** is provably not certifiable and should not be — see clink 14's
+  last section. `arr[0]`'s `nilable` survives into the else-branch, and the program is safe only
+  because *this* array has an element at index 0. Its recorded target is wrong, not the checker.
+
+### Two need aliasing, and here is why the cheap versions are unsound
+
+`narrow-union-case-when` and `narrow-and-guard` both desugar to a **temporary assigned from the
+tested local**, with the branch bodies using the original:
+
+```
+seq (vasgn local __dt_t1 (var local v))
+    (if (send (const Integer) "===" [var local __dt_t1])
+        (send (var local v) "*" [int 2])            -- v, not __dt_t1
+        (if (send (const String) "===" [var local __dt_t1]) … ))
+```
+
+So refinement has to reach a name the condition does not mention. Four designs were considered
+and three rejected:
+
+1. **A `JudgeSeq` rule over the pair `(alias assignment, if)`.** Local, no new state, and it
+   fails on exactly these rungs: `case` with two `when`s nests, and the *inner* `if` — which
+   also tests the temp while its body uses `v` — sits inside the outer `if`'s else branch, where
+   only `Judge.if'` is looking, and `Judge.if'` cannot see the enclosing sequence.
+2. **Aliases in `Ctx`**, grown at statement boundaries the way `defs`/`classes` are. Attractive
+   because the desugarer's alias assignment always *is* its own statement. Unsound in two ways
+   that cannot be patched at that granularity: a stale alias survives into a method body (where
+   a same-named local is a different variable), and an assignment nested inside an expression
+   (`y = (v = 1) + 1`) is not a statement, so the alias is never invalidated.
+3. **A `Ty.sameAs (name) (τ)` binding carried in `Env`**, with `Judge.var` stripping it. This
+   one nearly works — `joinEnv` handles it correctly (two branches that disagree join to a
+   `union`, which is not a `sameAs`, so the alias simply disappears), and reassignment of either
+   name invalidates it. It breaks on **block capture**: `t = v; blk { v = "s" }; if
+   t.is_a?(Integer) then v + 1 …` keeps the alias alive across a call that changed `v`'s
+   *value*, and `capIntact` only requires the *type* to be intact. Fixing that means the three
+   block-call rules must invalidate aliases for every captured name — three more soundness
+   obligations in rules that already carry the subtlest ones on the ladder (clink 11).
+4. **A fourth threaded state**, `Alias : List (String × String)`, indexed on `Judge` alongside
+   `Γ` and `I`. This is the honest design: aliasing is *state*, it is created and destroyed by
+   execution, and threading it is what makes invalidation structural rather than a list of
+   places to remember. It is also a tier-7-scale change — roughly forty rules gain an index —
+   and each rule needs a decision about whether the alias survives it.
+
+**Deferred, deliberately, to (4).** The general lesson is the one this ladder keeps
+rediscovering in new clothes: *state that a rule needs must thread, or the rule's soundness
+becomes a list of places somebody has to remember.* Clink 6 learned it for ivars, clink 3 for
+branch environments, clink 11 for captured locals; option (2) and option (3) are that same
+mistake proposed for aliases.
+
+### What is next instead
+
+**Tier 9's iterator rules.** They are worth more per unit of effort than aliasing: nine tier-9
+rungs (`each`/`map`/`select`/`inject`/`sort_by` and the two `blockpass` forms) plus tier 12's
+`narrow-in-block`, and they need a genuinely new *kind* of rule — a builtin whose signature
+mentions a block — rather than a new piece of state.
