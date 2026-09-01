@@ -691,3 +691,117 @@ State after this clink: **67 rungs climbed** (tiers 1–6 complete, tier 7 at 13
 cross-checked against the real semantics, 29/29 negative controls rejected — three of the
 five new ones *sound* rejections, one per premise added this clink — corpus agreement 0
 disagreements, and all six soundness theorems axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 7 (2026-09-01) — tier 7's hierarchy: 67 → 70, and tiers 1–7 complete
+
+Rungs added: the last three of tier 7 — `class-inheritance-field`, `class-super-call`,
+`class-factory-method`. Three new rules, one new `Ctx` field, one new `Cls` field.
+
+Each of the three is about a place where **"which class?" has a different answer from the
+obvious one**, and that is the whole theme of the clink:
+
+### 1. `mroGet?` — dispatch walks up, and reports where it landed
+
+`defGet?` finds a method declared *on* a class; `mroGet?` finds the one dispatch would run,
+walking `Cls.super?`. It replaced the `clsGet? … → defGet? c.methods …` pair in every
+dispatch rule, which is why all thirteen earlier tier-7 rungs lost an `rfl`.
+
+Two decisions:
+
+- **It returns the class it found the method in**, not just the `Defn`. Nothing needed that
+  until `super`, and then it is indispensable — see below.
+- **The walk is bounded by the table's length**, because `CTable` is *data*: nothing stops it
+  describing a cycle (`class A < B` and `class B < A` cannot both be declared in Ruby, but
+  the table does not know that). Exhausting the budget answers `none`, which, like `chk`'s
+  fuel, can only cost completeness. A chain longer than the table must have revisited a
+  class, so the bound is not even conservative in practice.
+
+`class-inheritance-field` is then two walks: `Dog` declares literally nothing (its body is
+`nil`), so `mroGet? "Dog" "initialize"` finds `Animal`'s constructor and
+`mroGet? "Dog" "speak"` finds `Animal`'s reader. The instance's type is still
+`.inst "Dog" {@name: String}` — the class is the receiver's, the method is the ancestor's,
+and keeping those separate is exactly what returning the definition site is for.
+
+### 2. `Ctx.frame` — `super` needs the definition site, not the receiver
+
+`class Triangle < Shape; def initialize; super(3); end`. The class `super` walks up from is
+**`Triangle`**, the class the running method was *declared* in. `κ.selfTy` names the
+*receiver's* class, which for a deeper hierarchy is a different and wrong answer — and inside
+a constructor it is not even set (clink 6's deliberate `none`). So `Ctx` gained
+`frame : Option Frame` = the defining class plus the method's own name (`super` calls the same
+name), and `newInst` now enters `initialize` through `Ctx.inCtor`, which records the
+definition site and nothing else.
+
+`superCall` rebuilds the frame for the parent body from `mroGet?`'s answer, so a `super`
+inside the parent walks from the right place again.
+
+**The second half of the rule is that the ivar spine threads *through* the super call.** The
+parent's body is judged with the spine as of the end of `super`'s arguments, and its outgoing
+spine becomes the super call's — which becomes `Triangle#initialize`'s, which is the one
+`newInst` puts in the type. So `@sides` is set by the *parent*, in the *child's* object, and
+`class-super-call`'s derivation is that sentence. Getting this wrong in the other obvious way
+(judging the parent at `.ivar0` and discarding its spine) would type
+`Triangle.new.sides` as `Nil` — not unsound, but wrong, and the rung would fail on the
+semantic cross-check rather than in the kernel.
+
+`zsuper` (bare `super`, which forwards the current arguments implicitly) is a different `Expr`
+head and has no rule.
+
+### 3. Singleton methods are a separate namespace, and `self` there is a class object
+
+`Cls` gained `smethods`, filled by `clsMember?`'s `defs .self'` case — `classMethods?` now
+returns a pair, and its single `none` still does the same double duty it did in clink 6
+(making the body safe to evaluate unchecked *and* readable into `CTable`).
+
+`callSMethod` looks up `smroGet?` (the same walk over the other table — Ruby inherits class
+methods) and judges the body with `self` typed **`.clsOf n`**. That last part is the point: it
+is what makes the bare `new(0, 0)` inside `def self.origin` mean "allocate one of me". That
+`send none "new" …` is `selfNew`, an implicit-self call resolved against a `self` that is a
+class object rather than an instance — otherwise the same rule as `newInst`.
+
+Two orderings, both deliberate and both recorded in place:
+
+- On a `.clsOf` receiver, **a declared singleton method is tried before the allocator**, so a
+  class defining `self.new` gets its own. That is what Ruby does.
+- `selfNew` is tried **after** the top-level def table, so a top-level method actually named
+  `new` would win. Nothing needs the other order, and no rung has such a program.
+
+A singleton method's ivar state is `.ivar0` in and out: a class object can hold instance
+variables of its own (`@count` at class level) and this judgment does not model them, so a
+singleton method that assigns one is not typed.
+
+### 4. Four new controls, all four *sound* rejections
+
+Tier 7's hierarchy is unusually well served by controls, because every premise added has a
+program that raises without it:
+
+- `class A; end; class B < A; end; B.new.nope` — `mroGet?` terminating in `none` rather than
+  falling back on anything. `NoMethodError`.
+- `class P; def go; 1 + true; end; end; class C < P; def go; super; end; end; C.new.go` — the
+  parent's body is checked *at the definition site*. The tier-7 twin of `fun-body-mismatch`:
+  nothing at the call site looks wrong.
+- `class A; def go; super; end; end; A.new.go` — `superCall`'s `c.super? = some sn` premise.
+  Ruby raises `NoMethodError` ("super: no superclass method").
+- `class P; def self.origin; 1; end; end; P.new.origin` — the two method tables really are
+  separate.
+
+### What is still not modelled, recorded so it is a choice
+
+`zsuper`; `def obj.m` for an object other than `self`; class-level instance variables;
+modules and `include`/`extend` (tier 8); an implicit-self call *with arguments* to another
+instance or singleton method (only the zero-argument `vcall` form and the specific `new` form
+have rules); and method-level recursion, which still exhausts fuel because `AsmTable` is keyed
+by name and argument types but not by receiver.
+
+**`subTy` is still unused.** It was expected to come due at inheritance, and it did not:
+`mroGet?` makes a `Dog` usable wherever its own methods are called without any subtyping
+relation, because dispatch is by walk rather than by subsumption. The place it would actually
+be needed is a *parameter* annotation (`def f(a : Animal)`), and this checker has no
+annotations. Worth stating, because the tier-7 frontier entry predicted otherwise.
+
+State after this clink: **70 rungs climbed, and tiers 1–7 are complete** — every rung at or
+below tier 7 matches its recorded target. 70/70 cross-checked against the real semantics,
+33/33 negative controls rejected (all four new ones *sound*), corpus agreement 0
+disagreements, and all six soundness theorems axiom-clean (`propext`, `Quot.sound`).

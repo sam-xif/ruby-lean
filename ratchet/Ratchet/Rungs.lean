@@ -637,9 +637,9 @@ def r061 : Rung :=
     .int, [],
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod
-        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl rfl
+        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
-        .nil rfl rfl rfl .ivarRead)))⟩
+        .nil rfl rfl .ivarRead)))⟩
 
 /-- `class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; end;
     c = Counter.new(10); c.add(5)` → `Integer`. An instance stored in a local, so the
@@ -655,9 +655,9 @@ def r062 : Rung :=
           .send (some (.var .lvar "c")) "add" [.int 5] none],
     .int, [("c", .inst "Counter" (.ivarCons "@n" .int .ivar0))],
     .seq (.cons (.classStmt rfl)
-      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                 (.ivarAsgn (.var rfl))))
-        (.last (.callMethod (.var rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.last (.callMethod (.var rfl) (.cons .intLit .nil) rfl rfl
           (.prim .ivarRead (.cons (.var rfl) .nil) .intAdd)))))⟩
 
 /-- `p.getX + p.getY` on a two-ivar `Point` → `Integer`. Two dispatches on the *same*
@@ -677,11 +677,11 @@ def r063 : Rung :=
     .int, [("p", .inst "Point" (.ivarCons "@x" .int (.ivarCons "@y" .int .ivar0)))],
     .seq (.cons (.classStmt rfl)
       (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil))
-                rfl rfl rfl
+                rfl rfl
                 (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))
         (.last (.prim
-          (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)
-          (.cons (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead) .nil)
+          (.callMethod (.var rfl) .nil rfl rfl .ivarRead)
+          (.cons (.callMethod (.var rfl) .nil rfl rfl .ivarRead) .nil)
           .intAdd))))⟩
 
 /-- `class Rect; …; def area; @w * @h; end; def describe; "area=" + area.to_s; end; end;
@@ -704,11 +704,11 @@ def r064 : Rung :=
     .cls "String", [],
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod
-        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl rfl
+        (.newInst (.constCls rfl) (.cons .intLit (.cons .intLit .nil)) rfl rfl
           (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl))))))
-        .nil rfl rfl rfl
+        .nil rfl rfl
         (.prim .strLit
-          (.cons (.prim (.selfCall rfl rfl rfl rfl
+          (.cons (.prim (.selfCall rfl rfl rfl
                     (.prim .ivarRead (.cons .ivarRead .nil) .intMul))
                    .nil .intToS) .nil)
           .strAdd))))⟩
@@ -730,7 +730,7 @@ def r066 : Rung :=
     .cls "String", [],
     .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
       (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
-        .nil rfl rfl rfl .strLit))))⟩
+        .nil rfl rfl .strLit))))⟩
 
 /-- `a = Point.new(1); b = Point.new(2); a.getX + b.getX` → `Integer`. Two instances of one
     class, and the point is that they get the *same* type — `pointSpine1` both times —
@@ -748,13 +748,13 @@ def r068 : Rung :=
             [.send (some (.var .lvar "b")) "getX" [] none] none],
     .int, [("a", .inst "Point" pointSpine1), ("b", .inst "Point" pointSpine1)],
     .seq (.cons (.classStmt rfl)
-      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+      (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                 (.ivarAsgn (.var rfl))))
-        (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.cons (.vasgn (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                   (.ivarAsgn (.var rfl))))
           (.last (.prim
-            (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)
-            (.cons (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead) .nil)
+            (.callMethod (.var rfl) .nil rfl rfl .ivarRead)
+            (.cons (.callMethod (.var rfl) .nil rfl rfl .ivarRead) .nil)
             .intAdd)))))⟩
 
 /-- `class Greeter; def hi; "hi"; end; end; Greeter.new.hi` → `String`. The rung that pins
@@ -768,7 +768,7 @@ def r069 : Rung :=
     .cls "String", [],
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
-        .nil rfl rfl rfl .strLit)))⟩
+        .nil rfl rfl .strLit)))⟩
 
 /-- `class Box; def reveal; @secret; end; end; Box.new.reveal` → **`Nil`**. Reading an
     instance variable that was never assigned yields `nil` in Ruby — it does not raise — so
@@ -782,7 +782,7 @@ def r070 : Rung :=
     .nilT, [],
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod (.newInstNoInit (.constCls rfl) .nil rfl rfl)
-        .nil rfl rfl rfl .ivarRead)))⟩
+        .nil rfl rfl .ivarRead)))⟩
 
 /-- `[Point.new(1), Point.new(2)]` → `arrayOf (inst Point {@x: Int})`. The rung where the
     ivar spine appears in a rung's *own* declared type rather than only inside a derivation,
@@ -799,9 +799,9 @@ def r071 : Rung :=
     .seq (.cons (.classStmt rfl)
       (.last (.arrayLit
         (τs := [.inst "Point" pointSpine1, .inst "Point" pointSpine1])
-        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                  (.ivarAsgn (.var rfl)))
-          (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+          (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                    (.ivarAsgn (.var rfl))) .nil)))))⟩
 
 /-- `{"origin" => Point.new(0)}` → `.cls "Hash"`. The instance's type is derived and then
@@ -815,7 +815,7 @@ def r072 : Rung :=
     .cls "Hash", [],
     .seq (.cons (.classStmt rfl)
       (.last (.hashLit (.cons .strLit
-        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
           (.ivarAsgn (.var rfl))) .nil))))⟩
 
 /-- `class Box; def initialize(size); @size = size; end; def grow; @size = @size + 1; end;
@@ -837,9 +837,9 @@ def r074 : Rung :=
     .int, [],
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod
-        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
           (.ivarAsgn (.var rfl)))
-        (Iself := boxSpine) .nil rfl rfl rfl
+        (Iself := boxSpine) .nil rfl rfl
         (.ivarAsgn (I' := boxSpine)
           (.prim .ivarRead (.cons .intLit .nil) .intAdd)))))⟩
 
@@ -858,10 +858,10 @@ def r075 : Rung :=
     .int, [],
     .seq (.cons (.classStmt rfl) (.cons .defStmt
       (.last (.callDef
-        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+        (.cons (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
                  (.ivarAsgn (.var rfl))) .nil)
         rfl rfl
-        (.callMethod (.var rfl) .nil rfl rfl rfl .ivarRead)))))⟩
+        (.callMethod (.var rfl) .nil rfl rfl .ivarRead)))))⟩
 
 /-- `Point.new(7).myself.getX` where `def myself; self; end` → `Integer`. The rung
     `selfExpr` exists for, and the reason its type is `κ.selfTy` rather than "a `Point`":
@@ -880,10 +880,99 @@ def r076 : Rung :=
     .seq (.cons (.classStmt rfl)
       (.last (.callMethod
         (.callMethod
-          (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl rfl
+          (.newInst (.constCls rfl) (.cons .intLit .nil) rfl rfl
             (.ivarAsgn (.var rfl)))
-          .nil rfl rfl rfl (.selfExpr rfl))
-        .nil rfl rfl rfl .ivarRead)))⟩
+          .nil rfl rfl (.selfExpr rfl))
+        .nil rfl rfl .ivarRead)))⟩
+
+/-! ### Tier 7's hierarchy — the last three
+
+Each of these is about a place where "which class?" has a different answer from the obvious
+one, and the derivations are where that shows: `class-inheritance-field`'s two `mroGet?`
+`rfl`s each resolve on a class the receiver is *not*; `class-super-call`'s `superCall`
+resolves on the class the running method was *declared* in; and `class-factory-method`'s body
+is judged with `self` typed `.clsOf "Point"` rather than as an instance. -/
+
+/-- `class Animal; def initialize(name); @name = name; end; def speak; @name; end; end;
+    class Dog < Animal; end; Dog.new("Rex").speak` → `String`.
+
+    `Dog` declares nothing at all — its body is `nil` — so both `rfl`s below resolve on
+    `Animal`: `mroGet? C "Dog" "initialize"` walks up to find the constructor that builds the
+    spine, and `mroGet? C "Dog" "speak"` walks up again to find the reader. The instance's
+    type is still `.inst "Dog" {@name: String}`: the class is the receiver's, the *method* is
+    the ancestor's, and keeping those separate is what `mroGet?` returning the definition
+    site is for. -/
+def r065 : Rung :=
+  ⟨"class-inheritance-field",
+    .seq [.class' "Animal" none (.seq [
+            .def' "initialize" [.req "name"] (.vasgn .ivar "@name" (.var .lvar "name")),
+            .def' "speak" [] (.var .ivar "@name")]),
+          .class' "Dog" (some (.const "Animal")) .nil,
+          .send (some (.send (some (.const "Dog")) "new" [.str "Rex"] none))
+            "speak" [] none],
+    .cls "String", [],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) (.cons .strLit .nil) rfl rfl (.ivarAsgn (.var rfl)))
+        .nil rfl rfl .ivarRead))))⟩
+
+/-- `class Shape; def initialize(sides); @sides = sides; end; def sides; @sides; end; end;
+    class Triangle < Shape; def initialize; super(3); end; end; Triangle.new.sides` →
+    `Integer`. **The rung `Ctx.frame` exists for.**
+
+    `Triangle#initialize` takes no arguments and delegates. The class `super` walks up from is
+    `Triangle` — the class this running method was *declared* in — which `κ.selfTy` cannot
+    say (and which is not even set inside a constructor). `newInst` therefore enters the body
+    through `Ctx.inCtor`, recording the definition site and nothing else, and `superCall`
+    reads it back.
+
+    The other half is that **the spine threads through the `super`**: `Shape#initialize`'s
+    body is judged with the spine as of the end of `super`'s arguments and its outgoing spine
+    becomes the super call's, which becomes `Triangle#initialize`'s, which is the one
+    `newInst` puts in the type. `@sides` is set by the *parent*, in the *child's* object, and
+    the derivation is that sentence. -/
+def r067 : Rung :=
+  ⟨"class-super-call",
+    .seq [.class' "Shape" none (.seq [
+            .def' "initialize" [.req "sides"] (.vasgn .ivar "@sides" (.var .lvar "sides")),
+            .def' "sides" [] (.var .ivar "@sides")]),
+          .class' "Triangle" (some (.const "Shape"))
+            (.def' "initialize" [] (.super' [.int 3] none)),
+          .send (some (.send (some (.const "Triangle")) "new" [] none)) "sides" [] none],
+    .int, [],
+    .seq (.cons (.classStmt rfl) (.cons (.classStmt rfl)
+      (.last (.callMethod
+        (.newInst (.constCls rfl) .nil rfl rfl
+          (.superCall (.cons .intLit .nil) rfl rfl rfl rfl rfl
+            (.ivarAsgn (.var rfl))))
+        .nil rfl rfl .ivarRead))))⟩
+
+/-- `class Point; def initialize(x, y); @x = x; @y = y; end; def self.origin; new(0, 0);
+    end; end; Point.origin` → `inst Point {@x: Int, @y: Int}`.
+
+    Two things that no earlier rung has. `origin` lives in a **separate method table**
+    (`Cls.smethods`, filled by `clsMember?`'s `defs .self'` case), reached by `smroGet?` —
+    `Point.origin` and a `Point`'s `origin` would be different methods. And its body is judged
+    with `self` typed **`.clsOf "Point"`**, which is what lets the bare `new(0, 0)` inside it
+    mean "allocate one of me": that `send none "new" …` is `selfNew`, an implicit-self call
+    resolved against a `self` that is a class object rather than an instance.
+
+    The rung's declared type is the instance type, spine and all — so this is also the one
+    place a factory's product is described as precisely as a direct `Point.new(0, 0)`. -/
+def r073 : Rung :=
+  ⟨"class-factory-method",
+    .seq [.class' "Point" none (.seq [
+            .def' "initialize" [.req "x", .req "y"]
+              (.seq [.vasgn .ivar "@x" (.var .lvar "x"),
+                     .vasgn .ivar "@y" (.var .lvar "y")]),
+            .defs .self' "origin" []
+              (.send none "new" [.int 0, .int 0] none)]),
+          .send (some (.const "Point")) "origin" [] none],
+    .inst "Point" (.ivarCons "@x" .int (.ivarCons "@y" .int .ivar0)), [],
+    .seq (.cons (.classStmt rfl)
+      (.last (.callSMethod (.constCls rfl) .nil rfl rfl
+        (.selfNew rfl (.cons .intLit (.cons .intLit .nil)) rfl rfl
+          (.seq (.cons (.ivarAsgn (.var rfl)) (.last (.ivarAsgn (.var rfl)))))))))⟩
 
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
@@ -893,7 +982,8 @@ def rungs : List Rung :=
    r035, r036, r037, r038, r039, r040, r041, r043,
    r044, r045, r046, r047, r048, r049, r050, r051,
    r052, r055, r057, r058, r059, r060,
-   r061, r062, r063, r064, r066, r068, r069, r070, r071, r072, r074, r075, r076]
+   r061, r062, r063, r064, r065, r066, r067, r068, r069, r070, r071, r072, r073,
+   r074, r075, r076]
 
 /-! ## `chk` answers exactly what was derived by hand
 

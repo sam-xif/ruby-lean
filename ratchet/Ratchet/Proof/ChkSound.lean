@@ -191,20 +191,17 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     · -- `selfTy = some (.inst n Iself)`
       rename_i hself
       split at h
-      · rename_i hcls
+      · rename_i hmeth
         split at h
-        · rename_i hmeth
+        · rename_i hpar
           split at h
-          · rename_i hpar
+          · rename_i hbody
             split at h
-            · rename_i hbody
-              split at h
-              · rename_i hI
-                injection h with h
-                injection h with h h'; injection h' with h' h''
-                subst h; subst h'; subst h''
-                exact .selfCall hself hcls hmeth hpar (by subst hI; exact chk_sound hbody)
-              · exact absurd h (by simp)
+            · rename_i hI
+              injection h with h
+              injection h with h h'; injection h' with h' h''
+              subst h; subst h'; subst h''
+              exact .selfCall hself hmeth hpar (by subst hI; exact chk_sound hbody)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
@@ -293,7 +290,29 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 · exact absurd h (by simp)
               · exact absurd h (by simp)
             · exact absurd h (by simp)
-          · exact absurd h (by simp)
+          · -- the name is not a top-level method: the last route is a bare `new` inside a
+            -- singleton method, where `self` is a class object.
+            split at h
+            · rename_i hself
+              split at h
+              · rename_i hnew
+                split at h
+                · rename_i hinit
+                  split at h
+                  · rename_i hpar
+                    split at h
+                    · rename_i hbody
+                      injection h with h
+                      injection h with h h'; injection h' with h' h''
+                      subst h; subst h'; subst h''
+                      exact hnew ▸ .selfNew hself (chkAll_sound hargs) hinit hpar
+                        (chk_sound hbody)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+            · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `send (some recv) m args` with no block: strictness on the receiver, then on the
     -- arguments, then tier 7's dispatch keyed on the receiver's type, then `PrimSig`.
@@ -316,11 +335,25 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
             subst h; subst h'; subst h''
             exact .primNever (chk_sound hrecv) (chkAll_sound hargs) (.inr hnever)
           · split at h
-            · -- the receiver is a class object: `new`, with or without an `initialize`
+            · -- the receiver is a class object: a singleton method first, then `new`
               split at h
-              · rename_i hnew
+              · rename_i hsm
                 split at h
-                · rename_i hcls
+                · rename_i hpar
+                  split at h
+                  · rename_i hbody
+                    split at h
+                    · rename_i hI
+                      injection h with h
+                      injection h with h h'; injection h' with h' h''
+                      subst h; subst h'; subst h''
+                      exact .callSMethod (chk_sound hrecv) (chkAll_sound hargs) hsm hpar
+                        (by subst hI; exact chk_sound hbody)
+                    · exact absurd h (by simp)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · split at h
+                · rename_i hnew
                   split at h
                   · rename_i hinit
                     split at h
@@ -330,38 +363,37 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                         injection h with h
                         injection h with h h'; injection h' with h' h''
                         subst h; subst h'; subst h''
-                        exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs) hcls
+                        exact hnew ▸ .newInst (chk_sound hrecv) (chkAll_sound hargs)
                           hinit hpar (chk_sound hbody)
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · rename_i hinit
                     split at h
-                    · rename_i hzero
-                      injection h with h
-                      injection h with h h'; injection h' with h' h''
-                      subst h; subst h'; subst h''
-                      exact hnew ▸ .newInstNoInit (chk_sound hrecv)
-                        (hzero ▸ chkAll_sound hargs) hcls hinit
-                    · exact absurd h (by simp)
-                · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · -- the receiver is an instance: dispatch into the class's method table
-              split at h
-              · rename_i hcls
-                split at h
-                · rename_i hmeth
-                  split at h
-                  · rename_i hpar
-                    split at h
-                    · rename_i hbody
+                    · rename_i hcls
                       split at h
-                      · rename_i hI
+                      · rename_i hzero
                         injection h with h
                         injection h with h h'; injection h' with h' h''
                         subst h; subst h'; subst h''
-                        exact .callMethod (chk_sound hrecv) (chkAll_sound hargs) hcls
-                          hmeth hpar (by subst hI; exact chk_sound hbody)
+                        exact hnew ▸ .newInstNoInit (chk_sound hrecv)
+                          (hzero ▸ chkAll_sound hargs) hcls hinit
                       · exact absurd h (by simp)
+                    · exact absurd h (by simp)
+                · exact absurd h (by simp)
+            · -- the receiver is an instance: dispatch up the chain from its class
+              split at h
+              · rename_i hmeth
+                split at h
+                · rename_i hpar
+                  split at h
+                  · rename_i hbody
+                    split at h
+                    · rename_i hI
+                      injection h with h
+                      injection h with h h'; injection h' with h' h''
+                      subst h; subst h'; subst h''
+                      exact .callMethod (chk_sound hrecv) (chkAll_sound hargs)
+                        hmeth hpar (by subst hI; exact chk_sound hbody)
                     · exact absurd h (by simp)
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
@@ -374,6 +406,33 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 subst h; subst h'; subst h''
                 exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
               · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `super' args none`: the arguments, then the walk from the *definition site*.
+    split at h
+    · rename_i hargs
+      split at h
+      · rename_i hfr
+        split at h
+        · rename_i hcls
+          split at h
+          · rename_i hsup
+            split at h
+            · rename_i hmeth
+              split at h
+              · rename_i hpar
+                split at h
+                · rename_i hbody
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .superCall (chkAll_sound hargs) hfr hcls hsup hmeth hpar
+                    (chk_sound hbody)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)

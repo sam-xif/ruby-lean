@@ -326,50 +326,121 @@ spine. Those stay explicit, before and after, because reading a rule means readi
 flow. -/
 
 /-- One class declaration, as the checker sees it: a name, an optional superclass name, and
-its instance methods. No types, and no ivar list — Ruby declares neither. -/
+its two method tables. No types, and no ivar list — Ruby declares neither.
+
+`smethods` are the **singleton** methods (`def self.origin`), which are a genuinely separate
+namespace: `Point.origin` and a `Point`'s `origin` are different methods, and only the first
+exists here. -/
 structure Cls where
   name : String
   super? : Option String
   methods : List Defn
+  smethods : List Defn
 
 abbrev CTable := List Cls
 
 def clsGet? (C : CTable) (n : String) : Option Cls := C.find? (·.name == n)
 
-/-- `C` after performing statement `e`: one entry longer if `e` is a class declaration whose
-body this checker can read, unchanged otherwise.
+/-- One member of a class body that this checker can read. -/
+inductive ClsMember where
+  | inst (d : Defn)
+  | sing (d : Defn)
 
-**Only a `seq`-of-`def`s or a single `def` body is read**, and a class whose body contains
-anything else (an ivar assignment at class level, a `defs`, a nested class) simply does not
-enter the table, so a program using it is not typed. That is conservative in the direction
-that costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
-def classMethods? : Expr → Option (List Defn)
-  | .def' n ps body => some [⟨n, ps, body⟩]
-  | .seq es => es.mapM (fun e => match e with
-      | .def' n ps body => some (⟨n, ps, body⟩ : Defn)
-      | _ => none)
-  | .nil => some []
+def clsMember? : Expr → Option ClsMember
+  | .def' n ps b => some (.inst ⟨n, ps, b⟩)
+  -- `def self.m` is the only `defs` receiver read: `def obj.m` for some other object is a
+  -- singleton method on *that* object, which this checker has no way to record.
+  | .defs .self' n ps b => some (.sing ⟨n, ps, b⟩)
   | _ => none
+
+def splitMembers : List ClsMember → List Defn × List Defn
+  | [] => ([], [])
+  | .inst d :: ms => let (i, s) := splitMembers ms; (d :: i, s)
+  | .sing d :: ms => let (i, s) := splitMembers ms; (i, d :: s)
+
+/-- A class body's instance and singleton methods, or `none` if the body contains anything
+this checker cannot read.
+
+**That `none` is doing two jobs at once**, which is why the restriction sits in one place.
+It is what makes the body safe to *evaluate* unchecked — a `def`/`defs` statement never runs
+its body, and `nil` is `nil`, so a body made only of those cannot be type-stuck — and it is
+what makes the class readable into `CTable`. A body with an ivar assignment at class level, a
+nested class, or anything executable is not typed at all: conservative in the direction that
+costs rungs rather than soundness, and it is the shape every tier-7 rung has. -/
+def classMethods? : Expr → Option (List Defn × List Defn)
+  | .nil => some ([], [])
+  | .seq es => (es.mapM clsMember?).map splitMembers
+  | e => (clsMember? e).map (fun m => splitMembers [m])
+
+/-! ### Method lookup, up the chain
+
+`defGet?` finds a method declared *on* a class. `mroGet?` finds the one dispatch would
+actually run, walking `super?`, and returns **which class it was found in** as well as the
+method — because `super` needs the definition site, not the receiver's class (see
+`Judge.superCall`). -/
+
+/-- The bounded walk. `k` is a depth budget, not a natural part of the algorithm: `CTable` is
+data, so nothing stops it describing a cycle (`class A < B` and `class B < A` cannot both be
+declared in Ruby, but the table does not know that). Exhausting the budget answers `none`,
+which — like `chk`'s fuel — can only cost completeness. -/
+def lookupUp (C : CTable) (sing : Bool) : Nat → String → String → Option (String × Defn)
+  | 0, _, _ => none
+  | k + 1, n, m =>
+    match clsGet? C n with
+    | none => none
+    | some c =>
+      match defGet? (if sing then c.smethods else c.methods) m with
+      | some d => some (n, d)
+      | none =>
+        match c.super? with
+        | none => none
+        | some sn => lookupUp C sing k sn m
+
+/-- Instance-method lookup from class `n`. The budget is the table's own length: a chain
+longer than that must have revisited a class. -/
+def mroGet? (C : CTable) (n m : String) : Option (String × Defn) :=
+  lookupUp C false C.length n m
+
+/-- Singleton-method lookup. Ruby inherits class methods down the chain too, so this is the
+same walk over the other table. -/
+def smroGet? (C : CTable) (n m : String) : Option (String × Defn) :=
+  lookupUp C true C.length n m
 
 def extendClasses (C : CTable) : Expr → CTable
   | .class' n sup body =>
     match classMethods? body with
-    | some ms =>
+    | some (ms, sms) =>
       match sup with
-      | none => ⟨n, none, ms⟩ :: C
-      | some (.const sn) => ⟨n, some sn, ms⟩ :: C
+      | none => ⟨n, none, ms, sms⟩ :: C
+      | some (.const sn) => ⟨n, some sn, ms, sms⟩ :: C
+      -- A superclass expression that is not a bare constant (`class C < foo()`) is not
+      -- read, so the class does not enter the table and nothing using it is typed.
       | some _ => C
     | none => C
   | _ => C
 
+/-- Where the currently-executing method was **found** — which is not the same as the class
+of the receiver, and `super` is the reason the distinction has to be recorded.
+
+`Triangle#initialize` calls `super(3)`; the parent to delegate to is the superclass of
+*`Triangle`*, the class the running method was declared in, and if that method had itself
+been inherited from somewhere higher the answer would differ. `selfTy` names the receiver's
+class and cannot answer this. The method name is here for the same reason: `super` calls the
+method of the same name. -/
+structure Frame where
+  defClass : String
+  methName : String
+
 /-- The read-only half of the judgment's state, bundled. `classes`/`defs` grow at statement
 boundaries (`JudgeSeq.cons`), `asms` grows at a call site being discharged
-(`Judge.callDef`), and `selfTy` is set once, on entry to a method body, and never
+(`Judge.callDef`), and `frame`/`selfTy` are set once, on entry to a method body, and never
 threaded. -/
 structure Ctx where
   classes : CTable
   defs : DefTable
   asms : AsmTable
+  /-- The definition site of the running method, or `none` outside any method body. -/
+  frame : Option Frame
   /-- The type of `self`, or `none` at top level.
 
       `none` rather than "the type of `main`" because this judgment has no rule that needs
@@ -384,7 +455,13 @@ method tables are the ones in force at the call site, and the assumption table i
 because a recursive call made from inside a body must still find the assumption discharging
 it. The body's *locals* are not in `Ctx` at all — they are the threaded `Env`, and a call
 rule supplies `paramEnv`'s fresh one. -/
-def Ctx.inMethod (κ : Ctx) (σ : Ty) : Ctx := { κ with selfTy := some σ }
+def Ctx.inMethod (κ : Ctx) (σ : Ty) (dc m : String) : Ctx :=
+  { κ with selfTy := some σ, frame := some ⟨dc, m⟩ }
+
+/-- Entering a body whose `self` this judgment declines to type — `initialize` (see
+`Judge.newInst`) — but whose *definition site* still has to be recorded, because the body may
+call `super`. -/
+def Ctx.inCtor (κ : Ctx) (dc m : String) : Ctx := { κ with frame := some ⟨dc, m⟩ }
 
 /-- `κ` after performing statement `e`: both syntax tables grow, nothing else changes. Used
 only by `JudgeSeq.cons`, which is the only rule that knows about statement order. -/
@@ -689,8 +766,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       As with `defStmt`, this rule does nothing to any table; `JudgeSeq.cons` extends
       `κ.classes` separately, because only `JudgeSeq` knows statement order. -/
   | classStmt {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {sup : Option Expr}
-      {body : Expr} {ms : List Defn} :
-      classMethods? body = some ms →
+      {body : Expr} {ms sms : List Defn} :
+      classMethods? body = some (ms, sms) →
       Judge κ Γ I (.class' n sup body) .any Γ I
   /-- A constant naming a declared class, as a **class object** — `.clsOf n`, which
       `Ratchet/Ty.lean` distinguishes from `.cls n` (an instance of it) precisely so that
@@ -722,13 +799,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       unsound. Refusing to type `self` there is the conservative fix; a rule that wants it
       needs a fixpoint over the spine, and no rung asks. -/
   | newInst {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iout : Ty} {recv : Expr}
-      {n : String} {args : List Expr} {argTys : List Ty} {c : Cls} {d : Defn}
+      {n dc : String} {args : List Expr} {argTys : List Ty} {d : Defn}
       {ρ : Ty} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
-      clsGet? κ.classes n = some c → defGet? c.methods "initialize" = some d →
+      mroGet? κ.classes n "initialize" = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge κ Γb .ivar0 d.body ρ Γb' Iout →
+      Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) Γ₂ I₂
   /-- `C.new` for a class with **no `initialize`**: the object starts with no instance
       variables, so its spine is `.ivar0`.
@@ -741,7 +818,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {n : String} {args : List Expr} {c : Cls} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
-      clsGet? κ.classes n = some c → defGet? c.methods "initialize" = none →
+      clsGet? κ.classes n = some c → mroGet? κ.classes n "initialize" = none →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) Γ₂ I₂
   /-- **An instance method call.** The receiver's type carries both halves of what dispatch
       needs: `.inst n Iself` says which class to look the method up in *and* what the
@@ -767,13 +844,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `chk`'s fuel and is rejected. Conservative, and no rung asks for it; the fix, if one
       is ever wanted, is to key `AsmTable` by receiver type as well as name. -/
   | callMethod {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
-      {m : String} {args : List Expr} {argTys : List Ty} {n : String} {c : Cls}
+      {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
       {d : Defn} {ρ : Ty} :
       Judge κ Γ I recv (.inst n Iself) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
-      clsGet? κ.classes n = some c → defGet? c.methods m = some d →
+      mroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inMethod (.inst n Iself)) Γb Iself d.body ρ Γb' Iself →
+      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
   /-- **Implicit-self dispatch inside a method body**: a bare name that names one of the
       object's own methods. `class Rect; def describe; "area=" + area.to_s; end; …` — the
@@ -789,13 +866,85 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       implicit-self call with arguments is `send none m args`, which goes to
       `callDef`/`callAsm`). Extending that to instance methods is what tier 7's second clink
       needs for `super`, and is deliberately not done here. -/
-  | selfCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iself : Ty} {m : String} {n : String}
-      {c : Cls} {d : Defn} {ρ : Ty} :
+  | selfCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iself : Ty} {m : String} {n dc : String}
+      {d : Defn} {ρ : Ty} :
       κ.selfTy = some (.inst n Iself) →
-      clsGet? κ.classes n = some c → defGet? c.methods m = some d →
+      mroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params [] = some Γb →
-      Judge (κ.inMethod (.inst n Iself)) Γb Iself d.body ρ Γb' Iself →
+      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.vcall m) ρ Γ I
+  -- ### Tier 7's hierarchy
+  --
+  -- Three rules, and each one is about a place where "which class?" has a different answer
+  -- from the obvious one: `super` needs the *definition site*, a singleton method needs the
+  -- *other* method table, and a bare `new` inside a singleton method needs `self` to be a
+  -- class object rather than an instance.
+  /-- **`super(args)`** — delegate to the same method name, one class further up.
+
+      **The class it walks up from is the *definition site*, not the receiver's class**, and
+      that is why `Ctx.frame` exists. In `class Triangle < Shape; def initialize; super(3);
+      end`, the parent to run is the superclass of `Triangle` — the class this running method
+      was declared in. `κ.selfTy` names the receiver's class, which for a deeper hierarchy is
+      a different and wrong answer, and inside `initialize` it is not even set.
+
+      **The ivar spine threads *through* the super call.** The body is judged with `I'` — the
+      spine as of the end of the arguments — and its outgoing spine `Iout` becomes the super
+      call's. That is exactly right for the constructor case this rung is: `Shape#initialize`
+      is *continuing to build the same object*, so `super(3)` is where `@sides` gets set, and
+      `newInst` picks the finished spine up from the whole body.
+
+      The frame is *rebuilt* for the parent body (`dc`, the class the parent method was found
+      in), so a `super` inside the parent walks from the right place again. Zero-argument
+      `super` (`zsuper`, which forwards the current method's arguments implicitly) is a
+      different `Expr` head and has no rule. -/
+  | superCall {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iout : Ty} {args : List Expr}
+      {argTys : List Ty} {fr : Frame} {c : Cls} {sn dc : String} {d : Defn}
+      {ρ : Ty} :
+      JudgeAll κ Γ I args argTys Γ' I' →
+      κ.frame = some fr → clsGet? κ.classes fr.defClass = some c →
+      c.super? = some sn → mroGet? κ.classes sn fr.methName = some (dc, d) →
+      paramEnv d.params argTys = some Γb →
+      Judge { κ with frame := some ⟨dc, fr.methName⟩ } Γb I' d.body ρ Γb' Iout →
+      Judge κ Γ I (.super' args none) ρ Γ' Iout
+  /-- **A singleton ("class") method call**: `Point.origin`. The receiver is a class object,
+      so lookup goes to the *other* table (`smroGet?`, which walks `super?` as well — Ruby
+      inherits class methods), and the body is judged with `self` typed as
+      **`.clsOf n`** rather than as an instance. That last part is the whole point: it is what
+      lets the body's bare `new(0, 0)` mean "allocate one of me" (see `selfNew`).
+
+      Tried *before* `new` in `Validate.lean`'s match, so a class that defines `self.new` gets
+      its own rather than the allocator — which is what Ruby does.
+
+      The body's ivar state is `.ivar0` in and out. A class object can hold instance variables
+      of its own (`@count` at class level), and this judgment does not model them, so a
+      singleton method that assigns one is not typed. -/
+  | callSMethod {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
+      {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
+      JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      smroGet? κ.classes n m = some (dc, d) →
+      paramEnv d.params argTys = some Γb →
+      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge κ Γ I (.send (some recv) m args none) ρ Γ₂ I₂
+  /-- **A bare `new(args)` inside a singleton method**: `def self.origin; new(0, 0); end`.
+
+      An implicit-self send whose `self` is a class object, so it allocates. Everything else
+      is `newInst`'s — `initialize`'s body judged at the argument types, the resulting spine
+      becoming the instance's type — and the two rules would be one if the receiver came from
+      the same place.
+
+      Only `new` gets this treatment, and only with an `initialize` present. A bare call to
+      *another* singleton method from inside one, or to `new` on a class without an
+      `initialize`, would each be another rule of the same shape; no rung asks. -/
+  | selfNew {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iout : Ty} {args : List Expr}
+      {argTys : List Ty} {n dc : String} {d : Defn} {ρ : Ty} :
+      κ.selfTy = some (.clsOf n) →
+      JudgeAll κ Γ I args argTys Γ' I' →
+      mroGet? κ.classes n "initialize" = some (dc, d) →
+      paramEnv d.params argTys = some Γb →
+      Judge (κ.inCtor dc "initialize") Γb .ivar0 d.body ρ Γb' Iout →
+      Judge κ Γ I (.send none "new" args none) (.inst n Iout) Γ' I'
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
       what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still

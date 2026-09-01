@@ -135,15 +135,12 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- The two are mutually exclusive by `Judge.bareName`'s third premise.
     match κ.selfTy with
     | some (.inst n Iself) =>
-      match clsGet? κ.classes n with
-      | some c =>
-        match defGet? c.methods m with
-        | some d =>
-          match paramEnv d.params [] with
-          | some Γb =>
-            match chk f (κ.inMethod (.inst n Iself)) Γb Iself d.body with
-            | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ, I) else none
-            | none => none
+      match mroGet? κ.classes n m with
+      | some (dc, d) =>
+        match paramEnv d.params [] with
+        | some Γb =>
+          match chk f (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body with
+          | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ, I) else none
           | none => none
         | none => none
       | none => none
@@ -164,7 +161,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
   | _ + 1, .class' _ _ body =>
     match classMethods? body with
-    | some _ => some (.any, Γ, I)
+    | some (_, _) => some (.any, Γ, I)
     | none => none
   | f + 1, .send none m args none =>
     -- An implicit-self call. Four routes, in this order, and the order is the design:
@@ -202,7 +199,26 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | none => none
               | none => none
             | none => none
-          | none => none
+          | none =>
+            -- Last route: a bare `new` inside a singleton method, where `self` is a class
+            -- object rather than an instance (`Judge.selfNew`). Checked after the def table
+            -- only because nothing needs the other order; a top-level method actually named
+            -- `new` would win, which no rung has.
+            match κ.selfTy with
+            | some (.clsOf n) =>
+              if m = "new" then
+                match mroGet? κ.classes n "initialize" with
+                | some (dc, d) =>
+                  match paramEnv d.params argTys with
+                  | some Γb =>
+                    match chk f (κ.inCtor dc "initialize") Γb .ivar0 d.body with
+                    | some (_, _, Iout) => some (.inst n Iout, Γ', I')
+                    | none => none
+                  | none => none
+                | none => none
+              else none
+            | some _ => none
+            | none => none
     | none => none
   | f + 1, .send (some recv) m args none =>
     -- Written as explicit nested `match`es rather than `do`/`<|>` on purpose: this is
@@ -221,35 +237,43 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- allocates, an instance dispatches, anything else goes to the primitive table.
           match σ with
           | .clsOf n =>
-            if m = "new" then
-              match clsGet? κ.classes n with
-              | some c =>
-                match defGet? c.methods "initialize" with
-                | some d =>
+            -- A declared singleton method wins over the allocator, which is what Ruby does
+            -- for a class that defines `self.new`.
+            match smroGet? κ.classes n m with
+            | some (dc, d) =>
+              match paramEnv d.params argTys with
+              | some Γb =>
+                match chk f (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body with
+                | some (ρ, _, Iout) => if Iout = .ivar0 then some (ρ, Γ₂, I₂) else none
+                | none => none
+              | none => none
+            | none =>
+              if m = "new" then
+                match mroGet? κ.classes n "initialize" with
+                | some (dc, d) =>
                   match paramEnv d.params argTys with
                   | some Γb =>
-                    match chk f κ Γb .ivar0 d.body with
+                    match chk f (κ.inCtor dc "initialize") Γb .ivar0 d.body with
                     | some (_, _, Iout) => some (.inst n Iout, Γ₂, I₂)
                     | none => none
                   | none => none
                 | none =>
-                  -- No `initialize`: `Object#new` takes zero arguments.
-                  if argTys = [] then some (.inst n .ivar0, Γ₂, I₂) else none
-              | none => none
-            else none
-          | .inst n Iself =>
-            match clsGet? κ.classes n with
-            | some c =>
-              match defGet? c.methods m with
-              | some d =>
-                match paramEnv d.params argTys with
-                | some Γb =>
-                  match chk f (κ.inMethod (.inst n Iself)) Γb Iself d.body with
-                  -- The callee may not retype any instance variable — see
-                  -- `Judge.callMethod`, where this equation is the soundness argument for
-                  -- the whole ivar mechanism.
-                  | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
+                  -- No `initialize` anywhere up the chain: `Object#new` takes zero
+                  -- arguments.
+                  match clsGet? κ.classes n with
+                  | some _ => if argTys = [] then some (.inst n .ivar0, Γ₂, I₂) else none
                   | none => none
+              else none
+          | .inst n Iself =>
+            match mroGet? κ.classes n m with
+            | some (dc, d) =>
+              match paramEnv d.params argTys with
+              | some Γb =>
+                match chk f (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body with
+                -- The callee may not retype any instance variable — see
+                -- `Judge.callMethod`, where this equation is the soundness argument for
+                -- the whole ivar mechanism.
+                | some (ρ, _, Iout) => if Iout = Iself then some (ρ, Γ₂, I₂) else none
                 | none => none
               | none => none
             | none => none
@@ -257,6 +281,28 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             match primSig? σ m argTys with
             | some τ => some (τ, Γ₂, I₂)
             | none => none
+      | none => none
+    | none => none
+  | f + 1, .super' args none =>
+    match chkAll f κ Γ I args with
+    | some (argTys, Γ', I') =>
+      match κ.frame with
+      | some fr =>
+        match clsGet? κ.classes fr.defClass with
+        | some c =>
+          match c.super? with
+          | some sn =>
+            match mroGet? κ.classes sn fr.methName with
+            | some (dc, d) =>
+              match paramEnv d.params argTys with
+              | some Γb =>
+                match chk f { κ with frame := some ⟨dc, fr.methName⟩ } Γb I' d.body with
+                | some (ρ, _, Iout) => some (ρ, Γ', Iout)
+                | none => none
+              | none => none
+            | none => none
+          | none => none
+        | none => none
       | none => none
     | none => none
   | _ + 1, _ => none
@@ -315,10 +361,10 @@ end
 /-- The starting context: no classes, no methods, no assumptions, no `self`. Every
 emptiness is load-bearing, and for a different reason — the two syntax tables because
 nothing is declared before a program's first statement, the assumption table because a
-derivation carrying one is only a conditional claim (`AsmTable`), and `selfTy` because a
-program's top level really does run somewhere `self` is not an instance of anything this
-judgment models. -/
-def ctx0 : Ctx := ⟨[], [], [], none⟩
+derivation carrying one is only a conditional claim (`AsmTable`), and `frame`/`selfTy`
+because a program's top level is inside no method and runs somewhere `self` is not an
+instance of anything this judgment models. -/
+def ctx0 : Ctx := ⟨[], [], [], none, none⟩
 
 /-- The ratchet's verdict for one rung: did `chk` synthesize *any* type for the whole
 program, from the empty local environment and the empty ivar spine, in `ctx0`? -/

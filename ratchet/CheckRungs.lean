@@ -302,7 +302,34 @@ def controls : List Control :=
     -- reports this as a conservative rejection of a program that nevertheless crashes —
     -- the same distinction `PrimSig.intDiv` established.
   , ⟨"Undeclared.new (no class statement)",
-      .send (some (.const "Undeclared")) "new" [] none⟩ ]
+      .send (some (.const "Undeclared")) "new" [] none⟩
+    -- ### Tier 7's hierarchy controls
+    --
+    -- (f) The walk is not a licence: a method neither the class nor any ancestor declares
+    -- still raises NoMethodError. This is the control for `mroGet?` *terminating* in `none`
+    -- rather than falling back on anything.
+  , ⟨"class A; end; class B < A; end; B.new.nope",
+      .seq [.class' "A" none .nil,
+            .class' "B" (some (.const "A")) .nil,
+            .send (some (.send (some (.const "B")) "new" [] none)) "nope" [] none]⟩
+    -- (g) `super` walks from the *definition site*, and the parent's body is checked there:
+    -- Child#go delegates to Parent#go, whose body is type-stuck, so the program raises
+    -- TypeError even though nothing at the call site looks wrong. The tier-7 twin of
+    -- `fun-body-mismatch`.
+  , ⟨"class P; def go; 1 + true; end; end; class C < P; def go; super; end; end; C.new.go",
+      .seq [.class' "P" none (.def' "go" [] (.send (some (.int 1)) "+" [.tru] none)),
+            .class' "C" (some (.const "P")) (.def' "go" [] (.super' [] none)),
+            .send (some (.send (some (.const "C")) "new" [] none)) "go" [] none]⟩
+    -- (h) `super` with no superclass: `Judge.superCall`'s `c.super? = some sn` premise.
+    -- Ruby raises NoMethodError ("super: no superclass method"), inside the family.
+  , ⟨"class A; def go; super; end; end; A.new.go",
+      .seq [.class' "A" none (.def' "go" [] (.super' [] none)),
+            .send (some (.send (some (.const "A")) "new" [] none)) "go" [] none]⟩
+    -- (i) A singleton method is *not* an instance method, and the two tables really are
+    -- separate: calling one on an instance raises NoMethodError.
+  , ⟨"class P; def self.origin; 1; end; end; P.new.origin",
+      .seq [.class' "P" none (.defs .self' "origin" [] (.int 1)),
+            .send (some (.send (some (.const "P")) "new" [] none)) "origin" [] none]⟩ ]
 
 mutual
 
@@ -337,6 +364,12 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match sup with
     | none => return .class' n none body'
     | some sup => return .class' n (some (← toRubyCore sup)) body'
+  | .super' args none =>
+    (args.mapM toRubyCore).map (fun args' => .super' args' none)
+  | .defs recv n ps body => do
+    let recv' ← toRubyCore recv
+    let ps' ← ps.mapM toRubyCoreParam
+    return .defs recv' n ps' (← toRubyCore body)
   | .def' n ps body => do
     let ps' ← ps.mapM toRubyCoreParam
     return .def' n ps' (← toRubyCore body)
