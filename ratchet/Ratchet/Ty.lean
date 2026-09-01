@@ -44,6 +44,32 @@ inductive Ty where
   /-- An `Array` whose elements are all `elem`. Invariant by design (compared by
       equality): covariance would be unsound under mutation-through-aliasing. -/
   | arrayOf (elem : Ty)
+  /-- **The bottom type: an expression that does not produce a value.** Added at tier 6
+      (`../implementation-notes.md` clink 5), where the recursion in `fun-recursive-factorial`
+      forced it, and it is *this* package's constructor — the ported
+      `RubyCore/Types/Ty.lean` has no equivalent (see §Isolation).
+
+      Three jobs, and it is worth being clear that they are the same job seen three ways:
+
+      1. **The unit of `joinT`.** `joinT τ .never = τ`. If one branch of an `if` cannot
+         return, the `if`'s value comes only from the other branch — so the join finally
+         has an identity, and `elemTy` becomes an honest fold rather than a fold with a
+         hand-written base case.
+      2. **The type of a strict operand that never returns.** If evaluating a send's
+         receiver or argument does not return, the send does not happen; its result type
+         is vacuous. That is `Judge.primNever`/`Judge.callNever`.
+      3. **The candidate a recursive call is given while its own signature is being
+         found.** `Ratchet/Validate.lean`'s first pass over a function body types the
+         recursive call at `.never` — "assume it does not come back" — which is what makes
+         the *base* case of a recursion visible before the recursive case has a type. That
+         first pass is a hint and is never trusted; see `Judge.callDef`.
+
+      Like `.any` it is **inert**: no `PrimSig` row has it as a receiver and it is not
+      `EqSafe`. Unlike `.any` it is inert from *below* — `.any` is "some value, type not
+      pinned", `.never` is "no value at all" — and the two are not interchangeable
+      anywhere: `arrayOf .never` is the precise type of `[]`, while `arrayOf .any` would be
+      the type of an array whose elements are unknown. -/
+  | never
   /-- A union: a value of `σ` or of `τ`. Binary, no normal form imposed. Inert on this
       package's checker path (nothing in `Ratchet/Validate.lean` constructs or narrows
       one yet) — a placeholder for the day two `if` branches of different class type
@@ -72,7 +98,9 @@ def arrowParts? : Ty → Option (List Ty × Ty)
 /-- Subtyping: everything is below `any`; `nilable τ` also admits `nilT` and anything
 below `τ`; otherwise compared by equality. -/
 def subTy (σ τ : Ty) : Bool :=
-  match τ with
+  match σ, τ with
+  | .never, _ => true
+  | _, τ => match τ with
   | .any => true
   | .nilable τ' => σ == .nilT || σ == .nilable τ' || subTy σ τ'
   | _ => σ == τ
@@ -183,7 +211,9 @@ a receiver, and it is not `EqSafe`), so producing one is always safe: it says "t
 checker knows the value is one of these", and any rule that wants to *use* the value
 will simply fail to apply. -/
 def joinT (σ τ : Ty) : Ty :=
-  match joinTy σ τ with
+  if σ == .never then τ
+  else if τ == .never then σ
+  else match joinTy σ τ with
   | some ρ => ρ
   | none => unionOf (dedupTys (unionMems σ ++ unionMems τ))
 
@@ -219,16 +249,14 @@ where tier 4's join earns its keep a second time: `[1, "a", true]` is ordinary s
 and its type is `arrayOf (union Int (union String Bool))` — a genuine upper bound on every
 element, which is exactly what `arrayOf τ` claims.
 
-**The empty case is `.any`, and it is not a join unit.** There is no bottom type in this
-`Ty`, so there is nothing to fold an empty list from. `.any` is used instead because for
-an array with no elements the claim "every element has type `.any`" is *vacuously* true —
-the weakest thing sayable, and sound for that reason rather than by algebra. It is
-deliberately not the base case of the fold: the singleton case returns `τ` itself, so a
-non-empty literal never gets widened to `.any` by passing through the unit (rung
-`array-empty` vs `array-int`). -/
+**The empty case is `.never`, and it now really is the join's unit.** `[] : arrayOf never`
+reads "every element of this array does not return a value", which is vacuously true of an
+array with no elements and is the *most precise* such claim. Tier 5 wrote `.any` here
+because `Ty` had no bottom type and the fold needed a hand-written singleton base case to
+avoid widening `[1]` to `arrayOf any` by passing through the unit; tier 6's `Ty.never`
+removed the need for both (clink 5). -/
 def elemTy : List Ty → Ty
-  | [] => .any
-  | [τ] => τ
+  | [] => .never
   | τ :: τs => joinT τ (elemTy τs)
 
 end Ratchet

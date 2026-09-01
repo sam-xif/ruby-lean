@@ -41,7 +41,12 @@ structure Rung where
       binds nothing; tier 3's rungs are the first with anything in it, and printing it
       is how one reads off what the checker thinks each local ended up as. -/
   outEnv : Env
-  deriv : Judge [] program ty outEnv
+  /-- The derivation, at the **empty** def and assumption tables. Both emptinesses matter
+      and for different reasons: `D = []` because nothing is defined before a program's
+      first statement, and `Δ = []` because a derivation with an assumption in it is only a
+      conditional claim (see `AsmTable`). Tier 6's `def` statements grow `D` from inside,
+      via `JudgeSeq.cons`. -/
+  deriv : Judge [] [] [] program ty outEnv
 
 /-! ## Tier 1 — the eight literals
 
@@ -226,9 +231,15 @@ def r031 : Rung :=
 
     What makes this admissible rather than a hole is `BareNameError`: a one-row table,
     not a blanket rule. See its docstring for why a blanket rule would be unsound
-    (`proc` is also a bare name, and it raises `ArgumentError`). -/
+    (`proc` is also a bare name, and it raises `ArgumentError`).
+
+    The second premise — the `rfl`, discharging `defGet? [] "x" = none` — arrived with
+    tier 6: now that a `def'` is typeable, "nothing has defined this name" has to be
+    *checked* rather than guaranteed by the absence of a rule. On this rung it is trivial,
+    because the program contains no `def`; the control that makes it non-trivial is
+    `def x; 1 + true; end; x` in `CheckRungs.lean`. -/
 def r032 : Rung :=
-  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x⟩
+  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x rfl⟩
 
 /-- `x = 1; y = 2; x + y` → `Integer`, leaving both locals bound. Two *different* names,
     where the previous rungs rebind one — so this is the rung that would catch an
@@ -366,11 +377,13 @@ def r044 : Rung :=
   ⟨"array-int", .array [.int 1, .int 2, .int 3], .arrayOf .int, [],
     .arrayLit (.cons .intLit (.cons .intLit (.cons .intLit .nil)))⟩
 
-/-- `[]` → `arrayOf any`. The one place `.any` is *synthesized* rather than only ever
-    declared: with no elements, "every element is `.any`" is vacuously true, which is why
-    this is sound without a bottom type (see `elemTy`). -/
+/-- `[]` → `arrayOf never`. The empty literal's element type is `elemTy []`, the unit of
+    the join: "every element of `[]` does not return a value" is vacuously true and is the
+    most precise claim available. Tier 5 wrote `arrayOf any` here because `Ty` had no
+    bottom type; tier 6 added one (`Ty.never`), and this rung is where the difference is
+    visible. -/
 def r045 : Rung :=
-  ⟨"array-empty", .array [], .arrayOf .any, [], .arrayLit .nil⟩
+  ⟨"array-empty", .array [], .arrayOf .never, [], .arrayLit .nil⟩
 
 /-- `[1, "a", true]` → `arrayOf (union Int (union String Bool))`. Heterogeneous arrays are
     ordinary Ruby, and tier 4's join is what makes them typeable rather than rejected.
@@ -433,13 +446,143 @@ def r051 : Rung :=
     .any, [],
     .prim (.hashLit (.cons .strLit .intLit .nil)) (.cons .strLit .nil) .hashIndex⟩
 
+/-! ## Tier 6 — top-level methods
+
+The first tier whose derivations are not shaped like their programs. A `def` statement's
+derivation is one leaf (`defStmt` — the body is not looked at), and the *body*'s derivation
+hangs off the **call site** instead, inside `callDef`. So `simple-fun` reads: a `def` leaf,
+then a call whose fourth premise is the entire derivation of `x + y` in an environment made
+of the call's own argument types.
+
+Two things to watch for in what follows:
+
+- **`rfl` appears in three new roles.** `defGet? D m = some d` (the method was defined by an
+  earlier statement), `paramEnv d.params argTys = some Γb` (the arity matched and every
+  parameter is required), and `asmGet? Δ m argTys = some ρ` (this instantiation is the one
+  currently being discharged). Each is a computation on tables the derivation carries, so a
+  wrong table makes the `rfl` fail rather than making the rung silently pass.
+- **`D` is never written down.** It is threaded by `JudgeSeq.cons`, so the derivations below
+  read the def table off the program's own statement order. That is exactly the property
+  that makes `foo(); def foo; end` underivable — and it is why `fun-calling-another-fun`
+  works regardless of which `def` comes first (both have run by the time either is called). -/
+
+/-- `def add(x, y) = x + y; add(1, 2)` → `Integer`. The signature `(Int, Int) → Int` appears
+    nowhere in the program *and nowhere in the derivation either*: what stands in for it is
+    `paramEnv`'s `[("x", Int), ("y", Int)]`, built from this call site's argument types, in
+    which the body is then judged directly. -/
+def r052 : Rung :=
+  ⟨"simple-fun",
+    .seq [.def' "add" [.req "x", .req "y"]
+            (.send (some (.var .lvar "x")) "+" [.var .lvar "y"] none),
+          .send none "add" [.int 1, .int 2] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons .intLit (.cons .intLit .nil)) rfl rfl
+        (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd))))⟩
+
+/-- `def get5 = 5; get5()` → `Integer`. The degenerate case, and worth having: with no
+    parameters there is nothing for the call site to contribute, so `paramEnv [] [] = []`
+    and the body is judged in the empty environment. -/
+def r055 : Rung :=
+  ⟨"fun-zero-arg",
+    .seq [.def' "get5" [] (.int 5), .send none "get5" [] none],
+    .int, [],
+    .seq (.cons .defStmt (.last (.callDef .nil rfl rfl .intLit)))⟩
+
+/-- `def inc(x) = x + 1; def twice(x) = inc(inc(x)); twice(3)` → `Integer`. A call inside a
+    body inside a call: `twice`'s body is judged with `D` holding *both* methods, because
+    `D` is the one in force at `twice(3)` — after every top-level `def` has run. Source
+    order between the two `def`s is therefore irrelevant, while source order between a `def`
+    and a call is not. -/
+def r057 : Rung :=
+  ⟨"fun-calling-another-fun",
+    .seq [.def' "inc" [.req "x"]
+            (.send (some (.var .lvar "x")) "+" [.int 1] none),
+          .def' "twice" [.req "x"]
+            (.send none "inc" [.send none "inc" [.var .lvar "x"] none] none),
+          .send none "twice" [.int 3] none],
+    .int, [],
+    .seq (.cons .defStmt (.cons .defStmt
+      (.last (.callDef (.cons .intLit .nil) rfl rfl
+        (.callDef
+          (.cons (.callDef (.cons (.var rfl) .nil) rfl rfl
+                   (.prim (.var rfl) (.cons .intLit .nil) .intAdd)) .nil)
+          rfl rfl
+          (.prim (.var rfl) (.cons .intLit .nil) .intAdd))))))⟩
+
+/-- `def sum3(a, b, c) = a + b + c; sum3(1, 2, 3)` → `Integer`. Three required parameters,
+    so the interesting part is `paramEnv`'s three-way length match. -/
+def r058 : Rung :=
+  ⟨"fun-three-params",
+    .seq [.def' "sum3" [.req "a", .req "b", .req "c"]
+            (.send (some (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none))
+              "+" [.var .lvar "c"] none),
+          .send none "sum3" [.int 1, .int 2, .int 3] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons .intLit (.cons .intLit (.cons .intLit .nil))) rfl rfl
+        (.prim (.prim (.var rfl) (.cons (.var rfl) .nil) .intAdd)
+          (.cons (.var rfl) .nil) .intAdd))))⟩
+
+/-- `def make_pair(x, y) = [x, y]; make_pair(1, 2)` → `arrayOf Int`. The return type is
+    *structured* and comes entirely from the body, while the parameters are constrained
+    entirely by the call site — nothing in `[x, y]` says what `x` is. The clearest rung for
+    why this rule is per-call-site instantiation rather than signature inference. -/
+def r059 : Rung :=
+  ⟨"fun-returning-array",
+    .seq [.def' "make_pair" [.req "x", .req "y"]
+            (.array [.var .lvar "x", .var .lvar "y"]),
+          .send none "make_pair" [.int 1, .int 2] none],
+    .arrayOf .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons .intLit (.cons .intLit .nil)) rfl rfl
+        -- `(τs := …)` written out because the element types come from `.var rfl` reads of
+        -- the parameter environment, and `elemTy ?τs = arrayOf Int` is not something
+        -- unification can invert.
+        (.arrayLit (τs := [.int, .int])
+          (.cons (.var rfl) (.cons (.var rfl) .nil))))))⟩
+
+/-- `def fact(n) = if n <= 1 then 1 else n * fact(n - 1); fact(4)` → `Integer`. **The rung
+    tier 6 exists for.**
+
+    Read the derivation from the inside out. The recursive occurrence is a `callAsm`, whose
+    `rfl` looks `("fact", [Int])` up in `Δ` and finds `Int` — the assumption `callDef` put
+    there. So `n * fact(n - 1)` is an ordinary `intMul`, the two branches join at `Int`, and
+    the body synthesizes exactly the `Int` that was assumed. That coincidence *is* the
+    check: `callDef`'s premise demands the body produce the assumed type, so an assumption
+    that does not reproduce itself yields no derivation.
+
+    Nothing in this term says how `Int` was found. `Ratchet/Validate.lean` finds it by
+    typing the body once with the recursive call at `.never` — the only route by which the
+    `then` branch's type becomes visible before the `else` branch has one — and that pass
+    leaves no trace here, because it is a hint and hints are not evidence. -/
+def r060 : Rung :=
+  ⟨"fun-recursive-factorial",
+    .seq [.def' "fact" [.req "n"]
+            (.if' (.send (some (.var .lvar "n")) "<=" [.int 1] none)
+              (.int 1)
+              (some (.send (some (.var .lvar "n")) "*"
+                [.send none "fact"
+                  [.send (some (.var .lvar "n")) "-" [.int 1] none] none] none))),
+          .send none "fact" [.int 4] none],
+    .int, [],
+    .seq (.cons .defStmt
+      (.last (.callDef (.cons .intLit .nil) rfl rfl
+        (.if' (.prim (.var rfl) (.cons .intLit .nil) .intLe)
+          .intLit
+          (.prim (.var rfl)
+            (.cons (.callAsm
+              (.cons (.prim (.var rfl) (.cons .intLit .nil) .intSub) .nil) rfl) .nil)
+            .intMul)))))⟩
+
 /-- Every rung with a hand-authored derivation, in corpus order. -/
 def rungs : List Rung :=
   [r001, r002, r003, r004, r005, r006, r007, r008, r009, r010, r011, r012, r013,
    r014, r015, r016, r017, r019, r020, r021, r022, r024, r025, r026, r027, r028,
    r029, r030, r031, r032, r033, r034,
    r035, r036, r037, r038, r039, r040, r041, r043,
-   r044, r045, r046, r047, r048, r049, r050, r051]
+   r044, r045, r046, r047, r048, r049, r050, r051,
+   r052, r055, r057, r058, r059, r060]
 
 /-! ## `chk` answers exactly what was derived by hand
 
@@ -448,7 +591,8 @@ and the one that matters for trusting a `true`); together they say the executabl
 and the hand-authored judgment have not drifted apart anywhere on this fragment. -/
 
 theorem chk_agrees_with_hand_derivations :
-    rungs.all (fun r => chk [] r.program == some (r.ty, r.outEnv)) = true := by rfl
+    rungs.all (fun r =>
+      chk fuelDefault [] [] [] r.program == some (r.ty, r.outEnv)) = true := by rfl
 
 /-- And therefore `validate` — the number the ratchet runner reports — says `true` on all
 13. Stated separately from the above because it is the weaker fact (it forgets *which*

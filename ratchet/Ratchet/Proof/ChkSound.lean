@@ -5,7 +5,7 @@ import Ratchet.Validate
 
 The single theorem that makes `Ratchet/Validate.lean`'s `Bool` worth reading:
 
-  `chk_sound : chk Γ e = some (τ, Γ') → Judge Γ e τ Γ'`
+  `chk_sound : chk fuel D Δ Γ e = some (τ, Γ') → Judge D Δ Γ e τ Γ'`
 
 i.e. the executable checker never certifies anything the hand-authored judgment
 (`Ratchet/Judge.lean`) does not derive. This is *not* the semantic soundness theorem —
@@ -79,14 +79,18 @@ theorem bareNameError?_sound {m : String} (h : bareNameError? m = true) :
 
 mutual
 
-theorem chk_sound : ∀ {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env},
-    chk Γ e = some (τ, Γ') → Judge Γ e τ Γ' := by
-  intro Γ e τ Γ' h
+theorem chk_sound : ∀ {fuel : Nat} {D : DefTable} {Δ : AsmTable} {Γ : Env} {e : Expr}
+    {τ : Ty} {Γ' : Env},
+    chk fuel D Δ Γ e = some (τ, Γ') → Judge D Δ Γ e τ Γ' := by
+  intro fuel D Δ Γ e τ Γ' h
   unfold chk at h
   -- One `split` per arm of `chk`'s match, in the order they are written there: the
-  -- seven literals, `var`, `vasgn`, `seq`, the two `if'`s, `array`, `hash`, `vcall`,
-  -- the primitive `send`, then the `none` catch-all.
+  -- out-of-fuel arm, the seven literals, `var`, `vasgn`, `seq`, the two `if'`s, `array`,
+  -- `hash`, `vcall`, `def'`, the implicit-self call, the primitive `send`, then the `none`
+  -- catch-all. Note that fuel never appears in a conclusion: it is spent by the recursive
+  -- calls and is invisible to the judgment (see `Validate.lean` §Fuel).
   split at h
+  · exact absurd h (by simp)
   · injection h with h; injection h with h h'; subst h; subst h'; exact .intLit
   · injection h with h; injection h with h h'; subst h; subst h'; exact .fltLit
   · injection h with h; injection h with h h'; subst h; subst h'; exact .strLit
@@ -155,37 +159,102 @@ theorem chk_sound : ∀ {Γ : Env} {e : Expr} {τ : Ty} {Γ' : Env},
       subst h; subst h'
       exact .hashLit (chkPairs_sound hps)
     · exact absurd h (by simp)
-  · -- `vcall m`: only when the name is a known `BareNameError` row.
+  · -- `vcall m`: nothing may have defined the name, *and* it must be a known
+    -- `BareNameError` row.
     split at h
-    · rename_i hbare
-      injection h with h
-      injection h with h h'
-      subst h; subst h'
-      exact .bareName (bareNameError?_sound hbare)
     · exact absurd h (by simp)
-  · -- `send recv m args` with no block: receiver, arguments and the primitive table all
-    -- agreed, so rebuild `.prim` from the two recursive calls. Any other route through
-    -- this arm produced `none`, contradicting `h`.
+    · rename_i hdef
+      split at h
+      · rename_i hbare
+        injection h with h
+        injection h with h h'
+        subst h; subst h'
+        exact .bareName (bareNameError?_sound hbare) hdef
+      · exact absurd h (by simp)
+  · -- `def' n ps body`: unconditional, and the body is not looked at (see `Judge.defStmt`).
+    injection h with h; injection h with h h'; subst h; subst h'; exact .defStmt
+  · -- `send none m args`: strictness, then the assumption table, then the def table.
+    split at h
+    · rename_i hargs
+      split at h
+      · -- a non-returning argument: the call never dispatches
+        rename_i hnever
+        injection h with h
+        injection h with h h'
+        subst h; subst h'
+        exact .callNever (chkAll_sound hargs) (by simpa using hnever)
+      · split at h
+        · -- the instantiation is assumed
+          rename_i _ hasm
+          injection h with h
+          injection h with h h'
+          subst h; subst h'
+          exact .callAsm (chkAll_sound hargs) hasm
+        · split at h
+          · rename_i _ _ hdef
+            split at h
+            · rename_i hpar
+              -- Pass A's result `ρ₀` is bound here but its derivation is never used: the
+              -- hint is untrusted by construction, and this is where that is visible in
+              -- the proof rather than only in prose.
+              split at h
+              · split at h
+                · -- Pass B: the candidate reproduced itself, so its derivation *is* the
+                  -- premise `Judge.callDef` asks for.
+                  rename_i _ _ _ _ hpassB
+                  split at h
+                  · rename_i heq
+                    injection h with h
+                    injection h with h h'
+                    subst h; subst h'
+                    exact .callDef (chkAll_sound hargs) hdef hpar
+                      (by subst heq; exact chk_sound hpassB)
+                  · exact absurd h (by simp)
+                · exact absurd h (by simp)
+              · exact absurd h (by simp)
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  · -- `send (some recv) m args` with no block: strictness on the receiver, then on the
+    -- arguments, then the primitive table.
     split at h
     · rename_i hrecv
       split at h
       · rename_i hargs
         split at h
-        · rename_i hsig
+        · -- receiver never returns
+          rename_i hnever
           injection h with h
           injection h with h h'
           subst h; subst h'
-          exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
-        · exact absurd h (by simp)
+          exact .primNever (chk_sound hrecv) (chkAll_sound hargs)
+            (.inl hnever)
+        · split at h
+          · -- some argument never returns
+            rename_i _ hnever
+            injection h with h
+            injection h with h h'
+            subst h; subst h'
+            exact .primNever (chk_sound hrecv) (chkAll_sound hargs)
+              (.inr hnever)
+          · split at h
+            · rename_i _ _ hsig
+              injection h with h
+              injection h with h h'
+              subst h; subst h'
+              exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
+            · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-theorem chkAll_sound : ∀ {Γ : Env} {es : List Expr} {τs : List Ty} {Γ' : Env},
-    chkAll Γ es = some (τs, Γ') → JudgeAll Γ es τs Γ' := by
-  intro Γ es τs Γ' h
+theorem chkAll_sound : ∀ {fuel : Nat} {D : DefTable} {Δ : AsmTable} {Γ : Env}
+    {es : List Expr} {τs : List Ty} {Γ' : Env},
+    chkAll fuel D Δ Γ es = some (τs, Γ') → JudgeAll D Δ Γ es τs Γ' := by
+  intro fuel D Δ Γ es τs Γ' h
   unfold chkAll at h
   split at h
+  · exact absurd h (by simp)
   · injection h with h; injection h with h h'; subst h; subst h'; exact .nil
   · split at h
     · rename_i hhd
@@ -198,11 +267,13 @@ theorem chkAll_sound : ∀ {Γ : Env} {es : List Expr} {τs : List Ty} {Γ' : En
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
-theorem chkPairs_sound : ∀ {Γ : Env} {ps : List (Expr × Expr)} {Γ' : Env},
-    chkPairs Γ ps = some Γ' → JudgePairs Γ ps Γ' := by
-  intro Γ ps Γ' h
+theorem chkPairs_sound : ∀ {fuel : Nat} {D : DefTable} {Δ : AsmTable} {Γ : Env}
+    {ps : List (Expr × Expr)} {Γ' : Env},
+    chkPairs fuel D Δ Γ ps = some Γ' → JudgePairs D Δ Γ ps Γ' := by
+  intro fuel D Δ Γ ps Γ' h
   unfold chkPairs at h
   split at h
+  · exact absurd h (by simp)
   · injection h with h; subst h; exact .nil
   · split at h
     · rename_i hk
@@ -212,11 +283,13 @@ theorem chkPairs_sound : ∀ {Γ : Env} {ps : List (Expr × Expr)} {Γ' : Env},
       · exact absurd h (by simp)
     · exact absurd h (by simp)
 
-theorem chkSeq_sound : ∀ {Γ : Env} {es : List Expr} {τ : Ty} {Γ' : Env},
-    chkSeq Γ es = some (τ, Γ') → JudgeSeq Γ es τ Γ' := by
-  intro Γ es τ Γ' h
+theorem chkSeq_sound : ∀ {fuel : Nat} {D : DefTable} {Δ : AsmTable} {Γ : Env}
+    {es : List Expr} {τ : Ty} {Γ' : Env},
+    chkSeq fuel D Δ Γ es = some (τ, Γ') → JudgeSeq D Δ Γ es τ Γ' := by
+  intro fuel D Δ Γ es τ Γ' h
   unfold chkSeq at h
   split at h
+  · exact absurd h (by simp)
   · exact absurd h (by simp)
   · exact .last (chk_sound h)
   · split at h
@@ -227,11 +300,13 @@ theorem chkSeq_sound : ∀ {Γ : Env} {es : List Expr} {τ : Ty} {Γ' : Env},
 end
 
 /-- The form the runner cares about: a `true` verdict means *some* type is derivable for
-the whole program, from the empty environment. -/
+the whole program, from the empty environment, with **nothing defined and nothing
+assumed**. The empty `Δ` is what makes this an unconditional statement rather than one
+relative to a table of assumptions — see `AsmTable`. -/
 theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
-    ∃ τ Γ', Judge [] p τ Γ' := by
+    ∃ τ Γ', Judge [] [] [] p τ Γ' := by
   unfold validate at h
-  cases hc : chk [] p with
+  cases hc : chk fuelDefault [] [] [] p with
   | none => simp [hc] at h
   | some r => exact ⟨r.1, r.2, chk_sound (by simpa using hc)⟩
 

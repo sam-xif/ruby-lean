@@ -13,15 +13,15 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **48 rungs, hand-authored judgment first, nothing trusted**
+## Checker status: **54 rungs, hand-authored judgment first, nothing trusted**
 
-`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–5**: the eight literals,
+`Ratchet/Validate.lean`'s `validate` covers **all of tiers 1–6**: the eight literals,
 `+`/`-`/`*`/`/` on `Integer`, `+` on `String`, the integer comparisons, the nullary total
 queries (`to_s`/`zero?`/`length`), `!`, and `==` with an unconstrained argument (see
 `EqSafe`), plus tier 3's locals (`var`/`vasgn`/`seq`, and a bare `vcall` gated on the
-`BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), and tier 5's array and
-hash literals with their `#[]` — 48 rungs. Every rung at or below tier 5 now matches its
-recorded target.
+`BareNameError` table), tier 4's conditionals (`if'`/`ifNoElse`), tier 5's array and hash
+literals with their `#[]`, and tier 6's top-level `def` plus implicit-self calls — 54
+rungs. Every rung at or below tier 6 now matches its recorded target.
 
 `Judge` threads an environment (`Judge Γ e τ Γ'`); see `implementation-notes.md` clink 2
 for why the output environment is not optional. Tier 4 added the two **joins** — `joinT`
@@ -42,6 +42,18 @@ What is new is the type language pulling its weight: `elemTy` joins the element 
 `.cls "Hash"` with a premise (`JudgePairs`) that carries no type at all — the first place
 "these subterms must be well-typed" and "and here is the type" come apart. Clink 4 has the
 three prices this charges, each a recorded negative control.
+
+**Tier 6 is the shape change.** `Judge` gained two indices — `DefTable` (methods already
+defined, *threaded* through `JudgeSeq` so `foo(); def foo; end` has no derivation) and
+`AsmTable` (instantiations currently assumed) — plus `Ty.never`, a bottom type. There are
+**no signatures**: Ruby writes no parameter types, so `Judge.callDef` types a method's body
+once per *call-site argument shape*, in an environment made of just its parameters at just
+those types. Recursion is broken by assume-then-verify, where the candidate return type is
+found by a first pass that types the recursive call at `.never` and is then **discharged by
+a second pass that must reproduce it** — the first pass is a hint, and `chk_sound`'s proof
+visibly never uses its derivation. `chk` takes fuel from here on, which is a completeness
+knob and not a soundness one. Clink 5 has all of it, including the three controls (one per
+premise added) whose rejections are *sound* rather than conservative.
 
 What is different from the pre-restart version this replaced: the checker is no longer
 the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
@@ -454,10 +466,14 @@ ladder is reported: 114/114 (§Architecture).
    unparameterised `.cls "Hash"`, so `Hash#[]` can only be `.any`. `arrayOf`'s invariance
    is not yet load-bearing — there is no rule for `Array#<<` or `#[]=` — and the tier that
    adds one inherits the obligation.
-6. Top-level functions (9 rungs) — a `def'` declares nothing, so a signature has to be
-   *inferred* from the body and the params and then checked against each call site.
-   Includes a self-recursive function (`fact`), where the signature is needed to check
-   the body it is inferred from.
+6. Top-level functions (9 rungs) — **all nine at target** (`implementation-notes.md`
+   clink 5). There turned out to be no signature to infer: `Judge.callDef` types the body
+   once per call-site argument shape, in `paramEnv`'s fresh parameters-only environment, so
+   `fun-returning-array`'s return type comes wholly from the body and its parameters wholly
+   from the call site. `fact` is handled by assume-then-verify — a first pass types the
+   recursive call at the new `Ty.never` to *find* a candidate, a second pass must reproduce
+   it — and the control that shows the second pass is load-bearing is in `CheckRungs.lean`.
+   `bareName` grew the `defGet? D m = none` premise clink 2 predicted it would need.
 7. **Classes (16 rungs).** Real, varied class-based Ruby (construction, ivars,
    inheritance, `super`, singleton "factory" methods, instances in arrays/hashes).
    Wants a declaration table over class bodies, ancestor-chain dispatch, and ivar types
@@ -635,28 +651,31 @@ The full climb, in roughly the order that costs least to unlock the most:
    and `if-does-not-leak-reassignment`'s target was wrong, not merely imprecise.
 1. ~~**Tier 5, arrays and hashes**~~ — **done** (clink 4). Every prediction in this entry
    held, including the `nilable` result for `Array#[]`.
-2. **Tier 6, top-level `def`** — the next rung group, and the first genuine shape change
-   since tier 3. A `def'` declares nothing in this `Ty`: a signature has to be *inferred*
-   from the params and body and then checked at each call site, which means the judgment
-   needs a **declaration table** alongside `Env` (and `fun-recursive-factorial` needs the
-   inferred signature available while checking the very body it is inferred from). Two
-   existing rules have written-down obligations that come due here: `bareName` must be
-   deleted or gated on the declaration table (a `def x; …; end; x` would otherwise
-   launder a stuck body through the `BareNameError` row), and `prim`'s "explicit receiver
-   only" restriction plus the whole judgment's top-level-`self` assumption stop being
-   free once a method body is judged.
-3. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
+2. ~~**Tier 6, top-level `def`**~~ — **done** (clink 5). The declaration table arrived
+   (`DefTable`, threaded), the `bareName` obligation was discharged, and the "infer a
+   signature" framing turned out to be avoidable: per-call-site body instantiation needs no
+   signature at all. What this entry did *not* anticipate is that `prim`'s explicit-receiver
+   restriction and the top-level-`self` assumption survived intact — a method body is judged
+   with a locals-only environment and no `self`, so the moment a body needs `self` (tier 7's
+   `@ivar`s, its very first rung) both come due at once.
+3. **Tier 7, classes** (16 rungs) — the next rung group, and much the largest. Needs, at
+   minimum: a `self` type in the judgment (tier 6 deliberately did not add one); instance
+   variables, which are a *second* mutable environment with a lifetime longer than a call;
+   `.clsOf` receivers, so `Point.new` can be distinguished from a `Point`; and inheritance,
+   which is the first thing in this ladder that `subTy` might actually be for. `class-basic`
+   alone needs the first three.
+4. **Optional/rest/keyword/block params** (`Param.opt`/`.rest`/`.key`/`.kwrest`/
    `.block`) — the cleared implementation rejected any `def'` using them, and tier 10's
    `metaprog-method-missing-splat` (with tier 9's `proc-arity-leniency`) needs this
    *and* the `Ty` extension in §Ty language gaps together before it can validate.
    `Param.block` is needed sooner than the rest: tier 9's `block-param-ampersand`
    (`def run(&b)`) is otherwise ordinary safe Ruby.
-4. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
+5. **Blocks and `yield`** (`Expr.block`, `Expr.yield'`) — the real payoff construct, and
    the first one that needs the interpreter (or at least a model of what `each`/`map`
    actually do) to say anything about a block's body. **Tier 9 is now the
    corpus demand for this**, 22 rungs of it, ordered so the first (`lambda { 1 }`,
    `arrow_of([], Int)`) is reachable long before the last.
-5. **Classes and modules**: a declaration table (something like the real project's
+6. **Classes and modules**: a declaration table (something like the real project's
    `Types/Decls.lean`, deliberately not ported — see §What is deliberately not built)
    keyed by owner name, built from every `def'`/`defs` nested in every `class'`/`module'`
    node (accumulating across reopenings for free), each method's signature *inferred*
@@ -666,9 +685,9 @@ The full climb, in roughly the order that costs least to unlock the most:
    for inheritance, `include`/`extend`/`prepend`, and `super'`/`zsuper`. Tiers 7, 8 and
    10 (32 rungs) are real Ruby waiting on exactly this — none of it needs a new `Ty`
    constructor except the one item below.
-6. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
+7. **Extend `Ty` with a rest/vararg arrow constructor** (§Ty language gaps) — the one
    `Ty`-grammar change this ladder has found a concrete need for.
-7. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
+8. **Extend the semantic cross-check past rung 13.** Mostly done for the covered
    fragment (§Semantics status, `CheckRungs.lean`) and it grows a row at a time as `chk`
    does; the *corpus-wide* half is now covered from the other side by
    `scripts/run_agreement.sh` (CRuby vs the model on all 114, §Architecture). What is

@@ -367,3 +367,180 @@ tier 5 matching its recorded target), 48/48 cross-checked against the real seman
 20/20 negative controls rejected, corpus agreement 0 disagreements, and
 `chk_sound`/`chkAll_sound`/`chkPairs_sound`/`chkSeq_sound`/`validate_sound_syntactic`
 axiom-clean (`propext`, `Quot.sound`).
+
+---
+
+## Clink 5 (2026-09-01) — tier 6: top-level methods, and a bottom type: 48 → 54
+
+Rungs added: all six positive rungs of tier 6 (`simple-fun`, `fun-zero-arg`,
+`fun-calling-another-fun`, `fun-three-params`, `fun-returning-array`,
+`fun-recursive-factorial`); the three negative ones (`fun-wrong-arity`,
+`fun-body-mismatch`, `fun-unknown-call`) are now rejected for the right reasons rather
+than for want of a rule. Tier 6 is 9/9 at target.
+
+The biggest clink so far. Four things changed shape, and they are separable, so they are
+written up separately.
+
+### 1. Two new tables, and only one of them is bookkeeping
+
+A method has parameters and a body, not a type, so nothing in `Env` can hold one. Tier 6
+adds `DefTable` (methods already defined) and `AsmTable` (instantiations currently
+assumed) as indices of `Judge`, and they are opposites:
+
+- **`D` is syntax the checker has read.** Untrusted because it is read off the program.
+- **`Δ` is a claim the checker is in the middle of discharging.** Untrusted because the
+  only rule that adds to it also proves it.
+
+`D` is **threaded**, not collected up front, and that is a soundness requirement:
+collecting every `def` in the program would certify `foo(); def foo; end`, which raises
+`NoMethodError` — the headline member of the family this ladder calls type-stuck. So
+`JudgeSeq.cons` continues with `extendDefs D e`, exactly as it already threads `Env`. Note
+what that does *not* cost: forward reference inside a **body** still works, because a body
+is judged against the `D` in force at its *call site*, which is after every top-level `def`
+has run (`fun-calling-another-fun` — and it would work with the two `def`s in either
+order).
+
+The cost that remains: a `def` inside an `if` branch never reaches the table
+(`extendDefs` looks only at a statement head), so calling such a method is not typed. No
+rung asks for it.
+
+### 2. No signatures at all — per-call-site instantiation
+
+Ruby writes no parameter types anywhere, so `def add(x, y) = x + y` has *nothing* to check
+a call against until someone calls it. Three designs were available: infer one signature
+per method (needs a constraint solver and a notion of principal type this `Ty` cannot
+support — no type variables), demand annotations (there are none in the corpus), or **type
+the body once per call-site argument shape**. The third is what `Judge.callDef` does: the
+body is judged in `paramEnv d.params argTys`, a fresh environment holding only the
+parameters at the types this call site produced, and the call's type is whatever the body
+synthesizes there.
+
+This is closer to C++ template instantiation than to Hindley–Milner, and the trade is
+explicit:
+
+- **What it buys.** `fun-returning-array` types at `arrayOf Int` with no annotation
+  anywhere — the return type comes wholly from the body, the parameters wholly from the
+  call site. `fun-body-mismatch` is caught, and *only* this rule catches it: the call site
+  looks fine and the `TypeError` is inside a body that only dispatch reaches. And a method
+  used at two shapes is checked at both rather than at their join.
+- **What it costs.** Work is duplicated per call site (and, because of the two-pass check
+  below, doubled again), and there is no such thing as "the type of `add`" to report. Also
+  no polymorphism: a method whose body is only typeable for *some* argument types is
+  rejected at exactly the call sites where it should be, which is right, but the checker
+  can never say so once and for all.
+
+Also fixed by construction: the body is judged in a fresh environment and the call's
+*outgoing* environment is the caller's, after the arguments — never the body's. A Ruby
+method body neither sees nor writes the caller's locals.
+
+### 3. `Ty.never`, and the two strictness rules that make it usable
+
+`fun-recursive-factorial` forced a bottom type. `Ty.never` = "this expression does not
+produce a value", and it does three jobs that are the same job seen three ways:
+
+1. **The unit of `joinT`.** `joinT τ .never = τ`: if one `if` branch cannot return, the
+   `if`'s value comes only from the other. This also let `elemTy` become an honest fold
+   (`elemTy [] = .never`), retiring tier 5's hand-written singleton base case — see the
+   churn note below.
+2. **The type of a strict operand that never returns.** `Judge.primNever`/`callNever`: if
+   a send's receiver or an argument does not return, dispatch never happens, so no claim
+   about the result can be falsified. Note these rules do not mention the method name or
+   consult `PrimSig` — they hold for methods this checker knows nothing about.
+3. **The candidate a recursive call gets while its own signature is being found** (below).
+
+Only the two *send* shapes got a strictness rule. An `if` with a `.never` condition, an
+array literal with a `.never` element and so on are equally justified and equally absent;
+each would be a rule of its own and none has a rung. Recorded here so their absence is a
+choice.
+
+`.never` is inert like `.any` — no `PrimSig` row takes it as a receiver, it is not
+`EqSafe` — but inert *from below*: `.any` is "some value, type unpinned", `.never` is "no
+value". They are not interchangeable, which is why `arrayOf .never` is the precise type of
+`[]` and `arrayOf .any` would not be.
+
+### 4. Recursion: assume-then-verify, with an explicitly untrusted first pass
+
+`fact`'s body cannot be judged before its return type is known, and its return type comes
+from its body. `Judge.callDef` breaks the cycle by having `ρ` appear twice: as an
+assumption (`⟨m, argTys, ρ⟩ :: Δ`, which `callAsm` picks up at the recursive occurrence)
+**and** as the type the body must synthesize under that assumption. Nothing in the rule
+says where `ρ` came from.
+
+`chk` finds it in two passes:
+
+- **Pass A — the hint.** Type the body with this instantiation assumed to *not return*
+  (`ρ = .never`). For `fact` this is what makes the base case visible before the recursive
+  case has a type: `n * fact(n-1)` becomes `.never` by `primNever`, and
+  `joinT Int never = Int`. For a non-recursive method it is simply the body's type,
+  computed once for nothing.
+- **Pass B — the check.** Put the candidate in `Δ` and re-type the body; it counts only if
+  it reproduces itself.
+
+**Pass B is load-bearing, and there is a control that proves it.**
+`def f(x) = if x <= 0 then 1 else f(x-1) + true; f(1)` really raises `TypeError` — the
+recursion bottoms out, returns `1`, and `1 + true` runs. Pass A *accepts* it: the recursive
+call at `.never` makes the whole `else` branch `.never`, which the join discards, leaving
+`Int`. Only re-running with `Int` assumed exposes `Int + true`. This control is in
+`CheckRungs.lean` and its rejection is labelled *sound* by running the program.
+
+The nicest property of the split is that it shows up in the *proof*: `chk_sound`'s
+`callDef` case binds pass A's result and never uses its derivation. The hint is untrusted
+by construction, not by assertion.
+
+**Why the discharge is legitimate at all** is an induction on the *execution*, not on the
+derivation: each `callAsm` inside a body corresponds to an actual recursive call one level
+deeper at run time, so "if the call returns, it returns a `ρ`" follows by induction on the
+number of calls that completed. Non-termination makes the claim vacuous — the same reading
+`PrimSig.intDiv` established for `ZeroDivisionError`. Since this package has no semantic
+soundness theorem yet, that argument lives in `Judge.callDef`'s docstring alongside the
+`PrimSig` rows' justifications, which is where the ladder's other semantic claims live too.
+
+Consequence for reading a `Judge`: **`Judge D Δ Γ e τ Γ'` with a non-empty `Δ` is a
+conditional claim.** Only `Δ = []` is absolute, and `validate` starts there — which is now
+stated in `validate_sound_syntactic`'s conclusion (`Judge [] [] [] p τ Γ'`).
+
+### 5. `bareName` grew a premise, exactly as clink 2 predicted
+
+Clink 2 wrote: "the rung that adds `def'` (tier 6) must therefore either delete this rule
+or gate it on the program's declaration table." Gated. Until now no rule typed a `def'`, so
+`def x; …; end; x` could not be judged at all, and *that accident* was what made the one
+`BareNameError` row sound. With `defStmt` in place, `def x; 1 + true; end; x` would take
+the `bareName` route to `.any` and validate a program that raises `TypeError`. The new
+premise `defGet? D m = none` restores the property by checking it instead of relying on it,
+and the control is in `CheckRungs.lean`.
+
+Remaining conservatism, recorded: there is no rule for a `vcall` that *does* name a defined
+method (`def get5; 5; end; get5`, no parentheses — the desugarer emits a `vcall`, not an
+argument-less `send`). Such a program is simply not typed. No rung asks for it.
+
+### 6. Fuel
+
+`chk` recurses into a body, and a body is not a subterm of the call, so tier 6 is where
+`chk` stops being structurally recursive. Rather than invent a measure over `D` and `Δ`,
+`chk` matches on a fuel budget and every recursive call spends one unit.
+
+This has no soundness consequence and it is worth being exact about why: fuel can only turn
+a `some` into a `none`, and `chk_sound` quantifies over every fuel value. It is purely a
+*completeness* knob, which is why it is a named constant (`fuelDefault = 64`) rather than a
+magic number at the call site. The alternative — a real termination measure — would have to
+bound the number of distinct instantiations `(f, argTys)`, and argument types can grow
+through joins, so there is no obvious bound to prove. Fuel is the honest answer, and it
+matches how the semantics side of this project already works.
+
+### Churn this clink caused elsewhere, deliberately
+
+- **`elemTy [] = .never`, not `.any`** — so `array-empty`'s type changed from
+  `arrayOf any` to `arrayOf never` and `elemTy` lost its singleton base case. Leaving
+  `.any` there once a bottom type existed would have been exactly the kind of drift these
+  notes exist to prevent: `.any` was tier 5's workaround for the absence of `.never`, and
+  tier 5's own note says so.
+- **`subTy .never _ = true`** added for consistency. `subTy` is still unused by `Judge`
+  (there is no subsumption rule); the case is there so the function does not quietly lie.
+- **`CheckRungs.toRubyCore` gained `def'`/`send none`** plus a `toRubyCoreParam`, for the
+  new controls.
+
+State after this clink: **54 rungs climbed** (tiers 1–6 complete, every rung at or below
+tier 6 matching its recorded target), 54/54 cross-checked against the real semantics,
+24/24 negative controls rejected — three of the four new ones *sound* rejections, one per
+premise added this clink — corpus agreement 0 disagreements, and all six soundness
+theorems axiom-clean (`propext`, `Quot.sound`).

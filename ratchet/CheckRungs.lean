@@ -213,7 +213,40 @@ def controls : List Control :=
     -- element type is a union.
   , ⟨"[1,\"a\"][0] + 1 (safe; element type is a union)",
       .send (some (.send (some (.array [.int 1, .str "a"])) "[]" [.int 0] none))
-        "+" [.int 1] none⟩ ]
+        "+" [.int 1] none⟩
+    -- ### Tier 6's controls
+    --
+    -- The first two are the two places tier 6 could have been *unsound*, and each one
+    -- corresponds to a specific premise added this clink. They are the reason those
+    -- premises are not decoration.
+    -- (a) `Judge.callDef`'s second pass. `def f(x) = if x <= 0 then 1 else f(x-1) + true`
+    -- really raises TypeError: the recursion bottoms out, returns 1, and `1 + true` runs.
+    -- The *first* pass alone accepts it — the recursive call typed at `.never` makes the
+    -- whole `else` branch `.never`, which the join then discards, leaving `Int`. Only
+    -- re-running the body with `Int` assumed exposes `Int + true`.
+  , ⟨"def f(x) = if x<=0 then 1 else f(x-1)+true; f(1)",
+      .seq [.def' "f" [.req "x"]
+              (.if' (.send (some (.var .lvar "x")) "<=" [.int 0] none)
+                (.int 1)
+                (some (.send
+                  (some (.send none "f"
+                    [.send (some (.var .lvar "x")) "-" [.int 1] none] none))
+                  "+" [.tru] none))),
+            .send none "f" [.int 1] none]⟩
+    -- (b) `Judge.bareName`'s `defGet? D m = none` premise. Without it this takes the
+    -- `BareNameError "x"` route to `.any` and validates a program that raises TypeError.
+  , ⟨"def x; 1 + true; end; x",
+      .seq [.def' "x" [] (.send (some (.int 1)) "+" [.tru] none), .vcall "x"]⟩
+    -- (c) Per-call-site instantiation, from the failing side: the same `def` is fine at
+    -- Int and stuck at String, and only the call site decides which.
+  , ⟨"def f(x) = x + 1; f(\"a\")",
+      .seq [.def' "f" [.req "x"] (.send (some (.var .lvar "x")) "+" [.int 1] none),
+            .send none "f" [.str "a"] none]⟩
+    -- (d) `paramEnv`'s required-parameters-only restriction, measured: safe Ruby the
+    -- checker declines because `Param.opt` answers `none` (AGENTS.md §Frontier item 3).
+  , ⟨"def f(x = 1); x; end; f() (safe; optional param unsupported)",
+      .seq [.def' "f" [.opt "x" (.int 1)] (.var .lvar "x"),
+            .send none "f" [] none]⟩ ]
 
 mutual
 
@@ -239,12 +272,23 @@ def toRubyCore : Expr → Option RubyCore.Expr
     match e with
     | none => return .if' c' t' none
     | some e => return .if' c' t' (some (← toRubyCore e))
+  | .def' n ps body => do
+    let ps' ← ps.mapM toRubyCoreParam
+    return .def' n ps' (← toRubyCore body)
+  | .send none m args none =>
+    (args.mapM toRubyCore).map (fun args' => .send none m args' none)
   | .array es => (es.mapM toRubyCore).map (fun es' => .array es')
   | .hash ps => (toRubyCorePairs ps).map (fun ps' => .hash ps')
   | .send (some r) m args none => do
     let r' ← toRubyCore r
     let args' ← args.mapM toRubyCore
     return .send (some r') m args' none
+  | _ => none
+
+/-- Parameters, for the controls' `def`s. Only the two kinds the controls use. -/
+def toRubyCoreParam : Param → Option RubyCore.Param
+  | .req x => some (.req x)
+  | .opt x d => (toRubyCore d).map (fun d' => .opt x d')
   | _ => none
 
 /-- The pair-list companion, spelled out rather than a `mapM` with a lambda: the lambda
