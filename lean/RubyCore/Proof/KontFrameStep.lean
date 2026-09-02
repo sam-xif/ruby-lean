@@ -73,6 +73,9 @@ theorem evalExpr_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (e : Exp
   all_goals (try (rw [withCtl_mk K]; try rfl))
   all_goals (try (rw [withKont_mk K]; try rfl))
   all_goals (try (frame_simp; try rfl))
+  -- the `alias` arm's two branches (`undefAliasMiss` vs the rename) are an `if` on a
+  -- machine-free condition, so one `split` finishes it
+  all_goals (try (split <;> (try (rw [withCtl_mk K])) <;> (try (frame_simp; try rfl))))
   all_goals (try (kont_walk K hK))
   all_goals (try (frame_close K))
 

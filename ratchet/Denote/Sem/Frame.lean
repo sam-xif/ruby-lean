@@ -227,9 +227,19 @@ above are missing. Decidable, and true by inspection at every kont a `Judge` rul
 def CatchFree (K : List Kont) : Prop :=
   ∀ k ∈ K, ∀ t : Value, k ≠ .catchK t
 
-/-- **The corrected interpreter frame rule**: `KontFrame` plus `CatchFree`. Stated, not
-proved, and nothing here assumes it — the same status its predecessor had, minus the
-counterexample. -/
+/-- **The corrected interpreter frame rule**: `KontFrame` plus `CatchFree`.
+
+**Now proved, and elsewhere.** `RubyCore.Proof.stepFn_frame` is this statement, in
+`RubyCore/Proof/KontFrameStep.lean` — which is where the paragraph above said it belonged,
+next to `stepFn` rather than in a second copy here. `Denote/Sem/Decompose.lean` consumes it
+and `RubyCore.Proof.done_inv` to prove the run-level decomposition `EvalsDecompose` was
+stating. This `def` is kept as the *statement of record*: it is what the wall was, it carries
+the refutation below, and the proof's own side condition is the one it predicted.
+
+One correction to the prediction: the side condition is needed for the **`jump`** arm and not
+for `.value` — `unwind`'s `retJ` case at an empty continuation *steps* (to
+`raiseErr … "unexpected return"`) rather than escaping, so "the run cannot end in `.value`" is
+not what rules it out; being an empty continuation is. -/
 def KontFrameCatchFree : Prop :=
   ∀ (m : Machine) (K : List Kont), CatchFree K →
     (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
@@ -291,7 +301,14 @@ Stated as a consequence of `KontFrame` rather than independently, because that i
 forces `r = .next m'` with `m₂ = pushK K m'`. What it is *not* is unconditional in `K`: a `K`
 whose head is a handler (`beginBodyK`) can turn a sub-run that escaped into an outer run that
 returns, so the hypothesis is about runs that return a value, which is the only shape
-`SemJudge` imposes anything on. -/
+`SemJudge` imposes anything on.
+
+**Now proved, as `Decompose.lean`'s `run_split`**, and that second paragraph is exactly its
+third hypothesis: `JumpOpaque K`, "`K` cannot turn an escaping jump into a returned value".
+The proof needs one thing this statement does not mention — `RubyCore.Proof.done_inv`, the
+fact that `.done` is constructed at one site in the interpreter — because "the inner run
+stopped here" has to be turned into "and *here* is a value under an empty continuation" before
+the outer run can be continued from it. -/
 def EvalsDecompose : Prop :=
   ∀ (m : Machine) (e : Ratchet.Expr) (K : List Kont) (v : Value) (m' : Machine),
     (∃ fuel, Interp.run fuel (pushK K (evalFrom m e)) = .value v m') →
