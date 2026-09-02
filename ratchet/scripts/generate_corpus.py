@@ -2144,6 +2144,16 @@ R("inherited-singleton-case-eq-unsafe", 12,
   'class A\n  def self.===(o)\n    "s"\n  end\nend\nclass B < A\nend\n(B === 5) & true\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("self-class-subclass-unsafe", 12,
+  "**A candidate UNSAFE program, and \u00a7F8\u2019s counterexample.** `Judge.classOf` types "
+  "`x.class` as `.clsOf n` from a receiver premise `.inst n I` \u2014 an **exact** class from "
+  "an *is-a* test. Inside an inherited method `self` really is the subclass, so `self.class` "
+  "is `D` while the rule says `C`; `C.new` then types `.inst C`, `tag` is looked up in "
+  "`C`\u2019s table (`Integer`), and the run calls `D#tag` (a String). `+ 1` turns that into a "
+  "real TypeError.",
+  'class C\n  def whoami\n    self.class\n  end\n  def tag\n    1\n  end\nend\nclass D < C\n  def tag\n    "s"\n  end\nend\nD.new.whoami.new.tag + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

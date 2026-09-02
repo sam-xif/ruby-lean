@@ -826,10 +826,21 @@ which a `D < C` instance passes at `n = "C"` — while `denM (.clsOf "C")` is
 `isClassRefNamed`, the **exact** class object. So `x : .inst C` where `x` is really a `D`
 makes `x.class` a counterexample to the rule as stated over the denotation.
 
-Whether it is reachable is a different question, and the answer is probably no: `Judge` has no
-subsumption rule, so an `.inst C` in a derivation comes from a `C.new` or from a declared
-parameter type, and neither can be a `D`. That is the same family as §F5 and probes 240–242 —
-a rule that is true of every *derivable* judgment but not of the denotation read on its own —
-and it is the reason the rung is filed rather than climbed. Sizing it means finding either the
-derivation that produces a subclass instance at an `.inst` type or the argument that no such
-derivation exists.
+Whether it is **reachable** is a different question, and the answer looks like no. Probed, in
+the direction the goal asks for: `244-self-class-subclass-unsafe` is the natural attempt — an
+inherited `C#whoami` returning `self.class`, called on a `D` — and CRuby really does raise
+`TypeError` on it, so it is a genuine unsafe program. `validate` **rejects** it, and the reason
+is not luck: the checker types a callee's body per *call site*, with the self type taken from
+the receiver's type at that site (`Validate.lean`'s `.inst n Iself` arm), so `self.class` in
+`whoami` is `.clsOf "D"` and the program never gets an `.inst C` for a `D` at all.
+
+The same argument runs over `Judge` itself, which is the level the obligation is at. Every
+`.inst n` in a derivation traces back either to an allocation of exactly `n` (`newInst`/
+`newInstNoInit`) or to a `self` whose class is `κ.frame`'s **`recvClass`** — and `recvClass` is
+threaded *exactly*: `superCall`/`zsuperCall` change `defClass` and deliberately keep
+`recvClass`, which is the one place a subclass could have leaked in. Joins widen (`joinT` of two
+`.inst`s is not an `.inst`) rather than upcast, so there is no subsumption by the back door
+either. So the rule is true of every derivable judgment and false of the denotation read on its
+own — the §F5 family — and discharging it needs either an exactness conjunct threaded through
+the judgment or a `Ty` that can say "a class object for *some* subclass of `n`", which is a
+language gap rather than a bug. Filed, with the probe kept as a negative control.
