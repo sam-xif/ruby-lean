@@ -250,11 +250,27 @@ the interpreter. `frameR K` is the wrapper the statement needs (`.next m ↦ .ne
 := m.kont ++ K}`, every other outcome unchanged), and it works because `(k :: m.kont) ++ K`
 and `k :: (m.kont ++ K)` are definitionally equal, so a pushing helper frames by `rfl`.
 
-**Two things the measurement does not settle**, and the next attempt should start from them
-rather than from the good news: (1) the **builtins** are the genuinely open question —
-whether `invoke`'s descent into `Builtins/` is `rfl`-transparent in `kont` *at kernel speed*
-is untested, and that is where the 24k lines actually are; (2) `applyKont` and `unwind` have
-the two `[]` exceptions above, so their framing lemmas are conditional, not unconditional.
+**Three things the measurement does not settle**, and the next attempt should start from them
+rather than from the good news:
+
+1. The **builtins** are the genuinely open question — whether `invoke`'s descent into
+   `Builtins/` is `rfl`-transparent in `kont` *at kernel speed* is untested, and that is where
+   the 24k lines actually are.
+2. `applyKont` and `unwind` have the two `[]` exceptions above, so their framing lemmas are
+   **conditional** (on `m.kont ≠ []`), not unconditional. Only `evalExpr`'s is free of a side
+   condition, which is also why the leaf rungs never needed any of this.
+3. **One `partial def` sits on the chain and blocks it outright**: `destructureBind`
+   (`RubyCore/Interp/Support.lean` L235), reached from `enterUserMethod`
+   (`Interp/Dispatch.lean` L125) whenever a method has a destructuring parameter. A
+   `partial def` compiles to an opaque constant with no equation lemmas, so *nothing* about it
+   is provable by `rfl` or otherwise — this is the trap `../../AGENTS.md` L73 already warns
+   about, arriving from the other side. The fix is the one `ancestors` already took
+   (`RubyCore/Heap.lean` L73 is `partial`-free on purpose): give it a structural or
+   fuel-bounded recursion. Its recursion is on nested `.destr` sub-params, so a measure on the
+   parameter list's size is the obvious one. Two other `partial def`s are on the path
+   (`Reflect.definesMethod`, `Builtins.pureOk`) and are **harmless** — neither takes a
+   `Machine`, so both appear only as split conditions whose value is identical on the two
+   sides.
 
 Three things follow, and they are the reason this is written down rather than attempted:
 
