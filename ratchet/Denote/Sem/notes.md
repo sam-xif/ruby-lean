@@ -679,15 +679,23 @@ of the three is a proof that a rung can carry on its own:
 | Wall | What it is | Rules behind it |
 |---|---|---|
 | **5th** — `KontFrame` (now `KontFrameCatchFree`) | a sub-expression runs under a pushed continuation, so a rule's premise is about a *different run* than its conclusion | every rule with a sub-expression: `vasgn`, `ivarAsgn`, `if'`, `ifNoElse`, `begin'`, `while'`, `constPath`, `constPathCls`, `primNever`, `raiseCls`, and all of `JudgeSeq.cons`/`guard`/`nextGuard` |
-| **6th (2)** — `κ` not threaded through `Judge` | a run that *declares* invalidates the incoming `κ`, which the conclusion re-asserts | `defStmt`, `classStmt`, `moduleStmt`, `casgn`, `cpathAsgn`, and **every call rule** (a body runs statements): `callAsm`…`yieldExpr`, `vcallAsm`, `vcallDef` — plus the 11th above, for the ones that really do declare |
+| **6th (2)** — `κ` not threaded through `Judge` | a run that *declares* invalidates the incoming `κ`, which the conclusion re-asserts | the five **statement** rules: `defStmt`, `classStmt`, `moduleStmt`, `casgn`, `cpathAsgn` (and the 11th above is the transport each of them then needs) |
+| **the call lemma** — unwritten, and not yet a stall point because nothing has attempted it | a premise about the *body*'s run, from the machine `enterUserMethod` builds, has to be related to the call's run — plus the frame-balance conjunct `m'.stack = m.stack`, which every frame-pushing rule owes | every call rule: `callAsm`…`yieldExpr`, `vcallAsm`, `vcallDef`, `new*`, `iter*`, `super*` |
 | **7th** — `SemJudgeAll`'s snapshot | every argument's type is claimed at the machine the *whole list* left behind, with no transport | every rule with an argument list: `arrayLit`, `hashLit`, `prim`, `isAQuery`, `caseEqQuery`, `classOf`, `clsToS`, all the `call*`/`new*`/`iter*` rules, and `JudgeAll.cons`/`JudgeKw.cons`/`JudgePairs.cons` |
+
+**Correction worth making explicit, because the sixth stall point's own text overstates its
+reach**: the call rules are *not* behind it. Clink 49's `declFree` filter lives inside
+`defGet?`/`closGet?` (and therefore inside `mroGet?`/`smroGet?`/`resolveAliases`), so a body
+that declares anything is **uncallable** by this checker — which means every call rule's
+premise already implies its body declares nothing, and the incoming `κ` survives the body.
+What blocks the call rules is the 5th and the 7th, plus a call lemma nobody has written.
 
 The two rules that were behind the **9th** (conformance as an upper bound) are climbed, and
 that was the last wall a single clink could take down by adding components. What is left needs
 one of: a metatheorem about `stepFn` that belongs in `RubyCore/Proof/` (5th), a change to
-`Judge`'s signature and therefore to all 177 derivations (6th), or a design decision about
-`SemJudgeAll` that wants the first call rung's requirements in hand — which are behind the 6th
-(7th).
+`Judge`'s signature and therefore to all 177 derivations (6th), a design decision about
+`SemJudgeAll` (7th, and its two candidate fixes want the first call rung's requirements in
+hand), or the call lemma.
 
 ## What is not on this ladder
 

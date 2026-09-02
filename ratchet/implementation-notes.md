@@ -5218,9 +5218,12 @@ because they are the next attempt's starting point:
   (`denM`'s arrow arms, `AsmsOk`) — and they honestly should not, since installing a method can
   change what calling a value returns. So the fix is §F1's shape (a declaration invalidates
   recorded claims about calls), not a coarser quantifier.
-* **The wall map.** All 53 remaining rules, sorted by which of the three walls they sit behind
-  (5th: a sub-expression under a pushed continuation; 6th(2): a run that declares; 7th:
-  `SemJudgeAll`'s snapshot). The ninth was the last wall a clink could take down by *adding
+* **The wall map.** All 53 remaining rules, sorted by what actually blocks each one (5th: a
+  sub-expression under a pushed continuation; 6th(2): a run that declares — which turns out to
+  be *only* the five statement rules, since clink 49's `declFree` filter makes a declaring body
+  uncallable and so every call rule's premise already implies its body declares nothing; 7th:
+  `SemJudgeAll`'s snapshot; and a **call lemma** nobody has attempted, relating a premise about
+  the body's run to the call's run and paying the frame-balance conjunct). The ninth was the last wall a clink could take down by *adding
   components*, which is what these two did. What is left needs a metatheorem about `stepFn` in
   `RubyCore/Proof/`, or a change to `Judge`'s signature and all 177 derivations, or a
   `SemJudgeAll` decision that wants the first call rung's requirements — which are behind the
