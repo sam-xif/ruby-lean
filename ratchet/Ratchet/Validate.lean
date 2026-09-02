@@ -247,7 +247,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- `capStale`: the value being bound may itself be a closure that captured `t`, in
       -- which case *its own* record of `t` is what the assignment invalidates and there is
       -- nothing left to widen (`found-issues.md` §F1; `Judge.vasgn`'s `hcap` premise).
-      if capStale t (stripAlias τ) (stripAlias τ) = false then
+      if capStale t (stripAlias τ) (stripAlias τ) = false
+         && capStaleCtx t (stripAlias τ) κ = false then
         if desugarTemps.contains t then
           some (stripAlias τ,
             envSet (killClosOver (killAliasesTo Γ t) t (stripAlias τ)) t
@@ -264,7 +265,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- `killClosOver`/`killClosOverSpine`: and nothing else may keep a `Ty.clos` recording
     -- what `x` used to be (`found-issues.md` §F1).
     | some (τ, Γ', I') =>
-      if capStale x τ τ = false then
+      if capStale x τ τ = false && capStaleCtx x τ κ = false then
         some (τ, envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ, killClosOverSpine I' x τ)
       else none
     | none => none

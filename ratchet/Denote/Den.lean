@@ -38,8 +38,9 @@ Three mutually recursive functions:
 
 `(A, B) → R` at machine `m`, applied to value `f`, means:
 
-> `f` is a Proc, **and** for every machine `m₂` that `m` could have *allocated its way to*
-> (`Ext`, `Denote/Ext.lean`), for every `a : A` and `b : B` at `m₂`, if calling
+> `f` is a Proc, **and** for every machine `m₂` that `m` could have *run on to* without
+> pushing or popping a frame (`Later`, `Denote/Ext.lean`), for every `a : A` and `b : B` at
+> `m₂`, if calling
 > `f.call(a, b)` from `m₂` returns a value `v` in machine `m'`, then `v : R` **at `m'`**.
 
 Five things are load-bearing in that sentence.
@@ -59,7 +60,7 @@ Five things are load-bearing in that sentence.
    the codomain a conclusion, so `subTy`-style variance is a theorem about this definition,
    not a rule inside it.
 
-5. **The `∀ m₂, Ext m m₂` quantifier, and why it is not decoration.** Every other arm of
+5. **The `∀ m₂, Later m m₂` quantifier, and why it is not decoration.** Every other arm of
    this denotation reads the heap; the arrow arm reads *runs*, and a run from a heap with one
    more object in it allocates at shifted object ids, so it is not the run from the heap
    without it. Stated at `m` alone, the arrow is therefore the one arm of `denM` that does
@@ -71,14 +72,14 @@ Five things are load-bearing in that sentence.
    Taking `m₂ := m` (`Ext.refl`) recovers the unquantified reading, so this is a
    strengthening: an arrow that holds here holds there.
 
-`ArrowStable` below strengthens 2/3/5 further, across *execution* rather than allocation: a
+`ArrowStable` below strengthens 2/3/5 further, across arbitrary *execution*: a
 proc is typically called from a state the program has run on to, so the fully honest claim
 quantifies over every machine reachable from the one where the arrow was established, and
-`Reaches` (`Denote/Apply.lean`) is that quantifier. `Ext` is deliberately the weaker of the
-two — it pins the frame array, which is what keeps the `clos` arm's captured-scope read a
-rewrite rather than a transport, and it is blind to `ctl`/`kont`, which is what keeps
-`Denote/Rules/Core.lean`'s `denM_ctl` true (the conflict `Denote/Sem/notes.md` recorded
-against seeding the arrow with `Reaches` directly).
+`Reaches` (`Denote/Apply.lean`) is that quantifier. `Later` is deliberately the weaker of the
+two: it is blind to `ctl`/`kont`, which is what keeps `Denote/Rules/Core.lean`'s `denM_ctl`
+true (the conflict `Denote/Sem/notes.md` recorded against seeding the arrow with `Reaches`
+directly), and it forbids a frame push, which is the clause the first call rung will have to
+spend. It is `ArrowStable` approximated from below, one step kind per rung that needs it.
 
 ## Two stated gaps
 
@@ -147,10 +148,10 @@ def denM : Ty → Machine → Value → Prop
   -- The arrow (see the module docstring §The arrow arm).
   | .arrow0 r, m, f =>
       isProcV m.heap f = true ∧
-        ∀ m₂, Ext m m₂ → ∀ v m', Returns m₂ f [] v m' → denM r m' v
+        ∀ m₂, Later m m₂ → ∀ v m', Returns m₂ f [] v m' → denM r m' v
   | .arrowCons p rest, m, f =>
       isProcV m.heap f = true ∧
-        ∀ m₂, Ext m m₂ → ∀ a, denM p m₂ a → denApp [a] rest m₂ f
+        ∀ m₂, Later m m₂ → ∀ a, denM p m₂ a → denApp [a] rest m₂ f
   -- A callable value, nominally: a Proc whose captured scope and `self` match what the type
   -- recorded at its creation. `idx` is dropped; see the module docstring §Two stated gaps.
   | .clos _ cap selfT, m, f =>

@@ -272,14 +272,30 @@ def killAliases : Env → Env
   | [] => []
   | (x, τ) :: Γ => (x, stripAlias τ) :: killAliases Γ
 
+/-- Peel *every* alias layer. `stripAlias` peels one, which is right for a **read** (the
+expression's type); this is what an *invalidated* binding keeps, where no layer may survive. -/
+def deAlias : Ty → Ty
+  | .sameAs _ ρ => deAlias ρ
+  | τ => τ
+
 /-- Drop only the aliases *pointing at* `x`. `Judge.vasgn` applies this before binding `x`: once
-`x` holds a new object, nothing else holds the same one. -/
+`x` holds a new object, nothing else holds the same one. Split into a per-entry
+`killAliasTy` — a name the soundness proof can state three small facts about
+(`Denote/Sem/State.lean`) rather than repeat a `match` inside every one of them.
+
+An alias *to* `x` collapses to `deAlias`, not to `stripAlias`: one layer is not enough, since
+`sameAs x (sameAs z ρ)` would otherwise leave behind an alias to `z` that nothing justifies
+(`EnvOk` constrains only a binding's **outermost** alias). No derivation on file builds a
+nested alias — `vasgnAlias` binds `sameAs x (stripAlias σ)` and `stripAlias` has already
+peeled one layer — so this is invisible to the ladder; it is a *soundness* clause rather than
+a precision one, and `Denote/Sem/State.lean`'s `sameAs_of_killAliasTy` is where it is spent. -/
+def killAliasTy (x : String) : Ty → Ty
+  | .sameAs n ρ => if n == x then deAlias ρ else .sameAs n ρ
+  | τ => τ
+
 def killAliasesTo : Env → String → Env
   | [], _ => []
-  | (y, τ) :: Γ, x =>
-    (y, match τ with
-        | .sameAs n ρ => if n == x then ρ else .sameAs n ρ
-        | _ => τ) :: killAliasesTo Γ x
+  | (y, τ) :: Γ, x => (y, killAliasTy x τ) :: killAliasesTo Γ x
 
 def envSet : Env → String → Ty → Env
   | [], x, τ => [(x, τ)]
@@ -488,22 +504,31 @@ two rules already carrying 177 derivations without editing one of them — exact
 
 /-- Does `σ` record a closure capture of `x` at a type other than `τ`?
 
-The `.clos` arm reads the captured spine's own entry for `x` (`ivarGet? cap x`, since a
-capture spine is keyed by local name) and *also* recurses into the spine, because an entry may
-itself be a closure over `x`. -/
+The test lives on the **spine** arm, not on `.clos`: an entry keyed `x` in a captured spine
+*is* the record of what `x` was, and it is stale unless it is what `x` now is. Putting it
+there rather than on `.clos` (where an `ivarGet?` would read only the first entry) makes the
+check local to one entry, which is what `Denote/Local.lean`'s spine induction needs — it walks
+the spine one `ivarCons` at a time and has to decide staleness there. Equivalent on every
+spine the judgment builds, since `envToSpine` has unique keys.
+
+`decide (σ = τ)` rather than `σ == τ`: `Ty`'s derived `BEq` carries no `LawfulBEq` instance,
+so a `false` from it proves nothing, while `DecidableEq` reflects
+(`Denote/Local.lean`'s spine case needs `σ = τ` as a *proposition*). Both kernel-reduce, which
+is what the `rfl`-discharged premise on `Judge.vasgn` needs. -/
 def capStale (x : String) (τ : Ty) : Ty → Bool
-  | .clos _ cap selfT =>
-      (match ivarGet? cap x with
-       | some σ => σ != τ
-       | none => false)
-        || capStale x τ cap || capStale x τ selfT
+  | .clos _ cap selfT => capStale x τ cap || capStale x τ selfT
   | .nilable ρ => capStale x τ ρ
   | .arrayOf ρ => capStale x τ ρ
   | .hashOf k v => capStale x τ k || capStale x τ v
   | .union a b => capStale x τ a || capStale x τ b
   | .sameAs _ ρ => capStale x τ ρ
   | .inst _ I => capStale x τ I
-  | .ivarCons _ σ rest => capStale x τ σ || capStale x τ rest
+  -- The clause that does the work, and it is on the **spine** rather than on `clos` so that
+  -- the check is local to one entry: a capture spine is keyed by local name, so an entry
+  -- keyed `x` is a record of what `x` was, and it is stale unless it is what `x` now is.
+  -- On an *ivar* spine (`Ty.inst`) it never fires -- those keys carry the `@`.
+  | .ivarCons y σ rest =>
+      ((y == x) && !decide (σ = τ)) || capStale x τ σ || capStale x τ rest
   | .arrow0 r => capStale x τ r
   | .arrowCons p rest => capStale x τ p || capStale x τ rest
   | _ => false

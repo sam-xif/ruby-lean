@@ -361,11 +361,28 @@ draws for a block body. That case is `corpus/235-lambda-capture-reassigned-same-
 program: both report `rejected (sound: really type-stuck)`. Numbers after: **235/235 agree,
 178 climbed, 177/177 + 142/142**.
 
-**Still open, and small.** The `Ctx` fields the rule cannot rewrite (`selfTy`, `blockTy`,
-`consts`) could in principle carry a `.clos` over the assigned name. The local route is closed
-by construction (a method frame captures nothing, so `setLocal` cannot reach the frame such a
-closure captured) and the block route by `capIntact` (which requires the whole enclosing
-environment's types to survive the block), but neither is *stated* as a premise. The ivar route
-is likewise rejected today (`@f = lambda { x }; x = "a"` — see the `q2` probe in clink 46) for
-a reason unrelated to this, and `killClosOverSpine` now covers it directly.
+**Closed in clink 47: the `Ctx` fields.** `selfTy`, `blockTy` and `consts` can each carry a
+frame-sensitive type, and `Ctx` is an *input* to every rule — no rule rewrites it, so no rule
+can widen them. They became a fourth guard, `capStaleCtx` (`Ratchet/Judge.lean`), premised on
+`vasgn`/`vasgnAlias` the same `autoParam` way. It is sound rather than precise: a method frame
+captures nothing, so an assignment inside a method body cannot reach the frame `blockTy`'s
+closure captured, but the premise refuses the case where the two merely share a *name*. A
+`StateOk` component stating frame-chain disjointness would recover that precision; no rung has
+asked for it.
+
+**Two more things the semantic rung turned up** (clink 47), both fixed, both about the
+denotation rather than the checker:
+
+* **Nested aliases.** `killAliasesTo` peeled one `sameAs` layer, so `sameAs x (sameAs z ρ)`
+  survived an assignment to `x` as an alias to `z` that nothing justifies (`EnvOk` constrains
+  only a binding's *outermost* alias). `killAliasTy` now collapses an alias to `x` with
+  `deAlias`, which peels all of them. No derivation on file builds a nested alias, so this is
+  invisible to the ladder — but the obligation quantifies over every `Γ`.
+* **`Value.identEq` is not the right probe for object identity, and is a model bug in its own
+  right.** `identEq (.flt a) (.flt b)` is `a == b`, so the model's `equal?` says `0.0` and
+  `-0.0` are the same object (they are two different values) and that `NaN` is **not** the same
+  object as itself (`Float`'s `==` is false at `NaN`, so `identEq v v` is not reflexive). CRuby
+  answers `true` for `x = Float::NAN; y = x; y.equal?(x)`. `Denote`'s `EnvOk` now states object
+  identity as `Value` equality and no longer inherits the quirk; the model side is **open** and
+  belongs with the §A entries.
 

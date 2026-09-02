@@ -2,6 +2,7 @@ import Denote.Rules.Core
 import Denote.Rules.Alloc
 import Denote.Rules.Lit
 import Denote.Rules.Nil
+import Denote.Rules.Asgn
 
 /-!
 # `Denote/Rules.lean` — every discharged rung, in one import

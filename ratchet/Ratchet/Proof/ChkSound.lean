@@ -560,13 +560,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     · rename_i tb hget
       -- clink 46: the `capStale` guard, which is `Judge.vasgn`/`vasgnAlias`'s `hcap` premise.
       split at h
-      · rename_i hcap
+      · rename_i hguard
+        obtain ⟨hcap, hctx⟩ := by
+          simpa only [Bool.and_eq_true, decide_eq_true_eq] using hguard
         split at h
         · rename_i hpre
           injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          exact .vasgnAlias hpre hget rfl hcap
+          exact .vasgnAlias hpre hget rfl hcap hctx
         · -- not a temporary: `Judge.vasgn` over `Judge.var`, whose `stripAlias` is exactly
           -- what this arm computes
           injection h with h
@@ -575,8 +577,8 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           -- Not a temporary, so this is the ordinary binding -- and its value is a *read* of
           -- `x`, which is `var`/`varAlias` exactly as in the `var` arm above.
           cases tb with
-          | sameAs y ρ => exact .vasgn (.varAlias hget) hcap
-          | _ => exact .vasgn (.var hget rfl) hcap
+          | sameAs y ρ => exact .vasgn (.varAlias hget) hcap hctx
+          | _ => exact .vasgn (.var hget rfl) hcap hctx
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `vasgn lvar x e`: the right-hand side typed, and the binding lands in the
@@ -584,11 +586,13 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     split at h
     · rename_i hrhs
       split at h
-      · rename_i hcap
+      · rename_i hguard
+        obtain ⟨hcap, hctx⟩ := by
+          simpa only [Bool.and_eq_true, decide_eq_true_eq] using hguard
         injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact .vasgn (chk_sound hrhs) hcap
+        exact .vasgn (chk_sound hrhs) hcap hctx
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `vasgn ivar x e`: the same, but the effect lands on the spine.

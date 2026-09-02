@@ -18,6 +18,7 @@ before attempting a rung.
 | `../Adequacy.lean` | `AdequacyTarget`, `AdequacyHyps` (derived) | no |
 | `../Ext.lean` | `Ext` (allocation) and the probe lemmas across it | yes — a new allocation shape may need a clause |
 | `../Grow.lean` | `denM_ext`: a type's meaning survives an allocation | no — it follows `Den.lean` |
+| `../Local.lean` | `denM_setLocal`: … and a rebinding, given `capStale` | no — same |
 
 The obligations are derived, not transcribed, and that is the load-bearing decision:
 `SemJudge` was given *exactly* `Judge`'s signature so that a rule's obligation is its
@@ -160,7 +161,7 @@ three-line corollary of `StateOk_ext` rather than a second component-by-componen
 `Examples.lean` guards are green, because they check `arrowCheck`, a `Bool`, and `ArrowFlat`
 is what that is stated over.
 
-## `Judge.vasgn` was unsound, and the obligation is what said so *(FIXED, clink 46)*
+## `Judge.vasgn` was unsound, and the obligation is what said so *(FIXED, clink 46; the twin rung climbed, clink 47)*
 
 Before the wall below, the finding that came *out* of attempting `Judge.vasgn`: the rule is
 **not true of `stepFn`**, and its obligation is false as written. Written up with the
@@ -186,8 +187,18 @@ Per the working procedure above, the rule was **not worked around**. It was *fix
 entry whose type records a stale capture of the assigned name, and a `capStale x τ τ = false`
 `autoParam` premise covers the half that cannot be widened (`x = lambda { x }`, where the
 stale record is in the type being bound). Three corpus rungs and two `CheckRungs` controls pin
-it; `found-issues.md` §F1 has both reproducers and what is still open. The rung stays
-**undischarged** — the rule is now true, but proving it still needs the lemma below.
+it; `found-issues.md` §F1 has both reproducers and what is still open.
+
+**`Judge.vasgnAlias` is now discharged** (clink 47, `../Rules/Asgn.lean`) — the twin whose
+right-hand side is a `.var`, so its whole run is four concrete `stepFn` steps and the lemma
+below is not needed. Its proof is where the fix is cashed: `capStale` is the *side condition*
+of `denM_setLocal`, so the predicate the checker widens bindings with is the predicate the
+transport needs. Three definitions moved to let it close, and each is a correction rather than
+a convenience — `Later` (the arrow's and `AsmsOk`'s quantifier, now allowing a rebinding),
+`StateOk.frameInRange` (there *is* a current frame), and `EnvOk`'s identity conjunct becoming
+`Value` equality rather than the model's `equal?`, which is wrong in both directions at
+`Float`. `Judge.vasgn` itself stays undischarged, and no longer for a soundness reason: it
+waits on the lemma below.
 
 ## The fifth stall point — **the continuation frame**, and it is a wall rather than a step
 

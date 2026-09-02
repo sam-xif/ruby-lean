@@ -161,6 +161,101 @@ structure Ext (m m₂ : Machine) : Prop where
     (RubyCore.ancestors m.heap Boot.basicObjectId).contains k = true →
     (RubyCore.ancestors m₂.heap (classOf m₂.heap (.ref o))).contains k = true
 
+/-! ## `Later` — the arrow's quantifier
+
+`Ext` pins the frame array, which is what makes it useless as the domain of the arrow arm the
+moment a rule **rebinds a local**: `Judge.vasgn`'s post-machine has a mutated frame, so an
+arrow (or an `AsmsOk` row) stated over `Ext`-futures of the pre-machine says nothing at the
+post-machine. `Later` is the coarser relation those two quantify over instead: the heap only
+grew, the frame *stack* and the frame *count* are where they were, and the frames' contents
+may have been rebound.
+
+Two relations rather than one, and the split is forced:
+
+* the **arrow** and **`AsmsOk`** quantify over runs, so they need the *widest* domain that is
+  still monotone — every machine change a rule can make has to land inside it, or the claim
+  does not survive the rule;
+* `denM`'s **`clos`** arm reads `Machine.frames` directly (`closLocal`), so it is *not*
+  monotone under a rebinding, and it must not be: that is exactly the fact
+  `found-issues.md` §F1 turned on. Its transport is `Ext` (allocation, frames pinned) plus
+  `capStale` (rebinding, `Denote/Local.lean`), never a quantifier.
+
+`Later` is deliberately permissive about *what* the frames now hold, because nothing in this
+package has to **establish** an arrow — no `Judge` rule concludes one, and `Denote/Arrow.lean`
+keeps `ArrowFlat` as the shape a single call is stated against. Each rung that needs the arrow
+to survive one more kind of machine change widens this relation by one clause, and the
+destination is written down: `ArrowStable`, the arrow at every *reachable* machine
+(`Denote/Arrow.lean`), which is what a call-it-later arrow honestly means. `Later` is that
+target approximated from below, by the step kinds the ladder has actually met. -/
+structure Later (m m₂ : Machine) : Prop where
+  /-- The frame stack is where it was: the *current* frame is still the current frame. -/
+  stack : m₂.stack = m.stack
+  /-- No frame was pushed or popped. Their contents may have been rebound. -/
+  frameCount : m₂.frames.size = m.frames.size
+  size : m.heap.objs.size ≤ m₂.heap.objs.size
+  get : ∀ o, o < m.heap.objs.size → m₂.heap.get o = m.heap.get o
+  payload : ∀ k, m₂.heap.classPayload? k = m.heap.classPayload? k
+  ancestors : ∀ k, RubyCore.ancestors m₂.heap k = RubyCore.ancestors m.heap k
+  freshIvars : ∀ o, m.heap.objs.size ≤ o → (m₂.heap.get o).ivars = []
+  freshBasic : ∀ o, m.heap.objs.size ≤ o → ∀ k,
+    (RubyCore.ancestors m.heap Boot.basicObjectId).contains k = true →
+    (RubyCore.ancestors m₂.heap (classOf m₂.heap (.ref o))).contains k = true
+
+theorem Later.refl (m : Machine) : Later m m where
+  stack := rfl
+  frameCount := rfl
+  size := Nat.le_refl _
+  get := fun _ _ => rfl
+  payload := fun _ => rfl
+  ancestors := fun _ => rfl
+  freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
+  freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
+
+theorem Later.trans {m m₂ m₃ : Machine} (h₁ : Later m m₂) (h₂ : Later m₂ m₃) : Later m m₃ where
+  stack := by rw [h₂.stack, h₁.stack]
+  frameCount := by rw [h₂.frameCount, h₁.frameCount]
+  size := Nat.le_trans h₁.size h₂.size
+  get := fun o ho => by rw [h₂.get o (Nat.lt_of_lt_of_le ho h₁.size), h₁.get o ho]
+  payload := fun k => by rw [h₂.payload k, h₁.payload k]
+  ancestors := fun k => by rw [h₂.ancestors k, h₁.ancestors k]
+  freshIvars := fun o ho => by
+    by_cases hc : o < m₂.heap.objs.size
+    · rw [h₂.get o hc]; exact h₁.freshIvars o ho
+    · exact h₂.freshIvars o (Nat.le_of_not_lt hc)
+  freshBasic := fun o ho k hk => by
+    by_cases hc : o < m₂.heap.objs.size
+    · have hclass : classOf m₃.heap (.ref o) = classOf m₂.heap (.ref o) := by
+        simp only [classOf, h₂.get o hc]
+      rw [hclass, h₂.ancestors]
+      exact h₁.freshBasic o ho k hk
+    · exact h₂.freshBasic o (Nat.le_of_not_lt hc) k (by rw [h₁.ancestors]; exact hk)
+
+/-- Every allocation is a `Later`. This is what lets `denM_ext` transport the arrow arm with
+no work at all: `Ext.trans` on the outside became `Later.trans` on the inside. -/
+theorem Ext.later {m m₂ : Machine} (he : Ext m m₂) : Later m m₂ where
+  stack := he.stack
+  frameCount := by rw [he.frames]
+  size := he.size
+  get := he.get
+  payload := he.payload
+  ancestors := he.ancestors
+  freshIvars := he.freshIvars
+  freshBasic := he.freshBasic
+
+/-- A Proc stays a Proc across a `Later`, for `Ext.isProcV_mono`'s reason: a payload
+projection that *succeeded* read an object the old heap already had. -/
+theorem Later.procClosure?_eq {m m₂ : Machine} (he : Later m m₂) {v : Value} {cl : Closure}
+    (h : procClosure? m.heap v = some cl) : procClosure? m₂.heap v = some cl := by
+  cases v with
+  | ref o => rw [procClosure?, he.get o (lt_of_procClosure? h)]; exact h
+  | _ => exact absurd h (by simp [procClosure?])
+
+theorem Later.isProcV_mono {m m₂ : Machine} (he : Later m m₂) {v : Value}
+    (h : isProcV m.heap v = true) : isProcV m₂.heap v = true := by
+  simp only [isProcV, Option.isSome_iff_exists] at *
+  obtain ⟨cl, hcl⟩ := h
+  exact ⟨cl, he.procClosure?_eq hcl⟩
+
 theorem Ext.shapeAgree {m m₂ : Machine} (he : Ext m m₂) :
     Proof.ShapeAgree m.heap m₂.heap := fun k => by rw [he.payload k]
 

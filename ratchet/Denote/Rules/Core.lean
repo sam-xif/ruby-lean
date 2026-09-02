@@ -127,6 +127,13 @@ theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
    fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
               h.freshBasic⟩⟩
 
+theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
+    Later (reCtl m c k) m₂ ↔ Later m m₂ :=
+  ⟨fun h => ⟨h.stack, h.frameCount, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
+              h.freshBasic⟩,
+   fun h => ⟨h.stack, h.frameCount, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
+              h.freshBasic⟩⟩
+
 /-- **The denotation does not read the control word.** All three mutually recursive relations
 at once, by structural induction on the type. -/
 theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
@@ -150,10 +157,10 @@ theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
     exact ⟨fun v => by simp [denM, ihσ.1, ihτ.1], fun _ _ => by simp [denApp],
            fun _ => by simp [denSpine]⟩
   | arrow0 r ihr =>
-    exact ⟨fun f => by simp [denM, Ext_reCtl], fun _ _ => by simp [denApp, Returns_reCtl],
+    exact ⟨fun f => by simp [denM, Later_reCtl], fun _ _ => by simp [denApp, Returns_reCtl],
            fun _ => by simp [denSpine]⟩
   | arrowCons p rest ihp ihrest =>
-    exact ⟨fun f => by simp [denM, Ext_reCtl], fun _ _ => by simp [denApp, ihp.1, ihrest.2.1],
+    exact ⟨fun f => by simp [denM, Later_reCtl], fun _ _ => by simp [denApp, ihp.1, ihrest.2.1],
            fun _ => by simp [denSpine]⟩
   | inst n I ihI =>
     exact ⟨fun v => by simp [denM, ihI.2.2], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
@@ -249,7 +256,28 @@ theorem evals_pure {m : Machine} {e : Ratchet.Expr} {m₁ : Machine} {w v : Valu
     cases hrun
     exact ⟨rfl, rfl⟩
 
+/-- **The four-step inversion**, for a rule whose evaluation pushes a continuation and pops
+it: `Judge.vasgnAlias` is `eval (vasgn …)` → `eval (var …)` → deliver → `asgnK` → deliver.
+Same argument as `evals_pure`, one fuel case per step. -/
+theorem evals_four {m : Machine} {e : Ratchet.Expr} {m₁ m₂ m₃ : Machine} {w v : Value}
+    {m' : Machine}
+    (h1 : Interp.stepFn (evalFrom m e) = .next m₁)
+    (h2 : Interp.stepFn m₁ = .next m₂)
+    (h3 : Interp.stepFn m₂ = .next (reCtl m₃ (.value w) []))
+    (h : Evals m e v m') : v = w ∧ m' = reCtl m₃ (.value w) [] := by
+  obtain ⟨fuel, hrun⟩ := h
+  match fuel with
+  | 0 => rw [run_zero] at hrun; exact absurd hrun (by simp)
+  | 1 => simp only [run_succ, h1, run_zero] at hrun; exact absurd hrun (by simp)
+  | 2 => simp only [run_succ, h1, h2, run_zero] at hrun; exact absurd hrun (by simp)
+  | 3 => simp only [run_succ, h1, h2, h3, run_zero] at hrun; exact absurd hrun (by simp)
+  | fuel + 4 =>
+    simp only [run_succ, h1, h2, h3, stepFn_value_nil] at hrun
+    cases hrun
+    exact ⟨rfl, rfl⟩
+
 #print axioms evals_pure
+#print axioms evals_four
 #print axioms StateOk_reCtl
 
 end Ratchet.Denote

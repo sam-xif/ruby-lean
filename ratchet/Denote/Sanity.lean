@@ -54,10 +54,11 @@ theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq] at hb
   exact ⟨hb.1.1.1, hb.1.1.2, hb.1.2, hb.2⟩
 
-/-- The two frame facts `ctx0` asks of the starting machine: it is not inside a method body
-and it was not called with a block. -/
+/-- The three frame facts the starting machine has to have: it is not inside a method body, it
+was not called with a block, and it *has* a current frame (`StateOk.frameInRange`). -/
 def frameOkB (m : Machine) : Bool :=
-  (m.currentFrame.kind != .method) && m.currentFrame.blk.isNone
+  (m.currentFrame.kind != .method) && m.currentFrame.blk.isNone &&
+  (m.stack.headD 0 < m.frames.size)
 
 /-- **Everything about the booted machine that has to be computed rather than proved.**
 
@@ -82,8 +83,8 @@ context, so no obligation on the ladder is vacuously true for want of a conforma
 The hypothesis is discharged by the `#guard` below, at build time, against the same
 prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
-  simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none]
-    at hb
+  simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
+    decide_eq_true_eq] at hb
   exact
     { sat := Proof.saturatedB_sound hb.1.1
       core := coreOkB_sound hb.1.2
@@ -92,9 +93,10 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])
-      frame := by simp only [FrameOk, Ratchet.ctx0]; exact hb.2.1
+      frameInRange := hb.2.2
+      frame := by simp only [FrameOk, Ratchet.ctx0]; exact hb.2.1.1
       closures := trivial
-      blockTy := by simp only [BlockTyOk, Ratchet.ctx0]; exact hb.2.2
+      blockTy := by simp only [BlockTyOk, Ratchet.ctx0]; exact hb.2.1.2
       selfTy := by simp [SelfTyOk, Ratchet.ctx0]
       consts := by intro p τ hp; exact absurd hp (by simp [envGet?, Ratchet.ctx0])
       privConsts := trivial }

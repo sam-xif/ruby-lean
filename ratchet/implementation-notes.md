@@ -4277,3 +4277,108 @@ Modified: `Ratchet/Ty.lean` (`capStale`, `killClosOver`, `killClosOverSpine`),
 `Ratchet/Judge.lean` (`vasgn`, `vasgnAlias`), `Ratchet/Validate.lean`,
 `Ratchet/Proof/ChkSound.lean`, `CheckRungs.lean`, `scripts/generate_corpus.py`. New:
 `corpus/233`, `corpus/234`, `corpus/235`. Axiom-clean; no `sorry`.
+
+---
+
+## Clink 47 (2026-09-01) — the fixed rule, discharged. **178 rungs / 235, 17 of 83 rules**
+
+Clink 46 fixed `Judge.vasgn`'s soundness bug and left the rung undischarged. This clink
+discharges the twin, **`Judge.vasgnAlias`** — and the proof is the point, because it is where
+the fix stops being a patch that rejects a counterexample and becomes the thing the semantics
+asks for.
+
+**The one sentence.** `capStale`, the function `Judge.vasgn` uses to decide which bindings to
+widen, is the **side condition of `denM_setLocal`** (`Denote/Local.lean`) — the transport of a
+type's meaning across a rebinding. Checker guard and semantic transport are one predicate. A
+fix that had been merely *sufficient to reject the program* would have shown up here as a
+transport that needed some other hypothesis.
+
+**Why `vasgnAlias` and not `vasgn`.** `vasgn`'s right-hand side is an arbitrary expression,
+which runs under a **pushed** continuation (`withKont m (.eval rhs) (.asgnK …)`), while its
+premise `SemJudge … e …` is about a run under the *empty* one. Consuming it needs the
+continuation-decomposition lemma (§The fifth stall point) — a fact about `RubyCore`'s abstract
+machine that gates every compound rung, measured in clink 45 and unchanged. `vasgnAlias`'s
+right-hand side is a `.var`, so the whole run is four concrete `stepFn` steps
+(`evals_four`). Discharging it is the sharpest available statement of the split: **the rule is
+sound and provably so; the general one waits on a machine lemma, not on assignment.**
+
+### Three definitions moved, each a correction
+
+**1. `Later`, and why the arrow needed a *second* relation.** `Ext` (clink 45) pins the frame
+array — which is what makes `denM_ext`'s `clos` case a rewrite, and what makes it useless the
+moment a rule rebinds a local. The arrow and `AsmsOk` quantify over runs, so they need the
+*widest* domain every machine change lands in; the `clos` arm reads `Machine.frames` and must
+**not** be monotone under a rebinding, since that is exactly the fact §F1 turned on. So: two
+relations, `Ext ⊆ Later`, and the split is forced rather than chosen. `Later` allows a
+rebinding and forbids a frame push, which is the clause the first *call* rung will have to
+spend. Each rung that needs the arrow to survive one more step kind widens it by one clause,
+and the destination was already written down — `ArrowStable`, the arrow at every reachable
+machine. The alternative considered and rejected: make `capStale` fire on arrow types, so
+arrow-typed bindings get widened away. That works for `EnvOk` and does **nothing** for
+`AsmsOk`, which lives in `Ctx` and cannot be widened — so the quantifier had to move anyway,
+and moving it once is cheaper than moving it and also coarsening `capStale`.
+
+**2. `StateOk.frameInRange` — there is a current frame.** `Machine.getLocal` and
+`currentFrame` are *total*: at a machine whose `stack.headD 0` is past the end of the frame
+array they answer `nil` and the default frame, and `setLocal` is a no-op. That is not an error
+state, it is a machine where `Γ` describes bindings that do not exist — and where
+"the value `x` names after `x = e` is the value assigned" is **false**. One inequality, and
+`Denote/Sanity.lean`'s guard checks it at the booted machine along with the other two.
+
+**3. `EnvOk`'s identity conjunct is `Value` equality, not `Value.identEq` — and the difference
+is a model bug.** The first reading used the model's own `equal?`, on the argument that
+`Ty.sameAs` claims object identity. `Value.identEq` is not that: on `Float` it is `a == b`, so
+it calls `0.0` and `-0.0` the **same** object (two different values, and an assignment through
+one is not visible through the other) and `NaN` and itself **different** ones (`Float`'s `==`
+is false at `NaN`, so `identEq v v` is not reflexive). The second made `Obl.Judge.vasgnAlias`
+false at a local holding `NaN`, for a reason with nothing to do with aliasing. In this model a
+`Value` *is* the object reference, so object identity is `Value` equality; the model's `equal?`
+quirk is now a `found-issues.md` §F1 entry of its own and the denotation does not inherit it.
+
+### What the machine lemmas cost
+
+`Denote/Local.lean` is the file, and the only part that is not bookkeeping is the **lockstep**.
+`setLocal` writes to the first frame on the current frame's captured chain that binds `x`, or
+to the current frame; `getLocal` reads by walking the same chain. Everything else in the file
+falls out of "`setLocal` is one `Array.set!` at an index no lemma needs to name" — the target
+is left abstract (`∃ T, frames' = frames.set! T (write T)`, which is `rfl`), so the field
+lemmas are three-line case splits and the two walk lemmas (`= v` at `x`, unchanged elsewhere)
+are one induction each.
+
+The exception is `getLocal_setLocal_self`: "the value `x` names after the write is the value
+written". The *disjunction* is not enough there — the rule binds `x` and the obligation asks
+about the value that binding names — so `setLocal.owner` and `getLocal.go` have to be shown to
+stop at the **same** frame, by an induction that runs both walks at once (`any (·.1 == x)`
+against `find? (·.1 == x)`). The fuel-exhaustion case is the one worth recording: `owner` falls
+back to the *starting* frame, which is where the read begins, so the read finds the write
+immediately — the walk running out is not a hole.
+
+### Two more corrections the rung forced, both invisible to the ladder
+
+Both are cases where the obligation quantifies over a `Γ` no derivation builds, and the
+definition was wrong there.
+
+* **Nested aliases.** `killAliasesTo` peeled one `sameAs` layer, so `sameAs x (sameAs z ρ)`
+  survived an assignment to `x` as an alias to `z` that nothing justifies. `killAliasTy` now
+  collapses an alias to `x` with `deAlias` (peel all layers). `vasgnAlias` binds
+  `sameAs x (stripAlias σ)` and `stripAlias` has already peeled one, so no rung is affected.
+* **`capStaleCtx`.** `selfTy`, `blockTy` and `consts` can each hold a frame-sensitive type, and
+  `Ctx` is an **input** to every rule — nothing rewrites it, so nothing can widen them. They
+  became a fourth premise, `autoParam`-discharged like `hcap`. Sound rather than precise: a
+  method frame captures nothing, so an assignment inside a method body cannot reach the frame
+  `blockTy`'s closure captured, but the premise refuses the case where the two merely share a
+  name. Recovering that precision needs a `StateOk` component stating frame-chain
+  disjointness; no rung has asked for one, and `found-issues.md` §F1 says so.
+
+### State
+
+**178 rungs of 235** and **17 of 83 `Judge` rules discharged** (`Judge.vasgnAlias`). Corpus
+agreement **235/235**, hand derivations **177/177**, negative controls **142/142** — all
+unchanged, and `Ratchet/Rungs.lean` was again not edited: `capStaleCtx` is an `autoParam` and
+the two new `Ty` functions are the identity on everything on file. New: `Denote/Local.lean`,
+`Denote/Rules/Asgn.lean`. Modified: `Ratchet/Ty.lean` (`deAlias`, `killAliasTy`, `capStale`'s
+spine clause), `Ratchet/Judge.lean` (`capStaleCtx` + the premise), `Ratchet/Validate.lean`,
+`Ratchet/Proof/ChkSound.lean`, `Denote/Ext.lean` (`Later`), `Denote/Den.lean`,
+`Denote/Arrow.lean`, `Denote/Grow.lean`, `Denote/Rules/Core.lean` (`evals_four`),
+`Denote/Sem/State.lean` (`FrameInRange`, `EnvOk`, `AsmsOk`, `StateOk_setLocal`),
+`Denote/Sanity.lean`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.

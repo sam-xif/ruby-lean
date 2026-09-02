@@ -1761,6 +1761,25 @@ structure Ctx where
       is precision rather than soundness. -/
   privConsts : List String
 
+/-- **The frame-sensitive records in `Ctx` that an assignment can invalidate.**
+
+`Ratchet/Ty.lean` §Stale closure captures fixes `Judge.vasgn` by *rewriting* the outgoing
+`Env` and ivar spine (`killClosOver`/`killClosOverSpine`). Three `Ctx` fields can hold a
+`Ty.clos` too — `selfTy` (its ivar spine may name one), `blockTy` (it *is* one) and `consts` —
+and `Ctx` is an **input** to every rule: no rule rewrites it, so no rule can widen them. So
+they become a *premise* instead: the rule applies only where they record nothing about the
+assigned name that the assignment would falsify.
+
+Sound rather than precise, and the imprecision is namespaced. A method frame captures nothing,
+so an assignment inside a method body cannot reach the frame `blockTy`'s closure captured;
+this premise nevertheless refuses the case where the two happen to use the same *name*. The
+alternative — a `StateOk` component stating frame-chain disjointness — is a bigger change to
+the semantic side for precision no rung has asked for; recorded in `found-issues.md` §F1
+rather than built. -/
+def capStaleCtx (x : String) (τ : Ty) (κ : Ctx) : Bool :=
+  capStale x τ (κ.selfTy.getD .never) || capStale x τ (κ.blockTy.getD .never) ||
+    κ.consts.any (fun p => capStale x τ p.2)
+
 /-- The class name behind a `self` type, for `Frame.recvClass`. `.inst n _` and `.clsOf n`
 are the only two shapes any body-entering rule supplies; anything else cannot arise and gets a
 name no class has, which makes `super` fail rather than dispatch somewhere wrong. -/
@@ -2449,6 +2468,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
       (hcap : capStale x τ τ = false := by rfl) →
+      (hctx : capStaleCtx x τ κ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar x e) τ
         (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ) (killClosOverSpine I' x τ)
   /-- **`__dt_t1 = v` — an assignment that records an alias** (tier 12).
@@ -2481,6 +2501,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | vasgnAlias {κ : Ctx} {Γ : Env} {I : Ty} {t x : String} {σ τ : Ty} :
       desugarTemps.contains t = true → envGet? Γ x = some σ → stripAlias σ = τ →
       (hcap : capStale t τ τ = false := by rfl) →
+      (hctx : capStaleCtx t τ κ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar t (.var .lvar x)) τ
         (envSet (killClosOver (killAliasesTo Γ t) t τ) t (.sameAs x τ))
         (killClosOverSpine I t τ)

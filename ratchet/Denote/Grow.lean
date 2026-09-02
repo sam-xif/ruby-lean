@@ -23,8 +23,9 @@ Four shapes of case, and the interesting thing is how few of them are hard:
 * **Nominal** (`cls`, `inst`) — one-directional, via `Ext.isA_mono`. The direction is the
   content: a dangling `.ref` reads as a bare `BasicObject` before the push and as the pushed
   object after it, so the nominal arm can only *gain* inhabitants.
-* **The arrow** — free, by `Ext.trans`, because `denM`'s arrow arm was rewritten to quantify
-  over `Ext`-futures for exactly this purpose (`Denote/Den.lean` §The arrow arm point 5).
+* **The arrow** — free, by `Ext.later` then `Later.trans`, because `denM`'s arrow arm was
+  rewritten to quantify over `Later`-futures for exactly this purpose (`Denote/Den.lean` §The
+  arrow arm point 5).
   Nothing about runs is re-derived here; the definition absorbed the problem.
 
 `denSpine` rides along in the same induction (the two are mutually recursive through `inst`
@@ -78,11 +79,11 @@ theorem denM_ext_aux {m m₂ : Machine} (he : Ext m m₂) : ∀ τ : Ty,
   | arrow0 r ihr =>
     refine ⟨fun f h => ?_, fun _ h => by simpa only [denSpine] using h⟩
     rw [denM] at h ⊢
-    exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.trans he₃)⟩
+    exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.later.trans he₃)⟩
   | arrowCons p rest ihp ihrest =>
     refine ⟨fun f h => ?_, fun _ h => by simpa only [denSpine] using h⟩
     rw [denM] at h ⊢
-    exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.trans he₃)⟩
+    exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.later.trans he₃)⟩
   | inst n I ihI =>
     refine ⟨fun v h => ?_, fun _ h => by simpa only [denSpine] using h⟩
     rw [denM] at h ⊢

@@ -434,7 +434,12 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
   here to import `RubyCore.Proof.*`.
 - **`Denote/Grow.lean`** — **`denM_ext`**: a type's meaning survives an allocation. One
   induction, and the arrow case is free because `denM`'s arrow arm was defined to quantify
-  over `Ext`-futures.
+  over `Later`-futures.
+- **`Denote/Local.lean`** — the other machine change: **`Machine.setLocal`**. `denM_setLocal`
+  is the transport, and unlike `denM_ext` it has a **side condition** — `capStale`, the same
+  function `Judge.vasgn` widens bindings with. Also the `setLocal`/`getLocal` lockstep
+  (`getLocal_setLocal_self`: the value `x` names after the write is the value written, which
+  is why `setLocal.owner` and `getLocal.go` have to be shown to stop at the same frame).
 - **`Denote/Arrow.lean`** — `ArrowFlat` (the uncurried arrow), `ArrowExt` (it at every
   `Ext`-future, which is what `denM`'s arrow arms actually say) and `denM_arrowOf` proving the
   latter equals the spine denotation; `ArrowStable` (the arrow at every *reachable* machine —
@@ -474,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **16 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **17 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 235). This measures
@@ -517,7 +522,40 @@ here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **t
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
 
-**`vasgn` is not merely stalled — it is UNSOUND**, and the semantic ladder is what found it
+**`vasgnAlias` is discharged, and it is the rung the soundness fix was for** (clink 47).
+`Judge.vasgn`'s twin — `__dt_t1 = x`, right-hand side a `.var` — is the first rule on the
+ladder that **writes** to the frames, and its proof is where `capStale` earns its keep: the
+function `Judge.vasgn` uses to decide which bindings to widen is the *side condition* of
+`denM_setLocal` (`Denote/Local.lean`), the transport of a type's meaning across a rebinding.
+The checker's guard and the semantic transport are one predicate, which is what it means for
+the fix to be the right one rather than one that happens to reject the counterexample.
+
+Three definitions moved to make it close, each a correction rather than a convenience:
+
+* **`Later`** (`Denote/Ext.lean`) is now what the **arrow** and **`AsmsOk`** quantify over —
+  heap grew, frames *rebound*, no frame pushed or popped — because `Ext` pins the frame array
+  and an assignment does not. `denM`'s `clos` arm deliberately does **not** get the quantifier:
+  it reads `Machine.frames` and must not be monotone under a rebinding, since that is the fact
+  §F1 turned on. Each rung that needs the arrow to survive one more step kind widens `Later` by
+  one clause, and the destination is `ArrowStable` (the arrow at every *reachable* machine).
+* **`StateOk.frameInRange`** — there *is* a current frame. `getLocal`/`currentFrame` are total,
+  so a machine with an out-of-range stack head is not an error, it is one where every local
+  reads `nil` and `setLocal` is a no-op; and "the value `x` names after `x = e` is the value
+  assigned" is false there.
+* **`EnvOk`'s identity conjunct is `Value` equality, not `Value.identEq`.** The model's own
+  `equal?` is wrong in both directions at `Float` — it calls `0.0` and `-0.0` the same object
+  and `NaN` and itself different ones — so the first reading made the obligation false at a
+  local holding `NaN`, for a reason with nothing to do with aliasing. Recorded in
+  `found-issues.md`; the denotation should not inherit a model quirk.
+
+**`Judge.vasgn` itself is still not discharged, and no longer for a soundness reason.** Its
+right-hand side is an arbitrary expression, so it runs under a *pushed* continuation while its
+premise is about a run under the empty one — the continuation-decomposition wall below, which
+is a fact about `RubyCore`'s machine and gates every compound rung. Discharging `vasgnAlias`
+is the sharpest available statement of the split: the rule is sound and provably so; the
+general one waits on a machine lemma, not on assignment.
+
+**The bug that made this necessary** — and the semantic ladder is what found it
 (`found-issues.md` §F1, the first entry in that file about the checker rather than about the
 model). `Judge.lambdaLit` records the creation-site environment into the type
 (`.clos idx (envToSpine Γ) …`); a Ruby block captures **by reference**, so that spine is a
@@ -536,11 +574,12 @@ exist to make impossible, and no corpus rung wrote the shape. The obligation nam
 without needing a witness: `Obl.Judge.vasgn`'s conclusion asks for `EnvOk` at the post-machine,
 whose `clos` arm reads `closLocal m' cl` — the captured *frame*, which `setLocal` wrote
 through. **Fixed in clink 46** (§Closure captures go stale): `killClosOver`/`killClosOverSpine`
-plus a `capStale x τ τ = false` premise, three new corpus rungs and two new controls. The rung
-is still undischarged — the rule is now true, but proving it still needs the continuation
-lemma below.
+plus a `capStale x τ τ = false` premise, three new corpus rungs and two new controls — and
+clink 47 added a fourth guard, `capStaleCtx`, for the three `Ctx` fields (`selfTy`, `blockTy`,
+`consts`) that can hold a frame-sensitive type and that no rule can rewrite, since `Ctx` is an
+input.
 
-**The wall behind it, for `vasgn` and every other compound rule** — `Denote/Sem/notes.md`
+**The wall in front of `vasgn` and every other compound rule** — `Denote/Sem/notes.md`
 §The fifth stall point. `Evals` runs an expression under `kont := []`; a `.vasgn` runs its
 right-hand side under `[.asgnK …]`, so the premise is about a different run and consuming it
 needs a **continuation-decomposition lemma**. The lemma is true (`stepFn` is head-local in
