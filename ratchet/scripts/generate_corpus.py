@@ -2045,6 +2045,46 @@ R("lambda-capture-reassigned-same-type", 9,
   expect_validate=True)
 
 
+R("nested-def-redefines-unsafe", 6,
+  "**An UNSAFE program, and the regression test for `found-issues.md` §F3.** `Ctx.afterStmt` "
+  "grows `defs` at the *statement* boundaries of the sequence being typed, and every call rule "
+  "concludes at the `κ` it started from -- so a `def` **inside a method body** is recorded "
+  "where it cannot help while `Heap.defineMethod` replaces the installed method. After `foo` "
+  "runs, `bar` returns a String and the checker's table still says Integer, so `bar + 1` was "
+  "certified `Integer` and raises TypeError in CRuby *and* in the model. Fixed in clink 49 by "
+  "the `declFree` filter inside `defGet?`/`closGet?`: a body that declares is **uncallable** by "
+  "this checker rather than callable-and-wrong. A `true` here is that bug returning. Found by "
+  "the semantic ratchet's sixth stall point (`Denote/Sem/notes.md`), not by any corpus rung.",
+  'def bar\n  1\nend\ndef foo\n  def bar\n    "s"\n  end\n  1\nend\nfoo\nbar + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("shadowed-lambda-unsafe", 9,
+  "**An UNSAFE program, and the regression test for `found-issues.md` §F2/§A5.** `lambda { … }` "
+  "is an implicit-self send, and a toplevel `def` is a private instance method on `Object` "
+  "while `Kernel` is included *in* `Object` -- so the user's `lambda` shadows `Kernel#lambda`, "
+  "`f` is `5`, and `f.call` is a NoMethodError. `Judge.lambdaLit` had no premise about the name "
+  "being free (clink 49 added `nameFree`), and the **model** could not shadow the name either "
+  "(`Interp/Send.lean`'s `finishSend` special-cased `lambda`/`proc` before any method lookup) -- "
+  "so this rung is the regression for both halves, and it is the rung that would have caught "
+  "the divergence had it existed: agreement is what makes a rung's type mean anything about "
+  "Ruby.",
+  'def lambda\n  5\nend\nf = lambda { 1 }\nf.call + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("yield-two-types-string-to-s", 9,
+  "**A safe program the checker cannot type yet — a climb target, not a negative.** A method "
+  "that yields twice at *different* argument types, and a block that accumulates into a "
+  "captured String. CRuby and the model both produce `\"1str\"`. `validate` answers `false`, "
+  "and the reason is **one missing `PrimSig` row**, not anything about `yield`: bisected, "
+  "`def hello; yield 1; end` with the same block types (`String`), `yield 1; yield 2` types, "
+  "and `\"a\".to_s` **alone** does not -- the table has `intToS` and `symToS` but no "
+  "`String#to_s`. So the block body `v.to_s` has no rule at `v : String`. Two yields at "
+  "different types is exactly the shape that forces the block body to be typed twice, which is "
+  "why this rung is worth having beyond the missing row: it is the smallest program that "
+  "checks `yieldExpr` re-types the body per yield site rather than once.",
+  'def hello\n  yield 1\n  yield "str"\nend\n\n\ns = ""\nhello { |v| \n  s += v.to_s\n}\n\ns\n',
+  expect_validate=True)
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

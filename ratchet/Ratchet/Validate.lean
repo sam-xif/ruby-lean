@@ -377,7 +377,13 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               | none => none
             | none => none
           | none => none
-        | none => if bareNameError? m then some (.any, Γ, I) else none
+        | none =>
+          -- `defGet?` answering `none` is no longer the same question as "this name is not a
+          -- method": since `found-issues.md` §F3 it also answers `none` for a method whose
+          -- body declares. `bareName` means the *name* is undefined, so it asks the raw table.
+          match defDeclared? κ.defs m with
+          | some _ => none
+          | none => if bareNameError? m then some (.any, Γ, I) else none
   | _ + 1, .self' =>
     match κ.selfTy with
     | some σ => some (σ, Γ, I)
@@ -450,7 +456,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- fragment that carries a block at all.
     match κ.selfTy with
     | none =>
-      if (m = "lambda" || m = "proc") && args.isEmpty then
+      -- `nameFree` is §F2: a toplevel `def lambda` shadows `Kernel#lambda`, so the block is
+      -- an argument to *that* method and not a Proc at all.
+      if (m = "lambda" || m = "proc") && args.isEmpty && nameFree κ m then
         match closIdx? κ.closures ps body with
         | some idx => some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never), Γ, I)
         | none => none

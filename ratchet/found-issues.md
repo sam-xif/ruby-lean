@@ -149,8 +149,8 @@ four.
 
 ### A5. A user `def lambda` does not shadow `Kernel#lambda` in the model — and the checker trusts the model
 
-**Status:** open (model side). **Severity:** high — it is the reason §F2 below is a *wrong
-answer about Ruby* rather than only about the model. **Found by:** asking what
+**Status:** **fixed, clink 49** (see §The fix, below). **Severity:** high — it was the reason
+§F2 below was a *wrong answer about Ruby* rather than only about the model. **Found by:** asking what
 `Judge.lambdaLit`'s semantic obligation needs of a conformant machine (clink 48): the rule has
 no premise excluding a user definition of `lambda`, so the rung has to know how the machine
 dispatches the name.
@@ -187,8 +187,26 @@ model. `Proc.new` is in the same arm but keyed on the receiver, which is the rig
 two are keyed on the name.
 
 Same class as A1–A4 (both executors run, they disagree) but note the direction: here the model
-is the *more* permissive one, and it hides an error CRuby raises. Nothing in the corpus covers
-it, because no rung defines a method named after a Kernel builtin.
+is the *more* permissive one, and it hides an error CRuby raises. Nothing in the corpus covered
+it, because no rung defined a method named after a Kernel builtin.
+
+**The fix (clink 49).** `finishSend` now looks the name up before taking the shortcut, and only
+takes it when nothing user-defined shadows it:
+
+```
+let shadowed :=
+  match methodOn m.heap (classOf m.heap recv) mname with
+  | some (_, md) => md.builtin.isNone && !md.undefined
+  | none => false
+let mkLam := implicit == .implicit && mname == "lambda" && !shadowed
+```
+
+Same `builtin.isNone` test the `X.new { … }` arm three lines below already used for the same
+reason, so the model now makes the distinction in one style rather than two. `mkLam` is
+computed from `shadowed` as well, so a shadowed call passes an ordinary (non-lambda) Proc as
+the block, which is what CRuby does. Measured after: tier-0 difftest **992 agree, 0
+disagreements** (1304 cases, 306 gated) and the ratchet corpus **237/237 agree**;
+`corpus/237-shadowed-lambda-unsafe` is the rung that now covers it.
 
 ### B5. Two previously-recorded gates appear to be **closed** — worth confirming
 
@@ -431,7 +449,8 @@ denotation rather than the checker:
 
 ### F2. `validate` accepts a program CRuby takes to `NoMethodError` — because the model hides it
 
-**Status:** open. **Severity:** high, with a caveat that is the entry's whole point.
+**Status:** **fixed, clink 49** — both halves. **Severity:** high, with a caveat that is the
+entry's whole point.
 **Found by:** the same question as A5 (clink 48).
 
 The program is A5's:
@@ -470,16 +489,26 @@ exactly the gate that would have caught it, and it never saw this program.
   absence from `κ.classes` for a `lambda` defined in a class body. `Judge.closCall`'s `call`
   has the same exposure through `κ.classes` and is worth checking in the same pass.
 
-Not fixed here, on purpose: clink 48 was under an explicit "do not modify `Ratchet/`"
-constraint, and a premise added to `lambdaLit` moves the `Rungs.lean` derivations (14 uses of
-`Judge.lambdaLit` on file) and the ladder's two committed numbers. It wants its own clink, with
-a negative-control rung for the program above — which is what makes the fix pinned rather than
-believed.
+**The fix (clink 49).** Both, as argued above:
+
+* **`Judge.lambdaLit` gained `nameFree κ m = true`** — no top-level `def` of the name, and no
+  class or module in the table declaring it as an instance or singleton method. An
+  `autoParam` (`:= by rfl`), so none of the 14 `Judge.lambdaLit` uses in `Rungs.lean` moved;
+  `chk`'s guard gained the same conjunct and `chk_sound`'s `lambdaLit` case destructures one
+  more `&&`. Deliberately coarse — it asks whether *any* class declares the name, not whether
+  `self`'s does — because sharpening it means walking the ancestor chain and no rung wants the
+  precision.
+* **The model shadows properly** (§A5 above), so the two executors now agree on the program.
+
+**Regression on file**: `corpus/237-shadowed-lambda-unsafe` (`expect_validate: false`,
+`unsafe_program`) plus a `CheckRungs.lean` control, which is where the rejection is labelled
+*sound* by running the program: it reports `rejected (sound: really type-stuck)`.
 
 ### F3. A method body's `def` escapes the checker's context, so every call rule carries a stale `defs` table
 
-**Status:** open. **Severity:** high — `validate` returns `true` on a program **both** executors
-take to `TypeError`, which is the §F1 shape exactly. **Found by:** the semantic ladder again
+**Status:** **fixed, clink 49** (the conservative half — see §The fix below). **Severity:**
+high — `validate` returned `true` on a program **both** executors take to `TypeError`, which is
+the §F1 shape exactly. **Found by:** the semantic ladder again
 (clink 48), and this time by the *sixth stall point* rather than by a rung:
 `Denote/Sem/notes.md` recorded that a rule cannot re-assert conformance with the incoming `κ`
 after a statement that declares something. The consequence nobody had drawn is that a **call**

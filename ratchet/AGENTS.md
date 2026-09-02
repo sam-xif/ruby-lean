@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **178 rungs of 235 — tier 13 complete, tiers 14–17 open**
+## Checker status: **178 rungs of 238 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
 good half of tiers 14–17: the eight literals,
@@ -482,7 +482,7 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 ## Semantic ratchet status (`Denote/Sem/`): **24 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (178 of 235). This measures
+measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -551,7 +551,8 @@ here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **t
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
 
-**A third, and the ladder found it without a rung** (clink 48, `found-issues.md` §F3). The
+**A third, and the ladder found it without a rung** (clink 48, fixed in clink 49;
+`found-issues.md` §F3). The
 sixth stall point says a rule cannot re-assert conformance with the incoming `κ` after a
 statement that *declares* something — and a **call** runs statements too. So every call rule
 (`vcallDef`, `callDef`, `callMethod`, `selfCall`, `closCall`, `iterBlock`, …) carries a stale
@@ -560,7 +561,8 @@ statement that *declares* something — and a **call** runs statements too. So e
 **both executors raise `TypeError`** — the §F1 shape exactly. Reading the obligation is what
 produced the program; no search was involved.
 
-**A second soundness bug, found the same way** (clink 48, `found-issues.md` §A5/§F2).
+**A second soundness bug, found the same way** (clink 48, fixed in clink 49;
+`found-issues.md` §A5/§F2).
 `Judge.lambdaLit` has no premise that the name `lambda` is free, and in CRuby a toplevel `def`
 shadows `Kernel#lambda` — so `def lambda; 5; end; f = lambda { 1 }; f.call + 1` is certified
 `Integer` and raises `NoMethodError`. The twist is where it lands: the **model** special-cases
@@ -1057,7 +1059,7 @@ makes an actual constraint, not just a coincidence).
   exception's (class, message). This is what makes a rung's *type* mean something — a
   program the model executes differently from Ruby is a program whose type is a
   statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
-  disagreement. Currently **235/235 agree**. Needs `uv` and a CRuby; skip with
+  disagreement. Currently **238/238 agree**. Needs `uv` and a CRuby; skip with
   `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `checkrungs`: this compares
   *the model against Ruby* over the whole corpus, `checkrungs` compares *a hand-derived type
   against the model* over the 129 covered rungs.
@@ -1083,7 +1085,7 @@ this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean
 module docstring for the two reasons a rung is allowed to target `false` at all.
 
 **Every rung also agrees with CRuby**, checked by `scripts/run_agreement.sh` before the
-ladder is reported: 235/235 (§Architecture) — including the eight slice files and the
+ladder is reported: 238/238 (§Architecture) — including the eight slice files and the
 2,176-line linked slice.
 
 1. Literals (8 rungs) — all eight climbed.
@@ -1312,22 +1314,22 @@ whole linked program.
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-corpus agreement (CRuby vs the Lean semantics): 235/235 agree, 0 disagree
+corpus agreement (CRuby vs the Lean semantics): 238/238 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
-tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 6/6
+tier 6: 6/10   tier 7: 16/16  tier 8: 10/10  tier 9: 20/27  tier 10: 6/6
 tier 11: 8/10  tier 12: 9/12  tier 13: 12/13 tier 14: 9/15  tier 15: 13/19
 tier 16: 10/15 tier 17: 11/23 tier 18: 0/8   tier 19: 0/3
 flagged Ty language gaps: 2 (proc-arity-leniency, narrow-nilable-and-union)
 hand-authored derivations on file: 177
-rungs where validate differs from the recorded target: 34
+rungs where validate differs from the recorded target: 35
 ```
 
 All 177 are synthesized by `chk` itself, with nothing trusted anywhere. (This section used
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
 (also run inline by `run_ratchet.sh`): 177/177 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 142/142
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 144/144
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
@@ -1337,11 +1339,16 @@ Three numbers, and they move for different reasons:
   work to do, and a rung targeting `false` that answers `true` is a soundness bug.
 - **"flagged Ty language gaps"** should stay flat unless `Ty.lean`'s grammar itself grows
   (§Ty language gaps) — not something `chk` alone can move.
-- **"235/235 agree" should never move.** A disagreement there is a bug in the model or the
+- **"238/238 agree" should never move.** A disagreement there is a bug in the model or the
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
-## Permanent negatives (21 rungs, and only these 21 by design)
+## Permanent negatives (23 rungs, and only these 23 by design)
+
+**Clink 49 added two** (`nested-def-redefines-unsafe`, `shadowed-lambda-unsafe`), the
+regressions for `found-issues.md` §F3 and §F2/§A5 — both programs `validate` certified and both
+executors raise. Like clink 46's, they are controls for a *fix*, not new coverage: a `true` on
+either is that soundness bug returning.
 
 **Was 22 until 2026-09-01**, when `metaprog-method-missing-splat` was retargeted to `true` and
 climbed — its `ty_language_gap` flag had been misfiled (§Ty language gaps, clink 40). That is the

@@ -1,0 +1,62 @@
+{
+  "id": "nested-def-redefines-unsafe",
+  "tier": 6,
+  "description": "**An UNSAFE program, and the regression test for `found-issues.md` \u00a7F3.** `Ctx.afterStmt` grows `defs` at the *statement* boundaries of the sequence being typed, and every call rule concludes at the `\u03ba` it started from -- so a `def` **inside a method body** is recorded where it cannot help while `Heap.defineMethod` replaces the installed method. After `foo` runs, `bar` returns a String and the checker's table still says Integer, so `bar + 1` was certified `Integer` and raises TypeError in CRuby *and* in the model. Fixed in clink 49 by the `declFree` filter inside `defGet?`/`closGet?`: a body that declares is **uncallable** by this checker rather than callable-and-wrong. A `true` here is that bug returning. Found by the semantic ratchet's sixth stall point (`Denote/Sem/notes.md`), not by any corpus rung.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "bar",
+        [],
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "def",
+        "foo",
+        [],
+        [
+          "seq",
+          [
+            "def",
+            "bar",
+            [],
+            [
+              "str",
+              "s"
+            ]
+          ],
+          [
+            "int",
+            1
+          ]
+        ]
+      ],
+      [
+        "vcall",
+        "foo"
+      ],
+      [
+        "send",
+        [
+          "vcall",
+          "bar"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

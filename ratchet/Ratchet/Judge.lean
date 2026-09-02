@@ -577,7 +577,115 @@ run — so source order between two `def`s is irrelevant (rung `fun-calling-anot
 while source order between a `def` and a call is not. -/
 abbrev DefTable := List Defn
 
-def defGet? (D : DefTable) (m : String) : Option Defn := D.find? (·.name == m)
+/-! ### A body that declares (`found-issues.md` §F3)
+
+`Ctx` describes *declarations* — `defs`, `classes`, `consts` — and every rule that types a
+**call** concludes at the same `κ` it started from. That is a promise that running the body
+leaves those tables describing the heap, and a body containing a `def` breaks it: the `def`
+executes, `Heap.defineMethod` **replaces**, and the caller's table now names a method the
+heap no longer has. `def bar; 1; end; def foo; def bar; "s"; end; 1; end; foo; bar + 1` was
+certified `Integer` and raises `TypeError` in CRuby *and* in the model.
+
+The fix is at the **lookup**, not at the rules, and that is worth a sentence because it is what
+made it a five-line change instead of a premise on twenty rules: a rule can only type a call by
+first *fetching the body* — `defGet?` for a top-level method, `defGet? c.methods` for an
+instance method (the same function, `mroGet?` included), `closGet?` for a Proc or a block a
+method may `yield`. Filter there and every call rule inherits the guard, with no premise added,
+no derivation term moved and no `chk_sound` case touched.
+
+What it costs is precision, exactly once: a method whose body declares becomes **uncallable by
+this checker** rather than callable-and-wrong. Nothing else can reach it either — typing a body
+requires a rule for every statement in it, so a method that merely *calls* the unrecordable one
+is rejected in turn, and `define_method` has no rule at all.
+
+The alternative, recorded because it is where this should end up: thread the context through the
+judgment (`Judge κ Γ I e τ Γ' I' κ'`), which fixes this *and* `Judge.defStmt`'s false semantic
+obligation (`Denote/Sem/notes.md` §The sixth stall point). That is a change to every derivation
+on file and wants its own clink. -/
+
+mutual
+
+/-- Does this expression contain no **declaration** — no `def`, no `class`/`module`/`sclass`, no
+constant assignment, no `undef`/`alias`?
+
+Written as its own structural recursion (mutual with the list and pair walkers) rather than with
+`List.all`, for `collectBlocks`' reason and `exprEq`'s: a helper outside the nested-inductive
+bundle pushes the group onto well-founded recursion, and then it stops reducing in the kernel —
+which every `rfl`-discharged `defGet? … = some d` premise in `Rungs.lean` depends on.
+
+Parameters are **not** walked, and that is a known gap rather than an omission: a default
+expression (`def f(x = (def bar; end; 1))`) is evaluated in the callee frame and could declare.
+No rung writes one, walking `Param` would put a third inductive in the recursion bundle, and the
+gap is recorded here so the fix has somewhere to start. -/
+def declFree : Expr → Bool
+  -- the declarations themselves
+  | .def' .. | .defs .. | .casgn .. | .cpathAsgn .. => false
+  | .class' .. | .module' .. | .scopedClass .. | .scopedModule .. | .sclass .. => false
+  | .undef .. | .alias' .. => false
+  -- containers
+  | .vasgn _ _ e | .splat (some e) | .ret (some e) | .brk (some e) | .nxt (some e)
+  | .blockpass (some e) | .cpath (some e) _ | .defined e => declFree e
+  | .send recv _ args blk =>
+    (match recv with | some r => declFree r | none => true) &&
+    declFreeAll args &&
+    (match blk with | some b => declFree b | none => true)
+  | .block _ _ body => declFree body
+  | .seq es | .array es | .yield' es => declFreeAll es
+  | .hash ps => declFreePairs ps
+  | .kwargs entries => declFreeKw entries
+  | .if' c t e =>
+    declFree c && declFree t && (match e with | some x => declFree x | none => true)
+  | .while' c body => declFree c && declFree body
+  | .dowhile body cond => declFree body && declFree cond
+  | .for' _ coll body => declFree coll && declFree body
+  | .begin' body rescues els ens =>
+    declFree body && declFreeRescues rescues &&
+    (match els with | some x => declFree x | none => true) &&
+    (match ens with | some x => declFree x | none => true)
+  | .super' args blk =>
+    declFreeAll args && (match blk with | some b => declFree b | none => true)
+  | .zsuper blk => (match blk with | some b => declFree b | none => true)
+  -- leaves
+  | .int _ | .flt _ | .str _ | .sym _ | .regexpLit .. | .tru | .fls | .nil | .self'
+  | .var .. | .const _ | .vcall _ | .fwd | .retry' | .redo'
+  | .cpath none _ | .splat none | .ret none | .brk none | .nxt none
+  | .blockpass none => true
+
+def declFreeAll : List Expr → Bool
+  | [] => true
+  | e :: es => declFree e && declFreeAll es
+
+def declFreePairs : List (Expr × Expr) → Bool
+  | [] => true
+  | (k, v) :: ps => declFree k && declFree v && declFreePairs ps
+
+def declFreeKw : List KwEntry → Bool
+  | [] => true
+  | .pair _ v :: es => declFree v && declFreeKw es
+  | .dyn k v :: es => declFree k && declFree v && declFreeKw es
+  | .splat e :: es => declFree e && declFreeKw es
+
+def declFreeRescues :
+    List (List Expr × Option (TargetKind × String) × Expr) → Bool
+  | [] => true
+  | (cls, _, handler) :: rs => declFreeAll cls && declFree handler && declFreeRescues rs
+
+end
+
+/-- Is a method of this name **declared** at all — the raw table lookup, with no
+callability filter. Read by `Judge.bareName`, whose premise means "this name is not a method
+of the program" and must not be weakened by `defGet?`'s guard: a `def x` whose body declares
+is still a `def x`, and a `vcall x` that reaches it is not a `NameError`. -/
+def defDeclared? (D : DefTable) (m : String) : Option Defn := D.find? (·.name == m)
+
+/-- The method a call rule may type against: declared, **and** with a body that declares
+nothing (§F3 above). Every body-fetching lookup in this file goes through here — top-level
+methods, instance and singleton methods (`defGet? c.methods`, `mroGet?`), and `resolveAliases`
+— so the guard is stated once. -/
+def defGet? (D : DefTable) (m : String) : Option Defn :=
+  match D.find? (·.name == m) with
+  | some d => if declFree d.body then some d else none
+  | none => none
 
 /-- `D` after performing statement `e`: one entry longer if `e` is a top-level `def`,
 unchanged otherwise. -/
@@ -1672,7 +1780,15 @@ def closIdxAux (k : Nat) : ClosTable → List Param → Expr → Option Nat
 def closIdx? (K : ClosTable) (ps : List Param) (b : Expr) : Option Nat :=
   closIdxAux 0 K ps b
 
-def closGet? (K : ClosTable) (k : Nat) : Option Clos := K[k]?
+/-- The closure a call rule may type against. Same guard as `defGet?` and for the same reason
+(`found-issues.md` §F3): `closCall`, `iterClosPass` and `yieldExpr` all type `c.body` and then
+conclude at the caller's `κ`, so a block body containing a `def` would carry a stale table out
+of the call. A block whose body declares still gets a `Ty.clos` from `lambdaLit` — the type says
+nothing about the tables — it just cannot be *called* by this checker. -/
+def closGet? (K : ClosTable) (k : Nat) : Option Clos :=
+  match K[k]? with
+  | some c => if declFree c.body then some c else none
+  | none => none
 
 mutual
 
@@ -1876,6 +1992,25 @@ def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
   { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e,
            consts := extendConsts κ.consts e τ,
            privConsts := extendPrivConsts κ.privConsts e }
+
+/-- Is the method name `m` **unclaimed by the program** — no top-level `def`, and no class or
+module in the table declaring it as an instance or singleton method?
+
+Read by `Judge.lambdaLit` (`found-issues.md` §F2). `lambda { … }` is an *implicit-self send*,
+and in CRuby a toplevel `def lambda` installs a private method **on `Object`** while `Kernel`
+is included *in* `Object` — so the user's definition shadows `Kernel#lambda` and
+`f = lambda { 1 }` binds `5`, not a Proc. The rule concluded `.clos` unconditionally, which is
+how `def lambda; 5; end; f = lambda { 1 }; f.call + 1` came to be certified `Integer` against a
+`NoMethodError`.
+
+Deliberately coarse: it asks whether *any* class declares the name, not whether the class
+`self` belongs to does. Sharpening it means reading `κ.selfTy` and the ancestor chain, and the
+imprecision costs nothing any rung wants — no program in this corpus names a method `lambda` or
+`proc`. -/
+def nameFree (κ : Ctx) (m : String) : Bool :=
+  (κ.defs.find? (·.name == m)).isNone &&
+  κ.classes.all (fun c => (c.methods.find? (·.name == m)).isNone &&
+                          (c.smethods.find? (·.name == m)).isNone)
 
 /-- `paramEnv` for a call that **carries a block**. Same walk, plus one case: a
 `&b` parameter (`Param.block`) consumes not an argument but the block itself.
@@ -2541,7 +2676,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       name a defined method (`def get5; 5; end; get5`, no parentheses — the desugarer emits
       a `vcall`, not an argument-less `send`). Such a program is simply not typed. -/
   | bareName {κ : Ctx} {Γ : Env} {I : Ty} {m : String} :
-      BareNameError m → defGet? κ.defs m = none → κ.selfTy = none →
+      BareNameError m → defDeclared? κ.defs m = none → κ.selfTy = none →
       Judge κ Γ I (.vcall m) .any Γ I
   /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
 
@@ -3193,11 +3328,19 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
         closure's body sees the `self` of wherever it was *created* and `Ty.clos` recorded only
         the captured locals. `Ty.clos`'s third field is that omission fixed — see its
         docstring — so a lambda may now be created anywhere, and `closCall` judges its body
-        against the recorded `self` rather than the caller's. -/
+        against the recorded `self` rather than the caller's.
+      - **The name must be free** (`found-issues.md` §F2, clink 49). `lambda { … }` is an
+        *implicit-self send*, and in CRuby a toplevel `def lambda` installs a private method on
+        `Object` while `Kernel` is included *in* `Object` — so the user's definition shadows
+        `Kernel#lambda` and the block is an argument to *that*, not a Proc. Without `nameFree`
+        this rule certified `def lambda; 5; end; f = lambda { 1 }; f.call + 1` as `Integer`
+        against a `NoMethodError`. An `autoParam`, so no derivation term moved: every one of
+        them is at a `κ` no program of this corpus shadows, and the premise is `rfl`. -/
   | lambdaLit {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ps : List Param}
       {body : Expr} {idx : Nat} :
       (m = "lambda" ∨ m = "proc") →
       closIdx? κ.closures ps body = some idx →
+      (hfree : nameFree κ m = true := by rfl) →
       Judge κ Γ I (.send none m [] (some (.block ps [] body)))
         (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) Γ I
   /-- **`f.call(args)` / `f[args]`** — invoke a callable, by checking its body here.

@@ -4605,3 +4605,123 @@ complete. Corpus agreement **235/235**, hand derivations **177/177**, negative c
 corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `found-issues.md`
 (§A5, §F2, §F3), `AGENTS.md`. Axiom-clean
 throughout; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+
+## Clink 49 (2026-09-01) — the two soundness bugs fixed, and the model taught to shadow. **178 rungs / 238, 24 of 83 rules**
+
+Clink 48 found two wrong answers by reading obligations and left both unfixed, under an
+explicit "do not modify `Ratchet/`" constraint. This clink lifts it and pays them off: §F3 (a
+method body's `def` escaping the checker's context), §F2 (`Judge.lambdaLit` with no premise
+that the name is free) and §A5 (the *model* unable to shadow `Kernel#lambda` at all). Plus
+three corpus rungs — two regressions and one climb target.
+
+### §F3, and the decision that made it five lines instead of twenty premises
+
+The bug is a family: every rule that types a **call** concludes at the `κ` it started from, so
+a `def` inside the body invalidates a table the caller still trusts. The obvious fix is a
+per-rule premise ("this body declares nothing `κ` records") on `callDef`, `callDefKw`,
+`callMethod`, `selfCall`, `closCall`, `iterBlock`, `yieldExpr`, … — twenty rules, twenty `chk`
+arms, twenty `chk_sound` cases.
+
+**It went at the lookup instead**, and the reason is the observation that makes the whole
+family one place: *a rule can only type a call by first fetching the body.* `defGet?` for a
+top-level method, `defGet? c.methods`/`mroGet?` for an instance or singleton method,
+`closGet?` for a Proc or a block a method may `yield`. Two functions, filtered by one new
+`declFree : Expr → Bool`:
+
+* no premise was added to any rule,
+* no derivation term in `Rungs.lean` moved (177/177 still check),
+* exactly **one** `chk_sound` case changed — and not for the filter.
+
+That one case is the part worth recording, because it is where the filter *would* have been
+unsound if applied naively. `Judge.bareName`'s premise is `defGet? κ.defs m = none`, and after
+the change that no longer means "this name is not a method of the program": a `def x` whose
+body declares is still a `def x`, and a `vcall x` reaching it is not a `NameError`. So
+`bareName` reads a new raw lookup, **`defDeclared?`**, and `chk`/`chk_sound` follow. A filter
+on a lookup used in *negative* position weakens the premise; noticing which uses are negative
+is the whole safety argument for doing it this way.
+
+**Alternatives rejected.** (1) The per-rule premise, above — same soundness, twenty times the
+churn, and it would have had to be repeated for every future call rule. (2) Refusing to
+*record* declaring bodies (`extendDefs`/`clsMember?`), which is the same idea one step earlier
+but misses the inline block bodies `iterBlock` types straight from the syntax. (3) Threading
+the context through the judgment (`Judge κ Γ I e τ Γ' I' κ'`), which is the **right** fix and
+is still recorded as such: it repairs this *and* `Judge.defStmt`'s false semantic obligation
+(`Denote/Sem/notes.md` §The sixth stall point). It changes every derivation on file and wants
+its own clink; what is here is the conservative half.
+
+**What it costs, and it is a real cost:** a method whose body declares is now **uncallable** by
+this checker rather than callable-and-wrong. Nothing else can reach it either — typing a body
+needs a rule for every statement in it, so a method that merely *calls* an unrecordable one is
+rejected in turn. No rung on file wanted the precision (177/177, 35 mismatches — one more than
+clink 48's 34, and that one is the new climb target below).
+
+`declFree` is its own structural recursion, mutual with list/pair/kwarg/rescue walkers rather
+than written with `List.all`, for the reason `exprEq`'s docstring gives at length: a helper
+outside the nested-inductive bundle pushes the group onto **well-founded** recursion, and then
+it stops reducing in the kernel — which every `rfl`-discharged `defGet? … = some d` premise in
+`Rungs.lean` depends on. Recorded gap: it does not walk `Param` defaults
+(`def f(x = (def bar; end; 1))`), because that puts a third inductive in the bundle.
+
+### §F2 and §A5 — the two halves, and why both were needed
+
+`lambda { … }` is an implicit-self send; in CRuby a toplevel `def lambda` is a private method
+on `Object` and `Kernel` is included *in* `Object`, so the user's method wins.
+
+* **Checker:** `Judge.lambdaLit` gained `nameFree κ m = true` — no top-level `def` of the name
+  and no class or module declaring it. An `autoParam`, so the 14 `Judge.lambdaLit` uses in
+  `Rungs.lean` did not move; `chk`'s guard gained a conjunct and `chk_sound` destructures one
+  more `&&`. Deliberately coarse (any class, not `self`'s class): sharpening it means walking
+  the ancestor chain, and nothing wants the precision.
+* **Model:** `finishSend` special-cased `"lambda"`/`"proc"` **before any method lookup**, so
+  the name was unshadowable — the model returned a Proc where CRuby raised. It now takes the
+  shortcut only when `methodOn` finds nothing user-defined, which is the same `builtin.isNone`
+  test the `X.new { … }` arm three lines below already used. `mkLam` is computed from the same
+  flag, so a shadowed call passes an ordinary Proc as its block, as CRuby does.
+
+**Both halves were needed and neither is redundant.** Without the model fix the corpus rung
+could not exist (a disagreement aborts `run_ratchet.sh` before the ladder is reported).
+Without the checker fix the program would be certified the day the model started shadowing —
+the rule was *accidentally* sound, against a model that could not express the counterexample.
+
+**The model change is verdict-neutral, measured rather than asserted:** tier-0 difftest before
+and after, **992 agree / 306 gated / 0 disagreements** out of 1304, byte-identical verdict
+counts (run at `difftest/reports/20260901-231451-tier0-lean` and `…-231858-…`, the second with
+the change stashed). Ratchet corpus agreement 238/238.
+
+### Three corpus rungs
+
+* `236-nested-def-redefines-unsafe` and `237-shadowed-lambda-unsafe` — the two regressions,
+  `expect_validate: false`/`unsafe_program`, each also a `CheckRungs.lean` control so the
+  rejection is labelled *sound by running the program*: both report `rejected (sound: really
+  type-stuck)`. Permanent negatives 21 → 23; controls 142 → 144.
+* `238-yield-two-types-string-to-s` — a **climb target** (`expect_validate: true`, currently
+  `false`), from a program handed over as "safe but not typed":
+
+  ```ruby
+  def hello; yield 1; yield "str"; end
+  s = ""
+  hello { |v| s += v.to_s }
+  s
+  ```
+
+  CRuby and the model both give `"1str"`. The description does not say "yield is unsupported",
+  because that is not what is wrong — bisected: one yield types, `yield 1; yield 2` types, and
+  `"a".to_s` **alone** does not. The table has `intToS` and `symToS` and no `String#to_s`, so
+  the block body has no rule at `v : String`. Recorded as one missing `PrimSig` row rather
+  than fixed, because a row is a trusted claim about the semantics and adding one belongs with
+  the pass that justifies it. The rung is worth keeping past that fix: two yields at different
+  types is the smallest program that checks `yieldExpr` re-types the body **per yield site**.
+
+### State
+
+**178 rungs of 238**, **24 of 83 `Judge` rules** (unchanged — no rung was climbed here; the
+two `Judge` changes are premises and a lookup filter, and `Obl.Judge.lambdaLit` grew a premise
+with it). Corpus agreement **238/238**, hand derivations **177/177**, negative controls
+**144/144**, mismatches **35** (34 + the new climb target), permanent negatives **23**.
+Tier-0 model difftest **0 disagreements**, verdict-identical before and after the `finishSend`
+change. Modified: `Ratchet/Judge.lean` (`declFree`, `defDeclared?`, the two filtered lookups,
+`nameFree`, `lambdaLit`'s premise, `bareName`'s premise), `Ratchet/Validate.lean`,
+`Ratchet/Proof/ChkSound.lean` (one case), `CheckRungs.lean` (two controls),
+`scripts/generate_corpus.py` + `corpus/` (three rungs), `../lean/RubyCore/Interp/Send.lean`,
+`found-issues.md` (§A5/§F2/§F3 marked fixed, each with its fix), `Denote/Sem/notes.md`,
+`AGENTS.md`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.

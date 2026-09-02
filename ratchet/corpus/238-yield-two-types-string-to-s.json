@@ -1,0 +1,98 @@
+{
+  "id": "yield-two-types-string-to-s",
+  "tier": 9,
+  "description": "**A safe program the checker cannot type yet \u2014 a climb target, not a negative.** A method that yields twice at *different* argument types, and a block that accumulates into a captured String. CRuby and the model both produce `\"1str\"`. `validate` answers `false`, and the reason is **one missing `PrimSig` row**, not anything about `yield`: bisected, `def hello; yield 1; end` with the same block types (`String`), `yield 1; yield 2` types, and `\"a\".to_s` **alone** does not -- the table has `intToS` and `symToS` but no `String#to_s`. So the block body `v.to_s` has no rule at `v : String`. Two yields at different types is exactly the shape that forces the block body to be typed twice, which is why this rung is worth having beyond the missing row: it is the smallest program that checks `yieldExpr` re-types the body per yield site rather than once.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "hello",
+        [],
+        [
+          "seq",
+          [
+            "yield",
+            [
+              [
+                "int",
+                1
+              ]
+            ]
+          ],
+          [
+            "yield",
+            [
+              [
+                "str",
+                "str"
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "s",
+        [
+          "str",
+          ""
+        ]
+      ],
+      [
+        "send",
+        null,
+        "hello",
+        [],
+        [
+          "block",
+          [
+            [
+              "preq",
+              "v"
+            ]
+          ],
+          [],
+          [],
+          [
+            "vasgn",
+            "local",
+            "s",
+            [
+              "send",
+              [
+                "var",
+                "local",
+                "s"
+              ],
+              "+",
+              [
+                [
+                  "send",
+                  [
+                    "var",
+                    "local",
+                    "v"
+                  ],
+                  "to_s",
+                  [],
+                  null
+                ]
+              ],
+              null
+            ]
+          ]
+        ]
+      ],
+      [
+        "var",
+        "local",
+        "s"
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

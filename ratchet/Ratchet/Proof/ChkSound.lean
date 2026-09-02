@@ -757,14 +757,17 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               · exact absurd h (by simp)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
-        · rename_i _ hdef
+        · rename_i _ _hdef
           split at h
-          · rename_i hbare
-            injection h with h
-            injection h with h h'; injection h' with h' h''
-            subst h; subst h'; subst h''
-            exact .bareName (bareNameError?_sound hbare) hdef hself
           · exact absurd h (by simp)
+          · rename_i hdecl
+            split at h
+            · rename_i hbare
+              injection h with h
+              injection h with h h'; injection h' with h' h''
+              subst h; subst h'; subst h''
+              exact .bareName (bareNameError?_sound hbare) hdecl hself
+            · exact absurd h (by simp)
   · -- `self'`: only where the context supplies a type.
     split at h
     · rename_i hself
@@ -889,14 +892,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           injection h with h
           injection h with h h'; injection h' with h' h''
           subst h; subst h'; subst h''
-          -- The guard is one `&&`: the name is `lambda`/`proc` *and* there are no
-          -- positional arguments. `lambdaLit`'s conclusion needs the second as `args = []`.
+          -- The guard is one `&&` chain: the name is `lambda`/`proc`, there are no positional
+          -- arguments, and (since §F2) the name is not one the program defines.
+          -- `lambdaLit`'s conclusion needs the second as `args = []`.
           have hd := hname
           simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq,
             List.isEmpty_iff] at hd
-          obtain ⟨hm, ha⟩ := hd
+          obtain ⟨⟨hm, ha⟩, hfree⟩ := hd
           subst ha
-          exact .lambdaLit hm hidx
+          exact .lambdaLit hm hidx hfree
         · exact absurd h (by simp)
       · -- anything else: the block goes to a method
         split at h

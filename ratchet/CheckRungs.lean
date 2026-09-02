@@ -1361,6 +1361,29 @@ def controls : List Control :=
       .seq [.vasgn .lvar "x" (.int 1),
             .vasgn .lvar "x" (.send none "lambda" [] (some (.block [] [] (.var .lvar "x")))),
             .send (some (.send (some (.var .lvar "x")) "call" [] none))
+              "+" [.int 1] none]⟩
+    -- (clink 49, `found-issues.md` §F3) **A method body's `def` escapes the context.**
+    -- `Ctx.afterStmt` grows `κ.defs` at the *statement* boundaries of the sequence being
+    -- typed, and every call rule concludes at the `κ` it started from — so the nested
+    -- `def bar` is recorded where it cannot help while `Heap.defineMethod` replaces the
+    -- installed one. `bar + 1` was typed off the stale table and runs to TypeError.
+    -- The fix is the `declFree` filter inside `defGet?`/`closGet?`, which makes a
+    -- declaring body **uncallable** rather than callable-and-wrong.
+  , ⟨"def bar; 1; end; def foo; def bar; \"s\"; end; 1; end; foo; bar + 1",
+      .seq [.def' "bar" [] (.int 1),
+            .def' "foo" [] (.seq [.def' "bar" [] (.str "s"), .int 1]),
+            .vcall "foo",
+            .send (some (.vcall "bar")) "+" [.int 1] none]⟩
+    -- (clink 49, `found-issues.md` §F2) **A user `def lambda` shadows `Kernel#lambda`.**
+    -- A toplevel `def` is a private method on `Object` and `Kernel` is included *in*
+    -- `Object`, so the user's method wins and `f` is `5`, not a Proc; `f.call` is a
+    -- NoMethodError. `Judge.lambdaLit` had no premise about the name being free, and the
+    -- *model* could not shadow it either (`found-issues.md` §A5, fixed in the same clink) —
+    -- so this control is also the regression for that half.
+  , ⟨"def lambda; 5; end; f = lambda { 1 }; f.call + 1",
+      .seq [.def' "lambda" [] (.int 5),
+            .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
+            .send (some (.send (some (.var .lvar "f")) "call" [] none))
               "+" [.int 1] none]⟩ ]
 
 mutual

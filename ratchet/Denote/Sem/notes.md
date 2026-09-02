@@ -335,7 +335,13 @@ bar + 1        # CRuby and the model: TypeError.  validate: true, Integer.
 ```
 
 Both executors **agree** on `TypeError`, so this is the §F1 shape exactly and it is written up
-as `../../found-issues.md` §F3. Two things worth carrying forward:
+as `../../found-issues.md` §F3 — **fixed in clink 49**, conservatively: `declFree` filters
+`defGet?`/`closGet?`, so a body that declares is *uncallable* by this checker rather than
+callable-and-wrong. That closes the wrong answer and leaves this stall point standing, because
+`Judge.defStmt`'s own obligation is the same problem one level up and needs the context
+threaded through `Judge`'s signature.
+
+Two things worth carrying forward:
 
 * The stall point is what produced it. Nothing was searched for: `Obl.Judge.vcallDef`'s
   `StateOk κ Γ I m'` conclusion asks `DefsOk` of a table the body just invalidated, and asking

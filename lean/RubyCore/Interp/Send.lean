@@ -373,9 +373,23 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
   match pblk with
   | .passExpr e => .next (withKont m (.eval e) (.blkCoerceK recv implicit mname args kw))
   | .lit ps ls body =>
-    let mkLam := implicit == .implicit && mname == "lambda"
+    -- `lambda`/`proc` are **`Kernel` methods**, so a user definition of either name
+    -- *shadows* them: a toplevel `def lambda` is a private instance method on `Object`,
+    -- and `Kernel` is included *in* `Object`, so `Object`'s own entry comes first in the
+    -- ancestor walk and `lambda { 1 }` calls the user's method with the block as an
+    -- ordinary block argument [V]. Same shape (and the same `builtin.isNone` test) as the
+    -- `X.new { … }` case below, which already had to make this distinction.
+    --
+    -- Found by `ratchet/`'s semantic ladder (`found-issues.md` §A5): the special case ran
+    -- *before any method lookup*, so the name was unshadowable here and the model returned
+    -- a Proc where CRuby raised.
+    let shadowed :=
+      match methodOn m.heap (classOf m.heap recv) mname with
+      | some (_, md) => md.builtin.isNone && !md.undefined
+      | none => false
+    let mkLam := implicit == .implicit && mname == "lambda" && !shadowed
     let (v, m) := reifyBlock m ps ls body mkLam
-    if implicit == .implicit && (mname == "lambda" || mname == "proc") then
+    if implicit == .implicit && (mname == "lambda" || mname == "proc") && !shadowed then
       .next (withCtl m (.value v))
     else if mname == "new" && (match recv with | .ref k => k == Boot.procId | _ => false) then
       .next (withCtl m (.value v))
