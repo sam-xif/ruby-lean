@@ -354,7 +354,7 @@ theorem startArgs_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv :
   frame_close K
 
 set_option maxHeartbeats 4000000 in
-theorem doYield_frame (K : List Kont) (m : Machine) (args : List Value) :
+@[simp, frameLem] theorem doYield_frame (K : List Kont) (m : Machine) (args : List Value) :
     doYield (pushK K m) args = frameR K (doYield m args) := by
   rw [doYield.eq_def, doYield.eq_def]
   frame_simp
@@ -370,7 +370,7 @@ theorem doYield_frame (K : List Kont) (m : Machine) (args : List Value) :
   frame_close K
 
 set_option maxHeartbeats 4000000 in
-theorem startYield_frame (K : List Kont) (m : Machine) (acc : List Value)
+@[simp, frameLem] theorem startYield_frame (K : List Kont) (m : Machine) (acc : List Value)
     (rest : List Expr) : startYield (pushK K m) acc rest = frameR K (startYield m acc rest) := by
   rw [startYield.eq_def, startYield.eq_def]
   frame_simp
@@ -386,7 +386,7 @@ theorem startYield_frame (K : List Kont) (m : Machine) (acc : List Value)
   frame_close K
 
 set_option maxHeartbeats 4000000 in
-theorem continueArray_frame (K : List Kont) (m : Machine) (acc : List Value)
+@[simp, frameLem] theorem continueArray_frame (K : List Kont) (m : Machine) (acc : List Value)
     (rest : List Expr) :
     continueArray (pushK K m) acc rest = frameR K (continueArray m acc rest) := by
   rw [continueArray.eq_def, continueArray.eq_def]
@@ -402,7 +402,7 @@ theorem continueArray_frame (K : List Kont) (m : Machine) (acc : List Value)
   frame_close K
 
 set_option maxHeartbeats 4000000 in
-theorem forStep_frame (K : List Kont) (m : Machine)
+@[simp, frameLem] theorem forStep_frame (K : List Kont) (m : Machine)
     (targets : List (TargetKind × String)) (body : Expr) (rest : List Value) (coll : Value) :
     forStep (pushK K m) targets body rest coll =
       frameR K (forStep m targets body rest coll) := by

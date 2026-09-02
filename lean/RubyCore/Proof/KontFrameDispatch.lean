@@ -236,6 +236,18 @@ has smeared across all nine fields, which is the shape `simp` leaves behind and 
 `pushK K ?m` lemma fails to fire. Between them they close most of what the arms of the pushing
 functions reduce to. -/
 
+/-- **The re-fold**, and the one place it is safe: a machine literal whose `kont` field is
+syntactically `k ++ K` *is* `pushK K` of the same literal with `k`. As a global `@[simp]` lemma
+this is a disaster — simp then uses structure eta to expand every machine into nine field
+projections, and a two-arm goal becomes ninety (see this file's header). Invoked by name at the
+top of a proof, once, it is exactly what turns the machine that `applyKont`'s continuation pop
+leaves behind (`⟨m.ctl, rest ++ K, …⟩`) into something the framing set can see. -/
+theorem mk_push (K : List Kont) (c : Ctl) (k : List Kont) (st : List FrameId)
+    (fr : Array Frame) (h : Heap) (g : List (String × Value)) (out : String)
+    (ce : Option Value) (pm : Bool) :
+    (⟨c, k ++ K, st, fr, h, g, out, ce, pm⟩ : Machine) =
+      pushK K ⟨c, k, st, fr, h, g, out, ce, pm⟩ := rfl
+
 /-- `withCtl` at an appended-kont literal. -/
 theorem withCtl_mk (K : List Kont) (c₀ : Ctl) (c : Ctl) (k : List Kont) (st : List FrameId)
     (fr : Array Frame) (h : Heap) (g : List (String × Value)) (out : String)

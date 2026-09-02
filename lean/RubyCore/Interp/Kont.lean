@@ -123,10 +123,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         -- A `private_constant` is invisible through `A::B` even though it is
         -- still there for lexical lookup inside the module (L104), so the miss
         -- path — `const_missing`, else NameError — is the right one.
-        let isPrivate := (ancestors m.heap o).any fun a =>
-          match m.heap.classPayload? a with
-          | some cp => cp.privateConsts.contains name
-          | none => false
+        let isPrivate := isPrivateConst m.heap o name
         match (if isPrivate then none else constLookupFrom m.heap o name) with
         | some cv => .next (withCtl m (.value cv))
         | none =>
@@ -214,9 +211,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .argsK recv implicit mname acc rest pblk =>
       startArgs m recv implicit mname (acc ++ [v]) rest pblk
     | .argsSplatK recv implicit mname acc rest pblk =>
-      match spreadA m v with
-      | .ok (vs, m) => startArgs m recv implicit mname (acc ++ vs) rest pblk
-      | .error e => .unsupported e
+      withSpread m v fun m vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
     | .blkCoerceK recv implicit mname acc kw =>
       match coerceToProc m v with
       | .ok (blkV, m) => invoke m recv implicit mname acc blkV kw
@@ -238,19 +233,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "** of a non-Hash"
     | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
     | .superSplatK acc rest blk =>
-      match spreadA m v with
-      | .ok (vs, m) => startSuperArgs m (acc ++ vs) rest blk
-      | .error e => .unsupported e
+      withSpread m v fun m vs => startSuperArgs m (acc ++ vs) rest blk
     | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
     | .yieldSplatK acc rest =>
-      match spreadA m v with
-      | .ok (vs, m) => startYield m (acc ++ vs) rest
-      | .error e => .unsupported e
+      withSpread m v fun m vs => startYield m (acc ++ vs) rest
     | .arrK acc rest => continueArray m (acc ++ [v]) rest
     | .arrSplatK acc rest =>
-      match spreadA m v with
-      | .ok (vs, m) => continueArray m (acc ++ vs) rest
-      | .error e => .unsupported e
+      withSpread m v fun m vs => continueArray m (acc ++ vs) rest
     | .hshKeyK acc vExpr rest =>
       .next (withKont m (.eval vExpr) (.hshValK acc v rest))
     | .hshValK acc key rest =>

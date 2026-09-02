@@ -360,6 +360,31 @@ def spreadA (m : Machine) (v : Value) : Except String (List Value × Machine) :=
     | _ => (spread m v).map (fun vs => (vs, m))
   | _ => (spread m v).map (fun vs => (vs, m))
 
+/-- Is `name` a `private_constant` anywhere in `o`'s ancestry? Heap-only, and named for the
+    continuation-framing proof: as the inline `let isPrivate := (ancestors …).any …` it was,
+    `simp` normalises the `List.any` into an `∃` on the *pushed* side only (that side is the
+    one the framing rewrites touch), the two `if` scrutinees stop being syntactically equal,
+    and `split` sends the two sides down different arms — one reporting an uninitialized
+    constant, the other a private one. -/
+def isPrivateConst (h : Heap) (o : ObjId) (name : String) : Bool :=
+  (ancestors h o).any fun a =>
+    match h.classPayload? a with
+    | some cp => cp.privateConsts.contains name
+    | none => false
+
+/-- Spread `v` into positional arguments and continue. The four `*splat` continuation arms all
+    have this shape, and naming it is what makes them provable: a `match` on `spreadA m v`
+    carries a machine inside the matched value, so under a pushed continuation the two sides'
+    scrutinees differ and `split` pairs an `.ok` arm of one with the `.error` arm of the other.
+    As a combinator the framing proof `generalize`s the shared call once and `cases` it, with
+    the continuation's own framing as a pointwise hypothesis — the same shape as
+    `Builtins.binArg`/`numBin` (`Proof/KontFrame.lean`). -/
+def withSpread (m : Machine) (v : Value) (k : Machine → List Value → StepResult) :
+    StepResult :=
+  match spreadA m v with
+  | .ok (vs, m) => k m vs
+  | .error e => .unsupported e
+
 /-- The method activation governing the current frame (itself if a
     method/toplevel frame; its `home` if a block frame). -/
 def methodFrameOf (m : Machine) : FrameId :=
