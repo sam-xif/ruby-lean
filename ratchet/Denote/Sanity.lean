@@ -315,6 +315,9 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       constPaths := by
         intro owner n τ k hk _ _ _
         exact absurd hk (by simp [envGet?, List.find?, Ratchet.ctx0])
+      nested := by
+        intro owner n c hc _ _ _ _
+        exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])

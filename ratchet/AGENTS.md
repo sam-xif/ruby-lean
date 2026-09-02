@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **37 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **38 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 241). This measures
@@ -532,12 +532,14 @@ Discharged so far, all axiom-clean:
   the fact that a `.splat`/`.kwargs`/`.fwd` is argument-list syntax and not an expression,
   which the *syntactic* `JudgeAll` implies structurally and the semantic one did not, and
   without which every call rule's obligation is false.
-* **`Judge.constPath`** (clink 54, `Denote/Rules/Path.lean`) — `A::B`, on the new `StateOk`
-  component **`ConstPathsOk`** (`ConstsOk` is about *lexical* resolution; this one is about the
+* **`Judge.constPath` and `Judge.constPathCls`** (clink 54, `Denote/Rules/Path.lean`) — `A::B`
+  in both its forms, on two new `StateOk` components: **`ConstPathsOk`** (`ConstsOk` is about *lexical* resolution; this one is about the
   keyed entry `constKeyIn owner n` against what the interpreter finds inside the class named
-  `owner`). Its three outcomes are the shape every dispatch-like rung will have: the hit is
-  typed, the gate is `.unsupported`, and the miss is a `raiseErr` — a jump at an empty
-  continuation, which never returns a value.
+  `owner`) and **`NestedClassesOk`** (`ClassesOk` resolves a nested class through the *toplevel*
+  lookup at its full path; this is the other direction — that looking `B` up inside `A` finds
+  it). Their three outcomes are the shape every dispatch-like rung will have: the hit is typed,
+  the gate is `.unsupported`, and the miss is a `raiseErr` — a jump at an empty continuation,
+  which never returns a value.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper

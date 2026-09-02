@@ -395,6 +395,34 @@ theorem ConstPathsOk.setLocal {κ : Ctx} {m : Machine} {x : String} {w : Value} 
   rw [setLocal_heap] at hcn hv
   exact denM_setLocal hw (hcs owner n τ hk) (h owner n τ k hk hcn v hv)
 
+/-- **A nested class is reachable through its container's constant table.**
+
+`ClassesOk` says a class in the table has a name the machine resolves — through `classNamed?`,
+i.e. the *toplevel* lookup at the full path `"A::B"`. `Judge.constPathCls` needs the other
+direction of the same fact: that looking `B` up **inside** `A` finds that same class. Nothing
+related the two, and this is the clause that does (clink 54).
+
+Stated with both lookups on the left, so it is a claim about agreement and not an existence
+claim — a machine that has neither is not being described. -/
+def NestedClassesOk (C : CTable) (m : Machine) : Prop :=
+  ∀ owner n c, clsGet? C (owner ++ "::" ++ n) = some c →
+    ∀ k v, classNamed? m.heap owner = some k → constLookupFrom m.heap k n = some v →
+      isClassRefNamed m.heap v (owner ++ "::" ++ n) = true
+
+theorem NestedClassesOk.ext {C : CTable} {m m₂ : Machine} (he : Ext m m₂)
+    (h : NestedClassesOk C m) : NestedClassesOk C m₂ := by
+  intro owner n c hc k v hcn hlk
+  rw [he.classNamed?_eq] at hcn
+  simp only [constLookupFrom, he.payload, he.ancestors] at hlk
+  rw [he.isClassRefNamed_eq]
+  exact h owner n c hc k v hcn hlk
+
+theorem NestedClassesOk.setLocal {C : CTable} {m : Machine} (x : String) (w : Value)
+    (h : NestedClassesOk C m) : NestedClassesOk C (m.setLocal x w) := by
+  intro owner n c hc k v hcn hlk
+  rw [setLocal_heap] at hcn hlk ⊢
+  exact h owner n c hc k v hcn hlk
+
 /-- `private_constant`'s hidden keys. `Judge.constPath`'s own docstring calls this *precision
 rather than soundness*: hiding a constant can only make the checker refuse a program, never
 accept a bad one. So there is nothing for a machine to conform to. -/
@@ -700,6 +728,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   selfTy : SelfTyOk κ.selfTy m
   consts : ConstsOk κ m
   constPaths : ConstPathsOk κ m
+  nested : NestedClassesOk κ.classes m
   privConsts : PrivConstsOk κ.privConsts m
   constScope : ConstScopeOk m
   exact : MethodsExact κ m
@@ -821,6 +850,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     | none => trivial
     | some σ => rw [hσ] at h2; rw [he.currentFrame_eq]; exact denM_ext he h2
   constPaths := ConstPathsOk.ext he h.constPaths
+  nested := NestedClassesOk.ext he h.nested
   consts := by
     intro n τ hn
     obtain ⟨v, hv1, hv2⟩ := h.consts n τ hn
@@ -1188,6 +1218,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
           rw [hσ] at h2
           rw [currentFrame_setLocal_self]
           exact denM_setLocal hw (by rw [hσ] at hslf; exact hslf) h2
+      nested := NestedClassesOk.setLocal x w h.nested
       constPaths := by
         -- `capStaleCtx`'s third disjunct is exactly this: no constant's recorded type may
         -- carry a capture spine keyed by the name being written

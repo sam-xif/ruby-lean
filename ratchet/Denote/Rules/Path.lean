@@ -159,6 +159,96 @@ theorem Sem.Judge.constPath : Obl.Judge.constPath := by
             rw [hpriv] at hf₂
             exact jump_empty_never_value f₃ _ v m' ⟨_, raiseErr_ctl _ _ _⟩ rfl hf₂
 
+/-- The sibling: `A::B` where `B` names a **nested class**. The same three outcomes; only the
+hit case differs, and it is `NestedClassesOk` (`../Sem/State.lean`) rather than
+`ConstPathsOk` — the clause saying that looking `B` up *inside* `A` finds the class the
+toplevel path `"A::B"` names. -/
+theorem Sem.Judge.constPathCls : Obl.Judge.constPathCls := by
+  intro κ Γ Γ₁ I I₁ base owner n c hbase hcls _hno
+  refine ⟨trivial, ?_⟩
+  intro m hm v m' hev
+  obtain ⟨fuel, hrun⟩ := hev
+  rcases fuel with _ | f
+  · rw [run_zero] at hrun; exact absurd hrun (by simp)
+  · rw [run_succ, stepFn_cpath_push] at hrun
+    dsimp only at hrun
+    obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
+      run_split _ (catchFree_cpathK n) (jumpOpaque_cpathK n) f (evalFrom m base) v m' hrun
+    obtain ⟨hstack, hdenBase, hok₁⟩ := hbase.2 m hm v₀ m₀ ⟨nb, hin⟩
+    have hcl : ∃ k, classNamed? m₀.heap owner = some k ∧ v₀ = .ref k := by
+      simp only [denM, isClassRefNamed] at hdenBase
+      cases hcn : classNamed? m₀.heap owner with
+      | none => rw [hcn] at hdenBase; exact absurd hdenBase (by cases v₀ <;> simp)
+      | some k =>
+        rw [hcn] at hdenBase
+        cases v₀ with
+        | ref o => exact ⟨k, rfl, by simp only [beq_iff_eq] at hdenBase; rw [hdenBase]⟩
+        | _ => exact absurd hdenBase (by simp)
+    obtain ⟨k, hcn, rfl⟩ := hcl
+    have hp : (m₀.heap.classPayload? k).isSome = true := by
+      simp only [classNamed?] at hcn
+      cases hcl2 : constLookup m₀.heap owner with
+      | none => rw [hcl2] at hcn; exact absurd hcn (by simp)
+      | some w =>
+        rw [hcl2] at hcn
+        cases w with
+        | ref o =>
+          simp only at hcn
+          split at hcn
+          · rename_i hpo
+            have hok : o = k := by simpa using hcn
+            rw [← hok]; exact hpo
+          · exact absurd hcn (by simp)
+        | _ => exact absurd hcn (by simp)
+    obtain ⟨f₂, hf₂⟩ := hout
+    revert hf₂
+    rcases f₂ with _ | f₃
+    · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+    · intro hf₂
+      rw [run_succ, stepFn_cpathK n hp] at hf₂
+      cases hlk : (if Interp.isPrivateConst m₀.heap k n then (none : Option Value)
+                   else constLookupFrom m₀.heap k n) with
+      | some cv =>
+        rw [hlk] at hf₂
+        dsimp only at hf₂
+        revert hf₂
+        rcases f₃ with _ | f₄
+        · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+        · intro hf₂
+          rw [run_succ, stepFn_value_nil] at hf₂
+          dsimp only at hf₂
+          cases hf₂
+          have hfound : constLookupFrom m₀.heap k n = some v := by
+            split at hlk
+            · exact absurd hlk (by simp)
+            · exact hlk
+          refine ⟨?_, ?_, ?_⟩
+          · show (reCtl m₀ (.value v) []).stack = m.stack
+            exact hstack
+          · refine denM_reCtl.mpr ?_
+            simp only [denM]
+            exact hok₁.nested owner n c hcls k v hcn hfound
+          · exact StateOk_reCtl hok₁ _ _
+      | none =>
+        rw [hlk] at hf₂
+        dsimp only at hf₂
+        exfalso
+        cases hcm : (match (m₀.heap.get k).eigen with
+                     | some e => (Interp.methodOn m₀.heap e "const_missing").isSome
+                     | none => false) with
+        | true => rw [hcm] at hf₂; exact absurd hf₂ (by simp)
+        | false =>
+          rw [hcm] at hf₂
+          cases hpriv : Interp.isPrivateConst m₀.heap k n with
+          | true =>
+            rw [hpriv] at hf₂
+            exact jump_empty_never_value f₃ _ v m' ⟨_, raiseErr_ctl _ _ _⟩ rfl hf₂
+          | false =>
+            rw [hpriv] at hf₂
+            exact jump_empty_never_value f₃ _ v m' ⟨_, raiseErr_ctl _ _ _⟩ rfl hf₂
+
+#print axioms Sem.Judge.constPath
+#print axioms Sem.Judge.constPathCls
 #print axioms jumpOpaque_cpathK
 
 end Ratchet.Denote

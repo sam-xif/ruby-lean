@@ -5477,7 +5477,7 @@ nobody has written. The seventh is resolved; the sixth's item (2) reaches only t
 statement rules. So the wall map is now: **one wall**, and it is the one whose `Builtins` half
 clink 52 proved.
 
-## Clink 54 (2026-09-02) — the fifth wall, taken, and the call family opened. **178 rungs / 241, 37 of 83 rules**
+## Clink 54 (2026-09-02) — the fifth wall, taken, and the call family opened. **178 rungs / 241, 38 of 83 rules**
 
 The continuation wall — `Denote/Sem/notes.md` §The fifth stall point, the thing that has
 gated "most compound rungs" since clink 48 and was refuted-then-repaired in clink 52 — is
@@ -5617,7 +5617,7 @@ it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in bo
 * `./scripts/run_ratchet.sh` — 178 rungs / 239, 35 `expect_validate` mismatches (unchanged),
   corpus agreement 239/239.
 * `./scripts/run_check_rungs.sh` — 177/177 rungs confirmed, 145/145 negative controls.
-* `lake exe semladder` — **37 of 83 rules**, all axiom-clean.
+* `lake exe semladder` — **38 of 83 rules**, all axiom-clean.
 * `RubyCore/Proof/` — `lake build Metatheory` is clean but for the two pre-existing
   `Static/Iter.lean` errors (verified present with `Interp/{Support,Dispatch}.lean` reverted to
   before this clink's changes), and `T5.dispatch_progress` needed a heartbeat raise because
@@ -5696,10 +5696,11 @@ miss-or-private path is a `raiseErr` — a jump at an empty continuation, which
 `jump_empty_never_value` handles. The private case needs no machine-side conformance at all:
 `PrivConstsOk` claims nothing, and a machine that hides the constant *raises*.
 
-Its sibling **`constPathCls`** (the nested-class form) is one bridge short: `ClassesOk` gives
-`classNamed? m.heap (owner ++ "::" ++ n)`, and what is missing is that the *container's*
-constant `n` is that same class — a conformance clause relating `constLookupFrom` inside a
-class to the toplevel path name.
+Its sibling **`constPathCls`** (the nested-class form) is the same three outcomes with one more
+component: **`NestedClassesOk`**. `ClassesOk` says a class in the table has a name the machine
+resolves *through the toplevel lookup at the full path* `"A::B"`; the rung needs the other
+direction of the same fact — that looking `B` up **inside** `A` finds that class. Stated with
+both lookups on the left, so it is a claim about agreement rather than an existence claim.
 
 ### What is next, and what it costs
 
