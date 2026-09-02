@@ -5416,11 +5416,18 @@ Two things worth recording about doing it:
   `def g((a, (b, c)), *rest)`, plus the corpus agreement at 239/239 and `checkrungs` at
   177/177.
 
-Its framing lemma is not written yet, and the honest status is that it is now *ordinary work*:
-`KontFrame.lean` records exactly what it needs (zeta-only reduction, then the conditional
-`rw [foldPair_frame K (hf := …)]` at each of its three folds, with the `.destr` arm discharged
-by the fuel induction hypothesis; the first fold goes through, three arms of the outer match
-remain).
+Its framing lemma is not written yet, and the honest status is that it is now *ordinary work*
+— `KontFrame.lean` records the recipe that gets it to **three remaining goals**: zeta-only
+reduction, the conditional `rw [foldPair_frame K]` at each of its three folds with the `.destr`
+arm discharged by the fuel induction hypothesis, `Prod.ext` for the pair-valued arms, and
+`congrArg Prod.fst/snd` where the pair has already been split. What is left is one fold whose
+initial machine is a compound term and two `False` goals `simp_all` produces from arms it
+over-reduces — the "`simp_all` must be a last resort" lesson again, one level in.
+
+**And the model change is verified against the project's main gate**: the difftest suite at
+tier 0 ran all **1304 bootstraptest cases with 0 disagreements** (992 agree, 306
+`sut_unsupported`, 5 `control_invalid`, 1 harness error — the same shape as before the change),
+on top of the corpus agreement at 239/239 and the two hand-checked destructuring programs.
 
 ### What is left, corrected again
 

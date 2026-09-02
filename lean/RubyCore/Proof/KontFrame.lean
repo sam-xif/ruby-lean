@@ -1166,6 +1166,36 @@ folds, with the `.destr` arm of each step discharged by the fuel induction hypot
 first fold goes through; three arms of the outer `vals` match remain.
 -/
 
+/-! ## `destructureBind`: no longer *impossible*, and three goals from done
+
+It was a **`partial def`** until clink 53 — an opaque constant with no equation lemmas, so
+nothing about it was provable and this metatheorem was blocked *in principle*
+(`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3). It now has a fuel-bounded
+recursion (`destrDepth`, the nesting depth of `.destr` sub-params, passed by both call sites),
+which is the fix `ancestors` already took, and the model's behaviour is unchanged — verified by
+hand against CRuby and by the difftest suite at **1304 tier-0 cases, 0 disagreements**.
+
+Its framing lemma is *not* here, and the honest status is that it is ordinary work now. The
+recipe that gets it to three remaining goals, recorded so the next attempt starts there:
+
+```
+rw [destructureBind, destructureBind]
+simp only []                       -- zeta ONLY: the body is a chain of `let`s, `rw` cannot
+                                   -- reach under a binder, and the framing set goes too far
+                                   -- (it turns `pushK K m` into a record literal, after which
+                                   -- `foldPair_frame`'s `(acc, pushK ?m)` no longer unifies)
+repeat' first | rfl | (simp only [frameLem]; done) | rw [foldPair_frame K]
+             | rw [destructureBind_frame K fuel] | (simp [frameLem]; done) | intro _ | split
+all_goals (try (refine Prod.ext ?_ ?_))          -- the pair-valued arms
+all_goals (try simp_all)
+all_goals (try (refine congrArg Prod.fst (foldPair_frame K _ ?_ _ _ _); …))
+```
+
+What is left is one fold whose initial machine is a compound term and two `False` goals that
+`simp_all` produces from arms it over-reduces — the same "`simp_all` must be a last resort"
+lesson as `frame_arms`, one level in.
+-/
+
 /-! ## What is proved, what is left, and the cost measured
 
 The ratchet's fifth stall point named this layer as the part nobody could size — *"whether
