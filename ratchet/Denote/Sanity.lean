@@ -419,6 +419,8 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
       query := queryOkB_sound hq Ratchet.ctx0
       clsQuery := clsQueryOkB_sound hcq Ratchet.ctx0
+      -- vacuous at `ctx0`: the class table is empty, exactly as for `ClassesOk`/`DefsOk`
+      declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])

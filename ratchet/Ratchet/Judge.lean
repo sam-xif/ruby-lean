@@ -3169,12 +3169,21 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       A separate rule rather than a defaulting clause inside `newInst`, because the arity
       condition is different and it matters: `Object#new` inherited unchanged takes **zero**
       arguments, and passing any raises `ArgumentError` — inside the family. Hence
-      `argTys = []` as a premise (rungs `class-no-initialize`, `class-ivar-lazy-nil`). -/
+      `argTys = []` as a premise (rungs `class-no-initialize`, `class-ivar-lazy-nil`).
+
+      **The fifth premise is the allocator's, and it was missing.** A declared `def self.new`
+      **wins** over `Class#new` — CRuby dispatches to the singleton method, and `invoke`'s
+      `userNew` check honours that — so without `smroGet? … "new" = none` the rule claims an
+      instance for a call that runs the program's own code. `validate` never built such a
+      derivation (it consults `smroGet?` *before* the allocator, so the ordering enforced what
+      the rule did not say), which is the same shape as §F6/§F7: a premise the checker supplies
+      by accident of control flow and the judgment has to state. It discharges by `rfl`. -/
   | newInstNoInit {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {n : String} {args : List Expr} {c : Cls} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       instClsGet? κ.classes n = some c → ctorGet? κ.classes n = none →
+      (hnew : smroGet? κ.classes n "new" = none := by rfl) →
       Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) Γ₂ I₂
   /-- **An instance method call.** The receiver's type carries both halves of what dispatch
       needs: `.inst n Iself` says which class to look the method up in *and* what the

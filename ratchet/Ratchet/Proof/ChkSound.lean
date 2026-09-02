@@ -1357,8 +1357,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                               injection h with h
                               injection h with h h'; injection h' with h' h''
                               subst h; subst h'; subst h''
+                              -- the allocator premise is the `smroGet?` miss this arm is
+                              -- already inside
                               exact hnew ▸ .newInstNoInit (chk_sound hrecv)
-                                (hzero ▸ chkAll_sound hargs) hcls hinit
+                                (hzero ▸ chkAll_sound hargs) hcls hinit (hnew ▸ hsmnone)
                             · exact absurd h (by simp)
                           · exact absurd h (by simp)
                       · exact absurd h (by simp)

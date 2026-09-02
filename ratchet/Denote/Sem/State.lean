@@ -831,6 +831,90 @@ theorem ClsQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap] at hp ⊢
   exact h mname bid hmem hfree o hp
 
+/-- **What the machine's class object owes a class the context declares** — the component
+`Judge.newInstNoInit` spends, and the reason it is separate from `ClassesOk` is that `ClassesOk`
+is about the class's *methods* while every clause here is about **allocating** through it.
+
+Quantified over `κ.classes`, so it is vacuous at `ctx0` exactly as `ClassesOk`/`DefsOk` are:
+the content is discharged by the declaration rules, which is where a class enters the table.
+Five clauses, one per thing `Class#new` reads on the way to an object:
+
+* **`rooted`** — the chain reaches `BasicObject`. `ext_push` asks for it (an allocation is an
+  `Ext` only if the fresh object's class is a real class), and nothing else says it.
+* **`newIsBuiltin`** — `new` at the class object resolves to `Class#new`, public and
+  unshadowed. Guarded by `smroGet? … "new" = none`, which is the rule's own premise: a declared
+  `def self.new` **wins** over the allocator in CRuby and `invoke`'s `userNew` check honours
+  that, so the guard is not a convenience. Measured at the booted machine for the *boot*
+  classes: 16 of 87 class objects do **not** resolve `new` to `Class#new` (14 modules, plus
+  `Range` and `Struct`, whose `new` is prelude Ruby) — which is why this cannot be a
+  `ClsQueryOk` row and has to be keyed on the context's own table.
+* **`noUserInit`** — if the context records no `initialize` for the class, the machine's class
+  object has none either. `invoke` intercepts `new` on a class with a user `initialize` and
+  pushes a frame; without this clause the run goes somewhere this rung cannot follow.
+* **`notMeta`/`notModule`** — the class object is not `Class`, not `Module`, and not a module.
+  Those three are the `newImpl` arms that answer with a **class**, and an allocation that adds
+  a class is not an `Ext`. A program *can* write `class Class; end`, and then this clause is
+  false and the class simply never enters the table with it — conservative, and recorded. -/
+def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ c ∈ κ.classes, ∀ k, classNamed? m.heap c.name = some k →
+    (ancestors m.heap k).contains Boot.basicObjectId = true ∧
+    k ≠ Boot.classId ∧ k ≠ Boot.moduleId ∧
+    (m.heap.classPayload? k).map (·.isModule) = some false ∧
+    (Ratchet.smroGet? κ.classes c.name "new" = none →
+      (∀ owner md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md) →
+          md.builtin = some "Class#new" ∧ md.undefined = false ∧ md.visibility = .pub ∧
+          md.fromPrelude = false ∧
+          Interp.crubyShadow m.heap
+            ((ancestors m.heap (classOf m.heap (.ref k))).takeWhile (fun x => x != owner))
+            "new" = none) ∧
+      (Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = none →
+        ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_missing"
+          = some (o₂, md) → md.builtin.isSome = true)) ∧
+    (Ratchet.ctorGet? κ.classes c.name = none → Interp.userInit? m.heap k = none)
+
+theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m) :
+    DeclClassOk κ m₂ := by
+  intro c hc k hcn
+  rw [he.classNamed?_eq] at hcn
+  obtain ⟨hroot, hcls, hmod, hism, hnew, hinit⟩ := h c hc k hcn
+  -- every clause reads only the class table and the ancestor walk, both pinned by `Ext`
+  have hco : classOf m₂.heap (.ref k) = classOf m.heap (.ref k) := by
+    by_cases hk : k < m.heap.objs.size
+    · simp only [classOf, he.get k hk]
+    · exfalso
+      have hsome : (m.heap.classPayload? k).isSome = true := by
+        cases hp : m.heap.classPayload? k with
+        | none => rw [hp] at hism; exact absurd hism (by simp)
+        | some c => rfl
+      exact absurd (lt_size_of_classPayload hsome) hk
+  have hm : ∀ n, Interp.methodOn m₂.heap (classOf m₂.heap (.ref k)) n
+      = Interp.methodOn m.heap (classOf m.heap (.ref k)) n := by
+    intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
+  refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
+    ?_, ?_⟩
+  · intro hsm
+    obtain ⟨h1, h2⟩ := hnew hsm
+    refine ⟨?_, ?_⟩
+    · intro owner md hfound
+      rw [hm] at hfound
+      obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
+      refine ⟨hb, hu, hv, hp, ?_⟩
+      simp only [hco, Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+      exact hsh
+    · intro hnone o₂ md hfound
+      rw [hm] at hnone hfound
+      exact h2 hnone o₂ md hfound
+  · intro hct
+    have := hinit hct
+    simp only [Interp.userInit?, Interp.methodOn, he.payload, he.ancestors] at this ⊢
+    exact this
+
+theorem DeclClassOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
+    (h : DeclClassOk κ m) : DeclClassOk κ (m.setLocal x w) := by
+  intro c hc k hcn
+  simp only [setLocal_heap] at hcn ⊢
+  exact h c hc k hcn
+
 theorem QueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value) (h : QueryOk κ m) :
     QueryOk κ (m.setLocal x w) := by
   intro mname bid hmem hfree k
@@ -867,6 +951,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   missFree : MissFree κ m
   query : QueryOk κ m
   clsQuery : ClsQueryOk κ m
+  declCls : DeclClassOk κ m
   selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
@@ -1010,6 +1095,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     exact h.bareFree n hn hdef hself
   query := QueryOk.ext he h.query
   clsQuery := ClsQueryOk.ext he h.clsQuery
+  declCls := DeclClassOk.ext he h.declCls
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
@@ -1389,6 +1475,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         exact h.bareFree n hn hdef hself
       query := QueryOk.setLocal x w h.query
       clsQuery := ClsQueryOk.setLocal x w h.clsQuery
+      declCls := DeclClassOk.setLocal x w h.declCls
       missFree := by
         intro hfree hself o md hm
         refine h.missFree hfree hself o md ?_

@@ -20,6 +20,7 @@ import Denote.Rules.Query
 import Denote.Rules.CaseEq
 import Denote.Rules.ClsToS
 import Denote.Rules.ClassOf
+import Denote.Rules.NewInst
 import Denote.Sem.Frame
 
 /-!
