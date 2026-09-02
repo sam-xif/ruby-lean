@@ -422,7 +422,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **10 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **16 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 232). This measures
@@ -434,8 +434,11 @@ written to describe, and this is the answer to it.
 Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number).
 Discharged so far, all axiom-clean: the **seven literals** (`intLit`, `fltLit`, `strLit`,
 `symLit`, `truLit`, `flsLit`, `nilLit`), both **local reads** (`var`, `varAlias` — the first
-rungs that consume a `StateOk` component rather than only re-establishing one), and `seq` (a
-delegation that is definitional: `SemJudgeSeq` *is* `SemJudge` at a `.seq`). They rest on two
+rungs that consume a `StateOk` component rather than only re-establishing one), `seq` (a
+delegation that is definitional: `SemJudgeSeq` *is* `SemJudge` at a `.seq`), and the **six
+companion base cases** — `JudgeAll`/`JudgeKw`/`JudgePairs`/`JudgeRescues`/`JudgeConsts`/
+`JudgeNested` at the empty list (`Denote/Rules/Nil.lean`; each is first in its *own* family's
+constructor order, four of the six are vacuous, and the file says so). They rest on two
 lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance and the
 denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
@@ -462,7 +465,28 @@ here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **t
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
 
-**`vasgn` is the next stall, and it is a wall rather than a step** — `Denote/Sem/notes.md`
+**`vasgn` is not merely stalled — it is UNSOUND**, and the semantic ladder is what found it
+(`found-issues.md` §F1, the first entry in that file about the checker rather than about the
+model). `Judge.lambdaLit` records the creation-site environment into the type
+(`.clos idx (envToSpine Γ) …`); a Ruby block captures **by reference**, so that spine is a
+claim about a *binding*, exactly like `Ty.sameAs` — and `Judge.vasgn`, which already kills
+aliases to the assigned name (`killAliasesTo`), kills no `Ty.clos`. So:
+
+```ruby
+x = 1
+f = lambda { x }
+x = "a"
+f.call + 1          # CRuby: TypeError.  validate: true, type Integer.
+```
+
+`validate` returns **`true` on a type-stuck program** — the one thing the 19 negative
+controls exist to make impossible, and no corpus rung writes the shape. The obligation names
+the rule without needing a witness: `Obl.Judge.vasgn`'s conclusion asks for `EnvOk` at the
+post-machine, whose `clos` arm reads `closLocal m' cl` — the captured *frame*, which
+`setLocal` wrote through. Not fixed here (`Ratchet/` is untouched by clink 45); the shape of
+the fix and the negative control it needs are in `found-issues.md` §F1.
+
+**The wall behind it, for `vasgn` and every other compound rule** — `Denote/Sem/notes.md`
 §The fifth stall point. `Evals` runs an expression under `kont := []`; a `.vasgn` runs its
 right-hand side under `[.asgnK …]`, so the premise is about a different run and consuming it
 needs a **continuation-decomposition lemma**. The lemma is true (`stepFn` is head-local in

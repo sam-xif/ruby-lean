@@ -3,8 +3,13 @@
 **Written 2026-09-01**, from the pass described in [`AGENTS.md`](AGENTS.md) §2026-09-01.
 A tracking list, not a work plan: each entry is something that is *wrong or missing
 outside this package* — in the Lean model, in the difftest harness, or in the shared boot
-stubs — that a ratchet rung ran into. Checker-side gaps are not here; they are the ladder
+stubs — that a ratchet rung ran into. Checker-side *gaps* are not here; they are the ladder
 (§The ladder) and the `Ty` grammar gaps (§Ty language gaps).
+
+**§F is the exception, added 2026-09-01 by the semantic ratchet** (clink 45): a checker
+**soundness bug** — `validate` returning `true` on a program the semantics takes to a
+`TypeError` — is a wrong answer rather than a gap, and belongs with the other wrong answers
+rather than in a ladder that reads "not yet climbed".
 
 Every entry has a **minimal reproducer** that was actually run, and states which side is
 wrong. Where a fix was already applied, the entry says so and stays, because the fix is
@@ -259,3 +264,67 @@ the same verdict**, which will mislead someone the first time a slice-sized rung
   `:fixed` tiebreak, i.e. it depends on Homebrew's boot path rather than on its own require
   closure — the "undefined constants" coupling `homebrew/closure.py` measures. Without it,
   half the file's branches die on a `NameError`.
+
+---
+
+## F. Checker soundness — `validate` accepts a type-stuck program
+
+**Out of this file's stated scope, on purpose.** The header says checker-side gaps belong to
+the ladder rather than here. A *gap* does; this is not a gap, it is a **wrong answer**: a
+program `validate` certifies and the real semantics takes to a `TypeError`. There is nowhere
+else for that to live, and it should not live in a ladder that reads "not yet climbed".
+
+### F1. Assigning to a captured local does not invalidate the `Ty.clos` that captured it
+
+**Status:** open, not fixed here. **Severity:** high — `validate` returns `true` on a program
+whose real outcome is **type-stuck**, which is the one thing the ladder's 19 negative controls
+exist to make impossible. **Found by:** attempting `Judge.vasgn`'s semantic obligation
+(`Denote/Sem/`, clink 45); see below for why that pins the rule exactly.
+
+```ruby
+x = 1
+f = lambda { x }
+x = "a"
+f.call + 1
+```
+
+| | |
+|---|---|
+| CRuby | `TypeError: no implicit conversion of Integer into String` |
+| the Lean model | `uncaught`, and `Semantics.typeStuck = true` |
+| `lake exe ratchet --stdin` | `{"type":"Integer","validate":true}`, with `f : <closure#0>{x: Integer}` |
+
+Also reproduces with `proc` for `lambda`, and inside a method body. It does **not** reproduce
+when the reassignment keeps the type (`x = 2` — sound, and correctly accepted), nor through an
+instance variable (`@f = lambda { x }` is rejected for an unrelated reason).
+
+**What is wrong.** `Judge.lambdaLit` records the creation-site environment into the type:
+`.clos idx (envToSpine Γ) …`. A Ruby block captures **by reference**, so that spine is a claim
+about a *binding*, not about a value — exactly like `Ty.sameAs`. `Judge.vasgn` already knows
+this about `sameAs`: it applies `killAliasesTo Γ' x`, and its docstring enumerates the three
+ways an alias can go stale. It does the same job for **no** `Ty.clos`. So after `x = "a"` the
+environment holds `f : clos idx {x: Integer}` while `x` holds a `String`, and
+`Judge.closCall` — which judges the body in `spineToEnv cap` — types `f.call` as `Integer`.
+
+`capIntact` is not this. It stops a *block body* from retyping a captured local
+(`Ratchet/Judge.lean` L2067 and its docstring); nothing stops ordinary code **after the
+literal** from doing it, and that is the case here.
+
+**Why the semantic ladder names the rule and the corpus did not.** 232 corpus programs agree
+and 140 negative controls are rejected, because no rung writes this shape. The obligation
+does not need a witness: `Obl.Judge.vasgn` concludes `StateOk κ (envSet (killAliasesTo Γ' x) x τ) I' m'`,
+whose `EnvOk` component asks for `denM (clos idx cap σ) m' f` — i.e.
+`denSpine cap m' (closLocal m' cl)`, the captured *frame's* locals read at the post-machine.
+`m.setLocal x` writes through the captured chain, so `closLocal m' cl` answers the new value
+and the spine no longer denotes. **`Judge.vasgn`'s obligation is false as written**, and that
+is the whole content of this entry: the rung did not fail to close for want of a lemma, it
+failed because the rule is not true of `stepFn`.
+
+**The shape of a fix** (not applied — `Ratchet/` is not modified by the clink that found this).
+`vasgn` needs a `killClosuresOver x` beside its `killAliasesTo x`: any binding whose type
+contains a `.clos` whose captured spine mentions `x` must be dropped or widened. `vasgnAlias`
+has the identical hole. The conservative version is cheap (a syntactic walk over `Ty`), and
+`corpus/` should gain the program above as a **negative control**, where a `true` is a bug.
+Whether the ivar spine `I` needs the same treatment is open: the `@f` variant above is rejected
+today, but for a reason unrelated to this.
+

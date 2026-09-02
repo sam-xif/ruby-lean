@@ -160,6 +160,30 @@ three-line corollary of `StateOk_ext` rather than a second component-by-componen
 `Examples.lean` guards are green, because they check `arrowCheck`, a `Bool`, and `ArrowFlat`
 is what that is stated over.
 
+## `Judge.vasgn` is unsound, and the obligation is what says so
+
+Before the wall below, the finding that came *out* of attempting `Judge.vasgn`: the rule is
+**not true of `stepFn`**, and its obligation is false as written. Written up with the
+reproducer in [`../../found-issues.md`](../../found-issues.md) §F1; the short form is that
+`Judge.lambdaLit` records the creation-site environment into `Ty.clos`'s captured spine, a
+Ruby block captures **by reference**, and `Judge.vasgn` invalidates `Ty.sameAs` aliases to the
+assigned name but nothing about a `Ty.clos` over it. `x = 1; f = lambda { x }; x = "a";
+f.call + 1` is certified `Integer` and raises `TypeError`.
+
+Two things about *how* it was found are the point of this ladder existing:
+
+* **No witness search was involved.** The obligation's conclusion asks for `StateOk` at the
+  post-machine, whose `EnvOk` component asks for `denM (clos idx cap σ) m' f` — that is
+  `denSpine cap m' (closLocal m' cl)`, the captured *frame's* locals read after the
+  assignment. `Machine.setLocal` writes through the captured chain, so the spine no longer
+  denotes. The definition of the obligation is the counterexample generator.
+* **It names one rule.** `lambdaLit`'s obligation is fine (the spine does match `Γ` at the
+  moment of creation); `closCall`'s is fine given a spine that denotes. It is `vasgn` that
+  claims to leave the rest of `Γ` alone and does not.
+
+Per the working procedure above, the rule was **not worked around**: `Ratchet/` is unmodified
+and the rung stays undischarged.
+
 ## The fifth stall point — **the continuation frame**, and it is a wall rather than a step
 
 `Judge.vasgn` is the first *compound* rule on the ladder, and it does not close for a reason

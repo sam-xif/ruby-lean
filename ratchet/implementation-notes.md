@@ -3964,9 +3964,11 @@ file ends in its own `#print axioms`, and each reports only `propext`/`Classical
 
 ---
 
-## Clink 45 (2026-09-01) — the allocation stall broken, and the wall behind it. **177 rungs / 10 of 83 rules**
+## Clink 45 (2026-09-01) — the allocation stall broken, and a soundness bug in `Judge.vasgn`. **177 rungs / 16 of 83 rules**
 
-One rung — `Judge.strLit` — and the whole clink is what it cost. The ladder reads **10 of 83**.
+Seven rungs — `Judge.strLit` and the six companion base cases — and one **soundness bug in
+the checker**, found by reading an obligation rather than by searching for a witness. The
+ladder reads **16 of 83**.
 `Ratchet/` untouched (177/232, 177/177 + 140/140); `Denote/Examples.lean`'s 31 `#guard`s green;
 axiom-clean, no `sorry`.
 
@@ -4103,11 +4105,65 @@ The witness is the *empty* context, and that is the honest claim: it does not ex
 of a non-empty `Γ`, `κ.classes` or `κ.asms`. It is nevertheless the interesting instance, being
 exactly the state a whole-program judgment starts in.
 
+**Decision 4: the six companion base cases, and saying out loud that they are cheap.**
+`Judge` is one of eight mutual inductives, and six of the other seven start at a base case —
+the empty argument, keyword, pair, rescue, constant and nesting lists. All six are discharged
+(`Denote/Rules/Nil.lean`), four of them vacuously. They are climbed *in their own families'
+constructor order*, which is the discipline as written; they are not padding (a `SemJudgeAll`
+whose base case did not force `vs = []` and `m' = m` would be the wrong definition) and they
+are not work (the ladder's own report already says "a rung is one rule, not one unit of
+work"). `JudgeSeq` is the one family whose first constructor is absent, for the same reason
+`Judge.vasgn` is: `JudgeSeq.last` runs its statement under a pushed `.seqK`.
+
+**And then the finding the whole apparatus exists for: `Judge.vasgn` is UNSOUND.** Written up
+with its reproducer in `found-issues.md` §F1 — the first entry in that file about the checker
+rather than about the model, and the header now says why it is there.
+
+```ruby
+x = 1
+f = lambda { x }
+x = "a"
+f.call + 1        # CRuby: TypeError.  validate: true, type Integer.
+```
+
+`Judge.lambdaLit` records the creation-site environment into the type
+(`.clos idx (envToSpine Γ) …`). A Ruby block captures **by reference**, so that spine is a
+claim about a *binding*, not about a value — which is exactly what `Ty.sameAs` is, and
+`Judge.vasgn` already knows it about `sameAs`: it applies `killAliasesTo Γ' x` and its
+docstring enumerates the three ways an alias goes stale. It does the same job for no
+`Ty.clos`. `capIntact` is a different guard (it stops a block *body* from retyping a captured
+local); nothing stops ordinary code after the literal.
+
+Three things about this are worth more than the bug.
+
+1. **No search was involved.** This is not a witness found by `Plausible` or by the concolic
+   engine. The obligation's conclusion asks for `StateOk` at the post-machine, whose `EnvOk`
+   component asks for `denM (clos idx cap σ) m' f`, which is
+   `denSpine cap m' (closLocal m' cl)` — the captured *frame's* locals, read after the
+   assignment, and `Machine.setLocal` writes through the captured chain. Reading the
+   obligation is what produced the program; the program was then run to confirm it (CRuby:
+   `TypeError`; the model: `uncaught` with `Semantics.typeStuck = true`).
+2. **It names one rule.** `lambdaLit`'s obligation is true (the spine does match `Γ` at the
+   moment of creation) and `closCall`'s is true given a spine that denotes. `vasgn` is the
+   rule that claims to leave the rest of `Γ` alone and does not. That precision is the
+   difference between this ladder and the corpus ladder, where a whole-program `false` says
+   only that *something* is out of the fragment.
+3. **The corpus could not have found it**, and did not: 232 agree, 140 negative controls
+   reject, and no rung writes the shape. §Architecture's "a ratchet whose number depends on a
+   live sample is not a ratchet" has a dual, which this is: a ratchet whose *soundness
+   evidence* depends on a live sample is not soundness evidence.
+
+Not fixed, per the working procedure — `Ratchet/` is untouched by this clink and the rung
+stays undischarged. `found-issues.md` §F1 carries the shape of the fix (a `killClosuresOver x`
+beside `killAliasesTo x`; `vasgnAlias` has the identical hole) and the negative control the
+corpus should gain.
+
 ### State
 
 **177 rungs of 232**, unchanged (`Ratchet/` untouched; `run_ratchet.sh` and
-`run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **10 of 83 `Judge` rules
-discharged**. New: `Denote/Ext.lean`, `Denote/Grow.lean`, `Denote/Rules/Alloc.lean`,
+`run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **16 of 83 `Judge` rules
+discharged** — the ten above plus the six companion base cases. New: `Denote/Ext.lean`,
+`Denote/Grow.lean`, `Denote/Rules/Alloc.lean`, `Denote/Rules/Nil.lean`,
 `Denote/Sanity.lean`. Modified:
 `Denote/Den.lean`, `Denote/Arrow.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
 `Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Examples.lean`'s 31 `#guard`s green.
