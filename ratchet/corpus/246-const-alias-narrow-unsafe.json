@@ -1,0 +1,69 @@
+{
+  "id": "const-alias-narrow-unsafe",
+  "tier": 12,
+  "description": "**A candidate UNSAFE program, and \u00a7F10\u2019s counterexample.** `narrowCond?` reads the tested class out of the condition\u2019s *syntax*, so `x.is_a?(Foo)` narrows by the **name** `Foo` and `isAAnswer` answers off that name\u2019s static chain. A constant is not its name: `Foo = Integer` makes `5.is_a?(Foo)` true while `\"Foo\"` is in no chain, the then-branch is typed `x : never`, and everything in it is certified. `x + \"s\"` raises TypeError. The guard is `constGet? \u03ba cn = none` \u2014 the same condition `Judge.constCls` carries for *reads* of a constant.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "casgn",
+        "Foo",
+        [
+          "const",
+          "Integer"
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          5
+        ]
+      ],
+      [
+        "if",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "is_a?",
+          [
+            [
+              "const",
+              "Foo"
+            ]
+          ],
+          null
+        ],
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "+",
+          [
+            [
+              "str",
+              "s"
+            ]
+          ],
+          null
+        ],
+        [
+          "int",
+          1
+        ]
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

@@ -2516,6 +2516,29 @@ def desugarTemps : List String :=
   ["__dt_t1", "__dt_t2", "__dt_t3", "__dt_t4", "__dt_t5",
    "__dt_t6", "__dt_t7", "__dt_t8", "__dt_t9"]
 
+/-- **`found-issues.md` §F10's guard: the name has to mean the class it names.**
+
+`narrowCond?` reads the tested class out of the condition's **syntax** — `x.is_a?(Foo)` gives
+`.isA "Foo"` — and `isAAnswer` then answers off `Foo`'s *name*. A constant is not its name:
+
+```ruby
+Foo = Integer
+x = 5
+if x.is_a?(Foo) then x + "s" end   # certified: "Foo" is not in Integer's static chain
+```
+
+so a `casgn` that aliases a class defeats every static answer about the aliased name, in the
+`.never` direction that certifies anything. One condition covers it, and it is the one
+`Judge.constCls`/`constBuiltin` already carry for reads: **the context binds no constant of
+that name**. A name the context does not bind either resolves to the boot class of the same
+name (which is what the static tables describe) or does not resolve at all — and then the
+condition itself raises `NameError` and the branch never runs.
+
+`.truthy`/`.isNil` need no guard: neither mentions a class. -/
+def narrowNameOk (κ : Ctx) : NarrowKind → Bool
+  | .isA cn => (constGet? κ cn).isNone
+  | _ => true
+
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**
 
 Total by construction, and the identity in three separate circumstances, each for its own
@@ -2528,13 +2551,15 @@ or, implicitly, the refinement happens to be the type it already had.
 Being total is what lets `Judge.if'` carry narrowing in its *own* premises rather than in
 a second, parallel `ifNarrow` rule — and that in turn is what keeps there from being two
 rules for one syntactic form, only one of which anybody reads. -/
-def narrowEnvs (C : CTable) (c : Expr) (Γ : Env) : Env × Env :=
+def narrowEnvs (κ : Ctx) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
   | some (.lvar, x, k, sides) =>
-    (refineOne C k true Γ x,
-     match sides with
-     | .both => refineOne C k false Γ x
-     | .thenOnly => Γ)
+    if narrowNameOk κ k then
+      (refineOne κ.classes k true Γ x,
+       match sides with
+       | .both => refineOne κ.classes k false Γ x
+       | .thenOnly => Γ)
+    else (Γ, Γ)
   | _ => (Γ, Γ)
 
 /-- **The two branch ivar spines**, the same construction one piece of state over
@@ -2550,14 +2575,16 @@ Two differences from `narrowEnvs`, both consequences of what a spine is:
 - **`ivarSet` appends**, so refining a name the spine does not carry lengthens it. Harmless:
   the added binding is what `ivarRead` would have defaulted to anyway, and `Judge.if'`'s
   outgoing spine is `joinSpine I₁ I₂`, which puts it back. -/
-def narrowSpine (C : CTable) (c : Expr) (I : Ty) : Ty × Ty :=
+def narrowSpine (κ : Ctx) (c : Expr) (I : Ty) : Ty × Ty :=
   match narrowCond? c with
   | some (.ivar, x, k, sides) =>
-    let τ := (ivarGet? I x).getD .nilT
-    (ivarSet I x (refineThen C k τ),
-     match sides with
-     | .both => ivarSet I x (refineElse C k τ)
-     | .thenOnly => I)
+    if narrowNameOk κ k then
+      let τ := (ivarGet? I x).getD .nilT
+      (ivarSet I x (refineThen κ.classes k τ),
+       match sides with
+       | .both => ivarSet I x (refineElse κ.classes k τ)
+       | .thenOnly => I)
+    else (I, I)
   | _ => (I, I)
 
 mutual
@@ -2782,8 +2809,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ I₃ : Ty} {c t e : Expr}
       {σ τ₁ τ₂ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t τ₁ Γ₁ I₁ →
-      Judge κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 e τ₂ Γ₂ I₂ →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ₁ Γ₁ I₁ →
+      Judge κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 e τ₂ Γ₂ I₂ →
       joinSpine I₁ I₂ = I₃ →
       Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) I₃
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
@@ -2795,16 +2822,16 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Tier 12's narrowing applies to both halves for the same reasons as in `if'`, and the
       *else* half is worth a second look: the missing branch still **runs**, in the sense
       that control flows past the `if` having taken it, so what the code after the `if`
-      sees on that path is `(narrowEnvs κ.classes c Γc).2`, not `Γc`. Using `Γc` would be sound
+      sees on that path is `(narrowEnvs κ c Γc).2`, not `Γc`. Using `Γc` would be sound
       but strictly less precise; using `.1` would be a bug. The spine is treated the same way,
       and its premise is the `joinSpine` of `if'`, with the absent branch's refined spine in
       place of a second branch's. -/
   | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ I₂ : Ty} {c t : Expr} {σ τ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t τ Γ₁ I₁ →
-      joinSpine I₁ (narrowSpine κ.classes c Ic).2 = I₂ →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ Γ₁ I₁ →
+      joinSpine I₁ (narrowSpine κ c Ic).2 = I₂ →
       Judge κ Γ I (.if' c t none) (joinT τ .nilT)
-        (joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2) I₂
+        (joinEnv Γ₁ (narrowEnvs κ c Γc).2) I₂
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
       threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
@@ -4145,9 +4172,9 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
   | guard {κ : Ctx} {Γ Γc Γr Γ' : Env} {I Ic Ir I' : Ty} {c e : Expr}
       {rest : List Expr} {σ ρ τ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      Judge κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 e ρ Γr Ir →
-      Ir = (narrowSpine κ.classes c Ic).1 →
-      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 e ρ Γr Ir →
+      Ir = (narrowSpine κ c Ic).1 →
+      JudgeSeq κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 rest τ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) Γ' I'
   /-- **`next if c`, followed by more statements** (tier 16) — `guard`'s twin, one statement
       kind over.
@@ -4171,7 +4198,7 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Env → Ty → 
   | nextGuard {κ : Ctx} {Γ Γc Γ' : Env} {I Ic I' : Ty} {c : Expr}
       {rest : List Expr} {σ τ : Ty} :
       Judge κ Γ I c σ Γc Ic →
-      JudgeSeq κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 rest τ Γ' I' →
+      JudgeSeq κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 rest τ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.nxt none) none :: rest) (joinT .nilT τ) Γ' I'
 
 /-- **A class body's constants type, at the types `constLitTy?` reads off their syntax**

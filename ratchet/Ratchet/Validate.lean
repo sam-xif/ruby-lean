@@ -286,9 +286,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- Tier 12: each branch is typed in the environment `narrowEnvs` refines for it. The
       -- function is total and the identity on an unrecognized condition, so this arm reads
       -- the same as it did before narrowing existed for every condition below tier 12.
-      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t with
+      match chk f κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t with
       | some (τ₁, Γ₁, I₁) =>
-        match chk f κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 e with
+        match chk f κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 e with
         | some (τ₂, Γ₂, I₂) =>
           -- Both threaded states are joined: locals by `joinEnv`, the ivar spine by
           -- `joinSpine` (tier 12c -- this used to demand `I₁ = I₂`).
@@ -299,10 +299,10 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | f + 1, .if' c t none =>
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 t with
+      match chk f κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t with
       | some (τ, Γ₁, I₁) =>
-        some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ.classes c Γc).2,
-              joinSpine I₁ (narrowSpine κ.classes c Ic).2)
+        some (joinT τ .nilT, joinEnv Γ₁ (narrowEnvs κ c Γc).2,
+              joinSpine I₁ (narrowSpine κ c Ic).2)
       | none => none
     | none => none
   | f + 1, .begin' body rescues none none =>
@@ -1108,7 +1108,7 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
     -- `next` did not take, and the sequence's value is `nil` on the path it did.
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chkSeq f κ (narrowEnvs κ.classes c Γc).2 (narrowSpine κ.classes c Ic).2 (e' :: es) with
+      match chkSeq f κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 (e' :: es) with
       | some (τ, Γ', I') => some (joinT .nilT τ, Γ', I')
       | none => none
     | none => none
@@ -1118,11 +1118,11 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
     -- no rule, because `.ret` has none.
     match chk f κ Γ I c with
     | some (_, Γc, Ic) =>
-      match chk f κ (narrowEnvs κ.classes c Γc).1 (narrowSpine κ.classes c Ic).1 r with
+      match chk f κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 r with
       | some (ρ, _, Ir) =>
-        if Ir = (narrowSpine κ.classes c Ic).1 then
-          match chkSeq f κ (narrowEnvs κ.classes c Γc).2
-              (narrowSpine κ.classes c Ic).2 (e' :: es) with
+        if Ir = (narrowSpine κ c Ic).1 then
+          match chkSeq f κ (narrowEnvs κ c Γc).2
+              (narrowSpine κ c Ic).2 (e' :: es) with
           | some (τ, Γ', I') => some (joinT ρ τ, Γ', I')
           | none => none
         else none

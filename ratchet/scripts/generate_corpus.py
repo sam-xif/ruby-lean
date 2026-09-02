@@ -2165,6 +2165,17 @@ R("include-into-core-narrow-unsafe", 12,
   'module M\nend\nclass Integer\n  include M\nend\nx = 5\nif x.is_a?(M)\n  x + "s"\nelse\n  1\nend\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("const-alias-narrow-unsafe", 12,
+  "**A candidate UNSAFE program, and \u00a7F10\u2019s counterexample.** `narrowCond?` reads "
+  "the tested class out of the condition\u2019s *syntax*, so `x.is_a?(Foo)` narrows by the "
+  "**name** `Foo` and `isAAnswer` answers off that name\u2019s static chain. A constant is not "
+  "its name: `Foo = Integer` makes `5.is_a?(Foo)` true while `\"Foo\"` is in no chain, the "
+  "then-branch is typed `x : never`, and everything in it is certified. `x + \"s\"` raises "
+  "TypeError. The guard is `constGet? \u03ba cn = none` \u2014 the same condition "
+  "`Judge.constCls` carries for *reads* of a constant.",
+  'Foo = Integer\nx = 5\nif x.is_a?(Foo)\n  x + "s"\nelse\n  1\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

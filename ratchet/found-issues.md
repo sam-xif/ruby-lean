@@ -919,3 +919,58 @@ statement — not a test — is what named the assumption.
 `Object#include` through `send`/`*_eval` is outside it — the `κ.closures` coarseness §F2, §F4,
 §F6 and §F7 all share, and unreachable for the same reason (those forms are `unsupported` in
 the model or have no rule).
+
+## §F10 — narrowing trusted the constant's *name*, and a constant is not its name
+
+**Confirmed reachable, `validate` accepted it.** Corpus `246-const-alias-narrow-unsafe`:
+
+```ruby
+Foo = Integer
+x = 5
+if x.is_a?(Foo)
+  x + "s"          # certified: the branch is typed `x : never`
+else
+  1
+end
+```
+
+CRuby raises `TypeError`. `validate` answered **true**.
+
+**The mechanism**, and it is one layer above §F9. `narrowCond?` reads the tested class out of
+the condition's **syntax**:
+
+```
+| .send (some (.var k x)) "is_a?" [.const cn] none => some (k, x, .isA cn, .both)
+```
+
+so the refinement is computed for the *name* `cn`, and `isAAnswer` then answers off that name's
+static ancestor chain. `"Foo"` is in no chain, so `isATy` produced `.never` — the branch cannot
+run — while at runtime `Foo` **is** `Integer` and the branch runs. §F9's `mixinFreeChain` does
+not help: nothing was mixed into anything. The two findings are the same shape at different
+distances from the name: §F9 is "this name's class has more ancestors than the table says",
+§F10 is "this name is not that class at all".
+
+Note the rule's own premises do not catch it either, and that is worth saying, because it looks
+as though they should: `Judge.isAQuery`'s argument premise is `JudgeAll … [.clsOf cn']`, and
+`cn'` there is the *resolved* name (`Foo = Integer` types `Foo` at `.clsOf "Integer"`). So the
+judgment already knows the right answer — it is the **narrowing functions** that re-derive it
+from syntax and get a different one. Making them read the argument's type instead is the
+principled fix and a much larger change (`narrowEnvs` would have to take a typing, not an
+expression); the guard below is the small one.
+
+**The fix.** `narrowNameOk κ` gates the `.isA` shapes on `constGet? κ cn = none` — the same
+condition `Judge.constCls`/`constBuiltin` already carry for *reads* of a constant, for the same
+reason. A name the context does not bind either resolves to the boot class of that name (which
+is what the static tables describe) or does not resolve at all, and then the condition itself
+raises `NameError` and the branch never runs. `.truthy`/`.isNil` are ungated: neither mentions a
+class.
+
+`narrowEnvs`/`narrowSpine` now take the whole `Ctx` rather than `κ.classes`, because the
+constant table is not in the class table. That is visible in `Judge.if'`/`ifNoElse`'s premises
+and in `Validate.lean`'s eight call sites; all 177 hand derivations and 145 negative controls
+are unaffected, and `expect_validate` mismatches stayed at 35.
+
+**How it was found.** Sizing `denM_isATy` — the same route as §F9, one question further along.
+Writing down what "the static chain is the machine's chain" would have to assume turns up the
+name→class step first (`classNamed? m.heap cn`), and asking what pins *that* is what produces
+the alias.
