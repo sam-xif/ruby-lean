@@ -2176,6 +2176,17 @@ R("const-alias-narrow-unsafe", 12,
   'Foo = Integer\nx = 5\nif x.is_a?(Foo)\n  x + "s"\nelse\n  1\nend\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("rescue-subclass-message-unsafe", 16,
+  "**A candidate UNSAFE program, and \u00a7F11\u2019s counterexample.** `rescue StandardError "
+  "=> e` binds whatever was raised, and Ruby lets that be an instance of a **subclass** \u2014 "
+  "which is why `Ty.cls n`\u2019s denotation is `is_a?` and not equality. `PrimSig`\u2019s "
+  "`excMessage` row then answers `.cls \"String\"` for `e.message`, but the subclass "
+  "redefined `message` to return an Integer, so `+ \"s\"` runs `Integer#+` on a String and "
+  "raises TypeError. `PrimSig` cannot see the class table, so the guard is a premise of "
+  "`Judge.prim` (`primDispatchOk`).",
+  'class E < StandardError\n  def message\n    5\n  end\nend\nbegin\n  raise E\nrescue StandardError => e\n  e.message + "s"\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

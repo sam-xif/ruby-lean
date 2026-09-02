@@ -1495,6 +1495,44 @@ def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
       -- adds ancestors); the negative one has to become "unknown".
       else if mixinFreeChain C ch then some false else none)
 
+/-- **Does any *declared* class descend from `n` and redefine `m`?** — `found-issues.md`
+§F11's guard, and the answer it wants is "no".
+
+`Ty.cls n`'s denotation is `is_a?`, deliberately: `rescue StandardError => e` binds whatever
+was raised, and that is normally an instance of a **subclass**. So a `PrimSig` row at a
+nominal receiver — `Exception#message` is the one the target uses — is a claim about a method
+the receiver's *actual* class resolves, and a declared subclass that redefines the name
+resolves it differently. `PrimSig` cannot see the class table (that is what makes it a table
+rather than a judgment), so the check lives here and is a premise of `Judge.prim`.
+
+Precise rather than structural, in the same way `isADispatchOk` is: it asks whether a class
+that really descends from `n` really declares `m`, not whether the program mentions the name
+anywhere. `ancestors?` answering `none` — a chain that leaves the table — counts as "might
+descend", because a class whose superclass is unknown might be under `n`.
+
+**`valueClsNames` is exempt, and the exemption is an argument, not a shortcut.** A value gets a
+nominal type *strictly larger than its class* in exactly one place in this judgment:
+`rescueBind?`, because `rescue C => e` binds whatever was raised and Ruby lets that be a
+subclass. Every other `.cls n` — the four names below, which are all `PrimSig` mentions — is
+produced by a literal or by a builtin and is therefore an instance of exactly `n` (the same
+exactness-by-construction argument §F8 records, and subject to the same caveat). Exempting them
+is what keeps `constLitTy?_sound` unconditional: that theorem types `"s".freeze` in **any**
+context, so a premise it cannot discharge would have to be pushed onto every one of its
+callers, none of which has a class table to check. -/
+def valueClsNames : List String := ["String", "Hash", "Regexp", "MatchData"]
+
+def primDispatchOk (C : CTable) (σ : Ty) (m : String) : Bool :=
+  match σ with
+  | .cls n =>
+    if valueClsNames.contains n then true
+    else
+      C.all (fun c =>
+        (c.methods.find? (·.name == m)).isNone ||
+        (match ancestors? C c.name with
+         | some ch => !(ch.contains n)
+         | none => false))
+  | _ => true
+
 /-- **`recv.is_a?(C)` really reaches `Object#is_a?`.**
 
 `is_a?` is total on every object and never raises for a `Module` argument, so the only way
@@ -3751,11 +3789,17 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Three restrictions are each doing work: `some recv` (an implicit-self send has
       nobody to dispatch on in this fragment), `blk = none` (a block would need
       `Expr.block` typing, tier ≥ 9), and `PrimSig` matching the *synthesized* argument
-      types exactly (no subsumption — see the module docstring). -/
+      types exactly (no subsumption — see the module docstring).
+
+      **The fourth premise is `found-issues.md` §F11.** A nominal receiver type denotes
+      `is_a?`, so a `.cls n` value can be an instance of a declared *subclass* of `n` — which
+      is exactly what `rescue StandardError => e` binds — and that subclass may redefine the
+      method the row is about. `primDispatchOk` excludes it. -/
   | prim {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
       {args : List Expr} {σ τ : Ty} {argTys : List Ty} :
       Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       PrimSig σ m argTys τ →
+      (hdisp : primDispatchOk κ.classes σ m = true := by rfl) →
       Judge κ Γ I (.send (some recv) m args none) τ Γ₂ I₂
   /-- **`recv.is_a?(C)` → `Bool`** (tier 12).
 

@@ -763,7 +763,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- through to the dispatch below because this `if` has already committed to `m`.
           | _, _ =>
             match primSig? σ m argTys with
-            | some τ => some (τ, Γ₂, I₂)
+            -- §F11: a nominal receiver's *actual* class may be a declared subclass that
+            -- redefines the name (`rescue StandardError => e` binds one)
+            | some τ => if primDispatchOk κ.classes σ m then some (τ, Γ₂, I₂) else none
             | none => none
         else if m = "is_a?" then
           -- Tier 12. Placed *before* the receiver dispatch, and note the consequence: a
@@ -876,7 +878,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 | none => none
           | _ =>
             match primSig? σ m argTys with
-            | some τ => some (τ, Γ₂, I₂)
+            -- §F11: a nominal receiver's *actual* class may be a declared subclass that
+            -- redefines the name (`rescue StandardError => e` binds one)
+            | some τ => if primDispatchOk κ.classes σ m then some (τ, Γ₂, I₂) else none
             | none => none
       | none => none
     | none => none

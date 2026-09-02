@@ -396,6 +396,27 @@ theorem constLitTy?_nilQSafe : ∀ {e : Expr} {τ : Ty}, constLitTy? e = some τ
       | exact constLitTy?_nilQSafe h
       | exact absurd h (by simp)
 
+/-- **Every type `constLitTy?` produces is exempt from `primDispatchOk`** — `found-issues.md`
+§F11's companion, and the same shape as `constLitTy?_nilQSafe` above. It has to be a lemma
+rather than an `rfl`: `constLitTy?_sound` types `"s".freeze` at an *abstract* `τ`, so the
+`Judge.prim` it builds needs the guard proved from where `τ` came from, and where it came from
+is a literal — whose only nominal answer is `.cls "String"`, which is in `valueClsNames`. -/
+theorem constLitTy?_primDispatchOk : ∀ {e : Expr} {τ : Ty} {C : CTable} {m : String},
+    constLitTy? e = some τ → primDispatchOk C τ m = true := by
+  intro e τ C m h
+  unfold constLitTy? at h
+  split at h <;>
+    first
+      | (injection h with h; subst h; rfl)
+      | (split at h
+         · injection h with h; subst h; rfl
+         · exact absurd h (by simp))
+      | (rename_i es; cases hes : constLitTys? es with
+         | none => simp [hes] at h
+         | some τs => simp [hes] at h; subst h; rfl)
+      | exact constLitTy?_primDispatchOk h
+      | exact absurd h (by simp)
+
 mutual
 
 theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : Ty},
@@ -428,6 +449,7 @@ theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : 
   · -- `.freeze`: the identity, and its `NilQSafe` guard comes from the companion theorem
     rename_i r
     exact .prim (constLitTy?_sound h) .nil (.freezeId (constLitTy?_nilQSafe h))
+      (constLitTy?_primDispatchOk h)
   · exact absurd h (by simp)
 
 theorem constLitTys?_sound : ∀ {es : List Expr} {τs : List Ty} {κ : Ctx} {Γ : Env} {I : Ty},
@@ -1252,10 +1274,15 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               · -- tier 16: the receiver is a *value*, so `===` is the `PrimSig` row
                 split at h
                 · rename_i τ' hprim
-                  injection h with h
-                  injection h with h h'; injection h' with h' h''
-                  subst h; subst h'; subst h''
-                  exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hprim)
+                  -- §F11's guard is an `if` in `validate`, so its true branch is the premise
+                  split at h
+                  · rename_i hpd
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hprim)
+                      hpd
+                  · exact absurd h (by simp)
                 · exact absurd h (by simp)
             · split at h
               · -- tier 12: `is_a?`, checked before the receiver dispatch
@@ -1419,10 +1446,14 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 · -- anything else: the primitive table
                   split at h
                   · rename_i hsig
-                    injection h with h
-                    injection h with h h'; injection h' with h' h''
-                    subst h; subst h'; subst h''
-                    exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
+                    split at h
+                    · rename_i hpd
+                      injection h with h
+                      injection h with h h'; injection h' with h' h''
+                      subst h; subst h'; subst h''
+                      exact .prim (chk_sound hrecv) (chkAll_sound hargs) (primSig?_sound hsig)
+                        hpd
+                    · exact absurd h (by simp)
                   · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)

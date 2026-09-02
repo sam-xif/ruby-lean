@@ -974,3 +974,58 @@ are unaffected, and `expect_validate` mismatches stayed at 35.
 Writing down what "the static chain is the machine's chain" would have to assume turns up the
 name→class step first (`classNamed? m.heap cn`), and asking what pins *that* is what produces
 the alias.
+
+## §F11 — `rescue` binds a *subclass* instance, and `PrimSig` cannot see the class table
+
+**Confirmed reachable, `validate` accepted it.** Corpus `247-rescue-subclass-message-unsafe`:
+
+```ruby
+class E < StandardError
+  def message
+    5
+  end
+end
+begin
+  raise E
+rescue StandardError => e
+  e.message + "s"     # certified `String + String`; runs `Integer#+` on a String
+end
+```
+
+CRuby raises `TypeError`. `validate` answered **true**.
+
+**The mechanism, and why it is the deepest of the four.** `Ty.cls n`'s denotation is `isAName`
+— *is-a*, not equality — and that is deliberate: `Ty.cls`'s own docstring says "inhabited by
+instances of subclasses of `Foo` too, matching `is_a?`". `rescueBind?` is the one place in the
+judgment that *uses* the slack, because `rescue C => e` really does bind an instance of a
+subclass of `C`. But every rule that **dispatches** on a nominal receiver type looks the method
+up in `n`'s own table, and a subclass can have redefined it. `PrimSig`'s `excMessage` row is
+where the target's own code makes the call.
+
+So this is not a missing side condition on one row; it is the general gap between "is-a" and
+"dispatches like". The other rules in the family are sound only by the exactness-by-
+construction argument §F8 records — a value's nominal type is its exact class *everywhere
+except* a rescue binding — and this finding is that argument's one real exception.
+
+**The fix.** `Judge.prim` gained a fourth premise, `primDispatchOk κ.classes σ m = true`, which
+at a `.cls n` receiver asks whether any **declared** class descends from `n` and redefines `m`.
+Precise, not structural: rung `194-ctl-raise-custom` (`rescue Uncomparable`) is unaffected
+because nothing descends from `Uncomparable`.
+
+`valueClsNames` — `String`, `Hash`, `Regexp`, `MatchData`, the only four `.cls` names the
+judgment mentions — is exempt, and the exemption is the §F8 argument stated where it is used: a
+value of one of those types comes from a literal or a builtin and is an instance of exactly
+that class, because `rescueBind?` is the only subsumption source and it binds exception
+classes. Without the exemption `constLitTy?_sound` would have to be conditional, and *that*
+would be a real problem: it types `"s".freeze` in **any** context, so the premise would have to
+be pushed onto callers (`Ctx.afterStmt`'s class-body constants, `paramEnv`'s optional defaults)
+that have no class table to check. `constLitTy?_primDispatchOk` is the companion lemma — every
+type `constLitTy?` produces is exempt — and it is the same shape as `constLitTy?_nilQSafe`.
+
+**What is still open, and it is the interesting part.** The guard is on `Judge.prim`. The same
+argument applies to any *other* rule that dispatches on a `.cls n` receiver, and the reason
+none is affected today is that the dispatch rules key on `.inst`/`.clsOf`, where exactness
+holds. If a later rule dispatches user methods on a `.cls n`, it needs this premise too — and
+the principled alternative, which is what a fifth finding of this shape should trigger, is to
+split `Ty.cls` into an is-a reading and an exact one, with `rescueBind?` producing the former
+and everything else the latter.
