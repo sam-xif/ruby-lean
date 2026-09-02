@@ -217,9 +217,161 @@ set_option maxHeartbeats 40000000 in
       all_goals (try (rw [foldSetLocal_push K]))
       all_goals (try rfl)
 
+
+/-! ### The `_mk_cons` idiom
+
+Every function that pushes a continuation *and then calls another machine function* reaches
+that callee at a literal whose kont is `kk :: (k ++ K)`, one `List.cons_append` from the
+`k ++ K` a `pushK`-shaped lemma wants. The repair is one derived lemma per callee, proved by
+`rw [← List.cons_append]` and the general lemma — mechanical, and cheaper than a global
+re-folding `simp` lemma, which triggers the structure-eta blowup this file's header warns
+about. -/
+
+/-! ### The two general shape lemmas
+
+Both are `rfl`, and both are *patterns* where a `pushK`-shaped lemma is not: the machine is a
+literal whose `kont` field is syntactically `k ++ K`, and every other field is a metavariable
+that matches whatever is there — including the projections of a bigger term that structure eta
+has smeared across all nine fields, which is the shape `simp` leaves behind and the reason a
+`pushK K ?m` lemma fails to fire. Between them they close most of what the arms of the pushing
+functions reduce to. -/
+
+/-- `withCtl` at an appended-kont literal. -/
+theorem withCtl_mk (K : List Kont) (c₀ : Ctl) (c : Ctl) (k : List Kont) (st : List FrameId)
+    (fr : Array Frame) (h : Heap) (g : List (String × Value)) (out : String)
+    (ce : Option Value) (pm : Bool) :
+    withCtl ⟨c, k ++ K, st, fr, h, g, out, ce, pm⟩ c₀ =
+      pushK K (withCtl ⟨c, k, st, fr, h, g, out, ce, pm⟩ c₀) := rfl
+
+/-- `withKont` at an appended-kont literal. -/
+theorem withKont_mk (K : List Kont) (c₀ : Ctl) (kk : Kont) (c : Ctl) (k : List Kont)
+    (st : List FrameId) (fr : Array Frame) (h : Heap) (g : List (String × Value))
+    (out : String) (ce : Option Value) (pm : Bool) :
+    withKont ⟨c, k ++ K, st, fr, h, g, out, ce, pm⟩ c₀ kk =
+      pushK K (withKont ⟨c, k, st, fr, h, g, out, ce, pm⟩ c₀ kk) := rfl
+
+/-- `enterUserMethod` at a consed-then-appended kont: `tryMixin` reaches it that way, under
+its own `.includeK`. -/
+theorem enterUserMethod_frame_mk_cons (K : List Kont) (kk : Kont) (c : Ctl) (k : List Kont)
+    (st : List FrameId) (fr : Array Frame) (h : Heap) (g : List (String × Value))
+    (out : String) (ce : Option Value) (pm : Bool) (recv : Value) (mname : String)
+    (md : MethodDef) (args : List Value) (blk : Option Value) (kw : List (Value × Value)) :
+    enterUserMethod ⟨c, kk :: (k ++ K), st, fr, h, g, out, ce, pm⟩ recv mname md args blk kw =
+      frameR K (enterUserMethod ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ recv mname md args
+        blk kw) := by
+  rw [← List.cons_append]
+  exact enterUserMethod_frame K ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ recv mname md args blk kw
+
+/-- `callClosure` at a consed-then-appended kont: `iterStep` reaches it under its own
+`.iterK`, and `Interp/Send.lean`'s yield paths reach it the same way. -/
+theorem callClosure_frame_mk_cons (K : List Kont) (kk : Kont) (c : Ctl) (k : List Kont)
+    (st : List FrameId) (fr : Array Frame) (h : Heap) (g : List (String × Value))
+    (out : String) (ce : Option Value) (pm : Bool) (cl : Closure) (args : List Value)
+    (brk : Option FrameId) (selfOv : Option Value) (defmodOv : Option ObjId) :
+    callClosure ⟨c, kk :: (k ++ K), st, fr, h, g, out, ce, pm⟩ cl args brk selfOv defmodOv =
+      frameR K (callClosure ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ cl args brk selfOv
+        defmodOv) := by
+  rw [← List.cons_append]
+  exact callClosure_frame K ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ cl args brk selfOv defmodOv
+
+/-! ### The native block iterators
+
+`iterStep` is the loop driver and `startIter` its entry. Both push, and `iterStep`'s
+zero-elements arm allocates (`.collect`), so this needs `allocArr_frame` and
+`callClosure_frame` — the whole `Builtins` layer under it is already framed. -/
+
+set_option maxHeartbeats 1000000 in
+@[simp, frameLem] theorem iterStep_frame (K : List Kont) (m : Machine) (cl : Closure)
+    (brk : FrameId) (rest : List (List Value)) (kind : IterKind) (acc : List Value)
+    (retVal : Value) :
+    iterStep (pushK K m) cl brk rest kind acc retVal =
+      frameR K (iterStep m cl brk rest kind acc retVal) := by
+  rw [iterStep.eq_def, iterStep.eq_def]
+  frame_simp
+  (repeat' first | rfl | split) <;> (try rfl)
+    <;> (try (rw [callClosure_frame_mk_cons K]))
+    <;> (try rfl)
+    <;> (try (frame_simp; try rfl))
+
+/-- `iterStep` at the shape `startIter` hands it: the iterator activation's `.frameK fid`
+consed onto the pushed continuation. -/
+theorem iterStep_frame_mk_cons (K : List Kont) (kk : Kont) (c : Ctl) (k : List Kont)
+    (st : List FrameId) (fr : Array Frame) (h : Heap) (g : List (String × Value))
+    (out : String) (ce : Option Value) (pm : Bool) (cl : Closure) (brk : FrameId)
+    (rest : List (List Value)) (kind : IterKind) (acc : List Value) (retVal : Value) :
+    iterStep ⟨c, kk :: (k ++ K), st, fr, h, g, out, ce, pm⟩ cl brk rest kind acc retVal =
+      frameR K (iterStep ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ cl brk rest kind acc
+        retVal) := by
+  rw [← List.cons_append]
+  exact iterStep_frame K ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ cl brk rest kind acc retVal
+
+set_option maxHeartbeats 1000000 in
+@[simp, frameLem] theorem startIter_frame (K : List Kont) (m : Machine) (recv : Value)
+    (mname : String) (cl : Closure) (elemArgs : List (List Value)) (kind : IterKind)
+    (initAcc : List Value) (retVal : Value) :
+    startIter (pushK K m) recv mname cl elemArgs kind initAcc retVal =
+      frameR K (startIter m recv mname cl elemArgs kind initAcc retVal) := by
+  rw [startIter.eq_def, startIter.eq_def]
+  -- the frame's `defmod`/`cref` read the heap and the current frame, both `pushK`-invariant
+  simp only [pushK_heap, pushK_currentFrame, pushK_frames, pushK_stack]
+  rw [iterStep_frame_mk_cons K]
+
+set_option maxHeartbeats 1000000 in
+@[simp, frameLem] theorem tryIterator_frame (K : List Kont) (m : Machine) (recv : Value)
+    (mname : String) (args : List Value) (blk : Option Value) :
+    tryIterator (pushK K m) recv mname args blk =
+      (tryIterator m recv mname args blk).map (frameR K) := by
+  rw [tryIterator.eq_def, tryIterator.eq_def]
+  frame_simp
+  -- the hash arm folds `allocArr` over the pairs to build the `[k, v]` element lists, so this
+  -- needs `foldPair_frame`'s conditional `rw` (the side goal is the pointwise hypothesis)
+  enter_arms K
+  all_goals (try (rw [foldPair_frame K]))
+  all_goals (try (frame_simp; try rfl))
+  all_goals (try (intro p m₂ a; frame_simp; try rfl))
+
+/-! ### `include`/`prepend`/`extend`
+
+`mixinDefines` reads only the heap. `tryMixin` writes a class payload and, on an `included`
+hook, enters a user method under an `.includeK` — the `_mk_cons` shape. -/
+
+@[simp, frameLem] theorem mixinDefines_frame (K : List Kont) (m : Machine) (cls : ObjId)
+    (name : String) :
+    mixinDefines (pushK K m) cls name = mixinDefines m cls name := by
+  simp only [mixinDefines, pushK_heap]
+
+set_option maxHeartbeats 1000000 in
+@[simp, frameLem] theorem tryMixin_frame (K : List Kont) (m : Machine) (recv : Value)
+    (mname : String) (args : List Value) :
+    tryMixin (pushK K m) recv mname args = (tryMixin m recv mname args).map (frameR K) := by
+  rw [tryMixin.eq_def, tryMixin.eq_def]
+  frame_simp
+  -- `moduleHook` reads only the heap, so rather than a `_mk` variant keyed on the
+  -- payload-updated literal it is cheaper to unfold it: the literal's `.heap` projection
+  -- reduces, and the two sides' scrutinees become equal before `split` runs.
+  simp only [moduleHook]
+  (repeat' first | rfl | split)
+  all_goals (try rfl)
+  all_goals (try (rw [enterUserMethod_frame_mk_cons K]))
+  all_goals (try rfl)
+  all_goals (try (rw [withCtl_mk K]))
+  all_goals (try rfl)
+  all_goals (try (simp only [Option.map_some, Option.map_none]; try rfl))
+  all_goals (try (frame_simp; try rfl))
+  -- the last arm is `none = some …`: `split` peeled the two sides' `classPayload?` matches
+  -- against *structure-eta-expanded* copies of `m` and so paired a `none` arm with a `some`
+  -- one. The hypotheses are contradictory up to that eta, which is what `simp_all` sees and
+  -- a syntactic rewrite cannot (a lemma collapsing `⟨m.ctl, m.kont, …⟩` to `m` has a
+  -- projection-of-metavariable on the left, so it is not a pattern).
+  all_goals (try (simp_all (maxSteps := 200000) [frameLem]))
+
 #print axioms enterClassBody_frame
 #print axioms enterScopedClassBody_frame
 #print axioms enterUserMethod_frame
+#print axioms iterStep_frame
+#print axioms startIter_frame
+#print axioms tryIterator_frame
+#print axioms tryMixin_frame
 
 end Proof
 end RubyCore
