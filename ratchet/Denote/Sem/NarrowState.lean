@@ -123,5 +123,83 @@ theorem SelfSpineOk_ivarSet {I : Ty} {x : String} {ρ : Ty} {m : Machine}
 #print axioms denSpineFrom_ivarSet
 #print axioms SelfSpineOk_ivarSet
 
-end Ratchet.Denote
 
+/-! ## The else-side environment refinement
+
+Stated **pointwise**: the caller supplies "the refinement is true of whatever type this local's
+value has", and the arms of `refineOne` are then bookkeeping. That shape is what makes the
+alias arm free — `EnvOk`'s own conjunct says the alias and its target hold the *same value*, so
+one fact about `x`'s value serves `y`'s binding too. -/
+
+/-- A type the alias test rejects is its own `stripAlias`. -/
+theorem stripAlias_of_not_alias {τ : Ty} (h : Ratchet.isAliasTy τ = false) :
+    Ratchet.stripAlias τ = τ := by
+  cases τ <;> simp_all [Ratchet.isAliasTy, Ratchet.stripAlias]
+
+theorem EnvOk_refineOne_else {C : Ratchet.CTable} {Γ : Env} {x : String}
+    {nk : Ratchet.NarrowKind} {m : Machine} (h : EnvOk Γ m)
+    (hfact : ∀ τ, denM τ m (m.getLocal x) →
+      denM (Ratchet.refineElse C nk τ) m (m.getLocal x)) :
+    EnvOk (Ratchet.refineOne C nk false Γ x) m := by
+  have hlow := h.1
+  unfold Ratchet.refineOne
+  dsimp only
+  cases hgx : envGet? Γ x with
+  | none => exact h
+  | some τx =>
+    cases τx with
+    | sameAs y ρ =>
+      -- the alias arm: the alias keeps its target and refines its payload, and `y`'s own
+      -- binding is refined from itself
+      simp only [Bool.false_eq_true, if_false]
+      have hxy : m.getLocal x = m.getLocal y := (hlow x (.sameAs y ρ) hgx).2 y ρ rfl
+      have hρ : denM ρ m (m.getLocal x) := (hlow x (.sameAs y ρ) hgx).1
+      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C nk ρ))) m :=
+        EnvOk_envSet h (by
+          show denM (Ratchet.refineElse C nk ρ) m (m.getLocal x)
+          exact hfact ρ hρ) (fun y' ρ' he => by
+          injection he with he₁ _
+          rw [he₁] at hxy
+          exact hxy)
+      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C nk ρ))) y with
+      | none => exact h1
+      | some σy =>
+        have hy := (h1.1 y σy hgy).1
+        rw [← hxy] at hy
+        simp only [Bool.false_eq_true, if_false]
+        refine EnvOk_envSet h1 ?_ ?_
+        · -- `y`'s value *is* `x`'s, so the same fact applies; and §F15's guard again
+          rw [← hxy]
+          split
+          · exact hy
+          · rename_i hna
+            rw [stripAlias_of_not_alias (by simpa using hna)]
+            exact hfact (Ratchet.stripAlias σy) hy
+        · intro y' ρ' he
+          split at he
+          · rw [← hxy, ← (h1.1 y σy hgy).2 y' ρ' he, hxy]
+          · rename_i hna
+            exact absurd he (by
+              intro hc
+              rw [hc] at hna
+              exact absurd hna (by simp [Ratchet.isAliasTy]))
+    | _ =>
+      simp only [Bool.false_eq_true, if_false]
+      refine EnvOk_envSet h ?_ ?_
+      · split
+        · exact (hlow x _ hgx).1
+        · rename_i hna
+          rw [stripAlias_of_not_alias (by simpa using hna)]
+          exact hfact _ (hlow x _ hgx).1
+      · intro y' ρ' he
+        split at he
+        · exact (hlow x _ hgx).2 y' ρ' he
+        · rename_i hna
+          exact absurd he (by
+            intro hc
+            rw [hc] at hna
+            exact absurd hna (by simp [Ratchet.isAliasTy]))
+
+#print axioms EnvOk_refineOne_else
+
+end Ratchet.Denote

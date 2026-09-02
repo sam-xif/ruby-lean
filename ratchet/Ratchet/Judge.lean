@@ -2584,7 +2584,11 @@ def refineOne (C : CTable) (k : NarrowKind) (thenSide : Bool) (Γ : Env) (x : St
   | some (.sameAs y τ) =>
     let Γ₁ := envSet Γ x (.sameAs y (refine τ))
     match envGet? Γ₁ y with
-    | some ρ => envSet Γ₁ y (refine (stripAlias ρ))
+    -- §F15 applies here too: the target's binding is refined from its *stripped* type, and
+    -- that refinement can be an alias for the same reason (a union with an alias member).
+    | some ρ =>
+      let ρ' := refine (stripAlias ρ)
+      envSet Γ₁ y (if isAliasTy ρ' then ρ else ρ')
     | none => Γ₁
   -- **`found-issues.md` §F15**: the refinement must not *create* an alias claim. `refine` can:
   -- `falsyTy (union (sameAs y ρ) int)` is `joinT (sameAs y (falsyTy ρ)) never`, which is the
