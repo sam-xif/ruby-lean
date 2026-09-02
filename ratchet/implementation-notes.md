@@ -4553,6 +4553,45 @@ under an explicit "do not modify `Ratchet/`" constraint, and the premise moves 1
 plus the two committed ladder numbers. It wants its own clink with a negative-control rung, so
 that the fix is pinned by a program rather than believed.
 
+### And a third finding, which upgrades the sixth stall point to a soundness bug
+
+The stall point above says a rule cannot re-assert conformance with the incoming `κ` after a
+statement that declares something. The question it invites — *a call runs statements too* — has
+a two-line answer:
+
+```ruby
+def bar; 1; end
+def foo; def bar; "s"; end; 1; end
+foo
+bar + 1
+```
+
+`validate`: `true`, type `Integer`. CRuby **and** the model: `TypeError, no implicit conversion
+of Integer into String`. The two executors agree, so unlike §F2 this is a wrong answer about
+the model as well as about Ruby — the §F1 shape exactly, written up as `found-issues.md` §F3.
+
+`Ctx.afterStmt` grows `κ.defs` at the statement boundaries of the sequence being typed;
+`Judge.vcallDef` concludes at the **same `κ`** it started from; `Heap.defineMethod` *replaces*.
+So the nested `def` is recorded where it cannot help and invalidates what the caller's context
+still claims. Every call rule is exposed (`callDef`, `callDefKw`, `callMethod`, `selfCall`,
+`closCall`, `iterBlock`, …) — a *family*, not a rule.
+
+Three things this changes about the write-up above rather than adding to it:
+
+* **The sixth stall point is not bookkeeping.** It was recorded as "the obligation's shape is
+  wrong"; it is also "the checker is wrong", and the second follows from the first by reading
+  what `DefsOk` asks of the post-machine.
+* **It is an argument for the signature change over the premise.** A per-rule premise ("this
+  body declares nothing `κ` records") fixes the calls; threading the context
+  (`Judge … κ'`) fixes the calls *and* `defStmt`'s own false obligation. Two problems, one fix.
+* **No witness search was involved, again.** That is now three findings (§F1, §F3, and §F2's
+  model divergence) produced by reading an obligation rather than by running programs, against
+  a corpus of 235 agreeing rungs and 142 negative controls that covers none of them.
+
+Not fixed here: `Ratchet/` was out of bounds this session, and the fix moves derivations and
+both committed numbers. The regression to add with it is the program above, as an
+`unsafe_program` rung.
+
 ### State
 
 **24 of 83 `Judge` rules discharged** (`selfExpr`, `ivarRead`, `regexpLit`, `JudgeSeq.last`,
@@ -4564,5 +4603,5 @@ complete. Corpus agreement **235/235**, hand derivations **177/177**, negative c
 (`SelfSpineOk`, `CoreOk`, `ivarGet?_killClosOverSpine_none`), `Denote/Sanity.lean`
 (`selfIvarsEmptyB`, seven-clause `coreOkB`), `Denote/Rules.lean`, `Denote/Rules/Nil.lean` (the
 corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `found-issues.md`
-(§A5, §F2), `AGENTS.md`. Axiom-clean
+(§A5, §F2, §F3), `AGENTS.md`. Axiom-clean
 throughout; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.

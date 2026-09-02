@@ -551,6 +551,15 @@ here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **t
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
 
+**A third, and the ladder found it without a rung** (clink 48, `found-issues.md` §F3). The
+sixth stall point says a rule cannot re-assert conformance with the incoming `κ` after a
+statement that *declares* something — and a **call** runs statements too. So every call rule
+(`vcallDef`, `callDef`, `callMethod`, `selfCall`, `closCall`, `iterBlock`, …) carries a stale
+`defs` table out of a body that redefined a recorded method:
+`def bar; 1; end; def foo; def bar; "s"; end; 1; end; foo; bar + 1` is certified `Integer`, and
+**both executors raise `TypeError`** — the §F1 shape exactly. Reading the obligation is what
+produced the program; no search was involved.
+
 **A second soundness bug, found the same way** (clink 48, `found-issues.md` §A5/§F2).
 `Judge.lambdaLit` has no premise that the name `lambda` is free, and in CRuby a toplevel `def`
 shadows `Kernel#lambda` — so `def lambda; 5; end; f = lambda { 1 }; f.call + 1` is certified

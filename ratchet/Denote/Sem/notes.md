@@ -315,8 +315,34 @@ Two separate defects are tangled here, and only the first is fixable inside `Sta
    evidence the change is right rather than a workaround: `JudgeSeq.cons`'s obligation will
    need the first statement's conclusion at `κ.afterStmt` to feed the second's hypothesis.
 
-Recorded here rather than in `../../found-issues.md`, which is for *wrong answers* — `validate`
-is right on the reproducer above.
+Recorded here rather than in `../../found-issues.md` for the reproducer above, which is for
+*wrong answers* and `validate` is right on that one.
+
+### … and the blast radius is not statements. It is **every call rule**, and there it is a real soundness bug
+
+Written after the paragraph above, from the obvious next question: a **call** runs statements
+too. `Judge.vcallDef` — like `callDef`, `callMethod`, `selfCall`, `closCall`, `iterBlock` and
+the rest — types the body and then concludes at the **same `κ`**, so a `def` *inside* a body
+is recorded in the context that types the body and nowhere else, while at runtime it replaces
+the installed method. That is not only an obligation that will not close; it is a program
+`validate` gets wrong:
+
+```ruby
+def bar; 1; end
+def foo; def bar; "s"; end; 1; end
+foo
+bar + 1        # CRuby and the model: TypeError.  validate: true, Integer.
+```
+
+Both executors **agree** on `TypeError`, so this is the §F1 shape exactly and it is written up
+as `../../found-issues.md` §F3. Two things worth carrying forward:
+
+* The stall point is what produced it. Nothing was searched for: `Obl.Judge.vcallDef`'s
+  `StateOk κ Γ I m'` conclusion asks `DefsOk` of a table the body just invalidated, and asking
+  *which* program does that is a two-line exercise once the obligation has been read.
+* It sharpens the fix. The per-rule premise ("this body declares nothing `κ` records") and the
+  signature change (`Judge … κ'`) are now both answering *two* problems — the declaration
+  statement and the declaring call — which is an argument for the second.
 
 ## The seventh stall point — **an argument list is not a snapshot**
 

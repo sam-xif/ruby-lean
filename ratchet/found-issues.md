@@ -475,3 +475,66 @@ constraint, and a premise added to `lambdaLit` moves the `Rungs.lean` derivation
 `Judge.lambdaLit` on file) and the ladder's two committed numbers. It wants its own clink, with
 a negative-control rung for the program above — which is what makes the fix pinned rather than
 believed.
+
+### F3. A method body's `def` escapes the checker's context, so every call rule carries a stale `defs` table
+
+**Status:** open. **Severity:** high — `validate` returns `true` on a program **both** executors
+take to `TypeError`, which is the §F1 shape exactly. **Found by:** the semantic ladder again
+(clink 48), and this time by the *sixth stall point* rather than by a rung:
+`Denote/Sem/notes.md` recorded that a rule cannot re-assert conformance with the incoming `κ`
+after a statement that declares something. The consequence nobody had drawn is that a **call**
+declares things too — the body runs, and `def` is an ordinary statement inside it.
+
+```ruby
+def bar
+  1
+end
+def foo
+  def bar
+    "s"
+  end
+  1
+end
+foo
+bar + 1
+```
+
+| | |
+|---|---|
+| CRuby | `TypeError: no implicit conversion of Integer into String` |
+| the Lean model | `TypeError`, same message — the two **agree** |
+| `lake exe ratchet --stdin` | `{"type":"Integer","validate":true}` |
+
+**What is wrong.** `Ctx.afterStmt` grows `κ.defs` at *statement* boundaries of the sequence it
+is typing, and `Judge.vcallDef` — like every other call rule — concludes
+`Judge κ Γ I (.vcall m) ρ Γ I` with the **same `κ`** it started from. So the nested `def bar`
+is recorded in the context used to type `foo`'s *body* and nowhere else, while at runtime it
+installs on `Object` and **replaces** the earlier `bar` (`Heap.defineMethod` filters the old
+entry out). After `foo` returns, `κ.defs` says `bar` returns `Integer` and the heap says
+`String`, and `Judge.vcallDef` at the next statement types `bar` off the stale table.
+
+It is specifically a **redefinition** that is unsound. A body that defines a *new* name only
+makes the checker miss a method it could have typed — conservative, and that is what
+`DefTable`'s "already" docstring is about.
+
+**Why the ladder names the family and the corpus did not.** 235 corpus programs agree and 142
+negative controls are rejected, because no rung defines a method inside a method body. The
+obligation says it without a witness: `Obl.Judge.vcallDef` concludes `StateOk κ Γ I m'`, whose
+`DefsOk` component asks that every entry of `κ.defs` be installed at the post-machine — and the
+body just replaced one. Same for `callDef`, `callDefKw`, `callMethod`, `selfCall`, `closCall`,
+`iterBlock` and the rest: **every rule whose run can execute a statement** is exposed, which is
+why this entry is about a family rather than a rule.
+
+**The fix, and the choice in it.** Two shapes:
+
+* **A premise, per call rule:** the body declares nothing that `κ` records — a syntactic
+  `bodyDeclares?`-style check, conservative and cheap, and the same move `Judge.bareName` makes
+  with `defGet? κ.defs m = none`. Rejects `def foo; def bar; …; end; …; end` outright.
+* **Threading the context through the judgment** (`Judge κ Γ I e τ Γ' I' κ'`), which is what
+  the semantic obligation actually wants — see `Denote/Sem/notes.md` §The sixth stall point,
+  where the same fix is what `Judge.defStmt`'s own (false) obligation needs. It is a change to
+  `Judge`'s signature and therefore to every derivation on file.
+
+Not fixed in clink 48, which ran under an explicit "do not modify `Ratchet/`" constraint. The
+regression to add with the fix is the program above, as an `unsafe_program` rung — a `true` on
+it is this bug returning.
