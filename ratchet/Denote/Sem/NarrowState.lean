@@ -202,4 +202,47 @@ theorem EnvOk_refineOne_else {C : Ratchet.CTable} {Γ : Env} {x : String}
 
 #print axioms EnvOk_refineOne_else
 
+
+/-- **`ivarSet` only touches the name it sets.** So a name the *refined* spine is silent about
+was already absent, which is what `SelfSpineOk`'s completeness conjunct needs. -/
+theorem ivarGet?_ivarSet_none : ∀ (I : Ty) (x : String) (ρ : Ty) (y : String),
+    Ratchet.ivarGet? (Ratchet.ivarSet I x ρ) y = none → Ratchet.ivarGet? I y = none
+  | .ivar0, x, ρ, y, h => by
+    simp [Ratchet.ivarGet?]
+  | .ivarCons n τ rest, x, ρ, y, h => by
+    rw [Ratchet.ivarSet] at h
+    by_cases hnx : n = x
+    · subst hnx
+      rw [if_pos (by simp), Ratchet.ivarGet?] at h
+      rw [Ratchet.ivarGet?]
+      split at h
+      · exact absurd h (by simp)
+      · rename_i hne
+        rw [if_neg hne]
+        exact h
+    · rw [if_neg (by simpa using hnx), Ratchet.ivarGet?] at h
+      rw [Ratchet.ivarGet?]
+      split at h
+      · exact absurd h (by simp)
+      · rename_i hne
+        rw [if_neg hne]
+        exact ivarGet?_ivarSet_none rest x ρ y h
+  | .int, _, _, _, h | .float, _, _, _, h | .sym, _, _, _, h | .bool, _, _, _, h
+  | .nilT, _, _, _, h | .any, _, _, _, h | .never, _, _, _, h | .cls _, _, _, _, h
+  | .clsOf _, _, _, _, h | .nilable _, _, _, _, h | .union _ _, _, _, _, h
+  | .arrayOf _, _, _, _, h | .hashOf _ _, _, _, _, h | .inst _ _, _, _, _, h
+  | .sameAs _ _, _, _, _, h | .arrow0 _, _, _, _, h | .arrowCons .., _, _, _, h
+  | .clos .., _, _, _, h => by
+    -- not a spine: `ivarSet` is the identity
+    simpa [Ratchet.ivarSet] using h
+
+#print axioms ivarGet?_ivarSet_none
+
+
+/-! `Denote/Rules/Read.lean` already has the spine projection this needed
+(`denSpineFrom_get` — `ivarGet?` takes the first match and `denSpineFrom` skips a shadowed
+entry, so the two agree), proved there for `Judge.ivarRead`. It is used from the assembly
+rather than restated here. -/
+
+
 end Ratchet.Denote

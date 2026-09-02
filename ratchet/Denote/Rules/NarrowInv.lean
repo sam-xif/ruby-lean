@@ -681,7 +681,7 @@ pointwise is what keeps the shape analysis to one place. -/
 theorem narrow_else_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratchet.Expr}
     {v : Value} {m' : Machine} {k : Ratchet.VarKind} {x : String} {nk : Ratchet.NarrowKind}
     {sides : Ratchet.NarrowSides}
-    (hok : StateOk κ Γ I m) (hok' : StateOk κ Γ I m')
+    (hok : StateOk κ Γ I m) {Γ₂ : Env} {I₂ : Ty} (hok' : StateOk κ Γ₂ I₂ m')
     (hev : Evals m c v m') (hfalsy : v.truthy = false)
     (hnc : Ratchet.narrowCond? c = some (k, x, nk, sides)) (hboth : sides = .both)
     (hg : Ratchet.narrowNameOk κ nk = true) (hk : k = .lvar ∨ k = .ivar) :
@@ -763,5 +763,71 @@ theorem narrow_else_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
   · exact absurd hnc (by simp)
 
 #print axioms narrow_else_fact
+
+
+/-! ## `StateOk` at the refined **else** environment
+
+The assembly. Everything above is a piece of it: the branch's fact
+(`narrow_else_fact`), the two transports (`EnvOk_refineOne_else`,
+`SelfSpineOk_ivarSet`), and the observation that a refinement lands in *one* piece of state —
+`narrowEnvs` matches `.lvar` and `narrowSpine` matches `.ivar`, so the other is the identity.
+
+`.cvar`/`.gvar` refine nothing, which is the right answer rather than an omission: no rule in
+this judgment types either. -/
+
+theorem stateOk_narrow_else {κ : Ctx} {Γ Γc : Env} {I Ic : Ty} {c : Ratchet.Expr} {σ : Ty}
+    {m : Machine} {v : Value} {m' : Machine}
+    (hc : SemJudge κ Γ I c σ Γc Ic) (hok : StateOk κ Γ I m)
+    (hev : Evals m c v m') (hfalsy : v.truthy = false) :
+    StateOk κ (Ratchet.narrowEnvs κ c Γc).2 (Ratchet.narrowSpine κ c Ic).2 m' := by
+  obtain ⟨_, _, hok'⟩ := hc.2 m hok v m' hev
+  simp only [Ratchet.narrowEnvs, Ratchet.narrowSpine]
+  cases hnc : Ratchet.narrowCond? c with
+  | none => simpa using hok'
+  | some q =>
+    obtain ⟨k, x, nk, sides⟩ := q
+    -- the kind decides which piece of state moves
+    cases k with
+    | lvar =>
+      simp only
+      by_cases hg : Ratchet.narrowNameOk κ nk = true
+      · rw [if_pos hg]
+        cases sides with
+        | thenOnly => simpa using hok'
+        | both =>
+          simp only
+          refine { hok' with env := ?_ }
+          exact EnvOk_refineOne_else hok'.env
+            (narrow_else_fact hok hok' hev hfalsy hnc rfl hg (Or.inl rfl))
+      · rw [if_neg hg]; simpa using hok'
+    | ivar =>
+      simp only
+      by_cases hg : Ratchet.narrowNameOk κ nk = true
+      · rw [if_pos hg]
+        cases sides with
+        | thenOnly => simpa using hok'
+        | both =>
+          simp only
+          refine { hok' with selfSpine := ?_ }
+          refine SelfSpineOk_ivarSet hok'.selfSpine ?_ ?_
+          · refine narrow_else_fact hok hok' hev hfalsy hnc rfl hg (Or.inr rfl)
+              ((Ratchet.ivarGet? Ic x).getD .nilT) ?_
+            -- the spine's own entry, or `nilT` when it has none — which is what
+            -- `SelfSpineOk`'s completeness conjunct provides
+            cases hig : Ratchet.ivarGet? Ic x with
+            | some ρ =>
+              simp only [hig, Option.getD_some]
+              simpa [readVar] using
+                denSpineFrom_get Ic (by simp) hig hok'.selfSpine.1
+            | none =>
+              simp only [hig, Option.getD_none, denM, isNilV, readVar]
+              rw [hok'.selfSpine.2 x hig]
+          · intro y hy
+            exact hok'.selfSpine.2 y (ivarGet?_ivarSet_none Ic x _ y hy)
+      · rw [if_neg hg]; simpa using hok'
+    | cvar => simpa using hok'
+    | gvar => simpa using hok'
+
+#print axioms stateOk_narrow_else
 
 end Ratchet.Denote
