@@ -2329,34 +2329,47 @@ def capIntact : Ty → Env → Env → Bool
     (envGet? Γout x == envGet? Γin x) && capIntact rest Γin Γout
   | _, _, _ => true
 
-/-- **Does this type record a claim about the instance variable `x`?** — `found-issues.md`
-§F17's guard. An `.inst n I` type carries a spine, and a spine entry for `x` is a claim about
-*some* object's `@x`; an assignment to `self`'s `@x` invalidates it whenever that object is
-`self`, which the type cannot tell. So the answer has to be conservative: a type mentioning `x`
-anywhere in a spine is refused.
+/-- **Does every spine in this type agree with `τ` about the instance variable `x`?** —
+`found-issues.md` §F17's guard.
 
-Recursive through every constructor that can *contain* an `.inst`, which is what makes it a
-real check rather than a shape test: `union`, `nilable`, `arrayOf`, `hashOf`, `sameAs` and the
-spines themselves all nest. Arrows and closures are refused outright — their denotation
-quantifies over runs and this judgment has no way to see through them. -/
-def ivarStaleFree (x : String) : Ty → Bool
-  | .inst _ I => (ivarGet? I x).isNone && ivarStaleFree x I
-  | .union σ τ => ivarStaleFree x σ && ivarStaleFree x τ
-  | .nilable ρ | .arrayOf ρ | .sameAs _ ρ => ivarStaleFree x ρ
-  | .hashOf κ' ν => ivarStaleFree x κ' && ivarStaleFree x ν
-  | .ivarCons n σ rest => n != x && ivarStaleFree x σ && ivarStaleFree x rest
+An `.inst n I` type carries a spine, and a spine entry for `x` is a claim about *some* object's
+`@x`. An assignment to `self`'s `@x` invalidates such a claim when the object is `self` — which
+the type cannot tell — so the check has to be conservative about *which* object and precise
+about *what*: a spine that says nothing about `x` is untouched (the spine is a **lower bound**,
+so an unmentioned ivar is unconstrained), and a spine that says `x : τ` is still right if the
+value written is a `τ`. Only a spine that records a *different* type is refused.
+
+Both halves matter for the corpus. Refusing every mention would reject every assignment inside
+a method, because `κ.selfTy`'s own spine records the ivars; accepting every mention is
+`corpus/240`, where `@a : Integer` is overwritten with a `String` while a local holds `self`.
+
+Recursive through every constructor that can *contain* an `.inst` — `union`, `nilable`,
+`arrayOf`, `hashOf`, `sameAs`, and the spines themselves. The arrow arms are exempt and a
+`clos`'s two type components are not; see the note in `Judge.ivarAsgn`. -/
+def ivarAgree (x : String) (τ : Ty) : Ty → Bool
+  | .inst _ I => (match ivarGet? I x with | none => true | some ρ => ρ == τ) && ivarAgree x τ I
+  | .union σ ν => ivarAgree x τ σ && ivarAgree x τ ν
+  | .nilable ρ | .arrayOf ρ | .sameAs _ ρ => ivarAgree x τ ρ
+  | .hashOf κ' ν => ivarAgree x τ κ' && ivarAgree x τ ν
+  | .ivarCons n σ rest =>
+    (n != x || σ == τ) && ivarAgree x τ σ && ivarAgree x τ rest
   -- **The arrow arms are fine, and the reason is `Later`.** An arrow's denotation is a claim
   -- about *future* runs, quantified over `Later`-futures of the machine, so it survives any
   -- change that relation admits — an ivar write included. A `clos` is not quantified: it reads
   -- the captured frame and creation `self` at *this* machine, so its two type components have
   -- to be checked.
   | .arrow0 _ | .arrowCons _ _ => true
-  | .clos _ cap selfT => ivarStaleFree x cap && ivarStaleFree x selfT
+  | .clos _ cap selfT => ivarAgree x τ cap && ivarAgree x τ selfT
   | _ => true
 
-/-- The same over an environment: no binding records a claim about `@x`. -/
-def ivarStaleFreeEnv (x : String) (Γ : Env) : Bool :=
-  Γ.all (fun p => ivarStaleFree x p.2)
+/-- The same over an environment, and over `κ.selfTy` — which records the running method's own
+`self`, spine and all, and is therefore the *usual* place a mention appears. -/
+def ivarAgreeEnv (x : String) (τ : Ty) (Γ : Env) : Bool :=
+  Γ.all (fun p => ivarAgree x τ p.2)
+
+def ivarAgreeSelf (x : String) (τ : Ty) : Option Ty → Bool
+  | none => true
+  | some σ => ivarAgree x τ σ
 
 /-- The expression whose type is a body's **result**.
 
@@ -3932,11 +3945,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `String + Integer`. `capStale`/`capStaleCtx` are the same guard for a closure's captured
       *locals*; `ivarStaleFree` is it for an object's ivars, and it has to cover the
       right-hand side's own type as well, because `@a = self` records a spine that the write
-      it is part of invalidates. -/
+      it is part of invalidates — and `κ.selfTy`, which records the running method's own
+      `self` and is where a mention normally appears (`@a = 1` inside a method of `C` whose
+      `selfTy` is `.inst "C" (@a : Integer)` is fine, and has to be: the check is *agreement*,
+      not absence). -/
   | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
-      (hst : ivarStaleFreeEnv x Γ' = true := by rfl) →
-      (hstτ : ivarStaleFree x τ = true := by rfl) →
+      (hst : ivarAgreeEnv x τ Γ' = true := by rfl) →
+      (hstτ : ivarAgree x τ τ = true := by rfl) →
+      (hself : ivarAgreeSelf x τ κ.selfTy = true := by rfl) →
       Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
