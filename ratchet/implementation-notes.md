@@ -5477,7 +5477,7 @@ nobody has written. The seventh is resolved; the sixth's item (2) reaches only t
 statement rules. So the wall map is now: **one wall**, and it is the one whose `Builtins` half
 clink 52 proved.
 
-## Clink 54 (2026-09-02) — the fifth wall, taken, and the call family opened. **178 rungs / 240, 36 of 83 rules**
+## Clink 54 (2026-09-02) — the fifth wall, taken, and the call family opened. **178 rungs / 241, 37 of 83 rules**
 
 The continuation wall — `Denote/Sem/notes.md` §The fifth stall point, the thing that has
 gated "most compound rungs" since clink 48 and was refuted-then-repaired in clink 52 — is
@@ -5617,7 +5617,7 @@ it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in bo
 * `./scripts/run_ratchet.sh` — 178 rungs / 239, 35 `expect_validate` mismatches (unchanged),
   corpus agreement 239/239.
 * `./scripts/run_check_rungs.sh` — 177/177 rungs confirmed, 145/145 negative controls.
-* `lake exe semladder` — **36 of 83 rules**, all axiom-clean.
+* `lake exe semladder` — **37 of 83 rules**, all axiom-clean.
 * `RubyCore/Proof/` — `lake build Metatheory` is clean but for the two pre-existing
   `Static/Iter.lean` errors (verified present with `Interp/{Support,Dispatch}.lean` reverted to
   before this clink's changes), and `T5.dispatch_progress` needed a heartbeat raise because
@@ -5625,8 +5625,8 @@ it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in bo
 
 ### After the wall: three more rungs, and the two definitional corrections they needed
 
-**`Judge.vasgn`**, then **`Judge.callNever`** and **`Judge.primNever`** — the first two of the
-call family. Both conclude `Ty.never`, which is the empty type, so both are discharged by
+**`Judge.vasgn`**, then **`Judge.callNever`** and **`Judge.primNever`** (the first two of the
+call family), then **`Judge.constPath`**. Both conclude `Ty.never`, which is the empty type, so both are discharged by
 contradicting the run: the argument walk finds the values the arguments delivered, the premise
 says one of their types is `never`, and no value has that type. `primNever` is the first rung
 to chain two `run_split`s (receiver, then one per argument) with a `.recvK` delivery stepped
@@ -5686,10 +5686,20 @@ is what the `Judge.const` family consumes; `Judge.constPath` asks about the **ke
 `constKeyIn owner n` against what the interpreter finds inside the class named `owner`, and
 nothing related the two. Its `setLocal` transport needs exactly `capStaleCtx`'s third
 disjunct, which already covers `κ.consts` — so no `Ratchet/` change. `Denote/Rules/Path.lean`
-carries the rung's proved ingredients and a note on the plumbing that is left (`applyKont`'s
-arm builds its conditions with `let`s, and the resulting `if`s sit inside the scrutinee of
-`run`'s five-arm match, so they need `cases … :` in the hypothesis rather than `split` in the
-goal).
+**closes the rung**, and the technique that closed it is the one `Decompose.lean`'s `throwJ`
+arm needed: `applyKont`'s arm builds its two conditions with `let`s and the resulting `if`s sit
+inside the scrutinee of `run`'s five-arm match, so they have to be taken apart with
+`cases … :` **in the hypothesis** — `split` in the goal picks the wrong match, and
+`rw [if_pos …]` does not match the elaboration the source produced. Three outcomes, one fact
+each: the hit is typed by `ConstPathsOk`, the `const_missing` gate is `.unsupported`, and the
+miss-or-private path is a `raiseErr` — a jump at an empty continuation, which
+`jump_empty_never_value` handles. The private case needs no machine-side conformance at all:
+`PrivConstsOk` claims nothing, and a machine that hides the constant *raises*.
+
+Its sibling **`constPathCls`** (the nested-class form) is one bridge short: `ClassesOk` gives
+`classNamed? m.heap (owner ++ "::" ++ n)`, and what is missing is that the *container's*
+constant `n` is that same class — a conformance clause relating `constLookupFrom` inside a
+class to the toplevel path name.
 
 ### What is next, and what it costs
 
