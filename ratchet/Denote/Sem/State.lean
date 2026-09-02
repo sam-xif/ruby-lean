@@ -557,6 +557,60 @@ def NameFreeOk (κ : Ctx) (m : Machine) : Prop :=
     Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n = some (o, md) →
       md.builtin.isSome = true ∨ md.undefined = true ∨ declaresName κ n = true
 
+/-- **What a bare name at top level must not find** (`Judge.bareName`).
+
+`NameFreeOk` above is not enough for that rule, and the reason is the shape of its
+disjunction rather than its name list: it admits `md.builtin.isSome`, and a *builtin* named
+`x` would send `invokeDispatch` into `Builtins.run` — a call that returns a value and can move
+the heap, so the rule's `.any` conclusion and its unchanged outgoing `Γ`/`I` would both be
+claims about a real run. `Judge.bareName` needs `x` to resolve to **nothing at all**, which is
+the `lookup = none` branch of `invokeDispatch` and nothing weaker.
+
+**Stated at exactly the rule's own premises**, and that is the decision worth recording. The
+escape is `defDeclared? κ.defs n = none` and `κ.selfTy = none` — the rule's second and third
+premises verbatim — rather than `NameFreeOk`'s wider `declaresName κ n = true`. Two
+consequences, in both directions:
+
+* It is what makes the component *usable*: `declaresName` also reads `κ.classes`, and
+  `Judge.bareName` has no premise about those, so a component with the wider escape would
+  hand the rung nothing at a context where some class happens to declare an `x`.
+* It is a real restriction on conformant machines: a machine at top level whose `self` can
+  dispatch an `x` that `κ.defs` does not record is **not** conformant. That machine is
+  precisely the one at which the rule is wrong (`found-issues.md` §F4 is the same shape one
+  name over), so declaring it non-conformant is the honest statement rather than a dodge —
+  but it is a conformance gap, in the ninth stall point's sense, and `Judge.bareName` says
+  nothing there.
+
+Quantified over the `BareNameError` **inductive** rather than over a copied list of names, so
+a row added to that table is covered here the same day — and `Denote/Sanity.lean`'s `Bool` is
+then what has to be re-measured. -/
+def BareNameFree (κ : Ctx) (m : Machine) : Prop :=
+  ∀ n, Ratchet.BareNameError n → defDeclared? κ.defs n = none → κ.selfTy = none →
+    lookup m.heap m.currentFrame.self n = none
+
+/-- **No *user* `method_missing` is reachable from `self`** (`Judge.bareName`).
+
+The second half of the same rule, and it is `found-issues.md` §F4: a bare name that resolves
+nowhere reaches `dispatchMiss`, whose last question before raising `NameError` is whether the
+receiver has a `method_missing`. If it does, the call **returns** and its body runs — so the
+rule's `.any` and its unchanged `I` are both false, which is the wrong answer that entry
+records.
+
+Two things about the shape:
+
+* **No `undefined` escape**, unlike `NameFreeOk`. `dispatchMiss` tests `mm.builtin.isNone` and
+  nothing else, so an `undef method_missing` tombstone with no builtin behind it would be
+  *entered* by this interpreter. Stating the component at the interpreter's own test rather
+  than at the sharper test it could have made is the point: a component is a claim about what
+  the machine does, and inventing a check the machine does not perform would make the rung a
+  proof about a different interpreter.
+* **The escape is the rule's own premise**, `nameFree κ "method_missing" = true` — the premise
+  clink 52 added — for the same reason `BareNameFree`'s is. -/
+def MissFree (κ : Ctx) (m : Machine) : Prop :=
+  nameFree κ "method_missing" = true → κ.selfTy = none →
+    ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing"
+      = some (o, md) → md.builtin.isSome = true
+
 /-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
 plus the three machine facts above.
 
@@ -581,6 +635,8 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   constScope : ConstScopeOk m
   exact : MethodsExact κ m
   nameFree : NameFreeOk κ m
+  bareFree : BareNameFree κ m
+  missFree : MissFree κ m
   selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
@@ -598,6 +654,39 @@ The theorem every allocating rung needs, and the one that pays for `Denote/Ext.l
 
 Nothing here is specific to a string literal: an allocating rung supplies the `Ext` and this
 does the rest. -/
+/-- The ancestor walk `lookup` performs reads the heap only through `classPayload?`, so two
+heaps that agree there agree on it. One induction, and the reason it is needed rather than
+being a `simp` step is that `lookup.go` carries the heap as a captured argument. -/
+theorem lookup_go_payload {h h' : Heap} (hp : ∀ k, h'.classPayload? k = h.classPayload? k)
+    (n : String) : ∀ ks, lookup.go h' n ks = lookup.go h n ks
+  | [] => rfl
+  | k :: rest => by
+    rw [lookup.go, lookup.go, hp k]
+    cases hc : h.classPayload? k with
+    | none => simp only [hc]; exact lookup_go_payload hp n rest
+    | some cp =>
+      cases hf : cp.methods.find? (·.1 == n) with
+      | none => simp only [hc, hf]; exact lookup_go_payload hp n rest
+      | some p => simp only [hc, hf]
+
+/-- `lookup` **is** `methodOn` at the receiver's dispatch class: the same ancestor walk,
+written once as an explicit `go` (`RubyCore/Heap.lean`) and once as a `firstM`
+(`Interp/Dispatch.lean`). Needed because the two components below are stated at the walk the
+interpreter performs and the interpreter performs both. -/
+theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
+    lookup h v n = Interp.methodOn h (classOf h v) n := by
+  simp only [lookup, Interp.methodOn]
+  induction (RubyCore.ancestors h (classOf h v)) with
+  | nil => rfl
+  | cons k rest ih =>
+    rw [lookup.go, List.firstM]
+    cases hp : h.classPayload? k with
+    | none => simp [ih]
+    | some cp =>
+      cases hf : cp.methods.find? (·.1 == n) with
+      | none => simp [hf, ih]
+      | some p => simp [hf]
+
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
     (he : Ext m m₂) : StateOk κ Γ I m₂ where
   sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
@@ -672,6 +761,18 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   nameFree := by
     intro n hn o md hm
     refine h.nameFree n hn o md ?_
+    rw [← hm]
+    simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
+  bareFree := by
+    intro n hn hdef hself
+    rw [show lookup m₂.heap m₂.currentFrame.self n
+          = lookup m.heap m.currentFrame.self n by
+      simp only [lookup, classOf_self_ext he h.selfLive, he.ancestors]
+      exact lookup_go_payload he.payload n _]
+    exact h.bareFree n hn hdef hself
+  missFree := by
+    intro hfree hself o md hm
+    refine h.missFree hfree hself o md ?_
     rw [← hm]
     simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
   selfLive := by
@@ -1000,6 +1101,17 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       nameFree := by
         intro n hn o md hm
         refine h.nameFree n hn o md ?_
+        rw [← hm]
+        simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
+      bareFree := by
+        intro n hn hdef hself
+        rw [show lookup (m.setLocal x w).heap (m.setLocal x w).currentFrame.self n
+              = lookup m.heap m.currentFrame.self n by
+          simp only [lookup, classOf, setLocal_heap, currentFrame_setLocal_self]]
+        exact h.bareFree n hn hdef hself
+      missFree := by
+        intro hfree hself o md hm
+        refine h.missFree hfree hself o md ?_
         rw [← hm]
         simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
       selfLive := by

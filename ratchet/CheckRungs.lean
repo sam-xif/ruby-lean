@@ -1384,7 +1384,21 @@ def controls : List Control :=
       .seq [.def' "lambda" [] (.int 5),
             .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
             .send (some (.send (some (.var .lvar "f")) "call" [] none))
-              "+" [.int 1] none]⟩ ]
+              "+" [.int 1] none]⟩
+    -- (clink 52, `found-issues.md` §F4) **A user `method_missing` turns the miss
+    -- `Judge.bareName` reasons from into a return.** The rule read a bare `x` as
+    -- `NameError` — outside the type-stuck family, hence `.any` and `Γ`/`I` threaded out
+    -- unchanged — but with `Object#method_missing` defined the call *returns*, and its body
+    -- rebinds `@a`. The spine still said `@a : String`, so `@a + "b"` was certified
+    -- `String` against a `TypeError` both executors raise ("coerce must return [x, y]" —
+    -- reached because `Integer#+`'s `coerce` miss goes to the same `method_missing`).
+    -- The fix is the `nameFree κ "method_missing"` premise.
+  , ⟨"@a = \"s\"; def method_missing(*n); @a = 1; 2; end; x; @a + \"b\"",
+      .seq [.vasgn .ivar "@a" (.str "s"),
+            .def' "method_missing" [.rest (some "n")]
+              (.seq [.vasgn .ivar "@a" (.int 1), .int 2]),
+            .vcall "x",
+            .send (some (.var .ivar "@a")) "+" [.str "b"] none]⟩ ]
 
 mutual
 

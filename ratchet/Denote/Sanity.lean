@@ -219,6 +219,40 @@ theorem nameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratchet.Ct
   rw [hm] at this
   exact absurd this (by simp)
 
+/-- **`MissFree` as one `Bool`.** One walk, one field. Checked in the form the component
+states — `none`, or a `builtin` behind it — rather than in the stronger "absent" form, because
+here the two are *not* interchangeable: the model's `method_missing` really may be a builtin
+(`BasicObject#method_missing`), and a check that demanded absence would fail at the booted
+machine and cost the ladder its only exhibited model. -/
+def missFreeB (m : Machine) : Bool :=
+  match Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing" with
+  | none => true
+  | some (_, md) => md.builtin.isSome
+
+theorem missFreeB_sound {m : Machine} (hb : missFreeB m = true) (κ : Ratchet.Ctx) :
+    MissFree κ m := by
+  intro _ _ o md hm
+  unfold missFreeB at hb
+  rw [hm] at hb
+  exact hb
+
+/-- **`BareNameFree` from `nameFreeB`.** `nameFreeB` already checks the strongest form of
+`NameFreeOk` — nothing on the chain carries the name at all — and `"x"` is one of the three
+names it checks, so the same `Bool` discharges this component too. That is not a coincidence
+worth hiding: `BareNameFree` is `NameFreeOk` at one name with the two escapes the interpreter
+does not honour removed, so any measurement strong enough for the first covers it.
+
+The `BareNameError` inversion is what keeps the name list from being duplicated: the table has
+one row, and if it grows this proof stops compiling until `shadowableNames` grows with it. -/
+theorem bareNameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratchet.Ctx) :
+    BareNameFree κ m := by
+  intro n hn _ _
+  cases hn
+  simp only [nameFreeB, List.all_eq_true] at hb
+  have h := hb "x" (by simp [shadowableNames])
+  rw [lookup_eq_methodOn]
+  simpa using h
+
 theorem selfLiveB_sound {m : Machine} (hb : selfLiveB m = true) : SelfLive m := by
   intro o ho
   unfold selfLiveB at hb
@@ -242,7 +276,7 @@ gate. -/
 def bootOkB : Bool :=
   saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
   topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
-  nameFreeB bootMachine && selfLiveB bootMachine
+  nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -252,7 +286,7 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨hkind, hblk⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hsl⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨hkind, hblk⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩, hsl⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
@@ -273,6 +307,8 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       constScope := constScope_of_topScope htop
       exact := methodsExactB_sound hex
       nameFree := nameFreeB_sound hnf _
+      bareFree := bareNameFreeB_sound hnf _
+      missFree := missFreeB_sound hmf _
       selfLive := selfLiveB_sound hsl }
 
 -- **The gate.** If this fails, the ladder's hypothesis has no exhibited model and every

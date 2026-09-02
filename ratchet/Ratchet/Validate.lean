@@ -383,7 +383,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- body declares. `bareName` means the *name* is undefined, so it asks the raw table.
           match defDeclared? κ.defs m with
           | some _ => none
-          | none => if bareNameError? m then some (.any, Γ, I) else none
+          | none =>
+            -- `nameFree κ "method_missing"` is `found-issues.md` §F4: a user
+            -- `method_missing` turns the miss this rule reasons from into a *return*, and
+            -- the body it runs can rebind an ivar the spine threads out unchanged.
+            if bareNameError? m && nameFree κ "method_missing" then some (.any, Γ, I) else none
   | _ + 1, .self' =>
     match κ.selfTy with
     | some σ => some (σ, Γ, I)

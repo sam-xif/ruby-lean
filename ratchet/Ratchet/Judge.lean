@@ -2672,11 +2672,29 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       assumed top-level `self`, and now it says so in the premise. Implicit-self dispatch
       inside a body is `selfCall`'s job instead.
 
+      **A third guarding premise** (`found-issues.md` §F4, clink 52), and it is the one that
+      says what "raises `NameError`" really depends on: **nothing is missing if the program
+      defined `method_missing`.** A user `Object#method_missing` makes the miss *return* — so
+      the `vcall` has a value, and, worse, the body runs and can bind an ivar. `@a = "s"; def
+      method_missing(*n); @a = 1; 2; end; x; @a + "b"` was certified `String` against a
+      `TypeError` both executors raise: the rule threads `I` out unchanged, so the spine still
+      said `@a : String` after a body that had rebound it. `nameFree` is the same predicate
+      `Judge.lambdaLit` guards with (§F2) and for the same reason — a rule that reasons from
+      the *absence* of a method needs the program not to have supplied one. An `autoParam`, so
+      no derivation term moved: the corpus's one `bareName` rung is at a κ that declares
+      nothing and the premise is `rfl`.
+
+      Not covered, and recorded rather than papered over: a `method_missing` installed by
+      `define_method`, which lands in `κ.closures` and not in the two tables `nameFree` reads.
+      `Object#define_method` is `unsupported` in the model today, so no such program is
+      executable here at all; the day it is, this premise wants `κ.closures` too.
+
       Remaining conservatism, recorded: there is no rule for a top-level `vcall` that *does*
       name a defined method (`def get5; 5; end; get5`, no parentheses — the desugarer emits
       a `vcall`, not an argument-less `send`). Such a program is simply not typed. -/
   | bareName {κ : Ctx} {Γ : Env} {I : Ty} {m : String} :
       BareNameError m → defDeclared? κ.defs m = none → κ.selfTy = none →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.vcall m) .any Γ I
   /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
 

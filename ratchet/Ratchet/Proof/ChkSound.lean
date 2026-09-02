@@ -766,7 +766,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               injection h with h
               injection h with h h'; injection h' with h' h''
               subst h; subst h'; subst h''
-              exact .bareName (bareNameError?_sound hbare) hdecl hself
+              -- `found-issues.md` §F4: the guard is now a conjunction, and the second
+              -- conjunct *is* the rule's `method_missing` premise.
+              obtain ⟨hbare, hmm⟩ := Bool.and_eq_true .. |>.mp hbare
+              exact .bareName (bareNameError?_sound hbare) hdecl hself hmm
             · exact absurd h (by simp)
   · -- `self'`: only where the context supplies a type.
     split at h

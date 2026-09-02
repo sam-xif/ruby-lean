@@ -567,3 +567,93 @@ why this entry is about a family rather than a rule.
 Not fixed in clink 48, which ran under an explicit "do not modify `Ratchet/`" constraint. The
 regression to add with the fix is the program above, as an `unsafe_program` rung — a `true` on
 it is this bug returning.
+
+### F4. A user `method_missing` turns the miss `Judge.bareName` reasons from into a return
+
+**Status:** **fixed, clink 52.** **Severity:** high — `validate` returned `true`, with a
+*type*, on a program **both** executors take to `TypeError`; the §F1/§F3 shape exactly.
+**Found by:** the semantic ladder, while attempting `Obl.Judge.bareName` — see below, because
+*how* is the point.
+
+```ruby
+@a = "s"
+def method_missing(*n)
+  @a = 1
+  2
+end
+x
+@a + "b"
+```
+
+| | |
+|---|---|
+| CRuby | `TypeError: coerce must return [x, y]` |
+| the Lean model | `TypeError: coerce must return [x, y]` — the two **agree**, message included |
+| `lake exe ratchet --stdin` | `{"ivars":"{@a: String}","type":"String","validate":true}` |
+
+And the minimal form, where the wrong answer is the *type* rather than a missed raise:
+
+```ruby
+def method_missing(name)
+  @a = 1
+  2
+end
+x
+@a
+```
+
+`validate` answers `NilClass`; CRuby and the model both answer `1`.
+
+**What is wrong.** `Judge.bareName` reads a bare `x` as raising `NameError` — which is outside
+the `NoMethodError`/`ArgumentError`/`TypeError` family this ladder defines type-safety over —
+and concludes `.any` with `Γ` and the ivar spine `I` threaded out **unchanged**. Both halves
+of that rest on the call never returning. A user `Object#method_missing` falsifies both:
+
+* the miss **returns** (`x` is `2`), so `.any` is now a claim about a real value rather than a
+  vacuous one; and
+* the body **runs**, and an assignment in it rebinds an ivar. The spine threaded out unchanged
+  still said `@a : String` after `@a` had become `1`, and `Judge.ivarRead`'s completeness
+  reading of the spine is what then turns that into a wrong type.
+
+The second is the one that bites, and it generalises: *any* rule that concludes a run has no
+effect on `I` is wrong about a run that can execute an assignment. `bareName` is the only rule
+that claims it for a **send**.
+
+The `TypeError` in the reproducer is reached by a second miss, and it is worth spelling out
+because it is why the program is type-*stuck* rather than merely mistyped: `Integer#+` with a
+`String` argument tries the coerce protocol, `"b".coerce` misses, and *that* miss goes to the
+same `method_missing`, which answers `2` — not the `[x, y]` pair the protocol requires. With a
+user `method_missing` installed, a `NoMethodError` is unreachable, so a witness has to be a
+`TypeError` or an `ArgumentError`.
+
+**Why no corpus rung caught it.** Two rungs define `method_missing`
+(`corpus/113`/`114-metaprog-method-missing-*`) and both call the missing method on an
+**explicit** receiver (`Ghost.new.anything_at_all`), which is `Judge.callMissing` — a rule
+that types the handler's body and threads its effects. No rung had a `method_missing` *and* a
+bare name, and nothing about either rung suggests looking for one.
+
+**Why the ladder did.** `Obl.Judge.bareName` asks for `StateOk κ Γ I m'` at the post-machine
+of a run of `.vcall m`, and the ninth stall point (`Denote/Sem/notes.md`) had already recorded
+what that needs: an **upper** bound on the machine — "`x` resolves to nothing" is not
+implied by any lower-bound component. Clink 51 supplied one for the *name being called*
+(`NameFreeOk`). Attempting the rung with that in hand forces the next question — which other
+name has to be absent for the walk to reach the `NameError`? — and `dispatchMiss`'s answer is
+`method_missing`, in one line of the interpreter. The counterexample is two lines after that.
+Nothing was searched for and no witness generator ran.
+
+**The fix (clink 52).** A premise, `nameFree κ "method_missing" = true`, on `Judge.bareName` —
+the same predicate and the same shape as §F2's fix to `Judge.lambdaLit`, for the same reason: a
+rule that reasons from the *absence* of a method needs the program not to have supplied one.
+An `autoParam`, so no derivation term moved (the corpus's one `bareName` rung is at a `κ` that
+declares nothing, and the premise is `rfl`); `Ratchet/Validate.lean` gains the matching
+conjunct, and `Ratchet/Proof/ChkSound.lean`'s `bareName` branch splits the guard into the two
+premises, so the checker is still *proved* to only accept what `Judge` derives.
+
+Pinned by two regressions, both required: `corpus/239-method-missing-bare-name-unsafe`
+(`expect_validate = false`, `unsafe_program`) and a `CheckRungs.lean` negative control, which
+reports it as a **sound** rejection because the model really does go type-stuck on it.
+
+**What is still open.** `nameFree` reads `κ.defs` and `κ.classes` and not `κ.closures`, so a
+`method_missing` installed by `define_method` is not covered — the same coarseness §F2's fix
+has. Not reachable today: `Object#define_method` is `unsupported` in the model, so no such
+program executes here at all. The day it is modeled, the premise wants `κ.closures` too.

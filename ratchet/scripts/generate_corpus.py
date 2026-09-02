@@ -2085,6 +2085,22 @@ R("yield-two-types-string-to-s", 9,
   'def hello\n  yield 1\n  yield "str"\nend\n\n\ns = ""\nhello { |v| \n  s += v.to_s\n}\n\ns\n',
   expect_validate=True)
 
+R("method-missing-bare-name-unsafe", 10,
+  "**An UNSAFE program, and the regression test for `found-issues.md` \u00a7F4.** "
+  "`Judge.bareName` types a bare `x` as `.any` on the strength of its raising `NameError` -- "
+  "outside the type-stuck family -- and therefore threads `\u0393` and the ivar spine out "
+  "*unchanged*. A user `Object#method_missing` falsifies both halves at once: the miss "
+  "**returns** instead of raising, and the body that runs rebinds `@a`. So the spine still "
+  "said `@a : String` after `@a` had become `1`, and `@a + \"b\"` was certified `String` "
+  "against a TypeError CRuby and the model both raise (`coerce must return [x, y]` -- reached "
+  "because `Integer#+`\u2019s own `coerce` miss goes to the same `method_missing`). Fixed in "
+  "clink 52 by the `nameFree \u03ba \"method_missing\"` premise, the same predicate "
+  "`Judge.lambdaLit` guards with (\u00a7F2). A `true` here is that bug returning. Found by the "
+  "semantic ratchet: `Obl.Judge.bareName`\u2019s conformance hypothesis is what asked which "
+  "machine can have a reachable `x` the context does not record.",
+  '@a = "s"\ndef method_missing(*n)\n  @a = 1\n  2\nend\nx\n@a + "b"\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):
