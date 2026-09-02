@@ -260,6 +260,20 @@ theorem selfLiveB_sound {m : Machine} (hb : selfLiveB m = true) : SelfLive m := 
   rw [ho] at hb
   simpa using hb
 
+/-- The current frame binds nothing and captures nothing, so `getLocal` answers `nil` at every
+name — which is `EnvOk`'s completeness clause (clink 55) at the empty environment. A `Bool`
+rather than a proof for the file's usual reason: `bootMachine` is the *booted* machine, not a
+literal, so its frame's locals are not syntactically available. -/
+def localsEmptyB (m : Machine) : Bool :=
+  (m.frames[m.stack.head?.getD 0]?.getD default).locals.isEmpty &&
+    (m.frames[m.stack.head?.getD 0]?.getD default).captured.isNone
+
+theorem localsEmptyB_sound {m : Machine} (h : localsEmptyB m = true) (x : String) :
+    m.getLocal x = .nil := by
+  simp only [localsEmptyB, Bool.and_eq_true, List.isEmpty_iff, Option.isNone_iff_eq_none] at h
+  obtain ⟨hl, hc⟩ := h
+  simp [Machine.getLocal, Machine.getLocal.go, hl, hc]
+
 /-- **Everything about the booted machine that has to be computed rather than proved.**
 
 One `Bool`, checked by the `#guard` below — which is the same status
@@ -277,7 +291,8 @@ gate. -/
 def bootOkB : Bool :=
   saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
   topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
-  nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine
+  nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine &&
+  localsEmptyB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -287,12 +302,15 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
-    hsl⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
+    hsl⟩, hle⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
-      env := by intro x τ hx; exact absurd hx (by simp [envGet?, Ratchet.ctx0])
+      env := ⟨by intro x τ hx; exact absurd hx (by simp [envGet?, Ratchet.ctx0]),
+              -- completeness at the boot machine: the toplevel frame binds nothing, so every
+              -- name reads as `nil`
+              fun x _ => localsEmptyB_sound hle x⟩
       selfSpine := ⟨by simp [denSpine, denSpineFrom], fun x _ => selfIvarsEmpty_sound hself x⟩
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])

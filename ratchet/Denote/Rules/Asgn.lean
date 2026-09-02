@@ -75,7 +75,7 @@ theorem Sem.Judge.vasgnAlias : Obl.Judge.vasgnAlias := by
   have hMok : StateOk κ Γ I M := StateOk_reCtl hm _ _
   -- The value has the type the rule reports, at `M` and then after the write.
   have hdenM : denM τ M (M.getLocal x) := by
-    have hd := (hm.env x σ hget).1
+    have hd := (hm.env.1 x σ hget).1
     rw [hstrip] at hd
     rw [hM]
     simpa using denM_reCtl.mpr hd

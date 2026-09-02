@@ -131,9 +131,25 @@ false at a local holding `NaN`, for a reason that has nothing to do with aliasin
 quirk is the model's and is recorded in `found-issues.md`; the denotation should not inherit
 it. -/
 def EnvOk (Γ : Env) (m : Machine) : Prop :=
-  ∀ x τ, envGet? Γ x = some τ →
+  (∀ x τ, envGet? Γ x = some τ →
     denM (stripAlias τ) m (m.getLocal x) ∧
-    (∀ y ρ, τ = .sameAs y ρ → m.getLocal x = m.getLocal y)
+    (∀ y ρ, τ = .sameAs y ρ → m.getLocal x = m.getLocal y)) ∧
+  -- **…and the environment is complete**: a name it does not mention reads as `nil`.
+  --
+  -- Forced by `Judge.if'` (clink 55), and it is `SelfSpineOk`'s second conjunct one piece of
+  -- state over — same shape, same reason. `joinEnv` joins a name bound in only one branch
+  -- against **`.nilT`**, deliberately ("the parser declares a local at the assignment's
+  -- syntactic position, so `if false then y = 1 end; y` evaluates to `nil`"), so using a
+  -- branch's `StateOk` to establish the join's requires knowing that a name the branch's `Γ`
+  -- is silent about reads as `nil`. The first conjunct is a lower bound and says nothing
+  -- about such a name.
+  --
+  -- This **strengthens `StateOk`**, which sits on the left of `SemJudge`'s implication, so it
+  -- weakens all 83 obligations at once — the cost `notes.md` warns about for `Evals`. It is
+  -- the right move here for the reason `SelfSpineOk`'s was: the completeness is the
+  -- *checker's own convention*, stated where the semantics can see it, rather than a
+  -- convenience. `Denote/Sanity.lean`'s boot machine satisfies it.
+  (∀ x, envGet? Γ x = none → m.getLocal x = .nil)
 
 /-- `self`'s instance variables match the spine `I`, **and the spine is complete**: an ivar
 the spine does not mention reads as `nil`.
@@ -715,11 +731,16 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     unfold FrameInRange at this ⊢
     rw [he.stack, he.frames]; exact this
   env := by
-    intro x τ hx
-    obtain ⟨hd, hid⟩ := h.env x τ hx
     refine ⟨?_, ?_⟩
-    · rw [he.getLocal_eq]; exact denM_ext he hd
-    · intro y ρ hτ; rw [he.getLocal_eq, he.getLocal_eq]; exact hid y ρ hτ
+    · intro x τ hx
+      obtain ⟨hd, hid⟩ := h.env.1 x τ hx
+      refine ⟨?_, ?_⟩
+      · rw [he.getLocal_eq]; exact denM_ext he hd
+      · intro y ρ hτ; rw [he.getLocal_eq, he.getLocal_eq]; exact hid y ρ hτ
+    · -- completeness travels with the locals, which `Ext` does not touch
+      intro x hx
+      rw [he.getLocal_eq]
+      exact h.env.2 x hx
   selfSpine := by
     have := h.selfSpine
     unfold SelfSpineOk at this ⊢
@@ -1046,38 +1067,53 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         unfold FrameInRange at this ⊢
         simpa using this
       env := by
-        intro y σ hy
-        by_cases hyx : y = x
-        · -- The assigned name: it reads back as the assigned value, and that value has the
-          -- type the rule bound (`hρ` strips the alias `vasgnAlias` wraps it in).
-          subst hyx
-          rw [envGet?_envSet_self] at hy
-          rw [getLocal_setLocal_self m y w h.frameInRange.2, ← Option.some.inj hy]
-          exact ⟨by rw [hρ]; exact denM_setLocal hw hcap hw, halias⟩
-        · -- Every other name is untouched; its type is either widened to `.any` or
-          -- transported by `denM_setLocal`.
+        refine ⟨?_, ?_⟩
+        · intro y σ hy
+          by_cases hyx : y = x
+          · -- The assigned name: it reads back as the assigned value, and that value has the
+            -- type the rule bound (`hρ` strips the alias `vasgnAlias` wraps it in).
+            subst hyx
+            rw [envGet?_envSet_self] at hy
+            rw [getLocal_setLocal_self m y w h.frameInRange.2, ← Option.some.inj hy]
+            exact ⟨by rw [hρ]; exact denM_setLocal hw hcap hw, halias⟩
+          · -- Every other name is untouched; its type is either widened to `.any` or
+            -- transported by `denM_setLocal`.
+            rw [envGet?_envSet_ne _ _ _ _ hyx, envGet?_killClosOver, envGet?_killAliasesTo] at hy
+            rw [getLocal_setLocal_ne m x w hyx]
+            cases hΓ : envGet? Γ y with
+            | none => rw [hΓ] at hy; exact absurd hy (by simp)
+            | some σ₁ =>
+              rw [hΓ] at hy
+              simp only [Option.map_some] at hy
+              obtain ⟨hd, hid⟩ := h.env.1 y σ₁ hΓ
+              by_cases hst : capStale x τ (killAliasTy x σ₁)
+              · rw [if_pos hst] at hy
+                have hσ := Option.some.inj hy; subst hσ
+                exact ⟨by simp [stripAlias, denM], by intro z ρ₂ hz; exact absurd hz (by simp)⟩
+              · rw [if_neg hst] at hy
+                have hσ := Option.some.inj hy; subst hσ
+                have hK : capStale x τ (killAliasTy x σ₁) = false := by simpa using hst
+                refine ⟨?_, ?_⟩
+                · refine denM_stripAlias.mpr (denM_setLocal hw hK ?_)
+                  exact denM_killAliasTy.mpr (denM_stripAlias.mp hd)
+                · intro z ρ₂ hz
+                  obtain ⟨hσ₁, hzx⟩ := sameAs_of_killAliasTy hz
+                  rw [getLocal_setLocal_ne m x w hzx]
+                  exact hid z ρ₂ hσ₁
+        · -- **completeness**, and it is the easy direction: a name the outgoing environment
+          -- is silent about is not `x` (which `envSet` bound), is silent in `Γ` too (the two
+          -- `kill*` walks preserve keys), and the write does not touch it.
+          intro y hy
+          have hyx : y ≠ x := by
+            intro h'
+            subst h'
+            rw [envGet?_envSet_self] at hy
+            exact absurd hy (by simp)
           rw [envGet?_envSet_ne _ _ _ _ hyx, envGet?_killClosOver, envGet?_killAliasesTo] at hy
           rw [getLocal_setLocal_ne m x w hyx]
           cases hΓ : envGet? Γ y with
-          | none => rw [hΓ] at hy; exact absurd hy (by simp)
-          | some σ₁ =>
-            rw [hΓ] at hy
-            simp only [Option.map_some] at hy
-            obtain ⟨hd, hid⟩ := h.env y σ₁ hΓ
-            by_cases hst : capStale x τ (killAliasTy x σ₁)
-            · rw [if_pos hst] at hy
-              have hσ := Option.some.inj hy; subst hσ
-              exact ⟨by simp [stripAlias, denM], by intro z ρ₂ hz; exact absurd hz (by simp)⟩
-            · rw [if_neg hst] at hy
-              have hσ := Option.some.inj hy; subst hσ
-              have hK : capStale x τ (killAliasTy x σ₁) = false := by simpa using hst
-              refine ⟨?_, ?_⟩
-              · refine denM_stripAlias.mpr (denM_setLocal hw hK ?_)
-                exact denM_killAliasTy.mpr (denM_stripAlias.mp hd)
-              · intro z ρ₂ hz
-                obtain ⟨hσ₁, hzx⟩ := sameAs_of_killAliasTy hz
-                rw [getLocal_setLocal_ne m x w hzx]
-                exact hid z ρ₂ hσ₁
+          | none => exact h.env.2 y hΓ
+          | some σ₁ => rw [hΓ] at hy; exact absurd hy (by simp)
       selfSpine := by
         have h2 := h.selfSpine
         unfold SelfSpineOk at h2 ⊢

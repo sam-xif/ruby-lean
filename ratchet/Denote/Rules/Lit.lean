@@ -92,7 +92,7 @@ theorem Sem.Judge.var : Obl.Judge.var := by
   intro κ Γ I x τ hget halias m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
-  have hden := (hm.env x τ hget).1
+  have hden := (hm.env.1 x τ hget).1
   have : stripAlias τ = τ := by
     cases τ <;> simp_all [stripAlias, isAliasTy]
   rw [this] at hden
@@ -102,7 +102,7 @@ theorem Sem.Judge.varAlias : Obl.Judge.varAlias := by
   intro κ Γ I x y τ hget m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
-  have hden := (hm.env x (.sameAs y τ) hget).1
+  have hden := (hm.env.1 x (.sameAs y τ) hget).1
   simp only [stripAlias] at hden
   simpa using denM_reCtl.mpr hden
 

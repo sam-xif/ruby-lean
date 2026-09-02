@@ -80,7 +80,7 @@ theorem denSpineFrom_envToSpine {m : Machine} : ∀ (Γ pre : Env) (seen : List 
     refine ⟨?_, ?_⟩
     · by_cases hx : x ∈ seen
       · exact Or.inl hx
-      · exact Or.inr (henv x τ (envGet?_append_of_notMem pre (fun h => hx (hpre x h)))).1
+      · exact Or.inr (henv.1 x τ (envGet?_append_of_notMem pre (fun h => hx (hpre x h)))).1
     · refine denSpineFrom_envToSpine Γ (pre ++ [(x, τ)]) (x :: seen) ?_ ?_
       · simpa using henv
       · intro y hy
