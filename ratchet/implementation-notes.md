@@ -3961,3 +3961,132 @@ discharged**. New: `Denote/Rules/Core.lean` (the two shared lemmas plus their su
 import list). `Denote/Examples.lean`'s 31 `#guard`s green. Axiom-clean throughout — every new
 file ends in its own `#print axioms`, and each reports only `propext`/`Classical.choice`/
 `Quot.sound`.
+
+---
+
+## Clink 45 (2026-09-01) — the allocation stall broken, and the wall behind it. **177 rungs / 10 of 83 rules**
+
+One rung — `Judge.strLit` — and the whole clink is what it cost. The ladder reads **10 of 83**.
+`Ratchet/` untouched (177/232, 177/177 + 140/140); `Denote/Examples.lean`'s 31 `#guard`s green;
+axiom-clean, no `sorry`.
+
+Clink 44 left `strLit` undischarged with its reason written out (§The fourth stall point): a
+string literal allocates, `StateOk` said nothing about the heap's core classes, and `denM`
+did not survive a heap extension. Both are now fixed, and the *shape* of the second fix is the
+clink's content.
+
+**Decision 1: the arrow is where the problem is, so the arrow is what changed.** Transporting
+`denM τ` across a heap push is easy for every arm that reads the heap and impossible for the
+one that reads *runs*: a run from a heap with one more object in it allocates at shifted ids,
+so it is not the run from the heap without it. Three options were on the table.
+
+* *Transport the arrow anyway.* This is an allocation-equivariance simulation over the whole
+  interpreter. Rejected as not a lemma.
+* *Wrap the `StateOk` components instead* — define `EnvOk`/`AsmsOk` as "…at every allocation
+  future", leaving `denM` alone. Rejected because it only moves the problem: `Judge.vasgn`
+  would then have to *establish* `EnvOk` at every future for the type it just bound, which is
+  the same unprovable fact one level out. The right place for a monotonicity requirement is
+  the definition that is not monotone.
+* *Quantify the arrow arm.* Taken. `denM`'s two arrow arms and `AsmsOk` now read
+  `∀ m₂, Ext m m₂ → …`.
+
+`Ext` (`Denote/Ext.lean`) is deliberately **not** `Reaches`. Clink 44 recorded that seeding the
+arrow with reachability conflicts with `denM_ctl` (the machines reachable from `m` are not
+those reachable from `m` with its control word rewritten) and that any fix needs something
+coarser. `Ext m m₂` — same frames, same stack, a heap that only grew — is that: it reads
+neither `ctl` nor `kont`, so `denM_ctl` survives verbatim (`Ext_reCtl`), and it is reflexive
+and transitive, so `Ext.refl` recovers the old reading (the change **strengthens** `denM`) and
+`Ext.trans` makes the arm monotone by construction. `denM_ext` (`Denote/Grow.lean`) therefore
+re-derives nothing at all about runs — the arrow case is two projections.
+
+The price is stated rather than hidden: `Ext` pins the frame array, so the arrow this seeds is
+stable under *allocation*, which is strictly weaker than `Denote/Arrow.lean`'s `ArrowStable`
+(stable under *execution*). A call rung will want the stronger one, and the pinning is what
+keeps the `clos` arm's captured-scope read (`closLocal m cl`, a `Machine.frames` index) a
+rewrite rather than a second transport problem.
+
+**Decision 2: `Saturated` is imported from the model's own metatheory, not restated.** The
+sub-problem that nearly ate the clink is invisible until you look: `ancestors` is **fuel-bounded
+by `h.objs.size + 1`** (a `partial def` would be opaque to the kernel — `RubyCore/Heap.lean`
+L73), so pushing an object moves the *fuel*, and the ancestor walk before and after the push
+are two different computations. `RubyCore/Proof/AncestorsGrow.lean` had already solved exactly
+this, for exactly this reason, with `Saturated` ("one more unit of fuel changes nothing") and
+`ancestors_congr_grow`. Re-deriving it here would be a second copy of a proof about the same
+`stepFn`, which is the thing `Semantics/Interp.lean`'s module docstring argues against one
+layer down. So `Denote/Ext.lean` is the **first file in the package to import
+`RubyCore.Proof.*`** — the model's metatheory, not just its interpreter — and the isolation
+boundary that moves is the one that was already deliberately open (`Semantics/ → ../lean`),
+not `Ratchet/`'s.
+
+`Saturated` is not free: it is a real hypothesis, `RubyCore.Proof.saturatedB` is the `Bool`
+that checks it, and it is now a `StateOk` component (`HeapSaturated`). `CoreOk` is the other
+new component — the boot classes are what they are — with four clauses, each used exactly once
+by this rung. It will grow: `arrayLit`, `hashLit` and most of `prim` conclude a builtin class
+type too.
+
+**The finding nobody predicted: `Heap.get` is total, so a dangling reference is well-typed.**
+Past the end of the heap `Heap.get` answers `default`, whose `klass` is `0` — which is
+`Boot.basicObjectId`. So at a heap of size `n` the value `.ref n` is not an error; it is an
+instance of `BasicObject` with no ivars, and after the push it is a `String`. Nothing in
+`StateOk` forbids `Γ` from typing a local that holds one, so the transport has to survive it
+rather than assume it away. That is what `Ext`'s two fresh-id clauses are (`freshIvars`,
+`freshBasic`), and what `CoreOk.basicSelf` is for — it collapses "any class the dangling read
+was an instance of" to the one case.
+
+Worth recording what this *avoided*. The obvious alternative was a heap-closedness /
+value-boundedness invariant ("no dangling references anywhere"), threaded through `denM`'s
+recursion into array elements, hash entries and ivars, and re-established at every allocation.
+It was not needed, and the reason is a two-line fact: `default.payload` is `.none`, so
+`arrElems?`/`hshEntries?`/`procClosure?` already answer `none` at a dangling reference, which
+makes `arrayOf`/`hashOf`/`clos` **vacuous** there instead of in need of transport. `denM_ext`
+consequently has **no side condition on the value** at all.
+
+**Definitions changed** (all expected, per `Denote/Sem/notes.md`'s "editing (1) or (2) is
+expected"):
+
+| What | Why |
+|---|---|
+| `denM`'s two arrow arms | Decision 1 — the only non-monotone arm |
+| `AsmsOk` | same shape as the arrow, same fix |
+| `StateOk` + `sat`, `core` | the fourth stall point's item 1 |
+| `Arrow.lean`: `ArrowExt` added, `denM_arrowOf` restated | `ArrowFlat` kept — it is what `ArrowCheck`'s refutation direction is stated over, and the 31 guards go through it unchanged |
+| `evals_pure` | generalised to a separate post-machine variable; that is the entire difference between a pure literal's inversion and an allocating one's |
+| `StateOk_reCtl` | now a corollary of `StateOk_ext`; there is one place where "component `X` survives a change to the machine" is proved, not two |
+
+`DenB.lean` needed nothing — it already answered `false` on both arrow arms, and the clink 42
+docstring explaining why ("an arrow denotes a universally quantified statement about
+unboundedly many runs") is now more true, not less.
+
+**And then the wall: `Judge.vasgn` does not close, for a reason that is not about assignment.**
+Written up as §The fifth stall point. In one paragraph: `Evals` runs an expression with
+`kont := []`, but `.vasgn`'s first step is `withKont m (.eval rhs) (.asgnK kind x)`, so the
+premise `SemJudge … e …` is about a *different run* and using it needs a **decomposition
+lemma** — a run of `e` under continuation `K` passes through the state that delivers `e`'s
+value to `K`. The lemma is **true**: `stepFn` is head-local in `kont` (`applyKont` and `unwind`
+read only the head and pop one; all thirteen `kont :=` sites in `Interp*.lean` are pushes), and
+the two exceptions — `applyKont` at `[]` and `unwind` at `[]` — are exactly the passing-through
+point and a case that cannot end in `.value`. It is also **large**: measured, the one-liner
+`cases e <;> unfold <;> simp only [withCtl, withKont] <;> cases h <;> rfl` closes 12 of
+`evalExpr`'s 43 arms, five of the rest delegate into ~1700 lines of `Interp/{Dispatch,Send,
+Reflect}.lean`, and behind those sit the builtins, which are kont-transparent but only by
+inspection.
+
+Three conclusions, and they are why the rung was left undischarged rather than half-attempted.
+It is not a `Denote/` lemma — it is a structural fact about `RubyCore`'s abstract machine and
+belongs beside `stepFn`, where the metatheory already handles the continuation stack by a typed
+invariant (`KontOk`) rather than by decomposition, which is the technique that avoids needing
+it. It blocks **every** compound rung, so the ladder's next number is gated on one decision
+rather than on many small ones. And the tempting shortcut — redefining `Evals` to quantify over
+continuations — is a **weakening of all 83 obligations at once**, silently, including the ten
+already climbed, because `Evals` sits on the left of `SemJudge`'s implication; it is recorded
+in the notes as a thing not to do.
+
+### State
+
+**177 rungs of 232**, unchanged (`Ratchet/` untouched; `run_ratchet.sh` and
+`run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **10 of 83 `Judge` rules
+discharged**. New: `Denote/Ext.lean`, `Denote/Grow.lean`, `Denote/Rules/Alloc.lean`. Modified:
+`Denote/Den.lean`, `Denote/Arrow.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
+`Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Examples.lean`'s 31 `#guard`s green.
+Axiom-clean throughout — every new file ends in its own `#print axioms`, and each reports only
+`propext`/`Classical.choice`/`Quot.sound`.

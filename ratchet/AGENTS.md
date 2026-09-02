@@ -376,10 +376,19 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
 - **`Denote/DenB.lean`** — the computable core `denB : Ty → Heap → Value → Bool`, plus
   `closB` (machine-indexed, because `clos` *is* decidable once you have frames).
   `denB_sound` at every type; `denB_iff` (an `↔`) on `FirstOrder`.
-- **`Denote/Arrow.lean`** — `ArrowFlat` (the uncurried arrow) and `denM_arrowOf` proving it
-  equals the spine denotation; `ArrowStable` (the arrow at every *reachable* machine — the
-  honest target for a call-it-later arrow, strictly stronger, and not what the checker infers
-  today); `ClosArrow`, the shape of the bridge a `Judge.closCall` soundness proof would need.
+- **`Denote/Ext.lean`** — **`Ext`**, "the same machine, later, having allocated" (same frames,
+  same stack, a heap that only grew), plus one lemma per probe across it. This is what makes
+  the denotation usable by a rule that allocates; see §Semantic ratchet status. The first file
+  here to import `RubyCore.Proof.*`.
+- **`Denote/Grow.lean`** — **`denM_ext`**: a type's meaning survives an allocation. One
+  induction, and the arrow case is free because `denM`'s arrow arm was defined to quantify
+  over `Ext`-futures.
+- **`Denote/Arrow.lean`** — `ArrowFlat` (the uncurried arrow), `ArrowExt` (it at every
+  `Ext`-future, which is what `denM`'s arrow arms actually say) and `denM_arrowOf` proving the
+  latter equals the spine denotation; `ArrowStable` (the arrow at every *reachable* machine —
+  the honest target for a call-it-later arrow, stronger than both, and not what the checker
+  infers today); `ClosArrow`, the shape of the bridge a `Judge.closCall` soundness proof would
+  need.
 - **`Denote/ArrowCheck.lean`** — the arrow's computable half, stated in the only sound
   direction: a true arrow passes every sample (`arrowCheck_of_arrowFlat`), so **a failing
   sample refutes the arrow** and is the counterexample. Same move as
@@ -404,7 +413,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **9 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **10 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 232). This measures
@@ -414,16 +423,46 @@ the first ladder with none of the second done — which is exactly the gap `Deno
 written to describe, and this is the answer to it.
 
 Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number).
-Discharged so far, all axiom-clean: the six **pure literals** (`intLit`, `fltLit`, `symLit`,
-`truLit`, `flsLit`, `nilLit`), both **local reads** (`var`, `varAlias` — the first rungs that
-consume a `StateOk` component rather than only re-establishing one), and `seq` (a
+Discharged so far, all axiom-clean: the **seven literals** (`intLit`, `fltLit`, `strLit`,
+`symLit`, `truLit`, `flsLit`, `nilLit`), both **local reads** (`var`, `varAlias` — the first
+rungs that consume a `StateOk` component rather than only re-establishing one), and `seq` (a
 delegation that is definitional: `SemJudgeSeq` *is* `SemJudge` at a `.seq`). They rest on two
 lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance and the
 denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
-inversion). **`strLit` is the first rung to stall**, on allocation: see `Denote/Sem/notes.md`
-§The fourth stall point. The working procedure for climbing a rung is
+inversion). The working procedure for climbing a rung is
 [`Denote/Sem/notes.md`](Denote/Sem/notes.md).
+
+**`strLit` — the allocation stall — is broken** (clink 45), and it cost a definitional change
+plus two new `StateOk` components. A string literal allocates, so it is the first rule whose
+post-machine differs from its pre-machine in the *heap*, and `denM`'s **arrow** arm is the one
+part of a type's meaning that does not survive that (it quantifies over runs, and a run from
+an extended heap allocates at shifted ids). Fixed where the problem is: both arrow arms — and
+`AsmsOk`, same shape — now quantify over `∀ m₂, Ext m m₂`. **`Ext`** (`Denote/Ext.lean`: same
+frames, same stack, a heap that only grew) is the "coarser seed" clink 44 said any such fix
+would need — reflexive and transitive, so the arm is monotone by construction (`Ext.refl`
+recovers the old reading, making this a strengthening), and blind to `ctl`/`kont`, which is
+exactly what a `Reaches`-indexed arrow could not be. It is weaker than `ArrowStable` (stable
+under allocation, not under execution) and that gap is recorded. `denM_ext`
+(`Denote/Grow.lean`) transports a type's meaning across an `Ext`; `StateOk_ext`
+(`Denote/Sem/State.lean`) transports conformance, and `StateOk_reCtl` is now a corollary of it.
+`StateOk` gained **`HeapSaturated`** and **`CoreOk`** — the first *imported* from the model's
+own metatheory (`RubyCore/Proof/AncestorsGrow.lean`: `ancestors` is fuel-bounded by
+`objs.size + 1`, so a push moves the **fuel**), which makes `Denote/Ext.lean` the first file
+here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **total**, so
+`.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
+is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
+
+**`vasgn` is the next stall, and it is a wall rather than a step** — `Denote/Sem/notes.md`
+§The fifth stall point. `Evals` runs an expression under `kont := []`; a `.vasgn` runs its
+right-hand side under `[.asgnK …]`, so the premise is about a different run and consuming it
+needs a **continuation-decomposition lemma**. The lemma is true (`stepFn` is head-local in
+`kont`: all thirteen `kont :=` sites are pushes, and `applyKont`/`unwind` read only the head)
+and it is *large* — measured, the obvious one-liner closes 12 of `evalExpr`'s 43 arms, five of
+the rest delegate into ~1700 lines of `Interp/{Dispatch,Send,Reflect}.lean`, and the builtins
+behind those are kont-transparent only by inspection. It is a fact about `RubyCore`'s machine
+rather than about `Denote/`, it gates **every** compound rung, and the shortcut (quantifying
+`Evals` over continuations) would weaken all 83 obligations at once.
 
 **The obligations are derived, not transcribed.** `SemJudge` and its seven companions were
 given *exactly* their syntactic twins' signatures, which makes a rule's obligation its own
@@ -455,11 +494,13 @@ Three consequences, and they are the reason it is done this way:
   instead. Also closes `Denote/Den.lean`'s stated `Ty.clos` `idx` gap — `closTblOk` can now
   compare a live Proc's body against the table entry.
 - **`Denote/Sem/State.lean`** — `Evals` (evaluate one expression with an empty continuation,
-  so its value is the run's result) and **`StateOk`**: eleven conformance components, one per
-  `Ctx` field plus the threaded `Γ` and `I`. Two are `True` with docstrings saying why rather
-  than by omission. `EnvOk` gives `Ty.sameAs` its first meaning outside the checker's
-  bookkeeping (two locals hold the same object, by the model's own `equal?`); `AsmsOk` makes
-  the conditionality of a non-empty `κ.asms` visible in every obligation's statement.
+  so its value is the run's result), **`StateOk`** — thirteen conformance components, one per
+  `Ctx` field, the threaded `Γ` and `I`, and the two heap facts `strLit` forced
+  (`HeapSaturated`, `CoreOk`) — and **`StateOk_ext`**, which transports all thirteen across an
+  allocation. Two components are `True` with docstrings saying why rather than by omission.
+  `EnvOk` gives `Ty.sameAs` its first meaning outside the checker's bookkeeping (two locals
+  hold the same object, by the model's own `equal?`); `AsmsOk` makes the conditionality of a
+  non-empty `κ.asms` visible in every obligation's statement.
 - **`Denote/Sem/Judge.lean`** — the eight `SemJudge*` definitions. `SemJudge κ Γ I e τ Γ' I'`
   = for every conformant `m`, if evaluating `e` returns `v` in `m'` then the frame stack is
   where it started, `v` is in `τ`'s denotation **at `m'`**, and `m'` conforms to `(κ, Γ', I')`.
