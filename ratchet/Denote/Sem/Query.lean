@@ -24,6 +24,38 @@ namespace Ratchet.Denote
 
 open RubyCore
 
+/-- **A `.clsOf` value is a live class reference.** `classNamed?` only answers at an id whose
+class payload is present, so the three facts come together — and `cpathContainer`/`is_a?` both
+need the third. Factored out of `Denote/Rules/Path.lean`, which extracts the first two inline
+twice. -/
+theorem denM_clsOf_ref {m : Machine} {cn : String} {v : Value} (h : denM (.clsOf cn) m v) :
+    ∃ k, classNamed? m.heap cn = some k ∧ v = .ref k ∧
+      (m.heap.classPayload? k).isSome = true := by
+  simp only [denM, isClassRefNamed] at h
+  cases hcn : classNamed? m.heap cn with
+  | none => rw [hcn] at h; exact absurd h (by cases v <;> simp)
+  | some k =>
+    rw [hcn] at h
+    cases v with
+    | ref o =>
+      refine ⟨k, rfl, by simp only [beq_iff_eq] at h; rw [h], ?_⟩
+      -- `classNamed?` answers `some k` only through its own payload test
+      simp only [classNamed?] at hcn
+      cases hcl : constLookup m.heap cn with
+      | none => rw [hcl] at hcn; exact absurd hcn (by simp)
+      | some w =>
+        rw [hcl] at hcn
+        cases w with
+        | ref o' =>
+          simp only at hcn
+          split at hcn
+          · rename_i hpo
+            have hok : o' = k := by simpa using hcn
+            rw [← hok]; exact hpo
+          · exact absurd hcn (by simp)
+        | _ => exact absurd hcn (by simp)
+    | _ => exact absurd h (by simp)
+
 /-- `visError?` is `none` at a public method, whatever the site. -/
 theorem visError?_pub {m : Machine} {recv : Value} {site : SendSite} {md : MethodDef}
     {mname : String} (h : md.visibility = .pub) :
