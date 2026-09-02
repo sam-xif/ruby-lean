@@ -921,3 +921,35 @@ and the two ends are what is missing:
 lookup fact and one `Builtins.run` unfolding. `classOf`/`clsToS` are the same shape one row
 over. That is four rungs for the first component, and the component is then reusable for the
 twelfth stall point's `x.is_a?(C)` inversion, which narrowing needs anyway.
+
+## The seventh stall point's remnant, measured — and it is a **falsity**, not a gap
+
+The table above says what is left of the seventh is "the *transport* a consumer needs to move
+an argument's type to the call machine". Attempted at `Judge.arrayLit` (clink 54), that
+transport is **false**, and the counterexample is the same one clink 53 was avoiding:
+
+`denM`'s `.arrayOf` arm reads the elements at the machine it is given, so
+`Judge.arrayLit`'s conclusion — `denM ((elemTy τs).arrayOf) m' arr` at the machine the *whole*
+literal ended at — asks for every element to be in the element type **there**. `DenAllAt` says
+each element is in its type at the machine *its own* evaluation ended at, deliberately. A later
+element that mutates an earlier one's ivars separates the two:
+
+```ruby
+o = C.new                                   # o : inst C (@a : Int)
+xs = [o, o.instance_variable_set(:@a, "s")] # the second element makes the first's type false
+xs[0].get + 1                               # certified Integer + Integer; runs String + Integer
+```
+
+`corpus/242-array-lit-element-mutated-unsafe` is that program, and the checker **rejects** it —
+`instance_variable_set` is not typed — so like §F5, the eleventh stall point and
+`240`/`241`, the rule is unsound in isolation and its soundness in the checker rests on an
+unstated invariant. The same argument applies verbatim to `hashLit` and to every `DenAllAt`
+consumer that reads its elements at the final machine.
+
+What a fix would have to choose between: **restate the consumers** so they read each element at
+its own machine (which `Ty.arrayOf` cannot express — the type has one machine, not one per
+element), or **add a premise** that no argument mutates (a purity condition, which is a real
+restriction), or **weaken `denM`'s `.arrayOf` arm** to quantify over `Later`-futures the way the
+arrow arms do (which is what made `strLit` work in clink 45, and is the direction that has
+precedent). None is a one-liner, and none is on the critical path while the reachable set does
+not exercise it.

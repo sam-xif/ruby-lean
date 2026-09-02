@@ -2122,6 +2122,17 @@ R("reopen-integer-is-a-unsafe", 12,
   'class Integer\n  def is_a?(c)\n    "s"\n  end\nend\n5.is_a?(Integer) & true\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("array-lit-element-mutated-unsafe", 12,
+  "**A candidate UNSAFE program, and the probe for the seventh stall point\u2019s remnant.** "
+  "`Judge.arrayLit` types the literal at `(elemTy \u03c4s).arrayOf`, and `denM`\u2019s "
+  "`arrayOf` arm reads the elements **at the machine the whole literal ended at** \u2014 while "
+  "`SemJudgeAll`\u2019s `DenAllAt` (clink 53) deliberately says each element is in its type at "
+  "the machine *its own* evaluation ended at. A later element that mutates an earlier one\u2019s "
+  "ivars separates the two: the second element\u2019s evaluation makes the first element\u2019s "
+  "recorded `.inst` spine false, so the array\u2019s element type is false of the array.",
+  'class C\n  def initialize\n    @a = 1\n  end\n  def get\n    @a\n  end\nend\no = C.new\nxs = [o, o.instance_variable_set(:@a, "s")]\nxs[0].get + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):
