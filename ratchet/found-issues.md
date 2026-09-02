@@ -1186,3 +1186,38 @@ where the obligation's own statement, not a test, named the assumption; and the 
 missing premise is `nameFree`, which is now worth stating as a pattern: **a narrowing that
 recognises a *send* needs the sent name to be unclaimed, and the rule that types the send
 guards something else.**
+
+## §F15 — a refinement could *create* an alias claim the environment never made
+
+Found by a lemma that turned out to be false, which is the cheapest way to find one.
+
+`refineOne`'s ordinary arm replaced a binding `x : τ` with `x : refine τ`, and the transport
+that proves `EnvOk` survives that needed "a refined type is an alias only if the type was".
+It is not:
+
+```
+falsyTy (union (sameAs y ρ) int) = joinT (sameAs y (falsyTy ρ)) (falsyTy int)
+                                 = joinT (sameAs y (falsyTy ρ)) never
+                                 = sameAs y (falsyTy ρ)
+```
+
+`joinT` returns its non-`never` argument, so refining a **union** that happens to contain an
+alias yields the alias. `EnvOk`'s second conjunct reads a `Ty.sameAs` as "these two locals hold
+the same object" — a claim about *object identity*, which is what makes `case v when C` narrow
+`v` and not just the temporary — and the union never made it.
+
+**Reachability is thin but not obviously nil.** `Ty.sameAs` is created only by
+`Judge.vasgnAlias`, whose premise restricts the name to `desugarTemps`, so a union containing
+one needs a desugarer temporary whose binding is joined across branches — nested `case`
+statements over the same scrutinee. And exploiting it needs a *second* narrowing to consume the
+manufactured alias, because `Judge.var` strips aliases and `narrowEnvs` is the only other
+consumer. No probe is filed; the finding is recorded at the level the proof exposed it.
+
+**The fix.** `refineOne`'s ordinary arm declines to refine when the result would be an alias
+(`if isAliasTy τ' then τ else τ'`). Conservative, corpus-neutral (mismatches 35, 177/177 hand
+derivations), and it leaves the **alias arm** — where the environment *did* make the claim, and
+`refineOne` refines under it deliberately — untouched.
+
+Worth keeping as a pattern: `Ty.sameAs` is the one type constructor whose denotation is a claim
+about **two** values, so every function that builds a `Ty` has to be checked for whether it can
+manufacture one. `joinT` can.
