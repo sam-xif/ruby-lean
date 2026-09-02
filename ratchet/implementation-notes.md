@@ -4169,3 +4169,111 @@ discharged** — the ten above plus the six companion base cases. New: `Denote/E
 `Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Examples.lean`'s 31 `#guard`s green.
 Axiom-clean throughout — every new file ends in its own `#print axioms`, and each reports only
 `propext`/`Classical.choice`/`Quot.sound`.
+
+---
+
+## Clink 46 (2026-09-01) — the soundness bug fixed, and the regressions that pin it. **178 rungs / 235, 16 of 83 rules**
+
+Clink 45 found `Judge.vasgn` certifying a type-stuck program and, per the working procedure,
+left it alone (`found-issues.md` §F1). This clink fixes it. `Ratchet/` is modified for the
+first time in three clinks; the semantic ladder is untouched at **16 of 83**, because the rule
+is now *true* but proving it still needs the continuation lemma (§The fifth stall point).
+
+**The bug, in one sentence.** `Judge.lambdaLit` records the creation-site environment into
+`Ty.clos`'s captured spine; a Ruby block captures **by reference**, so that spine is a claim
+about a *binding* — exactly what `Ty.sameAs` is — and `Judge.vasgn`, which already kills
+aliases to the assigned name, killed no closure over it.
+
+**Decision 1: fix it where `killAliasesTo` already lives, and make the fix the identity on
+closure-free environments.** `killClosOver` (over `Env`) and `killClosOverSpine` (over an ivar
+spine) widen to `.any` every entry whose type records a capture of the assigned name; `capStale`
+is the walk that decides. The alternative — a *premise* that no such binding exists, rejecting
+the whole program — was rejected because it is a worse error for the same rejection and because
+the identity property is what let 177 derivation terms in `Ratchet/Rungs.lean` stay untouched.
+That property is not luck: it is the same one `killAliases`' docstring claims for the alias
+operations, and it is why an invalidation belongs in the *outgoing state* rather than in a
+premise whenever it can.
+
+Three sub-decisions inside it, each of which could have gone the other way:
+
+* **`.any`, not "drop the binding".** Dropping makes a later *read* of the name underivable
+  (`Judge.var` needs `envGet?` to answer). `.any` keeps the name bound and is unusable on
+  purpose — it matches no `PrimSig` row, is not `EqSafe`, and is not a `.clos`, so `f.call`
+  has no rule.
+* **Precise, not blanket.** A capture only goes stale if the recorded type *differs* from the
+  new one, so `x = 1; f = lambda { x }; x = 2` still types. That is the same boundary
+  `capIntact` draws for a block body that assigns to a captured local, and
+  `corpus/235-lambda-capture-reassigned-same-type` is a **positive** rung, so a blanket
+  erasure would now fail the ladder rather than pass it quietly.
+* **The whole type, not the outermost `clos`.** A stale capture can sit under a `nilable`, in
+  an array element, in an `inst`'s ivar spine, or inside another closure's captured spine
+  (`g = lambda { x }; f = lambda { g }`). `capStale` walks all of them, and erasing the
+  *outermost* type is sound because every value inhabits `.any`.
+
+**Decision 2: the premise, for the half that cannot be widened — and it is a second bug.**
+Checking the first fix produced a second reproducer:
+
+```ruby
+x = 1
+x = lambda { x }
+x.call + 1        # CRuby: NoMethodError (Proc + Integer)
+```
+
+Here the stale record is in the type being **bound**, and in the rule's own type index, so
+there is nothing left to widen: `killClosOver` runs before `envSet` and the conclusion's `τ`
+is the RHS's type either way. Widening the conclusion (`killClosTy x τ τ`) is not available —
+`Judge.varAlias`'s docstring records why a conclusion of the form `f τ` for a non-injective
+`f` is unusable: every derivation would have to write its type out. So it is a **premise**,
+`capStale x τ τ = false`, and the thing that made it free is that it is an **`autoParam`**
+(`:= by rfl`). `Judge.vasgn h` still elaborates; the 163 `vasgn` occurrences in `Rungs.lean`
+needed no edit. The one place it is not free is `Ratchet/Proof/ChkSound.lean`, where the
+premise has to come from the checker's own guard — three extra `split at h` lines, and that is
+the whole cost of keeping `chk` and `Judge` in step.
+
+**What was checked and left alone.** The `Ctx` fields the rule cannot rewrite (`selfTy`,
+`blockTy`, `consts`) could in principle carry a `.clos` over the assigned name. Both routes
+are closed today for reasons that are *not* stated as premises, and `found-issues.md` §F1
+records that rather than claiming more: a method frame captures nothing, so `setLocal` cannot
+reach the frame such a closure captured, and inside a block frame `capIntact` already requires
+the whole enclosing environment's types to survive. The ivar route (`@f = lambda { x }`) was
+probed directly, is rejected today for an unrelated reason, and is now covered by
+`killClosOverSpine` anyway.
+
+**Decision 3: three corpus rungs, not one.** Two permanent negatives (one per bug) and one
+**positive**. The positive is the one worth arguing for: without
+`lambda-capture-reassigned-same-type`, `capStale` could be strengthened to a blanket erasure
+and every gate would stay green while the checker quietly stopped typing a common shape. A
+soundness fix wants a precision control for the same reason a `PrimSig` row wants a
+neighbouring negative.
+
+They are **appended out of position** — tier 9 rungs at 233/234/235 — because the corpus
+numbers by list position and `corpus/042`, `corpus/135` and `corpus/136` are cited by number
+in `AGENTS.md`, `Ratchet/Judge.lean`, `Ratchet/Ty.lean`, `Ratchet/Rungs.lean`,
+`CheckRungs.lean` and here. Inserting in place would renumber ~125 rungs and invalidate every
+one of those references; the tier field is what the report groups by, so position is cosmetic.
+The reasoning is a comment in `scripts/generate_corpus.py` so the next person does not
+"tidy" it.
+
+Both unsafe programs are **also** `CheckRungs.lean` controls, for the reason `corpus/042`'s
+twin is: that is the place where a rejection is labelled *sound* by running the program.
+Both report `rejected (sound: really type-stuck)`.
+
+**The number that matters is not 178.** The corpus ladder read **232/232 agree and 140/140
+controls with this bug in place**, and it could not have found it — no rung wrote the shape,
+and a corpus is a sample. The semantic ladder found it by *reading an obligation*
+(`Obl.Judge.vasgn`'s conclusion asks for `EnvOk` at the post-machine, whose `clos` arm reads
+`closLocal m' cl` — the captured frame, which `setLocal` writes through), which is the whole
+argument for having a second ladder measuring justification rather than reach. §Architecture's
+"a ratchet whose number depends on a live sample is not a ratchet" has a dual, and this is it:
+a ratchet whose *soundness evidence* depends on a live sample is not soundness evidence.
+
+### State
+
+**178 rungs of 235** (was 177 of 232 — three new tier-9 rungs, one of them climbed), **21
+permanent negatives**, **142/142** `CheckRungs` controls, **177/177** hand derivations
+unchanged and unedited, **235/235** corpus agreement, and **16 of 83 `Judge` rules discharged**
+(unchanged; `Judge.vasgn`'s obligation is now true but still needs the continuation lemma).
+Modified: `Ratchet/Ty.lean` (`capStale`, `killClosOver`, `killClosOverSpine`),
+`Ratchet/Judge.lean` (`vasgn`, `vasgnAlias`), `Ratchet/Validate.lean`,
+`Ratchet/Proof/ChkSound.lean`, `CheckRungs.lean`, `scripts/generate_corpus.py`. New:
+`corpus/233`, `corpus/234`, `corpus/235`. Axiom-clean; no `sorry`.

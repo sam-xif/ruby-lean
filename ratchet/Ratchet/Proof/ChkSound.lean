@@ -558,31 +558,38 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     -- `vasgn` arm for that one syntactic shape, so it has to answer for both).
     split at h
     · rename_i tb hget
+      -- clink 46: the `capStale` guard, which is `Judge.vasgn`/`vasgnAlias`'s `hcap` premise.
       split at h
-      · rename_i hpre
-        injection h with h
-        injection h with h h'; injection h' with h' h''
-        subst h; subst h'; subst h''
-        exact .vasgnAlias hpre hget rfl
-      · -- not a temporary: `Judge.vasgn` over `Judge.var`, whose `stripAlias` is exactly what
-        -- this arm computes
-        injection h with h
-        injection h with h h'; injection h' with h' h''
-        subst h; subst h'; subst h''
-        -- Not a temporary, so this is the ordinary binding -- and its value is a *read* of
-        -- `x`, which is `var`/`varAlias` exactly as in the `var` arm above.
-        cases tb with
-        | sameAs y ρ => exact .vasgn (.varAlias hget)
-        | _ => exact .vasgn (.var hget rfl)
+      · rename_i hcap
+        split at h
+        · rename_i hpre
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .vasgnAlias hpre hget rfl hcap
+        · -- not a temporary: `Judge.vasgn` over `Judge.var`, whose `stripAlias` is exactly
+          -- what this arm computes
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          -- Not a temporary, so this is the ordinary binding -- and its value is a *read* of
+          -- `x`, which is `var`/`varAlias` exactly as in the `var` arm above.
+          cases tb with
+          | sameAs y ρ => exact .vasgn (.varAlias hget) hcap
+          | _ => exact .vasgn (.var hget rfl) hcap
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `vasgn lvar x e`: the right-hand side typed, and the binding lands in the
     -- environment the right-hand side left behind.
     split at h
     · rename_i hrhs
-      injection h with h
-      injection h with h h'; injection h' with h' h''
-      subst h; subst h'; subst h''
-      exact .vasgn (chk_sound hrhs)
+      split at h
+      · rename_i hcap
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .vasgn (chk_sound hrhs) hcap
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `vasgn ivar x e`: the same, but the effect lands on the spine.
     split at h

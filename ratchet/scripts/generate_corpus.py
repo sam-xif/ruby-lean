@@ -2001,6 +2001,50 @@ RS("slice-adversarial", 19,
 
 # ---------------------------------------------------------------------------
 
+# --- Appended out of position (clink 46) ------------------------------------
+#
+# A tier-9 rung at the end of the list rather than inside the tier-9 block, because the
+# file numbers rungs by list position and `corpus/042`, `corpus/135` and `corpus/136` are
+# cited by number in `AGENTS.md`, `Ratchet/Judge.lean`, `Ratchet/Ty.lean`,
+# `Ratchet/Rungs.lean`, `CheckRungs.lean` and `implementation-notes.md`. Inserting in place
+# would renumber ~125 rungs and invalidate every one of those references; the tier field is
+# what the report groups by, so position is cosmetic.
+
+R("lambda-capture-reassigned-unsafe", 9,
+  "**An UNSAFE program, and the regression test for `found-issues.md` §F1.** A Ruby block "
+  "captures locals *by reference*, so `Ty.clos`'s captured spine is a claim about a "
+  "**binding** -- the same kind of thing `Ty.sameAs` is -- and reassigning the captured name "
+  "at a different type makes it wrong. `f.call` returns the String `x` now holds, so "
+  "`f.call + 1` raises TypeError. `validate` certified this as `Integer` until clink 46 "
+  "(`Judge.vasgn` killed aliases to the assigned name but no closure over it); the fix is "
+  "`killClosOver`/`killClosOverSpine` in `Ratchet/Ty.lean`. A `true` here is that bug "
+  "returning. The sibling positive is a reassignment at the *same* type, which stays typable "
+  "-- see `capStale`, which only erases when the recorded type differs. "
+  "Found by the semantic ratchet reading `Obl.Judge.vasgn`, not by any corpus rung, which is "
+  "why the control did not exist before.",
+  'x = 1\nf = lambda { x }\nx = "a"\nf.call + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("lambda-captures-own-target-unsafe", 9,
+  "**An UNSAFE program, and the second half of `found-issues.md` §F1.** `x = lambda { x }` "
+  "assigns to the very name the closure captured, so the *bound* type -- and the assignment "
+  "expression's own type -- is a `Ty.clos` whose spine says `x : Integer` while `x` now holds "
+  "the Proc. `x.call + 1` raises NoMethodError. `killClosOver` cannot fix this one (there is "
+  "nothing left to widen: the stale record is in the type being bound), so `Judge.vasgn` "
+  "carries a `capStale x τ τ = false` premise instead and the program has no derivation. A "
+  "`true` here is that bug returning.",
+  "x = 1\nx = lambda { x }\nx.call + 1\n",
+  expect_validate=False, false_reason="unsafe_program")
+
+R("lambda-capture-reassigned-same-type", 9,
+  "The precision control for the rung above: reassigning a captured local at the **same** "
+  "type does not invalidate the capture, so `f.call + 1` is still `Integer` and the program "
+  "is certified. Without this, `killClosOver` could have been a blanket erasure and nothing "
+  "would have noticed.",
+  "x = 1\nf = lambda { x }\nx = 2\nf.call + 1\n",
+  expect_validate=True)
+
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

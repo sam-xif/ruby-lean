@@ -244,14 +244,29 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- radius rather than soundness, and `desugarTemps` on why it is a list and not a prefix.
     match envGet? Γ x with
     | some τ =>
-      if desugarTemps.contains t then
-        some (stripAlias τ, envSet (killAliasesTo Γ t) t (.sameAs x (stripAlias τ)), I)
-      else some (stripAlias τ, envSet (killAliasesTo Γ t) t (stripAlias τ), I)
+      -- `capStale`: the value being bound may itself be a closure that captured `t`, in
+      -- which case *its own* record of `t` is what the assignment invalidates and there is
+      -- nothing left to widen (`found-issues.md` §F1; `Judge.vasgn`'s `hcap` premise).
+      if capStale t (stripAlias τ) (stripAlias τ) = false then
+        if desugarTemps.contains t then
+          some (stripAlias τ,
+            envSet (killClosOver (killAliasesTo Γ t) t (stripAlias τ)) t
+              (.sameAs x (stripAlias τ)),
+            killClosOverSpine I t (stripAlias τ))
+        else some (stripAlias τ,
+            envSet (killClosOver (killAliasesTo Γ t) t (stripAlias τ)) t (stripAlias τ),
+            killClosOverSpine I t (stripAlias τ))
+      else none
     | none => none
   | f + 1, .vasgn .lvar x e =>
     match chk f κ Γ I e with
     -- `killAliasesTo`: once `x` holds a new object, nothing else holds the same one.
-    | some (τ, Γ', I') => some (τ, envSet (killAliasesTo Γ' x) x τ, I')
+    -- `killClosOver`/`killClosOverSpine`: and nothing else may keep a `Ty.clos` recording
+    -- what `x` used to be (`found-issues.md` §F1).
+    | some (τ, Γ', I') =>
+      if capStale x τ τ = false then
+        some (τ, envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ, killClosOverSpine I' x τ)
+      else none
     | none => none
   | f + 1, .vasgn .ivar x e =>
     match chk f κ Γ I e with

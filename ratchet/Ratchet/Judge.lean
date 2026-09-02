@@ -2448,7 +2448,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`. -/
   | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
-      Judge κ Γ I (.vasgn .lvar x e) τ (envSet (killAliasesTo Γ' x) x τ) I'
+      (hcap : capStale x τ τ = false := by rfl) →
+      Judge κ Γ I (.vasgn .lvar x e) τ
+        (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ) (killClosOverSpine I' x τ)
   /-- **`__dt_t1 = v` — an assignment that records an alias** (tier 12).
 
       Same value and same effect as `vasgn`; the only difference is what lands in the
@@ -2478,8 +2480,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `sameAs`. -/
   | vasgnAlias {κ : Ctx} {Γ : Env} {I : Ty} {t x : String} {σ τ : Ty} :
       desugarTemps.contains t = true → envGet? Γ x = some σ → stripAlias σ = τ →
+      (hcap : capStale t τ τ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar t (.var .lvar x)) τ
-        (envSet (killAliasesTo Γ t) t (.sameAs x τ)) I
+        (envSet (killClosOver (killAliasesTo Γ t) t τ) t (.sameAs x τ))
+        (killClosOverSpine I t τ)
   /-- A statement sequence: the whole thing has the *last* statement's type, and both
       threaded states flow through all of them. Delegated to `JudgeSeq` so the non-empty
       requirement is structural, and because `JudgeSeq` is also where the *syntax tables*

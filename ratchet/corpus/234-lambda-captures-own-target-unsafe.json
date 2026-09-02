@@ -1,0 +1,66 @@
+{
+  "id": "lambda-captures-own-target-unsafe",
+  "tier": 9,
+  "description": "**An UNSAFE program, and the second half of `found-issues.md` \u00a7F1.** `x = lambda { x }` assigns to the very name the closure captured, so the *bound* type -- and the assignment expression's own type -- is a `Ty.clos` whose spine says `x : Integer` while `x` now holds the Proc. `x.call + 1` raises NoMethodError. `killClosOver` cannot fix this one (there is nothing left to widen: the stale record is in the type being bound), so `Judge.vasgn` carries a `capStale x \u03c4 \u03c4 = false` premise instead and the program has no derivation. A `true` here is that bug returning.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "x",
+        [
+          "send",
+          null,
+          "lambda",
+          [],
+          [
+            "block",
+            [],
+            [],
+            [],
+            [
+              "var",
+              "local",
+              "x"
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "var",
+            "local",
+            "x"
+          ],
+          "call",
+          [],
+          null
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

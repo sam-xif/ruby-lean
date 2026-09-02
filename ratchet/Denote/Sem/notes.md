@@ -160,7 +160,7 @@ three-line corollary of `StateOk_ext` rather than a second component-by-componen
 `Examples.lean` guards are green, because they check `arrowCheck`, a `Bool`, and `ArrowFlat`
 is what that is stated over.
 
-## `Judge.vasgn` is unsound, and the obligation is what says so
+## `Judge.vasgn` was unsound, and the obligation is what said so *(FIXED, clink 46)*
 
 Before the wall below, the finding that came *out* of attempting `Judge.vasgn`: the rule is
 **not true of `stepFn`**, and its obligation is false as written. Written up with the
@@ -181,8 +181,13 @@ Two things about *how* it was found are the point of this ladder existing:
   moment of creation); `closCall`'s is fine given a spine that denotes. It is `vasgn` that
   claims to leave the rest of `Γ` alone and does not.
 
-Per the working procedure above, the rule was **not worked around**: `Ratchet/` is unmodified
-and the rung stays undischarged.
+Per the working procedure above, the rule was **not worked around**. It was *fixed*, in clink
+46: `killClosOver`/`killClosOverSpine` (`Ratchet/Ty.lean`) widen every binding and ivar-spine
+entry whose type records a stale capture of the assigned name, and a `capStale x τ τ = false`
+`autoParam` premise covers the half that cannot be widened (`x = lambda { x }`, where the
+stale record is in the type being bound). Three corpus rungs and two `CheckRungs` controls pin
+it; `found-issues.md` §F1 has both reproducers and what is still open. The rung stays
+**undischarged** — the rule is now true, but proving it still needs the lemma below.
 
 ## The fifth stall point — **the continuation frame**, and it is a wall rather than a step
 

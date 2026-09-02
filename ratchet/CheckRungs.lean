@@ -1337,7 +1337,31 @@ def controls : List Control :=
       .seq [.class' "C" none (.seq [.def' "initialize" [] (.vasgn .ivar "@v" (.int 1)),
                                     .def' "v" [] (.var .ivar "@v")]),
             .send (some (.send (some (.send (some (.const "C")) "new" [] none))
-              "class" [] none)) "v" [] none]⟩ ]
+              "class" [] none)) "v" [] none]⟩
+    -- ### The `Ty.clos` staleness control (clink 46)
+    --
+    -- `found-issues.md` §F1's reproducer, kept here as well as in
+    -- `corpus/233-lambda-capture-reassigned-unsafe` for the reason `corpus/042`'s twin above
+    -- is: this is the place where the rejection is labelled *sound* by running the program
+    -- and confirming it is genuinely type-stuck, rather than merely not certified. A Ruby
+    -- block captures by reference, so `Ty.clos`'s captured spine goes stale when the captured
+    -- name is reassigned at a different type; `validate` certified this as `Integer` until
+    -- `Judge.vasgn` gained `killClosOver`. A `true` here is that bug returning.
+  , ⟨"x = 1; f = lambda { x }; x = \"a\"; f.call + 1",
+      .seq [.vasgn .lvar "x" (.int 1),
+            .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.var .lvar "x")))),
+            .vasgn .lvar "x" (.str "a"),
+            .send (some (.send (some (.var .lvar "f")) "call" [] none))
+              "+" [.int 1] none]⟩
+    -- (clink 46, second half) The same staleness reached through the *bound* type rather
+    -- than a surviving binding: `x = lambda { x }` captures the name it then overwrites, so
+    -- `killClosOver` has nothing to widen and `Judge.vasgn`'s `capStale x τ τ = false`
+    -- premise is what refuses it. Runs to NoMethodError (`Proc + Integer`).
+  , ⟨"x = 1; x = lambda { x }; x.call + 1",
+      .seq [.vasgn .lvar "x" (.int 1),
+            .vasgn .lvar "x" (.send none "lambda" [] (some (.block [] [] (.var .lvar "x")))),
+            .send (some (.send (some (.var .lvar "x")) "call" [] none))
+              "+" [.int 1] none]⟩ ]
 
 mutual
 

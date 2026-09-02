@@ -276,10 +276,11 @@ else for that to live, and it should not live in a ladder that reads "not yet cl
 
 ### F1. Assigning to a captured local does not invalidate the `Ty.clos` that captured it
 
-**Status:** open, not fixed here. **Severity:** high — `validate` returns `true` on a program
-whose real outcome is **type-stuck**, which is the one thing the ladder's 19 negative controls
-exist to make impossible. **Found by:** attempting `Judge.vasgn`'s semantic obligation
-(`Denote/Sem/`, clink 45); see below for why that pins the rule exactly.
+**Status:** **fixed, clink 46** (see §The fix, below). **Severity:** high — `validate`
+returned `true` on a program whose real outcome is **type-stuck**, which is the one thing the
+ladder's permanent negatives exist to make impossible. **Found by:** attempting
+`Judge.vasgn`'s semantic obligation (`Denote/Sem/`, clink 45); see below for why that pins the
+rule exactly.
 
 ```ruby
 x = 1
@@ -292,7 +293,8 @@ f.call + 1
 |---|---|
 | CRuby | `TypeError: no implicit conversion of Integer into String` |
 | the Lean model | `uncaught`, and `Semantics.typeStuck = true` |
-| `lake exe ratchet --stdin` | `{"type":"Integer","validate":true}`, with `f : <closure#0>{x: Integer}` |
+| `lake exe ratchet --stdin`, before clink 46 | `{"type":"Integer","validate":true}`, with `f : <closure#0>{x: Integer}` |
+| `lake exe ratchet --stdin`, after | `{"validate":false}` |
 
 Also reproduces with `proc` for `lambda`, and inside a method body. It does **not** reproduce
 when the reassignment keeps the type (`x = 2` — sound, and correctly accepted), nor through an
@@ -320,11 +322,50 @@ and the spine no longer denotes. **`Judge.vasgn`'s obligation is false as writte
 is the whole content of this entry: the rung did not fail to close for want of a lemma, it
 failed because the rule is not true of `stepFn`.
 
-**The shape of a fix** (not applied — `Ratchet/` is not modified by the clink that found this).
-`vasgn` needs a `killClosuresOver x` beside its `killAliasesTo x`: any binding whose type
-contains a `.clos` whose captured spine mentions `x` must be dropped or widened. `vasgnAlias`
-has the identical hole. The conservative version is cheap (a syntactic walk over `Ty`), and
-`corpus/` should gain the program above as a **negative control**, where a `true` is a bug.
-Whether the ivar spine `I` needs the same treatment is open: the `@f` variant above is rejected
-today, but for a reason unrelated to this.
+### The fix (clink 46)
+
+Two functions and one premise, all in `Ratchet/Ty.lean` §Stale closure captures and the two
+rules that use them.
+
+* **`killClosOver` / `killClosOverSpine`** widen to `.any` every binding — and every ivar-spine
+  entry — whose type records a capture of the assigned name **at a different type**.
+  `Judge.vasgn` and `Judge.vasgnAlias` apply them beside `killAliasesTo`, and
+  `Ratchet/Validate.lean` matches. Both are the *identity on a closure-free environment*, which
+  is why the 177 derivation terms in `Ratchet/Rungs.lean` needed no edit — the same property
+  the alias operations were built with.
+* **`capStale x τ τ = false`, an `autoParam` premise on both rules**, is the half
+  `killClosOver` cannot do. A second reproducer, found while checking the first fix:
+
+  ```ruby
+  x = 1
+  x = lambda { x }
+  x.call + 1        -- CRuby: NoMethodError (Proc + Integer)
+  ```
+
+  Here the stale record is in the type being **bound**, and in the assignment expression's own
+  type index, so there is nothing left to widen. `:= by rfl` is what let the premise be added
+  without touching a derivation either (`Judge.varAlias`'s docstring recommends exactly this
+  for a `Bool` side condition); `Ratchet/Proof/ChkSound.lean` threads it from the checker's
+  guard.
+
+**Precision is kept where it is sound.** `x = 1; f = lambda { x }; x = 2` still types — the
+recorded capture is `x : Integer` and still true — which is the same boundary `capIntact`
+draws for a block body. That case is `corpus/235-lambda-capture-reassigned-same-type`, a
+*positive* rung, so a blanket erasure would fail the ladder.
+
+**Regressions on file**: `corpus/233-lambda-capture-reassigned-unsafe` and
+`corpus/234-lambda-captures-own-target-unsafe` (both `expect_validate: false`,
+`unsafe_program` — a `true` on either is this bug returning),
+`corpus/235-lambda-capture-reassigned-same-type` (the precision control), and two
+`CheckRungs.lean` controls, which is where the rejection is labelled *sound* by running the
+program: both report `rejected (sound: really type-stuck)`. Numbers after: **235/235 agree,
+178 climbed, 177/177 + 142/142**.
+
+**Still open, and small.** The `Ctx` fields the rule cannot rewrite (`selfTy`, `blockTy`,
+`consts`) could in principle carry a `.clos` over the assigned name. The local route is closed
+by construction (a method frame captures nothing, so `setLocal` cannot reach the frame such a
+closure captured) and the block route by `capIntact` (which requires the whole enclosing
+environment's types to survive the block), but neither is *stated* as a premise. The ivar route
+is likewise rejected today (`@f = lambda { x }; x = "a"` — see the `q2` probe in clink 46) for
+a reason unrelated to this, and `killClosOverSpine` now covers it directly.
 

@@ -449,6 +449,80 @@ def spineToEnv : Ty → Env
   | .ivarCons x τ rest => (x, τ) :: spineToEnv rest
   | _ => []
 
+/-! ### Stale closure captures (clink 46)
+
+**A captured spine is a claim about a binding, not about a value** — the same thing
+`Ty.sameAs` is, and it goes stale the same way. A Ruby block captures locals *by reference*,
+so `f = lambda { x }` records `x`'s type into `f`'s `Ty.clos` spine and a later `x = "a"`
+makes that record wrong. Without the two functions below, `Judge.vasgn` certified
+
+```ruby
+x = 1
+f = lambda { x }
+x = "a"
+f.call + 1        -- CRuby: TypeError
+```
+
+as `Integer` (`found-issues.md` §F1 — a `validate` `true` on a **type-stuck** program, found
+by the semantic ratchet reading `Obl.Judge.vasgn`, not by any corpus rung).
+
+The fix is `killAliasesTo`'s, one level up: an assignment invalidates the facts other
+bindings recorded about the assigned name. Three things about the shape are deliberate.
+
+* **It is precise, not blanket.** A capture only goes stale if the recorded type *differs*
+  from the new one; `x = 1; f = lambda { x }; x = 2` keeps `f`'s spine, because
+  `x : Integer` is still true. That is the same boundary `capIntact` draws for a block body
+  that assigns to a captured local, and it is what keeps the common case typable.
+* **It erases to `.any`, not to nothing.** Dropping the binding would make a later *read* of
+  `f` underivable (`Judge.var` needs `envGet?` to answer), which is a worse error message for
+  the same rejection. `.any` keeps the name bound, and is unusable on purpose: it matches no
+  `PrimSig` row, is not `EqSafe`, and is not a `.clos`, so `f.call` has no rule.
+* **It walks the whole type.** A stale capture can sit under a `nilable`, inside an array
+  element, in an `inst`'s ivar spine, or in another closure's captured spine
+  (`g = lambda { x }; f = lambda { g }`), and any of those makes the *whole* binding
+  unsound to keep. Erasing the outermost type is sound because every value inhabits `.any`.
+
+Both are the **identity on a closure-free environment**, which is what let them be added to
+two rules already carrying 177 derivations without editing one of them — exactly the property
+`killAliases`' docstring claims for the alias operations. -/
+
+/-- Does `σ` record a closure capture of `x` at a type other than `τ`?
+
+The `.clos` arm reads the captured spine's own entry for `x` (`ivarGet? cap x`, since a
+capture spine is keyed by local name) and *also* recurses into the spine, because an entry may
+itself be a closure over `x`. -/
+def capStale (x : String) (τ : Ty) : Ty → Bool
+  | .clos _ cap selfT =>
+      (match ivarGet? cap x with
+       | some σ => σ != τ
+       | none => false)
+        || capStale x τ cap || capStale x τ selfT
+  | .nilable ρ => capStale x τ ρ
+  | .arrayOf ρ => capStale x τ ρ
+  | .hashOf k v => capStale x τ k || capStale x τ v
+  | .union a b => capStale x τ a || capStale x τ b
+  | .sameAs _ ρ => capStale x τ ρ
+  | .inst _ I => capStale x τ I
+  | .ivarCons _ σ rest => capStale x τ σ || capStale x τ rest
+  | .arrow0 r => capStale x τ r
+  | .arrowCons p rest => capStale x τ p || capStale x τ rest
+  | _ => false
+
+/-- Widen every binding whose type records a stale capture of `x` to `.any`. Applied by
+`Judge.vasgn`/`Judge.vasgnAlias` beside `killAliasesTo`. -/
+def killClosOver : Env → String → Ty → Env
+  | [], _, _ => []
+  | (y, σ) :: Γ, x, τ =>
+    (y, if capStale x τ σ then .any else σ) :: killClosOver Γ x τ
+
+/-- The same, over an **ivar spine**. `@f = lambda { x }` puts a `Ty.clos` in `self`'s spine,
+which `Judge.vasgn` threads out untouched; the spine goes stale for the same reason the
+environment does, so it gets the same treatment. -/
+def killClosOverSpine : Ty → String → Ty → Ty
+  | .ivarCons n σ rest, x, τ =>
+    .ivarCons n (if capStale x τ σ then .any else σ) (killClosOverSpine rest x τ)
+  | other, _, _ => other
+
 /-- The names bound in an environment, in order. -/
 def envKeys : Env → List String
   | [] => []

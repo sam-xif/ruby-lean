@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **177 rungs of 232 — tier 13 complete, tiers 14–17 open**
+## Checker status: **178 rungs of 235 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
 good half of tiers 14–17: the eight literals,
@@ -45,9 +45,14 @@ already climbed the day they were written.
 
 **Tiers 13–17 were then worked the same day**, in clinks 27–41 (`implementation-notes.md`):
 tier 13 **complete** (12/13, six clinks), and tiers 14–17 taken from 1/15, 3/19, 4/15 and 0/23 to
-**9/15, 13/19, 10/15 and 11/23**. So the headline is **177 of 232**, with **34 rungs differing
+**9/15, 13/19, 10/15 and 11/23**. So the headline was **177 of 232**, with **34 rungs differing
 from their recorded target** (down from 81) and 21 permanent negatives — one fewer than before,
 because a flagged `Ty` gap turned out not to be one (§Ty language gaps, clink 40).
+
+**Clink 46 made it 178 of 235**, and the three new rungs are a *soundness* fix rather than
+coverage: the semantic ratchet found `Judge.vasgn` accepting a type-stuck program
+(`found-issues.md` §F1), and two of the three are the permanent negatives that pin the fix
+(§Closure captures go stale). Permanent negatives: **21**.
 
 **`Ty` grew one constructor**: `hashOf (key val)` (clink 41), the first grammar change since
 tier 9's `clos`, discharging §Frontier item A. Uniform rather than keyed, because the target reads
@@ -84,16 +89,63 @@ the same shape of answer `homebrew/slice-verdict.md` reaches from the other side
 basis `uncertified`). Tiers 13–17 exist to make that answer decomposable: they are the syntactic
 forms the slice uses and the corpus did not, one rung each, **measured rather than guessed**.
 
-- **19 permanent negatives** (`unsafe_program`) — programs that really raise
+- **21 permanent negatives** (`unsafe_program`) — programs that really raise
   `NoMethodError`/`ArgumentError`/`TypeError`, kept as the soundness regression tests. A `true`
-  on any of them is a bug, not progress. Seven are new, one per new tier, plus
-  `slice-adversarial` (§Tier 19).
+  on any of them is a bug, not progress. Seven came in with tiers 13–19, one per new tier, plus
+  `slice-adversarial` (§Tier 19); two more with clink 46's soundness fix
+  (`lambda-capture-reassigned-unsafe`, `lambda-captures-own-target-unsafe`), and those two are
+  the first that were a *regression* test for a bug the ladder actually shipped rather than a
+  control written alongside a rule.
 - **3 `Ty` language gaps**, each naming a specific missing constructor: an optional/rest arity
   spine (`proc-arity-leniency`, `metaprog-method-missing-splat`) and a length-indexed array
   (`narrow-nilable-and-union`). See §Ty language gaps. **The slice asks for all three again**,
   which is the strongest evidence the ladder has produced that they are real: the length-indexed
   array is `String#match`'s captures, `arr.first`, and every `a, b = s.split("-")` in
   `identify.rb`.
+
+### Closure captures go stale, and `Judge.vasgn` did not know it (clink 46)
+
+**The first soundness bug this ladder shipped, and the second ladder is what found it.**
+`Judge.lambdaLit` records the creation-site environment into the type
+(`.clos idx (envToSpine Γ) …`). A Ruby block captures locals **by reference**, so that spine
+is a claim about a *binding*, not about a value — which is exactly what `Ty.sameAs` is, and
+`Judge.vasgn` already knew it about `sameAs` (it applies `killAliasesTo Γ' x`, and its
+docstring enumerates the three ways an alias goes stale). It did the same job for no
+`Ty.clos`. So:
+
+```ruby
+x = 1
+f = lambda { x }
+x = "a"
+f.call + 1        # CRuby: TypeError.  validate, before clink 46: true, type Integer.
+```
+
+`validate` returned **`true` on a type-stuck program** — the one thing the permanent negatives
+exist to make impossible. `capIntact` is a different guard: it stops a block *body* from
+retyping a captured local, not ordinary code after the literal.
+
+**The fix is two functions and one premise** (`Ratchet/Ty.lean` §Stale closure captures).
+`killClosOver`/`killClosOverSpine` widen to `.any` every binding — and every ivar-spine entry —
+whose type records a capture of the assigned name at a *different* type, and `vasgn`/
+`vasgnAlias` apply them beside `killAliasesTo`. Both are the **identity on a closure-free
+environment**, which is why 177 derivation terms in `Ratchet/Rungs.lean` needed no edit.
+
+The premise is the other half, and it is the half `killClosOver` cannot do: `x = lambda { x }`
+puts the stale record in the type being **bound**, so there is nothing left to widen and the
+rule's own type index would be wrong. `capStale x τ τ = false` is an `autoParam` premise
+(`:= by rfl`), which is what let it be added without touching a derivation either — the same
+trick `Judge.varAlias`'s docstring recommends for a `Bool` side condition.
+
+**Precision is kept where it is sound.** `x = 1; f = lambda { x }; x = 2` still types: the
+recorded capture is `x : Integer` and that is still true, so `capStale` says nothing is stale.
+That is the same boundary `capIntact` draws.
+
+Three corpus rungs (tier 9) and two `CheckRungs.lean` controls pin it — the two unsafe programs
+as permanent negatives, the same-type reassignment as the precision control, and the controls
+as the place where the rejection is labelled *sound* by running the program and confirming it
+is genuinely type-stuck. **None of these existed before**, and that is the point: the corpus
+ladder read 232/232 and 140/140 with the bug in place. See `found-issues.md` §F1 and
+`implementation-notes.md` clink 46.
 
 **Tier 12 (clinks 13–17, 25, 26) is where `nilable` and `union` stop being write-only.**
 Narrowing lives *inside* `Judge.if'` — each branch is typed in `narrowEnvs κ.classes c Γc` and
@@ -425,7 +477,7 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 ## Semantic ratchet status (`Denote/Sem/`): **16 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (177 of 232). This measures
+measures *reach*: how many corpus programs `validate` types (178 of 235). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -479,12 +531,14 @@ x = "a"
 f.call + 1          # CRuby: TypeError.  validate: true, type Integer.
 ```
 
-`validate` returns **`true` on a type-stuck program** — the one thing the 19 negative
-controls exist to make impossible, and no corpus rung writes the shape. The obligation names
-the rule without needing a witness: `Obl.Judge.vasgn`'s conclusion asks for `EnvOk` at the
-post-machine, whose `clos` arm reads `closLocal m' cl` — the captured *frame*, which
-`setLocal` wrote through. Not fixed here (`Ratchet/` is untouched by clink 45); the shape of
-the fix and the negative control it needs are in `found-issues.md` §F1.
+`validate` returned **`true` on a type-stuck program** — the one thing the permanent negatives
+exist to make impossible, and no corpus rung wrote the shape. The obligation named the rule
+without needing a witness: `Obl.Judge.vasgn`'s conclusion asks for `EnvOk` at the post-machine,
+whose `clos` arm reads `closLocal m' cl` — the captured *frame*, which `setLocal` wrote
+through. **Fixed in clink 46** (§Closure captures go stale): `killClosOver`/`killClosOverSpine`
+plus a `capStale x τ τ = false` premise, three new corpus rungs and two new controls. The rung
+is still undischarged — the rule is now true, but proving it still needs the continuation
+lemma below.
 
 **The wall behind it, for `vasgn` and every other compound rule** — `Denote/Sem/notes.md`
 §The fifth stall point. `Evals` runs an expression under `kont := []`; a `.vasgn` runs its
@@ -916,7 +970,7 @@ makes an actual constraint, not just a coincidence).
   exception's (class, message). This is what makes a rung's *type* mean something — a
   program the model executes differently from Ruby is a program whose type is a
   statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
-  disagreement. Currently **232/232 agree**. Needs `uv` and a CRuby; skip with
+  disagreement. Currently **235/235 agree**. Needs `uv` and a CRuby; skip with
   `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `checkrungs`: this compares
   *the model against Ruby* over the whole corpus, `checkrungs` compares *a hand-derived type
   against the model* over the 129 covered rungs.
@@ -934,7 +988,7 @@ makes an actual constraint, not just a coincidence).
   its full dependency closure — see §Semantics status. The one place this package's
   `lakefile.toml` declares a `require` on `../lean`.
 
-## The ladder (19 tiers, 232 rungs, 129 climbed)
+## The ladder (19 tiers, 235 rungs, 129 climbed)
 
 **Every rung's target is `expect_validate = true`, with exactly twenty-two, named
 exceptions** (§Permanent negatives below) — see the 2026-08-31 (later) note for why
@@ -942,7 +996,7 @@ this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean
 module docstring for the two reasons a rung is allowed to target `false` at all.
 
 **Every rung also agrees with CRuby**, checked by `scripts/run_agreement.sh` before the
-ladder is reported: 232/232 (§Architecture) — including the eight slice files and the
+ladder is reported: 235/235 (§Architecture) — including the eight slice files and the
 2,176-line linked slice.
 
 1. Literals (8 rungs) — all eight climbed.
@@ -1171,7 +1225,7 @@ whole linked program.
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-corpus agreement (CRuby vs the Lean semantics): 232/232 agree, 0 disagree
+corpus agreement (CRuby vs the Lean semantics): 235/235 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/9    tier 7: 16/16  tier 8: 10/10  tier 9: 19/22  tier 10: 6/6
@@ -1186,7 +1240,7 @@ All 177 are synthesized by `chk` itself, with nothing trusted anywhere. (This se
 to read "23 validating, of which 14 structural"; the other nine were rungs a certificate
 claim answered for. See §Claim-free.) `scripts/run_check_rungs.sh` is the companion number
 (also run inline by `run_ratchet.sh`): 177/177 of those cross-checked against the real
-semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 140/140
+semantics **on the prelude-booted heap** (clink 18 fixed a bug where it was not), 142/142
 negative controls rejected.
 
 Three numbers, and they move for different reasons:
@@ -1196,7 +1250,7 @@ Three numbers, and they move for different reasons:
   work to do, and a rung targeting `false` that answers `true` is a soundness bug.
 - **"flagged Ty language gaps"** should stay flat unless `Ty.lean`'s grammar itself grows
   (§Ty language gaps) — not something `chk` alone can move.
-- **"232/232 agree" should never move.** A disagreement there is a bug in the model or the
+- **"235/235 agree" should never move.** A disagreement there is a bug in the model or the
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
