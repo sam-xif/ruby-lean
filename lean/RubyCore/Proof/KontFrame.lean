@@ -601,6 +601,19 @@ match (they save the hypothesis proof), but this is the general tool. -/
     simp only [List.foldl_cons, hf acc m a]
     exact foldPair_frame K f hf rest _ (f (acc, m) a).2
 
+/-- The machine-**first** twin: `defineAttr` accumulates `(machine, names)` rather than
+`(names, machine)`. -/
+theorem foldPairFst_frame {α β : Type} (K : List Kont) (f : Machine × β → α → Machine × β)
+    (hf : ∀ (m : Machine) (p : β) (a : α),
+      f (pushK K m, p) a = (pushK K (f (m, p) a).1, (f (m, p) a).2)) :
+    ∀ (l : List α) (m : Machine) (acc : β),
+      List.foldl f (pushK K m, acc) l =
+        (pushK K (List.foldl f (m, acc) l).1, (List.foldl f (m, acc) l).2)
+  | [], _, _ => rfl
+  | a :: rest, m, acc => by
+    simp only [List.foldl_cons, hf m acc a]
+    exact foldPairFst_frame K f hf rest (f (m, acc) a).1 (f (m, acc) a).2
+
 /-- The `foldr` twin. `String#split` builds its result right-to-left, so it needs one. -/
 theorem foldrPair_frame {α β : Type} (K : List Kont) (f : α → β × Machine → β × Machine)
     (hf : ∀ (a : α) (p : β) (m : Machine),
@@ -1166,35 +1179,107 @@ folds, with the `.destr` arm of each step discharged by the fuel induction hypot
 first fold goes through; three arms of the outer `vals` match remain.
 -/
 
-/-! ## `destructureBind`: no longer *impossible*, and three goals from done
+/-- The step-framing side goal the conditional `rw [foldPair_frame]` leaves: the fold's step
+is `destructureBind`'s `bindPos`, whose only machine-moving arm is `.destr` — and that is the
+fuel induction hypothesis. -/
+syntax "destr_step" ident ident : tactic
+macro_rules
+  | `(tactic| destr_step $K $fuel) =>
+    `(tactic|
+        (intro p m₂ a
+         rcases a with ⟨prm, val⟩
+         cases prm with
+         | destr subs' => simp only [destructureBind_frame $K $fuel]
+         | _ => rfl))
 
-It was a **`partial def`** until clink 53 — an opaque constant with no equation lemmas, so
-nothing about it was provable and this metatheorem was blocked *in principle*
-(`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3). It now has a fuel-bounded
-recursion (`destrDepth`, the nesting depth of `.destr` sub-params, passed by both call sites),
-which is the fix `ancestors` already took, and the model's behaviour is unchanged — verified by
-hand against CRuby and by the difftest suite at **1304 tier-0 cases, 0 disagreements**.
+/-- The three arms of `destructureBind`'s outer `match v` all have the same body: bind the
+leading positionals (a fold), allocate the `*rest` array, bind the trailing positionals
+(another fold). Two conditional rewrites and their two side goals, deterministically — a
+`repeat'` loop over the same alternatives *spins*, because `rw [foldPair_frame]` keeps finding
+new occurrences in the side goals it just created. -/
+syntax "destr_arms" ident ident : tactic
+macro_rules
+  | `(tactic| destr_arms $K $fuel) =>
+    `(tactic|
+        (rw [foldPair_frame $K, foldPair_frame $K]
+         case _ => frame_simp
+         case _ => destr_step $K $fuel
+         case _ => destr_step $K $fuel))
 
-Its framing lemma is *not* here, and the honest status is that it is ordinary work now. The
-recipe that gets it to three remaining goals, recorded so the next attempt starts there:
+/-! ## `Interp/Dispatch.lean`
 
-```
-rw [destructureBind, destructureBind]
-simp only []                       -- zeta ONLY: the body is a chain of `let`s, `rw` cannot
-                                   -- reach under a binder, and the framing set goes too far
-                                   -- (it turns `pushK K m` into a record literal, after which
-                                   -- `foldPair_frame`'s `(acc, pushK ?m)` no longer unifies)
-repeat' first | rfl | (simp only [frameLem]; done) | rw [foldPair_frame K]
-             | rw [destructureBind_frame K fuel] | (simp [frameLem]; done) | intro _ | split
-all_goals (try (refine Prod.ext ?_ ?_))          -- the pair-valued arms
-all_goals (try simp_all)
-all_goals (try (refine congrArg Prod.fst (foldPair_frame K _ ?_ _ _ _); …))
-```
+Method entry, the eigenclass, class bodies, the native iterators and the mixin/reflection
+probes. Three of them *push a frame* (`enterUserMethod`, `enterClassBody`,
+`enterScopedClassBody`) and one pushes both a frame and a kont (`startIter`); `pushK` pins
+`frames` and `stack`, so all four frame by `withKont`'s `rfl` once their callees do. -/
 
-What is left is one fold whose initial machine is a compound term and two `False` goals that
-`simp_all` produces from arms it over-reduces — the same "`simp_all` must be a last resort"
-lesson as `frame_arms`, one level in.
--/
+@[frameLem] theorem eigenclassOf_go_frame (K : List Kont) :
+    ∀ (fuel : Nat) (m : Machine) (o : ObjId),
+      eigenclassOf.go (pushK K m) o fuel =
+        ((eigenclassOf.go m o fuel).1, pushK K (eigenclassOf.go m o fuel).2)
+  | 0, _, _ => rfl
+  | fuel + 1, m, o => by
+    rw [eigenclassOf.go, eigenclassOf.go]
+    frame_simp
+    (repeat' first
+      | rfl
+      | (simp only [frameLem, eigenclassOf_go_frame K fuel]; done)
+      | rw [eigenclassOf_go_frame K fuel]
+      | split) <;> frame_simp
+
+@[simp, frameLem] theorem eigenclassOf_frame (K : List Kont) (m : Machine) (o : ObjId) :
+    eigenclassOf (pushK K m) o = ((eigenclassOf m o).1, pushK K (eigenclassOf m o).2) := by
+  exact eigenclassOf_go_frame K _ m o
+
+@[simp, frameLem] theorem symOrStr_frame (K : List Kont) (m : Machine) (v : Value) :
+    symOrStr (pushK K m) v = symOrStr m v := rfl
+
+@[simp, frameLem] theorem mixinShadow_frame (K : List Kont) (m : Machine) (recv : Value)
+    (mname : String) : mixinShadow (pushK K m) recv mname = mixinShadow m recv mname := rfl
+
+@[simp, frameLem] theorem moduleHook_frame (K : List Kont) (m : Machine) (mo : ObjId)
+    (name : String) : moduleHook (pushK K m) mo name = moduleHook m mo name := rfl
+
+@[simp, frameLem] theorem missNoMethod_frame (K : List Kont) (m : Machine) (recv : Value)
+    (site : SendSite) (mname : String) (args : List Value) :
+    missNoMethod (pushK K m) recv site mname args =
+      frameR K (missNoMethod m recv site mname args) := by
+  simp only [missNoMethod, frameLem]
+  split <;> rfl
+
+@[simp, frameLem] theorem visError?_frame (K : List Kont) (m : Machine) (recv : Value)
+    (site : SendSite) (md : MethodDef) (mname : String) :
+    visError? (pushK K m) recv site md mname =
+      (visError? m recv site md mname).map (frameR K) := by
+  rw [visError?.eq_def, visError?.eq_def]
+  frame_simp
+  frame_arms
+
+@[simp, frameLem] theorem cpathContainer_frame (K : List Kont) (m : Machine) (base : Value) :
+    cpathContainer (pushK K m) base =
+      (cpathContainer m base).mapError (frameR K) := by
+  rw [cpathContainer.eq_def, cpathContainer.eq_def]
+  frame_simp
+  frame_arms
+
+@[simp, frameLem] theorem defineAttr_frame (K : List Kont) (m : Machine) (cls : ObjId)
+    (mname : String) (args : List Value) :
+    defineAttr (pushK K m) cls mname args =
+      (pushK K (defineAttr m cls mname args).1, (defineAttr m cls mname args).2) := by
+  rw [defineAttr.eq_def, defineAttr.eq_def]
+  frame_simp
+  -- one fold, machine in the *first* component this time
+  rw [foldPairFst_frame K]
+  all_goals (try frame_simp)
+  all_goals (try (intro m₂ p a
+                  cases a <;> ((repeat' first | rfl | split) <;> frame_simp)))
+
+/-! ### `enterUserMethod` is the one that needs its own file
+
+It is the largest function in the layer — `classifyFull`, two locals lists built by folds,
+`destructureBind`, the frame push and the kont push — and at 4M heartbeats the `else` branch
+still times out in one piece. Its proof goes in `RubyCore/Proof/KontFrameDispatch.lean`, so
+that iterating on it does not recompile this file. -/
 
 /-! ## What is proved, what is left, and the cost measured
 
@@ -1214,7 +1299,11 @@ and that is where the 24k lines actually are"*. It is:
   dispatchers** (`runRegex`, `runModules`, `runCollections`, `runStrings`, `runNumerics`); and
   all of `Interp/Support.lean`'s machine-takers, `callClosure` — the first helper that pushes a
   *frame* — included.
-* **Nothing is left of it.** All six dispatchers and `Builtins.run` itself are proved, so the
+* **`Interp/Dispatch.lean`, most of it**: `eigenclassOf`, `symOrStr`, `mixinShadow`,
+  `moduleHook`, `missNoMethod`, `visError?`, `cpathContainer`, `defineAttr`, and — the item
+  that was blocked *in principle* until clink 53 — **`destructureBind`**, whose `partial def`
+  is gone and whose framing is now proved. `enterUserMethod` needs its own file (above).
+* **Nothing is left of `Builtins`.** All six dispatchers and `Builtins.run` itself are proved, so the
   whole 24k-line layer is framed top to bottom. The last two arms to fall were `Kernel#print`
   and `Kernel#p`, and both taught the same lesson twice over: a `match` written in one
   declaration compiles to a matcher constant belonging to *that* declaration, so a lemma
