@@ -1,4 +1,4 @@
-import Denote.Rules.Core
+import Denote.Rules.Asgn
 import Denote.Sem.Decompose
 
 /-!
@@ -62,6 +62,38 @@ theorem catchFree_asgnK (x : String) :
   rcases List.mem_singleton.mp hk with rfl
   simp
 
+/-! ## The ending, as a lemma over the written value
+
+`vasgnAlias`'s ending, parameterised over the value written. It is a separate lemma for a
+mundane reason worth recording: after `run_two`'s `v = v₀` is substituted, *which* of the two
+names survives is Lean's choice, and a proof that spells one of them out breaks when it
+picks the other. A lemma parametric in the value applies either way. -/
+
+theorem vasgn_close {κ : Ctx} {Γ' : Env} {I' τ : Ty} {m m₀ : Machine} {x : String}
+    {w : Value}
+    (hcap : capStale x τ τ = false) (hctx : capStaleCtx x τ κ = false)
+    (halias : isAliasTy τ = false)
+    (hstack : m₀.stack = m.stack) (hden : denM τ m₀ w) (hSt' : StateOk κ Γ' I' m₀) :
+    (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) []).stack = m.stack
+      ∧ denM τ (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) []) w
+      ∧ StateOk κ (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ)
+          (killClosOverSpine I' x τ)
+          (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) []) := by
+  have hMok : StateOk κ Γ' I' (reCtl m₀ (.value w) []) := StateOk_reCtl hSt' _ _
+  have hdenM : denM τ (reCtl m₀ (.value w) []) w := denM_reCtl.mpr hden
+  refine ⟨?_, ?_, ?_⟩
+  · show ((reCtl m₀ (.value w) []).setLocal x w).stack = m.stack
+    rw [setLocal_stack]
+    exact hstack
+  · exact denM_reCtl.mpr (denM_setLocal hdenM hcap hdenM)
+  · refine StateOk_reCtl (StateOk_setLocal hMok hdenM hcap hctx ?_ ?_) _ _
+    · -- `τ` is not an alias (`found-issues.md` §F5), so stripping it is the identity
+      cases τ <;> simp_all [Ratchet.stripAlias, Ratchet.isAliasTy]
+    · -- …and for the same reason there is no alias claim to discharge
+      intro y σ hy
+      rw [hy] at halias
+      simp [Ratchet.isAliasTy] at halias
+
 /-! ## The rung -/
 
 theorem Sem.Judge.vasgn : Obl.Judge.vasgn := by
@@ -75,32 +107,19 @@ theorem Sem.Judge.vasgn : Obl.Judge.vasgn := by
       refine ⟨f, ?_⟩
       simpa only [run_succ, stepFn_vasgn_push] using hrun
   obtain ⟨f, hf⟩ := hpush
-  -- **The decomposition**: the sub-run of `e` returns, and the rest continues from the
-  -- state that delivers its value to `asgnK`.
+  -- **The decomposition**: the sub-run of `e` returns, and the rest continues from the state
+  -- that delivers its value to `asgnK`.
   obtain ⟨n, v₀, m₀, hin, hout⟩ :=
     run_split [.asgnK .lvar x] (catchFree_asgnK x) (jumpOpaque_asgnK .lvar x) f
       (evalFrom m e) v m' hf
-  -- **The tail**: two steps — the write, then the end of the run.
-  obtain ⟨rfl, rfl⟩ := run_two (stepFn_asgnK m₀ x v₀) hout
-  -- **The premise**, at the sub-run.
+  -- **The premise**, at that sub-run — which is a run under the *empty* continuation, which
+  -- is the whole point of the decomposition.
   obtain ⟨hstack, hden, hSt'⟩ := hprem m hm v₀ m₀ ⟨n, hin⟩
-  -- From here it is `vasgnAlias`'s ending: the write, and the two transports over it.
-  let M : Machine := reCtl m₀ (.value v₀) []
-  have hMok : StateOk κ Γ' I' M := StateOk_reCtl hSt' _ _
-  have hdenM : denM τ M v₀ := denM_reCtl.mpr hden
-  refine ⟨?_, ?_, ?_⟩
-  · show ((M.setLocal x v₀).stack) = m.stack
-    rw [setLocal_stack]
-    show m₀.stack = m.stack
-    exact hstack
-  · exact denM_reCtl.mpr (denM_setLocal hdenM hcap hdenM)
-  · refine StateOk_reCtl (StateOk_setLocal hMok hdenM hcap hctx ?_ ?_) _ _
-    · -- `τ` is not an alias (§F5), so stripping is the identity
-      cases τ <;> simp_all [Ratchet.stripAlias, Ratchet.isAliasTy]
-    · -- …and for the same reason there is no alias claim to discharge
-      intro y σ hy
-      rw [hy] at halias
-      simp [Ratchet.isAliasTy] at halias
+  -- **The tail**: two steps, the write and the end of the run.
+  obtain ⟨hveq, hmeq⟩ := run_two (stepFn_asgnK m₀ x v₀) hout
+  subst hmeq
+  subst hveq
+  exact vasgn_close hcap hctx halias hstack hden hSt'
 
 #print axioms Sem.Judge.vasgn
 

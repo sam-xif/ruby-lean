@@ -1,4 +1,4 @@
-import Denote.Sem.Judge
+import Denote.Sem.Frame
 import RubyCore.Proof.KontFrameStep
 import RubyCore.Proof.NotDone
 
@@ -71,49 +71,73 @@ continuation never returns a value**: `unwind []` either escapes (`.uncaught` on
 `.stuck` on a `break`/`next`/`retry`) or steps to a `raiseErr`, which is itself a jump at the
 same empty continuation one step later. -/
 
+/-- `raiseErr` sets the control word to a raise-jump and **leaves the continuation alone** —
+which is why a `retJ` or an uncaught `throw` at an empty continuation is still a jump at an
+empty continuation one step later. -/
+theorem raiseErr_ctl (m : Machine) (cls : ObjId) (msg : String) :
+    (Interp.raiseErr m cls msg).ctl =
+      .jump (.raiseJ (Builtins.allocExc m cls msg).1) := rfl
+
+theorem raiseErr_kont (m : Machine) (cls : ObjId) (msg : String) :
+    (Interp.raiseErr m cls msg).kont = m.kont := rfl
+
 /-- A machine whose control word is a jump and whose continuation is empty never returns a
 value, at any fuel. The `retJ` and `throwJ` arms are why this is an induction rather than a
 computation: both *step*, to a `raiseErr` — and `raiseErr` leaves the continuation alone, so
-the next state is of the same shape. -/
+the next state is of the same shape.
+
+The jump is **existentially quantified** rather than a parameter, and that is not cosmetic:
+with it as a parameter the induction hypothesis cannot be applied at the `retJ` arm, because
+the jump the successor state carries is the freshly allocated exception and Lean has nothing to
+synthesise it from until the `.ctl` premise is elaborated. -/
 theorem jump_empty_never_value :
-    ∀ (fuel : Nat) (m : Machine) (j : Jump) (v : Value) (m' : Machine),
-      m.ctl = .jump j → m.kont = [] → Interp.run fuel m ≠ .value v m' := by
+    ∀ (fuel : Nat) (m : Machine) (v : Value) (m' : Machine),
+      (∃ j, m.ctl = .jump j) → m.kont = [] → Interp.run fuel m ≠ .value v m' := by
   intro fuel
   induction fuel with
-  | zero => intro m j v m' _ _ h; simp only [Interp.run] at h
+  | zero => intro m v m' _ _ h; exact absurd h (by simp [Interp.run])
   | succ n ih =>
-    intro m j v m' hc hk h
-    rw [Interp.run, Interp.stepFn, hc, Interp.unwind.eq_def, hk] at h
-    cases j with
-    | raiseJ exc => simp only at h
-    | retJ w target =>
-      -- `raiseErr` keeps the continuation, so the successor is a jump at `[]` again
-      simp only at h
-      exact ih _ (.raiseJ _) v m' rfl (by simp [Interp.raiseErr]) h
-    | throwJ tag w =>
-      simp only at h
-      split at h
-      · exact ih _ (.raiseJ _) v m' rfl (by simp [Interp.raiseErr]) h
-      · simp only at h
-    | brkJ w => simp only at h
-    | nxtJ w => simp only at h
-    | redoJ => simp only at h
-    | retryJ => simp only at h
+    intro m v m' hc hk h
+    obtain ⟨j, hc⟩ := hc
+    -- `simp only` for the `stepFn` match (a `rw` leaves `match Ctl.jump j with …` standing),
+    -- then the two rewrites that expose `unwind`'s empty-continuation arm
+    simp only [Interp.run, Interp.stepFn, hc] at h
+    rw [Interp.unwind.eq_def, hk] at h
+    -- All three scrutinees are constructor applications once `j` is one, and **none of the
+    -- three matches reduces on its own** — they are matcher applications, so `h` reads
+    -- `match (match [] with | [] => match Jump.throwJ … ) with …` until `dsimp` runs.
+    cases j
+    all_goals (try (dsimp only at h))
+    case raiseJ exc => exact absurd h (by simp)
+    case retJ w target =>
+      exact ih _ v m' ⟨_, raiseErr_ctl m _ _⟩ (by rw [raiseErr_kont, hk]) h
+    case throwJ tag w =>
+      -- the inner match: `split at h` would peel `run`'s five-arm one instead
+      cases hins : Builtins.inspectP m tag with
+      | error e => rw [hins] at h; dsimp only at h; exact absurd h (by simp)
+      | ok r =>
+        rw [hins] at h
+        dsimp only at h
+        exact ih _ v m' ⟨_, raiseErr_ctl m _ _⟩ (by rw [raiseErr_kont, hk]) h
+    case brkJ w => exact absurd h (by simp)
+    case nxtJ w => exact absurd h (by simp)
+    case redoJ => exact absurd h (by simp)
+    case retryJ => exact absurd h (by simp)
 
 /-- `[.asgnK kind x]` is jump-opaque: `unwind`'s default arm passes the jump straight through
 with the frame popped, which lands on `jump_empty_never_value`. This is the continuation
 `Judge.vasgn` pushes, and the shape every other rule's literal kont will follow. -/
-theorem jumpOpaque_asgnK (kind : VarKind) (x : String) :
+theorem jumpOpaque_asgnK (kind : RubyCore.VarKind) (x : String) :
     JumpOpaque [.asgnK kind x] := by
   intro m j fuel v m' h
   match fuel with
-  | 0 => simp only [Interp.run] at h
+  | 0 => exact absurd h (by simp [Interp.run])
   | f + 1 =>
     rw [Interp.run] at h
     have hs : Interp.stepFn { m with ctl := .jump j, kont := [.asgnK kind x] }
         = .next (Interp.withCtl { m with ctl := .jump j, kont := [] } (.jump j)) := rfl
     rw [hs] at h
-    exact jump_empty_never_value f _ j v m' rfl rfl h
+    exact jump_empty_never_value f _ v m' ⟨j, rfl⟩ rfl h
 
 /-! ## The decomposition -/
 
@@ -124,7 +148,7 @@ abbrev deliver (m : Machine) (v : Value) (K : List Kont) : Machine :=
 
 /-- At an empty continuation with a value in flight, `pushK K` *is* the delivery state. This
 is the pass-through point, and it is a `rfl`. -/
-theorem pushK_eq_deliver {m : Machine} {w : Value} (hc : m.ctl = .value w)
+theorem pushK_eq_deliver (K : List Kont) {m : Machine} {w : Value} (hc : m.ctl = .value w)
     (hk : m.kont = []) : pushK K m = deliver m w K := by
   simp only [pushK, deliver, hk, List.nil_append, ← hc]
 
@@ -143,7 +167,7 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
         ∃ f2, Interp.run f2 (deliver m₀ v₀ K) = .value v m' := by
   intro fuel
   induction fuel with
-  | zero => intro m v m' h; simp only [Interp.run] at h
+  | zero => intro m v m' h; exact absurd h (by simp [Interp.run])
   | succ n ih =>
     intro m v m' h0
     have h := h0
@@ -168,16 +192,16 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
         have h1 := (RubyCore.Proof.done_inv m w m₂ hev).1
         rw [hc] at h1
         exact absurd h1 (by simp)
-      | uncaught exc m₂ => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-      | unsupported r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-      | stuck r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
+      | uncaught exc m₂ => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+      | unsupported r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+      | stuck r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
     | value w =>
       cases hk : m.kont with
       | nil =>
         -- **the pass-through point**: the inner run ends here, in one step
         refine ⟨1, w, m, ?_, n + 1, ?_⟩
         · simp only [Interp.run, Interp.stepFn, hc, Interp.applyKont, hk]
-        · rw [← pushK_eq_deliver hc hk, Interp.run]; exact h
+        · rw [← pushK_eq_deliver K hc hk, Interp.run]; exact h
       | cons kk rest =>
         have hne : m.kont ≠ [] := by rw [hk]; simp
         have hstep : Interp.stepFn (pushK K m) =
@@ -193,18 +217,18 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
           exact ⟨k + 1, v₀, m₀, by rw [Interp.run, hev]; exact hin, f2, hout⟩
         | done w₂ m₂ =>
           exact absurd (RubyCore.Proof.done_inv m w₂ m₂ hev).2.1 hne
-        | uncaught exc m₂ => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-        | unsupported r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-        | stuck r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
+        | uncaught exc m₂ => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+        | unsupported r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+        | stuck r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
     | jump j =>
       cases hk : m.kont with
       | nil =>
         -- the inner run has escaped, and `JumpOpaque` is exactly the statement that the outer
         -- one cannot turn that back into a value
-        refine absurd h0 (hJ m j (n + 1) v m' ?_)
+        exfalso
         have heq : ({ m with ctl := .jump j, kont := K } : Machine) = pushK K m := by
           rw [pushK, hk, List.nil_append, ← hc]
-        rw [heq]
+        exact hJ m j (n + 1) v m' (by rw [heq]; exact h0)
       | cons kk rest =>
         have hne : m.kont ≠ [] := by rw [hk]; simp
         have hstep : Interp.stepFn (pushK K m) =
@@ -220,8 +244,8 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
           exact ⟨k + 1, v₀, m₀, by rw [Interp.run, hev]; exact hin, f2, hout⟩
         | done w₂ m₂ =>
           exact absurd (RubyCore.Proof.done_inv m w₂ m₂ hev).2.1 hne
-        | uncaught exc m₂ => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-        | unsupported r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
-        | stuck r => rw [hev] at h; simp only [RubyCore.Proof.frameR] at h
+        | uncaught exc m₂ => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+        | unsupported r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
+        | stuck r => rw [hev] at h; exact absurd h (by simp [RubyCore.Proof.frameR])
 
 end Ratchet.Denote
