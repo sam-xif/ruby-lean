@@ -919,6 +919,14 @@ theorem nxt_no_value (m : Machine) (K : List Kont) (hK : JumpOpaque K)
     rw [hs]
     exact hK _ (.nxtJ .nil) f v m'
 
+theorem catchFree_seqK (rest : List RubyCore.Expr) :
+    RubyCore.Proof.CatchFree [Kont.seqK rest] := by
+  intro k hk
+  simp only [List.mem_singleton] at hk
+  rw [hk]
+  intro t
+  simp
+
 theorem catchFree_seqK_nil : RubyCore.Proof.CatchFree [Kont.seqK []] := by
   intro k hk
   simp only [List.mem_singleton] at hk
@@ -1108,5 +1116,211 @@ theorem Sem.JudgeSeq.nextGuard : Obl.JudgeSeq.nextGuard := by
         exact ⟨hframe.trans hframe₂, denM_joinT_right hden₂, hok₂⟩
 
 #print axioms Sem.JudgeSeq.nextGuard
+
+
+/-! ## `return e if c; rest` — the other guard clause
+
+`JudgeSeq.guard` is `nextGuard` with `return e` in place of `next`, and its then-path is
+excluded for the same reason one step further out: `doReturn` answers a **jump** whatever
+happens — a `retJ` when the home frame is still on the stack, a `LocalJumpError` raise
+otherwise — so no value escapes the sequence. Which is why the rule's *then* premise, at the
+refined environment §F13 blocks, is never spent: `SemJudgeSeq` reads runs that return, and this
+path does not.
+
+That is the whole reason `guard` is on the ladder while `if'`/`ifNoElse` are not. -/
+
+/-- `JumpOpaque` in the shape a caller has it: a machine that *is* a jump with that
+continuation, rather than one written as a record update. Mirrors
+`jump_empty_never_value`'s interface. -/
+theorem jumpOpaque_apply {K : List Kont} (hjo : JumpOpaque K) {M : Machine}
+    (hc : ∃ j, M.ctl = .jump j) (hk : M.kont = K) (fuel : Nat) (v : Value) (m' : Machine) :
+    Interp.run fuel M ≠ .value v m' := by
+  obtain ⟨j, hj⟩ := hc
+  rw [show M = { M with ctl := .jump j, kont := K } from by rw [← hj, ← hk]]
+  exact hjo M j fuel v m'
+
+theorem catchFree_jumpValK_cons (Kout : List Kont) (hcf : RubyCore.Proof.CatchFree Kout) :
+    RubyCore.Proof.CatchFree (Kont.jumpValK .retK :: Kout) := by
+  intro k hk
+  rcases List.mem_cons.mp hk with rfl | h
+  · intro t; simp
+  · exact hcf k h
+
+theorem jumpOpaque_jumpValK_cons (Kout : List Kont) (hjo : JumpOpaque Kout) :
+    JumpOpaque (Kont.jumpValK .retK :: Kout) := by
+  intro m j fuel v m' h
+  match fuel with
+  | 0 => exact absurd h (by simp [Interp.run])
+  | f + 1 =>
+    rw [Interp.run] at h
+    have hs : Interp.stepFn { m with ctl := .jump j, kont := Kont.jumpValK .retK :: Kout }
+        = .next (Interp.withCtl { m with ctl := .jump j, kont := Kout } (.jump j)) := rfl
+    rw [hs] at h
+    exact hjo _ j f v m' h
+
+/-- **A `return e` escapes**, whatever `e` does: if it returns a value, `jumpValK .retK` turns
+that into a jump (`doReturn`'s two answers are both jumps), and the jump then escapes through a
+jump-opaque continuation. -/
+theorem ret_no_value (m : Machine) (e : Ratchet.Expr) (Kout : List Kont)
+    (hcf : RubyCore.Proof.CatchFree Kout) (hjo : JumpOpaque Kout)
+    (fuel : Nat) (v : Value) (m' : Machine) :
+    Interp.run fuel { m with ctl := .eval (toRuby (.ret (some e))), kont := Kout }
+      ≠ .value v m' := by
+  match fuel with
+  | 0 => simp [Interp.run]
+  | f + 1 =>
+    rw [Interp.run]
+    have hs : Interp.stepFn { m with ctl := .eval (toRuby (.ret (some e))), kont := Kout }
+        = .next (pushK (Kont.jumpValK .retK :: Kout) (evalFrom m e)) := rfl
+    rw [hs]
+    dsimp only
+    intro hr
+    obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, f₂, hf₂⟩ :=
+      run_split _ (catchFree_jumpValK_cons Kout hcf) (jumpOpaque_jumpValK_cons Kout hjo)
+        f (evalFrom m e) v m' hr
+    -- the value reaches `jumpValK .retK`, which returns — and a return is a jump
+    revert hf₂
+    rcases f₂ with _ | f₃
+    · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+    · intro hf₂
+      rw [run_succ] at hf₂
+      have hdr : Interp.stepFn (deliver m₀ v₀ (Kont.jumpValK .retK :: Kout))
+          = Interp.doReturn (deliver m₀ v₀ Kout) v₀ := rfl
+      rw [hdr] at hf₂
+      -- `doReturn`'s two answers, both jumps at `Kout`
+      split at hf₂
+      · -- `doReturn`'s two answers are both jumps at `Kout`
+        rename_i M heq
+        unfold Interp.doReturn at heq
+        dsimp only at heq
+        split at heq
+        · injection heq with heq
+          rw [← heq] at hf₂
+          exact absurd hf₂ (jumpOpaque_apply hjo ⟨_, rfl⟩ rfl f₃ v m')
+        · injection heq with heq
+          rw [← heq] at hf₂
+          exact absurd hf₂ (jumpOpaque_apply hjo ⟨_, raiseErr_ctl _ _ _⟩
+            (by rw [raiseErr_kont]) f₃ v m')
+      -- the other four arms of `run`'s match: `doReturn` answers `.next` and nothing else
+      all_goals
+        (rename_i heq
+         unfold Interp.doReturn at heq
+         dsimp only at heq
+         split at heq <;> exact absurd heq (by simp))
+
+
+
+theorem Sem.JudgeSeq.guard : Obl.JudgeSeq.guard := by
+  intro κ Γ Γc Γr Γ' I Ic Ir I' c e rest σ ρ τ hc _he _hir htail
+  refine ⟨fun e' he' => ?_, ?_⟩
+  · rcases List.mem_cons.mp he' with h | h
+    · rw [h]; trivial
+    · exact htail.1 e' h
+  intro m hm v m' hev
+  obtain ⟨fuel, hrun⟩ := hev
+  rcases fuel with _ | f
+  · rw [run_zero] at hrun; exact absurd hrun (by simp)
+  · -- the same decomposition as `nextGuard`, with `return e` in the then-branch
+    have key : ∀ (fu : Nat) (Kout : List Kont), RubyCore.Proof.CatchFree
+          (Kont.ifK (toRuby (.ret (some e))) none :: Kout) →
+        JumpOpaque (Kont.ifK (toRuby (.ret (some e))) none :: Kout) →
+        RubyCore.Proof.CatchFree Kout → JumpOpaque Kout →
+        Interp.run fu (pushK (Kont.ifK (toRuby (.ret (some e))) none :: Kout) (evalFrom m c))
+          = .value v m' →
+        ∃ (vc : Value) (mc : Machine), Evals m c vc mc ∧ mc.kont = [] ∧
+          StateOk κ (Ratchet.narrowEnvs κ c Γc).2 (Ratchet.narrowSpine κ c Ic).2 mc ∧
+          Framed m mc ∧
+          ∃ f₂, Interp.run f₂ (deliver mc .nil Kout) = .value v m' := by
+      intro fu Kout hcf hjo hcfOut hjoOut hr
+      obtain ⟨nb, vc, mc, hin, hcc, hkc, hf₂⟩ :=
+        run_split _ hcf hjo fu (evalFrom m c) v m' hr
+      obtain ⟨f₂, hf₂⟩ := hf₂
+      obtain ⟨hframe, _, _⟩ := hc.2 m hm vc mc ⟨nb, hin⟩
+      have ht : vc.truthy = false := by
+        by_cases ht : vc.truthy = false
+        · exact ht
+        · exfalso
+          simp only [Bool.not_eq_false] at ht
+          revert hf₂
+          rcases f₂ with _ | f₃
+          · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+          · intro hf₂
+            rw [run_succ, show Interp.stepFn (deliver mc vc
+                  (Kont.ifK (toRuby (.ret (some e))) none :: Kout))
+                = .next { mc with ctl := .eval (toRuby (.ret (some e))), kont := Kout } from by
+                  simp only [deliver, Interp.stepFn, Interp.applyKont, ht]
+                  rfl] at hf₂
+            exact absurd hf₂ (ret_no_value mc e Kout hcfOut hjoOut f₃ v m')
+      refine ⟨vc, mc, ⟨nb, hin⟩, hkc, stateOk_narrow_else hc hm ⟨nb, hin⟩ ht, hframe, ?_⟩
+      revert hf₂
+      rcases f₂ with _ | f₃
+      · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+      · intro hf₂
+        rw [run_succ, show Interp.stepFn (deliver mc vc
+              (Kont.ifK (toRuby (.ret (some e))) none :: Kout))
+            = .next (deliver mc .nil Kout) from by
+              simp only [deliver, Interp.stepFn, Interp.applyKont, ht]
+              rfl] at hf₂
+        exact ⟨f₃, hf₂⟩
+    rcases rest with _ | ⟨e₁, rest₁⟩
+    · rw [run_succ, show Interp.stepFn (evalFrom m (.seq [.if' c (.ret (some e)) none]))
+            = .next (evalFrom m (.if' c (.ret (some e)) none)) from rfl] at hrun
+      dsimp only at hrun
+      rcases f with _ | f₁
+      · rw [run_zero] at hrun; exact absurd hrun (by simp)
+      · rw [run_succ, show Interp.stepFn (evalFrom m (.if' c (.ret (some e)) none))
+                = .next (pushK [Kont.ifK (toRuby (.ret (some e))) none] (evalFrom m c))
+                from rfl] at hrun
+        dsimp only at hrun
+        obtain ⟨vc, mc, hevc, hkc, hokc, hframe, f₂, hf₂⟩ :=
+          key f₁ [] (catchFree_ifK _ _) (by simpa using jumpOpaque_ifK _ _)
+            (by intro k hk; exact absurd hk (by simp)) jumpOpaque_nil hrun
+        have hemp : Evals mc (.seq []) .nil
+            (Interp.withCtl (deliver mc .nil []) (.value .nil)) :=
+          ⟨2, by
+            rw [run_succ, show Interp.stepFn (evalFrom mc (.seq []))
+                  = .next (deliver mc .nil []) from rfl]
+            dsimp only
+            rw [run_succ, stepFn_value_nil]
+            rfl⟩
+        obtain ⟨hframe₂, hden₂, hok₂⟩ := htail.2 mc hokc .nil _ hemp
+        revert hf₂
+        rcases f₂ with _ | f₃
+        · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+        · intro hf₂
+          rw [run_succ, show Interp.stepFn (deliver mc .nil [])
+              = .done .nil (Interp.withCtl (deliver mc .nil []) (.value .nil)) from by
+                rw [show Interp.withCtl (deliver mc .nil []) (Ctl.value .nil)
+                      = deliver mc .nil [] from rfl]
+                exact stepFn_value_nil _ _] at hf₂
+          dsimp only at hf₂
+          cases hf₂
+          exact ⟨hframe.trans hframe₂, denM_joinT_right hden₂, hok₂⟩
+    · rw [run_succ, show Interp.stepFn
+              (evalFrom m (.seq (.if' c (.ret (some e)) none :: e₁ :: rest₁)))
+            = .next (Interp.withKont
+                (evalFrom m (.seq (.if' c (.ret (some e)) none :: e₁ :: rest₁)))
+                (.eval (toRuby (.if' c (.ret (some e)) none)))
+                (.seqK (toRubyList (e₁ :: rest₁)))) from rfl] at hrun
+      dsimp only at hrun
+      rcases f with _ | f₁
+      · rw [run_zero] at hrun; exact absurd hrun (by simp)
+      · rw [run_succ, show Interp.stepFn (Interp.withKont
+                (evalFrom m (.seq (.if' c (.ret (some e)) none :: e₁ :: rest₁)))
+                (.eval (toRuby (.if' c (.ret (some e)) none)))
+                (.seqK (toRubyList (e₁ :: rest₁))))
+              = .next (pushK [Kont.ifK (toRuby (.ret (some e))) none,
+                  Kont.seqK (toRubyList (e₁ :: rest₁))] (evalFrom m c)) from rfl] at hrun
+        dsimp only at hrun
+        obtain ⟨vc, mc, hevc, hkc, hokc, hframe, f₂, hf₂⟩ :=
+          key f₁ [Kont.seqK (toRubyList (e₁ :: rest₁))] (catchFree_ifK_seqK _ _ _)
+            (jumpOpaque_ifK_seqK _ _ _) (catchFree_seqK _) (jumpOpaque_seqK _) hrun
+        have htl : Evals mc (.seq (e₁ :: rest₁)) v m' :=
+          evals_seq_of_seqK mc (e₁ :: rest₁) (by simp) hf₂
+        obtain ⟨hframe₂, hden₂, hok₂⟩ := htail.2 mc hokc v m' htl
+        exact ⟨hframe.trans hframe₂, denM_joinT_right hden₂, hok₂⟩
+
+#print axioms Sem.JudgeSeq.guard
+
 
 end Ratchet.Denote
