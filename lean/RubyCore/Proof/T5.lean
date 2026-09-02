@@ -47,6 +47,7 @@ namespace T5
 
 open Interp
 
+set_option maxHeartbeats 1000000 in
 /-- **Object-model progress.** A config whose control is a receiver value and
     whose top continuation is a zero-arg explicit send `recv.m` (`recvK`) takes a
     step, provided the heap's method table *resolves* `m` on `recv` to a
@@ -58,7 +59,11 @@ open Interp
     The step lands in the method activation (`enterUserMethod` → `.eval body`),
     i.e. it does NOT take the `dispatchMiss` → `NoMethodError` branch. This is
     the "receiver responds to `m`" store-typing clause of
-    `type-safety-by-reachability.md` §4.2, discharged over the real interpreter. -/
+    `type-safety-by-reachability.md` §4.2, discharged over the real interpreter.
+
+    The heartbeat raise is `enterUserMethod`'s: unfolding it reaches `destructureBind`, which
+    is now a structural recursion on a `destrDepth` fuel rather than a `partial def` (so that
+    it can be framed — `Proof/KontFrame.lean`), and `whnf` walks the fuel arithmetic. -/
 theorem dispatch_progress
     (m : Machine) (o owner : ObjId) (md : MethodDef) (rest : List Kont)
     (hctl : m.ctl = .value (.ref o))
