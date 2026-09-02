@@ -5477,7 +5477,7 @@ nobody has written. The seventh is resolved; the sixth's item (2) reaches only t
 statement rules. So the wall map is now: **one wall**, and it is the one whose `Builtins` half
 clink 52 proved.
 
-## Clink 54 (2026-09-02) — the fifth wall, taken. **178 rungs / 239, 34 of 83 rules**
+## Clink 54 (2026-09-02) — the fifth wall, taken, and the call family opened. **178 rungs / 240, 36 of 83 rules**
 
 The continuation wall — `Denote/Sem/notes.md` §The fifth stall point, the thing that has
 gated "most compound rungs" since clink 48 and was refuted-then-repaired in clink 52 — is
@@ -5617,7 +5617,51 @@ it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in bo
 * `./scripts/run_ratchet.sh` — 178 rungs / 239, 35 `expect_validate` mismatches (unchanged),
   corpus agreement 239/239.
 * `./scripts/run_check_rungs.sh` — 177/177 rungs confirmed, 145/145 negative controls.
-* `lake exe semladder` — **34 of 83 rules** (`Judge.vasgn` is the first compound rung).
+* `lake exe semladder` — **36 of 83 rules**.
+
+### After the wall: three more rungs, and the two definitional corrections they needed
+
+**`Judge.vasgn`**, then **`Judge.callNever`** and **`Judge.primNever`** — the first two of the
+call family. Both conclude `Ty.never`, which is the empty type, so both are discharged by
+contradicting the run: the argument walk finds the values the arguments delivered, the premise
+says one of their types is `never`, and no value has that type. `primNever` is the first rung
+to chain two `run_split`s (receiver, then one per argument) with a `.recvK` delivery stepped
+through in between.
+
+**`Denote/Sem/Send.lean`'s `run_args`** is the argument walk, and it is the call family's
+backbone: `run_split` at each `.argsK`, with `catchFree_singleton`/`jumpOpaque_passthrough` as
+the per-link ingredients (every one of these frames takes `unwind`'s default arm) and
+`stepRunsTo_of_run` for "and the run continued" — which has to be phrased over
+`Interp.run (f+1)` rather than over the `match` that unfolds to, because that matcher belongs
+to `run`'s own declaration. Axiom-clean.
+
+**`SemJudge` now carries `Plain`**, and that is a soundness correction rather than a
+convenience. `Ratchet.Expr` has three shapes that are not expressions (`.splat`, `.kwargs`,
+`.fwd` are argument-list syntax) and no `Judge` rule concludes about one — so a *syntactic*
+`JudgeAll` derivation implies each argument is a real expression, structurally. `SemJudgeAll`
+implied nothing of the kind: its `EvalsAll` hypothesis is unsatisfiable at a splat, so the
+premise is **vacuous**, while `startArgs` routes the splat through `.argsSplatK` and the call's
+run returns a value anyway. Every call rule's obligation was false for that reason.
+Thirty-two of the 34 rungs discharge the new conjunct with `trivial`; `JudgeAll.cons` composes
+its head's and its tail's, and `JudgeSeq.last` takes its statement's.
+
+**`EnvOk` is complete** (a name the environment omits reads as `nil`) — `SelfSpineOk`'s second
+conjunct one piece of state over, forced by `joinEnv`'s `.nilT` default. It strengthens
+`StateOk`, which weakens all 83 obligations at once, and is taken for the reason
+`SelfSpineOk`'s was: the completeness is the checker's own convention, and this is it stated
+where the semantics can see it. `bootOkB` gains a `localsEmptyB` conjunct.
+
+### One probe that came back negative, and is worth the line
+
+`Judge.ivarAsgn` threads `Γ` out **unchanged** while writing an ivar, so a local holding `self`
+(typed at `κ.selfTy`, an `.inst` with an ivar spine) would go stale exactly as §F1's `Ty.clos`
+captures did — and `denM`'s `.inst` arm reads the object's ivars *at the current machine*, so
+the obligation is false at such a `Γ`. Probed with a corpus element
+(`corpus/240-ivar-asgn-stale-inst-unsafe`): the checker **rejects** the program, so it is
+unreachable, and it joins §F5 and the eleventh stall point as a rule unsound in isolation whose
+soundness in the checker rests on an unstated invariant. Left as a probe rather than fixed,
+because the conservative premise it would need ("no `Γ` entry mentions the assigned ivar") has
+real precision cost and the reachable set does not exercise it.
 
 ### And the rung it was for
 

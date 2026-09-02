@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **34 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **36 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
@@ -525,6 +525,13 @@ Discharged so far, all axiom-clean:
   attempt also produced `found-issues.md` **§F5** — `Judge.vasgn` recorded the right-hand
   side's type verbatim, and an *alias* type recorded that way claims something about a second
   local that the premise does not carry.
+* **`Judge.callNever` and `Judge.primNever`** (clink 54, `Denote/Rules/Never.lean`) — the first
+  two of the **call family**, on `Denote/Sem/Send.lean`'s **`run_args`** (the argument walk:
+  `run_split` at each `.argsK`). Both conclude `Ty.never`, the empty type, so both are
+  discharged by contradicting the run. Opening them needed `SemJudge` to carry **`Plain`** —
+  the fact that a `.splat`/`.kwargs`/`.fwd` is argument-list syntax and not an expression,
+  which the *syntactic* `JudgeAll` implies structurally and the semantic one did not, and
+  without which every call rule's obligation is false.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper
