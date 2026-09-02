@@ -5391,6 +5391,37 @@ because they are what actually moved the needle:
 Also: a `macro_rules` tactic that mentions itself does not expand. The first higher-order
 closer was recursive and silently failed on every nested case.
 
+### The `partial def` on the wall's path, removed
+
+`Interp/Support.lean`'s `destructureBind` was a **`partial def`**, which is worse than
+expensive: a `partial def` compiles to an opaque constant with no equation lemmas, so *nothing*
+about it is provable and the continuation-framing metatheorem was blocked **in principle**
+(`Denote/Sem/notes.md` §The fifth stall point, item 3 — the trap `../AGENTS.md` L73 warns
+about, arriving from the other side).
+
+It now has a fuel-bounded recursion, which is the fix `ancestors` already took for the same
+reason (`RubyCore/Heap.lean` L73 is `partial`-free on purpose). The fuel is `destrDepth subs +
+1` — the nesting depth of `.destr` sub-params plus the level being bound — passed by both call
+sites, so the `0` arm is unreachable and the behaviour is unchanged.
+
+Two things worth recording about doing it:
+
+* **`sizeOf` is not usable in executable code**: `destructureBind m subs dv (sizeOf subs)`
+  fails to compile ("Failed to find LCNF signature for `List._sizeOf_inst`"), hence the
+  hand-written `destrDepth`.
+* **The off-by-one was caught by running it, not by reading it.** `destrDepth subs` alone gives
+  fuel `0` at a one-level `def f((a, b), c)`, and the symptom is not an error but a **silent
+  `nil` binding** — the model answered `NoMethodError: undefined method '+' for nil` where
+  CRuby answers `6`. Verified after the fix against CRuby on `def f((a, b), c)` and
+  `def g((a, (b, c)), *rest)`, plus the corpus agreement at 239/239 and `checkrungs` at
+  177/177.
+
+Its framing lemma is not written yet, and the honest status is that it is now *ordinary work*:
+`KontFrame.lean` records exactly what it needs (zeta-only reduction, then the conditional
+`rw [foldPair_frame K (hf := …)]` at each of its three folds, with the `.destr` arm discharged
+by the fuel induction hypothesis; the first fold goes through, three arms of the outer match
+remain).
+
 ### What is left, corrected again
 
 Fifty rules: `Judge`'s 47 and `JudgeSeq`'s 3. Every one of them has a **compound** hypothesis —

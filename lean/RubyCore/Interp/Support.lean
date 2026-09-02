@@ -228,12 +228,37 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
       keys := keyPs.filterMap (fun p => match p with | .key n d => some (n, d) | _ => none),
       kwrest?, block?, destrs }
 
+/-- The nesting depth of `.destr` sub-params, which is the fuel `destructureBind` needs. A
+    plain structural recursion (and computable, unlike `sizeOf`, whose `SizeOf` instance has
+    no LCNF signature). -/
+def destrDepth : List Param → Nat
+  | [] => 0
+  | .destr subs :: ps => max (1 + destrDepth subs) (destrDepth ps)
+  | _ :: ps => destrDepth ps
+
 /-- Destructure `v` into a param list (`(a, *b, (c,d))`, massign-style): coerce
     `v` to an array (its elements if an Array, else wrap as `[v]`), bind leading
     positionals from the front, a `*rest` the middle, trailing positionals from
-    the back; nested `(…)` recurse. Only req/rest/destr sub-params occur (P5). -/
-partial def destructureBind (m : Machine) (subs : List Param) (v : Value)
-    : List (String × Value) × Machine :=
+    the back; nested `(…)` recurse. Only req/rest/destr sub-params occur (P5).
+
+    **Fuel-bounded, not `partial`** (clink 53). The recursion is on nested
+    `.destr` sub-params but it goes through a `foldl`, so the decrease is not
+    visible to the termination checker — which is why this was `partial def`,
+    and a `partial def` compiles to an opaque constant with no equation lemmas,
+    so *nothing* about it is provable. That blocked the continuation-framing
+    metatheorem the `ratchet/` semantic ladder needs
+    (`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3), which is the
+    same trap `../../AGENTS.md` L73 warns about and the same fix `ancestors`
+    already took (`Heap.lean` L73).
+    Callers pass `destrDepth subs + 1` — the nesting depth *of the sub-list*
+    plus the level being bound here — so the `0` arm is unreachable and the
+    behaviour is unchanged. (`destrDepth` alone is off by one, and the symptom
+    is a silent `nil` binding: `def f((a, b), c)` answered
+    `NoMethodError: undefined method '+' for nil`. Caught by running it.) -/
+def destructureBind (m : Machine) (subs : List Param) (v : Value)
+    : Nat → List (String × Value) × Machine
+  | 0 => ([], m)
+  | fuel + 1 =>
   let vals := match v with
     | .ref o => match (m.heap.get o).payload with | .arr xs => xs.toList | _ => [v]
     | _ => [v]
@@ -248,7 +273,7 @@ partial def destructureBind (m : Machine) (subs : List Param) (v : Value)
       List (String × Value) × Machine := fun (acc, m) (p, val) =>
     match p with
     | .req nm => (acc ++ [(nm, val)], m)
-    | .destr subs' => let (bs, m) := destructureBind m subs' val; (acc ++ bs, m)
+    | .destr subs' => let (bs, m) := destructureBind m subs' val fuel; (acc ++ bs, m)
     | _ => (acc, m)
   let (preB, m) := (preP.zip (vals.take np)).foldl bindPos ([], m)
   let (restB, m) := match rest? with

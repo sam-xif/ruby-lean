@@ -352,7 +352,14 @@ rather than from the good news:
 2. `applyKont` and `unwind` have the two `[]` exceptions above, so their framing lemmas are
    **conditional** (on `m.kont ≠ []`), not unconditional. Only `evalExpr`'s is free of a side
    condition, which is also why the leaf rungs never needed any of this.
-3. **One `partial def` sits on the chain and blocks it outright**: `destructureBind`
+3. ~~**One `partial def` sits on the chain and blocks it outright**~~ — **fixed, clink 53.**
+   `destructureBind` now has a fuel-bounded recursion (`destrDepth`, the nesting depth of
+   `.destr` sub-params, passed by both call sites), which is the fix `ancestors` already took;
+   the model's behaviour is unchanged (verified by hand against CRuby on
+   `def f((a, b), c)` / `def g((a, (b, c)), *rest)`, and by the corpus agreement at 239/239).
+   Its framing lemma is now ordinary work rather than impossible, and
+   `../../lean/RubyCore/Proof/KontFrame.lean` records exactly what it needs. The original
+   text follows, since the trap it describes is the general lesson: `destructureBind`
    (`RubyCore/Interp/Support.lean` L235), reached from `enterUserMethod`
    (`Interp/Dispatch.lean` L125) whenever a method has a destructuring parameter. A
    `partial def` compiles to an opaque constant with no equation lemmas, so *nothing* about it

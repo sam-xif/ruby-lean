@@ -122,7 +122,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     -- visible to defaults), and drop the synthetic names.
     let (destrB, m) := fp.destrs.foldl (fun (acc, m) (sn, subs) =>
       let dv := ((localsA ++ localsB).find? (·.1 == sn)).map (·.2) |>.getD .nil
-      let (bs, m) := destructureBind m subs dv
+      let (bs, m) := destructureBind m subs dv (destrDepth subs + 1)
       (acc ++ bs, m)) ([], m)
     let notSynth : (String × Value) → Bool := fun b => !(fp.destrs.any (·.1 == b.1))
     let localsA := localsA.filter notSynth ++ destrB

@@ -924,66 +924,6 @@ set_option maxRecDepth 400000 in
   all_goals frame_hof
   all_goals (try exact runObjects_frame K bid recv args m)
 
-/-! ## What is proved, what is left, and the cost measured
-
-The ratchet's fifth stall point named this layer as the part nobody could size — *"whether
-`invoke`'s descent into `Builtins/` is `rfl`-transparent in `kont` at kernel speed is untested,
-and that is where the 24k lines actually are"*. It is:
-
-* **Transparent by construction.** `grep -rn '\.kont\|kont :='` over the whole
-  `RubyCore/Builtins/` directory finds **zero** occurrences. Above it, `Interp/Support.lean`
-  reads `kont` in exactly one place — `withKont`, which conses — and that frames by `rfl`,
-  because `(k :: m.kont) ++ K` and `k :: (m.kont ++ K)` are the same list.
-* **Proved here**: the `Builtins` leaves; the fuel walks (`putsGo`, `flattenAll`); the five
-  `…Impl` helpers; the `$~` layer (`matchFrameId`/`setLastMatchValue`/`setMatchGlobals`/
-  `setLastMatch`, the one write in the layer that is not to the heap); the four
-  continuation-taking helpers (`binArg`, `numBin`, `numCmp`, `withIndex`) with the
-  continuation's framing as a hypothesis; `runRegex`'s six `where` helpers; **five of the six
-  dispatchers** (`runRegex`, `runModules`, `runCollections`, `runStrings`, `runNumerics`); and
-  all of `Interp/Support.lean`'s machine-takers, `callClosure` — the first helper that pushes a
-  *frame* — included.
-* **Nothing is left of it.** All six dispatchers and `Builtins.run` itself are proved, so the
-  whole 24k-line layer is framed top to bottom. The last two arms to fall were `Kernel#print`
-  and `Kernel#p`, and both taught the same lesson twice over: a `match` written in one
-  declaration compiles to a matcher constant belonging to *that* declaration, so a lemma
-  spelling the same syntax is a different term and `rw` cannot find it — `printArm_frame`
-  states the whole arm and is discharged by `exact`, where `isDefEq` unfolds matchers.
-
-**The four tooling facts that dominated the cost**, none of them in a manual:
-
-1. **`rw [f.eq_def]`, never `simp only [f]`** — the equation compiler refuses per-arm equations
-   at this scale ("failed to generate equational theorem for `runModules`").
-2. **`split` does not scale to deeply nested arms.** On `newImpl` (five nested `if`s) `split`'s
-   own `simp` reports "maximum number of steps exceeded", and neither `maxSteps` nor
-   `simp.maxSteps` is a settable option. Hand case-splitting is ~15 lines per such function.
-3. **`simp_all` must be a per-goal last resort, not a stage.** Run eagerly it *re-folds* goals
-   that `rfl` would have closed; demoting it is what closed `callClosure` and four dispatchers
-   that had looked blocked.
-4. **A lemma keyed on a lambda is invisible to `simp` and visible to `rw`.** The
-   discrimination tree does not index under a lambda, so a fold-framing lemma has to be applied
-   by `rw` (as a *conditional* rewrite — `rw` unifies the step from the goal and leaves the
-   framing hypothesis as a side goal, which is what gets past writing a step and its matcher
-   constant out by hand) or by `exact`, where `isDefEq` unfolds matchers. This is the single
-   biggest multiplier, and it is why the residual is per-arm rather than per-file.
-
-**And a Lean fact worth writing down**: a `macro_rules` tactic that mentions itself does not
-expand. The first `frame_hof` was written recursively and silently failed on every nested case;
-as a `repeat'` fixpoint it handles the nesting for free.
-
-What this does *not* buy is a rung. `KontFrameCatchFree` (`ratchet/Denote/Sem/Frame.lean`)
-needs the rest of `Interp` too: `applyKont` and `unwind`, whose statements are **conditional**
-(`kont = []` is the pass-through point); `CatchFree` threaded through the `throw` arm the
-refutation found; the `Send`/`Dispatch`/`Reflect` helpers; and one `partial def`
-(`destructureBind`) that has to be given a structural recursion before anything about it is
-provable at all.
--/
-
-#print axioms putsGo_frame
-#print axioms flattenAll_frame
-#print axioms newImpl_frame
-#print axioms setLastMatch_frame
-#print axioms allocFold_frame
-
 /-! ## The `Interp` layer, part one: `Interp/Support.lean`
 
 Above `Builtins` sits the machine's own bookkeeping, and here the machine's `kont` *is* read —
@@ -1206,6 +1146,85 @@ marker frames by `withKont`'s `rfl`. -/
   rw [callClosure.eq_def, callClosure.eq_def]
   frame_simp
   frame_arms
+
+/-! ## The `Interp` layer, part two: `destructureBind` is no longer *impossible*
+
+`Interp/Support.lean`'s `destructureBind` was a **`partial def`** until clink 53, which meant
+it compiled to an opaque constant with no equation lemmas — so *nothing* about it was provable
+and the framing metatheorem was blocked in principle rather than in practice
+(`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3). It now has a fuel-bounded
+recursion (`destrDepth`, the nesting depth of `.destr` sub-params, passed by both call sites),
+which is the fix `ancestors` already took for the same reason.
+
+Its framing lemma is *not* here yet, and the honest status is that it is now ordinary work
+rather than a wall. What it needs, measured: `rw [destructureBind, destructureBind]`, then
+`simp only []` for **zeta only** — the body is a chain of `let`s and `rw` cannot reach under a
+binder, while `frame_simp` goes too far and rewrites `pushK K m` into a record literal, after
+which `foldPair_frame`'s `(acc, pushK ?m)` no longer unifies (`enterHandler_frame`'s shape
+problem again) — then the conditional `rw [foldPair_frame K (hf := …)]` at each of its three
+folds, with the `.destr` arm of each step discharged by the fuel induction hypothesis. The
+first fold goes through; three arms of the outer `vals` match remain.
+-/
+
+/-! ## What is proved, what is left, and the cost measured
+
+The ratchet's fifth stall point named this layer as the part nobody could size — *"whether
+`invoke`'s descent into `Builtins/` is `rfl`-transparent in `kont` at kernel speed is untested,
+and that is where the 24k lines actually are"*. It is:
+
+* **Transparent by construction.** `grep -rn '\.kont\|kont :='` over the whole
+  `RubyCore/Builtins/` directory finds **zero** occurrences. Above it, `Interp/Support.lean`
+  reads `kont` in exactly one place — `withKont`, which conses — and that frames by `rfl`,
+  because `(k :: m.kont) ++ K` and `k :: (m.kont ++ K)` are the same list.
+* **Proved here**: the `Builtins` leaves; the fuel walks (`putsGo`, `flattenAll`); the five
+  `…Impl` helpers; the `$~` layer (`matchFrameId`/`setLastMatchValue`/`setMatchGlobals`/
+  `setLastMatch`, the one write in the layer that is not to the heap); the four
+  continuation-taking helpers (`binArg`, `numBin`, `numCmp`, `withIndex`) with the
+  continuation's framing as a hypothesis; `runRegex`'s six `where` helpers; **five of the six
+  dispatchers** (`runRegex`, `runModules`, `runCollections`, `runStrings`, `runNumerics`); and
+  all of `Interp/Support.lean`'s machine-takers, `callClosure` — the first helper that pushes a
+  *frame* — included.
+* **Nothing is left of it.** All six dispatchers and `Builtins.run` itself are proved, so the
+  whole 24k-line layer is framed top to bottom. The last two arms to fall were `Kernel#print`
+  and `Kernel#p`, and both taught the same lesson twice over: a `match` written in one
+  declaration compiles to a matcher constant belonging to *that* declaration, so a lemma
+  spelling the same syntax is a different term and `rw` cannot find it — `printArm_frame`
+  states the whole arm and is discharged by `exact`, where `isDefEq` unfolds matchers.
+
+**The four tooling facts that dominated the cost**, none of them in a manual:
+
+1. **`rw [f.eq_def]`, never `simp only [f]`** — the equation compiler refuses per-arm equations
+   at this scale ("failed to generate equational theorem for `runModules`").
+2. **`split` does not scale to deeply nested arms.** On `newImpl` (five nested `if`s) `split`'s
+   own `simp` reports "maximum number of steps exceeded", and neither `maxSteps` nor
+   `simp.maxSteps` is a settable option. Hand case-splitting is ~15 lines per such function.
+3. **`simp_all` must be a per-goal last resort, not a stage.** Run eagerly it *re-folds* goals
+   that `rfl` would have closed; demoting it is what closed `callClosure` and four dispatchers
+   that had looked blocked.
+4. **A lemma keyed on a lambda is invisible to `simp` and visible to `rw`.** The
+   discrimination tree does not index under a lambda, so a fold-framing lemma has to be applied
+   by `rw` (as a *conditional* rewrite — `rw` unifies the step from the goal and leaves the
+   framing hypothesis as a side goal, which is what gets past writing a step and its matcher
+   constant out by hand) or by `exact`, where `isDefEq` unfolds matchers. This is the single
+   biggest multiplier, and it is why the residual is per-arm rather than per-file.
+
+**And a Lean fact worth writing down**: a `macro_rules` tactic that mentions itself does not
+expand. The first `frame_hof` was written recursively and silently failed on every nested case;
+as a `repeat'` fixpoint it handles the nesting for free.
+
+What this does *not* buy is a rung. `KontFrameCatchFree` (`ratchet/Denote/Sem/Frame.lean`)
+needs the rest of `Interp` too: `applyKont` and `unwind`, whose statements are **conditional**
+(`kont = []` is the pass-through point); `CatchFree` threaded through the `throw` arm the
+refutation found; the `Send`/`Dispatch`/`Reflect` helpers; and one `partial def`
+(`destructureBind`) that has to be given a structural recursion before anything about it is
+provable at all.
+-/
+
+#print axioms putsGo_frame
+#print axioms flattenAll_frame
+#print axioms newImpl_frame
+#print axioms setLastMatch_frame
+#print axioms allocFold_frame
 
 end Proof
 end RubyCore
