@@ -1089,3 +1089,47 @@ does not give: `denM_isATy` at a `.cls n` type, where the is-a reading survives 
 `isAAnswer`'s negative answer still assumes a subclass has not mixed in the tested module. That
 is §F9's guard extended from "the chain's own classes" to "the declared classes below `n`", and
 it is the next piece of narrowing soundness rather than a separate finding.
+
+## §F13 — the `&&` narrowing shape needs "evaluating the right-hand side cannot rebind the local", and `noLocalAsgn` does not say that
+
+**Not reachable through `validate` today, and recorded as a control** (corpus
+`248-and-narrow-closure-write`) rather than as a bug against the checker. It is the reason
+`Judge.if'`/`ifNoElse` are **still** not on the ladder after all six narrowing lemmas were
+proved, so it is worth stating precisely.
+
+`narrowCond?`'s first arm recognises Ruby's `&&`, which the desugarer emits as a
+`seq`/`vasgn`/`if` sandwich, and licenses a **then-branch** refinement of the tested local when
+the right-hand side passes `noLocalAsgn` — a syntactic check for "assigns no local". The
+refinement is a claim about the local's value *at the point the branch begins*, so what it
+needs is that evaluating the right-hand side cannot rebind it. Those are not the same thing:
+
+```ruby
+x = 1
+f = lambda { x = nil; true }
+if x && f.call        # `f.call` assigns no local *syntactically*
+  x + 1               # x : Integer recorded; nil in the local; NoMethodError
+else
+  2
+end
+```
+
+`noLocalAsgn` admits `.send` (it has to — `x && x > 1` is the shape the feature exists for),
+and a send can invoke a closure that assigns. It excludes block-carrying sends, so the
+right-hand side cannot *create* a Proc; it cannot exclude *calling* one that already exists,
+and no syntactic condition can, because the Proc may arrive from anywhere (a local, an ivar, a
+method's return value).
+
+**Why the rung is blocked rather than the rule wrong-and-fixable.** Even the strongest sound
+guard available — "the context records no closures at all" (`κ.closures = []`), which is
+checkable and true of every corpus rung — does not *discharge* the obligation. It makes the
+claim true; proving it needs **"a run of a `noLocalAsgn` expression at a closure-free machine
+leaves the current frame's locals alone"**, which is a property of the *run* derived from a
+property of the *syntax*. Nothing on file relates the two.
+
+That is the same shape as the fourteenth stall point ("a `Judge`-derivable expression contains
+no `.ret`, therefore its run emits no return jump"), and the two together are what
+`Denote/Sem/notes.md` now records as the **syntax-directed run invariants** layer: one
+induction over `stepFn` carrying a syntactic predicate through the machine, which unblocks
+`if'`/`ifNoElse` and the whole call family. It is the largest remaining piece of the ladder and
+it is well-defined, which is progress of a kind — the six lemmas that were the *stated* next
+step are done, and what they uncovered is a single named wall rather than a list.

@@ -5976,3 +5976,100 @@ rules at all (`bodyResult` handles the one lambda shape outside the judgment), s
 the `Plain` precedent one more time: a **jump-freeness** conjunct, which `Judge` implies
 structurally and `SemJudge` does not. Same species of finding as clink 54's `Plain`, and it has
 to land before any call rung.
+
+## Clink 57 (2026-09-02) — narrowing's six lemmas, two more rungs, and the wall the ladder actually has. **177 rungs / 248, 43 of 83 rules**
+
+Two rungs (`Judge.clsToS` was clink 56's; this clink's are `Judge.newInstNoInit` and the
+completion of narrowing's type-level half), one more soundness finding, and — the reason to
+read this entry — the **remaining ladder now has a single named wall** instead of a list of
+stall points.
+
+### `Judge.newInstNoInit`: the allocator, and a fifth missing premise
+
+`C.new` for a class with no `initialize`. The first rung that allocates through a class the
+*program* declared rather than through a literal, and three things it needed are each worth a
+line:
+
+* **The dispatch cannot be a `ClsQueryOk` row.** `===`/`to_s` are clean at all 87 boot class
+  objects; `new` is not — 16 of them do not resolve it to `Class#new` (14 modules, plus `Range`
+  and `Struct`, whose `new` is prelude Ruby). So the fact is keyed on the *context's* table:
+  **`DeclClassOk`**, quantified over `κ.classes` and therefore vacuous at `ctx0`, exactly as
+  `ClassesOk`/`DefsOk` are. Five clauses, one per thing `Class#new` reads on the way to an
+  object, and the two that are easy to miss are "the chain reaches `BasicObject`" (`ext_push`
+  asks for it and nothing else said it) and "the class object is not `Class`, not `Module`, not
+  a module" — those being the `newImpl` arms that answer with a **class**, and an allocation
+  that adds a class is not an `Ext`.
+* **The rule was missing the allocator's own premise.** A declared `def self.new` **wins** over
+  `Class#new` in CRuby, and `invoke`'s `userNew` check honours that, so
+  `smroGet? κ.classes n "new" = none` has to be *stated*. `validate` consulted `smroGet?`
+  before the allocator anyway, so no derivation on file changed — the fourth time this clink
+  pair has found a premise the checker supplied by accident of control flow (§F6, §F7, §F11,
+  and `classOf`'s `nameFree`).
+* **`newImpl` has eleven arms and five allocate**, stated as one disjunction: either a fresh
+  object with `k` as its class, no ivars, no eigenclass and a non-class payload — exactly
+  `ext_push`'s hypotheses — or a gate. The uniformity is real: Exception/String/Array/Hash
+  subclasses each start with *that* class's empty payload so a later `super` can fill it, and
+  all four keep `k` as `klass`, which is all the conclusion reads.
+
+### Narrowing's type-level half, complete — and what finishing it cost
+
+All six lemmas the twelfth stall point named (`truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`,
+`isATy`, `notATy`), axiom-clean, in `Denote/Sem/Narrow.lean`. The first four are facts about
+`Ty` alone. The last two answer from `isAAnswer`, a **static table**, while the branch's
+justification is the machine's own ancestor walk — and every guard below was forced by trying
+to write that sentence down:
+
+* **`coreConstFree κ`** (§F10, chain-side). The per-name guard covers the name being *tested*;
+  it does not cover the names the chain is *written in*. `Comparable = Integer` makes `String`'s
+  own chain mean something else.
+* **`isAAnswer`'s positive answer is gated too.** It would survive on its own — a mixin only
+  adds ancestors, a subclass keeps them — and an earlier version of the guard kept it. It is
+  gated because proving that half without the no-subclasses clause needs **transitivity of the
+  ancestor walk**, a general fact about `ancestors` that nothing on file proves and that a
+  `StateOk` component has no business assuming. Worth recording as a *choice*: the alternative
+  is a real theorem, and if a later rung wants the precision back that theorem is the price.
+* **`BaseChainsOk`'s clauses are split by which guard they need** — the clauses about a chain's
+  own names need only `coreConstFree`; the clauses about what is **not** an ancestor need
+  `isANoOk` and, for the tested name, `constGet? = none`. That split *is* the finding.
+* **`isExactInst` gained a third conjunct, no eigenclass.** With a singleton class `isA` walks
+  the eigenclass chain, so `obj.extend M` makes `obj.is_a?(M)` true while `M` is in no declared
+  chain, and the `.inst` lemma needs "the value's ancestors are its class's ancestors"
+  exactly. A rule concluding `.inst` allocates a fresh object, which has none.
+
+`Ratchet/Ty.lean`'s `builtinAncestors` also **lost its `.arrayOf`/`.hashOf` rows**, and the
+reason is a denotation fact rather than a table gap: those arms read the *payload*
+(`arrElems?`/`hshEntries?`) and say nothing about the object's class, so a negative `is_a?`
+answer about them is a claim the judgment cannot make. Dropping them costs precision in one
+direction only, because a positive answer keeps the type just as `none` does.
+
+### §F13, and the wall
+
+`Judge.if'`/`ifNoElse` are **still not climbed**, and the reason is now precise. `narrowCond?`'s
+`&&` arm licenses a then-branch refinement when the right-hand side passes `noLocalAsgn` — a
+*syntactic* "assigns no local". What the refinement needs is that evaluating the right-hand
+side cannot **rebind** the local, and `f.call` on a closure that assigns is the gap
+(`found-issues.md` §F13, corpus 248 as a control — `validate` rejects it today for an
+unrelated reason). Even the strongest sound guard, `κ.closures = []`, only makes the claim
+*true*; discharging it needs "a run of a `noLocalAsgn` expression at a closure-free machine
+leaves the frame's locals alone" — a property of the **run** derived from a property of the
+**syntax**.
+
+Which is the same shape as the fourteenth stall point (a `Judge`-derivable expression contains
+no `.ret`, therefore its run emits no return jump — needed by every call rule). So they are one
+thing, and `Denote/Sem/notes.md` now records it as the **fifteenth stall point: syntax-directed
+run invariants** — one induction over `stepFn` carrying a syntactic predicate through the
+machine, of the same *kind* and size as the frame layer, and cheaper in two ways (these are
+invariants rather than equations, so `simp` closes more arms; and `Builtins` is transparent to
+both, needing one lemma rather than 121).
+
+**That is the honest shape of the remaining ladder**: 43 of 83 discharged, ~17 behind this one
+wall, and the declaration family behind the judgment redesign its own stall point describes.
+The list of four walls clink 54 left has become two.
+
+### State
+
+`lake build` clean; no `sorry`, no new axioms. Corpus **248/248** agreement, 0 disagreements;
+`expect_validate` mismatches **35**, unchanged through every guard in this clink and the last —
+worth noting explicitly, because five of the eight changes tightened the checker and none of
+them cost a rung. `checkrungs` 177/177 + 145/145; denotation guards green; ladder **43/83**.
+No change under `lean/` in clinks 55–57, so the tier-0 difftest from clink 54 still stands.

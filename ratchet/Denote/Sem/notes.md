@@ -901,6 +901,39 @@ What it needs, in the order the effort falls:
 * The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
   and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
 
+## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
+
+Named in clink 57, and it is the *merge* of two findings that turned out to be one thing. Both
+say: a `Judge` rule relies on a syntactic property of an expression implying a property of its
+**run**, and nothing on file relates the two.
+
+* **No return jump** (the fourteenth stall point below): `.ret`/`.brk`/`.nxt` have no `Judge`
+  rule, so no derivable expression contains one — therefore a callee body's run cannot escape
+  with a return jump, and `SemJudge`'s silence about jumps is harmless. Needed by every rule in
+  the call family.
+* **Locals preserved** (`found-issues.md` §F13): `narrowCond?`'s `&&` arm licenses a refinement
+  when the right-hand side passes `noLocalAsgn`, and the refinement is a claim about the local
+  *at the point the branch begins* — so what is needed is that evaluating the right-hand side
+  cannot rebind it. Needed by `Judge.if'`/`ifNoElse`, which are otherwise ready: all six
+  type-level lemmas are proved (clink 57).
+
+The shape of the fix is the same for both: **one induction over `stepFn` that carries a
+syntactic predicate through the machine.** The machine's `ctl` holds an expression and its
+`kont` holds continuations that hold expressions, so the predicate has to be lifted from an
+expression to a whole machine (`JumpFree m`, `LocalStable m x`) and shown preserved by every
+step — which is the same *kind* of walk `RubyCore/Proof/KontFrame*.lean` already does for the
+frame property, and the same size.
+
+Two things make it cheaper than the frame layer was. The frame layer had to prove an
+*equation* about every helper (`pushK K` commutes with each), while these are **invariants**:
+each arm has to show a predicate survives, which `simp` closes far more often. And the
+`Builtins` layer is transparent for both — a builtin cannot introduce Ruby syntax, so
+`Builtins.run` needs one lemma rather than 121.
+
+Until it lands, the honest statement of the ladder's remaining shape is: **43 of 83 discharged,
+~17 more sitting behind this one wall**, and the rest behind the judgment redesign the
+declaration family needs (§the seventh/eighth stall points).
+
 ## The fourteenth stall point — **`SemJudge` is too weak for a rule whose premise is a body**
 
 Found while sizing `Judge.callMethod` (clink 56), and it has to land before *any* call rung.

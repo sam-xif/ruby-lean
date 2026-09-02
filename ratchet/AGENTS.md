@@ -479,10 +479,10 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **42 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **43 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (177 of 247). This measures
+measures *reach*: how many corpus programs `validate` types (177 of 248). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -592,9 +592,33 @@ Discharged so far, all axiom-clean:
   `primDispatchOk` respectively, all precision-preserving on the corpus (mismatches stayed at
   35). `Ratchet/Ty.lean`'s `falsyTy`/`isNilTy` were corrected in the same pass, in the same
   direction: **a `.never` catch-all is a claim, not a default**.
-* **Narrowing's type-level half** (clink 56, `Denote/Sem/Narrow.lean`) — four of the twelfth
-  stall point's six lemmas (`truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`), axiom-clean. The
-  other two (`isATy`/`notATy`) are what produced the findings above and need one more guard.
+* **`Judge.newInstNoInit`** (clink 57, `Denote/Rules/NewInst.lean`) — `C.new` for a class with
+  no `initialize`, and the first rung that allocates through a class the *program* declared. Its
+  dispatch fact cannot be a `ClsQueryOk` row (16 of the 87 boot class objects do not resolve
+  `new` to `Class#new`), so it is keyed on the context's own table: **`DeclClassOk`**, vacuous
+  at `ctx0` like `ClassesOk`/`DefsOk`, with a clause for each thing `Class#new` reads. The rule
+  was **missing the allocator's premise** — a declared `def self.new` wins over `Class#new`, and
+  `validate` enforced that only by consulting `smroGet?` first — which is the fourth premise
+  this pair of clinks has found the checker supplying by accident of control flow.
+* **Narrowing's type-level half, complete** (clinks 56–57, `Denote/Sem/Narrow.lean`) — all six
+  of the twelfth stall point's lemmas, axiom-clean. `isATy`/`notATy` are where the file stops
+  being about `Ty` alone, and finishing them forced three more guards, each of them a way a
+  static answer could be wrong: `coreConstFree` (§F10 for the names the *chain* is written in),
+  gating `isAAnswer`'s **positive** answer as well (the alternative is proving transitivity of
+  the ancestor walk, which a `StateOk` component has no business assuming), and a third
+  conjunct on `isExactInst` — **no eigenclass**, because `obj.extend M` makes `obj.is_a?(M)`
+  true while `M` is in no declared chain. `builtinAncestors` also lost its `.arrayOf`/`.hashOf`
+  rows: those `denM` arms read the payload and say nothing about the class, so a *negative*
+  `is_a?` answer about them is a claim the judgment cannot make.
+* **The remaining ladder has one wall, and it is named** (clink 57): the **fifteenth stall
+  point, syntax-directed run invariants** (`Denote/Sem/notes.md`). `Judge.if'`/`ifNoElse` need
+  "a `noLocalAsgn` expression's run leaves the frame's locals alone" (`found-issues.md` §F13 —
+  `noLocalAsgn` is syntactic and `f.call` on a closure that assigns is the gap); every call rule
+  needs "a `Judge`-derivable expression contains no `.ret`, so its run emits no return jump"
+  (the fourteenth stall point). Both are a property of the **run** derived from a property of
+  the **syntax**, both want one induction over `stepFn` carrying a syntactic predicate through
+  the machine, and together they gate ~17 of the 40 undischarged rules. The rest sit behind the
+  judgment redesign the declaration family needs.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper

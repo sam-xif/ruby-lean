@@ -2187,6 +2187,19 @@ R("rescue-subclass-message-unsafe", 16,
   'class E < StandardError\n  def message\n    5\n  end\nend\nbegin\n  raise E\nrescue StandardError => e\n  e.message + "s"\nend\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("and-narrow-closure-write", 12,
+  "**\u00a7F13\u2019s witness, and a *negative control that is not yet reachable*.** "
+  "`narrowCond?`\u2019s `&&` arm licenses a then-branch refinement when the right-hand side "
+  "passes `noLocalAsgn` \u2014 no *syntactic* assignment. That does not exclude **calling a "
+  "closure that assigns**: the lambda here rebinds `x` to `nil` and returns `true`, so the "
+  "then-branch runs with `x : Integer` recorded and `nil` in the local, and `x + 1` raises "
+  "NoMethodError. `validate` rejects the program today, but for an unrelated reason (the "
+  "lambda body assigns a *captured* local, which `Judge.lambdaLit`\u2019s `capStale` "
+  "machinery refuses), so this is a control against the day that changes rather than a bug "
+  "report against the checker.",
+  'x = 1\nf = lambda { x = nil; true }\nif x && f.call\n  x + 1\nelse\n  2\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):
