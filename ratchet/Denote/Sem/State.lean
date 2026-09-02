@@ -905,6 +905,49 @@ theorem BaseChainsOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap]
   exact h base ch hmem
 
+/-- **`nil?`'s dispatch**, and it needs its own component because it is the one query name
+that resolves to **two** bids: `NilClass#nil?` at `NilClass` and `Object#nil?` everywhere else.
+`QueryOk` pairs a name with a single bid, and adding both rows would make it claim each of them
+of every class — a contradiction, not a weakening.
+
+The two implementations are identical (`.ok (.bool (recv == nil)) m`), which is why one
+disjunction in the conclusion is enough for the consumer. Measured at the booted machine: 15 of
+105 classes resolve `nil?` nowhere (14 modules and `BasicObject`) and **zero** resolve it to
+anything else. -/
+def NilQueryOk (κ : Ctx) (m : Machine) : Prop :=
+  Ratchet.nameFree κ "nil?" = true → ∀ k,
+    (∀ owner md, Interp.methodOn m.heap k "nil?" = some (owner, md) →
+        (md.builtin = some "Object#nil?" ∨ md.builtin = some "NilClass#nil?") ∧
+        md.undefined = false ∧ md.visibility = .pub ∧ md.fromPrelude = false ∧
+        Interp.crubyShadow m.heap
+          ((ancestors m.heap k).takeWhile (fun x => x != owner)) "nil?" = none) ∧
+    (Interp.methodOn m.heap k "nil?" = none →
+      ∀ o₂ md, Interp.methodOn m.heap k "method_missing" = some (o₂, md) →
+        md.builtin.isSome = true)
+
+theorem NilQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : NilQueryOk κ m) :
+    NilQueryOk κ m₂ := by
+  intro hfree k
+  have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
+    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+  obtain ⟨h1, h2⟩ := h hfree k
+  refine ⟨?_, ?_⟩
+  · intro owner md hfound
+    rw [hm] at hfound
+    obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
+    refine ⟨hb, hu, hv, hp, ?_⟩
+    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    exact hsh
+  · intro hnone o₂ md hfound
+    rw [hm] at hnone hfound
+    exact h2 hnone o₂ md hfound
+
+theorem NilQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
+    (h : NilQueryOk κ m) : NilQueryOk κ (m.setLocal x w) := by
+  intro hfree k
+  simp only [setLocal_heap]
+  exact h hfree k
+
 /-- **What the machine's class object owes a class the context declares** — the component
 `Judge.newInstNoInit` spends, and the reason it is separate from `ClassesOk` is that `ClassesOk`
 is about the class's *methods* while every clause here is about **allocating** through it.
@@ -1045,6 +1088,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   clsQuery : ClsQueryOk κ m
   declCls : DeclClassOk κ m
   baseChains : BaseChainsOk κ m
+  nilQuery : NilQueryOk κ m
   selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
@@ -1190,6 +1234,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   clsQuery := ClsQueryOk.ext he h.clsQuery
   declCls := DeclClassOk.ext he h.declCls
   baseChains := BaseChainsOk.ext he h.baseChains
+  nilQuery := NilQueryOk.ext he h.nilQuery
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
@@ -1571,6 +1616,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       clsQuery := ClsQueryOk.setLocal x w h.clsQuery
       declCls := DeclClassOk.setLocal x w h.declCls
       baseChains := BaseChainsOk.setLocal x w h.baseChains
+      nilQuery := NilQueryOk.setLocal x w h.nilQuery
       missFree := by
         intro hfree hself o md hm
         refine h.missFree hfree hself o md ?_
