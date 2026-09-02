@@ -54,6 +54,7 @@ def coreOkB (h : Heap) : Bool :=
   (classNamed? h "Regexp" == some Boot.regexpId) &&
   (ancestors h Boot.regexpId).contains Boot.regexpId &&
   (ancestors h Boot.regexpId).contains Boot.basicObjectId &&
+  (ancestors h Boot.procId).contains Boot.basicObjectId &&
   coreClsNames.all (fun n =>
     match constLookup h n with
     | some (.ref o) => (h.classPayload? o).isSome
@@ -62,8 +63,8 @@ def coreOkB (h : Heap) : Bool :=
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
-  refine ⟨hb.1.1.1.1.1.1.1, hb.1.1.1.1.1.1.2, hb.1.1.1.1.1.2, hb.1.1.1.1.2, hb.1.1.1.2,
-          hb.1.1.2, hb.1.2, ?_⟩
+  refine ⟨hb.1.1.1.1.1.1.1.1, hb.1.1.1.1.1.1.1.2, hb.1.1.1.1.1.1.2, hb.1.1.1.1.1.2,
+          hb.1.1.1.1.2, hb.1.1.1.2, hb.1.1.2, hb.1.2, ?_⟩
   intro n hn v hv
   have := hb.2 n hn
   rw [hv] at this
@@ -101,7 +102,7 @@ of the toplevel `self` reads as `nil`. Measured rather than assumed, like the ot
 the prelude runs before this machine exists and could have set an ivar on `main`. -/
 def frameOkB (m : Machine) : Bool :=
   (m.currentFrame.kind != .method) && m.currentFrame.blk.isNone &&
-  (m.stack.headD 0 < m.frames.size) && selfIvarsEmptyB m
+  !m.stack.isEmpty && (m.stack.headD 0 < m.frames.size) && selfIvarsEmptyB m
 
 /-- **A toplevel frame shadows nothing** — `ConstScopeOk` at the one frame shape that makes it
 free. With `cref = [Object]` the lexical phase of `evalExpr`'s `.const` arm is a single
@@ -286,16 +287,17 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨hkind, hblk⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩, hsl⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
+    hsl⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
       env := by intro x τ hx; exact absurd hx (by simp [envGet?, Ratchet.ctx0])
-      selfSpine := ⟨by simp [denSpine], fun x _ => selfIvarsEmpty_sound hself x⟩
+      selfSpine := ⟨by simp [denSpine, denSpineFrom], fun x _ => selfIvarsEmpty_sound hself x⟩
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])
-      frameInRange := hfr
+      frameInRange := ⟨by simpa using hne, hfr⟩
       frame := by simp only [FrameOk, Ratchet.ctx0]; exact hkind
       closures := trivial
       blockTy := by simp only [BlockTyOk, Ratchet.ctx0]; exact hblk

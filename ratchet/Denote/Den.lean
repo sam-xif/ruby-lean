@@ -136,7 +136,7 @@ def denM : Ty → Machine → Value → Prop
   -- A user-class instance: nominal on the class *plus* the ivar spine read out of the
   -- object. The spine is a lower bound — ivars the type does not mention are unconstrained,
   -- which is what makes `ivarSet`'s append-at-the-end growth monotone in the denotation.
-  | .inst n I, m, v => isAName m.heap v n = true ∧ denSpine I m (ivarOf m.heap v)
+  | .inst n I, m, v => isAName m.heap v n = true ∧ denSpineFrom [] I m (ivarOf m.heap v)
   -- `sameAs` is a fact about a *binding*, not about a value (`Ty.sameAs`'s docstring), and
   -- `Judge.var` strips it. So the denotation reads straight through the alias: the values
   -- are the values of the underlying type.
@@ -156,7 +156,7 @@ def denM : Ty → Machine → Value → Prop
   -- recorded at its creation. `idx` is dropped; see the module docstring §Two stated gaps.
   | .clos _ cap selfT, m, f =>
       ∃ cl, procClosure? m.heap f = some cl ∧
-        denSpine cap m (closLocal m cl) ∧
+        denSpineFrom [] cap m (closLocal m cl) ∧
         (selfT = .never ∨ denM selfT m (closSelf m cl))
 termination_by τ _ _ => sizeOf τ
 
@@ -169,15 +169,51 @@ def denApp : List Value → Ty → Machine → Value → Prop
   | _, _, _, _ => False
 termination_by _ τ _ _ => sizeOf τ
 
-/-- A binding spine, read through `get`. `ivar0` is the empty spine and so is vacuously
-satisfied; anything that is not a spine is not one. -/
-def denSpine : Ty → Machine → (String → Value) → Prop
-  | .ivar0, _, _ => True
-  | .ivarCons x σ rest, m, get => denM σ m (get x) ∧ denSpine rest m get
-  | _, _, _ => False
-termination_by τ _ _ => sizeOf τ
+/-- A binding spine, read through `get`, **at the keys the spine actually resolves**.
+`ivar0` is the empty spine and so is vacuously satisfied; anything that is not a spine is not
+one; and an entry whose key an *earlier* entry already bound is skipped, which is the whole
+content of the `seen` accumulator.
+
+**Why the accumulator** (`Denote/Sem/notes.md` §The tenth stall point). Every consumer of a
+spine reads it through `ivarGet?`, which answers with the **first** match — and the checker
+really does build spines with a repeated key: `Judge.closCall` types a lambda's body in
+`paramEnv c.params argTys ++ spineToEnv cap`, so a parameter shadowing a captured local is a
+duplicate by design, and `envToSpine` of that environment carries both entries. Without the
+accumulator the denotation demands that the *shadowed* entry hold too, which is false of the
+machine and makes `StateOk` unsatisfiable at any machine holding such a closure — vacuity, not
+falsity, which is the failure mode `Denote/Sanity.lean` exists to police. Demonstrated:
+
+```ruby
+x = 1
+f = lambda { |x| lambda { x } }
+g = f.call("s")
+g              # validate: <closure#1>{x: String, x: Integer} -- and it is right
+```
+
+`seen` rather than a `dedup : Ty → Ty` applied at the two call sites, and that is a proof
+consideration rather than a taste one: `dedup cap` is not a *subterm* of the type, so every
+one of the four transports (`denM_heap_only_aux`, `denM_ctl`, `denM_ext`, `denM_setLocal`)
+would have had to become a well-founded induction on `sizeOf`. With the accumulator the
+recursion stays structural and each transport carries one extra `∀ seen`. -/
+def denSpineFrom : List String → Ty → Machine → (String → Value) → Prop
+  | _, .ivar0, _, _ => True
+  | seen, .ivarCons x σ rest, m, get =>
+      (x ∈ seen ∨ denM σ m (get x)) ∧ denSpineFrom (x :: seen) rest m get
+  | _, _, _, _ => False
+termination_by _ τ _ _ => sizeOf τ
 
 end
+
+/-- A binding spine, read through `get`: `denSpineFrom` with nothing yet shadowed. The form
+every rule and every component states, and the form `denM`'s two spine arms are defined at. -/
+def denSpine (τ : Ty) (m : Machine) (get : String → Value) : Prop := denSpineFrom [] τ m get
+
+@[simp] theorem denSpine_ivar0 (m : Machine) (g : String → Value) :
+    denSpine .ivar0 m g := by simp [denSpine, denSpineFrom]
+
+theorem denSpine_cons {x : String} {σ rest : Ty} {m : Machine} {g : String → Value} :
+    denSpine (.ivarCons x σ rest) m g ↔ denM σ m (g x) ∧ denSpineFrom [x] rest m g := by
+  simp only [denSpine, denSpineFrom, List.not_mem_nil, false_or]
 
 /-! ## The heap-only view
 
@@ -208,41 +244,41 @@ Proved simultaneously with the spine statement (they are mutually recursive, so 
 has to carry both), by structural induction on the type. -/
 theorem denM_heap_only_aux : ∀ (τ : Ty), FirstOrder τ = true →
     (∀ (m₁ m₂ : Machine) (v : Value), m₁.heap = m₂.heap → (denM τ m₁ v ↔ denM τ m₂ v)) ∧
-    (∀ (m₁ m₂ : Machine) (g : String → Value), m₁.heap = m₂.heap →
-      (denSpine τ m₁ g ↔ denSpine τ m₂ g)) := by
+    (∀ (m₁ m₂ : Machine) (g : String → Value) (seen : List String), m₁.heap = m₂.heap →
+      (denSpineFrom seen τ m₁ g ↔ denSpineFrom seen τ m₂ g)) := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float | any | never | ivar0 =>
-    intro _; exact ⟨fun _ _ _ _ => by simp [denM], fun _ _ _ _ => by simp [denSpine]⟩
-  | cls n => intro _; exact ⟨fun _ _ _ hh => by simp [denM, hh], fun _ _ _ _ => by simp [denSpine]⟩
-  | clsOf n => intro _; exact ⟨fun _ _ _ hh => by simp [denM, hh], fun _ _ _ _ => by simp [denSpine]⟩
+    intro _; exact ⟨fun _ _ _ _ => by simp [denM], fun _ _ _ _ _ => by simp [denSpineFrom]⟩
+  | cls n => intro _; exact ⟨fun _ _ _ hh => by simp [denM, hh], fun _ _ _ _ _ => by simp [denSpineFrom]⟩
+  | clsOf n => intro _; exact ⟨fun _ _ _ hh => by simp [denM, hh], fun _ _ _ _ _ => by simp [denSpineFrom]⟩
   | nilable τ ih =>
     intro hf
     simp only [FirstOrder] at hf
     exact ⟨fun m₁ m₂ v hh => by simp only [denM]; rw [(ih hf).1 m₁ m₂ v hh],
-           fun _ _ _ _ => by simp [denSpine]⟩
+           fun _ _ _ _ _ => by simp [denSpineFrom]⟩
   | union σ τ ihσ ihτ =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
     exact ⟨fun m₁ m₂ v hh => by
              simp only [denM]; rw [(ihσ hf.1).1 m₁ m₂ v hh, (ihτ hf.2).1 m₁ m₂ v hh],
-           fun _ _ _ _ => by simp [denSpine]⟩
+           fun _ _ _ _ _ => by simp [denSpineFrom]⟩
   | sameAs n τ ih =>
     intro hf
     simp only [FirstOrder] at hf
     exact ⟨fun m₁ m₂ v hh => by simp only [denM]; rw [(ih hf).1 m₁ m₂ v hh],
-           fun _ _ _ _ => by simp [denSpine]⟩
+           fun _ _ _ _ _ => by simp [denSpineFrom]⟩
   | arrayOf e ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ => by simp [denSpine]⟩
+    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ _ => by simp [denSpineFrom]⟩
     simp only [denM, hh]
     exact exists_congr fun xs => and_congr_right fun _ =>
       forall_congr' fun x => imp_congr_right fun _ => (ih hf).1 m₁ m₂ x hh
   | hashOf k w ihk ihw =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ => by simp [denSpine]⟩
+    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ _ => by simp [denSpineFrom]⟩
     simp only [denM, hh]
     exact exists_congr fun es => and_congr_right fun _ =>
       forall_congr' fun p => imp_congr_right fun _ =>
@@ -250,15 +286,16 @@ theorem denM_heap_only_aux : ∀ (τ : Ty), FirstOrder τ = true →
   | inst n I ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ => by simp [denSpine]⟩
+    refine ⟨fun m₁ m₂ v hh => ?_, fun _ _ _ _ _ => by simp [denSpineFrom]⟩
     simp only [denM, hh]
-    exact and_congr_right fun _ => (ih hf).2 m₁ m₂ (ivarOf m₂.heap v) hh
+    exact and_congr_right fun _ => (ih hf).2 m₁ m₂ (ivarOf m₂.heap v) [] hh
   | ivarCons x σ rest ihσ ihrest =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun _ _ _ _ => by simp [denM], fun m₁ m₂ g hh => ?_⟩
-    simp only [denSpine]
-    exact and_congr ((ihσ hf.1).1 m₁ m₂ (g x) hh) ((ihrest hf.2).2 m₁ m₂ g hh)
+    refine ⟨fun _ _ _ _ => by simp [denM], fun m₁ m₂ g seen hh => ?_⟩
+    simp only [denSpineFrom]
+    exact and_congr (or_congr_right ((ihσ hf.1).1 m₁ m₂ (g x) hh))
+      ((ihrest hf.2).2 m₁ m₂ g (x :: seen) hh)
   -- The three higher-order arms are excluded by `FirstOrder`, so the hypothesis is absurd.
   | arrow0 r _ => intro hf; simp [FirstOrder] at hf
   | arrowCons p rest _ _ => intro hf; simp [FirstOrder] at hf

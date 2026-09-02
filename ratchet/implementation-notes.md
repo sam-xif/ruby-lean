@@ -4984,3 +4984,185 @@ both transports), `Denote/Sanity.lean` (`methodsExactB`, `nameFreeB`, `selfLiveB
 `classPayload?_oob` and their soundness lemmas, `bootOkB`'s three new conjuncts),
 `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`;
 `Denote/Examples.lean`'s 31 `#guard`s green; `bootOkB` green with seven clauses.
+
+## Clink 52 (2026-09-02) — the two rules that reason from absence, and the spine that is a lookup. **178 rungs / 239, 30 of 83 rules**
+
+Two rungs climbed — `Judge.bareName` and `Judge.lambdaLit`, which are the ninth stall point's
+own two rules — one soundness bug found and fixed on the way (`found-issues.md` §F4), and one
+definitional correction to the denotation that was a live **vacuity** rather than a hard rung
+(the tenth stall point). Nothing under `Ratchet/` was touched except for the §F4 fix.
+
+### What made these two reachable at all
+
+Both are rules with **no argument expressions**, so no sub-run is ever evaluated under a
+pushed continuation and the fifth stall point (`KontFrame`) is not on the path — which is why
+the ninth stall point named exactly these two as "what remains is the forward walk". Their
+proofs are the ladder's first *forward* walks: `evalExpr` → `startArgs` → `finishSend` →
+`invoke` → `invokeDispatch` → `dispatchMiss`, rather than an inversion of a two-step run. That
+made `Denote/Rules/Bare.lean` the first rung file to touch `Interp/Send.lean` and
+`Interp/Reflect.lean`.
+
+### `Judge.bareName`: the content is that the run does not return
+
+The rule types a bare `x` as `.any` and threads `Γ` and `I` out **unchanged**, on the strength
+of `NameError` being outside the type-stuck family. All three claims are vacuous *provided the
+call really raises*, so the obligation is that its own hypothesis — `Evals m (.vcall "x") v m'`
+— is unsatisfiable. Two pieces:
+
+* **`Doomed` + `evals_doomed`** (`Denote/Rules/Bare.lean`): the inversion a non-returning rung
+  uses in place of `evals_pure`. A `match` on `StepResult` rather than four lemmas, because the
+  caller always arrives with a result in hand from a `split`. `Doomed_raiseErr` is the one arm
+  with content: `raiseErr` leaves `kont` alone and `unwind` at `kont = []` is `.uncaught`.
+* **The three fragment gates cost nothing**, and it is worth seeing why rather than
+  discovering it: `crubySingletonShadow`/`crubyShadow`/`mixinShadow` each answer
+  `.unsupported`, which is not a `.value` either, so they close by the same argument as the
+  `NameError` branch.
+
+Two `StateOk` components, and the decision in both is *where the escape goes*:
+
+* **`BareNameFree`** — at top level, a name `κ.defs` does not record resolves nowhere on
+  `self`'s chain. `NameFreeOk` (clink 51) is **not** enough, and the reason is its disjunction
+  rather than its name list: it admits `md.builtin.isSome`, and a *builtin* named `x` would
+  send `invokeDispatch` into `Builtins.run` — a call that returns a value and moves the heap.
+* **`MissFree`** — no *user* `method_missing` is reachable from `self`.
+
+Both are stated at **exactly the rule's own premises** (`defDeclared? κ.defs n = none`,
+`κ.selfTy = none`, `nameFree κ "method_missing" = true`) rather than at `NameFreeOk`'s wider
+`declaresName` escape. That was not forced and the alternative was tried first: `declaresName`
+also reads `κ.classes`, about which `bareName` has no premise, so the wider escape hands the
+rung nothing at a context where some class happens to declare an `x`. The cost is honest and
+recorded: a top-level machine whose `self` can dispatch an unrecorded `x` is **not**
+conformant, and that is precisely the machine at which the rule is wrong.
+
+`MissFree` has **no `undefined` escape**, unlike `NameFreeOk`, and that is the sharpest
+decision in the clink. `dispatchMiss` tests `mm.builtin.isNone` and nothing else, so an
+`undef method_missing` tombstone with no builtin behind it really would be *entered* by this
+interpreter. Stating the component at the interpreter's own test rather than at the sharper
+test it could have made is the point: a component is a claim about what *this* machine does,
+and inventing a check the machine does not perform would make the rung a proof about a
+different interpreter.
+
+### The bug the rung found: `found-issues.md` §F4
+
+Asking "which other name has to be absent for the walk to reach the `NameError`?" is one line
+of `dispatchMiss`, and the answer is `method_missing`. A user `Object#method_missing` makes the
+miss **return** — and its body can rebind an ivar the rule threads out unchanged:
+
+```ruby
+@a = "s"
+def method_missing(*n); @a = 1; 2; end
+x
+@a + "b"        # validate: String. CRuby and the model: TypeError, same message.
+```
+
+Fixed in the rule, the §F2 way: an `autoParam` premise `nameFree κ "method_missing" = true`, so
+no derivation term moved; `Validate.lean` gains the conjunct and `Proof/ChkSound.lean` splits
+the guard, so the checker is still *proved* to accept only what `Judge` derives. Pinned twice
+(`corpus/239-method-missing-bare-name-unsafe` and a `CheckRungs` negative control, which
+reports it as a **sound** rejection). The minimal form is a wrong *type* with no raise at all:
+`def method_missing(n); @a = 1; 2; end; x; @a` is `NilClass` to the checker and `1` to both
+executors.
+
+### `Judge.lambdaLit`: the first higher-order conclusion
+
+The value is a Proc and the type records what it captured. Three parts, one per conjunct of
+`denM`'s `.clos` arm:
+
+* `procClosure?` at the pushed object — `ext_push` again, at a `.proc` payload, so this is the
+  third allocating rule and `CoreOk` grew `procBasic` exactly as that structure's docstring
+  keeps predicting. No `procNamed`/`procSelf` twin: the conclusion is `.clos`, not
+  `.cls "Proc"`.
+* the captured spine — see below.
+* `self` — and this is where `FrameInRange` had to grow a conjunct. `closSelf` reads the
+  captured frame **by id** (`reifyBlock` captures `m.stack.headD 0`) while `SelfTyOk` reads
+  `Machine.currentFrame`, which answers `default` at an empty stack while the captured id is
+  `0` — a frame that may well exist. So the two readings agree exactly when the stack is
+  non-empty. Clink 47's docstring already said "there *is* a current frame"; the inequality
+  alone did not say it, and now the component does (`currentFrame_headD` is the bridge).
+
+`nameFree` is spent against `NameFreeOk` here, which is the pairing clink 49 hoped for without
+being able to state: the checker's premise and `finishSend`'s own `md.builtin.isNone &&
+!md.undefined` test are the same question about two different things, and the component is what
+identifies them. `nameFree_declaresName` is the one-line bridge (`find?`-shaped and
+`any`-shaped negations of each other).
+
+### The tenth stall point: `denSpine` walked entries, every consumer reads the first match
+
+`denM`'s `.clos` arm asks for `denSpine (envToSpine Γ) m' (closLocal m' cl)`, and that is what
+found it. `EnvOk` is stated at `envGet?` — **first** match — while `envToSpine` copies every
+entry, and the two differ exactly at a duplicate key. The checker builds one **by design**:
+
+```ruby
+x = 1
+f = lambda { |x| lambda { x } }
+g = f.call("s")
+g          # validate: <closure#1>{x: String, x: Integer} -- and it is right
+```
+
+`Judge.closCall` types a body in `paramEnv c.params argTys ++ spineToEnv cap`, parameters
+first "so they shadow a captured name of the same spelling". So the old reading made
+`Obl.Judge.lambdaLit` **false**, and — worse — made `EnvOk` false at any environment binding
+such a `g`, i.e. `StateOk` *unsatisfiable* there. That is vacuity rather than falsity, the
+failure mode `Denote/Sanity.lean` exists to police, and the third time (after the sixth and
+eighth) that a component keyed differently from its lookup has produced it.
+
+**The fix is `denSpineFrom seen`**: the accumulator carries the keys already bound and skips an
+entry whose key is among them; `denSpine τ = denSpineFrom [] τ`. Two other shapes were
+considered and dropped, both for the same reason, and the reason is proof shape rather than
+taste:
+
+* **`denSpine (dedup τ)` at the two call sites.** `dedup τ` is not a subterm of `τ`, so all
+  four transports (`denM_heap_only_aux`, `denM_ctl`, `denM_ext`, `denM_setLocal`) would have
+  become well-founded inductions on `sizeOf`.
+* **the fully lookup-shaped `∀ x σ, ivarGet? τ x = some σ → denM σ m (g x)`.** Cleanest to
+  read, and it makes the projection an identity — but the recursive call sits at a `σ` that
+  comes from a *hypothesis* rather than a pattern, which breaks the mutual block's structural
+  recursion, and every transport then needs an extra induction to recover "σ is a component of
+  τ".
+
+With the accumulator the recursion stays structural and each transport carries one extra
+`∀ seen`. `denSpineFrom_get` gained an `x ∉ seen` side condition, which is exactly the
+invariant the walk maintains (descending past an entry keyed `n` is `ivarGet?`'s `n ≠ x` case).
+`denSpineB` got the same treatment (`denSpineBFrom`), because `closB_sound` and
+`Examples.lean`'s guards have to keep lining up — and two new guards pin the new behaviour
+against the real semantics: a shadowed entry is skipped, and a *wrong first* entry is not
+rescued by a right second one.
+
+### Definitions changed, and why each is a correction rather than a convenience
+
+* **`denSpine` → `denSpineFrom seen`** (+ `denSpineB` → `denSpineBFrom`): the new reading is
+  what the checker's own consumers mean; the old one was a strictly stronger demand no rule and
+  no `Judge` premise ever made, and the machines that separated them were real programs.
+* **`FrameInRange` gains `m.stack ≠ []`**: its docstring claimed it since clink 47.
+* **`CoreOk.procBasic`**: one more boot fact, spent by `ext_push`.
+* **`StateOk` gains `bareFree`/`missFree`**: seventeen components → **twenty**, and
+  `Denote/Sanity.lean` still exhibits a model of all twenty at the real booted machine, so
+  neither upper bound cost vacuity. `missFreeB` is checked in the component's own form
+  (`none`, or a builtin behind it) rather than in the stronger "absent" form, because here the
+  two are *not* interchangeable: `BasicObject#method_missing` is a real builtin, and demanding
+  absence would have failed the guard.
+* **`Judge.bareName` gains an `autoParam`** — the §F4 fix, the only change under `Ratchet/`.
+
+### State
+
+**178 rungs of 239** (one corpus rung added: the §F4 regression), **30 of 83 `Judge` rules**.
+Corpus agreement **239/239, 0 disagreements** (the new rung included, CRuby vs the Lean
+semantics), hand derivations **177/177**, negative controls **145/145** (one added),
+mismatches **35**, permanent negatives **23**. `Denote/Examples.lean` is at **33** `#guard`s
+and `bootOkB` at eight clauses, both green. Modified: `Denote/Rules/Bare.lean` (new),
+`Denote/Rules/Lambda.lean` (new), `Denote/Den.lean`, `Denote/DenB.lean`, `Denote/Grow.lean`,
+`Denote/Local.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
+`Denote/Rules/Read.lean`, `Denote/Sanity.lean`, `Denote/Examples.lean`, `Denote/Rules.lean`,
+`Ratchet/Judge.lean`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
+`CheckRungs.lean`, `scripts/generate_corpus.py`, `corpus/239-*`, `found-issues.md`,
+`Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`.
+
+### What is still in the way, unchanged by this clink
+
+The three walls are where clink 51 left them, and they are what caps the ladder rather than
+proof effort: the **fifth** stall point (`KontFrame`, every rule with a sub-expression), the
+**sixth** item (2) (`κ` is not threaded through `Judge`'s signature, so every statement rule
+and every *call* rule has an obligation that is false at the incoming `κ`), and the
+**seventh** (`SemJudgeAll`'s snapshot, so every rule with an argument list). Of the 53 rules
+remaining, the two attempted-and-reachable set is now empty: everything left sits behind one
+of those three.

@@ -16,7 +16,7 @@ one step with a value read out of the machine, and the whole content of the rung
   has two cases, and only the first was supported:
 
   - `ivarGet? I x = some σ` — the spine mentions `@x`, and `denSpine` gives `denM σ` of the
-    value read. `denSpine_get` is that projection, one induction over the spine.
+    value read. `denSpineFrom_get` is that projection, one induction over the spine.
   - `ivarGet? I x = none` — the spine does not mention `@x`, and the rule answers `.nilT`,
     whose denotation is `isNilV v = true`. **Nothing made that true.** `denSpine` is a
     *lower* bound — `Denote/Den.lean` says so of `denM`'s `inst` arm in as many words ("ivars
@@ -54,29 +54,34 @@ theorem Sem.Judge.selfExpr : Obl.Judge.selfExpr := by
 
 /-! ## `@x` -/
 
-/-- The spine projection: a spine that mentions `x` types what `x` reads. -/
-theorem denSpine_get : ∀ (I : Ty) {x : String} {σ : Ty} {m : Machine} {g : String → Value},
-    ivarGet? I x = some σ → denSpine I m g → denM σ m (g x)
-  | .ivarCons n τ rest, x, σ, m, g, hget, hden => by
-    rw [denSpine] at hden
+/-- **The spine projection**, at the accumulator `denSpineFrom` threads: a spine that resolves
+`x` types what `x` reads, *provided `x` is not already shadowed*. The side condition is what
+makes the induction go through — descending past an entry keyed `n` adds `n` to `seen`, and
+`ivarGet?` walking past that same entry is exactly the case `n ≠ x`, so the invariant is
+maintained. (`Denote/Sem/notes.md` §The tenth stall point for why the accumulator exists.) -/
+theorem denSpineFrom_get : ∀ (I : Ty) {x : String} {σ : Ty} {m : Machine} {g : String → Value}
+    {seen : List String}, x ∉ seen → ivarGet? I x = some σ →
+    denSpineFrom seen I m g → denM σ m (g x)
+  | .ivarCons n τ rest, x, σ, m, g, seen, hns, hget, hden => by
+    rw [denSpineFrom] at hden
     simp only [ivarGet?] at hget
     by_cases hn : n = x
     · subst hn
       simp only [beq_self_eq_true, if_pos] at hget
       cases hget
-      exact hden.1
+      exact hden.1.resolve_left hns
     · have hb : (n == x) = false := by simpa using hn
       rw [hb, if_neg (by simp)] at hget
-      exact denSpine_get rest hget hden.2
-  | .ivar0, _, _, _, _, hget, _ => by simp [ivarGet?] at hget
-  | .int, _, _, _, _, hget, _ | .float, _, _, _, _, hget, _ | .bool, _, _, _, _, hget, _
-  | .nilT, _, _, _, _, hget, _ | .sym, _, _, _, _, hget, _ | .any, _, _, _, _, hget, _
-  | .never, _, _, _, _, hget, _ | .cls _, _, _, _, _, hget, _ | .clsOf _, _, _, _, _, hget, _
-  | .nilable _, _, _, _, _, hget, _ | .arrayOf _, _, _, _, _, hget, _
-  | .hashOf _ _, _, _, _, _, hget, _ | .union _ _, _, _, _, _, hget, _
-  | .arrow0 _, _, _, _, _, hget, _ | .arrowCons _ _, _, _, _, _, hget, _
-  | .inst _ _, _, _, _, _, hget, _ | .clos _ _ _, _, _, _, _, hget, _
-  | .sameAs _ _, _, _, _, _, hget, _ => by simp [ivarGet?] at hget
+      exact denSpineFrom_get rest (by simp [hns, Ne.symm hn]) hget hden.2
+  | .ivar0, _, _, _, _, _, _, hget, _ => by simp [ivarGet?] at hget
+  | .int, _, _, _, _, _, _, hget, _ | .float, _, _, _, _, _, _, hget, _ | .bool, _, _, _, _, _, _, hget, _
+  | .nilT, _, _, _, _, _, _, hget, _ | .sym, _, _, _, _, _, _, hget, _ | .any, _, _, _, _, _, _, hget, _
+  | .never, _, _, _, _, _, _, hget, _ | .cls _, _, _, _, _, _, _, hget, _ | .clsOf _, _, _, _, _, _, _, hget, _
+  | .nilable _, _, _, _, _, _, _, hget, _ | .arrayOf _, _, _, _, _, _, _, hget, _
+  | .hashOf _ _, _, _, _, _, _, _, hget, _ | .union _ _, _, _, _, _, _, _, hget, _
+  | .arrow0 _, _, _, _, _, _, _, hget, _ | .arrowCons _ _, _, _, _, _, _, _, hget, _
+  | .inst _ _, _, _, _, _, _, _, hget, _ | .clos _ _ _, _, _, _, _, _, _, hget, _
+  | .sameAs _ _, _, _, _, _, _, _, hget, _ => by simp [ivarGet?] at hget
 
 /-- One step from `@x`: the value is `ivarOf` at `self`. `evalExpr`'s `.ivar` arm splits on
 `self` being a reference; `ivarOf` (`Denote/Val.lean`) is that same split, so the two agree by
@@ -103,7 +108,7 @@ theorem Sem.Judge.ivarRead : Obl.Judge.ivarRead := by
   refine denM_reCtl.mpr ?_
   cases hget : ivarGet? I x with
   | some σ =>
-    simpa [hget] using denSpine_get I hget hspine.1
+    simpa [hget] using denSpineFrom_get I (by simp) hget hspine.1
   | none =>
     -- The spine is silent about `@x`, and completeness is what makes the rule's `.nilT` true.
     rw [hspine.2 x hget]

@@ -139,45 +139,45 @@ at once, by structural induction on the type. -/
 theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
     (∀ v, denM τ (reCtl m c k) v ↔ denM τ m v) ∧
     (∀ acc f, denApp acc τ (reCtl m c k) f ↔ denApp acc τ m f) ∧
-    (∀ g, denSpine τ (reCtl m c k) g ↔ denSpine τ m g) := by
+    (∀ seen g, denSpineFrom seen τ (reCtl m c k) g ↔ denSpineFrom seen τ m g) := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float | any | never | ivar0 =>
-    exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
   | cls n | clsOf n =>
-    exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
   | nilable τ ih =>
-    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
   | arrayOf e ih =>
-    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
   | hashOf a b iha ihb =>
     exact ⟨fun v => by simp [denM, iha.1, ihb.1], fun _ _ => by simp [denApp],
-           fun _ => by simp [denSpine]⟩
+           fun _ _ => by simp [denSpineFrom]⟩
   | union σ τ ihσ ihτ =>
     exact ⟨fun v => by simp [denM, ihσ.1, ihτ.1], fun _ _ => by simp [denApp],
-           fun _ => by simp [denSpine]⟩
+           fun _ _ => by simp [denSpineFrom]⟩
   | arrow0 r ihr =>
     exact ⟨fun f => by simp [denM, Later_reCtl], fun _ _ => by simp [denApp, Returns_reCtl],
-           fun _ => by simp [denSpine]⟩
+           fun _ _ => by simp [denSpineFrom]⟩
   | arrowCons p rest ihp ihrest =>
     exact ⟨fun f => by simp [denM, Later_reCtl], fun _ _ => by simp [denApp, ihp.1, ihrest.2.1],
-           fun _ => by simp [denSpine]⟩
+           fun _ _ => by simp [denSpineFrom]⟩
   | inst n I ihI =>
-    exact ⟨fun v => by simp [denM, ihI.2.2], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun v => by simp [denM, ihI.2.2], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
   | ivarCons x σ rest ihσ ihrest =>
     exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp],
-           fun g => by simp [denSpine, ihσ.1, ihrest.2.2]⟩
+           fun seen g => by simp [denSpineFrom, ihσ.1, ihrest.2.2]⟩
   | clos idx cap selfT ihcap ihself =>
     exact ⟨fun f => by simp [denM, ihcap.2.2, ihself.1], fun _ _ => by simp [denApp],
-           fun _ => by simp [denSpine]⟩
+           fun _ _ => by simp [denSpineFrom]⟩
   | sameAs y τ ih =>
-    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
+    exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩
 
 theorem denM_reCtl {τ : Ty} {m : Machine} {c : Ctl} {k : List Kont} {v : Value} :
     denM τ (reCtl m c k) v ↔ denM τ m v := (denM_ctl m c k τ).1 v
 
 theorem denSpine_reCtl {τ : Ty} {m : Machine} {c : Ctl} {k : List Kont} {g : String → Value} :
-    denSpine τ (reCtl m c k) g ↔ denSpine τ m g := (denM_ctl m c k τ).2.2 g
+    denSpine τ (reCtl m c k) g ↔ denSpine τ m g := (denM_ctl m c k τ).2.2 [] g
 
 theorem denAll_reCtl {τs : List Ty} {m : Machine} {c : Ctl} {k : List Kont} {vs : List Value} :
     DenAll τs (reCtl m c k) vs ↔ DenAll τs m vs := by

@@ -379,7 +379,19 @@ Forced by `Judge.vasgnAlias` (clink 47): `getLocal_setLocal_self` — "the value
 `x = e` is the value assigned" — is *false* at such a machine, and it is what the rule's
 outgoing environment claims. One inequality, checked at the booted machine by
 `Denote/Sanity.lean`'s guard along with the other two. -/
-abbrev FrameInRange (m : Machine) : Prop := m.stack.headD 0 < m.frames.size
+abbrev FrameInRange (m : Machine) : Prop := m.stack ≠ [] ∧ m.stack.headD 0 < m.frames.size
+
+/-- The current frame, read the way a *closure* reads it. `Machine.currentFrame` matches on
+the stack and answers `default` at `[]`, while everything that captures a frame captures
+`m.stack.headD 0` — an id, which at `[]` is `0`, a frame that may well exist. So the two
+readings agree exactly when the stack is non-empty, which is `FrameInRange`'s first conjunct
+and the reason it has one (added in clink 52 for `Judge.lambdaLit`; the docstring above always
+described "there is a current frame", and the inequality alone did not say it). -/
+theorem currentFrame_headD {m : Machine} (h : m.stack ≠ []) :
+    m.currentFrame = m.frames.getD (m.stack.headD 0) default := by
+  cases hs : m.stack with
+  | nil => exact absurd hs h
+  | cons fid rest => simp [Machine.currentFrame, hs]
 
 /-- The class names the three `.const` rules can conclude about without the program having
 declared anything: `BuiltinCls`'s nine (`Judge.constBuiltin`) and `ExcCls`'s thirteen
@@ -427,6 +439,11 @@ structure CoreOk (h : Heap) : Prop where
   regexpSelf : (ancestors h Boot.regexpId).contains Boot.regexpId = true
   /-- … and a `BasicObject`. -/
   regexpBasic : (ancestors h Boot.regexpId).contains Boot.basicObjectId = true
+  /-- `Proc` is a `BasicObject` (`Judge.lambdaLit`, clink 52 — the third allocating rule, and
+      the third row this structure's docstring predicted). No `procNamed`/`procSelf` twin: the
+      rule concludes `.clos`, not `.cls "Proc"`, so the only thing spent is `ext_push`'s
+      descendant clause. -/
+  procBasic : (ancestors h Boot.procId).contains Boot.basicObjectId = true
   /-- **A core class name, if it is bound at all, is bound to a class** (clink 49).
 
       The two `.const` rules that need no declaration (`constBuiltin`, `constExc`) conclude
@@ -448,6 +465,7 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
   regexpNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.regexpNamed
   regexpSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpSelf
   regexpBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpBasic
+  procBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.procBasic
   coreNamed := by
     subst hm; subst hm₂; intro n hn v hv
     exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp
@@ -665,9 +683,10 @@ theorem lookup_go_payload {h h' : Heap} (hp : ∀ k, h'.classPayload? k = h.clas
     cases hc : h.classPayload? k with
     | none => simp only [hc]; exact lookup_go_payload hp n rest
     | some cp =>
-      cases hf : cp.methods.find? (·.1 == n) with
-      | none => simp only [hc, hf]; exact lookup_go_payload hp n rest
-      | some p => simp only [hc, hf]
+      simp only [hc]
+      cases cp.methods.find? (·.1 == n) with
+      | none => exact lookup_go_payload hp n rest
+      | some p => rfl
 
 /-- `lookup` **is** `methodOn` at the receiver's dispatch class: the same ancestor walk,
 written once as an explicit `go` (`RubyCore/Heap.lean`) and once as a `firstM`
@@ -940,20 +959,33 @@ theorem sameAs_of_killAliasTy {x : String} : ∀ {σ : Ty} {z : String} {ρ : Ty
 
 /-- Widening a spine entry to `.any` keeps it denoting, and leaving it keeps it denoting by
 `denM_setLocal`. One induction, and it is the `selfSpine` component's whole proof. -/
-theorem denSpine_killClosOverSpine {I τ : Ty} {m : Machine} {x : String} {w : Value}
-    {g : String → Value} (hw : denM τ m w) (h : denSpine I m g) :
-    denSpine (killClosOverSpine I x τ) (m.setLocal x w) g := by
+theorem denSpineFrom_killClosOverSpine {τ : Ty} {m : Machine} {x : String} {w : Value}
+    (hw : denM τ m w) : ∀ (I : Ty) (seen : List String) {g : String → Value},
+    denSpineFrom seen I m g →
+    denSpineFrom seen (killClosOverSpine I x τ) (m.setLocal x w) g := by
+  intro I
   induction I with
   | ivarCons n σ rest ihσ ihrest =>
-    rw [denSpine] at h
-    rw [killClosOverSpine, denSpine]
-    refine ⟨?_, ihrest h.2⟩
+    intro seen g h
+    rw [denSpineFrom] at h
+    rw [killClosOverSpine, denSpineFrom]
+    -- `killClosOverSpine` maps entry types and leaves keys alone, so `seen` threads through
+    -- unchanged and a shadowed entry needs nothing.
+    refine ⟨?_, ihrest _ h.2⟩
+    rcases h.1 with hin | h1
+    · exact Or.inl hin
+    refine Or.inr ?_
     by_cases hs : capStale x τ σ
     · rw [if_pos hs]; simp [denM]
     · rw [if_neg hs]
-      exact denM_setLocal hw (by simpa using hs) h.1
-  | ivar0 => simpa [killClosOverSpine, denSpine] using h
-  | _ => exact absurd h (by simp [denSpine])
+      exact denM_setLocal hw (by simpa using hs) h1
+  | ivar0 => intro seen g h; simpa [killClosOverSpine, denSpineFrom] using h
+  | _ => intro seen g h; exact absurd h (by simp [denSpineFrom])
+
+theorem denSpine_killClosOverSpine {I τ : Ty} {m : Machine} {x : String} {w : Value}
+    {g : String → Value} (hw : denM τ m w) (h : denSpine I m g) :
+    denSpine (killClosOverSpine I x τ) (m.setLocal x w) g :=
+  denSpineFrom_killClosOverSpine hw I [] h
 
 /-- **Widening a spine does not change which names it mentions.** `killClosOverSpine` maps
 entry types and leaves the keys alone, so `SelfSpineOk`'s completeness clause transports
@@ -1020,7 +1052,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
           -- type the rule bound (`hρ` strips the alias `vasgnAlias` wraps it in).
           subst hyx
           rw [envGet?_envSet_self] at hy
-          rw [getLocal_setLocal_self m y w h.frameInRange, ← Option.some.inj hy]
+          rw [getLocal_setLocal_self m y w h.frameInRange.2, ← Option.some.inj hy]
           exact ⟨by rw [hρ]; exact denM_setLocal hw hcap hw, halias⟩
         · -- Every other name is untouched; its type is either widened to `.any` or
           -- transported by `denM_setLocal`.

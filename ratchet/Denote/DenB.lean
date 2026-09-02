@@ -50,7 +50,7 @@ def denB : Ty → Heap → Value → Bool
       match hshEntries? h v with
       | some es => es.all (fun p => denB k h p.1 && denB w h p.2)
       | none => false
-  | .inst n I, h, v => isAName h v n && denSpineB I h (fun x => ivarOf h v x)
+  | .inst n I, h, v => isAName h v n && denSpineBFrom [] I h (fun x => ivarOf h v x)
   | .sameAs _ τ, h, v => denB τ h v
   | .ivar0, _, _ => false
   | .ivarCons .., _, _ => false
@@ -60,56 +60,63 @@ def denB : Ty → Heap → Value → Bool
   | .clos .., _, _ => false
 termination_by τ _ _ => sizeOf τ
 
-def denSpineB : Ty → Heap → (String → Value) → Bool
-  | .ivar0, _, _ => true
-  | .ivarCons x σ rest, h, get => denB σ h (get x) && denSpineB rest h get
-  | _, _, _ => false
-termination_by τ _ _ => sizeOf τ
+/-- The `Bool` twin of `denSpineFrom`, accumulator and all — see that definition for why the
+accumulator exists (`Denote/Sem/notes.md` §The tenth stall point). A shadowed entry is
+**skipped**, i.e. answers `true`, which is the decidable reading of "the spine says nothing
+about a key an earlier entry already bound". -/
+def denSpineBFrom : List String → Ty → Heap → (String → Value) → Bool
+  | _, .ivar0, _, _ => true
+  | seen, .ivarCons x σ rest, h, get =>
+      (seen.contains x || denB σ h (get x)) && denSpineBFrom (x :: seen) rest h get
+  | _, _, _, _ => false
+termination_by _ τ _ _ => sizeOf τ
 
 end
+
+def denSpineB (τ : Ty) (h : Heap) (get : String → Value) : Bool := denSpineBFrom [] τ h get
 
 /-- **Agreement on the first-order fragment**, proved simultaneously with the spine statement.
 Stated against an arbitrary machine over the heap, so it composes with `denM_heap_only`. -/
 theorem denB_iff_aux : ∀ (τ : Ty), FirstOrder τ = true →
     (∀ (h : Heap) (m : Machine) (v : Value), m.heap = h →
       (denB τ h v = true ↔ denM τ m v)) ∧
-    (∀ (h : Heap) (m : Machine) (g : String → Value), m.heap = h →
-      (denSpineB τ h g = true ↔ denSpine τ m g)) := by
+    (∀ (h : Heap) (m : Machine) (g : String → Value) (seen : List String), m.heap = h →
+      (denSpineBFrom seen τ h g = true ↔ denSpineFrom seen τ m g)) := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float | any | never | ivar0 =>
     intro _
-    exact ⟨fun _ _ _ _ => by simp [denB, denM], fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    exact ⟨fun _ _ _ _ => by simp [denB, denM], fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
   | cls n =>
     intro _
     exact ⟨fun h m v hh => by subst hh; simp [denB, denM],
-           fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+           fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
   | clsOf n =>
     intro _
     exact ⟨fun h m v hh => by subst hh; simp [denB, denM],
-           fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+           fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
   | nilable τ ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     simp only [denB, denM, Bool.or_eq_true]
     exact or_congr Iff.rfl ((ih hf).1 h m v hh)
   | union σ τ ihσ ihτ =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     simp only [denB, denM, Bool.or_eq_true]
     exact or_congr ((ihσ hf.1).1 h m v hh) ((ihτ hf.2).1 h m v hh)
   | sameAs n τ ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     simp only [denB, denM]
     exact (ih hf).1 h m v hh
   | arrayOf e ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     subst hh
     simp only [denB, denM]
     cases hx : arrElems? m.heap v with
@@ -122,7 +129,7 @@ theorem denB_iff_aux : ∀ (τ : Ty), FirstOrder τ = true →
   | hashOf k w ihk ihw =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     subst hh
     simp only [denB, denM]
     cases hx : hshEntries? m.heap v with
@@ -140,16 +147,18 @@ theorem denB_iff_aux : ∀ (τ : Ty), FirstOrder τ = true →
   | inst n I ih =>
     intro hf
     simp only [FirstOrder] at hf
-    refine ⟨fun h m v hh => ?_, fun _ _ _ _ => by simp [denSpineB, denSpine]⟩
+    refine ⟨fun h m v hh => ?_, fun _ _ _ _ _ => by simp [denSpineBFrom, denSpineFrom]⟩
     subst hh
     simp only [denB, denM, Bool.and_eq_true]
-    exact and_congr Iff.rfl ((ih hf).2 m.heap m (fun x => ivarOf m.heap v x) rfl)
+    exact and_congr Iff.rfl ((ih hf).2 m.heap m (fun x => ivarOf m.heap v x) [] rfl)
   | ivarCons x σ rest ihσ ihrest =>
     intro hf
     simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun _ _ _ _ => by simp [denB, denM], fun h m g hh => ?_⟩
-    simp only [denSpineB, denSpine, Bool.and_eq_true]
-    exact and_congr ((ihσ hf.1).1 h m (g x) hh) ((ihrest hf.2).2 h m g hh)
+    refine ⟨fun _ _ _ _ => by simp [denB, denM], fun h m g seen hh => ?_⟩
+    simp only [denSpineBFrom, denSpineFrom, Bool.and_eq_true, Bool.or_eq_true,
+      List.contains_iff_mem]
+    exact and_congr (or_congr Iff.rfl ((ihσ hf.1).1 h m (g x) hh))
+      ((ihrest hf.2).2 h m g (x :: seen) hh)
   | arrow0 r _ => intro hf; simp [FirstOrder] at hf
   | arrowCons p rest _ _ => intro hf; simp [FirstOrder] at hf
   | clos i cap st _ _ => intro hf; simp [FirstOrder] at hf
@@ -168,43 +177,43 @@ Proved by its own induction rather than as a corollary of `denB_iff`, because
 needs no hypothesis at all — every arm where `denB` answers `false` discharges itself. -/
 theorem denB_sound_aux : ∀ (τ : Ty),
     (∀ (h : Heap) (m : Machine) (v : Value), m.heap = h → denB τ h v = true → denM τ m v) ∧
-    (∀ (h : Heap) (m : Machine) (g : String → Value), m.heap = h →
-      denSpineB τ h g = true → denSpine τ m g) := by
+    (∀ (h : Heap) (m : Machine) (g : String → Value) (seen : List String), m.heap = h →
+      denSpineBFrom seen τ h g = true → denSpineFrom seen τ m g) := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float =>
     exact ⟨fun _ _ _ _ hb => by simpa [denB, denM] using hb,
-           fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+           fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | any =>
-    exact ⟨fun _ _ _ _ _ => by simp [denM], fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    exact ⟨fun _ _ _ _ _ => by simp [denM], fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | never =>
     exact ⟨fun _ _ _ _ hb => by simp [denB] at hb,
-           fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+           fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | ivar0 =>
-    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ _ => by simp [denSpine]⟩
+    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ _ _ => by simp [denSpineFrom]⟩
   | cls n =>
     exact ⟨fun h m v hh hb => by subst hh; simpa [denB, denM] using hb,
-           fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+           fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | clsOf n =>
     exact ⟨fun h m v hh hb => by subst hh; simpa [denB, denM] using hb,
-           fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+           fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | nilable τ ih =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     simp only [denB, Bool.or_eq_true] at hb
     simp only [denM]
     exact hb.imp id (ih.1 h m v hh)
   | union σ τ ihσ ihτ =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     simp only [denB, Bool.or_eq_true] at hb
     simp only [denM]
     exact hb.imp (ihσ.1 h m v hh) (ihτ.1 h m v hh)
   | sameAs n τ ih =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     simp only [denB] at hb
     simp only [denM]
     exact ih.1 h m v hh hb
   | arrayOf e ih =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     subst hh
     simp only [denB] at hb
     cases hx : arrElems? m.heap v with
@@ -216,7 +225,7 @@ theorem denB_sound_aux : ∀ (τ : Ty),
       rw [denM]
       exact ⟨xs, hx, fun x hxm => ih.1 m.heap m x rfl (hb x hxm)⟩
   | hashOf k w ihk ihw =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     subst hh
     simp only [denB] at hb
     cases hx : hshEntries? m.heap v with
@@ -229,25 +238,24 @@ theorem denB_sound_aux : ∀ (τ : Ty),
       exact ⟨es, hx, fun p hpm =>
         ⟨ihk.1 m.heap m p.1 rfl (hb p hpm).1, ihw.1 m.heap m p.2 rfl (hb p hpm).2⟩⟩
   | inst n I ih =>
-    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    refine ⟨fun h m v hh hb => ?_, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
     subst hh
     simp only [denB, Bool.and_eq_true] at hb
     show denM (.inst n I) m v
     rw [denM]
-    exact ⟨hb.1, ih.2 m.heap m (fun x => ivarOf m.heap v x) rfl hb.2⟩
+    exact ⟨hb.1, ih.2 m.heap m (fun x => ivarOf m.heap v x) [] rfl hb.2⟩
   | ivarCons x σ rest ihσ ihrest =>
-    refine ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun h m g hh hb => ?_⟩
-    simp only [denSpineB, Bool.and_eq_true] at hb
-    show denSpine (.ivarCons x σ rest) m g
-    rw [denSpine]
-    exact ⟨ihσ.1 h m (g x) hh hb.1, ihrest.2 h m g hh hb.2⟩
+    refine ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun h m g seen hh hb => ?_⟩
+    simp only [denSpineBFrom, Bool.and_eq_true, Bool.or_eq_true, List.contains_iff_mem] at hb
+    rw [denSpineFrom]
+    exact ⟨hb.1.imp id (ihσ.1 h m (g x) hh), ihrest.2 h m g (x :: seen) hh hb.2⟩
   -- The three machine-quantifying arms: `denB` answers `false`, so there is nothing to prove.
   | arrow0 r _ =>
-    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | arrowCons p rest _ _ =>
-    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
   | clos i cap st _ _ =>
-    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ hb => by simp [denSpineB] at hb⟩
+    exact ⟨fun _ _ _ _ hb => by simp [denB] at hb, fun _ _ _ _ _ hb => by simp [denSpineBFrom] at hb⟩
 
 theorem denB_sound {τ : Ty} (h : Heap) (v : Value) (hb : denB τ h v = true) : den τ h v :=
   (denB_sound_aux τ).1 h (Machine.initOn h .nil) v rfl hb
@@ -293,7 +301,7 @@ theorem closB_sound {κ : Ty} {m : Machine} {f : Value} (hb : closB κ m f = tru
       simp only [Bool.and_eq_true] at hb
       show denM (.clos i cap selfT) m f
       rw [denM]
-      refine ⟨cl, hc, (denB_sound_aux cap).2 m.heap m (closLocal m cl) rfl hb.1, ?_⟩
+      refine ⟨cl, hc, (denB_sound_aux cap).2 m.heap m (closLocal m cl) [] rfl hb.1, ?_⟩
       by_cases hs : selfT = .never
       · exact Or.inl hs
       · rw [if_neg hs] at hb

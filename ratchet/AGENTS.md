@@ -460,7 +460,7 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
   reduction of that is not on the table; the `Bool` is a `#guard`, i.e. a build gate, and
   `native_decide` was rejected for the axiom it costs. Verified against a decoy (a misspelt
   class name fails the guard).
-- **`Denote/Examples.lean`** — **31 `#guard`s that run real programs under the real `stepFn`
+- **`Denote/Examples.lean`** — **33 `#guard`s that run real programs under the real `stepFn`
   from the real prelude-booted heap** and ask the denotation about the value produced. The
   build is the gate: if the denotation and the semantics disagree, `lake build Denote` fails.
   They cover what `expectedClasses` could not — `[1,2,3] : arrayOf int` but not
@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **28 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **30 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
@@ -530,6 +530,39 @@ Discharged so far, all axiom-clean:
   are list bookkeeping plus `classMethods?`'s injectivity. Three of the seven companion
   families (`JudgeRescues`, `JudgeConsts`, `JudgeNested`) are now **complete**.
 
+**The two rules that reason from *absence*, climbed** (clink 52,
+[`Denote/Rules/Bare.lean`](Denote/Rules/Bare.lean),
+[`Denote/Rules/Lambda.lean`](Denote/Rules/Lambda.lean)) — the ninth stall point's own two
+rules, and the first rungs whose proofs walk **forward** through dispatch
+(`startArgs`/`finishSend`/`invoke`/`dispatchMiss`) rather than inverting a two-step run.
+`Judge.bareName`'s whole content is that the run **does not return**: a bare `x` raises
+`NameError`, so its `.any` and its unchanged outgoing `Γ`/`I` are vacuous, and the obligation
+is that `Evals` is unsatisfiable (`Doomed`/`evals_doomed` are the inversion a non-returning
+rung uses in place of `evals_pure`). `Judge.lambdaLit` is the ladder's first **higher-order**
+conclusion — a `.clos` recording what the Proc captured — and a third allocating rule
+(`CoreOk` grew `procBasic`).
+
+Each needed one more piece of "and nothing more" than clink 51 supplied, and **each piece was
+named by an interpreter test rather than guessed**: `BareNameFree` (`lookup` answers *nothing*
+— `NameFreeOk` admits `builtin.isSome`, and a builtin named `x` would enter `Builtins.run`),
+`MissFree` (no *user* `method_missing`, because `dispatchMiss`'s last question before raising
+is exactly that, and it tests `builtin.isNone` with no `undefined` escape — so the component
+does not invent a check the machine does not perform), and `FrameInRange` gaining the
+conjunct its docstring always claimed (the frame stack is **non-empty**: `closSelf` reads the
+captured frame by *id* while `SelfTyOk` reads `currentFrame`, which is `default` at `[]`).
+`MissFree`'s absence was a **wrong answer**, not a gap — `found-issues.md` §F4, fixed in the
+rule by a `nameFree κ "method_missing"` premise.
+
+**The captured spine is a lookup** (clink 52, the tenth stall point). `denSpine` walked every
+`ivarCons` entry while every consumer (`ivarGet?`, `envGet?`) reads the **first** match, and
+`Judge.closCall` types a lambda's body in `paramEnv … ++ spineToEnv cap` — so a parameter
+shadowing a captured local is a duplicate key **by design** and `validate` really does answer
+`<closure#1>{x: String, x: Integer}`. `Obl.Judge.lambdaLit` was therefore false, and `EnvOk`
+at any binding of such a closure was *unsatisfiable* — vacuity, the failure mode
+`Denote/Sanity.lean` exists to police, and the third time a component keyed differently from
+its lookup has produced it. `denSpineFrom` carries the keys already bound and skips a shadowed
+entry; two new `Examples.lean` guards pin it against the real semantics.
+
 **The frame lemma** (clink 51, [`Denote/Sem/Frame.lean`](Denote/Sem/Frame.lean)) — *`StateOk`
 describes the whole state of the world, and nothing more*, which is two claims and they are
 worth keeping apart. The **conformance** frame rule (`frameOnly`/`StateOk_frame`: `ctl` and
@@ -542,7 +575,7 @@ every method installed anywhere is an axiomatized builtin, a prelude definition,
 `NameFreeOk` sharpens it where a rule needs *absence* rather than non-authorship, localised to
 the receiver's chain because the heap-global form is false (the prelude defines `T.proc`, a
 singleton method off every ordinary chain); and `SelfLive` closes the gap both need — nothing
-had said `self` is a real object, and `Heap.get` is total. `StateOk` is now seventeen
+had said `self` is a real object, and `Heap.get` is total. `StateOk` is now **twenty**
 components and `Denote/Sanity.lean` still exhibits a model of all of them, so the upper bound
 cost no vacuity. The **interpreter's** frame rule (`KontFrame`/`EvalsDecompose`) is *stated,
 not proved*: it is the single named target the ~40 rules behind the fifth stall point consume,
@@ -552,11 +585,14 @@ They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` 
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
 inversion). The working procedure for climbing a rung is
-[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **nine** stall points —
+[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **ten** stall points — the
+tenth (a spine read as every entry against consumers that read the first; **resolved** in
+clink 52, and it was a live vacuity rather than a hard rung) —
 the eighth (a table keyed by path against a rule keyed by name; **resolved** in clink 50 by
 restating `ConstsOk` over its lookup function) and the ninth (a rule with a *negative* premise
 about a table needs conformance to be an **upper** bound, and every component is a lower one —
-which is what stops `bareName` and `lambdaLit`) found in clink 50, and the fifth — the
+which stopped `bareName` and `lambdaLit`, both **resolved and climbed** in clinks 51–52) found
+in clink 50, and the fifth — the
 continuation-framing wall — **measured** there and smaller than its first estimate: a
 dependency chain of one-line lemmas over ~30 helpers, not a line count proportional to the
 interpreter. Two found in clink 48: a **declaration statement** makes the incoming `κ` stale, so

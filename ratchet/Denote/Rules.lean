@@ -11,6 +11,7 @@ import Denote.Rules.Cls
 import Denote.Rules.Rescue
 import Denote.Rules.Const
 import Denote.Rules.Bare
+import Denote.Rules.Lambda
 import Denote.Sem.Frame
 
 /-!

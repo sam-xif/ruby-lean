@@ -95,7 +95,7 @@ theorem Sem.Judge.vasgnAlias : Obl.Judge.vasgnAlias := by
     cases hy
     by_cases hxt : x = t
     · subst hxt
-      exact (getLocal_setLocal_self M x (m.getLocal x) hMok.frameInRange).symm
+      exact (getLocal_setLocal_self M x (m.getLocal x) hMok.frameInRange.2).symm
     · rw [getLocal_setLocal_ne M t (m.getLocal x) hxt, hgetM]
 
 #print axioms Sem.Judge.vasgnAlias

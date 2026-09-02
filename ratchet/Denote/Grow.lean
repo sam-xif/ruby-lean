@@ -45,62 +45,63 @@ open RubyCore
 /-- **The denotation is monotone along allocation.** Value and spine together, because
 `denM` and `denSpine` are mutually recursive. -/
 theorem denM_ext_aux {m m₂ : Machine} (he : Ext m m₂) : ∀ τ : Ty,
-    (∀ v, denM τ m v → denM τ m₂ v) ∧ (∀ g, denSpine τ m g → denSpine τ m₂ g) := by
+    (∀ v, denM τ m v → denM τ m₂ v) ∧
+    (∀ seen g, denSpineFrom seen τ m g → denSpineFrom seen τ m₂ g) := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float | any | never =>
-    exact ⟨fun _ h => by rwa [denM] at h ⊢, fun _ h => absurd h (by simp [denSpine])⟩
-  | ivar0 => exact ⟨fun _ h => absurd h (by simp [denM]), fun _ _ => by simp [denSpine]⟩
+    exact ⟨fun _ h => by rwa [denM] at h ⊢, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
+  | ivar0 => exact ⟨fun _ h => absurd h (by simp [denM]), fun _ _ _ => by simp [denSpineFrom]⟩
   | cls n =>
     exact ⟨fun _ h => by rw [denM] at h ⊢; exact he.isAName_mono h,
-           fun _ h => by simpa only [denSpine] using h⟩
+           fun _ _ h => absurd h (by simp [denSpineFrom])⟩
   | clsOf n =>
     exact ⟨fun _ h => by rw [denM] at h ⊢; rwa [he.isClassRefNamed_eq],
-           fun _ h => by simpa only [denSpine] using h⟩
+           fun _ _ h => absurd h (by simp [denSpineFrom])⟩
   | nilable τ ih =>
     exact ⟨fun _ h => by rw [denM] at h ⊢; exact h.imp id (ih.1 _),
-           fun _ h => by simpa only [denSpine] using h⟩
+           fun _ _ h => absurd h (by simp [denSpineFrom])⟩
   | union σ τ ihσ ihτ =>
     exact ⟨fun _ h => by rw [denM] at h ⊢; exact h.imp (ihσ.1 _) (ihτ.1 _),
-           fun _ h => by simpa only [denSpine] using h⟩
+           fun _ _ h => absurd h (by simp [denSpineFrom])⟩
   | sameAs y τ ih =>
     exact ⟨fun _ h => by rw [denM] at h ⊢; exact ih.1 _ h,
-           fun _ h => by simpa only [denSpine] using h⟩
+           fun _ _ h => absurd h (by simp [denSpineFrom])⟩
   | arrayOf e ih =>
-    refine ⟨fun v h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun v h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     obtain ⟨xs, hx, hall⟩ := h
     exact ⟨xs, he.arrElems?_eq hx, fun x hxs => ih.1 x (hall x hxs)⟩
   | hashOf a b iha ihb =>
-    refine ⟨fun v h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun v h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     obtain ⟨es, hx, hall⟩ := h
     exact ⟨es, he.hshEntries?_eq hx, fun p hp => ⟨iha.1 _ (hall p hp).1, ihb.1 _ (hall p hp).2⟩⟩
   | arrow0 r ihr =>
-    refine ⟨fun f h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun f h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.later.trans he₃)⟩
   | arrowCons p rest ihp ihrest =>
-    refine ⟨fun f h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun f h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     exact ⟨he.isProcV_mono h.1, fun m₃ he₃ => h.2 m₃ (he.later.trans he₃)⟩
   | inst n I ihI =>
-    refine ⟨fun v h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun v h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     refine ⟨he.isAName_mono h.1, ?_⟩
     have hfun : ivarOf m₂.heap v = ivarOf m.heap v := funext (he.ivarOf_eq v)
     rw [hfun]
-    exact ihI.2 _ h.2
+    exact ihI.2 _ _ h.2
   | ivarCons x σ rest ihσ ihrest =>
-    refine ⟨fun _ h => by rwa [denM] at h ⊢, fun g h => ?_⟩
-    rw [denSpine] at h ⊢
-    exact ⟨ihσ.1 _ h.1, ihrest.2 g h.2⟩
+    refine ⟨fun _ h => by rwa [denM] at h ⊢, fun seen g h => ?_⟩
+    rw [denSpineFrom] at h ⊢
+    exact ⟨h.1.imp id (ihσ.1 _), ihrest.2 _ g h.2⟩
   | clos idx cap selfT ihcap ihself =>
-    refine ⟨fun f h => ?_, fun _ h => by simpa only [denSpine] using h⟩
+    refine ⟨fun f h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     obtain ⟨cl, hpc, hspine, hself⟩ := h
     refine ⟨cl, he.procClosure?_eq hpc, ?_, ?_⟩
-    · rw [he.closLocal_eq cl]; exact ihcap.2 _ hspine
+    · rw [he.closLocal_eq cl]; exact ihcap.2 _ _ hspine
     · rcases hself with h | h
       · exact Or.inl h
       · exact Or.inr (by rw [he.closSelf_eq cl]; exact ihself.1 _ h)
@@ -109,7 +110,7 @@ theorem denM_ext {τ : Ty} {m m₂ : Machine} (he : Ext m m₂) {v : Value}
     (h : denM τ m v) : denM τ m₂ v := (denM_ext_aux he τ).1 v h
 
 theorem denSpine_ext {τ : Ty} {m m₂ : Machine} (he : Ext m m₂) {g : String → Value}
-    (h : denSpine τ m g) : denSpine τ m₂ g := (denM_ext_aux he τ).2 g h
+    (h : denSpine τ m g) : denSpine τ m₂ g := (denM_ext_aux he τ).2 [] g h
 
 theorem denAll_ext {τs : List Ty} {m m₂ : Machine} (he : Ext m m₂) :
     ∀ {vs : List Value}, DenAll τs m vs → DenAll τs m₂ vs := by

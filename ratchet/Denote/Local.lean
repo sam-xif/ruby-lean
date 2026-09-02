@@ -429,68 +429,74 @@ exactly `frameLocal_go_setAt_self`/`_ne`. At such an entry the spine's recorded 
 theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
     (hw : denM τ' m w) : ∀ τ : Ty,
     (capStale x τ' τ = false → ∀ v, denM τ m v → denM τ (m.setLocal x w) v) ∧
-    (capStale x τ' τ = false → ∀ g g', (∀ y, g' y = g y ∨ (y = x ∧ g' y = w)) →
-      denSpine τ m g → denSpine τ (m.setLocal x w) g') := by
+    (capStale x τ' τ = false → ∀ (seen : List String) g g',
+      (∀ y, g' y = g y ∨ (y = x ∧ g' y = w)) →
+      denSpineFrom seen τ m g → denSpineFrom seen τ (m.setLocal x w) g') := by
   intro τ
   induction τ with
   | int | bool | nilT | sym | float | any | never =>
-    exact ⟨fun _ _ h => by rwa [denM] at h ⊢, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    exact ⟨fun _ _ h => by rwa [denM] at h ⊢, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
   | ivar0 =>
-    exact ⟨fun _ _ h => absurd h (by simp [denM]), fun _ _ _ _ _ => by simp [denSpine]⟩
+    exact ⟨fun _ _ h => absurd h (by simp [denM]), fun _ _ _ _ _ _ => by simp [denSpineFrom]⟩
   | cls n =>
     exact ⟨fun _ _ h => by rw [denM] at h ⊢; rwa [show (m.setLocal x w).heap = m.heap from rfl],
-           fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+           fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
   | clsOf n =>
     exact ⟨fun _ _ h => by rw [denM] at h ⊢; rwa [show (m.setLocal x w).heap = m.heap from rfl],
-           fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+           fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
   | nilable τ ih =>
-    refine ⟨fun hs _ h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs _ h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale] at hs
     exact h.imp id (ih.1 hs _)
   | union σ τ ihσ ihτ =>
-    refine ⟨fun hs _ h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs _ h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
     exact h.imp (ihσ.1 hs.1 _) (ihτ.1 hs.2 _)
   | sameAs y τ ih =>
-    refine ⟨fun hs _ h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs _ h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale] at hs
     exact ih.1 hs _ h
   | arrayOf e ih =>
-    refine ⟨fun hs v h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs v h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale] at hs
     obtain ⟨xs, hx, hall⟩ := h
     exact ⟨xs, hx, fun y hy => ih.1 hs y (hall y hy)⟩
   | hashOf a b iha ihb =>
-    refine ⟨fun hs v h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs v h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
     obtain ⟨es, hx, hall⟩ := h
     exact ⟨es, hx, fun p hp => ⟨iha.1 hs.1 _ (hall p hp).1, ihb.1 hs.2 _ (hall p hp).2⟩⟩
   | arrow0 r ihr =>
-    refine ⟨fun _ f h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun _ f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     exact ⟨h.1, fun m₃ he₃ => h.2 m₃ ((setLocal_later m x w).trans he₃)⟩
   | arrowCons p rest ihp ihrest =>
-    refine ⟨fun _ f h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun _ f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     exact ⟨h.1, fun m₃ he₃ => h.2 m₃ ((setLocal_later m x w).trans he₃)⟩
   | inst n I ihI =>
-    refine ⟨fun hs v h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs v h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale] at hs
-    refine ⟨h.1, ihI.2 hs _ _ (fun _ => Or.inl rfl) h.2⟩
+    refine ⟨h.1, ihI.2 hs _ _ _ (fun _ => Or.inl rfl) h.2⟩
   | ivarCons y σ rest ihσ ihrest =>
-    refine ⟨fun _ _ h => absurd h (by simp [denM]), fun hs g g' hg h => ?_⟩
-    rw [denSpine] at h ⊢
+    refine ⟨fun _ _ h => absurd h (by simp [denM]), fun hs seen g g' hg h => ?_⟩
+    rw [denSpineFrom] at h ⊢
     rw [capStale, Bool.or_eq_false_iff, Bool.or_eq_false_iff, Bool.and_eq_false_iff] at hs
     obtain ⟨⟨hkey, hσ⟩, hrest⟩ := hs
-    refine ⟨?_, ihrest.2 hrest g g' hg h.2⟩
+    refine ⟨?_, ihrest.2 hrest _ g g' hg h.2⟩
+    -- A shadowed entry stays shadowed: `seen` is threaded unchanged, so the `y ∈ seen`
+    -- disjunct transports with no work at all.
+    rcases h.1 with hin | h1
+    · exact Or.inl hin
+    refine Or.inr ?_
     rcases hg y with hgy | ⟨rfl, hgy⟩
-    · rw [hgy]; exact ihσ.1 hσ _ h.1
+    · rw [hgy]; exact ihσ.1 hσ _ h1
     · -- The one entry the write can have moved: the spine records `x`, so `capStale`'s key
       -- clause says it records it at `τ'`, and the new value has `τ'` by `hw`.
       have hστ : σ = τ' := by
@@ -500,12 +506,12 @@ theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
       rw [hgy]
       exact ihσ.1 hσ w (by rw [hστ]; exact hw)
   | clos idx cap selfT ihcap ihself =>
-    refine ⟨fun hs f h => ?_, fun _ _ _ _ h => absurd h (by simp [denSpine])⟩
+    refine ⟨fun hs f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
     obtain ⟨cl, hpc, hspine, hself⟩ := h
     refine ⟨cl, hpc, ?_, ?_⟩
-    · exact ihcap.2 hs.1 _ _ (fun y => closLocal_setLocal m x w cl y) hspine
+    · exact ihcap.2 hs.1 _ _ _ (fun y => closLocal_setLocal m x w cl y) hspine
     · rcases hself with h1 | h1
       · exact Or.inl h1
       · exact Or.inr (by rw [closSelf_setLocal]; exact ihself.1 hs.2 _ h1)
@@ -517,7 +523,7 @@ theorem denM_setLocal {τ τ' : Ty} {m : Machine} {x : String} {w v : Value}
 theorem denSpine_setLocal {τ τ' : Ty} {m : Machine} {x : String} {w : Value}
     {g : String → Value} (hw : denM τ' m w) (hs : capStale x τ' τ = false)
     (h : denSpine τ m g) : denSpine τ (m.setLocal x w) g :=
-  (denM_setLocal_aux hw τ).2 hs g g (fun _ => Or.inl rfl) h
+  (denM_setLocal_aux hw τ).2 hs [] g g (fun _ => Or.inl rfl) h
 
 /-! ## What the write does to the rest of the machine -/
 

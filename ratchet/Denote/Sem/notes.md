@@ -10,7 +10,7 @@ before attempting a rung.
 | File | What it is | Hand-edited? |
 |---|---|---|
 | `Trans.lean` | `toRuby : Ratchet.Expr → RubyCore.Expr` | only when a syntax constructor changes |
-| `State.lean` | `Evals`, `StateOk` and its eleven components | yes — a rung that will not close often means a component is wrong |
+| `State.lean` | `Evals`, `StateOk` and its twenty components | yes — a rung that will not close often means a component is wrong |
 | `Judge.lean` | the eight `SemJudge*` definitions | yes, same reason |
 | `Obligations.lean` | the 83 `Obl.*` — **derived** from the inductive | **no** |
 | `../Ladder.lean` | the count, and the `isDefEq` gate | no — except its one `import Denote.Rules` |
@@ -503,6 +503,82 @@ What remains per rule is no longer about conformance: it is the forward walk
 `startArgs`/`finishSend`/dispatch down to the `NameError` (`bareName`) or to `reifyBlock`'s
 Proc (`lambdaLit`). Neither needs the fifth stall point — both rules have no argument
 expressions, so no sub-run is ever under a pushed continuation.
+
+**Both walks were done in clink 52 and both rules are climbed** (`../Rules/Bare.lean`,
+`../Rules/Lambda.lean`). Each cost one more piece of "and nothing more" than clink 51 had
+supplied, and in both cases the piece was named by an interpreter test rather than guessed:
+
+* `bareName` needed `lookup` to answer **nothing**, not "nothing of the user's" —
+  `NameFreeOk` admits `builtin.isSome`, and a builtin named `x` would send `invokeDispatch`
+  into `Builtins.run`. `BareNameFree` is that, at the rule's own premises. It also needed
+  `MissFree`: `dispatchMiss`'s last question before raising is `method_missing`, and a user
+  one makes the miss *return*. That is `../../found-issues.md` §F4 — a wrong answer both
+  executors agree on, found by asking the question the walk asks, and fixed in the rule.
+* `lambdaLit` needed `FrameInRange` to say the frame stack is **non-empty**, which the
+  inequality alone did not: `closSelf` reads the captured frame *by id* while `SelfTyOk` reads
+  `currentFrame`, and `Machine.currentFrame` answers `default` at `[]` while the captured id
+  is `0`. Clink 47's docstring already claimed "there *is* a current frame"; now the component
+  says it.
+
+## The tenth stall point — **a spine is a lookup, and the checker really does build a duplicate key** *(RESOLVED, clink 52)*
+
+Found by attempting `Judge.lambdaLit` (clink 52), and it is the sixth stall point's item (1)
+for the *third* time: **state the component over the lookup function.** Here the component was
+`denSpine` itself.
+
+`denM`'s two spine arms (`.inst`'s ivars, `.clos`'s captured locals) read a spine with
+`denSpine`, which walked **every** `ivarCons` entry. Every *consumer* of a spine — `ivarGet?`,
+and `envGet?` for the environment a spine is made from — answers with the **first** match. The
+two coincide on a duplicate-free spine, and `ivarSet`/`joinSpine` keep ivar spines
+duplicate-free, so nothing had forced the question. `envToSpine` does not:
+
+```ruby
+x = 1
+f = lambda { |x| lambda { x } }
+g = f.call("s")
+g            # validate: <closure#1>{x: String, x: Integer} -- and it is *right*
+g.call + 1   # correctly rejected; `g.call` is a String
+```
+
+`Judge.closCall` types a lambda's body in `paramEnv c.params argTys ++ spineToEnv cap` —
+parameters first, "so they shadow a captured name of the same spelling", as its own docstring
+says — so a parameter shadowing a captured local is a duplicate **by design**, and the inner
+`lambda`'s `envToSpine Γ` carries both entries. With the all-entries reading, `denM` of that
+type demanded the captured frame's `x` be a `String` *and* an `Integer`, which is false of the
+machine that holds it. So:
+
+* `Obl.Judge.lambdaLit` was **false**, not merely unprovable; and
+* worse, `EnvOk` at any environment binding such a `g` was false too, which made `StateOk`
+  **unsatisfiable** there — every obligation at every machine holding a shadow-capturing
+  closure went vacuous. That is the failure mode `../Sanity.lean` exists to police, and it is
+  the second time (after the eighth stall point) that a component keyed differently from its
+  lookup produced vacuity rather than falsity.
+
+**The fix, and the two shapes rejected.** `denSpineFrom seen τ m g` (`../Den.lean`) carries the
+keys already bound and *skips* an entry whose key is among them; `denSpine τ = denSpineFrom []
+τ`. Two alternatives were considered and dropped, both for the same proof-shape reason:
+
+* **`denSpine (dedup τ)` at the two call sites.** `dedup τ` is not a subterm of `τ`, so all
+  four transports (`denM_heap_only_aux`, `denM_ctl`, `denM_ext`, `denM_setLocal`) would have
+  had to become well-founded inductions on `sizeOf`.
+* **`denSpine τ m g := ∀ x σ, ivarGet? τ x = some σ → denM σ m (g x)`**, the fully
+  lookup-shaped form. Cleanest to *read*, and it makes `denSpineFrom_get` an identity — but it
+  breaks the mutual block's structural recursion (the recursive call is at a `σ` that comes
+  from a hypothesis, not a pattern), and every transport then needs an extra induction to
+  recover "σ is a component of τ".
+
+With the accumulator the recursion stays structural and each transport carries one extra
+`∀ seen`. What the fix cost, precisely: the `seen` parameter through `denSpineFrom`,
+`denSpineBFrom` (the `Bool` twin, so `closB_sound` and `Examples.lean`'s guards still line
+up) and the four transports; `denSpineFrom_get` gained an `x ∉ seen` side condition,
+which is exactly the invariant the walk maintains. Two new `Examples.lean` guards pin the
+behaviour at the real semantics (a shadowed entry is skipped; a *wrong first* entry is not
+rescued by a right second one), taking that file to **33**.
+
+**Read it as a definitional correction rather than a convenience**, by the same test the
+fourth stall point used: the new reading is what the checker's own consumers mean, the old one
+was a strictly stronger demand that no rule and no `Judge` premise ever made, and the machines
+that separated them were real.
 
 ## What is not on this ladder
 

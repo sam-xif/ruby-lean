@@ -135,6 +135,20 @@ def pClosCapture : Expr :=
 #guard closAfter pClosCapture (.clos 0 (.ivarCons "x" (.cls "String") .ivar0) .never)
   == some false
 #guard closAfter pClosCapture (.clos 0 .ivar0 .never) == some true
+-- **A repeated key is read the way `ivarGet?` reads it: first entry wins, later ones are
+-- skipped.** Not a curiosity — `Judge.closCall` types a lambda's body in
+-- `paramEnv c.params argTys ++ spineToEnv cap`, so a parameter shadowing a captured local
+-- makes a duplicate by design and `envToSpine` carries both. `x = 1;
+-- f = lambda { |x| lambda { x } }; f.call("s")` really is typed
+-- `<closure#1>{x: String, x: Integer}` by `validate`. Before clink 52 the denotation demanded
+-- the *shadowed* entry hold too, which made `StateOk` unsatisfiable at any machine holding
+-- such a closure (`Denote/Sem/notes.md` §The tenth stall point).
+#guard closAfter pClosCapture
+  (.clos 0 (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never) == some true
+-- And the shadowed entry cannot *rescue* a wrong one: the first entry is the one that has to
+-- hold, so this is `false` even though the second entry is the true type.
+#guard closAfter pClosCapture
+  (.clos 0 (.ivarCons "x" (.cls "String") (.ivarCons "x" .int .ivar0)) .never) == some false
 -- Not a Proc at all.
 #guard closAfter pAdd (.clos 0 .ivar0 .never) == some false
 
@@ -180,6 +194,9 @@ def report : String :=
        denAfter pBox (.inst "Box" (.ivarCons "@x" .int .ivar0))),
      ("lambda{x} : clos{x: Integer}",
        closAfter pClosCapture (.clos 0 (.ivarCons "x" .int .ivar0) .never)),
+     ("lambda{x} : clos{x: Integer, x: String}  [shadowed key skipped]",
+       closAfter pClosCapture
+         (.clos 0 (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never)),
      ("lambda{|x| x+1} : (Integer) -> Integer  [bounded]",
        arrowAfter pSucc [.int] .int intSamples),
      ("lambda{|x| x+1} : (Integer) -> String   [refuted]",
