@@ -1126,6 +1126,15 @@ claim true; proving it needs **"a run of a `noLocalAsgn` expression at a closure
 leaves the current frame's locals alone"**, which is a property of the *run* derived from a
 property of the *syntax*. Nothing on file relates the two.
 
+**And removal is not available**, which is the sharpest thing measured about it. The obvious
+conservative fix — stop recognising the shape — was tried: `validate`'s *verdicts* do not move
+(all 248 rungs answer as before), but `narrow-and-guard`'s **hand derivation stops
+type-checking**, because the program genuinely needs the refinement (`x` is `nilable Integer`
+there and `x + 1` needs the narrowed `Integer`), and its recorded output environment changes.
+So `checkrungs` would read 176/177. The feature is load-bearing, the fix therefore has to be
+the guard *plus* the invariant, and this entry is the record of why the cheap way out is not
+one.
+
 That is the same shape as the fourteenth stall point ("a `Judge`-derivable expression contains
 no `.ret`, therefore its run emits no return jump"), and the two together are what
 `Denote/Sem/notes.md` now records as the **syntax-directed run invariants** layer: one
