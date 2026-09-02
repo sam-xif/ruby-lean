@@ -670,4 +670,98 @@ theorem caseeq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.Var
 #print axioms run_caseEq_outcome
 #print axioms caseeq_inv
 
+
+/-! ## The branch's fact, once, for every shape
+
+One conclusion serves all three refinement kinds and both consumers (the environment and the
+spine): **the else-side refinement is true of whatever type the tested value has.** That is
+exactly the hypothesis `EnvOk_refineOne_else` and `SelfSpineOk_ivarSet` want, and stating it
+pointwise is what keeps the shape analysis to one place. -/
+
+theorem narrow_else_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratchet.Expr}
+    {v : Value} {m' : Machine} {k : Ratchet.VarKind} {x : String} {nk : Ratchet.NarrowKind}
+    {sides : Ratchet.NarrowSides}
+    (hok : StateOk κ Γ I m) (hok' : StateOk κ Γ I m')
+    (hev : Evals m c v m') (hfalsy : v.truthy = false)
+    (hnc : Ratchet.narrowCond? c = some (k, x, nk, sides)) (hboth : sides = .both)
+    (hg : Ratchet.narrowNameOk κ nk = true) (hk : k = .lvar ∨ k = .ivar) :
+    ∀ τ, denM τ m' (readVar k x m') →
+      denM (Ratchet.refineElse κ.classes nk τ) m' (readVar k x m') := by
+  -- `split` on the recogniser's own match, which is what makes the shape analysis exhaustive
+  -- without enumerating `Expr`
+  unfold Ratchet.narrowCond? at hnc
+  split at hnc
+  · -- the `&&` sandwich: its refinement is `thenOnly`, so the *else* side never asks, and
+    -- `hboth` is what says the caller is not asking
+    split at hnc
+    · simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+      rw [hboth] at hnc
+      exact absurd hnc.2.2.2 (by simp)
+    · exact absurd hnc (by simp)
+  · -- `.var k x`: the condition *is* the read
+    rename_i k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    obtain ⟨hveq, hmeq⟩ := evals_pure (stepFn_readVar m k' x' hk) hev
+    intro τ hτ
+    rw [Ratchet.refineElse]
+    refine denM_falsyTy τ hτ ?_
+    rw [show readVar k' x' m' = v from by
+      rw [hmeq, hveq]; cases k' <;> simp [readVar, reCtl, getLocal_reCtl, ivarOf]]
+    exact hfalsy
+  · -- `x.nil?`
+    rename_i k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨hnf, _⟩ := hg
+    obtain ⟨hveq, hread⟩ := nilq_inv hok hnf hk hev
+    intro τ hτ
+    rw [Ratchet.refineElse]
+    refine denM_nonNilTy τ hτ ?_
+    rw [hread]
+    cases hnv : isNilV (readVar k' x' m) with
+    | false => cases hh : readVar k' x' m <;> simp_all [isNilV]
+    | true => rw [hveq, hnv] at hfalsy; exact absurd hfalsy (by simp [Value.truthy])
+  · -- `x.is_a?(C)`
+    rename_i k' x' cn
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨⟨⟨⟨⟨⟨hcg, hcf⟩, _⟩, _⟩, hisaf⟩, hmmf⟩, hmf⟩ := hg
+    obtain ⟨j, hj, hveq, hread, hheap⟩ := isaq_inv hok hisaf hk hev
+    intro τ hτ
+    rw [Ratchet.refineElse]
+    refine denM_notATy hok'.baseChains hok'.declCls hmf hcf τ hτ (by rw [hheap]; exact hj) ?_
+    rw [hread, hheap]
+    cases hia : isA m.heap (readVar k' x' m) j with
+    | false => rfl
+    | true => rw [hveq, hia] at hfalsy; exact absurd hfalsy (by simp [Value.truthy])
+  · -- `C === x`
+    rename_i cn k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨⟨⟨⟨⟨⟨hcg, hcf⟩, hkn⟩, hce⟩, _⟩, _⟩, hmf⟩ := hg
+    obtain ⟨j, hj, hveq, hread, hheap⟩ :=
+      caseeq_inv hok hce (by
+        simp only [Bool.or_eq_true] at hkn
+        rcases hkn with h | h
+        · exact Or.inl h
+        · exact Or.inr (by simpa using h)) hk hev
+    intro τ hτ
+    rw [Ratchet.refineElse]
+    refine denM_notATy hok'.baseChains hok'.declCls hmf hcf τ hτ (by rw [hheap]; exact hj) ?_
+    rw [hread, hheap]
+    cases hia : isA m.heap (readVar k' x' m) j with
+    | false => rfl
+    | true => rw [hveq, hia] at hfalsy; exact absurd hfalsy (by simp [Value.truthy])
+  · exact absurd hnc (by simp)
+
+#print axioms narrow_else_fact
+
 end Ratchet.Denote

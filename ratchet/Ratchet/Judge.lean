@@ -2668,7 +2668,9 @@ def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   | .isA cn =>
     (constGet? κ cn).isNone && coreConstFree κ &&
     ((clsGet? κ.classes cn).isSome || builtinClsNames.contains cn) &&
-    nameFree κ "===" && nameFree κ "is_a?" && nameFree κ "method_missing"
+    nameFree κ "===" && nameFree κ "is_a?" && nameFree κ "method_missing" &&
+    -- and §F9's root-chain guard, which `isAAnswer`'s `.inst` arm consults
+    mixinFreeChain κ.classes rootAncestors
   -- **§F14**: `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. A program that
   -- redefines it moves the branch the refinement is attached to:
   -- `class NilClass; def nil?; false; end; end; x = nil; if x.nil? then 1 else x + 1 end`
