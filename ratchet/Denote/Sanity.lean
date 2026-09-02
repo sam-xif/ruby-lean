@@ -278,6 +278,93 @@ def clsQueryOkB (m : Machine) : Bool :=
                 ((RubyCore.ancestors m.heap (classOf m.heap (.ref o))).takeWhile
                   (fun x => x != owner)) p.1).isNone))
 
+/-- **`BaseChainsOk` as one `Bool`.** Three computations per row: every name in the row
+resolves to an ancestor of the base, every *constant* name that resolves into the base's
+ancestors is in the row, and no class id descends from the base but itself.
+
+The second is where the boot constant table is swept rather than the string space: a name
+`classNamed?` answers for is necessarily one the table carries, which is what makes the finite
+check the whole claim. -/
+def baseChainsOkB (m : Machine) : Bool :=
+  let names : List String :=
+    match m.heap.classPayload? Boot.objectId with
+    | some c => c.consts.map (fun (q : String × Value) => q.1)
+    | none => []
+  Ratchet.Denote.builtinBases.all (fun p =>
+    p.2.all (fun cn =>
+      match classNamed? m.heap cn with
+      | some j => (RubyCore.ancestors m.heap p.1).contains j
+      | none => false) &&
+    names.all (fun cn =>
+      match classNamed? m.heap cn with
+      | some j => !(RubyCore.ancestors m.heap p.1).contains j || p.2.contains cn
+      | none => true) &&
+    (List.range m.heap.objs.size).all (fun k =>
+      !(RubyCore.ancestors m.heap k).contains p.1 || k == p.1))
+
+/-- A name `classNamed?` answers for is one the boot constant table carries. Extracted because
+`baseChainsOkB`'s middle clause sweeps that table and the soundness step is exactly this. -/
+theorem classNamed?_mem_consts {m : Machine} {cn : String} {j : ObjId}
+    (h : classNamed? m.heap cn = some j) :
+    cn ∈ (match m.heap.classPayload? Boot.objectId with
+          | some c => c.consts.map (fun (q : String × Value) => q.1)
+          | none => ([] : List String)) := by
+  -- `classNamed?` resolves through `constLookup`, which is a `find?` in `Object`'s own
+  -- constant table — so the name it answered for is one that table carries
+  simp only [classNamed?] at h
+  cases hcl : constLookup m.heap cn with
+  | none => rw [hcl] at h; exact absurd h (by simp)
+  | some w =>
+    simp only [constLookup] at hcl
+    cases hp : m.heap.classPayload? Boot.objectId with
+    | none => rw [hp] at hcl; exact absurd hcl (by simp)
+    | some c =>
+      rw [hp] at hcl
+      simp only [hp]
+      dsimp only at hcl
+      cases hf : List.find? (fun x => x.fst == cn) c.consts with
+      | none => rw [hf] at hcl; exact absurd hcl (by simp)
+      | some q =>
+        have hq : q.1 = cn := by simpa using List.find?_some hf
+        exact hq ▸ List.mem_map_of_mem (List.mem_of_find?_eq_some hf)
+        
+
+/-- Ancestors of an id with no class payload: itself. So the subclass sweep over the *live*
+ids is the whole claim — an id past the end of the heap has `[k]`, which contains the base only
+when it *is* the base. -/
+theorem ancestors_of_not_class {h : Heap} {k : ObjId} (hp : h.classPayload? k = none) :
+    RubyCore.ancestors h k = [k] := by
+  simp only [RubyCore.ancestors, RubyCore.ancestors.go, hp]
+  rfl
+
+theorem baseChainsOkB_sound {m : Machine} (hb : baseChainsOkB m = true) (κ : Ratchet.Ctx) :
+    Ratchet.Denote.BaseChainsOk κ m := by
+  intro base ch hmem _
+  simp only [baseChainsOkB, List.all_eq_true] at hb
+  have hrow := hb (base, ch) (by simpa using hmem)
+  simp only [Bool.and_eq_true, List.all_eq_true] at hrow
+  obtain ⟨⟨hin, hout⟩, hsub⟩ := hrow
+  refine ⟨fun cn hcn => ?_, fun cn j hj hanc => ?_, fun k hk => ?_⟩
+  · have := hin cn (by simpa using hcn)
+    cases hcnm : classNamed? m.heap cn with
+    | none => rw [hcnm] at this; exact absurd this (by simp)
+    | some j => exact ⟨j, rfl, by rw [hcnm] at this; simpa using this⟩
+  · have := hout cn (by simpa using classNamed?_mem_consts hj)
+    rw [hj] at this
+    simp only [Bool.or_eq_true, Bool.not_eq_true'] at this
+    rcases this with h' | h'
+    · exact absurd hanc (by rw [h']; simp)
+    · simpa using h'
+  · by_cases hlt : k < m.heap.objs.size
+    · have := hsub k (by simpa using hlt)
+      simp only [Bool.or_eq_true, Bool.not_eq_true', beq_iff_eq] at this
+      rcases this with h' | h'
+      · exact absurd hk (by rw [h']; simp)
+      · exact h'
+    · -- past the end of the heap: `ancestors` is `[k]`
+      rw [ancestors_of_not_class (classPayload?_out_of_range hlt)] at hk
+      exact (by simpa using hk : base = k).symm
+
 theorem clsQueryOkB_sound {m : Machine} (hb : clsQueryOkB m = true) (κ : Ratchet.Ctx) :
     Ratchet.Denote.ClsQueryOk κ m := by
   intro mname bid hmem _ o hp
@@ -392,6 +479,7 @@ def bootOkB : Bool :=
   topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
   nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine &&
   localsEmptyB bootMachine && queryOkB bootMachine && clsQueryOkB bootMachine
+    && baseChainsOkB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -401,8 +489,8 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
-    hsl⟩, hle⟩, hq⟩, hcq⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
+    hsl⟩, hle⟩, hq⟩, hcq⟩, hbc⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
@@ -419,6 +507,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
       query := queryOkB_sound hq Ratchet.ctx0
       clsQuery := clsQueryOkB_sound hcq Ratchet.ctx0
+      baseChains := baseChainsOkB_sound hbc Ratchet.ctx0
       -- vacuous at `ctx0`: the class table is empty, exactly as for `ClassesOk`/`DefsOk`
       declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])

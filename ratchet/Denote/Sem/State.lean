@@ -831,6 +831,71 @@ theorem ClsQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap] at hp ⊢
   exact h mname bid hmem hfree o hp
 
+/-- **The base class of each `builtinAncestors` row**, paired with the row itself. The table is
+the bridge between `Ratchet/Judge.lean`'s *static* chains and the heap's own class ids, and it
+is the reason `BaseChainsOk` can be one statement rather than eight.
+
+Ordered exactly as `builtinAncestors`' rows, and the chain includes the base's own name first —
+`isANoOk` reads `ch.head?` to find the base it must check for declared subclasses. -/
+def builtinBases : List (ObjId × List String) :=
+  [(Boot.integerId, ["Integer", "Numeric", "Comparable"] ++ Ratchet.rootAncestors),
+   (Boot.floatId, ["Float", "Numeric", "Comparable"] ++ Ratchet.rootAncestors),
+   (Boot.nilClassId, "NilClass" :: Ratchet.rootAncestors),
+   (Boot.symbolId, ["Symbol", "Comparable"] ++ Ratchet.rootAncestors),
+   (Boot.stringId, ["String", "Comparable"] ++ Ratchet.rootAncestors),
+   (Boot.hashId, ["Hash", "Enumerable"] ++ Ratchet.rootAncestors),
+   (Boot.arrayId, ["Array", "Enumerable"] ++ Ratchet.rootAncestors)]
+
+/-- **`isAAnswer`'s static tables really are the machine's tables** — the conformance fact
+narrowing's `isATy`/`notATy` need, and the component `found-issues.md` §F9 and §F10 were found
+while writing.
+
+Two clauses per row, and each answers one way the static answer could be wrong:
+
+* **`names`** — the *names* of the base's ancestors are exactly the row. An iff, because
+  `isAAnswer` uses both directions: `some true` needs "in the row ⇒ really an ancestor" and
+  `some false` needs the converse. Note it is stated over names rather than ids, because that
+  is what the chain is, and the name→id step (`classNamed?`) is where §F10's constant alias
+  came in.
+* **`exact`** — the base has no proper subclasses in the heap. `.cls`/`.arrayOf`/`.hashOf`
+  denote **is-a**, so without this clause a value of type `.cls "String"` could be an instance
+  of a subclass whose own name is in no static chain, and the negative answer would be wrong
+  about it. Measured at the booted machine: no boot class descends from any of the seven bases.
+
+Both clauses are guarded by `isANoOk κ.classes ch`, which is the same condition `isAAnswer`
+consults before answering `some false` — so the component claims nothing at a context that has
+mixed a module into a core class or declared a subclass of one, which is exactly when the
+answers stop being available. -/
+def BaseChainsOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ base ch, (base, ch) ∈ builtinBases → Ratchet.isANoOk κ.classes ch = true →
+    -- every name in the row resolves, and to a real ancestor (what `some true` needs)
+    (∀ cn ∈ ch, ∃ j, classNamed? m.heap cn = some j ∧
+      (ancestors m.heap base).contains j = true) ∧
+    -- and nothing outside the row is one (what `some false` needs). Stated from the
+    -- resolution rather than over all strings: a name that resolves nowhere is not an
+    -- `is_a?` of anything, so the two sides agree there without saying so.
+    (∀ cn j, classNamed? m.heap cn = some j →
+      (ancestors m.heap base).contains j = true → cn ∈ ch) ∧
+    (∀ k, (ancestors m.heap k).contains base = true → k = base)
+
+theorem BaseChainsOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : BaseChainsOk κ m) :
+    BaseChainsOk κ m₂ := by
+  intro base ch hmem hok
+  obtain ⟨h1, h2, h3⟩ := h base ch hmem hok
+  refine ⟨fun cn hcn => ?_, fun cn j hj hanc => ?_,
+    fun k hk => h3 k (by rw [he.ancestors] at hk; exact hk)⟩
+  · obtain ⟨j, hj, hanc⟩ := h1 cn hcn
+    exact ⟨j, by rw [he.classNamed?_eq]; exact hj, by rw [he.ancestors]; exact hanc⟩
+  · rw [he.classNamed?_eq] at hj
+    rw [he.ancestors] at hanc
+    exact h2 cn j hj hanc
+
+theorem BaseChainsOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
+    (h : BaseChainsOk κ m) : BaseChainsOk κ (m.setLocal x w) := by
+  intro base ch hmem hok
+  simp only [setLocal_heap]
+  exact h base ch hmem hok
+
 /-- **What the machine's class object owes a class the context declares** — the component
 `Judge.newInstNoInit` spends, and the reason it is separate from `ClassesOk` is that `ClassesOk`
 is about the class's *methods* while every clause here is about **allocating** through it.
@@ -952,6 +1017,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   query : QueryOk κ m
   clsQuery : ClsQueryOk κ m
   declCls : DeclClassOk κ m
+  baseChains : BaseChainsOk κ m
   selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
@@ -1096,6 +1162,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   query := QueryOk.ext he h.query
   clsQuery := ClsQueryOk.ext he h.clsQuery
   declCls := DeclClassOk.ext he h.declCls
+  baseChains := BaseChainsOk.ext he h.baseChains
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
@@ -1476,6 +1543,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       query := QueryOk.setLocal x w h.query
       clsQuery := ClsQueryOk.setLocal x w h.clsQuery
       declCls := DeclClassOk.setLocal x w h.declCls
+      baseChains := BaseChainsOk.setLocal x w h.baseChains
       missFree := by
         intro hfree hself o md hm
         refine h.missFree hfree hself o md ?_

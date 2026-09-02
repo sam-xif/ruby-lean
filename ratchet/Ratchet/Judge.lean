@@ -1475,6 +1475,35 @@ def mixinFreeChain (C : CTable) (ch : List String) : Bool :=
     | none => true
     | some c => c.includes.isEmpty && c.prepends.isEmpty)
 
+/-- **Does any declared class descend from `n`?** — and the answer `isAAnswer` needs is "no".
+
+The second half of §F9's guard, and it is about a different direction of the same gap.
+`mixinFreeChain` asks whether the classes *in* a chain gained ancestors; this asks whether a
+class was declared *below* the chain's base. Both break the negative answer, and for `.cls`/
+`.arrayOf`/`.hashOf` types it is this one that matters: those denote **is-a**
+(`Denote/Den.lean`), so a value of type `.cls "String"` may be an instance of a declared
+subclass, whose own name is in *its* ancestors and in no static chain.
+
+Measured at the booted machine before the guard was written: no boot class descends from any of
+`Integer`, `Float`, `NilClass`, `Symbol`, `String`, `Hash` or `Array`. So the *heap* side of
+the claim needs only the context to be quiet, which is what this checks.
+
+A chain that leaves the table counts as "might descend", for `ancestorsUp`'s reason. -/
+def noDeclaredBelow (C : CTable) (n : String) : Bool :=
+  C.all (fun c =>
+    c.name == n ||
+    (match ancestors? C c.name with
+     | some ch => !(ch.contains n)
+     | none => false))
+
+/-- The two conditions a **negative** `is_a?` answer off a static chain needs: nothing was
+mixed into the chain, and nothing was declared below its base. -/
+def isANoOk (C : CTable) (ch : List String) : Bool :=
+  mixinFreeChain C ch &&
+  (match ch.head? with
+   | some base => noDeclaredBelow C base
+   | none => false)
+
 /-- `is_a?(cn)` on a value of type `τ`: `some true` when **every** value of `τ` answers
 `true`, `some false` when every value answers `false`, and `none` when this judgment cannot
 tell — which is the answer for `.any`, `.bool`, a `.cls` outside `builtinAncestors`, and a
@@ -1491,9 +1520,10 @@ def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
   | τ => (builtinAncestors τ).bind (fun ch =>
       if ch.contains cn then some true
       -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end`
-      -- really does make `5.is_a?(M)` true. The positive answer survives (an `include` only
-      -- adds ancestors); the negative one has to become "unknown".
-      else if mixinFreeChain C ch then some false else none)
+      -- really does make `5.is_a?(M)` true; and the type denotes **is-a**, so a declared
+      -- subclass's instance is one of its values. The positive answer survives (a mixin only
+      -- adds ancestors, and a subclass keeps them); the negative one has to become "unknown".
+      else if isANoOk C ch then some false else none)
 
 /-- **Does any *declared* class descend from `n` and redefine `m`?** — `found-issues.md`
 §F11's guard, and the answer it wants is "no".
