@@ -657,3 +657,46 @@ reports it as a **sound** rejection because the model really does go type-stuck 
 `method_missing` installed by `define_method` is not covered — the same coarseness §F2's fix
 has. Not reachable today: `Object#define_method` is `unsupported` in the model, so no such
 program executes here at all. The day it is modeled, the premise wants `κ.closures` too.
+
+## §F5 — `Judge.vasgn` records the right-hand side's type verbatim, and an *alias* type must not be recorded that way
+
+**The rule.** `Judge.vasgn` types `x = e` with `e`'s type `τ` and records that type for `x`:
+`envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ`. Nothing in the rule constrains `τ`.
+
+**Why that is unsound.** `Ty.sameAs y σ` means *this binding holds the same value as `y`* — a
+fact about a binding, which is why `denM` ignores it (`Denote/Den.lean`: `denM (.sameAs _ τ) =
+denM τ`) and `EnvOk` is where it acquires meaning (`Denote/Sem/State.lean`: an entry
+`x : sameAs y ρ` requires `m.getLocal x = m.getLocal y`). So if `τ` is an alias type, the
+premise `SemJudge κ Γ I e τ Γ' I'` carries **no information about `y`** — it is exactly the
+premise for `stripAlias τ` — while the conclusion claims `x` and `y` now hold the same value.
+
+The counterexample is immediate: `e := 1`, `τ := sameAs "b" .int`, in a state where `b` holds
+`2`. The premise holds (`denM (sameAs "b" .int) m' (.int 1)` *is* `denM .int m' (.int 1)`), the
+two `capStale` guards hold (`capStale` recurses through `sameAs` into `.int`, where it is
+`false`), and the conclusion's `EnvOk` requires `1 = 2`.
+
+**Why the ladder found it.** `Obl.Judge.vasgn` is the first compound obligation whose
+conclusion writes the environment through `envSet` with a type it did not itself construct.
+Discharging it means producing `StateOk κ (envSet … x τ) …`, and `StateOk_setLocal` — the
+transport already on file — asks for `stripAlias ρ = τ` and, when `ρ` is an alias, for the
+alias to hold of the written value. Neither is available. Nothing was searched for: the
+transport's own hypotheses name the missing premise.
+
+**Not reachable through `chk`, and the source already said so.** `Validate.lean`'s `var` arm
+reads `some (stripAlias τ, …)` with the comment *"Tier 12: `stripAlias`, so no expression ever
+has type `sameAs`"*, and `Judge.varAlias`'s conclusion type is the stripped `τ` rather than the
+alias. The invariant was real; it just was not a premise of the rule that depends on it. So
+there is **no corpus counterexample to add** — an accepted program cannot exhibit this — and
+that is the honest report: a rule unsound in isolation, whose soundness in the checker rested
+on an invariant stated only in a comment.
+
+**The fix.** `(halias : isAliasTy τ = false := by rfl)` on `Judge.vasgn`, with the matching
+conjunct in both of `Validate.lean`'s `vasgn .lvar` arms (the general one and the
+`vasgn t (var x)` arm that shadows it) and the three-way split in
+`Ratchet/Proof/ChkSound.lean`. The second arm's guard is `isAliasTy (stripAlias τ) = false`,
+which is *not* vacuous by definition — `stripAlias` removes one layer, so a nested
+`sameAs y (sameAs z σ)` in `Γ` would survive it. Nothing builds one, and now nothing has to
+assume that: it is rejected rather than assumed away.
+
+Gate numbers unchanged: `run_ratchet.sh` 35 mismatches before and after, `run_check_rungs.sh`
+177/177 + 145/145.

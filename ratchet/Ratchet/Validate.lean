@@ -248,7 +248,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- which case *its own* record of `t` is what the assignment invalidates and there is
       -- nothing left to widen (`found-issues.md` §F1; `Judge.vasgn`'s `hcap` premise).
       if capStale t (stripAlias τ) (stripAlias τ) = false
-         && capStaleCtx t (stripAlias τ) κ = false then
+         && capStaleCtx t (stripAlias τ) κ = false
+         -- `found-issues.md` §F5: the recorded type must not itself be an alias.
+         -- `stripAlias` removes one layer, so a *nested* alias in `Γ` would still be one --
+         -- unreachable (nothing builds one), and rejected here rather than assumed away.
+         && isAliasTy (stripAlias τ) = false then
         if desugarTemps.contains t then
           some (stripAlias τ,
             envSet (killClosOver (killAliasesTo Γ t) t (stripAlias τ)) t
@@ -265,7 +269,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- `killClosOver`/`killClosOverSpine`: and nothing else may keep a `Ty.clos` recording
     -- what `x` used to be (`found-issues.md` §F1).
     | some (τ, Γ', I') =>
-      if capStale x τ τ = false && capStaleCtx x τ κ = false then
+      if capStale x τ τ = false && capStaleCtx x τ κ = false
+         -- `found-issues.md` §F5
+         && isAliasTy τ = false then
         some (τ, envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ, killClosOverSpine I' x τ)
       else none
     | none => none

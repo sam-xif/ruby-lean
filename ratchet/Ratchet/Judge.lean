@@ -2599,11 +2599,21 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       the new type relate to the old one. That is not a weakness of the checker, it is
       what a Ruby local *is* (rung `reassign-different-type`). Note the ordering: the
       right-hand side is typed in `Γ` and may itself assign (`y = (x = 1) + 1`), so the
-      binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`. -/
+      binding is added to `Γ'`, the environment the RHS left behind — not to `Γ`.
+
+      **`halias` — `found-issues.md` §F5, found by the semantic rung.** `envSet` records the
+      right-hand side's type *verbatim*, so if that type were an alias (`Ty.sameAs y σ`) the
+      rule would claim `x` and `y` now hold the same value — a claim about `y` that the
+      assignment does not establish and the premise does not carry, because `denM` gives
+      `sameAs` no meaning as an *expression* type (`Denote/Den.lean`: the alias is a fact about
+      a binding). `Validate.lean`'s `var` arm has always stripped aliases so that "no
+      expression ever has type `sameAs`"; this premise is that invariant, stated where the rule
+      relies on it. -/
   | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
       (hcap : capStale x τ τ = false := by rfl) →
       (hctx : capStaleCtx x τ κ = false := by rfl) →
+      (halias : isAliasTy τ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar x e) τ
         (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ) (killClosOverSpine I' x τ)
   /-- **`__dt_t1 = v` — an assignment that records an alias** (tier 12).
