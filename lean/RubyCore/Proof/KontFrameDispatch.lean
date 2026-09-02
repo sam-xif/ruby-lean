@@ -145,35 +145,81 @@ example (K : List Kont) (m : Machine) (subs : List Param) (v : Value) :
       (destructureBind m subs v (destrDepth subs + 1)).1 := by
   rw [destructureBind_frame K]
 
-/-! ### `enterUserMethod`: measured to 32 goals of one shape
+/-! ### `enterUserMethod`, the largest function in the layer
 
-The largest function in the layer — `classifyFull`, two locals lists built by folds,
-`destructureBind`, the frame push and the kont push — and the only one this file does not
-close. What was learned is worth more than the theorem would be, so it is recorded rather than
-left as a `sorry`:
+135 lines, `classifyFull`, two locals lists built by folds, `destructureBind`, the activation
+frame and the `frameK` push. Three things make it go through, and each was measured:
 
-* **Generalising first is what makes it tractable at all.** `classifyFull md.params` is
-  machine-free and occurs ~20 times in the body; `generalize hfp : classifyFull md.params = fp?`
-  followed by `cases fp?` takes the proof from *ten minutes and a timeout at 40M heartbeats* to
-  **32 seconds**. The same move on the keyword-collapse pair (`(args, m)`, rebound by an `if`
-  whose branches each occur ~15 times) takes it further.
-* **The remaining 32 goals are all one shape**, and the obstacle is the **structure-eta
-  blowup**: the activation frame is pushed onto the *destructuring fold's* machine
-  (`{ (fold …).snd with frames := …, stack := … }`), and `simp` expands that into a literal
-  whose nine fields are projections of the fold — after which no framing lemma matches, and the
-  goal is ten thousand lines wide. Framing the fold *before* the push is the fix, and doing
-  that needs either a keyed variant for that specific fold or `enterUserMethod` split into
-  named helpers in `RubyCore` (which is what its 135 lines argue for anyway).
-* **`frame_simp` must still run at the top**, before the generalisations: without it the two
-  sides' scrutinees differ and `split` desynchronises the arms — 457 goals instead of 32.
-
-Everything `enterUserMethod` calls is framed (`appendKwHash`, `allocArr`, `allocHsh`,
-`destructureBind`, `setLocal`, `withCtl`/`withKont`), so this is the last function in
-`Dispatch` and not a dependency of anything below it.
+1. **Generalise the machine-free scrutinees first.** `classifyFull md.params` occurs ~20 times
+   in the body and mentions no machine; `generalize hfp : … = fp?` then `cases fp?` takes the
+   proof from *a timeout at 40M heartbeats* to **40 seconds**. The keyword-collapse pair
+   `appendKwHash m args kw`, rebound by an `if` whose branches each occur ~15 times, is
+   generalised the same way (after `obtain ⟨args', m'⟩`, so the pair's projections do not
+   re-expand).
+2. **`frame_simp` must run at the top**, before those generalisations: without it the two
+   sides' scrutinees are not syntactically equal, `split` peels the pushed and unpushed matches
+   independently, and there are **457** goals instead of 32.
+3. **Two keyed variants of the `setLocal` fold**, for the two shapes the phase-B walk is
+   reached in — `foldSetLocal_mk_cons` for the flat literal (32 goals → 12) and
+   `foldSetLocal_push` for the `pushK`-exposed one (12 → 0). The `_mk_cons` shape is the whole
+   story of the shape problem: the activation push puts `.frameK fid` on the *front* of an
+   already-appended kont, so the field reads `kk :: (k ++ K)` where `foldSetLocal_mk` wants
+   `k ++ K` — one `List.cons_append` apart, and `rw` does not see it.
 -/
+
+/-- The `setLocal` fold at a machine already in pushed form. `foldSetLocal_mk`'s companion:
+that one is keyed on a flat literal, this one on `pushK`. -/
+theorem foldSetLocal_push (K : List Kont) (l : List (String × Value)) (m : Machine) :
+    List.foldl (fun (m : Machine) (nv : String × Value) => m.setLocal nv.1 nv.2) (pushK K m) l =
+      pushK K (List.foldl (fun (m : Machine) (nv : String × Value) => m.setLocal nv.1 nv.2) m l) :=
+  foldMachine_frame K _ (fun m₂ nv => setLocal_frame K m₂ nv.1 nv.2) l m
+
+/-- The `setLocal` fold at a literal whose kont is `kk :: (k ++ K)` — the activation frame's
+`.frameK fid` consed onto the pushed continuation, which is how `enterUserMethod` reaches the
+phase-B walk. One `List.cons_append` from `foldSetLocal_mk`, and that is exactly the distance
+`rw` cannot cover on its own. -/
+theorem foldSetLocal_mk_cons (K : List Kont) (kk : Kont) (c : Ctl) (k : List Kont)
+    (st : List FrameId) (fr : Array Frame) (h : Heap) (g : List (String × Value))
+    (out : String) (ce : Option Value) (pm : Bool) (l : List (String × Value)) :
+    List.foldl (fun (m : Machine) (nv : String × Value) => m.setLocal nv.1 nv.2)
+        ⟨c, kk :: (k ++ K), st, fr, h, g, out, ce, pm⟩ l =
+      pushK K (List.foldl (fun (m : Machine) (nv : String × Value) => m.setLocal nv.1 nv.2)
+        ⟨c, kk :: k, st, fr, h, g, out, ce, pm⟩ l) := by
+  rw [← List.cons_append]
+  exact foldSetLocal_mk K c (kk :: k) st fr h g out ce pm l
+
+set_option maxHeartbeats 40000000 in
+@[simp, frameLem] theorem enterUserMethod_frame (K : List Kont) (m : Machine) (recv : Value)
+    (mname : String) (md : MethodDef) (args : List Value) (blk : Option Value)
+    (kw : List (Value × Value)) :
+    enterUserMethod (pushK K m) recv mname md args blk kw =
+      frameR K (enterUserMethod m recv mname md args blk kw) := by
+  rw [enterUserMethod.eq_def, enterUserMethod.eq_def]
+  frame_simp
+  generalize hfp : classifyFull md.params = fp?
+  cases fp? with
+  | none => rfl
+  | some fp =>
+    simp only [Option.isNone_some, Option.getD_some, Bool.false_eq_true, if_false, reduceIte]
+    by_cases hkw : (!fp.keys.isEmpty || fp.kwrest?.isSome) = true
+    · simp only [if_pos hkw]
+      enter_arms K
+      all_goals (try (rw [foldSetLocal_mk_cons K]))
+      all_goals (try rfl)
+      all_goals (try (rw [foldSetLocal_push K]))
+      all_goals (try rfl)
+    · simp only [if_neg hkw]
+      generalize hak : appendKwHash m args kw = am
+      obtain ⟨args', m'⟩ := am
+      enter_arms K
+      all_goals (try (rw [foldSetLocal_mk_cons K]))
+      all_goals (try rfl)
+      all_goals (try (rw [foldSetLocal_push K]))
+      all_goals (try rfl)
 
 #print axioms enterClassBody_frame
 #print axioms enterScopedClassBody_frame
+#print axioms enterUserMethod_frame
 
 end Proof
 end RubyCore
