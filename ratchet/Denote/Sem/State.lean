@@ -361,6 +361,40 @@ def ConstsOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ n τ, constGet? κ n = some τ →
     ∃ v, constResolveAt m n = some v ∧ denM τ m v
 
+/-- **Constants under a path**, which is `ConstsOk` for the `A::B` form.
+
+`ConstsOk` is about *lexical* resolution — `constGet? κ n` against `constResolveAt m n`, which
+is what the `Judge.const` family consumes. `Judge.constPath` asks a different question: the
+type recorded at the **keyed** entry `constKeyIn owner n` (i.e. `"::owner::n"`) against what
+the interpreter finds by looking `n` up *inside* the class named `owner`. Nothing related the
+two, and that is what stopped the rung (clink 54).
+
+Stated as an implication with `classNamed?` on the left, so a context entry naming a class the
+machine does not have is no claim at all — the shape `CoreOk.coreNamed` took (clink 50), for
+the same reason. -/
+def ConstPathsOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ owner n τ k, envGet? κ.consts (constKeyIn owner n) = some τ →
+    classNamed? m.heap owner = some k →
+      ∀ v, constLookupFrom m.heap k n = some v → denM τ m v
+
+/-- `ConstPathsOk` reads the heap only through `classPayload?` and the ancestor walk, both of
+which `Ext` pins, plus a `denM` which is `denM_ext`. -/
+theorem ConstPathsOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ConstPathsOk κ m) :
+    ConstPathsOk κ m₂ := by
+  intro owner n τ k hk hcn v hv
+  rw [he.classNamed?_eq] at hcn
+  simp only [constLookupFrom, he.payload, he.ancestors] at hv
+  exact denM_ext he (h owner n τ k hk hcn v hv)
+
+/-- …and a rebinding writes `locals` only, so the heap side is untouched. -/
+theorem ConstPathsOk.setLocal {κ : Ctx} {m : Machine} {x : String} {w : Value} {τ' : Ty}
+    (hw : denM τ' m w) (hcs : ∀ owner n σ, envGet? κ.consts (constKeyIn owner n) = some σ →
+      capStale x τ' σ = false)
+    (h : ConstPathsOk κ m) : ConstPathsOk κ (m.setLocal x w) := by
+  intro owner n τ k hk hcn v hv
+  rw [setLocal_heap] at hcn hv
+  exact denM_setLocal hw (hcs owner n τ hk) (h owner n τ k hk hcn v hv)
+
 /-- `private_constant`'s hidden keys. `Judge.constPath`'s own docstring calls this *precision
 rather than soundness*: hiding a constant can only make the checker refuse a program, never
 accept a bad one. So there is nothing for a machine to conform to. -/
@@ -665,6 +699,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   blockTy : BlockTyOk κ.blockTy m
   selfTy : SelfTyOk κ.selfTy m
   consts : ConstsOk κ m
+  constPaths : ConstPathsOk κ m
   privConsts : PrivConstsOk κ.privConsts m
   constScope : ConstScopeOk m
   exact : MethodsExact κ m
@@ -785,6 +820,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     cases hσ : κ.selfTy with
     | none => trivial
     | some σ => rw [hσ] at h2; rw [he.currentFrame_eq]; exact denM_ext he h2
+  constPaths := ConstPathsOk.ext he h.constPaths
   consts := by
     intro n τ hn
     obtain ⟨v, hv1, hv2⟩ := h.consts n τ hn
@@ -1152,6 +1188,15 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
           rw [hσ] at h2
           rw [currentFrame_setLocal_self]
           exact denM_setLocal hw (by rw [hσ] at hslf; exact hslf) h2
+      constPaths := by
+        -- `capStaleCtx`'s third disjunct is exactly this: no constant's recorded type may
+        -- carry a capture spine keyed by the name being written
+        refine ConstPathsOk.setLocal hw (fun owner n σ hσ => ?_) h.constPaths
+        have hmem := envGet?_mem hσ
+        have hall : ∀ (a : String) (b : Ty), (a, b) ∈ κ.consts → capStale x τ b = false := by
+          simpa using hcst
+        obtain ⟨z, hz⟩ := hmem
+        exact hall z σ hz
       consts := by
         intro n σ hn
         obtain ⟨v, hv1, hv2⟩ := h.consts n σ hn

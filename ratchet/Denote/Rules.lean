@@ -15,6 +15,7 @@ import Denote.Rules.Args
 import Denote.Rules.Lambda
 import Denote.Rules.Vasgn
 import Denote.Rules.Never
+import Denote.Rules.Path
 import Denote.Sem.Frame
 
 /-!

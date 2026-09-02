@@ -312,6 +312,9 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
               -- name reads as `nil`
               fun x _ => localsEmptyB_sound hle x⟩
       selfSpine := ⟨by simp [denSpine, denSpineFrom], fun x _ => selfIvarsEmpty_sound hself x⟩
+      constPaths := by
+        intro owner n τ k hk _ _ _
+        exact absurd hk (by simp [envGet?, List.find?, Ratchet.ctx0])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])
