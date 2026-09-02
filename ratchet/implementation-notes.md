@@ -4519,6 +4519,40 @@ over an evaluation order the machine never performs; being a hypothesis, the eff
 rather than falsity, and `Judge.hashLit` would find nothing usable to consume. One-line fix,
 left for the clink that attempts the rule so that a rung checks it rather than an eye.
 
+### And a soundness bug, found by asking what `Judge.lambdaLit`'s obligation needs
+
+The rule concludes `.clos idx (envToSpine Γ) …` for `.send none "lambda" [] (some block)` with
+**no premise about the name being free**. So the rung has to know how a conformant machine
+dispatches `lambda` — and `StateOk` permits a machine whose `Object` carries a user method of
+that name. In CRuby a toplevel `def` is a private instance method **on `Object`**, and `Kernel`
+is included *in* `Object`, so the user's definition shadows `Kernel#lambda`:
+
+```ruby
+def lambda; 5; end
+f = lambda { 1 }
+f.call + 1
+```
+
+CRuby: `NoMethodError` (type-stuck). `validate`: **`true`, type `Integer`**. Two entries came
+out of it, and the pair is the interesting part:
+
+* **`found-issues.md` §A5 (model).** The model cannot shadow the name *at all* —
+  `Interp/Send.lean`'s `finishSend` special-cases `"lambda"`/`"proc"` at an implicit-self send
+  with a literal block **before any method lookup** — so it returns `2` where CRuby raises.
+* **`found-issues.md` §F2 (checker).** Against the *model*, `Judge.lambdaLit` is right, and
+  that is why the rule's obligation is still climbable: the model's dispatch is unshadowable.
+  The wrong answer is about **Ruby**, and it arrives through the divergence. This is the first
+  entry where the two soundness statements come apart, and the moral is about the other gate:
+  `run_agreement.sh` (CRuby vs the model, 235/235) is exactly what would have caught it, and it
+  never saw this program.
+
+The checker needs the premise **either way** — the day the model shadows, `lambdaLit` becomes
+unsound against the model too — and it is `Judge.bareName`'s shape (`defGet? κ.defs m = none`,
+plus the class table for a `lambda` defined in a class body). Not fixed here: this clink ran
+under an explicit "do not modify `Ratchet/`" constraint, and the premise moves 14 derivations
+plus the two committed ladder numbers. It wants its own clink with a negative-control rung, so
+that the fix is pinned by a program rather than believed.
+
 ### State
 
 **24 of 83 `Judge` rules discharged** (`selfExpr`, `ivarRead`, `regexpLit`, `JudgeSeq.last`,
@@ -4529,5 +4563,6 @@ complete. Corpus agreement **235/235**, hand derivations **177/177**, negative c
 `Denote/Rules/Cls.lean`, `Denote/Rules/Rescue.lean`. Modified: `Denote/Sem/State.lean`
 (`SelfSpineOk`, `CoreOk`, `ivarGet?_killClosOverSpine_none`), `Denote/Sanity.lean`
 (`selfIvarsEmptyB`, seven-clause `coreOkB`), `Denote/Rules.lean`, `Denote/Rules/Nil.lean` (the
-corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `AGENTS.md`. Axiom-clean
+corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `found-issues.md`
+(§A5, §F2), `AGENTS.md`. Axiom-clean
 throughout; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.

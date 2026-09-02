@@ -551,6 +551,16 @@ here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **t
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
 
+**A second soundness bug, found the same way** (clink 48, `found-issues.md` §A5/§F2).
+`Judge.lambdaLit` has no premise that the name `lambda` is free, and in CRuby a toplevel `def`
+shadows `Kernel#lambda` — so `def lambda; 5; end; f = lambda { 1 }; f.call + 1` is certified
+`Integer` and raises `NoMethodError`. The twist is where it lands: the **model** special-cases
+`lambda`/`proc` before any method lookup, so against the model the rule is *right* and its
+obligation is still climbable; the wrong answer is about Ruby and arrives through the model
+divergence. First entry where the two soundness statements come apart — and the gate that would
+have caught it is `run_agreement.sh`, which never saw the program. The checker needs
+`Judge.bareName`'s premise shape either way.
+
 **`vasgnAlias` is discharged, and it is the rung the soundness fix was for** (clink 47).
 `Judge.vasgn`'s twin — `__dt_t1 = x`, right-hand side a `.var` — is the first rule on the
 ladder that **writes** to the frames, and its proof is where `capStale` earns its keep: the

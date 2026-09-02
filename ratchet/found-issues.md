@@ -147,6 +147,49 @@ that is a workaround, and `Version` exists to be sorted.
 B1 is separable and small. B4 is the enumerator protocol and is probably the largest of the
 four.
 
+### A5. A user `def lambda` does not shadow `Kernel#lambda` in the model — and the checker trusts the model
+
+**Status:** open (model side). **Severity:** high — it is the reason §F2 below is a *wrong
+answer about Ruby* rather than only about the model. **Found by:** asking what
+`Judge.lambdaLit`'s semantic obligation needs of a conformant machine (clink 48): the rule has
+no premise excluding a user definition of `lambda`, so the rung has to know how the machine
+dispatches the name.
+
+```ruby
+def lambda
+  5
+end
+f = lambda { 1 }
+f.call + 1
+```
+
+| | |
+|---|---|
+| CRuby | `NoMethodError: undefined method 'call' for an instance of Integer` |
+| the Lean model | `{"result_repr":"2"}` — the builtin won, `f` is a Proc |
+
+A toplevel `def` installs a **private instance method on `Object`**, and `Kernel` is a module
+included *in* `Object`, so `Object`'s own entry comes first in the ancestor walk: in CRuby the
+user's `lambda` shadows `Kernel#lambda`, and `lambda { 1 }` returns `5`. The model cannot do
+that, and not by accident of lookup order — `Interp/Send.lean`'s `finishSend` special-cases
+the name **before any lookup at all**:
+
+```
+| .lit ps ls body =>
+  let mkLam := implicit == .implicit && mname == "lambda"
+  let (v, m) := reifyBlock m ps ls body mkLam
+  if implicit == .implicit && (mname == "lambda" || mname == "proc") then
+    .next (withCtl m (.value v))
+```
+
+So `lambda`/`proc` at an implicit-self send with a literal block are **unshadowable** in the
+model. `Proc.new` is in the same arm but keyed on the receiver, which is the right shape; these
+two are keyed on the name.
+
+Same class as A1–A4 (both executors run, they disagree) but note the direction: here the model
+is the *more* permissive one, and it hides an error CRuby raises. Nothing in the corpus covers
+it, because no rung defines a method named after a Kernel builtin.
+
 ### B5. Two previously-recorded gates appear to be **closed** — worth confirming
 
 `homebrew/slice-driver/probes/README.md` records `Integer#[]` and `Array#[] non-int index`
@@ -386,3 +429,49 @@ denotation rather than the checker:
   identity as `Value` equality and no longer inherits the quirk; the model side is **open** and
   belongs with the §A entries.
 
+### F2. `validate` accepts a program CRuby takes to `NoMethodError` — because the model hides it
+
+**Status:** open. **Severity:** high, with a caveat that is the entry's whole point.
+**Found by:** the same question as A5 (clink 48).
+
+The program is A5's:
+
+```ruby
+def lambda
+  5
+end
+f = lambda { 1 }
+f.call + 1
+```
+
+| | |
+|---|---|
+| CRuby | `NoMethodError` — type-stuck |
+| the Lean model | returns `2` |
+| `lake exe ratchet --stdin` | `{"type":"Integer","validate":true}`, with `f : <closure#0>` |
+
+**The caveat, and why it is not §F1 again.** This ladder's soundness claim is against the
+*model* — that is what a rung of the semantic ratchet discharges — and against the model
+`Judge.lambdaLit` is **right**: the model's `finishSend` cannot dispatch an implicit-self
+`lambda` with a literal block to anything but the builtin (A5), so the rule's conclusion really
+does hold of `stepFn`. The wrong answer is about **Ruby**, and it arrives through the model
+divergence. So this is the first entry where the two soundness statements come apart, and it is
+worth stating what each one is worth: `run_agreement.sh` (CRuby vs the model, 235/235) is
+exactly the gate that would have caught it, and it never saw this program.
+
+**What each side needs.**
+
+* **The model** should let a user definition shadow `Kernel#lambda` (A5). That is the fix that
+  makes the two executors agree.
+* **The checker needs a premise either way**, and this is the part not to lose: the day the
+  model shadows, `Judge.lambdaLit` becomes unsound *against the model* too — its obligation
+  turns false at any conformant machine whose `Object` carries a user `lambda`. The premise is
+  the same shape as `Judge.bareName`'s: `defGet? κ.defs m = none`, plus the corresponding
+  absence from `κ.classes` for a `lambda` defined in a class body. `Judge.closCall`'s `call`
+  has the same exposure through `κ.classes` and is worth checking in the same pass.
+
+Not fixed here, on purpose: clink 48 was under an explicit "do not modify `Ratchet/`"
+constraint, and a premise added to `lambdaLit` moves the `Rungs.lean` derivations (14 uses of
+`Judge.lambdaLit` on file) and the ladder's two committed numbers. It wants its own clink, with
+a negative-control rung for the program above — which is what makes the fix pinned rather than
+believed.
