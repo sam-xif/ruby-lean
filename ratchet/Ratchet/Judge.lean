@@ -2371,6 +2371,15 @@ def ivarAgreeSelf (x : String) (τ : Ty) : Option Ty → Bool
   | none => true
   | some σ => ivarAgree x τ σ
 
+/-- **Everything the context records that could hold a spine mentioning `@x`.** Five places,
+and the list is not a guess: it is the `StateOk` components whose statement applies `denM` to a
+type the *context* supplies — the environment, the right-hand side's own type, `self`'s type,
+the block's type, and the constant table. The others read only the heap's shape, which an
+instance-variable write leaves alone. -/
+def ivarAsgnOk (κ : Ctx) (x : String) (τ : Ty) (Γ' : Env) : Bool :=
+  ivarAgreeEnv x τ Γ' && ivarAgree x τ τ && ivarAgreeSelf x τ κ.selfTy &&
+  ivarAgreeSelf x τ κ.blockTy && ivarAgreeEnv x τ κ.consts
+
 /-- The expression whose type is a body's **result**.
 
 For almost every body that is the body itself. The one case that differs is a body which is
@@ -3951,9 +3960,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       not absence). -/
   | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
-      (hst : ivarAgreeEnv x τ Γ' = true := by rfl) →
-      (hstτ : ivarAgree x τ τ = true := by rfl) →
-      (hself : ivarAgreeSelf x τ κ.selfTy = true := by rfl) →
+      (hst : ivarAsgnOk κ x τ Γ' = true := by rfl) →
       Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.

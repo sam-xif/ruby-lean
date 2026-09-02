@@ -623,11 +623,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     · rename_i hrhs
       split at h
       · rename_i hst
-        simp only [Bool.and_eq_true] at hst
         injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact .ivarAsgn (chk_sound hrhs) hst.1.1 hst.1.2 hst.2
+        exact .ivarAsgn (chk_sound hrhs) hst
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact .seq (chkSeq_sound h)

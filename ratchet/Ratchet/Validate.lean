@@ -280,9 +280,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     -- §F17: a local (or the right-hand side's own type) can record a claim about `@x`, which
     -- this assignment invalidates — `capStale`'s guard one piece of state over.
     | some (τ, Γ', I') =>
-      if ivarAgreeEnv x τ Γ' && ivarAgree x τ τ && ivarAgreeSelf x τ κ.selfTy then
-        some (τ, Γ', ivarSet I' x τ)
-      else none
+      if ivarAsgnOk κ x τ Γ' then some (τ, Γ', ivarSet I' x τ) else none
     | none => none
   | f + 1, .seq es => chkSeq f κ Γ I es
   | f + 1, .if' c t (some e) =>
