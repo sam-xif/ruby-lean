@@ -364,6 +364,25 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     | .fwd => .unsupported "... forwarding to super"
     | _ => .next (withKont m (.eval e) (.superArgK acc rest' blk))
 
+/-- `Class.new { … }` / `Module.new { … }`: allocate the anonymous class, then run the block
+    with `self` and the `def` target rebound to it. A named function rather than an arm of
+    `finishSend`, because the continuation-framing proof has to `cases` on the
+    `Builtins.run` result to keep the two sides in step, and that needs the call spelled out
+    (`Proof/KontFrameSend.lean`). -/
+def classNewBlock (m : Machine) (recv : Value) (args : List Value) (v : Value)
+    (isClass : Bool) : StepResult :=
+  match Builtins.run (if isClass then "Class#new" else "Module#new") recv args m with
+  | .ok newV m =>
+    match newV, procClosure? m v with
+    | .ref newK, some cl =>
+      -- the block's value is discarded; `Class.new` yields the class [V]
+      let m := { m with kont := .newK newV :: m.kont }
+      callClosure m cl [newV] none (some newV) (some newK)
+    | _, _ => .unsupported "Class.new did not yield a class"
+  | .err cls msg m => .next (raiseErr m cls msg)
+  | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+  | .unsupported r => .unsupported r
+
 /-- All args in → resolve the pending block and dispatch. A literal block is
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
     a block capture rather than call; a `&e` block-pass evaluates `e` last
@@ -409,18 +428,7 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
       -- run the block with `self`/the `def` target rebound to it — i.e. exactly
       -- `class_eval` (L72). The block also receives the class as its argument [V].
       match recv with
-      | .ref k =>
-        match Builtins.run (if k == Boot.classId then "Class#new" else "Module#new") recv args m with
-        | .ok newV m =>
-          match newV, procClosure? m v with
-          | .ref newK, some cl =>
-            -- the block's value is discarded; `Class.new` yields the class [V]
-            let m := { m with kont := .newK newV :: m.kont }
-            callClosure m cl [newV] none (some newV) (some newK)
-          | _, _ => .unsupported "Class.new did not yield a class"
-        | .err cls msg m => .next (raiseErr m cls msg)
-        | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
-        | .unsupported r => .unsupported r
+      | .ref k => classNewBlock m recv args v (k == Boot.classId)
       | _ => .unsupported "Class#new with a block"
     else if mname == "new" then
       -- `X.new { … }` for any other class. If the receiver has a **user**

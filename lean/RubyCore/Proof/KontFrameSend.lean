@@ -116,6 +116,41 @@ macro_rules
            all_goals (try subst_vars)
            all_goals (try (frame_simp; try rfl)))))
 
+/-- The generic walker for this file: every stage, including the conditional lemmas. -/
+syntax "send_walk" ident ident : tactic
+macro_rules
+  | `(tactic| send_walk $K $hK) =>
+    `(tactic| repeat' first
+        | rfl
+        | (frame_simp; done)
+        | simp only [frameLem]
+        | dsimp only
+        | (rw [invoke_frame $K $hK]; try rfl)
+        | (rw [invokeDispatch_frame $K $hK]; try rfl)
+        | (rw [dispatchMiss_frame $K $hK]; try rfl)
+        | (rw [withCtl_mk $K]; try rfl)
+        | (rw [withKont_mk $K]; try rfl)
+        | (rw [callClosure_frame_mk_cons $K]; try rfl)
+        | (rw [enterUserMethod_frame_mk_cons $K]; try rfl)
+        | (rw [foldMachine_frame $K _ (fun m₂ a => by simp only [frameLem])])
+        | (rw [foldOptM_frame_some $K])
+        | (rw [foldPair_frame $K])
+        | (intro p m₂ a; frame_simp; done)
+        | (intro m₂ a; frame_simp; done)
+        | (intro a; frame_simp; done)
+        | split)
+
+/-- Walk, close, and repeat. `frame_close`'s `simp_all`+`subst_vars` pair *exposes* new
+applications — a `callClosure` or an `invoke` that was hidden behind a `pushK K m = m'`
+equation only becomes rewritable once that equation is substituted — and only the walker can
+rewrite those. Three rounds is what the largest of these functions needs. -/
+syntax "send_prove" ident ident : tactic
+macro_rules
+  | `(tactic| send_prove $K $hK) =>
+    `(tactic| (frame_simp
+               iterate 3 (try (send_walk $K $hK)
+                          try (frame_close $K))))
+
 /-! ### `invoke` and its two `where` helpers
 
 `invokeDispatch` (the dispatch decision — visibility, the ancestor walk, the tombstone and
@@ -203,6 +238,191 @@ theorem invoke_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv : Va
       | (rw [withKont_mk K]; try rfl)
       | split)
     frame_close K
+
+/-! ### The rest of the layer
+
+`superFound` and `kwAdd` are heap-only / machine-free. Everything else pushes a continuation
+or dispatches, and each is non-recursive, so they go through on the walker plus `frame_close`.
+`finishSend`, `startArgs` and `startSuperArgs` reach `invoke`/`doSuper`, so they inherit
+`CatchFree K` too. -/
+
+@[simp, frameLem] theorem kwAdd_frame (kwacc : List (Value × Value)) (key val : Value) :
+    kwAdd kwacc key val = kwAdd kwacc key val := rfl
+
+set_option maxHeartbeats 4000000 in
+theorem doSuper_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) :
+    doSuper (pushK K m) args blk kw = frameR K (doSuper m args blk kw) := by
+  rw [doSuper.eq_def, doSuper.eq_def]
+  send_prove K hK
+
+set_option maxHeartbeats 4000000 in
+theorem startSuperArgs_frame (K : List Kont) (hK : CatchFree K) (m : Machine)
+    (acc : List Value) (rest : List Expr) (blk : Option Value) :
+    startSuperArgs (pushK K m) acc rest blk = frameR K (startSuperArgs m acc rest blk) := by
+  rw [startSuperArgs.eq_def, startSuperArgs.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [doSuper_frame K hK]; try rfl)
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+/-- `classNewBlock`, and the recipe for a `Builtins.run` scrutinee. Framing turns the pushed
+side's `Builtins.run … (pushK K m)` into `bpush K (Builtins.run … m)`, and a `split` on *that*
+peels the two sides' matches independently: it pairs a `.ok` arm of one with an `.err` arm of
+the other and leaves goals whose hypotheses are contradictory only up to a conjunction it
+cannot use. `generalize` the shared call and `cases` the result instead, and every arm reduces
+on both sides at once. This is why the arm is a named function in the source. -/
+@[simp, frameLem] theorem classNewBlock_frame (K : List Kont) (m : Machine) (recv : Value) (args : List Value)
+    (v : Value) (isClass : Bool) :
+    classNewBlock (pushK K m) recv args v isClass =
+      frameR K (classNewBlock m recv args v isClass) := by
+  rw [classNewBlock.eq_def, classNewBlock.eq_def]
+  rw [run_frame K]
+  generalize Builtins.run (if isClass then "Class#new" else "Module#new") recv args m = br
+  cases br with
+  | ok newV m₂ =>
+    simp only [bpush, procClosure?_frame]
+    (repeat' first
+      | rfl
+      | (frame_simp; done)
+      | simp only [frameLem]
+      | dsimp only
+      | (rw [callClosure_frame_mk_cons K]; try rfl)
+      | split)
+    frame_close K
+  | err cls msg m₂ => simp only [bpush]; frame_simp
+  | throwV tv m₂ => simp only [bpush]; frame_simp
+  | unsupported r => rfl
+
+set_option maxHeartbeats 4000000 in
+theorem finishSend_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv : Value)
+    (implicit : SendSite) (mname : String) (args : List Value) (pblk : PendingBlk)
+    (kw : List (Value × Value)) :
+    finishSend (pushK K m) recv implicit mname args pblk kw =
+      frameR K (finishSend m recv implicit mname args pblk kw) := by
+  rw [finishSend.eq_def, finishSend.eq_def]
+  send_prove K hK
+  all_goals (try (rw [invoke_frame K hK]))
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem startKwargs_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv : Value)
+    (implicit : SendSite) (mname : String) (posArgs : List Value)
+    (kwacc : List (Value × Value)) (entries : List KwEntry) (pblk : PendingBlk) :
+    startKwargs (pushK K m) recv implicit mname posArgs kwacc entries pblk =
+      frameR K (startKwargs m recv implicit mname posArgs kwacc entries pblk) := by
+  rw [startKwargs.eq_def, startKwargs.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [finishSend_frame K hK]; try rfl)
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem startArgs_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv : Value)
+    (implicit : SendSite) (mname : String) (acc : List Value) (rest : List Expr)
+    (pblk : PendingBlk) :
+    startArgs (pushK K m) recv implicit mname acc rest pblk =
+      frameR K (startArgs m recv implicit mname acc rest pblk) := by
+  rw [startArgs.eq_def, startArgs.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [finishSend_frame K hK]; try rfl)
+    | (rw [startKwargs_frame K hK]; try rfl)
+    | (rw [invoke_frame K hK]; try rfl)
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem doYield_frame (K : List Kont) (m : Machine) (args : List Value) :
+    doYield (pushK K m) args = frameR K (doYield m args) := by
+  rw [doYield.eq_def, doYield.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [callClosure_frame_mk_cons K]; try rfl)
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem startYield_frame (K : List Kont) (m : Machine) (acc : List Value)
+    (rest : List Expr) : startYield (pushK K m) acc rest = frameR K (startYield m acc rest) := by
+  rw [startYield.eq_def, startYield.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [doYield_frame K]; try rfl)
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem continueArray_frame (K : List Kont) (m : Machine) (acc : List Value)
+    (rest : List Expr) :
+    continueArray (pushK K m) acc rest = frameR K (continueArray m acc rest) := by
+  rw [continueArray.eq_def, continueArray.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+set_option maxHeartbeats 4000000 in
+theorem forStep_frame (K : List Kont) (m : Machine)
+    (targets : List (TargetKind × String)) (body : Expr) (rest : List Value) (coll : Value) :
+    forStep (pushK K m) targets body rest coll =
+      frameR K (forStep m targets body rest coll) := by
+  rw [forStep.eq_def, forStep.eq_def]
+  frame_simp
+  (repeat' first
+    | rfl
+    | (frame_simp; done)
+    | simp only [frameLem]
+    | dsimp only
+    | (rw [withCtl_mk K]; try rfl)
+    | (rw [withKont_mk K]; try rfl)
+    | split)
+  frame_close K
+
+#print axioms doSuper_frame
+#print axioms finishSend_frame
+#print axioms startArgs_frame
+#print axioms doYield_frame
+#print axioms forStep_frame
 
 #print axioms invokeDispatch_frame
 #print axioms invokeMaybeNew_frame
