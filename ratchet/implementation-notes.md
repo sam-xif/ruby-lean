@@ -5248,10 +5248,11 @@ because the walk carries the machine as a captured argument), `runRegex`'s two m
 and the allocating-fold family (`allocFold_frame` polymorphically, plus four concrete
 instances because `simp` matches syntactically).
 
-**The five dispatchers are stated, not proved, with the residual counted**: `runModules`
-leaves 1 goal, `runStrings` 5, `runRegex` 17 — and every residual is either a machine-taking
-`where` helper (`scanAll`, `splitBy`, `splitOn`, `subst`) or one more bespoke allocating fold.
-Not a 24k-line risk; a few hundred more lines of the same shape.
+**The five dispatchers are stated, not proved, with the residual counted**: `runNumerics`
+closes; `runModules` leaves 1 goal (its delegation to `runRegex`), `runCollections` 1,
+`runStrings` 5, `runObjects` 12, `runRegex` 17 — and every residual is either a machine-taking
+`where` helper (`runRegex.scanAll`/`splitBy`/`splitOn`/`subst`) or one more bespoke allocating
+fold. Not a 24k-line risk; a few hundred more lines of the same shape.
 
 Three tooling facts, each of which cost real time and none of which is in any manual:
 
@@ -5263,6 +5264,12 @@ Three tooling facts, each of which cost real time and none of which is in any ma
   per such function.
 * **A general lemma is not enough where `simp` has to match syntactically** — `allocFold_frame`
   covers only the folds whose step really is a function of `(machine, element)`.
+* **And the biggest multiplier: a fold lemma keyed on a lambda is invisible to `simp`.**
+  `List.foldlM f (pushK K m) l` with `f` a lambda is rewritten by `rw` and not by
+  `simp`/`simp_all` — the discrimination tree does not index under the lambda — so the
+  contradictory cross-cases a `split` leaves behind do not close automatically even with the
+  right lemma in the set. That is a `simp` fact, not an interpreter fact, and it is what makes
+  the remaining Builtins work per-arm rather than per-file.
 
 What this does *not* buy: a rung. `KontFrameCatchFree` needs the `Interp` layer too, and that
 is the harder half — the statements there are **conditional** (`applyKont`/`unwind` at

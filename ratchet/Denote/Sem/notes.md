@@ -314,10 +314,10 @@ answer is that the layer is the *easy* one:
   two match helpers, and the allocating-fold family (`allocFold_frame` polymorphically plus
   four concrete instances). 51 theorems, axiom-clean, ~430 lines, builds in ~3 s.
 * **What the five dispatchers cost, counted exactly**: with all of the above in scope,
-  `runModules` leaves **1** goal (its delegation to `runRegex`), `runStrings` **5**, `runRegex`
-  **17** — and every residual is either a machine-taking `where` helper (`scanAll`, `splitBy`,
-  `splitOn`, `subst`) or one more bespoke allocating fold. So the remaining Builtins cost is
-  one small induction per fold, on the order of a few hundred lines.
+  `runNumerics` **closes**; `runModules` leaves **1** goal (its delegation to `runRegex`),
+  `runCollections` **1**, `runStrings` **5**, `runObjects` **12**, `runRegex` **17** — and
+  every residual is either a machine-taking `where` helper (`runRegex.scanAll`/`splitBy`/
+  `splitOn`/`subst`) or one more bespoke allocating fold.
 
 Three tooling facts worth having in advance, because each cost an hour:
 
@@ -331,6 +331,13 @@ Three tooling facts worth having in advance, because each cost an hour:
    covers only the folds whose step really is a function of `(machine, element)`; the
    `Option`-matching ones push their `nil` *inside* the match and need the induction written
    again at that shape.
+4. **A fold lemma keyed on a lambda is invisible to `simp`.** `List.foldlM f (pushK K m) l`
+   with `f` a lambda is rewritten by `rw` and *not* by `simp`/`simp_all` — the discrimination
+   tree does not index under the lambda. So the contradictory cross-cases a `split` leaves
+   (the pushed fold answered `some`, the unpushed one `none`) do not close automatically even
+   with the lemma in the simp set, and the remaining work is per-arm rather than per-file.
+   This is the single biggest cost multiplier found, and it is a `simp` fact rather than an
+   interpreter fact.
 
 **Three things the measurement does not settle**, and the next attempt should start from them
 rather than from the good news:

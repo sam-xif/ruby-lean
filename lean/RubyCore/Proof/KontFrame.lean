@@ -204,6 +204,28 @@ theorem putsGo_frame (K : List Kont) : ∀ (fuel : Nat) (m : Machine) (args : Li
     | none => rfl
     | some xs => simp only [hf]
 
+/-- `Kernel#print`'s fold: `to_s` each argument and emit it, failing the whole call if any
+`to_s` is impure. `Option`-monadic rather than the plain `foldl` the allocating folds use, so
+it gets its own induction. -/
+@[simp] theorem printFold_frame (K : List Kont) :
+    ∀ (args : List Value) (m : Machine),
+      List.foldlM (fun (m : Machine) (a : Value) =>
+          match toSP m a with
+          | .ok s => some (m.emit s)
+          | .error _ => none) (pushK K m) args =
+        (List.foldlM (fun (m : Machine) (a : Value) =>
+          match toSP m a with
+          | .ok s => some (m.emit s)
+          | .error _ => none) m args).map (pushK K)
+  | [], _ => rfl
+  | a :: rest, m => by
+    simp only [List.foldlM_cons, toSP_frame]
+    cases toSP m a with
+    | error e => rfl
+    | ok str =>
+      simp only [emit_frame]
+      exact printFold_frame K rest (m.emit str)
+
 /-! ## The rest of the `Builtins` mid-level
 
 The four continuation-taking helpers (`withIndex`, `numBin`, `numCmp`, `binArg`) get no lemma
@@ -494,14 +516,31 @@ macro_rules
       flattenAll_frame, putsImpl_frame, raiseClass_frame, raiseImpl_frame, newImpl_frame,
       joinImpl_frame, sortImpl_frame, matchFrameId_frame, setLastMatchValue_frame,
       setMatchGlobals_frame, allocRegexp_frame, allocMData_frame, setLastMatch_frame,
-      charsFold_frame, namesFold_frame, capsFold_frame, capsFoldArray_frame])
+      charsFold_frame, namesFold_frame, capsFold_frame, capsFoldArray_frame,
+      printFold_frame])
+
+/-- The same set, applied to the **hypotheses** too. `split` leaves the two runs' outcomes as
+hypotheses, and the contradictory cross-cases (the pushed fold answered `some`, the unpushed
+one `none`) close only by rewriting *there* — which `simp only` on the goal does not do, and
+which is why this variant exists. -/
+syntax "frame_all" : tactic
+macro_rules
+  | `(tactic| frame_all) => `(tactic| try simp_all (maxSteps := 400000)
+      [pushK_heap, pushK_ctl, pushK_stack, pushK_frames, pushK_globals, pushK_out,
+       pushK_currentExc, pushK_preludeMode, pushK_currentFrame, bpush_ok, bpush_err,
+       bpush_throwV, bpush_unsupported, allocStrEnc_frame, allocStr_frame, allocArr_frame,
+       allocHsh_frame, allocExc_frame, dupObj_frame, okStr_frame, okStrEnc_frame,
+       okStrFrom_frame, inspectP_frame, toSP_frame, coerceFailed_frame, frozenErr_frame,
+       emit_frame, flattenAll_frame, matchFrameId_frame, setLastMatchValue_frame,
+       setMatchGlobals_frame, allocRegexp_frame, allocMData_frame, setLastMatch_frame,
+       charsFold_frame, namesFold_frame, capsFold_frame, capsFoldArray_frame,
+       printFold_frame, putsGo_frame])
 
 syntax "frame_arms2" : tactic
 macro_rules
   | `(tactic| frame_arms2) =>
     `(tactic| (repeat' first | rfl | split) <;>
-        (try frame_simp2) <;> (try rfl) <;> (try simp) <;> (try rfl) <;>
-        (try simp_all (maxSteps := 400000)))
+        (try frame_simp2) <;> (try rfl) <;> frame_all <;> (try rfl))
 
 /-- `runRegex`'s two `where` helpers that take a machine. `allMatches` and `runSearch` take
 none, so they are the same computation on both sides and need no lemma — which is the useful
@@ -547,11 +586,18 @@ is untested, and that is where the 24k lines actually are"). It is:
   exceeded", and neither `maxSteps` nor `simp.maxSteps` is a settable option. The fix is to
   case-split the conditions by hand (see `newImpl_frame`), which is mechanical but is ~15
   lines per such function rather than one tactic call.
-* **The residual, counted exactly.** With the recipe and the four fold lemmas above in scope:
-  `runModules` leaves **1** goal (its delegation to `runRegex`), `runStrings` leaves **5**,
-  `runRegex` leaves **17** — and every one of the 17 is either one of its four
-  machine-taking `where` helpers (`scanAll`, `splitBy`, `splitOn`, `subst`) or one more
-  allocating fold. Nothing else.
+* **The residual, counted exactly.** With the recipe and the fold lemmas above in scope:
+  `runNumerics` **closes**; `runModules` leaves **1** goal (its delegation to `runRegex`),
+  `runCollections` **1** (to `runModules`), `runStrings` **5**, `runObjects` **12**,
+  `runRegex` **17** — and every residual is either a machine-taking `where` helper
+  (`runRegex.scanAll`/`splitBy`/`splitOn`/`subst`) or one more allocating fold. Nothing else.
+* **The friction that is left is `simp`'s, not the interpreter's**, and it is worth knowing
+  before the next attempt: a fold lemma whose left-hand side is `List.foldlM f (pushK K m) l`
+  with `f` a **lambda** is found by `rw` and *not* by `simp`/`simp_all` (the discrimination
+  tree does not index under the lambda), so the contradictory cross-cases a `split` leaves
+  behind — the pushed fold answered `some`, the unpushed one `none` — do not close
+  automatically even with the right lemma in the simp set. That is what the eight `False`
+  goals in `runObjects` are, and it is why the remaining work is per-arm rather than per-file.
 * **What is actually left is the allocating folds.** Each dispatcher builds arrays by folding
   an allocation over a list, in a handful of bespoke shapes (`String#chars`, a pattern's group
   names, a match's capture spans as both `List` and `Array`, a hash's entries, `scan`'s nested
