@@ -804,3 +804,81 @@ outcome — the `NoMethodError`/`ArgumentError`/`TypeError` family
 story ultimately wants. `StuckFree` (`State.lean`) and `StuckFreeTarget` (`../Adequacy.lean`)
 state it; nothing counts it. Folding it in would make every rung carry two proofs of different
 shapes under one number, and the ladder's number is supposed to mean one thing.
+
+## The fifth stall point — **cleared** (clink 54)
+
+`RubyCore.Proof.stepFn_frame` is `KontFrameCatchFree`'s statement, proved over the whole of
+`stepFn` and axiom-clean; `Denote/Sem/Decompose.lean`'s `run_split` is the decomposition
+`EvalsDecompose` was stating. `Judge.vasgn` is the first rung to spend them. See
+`implementation-notes.md` clink 54 for the chain, the six tools that generalised out of it, and
+the two facts the wall's own statement did not predict (`unwind`'s `retJ` arm *steps* at an
+empty continuation, so the side condition is needed after all; and `.done` is constructed at
+one site in the interpreter, which is what makes a run *invertible*).
+
+Three hypotheses, not two: `CatchFree K` (predicted in clink 52), the side condition
+(predicted, for the wrong arm), and **`JumpOpaque K`** — `K` cannot turn an escaping jump into
+a returned value. The last one holds by computation for every continuation a `Judge` rule
+pushes, since those are literals.
+
+## The eleventh stall point — **the join can synthesize an alias nobody promised**
+
+`Judge.if'`'s conclusion records `joinEnv Γ₁ Γ₂`, and the obligation is **false as stated**,
+for a reason that has nothing to do with continuations or with narrowing. Take
+
+```
+Γ₁ = [(x, .union (.sameAs y .int) (.sameAs y .int))]     Γ₂ = [(x, .sameAs y .int)]
+```
+
+`joinT` finds no structural join (`σ ≠ τ`, neither is `.nilT`, neither is the other's
+`.nilable`), so it takes the **union arm**: `unionMems Γ₁(x) ++ unionMems Γ₂(x)` is
+`[A, A, A]`, `dedupTys` makes it `[A]`, and `unionOf [A] = A`. So the join records
+`x : .sameAs y .int` — a claim that `m.getLocal x = m.getLocal y`.
+
+What supports it? `EnvOk Γ₁ m` gives `denM (stripAlias (.union A A)) m (m.getLocal x)`, which
+is `denM .int`, and **no identity claim at all**: `EnvOk`'s second conjunct fires only when the
+recorded type *is* a `.sameAs`, and a union of aliases is not. So a machine with
+`x ↦ 1, y ↦ 2` conforms to `Γ₁` and refutes the join.
+
+Unreachable through `chk` — `joinT` of two aliases with the same target is caught by
+`joinTy`'s `σ == τ` arm long before the union one, and nothing else builds a union of
+identical aliases — so this is `found-issues.md` §F5's shape again: a rule unsound in
+isolation whose soundness in the checker rests on an unstated invariant.
+
+**Two candidate fixes, and the cheap one is not obviously right.**
+
+1. **Strengthen `EnvOk`'s identity conjunct over `unionMems`**: require the identity for every
+   alias *among the recorded type's members*, not only for a top-level one. Then the
+   pathological machine is excluded and the join lemma goes through — the union arm's singleton
+   dedup forces the alias to be a member of `Γ₁`'s entry, which is exactly what the
+   strengthened clause asks about. **No `Ratchet/` change, so no gate risk.** The cost is that
+   `StateOk_setLocal` must then *establish* the stronger clause, and `Judge.vasgn`'s §F5
+   premise (`isAliasTy τ = false`) is no longer enough — it would have to become "no alias
+   anywhere in `τ`", which is a different premise with a different blast radius.
+2. **Make `joinT` strip aliases in its union arm.** Fixes it at the source, and is arguably
+   what the union arm meant: a union's *members* are value types. But it changes the checker's
+   output types, so it is a gate-moving change and needs the corpus rerun.
+
+Both are real; neither is a one-liner. Recorded rather than attempted, because the rungs behind
+it (`if'`, `ifNoElse`) are also behind **narrowing soundness**, which is the bigger of the two
+and independent.
+
+## The twelfth stall point — **narrowing soundness**, and it is not a stall so much as unwritten work
+
+`Judge.if'`/`ifNoElse` type their branches at `narrowEnvs κ.classes c Γc` and
+`narrowSpine κ.classes c Ic`, so using a branch premise needs `StateOk` at the *narrowed*
+environment. Nothing on file establishes that, and `Denote/Sem/State.lean` L52 already says so
+("what a proof of `Judge.narrowEnvs`' soundness will have to consume", and `EnvOk`'s identity
+conjunct was put there for it).
+
+What it needs, in the order the effort falls:
+
+* Six type-level lemmas — `truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`, `isATy`, `notATy` —
+  each saying the refined type still denotes the value, *given* what the branch tells you
+  about it. These are `denM` facts and need no run.
+* **Three run inversions**, one per recognized condition shape: `.var k x` (no dispatch — the
+  value *is* `m.getLocal x`, so this one is nearly free), `x.nil?`, and `x.is_a?(C)` / `C === x`
+  (which is the same dispatch, sides swapped). The last two need the run of a concrete builtin
+  send inverted, which is the same machinery the whole `call*` family needs — so it is not a
+  detour but a down payment.
+* The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
+  and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
