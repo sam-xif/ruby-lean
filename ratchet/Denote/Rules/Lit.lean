@@ -56,7 +56,7 @@ theorem Sem.Judge.intLit : Obl.Judge.intLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .int n) rfl h
-  exact ⟨rfl, by simp [denM, isIntV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isIntV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.fltLit : Obl.Judge.fltLit := by
   intro κ Γ I bits
@@ -66,7 +66,7 @@ theorem Sem.Judge.fltLit : Obl.Judge.fltLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .flt (Float.ofBits bits)) rfl h
-  exact ⟨rfl, by simp [denM, isFltV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isFltV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.symLit : Obl.Judge.symLit := by
   intro κ Γ I s
@@ -76,7 +76,7 @@ theorem Sem.Judge.symLit : Obl.Judge.symLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .sym s) rfl h
-  exact ⟨rfl, by simp [denM, isSymV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isSymV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.truLit : Obl.Judge.truLit := by
   intro κ Γ I
@@ -86,7 +86,7 @@ theorem Sem.Judge.truLit : Obl.Judge.truLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .bool true) rfl h
-  exact ⟨rfl, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.flsLit : Obl.Judge.flsLit := by
   intro κ Γ I
@@ -96,7 +96,7 @@ theorem Sem.Judge.flsLit : Obl.Judge.flsLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .bool false) rfl h
-  exact ⟨rfl, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.nilLit : Obl.Judge.nilLit := by
   intro κ Γ I
@@ -106,7 +106,7 @@ theorem Sem.Judge.nilLit : Obl.Judge.nilLit := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .nil) rfl h
-  exact ⟨rfl, by simp [denM, isNilV], StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, by simp [denM, isNilV], StateOk_reCtl hm _ _⟩
 
 /-! ## Reading a local
 
@@ -126,7 +126,7 @@ theorem Sem.Judge.var : Obl.Judge.var := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
-  refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
+  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _⟩
   have hden := (hm.env.1 x τ hget).1
   have : stripAlias τ = τ := by
     cases τ <;> simp_all [stripAlias, isAliasTy]
@@ -141,7 +141,7 @@ theorem Sem.Judge.varAlias : Obl.Judge.varAlias := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
-  refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
+  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _⟩
   have hden := (hm.env.1 x (.sameAs y τ) hget).1
   simp only [stripAlias] at hden
   simpa using denM_reCtl.mpr hden
@@ -181,7 +181,7 @@ theorem Sem.Judge.strLit : Obl.Judge.strLit := by
     (ext_push (m := m) (strObj s) hm.sat hm.core.basicSelf
       (fun c => by simp [strObj]) rfl rfl (by simpa [strObj] using hm.core.stringBasic)).trans
       (Ext_toReCtl _ _ _)
-  refine ⟨rfl, ?_, StateOk_ext hm hext⟩
+  refine ⟨Framed.of_ext hext, ?_, StateOk_ext hm hext⟩
   -- `.ref n` is a `String`: the name still resolves, and the fresh object's ancestor walk is
   -- `String`'s.
   have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s)) k = ancestors m.heap k :=

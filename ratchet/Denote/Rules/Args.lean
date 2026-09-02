@@ -60,7 +60,7 @@ theorem Sem.JudgeAll.cons : Obl.JudgeAll.cons := by
     obtain ⟨m₁, hEv, hRest⟩ := hev
     obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm v m₁ hEv
     obtain ⟨hst', hall, hok₂⟩ := htail.2 m₁ hok₁ vs m' hRest
-    exact ⟨by rw [hst', hst], ⟨m₁, hEv, hden, hall⟩, hok₂⟩
+    exact ⟨hst.trans hst', ⟨m₁, hEv, hden, hall⟩, hok₂⟩
 
 /-! ## Keyword arguments
 
@@ -82,7 +82,7 @@ theorem Sem.JudgeKw.pair : Obl.JudgeKw.pair := by
     obtain ⟨m₁, hEv, hRest⟩ := hev
     obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm w m₁ hEv
     obtain ⟨hst', hall, hok₂⟩ := htail m₁ hok₁ vs m' hRest
-    refine ⟨by rw [hst', hst], ?_, hok₂⟩
+    refine ⟨hst.trans hst', ?_, hok₂⟩
     rw [kwExprs]
     exact ⟨m₁, hEv, hden, hall⟩
 
@@ -132,7 +132,7 @@ theorem Sem.JudgePairs.cons : Obl.JudgePairs.cons := by
     obtain ⟨hst₁, hkd, hok₁⟩ := hkey.2 m hm kv m₁ hEk
     obtain ⟨hst₂, hvd, hok₂⟩ := hval.2 m₁ hok₁ vv m₂ hEv
     obtain ⟨hst₃, hall, hok₃⟩ := htail m₂ hok₂ vals m' hRest
-    refine ⟨by rw [hst₃, hst₂, hst₁], ?_, hok₃⟩
+    refine ⟨(hst₁.trans hst₂).trans hst₃, ?_, hok₃⟩
     rw [DenPairsAt]
     exact ⟨m₁, hEk, denM_joinT_left hkd, m₂, hEv, denM_joinT_left hvd,
            denPairsAt_mono ps hall⟩

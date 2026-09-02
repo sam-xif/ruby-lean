@@ -73,8 +73,8 @@ theorem vasgn_close {κ : Ctx} {Γ' : Env} {I' τ : Ty} {m m₀ : Machine} {x : 
     {w : Value}
     (hcap : capStale x τ τ = false) (hctx : capStaleCtx x τ κ = false)
     (halias : isAliasTy τ = false)
-    (hstack : m₀.stack = m.stack) (hden : denM τ m₀ w) (hSt' : StateOk κ Γ' I' m₀) :
-    (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) []).stack = m.stack
+    (hstack : Framed m m₀) (hden : denM τ m₀ w) (hSt' : StateOk κ Γ' I' m₀) :
+    Framed m (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) [])
       ∧ denM τ (reCtl ((reCtl m₀ (.value w) []).setLocal x w) (.value w) []) w
       ∧ StateOk κ (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ)
           (killClosOverSpine I' x τ)
@@ -82,9 +82,8 @@ theorem vasgn_close {κ : Ctx} {Γ' : Env} {I' τ : Ty} {m m₀ : Machine} {x : 
   have hMok : StateOk κ Γ' I' (reCtl m₀ (.value w) []) := StateOk_reCtl hSt' _ _
   have hdenM : denM τ (reCtl m₀ (.value w) []) w := denM_reCtl.mpr hden
   refine ⟨?_, ?_, ?_⟩
-  · show ((reCtl m₀ (.value w) []).setLocal x w).stack = m.stack
-    rw [setLocal_stack]
-    exact hstack
+  · exact (hstack.trans ((Framed_reCtl m₀ _ _).trans
+      (Framed_setLocal _ x w))).trans (Framed_reCtl _ _ _)
   · exact denM_reCtl.mpr (denM_setLocal hdenM hcap hdenM)
   · refine StateOk_reCtl (StateOk_setLocal hMok hdenM hcap hctx ?_ ?_) _ _
     · -- `τ` is not an alias (`found-issues.md` §F5), so stripping it is the identity

@@ -53,7 +53,7 @@ theorem Sem.JudgeAll.nil : Obl.JudgeAll.nil := by
     | skip
   intro m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil h
-  exact ⟨rfl, rfl, hm⟩
+  exact ⟨Framed_reCtl _ _ _, rfl, hm⟩
 
 theorem Sem.JudgeKw.nil : Obl.JudgeKw.nil := by
   intro κ Γ I
@@ -63,7 +63,7 @@ theorem Sem.JudgeKw.nil : Obl.JudgeKw.nil := by
     | skip
   intro m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [kwExprs] using h)
-  exact ⟨rfl, rfl, hm⟩
+  exact ⟨Framed_reCtl _ _ _, rfl, hm⟩
 
 /-- The pair list's base case. Since clink 53 this is `JudgeAll.nil`'s shape exactly — the
 interleaved reading (`pairExprs []`) makes the empty pair list the empty expression list, and
@@ -78,7 +78,7 @@ theorem Sem.JudgePairs.nil : Obl.JudgePairs.nil := by
     | skip
   intro m hm vals m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [pairExprs] using h)
-  exact ⟨rfl, rfl, hm⟩
+  exact ⟨Framed_reCtl _ _ _, rfl, hm⟩
 
 /-! ## The four that are vacuous -/
 

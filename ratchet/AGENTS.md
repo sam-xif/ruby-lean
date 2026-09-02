@@ -479,10 +479,10 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **38 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **41 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (178 of 241). This measures
+measures *reach*: how many corpus programs `validate` types (177 of 243). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -540,6 +540,33 @@ Discharged so far, all axiom-clean:
   it). Their three outcomes are the shape every dispatch-like rung will have: the hit is typed,
   the gate is `.unsupported`, and the miss is a `raiseErr` — a jump at an empty continuation,
   which never returns a value.
+* **The three dispatch rungs** (clink 55, `Denote/Rules/Query.lean`, `CaseEq.lean`,
+  `ClsToS.lean`) — `Judge.isAQuery` (`recv.is_a?(C)`), `Judge.caseEqQuery` (`C === v`, what
+  `case v when C` desugars to) and `Judge.clsToS` (`C.to_s`): the first rules whose runs go all
+  the way through a **dispatch** — receiver, arguments, lookup, builtin. What made them
+  tractable is that none of the three has to know *which* value the builtin computes, only its
+  shape (a `Bool`, a `Bool`, a `String`), so no signature table is involved; `Judge.prim` is
+  where that stops being true. Their heap facts are **`QueryOk`** (indexed by the receiver's
+  class) and **`ClsQueryOk`** (indexed by the receiver *object*, because `classOf` of a class
+  object is its eigenclass) — each row measured at the booted machine before being written
+  down, and each conditional on the context declaring no method of that name, which is the
+  shape both of this clink's soundness findings took.
+  **`SemJudge`'s first conjunct is now `Framed m m'`**, and that is the structural result of
+  the clink: `m'.stack = m.stack` plus **"once a class, always a class"**. A send evaluates its
+  receiver *before* its arguments, so a rule with a `.clsOf` receiver premise establishes the
+  receiver's class-ness at one machine and reads it at another, with an arbitrary evaluation in
+  between — a transport no `StateOk` component can supply, because `StateOk` describes one
+  machine. Proving it over `stepFn` instead was rejected on price (it would have to hold for
+  every bid in `Builtins`, including the ones no rung reaches) and the conjunct is discharged
+  per-rule and composes by `Framed.trans`, exactly as frame balance already did.
+  Both rules were **unsound as written** — `found-issues.md` **§F7**: their
+  `smroGet? κ.classes n mname = none` guards ask about singleton methods on `n` itself while
+  the dispatch walks `n`'s *eigenclass chain*, so an inherited `def self.===` or a reopened
+  `Module` gets past them (corpus 243). Fixed the §F6 way, with `nameFree` premises.
+  **§F8** is filed and not fixed: `Judge.classOf`'s conclusion (`.clsOf n`, the *exact* class)
+  is stronger than its receiver premise (`.inst n I`, an *is-a* test that a subclass instance
+  passes), so it is false of the denotation read on its own — and probably true of every
+  derivable judgment, `Judge` having no subsumption rule.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper

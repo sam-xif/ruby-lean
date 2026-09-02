@@ -17,6 +17,8 @@ import Denote.Rules.Vasgn
 import Denote.Rules.Never
 import Denote.Rules.Path
 import Denote.Rules.Query
+import Denote.Rules.CaseEq
+import Denote.Rules.ClsToS
 import Denote.Sem.Frame
 
 /-!

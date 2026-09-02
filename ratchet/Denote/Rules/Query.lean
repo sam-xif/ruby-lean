@@ -102,10 +102,7 @@ theorem Sem.Judge.isAQuery : Obl.Judge.isAQuery := by
                     dsimp only at hf₄
                     cases hf₄
                     refine ⟨?_, ?_, ?_⟩
-                    · show (Interp.withCtl ma _).stack = m.stack
-                      rw [Interp.withCtl]
-                      show ma.stack = m.stack
-                      rw [hst₂, hstack]
+                    · exact ((hstack.trans hst₂).trans (Framed_withCtl _ _))
                     · -- `Ty.bool`'s denotation is "is a boolean", and this is one
                       simp [denM, isBoolV]
                     · rw [show Interp.withCtl ma (Ctl.value (Value.bool (isA ma.heap v₀ ka)))

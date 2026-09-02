@@ -3756,6 +3756,16 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       affect it is a `def self.===` on the class object, which is what `smroGet? … = none`
       excludes.
 
+      **`found-issues.md` §F7**: `smroGet?` is not enough, for the same reason §F6's
+      `isADispatchOk` was not. It asks only about singleton methods *on `cn` itself*, and the
+      dispatch of `===` at a class object walks the eigenclass chain — so a `class Module; def
+      ===(o); "boom"; end; end`, or a `def self.===` on a *superclass* of `cn`, both bind ahead
+      of the builtin and neither is visible to it. `nameFree κ "==="` is the missing
+      assumption; it is blunter than the shapes it excludes (any `===` anywhere in the program
+      turns this rule off, including the harmless `def ===` on an unrelated class) and that
+      bluntness costs rungs, not soundness. `nameFree κ "method_missing"` is §F4's, for the
+      receiver whose eigenclass resolves `===` nowhere.
+
       The argument's type is unconstrained: `Module#===` is total on every object and never
       raises. As with `isAQuery`, the rule computes nothing about the *answer*; `isAAnswer` does
       that, and only `narrowEnvs` consults it. -/
@@ -3764,6 +3774,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I recv (.clsOf cn) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [σ] Γ₂ I₂ →
       smroGet? κ.classes cn "===" = none →
+      (hce : nameFree κ "===" = true := by rfl) →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "===" args none) .bool Γ₂ I₂
   -- ### Tier 13 — constants
   --
@@ -3958,9 +3970,14 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) Γ₂ I₂
   /-- **`C.to_s` — `Module#to_s`, the class's name** (tier 13f). Total and never raises, so the
-      only way it can be type-stuck is a `def self.to_s` on the class object, which the second
-      premise excludes — the same shape of guard `caseEqQuery` uses for `Module#===`, and for
-      the same reason (`smroGet?` is where an override would be).
+      only way it can be type-stuck is a `def self.to_s` on the class object, which the third
+      premise excludes — the same shape of guard `caseEqQuery` uses for `Module#===`.
+
+      **`found-issues.md` §F7** applies here verbatim, and for the same reason: `smroGet?` is
+      *not* where every override would be. The dispatch of `C.to_s` starts at `C`'s eigenclass
+      and walks its ancestors, so a `def self.to_s` on a superclass, or a `class Module; def
+      to_s`, binds ahead of the builtin and the guard cannot see either. `nameFree κ "to_s"` is
+      the missing assumption and `nameFree κ "method_missing"` is §F4's.
 
       Not a `PrimSig` row, because `PrimSig` cannot see the class table and the guard needs
       it. -/
@@ -3969,6 +3986,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       smroGet? κ.classes n "to_s" = none →
+      (hts : nameFree κ "to_s" = true := by rfl) →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "to_s" args none) (.cls "String") Γ₂ I₂
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and

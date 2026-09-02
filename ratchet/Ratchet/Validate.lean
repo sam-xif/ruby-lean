@@ -750,7 +750,13 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           match σ, argTys with
           | .clsOf cn, [_] =>
             match smroGet? κ.classes cn "===" with
-            | none => some (.bool, Γ₂, I₂)
+            -- `found-issues.md` §F7: `smroGet?` sees only singleton methods on `cn`, and the
+            -- dispatch walks the whole eigenclass chain, so the boot `Module#===` being intact
+            -- has to be checked too — and `method_missing` for the eigenclass that resolves
+            -- `===` nowhere.
+            | none =>
+              if nameFree κ "===" && nameFree κ "method_missing" then some (.bool, Γ₂, I₂)
+              else none
             | some _ => none
           -- Tier 16: any other receiver is a *value*, and `===` there is the `PrimSig` row
           -- (`case t when "pypi"` desugars to `"pypi" === t`). Written out rather than falling
@@ -791,7 +797,10 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               -- Tier 13f: `Module#to_s` (the class's name). Reached only when `smroGet?`
               -- missed, which *is* `Judge.clsToS`'s guard: a `def self.to_s` would have been
               -- found above and dispatched to instead.
-              if m = "to_s" && argTys = [] then some (.cls "String", Γ₂, I₂)
+              -- `found-issues.md` §F7 again: the `smroGet?` miss above is about `n` itself,
+              -- and `Module#to_s` is reached through the eigenclass chain.
+              if m = "to_s" && argTys = [] && nameFree κ "to_s"
+                 && nameFree κ "method_missing" then some (.cls "String", Γ₂, I₂)
               else if m = "new" then
                 match ctorGet? κ.classes n with
                 | some (dc, d) =>

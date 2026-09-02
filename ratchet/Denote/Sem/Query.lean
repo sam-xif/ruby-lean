@@ -188,6 +188,123 @@ theorem invokeDispatch_isA_miss {m : Machine} {recv : Value} {site : SendSite}
   simp only [appendKwHash_nil]
   exact dispatchMiss_isA_no_value m recv site args hmm
 
+/-! ## `C === v` — the same chain at a class-object receiver
+
+`Module#===` is a different method on a different receiver, and the lemmas are stated at the
+literal name for the same reason `invoke_isA` is: at a literal, `invoke`'s eight interception
+tests all reduce. Two things differ from the `is_a?` family and both make this end *easier*:
+the receiver is known to be a class object (so `invokeMaybeNew`'s payload case is the only one
+that can fire), and the **argument is unconstrained** — `Module#===` is total on it. -/
+
+theorem invokeMaybeNew_caseEq (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
+    (site : SendSite) (args : List Value) (blk : Option Value) (kw : List (Value × Value)) :
+    Interp.invoke.invokeMaybeNew m recv o c site "===" args blk kw
+      = Interp.invoke.invokeDispatch m recv site "===" args blk kw := by
+  rw [Interp.invoke.invokeMaybeNew.eq_def, if_neg (by simp)]
+
+theorem invoke_caseEq (m : Machine) (recv : Value) (site : SendSite) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) :
+    Interp.invoke m recv site "===" args blk kw
+      = Interp.invoke.invokeDispatch m recv site "===" args blk kw := by
+  rw [Interp.invoke.eq_def]
+  cases recv with
+  | ref o =>
+    cases hp : (m.heap.get o).payload <;> simp only [hp] <;>
+      first
+        | rfl
+        | (split <;> simp_all [invokeMaybeNew_caseEq])
+        | simp_all [invokeMaybeNew_caseEq]
+  | _ => rfl
+
+theorem deferTwin?_caseEq (h : Heap) (recv : Value) (args : List Value) :
+    Builtins.deferTwin? h "Module#===" recv args = none := by
+  simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+    Builtins.toAryDefer?, Builtins.coerceTwin?]
+  rcases args with _ | ⟨a, rest⟩
+  · rfl
+  · cases rest <;> rfl
+
+/-- **`Module#===` is the ancestor test with the operands swapped**, and it is total in the
+argument: `binArg` takes the one argument, and the only question asked afterwards is whether
+the *receiver* is a class — which `denM (.clsOf cn)` settles. The `unsupported` alternative is
+`Builtins.run`'s byte-string gate again, exactly as in `run_isA`. -/
+theorem run_caseEq (m : Machine) (av : Value) {k : ObjId}
+    (hk : (m.heap.classPayload? k).isSome = true) :
+    Builtins.run "Module#===" (.ref k) [av] m = .ok (.bool (isA m.heap av k)) m ∨
+      ∃ r, Builtins.run "Module#===" (.ref k) [av] m = .unsupported r := by
+  rw [Builtins.run.eq_def]
+  dsimp only
+  split
+  · exact Or.inr ⟨_, rfl⟩
+  · refine Or.inl ?_
+    rw [Builtins.runObjects.eq_def]
+    simp only [Builtins.zeroArgBids, Builtins.dupBids, Builtins.cloneBids]
+    rw [Builtins.runNumerics.eq_def]
+    simp only
+    rw [Builtins.runStrings.eq_def]
+    simp only
+    rw [Builtins.runCollections.eq_def]
+    simp only
+    rw [Builtins.runModules.eq_def]
+    simp [Builtins.binArg, hk]
+
+/-- `invokeDispatch` at `===`, given the dispatch precondition. Every hypothesis is a conjunct
+of `ClsQueryOk` (`../Sem/State.lean`) except the last, which is the *receiver*'s type. -/
+theorem invokeDispatch_caseEq {m : Machine} {site : SendSite} {k : ObjId} {av : Value}
+    {owner : ObjId} {md : MethodDef}
+    (hfound : Interp.methodOn m.heap (classOf m.heap (.ref k)) "===" = some (owner, md))
+    (hb : md.builtin = some "Module#===") (hu : md.undefined = false)
+    (hv : md.visibility = .pub) (hp : md.fromPrelude = false)
+    (hsh : Interp.crubyShadow m.heap
+      ((ancestors m.heap (classOf m.heap (.ref k))).takeWhile (fun x => x != owner)) "===" = none)
+    (hk : (m.heap.classPayload? k).isSome = true) :
+    Interp.invoke.invokeDispatch m (.ref k) site "===" [av] none []
+        = .next (Interp.withCtl m (.value (.bool (isA m.heap av k)))) ∨
+      ∃ r, Interp.invoke.invokeDispatch m (.ref k) site "===" [av] none []
+        = .unsupported r := by
+  rw [Interp.invoke.invokeDispatch.eq_def, lookup_eq_methodOn, hfound]
+  simp only [hu, hp, if_false, Bool.false_eq_true, reduceIte, hsh, visError?_pub hv, hb,
+    deferTwin?_caseEq]
+  rcases run_caseEq m av hk with hr | ⟨r, hr⟩
+  · exact Or.inl (by simp [appendKwHash_nil, hr])
+  · exact Or.inr ⟨r, by simp [appendKwHash_nil, hr]⟩
+
+/-- `dispatchMiss` at `===` produces no value. Same script as `dispatchMiss_isA_no_value`,
+re-run at this name because the `try*` families decide by string literal. -/
+theorem dispatchMiss_caseEq_no_value (m : Machine) (recv : Value) (site : SendSite)
+    (args : List Value)
+    (hmm : ∀ o md, Interp.methodOn m.heap (classOf m.heap recv) "method_missing"
+        = some (o, md) → md.builtin.isSome = true) :
+    (∃ r, Interp.dispatchMiss m recv site "===" args none = .unsupported r) ∨
+    (∃ cls msg, Interp.dispatchMiss m recv site "===" args none
+      = .next (Interp.raiseErr m cls msg)) := by
+  unfold Interp.dispatchMiss
+  simp only [Interp.tryIterator, Interp.tryMixin, Interp.tryReflect]
+  repeat' split
+  all_goals (try (simp only [Interp.missNoMethod]))
+  all_goals (try split)
+  all_goals first
+    | (right; exact ⟨_, _, rfl⟩)
+    | (left; exact ⟨_, rfl⟩)
+    | simp_all [Interp.missNoMethod]
+
+theorem invokeDispatch_caseEq_miss {m : Machine} {recv : Value} {site : SendSite}
+    {args : List Value}
+    (hnone : Interp.methodOn m.heap (classOf m.heap recv) "===" = none)
+    (hmm : ∀ o md, Interp.methodOn m.heap (classOf m.heap recv) "method_missing"
+        = some (o, md) → md.builtin.isSome = true) :
+    (∃ r, Interp.invoke.invokeDispatch m recv site "===" args none [] = .unsupported r) ∨
+    (∃ cls msg, Interp.invoke.invokeDispatch m recv site "===" args none []
+      = .next (Interp.raiseErr m cls msg)) := by
+  rw [Interp.invoke.invokeDispatch.eq_def, lookup_eq_methodOn, hnone]
+  simp only [appendKwHash_nil]
+  exact dispatchMiss_caseEq_no_value m recv site args hmm
+
+#print axioms invoke_caseEq
+#print axioms run_caseEq
+#print axioms invokeDispatch_caseEq
+#print axioms invokeDispatch_caseEq_miss
+
 #print axioms invokeDispatch_isA_miss
 #print axioms dispatchMiss_isA_no_value
 #print axioms invokeDispatch_isA

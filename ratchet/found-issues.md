@@ -756,3 +756,80 @@ corpus agreement 242/242.
 **What is still open.** `nameFree` reads `κ.defs` and `κ.classes` and not `κ.closures`, so an
 `is_a?` installed by `define_method` is not covered — the same coarseness §F2 and §F4 have, and
 unreachable for the same reason (`Object#define_method` is `unsupported` in the model).
+
+## §F7 — `Judge.caseEqQuery`'s guard looked at the wrong table: `===` dispatches through the eigenclass chain
+
+**The rule.** `Judge.caseEqQuery` types `C === v` as `.bool` — the form `case v when C`
+desugars to — behind one guard, `smroGet? κ.classes cn "===" = none`. The docstring justified
+dropping §F6's `isADispatchOk` on the grounds that `Module#===` is implemented directly as the
+ancestor test and does *not* go through `obj.is_a?`, so a user-written `is_a?` cannot affect
+it. That much is true, and it is not the hole.
+
+The hole is that `smroGet?` asks about singleton methods **on `cn` itself**, while the dispatch
+of `C === v` starts at `classOf(C)` — `C`'s eigenclass — and walks its whole ancestor chain.
+Two shapes get past the guard:
+
+```ruby
+class A
+  def self.===(o)      # inherited by B's eigenclass; `smroGet? … "B" "===" ` is none
+    "s"
+  end
+end
+class B < A
+end
+(B === 5) & true       # certified `bool & bool`; runs `String#&`, which does not exist
+```
+
+```ruby
+class Module           # `Module#===` is what *every* class object resolves `===` to
+  def ===(o)
+    "s"
+  end
+end
+(Integer === 5) & true
+```
+
+As in §F6, `& true` is what turns the wrong type into a real `NoMethodError` rather than mere
+imprecision, so this is inside the type-stuck family.
+
+**Why the ladder found it.** `Obl.Judge.caseEqQuery` has to be discharged from the machine's
+own dispatch, and the component that describes it (`ClsQueryOk`, clink 55) says what `===`
+resolves to at a *class object* receiver — measured at the booted machine, all 87 class objects
+answer `Module#===`, public and unshadowed. Writing that component down forces the question the
+guard was ducking: the claim can only hold for a name the context does not declare, because
+`MethodsExact` allows the context's own methods to be anywhere in the heap. The rung is
+unprovable without the premise, and the two programs above are what the premise excludes.
+
+**The fix.** `Judge.caseEqQuery` gained `nameFree κ "===" = true` and, for the eigenclass that
+resolves `===` nowhere at all, §F4's `nameFree κ "method_missing" = true`; `Validate.lean`'s
+`===` arm gained the matching conjunction and `ChkSound.lean` the split. `nameFree` is blunter
+than the two shapes above — *any* `def ===` anywhere in the program turns the rule off,
+including a perfectly harmless one on an unrelated class — and that bluntness costs rungs, not
+soundness. The precise premise ("no `===` on `Module`/`Class`/`Object`/`BasicObject`, and no
+singleton `===` on `cn` or any of its ancestors") is expressible and is the natural refinement
+if a rung ever wants it.
+
+Corpus: `243-inherited-singleton-case-eq-unsafe`, which validate now rejects. The
+`class Module` shape is **not** a corpus element: reopening `Module#===` breaks the difftest
+harness's own JSON wrapper (`case` in `json/common.rb`), so the program produces no observation
+to compare. It is recorded here instead, and it is the shape that shows why the premise has to
+be a statement about the whole context rather than about `cn`.
+
+**What is still open.** The same `κ.closures` coarseness §F6 records, for the same reason.
+
+## §F8 (unconfirmed) — `Judge.classOf`'s conclusion is exact where its receiver premise is not
+
+Not fixed, and possibly not a bug: recorded because it was found while sizing the rung and the
+argument is short. `Judge.classOf` types `x.class` as `.clsOf n` from a receiver premise of
+`.inst n I`. But `denM (.inst n I) m v` is `isAName m.heap v n = true ∧ …` — an *is-a* test,
+which a `D < C` instance passes at `n = "C"` — while `denM (.clsOf "C")` is
+`isClassRefNamed`, the **exact** class object. So `x : .inst C` where `x` is really a `D`
+makes `x.class` a counterexample to the rule as stated over the denotation.
+
+Whether it is reachable is a different question, and the answer is probably no: `Judge` has no
+subsumption rule, so an `.inst C` in a derivation comes from a `C.new` or from a declared
+parameter type, and neither can be a `D`. That is the same family as §F5 and probes 240–242 —
+a rule that is true of every *derivable* judgment but not of the denotation read on its own —
+and it is the reason the rung is filed rather than climbed. Sizing it means finding either the
+derivation that produces a subclass instance at an `.inst` type or the argument that no such
+derivation exists.

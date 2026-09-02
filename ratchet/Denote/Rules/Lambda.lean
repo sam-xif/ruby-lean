@@ -205,7 +205,7 @@ theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
   obtain ⟨rfl, rfl⟩ := evals_pure hstep hev
   have he : Ext m (lamMachine m (toRubyParams ps) (toRuby body) lam) :=
     ext_lamPush hm _ _ _
-  refine ⟨rfl, ?_, StateOk_reCtl (StateOk_ext hm he) _ _⟩
+  refine ⟨(Framed.of_ext he).trans (Framed_reCtl _ _ _), ?_, StateOk_reCtl (StateOk_ext hm he) _ _⟩
   -- The value is the pushed Proc, and its closure is the one `reifyBlock` built.
   refine denM_reCtl.mpr ?_
   rw [denM]

@@ -5713,3 +5713,122 @@ refined type*. `Denote/Sem/State.lean` L52 predicted this ("what a proof of `Jud
 soundness will have to consume") and `EnvOk`'s identity conjunct was put there for it. It needs
 the run of a concrete builtin dispatch (`x.is_a?(C)`) inverted, which is the same thing the
 `callAsm` family will need, so it is not a detour.
+
+## Clink 55 (2026-09-02) — three dispatch rungs, one new conjunct in the judgment, and §F7. **177 rungs / 243, 41 of 83 rules**
+
+Three rungs, all in the same family: `Judge.isAQuery` (`recv.is_a?(C)`), `Judge.caseEqQuery`
+(`C === v`, what `case v when C` desugars to) and `Judge.clsToS` (`C.to_s`). Each one is a
+`Judge` rule whose run goes all the way through a **dispatch** — receiver, arguments, method
+lookup, builtin — which is what clink 54's wall was blocking. All three are axiom-clean.
+
+The interesting part is not the rungs. It is that the second one could not be proved from the
+definitions on file, and what it needed was a **new conjunct in `SemJudge` itself**.
+
+### The transport a send needs, and why no component could supply it
+
+A send evaluates its receiver first, then its arguments, then dispatches. So a rule whose
+receiver premise is `.clsOf cn` establishes "the receiver is *that* class object" at machine
+`m₀`, and the dispatch **reads** the heap at `m₁` — with an arbitrary expression's evaluation
+in between. `StateOk` cannot bridge that: it is a predicate on *one* machine, by design.
+
+Three routes were considered and two rejected:
+
+1. **A monotonicity theorem over `stepFn`** ("evaluation never unmakes a class"), in the shape
+   of clink 54's frame lemma. Rejected on price: the property has to hold for every arm of
+   `Builtins.run` — 24k lines, including hundreds of bids no rung will ever dispatch to — and
+   it is not even unconditionally true as the model stands (`Modules.lean`'s four core
+   `initialize` bids overwrite an existing object's payload without asking what it was, which
+   is unreachable but not excluded).
+2. **Restating the component to avoid the fact.** Measured and refuted: `===` resolves to
+   `Module#===` at all 87 class objects but at only 44 of 87 arbitrary class ids — the other
+   43 answer `Regexp#===`, a *prelude Ruby* `===`, or nothing at all. So the component cannot
+   be indexed by the receiver's class the way `QueryOk` is; it has to be conditioned on the
+   receiver *being a class object*, which is precisely the fact that needs transporting.
+3. **A conjunct in the judgment.** Taken.
+
+`SemJudge`'s first conjunct was `m'.stack = m.stack`. It is now `Framed m m'`, a two-field
+structure: the same frame balance, plus **`cls` — once a class, always a class**. The trade is
+the same one the `stack` conjunct already makes: the obligation is discharged *per rule*, so a
+rule pays only for the bids it actually dispatches to, and a rule with sub-judgments composes
+its premises' fields by `Framed.trans`. That composition **is** the transport — the argument
+premise's own `Framed m₀ m₁` is what `caseEqQuery` applies to the receiver's class-ness — and
+it arrives for free at every rule that does not allocate.
+
+Retrofitting it cost less than the count suggested (65 sites named the old conjunct). Bundling
+into a *structure* rather than adding a fourth conjunct kept the arity at three, so every
+`obtain ⟨hst, hden, hok⟩` still typechecks and only the *uses* of `hst` as an equation had to
+move. Four lemmas cover almost all of them: `Framed_reCtl`, `Framed_withCtl`,
+`Framed_setLocal` and `Framed.of_ext` — the last because every allocating leaf rung already
+builds an `Ext` for `StateOk_ext`, and an `Ext` pins `classPayload?` outright.
+
+### The component, and the measurement that shaped it
+
+**`ClsQueryOk`** (`Denote/Sem/State.lean`) is `QueryOk` at a **class-object** receiver: the same
+five facts (the resolved method is the expected builtin, not undefined, public, not a prelude
+twin, unshadowed) plus the same `method_missing` clause, but indexed by the object rather than
+by its class, because `classOf` of a class object is its eigenclass. Two rows, both measured at
+the booted machine before being written down: `("===", "Module#===")` and
+`("to_s", "Module#to_s")`, each clean at all 87 class objects. Checked by one `Bool`
+(`clsQueryOkB`) inside `bootOkB`, so the satisfiability witness still holds.
+
+Conditioning it on the payload has a second benefit: a class payload pins its reference
+**live** (`lt_size_of_classPayload` — past the end of the heap `Heap.get` answers `default`,
+whose payload is `.none`), which is what `Ext` needs to transport the row.
+
+### The soundness finding — §F7
+
+Writing the component down forced the question `Judge.caseEqQuery`'s guard was ducking, and the
+answer is a real hole. The guard is `smroGet? κ.classes cn "===" = none` — no singleton `===`
+**on `cn` itself** — and the docstring defended dropping §F6's `isADispatchOk` on the grounds
+that `Module#===` does not go through `obj.is_a?`. True, and beside the point: the dispatch
+starts at `cn`'s *eigenclass* and walks its ancestors, so a `def self.===` on a **superclass**
+is inherited, and a `class Module; def ===` replaces the builtin for every class in the
+program. Both get past the guard, and both make the rule certify `bool` for a run that produces
+a String. `Judge.clsToS` had the identical hole with `to_s`.
+
+Fixed the §F6 way — `nameFree κ "===" `/`nameFree κ "to_s"` plus §F4's
+`nameFree κ "method_missing"`, with the matching conjuncts in `Validate.lean` and the splits in
+`ChkSound.lean`. Corpus 243 (`inherited-singleton-case-eq-unsafe`) pins the reachable shape and
+validate now rejects it. The `class Module` shape is recorded in `found-issues.md` only: it
+breaks the difftest **harness's own** JSON wrapper (`case` in `json/common.rb`), so it produces
+no observation to compare — the one corpus candidate this ratchet has had to decline for that
+reason, and worth remembering as a limit on what a corpus element can be.
+
+### `Judge.classOf` (§F8), filed rather than climbed
+
+Found while sizing the next rung. `Judge.classOf` types `x.class` as `.clsOf n` from a receiver
+premise `.inst n I`. But `denM (.inst n I)` is an **is-a** test, which a `D < C` instance
+passes at `n = "C"`, while `denM (.clsOf "C")` is `isClassRefNamed`, the *exact* class object.
+So the rule is false of the denotation read on its own. Whether it is false of any *derivable*
+judgment is a different question and probably no — `Judge` has no subsumption rule — which
+makes it the same family as §F5 and probes 240–242. Recorded, not fixed.
+
+### Tactic notes, both about large matches
+
+* `Builtins.run`'s prologue asks **three** questions before any bid is looked at (the
+  byte-string safety net, a zero-argument arity gate, the class-generic `dup`/`clone` rule). A
+  `run_*` lemma has to answer all three; `run_isA` got away with folding the last two into a
+  `simp only [zeroArgBids, dupBids, cloneBids]`, but at `Module#to_s` that `simp only` times out
+  at `isDefEq` on the five-file bid chain.
+* The fix generalises and is worth reusing: **state the descent as its own `rfl` lemma**.
+  `runObjects_toS : runObjects "Module#to_s" … = runModules "Module#to_s" …` is `rfl`, because
+  at a *literal* bid all five fallthrough matches reduce definitionally — the kernel does in one
+  step what `simp only` was searching for. Same for the arm itself
+  (`runModules_toS`). `run_clsToS` is then three `split`s and a payload case.
+
+### State
+
+`lake build` clean; no `sorry`, no new axioms. Corpus 243/243 agreement, 0 disagreements;
+`expect_validate` mismatches 35 (unchanged — both new probes are rejected as intended);
+`checkrungs` 177/177 + 145/145; the denotation gate's `#guard`s green; ladder **41/83**. No
+change under `lean/` this clink, so the tier-0 difftest from clink 54 still stands.
+
+### What is next
+
+`Judge.if'`/`ifNoElse` remain where clink 54 left them: behind **narrowing soundness**, which
+needs the run of `x.is_a?(C)` *inverted* rather than replayed — and that is now a smaller step
+than it was, because `Denote/Sem/Query.lean`'s chain is exactly the forward direction of the
+inversion. The other open front is unchanged and is model coverage, not proof: `Judge.prim` and
+`Judge.callAsm` need `PrimSig`'s 222 rows to agree with `Builtins.run`, and each row needs both
+a dispatch fact (which class binds the name to which bid — receiver-dependent, so not a single
+`nameFree` row) and a result fact.

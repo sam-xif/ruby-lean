@@ -259,6 +259,42 @@ def queryOkB (m : Machine) : Bool :=
           && (Interp.crubyShadow m.heap
                 ((RubyCore.ancestors m.heap k).takeWhile (fun x => x != owner)) p.1).isNone))
 
+/-- **`ClsQueryOk` as one `Bool`** — the same five facts at a *class object* receiver, where
+the walk starts at the eigenclass. Only class objects are checked, which is also all the
+component claims. -/
+def clsQueryOkB (m : Machine) : Bool :=
+  (List.range m.heap.objs.size).all (fun o =>
+    !(m.heap.classPayload? o).isSome ||
+    Ratchet.Denote.clsQueryBuiltins.all (fun p =>
+      match Interp.methodOn m.heap (classOf m.heap (.ref o)) p.1 with
+      | none =>
+        match Interp.methodOn m.heap (classOf m.heap (.ref o)) "method_missing" with
+        | none => true
+        | some (_, mm) => mm.builtin.isSome
+      | some (owner, md) =>
+        md.builtin == some p.2 && !md.undefined && md.visibility == Visibility.pub
+          && !md.fromPrelude
+          && (Interp.crubyShadow m.heap
+                ((RubyCore.ancestors m.heap (classOf m.heap (.ref o))).takeWhile
+                  (fun x => x != owner)) p.1).isNone))
+
+theorem clsQueryOkB_sound {m : Machine} (hb : clsQueryOkB m = true) (κ : Ratchet.Ctx) :
+    Ratchet.Denote.ClsQueryOk κ m := by
+  intro mname bid hmem _ o hp
+  have hlt : o < m.heap.objs.size := Ratchet.Denote.lt_size_of_classPayload hp
+  have hrow := List.all_eq_true.mp hb o (by simpa using hlt)
+  simp only [hp, Bool.not_true, Bool.false_or] at hrow
+  have hp2 := List.all_eq_true.mp hrow (mname, bid) (by simpa using hmem)
+  refine ⟨?_, ?_⟩
+  · intro owner md hfound
+    rw [hfound] at hp2
+    simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at hp2
+    obtain ⟨⟨⟨⟨hb1, hu⟩, hv⟩, hpre⟩, hsh⟩ := hp2
+    exact ⟨hb1, by simpa using hu, by simpa using hv, by simpa using hpre, by simpa using hsh⟩
+  · intro hnone o₂ md hfound
+    rw [hnone, hfound] at hp2
+    exact hp2
+
 theorem queryOkB_sound {m : Machine} (hb : queryOkB m = true) (κ : Ratchet.Ctx) :
     Ratchet.Denote.QueryOk κ m := by
   intro mname bid hmem _ k
@@ -355,7 +391,7 @@ def bootOkB : Bool :=
   saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
   topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
   nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine &&
-  localsEmptyB bootMachine && queryOkB bootMachine
+  localsEmptyB bootMachine && queryOkB bootMachine && clsQueryOkB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -365,8 +401,8 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
-    hsl⟩, hle⟩, hq⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
+    hsl⟩, hle⟩, hq⟩, hcq⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
@@ -382,6 +418,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         intro owner n c hc _ _ _ _
         exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
       query := queryOkB_sound hq Ratchet.ctx0
+      clsQuery := clsQueryOkB_sound hcq Ratchet.ctx0
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])

@@ -136,8 +136,7 @@ theorem Sem.Judge.constPath : Obl.Judge.constPath := by
             · exact absurd hlk (by simp)
             · exact hlk
           refine ⟨?_, ?_, ?_⟩
-          · show (reCtl m₀ (.value v) []).stack = m.stack
-            exact hstack
+          · exact hstack.trans (Framed_reCtl _ _ _)
           · exact denM_reCtl.mpr (hok₁.constPaths owner n τ k hkey hcn v hfound)
           · exact StateOk_reCtl hok₁ _ _
       | none =>
@@ -223,8 +222,7 @@ theorem Sem.Judge.constPathCls : Obl.Judge.constPathCls := by
             · exact absurd hlk (by simp)
             · exact hlk
           refine ⟨?_, ?_, ?_⟩
-          · show (reCtl m₀ (.value v) []).stack = m.stack
-            exact hstack
+          · exact hstack.trans (Framed_reCtl _ _ _)
           · refine denM_reCtl.mpr ?_
             simp only [denM]
             exact hok₁.nested owner n c hcls k v hcn hfound

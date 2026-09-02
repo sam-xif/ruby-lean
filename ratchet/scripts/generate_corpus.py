@@ -2133,6 +2133,17 @@ R("array-lit-element-mutated-unsafe", 12,
   'class C\n  def initialize\n    @a = 1\n  end\n  def get\n    @a\n  end\nend\no = C.new\nxs = [o, o.instance_variable_set(:@a, "s")]\nxs[0].get + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("inherited-singleton-case-eq-unsafe", 12,
+  "**A candidate UNSAFE program, and \u00a7F7\u2019s counterexample.** `Judge.caseEqQuery` "
+  "guards itself with `smroGet? \u03ba.classes cn \"===\" = none` \u2014 no singleton `===` "
+  "**on `cn` itself**. But the dispatch of `C === v` walks `cn`\u2019s whole eigenclass chain, "
+  "and a `def self.===` on a *superclass* is inherited by it. So the guard passes, the rule "
+  "certifies `bool`, and the program runs a String; `& true` turns that into a real "
+  "NoMethodError. The fix is `nameFree \u03ba \"===\"`, which is blunter than the shape it "
+  "excludes and costs rungs rather than soundness.",
+  'class A\n  def self.===(o)\n    "s"\n  end\nend\nclass B < A\nend\n(B === 5) & true\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

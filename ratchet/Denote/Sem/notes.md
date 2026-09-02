@@ -932,6 +932,35 @@ lookup fact and one `Builtins.run` unfolding. `classOf`/`clsToS` are the same sh
 over. That is four rungs for the first component, and the component is then reusable for the
 twelfth stall point's `x.is_a?(C)` inversion, which narrowing needs anyway.
 
+### The cheap end, **done** (clinks 54–55) — and what it cost that this estimate did not name
+
+Three of the four: `isAQuery`, `caseEqQuery`, `clsToS`. (`classOf` is not the fourth; it is
+`found-issues.md` §F8 — its conclusion is *exact* where its receiver premise is an is-a test.)
+The estimate above was right about the shape and named the two wrinkles correctly; two things
+it did not predict:
+
+* **The component cannot always be indexed by the receiver's class.** `QueryOk`'s shape works
+  for `is_a?` because *every* class in the boot heap resolves it to `Object#is_a?` (measured:
+  0 exceptions of 105). `===` and `to_s` are not like that — 43 and 63 exceptions
+  respectively — but they are clean at exactly the receiver shape their rules allow, a **class
+  object**, where the walk starts at the eigenclass. Hence `ClsQueryOk`, indexed by the object
+  and conditioned on its class payload. Any further row should be measured *both* ways before
+  a shape is chosen; the measurement is a dozen lines of `#eval` over `bootMachine.heap`.
+* **A `.clsOf` receiver premise needs a transport, and it is not a component.** The receiver is
+  evaluated before the arguments, so its class-ness is established at one machine and read at
+  another. This is the same *kind* of gap as the seventh stall point's remnant below, but
+  unlike that one it is **true** and cheap: class-ness, unlike an array's element types, is
+  monotone. `SemJudge`'s first conjunct is now `Framed` (see its docstring), carrying it
+  alongside frame balance, discharged per-rule and composed by `Framed.trans`. Every remaining
+  rule in the call family with a `.clsOf` premise — `newInst`, `newInstNoInit`, the `smroGet?`
+  dispatches — inherits it.
+
+What is left of this stall point is therefore the **expensive** end only, unchanged and
+correctly sized above: `Judge.prim`/`callAsm` and the ~200 `PrimSig` rows. One refinement to
+its shape, from the measurements here: a row needs **two** facts, not one — which class binds
+the name to which bid (receiver-*dependent*, so it cannot be a `nameFree`-guarded list the way
+`QueryOk` is) and what that bid answers.
+
 ## The seventh stall point's remnant, measured — and it is a **falsity**, not a gap
 
 The table above says what is left of the seventh is "the *transport* a consumer needs to move

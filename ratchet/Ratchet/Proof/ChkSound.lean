@@ -1238,10 +1238,16 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               · -- `split` substituted `σ := .clsOf cn` and `argTys := [_]`
                 split at h
                 · rename_i hok
-                  injection h with h
-                  injection h with h h'; injection h' with h' h''
-                  subst h; subst h'; subst h''
-                  exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hok
+                  -- §F7's two `nameFree` conjuncts: the guard `if` splits, and its true
+                  -- branch carries exactly the rule's new premises
+                  split at h
+                  · rename_i hnf
+                    simp only [Bool.and_eq_true] at hnf
+                    injection h with h
+                    injection h with h h'; injection h' with h' h''
+                    subst h; subst h'; subst h''
+                    exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hok hnf.1 hnf.2
+                  · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · -- tier 16: the receiver is a *value*, so `===` is the `PrimSig` row
                 split at h
@@ -1295,10 +1301,12 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                       injection h with h
                       injection h with h h'; injection h' with h' h''
                       subst h; subst h'; subst h''
+                      -- four conjuncts now: the name, the arity, and §F7's two `nameFree`s
                       simp only [Bool.and_eq_true, decide_eq_true_eq] at hts
-                      obtain ⟨hmts, hzero⟩ := hts
+                      obtain ⟨⟨⟨hmts, hzero⟩, hnf⟩, hnfmm⟩ := hts
                       subst hmts
                       exact .clsToS (chk_sound hrecv) (hzero ▸ chkAll_sound hargs) hsmnone
+                        hnf hnfmm
                     · split at h
                       · rename_i hnew
                         split at h

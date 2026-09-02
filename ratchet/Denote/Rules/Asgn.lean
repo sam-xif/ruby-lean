@@ -87,9 +87,9 @@ theorem Sem.Judge.vasgnAlias : Obl.Judge.vasgnAlias := by
   have hgetM : M.getLocal x = m.getLocal x := by rw [hM]; simp
   rw [hgetM] at hdenM
   refine ⟨?_, ?_, ?_⟩
-  · -- Frame balance: neither the control word nor the write touches the stack.
-    show ((M.setLocal t (m.getLocal x)).stack) = m.stack
-    rw [setLocal_stack, hM]
+  · -- Frame balance and class-persistence: neither the control word nor the write touches
+    -- the stack, and neither touches the heap at all.
+    exact ((Framed_reCtl m _ _).trans (Framed_setLocal M t _)).trans (Framed_reCtl _ _ _)
   · -- The value's type, transported across the write by `capStale`.
     exact denM_reCtl.mpr (denM_setLocal hdenM hcap hdenM)
   · -- Conformance, by the two transports.

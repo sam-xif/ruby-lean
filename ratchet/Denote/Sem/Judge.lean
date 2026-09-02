@@ -34,11 +34,8 @@ Four things chosen, each of which could have gone another way.
    implication. This is what makes the rules compose: `JudgeSeq.cons`'s obligation can feed
    the first statement's conclusion into the second's hypothesis, and nothing else needs to
    know how the environment got there.
-4. **`m'.stack = m.stack`.** Frame balance, and it earns its place for the same reason: `Γ`
-   describes the *current frame*'s locals, so a conclusion about `Γ'` at a machine with a
-   different frame on top would be a claim about the wrong bindings. Every rule that pushes a
-   frame (a call, a block) has to restore it, and stating that per-rule is how it gets proved
-   rather than assumed.
+4. **`Framed m m'`** — two facts about what the evaluation left alone, bundled because they
+   are proved and consumed in the same places (see the structure's own docstring).
 
 `κ` is *not* threaded. It matches `Judge`, where the context is an input to every rule and
 `JudgeSeq.cons`/`Ctx.afterStmt` is the one place it grows — so the growth shows up in the
@@ -91,6 +88,49 @@ def Plain : Ratchet.Expr → Prop
 
 def PlainAll (es : List Ratchet.Expr) : Prop := ∀ e ∈ es, Plain e
 
+/-- **What an evaluation leaves undisturbed.** Both fields are conclusions of every semantic
+judgment, and both are there because a later part of the *same* judgment would otherwise be a
+claim about the wrong machine.
+
+`stack` is frame balance: `Γ` describes the *current frame*'s locals, so a conclusion about
+`Γ'` at a machine with a different frame on top would be a claim about the wrong bindings.
+Every rule that pushes a frame (a call, a block) has to restore it, and stating that per-rule
+is how it gets proved rather than assumed.
+
+`cls` is **once a class, always a class** — the transport the call rules need and cannot get
+any other way. A send evaluates its receiver *first*, so by the time the dispatch reads the
+heap, the receiver's type was established at a machine several evaluations ago; nothing in
+`StateOk` can bridge that, because `StateOk` is a predicate on one machine. `denM (.clsOf cn)`
+is not preserved in general (a `Class.new` can rebind the constant, so `classNamed?` moves),
+but the one fact a dispatch at a class receiver actually reads — that the receiver *is* a class
+object — is monotone in the model, and a `Judge` rule with a `.clsOf` receiver premise
+(`caseEqQuery`, `clsToS`, `new`) is exactly a rule that needs it carried across its own
+argument list.
+
+Stating it here rather than proving a monotonicity theorem over `stepFn` is deliberate, and it
+is the same trade the `stack` conjunct makes: the theorem would have to hold for every arm of
+`Builtins.run`, including bids no rung will ever reach, whereas the conjunct is discharged
+per-rule and each rule pays only for the bids it dispatches to.
+
+It is also, as invariants go, cheap to discharge: `reCtl`/`withCtl`/`setLocal` do not touch the
+heap at all, an `Ext` pins `classPayload?` outright, and a rule with sub-judgments composes its
+premises' fields by `Framed.trans` — which is where the transport comes from, since a send's
+argument premise runs from the machine the *receiver* left behind. -/
+structure Framed (m m' : Machine) : Prop where
+  stack : m'.stack = m.stack
+  cls : ∀ k, (m.heap.classPayload? k).isSome = true → (m'.heap.classPayload? k).isSome = true
+
+theorem Framed.refl (m : Machine) : Framed m m := ⟨rfl, fun _ h => h⟩
+
+theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
+    Framed m₁ m₃ :=
+  ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h)⟩
+
+/-- The two machine updates that keep the heap and the frame stack: `Framed` is free at both. -/
+theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
+    (hs : m'.stack = m.stack) : Framed m m' :=
+  ⟨hs, fun k h => by rw [hh]; exact h⟩
+
 /-- **The semantic judgment.** See the module docstring for the four choices in it, and
 §`Plain` above for the fifth. -/
 def SemJudge (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) (I' : Ty) :
@@ -98,7 +138,7 @@ def SemJudge (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) (τ : Ty) (Γ' : 
   Plain e ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m e v m' →
-      m'.stack = m.stack ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
+      Framed m m' ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
 
 /-- Evaluating a list of expressions left to right, each returning a value of its own type,
 threading the state. The value list is existential because the *judgment* says nothing about
@@ -143,7 +183,7 @@ def SemJudgeAll (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τs : L
   PlainAll es ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vs m', EvalsAll m es vs m' →
-      m'.stack = m.stack ∧ DenAllAt m es τs vs m' ∧ StateOk κ Γ' I' m'
+      Framed m m' ∧ DenAllAt m es τs vs m' ∧ StateOk κ Γ' I' m'
 
 /-- Keyword arguments at a call site: the same shape as `SemJudgeAll`, over the `(name, type)`
 pairs `JudgeKw` produces. The names are static, so only the values are evaluated — which is
@@ -158,7 +198,7 @@ def SemJudgeKw (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.KwEntry)
     (kws : List (String × Ty)) (Γ' : Env) (I' : Ty) : Prop :=
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vs m', EvalsAll m (kwExprs es) vs m' →
-      m'.stack = m.stack ∧ DenAllAt m (kwExprs es) (kws.map (·.2)) vs m' ∧
+      Framed m m' ∧ DenAllAt m (kwExprs es) (kws.map (·.2)) vs m' ∧
         StateOk κ Γ' I' m'
 
 /-- A hash literal's pairs, **interleaved**: key, value, key, value — Ruby's evaluation order
@@ -193,7 +233,7 @@ def SemJudgePairs (κ : Ctx) (Γ : Env) (I : Ty) (ps : List (Ratchet.Expr × Rat
     (kr vr : Ty) (Γ' : Env) (I' : Ty) : Prop :=
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vals m', EvalsAll m (pairExprs ps) vals m' →
-      m'.stack = m.stack ∧ DenPairsAt m ps kr vr vals m' ∧ StateOk κ Γ' I' m'
+      Framed m m' ∧ DenPairsAt m ps kr vr vals m' ∧ StateOk κ Γ' I' m'
 
 /-- A statement sequence. Same statement as `SemJudge` — a `seq` *is* an expression, and its
 value is the last statement's — but kept a separate definition to mirror `JudgeSeq`, whose
@@ -204,7 +244,7 @@ def SemJudgeSeq (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τ : Ty
   PlainAll es ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m (.seq es) v m' →
-      m'.stack = m.stack ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
+      Framed m m' ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
 
 /-- A `begin`/`rescue`'s handlers (tier 16b). `JudgeRescues` has **no outgoing state** in its
 signature — its `cons` rule pins `Γ' = Γh ++ Γ` and `I' = I` as premises instead, because a
@@ -221,7 +261,7 @@ def SemJudgeRescues (κ : Ctx) (Γ : Env) (I : Ty)
     ∀ names Γh, rescueClasses? cls = some names → rescueBind? names binding = some Γh →
       ∀ m : Machine, StateOk κ (Γh ++ Γ) I m →
         ∀ v m', Evals m handler v m' →
-          m'.stack = m.stack ∧ denM τ m' v ∧ StateOk κ (Γh ++ Γ) I m'
+          Framed m m' ∧ denM τ m' v ∧ StateOk κ (Γh ++ Γ) I m'
 
 /-- A class body's **constant** assignments (tier 13e). `JudgeConsts` carries no `Env`, no
 machine and no result type: it is a well-formedness side condition on a `class`/`module`

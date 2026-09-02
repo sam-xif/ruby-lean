@@ -202,6 +202,25 @@ theorem Ext_toReCtl (m : Machine) (c : Ctl) (k : List Kont) : Ext m (reCtl m c k
   freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
   freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
 
+/-- **`Framed` at a leaf rung**: `reCtl` touches neither the heap nor the frame stack, so both
+fields are `rfl`. This is the first conjunct of every rule whose value is produced in one step
+without allocating. -/
+theorem Framed_reCtl (m : Machine) (c : Ctl) (k : List Kont) : Framed m (reCtl m c k) :=
+  Framed.of_heap_stack rfl rfl
+
+/-- An `Ext` is a `Framed`: it pins the frame stack and every object's class-ness outright.
+Every allocating leaf rung already builds one for `StateOk_ext`, so this is where those rungs
+get their first conjunct. -/
+theorem Framed.of_ext {m m' : Machine} (he : Ext m m') : Framed m m' :=
+  ⟨he.stack, fun k h => by rw [he.payload]; exact h⟩
+
+theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
+  Framed.of_heap_stack rfl rfl
+
+theorem Framed_setLocal (m : Machine) (x : String) (w : Value) :
+    Framed m (m.setLocal x w) :=
+  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w)
+
 /-- **Conformance does not read the control word.** A corollary of `StateOk_ext`
 (`Denote/Sem/State.lean`) rather than a second component-by-component induction: rewriting
 `ctl`/`kont` is a degenerate `Ext`, so the transport that was built for allocation covers it.

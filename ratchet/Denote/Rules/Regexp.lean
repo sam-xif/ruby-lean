@@ -84,7 +84,7 @@ theorem Sem.Judge.regexpLit : Obl.Judge.regexpLit := by
       (ext_push (m := m) (rxObj src opts) hm.sat hm.core.basicSelf
         (fun c => by simp [rxObj]) rfl rfl
         (by simpa [rxObj] using hm.core.regexpBasic)).trans (Ext_toReCtl _ _ _)
-    refine ⟨rfl, ?_, StateOk_ext hm hext⟩
+    refine ⟨Framed.of_ext hext, ?_, StateOk_ext hm hext⟩
     -- `.ref n` is a `Regexp`: the name still resolves, and the fresh object's ancestor walk
     -- is `Regexp`'s. Same three lines as `strLit`.
     have hanc : ∀ k, ancestors (pushHeap m.heap (rxObj src opts)) k = ancestors m.heap k :=
