@@ -2638,6 +2638,14 @@ condition itself raises `NameError` and the branch never runs.
 `.truthy`/`.isNil` need no guard: neither mentions a class. -/
 def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   | .isA cn => (constGet? κ cn).isNone && coreConstFree κ
+  -- **§F14**: `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. A program that
+  -- redefines it moves the branch the refinement is attached to:
+  -- `class NilClass; def nil?; false; end; end; x = nil; if x.nil? then 1 else x + 1 end`
+  -- takes the **else** branch, where `nonNilTy .nilT` is `.never` — so everything in it is
+  -- certified, and it runs `nil + 1`. `Judge.nilQuery` guards its own *typing* of `x.nil?`
+  -- with `NilQSafe`, which is about the receiver's shape rather than the name; the narrowing
+  -- needs the name, and `nameFree` is the same premise §F6 added for `is_a?`.
+  | .isNil => nameFree κ "nil?" && nameFree κ "method_missing"
   | _ => true
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**

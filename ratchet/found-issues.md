@@ -1142,3 +1142,47 @@ induction over `stepFn` carrying a syntactic predicate through the machine, whic
 `if'`/`ifNoElse` and the whole call family. It is the largest remaining piece of the ladder and
 it is well-defined, which is progress of a kind — the six lemmas that were the *stated* next
 step are done, and what they uncovered is a single named wall rather than a list.
+
+## §F14 — `x.nil?` is a dispatch, and the narrowing read the *shape* where it needed the *name*
+
+**Confirmed reachable, `validate` accepted it.** Corpus `249-nilq-narrow-redefined-unsafe`:
+
+```ruby
+class NilClass
+  def nil?
+    false            # `nil` now answers `false`
+  end
+end
+x = nil
+if x.nil?
+  1
+else
+  x + 1              # certified: the branch is typed `x : never`
+end
+```
+
+CRuby raises `NoMethodError` (`undefined method '+' for nil`). `validate` answered **true**.
+
+**The mechanism.** `narrowCond?` recognises `x.nil?` and licenses `isNilTy`/`nonNilTy` on both
+branches. `nonNilTy .nilT` is `Ty.never` — "a `nil` cannot reach the else branch" — which is
+true of Ruby's `nil?` and false of a redefined one. As in §F9 and §F10, `never` does not merely
+mistype the branch: it certifies everything in it.
+
+**Why the existing guard does not cover it, and this is the point.** `Judge.nilQuery` — the
+rule that types `x.nil?` itself — carries `NilQSafe σ`, which asks about the **receiver's
+shape** (it refuses `.inst` outright, precisely because a user class could override `nil?`).
+The *narrowing* is a different consumer of the same expression and needs a different fact: not
+"this receiver's `nil?` is safe to type" but "the name `nil?` means what it usually means".
+`NilQSafe` at a `.nilT` receiver answers yes — correctly, for typing the query — and says
+nothing about `NilClass` having been reopened.
+
+**The fix.** `narrowNameOk κ .isNil` = `nameFree κ "nil?" && nameFree κ "method_missing"`, the
+same premise §F6 added for `is_a?`. Corpus-neutral: mismatches stayed at 35, 177/177 hand
+derivations and 145/145 controls unaffected.
+
+**How it was found.** Sizing the *else*-side run inversions for `JudgeSeq.nextGuard` — the one
+narrowing consumer that reads only `narrowEnvs`'s second component. The fifth finding in a row
+where the obligation's own statement, not a test, named the assumption; and the third where the
+missing premise is `nameFree`, which is now worth stating as a pattern: **a narrowing that
+recognises a *send* needs the sent name to be unclaimed, and the rule that types the send
+guards something else.**

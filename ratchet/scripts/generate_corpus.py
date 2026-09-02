@@ -2200,6 +2200,16 @@ R("and-narrow-closure-write", 12,
   'x = 1\nf = lambda { x = nil; true }\nif x && f.call\n  x + 1\nelse\n  2\nend\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("nilq-narrow-redefined-unsafe", 12,
+  "**A candidate UNSAFE program, and \u00a7F14\u2019s counterexample.** `x.nil?` is a "
+  "*dispatch*, and `nil?` is an ordinary method name. Redefining it on `NilClass` sends a "
+  "`nil` down the **else** branch, where `nonNilTy .nilT` is `.never` \u2014 so everything in "
+  "that branch is certified, and it runs `nil + 1`. `Judge.nilQuery` guards its own typing of "
+  "`x.nil?` with `NilQSafe`, which is about the receiver\u2019s *shape*; the narrowing needs "
+  "the *name*, which is what `nameFree \u03ba \"nil?\"` supplies.",
+  'class NilClass\n  def nil?\n    false\n  end\nend\nx = nil\nif x.nil?\n  1\nelse\n  x + 1\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):
