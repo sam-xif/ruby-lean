@@ -34,14 +34,19 @@ theorem Sem.JudgeRescues.cons : Obl.JudgeRescues.cons := by
   intro κ Γ Γh Γ' I I' cls binding handler names τ τr rest
     hcls _hexc hbind hhandler hΓ' hI' hrest
   subst hΓ'; subst hI'
-  intro cls' binding' handler' hmem names' Γh' hcls' hbind' m hm v m' hev
+  intro cls' binding' handler' hmem names' Γh' hcls' hbind'
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' hev
   rcases List.mem_cons.mp hmem with heq | htl
   · -- The head clause: the reader's `names`/`Γh` are the rule's, and the head premise applies
     -- to exactly this run.
     cases heq
     rw [hcls] at hcls'; cases hcls'
     rw [hbind] at hbind'; cases hbind'
-    obtain ⟨hstack, hden, hok⟩ := hhandler m hm v m' hev
+    obtain ⟨hstack, hden, hok⟩ := hhandler.2 m hm v m' hev
     exact ⟨hstack, denM_joinT_left hden, hok⟩
   · obtain ⟨hstack, hden, hok⟩ :=
       hrest cls' binding' handler' htl names' Γh' hcls' hbind' m hm v m' hev

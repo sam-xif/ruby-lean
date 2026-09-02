@@ -1,0 +1,81 @@
+{
+  "id": "ivar-asgn-stale-inst-unsafe",
+  "tier": 12,
+  "description": "**A candidate UNSAFE program, and the probe for the eleventh/twelfth stall points\u2019 neighbour.** `Judge.ivarAsgn` threads \u0393 out **unchanged** and only updates the ivar spine. But a local can hold `self` (`x = self`, typed at `\u03ba.selfTy`), and that type is an `.inst` carrying an ivar spine of its own \u2014 which the assignment then makes stale, exactly as \u00a7F1\u2019s `Ty.clos` captures went stale. If the checker types `x.get + 1` from the stale spine, it certifies `Integer + Integer` for a run that does `String + Integer`. Same shape as \u00a7F1, one piece of state over.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "class",
+        "C",
+        null,
+        [
+          "seq",
+          [
+            "def",
+            "initialize",
+            [],
+            [
+              "vasgn",
+              "ivar",
+              "@a",
+              [
+                "int",
+                1
+              ]
+            ]
+          ],
+          [
+            "def",
+            "leak",
+            [],
+            [
+              "seq",
+              [
+                "vasgn",
+                "local",
+                "x",
+                [
+                  "self"
+                ]
+              ],
+              [
+                "vasgn",
+                "ivar",
+                "@a",
+                [
+                  "str",
+                  "s"
+                ]
+              ],
+              [
+                "var",
+                "local",
+                "x"
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "send",
+          [
+            "const",
+            "C"
+          ],
+          "new",
+          [],
+          null
+        ],
+        "leak",
+        [],
+        null
+      ]
+    ]
+  },
+  "expect_validate": true,
+  "false_reason": null
+}

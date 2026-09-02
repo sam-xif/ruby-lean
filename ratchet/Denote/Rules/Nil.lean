@@ -46,12 +46,22 @@ theorem evalsAll_nil {m m' : Machine} {vs : List Value} (h : EvalsAll m [] vs m'
   | cons v vs => exact absurd h (by simp [EvalsAll])
 
 theorem Sem.JudgeAll.nil : Obl.JudgeAll.nil := by
-  intro κ Γ I m hm vs m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil h
   exact ⟨rfl, rfl, hm⟩
 
 theorem Sem.JudgeKw.nil : Obl.JudgeKw.nil := by
-  intro κ Γ I m hm vs m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [kwExprs] using h)
   exact ⟨rfl, rfl, hm⟩
 
@@ -61,7 +71,12 @@ interleaved reading (`pairExprs []`) makes the empty pair list the empty express
 because the halves were concatenated; that concatenation is what the seventh stall point's
 second defect was. -/
 theorem Sem.JudgePairs.nil : Obl.JudgePairs.nil := by
-  intro κ Γ I m hm vals m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm vals m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [pairExprs] using h)
   exact ⟨rfl, rfl, hm⟩
 

@@ -170,7 +170,12 @@ theorem vcall_x_doomed {m : Machine}
 /-! ## The rung -/
 
 theorem Sem.Judge.bareName : Obl.Judge.bareName := by
-  intro κ Γ I n hn hdef hself hmm m hm v m' hev
+  intro κ Γ I n hn hdef hself hmm
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' hev
   cases hn
   exact absurd hev (vcall_x_doomed (hm.bareFree "x" .x hdef hself)
     (hm.missFree hmm hself))

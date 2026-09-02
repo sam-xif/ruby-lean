@@ -34,12 +34,20 @@ namespace Ratchet.Denote
 open RubyCore
 
 theorem Sem.JudgeConsts.cons : Obl.JudgeConsts.cons := by
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
   intro κ n e τ cs hlit hj hcs n' e' hmem
   rcases List.mem_cons.mp hmem with h | h
   · cases h; exact ⟨τ, hlit, hj⟩
   · exact hcs n' e' h
 
 theorem Sem.JudgeNested.cons : Obl.JudgeNested.cons := by
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
   intro κ pfx isMod n body ms sms incs exts preps cs nst rest
     hcm _hmods _hconst hcs _hnst hrest
   intro isMod' n' body' hmem ms' sms' incs' exts' preps' cs' nst' hcm'

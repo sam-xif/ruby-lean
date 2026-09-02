@@ -180,7 +180,12 @@ theorem ext_lamPush {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk �
     (by simp [lamObj]) (by simp [lamObj]) hm.core.procBasic
 
 theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
-  intro κ Γ I n ps body idx hn _hidx hfree m hm v m' hev
+  intro κ Γ I n ps body idx hn _hidx hfree
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' hev
   -- The machine-side reading of `nameFree`: `NameFreeOk` at a `shadowableNames` entry, with
   -- the `declaresName` escape closed by the rule's own premise.
   have hsh : ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n

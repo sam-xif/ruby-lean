@@ -69,7 +69,12 @@ theorem stepFn_regexp_gated {src : String} {opts : Nat} (m : Machine) {e : Strin
   simp only [evalFrom, toRuby, Interp.stepFn, Interp.evalExpr, hp]
 
 theorem Sem.Judge.regexpLit : Obl.Judge.regexpLit := by
-  intro κ Γ I src opts m hm v m' h
+  intro κ Γ I src opts
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   cases hp : Rx.parse src opts with
   | error e => exact absurd h (fun h => evals_of_unsupported (stepFn_regexp_gated m hp) h)
   | ok rx =>

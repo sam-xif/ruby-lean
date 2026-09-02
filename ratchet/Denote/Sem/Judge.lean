@@ -63,9 +63,39 @@ namespace Ratchet.Denote
 
 open RubyCore
 
-/-- **The semantic judgment.** See the module docstring for the four choices in it. -/
+/-! ### `Plain` — what the *syntactic* judgment implies and the semantic one has to say
+
+`Ratchet.Expr` has three shapes that are **not expressions**: `.splat`, `.kwargs` and `.fwd`
+are argument-list *syntax*, and no `Judge` rule concludes about one (`grep` finds none). So a
+`JudgeAll` derivation over a call's arguments implies each argument is a real expression — for
+free, from the shape of the inductive.
+
+`SemJudgeAll` implies no such thing: it is a ∀ over runs, and its hypothesis `EvalsAll` is
+simply *unsatisfiable* at a splat (`evalExpr`'s `.splat` arm gates), so the premise is vacuous
+and carries nothing. That gap makes every call rule's obligation **false**: `startArgs` routes
+a splat through `.argsSplatK` and `spreadA`, so the call's run can return a value while the
+argument premise says nothing at all about the values it delivered. `Judge.callNever` is the
+smallest instance — its `argTys.contains .never` premise is about types the run never produced.
+
+So the semantic judgment carries plainness explicitly. It is a conjunct rather than a
+hypothesis because every rule's conclusion expression *has* a plain head, so every rung
+discharges it with `trivial` — and every rule that consumes a sub-judgment gets it for free,
+which is exactly the inference the syntactic inductive was making structurally. -/
+
+/-- `e` is an expression, not argument-list syntax. -/
+def Plain : Ratchet.Expr → Prop
+  | .splat _ => False
+  | .kwargs _ => False
+  | .fwd => False
+  | _ => True
+
+def PlainAll (es : List Ratchet.Expr) : Prop := ∀ e ∈ es, Plain e
+
+/-- **The semantic judgment.** See the module docstring for the four choices in it, and
+§`Plain` above for the fifth. -/
 def SemJudge (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) (I' : Ty) :
     Prop :=
+  Plain e ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m e v m' →
       m'.stack = m.stack ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
@@ -110,6 +140,7 @@ def DenAllAt : Machine → List Ratchet.Expr → List Ty → List Value → Mach
 
 def SemJudgeAll (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τs : List Ty)
     (Γ' : Env) (I' : Ty) : Prop :=
+  PlainAll es ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vs m', EvalsAll m es vs m' →
       m'.stack = m.stack ∧ DenAllAt m es τs vs m' ∧ StateOk κ Γ' I' m'
@@ -170,6 +201,7 @@ whole reason for existing is that the context grows between statements
 (`Ctx.afterStmt`). -/
 def SemJudgeSeq (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τ : Ty)
     (Γ' : Env) (I' : Ty) : Prop :=
+  PlainAll es ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m (.seq es) v m' →
       m'.stack = m.stack ∧ denM τ m' v ∧ StateOk κ Γ' I' m'

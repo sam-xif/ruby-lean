@@ -41,8 +41,11 @@ theorem evals_seq_one {m : Machine} {e : Ratchet.Expr} {v : Value} {m' : Machine
 /-- `SemJudgeSeq` at a singleton is `SemJudge` at the statement, and the step above is the
 whole of the difference. -/
 theorem Sem.JudgeSeq.last : Obl.JudgeSeq.last := by
-  intro κ Γ Γ' I I' e τ hj m hm v m' h
-  exact hj m hm v m' (evals_seq_one h)
+  intro κ Γ Γ' I I' e τ hj
+  -- the singleton's plainness is the statement's own premise
+  refine ⟨fun e' he' => by rcases List.mem_singleton.mp he' with rfl; exact hj.1, ?_⟩
+  intro m hm v m' h
+  exact hj.2 m hm v m' (evals_seq_one h)
 
 #print axioms Sem.JudgeSeq.last
 

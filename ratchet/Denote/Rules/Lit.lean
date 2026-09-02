@@ -49,32 +49,62 @@ Each `stepFn` fact below is `rfl`: `toRuby` is the identity on the constructor, 
 answers with the value, and nothing in the machine but `ctl` moves. -/
 
 theorem Sem.Judge.intLit : Obl.Judge.intLit := by
-  intro κ Γ I n m hm v m' h
+  intro κ Γ I n
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .int n) rfl h
   exact ⟨rfl, by simp [denM, isIntV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.fltLit : Obl.Judge.fltLit := by
-  intro κ Γ I bits m hm v m' h
+  intro κ Γ I bits
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .flt (Float.ofBits bits)) rfl h
   exact ⟨rfl, by simp [denM, isFltV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.symLit : Obl.Judge.symLit := by
-  intro κ Γ I s m hm v m' h
+  intro κ Γ I s
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .sym s) rfl h
   exact ⟨rfl, by simp [denM, isSymV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.truLit : Obl.Judge.truLit := by
-  intro κ Γ I m hm v m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .bool true) rfl h
   exact ⟨rfl, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.flsLit : Obl.Judge.flsLit := by
-  intro κ Γ I m hm v m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .bool false) rfl h
   exact ⟨rfl, by simp [denM, isBoolV], StateOk_reCtl hm _ _⟩
 
 theorem Sem.Judge.nilLit : Obl.Judge.nilLit := by
-  intro κ Γ I m hm v m' h
+  intro κ Γ I
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (w := .nil) rfl h
   exact ⟨rfl, by simp [denM, isNilV], StateOk_reCtl hm _ _⟩
 
@@ -89,7 +119,12 @@ theorem stepFn_var (m : Machine) (x : String) :
     reCtl, getLocal_reCtl]
 
 theorem Sem.Judge.var : Obl.Judge.var := by
-  intro κ Γ I x τ hget halias m hm v m' h
+  intro κ Γ I x τ hget halias
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
   have hden := (hm.env.1 x τ hget).1
@@ -99,7 +134,12 @@ theorem Sem.Judge.var : Obl.Judge.var := by
   simpa using denM_reCtl.mpr hden
 
 theorem Sem.Judge.varAlias : Obl.Judge.varAlias := by
-  intro κ Γ I x y τ hget m hm v m' h
+  intro κ Γ I x y τ hget
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_var m x) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
   have hden := (hm.env.1 x (.sameAs y τ) hget).1
@@ -128,7 +168,12 @@ theorem stepFn_str (m : Machine) (s : String) :
         (.value (.ref m.heap.objs.size)) []) := rfl
 
 theorem Sem.Judge.strLit : Obl.Judge.strLit := by
-  intro κ Γ I s m hm v m' h
+  intro κ Γ I s
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_str m s) h
   -- The push is an `Ext`; `StateOk` and the type then both come from that.
   have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }
@@ -150,8 +195,10 @@ theorem Sem.Judge.strLit : Obl.Judge.strLit := by
 
 /-! ## The delegation -/
 
-/-- `SemJudgeSeq` *is* `SemJudge` at a `.seq` — see the module docstring. -/
-theorem Sem.Judge.seq : Obl.Judge.seq := fun h => h
+/-- `SemJudgeSeq` *is* `SemJudge` at a `.seq` — see the module docstring. The two plainness
+conjuncts differ, and that is the whole of the remaining difference: the sequence's is about
+its statements, the expression's is about its own head (`.seq`, which is plain). -/
+theorem Sem.Judge.seq : Obl.Judge.seq := fun h => ⟨trivial, h.2⟩
 
 #print axioms Sem.Judge.intLit
 #print axioms Sem.Judge.fltLit

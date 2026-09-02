@@ -151,6 +151,7 @@ theorem semJudge_const_clsOf {κ : Ctx} {Γ : Env} {I : Ty} {n : String}
     (hname : ∀ m : Machine, StateOk κ Γ I m → ∀ v, constResolveAt m n = some v →
       ∃ k, classNamed? m.heap n = some k ∧ v = .ref k) :
     SemJudge κ Γ I (.const n) (.clsOf n) Γ I := by
+  refine ⟨trivial, ?_⟩
   intro m hm v m' hev
   -- The machine answered *something*, so resolution succeeded; that is where the value is.
   cases hr : constResolveAt m n with
@@ -221,7 +222,12 @@ docstring.
 Note this rung spends no `ConstScopeOk`: the value it needs is the one the machine produced,
 and `ConstsOk` is now stated at the machine's own resolution. -/
 theorem Sem.Judge.constEnv : Obl.Judge.constEnv := by
-  intro κ Γ I n τ hget m hm v m' hev
+  intro κ Γ I n τ hget
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' hev
   obtain ⟨w, hres, hden⟩ := hm.consts n τ hget
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_const hres) hev
   exact ⟨rfl, denM_reCtl.mpr hden, StateOk_reCtl hm _ _⟩

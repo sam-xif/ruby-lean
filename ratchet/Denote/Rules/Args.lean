@@ -47,13 +47,19 @@ open RubyCore
 /-! ## Positional arguments -/
 
 theorem Sem.JudgeAll.cons : Obl.JudgeAll.cons := by
-  intro κ Γ Γ₁ Γ₂ I I₁ I₂ e es τ τs hhead htail m hm vs m' hev
+  intro κ Γ Γ₁ Γ₂ I I₁ I₂ e es τ τs hhead htail
+  -- plainness of the list is the head's own (from `SemJudge`) plus the tail's
+  refine ⟨fun e' he' => by
+    rcases List.mem_cons.mp he' with h | h
+    · exact h ▸ hhead.1
+    · exact htail.1 e' h, ?_⟩
+  intro m hm vs m' hev
   cases vs with
   | nil => exact absurd hev (by simp [EvalsAll])
   | cons v vs =>
     obtain ⟨m₁, hEv, hRest⟩ := hev
-    obtain ⟨hst, hden, hok₁⟩ := hhead m hm v m₁ hEv
-    obtain ⟨hst', hall, hok₂⟩ := htail m₁ hok₁ vs m' hRest
+    obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm v m₁ hEv
+    obtain ⟨hst', hall, hok₂⟩ := htail.2 m₁ hok₁ vs m' hRest
     exact ⟨by rw [hst', hst], ⟨m₁, hEv, hden, hall⟩, hok₂⟩
 
 /-! ## Keyword arguments
@@ -63,13 +69,18 @@ that inductive's docstring for the two recorded gaps), and its expression list i
 from the entries by `kwExprs`, so the one extra move is unfolding that at a `.pair` head. -/
 
 theorem Sem.JudgeKw.pair : Obl.JudgeKw.pair := by
-  intro κ Γ Γ₁ Γ₂ I I₁ I₂ k v τ es kws hhead htail m hm vs m' hev
+  intro κ Γ Γ₁ Γ₂ I I₁ I₂ k v τ es kws hhead htail
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm vs m' hev
   rw [kwExprs] at hev
   cases vs with
   | nil => exact absurd hev (by simp [EvalsAll])
   | cons w vs =>
     obtain ⟨m₁, hEv, hRest⟩ := hev
-    obtain ⟨hst, hden, hok₁⟩ := hhead m hm w m₁ hEv
+    obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm w m₁ hEv
     obtain ⟨hst', hall, hok₂⟩ := htail m₁ hok₁ vs m' hRest
     refine ⟨by rw [hst', hst], ?_, hok₂⟩
     rw [kwExprs]
@@ -104,7 +115,12 @@ theorem denPairsAt_mono {σ ν : Ty} : ∀ (ps : List (Ratchet.Expr × Ratchet.E
              denPairsAt_mono ps hrest⟩
 
 theorem Sem.JudgePairs.cons : Obl.JudgePairs.cons := by
-  intro κ Γ Γ₁ Γ₂ Γ₃ I I₁ I₂ I₃ k v ps σ ν kr vr hkey hval htail m hm vals m' hev
+  intro κ Γ Γ₁ Γ₂ Γ₃ I I₁ I₂ I₃ k v ps σ ν kr vr hkey hval htail
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm vals m' hev
   rw [pairExprs] at hev
   match vals with
   | [] => exact absurd hev (by simp [EvalsAll])
@@ -113,8 +129,8 @@ theorem Sem.JudgePairs.cons : Obl.JudgePairs.cons := by
     exact absurd hrest (by simp [EvalsAll])
   | kv :: vv :: vals =>
     obtain ⟨m₁, hEk, m₂, hEv, hRest⟩ := hev
-    obtain ⟨hst₁, hkd, hok₁⟩ := hkey m hm kv m₁ hEk
-    obtain ⟨hst₂, hvd, hok₂⟩ := hval m₁ hok₁ vv m₂ hEv
+    obtain ⟨hst₁, hkd, hok₁⟩ := hkey.2 m hm kv m₁ hEk
+    obtain ⟨hst₂, hvd, hok₂⟩ := hval.2 m₁ hok₁ vv m₂ hEv
     obtain ⟨hst₃, hall, hok₃⟩ := htail m₂ hok₂ vals m' hRest
     refine ⟨by rw [hst₃, hst₂, hst₁], ?_, hok₃⟩
     rw [DenPairsAt]

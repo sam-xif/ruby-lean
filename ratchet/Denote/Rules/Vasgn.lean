@@ -97,7 +97,12 @@ theorem vasgn_close {κ : Ctx} {Γ' : Env} {I' τ : Ty} {m m₀ : Machine} {x : 
 /-! ## The rung -/
 
 theorem Sem.Judge.vasgn : Obl.Judge.vasgn := by
-  intro κ Γ Γ' I I' x e τ hprem hcap hctx halias m hm v m' hev
+  intro κ Γ Γ' I I' x e τ hprem hcap hctx halias
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' hev
   obtain ⟨fuel, hrun⟩ := hev
   -- **Step 1**: peel the push, leaving a run of `e` under `[.asgnK .lvar x]`.
   have hpush : ∃ f, Interp.run f (pushK [.asgnK .lvar x] (evalFrom m e)) = .value v m' := by
@@ -109,12 +114,12 @@ theorem Sem.Judge.vasgn : Obl.Judge.vasgn := by
   obtain ⟨f, hf⟩ := hpush
   -- **The decomposition**: the sub-run of `e` returns, and the rest continues from the state
   -- that delivers its value to `asgnK`.
-  obtain ⟨n, v₀, m₀, hin, hout⟩ :=
+  obtain ⟨n, v₀, m₀, hin, _, _, hout⟩ :=
     run_split [.asgnK .lvar x] (catchFree_asgnK x) (jumpOpaque_asgnK .lvar x) f
       (evalFrom m e) v m' hf
   -- **The premise**, at that sub-run — which is a run under the *empty* continuation, which
   -- is the whole point of the decomposition.
-  obtain ⟨hstack, hden, hSt'⟩ := hprem m hm v₀ m₀ ⟨n, hin⟩
+  obtain ⟨hstack, hden, hSt'⟩ := hprem.2 m hm v₀ m₀ ⟨n, hin⟩
   -- **The tail**: two steps, the write and the end of the run.
   obtain ⟨hveq, hmeq⟩ := run_two (stepFn_asgnK m₀ x v₀) hout
   subst hmeq

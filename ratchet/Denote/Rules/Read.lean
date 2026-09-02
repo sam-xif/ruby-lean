@@ -45,7 +45,12 @@ theorem stepFn_self (m : Machine) :
     Interp.stepFn (evalFrom m .self') = .next (reCtl m (.value m.currentFrame.self) []) := rfl
 
 theorem Sem.Judge.selfExpr : Obl.Judge.selfExpr := by
-  intro κ Γ I σ hself m hm v m' h
+  intro κ Γ I σ hself
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_self m) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
   have hden : denM σ m m.currentFrame.self := by
@@ -100,7 +105,12 @@ theorem stepFn_ivar (m : Machine) (x : String) :
   | _ => rfl
 
 theorem Sem.Judge.ivarRead : Obl.Judge.ivarRead := by
-  intro κ Γ I x m hm v m' h
+  intro κ Γ I x
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_ivar m x) h
   refine ⟨rfl, ?_, StateOk_reCtl hm _ _⟩
   have hspine := hm.selfSpine

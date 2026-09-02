@@ -163,7 +163,7 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
     ∀ (fuel : Nat) (m : Machine) (v : Value) (m' : Machine),
       Interp.run fuel (pushK K m) = .value v m' →
       ∃ (n : Nat) (v₀ : Value) (m₀ : Machine),
-        Interp.run n m = .value v₀ m₀ ∧
+        Interp.run n m = .value v₀ m₀ ∧ m₀.ctl = .value v₀ ∧ m₀.kont = [] ∧
         ∃ f2, Interp.run f2 (deliver m₀ v₀ K) = .value v m' := by
   intro fuel
   induction fuel with
@@ -184,8 +184,8 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
       | next m₂ =>
         rw [hev] at h
         simp only [RubyCore.Proof.frameR] at h
-        obtain ⟨k, v₀, m₀, hin, f2, hout⟩ := ih m₂ v m' h
-        exact ⟨k + 1, v₀, m₀, by rw [Interp.run, hev]; exact hin, f2, hout⟩
+        obtain ⟨k, v₀, m₀, hin, hc₀, hk₀, f2, hout⟩ := ih m₂ v m' h
+        exact ⟨k + 1, v₀, m₀, by rw [Interp.run, hev]; exact hin, hc₀, hk₀, f2, hout⟩
       | done w m₂ =>
         -- impossible: `.done` is only ever `applyKont`'s empty-continuation arm, so the
         -- control word would have to be a value rather than an expression
@@ -199,7 +199,7 @@ theorem run_split (K : List Kont) (hK : RubyCore.Proof.CatchFree K) (hJ : JumpOp
       cases hk : m.kont with
       | nil =>
         -- **the pass-through point**: the inner run ends here, in one step
-        refine ⟨1, w, m, ?_, n + 1, ?_⟩
+        refine ⟨1, w, m, ?_, hc, hk, n + 1, ?_⟩
         · simp only [Interp.run, Interp.stepFn, hc, Interp.applyKont, hk]
         · rw [← pushK_eq_deliver K hc hk, Interp.run]; exact h
       | cons kk rest =>

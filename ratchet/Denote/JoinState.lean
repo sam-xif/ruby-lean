@@ -109,88 +109,16 @@ theorem envGet?_joinEnv_none {Γ₁ Γ₂ : Env} {x : String}
     rw [joinEnvAt, envGet?_cons_ne _ _ hk]
     exact ih (fun h => hx (List.mem_cons_of_mem _ h))
 
-/-! ## The one awkward case: an alias surviving a join
+/-! ## …and the case that is *not* provable yet
 
-`EnvOk`'s second conjunct is a claim about `y` when the recorded type is `.sameAs y ρ`, and
-`joinT` **can** return an alias — `joinT .never (.sameAs y ρ)` is `.sameAs y ρ`. So the
-conjunct is not vacuous at the join and has to be traced back to the branch that supplied it.
-It always can be: every way `joinT` produces a `.sameAs` has the *left* argument either
-`.never` (in which case the branch's own `EnvOk` is contradictory, since `denM .never` is
-empty) or the same alias. -/
-
-theorem joinT_sameAs : ∀ {σ τ : Ty} {y : String} {ρ : Ty}, joinT σ τ = .sameAs y ρ →
-    σ = .never ∨ ∃ ρ', σ = .sameAs y ρ' := by
-  intro σ τ y ρ h
-  rw [joinT] at h
-  split at h
-  · exact Or.inl (ty_eq_of_beq (by simpa using ‹(σ == Ty.never) = true›))
-  · split at h
-    · subst h; exact Or.inr ⟨ρ, rfl⟩
-    · split at h
-      · rename_i ρ' hj
-        subst h
-        rw [joinTy] at hj
-        split at hj
-        · exact Or.inr ⟨ρ, by rw [← ty_eq_of_beq ‹(σ == τ) = true›] at hj; simp_all⟩
-        · split at hj
-          · exact Or.inl (ty_eq_of_beq (by simpa using ‹(σ == Ty.nilT) = true›))
-          · split at hj
-            · exact absurd (Option.some.inj hj) (by simp [mkNilable]; split <;> simp)
-            · split at hj
-              · exact Or.inr ⟨ρ, by simp_all⟩
-              · split at hj
-                · rename_i hτσ
-                  exact absurd (ty_eq_of_beq hτσ) (by
-                    intro hh
-                    rw [← Option.some.inj hj] at hh
-                    exact absurd hh (by simp))
-                · exact absurd hj (by simp)
-      · -- the union arm
-        exact Or.inr ⟨ρ, by
-          rename_i hj
-          exact absurd h (unionOf_ne_sameAs _ _ _)⟩
+`EnvOk`'s identity conjunct is a claim about `y` when the recorded type is `.sameAs y ρ`, and
+`joinT` **can** return an alias that neither branch's `EnvOk` supports — see
+`Denote/Sem/notes.md` §The eleventh stall point for the counterexample
+(`joinT (.union A A) A` dedups to `[A]`) and for the two candidate fixes. So the `EnvOk` join
+itself is not here; the key lemmas above are, because they are what either fix will need.
+-/
 
 #print axioms envGet?_joinEnv
-/-! ## The one awkward case: an alias surviving a join
-
-`EnvOk`'s second conjunct is a claim about `y` when the recorded type is `.sameAs y ρ`, and
-`joinT` **can** return an alias — `joinT .never (.sameAs y ρ)` is `.sameAs y ρ`. So the
-conjunct is not vacuous at the join and has to be traced back to the branch that supplied it.
-It always can be: every way `joinT` produces a `.sameAs` has the *left* argument either
-`.never` (in which case the branch's own `EnvOk` is contradictory, since `denM .never` is
-empty) or the same alias. -/
-
-theorem joinT_sameAs : ∀ {σ τ : Ty} {y : String} {ρ : Ty}, joinT σ τ = .sameAs y ρ →
-    σ = .never ∨ ∃ ρ', σ = .sameAs y ρ' := by
-  intro σ τ y ρ h
-  rw [joinT] at h
-  split at h
-  · exact Or.inl (ty_eq_of_beq (by simpa using ‹(σ == Ty.never) = true›))
-  · split at h
-    · subst h; exact Or.inr ⟨ρ, rfl⟩
-    · split at h
-      · rename_i ρ' hj
-        subst h
-        rw [joinTy] at hj
-        split at hj
-        · exact Or.inr ⟨ρ, by rw [← ty_eq_of_beq ‹(σ == τ) = true›] at hj; simp_all⟩
-        · split at hj
-          · exact Or.inl (ty_eq_of_beq (by simpa using ‹(σ == Ty.nilT) = true›))
-          · split at hj
-            · exact absurd (Option.some.inj hj) (by simp [mkNilable]; split <;> simp)
-            · split at hj
-              · exact Or.inr ⟨ρ, by simp_all⟩
-              · split at hj
-                · rename_i hτσ
-                  exact absurd (ty_eq_of_beq hτσ) (by
-                    intro hh
-                    rw [← Option.some.inj hj] at hh
-                    exact absurd hh (by simp))
-                · exact absurd hj (by simp)
-      · -- the union arm
-        exact Or.inr ⟨ρ, by
-          rename_i hj
-          exact absurd h (unionOf_ne_sameAs _ _ _)⟩
 
 #print axioms envGet?_joinEnv_none
 

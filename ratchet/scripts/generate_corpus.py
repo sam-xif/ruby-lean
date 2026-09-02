@@ -2101,6 +2101,17 @@ R("method-missing-bare-name-unsafe", 10,
   '@a = "s"\ndef method_missing(*n)\n  @a = 1\n  2\nend\nx\n@a + "b"\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("ivar-asgn-stale-inst-unsafe", 12,
+  "**A candidate UNSAFE program, and the probe for the eleventh/twelfth stall points\u2019 "
+  "neighbour.** `Judge.ivarAsgn` threads \u0393 out **unchanged** and only updates the ivar "
+  "spine. But a local can hold `self` (`x = self`, typed at `\u03ba.selfTy`), and that type is "
+  "an `.inst` carrying an ivar spine of its own \u2014 which the assignment then makes stale, "
+  "exactly as \u00a7F1\u2019s `Ty.clos` captures went stale. If the checker types `x.get + 1` "
+  "from the stale spine, it certifies `Integer + Integer` for a run that does `String + "
+  "Integer`. Same shape as \u00a7F1, one piece of state over.",
+  'class C\n  def initialize\n    @a = 1\n  end\n  def leak\n    x = self\n    @a = "s"\n    x\n  end\nend\nC.new.leak\n',
+  expect_validate=True)
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

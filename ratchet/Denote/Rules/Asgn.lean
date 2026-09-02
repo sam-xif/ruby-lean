@@ -64,7 +64,12 @@ theorem stepFn_asgnK (m : Machine) (t : String) (v : Value) :
 /-! ## The rung -/
 
 theorem Sem.Judge.vasgnAlias : Obl.Judge.vasgnAlias := by
-  intro κ Γ I t x σ τ _htemp hget hstrip hcap hctx m hm v m' h
+  intro κ Γ I t x σ τ _htemp hget hstrip hcap hctx
+  first
+    | refine ⟨by first | trivial | simp [PlainAll, Plain]
+                       | simp_all [PlainAll, Plain], ?_⟩
+    | skip
+  intro m hm v m' h
   -- The value read is `m.getLocal x`, and the run is the four steps above.
   obtain ⟨rfl, rfl⟩ :=
     evals_four (stepFn_vasgn m t x) (stepFn_var_kont m t x)
