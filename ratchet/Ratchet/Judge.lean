@@ -2581,7 +2581,17 @@ def refineOne (C : CTable) (k : NarrowKind) (thenSide : Bool) (Γ : Env) (x : St
     match envGet? Γ₁ y with
     | some ρ => envSet Γ₁ y (refine (stripAlias ρ))
     | none => Γ₁
-  | some τ => envSet Γ x (refine τ)
+  -- **`found-issues.md` §F15**: the refinement must not *create* an alias claim. `refine` can:
+  -- `falsyTy (union (sameAs y ρ) int)` is `joinT (sameAs y (falsyTy ρ)) never`, which is the
+  -- `sameAs` — so refining a binding the environment describes as a **union** would record
+  -- that `x` and `y` hold the same object, which the union never said. `EnvOk`'s alias
+  -- conjunct is exactly that claim, and nothing in the judgment justifies it here (the alias
+  -- *arm* above is the justified case, and it keeps the alias it was given). Declining to
+  -- refine is the conservative answer, and it costs nothing measurable: the only way a
+  -- `sameAs` reaches a union is a desugarer temporary joined across branches.
+  | some τ =>
+    let τ' := refine τ
+    envSet Γ x (if isAliasTy τ' then τ else τ')
 
 /-- The names the desugarer introduces for its own temporaries, which is where `Judge.vasgnAlias`
 admits an alias.
