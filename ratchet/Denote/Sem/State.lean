@@ -1,5 +1,5 @@
 import Ratchet.Judge
-import Denote.Arrow
+import Denote.Grow
 import Denote.Sem.Trans
 
 /-!
@@ -173,10 +173,18 @@ So `AsmsOk` is not a hypothesis a clink discharges — it is a hypothesis a clin
 the eventual `Judge.callDef` obligation is where the circularity is cut for real (by induction
 on something that decreases, not by assuming the conclusion). Recording it as a component of
 `StateOk` is what makes the conditionality visible in every obligation's statement instead of
-in a comment. -/
+in a comment.
+
+**The `∀ m₂, Ext m m₂` quantifier** is here for the reason `denM`'s arrow arm has it
+(`Denote/Den.lean` §The arrow arm point 5), and this is the *other* component that quantifies
+over runs: a run from a heap with one more object in it is not the run from the heap without
+it, so the unquantified form does not survive an allocating step and no rung that allocates
+could re-establish it. Quantifying over `Ext`-futures makes it monotone by `Ext.trans`;
+`Ext.refl` recovers the unquantified reading, so this is a strengthening of the assumption a
+`Judge.callDef` rung will have to discharge, not a weakening. -/
 def AsmsOk (Δ : AsmTable) (m : Machine) : Prop :=
-  ∀ a ∈ Δ, ∀ (args : List Value), DenAll a.argTys m args →
-    ∀ v m', SendReturns m a.name args v m' → denM a.ret m' v
+  ∀ a ∈ Δ, ∀ m₂, Ext m m₂ → ∀ (args : List Value), DenAll a.argTys m₂ args →
+    ∀ v m', SendReturns m₂ a.name args v m' → denM a.ret m' v
 
 /-- The running frame is the one `Ctx.frame` describes: same method name, and `self`'s class
 is the recorded receiver class. `none` means "outside any method body", i.e. the frame is a
@@ -227,12 +235,68 @@ rather than soundness*: hiding a constant can only make the checker refuse a pro
 accept a bad one. So there is nothing for a machine to conform to. -/
 def PrivConstsOk (_ps : List String) (_m : Machine) : Prop := True
 
-/-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`.
+/-! ## The heap itself
+
+Two components that correspond to no `Ctx` field, because they are not claims about the
+*description* — they are the two facts about the machine that a rule allocating an object
+needs and that nothing else supplies. Both were forced by `Judge.strLit`
+(`Denote/Sem/notes.md` §The fourth stall point, item 1: "`StateOk` says nothing about the
+boot classes"). -/
+
+/-- **The ancestor walk has finished before its fuel runs out.** `ancestors` is fuel-bounded
+by `h.objs.size + 1` (`RubyCore/Heap.lean`, L73: a `partial def` would be opaque to the
+kernel), so *growing the heap grows the fuel* — and without this, the walk at a machine and
+the walk at the same machine one allocation later are two different computations. Named
+`Saturated` and proved to do exactly this job in the model's own metatheory
+(`RubyCore/Proof/AncestorsGrow.lean`), which is why it is imported rather than restated.
+
+Not free, and not hygiene: `RubyCore.Proof.saturatedB` is the `Bool` that checks it, measured
+`true` at the prelude-booted heap. -/
+abbrev HeapSaturated (m : Machine) : Prop := Proof.Saturated m.heap
+
+/-- **The core classes are what they are.**
+
+`Judge.strLit` concludes `.cls "String"`, whose denotation resolves the *name* `"String"`
+through the heap's own constant table (`classNamed?`). A machine conformant with
+`(κ, Γ, I)` is not otherwise required to have a class named `String` at all — `κ.classes` is
+the *program*'s class table — so without this component the rule's conclusion is not
+derivable from its hypothesis. That is a real gap in the description, not a missing lemma:
+the heap's core classes are what they are, and saying so is a conformance fact.
+
+Four clauses, and each is used once by the `strLit` rung: the name resolves to the boot id;
+`String` is its own ancestor (the conclusion `isA … stringId`); `String` is a `BasicObject`
+and `BasicObject` is only itself (together, `Ext.freshBasic` at the pushed object — see
+`Denote/Ext.lean` on why a *dangling* reference is what makes that clause necessary).
+
+**This will grow.** `arrayLit`, `hashLit` and most of `prim` conclude a builtin class type
+too, and each will want its own row here. Kept as a structure with named fields rather than
+a table so that a rung cites the clause it needs and an unused clause is visible. -/
+structure CoreOk (h : Heap) : Prop where
+  /-- `BasicObject` has no superclass and no mixins, so its ancestor list is just itself. -/
+  basicSelf : ancestors h Boot.basicObjectId = [Boot.basicObjectId]
+  /-- The name `String` resolves to the boot `String` class. -/
+  stringNamed : classNamed? h "String" = some Boot.stringId
+  /-- `String` is a `String` … -/
+  stringSelf : (ancestors h Boot.stringId).contains Boot.stringId = true
+  /-- … and a `BasicObject`. -/
+  stringBasic : (ancestors h Boot.stringId).contains Boot.basicObjectId = true
+
+theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
+    (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
+  basicSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.basicSelf
+  stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
+  stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf
+  stringBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringBasic
+
+/-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
+plus the two heap facts above.
 
 Nine `Ctx` fields, nine components, and the two that are `True` say so with a docstring rather
 than by omission — a `StateOk` that quietly skipped a field would be a place for an unsound
 rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
+  sat : HeapSaturated m
+  core : CoreOk m.heap
   env : EnvOk Γ m
   selfSpine : SelfSpineOk I m
   classes : ClassesOk κ.classes m
@@ -244,5 +308,82 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   selfTy : SelfTyOk κ.selfTy m
   consts : ConstsOk κ.consts m
   privConsts : PrivConstsOk κ.privConsts m
+
+/-! ## Conformance survives an allocation
+
+The theorem every allocating rung needs, and the one that pays for `Denote/Ext.lean` and
+`Denote/Grow.lean`. Component by component, and the shape of each proof is the finding:
+
+* Nine components are **rewrites** — they read the heap through `classPayload?`,
+  `constLookup` or an in-range `Heap.get`, and read the frames through `currentFrame`, all of
+  which `Ext` pins outright.
+* `env`, `selfSpine`, `blockTy`, `selfTy` and `consts` additionally transport a `denM`, which
+  is `denM_ext`.
+* `frame` is the one that is only *monotone* (`isAName`), and `asms` is the one that is free
+  by construction (`Ext.trans`) rather than proved — see its own docstring.
+
+Nothing here is specific to a string literal: an allocating rung supplies the `Ext` and this
+does the rest. -/
+theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
+    (he : Ext m m₂) : StateOk κ Γ I m₂ where
+  sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
+  core := CoreOk.ext rfl rfl he h.core
+  env := by
+    intro x τ hx
+    obtain ⟨hd, hid⟩ := h.env x τ hx
+    refine ⟨?_, ?_⟩
+    · rw [he.getLocal_eq]; exact denM_ext he hd
+    · intro y ρ hτ; rw [he.getLocal_eq, he.getLocal_eq]; exact hid y ρ hτ
+  selfSpine := by
+    have := h.selfSpine
+    unfold SelfSpineOk at this ⊢
+    rw [he.currentFrame_eq, funext (he.ivarOf_eq m.currentFrame.self)]
+    exact denSpine_ext he this
+  classes := by
+    intro c hc
+    obtain ⟨k, hk, hm⟩ := h.classes c hc
+    refine ⟨k, by rw [he.classNamed?_eq]; exact hk, ?_⟩
+    intro d hd
+    obtain ⟨md, h1, h2⟩ := hm d hd
+    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+  defs := by
+    intro d hd
+    obtain ⟨md, h1, h2⟩ := h.defs d hd
+    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+  asms := by
+    intro a ha m₃ he₃ args hargs v m' hs
+    exact h.asms a ha m₃ (he.trans he₃) args hargs v m' hs
+  frame := by
+    have h2 := h.frame
+    unfold FrameOk at h2 ⊢
+    cases hf : κ.frame with
+    | none => rw [hf] at h2; rw [he.currentFrame_eq]; exact h2
+    | some f =>
+      rw [hf] at h2
+      exact ⟨by rw [he.currentFrame_eq]; exact h2.1,
+             by rw [he.currentFrame_eq]; exact he.isAName_mono h2.2⟩
+  closures := trivial
+  blockTy := by
+    have h2 := h.blockTy
+    unfold BlockTyOk at h2 ⊢
+    cases hb : κ.blockTy with
+    | none => rw [hb] at h2; rw [he.currentFrame_eq]; exact h2
+    | some β =>
+      rw [hb] at h2
+      obtain ⟨b, hb1, hb2⟩ := h2
+      exact ⟨b, by rw [he.currentFrame_eq]; exact hb1, denM_ext he hb2⟩
+  selfTy := by
+    have h2 := h.selfTy
+    unfold SelfTyOk at h2 ⊢
+    cases hσ : κ.selfTy with
+    | none => trivial
+    | some σ => rw [hσ] at h2; rw [he.currentFrame_eq]; exact denM_ext he h2
+  consts := by
+    intro p τ hp
+    obtain ⟨v, hv1, hv2⟩ := h.consts p τ hp
+    exact ⟨v, by rw [he.constLookup_eq]; exact hv1, denM_ext he hv2⟩
+  privConsts := trivial
+
+#print axioms StateOk_ext
 
 end Ratchet.Denote

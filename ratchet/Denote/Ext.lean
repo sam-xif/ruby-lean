@@ -1,0 +1,340 @@
+import Denote.Apply
+import RubyCore.Proof.HeapGrow
+
+/-!
+# `Denote/Ext.lean` — allocation, and the one thing about a type's meaning that does not
+survive it
+
+`Denote/Sem/notes.md` §The fourth stall point records the wall the semantic ratchet hit at
+its third literal: **a string literal allocates.** `Judge.strLit`'s post-machine is its
+pre-machine with one object pushed, and re-establishing `StateOk` there means transporting
+every component across the push. Eleven of the twelve components transport for a boring
+reason — they read the heap through `Heap.get`/`classPayload?`, and a push moves neither.
+The twelfth does not, and the reason is structural rather than fixable by a lemma: `denM`'s
+**arrow** arm (and `AsmsOk`, which has the same shape) quantifies over *runs*, and a run
+from the extended heap allocates at shifted object ids, so it is not the run from the
+unextended one.
+
+This file is the fix the notes said to start from the constraint of: a relation coarse
+enough to seed a future-quantified arrow **without** conflicting with
+`Denote/Rules/Core.lean`'s `denM_ctl`.
+
+## `Ext` — "the same machine, later, having allocated"
+
+`Ext m m₂` says `m₂` is `m` after some allocation and nothing else: same frames, a heap that
+only grew, and — the two clauses that are not "nothing changed" — a bound on what the *fresh*
+ids may be. Three properties earn it its place.
+
+* **Reflexive and transitive**, which is what lets a future-quantified arrow be monotone:
+  the arrow at `m` gives the arrow at any `m₂` with `Ext m m₂`, by composing.
+* **Blind to `ctl`/`kont`**, which is what keeps `denM_ctl` true. This is exactly the
+  conflict the notes flagged against a `Reaches`-indexed arrow: machines reachable from `m`
+  are not machines reachable from `m` with its control word rewritten, whereas `Ext` reads
+  only the heap and the frame array, both of which `reCtl` preserves.
+* **Frames pinned, not merely extended.** A `clos` type's denotation reads its captured
+  locals out of `Machine.frames` (`Denote/Apply.lean` §Why a `Machine`), so a relation that
+  let frames grow would have to transport that too. Pinning them is the weaker, honest
+  choice: the arrow this seeds is stable **under allocation**, which is strictly less than
+  `Denote/Arrow.lean`'s `ArrowStable` (stable under *execution*) and is exactly what the
+  allocating rungs need. Recorded as a gap, not hidden: a call rung will want the stronger
+  one.
+
+## The two fresh-id clauses, and the dangling reference they are about
+
+`Heap.get` is total: out of bounds it answers `default`, whose `klass` is `0` — which is
+`Boot.basicObjectId`. So at a heap of size `n`, the value `.ref n` is not an error, it is an
+**instance of `BasicObject` with no ivars**, and after a push it becomes whatever was
+pushed. Nothing in `StateOk` forbids `Γ` from typing a local that holds such a dangling
+reference, so the transport has to survive it rather than assume it away.
+
+Both clauses are about exactly that id range, and both are discharged by `rfl`-shaped facts
+at a real allocation:
+
+* `freshIvars` — a pushed literal has no instance variables, so `ivarOf` answers `nil` at a
+  dangling reference **both** before and after. (`RubyCore.Proof.PlainGrow` carries the same
+  clause for the same reason.)
+* `freshBasic` — a pushed object is at least as much of a `BasicObject` as the dangling read
+  it replaces. This is what keeps the *nominal* arm monotone: `.cls n` at a dangling
+  reference can only be true for the classes in `ancestors h Boot.basicObjectId`, and a
+  freshly allocated `String` has all of them.
+
+The payload projections need no clause at all, and that is worth recording as the reason
+`Ext` is this short: `default.payload` is `.none`, so `arrElems?`/`hshEntries?`/`procClosure?`
+already answer `none` at every dangling reference, which makes `arrayOf`/`hashOf`/`clos`
+*vacuous* there rather than in need of transport.
+
+## What is imported, and why that is new
+
+This is the first file in the package to import `RubyCore.Proof.*` — the model's own
+metatheory, not just its interpreter. `RubyCore/Proof/AncestorsGrow.lean` solved precisely
+the sub-problem in the way: `ancestors` is fuel-bounded by `h.objs.size + 1`, so a push moves
+the *fuel*, and `Saturated` ("one more unit of fuel changes nothing") is the checkable
+hypothesis that makes the walk agree across a growing heap. Re-deriving it here would be a
+second, driftable copy of a proof that already exists against the same `stepFn`
+(`Semantics/Interp.lean`'s argument for importing rather than porting, applied one layer up).
+-/
+
+set_option autoImplicit false
+
+namespace Ratchet.Denote
+
+open RubyCore
+
+/-! ## Out of bounds reads the default object -/
+
+/-- `Heap.get` past the end is the default object. The single fact every dangling-reference
+case below turns on. -/
+theorem get_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) : h.get o = default := by
+  simp only [Heap.get, Array.getD_eq_getD_getElem?,
+    Array.getElem?_eq_none (by omega), Option.getD_none]
+
+theorem classOf_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
+    classOf h (.ref o) = Boot.basicObjectId := by
+  simp only [classOf, get_oob h ho]; rfl
+
+/-- Every payload projection is `none` at a dangling reference: `default.payload` is
+`.none`. This is why `Ext` needs no clause about array, hash or proc payloads. -/
+theorem arrElems?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
+    arrElems? h (.ref o) = none := by
+  simp only [arrElems?, get_oob h ho]; rfl
+
+theorem hshEntries?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
+    hshEntries? h (.ref o) = none := by
+  simp only [hshEntries?, get_oob h ho]; rfl
+
+theorem procClosure?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
+    procClosure? h (.ref o) = none := by
+  simp only [procClosure?, get_oob h ho]; rfl
+
+theorem ivarOf_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) (x : String) :
+    ivarOf h (.ref o) x = .nil := by
+  simp only [ivarOf, get_oob h ho]; rfl
+
+/-- A payload projection that *succeeds* pins its reference in range — the converse the
+transport actually uses, since it arrives holding `arrElems? h v = some xs` rather than a
+bound on `v`. -/
+theorem lt_of_arrElems? {h : Heap} {o : ObjId} {xs : Array Value}
+    (hx : arrElems? h (.ref o) = some xs) : o < h.objs.size := by
+  rcases Nat.lt_or_ge o h.objs.size with hc | hc
+  · exact hc
+  · rw [arrElems?_oob h hc] at hx; exact absurd hx (by simp)
+
+theorem lt_of_hshEntries? {h : Heap} {o : ObjId} {es : Array (Value × Value)}
+    (hx : hshEntries? h (.ref o) = some es) : o < h.objs.size := by
+  rcases Nat.lt_or_ge o h.objs.size with hc | hc
+  · exact hc
+  · rw [hshEntries?_oob h hc] at hx; exact absurd hx (by simp)
+
+theorem lt_of_procClosure? {h : Heap} {o : ObjId} {cl : Closure}
+    (hx : procClosure? h (.ref o) = some cl) : o < h.objs.size := by
+  rcases Nat.lt_or_ge o h.objs.size with hc | hc
+  · exact hc
+  · rw [procClosure?_oob h hc] at hx; exact absurd hx (by simp)
+
+/-! ## The relation -/
+
+/-- **`m₂` is `m` after an allocation.** See the module docstring for each clause. -/
+structure Ext (m m₂ : Machine) : Prop where
+  /-- The frame array is untouched: a `clos`'s captured scope still resolves. -/
+  frames : m₂.frames = m.frames
+  /-- And so is the frame *stack*, which `Machine.getLocal` starts its walk from. -/
+  stack : m₂.stack = m.stack
+  /-- The heap only grows. -/
+  size : m.heap.objs.size ≤ m₂.heap.objs.size
+  /-- Every id the old heap had reads back identically. -/
+  get : ∀ o, o < m.heap.objs.size → m₂.heap.get o = m.heap.get o
+  /-- Nothing anywhere became — or stopped being — a class. -/
+  payload : ∀ k, m₂.heap.classPayload? k = m.heap.classPayload? k
+  /-- **The ancestor walk is unmoved**, which the four clauses above do *not* give:
+      `ancestors` is fuel-bounded by `h.objs.size + 1` (`RubyCore/Heap.lean`, L73 — a
+      `partial def` would be opaque to the kernel), so growing the heap grows the fuel.
+      `RubyCore.Proof.ancestors_congr_grow` discharges this from the clauses above plus
+      `Saturated`, and every producer of an `Ext` below cites it; it is a *clause* rather
+      than a consequence because carrying `Saturated` inside `Ext` would make `Ext.refl`
+      conditional, and a reflexivity that can fail is not one. -/
+  ancestors : ∀ k, RubyCore.ancestors m₂.heap k = RubyCore.ancestors m.heap k
+  /-- A fresh object has no instance variables, so `ivarOf` still answers `nil` there. -/
+  freshIvars : ∀ o, m.heap.objs.size ≤ o → (m₂.heap.get o).ivars = []
+  /-- A fresh object is at least as much of a `BasicObject` as the dangling read it
+      replaces. -/
+  freshBasic : ∀ o, m.heap.objs.size ≤ o → ∀ k,
+    (RubyCore.ancestors m.heap Boot.basicObjectId).contains k = true →
+    (RubyCore.ancestors m₂.heap (classOf m₂.heap (.ref o))).contains k = true
+
+theorem Ext.shapeAgree {m m₂ : Machine} (he : Ext m m₂) :
+    Proof.ShapeAgree m.heap m₂.heap := fun k => by rw [he.payload k]
+
+theorem Ext.refl (m : Machine) : Ext m m where
+  frames := rfl
+  stack := rfl
+  size := Nat.le_refl _
+  get := fun _ _ => rfl
+  payload := fun _ => rfl
+  ancestors := fun _ => rfl
+  freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
+  freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
+
+theorem Ext.trans {m m₂ m₃ : Machine} (h₁ : Ext m m₂) (h₂ : Ext m₂ m₃) : Ext m m₃ where
+  frames := by rw [h₂.frames, h₁.frames]
+  stack := by rw [h₂.stack, h₁.stack]
+  size := Nat.le_trans h₁.size h₂.size
+  get := fun o ho => by rw [h₂.get o (Nat.lt_of_lt_of_le ho h₁.size), h₁.get o ho]
+  payload := fun k => by rw [h₂.payload k, h₁.payload k]
+  ancestors := fun k => by rw [h₂.ancestors k, h₁.ancestors k]
+  freshIvars := fun o ho => by
+    by_cases hc : o < m₂.heap.objs.size
+    · rw [h₂.get o hc]; exact h₁.freshIvars o ho
+    · exact h₂.freshIvars o (Nat.le_of_not_lt hc)
+  freshBasic := fun o ho k hk => by
+    by_cases hc : o < m₂.heap.objs.size
+    · have hclass : classOf m₃.heap (.ref o) = classOf m₂.heap (.ref o) := by
+        simp only [classOf, h₂.get o hc]
+      rw [hclass, h₂.ancestors]
+      exact h₁.freshBasic o ho k hk
+    · exact h₂.freshBasic o (Nat.le_of_not_lt hc) k (by rw [h₁.ancestors]; exact hk)
+
+/-! ## What the probes do across an `Ext`
+
+One lemma per probe in `Denote/Val.lean`, and the split between the ones that are *equal*
+and the one that is only *monotone* is the whole content of the section: everything that
+reads a class payload or an object in range agrees exactly, and `isA` — the one probe that
+can see a dangling reference turn into a real object — only goes one way. -/
+
+theorem Ext.constLookup_eq {m m₂ : Machine} (he : Ext m m₂) (n : String) :
+    constLookup m₂.heap n = constLookup m.heap n := by
+  simp only [constLookup, he.payload]
+
+theorem Ext.classNamed?_eq {m m₂ : Machine} (he : Ext m m₂) (n : String) :
+    classNamed? m₂.heap n = classNamed? m.heap n := by
+  simp only [classNamed?, he.constLookup_eq]
+  cases constLookup m.heap n with
+  | none => rfl
+  | some v => cases v <;> simp [he.payload]
+
+theorem Ext.isClassRefNamed_eq {m m₂ : Machine} (he : Ext m m₂) (v : Value) (n : String) :
+    isClassRefNamed m₂.heap v n = isClassRefNamed m.heap v n := by
+  simp only [isClassRefNamed, he.classNamed?_eq]
+
+/-- **The one-way probe.** A value that is an `n` stays an `n`; the converse fails at exactly
+one place, which is why `Ext` exists at all — a dangling `.ref` reads as a bare
+`BasicObject` before the push and as the pushed object after it. -/
+theorem Ext.isA_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value} {k : ObjId}
+    (h : isA m.heap v k = true) : isA m₂.heap v k = true := by
+  cases v with
+  | ref o =>
+    rcases Nat.lt_or_ge o m.heap.objs.size with hc | hc
+    · have : classOf m₂.heap (.ref o) = classOf m.heap (.ref o) := by
+        simp only [classOf, he.get o hc]
+      simpa only [isA, this, he.ancestors] using h
+    · refine he.freshBasic o hc k ?_
+      rwa [isA, classOf_oob m.heap hc] at h
+  | int _ | flt _ | sym _ | nil => simpa only [isA, classOf, he.ancestors] using h
+  | bool b => cases b <;> simpa only [isA, classOf, he.ancestors] using h
+
+theorem Ext.isAName_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value} {n : String}
+    (h : isAName m.heap v n = true) : isAName m₂.heap v n = true := by
+  unfold isAName at h ⊢
+  rw [he.classNamed?_eq]
+  cases hk : classNamed? m.heap n with
+  | none => rw [hk] at h; exact absurd h (by simp)
+  | some k => rw [hk] at h; exact he.isA_mono h
+
+/-- The payload projections, at a reference the *old* heap already resolved. Stated with the
+success as the hypothesis, because that is the form the transport arrives in. -/
+theorem Ext.arrElems?_eq {m m₂ : Machine} (he : Ext m m₂) {v : Value} {xs : Array Value}
+    (h : arrElems? m.heap v = some xs) : arrElems? m₂.heap v = some xs := by
+  cases v with
+  | ref o => rw [arrElems?, he.get o (lt_of_arrElems? h)]; exact h
+  | _ => exact absurd h (by simp [arrElems?])
+
+theorem Ext.hshEntries?_eq {m m₂ : Machine} (he : Ext m m₂) {v : Value}
+    {es : Array (Value × Value)} (h : hshEntries? m.heap v = some es) :
+    hshEntries? m₂.heap v = some es := by
+  cases v with
+  | ref o => rw [hshEntries?, he.get o (lt_of_hshEntries? h)]; exact h
+  | _ => exact absurd h (by simp [hshEntries?])
+
+theorem Ext.procClosure?_eq {m m₂ : Machine} (he : Ext m m₂) {v : Value} {cl : Closure}
+    (h : procClosure? m.heap v = some cl) : procClosure? m₂.heap v = some cl := by
+  cases v with
+  | ref o => rw [procClosure?, he.get o (lt_of_procClosure? h)]; exact h
+  | _ => exact absurd h (by simp [procClosure?])
+
+theorem Ext.isProcV_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value}
+    (h : isProcV m.heap v = true) : isProcV m₂.heap v = true := by
+  simp only [isProcV, Option.isSome_iff_exists] at *
+  obtain ⟨cl, hcl⟩ := h
+  exact ⟨cl, he.procClosure?_eq hcl⟩
+
+/-- **`ivarOf` agrees everywhere**, including at a dangling reference: `default` has no
+ivars and `freshIvars` says the object that replaces it has none either, so both answer
+`nil`. This is what makes the `inst` arm's spine transport without a side condition. -/
+theorem Ext.ivarOf_eq {m m₂ : Machine} (he : Ext m m₂) (v : Value) (x : String) :
+    ivarOf m₂.heap v x = ivarOf m.heap v x := by
+  cases v with
+  | ref o =>
+    rcases Nat.lt_or_ge o m.heap.objs.size with hc | hc
+    · simp only [ivarOf, he.get o hc]
+    · simp only [ivarOf, get_oob m.heap hc, he.freshIvars o hc]; rfl
+  | _ => rfl
+
+/-! ## The frame-indexed readers
+
+`Ext` pins the frame array outright, so every one of these is a rewrite. -/
+
+theorem Ext.getLocal_go_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
+    ∀ (fuel : Nat) (fid : FrameId),
+      Machine.getLocal.go m₂ x fid fuel = Machine.getLocal.go m x fid fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro fid; rfl
+  | succ n ih =>
+    intro fid
+    simp only [Machine.getLocal.go, he.frames]
+    split
+    · rfl
+    · split
+      · exact ih _
+      · rfl
+
+@[simp] theorem Ext.getLocal_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
+    m₂.getLocal x = m.getLocal x := by
+  simp only [Machine.getLocal, he.stack, he.frames]
+  exact he.getLocal_go_eq x _ _
+
+theorem Ext.frameLocal_go_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
+    ∀ (fuel : Nat) (fid : FrameId),
+      frameLocal.go m₂ x fid fuel = frameLocal.go m x fid fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro fid; rfl
+  | succ n ih =>
+    intro fid
+    simp only [frameLocal.go, he.frames]
+    split
+    · rfl
+    · split
+      · exact ih _
+      · rfl
+
+@[simp] theorem Ext.frameLocal_eq {m m₂ : Machine} (he : Ext m m₂) (fid : FrameId)
+    (x : String) : frameLocal m₂ fid x = frameLocal m fid x := by
+  simp only [frameLocal, he.frames]
+  exact he.frameLocal_go_eq x _ _
+
+@[simp] theorem Ext.closLocal_eq {m m₂ : Machine} (he : Ext m m₂) (cl : Closure) :
+    closLocal m₂ cl = closLocal m cl := by
+  funext x; exact he.frameLocal_eq cl.captured x
+
+@[simp] theorem Ext.closSelf_eq {m m₂ : Machine} (he : Ext m m₂) (cl : Closure) :
+    closSelf m₂ cl = closSelf m cl := by
+  simp only [closSelf, he.frames]
+
+@[simp] theorem Ext.currentFrame_eq {m m₂ : Machine} (he : Ext m m₂) :
+    m₂.currentFrame = m.currentFrame := by
+  simp only [Machine.currentFrame, he.frames, he.stack]
+
+#print axioms Ext.isA_mono
+#print axioms Ext.ivarOf_eq
+
+end Ratchet.Denote

@@ -1,4 +1,5 @@
 import Denote.Rules.Core
+import Denote.Rules.Alloc
 import Denote.Rules.Lit
 
 /-!

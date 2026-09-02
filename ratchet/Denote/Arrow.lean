@@ -17,7 +17,8 @@ arrow at the creation site needs the claim to survive that. So the useful obliga
 universally quantified over machines reachable from the creation state, and `Reaches`
 (`Denote/Apply.lean`) is the quantifier. Two things worth saying about it:
 
-* It is **strictly stronger**, and provably so in the trivial direction only
+* It is **strictly stronger** — than `ArrowExt` as well, which quantifies only over
+  *allocation* futures — and provably so in the trivial direction only
   (`ArrowStable.here`): a proof of stability gives you the local claim at the start state,
   and no amount of local claims gives you stability. That asymmetry is exactly the price of
   Ruby's open classes — `define_method` on a class the lambda's body dispatches to can
@@ -91,30 +92,63 @@ theorem denApp_arrowOf : ∀ (ps : List Ty) (r : Ty) (m : Machine) (f : Value)
       intro rest hrest v m' hr
       exact h (a :: rest) ⟨hpa, hrest⟩ v m' (by simpa using hr)
 
-/-- **The agreement**: the spine denotation of an arrow is the flat one. This is the lemma to
-cite; `denM`'s arrow arms are an implementation detail of staying structural. -/
+/-- **The arrow, flat and future-quantified** — `ArrowFlat` at every machine `m` could have
+allocated its way to. This, and not `ArrowFlat`, is what `denM`'s arrow arms say: see
+`Denote/Den.lean` §The arrow arm point 5 for why the quantifier is there (the arrow is the
+one arm of the denotation that does not survive an allocation, and `Ext.trans` is what makes
+the quantified form survive it by construction).
+
+`ArrowFlat` is *not* retired by this. It stays the shape a consumer states a single call
+against, and `ArrowCheck.lean`'s refutation direction is still stated over it — a failing
+sample refutes the arrow at the machine the sample was drawn at, which by `ArrowExt.here`
+refutes the quantified arrow too. -/
+def ArrowExt (ps : List Ty) (r : Ty) (m : Machine) (f : Value) : Prop :=
+  ∀ m₂, Ext m m₂ → ArrowFlat ps r m₂ f
+
+theorem ArrowExt.here {ps : List Ty} {r : Ty} {m : Machine} {f : Value}
+    (h : ArrowExt ps r m f) : ArrowFlat ps r m f := h m (Ext.refl m)
+
+theorem ArrowExt.mono {ps : List Ty} {r : Ty} {m m₂ : Machine} {f : Value}
+    (h : ArrowExt ps r m f) (he : Ext m m₂) : ArrowExt ps r m₂ f :=
+  fun m₃ he' => h m₃ (he.trans he')
+
+/-- **The agreement**: the spine denotation of an arrow is the flat one, at every
+`Ext`-future. This is the lemma to cite; `denM`'s arrow arms are an implementation detail of
+staying structural.
+
+The `isProcV` conjunct is where the two shapes differ on paper and not in content: `denM`
+states it once, at `m`, while `ArrowFlat` restates it at each `m₂`. `Ext.isProcV_mono` is
+what closes the gap — a Proc stays a Proc across an allocation, because a payload
+projection that succeeded read an object the old heap already had. -/
 theorem denM_arrowOf (ps : List Ty) (r : Ty) (m : Machine) (f : Value) :
-    denM (arrowOf ps r) m f ↔ ArrowFlat ps r m f := by
+    denM (arrowOf ps r) m f ↔ ArrowExt ps r m f := by
   match ps with
   | [] =>
-    simp only [arrowOf, denM, ArrowFlat]
-    refine and_congr_right fun _ => ⟨fun h args ha => ?_, fun h v m' hr => ?_⟩
-    · match args with
-      | [] => simpa using h
+    simp only [arrowOf, denM, ArrowExt, ArrowFlat]
+    constructor
+    · rintro ⟨hp, h⟩ m₂ he
+      refine ⟨he.isProcV_mono hp, fun args ha => ?_⟩
+      match args with
+      | [] => simpa using h m₂ he
       | _ :: _ => simp at ha
-    · exact h [] trivial v m' hr
+    · intro h
+      exact ⟨(h m (Ext.refl m)).1, fun m₂ he v m' hr => (h m₂ he).2 [] trivial v m' hr⟩
   | p :: ps =>
-    simp only [arrowOf, denM, ArrowFlat]
-    refine and_congr_right fun _ => ⟨fun h args ha => ?_, fun h a hpa => ?_⟩
-    · match args with
+    simp only [arrowOf, denM, ArrowExt, ArrowFlat]
+    constructor
+    · rintro ⟨hp, h⟩ m₂ he
+      refine ⟨he.isProcV_mono hp, fun args ha => ?_⟩
+      match args with
       | [] => simp at ha
       | a :: rest =>
-        have := (denApp_arrowOf ps r m f [a]).mp (h a ha.1) rest ha.2
+        have := (denApp_arrowOf ps r m₂ f [a]).mp (h m₂ he a ha.1) rest ha.2
         intro v m' hr
         exact this v m' (by simpa using hr)
-    · refine (denApp_arrowOf ps r m f [a]).mpr ?_
+    · intro h
+      refine ⟨(h m (Ext.refl m)).1, fun m₂ he a hpa => ?_⟩
+      refine (denApp_arrowOf ps r m₂ f [a]).mpr ?_
       intro rest hrest v m' hr
-      exact h (a :: rest) ⟨hpa, hrest⟩ v m' (by simpa using hr)
+      exact (h m₂ he).2 (a :: rest) ⟨hpa, hrest⟩ v m' (by simpa using hr)
 
 /-! ## Stability under execution -/
 

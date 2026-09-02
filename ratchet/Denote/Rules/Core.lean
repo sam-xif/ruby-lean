@@ -115,6 +115,18 @@ theorem frameLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String)
 @[simp] theorem closSelf_reCtl (m : Machine) (c : Ctl) (k : List Kont) (cl : Closure) :
     closSelf (reCtl m c k) cl = closSelf m cl := rfl
 
+/-- **`Ext` does not read the control word either**, and this is the clause that keeps the
+future-quantified arrow (`Denote/Den.lean` §The arrow arm point 5) compatible with the rest
+of this file. `Ext` constrains the heap, the frame array and the frame stack — all three of
+which `reCtl` preserves definitionally — which is exactly the property `Denote/Sem/notes.md`
+observed a `Reaches`-seeded arrow would *not* have had. -/
+theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
+    Ext (reCtl m c k) m₂ ↔ Ext m m₂ :=
+  ⟨fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
+              h.freshBasic⟩,
+   fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
+              h.freshBasic⟩⟩
+
 /-- **The denotation does not read the control word.** All three mutually recursive relations
 at once, by structural induction on the type. -/
 theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
@@ -138,10 +150,10 @@ theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
     exact ⟨fun v => by simp [denM, ihσ.1, ihτ.1], fun _ _ => by simp [denApp],
            fun _ => by simp [denSpine]⟩
   | arrow0 r ihr =>
-    exact ⟨fun f => by simp [denM, Returns_reCtl], fun _ _ => by simp [denApp, Returns_reCtl],
+    exact ⟨fun f => by simp [denM, Ext_reCtl], fun _ _ => by simp [denApp, Returns_reCtl],
            fun _ => by simp [denSpine]⟩
   | arrowCons p rest ihp ihrest =>
-    exact ⟨fun f => by simp [denM, ihp.1, ihrest.2.1], fun _ _ => by simp [denApp, ihp.1, ihrest.2.1],
+    exact ⟨fun f => by simp [denM, Ext_reCtl], fun _ _ => by simp [denApp, ihp.1, ihrest.2.1],
            fun _ => by simp [denSpine]⟩
   | inst n I ihI =>
     exact ⟨fun v => by simp [denM, ihI.2.2], fun _ _ => by simp [denApp], fun _ => by simp [denSpine]⟩
@@ -169,50 +181,29 @@ theorem denAll_reCtl {τs : List Ty} {m : Machine} {c : Ctl} {k : List Kont} {vs
     | nil => simp [DenAll]
     | cons v vs => simp only [DenAll]; exact and_congr denM_reCtl (ih)
 
-/-- **Conformance does not read the control word.** One line per component; each is either a
-heap/frame fact (unchanged by construction) or a run fact (`applyIn`/`sendIn` overwrite
-`ctl`/`kont`, so the run is the same run). -/
+/-- **Rewriting the control word is an allocation that allocates nothing.** Every clause of
+`Ext` reads the heap, the frame array or the frame stack, and `reCtl` preserves all three
+definitionally — so this is `Ext.refl` with the fields retyped, and the two fresh-id clauses
+discharge exactly as they do there. -/
+theorem Ext_toReCtl (m : Machine) (c : Ctl) (k : List Kont) : Ext m (reCtl m c k) where
+  frames := rfl
+  stack := rfl
+  size := Nat.le_refl _
+  get := fun _ _ => rfl
+  payload := fun _ => rfl
+  ancestors := fun _ => rfl
+  freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
+  freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
+
+/-- **Conformance does not read the control word.** A corollary of `StateOk_ext`
+(`Denote/Sem/State.lean`) rather than a second component-by-component induction: rewriting
+`ctl`/`kont` is a degenerate `Ext`, so the transport that was built for allocation covers it.
+The eleven-line proof this replaces is recorded in `../../implementation-notes.md`; the point
+of collapsing it is that there is now exactly one place where "component `X` survives a
+change to the machine" is proved. -/
 theorem StateOk_reCtl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (h : StateOk κ Γ I m)
-    (c : Ctl) (k : List Kont) : StateOk κ Γ I (reCtl m c k) where
-  env := by
-    intro x τ hx
-    have := h.env x τ hx
-    exact ⟨by simpa using denM_reCtl.mpr this.1, by simpa using this.2⟩
-  selfSpine := by
-    have := h.selfSpine
-    simpa [SelfSpineOk] using denSpine_reCtl.mpr this
-  classes := by simpa [ClassesOk] using h.classes
-  defs := by simpa [DefsOk] using h.defs
-  asms := by
-    intro a ha args hargs v m' hs
-    exact h.asms a ha args (denAll_reCtl.mp hargs) v m' (SendReturns_reCtl.mp hs)
-  frame := by
-    have h2 := h.frame
-    unfold FrameOk at h2 ⊢
-    cases hf : κ.frame with
-    | none => rw [hf] at h2; simpa using h2
-    | some f => rw [hf] at h2; simpa using h2
-  closures := h.closures
-  blockTy := by
-    have h2 := h.blockTy
-    unfold BlockTyOk at h2 ⊢
-    cases hb : κ.blockTy with
-    | none => rw [hb] at h2; simpa using h2
-    | some β =>
-      rw [hb] at h2
-      obtain ⟨b, hb1, hb2⟩ := h2
-      exact ⟨b, by simpa using hb1, denM_reCtl.mpr hb2⟩
-  selfTy := by
-    have h2 := h.selfTy
-    unfold SelfTyOk at h2 ⊢
-    cases hσ : κ.selfTy with
-    | none => trivial
-    | some σ => rw [hσ] at h2; simpa using denM_reCtl.mpr h2
-  consts := by
-    intro p τ hp
-    obtain ⟨v, hv1, hv2⟩ := h.consts p τ hp
-    exact ⟨v, by simpa using hv1, denM_reCtl.mpr hv2⟩
-  privConsts := h.privConsts
+    (c : Ctl) (k : List Kont) : StateOk κ Γ I (reCtl m c k) :=
+  StateOk_ext h (Ext_toReCtl m c k)
 
 /-! ## Inverting a two-step run -/
 
@@ -232,16 +223,23 @@ theorem run_succ (fuel : Nat) (m : Machine) :
 theorem stepFn_value_nil (m : Machine) (w : Value) :
     Interp.stepFn (reCtl m (.value w) []) = .done w (reCtl m (.value w) []) := rfl
 
-/-- **The leaf-rung inversion.** If evaluating `e` from `m` is one step to `.value w`, then a
-run that returned, returned `w`, and left `m` with only its control word moved.
+/-- **The leaf-rung inversion.** If evaluating `e` from `m` is one step to a machine `m₁`
+holding `.value w` under an empty continuation, then a run that returned, returned `w`, and
+left exactly that machine.
+
+`m₁` is a *separate* machine variable rather than `m` itself, and that is the whole
+generalisation the allocating literals needed: `Judge.strLit`'s one step pushes an object, so
+its `m₁` is `m` with a longer heap (`Denote/Rules/Alloc.lean`). The pure literals instantiate
+`m₁ := m` and read exactly as before.
 
 `fuel = 0` and `fuel = 1` cannot have produced a `.value` (`Interp.run` reports `.outOfFuel`
 before the empty continuation is reached); at `fuel ≥ 2` the second step is `applyKont` on
 `[]`, which is `.done`. -/
-theorem evals_pure {m : Machine} {e : Ratchet.Expr} {w v : Value} {m' : Machine}
-    (hstep : Interp.stepFn (evalFrom m e) = .next (reCtl m (.value w) []))
+theorem evals_pure {m : Machine} {e : Ratchet.Expr} {m₁ : Machine} {w v : Value}
+    {m' : Machine}
+    (hstep : Interp.stepFn (evalFrom m e) = .next (reCtl m₁ (.value w) []))
     (h : Evals m e v m') :
-    v = w ∧ m' = reCtl m (.value w) [] := by
+    v = w ∧ m' = reCtl m₁ (.value w) [] := by
   obtain ⟨fuel, hrun⟩ := h
   match fuel with
   | 0 => rw [run_zero] at hrun; exact absurd hrun (by simp)
