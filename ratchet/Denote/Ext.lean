@@ -193,42 +193,45 @@ structure Later (m m₂ : Machine) : Prop where
   /-- No frame was pushed or popped. Their contents may have been rebound. -/
   frameCount : m₂.frames.size = m.frames.size
   size : m.heap.objs.size ≤ m₂.heap.objs.size
-  get : ∀ o, o < m.heap.objs.size → m₂.heap.get o = m.heap.get o
+  /-- **The heap's *shape* is where it was**, object by object — but not its contents.
+      `Ext.get` says the whole object reads back identically; this says only that its class,
+      eigenclass, payload and frozen bit do, which is the widening `Judge.ivarAsgn` needed
+      (an instance-variable write mutates an existing object, so it is not an `Ext`, and this
+      structure's docstring says each rung that meets a new kind of machine change widens the
+      relation by one clause). Nothing consumes more than this: the arrow's own content reads
+      `isProcV` — a payload test — and quantifies the rest over runs. -/
+  klass : ∀ o, o < m.heap.objs.size → (m₂.heap.get o).klass = (m.heap.get o).klass
+  eigen : ∀ o, o < m.heap.objs.size → (m₂.heap.get o).eigen = (m.heap.get o).eigen
+  payloadObj : ∀ o, o < m.heap.objs.size → (m₂.heap.get o).payload = (m.heap.get o).payload
+  frozen : ∀ o, o < m.heap.objs.size → (m₂.heap.get o).frozen = (m.heap.get o).frozen
   payload : ∀ k, m₂.heap.classPayload? k = m.heap.classPayload? k
   ancestors : ∀ k, RubyCore.ancestors m₂.heap k = RubyCore.ancestors m.heap k
-  freshIvars : ∀ o, m.heap.objs.size ≤ o → (m₂.heap.get o).ivars = []
-  freshBasic : ∀ o, m.heap.objs.size ≤ o → ∀ k,
-    (RubyCore.ancestors m.heap Boot.basicObjectId).contains k = true →
-    (RubyCore.ancestors m₂.heap (classOf m₂.heap (.ref o))).contains k = true
 
 theorem Later.refl (m : Machine) : Later m m where
   stack := rfl
   frameCount := rfl
   size := Nat.le_refl _
-  get := fun _ _ => rfl
+  klass := fun _ _ => rfl
+  eigen := fun _ _ => rfl
+  payloadObj := fun _ _ => rfl
+  frozen := fun _ _ => rfl
   payload := fun _ => rfl
   ancestors := fun _ => rfl
-  freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
-  freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
 
 theorem Later.trans {m m₂ m₃ : Machine} (h₁ : Later m m₂) (h₂ : Later m₂ m₃) : Later m m₃ where
   stack := by rw [h₂.stack, h₁.stack]
   frameCount := by rw [h₂.frameCount, h₁.frameCount]
   size := Nat.le_trans h₁.size h₂.size
-  get := fun o ho => by rw [h₂.get o (Nat.lt_of_lt_of_le ho h₁.size), h₁.get o ho]
+  klass := fun o ho => by
+    rw [h₂.klass o (Nat.lt_of_lt_of_le ho h₁.size), h₁.klass o ho]
+  eigen := fun o ho => by
+    rw [h₂.eigen o (Nat.lt_of_lt_of_le ho h₁.size), h₁.eigen o ho]
+  payloadObj := fun o ho => by
+    rw [h₂.payloadObj o (Nat.lt_of_lt_of_le ho h₁.size), h₁.payloadObj o ho]
+  frozen := fun o ho => by
+    rw [h₂.frozen o (Nat.lt_of_lt_of_le ho h₁.size), h₁.frozen o ho]
   payload := fun k => by rw [h₂.payload k, h₁.payload k]
   ancestors := fun k => by rw [h₂.ancestors k, h₁.ancestors k]
-  freshIvars := fun o ho => by
-    by_cases hc : o < m₂.heap.objs.size
-    · rw [h₂.get o hc]; exact h₁.freshIvars o ho
-    · exact h₂.freshIvars o (Nat.le_of_not_lt hc)
-  freshBasic := fun o ho k hk => by
-    by_cases hc : o < m₂.heap.objs.size
-    · have hclass : classOf m₃.heap (.ref o) = classOf m₂.heap (.ref o) := by
-        simp only [classOf, h₂.get o hc]
-      rw [hclass, h₂.ancestors]
-      exact h₁.freshBasic o ho k hk
-    · exact h₂.freshBasic o (Nat.le_of_not_lt hc) k (by rw [h₁.ancestors]; exact hk)
 
 /-- Every allocation is a `Later`. This is what lets `denM_ext` transport the arrow arm with
 no work at all: `Ext.trans` on the outside became `Later.trans` on the inside. -/
@@ -236,18 +239,21 @@ theorem Ext.later {m m₂ : Machine} (he : Ext m m₂) : Later m m₂ where
   stack := he.stack
   frameCount := by rw [he.frames]
   size := he.size
-  get := he.get
+  klass := fun o ho => by rw [he.get o ho]
+  eigen := fun o ho => by rw [he.get o ho]
+  payloadObj := fun o ho => by rw [he.get o ho]
+  frozen := fun o ho => by rw [he.get o ho]
   payload := he.payload
   ancestors := he.ancestors
-  freshIvars := he.freshIvars
-  freshBasic := he.freshBasic
 
 /-- A Proc stays a Proc across a `Later`, for `Ext.isProcV_mono`'s reason: a payload
 projection that *succeeded* read an object the old heap already had. -/
 theorem Later.procClosure?_eq {m m₂ : Machine} (he : Later m m₂) {v : Value} {cl : Closure}
     (h : procClosure? m.heap v = some cl) : procClosure? m₂.heap v = some cl := by
   cases v with
-  | ref o => rw [procClosure?, he.get o (lt_of_procClosure? h)]; exact h
+  | ref o =>
+    rw [procClosure?, he.payloadObj o (lt_of_procClosure? h)]
+    exact h
   | _ => exact absurd h (by simp [procClosure?])
 
 theorem Later.isProcV_mono {m m₂ : Machine} (he : Later m m₂) {v : Value}

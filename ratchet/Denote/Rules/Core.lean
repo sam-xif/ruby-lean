@@ -129,10 +129,10 @@ theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
 
 theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Later (reCtl m c k) m₂ ↔ Later m m₂ :=
-  ⟨fun h => ⟨h.stack, h.frameCount, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic⟩,
-   fun h => ⟨h.stack, h.frameCount, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic⟩⟩
+  ⟨fun h => ⟨h.stack, h.frameCount, h.size, h.klass, h.eigen, h.payloadObj, h.frozen,
+              h.payload, h.ancestors⟩,
+   fun h => ⟨h.stack, h.frameCount, h.size, h.klass, h.eigen, h.payloadObj, h.frozen,
+              h.payload, h.ancestors⟩⟩
 
 /-- **The denotation does not read the control word.** All three mutually recursive relations
 at once, by structural induction on the type. -/

@@ -381,15 +381,12 @@ theorem setLocal_later (m : Machine) (x : String) (v : Value) : Later m (m.setLo
   stack := rfl
   frameCount := by rw [setLocal_eq_setAt]; exact setAt_framesSize m x v _
   size := Nat.le_refl _
-  get := fun _ _ => rfl
+  klass := fun _ _ => rfl
+  eigen := fun _ _ => rfl
+  payloadObj := fun _ _ => rfl
+  frozen := fun _ _ => rfl
   payload := fun _ => rfl
   ancestors := fun _ => rfl
-  freshIvars := fun o ho => by
-    have hh : (m.setLocal x v).heap = m.heap := rfl
-    rw [hh, get_oob m.heap ho]; rfl
-  freshBasic := fun o ho k hk => by
-    have hh : (m.setLocal x v).heap = m.heap := rfl
-    rw [hh, classOf_oob m.heap ho]; exact hk
 
 /-- **What a closure's captured environment reads as after the write**: unchanged, or the new
 value and only at `x`. Exactly the shape `denM`'s `clos` arm needs, and the reason the
