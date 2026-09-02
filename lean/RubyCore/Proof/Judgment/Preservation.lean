@@ -2447,7 +2447,10 @@ theorem step_okJ {ans : Ty} {A : SemAxioms} {m : Machine} (hax : SemAxiomsOk A)
         exfalso
         split at heq
         · rename_i hcond
-          simp only [List.any_eq_true] at hcond
+          -- `isPrivateConst` is a named function now (the `A::B` private-constant scan was an
+          -- inline `let` until the continuation-framing proof needed a head constant on it —
+          -- `Proof/KontFrameKont.lean`), so it has to be unfolded before the `any`.
+          simp only [Interp.isPrivateConst, List.any_eq_true] at hcond
           obtain ⟨a, ha, hcon⟩ := hcond
           have hpa := List.all_eq_true.mp hpriv a ha
           revert hcon hpa

@@ -50,13 +50,15 @@ arm whose body does not *delegate* closes on `frame_simp; rfl`, and the residue 
 per helper function** — thirteen of them, listed below. So the tactic is a stage per named
 callee rather than a search: no `split`, no `simp_all`, and it runs in seconds.
 
-`applyKont` and `unwind` appear in that list (the `defined?` guard arm and the `jump` arm
-inline them), which is why this needs their `m.kont ≠ []` side conditions — and it is where
-`stepFn`'s own side condition below comes from. -/
+`applyKont` and `unwind` are **not** in that list: `evalExpr` never calls either (the two
+places their names appear in `Interp.lean` are comments — "the body below is `applyKont`'s
+`defsK` arm verbatim"). That is why this lemma needs no side condition at all, and why
+`stepFn`'s below needs one only for the `jump` arm. -/
 
-set_option maxHeartbeats 4000000 in
-theorem evalExpr_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (e : Expr)
-    (hne : m.kont ≠ []) :
+-- the budget is for the **kernel**, not the tactic: the proof term for 43 arms is large, and
+-- at 4M the elaborated declaration times out in `whnf` while being checked
+set_option maxHeartbeats 40000000 in
+theorem evalExpr_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (e : Expr) :
     evalExpr (pushK K m) e = frameR K (evalExpr m e) := by
   rw [evalExpr.eq_def, evalExpr.eq_def]
   cases e
@@ -67,8 +69,6 @@ theorem evalExpr_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (e : Exp
   all_goals (try (rw [finishSend_frame K hK]; try rfl))
   all_goals (try (rw [doSuper_frame K hK]; try rfl))
   all_goals (try (rw [invoke_frame K hK]; try rfl))
-  all_goals (try (rw [applyKont_frame K hK m _ hne]; try rfl))
-  all_goals (try (rw [unwind_frame K hK m _ hne]; try rfl))
   all_goals (try (rw [mk_push K]; try rfl))
   all_goals (try (rw [withCtl_mk K]; try rfl))
   all_goals (try (rw [withKont_mk K]; try rfl))
@@ -97,11 +97,11 @@ theorem stepFn_frame (K : List Kont) (hK : CatchFree K) (m m₂ : Machine)
     stepFn (pushK K m) = .next (pushK K m₂) := by
   cases hc : m.ctl with
   | eval e =>
-    simp only [stepFn, pushK_ctl, hc, evalExpr_frame K hK] at h ⊢
+    simp only [stepFn, hc, evalExpr_frame K hK] at h ⊢
     rw [h]
     rfl
   | value v =>
-    simp only [stepFn, pushK_ctl, hc] at h ⊢
+    simp only [stepFn, hc] at h ⊢
     -- the continuation cannot be empty here whatever `hside` says: `applyKont` at `[]` is
     -- `.done`, not `.next`
     have hne : m.kont ≠ [] := by
@@ -111,7 +111,7 @@ theorem stepFn_frame (K : List Kont) (hK : CatchFree K) (m m₂ : Machine)
     rw [applyKont_frame K hK m v hne, h]
     rfl
   | jump j =>
-    simp only [stepFn, pushK_ctl, hc] at h ⊢
+    simp only [stepFn, hc] at h ⊢
     have hne : m.kont ≠ [] := by
       rcases hside with hne | ⟨e, he⟩
       · exact hne
