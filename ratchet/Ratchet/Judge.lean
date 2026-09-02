@@ -1460,8 +1460,15 @@ def builtinAncestors : Ty → Option (List String)
   | .sym => some (["Symbol", "Comparable"] ++ rootAncestors)
   | .cls "String" => some (["String", "Comparable"] ++ rootAncestors)
   | .cls "Hash" => some (["Hash", "Enumerable"] ++ rootAncestors)
-  | .hashOf _ _ => some (["Hash", "Enumerable"] ++ rootAncestors)
-  | .arrayOf _ => some (["Array", "Enumerable"] ++ rootAncestors)
+  -- **`.arrayOf`/`.hashOf` are deliberately absent**, and the reason is a denotation fact
+  -- rather than a table gap: their `denM` arms read the *payload* (`arrElems?`/`hshEntries?`)
+  -- and say nothing about the object's class, so a value of type `.arrayOf τ` need not be an
+  -- `Array` as far as the denotation is concerned — and a **negative** `is_a?` answer about it
+  -- would be a claim this judgment cannot make. Dropping the rows costs only precision, and
+  -- only in one direction: the *positive* answer is what `isATy` keeps the type for, and
+  -- `isAAnswer = none` keeps it too. (`Ty.arrayOf`'s docstring is where the class fact would
+  -- have to be added if a rung ever wants the row back; see `found-issues.md` §F12 for the
+  -- shape such a change takes.)
   | _ => none
 
 /-- **Is every class in this chain free of mixins, as far as the context knows?**
@@ -1517,13 +1524,19 @@ def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
       -- `ancestors?` checked the *declared* chain's mixins; `rootAncestors` is appended
       -- blindly, so `class Object; include M; end` is the case this guard covers
       else if mixinFreeChain C rootAncestors then some false else none)
+  -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end` really
+  -- does make `5.is_a?(M)` true; and the type denotes **is-a**, so a declared subclass's
+  -- instance is one of its values. So *neither* answer is available at a context that has
+  -- disturbed the chain.
+  --
+  -- The positive answer would survive on its own (a mixin only adds ancestors, and a subclass
+  -- keeps them) and an earlier version of this guard kept it. It is gated anyway, because
+  -- proving the positive half without `isANoOk`'s no-subclasses clause needs **transitivity of
+  -- the ancestor walk** — a general fact about `ancestors` that nothing on file proves, and one
+  -- that a `StateOk` component has no business assuming. Gating costs precision only where a
+  -- program mixes into or subclasses a core class, and buys the exactness the proof uses.
   | τ => (builtinAncestors τ).bind (fun ch =>
-      if ch.contains cn then some true
-      -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end`
-      -- really does make `5.is_a?(M)` true; and the type denotes **is-a**, so a declared
-      -- subclass's instance is one of its values. The positive answer survives (a mixin only
-      -- adds ancestors, and a subclass keeps them); the negative one has to become "unknown".
-      else if isANoOk C ch then some false else none)
+      if isANoOk C ch then (if ch.contains cn then some true else some false) else none)
 
 /-- **Does any *declared* class descend from `n` and redefine `m`?** — `found-issues.md`
 §F11's guard, and the answer it wants is "no".
@@ -2387,8 +2400,10 @@ refinement narrows nothing and the branch is typed at the same type it had. -/
 def isANilPart (C : CTable) (cn : String) : Ty :=
   if ("NilClass" :: rootAncestors).contains cn then .nilT
   -- §F9 again, at `nil`: `class NilClass; include M; end` makes `nil.is_a?(M)` true, so the
-  -- `.never` is only available when the context leaves that chain alone
-  else if mixinFreeChain C ("NilClass" :: rootAncestors) then .never else .nilT
+  -- `.never` is only available when the context leaves that chain alone — and `isANoOk` is
+  -- the same guard `isAAnswer`'s negative answer uses, which is what lets one component
+  -- (`BaseChainsOk`) serve both
+  else if isANoOk C ("NilClass" :: rootAncestors) then .never else .nilT
 
 /-- …and to the else-branch, which is its complement. -/
 def notANilPart (cn : String) : Ty :=
@@ -2584,6 +2599,24 @@ def desugarTemps : List String :=
   ["__dt_t1", "__dt_t2", "__dt_t3", "__dt_t4", "__dt_t5",
    "__dt_t6", "__dt_t7", "__dt_t8", "__dt_t9"]
 
+/-- Every name that appears in any `builtinAncestors` row. The chains the *positive* `is_a?`
+answer reads, listed so `coreConstFree` can ask about all of them at once. -/
+def coreChainNames : List String :=
+  ["Integer", "Float", "NilClass", "Symbol", "String", "Hash", "Array",
+   "Numeric", "Comparable", "Enumerable"] ++ rootAncestors
+
+/-- **Does the context leave the core class *names* alone?** — §F10's guard, chain-side.
+
+`constGet? κ cn = none` covers the name being **tested**. It does not cover the names the
+static chain is written in, and those matter for the other direction: with `Foo = Object` in
+the program, `"s".is_a?(Foo)` is *true* while `"Foo"` is in no chain, and with
+`Comparable = Integer` the name in `String`'s own chain no longer denotes what the chain means
+by it. The first is caught by the per-name guard (`Foo` is bound, so no narrowing); the second
+is what this one is for. Blunt — any constant assignment to a core class name turns `.isA`
+narrowing off program-wide — and blunt in the direction that costs rungs. -/
+def coreConstFree (κ : Ctx) : Bool :=
+  coreChainNames.all (fun n => (constGet? κ n).isNone)
+
 /-- **`found-issues.md` §F10's guard: the name has to mean the class it names.**
 
 `narrowCond?` reads the tested class out of the condition's **syntax** — `x.is_a?(Foo)` gives
@@ -2604,7 +2637,7 @@ condition itself raises `NameError` and the branch never runs.
 
 `.truthy`/`.isNil` need no guard: neither mentions a class. -/
 def narrowNameOk (κ : Ctx) : NarrowKind → Bool
-  | .isA cn => (constGet? κ cn).isNone
+  | .isA cn => (constGet? κ cn).isNone && coreConstFree κ
   | _ => true
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**

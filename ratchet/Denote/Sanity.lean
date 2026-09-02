@@ -291,6 +291,9 @@ def baseChainsOkB (m : Machine) : Bool :=
     | some c => c.consts.map (fun (q : String × Value) => q.1)
     | none => []
   Ratchet.Denote.builtinBases.all (fun p =>
+    (match p.2.head? with
+     | some bn => classNamed? m.heap bn == some p.1
+     | none => false) &&
     p.2.all (fun cn =>
       match classNamed? m.heap cn with
       | some j => (RubyCore.ancestors m.heap p.1).contains j
@@ -339,12 +342,14 @@ theorem ancestors_of_not_class {h : Heap} {k : ObjId} (hp : h.classPayload? k = 
 
 theorem baseChainsOkB_sound {m : Machine} (hb : baseChainsOkB m = true) (κ : Ratchet.Ctx) :
     Ratchet.Denote.BaseChainsOk κ m := by
-  intro base ch hmem _
+  intro base ch hmem
   simp only [baseChainsOkB, List.all_eq_true] at hb
   have hrow := hb (base, ch) (by simpa using hmem)
   simp only [Bool.and_eq_true, List.all_eq_true] at hrow
-  obtain ⟨⟨hin, hout⟩, hsub⟩ := hrow
-  refine ⟨fun cn hcn => ?_, fun cn j hj hanc => ?_, fun k hk => ?_⟩
+  obtain ⟨⟨⟨hhd, hin⟩, hout⟩, hsub⟩ := hrow
+  refine ⟨fun _ => ⟨fun bn hbn => ?_, fun cn hcn => ?_⟩,
+    fun _ => ⟨fun cn j _ hj hanc => ?_, fun k hk => ?_⟩⟩
+  · rw [hbn] at hhd; simpa using hhd
   · have := hin cn (by simpa using hcn)
     cases hcnm : classNamed? m.heap cn with
     | none => rw [hcnm] at this; exact absurd this (by simp)

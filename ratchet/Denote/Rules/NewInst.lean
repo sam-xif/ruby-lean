@@ -284,7 +284,7 @@ theorem Sem.Judge.newInstNoInit : Obl.Judge.newInstNoInit := by
                 simp only [Ratchet.clsGet?] at hcg
                 exact ⟨List.mem_of_find?_eq_some hcg, by simpa using List.find?_some hcg⟩
           obtain ⟨hclsmem, hname⟩ := hmem
-          obtain ⟨hroot, hkc, hkm, hism, hnewOk, hnoInit⟩ :=
+          obtain ⟨hroot, hkc, hkm, hism, hnewOk, hnoInit, _⟩ :=
             hok₂.declCls c hclsmem k (by rw [hname]; exact hcn)
           have hcp : ∃ cp, m₁.heap.classPayload? k = some cp ∧ cp.isModule = false := by
             cases hp : m₁.heap.classPayload? k with
@@ -332,9 +332,10 @@ theorem Sem.Judge.newInstNoInit : Obl.Judge.newInstNoInit := by
                 rw [show (reCtl { m₁ with heap := pushHeap m₁.heap obj }
                       (Ctl.value (Value.ref m₁.heap.objs.size)) []).heap
                     = pushHeap m₁.heap obj from rfl, hext.classNamed?_eq, hcn]
-                simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq]
-                refine ⟨by simp, ?_⟩
-                rw [RubyCore.realClassOf, pushHeap_get_self, hoc]
+                simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq,
+                  Option.isNone_iff_eq_none]
+                refine ⟨⟨by simp, by rw [pushHeap_get_self]; exact hoe⟩, ?_⟩
+                rw [pushHeap_get_self, hoc]
             · rw [hd] at hstep; exact absurd hstep (by simp)
           | none =>
             rcases invokeDispatch_new_miss hlk (hnew2 hlk) with ⟨r, hd⟩ | ⟨cls, msg, hd⟩

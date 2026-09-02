@@ -867,34 +867,43 @@ consults before answering `some false` — so the component claims nothing at a 
 mixed a module into a core class or declared a subclass of one, which is exactly when the
 answers stop being available. -/
 def BaseChainsOk (κ : Ctx) (m : Machine) : Prop :=
-  ∀ base ch, (base, ch) ∈ builtinBases → Ratchet.isANoOk κ.classes ch = true →
-    -- every name in the row resolves, and to a real ancestor (what `some true` needs)
-    (∀ cn ∈ ch, ∃ j, classNamed? m.heap cn = some j ∧
-      (ancestors m.heap base).contains j = true) ∧
-    -- and nothing outside the row is one (what `some false` needs). Stated from the
-    -- resolution rather than over all strings: a name that resolves nowhere is not an
-    -- `is_a?` of anything, so the two sides agree there without saying so.
-    (∀ cn j, classNamed? m.heap cn = some j →
-      (ancestors m.heap base).contains j = true → cn ∈ ch) ∧
-    (∀ k, (ancestors m.heap k).contains base = true → k = base)
+  ∀ base ch, (base, ch) ∈ builtinBases →
+    -- **the two guards are different, and the split matters.** The clauses about the chain's
+    -- *own* names need only that the context has not rebound a core class name
+    -- (`coreConstFree`, §F10 chain-side); they hold whatever has been mixed in, because a
+    -- mixin only *adds* ancestors — which is exactly why `isAAnswer`'s positive answer is
+    -- ungated. The clauses that say what is **not** an ancestor need `isANoOk`, the gate on
+    -- the negative answer, and the third needs the tested name unbound as well.
+    ((Ratchet.coreConstFree κ = true →
+      (∀ bn, ch.head? = some bn → classNamed? m.heap bn = some base) ∧
+      (∀ cn ∈ ch, ∃ j, classNamed? m.heap cn = some j ∧
+        (ancestors m.heap base).contains j = true)) ∧
+     (Ratchet.isANoOk κ.classes ch = true →
+      (∀ cn j, (Ratchet.constGet? κ cn).isNone = true → classNamed? m.heap cn = some j →
+        (ancestors m.heap base).contains j = true → cn ∈ ch) ∧
+      (∀ k, (ancestors m.heap k).contains base = true → k = base)))
 
 theorem BaseChainsOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : BaseChainsOk κ m) :
     BaseChainsOk κ m₂ := by
-  intro base ch hmem hok
-  obtain ⟨h1, h2, h3⟩ := h base ch hmem hok
-  refine ⟨fun cn hcn => ?_, fun cn j hj hanc => ?_,
-    fun k hk => h3 k (by rw [he.ancestors] at hk; exact hk)⟩
-  · obtain ⟨j, hj, hanc⟩ := h1 cn hcn
+  intro base ch hmem
+  obtain ⟨hpos, hneg⟩ := h base ch hmem
+  refine ⟨fun hcf => ?_, fun hok => ?_⟩
+  · obtain ⟨h0, h1⟩ := hpos hcf
+    refine ⟨fun bn hbn => by rw [he.classNamed?_eq]; exact h0 bn hbn, fun cn hcn => ?_⟩
+    obtain ⟨j, hj, hanc⟩ := h1 cn hcn
     exact ⟨j, by rw [he.classNamed?_eq]; exact hj, by rw [he.ancestors]; exact hanc⟩
-  · rw [he.classNamed?_eq] at hj
+  · obtain ⟨h2, h3⟩ := hneg hok
+    refine ⟨fun cn j hg hj hanc => ?_,
+      fun k hk => h3 k (by rw [he.ancestors] at hk; exact hk)⟩
+    rw [he.classNamed?_eq] at hj
     rw [he.ancestors] at hanc
-    exact h2 cn j hj hanc
+    exact h2 cn j hg hj hanc
 
 theorem BaseChainsOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
     (h : BaseChainsOk κ m) : BaseChainsOk κ (m.setLocal x w) := by
-  intro base ch hmem hok
+  intro base ch hmem
   simp only [setLocal_heap]
-  exact h base ch hmem hok
+  exact h base ch hmem
 
 /-- **What the machine's class object owes a class the context declares** — the component
 `Judge.newInstNoInit` spends, and the reason it is separate from `ClassesOk` is that `ClassesOk`
@@ -935,13 +944,23 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
       (Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = none →
         ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_missing"
           = some (o₂, md) → md.builtin.isSome = true)) ∧
-    (Ratchet.ctorGet? κ.classes c.name = none → Interp.userInit? m.heap k = none)
+    (Ratchet.ctorGet? κ.classes c.name = none → Interp.userInit? m.heap k = none) ∧
+    -- **the declared chain is the machine's chain**, in both directions, and it is what
+    -- narrowing's `isATy`/`notATy` spend at an `.inst n` type. `BaseChainsOk` is the same
+    -- claim for the *builtin* rows; this is the declared one, and it needs no
+    -- no-subclasses clause because `.inst` denotes the class **exactly** (§F12).
+    (∀ ch, Ratchet.ancestors? κ.classes c.name = some ch →
+      Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true →
+      (∀ cn ∈ ch ++ Ratchet.rootAncestors, ∃ j, classNamed? m.heap cn = some j ∧
+          (ancestors m.heap k).contains j = true) ∧
+      (∀ cn j, classNamed? m.heap cn = some j → (ancestors m.heap k).contains j = true →
+          cn ∈ ch ++ Ratchet.rootAncestors))
 
 theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m) :
     DeclClassOk κ m₂ := by
   intro c hc k hcn
   rw [he.classNamed?_eq] at hcn
-  obtain ⟨hroot, hcls, hmod, hism, hnew, hinit⟩ := h c hc k hcn
+  obtain ⟨hroot, hcls, hmod, hism, hnew, hinit, hchain⟩ := h c hc k hcn
   -- every clause reads only the class table and the ancestor walk, both pinned by `Ext`
   have hco : classOf m₂.heap (.ref k) = classOf m.heap (.ref k) := by
     by_cases hk : k < m.heap.objs.size
@@ -956,7 +975,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       = Interp.methodOn m.heap (classOf m.heap (.ref k)) n := by
     intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
   refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
-    ?_, ?_⟩
+    ?_, ?_, ?_⟩
   · intro hsm
     obtain ⟨h1, h2⟩ := hnew hsm
     refine ⟨?_, ?_⟩
@@ -973,6 +992,14 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
     have := hinit hct
     simp only [Interp.userInit?, Interp.methodOn, he.payload, he.ancestors] at this ⊢
     exact this
+  · intro ch hch hmf
+    obtain ⟨h1, h2⟩ := hchain ch hch hmf
+    refine ⟨fun cn hcnm => ?_, fun cn j hj hanc => ?_⟩
+    · obtain ⟨j, hj, hanc⟩ := h1 cn hcnm
+      exact ⟨j, by rw [he.classNamed?_eq]; exact hj, by rw [he.ancestors]; exact hanc⟩
+    · rw [he.classNamed?_eq] at hj
+      rw [he.ancestors] at hanc
+      exact h2 cn j hj hanc
 
 theorem DeclClassOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
     (h : DeclClassOk κ m) : DeclClassOk κ (m.setLocal x w) := by

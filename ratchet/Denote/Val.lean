@@ -87,7 +87,7 @@ Using `classOf` would make `denM (.inst n I)` false for any object that has ever
 `def obj.foo` — sound but useless, and it would not even match `Judge.classOf`'s conclusion. -/
 def isExactInst (h : Heap) (v : Value) (name : String) : Bool :=
   match classNamed? h name, v with
-  | some k, .ref o => o < h.objs.size && realClassOf h (.ref o) == k
+  | some k, .ref o => o < h.objs.size && (h.get o).eigen.isNone && (h.get o).klass == k
   | _, _ => false
 
 /-- Is `v` *the class object* named `name` (not an instance of it)? `Ty.clsOf`'s probe.
