@@ -81,11 +81,38 @@ def EvalsAll : Machine → List Ratchet.Expr → List Value → Machine → Prop
   | m, e :: es, v :: vs, m' => ∃ m₁, Evals m e v m₁ ∧ EvalsAll m₁ es vs m'
   | _, _, _, _ => False
 
+/-- **Every element's value is in its own type, at the machine its own evaluation ended at.**
+
+The seventh stall point, fixed (`Denote/Sem/notes.md`, clink 53). The previous reading was
+`DenAll τs m' vs` — every argument's type at the machine the *whole list* left behind — and
+that is the right machine for the *consumer* (`Judge.prim` and the call rules use the argument
+types at the moment of the call) but it is not what an argument list's evaluation establishes:
+it would make `JudgeAll.cons`'s obligation demand a transport of `denM τ m₁ v` across the
+evaluation of every later argument, and no such transport exists (`denM_ext` wants a heap that
+only grew, and evaluating an arbitrary Ruby expression can mutate an object).
+
+So the claim is stated where it is *true*, elementwise and at each element's own post-machine,
+and the transport moves to the rules that actually use the values. That was the first of the
+two candidate fixes the stall point recorded, and the reason to prefer it over the second
+(a non-interference component on `StateOk`) is that it puts the missing fact where it is
+spent: a call rule that needs its arguments' types at the call machine now has to say so, and
+`PrimSig`'s no-mutator property — which is what makes the old form true today — becomes an
+argument at the consumer instead of an invisible dependency here.
+
+Note the intermediate machines are existential again rather than shared with `EvalsAll`'s.
+That costs nothing: `Interp.run` is a function, so the machine a returning run ends at is
+determined by where it started, and the witness is the same one. -/
+def DenAllAt : Machine → List Ratchet.Expr → List Ty → List Value → Machine → Prop
+  | m, [], [], [], m' => m' = m
+  | m, e :: es, τ :: τs, v :: vs, m' =>
+      ∃ m₁, Evals m e v m₁ ∧ denM τ m₁ v ∧ DenAllAt m₁ es τs vs m'
+  | _, _, _, _, _ => False
+
 def SemJudgeAll (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τs : List Ty)
     (Γ' : Env) (I' : Ty) : Prop :=
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vs m', EvalsAll m es vs m' →
-      m'.stack = m.stack ∧ DenAll τs m' vs ∧ StateOk κ Γ' I' m'
+      m'.stack = m.stack ∧ DenAllAt m es τs vs m' ∧ StateOk κ Γ' I' m'
 
 /-- Keyword arguments at a call site: the same shape as `SemJudgeAll`, over the `(name, type)`
 pairs `JudgeKw` produces. The names are static, so only the values are evaluated — which is
@@ -100,19 +127,42 @@ def SemJudgeKw (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.KwEntry)
     (kws : List (String × Ty)) (Γ' : Env) (I' : Ty) : Prop :=
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ vs m', EvalsAll m (kwExprs es) vs m' →
-      m'.stack = m.stack ∧ DenAll (kws.map (·.2)) m' vs ∧ StateOk κ Γ' I' m'
+      m'.stack = m.stack ∧ DenAllAt m (kwExprs es) (kws.map (·.2)) vs m' ∧
+        StateOk κ Γ' I' m'
 
-/-- A hash literal's pairs, key then value, in Ruby's order. `JudgePairs`' two type indices are
-the *joins* over all keys and all values (`Judge.hashLit` consumes them), so the semantic
-reading is that every key value is in the key join and every value value in the value join —
-which is exactly what `denM (.hashOf k v)` asks of the hash the literal builds. -/
+/-- A hash literal's pairs, **interleaved**: key, value, key, value — Ruby's evaluation order
+and the order `evalExpr`'s `.hash` arm performs.
+
+This is the seventh stall point's *second* defect, fixed in clink 53. The previous reading
+concatenated the halves (`ps.map (·.1) ++ ps.map (·.2)`, all keys and then all values), which
+coincides with the real order at one pair and diverges at two — so `JudgePairs.cons`'s
+obligation was stated over an evaluation the machine never performs. That is a *hypothesis*, so
+the effect was vacuity rather than falsity: the rung was unprovable-looking and `Judge.hashLit`
+would have had nothing usable to consume. `pairExprs` is the order, and it is the same shape
+`kwExprs` already had for keywords.
+
+The per-element claim is `DenPairsAt`, stepwise for `DenAllAt`'s reason: each key is in the key
+join at the machine *its own* evaluation ended at, and each value likewise. `JudgePairs`' two
+type indices are joins over all keys and all values (`Judge.hashLit` consumes them), so "in the
+join" is the right per-element claim rather than a weakening — a join is an upper bound on each
+side (`Denote/Join.lean`). -/
+def pairExprs : List (Ratchet.Expr × Ratchet.Expr) → List Ratchet.Expr
+  | [] => []
+  | (k, v) :: ps => k :: v :: pairExprs ps
+
+def DenPairsAt : Machine → List (Ratchet.Expr × Ratchet.Expr) → Ty → Ty → List Value →
+    Machine → Prop
+  | m, [], _, _, [], m' => m' = m
+  | m, (k, v) :: ps, kr, vr, kv :: vv :: vals, m' =>
+      ∃ m₁, Evals m k kv m₁ ∧ denM kr m₁ kv ∧
+        ∃ m₂, Evals m₁ v vv m₂ ∧ denM vr m₂ vv ∧ DenPairsAt m₂ ps kr vr vals m'
+  | _, _, _, _, _, _ => False
+
 def SemJudgePairs (κ : Ctx) (Γ : Env) (I : Ty) (ps : List (Ratchet.Expr × Ratchet.Expr))
     (kr vr : Ty) (Γ' : Env) (I' : Ty) : Prop :=
   ∀ m : Machine, StateOk κ Γ I m →
-    ∀ ks vs m', EvalsAll m (ps.map (·.1) ++ ps.map (·.2)) (ks ++ vs) m' →
-      ks.length = ps.length →
-      m'.stack = m.stack ∧
-        (∀ k ∈ ks, denM kr m' k) ∧ (∀ v ∈ vs, denM vr m' v) ∧ StateOk κ Γ' I' m'
+    ∀ vals m', EvalsAll m (pairExprs ps) vals m' →
+      m'.stack = m.stack ∧ DenPairsAt m ps kr vr vals m' ∧ StateOk κ Γ' I' m'
 
 /-- A statement sequence. Same statement as `SemJudge` — a `seq` *is* an expression, and its
 value is the last statement's — but kept a separate definition to mirror `JudgeSeq`, whose

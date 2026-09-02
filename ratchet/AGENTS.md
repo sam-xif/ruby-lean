@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **30 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **33 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
@@ -529,6 +529,25 @@ Discharged so far, all axiom-clean:
   **both class-body `cons` rules** (`JudgeConsts.cons`, `JudgeNested.cons`, clink 48), which
   are list bookkeeping plus `classMethods?`'s injectivity. Three of the seven companion
   families (`JudgeRescues`, `JudgeConsts`, `JudgeNested`) are now **complete**.
+
+**The three companion `cons` rules, and the seventh stall point resolved** (clink 53,
+[`Denote/Rules/Args.lean`](Denote/Rules/Args.lean)) — `JudgeAll.cons`, `JudgeKw.pair` and
+`JudgePairs.cons`, which completes **six of the eight families**. Two definitional
+corrections paid for them, both anticipated by the stall point: `SemJudgeAll` used to claim
+every argument's type at the machine the *whole list* left behind, which would have needed a
+transport across the evaluation of every later argument (none exists — `denM_ext` wants a heap
+that only grew, and evaluating an arbitrary expression can mutate an object), so `DenAllAt`
+states each element's type at *its own* post-machine and the transport moves to the consumer,
+where `PrimSig`'s no-mutator property becomes an explicit obligation rather than an invisible
+dependency; and `SemJudgePairs` now **interleaves** (key, value, key, value — Ruby's order and
+`evalExpr`'s), where the old concatenated reading was an evaluation the machine never performs.
+
+**And the filing was wrong about the wall**, in the direction that costs rungs: these three
+were also thought to be behind the fifth stall point, and they never were. `EvalsAll`'s `cons`
+arm is `∃ m₁, Evals m e v m₁ ∧ EvalsAll m₁ es vs m'` — each element's run is under an *empty*
+continuation, so the hypothesis is already the premises' hypotheses. The companion families are
+compositional by definition; the wall belongs to their **consumers**. Same mistake, same
+direction, as the one clink 48 corrected for `JudgeSeq.last`.
 
 **The two rules that reason from *absence*, climbed** (clink 52,
 [`Denote/Rules/Bare.lean`](Denote/Rules/Bare.lean),

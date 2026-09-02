@@ -5284,3 +5284,94 @@ behind the fifth, the sixth's item (2), or the seventh, and each of those is a c
 larger) design decision rather than a proof a rung can carry. The sixth's fix in particular is
 a change to `Ratchet/Judge.lean`'s *signature* — out of bounds under this clink's "do not
 modify `Ratchet/`" constraint, and a rewrite of every derivation on file even without it.
+
+## Clink 53 (2026-09-02) — the seventh stall point, and three rungs that were never behind the wall. **178 rungs / 239, 33 of 83 rules**
+
+Three rungs climbed — `JudgeAll.cons`, `JudgeKw.pair`, `JudgePairs.cons` — which completes
+**six of the eight families** (`JudgeAll`, `JudgeKw`, `JudgePairs`, `JudgeRescues`,
+`JudgeConsts`, `JudgeNested`). Nothing under `Ratchet/` touched.
+
+### The finding, and it is a lesson about the ladder's own bookkeeping
+
+All three were filed behind the **fifth** stall point — the continuation wall — and none of
+them was ever behind it. `EvalsAll`'s `cons` arm reads
+
+```
+EvalsAll m (e :: es) (v :: vs) m' = ∃ m₁, Evals m e v m₁ ∧ EvalsAll m₁ es vs m'
+```
+
+so each element's run is an `Evals`: under an **empty** continuation, at successive machines.
+A hypothesis of that shape *is* the two premises' hypotheses, and nothing has to relate a run
+under a pushed `argsK` to a run under `[]`. **The companion families are compositional by
+definition, so no companion rule ever needed the decomposition**; the wall belongs to their
+*consumers* (`Judge.arrayLit`'s own run pushes `arrK` per element, `Judge.prim`'s pushes
+`argsK`).
+
+That is the same mistake, in the same direction, that clink 48 corrected for `JudgeSeq.last`,
+and it has now cost rungs twice. The rule to carry forward: **before filing a rule behind the
+wall, check whether its hypothesis is a compound run or a composition of `Evals`.** A `Judge.*`
+rule's hypothesis is one run of one expression, so it is the compound case; a companion
+family's is not.
+
+### The seventh stall point, resolved — and which of its two candidates, and why
+
+The real blocker was the seventh: `SemJudgeAll` concluded `DenAll τs m' vs`, every argument's
+type at the machine the **whole list** left behind. That made this rung demand a transport of
+`denM τ m₁ v` across the evaluation of every later argument, and no such transport exists —
+`denM_ext`'s `Ext` wants a heap that only grew, and evaluating an arbitrary Ruby expression can
+mutate an object in place.
+
+The stall point recorded two candidate fixes. **The first was taken**: `DenAllAt` states each
+element's type at *its own* post-machine, stepwise, which is what an argument list's evaluation
+actually establishes. The second (a non-interference component on `StateOk`) was rejected, and
+the reason is where the missing fact ends up: under `DenAllAt` a call rule that needs its
+arguments' types at the *call* machine has to say so, so `PrimSig`'s no-mutator property — the
+thing that makes the old form true today — becomes an explicit obligation at the consumer
+instead of an invisible dependency at the producer. A non-interference component would have
+buried it in `StateOk` for every rule to carry.
+
+The intermediate machines are existential in `DenAllAt` rather than shared with `EvalsAll`'s,
+and that costs nothing: `Interp.run` is a function, so the machine a returning run ends at is
+determined by where it started.
+
+### The second defect in the same family, also fixed
+
+`SemJudgePairs` read a hash literal's pairs as `ps.map (·.1) ++ ps.map (·.2)` — **all keys,
+then all values** — while `JudgePairs.cons` threads key, value, then the rest, which is Ruby's
+order and the order `evalExpr`'s `.hash` arm performs. The two coincide at one pair and diverge
+at two, so the obligation was stated over an evaluation the machine never performs. It is a
+*hypothesis*, so the effect was vacuity rather than falsity — the rung looked unprovable and
+`Judge.hashLit` would have had nothing usable to consume. `pairExprs` interleaves, matching
+`kwExprs`' existing shape for keywords, and `DenPairsAt` is the stepwise per-element claim.
+
+### What the rungs cost, once the definitions were right
+
+Four lines each: destructure the value list (a length mismatch makes `EvalsAll` `False`), spend
+the head premise at `m`, spend the tail premise at `m₁`, compose. `JudgePairs.cons` adds the
+join's upper-bound property twice (`denM_joinT_left` for the head, `denPairsAt_mono` — one
+induction over `denM_joinT_right` — for the tail, whose types are the join's right branch).
+These are also the first rungs where the `m'.stack = m.stack` conjunct is **composed** rather
+than read off a single step.
+
+`Denote/Rules/Nil.lean`'s three base cases moved with the definitions and are stronger for it:
+`DenAllAt m [] [] [] m'` is `m' = m` where the old conjunct was `True`, and `JudgePairs.nil` is
+now `JudgeAll.nil`'s shape exactly instead of a `ks ++ vs = []` split.
+
+### State
+
+**178 rungs of 239**, **33 of 83 `Judge` rules**. Corpus agreement **239/239** (nothing under
+`Ratchet/` or `corpus/` touched), hand derivations **177/177**, negative controls **145/145**,
+mismatches **35**, permanent negatives **23**. `Denote/Examples.lean`'s 33 `#guard`s green,
+`bootOkB` green. Modified: `Denote/Rules/Args.lean` (new), `Denote/Sem/Judge.lean`
+(`DenAllAt`, `pairExprs`, `DenPairsAt`, and the three restated companions),
+`Denote/Rules/Nil.lean`, `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean;
+no `sorry`.
+
+### What is left, corrected again
+
+Fifty rules: `Judge`'s 47 and `JudgeSeq`'s 3. Every one of them has a **compound** hypothesis —
+one run of one expression whose sub-expressions run under pushed continuations — so every one
+is behind the fifth stall point, and the call rules are additionally behind the call lemma
+nobody has written. The seventh is resolved; the sixth's item (2) reaches only the five
+statement rules. So the wall map is now: **one wall**, and it is the one whose `Builtins` half
+clink 52 proved.

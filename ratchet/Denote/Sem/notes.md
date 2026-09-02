@@ -474,7 +474,7 @@ Two things worth carrying forward:
   signature change (`Judge … κ'`) are now both answering *two* problems — the declaration
   statement and the declaring call — which is an argument for the second.
 
-## The seventh stall point — **an argument list is not a snapshot**
+## The seventh stall point — **an argument list is not a snapshot** *(RESOLVED, clink 53)*
 
 Found by inspecting `SemJudgeAll` while attempting `JudgeAll.cons` (clink 48). Not yet
 demonstrated false; the honest status is **unprovable as stated, for a reason that is one
@@ -500,13 +500,40 @@ argument.
 Two consequences worth stating in advance:
 
 * **A rung is not what will catch the regression.** The day an `Array#[]=` or `Hash#[]=` row is
-  added, `JudgeAll.cons`'s obligation becomes provably false and this stall becomes a
+  added, the *consumer* rules' obligations become provably false and this becomes a
   `found-issues.md` §F entry. Until then the ladder can only record the dependency.
 * **The fix is a definition, and there are two candidates.** Either `SemJudgeAll` states each
   argument's type at *its own* post-machine (weaker, and then the consumer rules need the
   transport instead — moving the problem to where the values are actually used), or `StateOk`
   grows a non-interference component. Neither is free, and choosing wants the first call rung's
   requirements in hand.
+
+### Resolved, clink 53 — the first candidate, and it climbed three rungs
+
+The first candidate was taken: **`DenAllAt`** (`Judge.lean`) states each element's type at the
+machine its own evaluation ended at, which is what an argument list's evaluation actually
+establishes. The transport moves to the rules that use the values, and that is the argument for
+this candidate over the other: a call rule that needs its arguments' types at the *call*
+machine now has to say so, and `PrimSig`'s no-mutator property — the thing that makes the old
+form true today — becomes an explicit obligation at the consumer instead of an invisible
+dependency here.
+
+The same clink fixed the second defect in the same family: **`SemJudgePairs` now interleaves**
+(`pairExprs`: key, value, key, value), which is Ruby's order and the order `evalExpr`'s `.hash`
+arm performs. Left as it was, `JudgePairs.cons`'s obligation was stated over an evaluation the
+machine never performs — vacuity, not falsity, and `Judge.hashLit` would have had nothing
+usable to consume.
+
+**And the filing was wrong about the wall.** `JudgeAll.cons`, `JudgeKw.pair` and
+`JudgePairs.cons` were also thought to be behind the *fifth* stall point. They never were:
+`EvalsAll`'s `cons` arm is `∃ m₁, Evals m e v m₁ ∧ EvalsAll m₁ es vs m'`, so each element's run
+is an `Evals` — under an **empty** continuation — and a hypothesis of that shape *is* the
+premises' hypotheses. The companion families are **compositional by definition**, so no
+companion rule ever needed the decomposition; the wall belongs to the *consumers*
+(`Judge.arrayLit`'s own run pushes `arrK` per element). Same mistake, and the same direction,
+as the one `../Rules/Nil.lean` records for `JudgeSeq.last`: **check whether the hypothesis is
+compound before filing a rule behind the wall.** Six of the eight families are complete as a
+result (`JudgeAll`, `JudgeKw`, `JudgePairs`, `JudgeRescues`, `JudgeConsts`, `JudgeNested`).
 
 **A second, unrelated defect in the same family, found by inspection at the same time:**
 `SemJudgePairs` reads a hash literal's pairs as `ps.map (·.1) ++ ps.map (·.2)` — **all keys,
@@ -711,7 +738,7 @@ Two reasons this is filed as a prediction rather than a §F entry, both checked:
   adds them, so a stale row is a conditional claim rather than a belief — which is what
   `Judge`'s own docstring says to read a non-empty `κ.asms` as.
 
-## Where the remaining 53 rules actually sit
+## Where the remaining 50 rules actually sit
 
 Written at 30 of 83, because "53 remaining" is not 53 units of work and the shape of what is
 left is the useful fact. Every remaining rule is behind at least one of three walls, and none
@@ -722,7 +749,7 @@ of the three is a proof that a rung can carry on its own:
 | **5th** — `KontFrame` (now `KontFrameCatchFree`) | a sub-expression runs under a pushed continuation, so a rule's premise is about a *different run* than its conclusion | every rule with a sub-expression: `vasgn`, `ivarAsgn`, `if'`, `ifNoElse`, `begin'`, `while'`, `constPath`, `constPathCls`, `primNever`, `raiseCls`, and all of `JudgeSeq.cons`/`guard`/`nextGuard` |
 | **6th (2)** — `κ` not threaded through `Judge` | a run that *declares* invalidates the incoming `κ`, which the conclusion re-asserts | the five **statement** rules: `defStmt`, `classStmt`, `moduleStmt`, `casgn`, `cpathAsgn` (and the 11th above is the transport each of them then needs) |
 | **the call lemma** — unwritten, and not yet a stall point because nothing has attempted it | a premise about the *body*'s run, from the machine `enterUserMethod` builds, has to be related to the call's run — plus the frame-balance conjunct `m'.stack = m.stack`, which every frame-pushing rule owes | every call rule: `callAsm`…`yieldExpr`, `vcallAsm`, `vcallDef`, `new*`, `iter*`, `super*` |
-| **7th** — `SemJudgeAll`'s snapshot | every argument's type is claimed at the machine the *whole list* left behind, with no transport | every rule with an argument list: `arrayLit`, `hashLit`, `prim`, `isAQuery`, `caseEqQuery`, `classOf`, `clsToS`, all the `call*`/`new*`/`iter*` rules, and `JudgeAll.cons`/`JudgeKw.cons`/`JudgePairs.cons` |
+| **7th** — ~~`SemJudgeAll`'s snapshot~~ | **resolved, clink 53**; what is left of it is the *transport* a consumer needs to move an argument's type to the call machine | the consumers only: `arrayLit`, `hashLit`, `prim`, `isAQuery`, `caseEqQuery`, `classOf`, `clsToS`, the `call*`/`new*`/`iter*` rules — and each of those is behind the 5th anyway |
 
 **Correction worth making explicit, because the sixth stall point's own text overstates its
 reach**: the call rules are *not* behind it. Clink 49's `declFree` filter lives inside
@@ -731,7 +758,9 @@ that declares anything is **uncallable** by this checker — which means every c
 premise already implies its body declares nothing, and the incoming `κ` survives the body.
 What blocks the call rules is the 5th and the 7th, plus a call lemma nobody has written.
 
-The two rules that were behind the **9th** (conformance as an upper bound) are climbed, and
+The three companion `cons` rules are climbed (clink 53) and were never behind a wall at all —
+see the seventh stall point. The two rules behind the **9th** (conformance as an upper bound)
+are climbed, and
 that was the last wall a single clink could take down by adding components. What is left needs
 one of: a metatheorem about `stepFn` that belongs in `RubyCore/Proof/` (5th), a change to
 `Judge`'s signature and therefore to all 177 derivations (6th), a design decision about

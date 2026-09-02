@@ -13,7 +13,9 @@ nesting list — and each of those is discharged here.
 "a rung is one rule, not one unit of work"; this file is the sharp end of that. Four of the
 six are *vacuous* — a `∀ x ∈ [], …` — and the other two (`JudgeAll.nil`, `JudgeKw.nil`) come
 down to `EvalsAll m [] vs m'` forcing `vs = []` and `m' = m` by its own definition. Nothing
-here touches the machine.
+here touches the machine. (Since clink 53 the last conjunct is `DenAllAt m [] [] [] m'`, which
+is *that same* `m' = m` rather than a `True` — the seventh stall point's fix made the base case
+say the one thing it should.)
 
 What they are not is *padding*. `JudgeAll.nil` is the statement that evaluating no arguments
 leaves the machine alone and produces no values, and a `SemJudgeAll` that failed to say that
@@ -46,22 +48,22 @@ theorem evalsAll_nil {m m' : Machine} {vs : List Value} (h : EvalsAll m [] vs m'
 theorem Sem.JudgeAll.nil : Obl.JudgeAll.nil := by
   intro κ Γ I m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil h
-  exact ⟨rfl, trivial, hm⟩
+  exact ⟨rfl, rfl, hm⟩
 
 theorem Sem.JudgeKw.nil : Obl.JudgeKw.nil := by
   intro κ Γ I m hm vs m' h
   obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [kwExprs] using h)
-  exact ⟨rfl, trivial, hm⟩
+  exact ⟨rfl, rfl, hm⟩
 
-/-- The pair list's base case. `ks ++ vs = []` forces both halves empty, so the two
-"every key/value is in the join" conjuncts are vacuous — which is the right reading: the join
-over no pairs is `.never`, and `denM .never` is `False`, so a non-vacuous claim here would be
-unprovable rather than merely weak. -/
+/-- The pair list's base case. Since clink 53 this is `JudgeAll.nil`'s shape exactly — the
+interleaved reading (`pairExprs []`) makes the empty pair list the empty expression list, and
+`DenPairsAt m [] kr vr [] m'` is `m' = m`. The old statement had to split a `ks ++ vs = []`
+because the halves were concatenated; that concatenation is what the seventh stall point's
+second defect was. -/
 theorem Sem.JudgePairs.nil : Obl.JudgePairs.nil := by
-  intro κ Γ I m hm ks vs m' h _
-  obtain ⟨hnil, rfl⟩ := evalsAll_nil (by simpa using h)
-  obtain ⟨rfl, rfl⟩ := List.append_eq_nil_iff.mp hnil
-  exact ⟨rfl, by simp, by simp, hm⟩
+  intro κ Γ I m hm vals m' h
+  obtain ⟨rfl, rfl⟩ := evalsAll_nil (by simpa [pairExprs] using h)
+  exact ⟨rfl, rfl, hm⟩
 
 /-! ## The four that are vacuous -/
 
