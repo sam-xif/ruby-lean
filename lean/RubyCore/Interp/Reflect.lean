@@ -85,15 +85,114 @@ def procClosure? (m : Machine) (v : Value) : Option Closure :=
   | .ref o => match (m.heap.get o).payload with | .proc cl => some cl | _ => none
   | _ => none
 
-/-- Class macros + reflection (artifact 02): `attr_*` (define accessors),
-    `method_defined?` (instance-method presence on a class), `respond_to?`
-    (method presence on a receiver — user or modeled/CRuby builtin),
-    `define_method`/`define_singleton_method`/`alias_method` (L64). Only reached
-    on a lookup miss, so a user override wins. -/
-def tryReflect (m : Machine) (recv : Value) (mname : String)
+/-- The `public`/`private`/`protected`/`module_function` walk over the requested names:
+    `none` if one of them is an unmodeled builtin (which is a gate, not a raise). -/
+def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
+    (names : List String) : Option Machine :=
+  names.foldl (fun (acc : Option Machine) (n : String) =>
+    acc.bind fun m =>
+      match methodOn m.heap target n with
+      | some (_, md) =>
+        if md.builtin.isSome && !md.fromPrelude then none   -- unmodeled builtin → gate
+        else
+          let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
+          -- `module_function :m` also defines `m` as a singleton method [V]
+          if modFun then
+            -- the singleton copy is *owned by the eigenclass*, so `super`
+            -- inside it continues from there (Module → Object) [V]
+            let (e, m) := eigenclassOf m o
+            let copy := { md with visibility := .pub, owner := e }
+            some { m with heap := defineMethod m.heap e n copy }
+          else some m
+      | none => none) (some m)
+
+/-- The walk's decision, machine-free — see `removeOk` for why that matters. -/
+def visOk (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
+    (names : List String) : Bool := (visNames m o target vis modFun names).isSome
+
+/-- The machine the walk produces. -/
+def visRun (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
+    (names : List String) : Machine := (visNames m o target vis modFun names).getD m
+
+/-- The `remove_method`/`undef_method` walk over the requested names: `none` if any name is
+    not this class's own definition (an `undef` tombstone does not count). -/
+def removeNames (m : Machine) (o : ObjId) (undef : Bool) (names : List String) :
+    Option Machine :=
+  names.foldl (fun (acc : Option Machine) (n : String) =>
+    acc.bind fun m =>
+      match m.heap.classPayload? o with
+      | some c =>
+        if undef then
+          some { m with heap := undefMethod m.heap o n }
+        else match c.methods.find? (·.1 == n) with
+          | some (_, md) =>
+            -- an `undef` tombstone is *not* a definition here [V]
+            if md.undefined then none
+            else
+              let c' := { c with methods := c.methods.filter (·.1 != n) }
+              some { m with heap := m.heap.setClassPayload o c' }
+          | none => none
+      | none => none) (some m)
+
+/-- Did the walk succeed? **A `Bool`, and that is the point**: the caller used to `match` on
+    the `Option Machine` directly, and a scrutinee that carries a machine is what makes the
+    continuation-framing proof fail — under a push the two sides' scrutinees differ by an
+    `Option.map`, so `split` pairs a `none` arm of one with a `some` arm of the other. A
+    machine-free decision plus a separate machine keeps them in step
+    (`Proof/KontFrameReflect.lean`; same shape as `dmTarget?`/`dmTargetM`). -/
+def removeOk (m : Machine) (o : ObjId) (undef : Bool) (names : List String) : Bool :=
+  (removeNames m o undef names).isSome
+
+/-- The machine the walk produces — the original one if it failed, which is what the error
+    path uses anyway. -/
+def removeRun (m : Machine) (o : ObjId) (undef : Bool) (names : List String) : Machine :=
+  (removeNames m o undef names).getD m
+
+/-- The closure a block argument carries. Named for the same reason as `hasCatcher`: as the
+    inline `blk.bind (procClosure? m)` it was, the framing rewrite fires *inside* the `Option`
+    match on one side only, simp renormalises that side's matcher, and `split` then pairs the
+    two sides' arms wrongly. One head constant, one rewrite, both sides equal. -/
+def blockClosure? (m : Machine) (blk : Option Value) : Option Closure :=
+  blk.bind (procClosure? m)
+
+/-- Is there a `catch` marker for `tag` on the continuation? Named (rather than the inline
+    `let matched` it used to be) for the continuation-framing proof: this is the *one* read of
+    the whole continuation in the reflective layer, so it is the one place framing is
+    conditional — pushing a continuation that contains a `catchK` turns an
+    `UncaughtThrowError` into a jump — and a named function is what lets that conditional
+    rewrite fire under a `match` arm (`Proof/KontFrameReflect.lean`). -/
+def hasCatcher (m : Machine) (tag : Value) : Bool :=
+  m.kont.any fun k => match k with
+    | .catchK t => t.identEq tag
+    | _ => false
+
+/-- The class (or eigenclass) `define_method`/`define_singleton_method` installs into.
+    **Machine-free result, deliberately**: this used to be one `let target? : Option (ObjId ×
+    Machine)`, and a matched value that *contains a machine* is what makes the
+    continuation-framing proof fail — the pushed and unpushed copies of the scrutinee differ,
+    `split` pairs a `none` arm of one with a `some` arm of the other, and the resulting
+    impossible goals cannot be closed in place (`Proof/KontFrameReflect.lean`). Split into an
+    id lookup and the machine it grows, both scrutinee-shaped, the arms line up. -/
+def dmTarget? (m : Machine) (recv : Value) (singleton : Bool) : Option ObjId :=
+  if singleton then
+    match recv with
+    | .ref o => some (eigenclassOf m o).1
+    | _ => none
+  else match recv with
+    | .ref o => if (m.heap.classPayload? o).isSome then some o else none
+    | _ => none
+
+/-- The machine `dmTarget?` grows: `define_singleton_method` on a plain object allocates the
+    eigenclass, everything else leaves the machine alone. -/
+def dmTargetM (m : Machine) (recv : Value) (singleton : Bool) : Machine :=
+  if singleton then
+    match recv with
+    | .ref o => (eigenclassOf m o).2
+    | _ => m
+  else m
+
+def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (blk : Option Value) : Option StepResult :=
-  match mname with
-  | "define_method" | "define_singleton_method" =>
     -- A method whose body is a *closure* (artifact 02 §1 + 04 §1): the body sees
     -- the defining scope's locals, but `self` is the receiver at call time and
     -- `return` returns from the method. `capturedFrame` on the MethodDef is what
@@ -115,17 +214,11 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
             -- must bind them in its *own* activation, or an assignment walks the
             -- `capturedFrame` chain and clobbers a same-named outer local — the
             -- L125 defect, one frame kind over (C35).
-            let target? : Option (ObjId × Machine) :=
-              if mname == "define_singleton_method" then
-                match recv with
-                | .ref o => let (e, m) := eigenclassOf m o; some (e, m)
-                | _ => none
-              else match recv with
-                | .ref o => if (m.heap.classPayload? o).isSome then some (o, m) else none
-                | _ => none
-            match target? with
+            let singleton := mname == "define_singleton_method"
+            match dmTarget? m recv singleton with
             | none => none   -- non-Module receiver: CRuby's NoMethodError; gate below
-            | some (target, m) =>
+            | some target =>
+              let m := dmTargetM m recv singleton
               -- constants in the body resolve at the *definition* site [V]
               let cref := (m.frames.getD cl.captured default).cref
               -- **J33: capture erasure for closed bodies.** A body that can
@@ -147,15 +240,16 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
               let m := { m with heap := defineMethod m.heap target name md }
               some (.next (withCtl m (.value (.sym name))))
     | [] => none
-  | "class_eval" | "module_eval" | "class_exec" | "module_exec"
-  | "instance_eval" | "instance_exec" =>
+
+def reflectEval (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (blk : Option Value) : Option StepResult :=
     -- Block forms only (the string forms are permanently out of scope, artifact
     -- 00 §6, and the desugar gates them upstream). `class_eval` rebinds `self`
     -- *and* the `def` target to the module; `instance_eval` rebinds `self` to the
     -- receiver and the `def` target to its eigenclass (so `def` there defines a
     -- singleton method) [V]. The `_exec` forms pass the caller's args to the
     -- block; the `_eval` forms pass the receiver.
-    match blk.bind (procClosure? m) with
+    match blockClosure? m blk with
     | none => none
     | some cl =>
       let isMod := mname == "class_eval" || mname == "module_eval"
@@ -180,11 +274,13 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         else if definesMethod cl.body then
           some (.unsupported s!"{mname} defining a method on an immediate")
         else some (callClosure m cl blkArgs none (some recv) (some (classOf m.heap recv)))
-  | "catch" =>
+
+def reflectCatch (m : Machine) (_recv : Value) (_mname : String)
+    (args : List Value) (blk : Option Value) : Option StepResult :=
     -- `catch(tag) { |t| … }` (artifact 04, L69): mark the stack with `catchK` and
     -- run the block with the tag as its argument. A tagless `catch` generates a
     -- fresh object as the tag, exactly as CRuby does.
-    match blk.bind (procClosure? m) with
+    match blockClosure? m blk with
     | none => none
     | some cl =>
       match args with
@@ -197,16 +293,14 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         let m := { m with heap := hp, kont := .catchK tag :: m.kont }
         some (callClosure m cl [tag] none)
       | _ => some (.unsupported "catch/arity")
-  | "throw" =>
+
+def reflectThrow (m : Machine) (_recv : Value) (_mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     -- With no matching `catch` on the stack, CRuby raises `UncaughtThrowError`
     -- **at the throw site**, so an enclosing `rescue` sees it [V] — checked here
     -- rather than after unwinding, which would have discarded that rescue.
-    let matched := fun (tag : Value) =>
-      m.kont.any fun k => match k with
-        | .catchK t => t.identEq tag
-        | _ => false
     let go := fun (tag : Value) (v : Value) =>
-      if matched tag then StepResult.next (withCtl m (.jump (.throwJ tag v)))
+      if hasCatcher m tag then StepResult.next (withCtl m (.jump (.throwJ tag v)))
       else match Builtins.inspectP m tag with
         | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
         | .error e => .unsupported e
@@ -214,8 +308,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
     | [tag] => some (go tag .nil)
     | [tag, v] => some (go tag v)
     | _ => some (.unsupported "throw/arity")
-  | "public" | "private" | "protected" | "module_function"
-  | "private_class_method" | "public_class_method" =>
+
+def reflectVisibility (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     -- artifact 02 §5 (L71). Bare form: set the class body's default visibility.
     -- With names: set those methods' visibility (and, for `module_function`, copy
     -- them to the eigenclass). Returns the names (or nil for the bare form) [V].
@@ -240,43 +335,30 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           some (.next (withCtl m (.value .nil)))
       else
         -- the target class: the eigenclass for the `*_class_method` forms
-        let (target, m) :=
-          if mname == "private_class_method" || mname == "public_class_method" then
-            eigenclassOf m o
-          else (o, m)
-        let step := fun (acc : Option Machine) (n : String) =>
-          acc.bind fun m =>
-            match methodOn m.heap target n with
-            | some (_, md) =>
-              if md.builtin.isSome && !md.fromPrelude then none   -- unmodeled builtin → gate
-              else
-                let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
-                -- `module_function :m` also defines `m` as a singleton method [V]
-                if mname == "module_function" then
-                  -- the singleton copy is *owned by the eigenclass*, so `super`
-                  -- inside it continues from there (Module → Object) [V]
-                  let (e, m) := eigenclassOf m o
-                  let copy := { md with visibility := .pub, owner := e }
-                  some { m with heap := defineMethod m.heap e n copy }
-                else some m
-            | none => none
-        match names.foldl step (some m) with
-        | some m =>
+        let classMeth := mname == "private_class_method" || mname == "public_class_method"
+        let target := if classMeth then (eigenclassOf m o).1 else o
+        let m := if classMeth then (eigenclassOf m o).2 else m
+        if visOk m o target vis (mname == "module_function") names then
+          let m := visRun m o target vis (mname == "module_function") names
           let (arr, m) := Builtins.allocArr m (names.map Value.sym).toArray
           -- a single name answers that name, several answer the array [V]
           match names with
           | [n] => some (.next (withCtl m (.value (.sym n))))
           | _ => some (.next (withCtl m (.value arr)))
-        | none => some (.unsupported s!"{mname} of a method the model does not define")
+        else some (.unsupported s!"{mname} of a method the model does not define")
     | _ => none
-  | "singleton_class" =>
+
+def reflectSingletonClass (m : Machine) (recv : Value) (_mname : String)
+    (_args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv with
     | .ref o => let (e, m) := eigenclassOf m o; some (.next (withCtl m (.value (.ref e))))
     | .nil | .bool _ =>
       -- nil/true/false answer their own class; immediates raise TypeError.
       some (.next (withCtl m (.value (.ref (classOf m.heap recv)))))
     | _ => some (.unsupported "singleton_class of an immediate (TypeError)")
-  | "instance_variable_get" | "instance_variable_defined?" =>
+
+def reflectIvarGet (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match args with
     | [nameArg] =>
       match symOrStr m nameArg with
@@ -293,7 +375,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
             then (found.map (·.2)).getD .nil else .bool found.isSome
           some (.next (withCtl m (.value v)))
     | _ => none
-  | "instance_variable_set" =>
+
+def reflectIvarSet (m : Machine) (recv : Value) (_mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv, args with
     | .ref o, [nameArg, val] =>
       match symOrStr m nameArg with
@@ -311,7 +395,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           let obj := { obj with ivars := (n, val) :: obj.ivars.filter (·.1 != n) }
           some (.next (withCtl { m with heap := m.heap.set o obj } (.value val)))
     | _, _ => none
-  | "instance_variables" =>
+
+def reflectIvarNames (m : Machine) (recv : Value) (_mname : String)
+    (_args : List Value) (_blk : Option Value) : Option StepResult :=
     -- definition order (our `ivars` list is newest-first, as `Repr` assumes)
     match recv with
     | .ref o =>
@@ -321,7 +407,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
     | _ =>
       let (arr, m) := Builtins.allocArr m #[]
       some (.next (withCtl m (.value arr)))
-  | "const_defined?" | "const_get" =>
+
+def reflectConstGet (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv, args with
     | .ref o, nameArg :: _ =>
       match symOrStr m nameArg, m.heap.classPayload? o with
@@ -344,7 +432,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
                 s!"uninitialized constant {className m.heap o}::{n}"))
       | _, _ => none
     | _, _ => none
-  | "const_set" =>
+
+def reflectConstSet (m : Machine) (recv : Value) (_mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv, args with
     | .ref o, [nameArg, val] =>
       match symOrStr m nameArg, m.heap.classPayload? o with
@@ -352,7 +442,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         some (.next (withCtl { m with heap := constSetIn m.heap o n val } (.value val)))
       | _, _ => none
     | _, _ => none
-  | "remove_method" | "undef_method" =>
+
+def reflectRemoveMethod (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     -- `remove_method` deletes this class's own entry (an inherited definition
     -- becomes visible again); `undef_method` installs the tombstone (artifact 02).
     match recv with
@@ -362,24 +454,10 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         let names := args.filterMap (symOrStr m)
         if names.length != args.length then none
         else
-          let step := fun (acc : Option Machine) (n : String) =>
-            acc.bind fun m =>
-              match m.heap.classPayload? o with
-              | some c =>
-                if mname == "undef_method" then
-                  some { m with heap := undefMethod m.heap o n }
-                else match c.methods.find? (·.1 == n) with
-                  | some (_, md) =>
-                    -- an `undef` tombstone is *not* a definition here [V]
-                    if md.undefined then none
-                    else
-                      let c' := { c with methods := c.methods.filter (·.1 != n) }
-                      some { m with heap := m.heap.setClassPayload o c' }
-                  | none => none
-              | none => none
-          match names.foldl step (some m) with
-          | some m => some (.next (withCtl m (.value recv)))
-          | none =>
+          if removeOk m o (mname == "undef_method") names then
+            some (.next (withCtl (removeRun m o (mname == "undef_method") names) (.value recv)))
+          else
+
             -- CRuby: `NameError: method 'm' not defined in C` [V]; an eigenclass
             -- definee has an address-dependent name we cannot reproduce → gate.
             let dn := className m.heap o
@@ -396,7 +474,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
                 s!"method '{missing}' not defined in {dn}"))
       | none => none
     | _ => none
-  | "alias_method" =>
+
+def reflectAliasMethod (m : Machine) (recv : Value) (_mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     -- `alias` with dynamic names (artifact 02): copy the current definition, so a
     -- later redefinition of the original does not affect the alias [V].
     match recv, args with
@@ -421,7 +501,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         | none => some (.unsupported s!"alias_method of unmodeled method {oldN}")
       | _, _, _ => none
     | _, _ => none
-  | "attr_reader" | "attr_writer" | "attr_accessor" =>
+
+def reflectAttr (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv with
     | .ref o => match m.heap.classPayload? o with
       | some _ =>
@@ -430,8 +512,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         some (.next (withCtl m (.value arr)))
       | none => none
     | _ => none
-  | "method_defined?" | "public_method_defined?" | "private_method_defined?"
-  | "protected_method_defined?" =>
+
+def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match recv, args with
     | .ref o, [nameArg] =>
       match symOrStr m nameArg, m.heap.classPayload? o with
@@ -451,7 +534,9 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
         some (.next (withCtl m (.value (.bool found))))
       | _, _ => none
     | _, _ => none
-  | "respond_to?" =>
+
+def reflectRespondTo (m : Machine) (recv : Value) (_mname : String)
+    (args : List Value) (_blk : Option Value) : Option StepResult :=
     match args with
     | nameArg :: rest =>
       let inclPrivate := match rest with
@@ -476,6 +561,34 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
           | none => some (.next (withCtl m (.value (.bool false))))
       | none => none
     | _ => none
+
+/-- Class macros + reflection (artifact 02): `attr_*` (define accessors),
+    `method_defined?` (instance-method presence on a class), `respond_to?`
+    (method presence on a receiver — user or modeled/CRuby builtin),
+    `define_method`/`define_singleton_method`/`alias_method` (L64). Only reached
+    on a lookup miss, so a user override wins. -/
+def tryReflect (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (blk : Option Value) : Option StepResult :=
+  match mname with
+  | "define_method" | "define_singleton_method" => reflectDefineMethod m recv mname args blk
+  | "class_eval" | "module_eval" | "class_exec" | "module_exec"
+  | "instance_eval" | "instance_exec" => reflectEval m recv mname args blk
+  | "catch" => reflectCatch m recv mname args blk
+  | "throw" => reflectThrow m recv mname args blk
+  | "public" | "private" | "protected" | "module_function"
+  | "private_class_method" | "public_class_method" => reflectVisibility m recv mname args blk
+  | "singleton_class" => reflectSingletonClass m recv mname args blk
+  | "instance_variable_get" | "instance_variable_defined?" => reflectIvarGet m recv mname args blk
+  | "instance_variable_set" => reflectIvarSet m recv mname args blk
+  | "instance_variables" => reflectIvarNames m recv mname args blk
+  | "const_defined?" | "const_get" => reflectConstGet m recv mname args blk
+  | "const_set" => reflectConstSet m recv mname args blk
+  | "remove_method" | "undef_method" => reflectRemoveMethod m recv mname args blk
+  | "alias_method" => reflectAliasMethod m recv mname args blk
+  | "attr_reader" | "attr_writer" | "attr_accessor" => reflectAttr m recv mname args blk
+  | "method_defined?" | "public_method_defined?" | "private_method_defined?"
+  | "protected_method_defined?" => reflectMethodDefined m recv mname args blk
+  | "respond_to?" => reflectRespondTo m recv mname args blk
   | _ => none
 
 /-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
