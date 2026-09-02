@@ -28,6 +28,16 @@
           ],
           [
             "def",
+            "get",
+            [],
+            [
+              "var",
+              "ivar",
+              "@a"
+            ]
+          ],
+          [
+            "def",
             "leak",
             [],
             [
@@ -50,9 +60,26 @@
                 ]
               ],
               [
-                "var",
-                "local",
-                "x"
+                "send",
+                [
+                  "send",
+                  [
+                    "var",
+                    "local",
+                    "x"
+                  ],
+                  "get",
+                  [],
+                  null
+                ],
+                "+",
+                [
+                  [
+                    "int",
+                    1
+                  ]
+                ],
+                null
               ]
             ]
           ]
@@ -76,6 +103,6 @@
       ]
     ]
   },
-  "expect_validate": true,
-  "false_reason": null
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
 }

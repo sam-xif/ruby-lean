@@ -2109,8 +2109,18 @@ R("ivar-asgn-stale-inst-unsafe", 12,
   "exactly as \u00a7F1\u2019s `Ty.clos` captures went stale. If the checker types `x.get + 1` "
   "from the stale spine, it certifies `Integer + Integer` for a run that does `String + "
   "Integer`. Same shape as \u00a7F1, one piece of state over.",
-  'class C\n  def initialize\n    @a = 1\n  end\n  def leak\n    x = self\n    @a = "s"\n    x\n  end\nend\nC.new.leak\n',
-  expect_validate=True)
+  'class C\n  def initialize\n    @a = 1\n  end\n  def get\n    @a\n  end\n  def leak\n    x = self\n    @a = "s"\n    x.get + 1\n  end\nend\nC.new.leak\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("reopen-integer-is-a-unsafe", 12,
+  "**A candidate UNSAFE program.** `isADispatchOk` guards `Judge.isAQuery` by checking the "
+  "*user* class table for an `is_a?` override \u2014 but only for `.inst` types; at an "
+  "immediate (`.int`) it answers `true` unconditionally, i.e. it assumes the boot "
+  "`Integer#is_a?` is intact. Reopening `Integer` and redefining `is_a?` to return a String "
+  "falsifies that, and `& true` is the operation that turns the wrong type into a real "
+  "NoMethodError (`bool` has `&`, `String` does not).",
+  'class Integer\n  def is_a?(c)\n    "s"\n  end\nend\n5.is_a?(Integer) & true\n',
+  expect_validate=False, false_reason="unsafe_program")
 
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
