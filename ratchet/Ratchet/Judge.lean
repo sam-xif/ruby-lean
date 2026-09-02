@@ -3727,11 +3727,24 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       would `k = Dog; x.is_a?(k)` if a rule ever typed that — it just would not *narrow*, for
       lack of a class name in the syntax (see `NarrowCond.isAQuery`). The `.clsOf` requirement
       is what keeps `x.is_a?(5)` out: `is_a?` raises `TypeError` on a non-Module argument,
-      which is inside the family. -/
+      which is inside the family.
+
+      **The two `nameFree` premises — `found-issues.md` §F6, found by the semantic rung.**
+      `isADispatchOk` checks the *user class table* for an `is_a?` override, and only for
+      `.inst` types: at an immediate it answers `true` unconditionally, i.e. it assumes the boot
+      `Integer#is_a?` is intact. Reopening `Integer` with an `is_a?` that returns a String
+      falsifies that (`corpus/241-reopen-integer-is-a-unsafe`), and the rule would certify
+      `bool` for it. `nameFree κ "is_a?"` is the missing assumption, stated; and
+      `nameFree κ "method_missing"` is §F4's, needed for the same reason it was there — a
+      receiver whose class does not resolve `is_a?` at all (a `BasicObject` subclass) reaches
+      `dispatchMiss`, whose last question before raising is whether the receiver has a
+      `method_missing` that *returns*. -/
   | isAQuery {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {args : List Expr} {σ : Ty} {cn : String} :
       Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
       isADispatchOk κ.classes σ = true →
+      (hisa : nameFree κ "is_a?" = true := by rfl) →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "is_a?" args none) .bool Γ₂ I₂
   /-- **`C === v` → `Bool`** (tier 12) — `Module#===`, which is what `case v when C` desugars
       to.

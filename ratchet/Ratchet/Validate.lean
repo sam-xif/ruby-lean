@@ -766,7 +766,11 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- and recorded as a negative control.
           match argTys with
           | [.clsOf _] =>
-            if isADispatchOk κ.classes σ then some (.bool, Γ₂, I₂) else none
+            -- `found-issues.md` §F6: `isADispatchOk` guards the *user table* and only for
+            -- `.inst` types, so the boot `is_a?` being intact has to be checked too — and
+            -- `method_missing` for the receiver whose class does not resolve `is_a?` at all.
+            if isADispatchOk κ.classes σ && nameFree κ "is_a?"
+               && nameFree κ "method_missing" then some (.bool, Γ₂, I₂) else none
           | _ => none
         else
           -- Tier 7's dispatch, keyed on what the receiver's type *is*: a class object

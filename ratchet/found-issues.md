@@ -700,3 +700,59 @@ assume that: it is rejected rather than assumed away.
 
 Gate numbers unchanged: `run_ratchet.sh` 35 mismatches before and after, `run_check_rungs.sh`
 177/177 + 145/145.
+
+## §F6 — `Judge.isAQuery` assumed the boot `is_a?` was intact, and only checked the user table for `.inst` types
+
+**The rule.** `Judge.isAQuery` types `recv.is_a?(C)` as `.bool` behind one guard,
+`isADispatchOk κ.classes σ = true`. That guard reads
+
+```
+| .inst n _ => (mroGet? C n "is_a?").isNone      -- the user chain does not override it
+| .union σ τ => … | .nilable ρ => …
+| .any | .clos _ _ _ | .never | .sameAs _ _ => false
+| _ => true                                       -- ← every immediate, unconditionally
+```
+
+so at an `Integer`, a `String`, a `Symbol` — anything whose type is not an `.inst` — it answers
+`true` **without looking at anything**. That is an assumption that the boot `Integer#is_a?` is
+still the builtin, and Ruby lets a program falsify it:
+
+```ruby
+class Integer
+  def is_a?(c)
+    "s"
+  end
+end
+5.is_a?(Integer) & true    # certified `bool & bool`; runs `String#&`, which does not exist
+```
+
+`& true` is what turns the wrong *type* into a real `NoMethodError`: `bool` has `&` and
+`String` does not, so this is inside the type-stuck family rather than merely imprecise.
+
+**Why the ladder found it.** `Obl.Judge.isAQuery` has to be discharged from the machine's own
+dispatch, and the component that describes it (`QueryOk`, clink 54) can only be stated for a
+name the *context* does not declare — `MethodsExact` allows any method the context declares, so
+a reopening is a conformant machine. Writing the component down is what asks the rule for the
+premise. Nothing was searched for.
+
+**The second premise is §F4's, for §F4's reason.** A receiver whose class does not resolve
+`is_a?` **at all** — a `BasicObject` subclass — reaches `dispatchMiss`, whose last question
+before raising `NoMethodError` is whether the receiver has a `method_missing`. If it does, the
+call *returns*, with a value of any type. So `nameFree κ "method_missing"` is needed here
+exactly as it is on `Judge.bareName`.
+
+**The fix.** Two `autoParam` premises on `Judge.isAQuery` — `nameFree κ "is_a?" = true` and
+`nameFree κ "method_missing" = true` — with the matching conjuncts in `Validate.lean`'s `is_a?`
+arm and the three-way split in `Ratchet/Proof/ChkSound.lean`. No derivation term moved (the
+corpus's `is_a?` rungs are at contexts that declare neither name, and both premises are `rfl`).
+
+Pinned by `corpus/241-reopen-integer-is-a-unsafe` (`expect_validate = false`,
+`unsafe_program`), which the checker already rejected — for the *arity* of the `&` that follows
+rather than for this — and now rejects for this reason too.
+
+Gate numbers unchanged: `run_ratchet.sh` 35 mismatches, `run_check_rungs.sh` 177/177 + 145/145,
+corpus agreement 242/242.
+
+**What is still open.** `nameFree` reads `κ.defs` and `κ.classes` and not `κ.closures`, so an
+`is_a?` installed by `define_method` is not covered — the same coarseness §F2 and §F4 have, and
+unreachable for the same reason (`Object#define_method` is `unsupported` in the model).

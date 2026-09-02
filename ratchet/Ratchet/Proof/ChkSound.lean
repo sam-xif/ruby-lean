@@ -1263,7 +1263,10 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                     injection h with h
                     injection h with h h'; injection h' with h' h''
                     subst h; subst h'; subst h''
-                    exact .isAQuery (chk_sound hrecv) (chkAll_sound hargs) hok
+                    -- three conjuncts now: `found-issues.md` §F6
+                    obtain ⟨⟨hok1, hisa⟩, hmm⟩ := by
+                      simpa only [Bool.and_eq_true] using hok
+                    exact .isAQuery (chk_sound hrecv) (chkAll_sound hargs) hok1 hisa hmm
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · split at h
