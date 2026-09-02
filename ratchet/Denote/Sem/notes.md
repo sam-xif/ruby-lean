@@ -299,12 +299,46 @@ Worth recording as a working lesson rather than an accident: the target was writ
 `Prop`-shaped `def` with a name, which is why it could be *attacked* instead of assumed. A
 comment saying "this ought to be true" would still be there.
 
+### The `Builtins` layer, attempted and mostly proved *(clink 52, `../../lean/RubyCore/Proof/KontFrame.lean`)*
+
+Item 1 below — "the **builtins** are the genuinely open question … that is where the 24k lines
+actually are" — was the reason this stall point looked unbounded. It is now measured, and the
+answer is that the layer is the *easy* one:
+
+* **Nothing in `Builtins/` reads `kont`.** `grep -rn '\.kont\|kont :='` over the whole
+  directory finds **zero** occurrences, so the layer is framing-transparent by construction
+  and every lemma is bookkeeping.
+* **What is proved**: the 14 leaves (all `rfl`), the two fuel walks (`putsGo`, `flattenAll`),
+  the five `…Impl` helpers, the `$~` layer (`matchFrameId`/`setLastMatchValue`/
+  `setMatchGlobals`/`setLastMatch` — the one write that is *not* to the heap), `runRegex`'s
+  two match helpers, and the allocating-fold family (`allocFold_frame` polymorphically plus
+  four concrete instances). 51 theorems, axiom-clean, ~430 lines, builds in ~3 s.
+* **What the five dispatchers cost, counted exactly**: with all of the above in scope,
+  `runModules` leaves **1** goal (its delegation to `runRegex`), `runStrings` **5**, `runRegex`
+  **17** — and every residual is either a machine-taking `where` helper (`scanAll`, `splitBy`,
+  `splitOn`, `subst`) or one more bespoke allocating fold. So the remaining Builtins cost is
+  one small induction per fold, on the order of a few hundred lines.
+
+Three tooling facts worth having in advance, because each cost an hour:
+
+1. **`rw [f.eq_def]`, never `simp only [f]`.** The equation compiler refuses per-arm equations
+   at interpreter scale ("failed to generate equational theorem for `runModules`").
+2. **`split` does not scale to deeply nested arms.** On `newImpl` (five nested `if`s) `split`'s
+   own `simp` reports "maximum number of steps exceeded", and neither `maxSteps` nor
+   `simp.maxSteps` is a settable option — the workaround is to case-split the conditions by
+   hand, ~15 lines per such function.
+3. **`simp` matches syntactically, so the general fold lemma is not enough.** `allocFold_frame`
+   covers only the folds whose step really is a function of `(machine, element)`; the
+   `Option`-matching ones push their `nil` *inside* the match and need the induction written
+   again at that shape.
+
 **Three things the measurement does not settle**, and the next attempt should start from them
 rather than from the good news:
 
-1. The **builtins** are the genuinely open question — whether `invoke`'s descent into
-   `Builtins/` is `rfl`-transparent in `kont` *at kernel speed* is untested, and that is where
-   the 24k lines actually are.
+1. ~~The **builtins** are the genuinely open question~~ — **settled, see above**: transparent,
+   fast, and the residual is a bounded list of folds. What is left of the fifth stall point is
+   the `Interp` layer, where the statements are *conditional* (item 2) and one `partial def`
+   sits on the path (item 3).
 2. `applyKont` and `unwind` have the two `[]` exceptions above, so their framing lemmas are
    **conditional** (on `m.kont ≠ []`), not unconditional. Only `evalExpr`'s is free of a side
    condition, which is also why the leaf rungs never needed any of this.

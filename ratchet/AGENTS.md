@@ -587,6 +587,16 @@ decomposition needs the same hypothesis for a sharper reason — a sub-run can r
 empty continuation and *not* under `K` (`catch(:t) { x = begin; throw :t; rescue
 UncaughtThrowError; 1; end; … }`). Nothing here assumes either version.
 
+**Its `Builtins` half is proved** (clink 52, `../lean/RubyCore/Proof/KontFrame.lean` — the
+first file this investigation adds outside `ratchet/`, because a theorem about `stepFn` belongs
+next to `stepFn`). That was the part the fifth stall point could not size: `grep` finds **zero**
+reads of `kont` in the whole 24k-line `Builtins/` directory, so the layer is transparent by
+construction, and 51 axiom-clean theorems cover its leaves, its two fuel walks, its `$~` write
+and its allocating folds. The five dispatchers are stated with the residual counted exactly
+(1, 5 and 17 goals, every one a `where` helper or one more fold). What is left of the wall is
+the `Interp` layer, where the statements are *conditional* and one `partial def` blocks the
+path.
+
 They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step

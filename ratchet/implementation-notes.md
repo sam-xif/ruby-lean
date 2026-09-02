@@ -5155,7 +5155,9 @@ and `bootOkB` at eight clauses, both green. Modified: `Denote/Rules/Bare.lean` (
 `Denote/Rules/Read.lean`, `Denote/Sanity.lean`, `Denote/Examples.lean`, `Denote/Rules.lean`,
 `Ratchet/Judge.lean`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
 `CheckRungs.lean`, `scripts/generate_corpus.py`, `corpus/239-*`, `found-issues.md`,
-`Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`.
+`Denote/Sem/notes.md`, `AGENTS.md`, and `../lean/RubyCore/Proof/KontFrame.lean` (new — the
+first file this investigation adds *outside* `ratchet/`, because a theorem about `stepFn`
+belongs next to `stepFn`). Axiom-clean; no `sorry`.
 
 ### The fifth stall point's named target is **false**, and here is the machine
 
@@ -5228,6 +5230,45 @@ because they are the next attempt's starting point:
   `RubyCore/Proof/`, or a change to `Judge`'s signature and all 177 derivations, or a
   `SemJudgeAll` decision that wants the first call rung's requirements — which are behind the
   6th.
+
+### The fifth wall, attacked: the `Builtins` layer is proved (and it was the cheap one)
+
+`ratchet` cannot climb another rung without the fifth stall point, and the fifth stall point's
+own notes said the **builtins** were the part nobody could size ("whether `invoke`'s descent
+into `Builtins/` is `rfl`-transparent in `kont` *at kernel speed* is untested, and that is
+where the 24k lines actually are"). So it was attacked rather than argued about:
+`../lean/RubyCore/Proof/KontFrame.lean`, 51 theorems, axiom-clean, ~430 lines, ~3 s to build.
+
+**The layer is framing-transparent by construction**: `grep -rn '\.kont\|kont :='` over the
+whole `RubyCore/Builtins/` directory finds **zero** occurrences. What is proved: the fourteen
+leaves (every one `rfl`), the two fuel walks (`putsGo`, `flattenAll`), the five `…Impl`
+helpers, the `$~` layer (`matchFrameId`/`setLastMatchValue`/`setMatchGlobals`/`setLastMatch` —
+the one write in the layer that is *not* to the heap, and the one that needed an induction
+because the walk carries the machine as a captured argument), `runRegex`'s two match helpers,
+and the allocating-fold family (`allocFold_frame` polymorphically, plus four concrete
+instances because `simp` matches syntactically).
+
+**The five dispatchers are stated, not proved, with the residual counted**: `runModules`
+leaves 1 goal, `runStrings` 5, `runRegex` 17 — and every residual is either a machine-taking
+`where` helper (`scanAll`, `splitBy`, `splitOn`, `subst`) or one more bespoke allocating fold.
+Not a 24k-line risk; a few hundred more lines of the same shape.
+
+Three tooling facts, each of which cost real time and none of which is in any manual:
+
+* **`rw [f.eq_def]`, never `simp only [f]`** — the equation compiler refuses per-arm equations
+  at interpreter scale ("failed to generate equational theorem for `runModules`").
+* **`split` does not scale to deeply nested arms** — on `newImpl` (five nested `if`s over
+  `ancestors` tests) `split`'s own `simp` reports "maximum number of steps exceeded", and
+  neither `maxSteps` nor `simp.maxSteps` is a settable option. Hand case-splitting is ~15 lines
+  per such function.
+* **A general lemma is not enough where `simp` has to match syntactically** — `allocFold_frame`
+  covers only the folds whose step really is a function of `(machine, element)`.
+
+What this does *not* buy: a rung. `KontFrameCatchFree` needs the `Interp` layer too, and that
+is the harder half — the statements there are **conditional** (`applyKont`/`unwind` at
+`kont = []` are the two pass-through points), `CatchFree` has to be threaded through the
+`throw` arm the refutation above found, and one `partial def` (`destructureBind`) has to be
+given a structural recursion in `RubyCore` before anything about it is provable at all.
 
 ### What is still in the way, and why the number stops here
 
