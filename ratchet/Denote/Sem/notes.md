@@ -882,3 +882,42 @@ What it needs, in the order the effort falls:
   detour but a down payment.
 * The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
   and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
+
+## The thirteenth stall point — **the dispatch chain**, and it is the biggest of the four
+
+After clink 54 the remaining 45 rules sit behind exactly four things. Three are above; this is
+the fourth, and it is what the table's row "the call lemma — unwritten" turns into once the
+argument walk exists.
+
+`Denote/Sem/Send.lean` takes a call's run apart down to `finishSend`. From there the chain is
+
+```
+finishSend … .none  =  invoke …                       -- `rfl`
+invoke …            →  invoke.invokeDispatch …        -- one `match` on the receiver's payload
+invokeDispatch …    →  lookup m.heap recv mname       -- the ancestor walk
+                    →  Builtins.run bid recv args m   -- the builtin
+```
+
+and the two ends are what is missing:
+
+* **The lookup needs a heap fact `StateOk` does not have.** `MethodsExact`/`ClassesOk`/`DefsOk`
+  describe the classes the *context* knows; a builtin like `Object#is_a?` is a boot binding,
+  and nothing says it is intact. A program may reopen `Integer` and redefine `is_a?` — which
+  is exactly what `corpus/241-reopen-integer-is-a-unsafe` probes (the checker rejects it, so
+  the gap is not reachable, but the *obligation* still quantifies over machines that have it).
+  So this wants a component in the shape of `CoreOk`: the boot bindings the rules dispatch on,
+  with a satisfiability witness at `bootMachine`. Note the witness is *finite* even though the
+  component is a ∀ over values — `lookup` reads the value only through `classOf`, and `Value`
+  has six constructors.
+* **The builtin needs its signature honoured**, which for `Judge.prim`/`callAsm` means one
+  conformance fact **per `PrimSig` row** — the "list of named builtins" that
+  `../../type-safety-by-reachability.md` §9.0/§10.3 already calls the remaining model-coverage
+  job. `RubyCore/Proof/BuiltinConformance.lean` has the shape for four `Integer` rows
+  (`int_add_dispatch` and friends, over an `IntBuiltinResolves` hypothesis); the table has
+  order-of-200 rows.
+
+**The cheap end of it is worth doing first.** `Judge.isAQuery` and `caseEqQuery` conclude
+`Ty.bool`, so they need only *the result is a boolean* — no signature table at all, just the
+lookup fact and one `Builtins.run` unfolding. `classOf`/`clsToS` are the same shape one row
+over. That is four rungs for the first component, and the component is then reusable for the
+twelfth stall point's `x.is_a?(C)` inversion, which narrowing needs anyway.
