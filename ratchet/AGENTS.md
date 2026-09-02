@@ -606,15 +606,27 @@ decomposition needs the same hypothesis for a sharper reason — a sub-run can r
 empty continuation and *not* under `K` (`catch(:t) { x = begin; throw :t; rescue
 UncaughtThrowError; 1; end; … }`). Nothing here assumes either version.
 
-**Its `Builtins` half is proved** (clink 52, `../lean/RubyCore/Proof/KontFrame.lean` — the
-first file this investigation adds outside `ratchet/`, because a theorem about `stepFn` belongs
-next to `stepFn`). That was the part the fifth stall point could not size: `grep` finds **zero**
+**Its `Builtins` half is proved, and `Interp/Support` and most of `Interp/Dispatch` with it**
+(clinks 52–53, `../lean/RubyCore/Proof/KontFrame.lean` + `KontFrameDispatch.lean` — the first
+files this investigation adds outside `ratchet/`, because a theorem about `stepFn` belongs next
+to `stepFn`). That was the part the fifth stall point could not size: `grep` finds **zero**
 reads of `kont` in the whole 24k-line `Builtins/` directory, so the layer is transparent by
-construction, and 51 axiom-clean theorems cover its leaves, its two fuel walks, its `$~` write
-and its allocating folds. The five dispatchers are stated with the residual counted exactly
-(1, 5 and 17 goals, every one a `where` helper or one more fold). What is left of the wall is
-the `Interp` layer, where the statements are *conditional* and one `partial def` blocks the
-path.
+construction, and **119 axiom-clean theorems** now cover it end to end — every leaf, both fuel
+walks, the `$~` write, the allocating folds, all six dispatchers and `Builtins.run` itself —
+plus all of `Interp/Support.lean` (`callClosure`, the first frame-pusher, included) and most of
+`Interp/Dispatch.lean`. **`destructureBind` is no longer a `partial def`**: the one item on the
+path that was blocked *in principle* (an opaque constant has no equation lemmas) now has a
+fuel-bounded recursion, verified by the difftest suite at **1304 tier-0 cases, 0
+disagreements**, and its framing lemma is proved.
+
+What is left of the wall: `Interp/Reflect.lean`, `Send.lean`, `Kont.lean` (`applyKont`/`unwind`
+— the two *conditional* statements, since `kont = []` is the pass-through point),
+`evalExpr`/`stepFn`, and `CatchFree` threading through the `throw` arm. The tactic lessons that
+made the difference are recorded in `Denote/Sem/notes.md` — chiefly that `simp_all` must be a
+per-goal last resort, that a lemma keyed on a lambda is invisible to `simp` but visible to
+`rw`'s *conditional* form, and **the shape problem**: Lean collapses nested record updates into
+one flat literal, so a machine that *is* `pushK K m'` does not unify with `pushK K ?m` and
+needs a keyed variant per callee.
 
 They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`

@@ -318,6 +318,24 @@ answer is that these two layers are the *easy* ones:
   `setLocal`/`setGlobal`/`bindIvar`, `finishRegion`, `enterHandler`, `appendKwHash`,
   `spread`/`spreadA`, `doReturn`, `reifyBlock`, `coerceToProc`, `matchGlobal`, and
   `callClosure`, the first helper that pushes a *frame*.
+* **`Interp/Dispatch.lean`, most of it** (clink 53, third pass): `destructureBind` — the item
+  that was blocked *in principle* — plus `eigenclassOf`, `symOrStr`, `mixinShadow`,
+  `moduleHook`, `missNoMethod`, `visError?`, `cpathContainer`, `defineAttr`, `enterClassBody`
+  and `enterScopedClassBody`. The frame-pushing entries live in a second module
+  (`KontFrameDispatch.lean`) so that iterating on them does not recompile the first;
+  `enterUserMethod` is `split`-bound on a 135-line body with ten branch points and is the one
+  function whose build cost is measured in minutes.
+* **The shape problem, named.** The interpreter builds machines by nested record update and
+  Lean collapses those into one flat literal — so a machine that *is* `pushK K m'` is spelled
+  with `kont := k ++ K` inline, and nothing whose left-hand side is `pushK K ?m` unifies with
+  it. Two fixes do **not** work: `@[reducible] pushK` (the discrimination tree still keys on
+  the literal) and a `@[simp]` lemma for the missing direction (simp then uses structure eta to
+  expand every machine into nine field projections — a two-arm goal becomes ninety). What
+  works is a *keyed* variant per callee (`eigenclassOf_frame_mk`) or a hand-written `show`.
+* **And `frame_simp` must run before `split`**, or `split` peels the pushed and unpushed
+  matches independently and pairs arm `i` of one with arm `j` of the other. The symptom reads
+  as a false statement (a goal comparing a `raiseErr` against a `withKont`) and is nothing of
+  the kind.
 * **What is left of the fifth stall point** is therefore `Interp/Reflect.lean`,
   `Dispatch.lean`, `Send.lean`, `Kont.lean` (`applyKont`/`unwind`, the two *conditional*
   statements), `evalExpr`/`stepFn`, `CatchFree` threading, and the one `partial def`.

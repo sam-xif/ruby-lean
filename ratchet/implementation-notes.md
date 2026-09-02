@@ -5429,6 +5429,45 @@ tier 0 ran all **1304 bootstraptest cases with 0 disagreements** (992 agree, 306
 `sut_unsupported`, 5 `control_invalid`, 1 harness error — the same shape as before the change),
 on top of the corpus agreement at 239/239 and the two hand-checked destructuring programs.
 
+### The fifth wall, third pass: `Interp/Dispatch` and the shape problem, named
+
+`../lean/RubyCore/Proof/KontFrame.lean` is at **119 theorems**; the frame-pushing entries moved
+to a second module (`KontFrameDispatch.lean`) so that iterating on them does not recompile the
+first — `enterUserMethod` alone is `split`-bound on a 135-line body with ten branch points.
+
+Proved this pass: **`destructureBind_frame`** (the item that was blocked *in principle*),
+`eigenclassOf` and its fuel walk, `symOrStr`, `mixinShadow`, `moduleHook`, `missNoMethod`,
+`visError?`, `cpathContainer`, `defineAttr`, `enterClassBody`, `enterScopedClassBody`.
+
+**`destructureBind_frame` is the one worth reading**, because three plausible tactics failed
+before the six-line proof:
+
+* **`cases v`, not `split`, for the outer match.** Its catch-all *overlaps* the `.ref` arm, and
+  `split` loses the negative hypothesis — leaving unprovable `⊢ False` side goals that look
+  exactly like a false statement. Twenty minutes went into wondering whether the framing claim
+  was wrong.
+* **Deterministic, not a loop.** A `repeat' first | … | rw [foldPair_frame]` **spins**: the
+  conditional rewrite keeps finding new occurrences in the side goals it just created. Two
+  goals became 64, then 112. Two rewrites and their two named side goals close it.
+* **`simp only []` for zeta *only*.** The body is a chain of `let`s, `rw` cannot reach under a
+  binder, and the framing simp set goes too far: it turns `pushK K m` into a flat record
+  literal, and then nothing whose left-hand side is `pushK K ?m` unifies.
+
+That last one is **the shape problem**, and it now has a name and a diagnosis. The interpreter
+builds machines by nested record update; Lean collapses those into one flat literal; so a
+machine that *is* `pushK K m'` is spelled with `kont := k ++ K` inline, and the unifier will
+not invent the structure field-wise to match it. Two things do not work: making `pushK`
+`@[reducible]` (simp's discrimination tree still keys on the literal) and adding a `@[simp]`
+lemma for the missing direction (simp then uses **structure eta** to expand every machine into
+nine field projections, and a two-arm goal becomes ninety). What works is a *keyed* variant per
+callee — `eigenclassOf_frame_mk`, whose left-hand side is `eigenclassOf` applied to a literal
+— or a hand-written `show`, as `enterHandler_frame` uses.
+
+And one more ordering lesson, in its sharpest form yet: **`frame_simp` has to run *before* the
+`split`**, because otherwise `split` peels the pushed and unpushed matches *independently* and
+pairs arm `i` of one with arm `j` of the other. The symptom is a goal comparing a `raiseErr`
+against a `withKont` — which reads as a false statement and is nothing of the kind.
+
 ### What is left, corrected again
 
 Fifty rules: `Judge`'s 47 and `JudgeSeq`'s 3. Every one of them has a **compound** hypothesis —

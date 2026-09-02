@@ -29,12 +29,16 @@ namespace Proof
 
 /-- `m` with `K` appended below its own continuation.
 
-**`@[reducible]`, and that is load-bearing.** The interpreter writes its machines as nested
+**`@[reducible]`, and the trade is recorded.** The interpreter writes its machines as nested
 record updates, which Lean collapses into one flat literal — so a goal about
 `{ m with currentExc := e }` after a push is spelled with `kont := m.kont ++ K` inline rather
-than as `pushK K _`. A non-reducible `pushK` is opaque to `simp`'s unifier there, and every
-lemma below would have to be restated field-wise; reducible, the unifier looks through it and
-one statement per function suffices. -/
+than as `pushK K _`, and no framing lemma matches it. Reducible does not fix that — `simp`'s
+discrimination tree still keys on the literal, so the shape problem is handled per callee
+instead (a keyed variant like `eigenclassOf_frame_mk`, or a hand-written `show` as
+`enterHandler_frame` uses). What reducible *does* buy is `rfl` seeing through it, which is how
+most arms of most proofs here close; the cost is that a bare `simp only []` will unfold it,
+which is why `destructureBind_frame` reduces with the framing set rather than with `simp only
+[]`. -/
 @[reducible] def pushK (K : List Kont) (m : Machine) : Machine := { m with kont := m.kont ++ K }
 
 @[simp, frameLem] theorem pushK_heap (K : List Kont) (m : Machine) : (pushK K m).heap = m.heap := rfl
@@ -1160,51 +1164,100 @@ marker frames by `withKont`'s `rfl`. -/
   frame_simp
   frame_arms
 
-/-! ## The `Interp` layer, part two: `destructureBind` is no longer *impossible*
+/-! ## The `Interp` layer, part two: `destructureBind`, which was *impossible* until clink 53
 
-`Interp/Support.lean`'s `destructureBind` was a **`partial def`** until clink 53, which meant
-it compiled to an opaque constant with no equation lemmas — so *nothing* about it was provable
-and the framing metatheorem was blocked in principle rather than in practice
-(`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3). It now has a fuel-bounded
-recursion (`destrDepth`, the nesting depth of `.destr` sub-params, passed by both call sites),
-which is the fix `ancestors` already took for the same reason.
+`Interp/Support.lean`'s `destructureBind` was a **`partial def`** — an opaque constant with no
+equation lemmas, so nothing about it was provable and this metatheorem was blocked *in
+principle* (`ratchet/Denote/Sem/notes.md` §The fifth stall point, item 3). It now has a
+fuel-bounded recursion (`destrDepth`, the nesting depth of `.destr` sub-params, passed by both
+call sites), which is the fix `ancestors` already took, and the model's behaviour is unchanged
+— verified by hand against CRuby and by the difftest suite at **1304 tier-0 cases, 0
+disagreements**.
 
-Its framing lemma is *not* here yet, and the honest status is that it is now ordinary work
-rather than a wall. What it needs, measured: `rw [destructureBind, destructureBind]`, then
-`simp only []` for **zeta only** — the body is a chain of `let`s and `rw` cannot reach under a
-binder, while `frame_simp` goes too far and rewrites `pushK K m` into a record literal, after
-which `foldPair_frame`'s `(acc, pushK ?m)` no longer unifies (`enterHandler_frame`'s shape
-problem again) — then the conditional `rw [foldPair_frame K (hf := …)]` at each of its three
-folds, with the `.destr` arm of each step discharged by the fuel induction hypothesis. The
-first fold goes through; three arms of the outer `vals` match remain.
+Three plausible tactics failed before the six-line proof below, and each failure is a lesson
+that recurs higher up the layer:
+
+* **`cases v`, not `split`, for the outer match** — its catch-all *overlaps* the `.ref` arm,
+  and `split` loses the negative hypothesis, leaving unprovable `⊢ False` side goals that read
+  exactly like a false statement.
+* **Deterministic, not a loop** — a `repeat' first | … | rw [foldPair_frame]` *spins*: the
+  conditional rewrite keeps finding new occurrences in the side goals it just created, and two
+  goals became sixty-four, then a hundred and twelve.
+* **The induction hypothesis has to be *passed* to the arm tactic.** `destr_arms` is a
+  `macro_rules` tactic, and macro **hygiene** means a name written inside its body resolves in
+  the macro's scope — where the theorem being defined does not exist. The symptom is
+  `unknown identifier destructureBind_frame✝`, with the dagger being the giveaway; the fix is
+  an extra `ident` parameter, so the name is written at the call site and resolves there.
 -/
 
 /-- The step-framing side goal the conditional `rw [foldPair_frame]` leaves: the fold's step
 is `destructureBind`'s `bindPos`, whose only machine-moving arm is `.destr` — and that is the
 fuel induction hypothesis. -/
-syntax "destr_step" ident ident : tactic
+syntax "destr_step" ident ident ident : tactic
 macro_rules
-  | `(tactic| destr_step $K $fuel) =>
+  | `(tactic| destr_step $K $fuel $ih) =>
     `(tactic|
         (intro p m₂ a
          rcases a with ⟨prm, val⟩
-         cases prm with
-         | destr subs' => simp only [destructureBind_frame $K $fuel]
-         | _ => rfl))
+         cases prm <;>
+           first | rfl | simp only [$ih:ident $K $fuel]))
 
 /-- The three arms of `destructureBind`'s outer `match v` all have the same body: bind the
 leading positionals (a fold), allocate the `*rest` array, bind the trailing positionals
 (another fold). Two conditional rewrites and their two side goals, deterministically — a
 `repeat'` loop over the same alternatives *spins*, because `rw [foldPair_frame]` keeps finding
 new occurrences in the side goals it just created. -/
-syntax "destr_arms" ident ident : tactic
+syntax "destr_arms" ident ident ident : tactic
 macro_rules
-  | `(tactic| destr_arms $K $fuel) =>
+  | `(tactic| destr_arms $K $fuel $ih) =>
     `(tactic|
-        (rw [foldPair_frame $K, foldPair_frame $K]
-         case _ => frame_simp
-         case _ => destr_step $K $fuel
-         case _ => destr_step $K $fuel))
+        (rw [foldPair_frame $K]
+         all_goals (try rw [foldPair_frame $K])
+         all_goals (try destr_step $K $fuel $ih)
+         all_goals (try frame_simp)
+         all_goals (try destr_step $K $fuel $ih)
+         all_goals (try rfl)
+         all_goals (try (simp [frameLem]))
+         all_goals (try rfl)
+         -- second round: the `*rest` allocation's `match`, and the post-positional fold behind
+         -- it, only become reachable once the first round has framed what precedes them
+         all_goals (try split)
+         all_goals (try (rw [foldPair_frame $K]))
+         all_goals (try destr_step $K $fuel $ih)
+         all_goals (try (simp [frameLem]))
+         all_goals (try rfl)
+         all_goals (try split)
+         all_goals (try (rw [foldPair_frame $K]))
+         all_goals (try destr_step $K $fuel $ih)
+         all_goals (try (simp [frameLem]))
+         all_goals (try rfl)
+         all_goals (try (intro _ hh
+                         exact absurd hh (by simp)))))
+
+@[frameLem] theorem destructureBind_frame (K : List Kont) :
+    ∀ (fuel : Nat) (m : Machine) (subs : List Param) (v : Value),
+      destructureBind (pushK K m) subs v fuel =
+        ((destructureBind m subs v fuel).1, pushK K (destructureBind m subs v fuel).2)
+  | 0, _, _, _ => rfl
+  | fuel + 1, m, subs, v => by
+    -- `eq_def`, not the per-arm equations: those come with pattern-exclusion side conditions
+    -- (`∀ o, v = .ref o → False`, unprovable at a bare `v`), which is the same lesson the
+    -- `Builtins` dispatchers taught one layer down.
+    rw [destructureBind.eq_def, destructureBind.eq_def]
+    -- the body is a chain of `let`s and `rw` cannot reach under a binder, so it has to be
+    -- zeta-reduced first — with the framing set, *not* a bare `simp only []`, which would
+    -- unfold the `@[reducible] pushK` and leave `foldPair_frame`'s `(acc, pushK ?m)` with
+    -- nothing to match
+    frame_simp
+    -- `cases v`, not `split`: the outer `match v with … | _ => [v]`'s catch-all *overlaps*
+    -- the `.ref` arm, and `split` loses the negative hypothesis, leaving unprovable `⊢ False`
+    -- side goals that read exactly like a false statement.
+    cases v with
+    | ref o =>
+      cases hp : (m.heap.get o).payload with
+      | arr xs => destr_arms K fuel destructureBind_frame
+      | _ => destr_arms K fuel destructureBind_frame
+    | _ => destr_arms K fuel destructureBind_frame
 
 /-! ## `Interp/Dispatch.lean`
 
