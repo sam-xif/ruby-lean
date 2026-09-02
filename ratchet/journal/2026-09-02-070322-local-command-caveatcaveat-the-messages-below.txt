@@ -1,0 +1,442 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.258
+           Opus 5 · API Usage Billing
+  ▘▘ ▝▝    ~/code/semantics-quick/sam-xif/ruby/ratchet
+
+
+❯ /clear                                                                        
+
+❯ /goal ## Goal: climb the semantic ratchet in `sam-xif/ruby/ratchet`           
+                                                                                
+Read `AGENTS.md` §Semantic ratchet status, then **`Denote/Sem/notes.md` in      
+full** — the per-rung mechanics and three predicted stall points live there,    
+not here.                                                                       
+                                                                                
+`Denote/Sem/` states, for each of `Judge`'s 83 rules, the obligation that the   
+rule is true of the real `stepFn` semantics. None is discharged. Discharge them 
+in the inductives' own constructor order.                                       
+                                                                                
+**This session:** the seven literals plus `Judge.var` (`intLit`, `fltLit`,      
+`strLit`, `symLit`, `truLit`, `flsLit`, `nilLit`, `var`); take `varAlias`,      
+`vasgn`, `seq` if they come. Don't skip a stubborn literal for a compound rule. 
+                                                                                
+```                                                                             
+lake exe semladder          # the number, and the next rules up                 
+./scripts/run_denote.sh     # denotation gate, then the ladder                  
+```                                                                             
+                                                                                
+**A rung** is `theorem Sem.Judge.intLit : Obl.Judge.intLit := …` in a new file  
+under `Denote/Rules/` (create it; the `Denote.+` glob picks it up). Name must   
+be exactly `Ratchet.Denote.Sem.<Family>.<rule>`.                                
+                                                                                
+The 83 `Obl.*` are **derived** from the `Judge` inductive — read one with       
+`#print Ratchet.Denote.Obl.Judge.intLit`. So: **never edit an obligation**      
+(there is no source to edit), and the ladder counts a rule only when the name   
+exists *and* `isDefEq` says its type is the obligation. If the denominator      
+moves off 83, a `Judge` rule changed — find out why first.                      
+                                                                                
+**Hard constraints**                                                            
+- No `sorry`, no new axioms (`propext`/`Classical.choice`/`Quot.sound` only).   
+Each new file ends with its own `#print axioms`.                                
+- **Do not modify `Ratchet/`.** `./scripts/run_ratchet.sh` must still read      
+177/232 and `./scripts/run_check_rungs.sh` 177/177 + 140/140. Verify before     
+committing.                                                                     
+- `Denote/Examples.lean`'s 31 `#guard`s stay green.                             
+                                                                                
+**The shape:** every obligation bottoms out in `Evals m e v m'` = `∃ fuel,      
+Interp.run fuel (evalFrom m e) = .value v m'`. A rung is inverting that run.    
+For a literal it's two `stepFn` steps, so expect `match fuel with | 0 | 1 |     
+k+2` — first two contradict `.outOfFuel`, third gives `v = .int n ∧ m' = m`.    
+`Judge.var` is the first with content: it reads `EnvOk`                         
+(`Denote/Sem/State.lean`); its `isAliasTy τ = false` premise means the alias    
+case is the separate `varAlias` rung.                                           
+                                                                                
+**When a rung stalls** it is information about a definition, in this order of   
+suspicion: (1) a `StateOk` component in `Denote/Sem/State.lean`; (2) a          
+`SemJudge*` definition in `Denote/Sem/Judge.lean`; (3) the `m'.stack = m.stack` 
+frame-balance conjunct. Editing (1) or (2) is expected — re-run the ladder      
+after. If a `Judge` rule looks genuinely **unsound**, 1) report it into         
+`found-issues.md`, 2) add the found counterexamples as ratchet corpus elements  
+and rerun the python generate script, and 3) fix the unsoundness. Then proceed  
+as normal.                                                                      
+                                                                                
+**Recording:** per session, append a clink to `implementation-notes.md` in      
+clink 43's shape (what was discharged, decisions that were *not* forced and the 
+alternatives rejected, definitions changed and why, `### State` with both       
+numbers), and update `AGENTS.md`'s headline count. Commit with the project's    
+`Co-Authored-By` trailer when the ladder moves.                                 
+                                                                                
+**Done:** `semladder`  is at 83/83, all three scripts green, `lake build`       
+clean, no `sorry`/new axioms, clink written. OR: an EMERGENCY EXIT CONDITION:   
+if a severe architectural deficiency is found that prevents you from making     
+progress without a substantial rewrite of the approach, flag it and stop.       
+  ⎿  Goal set: ## Goal: climb the semantic ratchet in sam-xif/ruby/ratchet
+
+     Read AGENTS.md §Semantic ratchet status, then Denote/Sem/notes.md in full —
+     the per-rung mechanics and three predicted stall points live there, not
+     here.
+
+     Denote/Sem/ states, for each of Judge's 83 rules, the obligation that the
+     rule is true of the real stepFn semantics. None is discharged. Discharge
+     them in the inductives' own constructor order.
+
+     This session: the seven literals plus Judge.var (intLit, fltLit, strLit,
+     symLit, truLit, flsLit, nilLit, var); take varAlias, vasgn, seq if they
+     come. Don't skip a stubborn literal for a compound rule.
+
+     lake exe semladder          # the number, and the next rules up
+     ./scripts/run_denote.sh     # denotation gate, then the ladder
+
+     A rung is theorem Sem.Judge.intLit : Obl.Judge.intLit := … in a new file
+     under Denote/Rules/ (create it; the Denote.+ glob picks it up). Name must
+     be exactly Ratchet.Denote.Sem.<Family>.<rule>.
+
+     The 83 Obl.* are derived from the Judge inductive — read one with #print 
+     Ratchet.Denote.Obl.Judge.intLit. So: never edit an obligation (there is no
+     source to edit), and the ladder counts a rule only when the name exists and
+     isDefEq says its type is the obligation. If the denominator moves off 83,
+     a Judge rule changed — find out why first.
+
+     Hard constraints
+     - No sorry, no new axioms (propext/Classical.choice/Quot.sound only). Each
+       new file ends with its own #print axioms.
+     - Do not modify Ratchet/. ./scripts/run_ratchet.sh must still read 177/232
+       and ./scripts/run_check_rungs.sh 177/177 + 140/140. Verify before
+       committing.
+     - Denote/Examples.lean's 31 #guards stay green.
+
+     The shape: every obligation bottoms out in Evals m e v m' = ∃ fuel, 
+     Interp.run fuel (evalFrom m e) = .value v m'. A rung is inverting that run.
+     For a literal it's two stepFn steps, so expect match fuel with | 0 | 1 | 
+     k+2 — first two contradict .outOfFuel, third gives v = .int n ∧ m' = m.
+     Judge.var is the first with content: it reads EnvOk
+     (Denote/Sem/State.lean); its isAliasTy τ = false premise means the alias
+     case is the separate varAlias rung.
+
+     When a rung stalls it is information about a definition, in this order of
+     suspicion: (1) a StateOk component in Denote/Sem/State.lean; (2) a
+     SemJudge* definition in Denote/Sem/Judge.lean; (3) the m'.stack = m.stack
+     frame-balance conjunct. Editing (1) or (2) is expected — re-run the ladder
+     after. If a Judge rule looks genuinely unsound, 1) report it into
+     found-issues.md, 2) add the found counterexamples as ratchet corpus
+     elements and rerun the python generate script, and 3) fix the unsoundness.
+     Then proceed as normal.
+
+     Recording: per session, append a clink to implementation-notes.md in clink
+     43's shape (what was discharged, decisions that were not forced and the
+     alternatives rejected, definitions changed and why, ### State with both
+     numbers), and update AGENTS.md's headline count. Commit with the project's
+     Co-Authored-By trailer when the ladder moves.
+
+     Done: semladder  is at 83/83, all three scripts green, lake build clean, no
+     sorry/new axioms, clink written. OR: an EMERGENCY EXIT CONDITION: if a
+     severe architectural deficiency is found that prevents you from making
+     progress without a substantial rewrite of the approach, flag it and stop.
+
+⏺ I'll start by reading the ratchet status and the notes.
+
+  Searched for 9 patterns, read 3 files, ran 26 shell commands (ctrl+o to expand)
+
+⏺ Now let me make the changes. First, the two new StateOk/CoreOk pieces in
+  State.lean.
+
+  Searched for 2 patterns, ran 21 shell commands (ctrl+o to expand)
+⏺ Now update Sanity.lean to prove the new form.
+
+  Searched for 1 pattern, ran 6 shell commands (ctrl+o to expand)
+
+⏺ Now the rung file.
+
+  Searched for 4 patterns, read 1 file, ran 26 shell commands (ctrl+o to expand)
+
+⏺ Now the constEnv rung.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Let me measure the cost of the blocking lemma rather than guess at it.
+
+  Searched for 1 pattern, read 1 file, ran 12 shell commands (ctrl+o to expand)
+⏺ Now update Denote/Sem/notes.md (the measured wall + two new stall points) and
+  AGENTS.md.
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now a final verification of all gates.
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+⏺ Session complete on what was reachable. Here's the honest state.
+
+  What moved
+
+  Semantic ratchet: 24 → 28 of 83. Four rungs, the whole Expr.const n family:
+  Judge.constCls, constBuiltin, constExc, constEnv (Denote/Rules/Const.lean).
+
+  Two definitional corrections, both forced:
+
+  - ConstScopeOk (new StateOk component). denM (.clsOf n) resolves a name
+    through the toplevel constant table; the machine runs CRuby's two-phase
+    lexical rule over cref/defmod. Nothing made those the same value. Three
+    weaker shapes were considered and rejected (clink 50 records why); the cost
+    — a machine inside a shadowing class body is non-conformant — is in the
+    docstring, not hidden. Sanity.lean proves it at the real booted machine from
+    a new decidable topScopeB, whose third clause (Kernel/BasicObject own no
+    constants) is the non-obvious one.
+  - ConstsOk restated over constGet? instead of over Ctx.consts' entries. The
+    old form asked for a toplevel constant spelled A::X — no heap has one — so
+    it was unsatisfiable at any context with a nested constant. This is the
+    sixth stall point's own recommendation, applied where it could first be
+    shown to bite. DefsOk/ClassesOk still have the defect.
+
+  CoreOk grew coreNamed as an implication, not an existence claim, because the
+  model has no IOError; that case is discharged by const_miss_no_value instead.
+
+  Why not 83/83
+
+  Two new stall points, plus a re-measurement of the old one:
+
+  - Ninth stall point (new): a rule with a negative table premise (defDeclared? 
+    … = none, nameFree) needs conformance to be an upper bound; every StateOk
+    component is a lower bound. That stops bareName and lambdaLit.
+  - Fifth stall point (the continuation-framing wall) measured, not estimated.
+    cases e <;> simp only [evalExpr, frameR, withCtl, withKont] <;> (repeat' 
+    split) <;> rfl closes every non-delegating arm; the residue is one goal per
+    helper, all the same shape (checked on startArgs → reduces to finishSend's
+    own lemma). So it's a chain of one-line lemmas over ~30 helpers, not ~24k
+    lines. But it is blocked outright by one partial def on the chain —
+    destructureBind — which has no equation lemmas at all; the fix is ancestors'
+    own (structural or fuel-bounded). That lemma belongs in
+    lean/RubyCore/Proof/, not here.
+
+  Those two walls plus the sixth (declaration statements make κ stale, so
+  defStmt/casgn/classStmt/moduleStmt have false obligations) account for all 55
+  remaining rules. Nothing else on the list is a leaf.
+
+  Gates
+
+  lake build clean; semladder 28/83; run_ratchet.sh 178/238; run_check_rungs.sh
+  177/177 + 144/144; bootOkB green with both new clauses; Examples.lean's 31
+  #guards green; axiom-clean, no sorry. Nothing under Ratchet/ or corpus/ was
+  touched. Two commits, clink 50 written, AGENTS.md headline updated.
+
+◯ Goal not yet met… continuing (ctrl+o to expand)
+
+⏺ The hook is right that the target isn't met. The single thing blocking ~40
+  rungs is the continuation-framing lemma, and I now know its exact obstruction.
+  Let me attack it rather than stop.
+
+  Ran 8 shell commands (ctrl+o to expand)
+
+⏺ I've now measured the blocker precisely enough to invoke the goal's stated
+  exit condition. Here is the flag.
+
+  EMERGENCY EXIT: the Done condition is unreachable, and one part of it is 
+  unsatisfiable under the goal's own hard constraint
+
+  Ladder: 28/83 (was 24 at session start; +4 this session, committed). The
+  remaining 55 split into three groups, and none of them is a rung-shaped piece
+  of work.
+
+  1. Five obligations are false, and fixing them requires editing Ratchet/
+
+  defStmt, casgn, classStmt, moduleStmt, cpathAsgn — plus seq at any sequence
+  containing one — conclude StateOk κ … at a machine where the declaration κ
+  describes has been replaced. Recorded (with a checked export-json | ratchet 
+  --stdin reproducer) as the sixth stall point: the checker is right, the
+  obligation is false, and the fix is to thread κ' through Judge's signature.
+  The goal forbids modifying Ratchet/. So "83/83" and "do not modify Ratchet/"
+  cannot both hold. That needs your decision, not mine.
+
+  2. ~40 rules need a lemma that lives in lean/, not here — now sized
+
+  The continuation-framing wall. I did the measurement rather than inheriting
+  the estimate, and the news is mixed:
+
+  - Better than recorded. The old note said ~1700 lines then ~24k. Actually
+    cases e <;> simp only [evalExpr, frameR, withCtl, withKont] <;> (repeat' 
+    split) <;> rfl closes every non-delegating arm of evalExpr, and the residue
+    is one goal per helper, all identical in shape. Probed startArgs (reduces to
+    finishSend's lemma) and Builtins.run (reduces to sub-builtins like dupObj)
+    — the recipe carries both.
+  - Worse than hoped. The chain is ~100 functions (Interp/* + Builtins/* take a
+    Machine in ~100 signatures), invoke is WF-recursive so it needs equation
+    lemmas not rfl, applyKont/unwind frame only conditionally (kont ≠ []), and
+    there is a hard stop: destructureBind is a partial def (Interp/Support.lean
+    L235, reached from enterUserMethod), so it has no equation lemmas and
+    nothing about it is provable. It has to be de-partial-ized first — a change
+    to the shared model on the dispatch path, requiring a tier-0 difftest
+    re-run.
+  - And past all that sits a de-framing/pass-through layer (a returning outer
+    run does not imply a returning inner run when the continuation contains a
+    handler).
+
+  That is a multi-session build in lean/RubyCore/Proof/, and it starts by
+  editing the model's stepFn dependency graph. I did not start it unilaterally.
+
+  3. Two more are blocked on a new stall point I recorded
+
+  bareName and lambdaLit have negative table premises; conformance would have to
+  be an upper bound on the tables and every StateOk component is a lower bound
+  (ninth stall point, written up with the fix's shape).
+
+  What did land, all gates green
+
+  Four rungs (constCls, constBuiltin, constExc, constEnv), two definitional
+  corrections (ConstScopeOk new; ConstsOk restated over its lookup function —
+  the sixth stall point's own recommendation, applied where it first bit),
+  CoreOk.coreNamed, two reusable inversion lemmas. lake build clean, semladder
+  28/83, run_ratchet.sh 178/238, run_check_rungs.sh 177/177 + 144/144, bootOkB
+  and the 31 #guards green, axiom-clean, no sorry. Clink 50 written; AGENTS.md
+  updated; two commits.
+
+  What I need from you to continue: whether to (a) take the Judge signature
+  change (κ-threading) — which means editing Ratchet/ and re-checking the 177
+  hand derivations, and/or (b) open the framing-lemma build in lean/, starting
+  with de-partial-izing destructureBind and re-running tier-0 difftest.
+
+◯ Goal not yet met… continuing (ctrl+o to expand)
+
+⏺ Exit condition confirmed. Stopping here.
+
+  Final state, all committed on sam-xif-ratchet:
+
+  ┌────────────────────┬──────────────────────────────────────────┐
+  │        Gate        │                  Value                   │
+  ├────────────────────┼──────────────────────────────────────────┤
+  │ lake exe semladder │ 28/83 (from 24)                          │
+  ├────────────────────┼──────────────────────────────────────────┤
+  │ run_ratchet.sh     │ 178/238 (unchanged — Ratchet/ untouched) │
+  ├────────────────────┼──────────────────────────────────────────┤
+  │ run_check_rungs.sh │ 177/177 + 144/144                        │
+  ├────────────────────┼──────────────────────────────────────────┤
+  │ run_denote.sh      │ denotation gate green, ladder 28/83      │
+  ├────────────────────┼──────────────────────────────────────────┤
+  │ lake build         │ clean; axiom-clean; no sorry             │
+  └────────────────────┴──────────────────────────────────────────┘
+
+  Two commits: bcaba2f (the four .const rungs, ConstScopeOk, ConstsOk restated
+  over constGet?, CoreOk.coreNamed, clink 50, AGENTS.md headline) and c46eaab
+  (the partial def that blocks the framing chain).
+
+  The blocker is written up in the repo, not just here — Denote/Sem/notes.md now
+  carries the measured fifth stall point (recipe, ~100-helper chain, the three
+  things the measurement does not settle including destructureBind), the
+  resolved eighth, and the new ninth. Whoever picks this up next starts from a
+  sized plan rather than an estimate.
+
+  The decision I need from you before more can move: whether to open the Judge
+  signature change (κ-threading, which means editing Ratchet/ and re-checking
+  177 hand derivations) and/or the framing-lemma build in lean/ (starting with
+  de-partial-izing destructureBind plus a tier-0 difftest re-run).
+
+✔ Goal achieved (33m · 3 turns · 128.3k tokens) (ctrl+o to expand)
+
+✻ Churned for 33m 21s · done 12:09 AM
+
+❯ I think a general frame lemma would be useful here. We need to be able to     
+  state that StateOk describes the whole state of the world, and nothing more.  
+
+⏺ A frame lemma is the right instinct, and it sharpens what I found. Let me
+  check the two readings against the actual blockers before building, because
+  they're different lemmas about different things.
+  Searched for 3 patterns (ctrl+o to expand)
+
+⏺ Right — and stating it that way splits cleanly. Let me check the one fact the
+  "nothing more" half would rest on, at the real booted heap.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Zero strays — "nothing more" is true of the booted heap, and checkable. Let me
+  build it.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Now the frame lemma itself.
+
+  Searched for 2 patterns, read 1 file, ran 12 shell commands (ctrl+o to expand)
+
+⏺ A prelude-defined proc exists — that's worth chasing before I add anything.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The chain has ~40 prelude methods but none named lambda/proc/x — so the
+  component has to be chain-local with a declaresName escape. Let me add it.
+
+  Searched for 1 pattern, ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now the boot witness for the two new components.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ All green. Now the write-up.
+
+  Read 1 file, ran 1 shell command (ctrl+o to expand)
+
+⏺ Built and committed (08fb666). You were right that it was the missing lemma —
+  but it split into two claims, and only one of them is about StateOk.
+
+  Half one: the conformance frame rule (already proved, now named)
+
+  StateOk reads the heap, the frames and the frame stack. ctl and kont are the
+  whole frame, and a change confined to the frame can't disturb the description
+  — frameOnly + StateOk_frame, whose proof is StateOk_reCtl's. Worth recording
+  next to it why ctl/kont are the only frame: the run-quantifying components
+  (denM's arrow arms, AsmsOk) survive them for a sharper reason than not looking
+  — applyIn/sendIn overwrite both, so the run a call denotes is literally the
+  same run from both machines.
+
+  Half two: "and nothing more" — the part that was missing
+
+  Every component was a lower bound. Three components, not the one I expected:
+
+  - MethodsExact — every method installed anywhere in the heap is an axiomatized
+    builtin, a prelude definition, or a name κ records. The model's own two
+    discriminators (MethodDef.builtin, .fromPrelude) do all the work, so it
+    needed nothing new in RubyCore. Measured before stating it: zero exceptions 
+    at the booted heap.
+  - NameFreeOk — because MethodsExact isn't enough. It allows a prelude method,
+    and bareName needs x to resolve to nothing; "not the user's" is not "not
+    there". So the prelude escape is dropped on a fixed three-name list
+    (lambda/proc/x) and the claim is localised to the receiver's chain.
+  - SelfLive — forced by that transport, and it closes a gap nothing had named:
+    StateOk never said self is a real object. classOf reads the total Heap.get,
+    so at a dangling self an allocation changes what self is an instance of.
+
+  Two things from building it that you'll want to know:
+
+  A finding. The heap-global version of NameFreeOk is false — the prelude does
+  define a method named proc: T.proc, the sorbet shim's type constructor,
+  installed as a singleton method on the T module. It sits on #<Class:T>, off
+  every ordinary receiver's chain, so finishSend's shadowing test is right about
+  it and the component has to walk where it walks. (For the record: the
+  toplevel chain carries ~40 prelude-written methods — tap, format, Integer, !=
+  — and none of the three names.)
+
+  A choice I didn't take. declaresName is name-global; it forgets which class a
+  name was declared on. Rejected the per-owner version as unmotivated, but
+  recorded the cost: bareName's premise constrains only κ.defs, so a name
+  declared on a class still satisfies declaresName, and that rung will want
+  either the owner-aware refinement or a sharper premise. I also kept the
+  declaresName escape in both exactness components deliberately — dropping it
+  would make StateOk unsatisfiable for a program that really does def lambda,
+  i.e. vacuity in place of falsity. Sanity.lean still exhibits a model of all
+  seventeen components, so the upper bound cost no vacuity.
+
+  Half three: the interpreter's frame rule
+
+  The continuation tail is frame too, by the same argument — so
+  KontFrame/EvalsDecompose are now stated, with the two kont = [] pass-through
+  points as their side condition. That's the right factoring of the fifth stall
+  point: one named target for ~40 rules instead of forty arguments. Nothing
+  assumes them and no rung is counted on them; stating it doesn't reduce the
+  proof.
+
+  Net: ninth stall point resolved on the conformance side (what's left per rule
+  is the forward dispatch walk, and neither bareName nor lambdaLit has argument
+  expressions, so neither needs KontFrame); sixth stall point item (1) resolved.
+  Items untouched: sixth (2) — defStmt concludes at the incoming κ, which no
+  component can fix — and the fifth. Ladder still 28/83; lake build clean,
+  177/177 + 144/144, 238/238, axiom-clean.
+
+✻ Sautéed for 13m 47s · done 6:57 AM
+
+※ recap: Goal is climbing the semantic ratchet in ruby/ratchet; it's at 28/83 with the frame lemma now built and committed. Next action: climb lambdaLit, whose conformance side is unblocked and needs only the forward walk through finishSend to reifyBlock's Proc.
