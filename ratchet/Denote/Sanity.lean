@@ -220,6 +220,69 @@ theorem nameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratchet.Ct
   rw [hm] at this
   exact absurd this (by simp)
 
+/-- **A class the heap does not hold has no methods.** `ancestors` at an id with no class
+payload is `[id]`, and `methodOn` then reads that same absent payload — so the walk answers
+`none` without the id needing to be in range. This is what lets `queryOkB` check a *bounded*
+range and still discharge a component quantified over every id. -/
+theorem methodOn_of_no_payload {h : Heap} {k : ObjId} (hp : h.classPayload? k = none)
+    (n : String) : Interp.methodOn h k n = none := by
+  -- the walk at an id with no payload is `[id]`, and `firstM` over it reads that same
+  -- absent payload
+  show List.firstM _ (RubyCore.ancestors h k) = none
+  have hanc : RubyCore.ancestors h k = [k] := by
+    simp only [RubyCore.ancestors, RubyCore.ancestors.go, hp]
+    rfl
+  rw [hanc]
+  simp only [List.firstM, hp]
+  rfl
+
+theorem classPayload?_out_of_range {h : Heap} {k : ObjId} (hk : ¬ k < h.objs.size) :
+    h.classPayload? k = none := by
+  simp only [Heap.classPayload?, Heap.get]
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by simpa using hk)]
+  rfl
+
+/-- **`QueryOk` as one `Bool`** (clink 54): the five things `invokeDispatch` tests before it
+runs a builtin, plus the miss clause, at every class the heap holds. The two lemmas above cover
+everything outside the range. -/
+def queryOkB (m : Machine) : Bool :=
+  (List.range m.heap.objs.size).all (fun k =>
+    Ratchet.Denote.queryBuiltins.all (fun p =>
+      match Interp.methodOn m.heap k p.1 with
+      | none =>
+        match Interp.methodOn m.heap k "method_missing" with
+        | none => true
+        | some (_, mm) => mm.builtin.isSome
+      | some (owner, md) =>
+        md.builtin == some p.2 && !md.undefined && md.visibility == Visibility.pub
+          && !md.fromPrelude
+          && (Interp.crubyShadow m.heap
+                ((RubyCore.ancestors m.heap k).takeWhile (fun x => x != owner)) p.1).isNone))
+
+theorem queryOkB_sound {m : Machine} (hb : queryOkB m = true) (κ : Ratchet.Ctx) :
+    Ratchet.Denote.QueryOk κ m := by
+  intro mname bid hmem _ k
+  by_cases hk : k < m.heap.objs.size
+  · have hrow := List.all_eq_true.mp (List.all_eq_true.mp hb k (by simpa using hk))
+      (mname, bid) (by simpa using hmem)
+    refine ⟨?_, ?_⟩
+    · intro owner md hfound
+      rw [hfound] at hrow
+      simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at hrow
+      obtain ⟨⟨⟨⟨hb1, hu⟩, hv⟩, hp⟩, hsh⟩ := hrow
+      exact ⟨hb1, by simpa using hu, by simpa using hv, by simpa using hp,
+             by simpa using hsh⟩
+    · intro hnone o md hfound
+      rw [hnone, hfound] at hrow
+      exact hrow
+  · exact ⟨by
+      intro owner md hfound
+      rw [methodOn_of_no_payload (classPayload?_out_of_range hk)] at hfound
+      exact absurd hfound (by simp), by
+      intro _ o md hfound
+      rw [methodOn_of_no_payload (classPayload?_out_of_range hk)] at hfound
+      exact absurd hfound (by simp)⟩
+
 /-- **`MissFree` as one `Bool`.** One walk, one field. Checked in the form the component
 states — `none`, or a `builtin` behind it — rather than in the stronger "absent" form, because
 here the two are *not* interchangeable: the model's `method_missing` really may be a builtin
@@ -292,7 +355,7 @@ def bootOkB : Bool :=
   saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
   topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
   nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine &&
-  localsEmptyB bootMachine
+  localsEmptyB bootMachine && queryOkB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -302,8 +365,8 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
-    hsl⟩, hle⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
+    hsl⟩, hle⟩, hq⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
@@ -318,6 +381,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       nested := by
         intro owner n c hc _ _ _ _
         exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
+      query := queryOkB_sound hq Ratchet.ctx0
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])

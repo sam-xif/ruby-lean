@@ -707,6 +707,68 @@ def MissFree (κ : Ctx) (m : Machine) : Prop :=
     ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing"
       = some (o, md) → md.builtin.isSome = true
 
+/-! ## The query builtins
+
+`Judge.isAQuery`/`caseEqQuery`/`classOf`/`clsToS` all have the same shape: a *send* whose
+answer is a boot builtin's, and whose conclusion type does not depend on the builtin's
+signature — only on the fact that a boolean (or a class, or a string) comes out. What they need
+from the machine is the **dispatch precondition** `invokeDispatch` reads, and that is what this
+component states.
+
+Both halves are needed and both are true at the booted machine (computed — see
+`Denote/Sanity.lean`'s `queryOkB`):
+
+* whatever the machine resolves the name to **is** the boot builtin, public, not a tombstone,
+  not prelude-defined, and not shadowed by an unmodeled CRuby method between the receiver and
+  the owner — the five things `invokeDispatch` tests before it runs a builtin;
+* and where the machine resolves the name to *nothing*, it has no non-builtin
+  `method_missing` to fall into. That second half is not redundant: the boot heap really does
+  have three prelude-defined `method_missing`s (measured), and `dispatchMiss` **enters** one
+  when there is no builtin behind it — so without this clause a miss could *return* a value of
+  any type at all. What makes it satisfiable is that those three classes all resolve `is_a?`
+  through `Object`, so they never reach the miss path.
+
+Quantified over **class ids** rather than receivers, for `MissFree`'s reason: `classOf` of a
+dangling reference changes under an allocation, so a claim about receivers is not `Ext`-stable
+while a claim about classes is.
+
+The name table grows one entry per rung, exactly as `CoreOk`'s rows do. -/
+def queryBuiltins : List (String × String) := [("is_a?", "Object#is_a?")]
+
+def QueryOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFree κ mname = true → ∀ k,
+    (∀ owner md, Interp.methodOn m.heap k mname = some (owner, md) →
+        md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
+        md.fromPrelude = false ∧
+        Interp.crubyShadow m.heap
+          ((ancestors m.heap k).takeWhile (fun x => x != owner)) mname = none) ∧
+    (Interp.methodOn m.heap k mname = none →
+      ∀ o md, Interp.methodOn m.heap k "method_missing" = some (o, md) →
+        md.builtin.isSome = true)
+
+theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m) :
+    QueryOk κ m₂ := by
+  intro mname bid hmem hfree k
+  have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
+    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+  obtain ⟨h1, h2⟩ := h mname bid hmem hfree k
+  refine ⟨?_, ?_⟩
+  · intro owner md hfound
+    rw [hm] at hfound
+    obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
+    refine ⟨hb, hu, hv, hp, ?_⟩
+    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    exact hsh
+  · intro hnone o md hfound
+    rw [hm] at hnone hfound
+    exact h2 hnone o md hfound
+
+theorem QueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value) (h : QueryOk κ m) :
+    QueryOk κ (m.setLocal x w) := by
+  intro mname bid hmem hfree k
+  simp only [setLocal_heap]
+  exact h mname bid hmem hfree k
+
 /-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
 plus the three machine facts above.
 
@@ -735,6 +797,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   nameFree : NameFreeOk κ m
   bareFree : BareNameFree κ m
   missFree : MissFree κ m
+  query : QueryOk κ m
   selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
@@ -876,6 +939,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
       simp only [lookup, classOf_self_ext he h.selfLive, he.ancestors]
       exact lookup_go_payload he.payload n _]
     exact h.bareFree n hn hdef hself
+  query := QueryOk.ext he h.query
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
@@ -1253,6 +1317,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
               = lookup m.heap m.currentFrame.self n by
           simp only [lookup, classOf, setLocal_heap, currentFrame_setLocal_self]]
         exact h.bareFree n hn hdef hself
+      query := QueryOk.setLocal x w h.query
       missFree := by
         intro hfree hself o md hm
         refine h.missFree hfree hself o md ?_
