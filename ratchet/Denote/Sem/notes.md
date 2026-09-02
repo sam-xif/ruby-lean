@@ -309,16 +309,18 @@ answer is that these two layers are the *easy* ones:
   `RubyCore/Builtins/` directory finds **zero** occurrences. Above it, `Interp/Support.lean`
   touches `kont` in exactly one place — `withKont`, which conses — and that frames by `rfl`,
   since `(k :: m.kont) ++ K` and `k :: (m.kont ++ K)` are the same list.
-* **What is proved** (105 theorems, axiom-clean): the `Builtins` leaves; both fuel walks; the
-  five `…Impl` helpers; the `$~` layer (the one write that is not to the heap); the four
-  continuation-taking helpers with the continuation's framing as a hypothesis; `runRegex`'s six
-  `where` helpers; **five of the six dispatchers** (`runRegex`, `runModules`,
-  `runCollections`, `runStrings`, `runNumerics`); and **all of `Interp/Support.lean`** —
-  `raiseErr`, `withCtl`/`withKont`, `setLocal`/`setGlobal`/`bindIvar`, `finishRegion`,
-  `enterHandler`, `appendKwHash`, `spread`/`spreadA`, `doReturn`, `reifyBlock`,
-  `coerceToProc`, `matchGlobal`, and `callClosure`, the first helper that pushes a *frame*.
-* **What is left, exactly**: `runObjects` at **13 goals** (eight of them the `Kernel#print`
-  fold's contradictory cross-cases) and `Builtins.run`, which delegates to it.
+* **`Builtins` is done, top to bottom** (108 theorems, axiom-clean): the leaves; both fuel
+  walks; the five `…Impl` helpers; the `$~` layer (the one write that is not to the heap); the
+  four continuation-taking helpers with the continuation's framing as a hypothesis;
+  `runRegex`'s six `where` helpers; **all six dispatchers**; and **`Builtins.run`** itself. So
+  the 24k lines the stall point feared are framed.
+* **And all of `Interp/Support.lean`** came with it — `raiseErr`, `withCtl`/`withKont`,
+  `setLocal`/`setGlobal`/`bindIvar`, `finishRegion`, `enterHandler`, `appendKwHash`,
+  `spread`/`spreadA`, `doReturn`, `reifyBlock`, `coerceToProc`, `matchGlobal`, and
+  `callClosure`, the first helper that pushes a *frame*.
+* **What is left of the fifth stall point** is therefore `Interp/Reflect.lean`,
+  `Dispatch.lean`, `Send.lean`, `Kont.lean` (`applyKont`/`unwind`, the two *conditional*
+  statements), `evalExpr`/`stepFn`, `CatchFree` threading, and the one `partial def`.
 
 Five tooling facts, each of which cost real time and none of which is in any manual:
 

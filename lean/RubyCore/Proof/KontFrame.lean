@@ -80,6 +80,11 @@ def bpush (K : List Kont) : BRes → BRes
 @[simp, frameLem] theorem bpush_unsupported (K : List Kont) (r : String) :
     bpush K (.unsupported r) = .unsupported r := rfl
 
+@[simp, frameLem] theorem setCurrentFrame_frame (K : List Kont) (m : Machine) (f : Frame) :
+    (pushK K m).setCurrentFrame f = pushK K (m.setCurrentFrame f) := by
+  simp only [Machine.setCurrentFrame, pushK_stack, pushK_frames]
+  split <;> rfl
+
 /-! ## `StepResult`, with the tail carried through -/
 
 /-- A step result, with the appended tail carried into whichever machine it holds. The
@@ -232,16 +237,21 @@ closing over the same machine. -/
 
 /-- `Kernel#print`'s fold: `to_s` each argument and emit it, failing the whole call if any
 `to_s` is impure. `Option`-monadic rather than the plain `foldl` the allocating folds use, so
-it gets its own induction. -/
-@[simp, frameLem] theorem printFold_frame (K : List Kont) :
+it gets its own induction.
+
+**Written with `pure`, not `some`, and that is not cosmetic**: the source writes `pure (m.emit
+s)` inside a `do`, and `rw` matches up to reducible unfolding but not through the `Monad Option`
+instance — a `some`-spelled version of this lemma is not found in the real goal. The rest of
+this layer never noticed the difference because nothing else in it is monadic. -/
+@[frameLem] theorem printFold_frame (K : List Kont) :
     ∀ (args : List Value) (m : Machine),
       List.foldlM (fun (m : Machine) (a : Value) =>
           match toSP m a with
-          | .ok s => some (m.emit s)
+          | .ok s => pure (m.emit s)
           | .error _ => none) (pushK K m) args =
         (List.foldlM (fun (m : Machine) (a : Value) =>
           match toSP m a with
-          | .ok s => some (m.emit s)
+          | .ok s => pure (m.emit s)
           | .error _ => none) m args).map (pushK K)
   | [], _ => rfl
   | a :: rest, m => by
@@ -251,6 +261,49 @@ it gets its own induction. -/
     | ok str =>
       simp only [emit_frame]
       exact printFold_frame K rest (m.emit str)
+
+/-- **`Kernel#print`'s whole arm**, so that it can be discharged by `exact`.
+
+Why the arm and not just the fold: the fold *inside the arm* cannot be reached by `rw`. Its
+step contains a `match`, and a `match` written in one declaration compiles to a matcher
+constant belonging to **that** declaration — so the version spelled here is a different
+constant from `Builtins/Objects.lean`'s, and `rw`'s keyed matching (syntactic up to reducible
+unfolding) does not see through it. `exact` does, because `isDefEq` unfolds matchers. So the
+statement is lifted to the level where one `exact` discharges the goal. -/
+theorem printArm_frame (K : List Kont) (m : Machine) (args : List Value) :
+    (match List.foldlM (fun (m : Machine) (a : Value) =>
+        match toSP m a with
+        | .ok s => pure (m.emit s)
+        | .error _ => none) (pushK K m) args with
+      | some m' => BRes.ok .nil m'
+      | none => BRes.unsupported "print: impure to_s") =
+      bpush K (match List.foldlM (fun (m : Machine) (a : Value) =>
+        match toSP m a with
+        | .ok s => pure (m.emit s)
+        | .error _ => none) m args with
+      | some m' => BRes.ok .nil m'
+      | none => BRes.unsupported "print: impure to_s") := by
+  rw [printFold_frame]
+  cases List.foldlM (fun (m : Machine) (a : Value) =>
+      match toSP m a with
+      | .ok s => pure (m.emit s)
+      | .error _ => none) m args <;> rfl
+
+/-- **`Kernel#p`'s inner walk.** A `let rec` inside the arm, so its name is
+`runObjects.go`; same shape as `printFold_frame` one constructor over (`inspect` rather than
+`to_s`, and a newline per value). -/
+@[frameLem] theorem objectsGo_frame (K : List Kont) :
+    ∀ (m : Machine) (args : List Value),
+      runObjects.go (pushK K m) args = (runObjects.go m args).map (pushK K)
+  | _, [] => rfl
+  | m, a :: rest => by
+    rw [runObjects.go, runObjects.go]
+    simp only [inspectP_frame]
+    cases inspectP m a with
+    | error e => rfl
+    | ok str =>
+      simp only [emit_frame]
+      exact objectsGo_frame K (m.emit (str ++ "\n")) rest
 
 /-! ### The four continuation-taking helpers, with the continuation's framing as a hypothesis
 
@@ -825,6 +878,52 @@ set_option maxRecDepth 400000 in
   simp only [frameLem]
   (repeat' first | rfl | split) <;> (try frame_simp) <;> frame_hof
 
+set_option maxHeartbeats 4000000 in
+set_option maxRecDepth 400000 in
+@[frameLem] theorem runObjects_frame (K : List Kont) (bid : String) (recv : Value)
+    (args : List Value) (m : Machine) :
+    runObjects bid recv args (pushK K m) = bpush K (runObjects bid recv args m) := by
+  rw [runObjects.eq_def, runObjects.eq_def]
+  -- `frame_simp` first, because the body opens with a `have h := m.heap` and `rw` cannot
+  -- reach under a binder; `simp`'s zeta reduction removes it.
+  frame_simp
+  -- **`rw [printFold_frame]` before `split`, and inside the loop.** `Kernel#print`'s fold has
+  -- to be framed while it is still one term: once `split` has case-analysed it, the two sides'
+  -- outcomes are separate (contradictory) hypotheses and the lemma that reconciles them is
+  -- lambda-headed, hence invisible to `simp` — eight `False` goals. It cannot be done before
+  -- the loop either, because the fold sits inside a matcher arm and `rw` does not reach under
+  -- a binder. So it goes *in* the loop, tried ahead of `split`: it fails at the top and fires
+  -- the moment the `bid` match has been peeled.
+  (repeat' first | rfl | exact printArm_frame K m args | split) <;> (try frame_simp) <;>
+    (first | rfl | (try simp_all (maxSteps := 400000) [frameLem]) | skip) <;> (try rfl)
+  -- one arm (`Array#to_a` on a non-Array) that `simp_all` left as a conjunction after
+  -- destructuring the pair
+  -- `Kernel#p`'s multi-argument arm: `simp_all` destructured the allocated pair and left the
+  -- machine equality as a hypothesis rather than substituting it
+  all_goals (try (rename_i hpush _ _ _; subst hpush; exact ⟨rfl, rfl⟩))
+  all_goals frame_hof
+  all_goals (try exact runNumerics_frame K bid recv args m)
+  all_goals (repeat' first
+    | rfl
+    | (simp only [frameLem]; done)
+    | (simp [frameLem]; done)
+    | rw [foldPair_frame K]
+    | rw [foldrPair_frame K]
+    | rw [foldPairArray_frame K]
+    | intro _
+    | split)
+
+set_option maxHeartbeats 4000000 in
+set_option maxRecDepth 400000 in
+@[frameLem] theorem run_frame (K : List Kont) (bid : String) (recv : Value)
+    (args : List Value) (m : Machine) :
+    Builtins.run bid recv args (pushK K m) = bpush K (Builtins.run bid recv args m) := by
+  rw [Builtins.run.eq_def, Builtins.run.eq_def]
+  frame_simp
+  frame_arms
+  all_goals frame_hof
+  all_goals (try exact runObjects_frame K bid recv args m)
+
 /-! ## What is proved, what is left, and the cost measured
 
 The ratchet's fifth stall point named this layer as the part nobody could size — *"whether
@@ -843,11 +942,12 @@ and that is where the 24k lines actually are"*. It is:
   dispatchers** (`runRegex`, `runModules`, `runCollections`, `runStrings`, `runNumerics`); and
   all of `Interp/Support.lean`'s machine-takers, `callClosure` — the first helper that pushes a
   *frame* — included.
-* **Left, exactly**: `runObjects`, at **13 goals**, and `Builtins.run`, which delegates to it.
-  Eight of the thirteen are the `Kernel#print` fold's *cross-cases* — a `split` leaves "the
-  pushed fold answered `some`, the unpushed one `none`" as contradictory hypotheses, and
-  `printFold_frame` is what refutes them. The cause is understood and is `simp`'s, not the
-  interpreter's: see the note on `foldPair_frame`.
+* **Nothing is left of it.** All six dispatchers and `Builtins.run` itself are proved, so the
+  whole 24k-line layer is framed top to bottom. The last two arms to fall were `Kernel#print`
+  and `Kernel#p`, and both taught the same lesson twice over: a `match` written in one
+  declaration compiles to a matcher constant belonging to *that* declaration, so a lemma
+  spelling the same syntax is a different term and `rw` cannot find it — `printArm_frame`
+  states the whole arm and is discharged by `exact`, where `isDefEq` unfolds matchers.
 
 **The four tooling facts that dominated the cost**, none of them in a manual:
 
@@ -998,11 +1098,6 @@ normalises `caps.toList.foldl` to this). -/
           | none => (x.1 ++ [Value.nil], x.2)) (acc, m) xs).2) := by
   simp only [← Array.foldl_toList]
   exact capsFoldList_frame K subj bin xs.toList acc m
-
-@[simp, frameLem] theorem setCurrentFrame_frame (K : List Kont) (m : Machine) (f : Frame) :
-    (pushK K m).setCurrentFrame f = pushK K (m.setCurrentFrame f) := by
-  simp only [Machine.setCurrentFrame, pushK_stack, pushK_frames]
-  split <;> rfl
 
 @[simp, frameLem] theorem methodFrameOf_frame (K : List Kont) (m : Machine) :
     methodFrameOf (pushK K m) = methodFrameOf m := rfl
