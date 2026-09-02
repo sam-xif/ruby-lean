@@ -4725,3 +4725,145 @@ change. Modified: `Ratchet/Judge.lean` (`declFree`, `defDeclared?`, the two filt
 `scripts/generate_corpus.py` + `corpus/` (three rungs), `../lean/RubyCore/Interp/Send.lean`,
 `found-issues.md` (§A5/§F2/§F3 marked fixed, each with its fix), `Denote/Sem/notes.md`,
 `AGENTS.md`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+
+## Clink 50 (2026-09-02) — the four `.const` rungs, and the wall measured rather than estimated. **178 rungs / 238, 28 of 83 rules**
+
+Four rules discharged (`Denote/Rules/Const.lean`), both of the definitional changes they
+forced are corrections rather than conveniences, and — the part worth reading if you only
+read one thing — the **fifth stall point was measured**, and it is a smaller job than
+`Denote/Sem/notes.md` said.
+
+### What was discharged
+
+All four rules whose expression head is `Expr.const n`, which is the whole of the `.const`
+family: `constCls` (a class the program declared), `constBuiltin` (`BuiltinCls`),
+`constExc` (`ExcCls`), `constEnv` (a constant the context types). They are leaf rungs in
+`Denote/Rules/Lit.lean`'s sense — `evalExpr` answers in one step and `evals_pure` inverts it —
+so the content is entirely *which conformance component says the value is in the type*.
+
+The three that conclude `.clsOf n` share one lemma, `semJudge_const_clsOf`, whose single
+hypothesis is "if the machine resolves `n` at all, it resolves to the class `classNamed?`
+names". They differ only in how they produce it.
+
+### The scope gap, and the component that closes it
+
+`denM (.clsOf n)`'s probe resolves the name through the **toplevel** constant table
+(`classNamed?` → `constLookup`, i.e. `Object`'s own `consts`). The machine does not:
+`evalExpr`'s `.const` arm runs CRuby's two-phase rule, lexical over `m.currentFrame.cref`
+first and inheritance from `m.currentFrame.defmod` second. They agree at a toplevel frame and
+differ at `class A; class Foo; end; end`. Nothing in `Ctx` records where the frame is
+standing, so nothing in `StateOk` made the two values the same and none of the three rules'
+obligations was derivable — stall point (1), a missing component.
+
+**`ConstScopeOk`** (`Denote/Sem/State.lean`) is that component: `∀ n, constResolveAt m n =
+constLookup m.heap n`, with `constResolveAt` the machine's own resolution transcribed from
+`evalExpr` so a rung can rewrite with it.
+
+*Not forced, and the alternatives were live.* Three shapes were considered:
+
+* **`m.currentFrame.cref = [Object]`** — decidable in one `Bool` and trivially true at boot,
+  but it says *every* conformant machine is at toplevel, which would make every call rung
+  vacuous the moment one exists. Rejected: a component must not constrain frames the rules it
+  is not about will need.
+* **One-directional** (`constLookup … = some w → constResolveAt … = some w`) — enough for the
+  three rungs and satisfiable by strictly more machines. Rejected once `constEnv` was
+  attempted: it gives existence and agreement but not the converse, and `constEnv`'s value
+  comes *from the machine*, so the other direction is the one it needs.
+* **Restricted to class names** (`classNamed? m.heap n = some k → constResolveAt m n = some
+  (.ref k)`) — the weakest form the three `.clsOf` rungs need, and satisfiable inside a class
+  body that shadows a non-class constant. Rejected for the same reason as the previous one
+  plus one more: it is three rules' premise wearing a component's name, and the next `.const`
+  rule would need a fourth shape.
+
+The cost is stated rather than hidden, in the component's own docstring: a machine standing
+inside a class body that shadows a toplevel constant is **not conformant**, so the four
+obligations say nothing there. That is the honest scope of the rules as written — none of them
+has a premise about the frame, and each concludes about the *toplevel* name.
+
+`Denote/Sanity.lean` proves it at the real booted machine from a new decidable clause,
+`topScopeB`: `cref = [Object]`, `defmod = Object`, and every *other* ancestor of `Object` owns
+no constants. The third is the one that is not obvious and is why the proof is not a one-liner
+— `constLookupFrom` walks `ancestors h Object = [Object, Kernel, BasicObject]`, so it can
+answer where `constLookup` (which reads `Object`'s own table and stops) answers `none`.
+Measured: `Kernel` and `BasicObject` own zero constants at the booted heap.
+
+### `ConstsOk` restated over the lookup function — the second correction
+
+`Judge.constEnv` did not close under the old `ConstsOk`, and the reason is a defect the sixth
+stall point had already named for `DefsOk`/`ClassesOk`: the component quantified over the
+**table's entries** while the checker only ever consults the **lookup function**.
+
+`Ctx.consts` is keyed by absolute path — `"::LIMIT"` at toplevel, `"::A::X"` for a constant
+declared in `class A` — and the old component asked for `constLookup m.heap (stripColons p)`,
+i.e. a toplevel constant literally spelled `A::X`. No heap has one. So the component was
+*unsatisfiable* at any context with a nested constant (vacuity, not falsity — precisely the
+failure mode `Denote/Sanity.lean` exists to police), and at the same time it said nothing
+about the name `constGet?` consults when the rule fires.
+
+`ConstsOk` now reads `∀ n τ, constGet? κ n = some τ → ∃ v, constResolveAt m n = some v ∧
+denM τ m v`, and takes the whole `Ctx` rather than one field, because `constGet?` consults
+`κ.frame`'s class before the toplevel path. `constEnv`'s rung is then three lines and spends
+no `ConstScopeOk` at all: the component is already stated at the machine's own resolution.
+This is the fix the sixth stall point recommends, applied to the first component that could
+be shown to need it.
+
+`CoreOk` grew one clause (`coreNamed`) and it is an **implication**, not an existence claim:
+a name on the fixed twenty-two-element `coreClsNames` list is bound to a class *if it is bound
+at all*. Stated that way because one of the twenty-two does not exist in the model — there is
+no `IOError` — and `ExcCls.ioError`'s case is discharged by `const_miss_no_value` (the miss
+branch gates or raises; no value, nothing to be wrong about) rather than by a fact about the
+heap. Two general lemmas came out of that case and both are reusable:
+`evals_of_uncaught` (a second step landing on `.uncaught` means no run returned) and
+`stepFn_raiseErr_nil` (a `raiseErr` at an empty continuation escapes in one step).
+
+### The fifth stall point, measured
+
+`Denote/Sem/notes.md` sized the continuation-framing lemma as "~1700 further lines … and past
+those sit the builtins … ~24k lines", with `evalExpr` alone closing 12 of its 43 arms by
+`rfl`. That estimate was made by inspection and it is **too pessimistic**. Measured this
+clink, against the real `stepFn`:
+
+```
+cases e <;> simp only [evalExpr, frameR, withCtl, withKont] <;> (repeat' split) <;> rfl
+```
+
+closes every arm of `evalExpr` whose body does not delegate, and the residue is **not** a
+long tail of hard goals: it is one goal per *helper function*, each of exactly the same shape
+(`helper (pk m K) args = frameR K (helper m args)`). Checked on `startArgs`, the worst case in
+the residue: the same one-liner reduces it to a single goal naming `finishSend`, i.e. to
+`finishSend`'s own framing lemma. So the lemma is a **dependency chain of one-line lemmas over
+a bounded helper set** — `RubyCore/Interp/{Dispatch,Send,Reflect,Support}.lean` declare on the
+order of thirty machine→`StepResult` helpers — rather than a line-count proportional to the
+interpreter.
+
+Two things this does not settle, recorded so the next attempt starts from them rather than
+from optimism: (1) the builtins really are the open question — whether `invoke`'s descent into
+`Builtins/` is `rfl`-transparent in `kont` at kernel speed is untested, and it is where the
+24k lines actually live; (2) the lemma still belongs in `RubyCore/Proof/`, next to `stepFn`,
+not in `Denote/` — the argument in `Semantics/Interp.lean`'s docstring (a second copy of a
+proof about the same `stepFn` is a second thing to drift) applies unchanged.
+
+### Two rules that are reachable but were not taken, and why
+
+`Judge.bareName` and `Judge.lambdaLit` are both one-step-ish and both stalled on the same
+thing, which is now written up as the **ninth stall point**: a rule with a *negative* premise
+about a table (`defDeclared? κ.defs m = none`, `nameFree κ m = true`) needs conformance to be
+an **upper** bound on the table, and every component of `StateOk` is a lower bound. Recorded
+rather than fixed: the fix is a fixed-list component in `CoreOk`'s shape, and the rung that
+spends it has to walk `startArgs`/`finishSend`/dispatch to the `NameError`, which is the
+fifth stall point's machinery arriving early.
+
+### State
+
+**178 rungs of 238**, **28 of 83 `Judge` rules** (24 → 28: `constCls`, `constBuiltin`,
+`constExc`, `constEnv`). Corpus agreement unchanged at **238/238** (nothing under `Ratchet/`
+or `corpus/` was touched), hand derivations **177/177**, negative controls **144/144**,
+mismatches **35**, permanent negatives **23**. Modified: `Denote/Sem/State.lean`
+(`constResolveAt`, `ConstScopeOk` + its two transports, `coreClsNames`, `CoreOk.coreNamed`,
+`ConstsOk` restated over `constGet?`, `constGet?_entry`/`findSome?_entry`, the `StateOk` field
+and both transports), `Denote/Local.lean` (`setAt_cref`/`setAt_defmod` and their
+`currentFrame_setLocal_*` corollaries), `Denote/Sanity.lean` (`topScopeB`, `constOwn_object`,
+`firstM_none`, `constScope_of_topScope`, `coreOkB`'s eighth clause), `Denote/Rules/Const.lean`
+(new), `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean
+(`propext`/`Classical.choice`/`Quot.sound` only); no `sorry`; `Denote/Examples.lean`'s 31
+`#guard`s green; `Denote/Sanity.lean`'s `bootOkB` guard green with the two new clauses.

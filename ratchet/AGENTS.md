@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **24 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **28 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
@@ -503,6 +503,16 @@ Discharged so far, all axiom-clean:
   which is not a `.value`, so the obligation's hypothesis is unsatisfiable and the case costs
   nothing (`evals_of_unsupported`). It grew `CoreOk` by the `Regexp` row that structure's
   docstring predicted.
+* **All four `.const` rules** (clink 50, `Denote/Rules/Const.lean`): `constCls`,
+  `constBuiltin`, `constExc` and `constEnv` — the whole family whose expression head is
+  `Expr.const n`. Leaf rungs, so the content is which component says the value is in the type,
+  and they cost two definitional corrections. **`ConstScopeOk`** is the new component: `denM
+  (.clsOf n)` resolves a name through the *toplevel* table while the machine runs CRuby's
+  two-phase lexical rule, and nothing made those the same value. **`ConstsOk` was restated
+  over `constGet?`** rather than over `Ctx.consts`' entries — the sixth stall point's own
+  recommendation, arriving at the first component that could be shown to need it (the old form
+  was *unsatisfiable* at any context with a nested constant). `CoreOk` grew `coreNamed`, an
+  implication rather than an existence claim, because the model has no `IOError`.
 * **`seq`**, a delegation that is definitional (`SemJudgeSeq` *is* `SemJudge` at a `.seq`), and
   **`JudgeSeq.last`** (clink 48) — the singleton sequence, which `evalExpr` runs by rewriting
   `ctl` and pushing **no** continuation, so it is one step away from its statement's own run
@@ -524,8 +534,14 @@ They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` 
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
 inversion). The working procedure for climbing a rung is
-[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **seven** stall points —
-the last two found in clink 48: a **declaration statement** makes the incoming `κ` stale, so
+[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **nine** stall points —
+the eighth (a table keyed by path against a rule keyed by name; **resolved** in clink 50 by
+restating `ConstsOk` over its lookup function) and the ninth (a rule with a *negative* premise
+about a table needs conformance to be an **upper** bound, and every component is a lower one —
+which is what stops `bareName` and `lambdaLit`) found in clink 50, and the fifth — the
+continuation-framing wall — **measured** there and smaller than its first estimate: a
+dependency chain of one-line lemmas over ~30 helpers, not a line count proportional to the
+interpreter. Two found in clink 48: a **declaration statement** makes the incoming `κ` stale, so
 `defStmt`/`casgn`/`classStmt`/`moduleStmt` have **false** obligations for a reason that is the
 judgment's shape rather than a bug in a rule (the checker is right on the reproducer); and an
 **argument list is not a snapshot**, so `SemJudgeAll`'s "every type at the final machine" is

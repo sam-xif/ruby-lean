@@ -9,6 +9,7 @@ import Denote.Rules.Seq
 import Denote.Rules.Regexp
 import Denote.Rules.Cls
 import Denote.Rules.Rescue
+import Denote.Rules.Const
 
 /-!
 # `Denote/Rules.lean` — every discharged rung, in one import

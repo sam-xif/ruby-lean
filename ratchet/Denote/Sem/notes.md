@@ -229,14 +229,32 @@ with two exceptions that are exactly the "passing through" points: `applyKont` a
 `unsupported`, or a `raiseErr` that becomes `uncaught` one step later) — which is why the
 decomposition holds for exactly the runs `SemJudge` quantifies over.
 
-**The bad news is the size.** The lemma has to be proved over the whole of `stepFn`.
-Measured on `evalExpr` alone: `cases e <;> unfold <;> simp only [withCtl, withKont] <;> cases
-h <;> rfl` closes **12 of its 43 arms**; the other 31 need a `split` per inner match, and five
-of them (`send`, `yield'`, `super'`, `class'`, `defined`) delegate into
-`Interp/Dispatch.lean`, `Interp/Send.lean` and `Interp/Reflect.lean` — ~1700 further lines,
-each needing the same commutation. And past those sit the **builtins**: `grep` finds no
-`kont :=` under `Builtins/`, so they are kont-transparent, but "this builtin returns a machine
-whose `kont` is its argument's" is a frame property that has to be *proved*, over ~24k lines.
+**The size — measured in clink 50, and the first estimate was too pessimistic.** The
+paragraph this replaces sized the lemma by inspection at "~1700 further lines … and past those
+sit the builtins … ~24k lines", from the observation that `cases e <;> unfold <;> simp only
+[withCtl, withKont] <;> cases h <;> rfl` closes only **12 of `evalExpr`'s 43 arms**. Run
+against the real `stepFn` with one more tactic in the chain:
+
+```
+cases e <;> simp only [evalExpr, frameR, withCtl, withKont] <;> (repeat' split) <;> rfl
+```
+
+every arm whose body does not *delegate* closes, and the residue is not a long tail of hard
+goals — it is **one goal per helper function**, each of exactly the same shape
+(`helper (pk m K) args = frameR K (helper m args)`). Checked on `startArgs`, the worst case in
+the residue: the same one-liner reduces it to a single goal naming `finishSend`, i.e. to
+`finishSend`'s own framing lemma. So the shape of the job is a **dependency chain of one-line
+lemmas over a bounded helper set** — `Interp/{Dispatch,Send,Reflect,Support}.lean` declare on
+the order of thirty machine→`StepResult` helpers — rather than a line count proportional to
+the interpreter. `frameR K` is the wrapper the statement needs (`.next m ↦ .next {m with kont
+:= m.kont ++ K}`, every other outcome unchanged), and it works because `(k :: m.kont) ++ K`
+and `k :: (m.kont ++ K)` are definitionally equal, so a pushing helper frames by `rfl`.
+
+**Two things the measurement does not settle**, and the next attempt should start from them
+rather than from the good news: (1) the **builtins** are the genuinely open question —
+whether `invoke`'s descent into `Builtins/` is `rfl`-transparent in `kont` *at kernel speed*
+is untested, and that is where the 24k lines actually are; (2) `applyKont` and `unwind` have
+the two `[]` exceptions above, so their framing lemmas are conditional, not unconditional.
 
 Three things follow, and they are the reason this is written down rather than attempted:
 
@@ -393,6 +411,64 @@ machine never performs. It is a *hypothesis*, so the effect is vacuity rather th
 and `Judge.hashLit`'s rung would then have nothing usable to consume. Fix is one line in
 `Judge.lean`'s `SemJudgePairs` (interleave the list); left for the clink that attempts the
 rule, so that the fix is checked by a rung rather than by eye.
+
+## The eighth stall point — **a table keyed by path, a rule keyed by name** *(RESOLVED, clink 50)*
+
+Found by attempting `Judge.constEnv`. `ConstsOk` quantified over `Ctx.consts`' **entries**
+while the checker only ever consults `constGet?`, and the two are keyed differently:
+`Ctx.consts` uses absolute paths (`"::LIMIT"` at toplevel, `"::A::X"` for a constant declared
+in `class A`) and the old component asked for `constLookup m.heap (stripColons p)` — a
+*toplevel* constant literally spelled `A::X`, which no heap has. Two defects in one:
+
+* the component was **unsatisfiable** at any context with a nested constant, so every
+  obligation there went vacuous rather than false — exactly the failure mode `../Sanity.lean`
+  exists to police; and
+* it said nothing about the name `constGet?` actually resolves when `constEnv` fires, so the
+  rung had no premise to spend.
+
+This is the sixth stall point's item (1) — *"the fix is to state the components over the
+lookup function"* — arriving at the first component that could be shown to need it, and it
+was fixed that way: `ConstsOk κ m` now reads `∀ n τ, constGet? κ n = some τ → ∃ v,
+constResolveAt m n = some v ∧ denM τ m v`. It takes the whole `Ctx` because `constGet?`
+consults `κ.frame`'s class before the toplevel path. `Judge.constEnv`'s rung is three lines
+after the change. **`DefsOk` and `ClassesOk` have the same defect and it is still open** —
+they are the sixth stall point's own examples, and nothing has forced them yet.
+
+The companion component the same clink added, `ConstScopeOk`, is the *other* half of the same
+mismatch and is not resolved so much as scoped: `denM (.clsOf n)` resolves `n` through the
+toplevel table while the machine runs CRuby's two-phase lexical rule, and `ConstScopeOk` says
+the two agree. A machine standing inside a class body that shadows a constant is therefore not
+conformant, and the four `.const` obligations say nothing there. That is the honest scope of
+the rules as written — none of `constCls`/`constBuiltin`/`constExc`/`constEnv` has a premise
+about the frame, and each concludes about the *toplevel* name — and a rule that wants the
+nested reading needs `Ctx` to record the cref, which it does not.
+
+## The ninth stall point — **a negative premise wants an upper bound, and every component is a lower bound**
+
+Found by attempting `Judge.bareName` and `Judge.lambdaLit` (clink 50); neither is climbed.
+
+Every table component of `StateOk` is a **lower** bound: `DefsOk` says each entry of `κ.defs`
+is installed, `ClassesOk` says each entry of `κ.classes` is a real class. Nothing says the
+machine has *nothing else*. That is right — the prelude installs hundreds of methods no `Ctx`
+mentions — and it is exactly what a rule with a **negative** premise needs and cannot get:
+
+* `Judge.bareName` requires `defDeclared? κ.defs m = none` and concludes `.any` for
+  `.vcall m`, on the strength of `m` raising `NameError`. A conformant machine may have
+  `def x; @a = 1; end` installed and absent from `κ.defs`; then the call *returns*, and it
+  leaves an ivar behind, so `SelfSpineOk`'s completeness clause fails at `I = .ivar0` and the
+  obligation is false.
+* `Judge.lambdaLit` requires `nameFree κ m = true` — no user `def lambda` — which is the
+  §F2/§A5 fix (clink 49) stated over the checker's tables. Same gap on the machine side.
+
+Not a soundness bug in either case, and that was checked rather than assumed: a program that
+defines `x` puts it in `κ.defs` via `Ctx.afterStmt`, so `bareName` does not fire on it, and
+`vcallDef`/`declFree` handle the rest. It is a **conformance** gap.
+
+The fix has a shape, and it is `CoreOk`'s: a *fixed list* of names (`BareNameError` has one
+row; `nameFree` has two) with one decidable `Bool` at the booted machine saying the current
+`self` resolves none of them. What makes it not worth a rung yet is the second half — spending
+it means walking `startArgs`/`finishSend`/dispatch down to the `NameError`, which is the fifth
+stall point's machinery arriving early for one rule.
 
 ## What is not on this ladder
 

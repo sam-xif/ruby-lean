@@ -156,6 +156,26 @@ theorem setAt_meth (m : Machine) (x : String) (v : Value) (T : FrameId) (i : Fra
     · simp only [setAt, framesD_set!_oob _ _ _ hb]
   · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
 
+/-- The lexical constant scope and the definee are frame fields too, and `setFrame` copies
+them like the rest — which is what `ConstScopeOk` (`Denote/Sem/State.lean`) is stated over. -/
+theorem setAt_cref (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
+    ((setAt m x v T).frames.getD i default).cref = (m.frames.getD i default).cref := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
+theorem setAt_defmod (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
+    ((setAt m x v T).frames.getD i default).defmod = (m.frames.getD i default).defmod := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
 theorem setAt_find_ne (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId)
     {y : String} (hy : ¬ (y = x)) :
     ((setAt m x v T).frames.getD i default).locals.find? (·.1 == y)
@@ -537,6 +557,20 @@ theorem currentFrame_setLocal_meth (m : Machine) (x : String) (w : Value) :
   cases m.stack with
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_meth m x w _ fid
+
+theorem currentFrame_setLocal_cref (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.cref = m.currentFrame.cref := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_cref m x w _ fid
+
+theorem currentFrame_setLocal_defmod (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.defmod = m.currentFrame.defmod := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_defmod m x w _ fid
 
 @[simp] theorem framesSize_setLocal (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).frames.size = m.frames.size := by

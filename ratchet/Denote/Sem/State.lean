@@ -256,12 +256,94 @@ replacement returns a `Slice`). -/
 def stripColons (p : String) : String :=
   if p.startsWith "::" then String.ofList (p.toList.drop 2) else p
 
-/-- The constant table: each entry's absolute path resolves in the heap to a value of the
-recorded type. Keys are absolute (`"::LIMIT"`), so the leading `::` is stripped for the
-heap's toplevel constant lookup. -/
-def ConstsOk (cs : Env) (m : Machine) : Prop :=
-  ∀ p τ, envGet? cs p = some τ →
-    ∃ v, constLookup m.heap (stripColons p) = some v ∧ denM τ m v
+/-! ## Reading a constant *from where the machine is standing*
+
+`Denote/Val.lean`'s nominal probes (`classNamed?`, `isAName`, `isClassRefNamed`) all resolve a
+name through **the toplevel constant table** — `constLookup`, which is `Object`'s own `consts`.
+The machine does not: `evalExpr`'s `.const` arm runs CRuby's two-phase rule, the *lexical*
+phase over the current frame's `cref` first and the *inheritance* phase from its `defmod`
+second. The two agree at a toplevel frame and can disagree anywhere else, and the gap is not
+cosmetic — it is exactly `class A; class Foo; end; end`, where `Foo` inside `A` names a
+different object from the toplevel `Foo`.
+
+So the three `.const` rules (`constCls`, `constBuiltin`, `constExc`) each conclude `.clsOf n`,
+whose denotation is the *toplevel* class object, about a value the machine produced by the
+*lexical* walk. Nothing in `Ctx` records where the frame is standing, so nothing in `StateOk`
+made those two the same value, and the rules' obligations were not derivable. That is stall
+point (1) again — a missing conformance component, not a missing lemma. -/
+
+/-- The machine's own constant resolution for `n`, transcribed from `Interp.evalExpr`'s
+`.const` arm so a rung can rewrite with it. Lexical phase (each `cref` scope's *own*
+constants, innermost first), then the inheritance phase from `defmod`. -/
+def constResolveAt (m : Machine) (n : String) : Option Value :=
+  (m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)).orElse
+    (fun _ => constLookupFrom m.heap m.currentFrame.defmod n)
+
+/-- **The current scope resolves constants exactly as the toplevel table does.**
+
+Both directions are used, and both by the same three rungs:
+
+* *left to right* — the machine produced a value, and the rule's conclusion is about the value
+  `classNamed?` finds. Without this the two are unrelated.
+* *right to left* — `ClassesOk`/`CoreOk` say the toplevel table has the class, and the rung
+  needs the machine's `.const` arm to *find* it rather than raise `NameError`.
+
+What it costs, stated rather than hidden: a machine standing inside `class A; class Foo; end;
+… end` is not conformant, so the three `.const` obligations say nothing there. That is the
+honest scope of the rules as written — none of `constCls`/`constBuiltin`/`constExc` has a
+premise about the frame, and each of them concludes about the *toplevel* `Foo`. A rule that
+wants the nested reading needs `Ctx` to record the cref, which it does not; see
+`Denote/Sem/notes.md` §The eighth stall point.
+
+It is satisfiable at the real booted machine and `Denote/Sanity.lean` proves it there, from a
+decidable three-clause `Bool`: `cref = [Object]`, `defmod = Object`, and every *other* ancestor
+of `Object` (`Kernel`, `BasicObject`) owns no constants — which is what makes the inheritance
+phase agree with `Object`'s own table rather than overshoot it. -/
+def ConstScopeOk (m : Machine) : Prop :=
+  ∀ n, constResolveAt m n = constLookup m.heap n
+
+/-- Both resolutions read the heap only through `classPayload?` and `ancestors`, and the frame
+only through `currentFrame` — the three things `Ext` pins outright. -/
+theorem ConstScopeOk.ext {m m₂ : Machine} (he : Ext m m₂) (h : ConstScopeOk m) :
+    ConstScopeOk m₂ := by
+  intro n
+  have hl : constLookup m₂.heap n = constLookup m.heap n := by
+    simp only [constLookup, he.payload]
+  have hr : constResolveAt m₂ n = constResolveAt m n := by
+    simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+      he.currentFrame_eq]
+  rw [hr, hl]; exact h n
+
+/-- A rebinding writes `locals` and nothing else, so every field either resolution reads is
+copied (`currentFrame_setLocal_cref`/`_defmod`, `setLocal_heap`). -/
+theorem ConstScopeOk.setLocal {m : Machine} (x : String) (w : Value) (h : ConstScopeOk m) :
+    ConstScopeOk (m.setLocal x w) := by
+  intro n
+  have hr : constResolveAt (m.setLocal x w) n = constResolveAt m n := by
+    simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
+      currentFrame_setLocal_defmod]
+  rw [hr, setLocal_heap]; exact h n
+
+/-- The constant table, **stated over the lookup function rather than over the table**
+(clink 49): a name the checker resolves to `τ` is a name the *machine* resolves to a value in
+`τ`.
+
+The first cut of this component quantified over the entries (`∀ p τ, envGet? cs p = some τ →
+… constLookup m.heap (stripColons p) …`), and that was wrong in a way `Judge.constEnv`'s rung
+made visible. `Ctx.consts` is keyed by **absolute path** — `"::LIMIT"` at toplevel, but
+`"::A::X"` for a constant declared in the body of `class A` — and no heap has a toplevel
+constant literally spelled `A::X`. So the entry-wise form was unsatisfiable at any context
+with a nested constant (vacuity, not falsity), and at the same time it said nothing about the
+name `constGet?` actually consults when the rule fires.
+
+Quantifying over `constGet?` fixes both, and it is the shape `Denote/Sem/notes.md`'s sixth
+stall point recommends for `DefsOk`/`ClassesOk` too ("the checker only ever consults the first
+match … the fix is to state the components over the lookup function"). It also makes the
+component depend on the whole `Ctx` rather than on one field — `constGet?` consults
+`κ.frame`'s class before the toplevel path — which is why it takes `κ`. -/
+def ConstsOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ n τ, constGet? κ n = some τ →
+    ∃ v, constResolveAt m n = some v ∧ denM τ m v
 
 /-- `private_constant`'s hidden keys. `Judge.constPath`'s own docstring calls this *precision
 rather than soundness*: hiding a constant can only make the checker refuse a program, never
@@ -299,6 +381,18 @@ outgoing environment claims. One inequality, checked at the booted machine by
 `Denote/Sanity.lean`'s guard along with the other two. -/
 abbrev FrameInRange (m : Machine) : Prop := m.stack.headD 0 < m.frames.size
 
+/-- The class names the three `.const` rules can conclude about without the program having
+declared anything: `BuiltinCls`'s nine (`Judge.constBuiltin`) and `ExcCls`'s thirteen
+(`Judge.constExc`). A **list** rather than a predicate, so `CoreOk`'s clause about them is one
+decidable `Bool` at the booted heap (`Denote/Sanity.lean`) instead of a quantifier over
+`String`. -/
+def coreClsNames : List String :=
+  ["Integer", "Float", "String", "Symbol", "NilClass", "TrueClass", "FalseClass", "Array",
+   "Hash",
+   "StandardError", "RuntimeError", "ArgumentError", "TypeError", "NameError",
+   "NoMethodError", "ZeroDivisionError", "IndexError", "KeyError", "RangeError",
+   "IOError", "FrozenError", "NotImplementedError"]
+
 /-- **The core classes are what they are.**
 
 `Judge.strLit` concludes `.cls "String"`, whose denotation resolves the *name* `"String"`
@@ -333,6 +427,17 @@ structure CoreOk (h : Heap) : Prop where
   regexpSelf : (ancestors h Boot.regexpId).contains Boot.regexpId = true
   /-- … and a `BasicObject`. -/
   regexpBasic : (ancestors h Boot.regexpId).contains Boot.basicObjectId = true
+  /-- **A core class name, if it is bound at all, is bound to a class** (clink 49).
+
+      The two `.const` rules that need no declaration (`constBuiltin`, `constExc`) conclude
+      `.clsOf n` for a name out of a fixed list, and `isClassRefNamed` answers `false` unless
+      the name resolves to something carrying a class payload. Stated as an implication rather
+      than as "the class exists", because one of the twenty-two does **not** exist in the
+      booted heap: the model has no `IOError`. At an unbound name `evalExpr` gates
+      (`.unsupported`) or raises, so no value is produced and `Judge.constExc`'s obligation at
+      `"IOError"` is discharged by having no case rather than by a fact about the heap. -/
+  coreNamed : ∀ n ∈ coreClsNames, ∀ v, constLookup h n = some v →
+    ∃ o, v = .ref o ∧ (h.classPayload? o).isSome = true
 
 theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
@@ -343,6 +448,10 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
   regexpNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.regexpNamed
   regexpSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpSelf
   regexpBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpBasic
+  coreNamed := by
+    subst hm; subst hm₂; intro n hn v hv
+    exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp
+      (fun o ho => ⟨ho.1, by rw [he.payload]; exact ho.2⟩)
 
 /-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
 plus the three machine facts above.
@@ -363,8 +472,9 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   closures : ClosuresOk κ.closures m
   blockTy : BlockTyOk κ.blockTy m
   selfTy : SelfTyOk κ.selfTy m
-  consts : ConstsOk κ.consts m
+  consts : ConstsOk κ m
   privConsts : PrivConstsOk κ.privConsts m
+  constScope : ConstScopeOk m
 
 /-! ## Conformance survives an allocation
 
@@ -440,10 +550,15 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     | none => trivial
     | some σ => rw [hσ] at h2; rw [he.currentFrame_eq]; exact denM_ext he h2
   consts := by
-    intro p τ hp
-    obtain ⟨v, hv1, hv2⟩ := h.consts p τ hp
-    exact ⟨v, by rw [he.constLookup_eq]; exact hv1, denM_ext he hv2⟩
+    intro n τ hn
+    obtain ⟨v, hv1, hv2⟩ := h.consts n τ hn
+    refine ⟨v, ?_, denM_ext he hv2⟩
+    rw [show constResolveAt m₂ n = constResolveAt m n by
+      simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+        he.currentFrame_eq]]
+    exact hv1
   privConsts := trivial
+  constScope := ConstScopeOk.ext he h.constScope
 
 /-! ### Reading the environment the rule builds
 
@@ -525,6 +640,22 @@ theorem envGet?_mem : ∀ {Γ : Env} {y : String} {σ : Ty}, envGet? Γ y = some
     · rw [envGet?_cons_ne _ _ hz] at h
       obtain ⟨q, hq⟩ := envGet?_mem h
       exact ⟨q, List.mem_cons_of_mem _ hq⟩
+
+/-- `constGet?` is a `findSome?` over `envGet? κ.consts`, so an answer comes from *some*
+entry — which is what `StateOk_setLocal`'s `capStaleCtx` side condition (a claim about every
+entry) has to be applied at. -/
+theorem findSome?_entry {α β : Type} : ∀ (l : List α) (f : α → Option β) {b : β},
+    l.findSome? f = some b → ∃ a, f a = some b
+  | [], _, _, h => by simp [List.findSome?] at h
+  | a :: l, f, b, h => by
+    simp only [List.findSome?] at h
+    cases hf : f a with
+    | some c => rw [hf] at h; exact ⟨a, by rw [hf]; exact h⟩
+    | none => rw [hf] at h; exact findSome?_entry l f h
+
+theorem constGet?_entry {κ : Ctx} {n : String} {τ : Ty} (h : constGet? κ n = some τ) :
+    ∃ p, envGet? κ.consts p = some τ :=
+  findSome?_entry _ _ h
 
 /-! ### What `killAliasTy` leaves behind
 
@@ -734,12 +865,18 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
           rw [currentFrame_setLocal_self]
           exact denM_setLocal hw (by rw [hσ] at hslf; exact hslf) h2
       consts := by
-        intro p σ hp
-        obtain ⟨v, hv1, hv2⟩ := h.consts p σ hp
-        refine ⟨v, hv1, denM_setLocal hw ?_ hv2⟩
-        obtain ⟨q, hq⟩ := envGet?_mem hp
-        simpa using (List.any_eq_false.mp hcst) (q, σ) hq
-      privConsts := trivial }
+        intro n σ hn
+        obtain ⟨v, hv1, hv2⟩ := h.consts n σ hn
+        refine ⟨v, ?_, denM_setLocal hw ?_ hv2⟩
+        · rw [show constResolveAt (m.setLocal x w) n = constResolveAt m n by
+            simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
+              currentFrame_setLocal_defmod]]
+          exact hv1
+        · obtain ⟨p, hp⟩ := constGet?_entry hn
+          obtain ⟨q, hq⟩ := envGet?_mem hp
+          simpa using (List.any_eq_false.mp hcst) (q, σ) hq
+      privConsts := trivial
+      constScope := ConstScopeOk.setLocal x w h.constScope }
 
 #print axioms StateOk_ext
 #print axioms StateOk_setLocal
