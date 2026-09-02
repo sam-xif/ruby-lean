@@ -930,6 +930,31 @@ each arm has to show a predicate survives, which `simp` closes far more often. A
 `Builtins` layer is transparent for both — a builtin cannot introduce Ruby syntax, so
 `Builtins.run` needs one lemma rather than 121.
 
+### And one thing makes it *not* three pieces but one (clink 58)
+
+Measured while looking for a cheaper route to `Judge.if'`: the locals half and the call
+decomposition are **entangled**, so they cannot be sequenced.
+
+The locals claim would like to be an induction on the *expression* — `noLocalAsgn`'s grammar is
+small (literals, reads, `const`, `self`, sends, arrays, `if`, `seq`), and every arm but one is
+a bounded number of `stepFn` steps that visibly touch no local. The exception is `.send`, which
+`noLocalAsgn` **must** admit (`x && x > 1` is the shape the feature exists for) and which may
+dispatch a *user method*: its run pushes a frame, runs an arbitrary body, and pops. So the
+expression induction needs
+
+> a callee's run leaves the caller's frame's locals alone
+
+which is a **run**-level statement about the activation between a `frameK` push and its pop —
+i.e. the same decomposition the call family needs, and the one that needs jump-freeness to
+state (a body may `return`). Each half of the wall needs the other.
+
+The consequence for planning: there is no useful smaller first step. The layer is
+`frameK`-decomposition + jump-freeness + the two syntactic invariants, built together, and the
+2 narrowing rungs (`if'`/`ifNoElse`) plus the ~21 call rungs come out at the end of it rather
+than in stages. That is worth knowing before starting it, and it is why clink 58 stopped at the
+*guards* (`JudgeSeq.guard`/`nextGuard`), which are the two narrowing consumers that read only
+the else side and therefore need none of it.
+
 Until it lands, the honest statement of the ladder's remaining shape is: **43 of 83 discharged,
 ~17 more sitting behind this one wall**, and the rest behind the judgment redesign the
 declaration family needs (§the seventh/eighth stall points).

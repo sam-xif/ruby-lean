@@ -479,10 +479,10 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **43 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **46 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (177 of 248). This measures
+measures *reach*: how many corpus programs `validate` types (177 of 249). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -610,7 +610,49 @@ Discharged so far, all axiom-clean:
   true while `M` is in no declared chain. `builtinAncestors` also lost its `.arrayOf`/`.hashOf`
   rows: those `denM` arms read the payload and say nothing about the class, so a *negative*
   `is_a?` answer about them is a claim the judgment cannot make.
-* **The remaining ladder has one wall, and it is named** (clink 57): the **fifteenth stall
+* **`Judge.raiseCls`** (clink 58, `Denote/Rules/Raise.lean`) — `raise C`, and a rung that was
+  **mis-filed**: it concludes `Ty.never`, so it belongs to the `callNever` family (discharge by
+  contradicting the run), not to the frame-push wall. The `raiseNewK` interception is what made
+  it look otherwise — `raise C` with a user `initialize` allocates, pushes `.raiseNewK` and
+  enters the method, so a value *does* come back from an arbitrary body — but `applyKont` at
+  `.raiseNewK` turns any value into a raise, so the kont is **value-opaque** and `run_split`
+  covers the activation without looking at the body. Two reusable pieces:
+  `pushK_of_kont_append` (a machine whose continuation *ends* with `Kout` is a `pushK`, read off
+  the continuation rather than transcribed) and the observation that
+  `RubyCore.Proof.enterUserMethod_frame` is an **equation**, so the activation needs no shape
+  lemma at all.
+* **`JudgeSeq.guard` and `JudgeSeq.nextGuard`** (clink 58, `Denote/Rules/NarrowInv.lean`) — the
+  two guard clauses (`return e if c`, `next if c`), and the **first narrowing rungs**. All of
+  narrowing soundness is built for them: three run inversions over two shared send skeletons,
+  the two state transports (`EnvOk_refineOne_else` pointwise, so `refineOne`'s alias arm is
+  free; `SelfSpineOk_ivarSet`), `narrow_else_fact` (the branch's fact for every shape in one
+  conclusion), and `stateOk_narrow_else`. What lands is the *guards* and not `if'`/`ifNoElse`,
+  for a reason that is a design fact about guard clauses: a guard's then-branch **escapes**
+  (`.nxt` emits a `nxtJ` no `ifK`/`seqK` consumes; `doReturn` answers a jump whatever happens),
+  so the run never returns a value there, the then-premise is never spent, and only the *else*
+  component of `narrowEnvs` is read — where the `&&` shape refines nothing.
+  Three more findings came out of it, and with §F10 they are **one pattern stated five ways**: a
+  narrowing reads *syntax*, so every fact it relies on about what that syntax means has to be a
+  premise. **§F14** (reachable, accepted: `class NilClass; def nil?; false; end` sends a `nil`
+  down the else branch where `nonNilTy .nilT` is `never`) — the tested name must be unclaimed;
+  **§F16** — it must *name a class*, because `C === x` puts it in the receiver and `String#===`
+  is equality; **§F15** — and the refinement must not *manufacture* a `Ty.sameAs`, which
+  `joinT` can, recording an alias claim the environment never made. `narrowNameOk` is six
+  conjuncts now, each one a program that used to be certified.
+* **The remaining ladder is two items, not five** (clink 58). The fifteenth stall point's two
+  halves are **entangled with the call decomposition**: the locals claim wants to be an
+  induction on the expression, but `noLocalAsgn` must admit `.send`, which may dispatch a user
+  method — so it needs "a callee's run leaves the caller's frame's locals alone", the same
+  activation-level statement the call family needs and the one that needs jump-freeness to
+  state. So: **(1) one layer** — `frameK`-decomposition + jump-freeness + the two syntactic
+  invariants, built together, gating `if'`/`ifNoElse`, the ~21 call rules, `while'`, `begin'`
+  and (through their argument transport) `arrayLit`/`hashLit`, with no useful smaller first
+  step; **(2) one judgment redesign** — the declaration family, because `StateOk` is
+  **anti-monotone in `κ`** (`MethodsExact`/`NameFreeOk` are upper bounds), so a rule that grows
+  the context cannot have its obligation stated at the old one and `Judge`'s conclusion has no
+  outgoing context. `Judge.prim`'s ~200 `PrimSig` rows and `AsmsOk`'s frame-shape mismatch sit
+  outside both.
+* **Superseded** (clink 57's framing of the same wall): the **fifteenth stall
   point, syntax-directed run invariants** (`Denote/Sem/notes.md`). `Judge.if'`/`ifNoElse` need
   "a `noLocalAsgn` expression's run leaves the frame's locals alone" (`found-issues.md` §F13 —
   `noLocalAsgn` is syntactic and `f.call` on a closure that assigns is the gap); every call rule

@@ -6073,3 +6073,136 @@ The list of four walls clink 54 left has become two.
 worth noting explicitly, because five of the eight changes tightened the checker and none of
 them cost a rung. `checkrungs` 177/177 + 145/145; denotation guards green; ladder **43/83**.
 No change under `lean/` in clinks 55–57, so the tier-0 difftest from clink 54 still stands.
+
+## Clink 58 (2026-09-02) — the narrowing layer, two guard rungs, and three more findings. **177 rungs / 249, 46 of 83 rules**
+
+Four rungs (`Judge.raiseCls`, `JudgeSeq.nextGuard`, `JudgeSeq.guard`, and clink 57's
+`newInstNoInit`), the whole of narrowing soundness built out, and three findings — one of them
+a program `validate` accepted. The headline number moved 43 → 46; the more useful output is
+that the *remaining* ladder is now one interconnected layer plus one judgment redesign, and
+both are sized.
+
+### `Judge.raiseCls`, and a rung I had mis-filed
+
+`raise C` / `raise C, "msg"` concludes `Ty.never`, so it belongs to the family `callNever`
+opened — discharge by *contradicting the run*. I had filed it behind the frame-push wall
+because of the `raiseNewK` interception, and that was wrong.
+
+`raise C` where `C` has a user `initialize` cannot be finished by a builtin (CRuby builds the
+exception with `C.new(…)`, so the initializer must run), so `Interp/Send.lean` allocates the
+instance, pushes `.raiseNewK inst` and enters the method — and a value **does** come back, from
+an arbitrary user body. It still cannot escape: `applyKont` at `.raiseNewK` turns any arriving
+value into `.jump (.raiseJ inst)`. So the kont is *value-opaque*, and with `run_split` that
+covers the whole activation **without looking at the body**.
+
+Two techniques from it are reusable:
+
+* **`pushK_of_kont_append`** — a machine whose continuation *ends* with `Kout` is a `pushK` of
+  one that does not. The `raiseNewK` machine comes out of `enterUserMethod` (frame pushed,
+  parameters folded in, `ctl` set); writing it down to feed `pushK` would transcribe the
+  definition, so read it off the continuation instead.
+* **`RubyCore.Proof.enterUserMethod_frame` is an equation**, not an implication, so the
+  activation needs no shape lemma at all: entering a method under an appended continuation *is*
+  entering it and appending. Clink 54's frame layer paying off in a rung that is not about
+  frames.
+
+The lesson worth generalising: **re-audit the filing.** A rule whose conclusion makes the run's
+value irrelevant (`.never`, or a path that jumps) may be reachable even when its *machinery*
+looks like it belongs to a blocked family.
+
+### Narrowing, built out — and it is the guards that land, not `if'`
+
+All six type-level lemmas were clink 57's. This clink adds the run half and the state half:
+
+* three **inversions** (`nilq_inv`, `isaq_inv`, `caseeq_inv`) over two shared skeletons
+  (`send_zeroarg_inv`, `send_const_arg_inv`, `send_const_recv_inv`), parameterised over the
+  variable kind since `.lvar` and `.ivar` differ only in which step lemma fires;
+* two **transports** (`EnvOk_refineOne_else`, `SelfSpineOk_ivarSet`), the first stated
+  *pointwise* — which is what makes `refineOne`'s alias arm free, since `EnvOk`'s own conjunct
+  says an alias and its target hold the same value;
+* `narrow_else_fact`, the branch's fact for **every** shape in one conclusion, with the shape
+  analysis done once by `split` on the recogniser's own match;
+* `stateOk_narrow_else`, the assembly.
+
+And then the two rungs it buys are `JudgeSeq.guard` and `JudgeSeq.nextGuard` — **not**
+`Judge.if'`/`ifNoElse`. The reason is worth stating because it is a design fact about guard
+clauses: a guard's then-branch is `next` or `return e`, both of which **escape** (`.nxt` emits
+a `nxtJ` that neither `ifK` nor `seqK` consumes; `doReturn` answers a jump whatever happens).
+So the run never returns a value on that path, the then-premise is never spent, and only
+`narrowEnvs`'s *else* component is read — where the `&&` shape refines nothing and
+`found-issues.md` §F13's wall does not bite.
+
+### Three findings
+
+* **§F14** (reachable, `validate` accepted it): `class NilClass; def nil?; false; end; end`
+  sends a `nil` down the **else** branch of `if x.nil?`, where `nonNilTy .nilT` is `.never` —
+  so everything in that branch is certified, and it runs `nil + 1`. `Judge.nilQuery` guards its
+  own *typing* of `x.nil?` with `NilQSafe`, which is about the receiver's **shape**; the
+  narrowing needs the **name**, and `nameFree κ "nil?"` is that.
+* **§F15** (found by a lemma that turned out false): `falsyTy (union (sameAs y ρ) int)` *is* the
+  `sameAs`, because `joinT` returns its non-`never` argument. So refining a binding the
+  environment describes as a **union** records an alias claim — "these two locals hold the same
+  object" — that the union never made. `refineOne` now declines to refine when the result would
+  be an alias, in both arms.
+* **§F16**: `narrowCond?` recognises `C === x` and refines by `.isA cn`, which is only the right
+  reading if `C` **is** a class — `Module#===` is the ancestor test, `String#===` is equality.
+  `validate` cannot build such a derivation today, and the protection is three separate
+  accidents; none of them is a premise, and the *semantic* premise for a condition carries no
+  typing at all.
+
+The three together, with §F10 and §F14, are one pattern stated five ways: **a narrowing reads
+syntax, so every fact it relies on about what that syntax means has to be a premise** — the
+tested name must be unclaimed (§F14), must not be rebound (§F10), must name a class (§F16), and
+the types involved must not be manufactured into claims the environment never made (§F15).
+`narrowNameOk` is now six conjuncts, and each one is a program that used to be certified.
+
+### Decisions not forced, and the alternatives rejected
+
+* **`nil?` got its own component** (`NilQueryOk`) rather than a row in `queryBuiltins`, because
+  it is the one query name resolving to **two** bids (`NilClass#nil?` at `NilClass`,
+  `Object#nil?` elsewhere) and `QueryOk` pairs a name with one bid — two rows would claim each
+  of every class, which is a contradiction rather than a weakening. The alternative, making
+  `queryBuiltins` a name→*list* table, would have touched the three working query rungs; a
+  local component touched nothing.
+* **`isAAnswer`'s positive answer is now gated too.** It would survive ungated — a mixin only
+  adds ancestors and a subclass keeps them — but proving that half needs **transitivity of the
+  ancestor walk**, which nothing on file proves and which a `StateOk` component has no business
+  assuming. Gating buys exactness instead. If a rung ever wants the precision back, that
+  theorem is the price, and it is written down here so the trade is visible.
+* **Removing the `&&` narrowing was tried and rejected**, twice over: `validate`'s verdicts do
+  not move, but rung 132's hand derivation stops type-checking (its `x + 1` needs the narrowed
+  `Integer`), so `checkrungs` would read 176/177. The feature is load-bearing; §F13's fix has
+  to be the guard *plus* the invariant.
+
+### What is left, and why it is one piece
+
+Measured while looking for a cheaper route to `if'`: the fifteenth stall point's two halves are
+**entangled with the call decomposition**, so they cannot be sequenced. The locals claim wants
+to be an induction on the expression — `noLocalAsgn`'s grammar is small — but its `.send` arm
+(which the feature requires) may dispatch a *user method*, whose run pushes a frame and runs an
+arbitrary body. So it needs "a callee's run leaves the caller's frame's locals alone", which is
+a statement about the activation between a `frameK` push and its pop: the same decomposition
+the call family needs, and the one that needs jump-freeness to even state.
+
+So the honest shape of the remainder is **two** items, not five:
+
+1. **One layer**: `frameK`-decomposition + jump-freeness + the two syntactic invariants, built
+   together. It gates `if'`/`ifNoElse` (2), the call family (~21), `while'`, `begin'`, and —
+   through the argument transport those need — `arrayLit`/`hashLit`. There is no useful smaller
+   first step, which is worth knowing before starting.
+2. **One judgment redesign**: the declaration family (`defStmt`, `classStmt`, `moduleStmt`,
+   `casgn`, `cpathAsgn`, `JudgeSeq.cons`). `StateOk` is **anti-monotone in `κ`** — `MethodsExact`
+   and `NameFreeOk` are upper bounds — so a rule that *grows* the context cannot have its
+   obligation stated at the old `κ`, and `Judge`'s conclusion has no outgoing context. This one
+   really is a change to the judgment's shape rather than an additive layer.
+
+`Judge.prim`'s ~200 `PrimSig` rows and `AsmsOk`'s frame-shape mismatch are the two remaining
+items outside both.
+
+### State
+
+`lake build` clean; no `sorry`, no new axioms. Corpus **249/249** agreement, 0 disagreements;
+`expect_validate` mismatches **35**, unchanged across all nine checker changes in clinks 55–58 —
+every one of them tightened a guard and none cost a rung. `checkrungs` 177/177 + 145/145; the
+denotation gate's `#guard`s green; ladder **46/83**. No change under `lean/` since clink 54, so
+that clink's tier-0 difftest (1304 cases, 0 disagreements) still stands.
