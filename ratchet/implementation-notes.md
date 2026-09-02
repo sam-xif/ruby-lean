@@ -5617,7 +5617,11 @@ it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in bo
 * `./scripts/run_ratchet.sh` — 178 rungs / 239, 35 `expect_validate` mismatches (unchanged),
   corpus agreement 239/239.
 * `./scripts/run_check_rungs.sh` — 177/177 rungs confirmed, 145/145 negative controls.
-* `lake exe semladder` — **36 of 83 rules**.
+* `lake exe semladder` — **36 of 83 rules**, all axiom-clean.
+* `RubyCore/Proof/` — `lake build Metatheory` is clean but for the two pre-existing
+  `Static/Iter.lean` errors (verified present with `Interp/{Support,Dispatch}.lean` reverted to
+  before this clink's changes), and `T5.dispatch_progress` needed a heartbeat raise because
+  unfolding `enterUserMethod` now walks `destrDepth`'s fuel arithmetic.
 
 ### After the wall: three more rungs, and the two definitional corrections they needed
 
@@ -5674,6 +5678,18 @@ One mundane lesson worth recording because it will recur at every compound rung:
 `run_two`'s `v = v₀` is substituted, **which of the two names survives is Lean's choice**, and
 a proof that spells one of them out breaks when it picks the other. The ending is a separate
 lemma (`vasgn_close`), parametric in the written value, and applies either way.
+
+### And one component added on the way out
+
+**`ConstPathsOk`** (`Denote/Sem/State.lean`): `ConstsOk` is about *lexical* resolution, which
+is what the `Judge.const` family consumes; `Judge.constPath` asks about the **keyed** entry
+`constKeyIn owner n` against what the interpreter finds inside the class named `owner`, and
+nothing related the two. Its `setLocal` transport needs exactly `capStaleCtx`'s third
+disjunct, which already covers `κ.consts` — so no `Ratchet/` change. `Denote/Rules/Path.lean`
+carries the rung's proved ingredients and a note on the plumbing that is left (`applyKont`'s
+arm builds its conditions with `let`s, and the resulting `if`s sit inside the scrutinee of
+`run`'s five-arm match, so they need `cases … :` in the hypothesis rather than `split` in the
+goal).
 
 ### What is next, and what it costs
 

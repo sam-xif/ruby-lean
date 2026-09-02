@@ -482,7 +482,7 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 ## Semantic ratchet status (`Denote/Sem/`): **36 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
+measures *reach*: how many corpus programs `validate` types (178 of 241). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
