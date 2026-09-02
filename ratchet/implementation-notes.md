@@ -4867,3 +4867,120 @@ and both transports), `Denote/Local.lean` (`setAt_cref`/`setAt_defmod` and their
 (new), `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean
 (`propext`/`Classical.choice`/`Quot.sound` only); no `sorry`; `Denote/Examples.lean`'s 31
 `#guard`s green; `Denote/Sanity.lean`'s `bootOkB` guard green with the two new clauses.
+
+## Clink 51 (2026-09-02) — the frame lemma: `StateOk` describes the whole world, and nothing more. **178 rungs / 238, 28 of 83 rules**
+
+No rung climbed. What landed is the thing three stalled rungs were all asking for, and
+separating its two halves is the whole content: `Denote/Sem/Frame.lean`.
+
+### The diagnosis
+
+Every component of `StateOk` was a **lower** bound — each thing `κ` records is really there —
+and none said *there is nothing else*. Three stalls were that one gap in three costumes: a
+rule reasoning from **absence** (`bareName`, `lambdaLit`) had no hypothesis that could reach
+its conclusion, and a rule that **redefines** something had components that were unsatisfiable
+rather than false. "`StateOk` describes the whole state of the world, and nothing more" is the
+frame lemma, and it is two claims.
+
+### Half one: the frame rule for conformance — already proved, now named
+
+Conformance reads the heap, the frames and the frame stack; it does not read `ctl` or `kont`.
+Everything it does not read is *frame*. `frameOnly` + `StateOk_frame` give that its name and
+its general statement; the proof is `StateOk_reCtl`'s, which since clink 45 is a corollary of
+`StateOk_ext`. Recorded there rather than rediscovered: `ctl`/`kont` are the *only* frame, and
+the run-quantifying components (`denM`'s arrow arms, `AsmsOk`) survive them for a sharper
+reason than not looking — `applyIn`/`sendIn` **overwrite** both, so the run a call denotes is
+literally the same run from both machines.
+
+### Half two: "and nothing more" — three components, not one
+
+**`MethodsExact κ m`** is the general form: every method installed anywhere in the heap is an
+axiomatized builtin (`MethodDef.builtin`), Ruby's core library written in RubyCore
+(`MethodDef.fromPrelude`), or a name `κ` records (`declaresName`). The model's own two
+discriminators do all the work, so this needed nothing new in `RubyCore`.
+
+**Measured before it was stated.** At the real prelude-booted heap the number of installed
+methods that are none of the three is **zero**. So this is a fact about the machine the ladder
+starts from, not a hopeful invariant, and `declaresName` is exactly the room a program grows
+into it.
+
+*Not forced:* `declaresName` is **name-global** — it forgets which class a name was declared
+on. The per-owner alternative is expressible (relate the owner id to a `Cls` through
+`classNamed?`) and was rejected as unmotivated: the rules that consume exactness ask "did the
+program define this name *at all*?", which is what a premise like `defDeclared? κ.defs m =
+none` is trying to say. The cost is recorded — `bareName`'s premise constrains only `κ.defs`,
+so a name declared on a *class* still satisfies `declaresName`, and that rule will want either
+the owner-aware refinement or a sharper premise.
+
+**`NameFreeOk κ m`** exists because `MethodsExact` is not enough, and this is the part worth
+reading. It allows a *prelude* method, while `Judge.bareName` needs `x` to resolve to
+**nothing**: "not the user's" is not "not there". So the prelude escape is dropped —
+`builtin.isSome ∨ undefined`, which is exactly `finishSend`'s own `md.builtin.isNone &&
+!md.undefined` shadowing test — on the fixed list `shadowableNames`
+(`BareNameError`'s one row plus `nameFree`'s two), and the claim is localised to the
+receiver's own ancestor chain.
+
+**Chain-local rather than heap-global, and that is a finding rather than a technicality.** The
+heap-global form is **false**: the prelude really does define a method named `proc` — `T.proc`,
+the sorbet shim's type constructor — installed as a **singleton** method on the `T` module,
+i.e. on `#<Class:T>`. That is off every ordinary receiver's chain (`include`/`extend` move a
+module's *instance* methods, never its singleton ones), so the model's shadowing test is right
+about it and the component has to be stated at the same walk in order to say so. Measured for
+the record: the toplevel chain carries ~40 prelude-written methods (`tap`, `format`,
+`Integer`, `!=`, and the `__`-prefixed helpers) and **none** of the three names.
+
+*Not forced:* the `declaresName` escape is kept in `NameFreeOk` too. Dropping it would be
+simpler and is wrong — a program that really does `def lambda` would then make `StateOk`
+**unsatisfiable** rather than making the rule inapplicable, i.e. vacuity in place of falsity,
+which is the failure mode `Denote/Sanity.lean` exists to police. With the escape, such a
+program is perfectly conformant and it is `nameFree`'s premise that fails.
+
+**`SelfLive m`** was forced by `NameFreeOk`'s transport and closes a gap nothing had named:
+`StateOk` never said `self` is a real object. `classOf` reads `Heap.get`, `Heap.get` is
+**total** (past the end it answers `default`, whose class is `BasicObject` — clink 45's "one
+genuinely surprising cost"), so at a machine whose `self` is a *dangling* reference an
+allocation changes what `self` is an instance of and a claim about the methods reachable from
+`self` does not survive the push. Stated as an implication (`∀ o, self = .ref o → o < size`)
+so an **immediate** `self` is admitted rather than excluded: `classOf` answers a boot id for
+`.int`/`.sym`/`.nil`/booleans without reading the heap, and `1.instance_eval { … }` is a
+machine the model can be in even though no rule types it.
+
+### Half three: the interpreter's frame rule — stated, not proved
+
+The continuation tail is frame too, by the same argument: `StateOk` does not describe it, so a
+run must not depend on it. `KontFrame` states that and `EvalsDecompose` states the consequence
+the compound rungs consume. This is the right factoring of the fifth stall point — **one**
+named target for ~40 rules instead of forty arguments — and both are stated with the side
+condition that is their content: `applyKont`/`unwind` at `kont = []` are the two pass-through
+points, which are exactly the states at which a sub-run *ends*.
+
+**Nothing takes either as a hypothesis and no rung is counted on them.** They are written down
+so the target has a name; the measured cost and the one `partial def` blocking it are in
+`Denote/Sem/notes.md`, and the proof belongs in `RubyCore/Proof/`.
+
+### What this does and does not buy — stated, because two of three stalls are untouched
+
+* **Ninth stall point: resolved on the conformance side.** What remains per rule is the
+  forward walk (`startArgs`/`finishSend`/dispatch to the `NameError`, or to `reifyBlock`'s
+  Proc) — and neither rule has argument expressions, so neither needs `KontFrame`.
+* **Sixth stall point item (1): resolved.** Under exactness a stale declaration table makes
+  `StateOk` **false** at the post-machine rather than unsatisfiable at the pre-machine. That is
+  the honest failure and the one `Denote/Sanity.lean` can see.
+* **Sixth stall point item (2): untouched.** `Judge.defStmt` concludes at the *incoming* `κ`
+  and no component can make that true; the fix is `κ` threaded through `Judge`'s signature.
+* **Fifth stall point: untouched.** Stating it as a frame rule does not reduce its proof.
+
+### State
+
+**178 rungs of 238**, **28 of 83 `Judge` rules** (unchanged — no rung climbed). Corpus
+agreement unchanged at **238/238** (nothing under `Ratchet/` or `corpus/` touched), hand
+derivations **177/177**, negative controls **144/144**, mismatches **35**, permanent negatives
+**23**. `StateOk` grew from fourteen components to **seventeen** (`exact`, `nameFree`,
+`selfLive`), and `Denote/Sanity.lean` still exhibits a model of all seventeen at the real
+booted machine — an upper bound that did not cost vacuity, which was the risk. Modified:
+`Denote/Sem/Frame.lean` (new), `Denote/Sem/State.lean` (`declaresName`, `MethodsExact`,
+`shadowableNames`, `NameFreeOk`, `SelfLive`, `classOf_self_ext`, three `StateOk` fields and
+both transports), `Denote/Sanity.lean` (`methodsExactB`, `nameFreeB`, `selfLiveB`,
+`classPayload?_oob` and their soundness lemmas, `bootOkB`'s three new conjuncts),
+`Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`;
+`Denote/Examples.lean`'s 31 `#guard`s green; `bootOkB` green with seven clauses.

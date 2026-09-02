@@ -459,7 +459,7 @@ the rules as written — none of `constCls`/`constBuiltin`/`constExc`/`constEnv`
 about the frame, and each concludes about the *toplevel* name — and a rule that wants the
 nested reading needs `Ctx` to record the cref, which it does not.
 
-## The ninth stall point — **a negative premise wants an upper bound, and every component is a lower bound**
+## The ninth stall point — **a negative premise wants an upper bound, and every component is a lower bound** *(conformance half RESOLVED, clink 51)*
 
 Found by attempting `Judge.bareName` and `Judge.lambdaLit` (clink 50); neither is climbed.
 
@@ -480,11 +480,29 @@ Not a soundness bug in either case, and that was checked rather than assumed: a 
 defines `x` puts it in `κ.defs` via `Ctx.afterStmt`, so `bareName` does not fire on it, and
 `vcallDef`/`declFree` handle the rest. It is a **conformance** gap.
 
-The fix has a shape, and it is `CoreOk`'s: a *fixed list* of names (`BareNameError` has one
-row; `nameFree` has two) with one decidable `Bool` at the booted machine saying the current
-`self` resolves none of them. What makes it not worth a rung yet is the second half — spending
-it means walking `startArgs`/`finishSend`/dispatch down to the `NameError`, which is the fifth
-stall point's machinery arriving early for one rule.
+**Resolved on the conformance side in clink 51** — see [`Frame.lean`](Frame.lean), which is
+where "and nothing more" is stated. It took three components rather than the one predicted:
+
+* `MethodsExact` — the general upper bound. Every method installed anywhere in the heap is an
+  axiomatized builtin, a prelude definition, or a name `κ` records. Measured at the booted
+  heap before it was stated: **zero** methods are none of the three.
+* `NameFreeOk` — because `MethodsExact` is not enough. It allows a *prelude* method, and
+  `bareName` needs `x` to resolve to **nothing**; "not the user's" is not "not there". So the
+  prelude escape is dropped on a fixed three-name list and the claim is localised to the
+  receiver's chain. Chain-local because heap-global is **false**: the prelude defines `T.proc`
+  (a singleton method on the `T` module), which is off every ordinary chain — so the model's
+  own shadowing test is right and the component has to walk where it walks.
+* `SelfLive` — `NameFreeOk` is about the chain at `self`, `classOf` reads the *total*
+  `Heap.get`, so at a dangling `self` an allocation changes what `self` is an instance of.
+  Nothing had said `self` is a real object.
+
+All three are in `StateOk`, both transports go through, and `../Sanity.lean`'s `bootOkB` still
+exhibits a model — so this is an upper bound that did **not** cost vacuity, which was the risk.
+
+What remains per rule is no longer about conformance: it is the forward walk
+`startArgs`/`finishSend`/dispatch down to the `NameError` (`bareName`) or to `reifyBlock`'s
+Proc (`lambdaLit`). Neither needs the fifth stall point — both rules have no argument
+expressions, so no sub-run is ever under a pushed continuation.
 
 ## What is not on this ladder
 

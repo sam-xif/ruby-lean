@@ -453,6 +453,110 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp
       (fun o ho => ⟨ho.1, by rw [he.payload]; exact ho.2⟩)
 
+/-! ## "And nothing more" — the exactness component
+
+Every component above is a **lower** bound: each thing `κ` records is really there. None says
+there is nothing else, and three rungs stalled on that (`Denote/Sem/notes.md`, sixth and ninth
+stall points). `MethodsExact` is the upper bound. The frame rule it belongs to, and what it
+does and does not buy, are in [`Denote/Sem/Frame.lean`](Frame.lean); the definitions live here
+because `StateOk` has a field for one of them. -/
+
+/-- Every method name `κ` records anywhere: a top-level `def`, or an instance or singleton
+method of a declared class or module. `Judge`'s tables are the only places a method name can
+enter the checker's world, so this is the complete list.
+
+**Name-global on purpose** — it forgets which class a name was declared on. Sharpening it to a
+per-owner claim is possible and nothing asks: the rules that consume exactness are asking "did
+the program define this name *at all*?", which is what a negative premise like
+`defDeclared? κ.defs m = none` is trying to say. -/
+def declaresName (κ : Ctx) (n : String) : Bool :=
+  κ.defs.any (·.name == n) ||
+  κ.classes.any (fun c => c.methods.any (·.name == n) || c.smethods.any (·.name == n))
+
+/-- **"And nothing more", for methods.** Every method installed anywhere in the heap is the
+model's own — an axiomatized builtin (`MethodDef.builtin`) or Ruby's core library written in
+RubyCore (`MethodDef.fromPrelude`) — or a name `κ` records.
+
+The model's own two discriminators do the work of saying which methods are not the user's
+program, which is why this needs no new machinery in `RubyCore`.
+
+Stated over the heap rather than over `lookup`, and that is the useful direction: `lookup`,
+`methodOn` and `lookupAbove` all find their answer in some class payload's `methods`, so the
+heap-global form implies the statement at every one of them (`MethodsExact.lookup`,
+`Denote/Sem/Frame.lean`) while being a single decidable `Bool` at a concrete heap.
+
+Measured before it was stated: at the real prelude-booted heap the number of installed methods
+that are neither builtin nor prelude is **zero** (`Denote/Sanity.lean`'s `methodsExactB`), so
+this is a fact about the machine the ladder starts from rather than a hopeful invariant, and
+`declaresName` is exactly the room a program grows into it. -/
+def MethodsExact (κ : Ctx) (m : Machine) : Prop :=
+  ∀ k cp, m.heap.classPayload? k = some cp →
+    ∀ n md, (n, md) ∈ cp.methods →
+      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ declaresName κ n = true
+
+/-- **`self` is a real object.** Every reference `StateOk` describes has to be one the heap
+actually holds, and this is the one place it was not said: `Machine.currentFrame.self`.
+
+Forced by `NameFreeOk`'s transport across an allocation. `classOf` reads `(h.get o).eigen` and
+`.klass`, and `Heap.get` is *total* — past the end it answers `default`, whose class is
+`BasicObject` (`Denote/Sem/notes.md` §The fourth stall point, "the one genuinely surprising
+cost"). So at a machine whose `self` is a **dangling** reference, an allocation *changes what
+`self` is an instance of*, and a claim about the methods reachable from `self` does not
+survive the push. Requiring the reference to be live is the honest fix and it is what
+`Ext.get` then pins.
+
+Stated as an implication so an **immediate** `self` is admitted rather than excluded:
+`classOf` answers a boot id for `.int`/`.sym`/`.nil`/booleans without reading the heap at all,
+so those are stable across allocation for free — and `1.instance_eval { … }` is a machine the
+model can be in, even though no `Judge` rule types it. -/
+def SelfLive (m : Machine) : Prop :=
+  ∀ o, m.currentFrame.self = .ref o → o < m.heap.objs.size
+
+/-- `self`'s dispatch class is unmoved by an allocation, given that `self` is real. -/
+theorem classOf_self_ext {m m₂ : Machine} (he : Ext m m₂) (hl : SelfLive m) :
+    classOf m₂.heap m₂.currentFrame.self = classOf m.heap m.currentFrame.self := by
+  rw [he.currentFrame_eq]
+  cases hs : m.currentFrame.self with
+  | ref o => simp only [classOf, he.get o (hl o hs)]
+  | bool b => cases b <;> rfl
+  | _ => rfl
+
+/-- The names whose *absence* a rule reasons from: `BareNameError`'s one row
+(`Judge.bareName`) and `nameFree`'s two (`Judge.lambdaLit`). A list, so the component below
+is one decidable `Bool` at a concrete machine — `CoreOk`'s trade, for the same reason.
+
+Why a list at all rather than "every name": the honest general claim is `MethodsExact`, and it
+allows a **prelude** method. `Judge.bareName` needs `x` to resolve to *nothing*, which is a
+strictly stronger thing than "not the user's", and it is only true name by name. Measured at
+the booted machine: the toplevel ancestor chain carries ~40 prelude-written methods (`tap`,
+`format`, `Integer`, `!=`, and the `__`-prefixed helpers) and **none of these three**. -/
+def shadowableNames : List String := ["lambda", "proc", "x"]
+
+/-- **"And nothing more", sharpened on `shadowableNames` and localised to the chain.** A
+method of one of those names that dispatch can *reach from the current `self`* is an
+axiomatized builtin, a tombstone, or a name `κ` records.
+
+Three things about the shape, each of which could have gone another way and did not:
+
+* **Chain-local, not heap-global.** The heap-global version is **false**: the prelude really
+  does define a method named `proc` — `T.proc`, the sorbet shim's type constructor, installed
+  as a *singleton* method on the `T` module, i.e. on `#<Class:T>`. That is off the toplevel
+  chain (`extend`/`include` move a module's *instance* methods, never its singleton ones), so
+  the model's own shadowing test — which walks `methodOn (classOf recv)` — is right about it,
+  and this component has to be stated at the same walk to say so.
+* **`builtin.isSome ∨ undefined`, not `fromPrelude`.** This is the `MethodsExact` disjunction
+  with the prelude escape removed, which is exactly what makes it strong enough for a rule
+  claiming *absence*; and it is the same `md.builtin.isNone && !md.undefined` test
+  `finishSend` uses to decide whether a user definition shadows `lambda`/`proc`.
+* **The `declaresName` escape stays.** Without it a program that really does `def lambda`
+  would make `StateOk` *unsatisfiable* rather than making the rule inapplicable — vacuity
+  instead of falsity, which is the failure mode `Denote/Sanity.lean` exists to police. With
+  it, such a program is perfectly conformant and it is `nameFree`'s premise that fails. -/
+def NameFreeOk (κ : Ctx) (m : Machine) : Prop :=
+  ∀ n ∈ shadowableNames, ∀ o md,
+    Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n = some (o, md) →
+      md.builtin.isSome = true ∨ md.undefined = true ∨ declaresName κ n = true
+
 /-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
 plus the three machine facts above.
 
@@ -475,6 +579,9 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   consts : ConstsOk κ m
   privConsts : PrivConstsOk κ.privConsts m
   constScope : ConstScopeOk m
+  exact : MethodsExact κ m
+  nameFree : NameFreeOk κ m
+  selfLive : SelfLive m
 
 /-! ## Conformance survives an allocation
 
@@ -559,6 +666,18 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     exact hv1
   privConsts := trivial
   constScope := ConstScopeOk.ext he h.constScope
+  exact := by
+    intro k cp hk
+    exact h.exact k cp (by rw [he.payload] at hk; exact hk)
+  nameFree := by
+    intro n hn o md hm
+    refine h.nameFree n hn o md ?_
+    rw [← hm]
+    simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
+  selfLive := by
+    intro o ho
+    rw [he.currentFrame_eq] at ho
+    exact Nat.lt_of_lt_of_le (h.selfLive o ho) he.size
 
 /-! ### Reading the environment the rule builds
 
@@ -876,7 +995,17 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
           obtain ⟨q, hq⟩ := envGet?_mem hp
           simpa using (List.any_eq_false.mp hcst) (q, σ) hq
       privConsts := trivial
-      constScope := ConstScopeOk.setLocal x w h.constScope }
+      constScope := ConstScopeOk.setLocal x w h.constScope
+      exact := h.exact
+      nameFree := by
+        intro n hn o md hm
+        refine h.nameFree n hn o md ?_
+        rw [← hm]
+        simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
+      selfLive := by
+        intro o ho
+        rw [currentFrame_setLocal_self m x w] at ho
+        exact h.selfLive o ho }
 
 #print axioms StateOk_ext
 #print axioms StateOk_setLocal

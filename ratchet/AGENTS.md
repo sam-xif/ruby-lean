@@ -530,6 +530,24 @@ Discharged so far, all axiom-clean:
   are list bookkeeping plus `classMethods?`'s injectivity. Three of the seven companion
   families (`JudgeRescues`, `JudgeConsts`, `JudgeNested`) are now **complete**.
 
+**The frame lemma** (clink 51, [`Denote/Sem/Frame.lean`](Denote/Sem/Frame.lean)) — *`StateOk`
+describes the whole state of the world, and nothing more*, which is two claims and they are
+worth keeping apart. The **conformance** frame rule (`frameOnly`/`StateOk_frame`: `ctl` and
+`kont` are the whole frame, and a change confined to it cannot disturb the description) was
+already proved and is now named. The **exactness** half is new and is what three stalled rungs
+were asking for: every component was a *lower* bound, so a rule reasoning from **absence** had
+no hypothesis that could reach its conclusion. `MethodsExact` is the general upper bound —
+every method installed anywhere is an axiomatized builtin, a prelude definition, or a name
+`κ` records — measured **zero** exceptions at the booted heap before it was stated;
+`NameFreeOk` sharpens it where a rule needs *absence* rather than non-authorship, localised to
+the receiver's chain because the heap-global form is false (the prelude defines `T.proc`, a
+singleton method off every ordinary chain); and `SelfLive` closes the gap both need — nothing
+had said `self` is a real object, and `Heap.get` is total. `StateOk` is now seventeen
+components and `Denote/Sanity.lean` still exhibits a model of all of them, so the upper bound
+cost no vacuity. The **interpreter's** frame rule (`KontFrame`/`EvalsDecompose`) is *stated,
+not proved*: it is the single named target the ~40 rules behind the fifth stall point consume,
+and nothing here assumes it.
+
 They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step

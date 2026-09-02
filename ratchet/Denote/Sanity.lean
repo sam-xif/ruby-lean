@@ -1,4 +1,4 @@
-import Denote.Sem.State
+import Denote.Sem.Frame
 import Ratchet.Validate
 import RubyCore.HeapCert
 
@@ -160,6 +160,71 @@ theorem constScope_of_topScope {m : Machine} (hb : topScopeB m = true) : ConstSc
     simp [hfrom]
     rfl
 
+/-- **"And nothing more", as one `Bool`.** Every method installed anywhere in the heap is a
+builtin, a prelude definition, or a name `κ` records.
+
+Only ids below `objs.size` are scanned, and that is complete rather than a shortcut:
+`Heap.get` is total and answers `default` past the end, whose payload is `.none`, so
+`classPayload?` at a dangling id is `none` and there is nothing there to check
+(`Denote/Ext.lean`'s `get_oob` is the same fact the allocating rungs spend). -/
+def methodsExactB (κ : Ratchet.Ctx) (m : Machine) : Bool :=
+  (List.range m.heap.objs.size).all fun k =>
+    match m.heap.classPayload? k with
+    | some cp => cp.methods.all fun p =>
+        p.2.fromPrelude || p.2.builtin.isSome || declaresName κ p.1
+    | none => true
+
+theorem classPayload?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
+    h.classPayload? o = none := by
+  simp only [Heap.classPayload?, get_oob h ho]; rfl
+
+theorem methodsExactB_sound {κ : Ratchet.Ctx} {m : Machine} (hb : methodsExactB κ m = true) :
+    MethodsExact κ m := by
+  intro k cp hk n md hmem
+  by_cases hlt : k < m.heap.objs.size
+  · simp only [methodsExactB, List.all_eq_true] at hb
+    have hall := hb k (by simpa using hlt)
+    rw [hk] at hall
+    simp only [List.all_eq_true, Bool.or_eq_true] at hall
+    rcases hall (n, md) (by simpa using hmem) with (h3 | h3) | h3
+    · exact Or.inl h3
+    · exact Or.inr (Or.inl h3)
+    · exact Or.inr (Or.inr h3)
+  · rw [classPayload?_oob m.heap (Nat.le_of_not_lt hlt)] at hk
+    exact absurd hk (by simp)
+
+/-- **`NameFreeOk` and `SelfLive` as one `Bool`.** The chain walk is finite and the name list
+has three entries, so both are computations at a concrete machine.
+
+`NameFreeOk` is checked in its *strongest* form here — nothing on the chain carries one of the
+three names at all — which is more than the component asks (it would also accept a builtin or
+a tombstone). That is deliberate: at `ctx0` the `declaresName` escape is uniformly `false`, so
+a weaker check would be indistinguishable from a stronger one at the only machine we exhibit,
+and the stronger one is the fact worth recording. Measured: the toplevel chain carries ~40
+prelude-written methods and none of the three. -/
+def nameFreeB (m : Machine) : Bool :=
+  shadowableNames.all fun n =>
+    (Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n).isNone
+
+def selfLiveB (m : Machine) : Bool :=
+  match m.currentFrame.self with
+  | .ref o => o < m.heap.objs.size
+  | _ => true
+
+theorem nameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratchet.Ctx) :
+    NameFreeOk κ m := by
+  intro n hn o md hm
+  simp only [nameFreeB, List.all_eq_true] at hb
+  have := hb n (by simpa using hn)
+  rw [hm] at this
+  exact absurd this (by simp)
+
+theorem selfLiveB_sound {m : Machine} (hb : selfLiveB m = true) : SelfLive m := by
+  intro o ho
+  unfold selfLiveB at hb
+  rw [ho] at hb
+  simpa using hb
+
 /-- **Everything about the booted machine that has to be computed rather than proved.**
 
 One `Bool`, checked by the `#guard` below — which is the same status
@@ -176,7 +241,8 @@ So the witness below is stated **conditionally on this `Bool`**, and the `Bool` 
 gate. -/
 def bootOkB : Bool :=
   saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
-  topScopeB bootMachine
+  topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
+  nameFreeB bootMachine && selfLiveB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -186,7 +252,7 @@ prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
-  obtain ⟨⟨⟨hsat, hcore⟩, ⟨⟨hkind, hblk⟩, hfr⟩, hself⟩, htop⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨hkind, hblk⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hsl⟩ := hb
   exact
     { sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
@@ -204,7 +270,10 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         intro p τ hp
         exact absurd hp (by simp [constGet?, Ratchet.constPaths, envGet?, Ratchet.ctx0])
       privConsts := trivial
-      constScope := constScope_of_topScope htop }
+      constScope := constScope_of_topScope htop
+      exact := methodsExactB_sound hex
+      nameFree := nameFreeB_sound hnf _
+      selfLive := selfLiveB_sound hsl }
 
 -- **The gate.** If this fails, the ladder's hypothesis has no exhibited model and every
 -- rung on it is suspect.
